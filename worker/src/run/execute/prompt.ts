@@ -2,14 +2,53 @@ import type { PrismaClient } from '@prisma/client'
 import type { ProviderMessage } from '@nessie/runtime'
 import type { RunContext, StoredConversationMessage } from './types.js'
 
+/**
+ * Render a stored conversation turn as a provider message. Assistant turns
+ * authored by a *different* agent than the one now acting are prefixed with the
+ * author's name so the model can tell "someone else said this" from "I said
+ * this" — the acting agent's own turns stay unprefixed. Human turns pass through
+ * unchanged (they are already the distinct `user` role).
+ */
+const toProviderConversationMessage = (
+  message: StoredConversationMessage,
+  actingAgentId: string,
+): ProviderMessage => {
+  const isOtherAgent =
+    message.role === 'assistant'
+    && !!message.authorAgentId
+    && message.authorAgentId !== actingAgentId
+
+  if (!isOtherAgent) {
+    return { content: message.content, role: message.role }
+  }
+
+  const authorName = message.authorAgentName?.trim() || 'Another agent'
+  return { content: `${authorName}: ${message.content}`, role: 'assistant' }
+}
+
 export const buildModelPrompt = (
   conversation: StoredConversationMessage[],
   context: RunContext,
   prompt: string,
   memoryContext: string | null,
 ): ProviderMessage[] => {
+  const hasOtherAgentTurn = conversation.some(
+    (message) =>
+      message.role === 'assistant'
+      && !!message.authorAgentId
+      && message.authorAgentId !== context.agent.id,
+  )
+
   const systemParts = [
     `You are ${context.agent.name}.`,
+    hasOtherAgentTurn
+      ? [
+        'This thread is shared with other agents. Messages from other agents',
+        'are prefixed with their name (e.g. "Aria: ..."); your own earlier',
+        'replies appear with no prefix. Never attribute another agent\'s',
+        'message to yourself, and do not add a name prefix to your own reply.',
+      ].join(' ')
+      : '',
     context.agent.systemPrompt?.trim() ?? '',
     `Current date and time: ${new Date().toISOString()} (UTC). When the user gives a `
       + 'relative or wall-clock time, resolve it against this; treat wall-clock times '
@@ -53,7 +92,11 @@ export const buildModelPrompt = (
   }
 
   if (conversation.length > 0) {
-    messages.push(...conversation)
+    messages.push(
+      ...conversation.map((message) =>
+        toProviderConversationMessage(message, context.agent.id),
+      ),
+    )
   }
 
   const lastConversationMessage = conversation.at(-1)
@@ -82,6 +125,11 @@ export const loadConversation = async (
     select: {
       content: true,
       role: true,
+      agentId: true,
+      // Live agent name — resolved via the FK join at run time, so an agent
+      // rename is always reflected and no stale name is ever baked into the
+      // prompt path.
+      agent: { select: { name: true } },
     },
     take: 20,
   })
@@ -89,5 +137,7 @@ export const loadConversation = async (
   return messages.reverse().map((message) => ({
     content: message.content,
     role: message.role,
+    authorAgentId: message.agentId,
+    authorAgentName: message.agent?.name ?? null,
   }))
 }

@@ -374,7 +374,11 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   bundles are encrypted in a separate table (never returned to the browser),
   sync is resumable + checkpointed with webhook ingestion through the worker
   queue, and the connector layer carries **no** reasoning logic (Chief-of-Staff
-  boundary). Spec: `docs/plans/2026-07-21-individual-communications-connector.md`.
+  boundary). The sync worker and subscription-renewal sweep skip any connection
+  whose owner is no longer an active org member (`deactivatedAt`), so user
+  deactivation revokes comms import immediately — matching the API auth and
+  scheduled-trigger owner-revocation gates. Spec:
+  `docs/plans/2026-07-21-individual-communications-connector.md`.
 
 ## File storage & accounting — single chokepoint
 
