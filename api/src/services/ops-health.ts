@@ -4,6 +4,7 @@ import type {
   ReadinessResponse,
   WorkerHealthStatus,
 } from '../contracts.js'
+import type { RateLimiter } from './rate-limit.js'
 
 // The worker refreshes heartbeatAt on its runner rows every 30s (worker/src/index.ts
 // -> registerExecutionRunners), unconditionally — it writes heartbeatAt on every
@@ -83,6 +84,7 @@ const getQueueCounts = async (prisma: PrismaClient) => {
 export const getOpsHealth = async (
   prisma: PrismaClient,
   organizationId: string,
+  rateLimiter?: RateLimiter,
 ): Promise<OpsHealthResponse> => {
   const [worker, queue, deadJobRows, deadLetterCount, deadLetterRows] = await Promise.all([
     getWorkerHealth(prisma),
@@ -130,6 +132,12 @@ export const getOpsHealth = async (
         attempts: message.attempts,
         createdAt: message.createdAt.toISOString(),
       })),
+    },
+    rateLimit: rateLimiter?.snapshot() ?? {
+      checks: 0,
+      limited: 0,
+      storeErrors: 0,
+      limitedByBucket: {},
     },
   }
 }

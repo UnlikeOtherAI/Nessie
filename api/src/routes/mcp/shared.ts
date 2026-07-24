@@ -4,6 +4,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { sendApiError } from '../../lib/api.js'
+import type { AppConfig } from '../../lib/server-context.js'
+import type { RateLimiter } from '../../services/rate-limit.js'
 import {
   McpCatalogError,
   MCP_CATALOG_ERROR_CODES,
@@ -34,6 +36,15 @@ import {
 
 export type McpRouteHelpers = {
   prisma: PrismaClient
+  /**
+   * API config (rate-limit thresholds) + the brute-force limiter used by the
+   * OAuth handshake and credential-write sub-registrars. Optional so existing
+   * unit fixtures stay minimal; production wiring in index.ts always sets
+   * them, and registerMcpRoutes falls back to defaults + a fail-open in-memory
+   * limiter when absent.
+   */
+  config?: AppConfig
+  rateLimiter?: RateLimiter
   requireActorContext: (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -72,6 +83,8 @@ export type McpRouteHelpers = {
  */
 export type McpSubRegistrarContext = {
   prisma: PrismaClient
+  config: AppConfig
+  rateLimiter: RateLimiter
   requireActorContext: McpRouteHelpers['requireActorContext']
   requireOwner: McpRouteHelpers['requireOwner']
   oauthSecretStore: SecretStore

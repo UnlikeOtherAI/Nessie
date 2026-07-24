@@ -188,6 +188,7 @@ export const AuditActionSchema = z.enum([
   'auth.login',
   'auth.logout',
   'auth.login_failed',
+  'auth.rate_limit.lockout',
   'user.created',
   'user.updated',
   'user.deleted',

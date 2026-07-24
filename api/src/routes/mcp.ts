@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 
 import { EnvSecretResolver, inMemorySecretStoreStub } from '@nessie/mcp-manage'
+import { loadConfig } from '@nessie/config'
+
+import { createRateLimiter } from '../services/rate-limit.js'
 
 import { registerMcpCatalogRoutes } from './mcp/catalog.js'
 import { registerMcpCredentialRoutes } from './mcp/credentials.js'
@@ -63,6 +66,11 @@ export const registerMcpRoutes = (
 
   const ctx: McpSubRegistrarContext = {
     prisma: helpers.prisma,
+    config: helpers.config ?? loadConfig(),
+    rateLimiter: helpers.rateLimiter
+      ?? createRateLimiter(helpers.prisma, {
+        error: (msg) => app.log.error(String(msg)),
+      }),
     requireActorContext: helpers.requireActorContext,
     requireOwner: helpers.requireOwner,
     oauthSecretStore,

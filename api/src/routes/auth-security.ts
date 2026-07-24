@@ -16,6 +16,7 @@ import {
   AUTH_LOCK_TRANSACTION_OPTIONS,
   lockUserSessions,
 } from '../services/user-session-lock.js'
+import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
 
@@ -30,6 +31,7 @@ export const registerAuthSecurityRoutes = (
     config,
     getAuthorizationToken,
     prisma,
+    rateLimiter,
     requireActorContext,
   } = deps
   const currentSessionId = (request: FastifyRequest): string | null => {
@@ -73,6 +75,26 @@ export const registerAuthSecurityRoutes = (
     const body = parseInput(ChangePasswordRequestSchema, request.body, reply)
     if (!body) return reply
     const userId = actorContext.actor.actorId
+    // Step-up verification (current-password re-proof) is a brute-force
+    // surface: cap attempts per IP and per account, keyed to the actor.
+    if (
+      !(await guardAuthRequest(
+        rateLimiter,
+        { bucket: RATE_LIMIT_BUCKETS.stepUpIp, rule: config.api.rateLimit.stepUpIp },
+        request,
+        reply,
+        {
+          account: {
+            bucket: RATE_LIMIT_BUCKETS.stepUpAccount,
+            rule: config.api.rateLimit.stepUpAccount,
+          },
+          accountIdentity: userId,
+          auditContext: actorContext,
+        },
+      ))
+    ) {
+      return reply
+    }
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { passwordHash: true },

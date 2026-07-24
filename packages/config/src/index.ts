@@ -59,6 +59,11 @@ export const ModelConfigSchema = z.object({
 })
 export type ModelConfig = z.infer<typeof ModelConfigSchema>
 
+const RateLimitRuleSchema = z.object({
+  max: z.number().int().positive(),
+  windowMs: z.number().int().positive(),
+})
+
 export const NessieConfigSchema = z.object({
   mode: NessieModeSchema,
   auth: z.object({
@@ -104,6 +109,22 @@ export const NessieConfigSchema = z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(5454),
     trustedProxyHops: z.number().int().nonnegative().default(0),
+    // Brute-force limits for auth-sensitive endpoints (api/src/services/rate-limit.ts).
+    // Fixed-window counters stored in Postgres (`rate_limit_buckets`); every rule is
+    // `{max, windowMs}` and independently env-tunable. Defaults below mirror
+    // DEFAULT_RATE_LIMIT_CONFIG and docs/deployment.md.
+    rateLimit: z.object({
+      loginIp: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
+      loginAccount: RateLimitRuleSchema.default({ max: 5, windowMs: 10 * 60_000 }),
+      refreshIp: RateLimitRuleSchema.default({ max: 30, windowMs: 10 * 60_000 }),
+      refreshAccount: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
+      bootstrapIp: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
+      mcpOauthIp: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
+      mcpSecretWriteIp: RateLimitRuleSchema.default({ max: 20, windowMs: 10 * 60_000 }),
+      mcpSecretWriteAccount: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
+      stepUpIp: RateLimitRuleSchema.default({ max: 10, windowMs: 10 * 60_000 }),
+      stepUpAccount: RateLimitRuleSchema.default({ max: 5, windowMs: 10 * 60_000 }),
+    }).default({}),
     // Public origin of the API as reachable from a user's browser (e.g.
     // https://api.nessie.works). Used to build OAuth redirect URIs minted
     // outside an HTTP request (the worker's personal assistant). Defaults to
@@ -174,6 +195,26 @@ export const ConfigEnvMap = {
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
   NESSIE_API_TRUSTED_PROXY_HOPS: 'api.trustedProxyHops',
+  NESSIE_RATE_LIMIT_LOGIN_IP_MAX: 'api.rateLimit.loginIp.max',
+  NESSIE_RATE_LIMIT_LOGIN_IP_WINDOW_MS: 'api.rateLimit.loginIp.windowMs',
+  NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_MAX: 'api.rateLimit.loginAccount.max',
+  NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_MS: 'api.rateLimit.loginAccount.windowMs',
+  NESSIE_RATE_LIMIT_REFRESH_IP_MAX: 'api.rateLimit.refreshIp.max',
+  NESSIE_RATE_LIMIT_REFRESH_IP_WINDOW_MS: 'api.rateLimit.refreshIp.windowMs',
+  NESSIE_RATE_LIMIT_REFRESH_ACCOUNT_MAX: 'api.rateLimit.refreshAccount.max',
+  NESSIE_RATE_LIMIT_REFRESH_ACCOUNT_WINDOW_MS: 'api.rateLimit.refreshAccount.windowMs',
+  NESSIE_RATE_LIMIT_BOOTSTRAP_IP_MAX: 'api.rateLimit.bootstrapIp.max',
+  NESSIE_RATE_LIMIT_BOOTSTRAP_IP_WINDOW_MS: 'api.rateLimit.bootstrapIp.windowMs',
+  NESSIE_RATE_LIMIT_MCP_OAUTH_IP_MAX: 'api.rateLimit.mcpOauthIp.max',
+  NESSIE_RATE_LIMIT_MCP_OAUTH_IP_WINDOW_MS: 'api.rateLimit.mcpOauthIp.windowMs',
+  NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_IP_MAX: 'api.rateLimit.mcpSecretWriteIp.max',
+  NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_IP_WINDOW_MS: 'api.rateLimit.mcpSecretWriteIp.windowMs',
+  NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_ACCOUNT_MAX: 'api.rateLimit.mcpSecretWriteAccount.max',
+  NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_ACCOUNT_WINDOW_MS: 'api.rateLimit.mcpSecretWriteAccount.windowMs',
+  NESSIE_RATE_LIMIT_STEP_UP_IP_MAX: 'api.rateLimit.stepUpIp.max',
+  NESSIE_RATE_LIMIT_STEP_UP_IP_WINDOW_MS: 'api.rateLimit.stepUpIp.windowMs',
+  NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_MAX: 'api.rateLimit.stepUpAccount.max',
+  NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_WINDOW_MS: 'api.rateLimit.stepUpAccount.windowMs',
   NESSIE_API_PUBLIC_URL: 'api.publicUrl',
   NESSIE_GITHUB_TOKEN: 'github.token',
   NESSIE_GITHUB_OWNER: 'github.owner',
@@ -238,6 +279,18 @@ const DEFAULT_CONFIG: NessieConfig = {
     host: '0.0.0.0',
     port: 5454,
     trustedProxyHops: 0,
+    rateLimit: {
+      loginIp: { max: 10, windowMs: 10 * 60_000 },
+      loginAccount: { max: 5, windowMs: 10 * 60_000 },
+      refreshIp: { max: 30, windowMs: 10 * 60_000 },
+      refreshAccount: { max: 20, windowMs: 10 * 60_000 },
+      bootstrapIp: { max: 10, windowMs: 10 * 60_000 },
+      mcpOauthIp: { max: 20, windowMs: 10 * 60_000 },
+      mcpSecretWriteIp: { max: 20, windowMs: 10 * 60_000 },
+      mcpSecretWriteAccount: { max: 10, windowMs: 10 * 60_000 },
+      stepUpIp: { max: 10, windowMs: 10 * 60_000 },
+      stepUpAccount: { max: 5, windowMs: 10 * 60_000 },
+    },
   },
   github: {
     owner: 'UnlikeOtherAI',
