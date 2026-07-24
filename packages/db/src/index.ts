@@ -12,6 +12,17 @@ export {
   type AuditOutcome,
 } from './audit-chain.js'
 
+export { enqueueQueueJob, enqueueRunExecution } from './queue.js'
+
+export {
+  claimThreadRunOrPend,
+  drainPendingThreadMessages,
+  drainPendingThreadMessagesBestEffort,
+  isThreadRunSlotBusy,
+  sweepPendingThreadMessages,
+  type ThreadRunClaimOutcome,
+} from './thread-serialization.js'
+
 // Single source of truth for the Prisma connection across api/, worker/, and the
 // seed CLI. A module-scoped singleton means that when the worker runs embedded in
 // the API process (local mode), both halves share ONE connection pool instead of

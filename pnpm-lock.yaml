@@ -415,6 +415,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)

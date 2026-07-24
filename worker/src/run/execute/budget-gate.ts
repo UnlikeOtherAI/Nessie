@@ -4,6 +4,7 @@ import { maybeEmitBudgetAlerts } from './budget-alert.js'
 import { buildScopes } from './scopes.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.js'
 import { publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
+import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
 
 type BudgetBlockOptions = {
@@ -41,6 +42,12 @@ export const terminalizeBudgetBlockedRun = async (
     context.task.id,
     'failed',
   )
+  // The blocked run never claimed the model but still held the (agent,
+  // thread) slot: release any pended messages as one batched follow-up.
+  await drainPendingThreadMessagesBestEffort(deps.prisma, {
+    agentId: context.agent.id,
+    threadId: context.run.threadId,
+  })
   console.warn(`[worker] run ${context.run.id} blocked by budget: ${reason}`)
 }
 

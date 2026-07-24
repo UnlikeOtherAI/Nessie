@@ -8,7 +8,8 @@ import {
   recordEmptyFireSkip,
   triggerOptsIntoEmptySkip,
 } from './trigger-empty-skip.js'
-import { queueTriggerRun, queueWorkflowTriggerRun } from './trigger-run.js'
+import { queueTriggerRun } from './trigger-run.js'
+import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
 
 const DEFAULT_SCHEDULER_LEASE_MS = 60_000
 const DEFAULT_SCHEDULER_RETRY_DELAY_MS = 60_000

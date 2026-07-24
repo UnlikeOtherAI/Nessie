@@ -11,6 +11,7 @@ import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.j
 import { detectReferencedRecallIds } from './memory.js'
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
+import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext, RunPlanContext } from './types.js'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 
@@ -151,5 +152,11 @@ export const completeRunExecution = async (
   await publishAgentStatus(deps.realtimeTransport, context, {
     currentRunId: context.run.id,
     status: 'idle',
+  })
+  // The run slot is free: deliver any messages that pended while this run was
+  // in flight as one batched follow-up run (see thread-serialization.ts).
+  await drainPendingThreadMessagesBestEffort(deps.prisma, {
+    agentId: context.agent.id,
+    threadId: context.run.threadId,
   })
 }

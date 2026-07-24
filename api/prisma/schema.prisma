@@ -1104,6 +1104,7 @@ model Thread {
   readStates      ThreadReadState[]
   userAlerts      UserAlert[]
   runs            Run[]
+  runThreadPendingMessages RunThreadPendingMessage[]
   streamEvents    ThreadStreamEvent[]
   triggerTargets  AgentTrigger[]        @relation("TriggerTargetThread")
   productIntegrationRuns ProductIntegrationRun[]
@@ -1294,6 +1295,7 @@ model Message {
   userAlerts UserAlert[]
   productIntegrationRuns ProductIntegrationRun[]
   triggeredRuns Run[]            @relation("RunTriggerMessage")
+  runThreadPendingMessages RunThreadPendingMessage[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
@@ -1377,6 +1379,7 @@ model Agent {
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
   userAlertActivity             UserAlert[]
+  runThreadPendingMessages      RunThreadPendingMessage[]
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -1552,6 +1555,48 @@ model Run {
   @@map("runs")
 }
 
+// Per-(agent, thread) run serialization: a message that arrives while a run is
+// in flight for the same agent+thread is recorded here instead of spawning a
+// concurrent run. When the in-flight run reaches a terminal state, the worker
+// drains all pending rows into ONE batched follow-up run (seq order preserved).
+// The row is the durable no-lost-messages marker: if the worker crashes before
+// draining, the pending-batch sweep re-discovers it and enqueues the follow-up.
+// Note the batched follow-up sees pended `user`/`assistant` messages as ordinary
+// thread history, but `system`-role kickoffs (PA scheduled triggers) are
+// excluded from model context — repeated system kickoffs coalesce to the
+// latest, which is intended (each is a self-contained "check for work" nudge).
+model RunThreadPendingMessage {
+  // BIGSERIAL primary key doubles as the strict arrival ordering for batching.
+  seq          BigInt   @id @default(autoincrement())
+  agentId      String   @map("agent_id") @db.Uuid
+  threadId     String   @map("thread_id") @db.Uuid
+  messageId    String   @map("message_id") @db.Uuid
+  channelId    String   @map("channel_id") @db.Uuid
+  // Mirrors RunExecuteJobPayload.interactive at record time: a live human chat
+  // turn stays budget-exempt when the batched follow-up run executes it.
+  interactive  Boolean  @default(false)
+  // The base AuthorizedActionContext of the triggering message (before the
+  // run/task ids are injected); the drain re-injects fresh ids for the
+  // follow-up run it creates.
+  actorContext Json     @map("actor_context") @db.JsonB
+  // Trigger provenance of a pended trigger fire (null for chat/mailbox
+  // pends). When the LATEST pending row carries it, the drain copies it onto
+  // the batched follow-up run so trigger delivery dedupe and audit keep their
+  // run linkage.
+  triggerId         String?  @map("trigger_id") @db.Uuid
+  triggerDeliveryId String?  @map("trigger_delivery_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  agent        Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread       Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message      Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  trigger         AgentTrigger?         @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerDelivery AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+
+  @@unique([agentId, messageId])
+  @@index([threadId, seq])
+  @@map("run_thread_pending_messages")
+}
+
 model AgentTrigger {
   id                     String                 @id @default(uuid()) @db.Uuid
   agentId                String?                @map("agent_id") @db.Uuid
@@ -1580,6 +1625,7 @@ model AgentTrigger {
   deliveries             AgentTriggerDelivery[]
   runs                   Run[]
   workflowRuns           WorkflowRun[]
+  runThreadPendingMessages RunThreadPendingMessage[]
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
@@ -1611,6 +1657,7 @@ model AgentTriggerDelivery {
   trigger      AgentTrigger               @relation(fields: [triggerId], references: [id], onDelete: Cascade)
   run          Run?                       @relation("RunTriggerDelivery")
   workflowRuns WorkflowRun[]
+  runThreadPendingMessages RunThreadPendingMessage[]
 
   @@unique([triggerId, dedupeKey])
   @@index([triggerId, createdAt])

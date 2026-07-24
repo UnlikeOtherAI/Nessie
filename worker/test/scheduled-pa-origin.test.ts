@@ -97,6 +97,13 @@ const createTriggerHarness = (
     },
     run: {
       create: async () => ({ id: RUN_ID }),
+      // The per-(agent, thread) slot claim: no active run, so the fire claims.
+      findFirst: async () => null,
+    },
+    runThreadPendingMessage: {
+      // Redelivery dedupe: no pending marker for this message.
+      findFirst: async () => null,
+      create: async () => ({}),
     },
     task: {
       create: async () => ({ id: TASK_ID }),
@@ -104,7 +111,11 @@ const createTriggerHarness = (
     agentTrigger: {
       update: async () => ({}),
     },
-    $executeRaw: async (query: { values?: unknown[] }) => {
+    $executeRaw: async (query: { strings?: string[]; values?: unknown[] }) => {
+      // The thread-run claim's advisory lock is not a queue enqueue.
+      if (query.strings?.some((sql) => sql.includes('pg_advisory_xact_lock'))) {
+        return 0
+      }
       const encoded = query.values?.find(
         (value): value is string =>
           typeof value === 'string' && value.includes('"actorContext"'),

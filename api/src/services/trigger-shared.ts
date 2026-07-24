@@ -358,7 +358,11 @@ export const loadExistingDeliveryRun = async (
 
   const runId = existingDelivery.run?.id
   const workflowRunId = existingDelivery.workflowRuns[0]?.id
-  if (!runId && !workflowRunId) {
+  // A `delivered` delivery with no run is a fire that PENDED on a busy
+  // (agent, thread) slot: it is already dispatched (the batched follow-up run
+  // attaches it on drain), so dedupe must treat it as existing — re-firing
+  // would double-deliver, and falling through would mis-mark it `failed`.
+  if (!runId && !workflowRunId && existingDelivery.status !== 'delivered') {
     return null
   }
 

@@ -11,6 +11,7 @@ import {
 } from '@nessie/schemas'
 
 import { enqueueRunExecution } from '../queue/pgqueue.js'
+import { isThreadRunSlotBusy } from '@nessie/db'
 
 // Statuses a run can be in while it is still live — the set the status surface
 // lists and the only set from which a run can be cancelled.
@@ -253,6 +254,9 @@ export type RestartRunResult =
   | { kind: 'not_terminal'; status: RunStatus }
   | { kind: 'not_restartable'; status: RunStatus }
   | { kind: 'input_unavailable' }
+  // Another run is in flight on the same (agent, thread): a human explicitly
+  // restarting into a busy thread gets a clear 409, not a silent queue.
+  | { kind: 'thread_busy' }
   | { kind: 'restarted'; runId: string; taskId: string; agentId: string; channelId: string }
 
 export const restartRun = async (
@@ -283,6 +287,11 @@ export const restartRun = async (
   if (!message) return { kind: 'input_unavailable' }
 
   const created = await prisma.$transaction(async (tx) => {
+    // Same (agent, thread) slot as every other run-creation path: restarting
+    // into a busy thread is rejected, never silently queued.
+    if (await isThreadRunSlotBusy(tx, { agentId: run.agentId, threadId: run.threadId })) {
+      return { busy: true as const }
+    }
     const newRun = await tx.run.create({
       data: {
         agentId: run.agentId,
@@ -328,6 +337,10 @@ export const restartRun = async (
     }
     return { runId: newRun.id, taskId: newTask.id }
   })
+
+  if ('busy' in created) {
+    return { kind: 'thread_busy' }
+  }
 
   return {
     kind: 'restarted',

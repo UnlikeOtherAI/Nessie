@@ -17,6 +17,7 @@ import {
 } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import { enqueueRunExecution } from '../queue.js'
+import { claimThreadRunOrPend } from './thread-serialization.js'
 
 export type OrchestrateDecideDeps = {
   modelClient: ModelClient
@@ -164,10 +165,42 @@ export const executeOrchestrateDecideJob = async (
 
   for (const decision of decisions) {
     if (decision.action === 'reply') {
-      // Wrap run + task creation and job enqueueing in a transaction.
-      // If any step fails the whole unit rolls back, leaving no orphaned run
-      // for the retry to trip over.
-      const { run, task } = await deps.prisma.$transaction(async (tx) => {
+      // Per-(agent, thread) serialization: claim the run slot inside this
+      // transaction. If a run is already in flight, the message is recorded as
+      // a durable pending marker and delivered in the batched follow-up run
+      // the completion path enqueues — no concurrent run is spawned. The queue
+      // is at-least-once: a redelivery of THIS decide job (already committed)
+      // comes back as 'duplicate' and no-ops, so the message is never replied
+      // to twice.
+      const outcome = await deps.prisma.$transaction(
+        async (tx): Promise<
+          | { kind: 'pended' }
+          | { kind: 'duplicate' }
+          | {
+              kind: 'claimed'
+              run: { agentId: string; id: string; status: string; threadId: string }
+              task: { id: string }
+            }
+        > => {
+        const claim = await claimThreadRunOrPend(tx, {
+          agentId: decision.agentId,
+          threadId,
+          pending: {
+            actorContext,
+            channelId,
+            // Same rule as the run payload below: a live human chat turn is
+            // interactive, an agent-authored trigger is automation.
+            interactive: actorContext.actor.actorType === 'user',
+            messageId,
+          },
+        })
+        if (claim !== 'claimed') {
+          return claim === 'pended' ? { kind: 'pended' as const } : { kind: 'duplicate' as const }
+        }
+
+        // Wrap run + task creation and job enqueueing in a transaction.
+        // If any step fails the whole unit rolls back, leaving no orphaned run
+        // for the retry to trip over.
         const createdRun = await tx.run.create({
           data: {
             agentId: decision.agentId,
@@ -220,8 +253,35 @@ export const executeOrchestrateDecideJob = async (
           `run:${messageId}:${decision.agentId}`,
         )
 
-        return { run: createdRun, task: createdTask }
+        return { kind: 'claimed' as const, run: createdRun, task: createdTask }
       })
+
+      if (outcome.kind === 'pended') {
+        console.log(
+          JSON.stringify({
+            event: 'orchestrate.pended',
+            agentId: decision.agentId,
+            messageId,
+            threadId,
+          }),
+        )
+        continue
+      }
+      if (outcome.kind === 'duplicate') {
+        // At-least-once redelivery of a decide job that already committed:
+        // the run (or pending marker) for this exact message exists, so this
+        // delivery must not reply again.
+        console.log(
+          JSON.stringify({
+            event: 'orchestrate.duplicate',
+            agentId: decision.agentId,
+            messageId,
+            threadId,
+          }),
+        )
+        continue
+      }
+      const { run, task } = outcome
 
       // Publish outside the transaction — pg_notify cannot be rolled back, but
       // the run/task are now durably committed so the event is correct.

@@ -1,6 +1,7 @@
 import { type PrismaClient } from '@prisma/client'
 import { type AgentTriggerType } from '@nessie/schemas'
-import { queueTriggerRun, queueWorkflowTriggerRun } from './trigger-run.js'
+import { queueTriggerRun } from './trigger-run.js'
+import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
 
 // sp-webhook: re-attempt a previously-failed trigger delivery. Loads the trigger
 // fresh and routes to the agent or workflow queue path, reusing the existing

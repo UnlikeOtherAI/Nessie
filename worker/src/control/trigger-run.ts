@@ -12,10 +12,11 @@ import {
   parseTeamId,
   parseThreadId,
   parseUserId,
+  withActionContext,
   type AuthorizedActionContext,
-  type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
-import { enqueueQueueJob, enqueueRunExecution } from '../queue.js'
+import { enqueueRunExecution } from '../queue.js'
+import { claimThreadRunOrPend } from '../run/thread-serialization.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
 import {
   assertTriggerExecutionOriginTenant,
@@ -25,15 +26,17 @@ import {
 
 // Shared "fire a run from a trigger" primitives used by both the scheduler sweep
 // and event dispatch. Kept separate from the scheduling/claim logic so the two
-// callers depend on the run-queueing seam, not on each other.
+// callers depend on the run-queueing seam, not on each other. The workflow-
+// installation variant lives in workflow-trigger-run.ts and reuses the shared
+// helpers below (exported for it).
 
 // sp-webhook: a retry attempt (driven by the delivery-retry poller) reuses an
 // existing `failed` delivery row instead of creating a new one, so the
 // (trigger_id, dedupe_key) uniqueness holds and backoff state accumulates.
-type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
+export type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
 
 // Create the delivery for a fresh fire, or reuse+reset the row when retrying.
-const upsertDelivery = async (
+export const upsertDelivery = async (
   tx: Prisma.TransactionClient,
   input: {
     dedupeKey?: string
@@ -68,7 +71,7 @@ const upsertDelivery = async (
   })
 }
 
-const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
+export const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
   if (payload === null) {
     return Prisma.JsonNull as unknown as Prisma.InputJsonValue
   }
@@ -96,7 +99,10 @@ const buildActorContext = (input: {
   projectId?: string | null
   teamId?: string | null
   threadId: string
-  taskId: string
+  // Omitted while the (agent, thread) slot claim is still unresolved: the
+  // pending-marker path has no task, and the claimed path injects the fresh
+  // task id via withActionContext once the task exists.
+  taskId?: string
   source: string
 }): AuthorizedActionContext => ({
   actor: {
@@ -117,7 +123,7 @@ const buildActorContext = (input: {
     purpose: input.source,
     requestId: randomUUID(),
     threadId: parseThreadId(input.threadId),
-    taskId: parseTaskId(input.taskId),
+    ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
   },
   tenant: {
     organizationId: parseOrganizationId(input.organizationId),
@@ -125,147 +131,6 @@ const buildActorContext = (input: {
     teamId: input.teamId ? parseTeamId(input.teamId) : undefined,
   },
 })
-
-export const queueWorkflowTriggerRun = async (
-  prisma: PrismaClient,
-  input: {
-    dedupeKey?: string
-    payload: unknown
-    retry?: RetryContext
-    source: string
-    trigger: {
-      id: string
-      type: AgentTriggerType
-      workflowInstallation: {
-        active: boolean
-        channelId: string | null
-        id: string
-        organizationId: string
-        status: 'active' | 'disabled' | 'draft' | 'paused'
-        projectId: string | null
-        teamId: string | null
-      }
-    }
-  },
-): Promise<void> => {
-  const installation = input.trigger.workflowInstallation
-  if (!installation.active || installation.status === 'disabled') {
-    return
-  }
-
-  const existingDelivery = input.dedupeKey
-    ? await prisma.agentTriggerDelivery.findFirst({
-        where: {
-          dedupeKey: input.dedupeKey,
-          triggerId: input.trigger.id,
-        },
-        include: {
-          workflowRuns: {
-            select: { id: true },
-            take: 1,
-          },
-        },
-      })
-    : null
-
-  if (existingDelivery?.workflowRuns[0]?.id) {
-    return
-  }
-
-  const actorContext: AuthorizedActionContext = {
-    actor: {
-      actorId: installation.id,
-      actorType: 'service',
-      roles: ['system'],
-    },
-    actionContext: {
-      ...(installation.channelId
-        ? { channelId: parseChannelId(installation.channelId) }
-        : {}),
-      purpose: `trigger:${input.trigger.type}`,
-      requestId: randomUUID(),
-      correlationId: `trigger:${input.trigger.id}`,
-    },
-    tenant: {
-      organizationId: parseOrganizationId(installation.organizationId),
-      projectId: installation.projectId ? parseProjectId(installation.projectId) : undefined,
-      teamId: installation.teamId ? parseTeamId(installation.teamId) : undefined,
-    },
-  }
-
-  const normalizedPayload = normalizePayload(input.payload)
-  try {
-    await prisma.$transaction(async (tx) => {
-      const delivery = await upsertDelivery(tx, {
-        dedupeKey: input.dedupeKey,
-        payload: normalizedPayload,
-        retry: input.retry,
-        source: input.source,
-        triggerId: input.trigger.id,
-      })
-
-      const workflowRun = await tx.workflowRun.create({
-        data: {
-          installationId: installation.id,
-          organizationId: installation.organizationId,
-          triggerId: input.trigger.id,
-          triggerDeliveryId: delivery.id,
-          input: (input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
-            ? (input.payload as Record<string, unknown>)
-            : { payload: input.payload ?? null }) as Prisma.InputJsonValue,
-          startedByActorType: actorContext.actor.actorType,
-          startedByActorId: actorContext.actor.actorId,
-        },
-        select: { id: true },
-      })
-
-      const jobPayload: WorkflowRunExecuteJobPayload = {
-        actorContext,
-        workflowRunId: workflowRun.id,
-      }
-      await enqueueQueueJob(tx, {
-        idempotencyKey: `workflow-run:start:${workflowRun.id}`,
-        payload: jobPayload,
-        topic: 'workflow.run.execute',
-      })
-
-      await tx.agentTriggerDelivery.update({
-        where: { id: delivery.id },
-        data: {
-          deliveredAt: new Date(),
-          status: 'delivered',
-        },
-      })
-
-      await tx.agentTrigger.update({
-        where: { id: input.trigger.id },
-        data: {
-          lastFiredAt: new Date(),
-        },
-      })
-    })
-  } catch (error) {
-    if (
-      input.dedupeKey &&
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    ) {
-      return
-    }
-    // sp-webhook: persist a retryable failed delivery (outside the rolled-back
-    // tx) so the retry poller can re-attempt with backoff.
-    await recordDeliveryFailure(prisma, {
-      dedupeKey: input.dedupeKey,
-      error,
-      existingDeliveryId: input.retry?.reuseDeliveryId,
-      payload: normalizedPayload,
-      retryCount: input.retry?.retryCount ?? 0,
-      source: input.source,
-      triggerId: input.trigger.id,
-    })
-    throw error
-  }
-}
 
 export const queueTriggerRun = async (
   prisma: PrismaClient,
@@ -408,50 +273,74 @@ export const queueTriggerRun = async (
         select: { id: true },
       })
 
-      const run = await tx.run.create({
-        data: {
-          agentId: input.trigger.agentId,
-          status: 'pending',
-          threadId: input.trigger.targetThreadId,
-          triggerDeliveryId: delivery.id,
-          triggerId: input.trigger.id,
-        },
-        select: { id: true },
+      const actorContext = buildActorContext({
+        agentId: input.trigger.agentId,
+        channelId: input.trigger.targetChannelId,
+        effectiveUserId: executionOrigin.userId,
+        organizationId: executionOrigin.organizationId,
+        projectId: executionOrigin.projectId,
+        source: input.source,
+        teamId: executionOrigin.teamId,
+        threadId: input.trigger.targetThreadId,
       })
 
-      const task = await tx.task.create({
-        data: {
-          agentId: input.trigger.agentId,
-          organizationId: executionOrigin.organizationId,
-          purpose: content.slice(0, 200),
-          runId: run.id,
-          status: 'inbox',
-        },
-        select: { id: true },
-      })
-
-      await enqueueRunExecution(
-        tx,
-        {
-          actorContext: buildActorContext({
-            agentId: input.trigger.agentId,
-            channelId: input.trigger.targetChannelId,
-            effectiveUserId: executionOrigin.userId,
-            organizationId: executionOrigin.organizationId,
-            projectId: executionOrigin.projectId,
-            source: input.source,
-            taskId: task.id,
-            teamId: executionOrigin.teamId,
-            threadId: input.trigger.targetThreadId,
-          }),
-          agentId: parseAgentId(input.trigger.agentId),
+      // Scheduled/trigger runs respect the same per-(agent, thread) claim as
+      // chat replies: with a run already in flight the kickoff message pends
+      // for the batched follow-up instead of spawning a concurrent run. The
+      // delivery/trigger bookkeeping below still records the fire.
+      const claim = await claimThreadRunOrPend(tx, {
+        agentId: input.trigger.agentId,
+        threadId: input.trigger.targetThreadId,
+        pending: {
+          actorContext,
+          channelId: input.trigger.targetChannelId,
+          interactive: false,
           messageId: message.id,
-          runId: parseRunId(run.id),
-          taskId: parseTaskId(task.id),
-          threadId: parseThreadId(input.trigger.targetThreadId),
+          // Copied onto the batched follow-up run when this fire ends up as
+          // the latest pending row at drain time.
+          triggerId: input.trigger.id,
+          triggerDeliveryId: delivery.id,
         },
-        `run:${run.id}`,
-      )
+      })
+
+      if (claim === 'claimed') {
+        const run = await tx.run.create({
+          data: {
+            agentId: input.trigger.agentId,
+            status: 'pending',
+            threadId: input.trigger.targetThreadId,
+            triggerDeliveryId: delivery.id,
+            triggerId: input.trigger.id,
+          },
+          select: { id: true },
+        })
+
+        const task = await tx.task.create({
+          data: {
+            agentId: input.trigger.agentId,
+            organizationId: executionOrigin.organizationId,
+            purpose: content.slice(0, 200),
+            runId: run.id,
+            status: 'inbox',
+          },
+          select: { id: true },
+        })
+
+        await enqueueRunExecution(
+          tx,
+          {
+            actorContext: withActionContext(actorContext, {
+              taskId: parseTaskId(task.id),
+            }),
+            agentId: parseAgentId(input.trigger.agentId),
+            messageId: message.id,
+            runId: parseRunId(run.id),
+            taskId: parseTaskId(task.id),
+            threadId: parseThreadId(input.trigger.targetThreadId),
+          },
+          `run:${run.id}`,
+        )
+      }
 
       await tx.agentTriggerDelivery.update({
         where: { id: delivery.id },

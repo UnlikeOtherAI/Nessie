@@ -1,7 +1,8 @@
 import type { PrismaClient } from '@prisma/client'
 import { isJsonRecord } from '@nessie/runtime'
 import type { TriggerEventDispatchJobPayload } from '@nessie/schemas'
-import { queueTriggerRun, queueWorkflowTriggerRun } from './trigger-run.js'
+import { queueTriggerRun } from './trigger-run.js'
+import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
 
 const matchesEventTriggerConfig = (
   config: unknown,

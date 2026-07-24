@@ -4,6 +4,7 @@ import { buildScopes } from './scopes.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.js'
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
+import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 
 export const handleRunExecutionFailure = async (
@@ -120,5 +121,12 @@ export const handleRunExecutionFailure = async (
       },
       taskId: context.task.id,
     },
+  })
+
+  // The failed run releases the (agent, thread) slot: pended messages are
+  // delivered as one batched follow-up run (see thread-serialization.ts).
+  await drainPendingThreadMessagesBestEffort(deps.prisma, {
+    agentId: context.agent.id,
+    threadId: context.run.threadId,
   })
 }
