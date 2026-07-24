@@ -45,7 +45,11 @@ export const registerAuthLoginRoute = (
             bucket: RATE_LIMIT_BUCKETS.loginAccount,
             rule: config.api.rateLimit.loginAccount,
           },
-          accountIdentity: body.email ?? null,
+          // Normalize exactly like the account lookup
+          // (loadSessionUserByEmail trims + lowercases) so case/whitespace
+          // variants of one email share a single counter instead of each
+          // getting a fresh bucket against the same account.
+          accountIdentity: body.email?.trim().toLowerCase() ?? null,
         },
       ))
     ) {

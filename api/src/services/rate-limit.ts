@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { isIPv6 } from 'node:net'
 
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
@@ -48,6 +49,44 @@ const hashIdentity = (bucket: string, identity: string): string =>
   createHash('sha256').update(`${bucket}:${identity}`).digest('hex')
 
 /**
+ * Expand an IPv6 address to its eight zero-padded hextets. Input is already
+ * validated by `isIPv6`, so this only handles `::` compression and an
+ * embedded IPv4 tail (`::ffff:192.0.2.1`); any zone id (`%eth0`) is dropped.
+ */
+const expandIPv6Hextets = (ip: string): string[] => {
+  let addr = ip.toLowerCase().split('%', 1)[0] ?? ''
+  if (addr.includes('.')) {
+    const octets = addr
+      .slice(addr.lastIndexOf(':') + 1)
+      .split('.')
+      .map((part) => Number.parseInt(part, 10))
+    addr = `${addr.slice(0, addr.lastIndexOf(':'))}:${
+      (((octets[0] ?? 0) << 8) | (octets[1] ?? 0)).toString(16)
+    }:${(((octets[2] ?? 0) << 8) | (octets[3] ?? 0)).toString(16)}`
+  }
+  const [head = '', tail = ''] = addr.split('::')
+  const headParts = head === '' ? [] : head.split(':')
+  const tailParts = tail === '' ? [] : tail.split(':')
+  const fill = 8 - headParts.length - tailParts.length
+  return [
+    ...headParts,
+    ...Array.from({ length: Math.max(fill, 0) }, () => '0'),
+    ...tailParts,
+  ].map((part) => part.padStart(4, '0'))
+}
+
+/**
+ * Canonicalize an IP identity before it is hashed into a bucket key: IPv6
+ * collapses to its /64 prefix (the smallest routed allocation — an attacker
+ * with a /64 otherwise rotates through 2^64 fresh counters), IPv4 is
+ * unchanged and stays per-address.
+ */
+const canonicalizeIpIdentity = (ip: string): string => {
+  if (!isIPv6(ip)) return ip
+  return `${expandIPv6Hextets(ip).slice(0, 4).join(':')}::/64`
+}
+
+/**
  * The synthetic actor/org context used for unauthenticated lockout audit
  * events: pre-login brute force has no real actor or org row, and the audit
  * hash chain is keyed by organization id, so a real org id would have to be
@@ -94,7 +133,8 @@ export class RateLimiter {
    * logical limiter name: it lives in the store key (and audit resourceId),
    * not in the rule — the rule is only `{max, windowMs}` thresholds so it can
    * be validated/loaded verbatim from config. IP identities are namespaced as
-   * `ip:<addr>` so they can never collide with account ids.
+   * `ip:<addr>` (IPv6 canonicalized to its /64 prefix by the caller — see
+   * `canonicalizeIpIdentity`) so they can never collide with account ids.
    */
   async check(
     bucket: string,
@@ -191,7 +231,7 @@ export class RateLimiter {
     const ipDecision = await this.check(
       input.rules.ip.bucket,
       input.rules.ip.rule,
-      `ip:${input.ip}`,
+      `ip:${canonicalizeIpIdentity(input.ip)}`,
     )
     let accountDecision: RateLimitDecision | null = null
     if (input.rules.account && input.accountIdentity) {
@@ -202,27 +242,34 @@ export class RateLimiter {
       )
     }
 
-    const tripped = [ipDecision, accountDecision].find(
-      (decision) => decision?.limited,
+    const decisions = [ipDecision, accountDecision].filter(
+      (decision): decision is RateLimitDecision => decision !== null,
     )
+    const tripped = decisions.find((decision) => decision.limited)
     if (!tripped) {
       return { allowed: true }
     }
 
-    await this.emitLockoutEvent({
-      decisions: [ipDecision, accountDecision].filter(
-        (decision): decision is RateLimitDecision => decision !== null,
-      ),
-      ip: input.ip,
-      auditContext: input.auditContext ?? null,
-      session: input.session ?? null,
-      userAgent: input.userAgent ?? null,
-    })
+    // Audit only the lockout TRANSITION — the hit that pushes a bucket's
+    // counter to exactly max + 1 (per bucket, per window). Requests rejected
+    // while the bucket is already locked out emit nothing: unauthenticated
+    // events serialize on the zero-org audit advisory lock, so emitting per
+    // rejected request would make a flood of rejections costlier than
+    // acceptances and drown the audit table.
+    if (decisions.some((decision) => decision.count === decision.limit + 1)) {
+      await this.emitLockoutEvent({
+        decisions,
+        ip: input.ip,
+        auditContext: input.auditContext ?? null,
+        session: input.session ?? null,
+        userAgent: input.userAgent ?? null,
+      })
+    }
 
     const retryAfterSeconds = Math.max(
-      ...[ipDecision, accountDecision]
-        .filter((decision) => decision?.limited)
-        .map((decision) => decision?.retryAfterSeconds ?? 0),
+      ...decisions
+        .filter((decision) => decision.limited)
+        .map((decision) => decision.retryAfterSeconds),
     )
     return { allowed: false, retryAfterSeconds }
   }

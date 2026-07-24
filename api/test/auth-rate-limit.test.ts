@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { register } from 'node:module'
 import test from 'node:test'
 
 import type { RateLimitDecision, RateLimitRule } from '../src/services/rate-limit.js'
@@ -10,6 +11,25 @@ import type { RateLimitDecision, RateLimitRule } from '../src/services/rate-limi
  * behaviour (429 + Retry-After, proxy trust, /health exemption) is covered in
  * auth-rate-limit-routes.test.ts.
  */
+
+// --- @nessie/db stub: count lockout audit writes instead of touching a DB ---
+const auditWrites: Array<Record<string, unknown>> = []
+;(globalThis as Record<string, unknown>).__rateLimitAuditWrites = auditWrites
+const dbStub = [
+  'export const writeAuditEntry = async (_prisma, entry) => {',
+  '  globalThis.__rateLimitAuditWrites.push(entry)',
+  '}',
+].join('\n')
+const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
+const dbLoader = `
+export async function resolve(specifier, context, nextResolve) {
+  if (specifier === '@nessie/db') {
+    return { shortCircuit: true, url: ${JSON.stringify(dbStubUrl)} }
+  }
+  return nextResolve(specifier, context)
+}
+`
+register(`data:text/javascript,${encodeURIComponent(dbLoader)}`, import.meta.url)
 
 type BucketRow = { bucket: string; windowStartMs: number; count: number }
 
@@ -215,4 +235,56 @@ test('the store fails open: a store error allows the request and logs loudly', a
     ip: '203.0.113.7',
   })
   assert.equal(result.allowed, true)
+})
+
+test('lockout audit event fires once per bucket per window — on the transition only', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_700_000_000_000 })
+  const store = new FakeRateLimitStore()
+  const limiter = await createLimiter(store)
+  auditWrites.length = 0
+  const rules = { ip: { bucket: 'test.audit.ip', rule: { max: 2, windowMs: 60_000 } } }
+
+  // max = 2: hits 1-2 allowed, hit 3 trips (count === max + 1 → transition,
+  // one audit write). Three MORE hits past the cap must emit nothing.
+  const outcomes: boolean[] = []
+  for (let i = 0; i < 6; i += 1) {
+    outcomes.push(
+      (await limiter.guard({ rules, ip: '203.0.113.50' })).allowed,
+    )
+  }
+  assert.deepEqual(outcomes, [true, true, false, false, false, false])
+  assert.equal(auditWrites.length, 1)
+
+  // A new window starts a fresh counter; tripping it emits exactly one more.
+  t.mock.timers.tick(60_000)
+  for (let i = 0; i < 3; i += 1) {
+    await limiter.guard({ rules, ip: '203.0.113.50' })
+  }
+  assert.equal(auditWrites.length, 2)
+})
+
+test('IPv6 identities share a /64 bucket; IPv4 stays per-address', async () => {
+  const store = new FakeRateLimitStore()
+  const limiter = await createLimiter(store)
+  auditWrites.length = 0
+
+  // Three distinct addresses inside one /64 share a single counter: the
+  // third hit trips even though each address is unique.
+  const v6Rules = { ip: { bucket: 'test.v6.ip', rule: { max: 2, windowMs: 60_000 } } }
+  assert.equal((await limiter.guard({ rules: v6Rules, ip: '2001:db8:abcd:1::1' })).allowed, true)
+  assert.equal((await limiter.guard({ rules: v6Rules, ip: '2001:db8:abcd:1::2' })).allowed, true)
+  assert.equal(
+    (await limiter.guard({ rules: v6Rules, ip: '2001:db8:abcd:1:ffff:eeee:dddd:cccc' })).allowed,
+    false,
+  )
+
+  // A different /64 gets its own bucket.
+  assert.equal((await limiter.guard({ rules: v6Rules, ip: '2001:db8:abcd:2::1' })).allowed, true)
+
+  // IPv4 is unchanged: neighbouring addresses in the same /24 do NOT share
+  // a bucket — only the exact repeating address trips.
+  const v4Rules = { ip: { bucket: 'test.v4.ip', rule: { max: 1, windowMs: 60_000 } } }
+  assert.equal((await limiter.guard({ rules: v4Rules, ip: '203.0.113.1' })).allowed, true)
+  assert.equal((await limiter.guard({ rules: v4Rules, ip: '203.0.113.2' })).allowed, true)
+  assert.equal((await limiter.guard({ rules: v4Rules, ip: '203.0.113.1' })).allowed, false)
 })

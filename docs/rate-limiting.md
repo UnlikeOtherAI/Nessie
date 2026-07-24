@@ -48,15 +48,26 @@ context.
 - **Per-IP AND per-account**: login, refresh, step-up, and MCP secret writes
   maintain both counters on every hit; the request is rejected when either
   trips, so one IP spraying many accounts hits the IP cap while one account
-  attacked from many IPs hits the account cap.
+  attacked from many IPs hits the account cap. IPv6 client addresses are
+  bucketed by their /64 prefix (the smallest routed allocation) so an
+  attacker with a routed /64 cannot rotate addresses for fresh counters;
+  IPv4 is bucketed per full address. The login account identity is the
+  email normalized (`trim().toLowerCase()`) exactly like the account lookup
+  in `loadSessionUserByEmail`, so case/whitespace variants of one address
+  share a single counter.
 - **Client IP**: always Fastify's resolved `request.ip`, which honours
   `X-Forwarded-For` only up to `NESSIE_API_TRUSTED_PROXY_HOPS` hops
   (`api/src/index.ts` `trustProxy`). Forwarded headers are never trusted
   otherwise.
 - **429 + Retry-After**: rejected requests get `RATE_LIMITED` 429 with a
   `retry-after` header in seconds.
-- **Audit**: a lockout trip emits an `auth.rate_limit.lockout` audit event
-  (`outcome: denied`). Authenticated routes emit through the standard
+- **Audit**: a lockout emits exactly one `auth.rate_limit.lockout` audit
+  event (`outcome: denied`) per bucket per window — on the transition, i.e.
+  the hit that pushes the bucket's counter to `max + 1`. Requests rejected
+  while the bucket is already locked out emit nothing: unauthenticated
+  events serialize on the zero-org audit advisory lock, so per-request
+  emission would make a flood of rejections costlier than acceptances and
+  drown the audit table. Authenticated routes emit through the standard
   `emitAuditEvent` chokepoint under the caller's org hash chain.
   Unauthenticated routes (pre-login, refresh, OAuth callback) have no caller
   org, so the event is written under the synthetic zero-UUID system org with
@@ -105,3 +116,27 @@ Every rule is `{max, windowMs}` under `api.rateLimit` in
 
 Each rule has a `_MAX` and `_WINDOW_MS` suffix (e.g.
 `NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_MAX=3`).
+
+## 5) Per-account lockout DoS tradeoff
+
+Per-account limiting carries a known abuse cost — the same one NIST SP
+800-63B calls out for account-level throttling: anyone who knows a victim's
+email can burn the victim's account bucket with failed attempts and lock
+the legitimate user out of the password path until the window expires. We
+accept this tradeoff deliberately:
+
+- The per-IP cap still applies to every attempt, so forcing one account
+  lockout costs the attacker their own IP budget (default 10 login attempts
+  per 10 min per IP, with IPv6 bucketed per /64) — a mass lockout campaign
+  needs a large address pool to be effective.
+- Windows are fixed and short: the lockout self-heals at the next window
+  (default 10 min) with no operator action and no persistent flag on the
+  account.
+- The victim keeps unaffected paths in the meantime: SSO code exchanges are
+  keyed off the client IP only (the upstream identity is unknown until the
+  exchange succeeds), and refresh tokens use their own separate buckets.
+
+Tune the tradeoff with `NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_MAX` /
+`NESSIE_RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_MS` (raising the max or shortening
+the window makes a forced lockout harder) and `NESSIE_RATE_LIMIT_LOGIN_IP_*`
+(raising the attacker-side cost per lockout).

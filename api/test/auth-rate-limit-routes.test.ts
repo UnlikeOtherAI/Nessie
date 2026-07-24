@@ -132,6 +132,28 @@ test('login limit trips: 429 + Retry-After once the per-IP counter exceeds max',
   await app.close()
 })
 
+test('login account identity is normalized: email variants share one counter', async () => {
+  const store = new FakeRateLimitStore()
+  // Account max 1, IP max high: only the account bucket can trip, so a 429
+  // proves the variant hit the SAME account counter as the first attempt
+  // (unnormalized keys would give each variant a fresh bucket and a bypass).
+  const app = await buildLoginApp({
+    store,
+    trustedProxyHops: 0,
+    loginIpMax: 10,
+    loginAccountMax: 1,
+  })
+
+  assert.equal((await login(app, {}, 'a@x.com')).statusCode, 401)
+  assert.equal((await login(app, {}, 'A@x.com')).statusCode, 429)
+  // Whitespace-padded variants are rejected by schema validation (400)
+  // before the guard runs, so they can never reach the account lookup —
+  // the normalization fix is what covers any variant that does validate.
+  assert.equal((await login(app, {}, ' a@x.com ')).statusCode, 400)
+
+  await app.close()
+})
+
 test('per-account and per-IP counters are independent', async () => {
   const store = new FakeRateLimitStore()
   const app = await buildLoginApp({ store, trustedProxyHops: 0 })
