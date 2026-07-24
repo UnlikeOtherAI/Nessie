@@ -62,6 +62,9 @@ const makePrisma = () => {
     userAlert: {
       createMany: async ({ data }: { data: unknown[] }) => ({ count: data.length }),
     },
+    messageThreadFollow: {
+      createMany: async () => ({ count: 0 }),
+    },
     $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
   } as unknown as PrismaClient
   return { prisma, calls }

@@ -84,6 +84,48 @@ test('threads: a foreign org cannot read another org channel\'s messages', async
   await app.close()
 })
 
+// Reply threads (#233): every reply-thread surface is gated by the same
+// findThreadForUser tenancy check, so a foreign org gets 404 on all of them.
+test('threads: a foreign org cannot read or follow another org\'s reply threads', async () => {
+  const store = new TenantStore()
+  seedTenants(store)
+  store.seed('channel', [
+    { id: IDS.channelA, organizationId: IDS.orgA, visibility: 'public', type: 'standard', systemChannelType: null },
+  ])
+  store.seed('thread', [{ id: IDS.threadA, channelId: IDS.channelA, title: 'General' }])
+  store.seed('message', [
+    { id: IDS.messageA, threadId: IDS.threadA, role: 'user', content: 'orgA root' },
+  ])
+  const app = makeApp(registerThreadRoutes, store, foreignOwner())
+
+  const listReplies = await app.inject({
+    method: 'GET',
+    url: `/api/threads/${IDS.threadA}/messages?rootMessageId=${IDS.messageA}`,
+  })
+  assert.equal(listReplies.statusCode, 404)
+
+  const single = await app.inject({
+    method: 'GET',
+    url: `/api/threads/${IDS.threadA}/messages/${IDS.messageA}`,
+  })
+  assert.equal(single.statusCode, 404)
+
+  const follow = await app.inject({
+    method: 'PUT',
+    url: `/api/threads/${IDS.threadA}/messages/${IDS.messageA}/follow`,
+    payload: { following: true },
+  })
+  assert.equal(follow.statusCode, 404)
+
+  const reply = await app.inject({
+    method: 'POST',
+    url: `/api/threads/${IDS.threadA}/messages`,
+    payload: { content: 'cross-tenant reply attempt', rootMessageId: IDS.messageA },
+  })
+  assert.equal(reply.statusCode, 404)
+  await app.close()
+})
+
 test('comms connections: list is scoped to the caller\'s org + user', async () => {
   const store = new TenantStore()
   seedTenants(store)

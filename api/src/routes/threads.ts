@@ -21,6 +21,7 @@ import {
 } from '../services/messages.js'
 import { toggleUserReaction } from '../services/message-reactions.js'
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
+import { registerThreadReplyRoutes } from './thread-replies.js'
 import type { RouteDeps } from './types.js'
 
 export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -60,6 +61,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       before: query.before,
       limit: query.limit,
       senderId: query.senderId,
+      rootMessageId: query.rootMessageId,
     })
     return createApiResponse(
       ThreadMessageRecordSchema.array().parse(page.data),
@@ -68,6 +70,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   })
 
   registerCreateThreadMessageRoute(app, deps)
+  registerThreadReplyRoutes(app, deps)
 
   app.post('/api/threads/:threadId/read', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

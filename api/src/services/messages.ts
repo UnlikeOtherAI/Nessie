@@ -7,10 +7,13 @@ import {
   parseUserId,
 } from '@nessie/schemas'
 import {
+  applyReplyBookkeeping,
   createMentionUserAlerts,
+  followReplyThread,
   mentionedAgentIdsFromContent,
   resolveMessageMentions,
   type MessageMentions,
+  type ReplyRootMetadata,
 } from '@nessie/runtime'
 import type { MessageSearchResult, ThreadMessageRecord } from '../contracts.js'
 import { buildGravatarUrl } from '../lib/gravatar.js'
@@ -56,6 +59,12 @@ const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRec
   // at delete time, but never surface stale content even if that changes.
   content: message.deletedAt ? '' : message.content,
   createdAt: message.createdAt.toISOString(),
+  // Reply threads (#233): set on replies; the materialized reply metadata is
+  // carried on root messages.
+  rootMessageId: message.rootMessageId ?? undefined,
+  replyCount: message.replyCount,
+  lastReplyAt: message.lastReplyAt ? message.lastReplyAt.toISOString() : undefined,
+  replyParticipantIds: message.replyParticipantIds,
   editedAt: message.editedAt ? message.editedAt.toISOString() : null,
   deletedAt: message.deletedAt ? message.deletedAt.toISOString() : null,
   metadata:
@@ -142,13 +151,20 @@ export const listThreadMessages = async (
     after?: string
     limit?: number
     senderId?: string
+    rootMessageId?: string
   } = {},
 ): Promise<ListThreadMessagesPage> => {
   const limit = Math.min(options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, MAX_MESSAGE_PAGE_SIZE)
 
   // Internal `system`-role messages (e.g. the personal assistant's scheduled
   // kickoff prompt) drive a run but are never rendered in the thread feed.
-  const where: Prisma.MessageWhereInput = { threadId, role: { not: 'system' } }
+  // The default feed lists top-level posts only (rootMessageId null); passing
+  // a root id lists that root's replies (#233).
+  const where: Prisma.MessageWhereInput = {
+    threadId,
+    role: { not: 'system' },
+    rootMessageId: options.rootMessageId ?? null,
+  }
   const andClauses: Prisma.MessageWhereInput[] = []
 
   if (options.before) {
@@ -254,9 +270,19 @@ export type CreateThreadMessageResult =
       // Agents @mentioned in the message that are not members of the channel.
       // They are NOT dispatched; the client offers to invite them.
       pendingAgentInvites: { id: string; name: string }[]
+      // Set when the message is a reply: the root id plus its post-bookkeeping
+      // metadata, so the route can publish `message.reply.meta` without a
+      // re-read.
+      replyRoot?: { rootMessageId: string; metadata: ReplyRootMetadata }
+      // Slack-parity "Also send to #channel": the top-level copy of a reply.
+      broadcastMessage?: MessageWithReactions
     }
   | {
       kind: 'thread_not_found'
+    }
+  | {
+      // rootMessageId did not reference a top-level message in this thread.
+      kind: 'invalid_root'
     }
 
 export const createThreadMessage = async (
@@ -265,6 +291,8 @@ export const createThreadMessage = async (
     content: string
     threadId: string
     userId: string
+    rootMessageId?: string
+    alsoSendToChannel?: boolean
   },
 ): Promise<CreateThreadMessageResult> => {
   const thread = await prisma.thread.findUnique({
@@ -307,30 +335,98 @@ export const createThreadMessage = async (
     })),
   })
 
-  // The message and its mention alerts commit atomically: a mentioned user
-  // must never lose their durable alert to a partial write. Self-mentions are
-  // skipped and broadcast mentions create no rows (see createMentionUserAlerts).
-  const { message, alertedUserIds } = await prisma.$transaction(async (tx) => {
-    const created = await tx.message.create({
-      data: {
+  let message: MessageWithReactions
+  let alertedUserIds: string[] = []
+  let replyRoot: { rootMessageId: string; metadata: ReplyRootMetadata } | undefined
+
+  if (input.rootMessageId) {
+    const rootMessageId = input.rootMessageId
+    // Reply path (#233): validate the root, create the reply, and apply the
+    // root bookkeeping + follows in one transaction so concurrent replies
+    // cannot lose counts and a failed validation creates nothing. Replies to
+    // replies attach to the same root, so a root that is itself a reply is
+    // rejected (one level deep). Tombstoned roots reject new replies.
+    const txResult = await prisma.$transaction(async (tx) => {
+      const root = await tx.message.findUnique({
+        where: { id: rootMessageId },
+        select: { id: true, threadId: true, rootMessageId: true, deletedAt: true },
+      })
+      if (
+        !root
+        || root.threadId !== input.threadId
+        || root.rootMessageId !== null
+        || root.deletedAt !== null
+      ) {
+        return { kind: 'invalid_root' as const }
+      }
+      const created = await tx.message.create({
+        data: {
+          threadId: input.threadId,
+          userId: input.userId,
+          role: 'user',
+          content: input.content,
+          rootMessageId,
+          metadata: { mentions } as Prisma.InputJsonValue,
+        },
+        include: messageInclude,
+      })
+      const metadata = await applyReplyBookkeeping(tx, {
+        rootMessageId,
+        replyCreatedAt: created.createdAt,
+        authorId: input.userId,
+      })
+      // Participate-to-follow: the reply author and every mentioned user
+      // follow the reply thread.
+      await followReplyThread(tx, {
+        rootMessageId,
+        userIds: [input.userId, ...mentions.userIds],
+      })
+      const alerted = await createMentionUserAlerts(tx, {
+        organizationId: thread.channel.organizationId,
+        messageId: created.id,
         threadId: input.threadId,
-        userId: input.userId,
-        role: 'user',
-        content: input.content,
-        metadata: { mentions } as Prisma.InputJsonValue,
-      },
-      include: messageInclude,
+        channelId: thread.channel.id,
+        actorUserId: input.userId,
+        mentionedUserIds: mentions.userIds,
+      })
+      return { kind: 'created' as const, message: created, metadata, alertedUserIds: alerted }
     })
-    const alerted = await createMentionUserAlerts(tx, {
-      organizationId: thread.channel.organizationId,
-      messageId: created.id,
-      threadId: input.threadId,
-      channelId: thread.channel.id,
-      actorUserId: input.userId,
-      mentionedUserIds: mentions.userIds,
+    if (txResult.kind === 'invalid_root') {
+      return { kind: 'invalid_root' }
+    }
+    message = txResult.message
+    alertedUserIds = txResult.alertedUserIds
+    replyRoot = { rootMessageId, metadata: txResult.metadata }
+  } else {
+    // Top-level posts atomically establish a follow and durable mention alerts.
+    const txResult = await prisma.$transaction(async (tx) => {
+      const created = await tx.message.create({
+        data: {
+          threadId: input.threadId,
+          userId: input.userId,
+          role: 'user',
+          content: input.content,
+          metadata: { mentions } as Prisma.InputJsonValue,
+        },
+        include: messageInclude,
+      })
+      await followReplyThread(tx, {
+        rootMessageId: created.id,
+        userIds: [input.userId],
+      })
+      const alerted = await createMentionUserAlerts(tx, {
+        organizationId: thread.channel.organizationId,
+        messageId: created.id,
+        threadId: input.threadId,
+        channelId: thread.channel.id,
+        actorUserId: input.userId,
+        mentionedUserIds: mentions.userIds,
+      })
+      return { message: created, alertedUserIds: alerted }
     })
-    return { message: created, alertedUserIds: alerted }
-  })
+    message = txResult.message
+    alertedUserIds = txResult.alertedUserIds
+  }
 
   const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({
     id: b.agent.id,
@@ -379,11 +475,31 @@ export const createThreadMessage = async (
     resolvedChannelAgents,
   )
   let persistedMessage = message
+  const mergedMentions = { ...mentions, agentIds: mentionedAgentIds }
   if (mentionedAgentIds.length > 0) {
-    const merged = { ...mentions, agentIds: mentionedAgentIds }
     persistedMessage = await prisma.message.update({
       where: { id: message.id },
-      data: { metadata: { mentions: merged } as Prisma.InputJsonValue },
+      data: { metadata: { mentions: mergedMentions } as Prisma.InputJsonValue },
+      include: messageInclude,
+    })
+  }
+
+  // "Also send to #channel" (#233): an informational top-level copy of the
+  // reply pointing back at the reply thread. No bookkeeping, no auto-follow;
+  // the route publishes a plain `message.new` for it and skips orchestration.
+  let broadcastMessage: MessageWithReactions | undefined
+  if (input.rootMessageId && input.alsoSendToChannel) {
+    broadcastMessage = await prisma.message.create({
+      data: {
+        threadId: input.threadId,
+        userId: input.userId,
+        role: 'user',
+        content: input.content,
+        metadata: {
+          mentions: mergedMentions,
+          replyBroadcast: { rootMessageId: input.rootMessageId },
+        } as Prisma.InputJsonValue,
+      },
       include: messageInclude,
     })
   }
@@ -394,6 +510,8 @@ export const createThreadMessage = async (
     channelAgents: resolvedChannelAgents,
     alertedUserIds,
     pendingAgentInvites,
+    ...(replyRoot ? { replyRoot } : {}),
+    ...(broadcastMessage ? { broadcastMessage } : {}),
   }
 }
 

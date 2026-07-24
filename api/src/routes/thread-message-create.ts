@@ -84,10 +84,21 @@ export const registerCreateThreadMessageRoute = (
       content: body.content,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
+      rootMessageId: body.rootMessageId,
+      alsoSendToChannel: body.alsoSendToChannel,
     })
 
     if (result.kind === 'thread_not_found') {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+    if (result.kind === 'invalid_root') {
+      sendApiError(
+        reply,
+        400,
+        'INVALID_ROOT_MESSAGE',
+        'rootMessageId must reference a top-level message in this thread',
+      )
       return reply
     }
 
@@ -140,13 +151,42 @@ export const registerCreateThreadMessageRoute = (
       )
     }
 
-    await realtimeHub.publishWs(
-      buildChannelRealtimeScopes({
-        channelId: thread.channel.id,
-        organizationId: actorContext.tenant.organizationId,
-        systemChannelType: thread.channel.systemChannelType,
-      }),
-      {
+    const channelScopes = buildChannelRealtimeScopes({
+      channelId: thread.channel.id,
+      organizationId: actorContext.tenant.organizationId,
+      systemChannelType: thread.channel.systemChannelType,
+    })
+
+    if (result.replyRoot) {
+      // Reply threads (#233): a reply announces itself as `message.reply` (so
+      // clients can update the reply panel without touching the top-level
+      // feed), followed by the root's fresh materialized metadata.
+      await realtimeHub.publishWs(channelScopes, {
+        data: {
+          agentId: undefined,
+          authorUserId: parseUserId(actorContext.actor.actorId),
+          channelId: parseChannelId(thread.channel.id),
+          contentPreview: result.message.content.slice(0, 200),
+          messageId: result.message.id,
+          rootMessageId: result.replyRoot.rootMessageId,
+          role: result.message.role,
+          threadId: parseThreadId(thread.id),
+        },
+        event: 'message.reply',
+      })
+      await realtimeHub.publishWs(channelScopes, {
+        data: {
+          channelId: parseChannelId(thread.channel.id),
+          threadId: parseThreadId(thread.id),
+          rootMessageId: result.replyRoot.rootMessageId,
+          replyCount: result.replyRoot.metadata.replyCount,
+          lastReplyAt: result.replyRoot.metadata.lastReplyAt?.toISOString(),
+          replyParticipantIds: result.replyRoot.metadata.replyParticipantIds,
+        },
+        event: 'message.reply.meta',
+      })
+    } else {
+      await realtimeHub.publishWs(channelScopes, {
         data: {
           agentId: undefined,
           authorUserId: parseUserId(actorContext.actor.actorId),
@@ -157,8 +197,25 @@ export const registerCreateThreadMessageRoute = (
           threadId: parseThreadId(thread.id),
         },
         event: 'message.new',
-      },
-    )
+      })
+    }
+
+    // "Also send to #channel" copy: a normal top-level `message.new` under the
+    // copy's own id. It is informational only — no push/orchestration below.
+    if (result.broadcastMessage) {
+      await realtimeHub.publishWs(channelScopes, {
+        data: {
+          agentId: undefined,
+          authorUserId: parseUserId(actorContext.actor.actorId),
+          channelId: parseChannelId(thread.channel.id),
+          contentPreview: result.broadcastMessage.content.slice(0, 200),
+          messageId: result.broadcastMessage.id,
+          role: result.broadcastMessage.role,
+          threadId: parseThreadId(thread.id),
+        },
+        event: 'message.new',
+      })
+    }
 
     // Durable mention alerts were written in the create transaction; fan out
     // one alert.created event per recipient. Best-effort — the rows are the
