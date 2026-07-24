@@ -160,6 +160,38 @@ export const registerCreateThreadMessageRoute = (
       },
     )
 
+    // Durable mention alerts were written in the create transaction; fan out
+    // one alert.created event per recipient. Best-effort — the rows are the
+    // record of truth, a missed event only delays a badge refresh.
+    for (const alertedUserId of result.alertedUserIds) {
+      try {
+        await realtimeHub.publishWs(
+          buildChannelRealtimeScopes({
+            channelId: thread.channel.id,
+            organizationId: actorContext.tenant.organizationId,
+            systemChannelType: thread.channel.systemChannelType,
+          }),
+          {
+            data: {
+              userId: parseUserId(alertedUserId),
+              kind: 'mention' as const,
+              messageId: result.message.id,
+              threadId: parseThreadId(thread.id),
+              channelId: parseChannelId(thread.channel.id),
+              actorUserId: parseUserId(actorContext.actor.actorId),
+              createdAt: result.message.createdAt.toISOString(),
+            },
+            event: 'alert.created',
+          },
+        )
+      } catch (error) {
+        app.log.error(
+          { err: error, messageId: result.message.id, alertedUserId },
+          '[alerts] failed to publish alert.created',
+        )
+      }
+    }
+
     try {
       const mentions =
         result.message.metadata

@@ -103,6 +103,13 @@ const makeApp = (options: MakeAppOptions = {}) => {
 
   const txPrisma = {
     $executeRaw: async () => 0,
+    auditLog: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        auditLogs.push(data)
+      },
+      // The hash-chain audit writer reads the current chain tip first.
+      findFirst: async () => null,
+    },
     knowledgeSpace: {
       findFirst: async (args: { where: Record<string, unknown> }) => {
         // Distinguish the "My Docs" (userId set) vs "Project Documents"
@@ -122,11 +129,6 @@ const makeApp = (options: MakeAppOptions = {}) => {
   const prisma = {
     $queryRaw: async () => (options.policyEffect === 'deny' ? [policyRow('deny')] : [policyRow('allow')]),
     $transaction: async <T>(callback: (tx: typeof txPrisma) => Promise<T>) => callback(txPrisma),
-    auditLog: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        auditLogs.push(data)
-      },
-    },
     projectMember: { findMany: async () => [{ projectId }] },
     agentBinding: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },

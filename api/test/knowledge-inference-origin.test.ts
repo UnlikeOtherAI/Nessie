@@ -183,6 +183,15 @@ test('failed first-version extraction appends a compensating create audit', asyn
   const auditRows: Array<Record<string, unknown>> = []
   let deletedPages = 0
   const tx = {
+    $executeRaw: async () => 0,
+    auditLog: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        auditRows.push(data)
+        return data
+      },
+      // The hash-chain audit writer reads the current chain tip first.
+      findFirst: async () => null,
+    },
     knowledgePageVersion: {
       count: async () => 1,
     },
@@ -197,12 +206,6 @@ test('failed first-version extraction appends a compensating create audit', asyn
     $transaction: async (
       operation: (transaction: typeof tx) => Promise<unknown>,
     ) => operation(tx),
-    auditLog: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        auditRows.push(data)
-        return data
-      },
-    },
   } as unknown as PrismaClient
 
   await assert.rejects(

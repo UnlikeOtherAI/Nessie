@@ -158,10 +158,15 @@ const makeApp = (
   const calls: string[] = []
   const prisma = {
     $queryRaw: async () => (effect === 'allow' ? [policyRow('allow')] : [policyRow('deny')]),
+    // The hash-chain audit writer takes a pg advisory lock + reads the chain tip.
+    $executeRaw: async () => 0,
+    $transaction: async (operation: (tx: unknown) => Promise<unknown>) => operation(prisma),
     auditLog: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         auditLogs.push(data)
       },
+      // The hash-chain audit writer reads the current chain tip first.
+      findFirst: async () => null,
     },
     // The per-space access layer (loadSpaceViewer) resolves the caller's project
     // memberships; the actor is a member of the space's project.

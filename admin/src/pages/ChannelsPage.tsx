@@ -36,7 +36,7 @@ import { useChannelComposer } from '../components/features/channels/useChannelCo
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { useChannelCall } from './channels/useChannelCall'
 import { useChannelMentions } from './channels/useChannelMentions'
-import { useChannelMessageSearch } from './channels/useChannelMessageSearch'
+import { useAlertMessageHighlight, useChannelMessageSearch } from './channels/useChannelMessageSearch'
 import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
 
 export const ChannelsPage = () => {
@@ -68,7 +68,8 @@ export const ChannelsPage = () => {
     () => new Map(agents.map((agent) => [agent.id, agent])),
     [agents],
   )
-  const { data: threadMessages = [] } = useThreadMessages(activeChannel?.defaultThreadId)
+  const { data: threadMessages = [], isFetched: threadMessagesFetched } =
+    useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
   const markThreadRead = useMarkThreadRead()
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
@@ -172,6 +173,7 @@ export const ChannelsPage = () => {
     setSearchQuery,
     toggleSearch,
   } = useChannelMessageSearch(activeChannel?.id)
+  useAlertMessageHighlight(threadMessagesFetched, jumpToMessage)
   // sp-channels: channel settings dialog + join.
   const [showChannelSettings, setShowChannelSettings] = useState(false)
   const joinChannel = useJoinChannel()

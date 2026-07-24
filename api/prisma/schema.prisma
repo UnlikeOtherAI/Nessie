@@ -668,6 +668,8 @@ model User {
   messages            Message[]
   reactions           MessageReaction[]
   threadReadStates    ThreadReadState[]
+  userAlerts          UserAlert[]
+  userAlertActivity   UserAlert[]          @relation("UserAlertActor")
   favorites           Favorite[]
   assignedTasks       Task[]               @relation("TaskAssignee")
   ownedTasks          Task[]               @relation("TaskOwner")
@@ -768,6 +770,7 @@ model Organization {
   approvalRequests ApprovalRequest[]
   resourceLocks    ResourceLock[]
   userStatuses     UserStatus[]
+  userAlerts       UserAlert[]
   feedback         Feedback[]
   favorites        Favorite[]
   productAccountLinks ProductAccountLink[]
@@ -1064,6 +1067,7 @@ model Channel {
   plans             Plan[]
   approvalRequests  ApprovalRequest[]
   statusRules       UserStatusRule[]
+  userAlerts        UserAlert[]
   productIntegrationRuns ProductIntegrationRun[]
 
   @@index([organizationId, type])
@@ -1098,6 +1102,7 @@ model Thread {
   mailboxMessages AgentMailboxMessage[]
   messages        Message[]
   readStates      ThreadReadState[]
+  userAlerts      UserAlert[]
   runs            Run[]
   streamEvents    ThreadStreamEvent[]
   triggerTargets  AgentTrigger[]        @relation("TriggerTargetThread")
@@ -1120,6 +1125,41 @@ model ThreadReadState {
   @@unique([threadId, userId])
   @@index([userId])
   @@map("thread_read_states")
+}
+
+enum UserAlertKind {
+  mention
+}
+
+// Persistent per-user alert records. v1 writes one `mention` row per directly
+// @mentioned user in the message-create transaction (self-mentions skipped;
+// broadcast mentions intentionally create no rows). The model is deliberately
+// generic so future kinds (approval nudges, needs-action items) write into the
+// same alerts substrate. A muted channel still gets the row — mute suppresses
+// the push, never the durable alert.
+model UserAlert {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  kind           UserAlertKind
+  messageId      String?       @map("message_id") @db.Uuid
+  threadId       String?       @map("thread_id") @db.Uuid
+  channelId      String?       @map("channel_id") @db.Uuid
+  actorUserId    String?       @map("actor_user_id") @db.Uuid
+  actorAgentId   String?       @map("actor_agent_id") @db.Uuid
+  readAt         DateTime?     @map("read_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message        Message?      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  thread         Thread?       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  channel        Channel?      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  actorUser      User?         @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorAgent     Agent?        @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt, createdAt])
+  @@index([organizationId, userId, createdAt])
+  @@map("user_alerts")
 }
 
 model ThreadStreamEvent {
@@ -1251,6 +1291,7 @@ model Message {
   agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
   user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   reactions MessageReaction[]
+  userAlerts UserAlert[]
   productIntegrationRuns ProductIntegrationRun[]
   triggeredRuns Run[]            @relation("RunTriggerMessage")
 
@@ -1335,6 +1376,7 @@ model Agent {
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
+  userAlertActivity             UserAlert[]
 
   @@index([organizationId])
   @@index([organizationId, projectId])

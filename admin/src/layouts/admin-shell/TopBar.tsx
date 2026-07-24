@@ -4,6 +4,7 @@ import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { isDesktopApp } from '../../lib/desktop'
 import { useAuthedObjectUrl } from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { AlertsBell } from './AlertsBell'
 import { TopBarSearch } from './TopBarSearch'
 import { RecentChannelsMenu, useHistoryNav, useRecordRecentChannelVisits } from './topbar-navigation'
 
@@ -161,6 +162,7 @@ export const TopBar = ({ hideSearch = false }: TopBarProps) => {
       ) : null}
 
       <div className="flex items-center gap-1">
+        <AlertsBell />
         <WorkspaceBadge />
         <Link aria-label="Help & feedback" className="admin-topbar-btn" title="Help & feedback" to="/feedback">
           <Help />

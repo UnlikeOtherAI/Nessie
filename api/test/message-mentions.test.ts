@@ -13,6 +13,7 @@ const makePrisma = () => {
     thread: {
       findUnique: async () => ({
         channel: {
+          id: 'channel-1',
           agentBindings: [
             {
               agent: {
@@ -58,6 +59,10 @@ const makePrisma = () => {
         return [{ id: 'agent-scout', name: 'Scout' }]
       },
     },
+    userAlert: {
+      createMany: async ({ data }: { data: unknown[] }) => ({ count: data.length }),
+    },
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
   } as unknown as PrismaClient
   return { prisma, calls }
 }

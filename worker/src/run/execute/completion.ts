@@ -5,6 +5,7 @@ import type { InvocationRecord } from '@nessie/runtime'
 import { persistInvocationLedgerEvents } from '../inference.js'
 import { enqueueRunMemoryConsolidation } from '../memory-consolidation.js'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
+import { createMessageMentionAlerts } from '../mention-alerts.js'
 import { buildScopes } from './scopes.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.js'
 import { detectReferencedRecallIds } from './memory.js'
@@ -85,6 +86,22 @@ export const completeRunExecution = async (
     messageId: assistantMessage.id,
     role: delegatedOwnerId ? 'user' : 'assistant',
   })
+
+  // Agent-authored @mentions create the same durable alerts as human ones.
+  await createMessageMentionAlerts(
+    { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
+    {
+      organizationId: context.channel.organizationId,
+      channelId: context.channel.id,
+      threadId: context.run.threadId,
+      messageId: assistantMessage.id,
+      messageCreatedAt: assistantMessage.createdAt,
+      content: input.responseText,
+      actorUserId: delegatedOwnerId,
+      actorAgentId: context.agent.id,
+      scopes: buildScopes(context),
+    },
+  )
 
   await updateRunStatus(deps.prisma, context.run.id, 'completed')
   await updateTaskStatus(deps.prisma, context.task.id, 'done')
