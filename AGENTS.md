@@ -20,6 +20,23 @@
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 
+## Natural-language intent is model-judged — never string-matched
+
+- Never detect user intent, addressing, relevance, sentiment, or meaning by
+  string comparison, keyword lists, regexes, or phrase heuristics against
+  message content. Understanding what a message means is always the model's
+  job, so behaviour is natural and works in any language, with slang,
+  misspellings, and informal phrasing.
+- Deterministic code may act only on **structural facts** that require no
+  interpretation of content: explicit @mention entities (structured
+  references), channel membership/bindings/roles, message authorship (human
+  vs agent) and type, budgets/cooldowns/rate limits, and run invariants.
+- No "looks like a question" checks, no trigger-word lists, no language
+  detection branches. Agent-facing replies and notices follow the user's
+  language because the model infers it, not because code detects it.
+- Test fixtures for engagement/intent paths must include non-English, slang,
+  and misspelled inputs.
+
 ## Code Quality
 
 - Strict linting. Builds must not pass without all lints passing.
