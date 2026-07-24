@@ -220,6 +220,36 @@ To rotate the deploy key: generate a new keypair, append the public key to the
 host's `~/.ssh/authorized_keys`, and `gh secret set DEPLOY_SSH_KEY` with the
 private key.
 
+## Supported upgrade paths
+
+Upgrades are applied by `prisma migrate deploy` against the existing database
+(see `redeploy.sh`). CI proves this works for the path self-hosters actually
+take — a database sitting on an older schema, not a fresh dev database:
+
+- The `upgrade-path` job in `.github/workflows/ci.yml` restores
+  `api/prisma/upgrade-fixtures/baseline.sql.gz` — a snapshot taken 20
+  migrations behind the HEAD it was generated from (exact cut point in
+  `baseline.json` next to it) — into a fresh Postgres, runs
+  `prisma migrate deploy` from HEAD, validates the schema, and runs
+  `api/scripts/upgrade-smoke.mjs` (all migrations recorded as applied, plus
+  core queries over `users`, `organizations`, `messages`, `runs`,
+  `task_events`, `audit_logs`). Any release within that trailing window is
+  therefore a proven upgrade source.
+- The fixture is reproducible: `node scripts/generate-upgrade-fixture.mjs`
+  replays the migration history up to the cut point into a scratch database
+  (never the real one) and re-dumps it. Regenerate it when the trailing
+  window should move forward; use `--keep-last N` to widen or narrow it and
+  `--docker <container>` on machines without local Postgres client binaries.
+- Migration folders are immutable once committed. `pnpm lint:migrations`
+  (part of the root `pnpm lint`) fails the build if a folder present at the
+  merge-base is renamed, renumbered, deleted, or modified — all of which
+  break `migrate deploy` for databases that already recorded the old row.
+  It also prints a warning list (not a failure) when a new migration creates
+  an index without `CONCURRENTLY` on the known-large tables `messages`,
+  `task_events`, `runs`, `audit_logs`; on a large install those lock the
+  table for the duration of the build, so review them before release.
+
+
 ### Host disk / Docker build cache (operational)
 
 The host disk (`/`, ~300 GB) is **shared with other apps** on the box. Each
