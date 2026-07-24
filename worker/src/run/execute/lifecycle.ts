@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
+import { applyReplyBookkeeping } from '@nessie/runtime'
 import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schemas'
-import type { RunContext } from './types.js'
+import type { ReplyPlacement, RunContext } from './types.js'
 
 export const updateTaskStatus = async (
   prisma: PrismaClient,
@@ -56,6 +57,25 @@ export const setAgentStatus = async (
     where: { id: agentId },
     data: { status },
   })
+}
+
+// Reply-thread placement (#233): after a run-authored message is created with
+// `rootMessageId`, update the root's materialized reply metadata in the same
+// unit of work and return it for realtime fan-out. A bookkeeping failure
+// propagates exactly like a message-create failure — no silent fallback.
+export const applyRunReplyBookkeeping = async (
+  prisma: PrismaClient,
+  context: RunContext,
+  replyCreatedAt: Date,
+): Promise<ReplyPlacement | undefined> => {
+  const rootMessageId = context.replyRootMessageId
+  if (!rootMessageId) return undefined
+  const meta = await applyReplyBookkeeping(prisma, {
+    rootMessageId,
+    replyCreatedAt,
+    authorId: context.agent.id,
+  })
+  return { rootMessageId, meta }
 }
 
 export const loadRunContext = async (

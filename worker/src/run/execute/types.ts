@@ -8,6 +8,7 @@ import type {
   ModelClient,
   PgRealtimeTransport,
   QueueProvider,
+  ReplyRootMetadata,
 } from '@nessie/runtime'
 
 export type ExecutionDependencies = {
@@ -60,11 +61,27 @@ export type RunContext = {
   task: {
     id: string
   }
+  /**
+   * Reply-thread placement (#233): the root message this run's agent-authored
+   * messages attach to — `triggerMessage.rootMessageId ?? triggerMessage.id`
+   * (one level deep). Resolved in `executeRunJob` once the trigger message and
+   * DeepWater handoff marker are known; `undefined` for runs without a trigger
+   * message and for handoff runs, whose message flow stays byte-identical.
+   */
+  replyRootMessageId?: string
 }
 
 export type RunPlanContext = {
   planId: string
   rootStepId: string
+}
+
+// Reply-thread placement (#233): set when a run-authored message was created
+// as a reply into a root message's reply thread, together with the root's
+// post-bookkeeping metadata from `applyReplyBookkeeping`.
+export type ReplyPlacement = {
+  rootMessageId: string
+  meta: ReplyRootMetadata
 }
 
 export type StoredConversationMessage = {

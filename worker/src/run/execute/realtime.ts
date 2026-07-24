@@ -10,7 +10,7 @@ import {
   type WsScope,
 } from '@nessie/schemas'
 import { buildScopes } from './scopes.js'
-import type { RunContext } from './types.js'
+import type { ReplyPlacement, RunContext } from './types.js'
 
 export const publishRunUpdated = async (
   realtimeTransport: PgRealtimeTransport,
@@ -50,6 +50,8 @@ export const publishAgentStatus = async (
   })
 }
 
+// Publishes the message-created WS event for a run-authored message. With
+// reply-thread placement (#233) set, publishes `message.reply` instead.
 export const publishMessageCreated = async (
   realtimeTransport: PgRealtimeTransport,
   context: RunContext,
@@ -60,9 +62,14 @@ export const publishMessageCreated = async (
     // A delegated owner-authored post (the personal assistant acting for its
     // owner) carries no agent author, mirroring a human-authored message.
     authoredByOwner?: boolean
+    // When present, the message is a reply: publish `message.reply` INSTEAD of
+    // `message.new`, followed by the root's updated `message.reply.meta`.
+    reply?: ReplyPlacement
   },
 ): Promise<void> => {
-  await realtimeTransport.publishWs(buildScopes(context), {
+  const scopes = buildScopes(context)
+  const { reply } = input
+  await realtimeTransport.publishWs(scopes, {
     data: {
       agentId: input.authoredByOwner ? undefined : parseAgentId(context.agent.id),
       channelId: parseChannelId(context.channel.id),
@@ -70,9 +77,23 @@ export const publishMessageCreated = async (
       messageId: input.messageId,
       role: input.role,
       threadId: parseThreadId(context.run.threadId),
+      ...(reply ? { rootMessageId: reply.rootMessageId } : {}),
     },
-    event: 'message.new',
+    event: reply ? 'message.reply' : 'message.new',
   })
+  if (reply) {
+    await realtimeTransport.publishWs(scopes, {
+      data: {
+        channelId: parseChannelId(context.channel.id),
+        threadId: parseThreadId(context.run.threadId),
+        rootMessageId: reply.rootMessageId,
+        replyCount: reply.meta.replyCount,
+        lastReplyAt: reply.meta.lastReplyAt?.toISOString(),
+        replyParticipantIds: reply.meta.replyParticipantIds,
+      },
+      event: 'message.reply.meta',
+    })
+  }
 }
 
 export const publishTaskUpdated = async (

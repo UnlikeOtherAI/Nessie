@@ -2,7 +2,7 @@ import { evaluateBudget } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { maybeEmitBudgetAlerts } from './budget-alert.js'
 import { buildScopes } from './scopes.js'
-import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.js'
+import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
 import { publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
@@ -25,12 +25,21 @@ export const terminalizeBudgetBlockedRun = async (
       content: notice,
       role: 'assistant',
       threadId: context.run.threadId,
+      ...(context.replyRootMessageId
+        ? { rootMessageId: context.replyRootMessageId }
+        : {}),
     },
   })
+  const reply = await applyRunReplyBookkeeping(
+    deps.prisma,
+    context,
+    blockMessage.createdAt,
+  )
   await publishMessageCreated(deps.realtimeTransport, context, {
     content: blockMessage.content,
     messageId: blockMessage.id,
     role: blockMessage.role,
+    ...(reply ? { reply } : {}),
   })
   await updateRunStatus(deps.prisma, context.run.id, 'failed')
   await updateTaskStatus(deps.prisma, context.task.id, 'failed')

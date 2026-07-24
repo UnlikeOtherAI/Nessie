@@ -63,6 +63,16 @@ import { buildScopes } from './scopes.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 
+// Reply-thread placement (#233): an ordinary run replies into its trigger
+// message's reply thread — a trigger that is itself a reply attaches to the
+// same root (one level deep). DeepWater handoff runs keep their exact
+// top-level placement so their message flow stays byte-identical.
+export const resolveReplyRootMessageId = (
+  triggerMessage: { id: string; rootMessageId: string | null },
+  handoffLocator: DeepWaterHandoffRunLocator | null,
+): string | undefined =>
+  handoffLocator ? undefined : triggerMessage.rootMessageId ?? triggerMessage.id
+
 export const executeRunJob = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
@@ -96,7 +106,7 @@ export const executeRunJob = async (
 
   const message = await deps.prisma.message.findUnique({
     where: { id: payload.messageId },
-    select: { content: true, metadata: true },
+    select: { content: true, metadata: true, rootMessageId: true },
   })
 
   if (!message) {
@@ -145,6 +155,11 @@ export const executeRunJob = async (
       threadId: context.run.threadId,
     }
   }
+
+  context.replyRootMessageId = resolveReplyRootMessageId(
+    { id: payload.messageId, rootMessageId: message.rootMessageId },
+    handoffLocator,
+  )
 
   try {
     if (
@@ -261,7 +276,7 @@ export const executeRunJob = async (
       },
     )
 
-    const conversation = await loadConversation(deps.prisma, context.run.threadId)
+    const conversation = await loadConversation(deps.prisma, context.run.threadId, context.replyRootMessageId)
     const memories = await retrieveRelevantMemories(deps, context, payload, prompt)
     const injectedRecallIds = memories.flatMap((memory) =>
       memory.recallId ? [memory.recallId] : [],

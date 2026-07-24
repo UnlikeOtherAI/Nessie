@@ -115,12 +115,22 @@ export const buildModelPrompt = (
 export const loadConversation = async (
   prisma: PrismaClient,
   threadId: string,
+  // Reply-thread placement (#233): when set, the window is scoped to that root
+  // message and its replies, so a run answering inside a reply thread sees
+  // that thread's context rather than the whole channel thread.
+  rootMessageId?: string,
 ): Promise<StoredConversationMessage[]> => {
   const messages = await prisma.message.findMany({
     // Exclude internal `system`-role messages (e.g. a PA scheduled kickoff
     // prompt) so they never leak into the model's conversation window. The
     // current run still receives its prompt directly via payload.messageId.
-    where: { threadId, role: { not: 'system' } },
+    where: rootMessageId
+      ? {
+          threadId,
+          role: { not: 'system' },
+          OR: [{ id: rootMessageId }, { rootMessageId }],
+        }
+      : { threadId, role: { not: 'system' } },
     orderBy: { createdAt: 'desc' },
     select: {
       content: true,

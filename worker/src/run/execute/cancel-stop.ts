@@ -5,7 +5,7 @@ import { persistInvocationLedgerEvents } from '../inference.js'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import { buildScopes } from './scopes.js'
-import { setAgentStatus, updateRunStatus, updateTaskStatus } from './lifecycle.js'
+import { setAgentStatus, updateRunStatus, updateTaskStatus, applyRunReplyBookkeeping } from './lifecycle.js'
 import {
   publishAgentStatus,
   publishMessageCreated,
@@ -100,8 +100,13 @@ export const finalizeCancelledRun = async (
       content: terminalContent,
       role: 'assistant',
       threadId: context.run.threadId,
+      ...(context.replyRootMessageId
+        ? { rootMessageId: context.replyRootMessageId }
+        : {}),
     },
   })
+
+  const reply = await applyRunReplyBookkeeping(deps.prisma, context, message.createdAt)
 
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
@@ -114,6 +119,7 @@ export const finalizeCancelledRun = async (
     content: terminalContent,
     messageId: message.id,
     role: 'assistant',
+    ...(reply ? { reply } : {}),
   })
 
   await updateRunStatus(deps.prisma, context.run.id, 'cancelled')

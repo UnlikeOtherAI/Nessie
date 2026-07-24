@@ -1,7 +1,7 @@
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { buildScopes } from './scopes.js'
-import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.js'
+import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
@@ -41,6 +41,9 @@ export const handleRunExecutionFailure = async (
         content: terminalContent,
         role: 'assistant',
         threadId: context.run.threadId,
+        ...(context.replyRootMessageId
+          ? { rootMessageId: context.replyRootMessageId }
+          : {}),
       },
     })
 
@@ -48,10 +51,17 @@ export const handleRunExecutionFailure = async (
     terminalContent = errorMessage.content
     terminalCreatedAt = errorMessage.createdAt.toISOString()
 
+    const reply = await applyRunReplyBookkeeping(
+      deps.prisma,
+      context,
+      errorMessage.createdAt,
+    )
+
     await publishMessageCreated(deps.realtimeTransport, context, {
       content: errorMessage.content,
       messageId: errorMessage.id,
       role: errorMessage.role,
+      ...(reply ? { reply } : {}),
     })
   } catch (streamError) {
     console.error('Failed to persist terminal error message', streamError)
@@ -64,6 +74,9 @@ export const handleRunExecutionFailure = async (
         content: terminalContent,
         createdAt: terminalCreatedAt,
         messageId: terminalMessageId,
+        ...(context.replyRootMessageId
+          ? { rootMessageId: context.replyRootMessageId }
+          : {}),
         runId: parseRunId(context.run.id),
       })
     } catch (streamError) {

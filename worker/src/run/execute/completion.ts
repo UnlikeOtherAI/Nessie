@@ -7,7 +7,7 @@ import { enqueueRunMemoryConsolidation } from '../memory-consolidation.js'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { createMessageMentionAlerts } from '../mention-alerts.js'
 import { buildScopes } from './scopes.js'
-import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.js'
+import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
 import { detectReferencedRecallIds } from './memory.js'
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
@@ -53,6 +53,11 @@ export const completeRunExecution = async (
           : null)
       : null
 
+  // Reply-thread placement (#233): the normal assistant reply attaches to the
+  // run's reply-thread root; a PA delegating into a shared channel stays
+  // top-level (it is authored as the owner, not as the assistant).
+  const rootMessageId = delegatedOwnerId ? undefined : context.replyRootMessageId
+
   const assistantMessage = await deps.prisma.message.create({
     data: delegatedOwnerId
       ? {
@@ -70,8 +75,13 @@ export const completeRunExecution = async (
           content: input.responseText,
           role: 'assistant',
           threadId: context.run.threadId,
+          ...(rootMessageId ? { rootMessageId } : {}),
         },
   })
+
+  const reply = rootMessageId
+    ? await applyRunReplyBookkeeping(deps.prisma, context, assistantMessage.createdAt)
+    : undefined
 
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
@@ -79,6 +89,7 @@ export const completeRunExecution = async (
     createdAt: assistantMessage.createdAt.toISOString(),
     messageId: assistantMessage.id,
     runId: parseRunId(context.run.id),
+    ...(rootMessageId ? { rootMessageId } : {}),
   })
 
   await publishMessageCreated(deps.realtimeTransport, context, {
@@ -86,6 +97,7 @@ export const completeRunExecution = async (
     content: input.responseText,
     messageId: assistantMessage.id,
     role: delegatedOwnerId ? 'user' : 'assistant',
+    ...(reply ? { reply } : {}),
   })
 
   // Agent-authored @mentions create the same durable alerts as human ones.

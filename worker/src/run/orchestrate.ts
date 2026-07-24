@@ -1,4 +1,5 @@
 import {
+  applyReplyBookkeeping,
   attributionFromActorContext,
   checkBudget,
   decideAgentEngagement,
@@ -68,6 +69,18 @@ export const executeOrchestrateDecideJob = async (
     return
   }
 
+  // Reply-thread placement (#233): the trigger message's reply-thread root
+  // (the message itself when it is a top-level root) scopes both the budget
+  // notice and thread-following below. When the trigger cannot be fetched,
+  // both keep their previous whole-thread behaviour.
+  const triggerMessage = await deps.prisma.message.findUnique({
+    where: { id: messageId },
+    select: { id: true, rootMessageId: true },
+  })
+  const replyRootContextId = triggerMessage
+    ? triggerMessage.rootMessageId ?? triggerMessage.id
+    : undefined
+
   // Budget gate: the orchestrator decision below is itself a model call, so it must
   // be gated here as well as at run execution. When over budget, post a single
   // notice and skip the decision entirely rather than spend on it.
@@ -91,19 +104,54 @@ export const executeOrchestrateDecideJob = async (
           content: `⚠️ ${budgetDecision.reason} — this request was not run.`,
           role: 'assistant',
           threadId,
+          ...(replyRootContextId ? { rootMessageId: replyRootContextId } : {}),
         },
       })
-      await deps.realtimeTransport.publishWs([{ kind: 'channel' as const, channelId }], {
-        data: {
-          agentId: parseAgentId(respondingAgentId),
-          channelId,
-          contentPreview: notice.content.slice(0, 200),
-          messageId: notice.id,
-          role: 'assistant',
-          threadId: parseThreadId(threadId),
-        },
-        event: 'message.new',
-      })
+      const replyMeta = replyRootContextId
+        ? await applyReplyBookkeeping(deps.prisma, {
+            rootMessageId: replyRootContextId,
+            replyCreatedAt: notice.createdAt,
+            authorId: respondingAgentId,
+          })
+        : undefined
+      const noticeScopes = [{ kind: 'channel' as const, channelId }]
+      if (replyMeta && replyRootContextId) {
+        await deps.realtimeTransport.publishWs(noticeScopes, {
+          data: {
+            agentId: parseAgentId(respondingAgentId),
+            channelId,
+            contentPreview: notice.content.slice(0, 200),
+            messageId: notice.id,
+            role: 'assistant',
+            rootMessageId: replyRootContextId,
+            threadId: parseThreadId(threadId),
+          },
+          event: 'message.reply',
+        })
+        await deps.realtimeTransport.publishWs(noticeScopes, {
+          data: {
+            channelId,
+            threadId: parseThreadId(threadId),
+            rootMessageId: replyRootContextId,
+            replyCount: replyMeta.replyCount,
+            lastReplyAt: replyMeta.lastReplyAt?.toISOString(),
+            replyParticipantIds: replyMeta.replyParticipantIds,
+          },
+          event: 'message.reply.meta',
+        })
+      } else {
+        await deps.realtimeTransport.publishWs(noticeScopes, {
+          data: {
+            agentId: parseAgentId(respondingAgentId),
+            channelId,
+            contentPreview: notice.content.slice(0, 200),
+            messageId: notice.id,
+            role: 'assistant',
+            threadId: parseThreadId(threadId),
+          },
+          event: 'message.new',
+        })
+      }
     }
     console.warn(`[worker] orchestrate.decide blocked by budget (channel ${channelId}): ${budgetDecision.reason}`)
     return
@@ -135,14 +183,20 @@ export const executeOrchestrateDecideJob = async (
         agentName: m.agent?.name ?? undefined,
       }))
 
-    // Thread-following: an agent that has already posted in this thread stays
-    // engaged with new *human* messages without a fresh @mention.
+    // Thread-following remains local to the reply thread when one is active.
     const triggerIsHuman = role === 'user'
     let followingAgentIds: string[] = []
     if (triggerIsHuman) {
       const candidateAgentIds = channelAgents.map((a) => a.id)
       const authored = await deps.prisma.message.findMany({
-        where: { threadId, role: 'assistant', agentId: { in: candidateAgentIds } },
+        where: {
+          threadId,
+          role: 'assistant',
+          agentId: { in: candidateAgentIds },
+          ...(replyRootContextId
+            ? { OR: [{ rootMessageId: replyRootContextId }, { id: replyRootContextId }] }
+            : {}),
+        },
         distinct: ['agentId'],
         select: { agentId: true },
       })
