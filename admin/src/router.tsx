@@ -109,6 +109,11 @@ export const router = createBrowserRouter([
         element: <ChannelProjectOverviewPage />,
       },
       {
+        // Reply-thread panel (#233): deep-linkable third pane; Back closes it.
+        path: '/channels/:channelId/threads/:threadId/replies/:rootMessageId',
+        element: <ChannelsPage />,
+      },
+      {
         path: '/channels/:channelId?',
         element: <ChannelsPage />,
       },

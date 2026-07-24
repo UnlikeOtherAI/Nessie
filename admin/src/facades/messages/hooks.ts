@@ -16,15 +16,25 @@ export interface SendMessageResponse {
   pendingAgentInvites: PendingAgentInvite[]
 }
 
+/** Extra routing fields for posting a reply into a message thread (#233). */
+export interface SendMessageThreadExtras {
+  rootMessageId?: string
+  alsoSendToChannel?: boolean
+}
+
 export const useSendMessage = (threadId?: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { content: string; attachmentIds?: string[] }) =>
+    mutationFn: (input: {
+      content: string
+      attachmentIds?: string[]
+    } & SendMessageThreadExtras) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${threadId}/messages`, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'replies'] })
     },
   })
 }

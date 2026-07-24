@@ -13,7 +13,7 @@ import {
   isPersonalAssistantChannel,
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
-import { useMarkThreadRead, useThreadMessages, useThreadStream } from '../facades/threads/hooks'
+import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
@@ -23,21 +23,23 @@ import { CallOverlay } from '../components/shared/CallOverlay'
 import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
 import { ChannelSettingsDialog } from '../components/shared/ChannelSettingsDialog'
 import { ChannelComposer } from '../components/features/channels/ChannelComposer'
-import { ChannelAgentInfoDrawer } from '../components/features/channels/ChannelAgentInfoDrawer'
 import { ChannelHeader } from '../components/features/channels/ChannelHeader'
 import { ChannelMessageFeed } from '../components/features/channels/ChannelMessageFeed'
 import { ExternalAgentIntro } from '../components/features/channels/ExternalAgentIntro'
+import { ThreadReplyPanel } from '../components/features/channels/thread-panel/ThreadReplyPanel'
 import { ChannelSearchPanel } from '../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../components/features/channels/ChannelTabBar'
 import { ChannelTabPanels } from '../components/features/channels/ChannelTabPanels'
-import { ChannelUserInfoDrawer } from '../components/features/channels/ChannelUserInfoDrawer'
 import { buildFeedItems, isOperationsTab, type ChannelTab, type MessageUserIdentity } from '../components/features/channels/channel-helpers'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
+import { ChannelInfoDrawers } from './channels/ChannelInfoDrawers'
 import { useChannelCall } from './channels/useChannelCall'
 import { useChannelMentions } from './channels/useChannelMentions'
 import { useAlertMessageHighlight, useChannelMessageSearch } from './channels/useChannelMessageSearch'
 import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
+import { useReplyThread } from './channels/useReplyThread'
+import { useThreadReadMarker } from './channels/useThreadReadMarker'
 
 export const ChannelsPage = () => {
   const navigate = useNavigate()
@@ -71,8 +73,8 @@ export const ChannelsPage = () => {
   const { data: threadMessages = [], isFetched: threadMessagesFetched } =
     useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
-  const markThreadRead = useMarkThreadRead()
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
+  useThreadReadMarker(activeChannel?.defaultThreadId, threadMessages)
 
   const channelUsers = useMemo(
     () =>
@@ -129,6 +131,10 @@ export const ChannelsPage = () => {
     channels,
     channelUsers,
   })
+
+  // Reply-thread panel (#233): URL-driven open state, replies/root queries,
+  // follow mutation, and the persisted drag-resizable width.
+  const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
 
   const {
     message,
@@ -213,37 +219,6 @@ export const ChannelsPage = () => {
     syncExternalAgentMutate,
   ])
 
-  const lastReadMarkerRef = useRef<string | null>(null)
-  const pendingReadMarkerRef = useRef<string | null>(null)
-  useEffect(() => {
-    lastReadMarkerRef.current = null
-    pendingReadMarkerRef.current = null
-  }, [activeChannel?.defaultThreadId])
-
-  useEffect(() => {
-    const threadId = activeChannel?.defaultThreadId
-    const latestMessageId = threadMessages.at(-1)?.id
-    if (!threadId || !latestMessageId) {
-      return
-    }
-
-    const marker = `${threadId}:${latestMessageId}`
-    if (lastReadMarkerRef.current === marker || pendingReadMarkerRef.current === marker) {
-      return
-    }
-
-    pendingReadMarkerRef.current = marker
-    markThreadRead.mutate(threadId, {
-      onError: () => {
-        pendingReadMarkerRef.current = null
-      },
-      onSuccess: () => {
-        lastReadMarkerRef.current = marker
-        pendingReadMarkerRef.current = null
-      },
-    })
-  }, [activeChannel?.defaultThreadId, markThreadRead, threadMessages])
-
   useEffect(() => {
     if (!channelId && activeChannel) {
       void navigate(`/channels/${activeChannel.id}`, { replace: true })
@@ -273,8 +248,9 @@ export const ChannelsPage = () => {
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col">
-      <ChannelHeader
+    <section className="flex h-full min-h-0">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <ChannelHeader
         activeChannel={activeChannel}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         isExternalAgentConversation={isExternalAgentActiveChannel}
@@ -363,6 +339,8 @@ export const ChannelsPage = () => {
             onCancelEdit={cancelEdit}
             onAddReaction={addReaction}
             onConfirmDelete={confirmDelete}
+            onOpenThread={replyThread.openThread}
+            resolveThreadParticipant={replyThread.resolveThreadParticipant}
             onSelectAgent={
               isPersonalAssistantConversation
                 ? undefined
@@ -409,6 +387,26 @@ export const ChannelsPage = () => {
         onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
         onDismissPendingAgent={dismissPendingAgent}
       />
+      </div>
+
+      {replyThread.openRootMessageId && activeChannel ? (
+        <ThreadReplyPanel
+          activeChannel={activeChannel}
+          agentMap={agentMap}
+          channelUsers={channelUsers}
+          meAvatar={{
+            avatarUrl: me.user.avatarUrl,
+            avatarAttachmentId: me.user.avatarAttachmentId,
+            gravatarUrl: me.user.gravatarUrl,
+          }}
+          meDisplayName={me.user.displayName}
+          meUserId={me.user.id}
+          mentionEntities={mentionEntities}
+          renderContent={renderContent}
+          thread={replyThread}
+          token={token}
+        />
+      ) : null}
 
       {showMembersPopup && activeChannel ? (
         <ChannelMembersPopup
@@ -457,42 +455,24 @@ export const ChannelsPage = () => {
         />
       )}
 
-      <ChannelAgentInfoDrawer
+      <ChannelInfoDrawers
         activeChannel={activeChannel}
-        agent={selectedMessageAgent}
         agents={agents}
-        meAvatar={{
-          avatarUrl: me.user.avatarUrl,
-          avatarAttachmentId: me.user.avatarAttachmentId,
-          gravatarUrl: me.user.gravatarUrl,
-        }}
-        meDisplayName={me.user.displayName}
-        meUserId={me.user.id}
+        allUsers={allUsers}
+        me={me}
         mentionEntities={mentionEntities}
         pendingMessages={pendingMessages}
         renderContent={renderContent}
+        selectedMessageAgent={selectedMessageAgent}
+        selectedMessageUser={selectedMessageUser}
         threadMessages={threadMessages}
         token={token}
-        onClose={() => setSelectedMessageAgentId(null)}
+        onCloseAgent={() => setSelectedMessageAgentId(null)}
+        onCloseUser={() => setSelectedMessageUser(null)}
         onOpenActivity={(agentId) => {
           setSelectedMessageAgentId(null)
           onSelectAgent(agentId)
         }}
-      />
-
-      <ChannelUserInfoDrawer
-        agents={agents}
-        meAvatar={{
-          avatarUrl: me.user.avatarUrl,
-          avatarAttachmentId: me.user.avatarAttachmentId,
-          gravatarUrl: me.user.gravatarUrl,
-        }}
-        meDisplayName={me.user.displayName}
-        meUserId={me.user.id}
-        target={selectedMessageUser}
-        token={token}
-        users={allUsers}
-        onClose={() => setSelectedMessageUser(null)}
       />
     </section>
   )

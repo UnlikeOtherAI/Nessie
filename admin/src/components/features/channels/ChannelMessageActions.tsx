@@ -10,6 +10,7 @@ import {
 import {
   faFaceSmile,
   faPen,
+  faReply,
   faThumbsUp,
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons'
@@ -30,6 +31,7 @@ type ChannelMessageActionsProps = {
   resolveReactorName: ResolveReactorName
   onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
+  onReply?: () => void
   onStartEdit: (messageId: string, content: string) => void
 }
 
@@ -52,6 +54,7 @@ export const ChannelMessageActions = ({
   resolveReactorName,
   onAddReaction,
   onConfirmDelete,
+  onReply,
   onStartEdit,
 }: ChannelMessageActionsProps) => {
   const pickerId = useId()
@@ -129,6 +132,17 @@ export const ChannelMessageActions = ({
             </div>
           ) : null}
         </div>
+        {onReply ? (
+          <button
+            aria-label="Reply in thread"
+            className="admin-msg-action-button"
+            onClick={onReply}
+            title="Reply in thread"
+            type="button"
+          >
+            <FontAwesomeIcon icon={faReply} />
+          </button>
+        ) : null}
         {canEdit ? (
           <button
             aria-label="Edit message"

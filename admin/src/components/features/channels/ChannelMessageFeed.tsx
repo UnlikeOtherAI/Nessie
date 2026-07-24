@@ -12,6 +12,7 @@ import {
   type OptimisticMessage,
   type PendingStreamMessage,
 } from './channel-helpers'
+import type { ThreadParticipant } from './thread-panel/thread-panel-helpers'
 
 // Tombstone for a deleted message that still has replies below it: a small
 // light-dashed bubble in place of the original row (no avatar/name).
@@ -56,8 +57,12 @@ interface ChannelMessageFeedProps {
   onCancelEdit: () => void
   onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
+  // Opens the reply-thread panel for a message's root (#233); when absent the
+  // feed renders no thread affordances.
+  onOpenThread?: (rootMessageId: string) => void
   onSelectAgent?: (agent: AgentRecord) => void
   onSelectUser?: (user: MessageUserIdentity) => void
+  resolveThreadParticipant?: (participantId: string) => ThreadParticipant | null
 }
 
 export const ChannelMessageFeed = ({
@@ -85,8 +90,10 @@ export const ChannelMessageFeed = ({
   onCancelEdit,
   onAddReaction,
   onConfirmDelete,
+  onOpenThread,
   onSelectAgent,
   onSelectUser,
+  resolveThreadParticipant,
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
   // Both the Personal Assistant and any external agent (DeepSignal, ...) read
@@ -243,10 +250,12 @@ export const ChannelMessageFeed = ({
             onCancelEdit={onCancelEdit}
             onChangeEditingContent={onChangeEditingContent}
             onConfirmDelete={onConfirmDelete}
+            onOpenThread={onOpenThread}
             onSelectAgent={onSelectAgent}
             onSelectUser={onSelectUser}
             onStartEdit={onStartEdit}
             onSubmitEdit={onSubmitEdit}
+            resolveThreadParticipant={resolveThreadParticipant}
           />
         )
       })}

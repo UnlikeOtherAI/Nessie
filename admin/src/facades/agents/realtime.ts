@@ -175,6 +175,18 @@ export const useAgentRealtime = (input: {
         }
         return
       }
+
+      // Reply threads (#233): a new reply or updated root summary refreshes
+      // both the top-level feed (summary bars) and any open reply panel.
+      if (message.event === 'message.reply' || message.event === 'message.reply.meta') {
+        void queryClient.invalidateQueries({
+          queryKey: ['threads', message.data.threadId, 'messages'],
+        })
+        void queryClient.invalidateQueries({
+          queryKey: ['threads', message.data.threadId, 'replies', message.data.rootMessageId],
+        })
+        return
+      }
     }
 
     let pingInterval: number | undefined

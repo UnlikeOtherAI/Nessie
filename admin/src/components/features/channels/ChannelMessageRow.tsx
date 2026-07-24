@@ -1,4 +1,4 @@
-import type { Dispatch, MouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react'
+import type { Dispatch, KeyboardEvent, MouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react'
 import type { AgentRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
@@ -11,6 +11,11 @@ import { MessageUiCards } from './MessageUiCards'
 import { CommsConnectCard } from './CommsConnectCard'
 import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
+import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
+import {
+  getReplyBroadcastRootId,
+  type ThreadParticipant,
+} from './thread-panel/thread-panel-helpers'
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -66,9 +71,13 @@ interface ChannelMessageRowProps {
   onCancelEdit: () => void
   onAddReaction: (messageId: string, emoji: string) => void
   onConfirmDelete: (messageId: string) => void
+  // Opens the reply-thread panel for this message's root (#233). When absent
+  // the row renders no thread affordances at all.
+  onOpenThread?: (rootMessageId: string) => void
   onSelectAgent?: (agent: AgentRecord) => void
   onSelectUser?: (user: MessageUserIdentity) => void
   resolveReactorName: ResolveReactorName
+  resolveThreadParticipant?: (participantId: string) => ThreadParticipant | null
   getPresence: (userId: string | null | undefined) => PresenceView | null
   activeActionMessageId: string | null
   setActiveActionMessageId: Dispatch<SetStateAction<string | null>>
@@ -99,9 +108,11 @@ export const ChannelMessageRow = ({
   onCancelEdit,
   onAddReaction,
   onConfirmDelete,
+  onOpenThread,
   onSelectAgent,
   onSelectUser,
   resolveReactorName,
+  resolveThreadParticipant,
   getPresence,
   activeActionMessageId,
   setActiveActionMessageId,
@@ -110,6 +121,11 @@ export const ChannelMessageRow = ({
   const displayName = getDisplayName(message, meDisplayName, agentMap, assistantFallbackName)
   const canManageOwnMessage = message.role === 'user' && message.userId === meUserId
   const isEditingMessage = editingMessageId === message.id
+  // Replies open their root's thread; roots open their own.
+  const threadRootMessageId = message.rootMessageId ?? message.id
+  const broadcastRootId = getReplyBroadcastRootId(message.metadata)
+  const openThread =
+    onOpenThread && !isEditingMessage ? () => onOpenThread(threadRootMessageId) : undefined
   const messageAgent =
     message.role === 'assistant' && onSelectAgent
       ? agentMap.get(message.agentId ?? '') ?? null
@@ -139,6 +155,19 @@ export const ChannelMessageRow = ({
       onSelectAgent?.(messageAgent)
     }
   }
+  // Slack-style shortcut: `t` opens the thread for the focused message (or its
+  // root, when the focused row is itself a reply).
+  const openThreadOnKey = (event: KeyboardEvent<HTMLElement>) => {
+    if ((event.key !== 't' && event.key !== 'T') || !onOpenThread) {
+      return
+    }
+    const target = event.target as HTMLElement
+    if (target.closest('input, textarea, [contenteditable="true"]')) {
+      return
+    }
+    event.preventDefault()
+    onOpenThread(threadRootMessageId)
+  }
 
   return (
     <article
@@ -155,6 +184,7 @@ export const ChannelMessageRow = ({
           setActiveActionMessageId(message.id)
         }
       }}
+      onKeyDown={openThreadOnKey}
       onPointerDown={() => {
         lastPointerDownAt.current = Date.now()
       }}
@@ -284,6 +314,32 @@ export const ChannelMessageRow = ({
             <CommsConnectCard metadata={message.metadata} />
           ) : null}
           <MessageAttachments messageId={message.id} />
+          {broadcastRootId && onOpenThread ? (
+            <button
+              className={[
+                'mt-1 inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5',
+                'bg-[var(--accent-soft)] text-[11px] font-semibold text-[var(--thinking)]',
+                'transition-colors hover:bg-[color:var(--main-hover)]',
+              ].join(' ')}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenThread(broadcastRootId)
+              }}
+              type="button"
+            >
+              from a thread
+            </button>
+          ) : null}
+          {!message.rootMessageId && (message.replyCount ?? 0) > 0 && onOpenThread ? (
+            <ReplySummaryBar
+              lastReplyAt={message.lastReplyAt ?? null}
+              participantIds={message.replyParticipantIds ?? []}
+              replyCount={message.replyCount ?? 0}
+              resolveParticipant={resolveThreadParticipant ?? (() => null)}
+              token={token}
+              onOpen={() => onOpenThread(message.id)}
+            />
+          ) : null}
           {!isEditingMessage ? (
             <ChannelMessageActions
               canDelete={canManageOwnMessage}
@@ -295,6 +351,7 @@ export const ChannelMessageRow = ({
               resolveReactorName={resolveReactorName}
               onAddReaction={onAddReaction}
               onConfirmDelete={onConfirmDelete}
+              onReply={openThread}
               onStartEdit={onStartEdit}
             />
           ) : null}

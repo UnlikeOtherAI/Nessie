@@ -5,6 +5,7 @@ import {
   useSendMessage,
   useUploadAttachment,
   type PendingAgentInvite,
+  type SendMessageThreadExtras,
 } from '../../../facades/messages/hooks'
 import { useBindAgent } from '../../../facades/agents/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
@@ -14,6 +15,9 @@ interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
   threadMessages: ThreadMessageRecord[]
   currentUserId: string | undefined
+  // Optional per-send extras (reply-thread routing, #233) read at send time so
+  // the "Also send to channel" checkbox can toggle without re-wiring the hook.
+  getSendExtras?: () => SendMessageThreadExtras
 }
 
 interface UseChannelComposerResult {
@@ -38,6 +42,7 @@ export const useChannelComposer = ({
   activeChannel,
   threadMessages,
   currentUserId,
+  getSendExtras,
 }: UseChannelComposerParams): UseChannelComposerResult => {
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
   const uploadAttachment = useUploadAttachment()
@@ -104,7 +109,10 @@ export const useChannelComposer = ({
       mentionRef.current?.clear()
 
       try {
-        const result = await sendMessage.mutateAsync({ content: text })
+        const result = await sendMessage.mutateAsync({
+          content: text,
+          ...getSendExtras?.(),
+        })
         // Surface @mentioned agents that aren't members of this channel so the
         // user can invite them; they were not dispatched.
         if (result.pendingAgentInvites.length > 0) {
@@ -121,7 +129,7 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, sendMessage],
+    [activeChannel, sendMessage, getSendExtras],
   )
 
   const clearInviteError = (agentId: string) =>

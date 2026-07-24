@@ -19,6 +19,7 @@ type StreamEventData = {
   content?: string
   createdAt?: string
   messageId?: string
+  rootMessageId?: string | null
   runId: string
 }
 
@@ -31,6 +32,53 @@ export const useThreadMessages = (threadId?: string) => {
     queryKey: ['threads', threadId, 'messages'],
     queryFn: () => apiClient.get(`/api/threads/${threadId}/messages`),
     enabled: Boolean(threadId),
+  })
+}
+
+// Replies of one root message within a thread (#233 reply threads).
+export const useThreadReplies = (threadId?: string, rootMessageId?: string) => {
+  const apiClient = useApiClient()
+
+  return useQuery<ThreadMessageRecord[]>({
+    queryKey: ['threads', threadId, 'replies', rootMessageId],
+    queryFn: () =>
+      apiClient.get(`/api/threads/${threadId}/messages?rootMessageId=${rootMessageId}`),
+    enabled: Boolean(threadId) && Boolean(rootMessageId),
+  })
+}
+
+export type ThreadMessageDetail = {
+  message: ThreadMessageRecord
+  viewerFollowing: boolean
+}
+
+// Single message fetch — used to hydrate a thread panel's root on cold
+// deep-links and to read the viewer's follow state.
+export const useThreadMessage = (threadId?: string, messageId?: string) => {
+  const apiClient = useApiClient()
+
+  return useQuery<ThreadMessageDetail>({
+    queryKey: ['threads', threadId, 'message', messageId],
+    queryFn: () => apiClient.get(`/api/threads/${threadId}/messages/${messageId}`),
+    enabled: Boolean(threadId) && Boolean(messageId),
+  })
+}
+
+export const useSetMessageThreadFollow = (threadId?: string, messageId?: string) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (following: boolean) =>
+      apiClient.put<{ following: boolean }>(
+        `/api/threads/${threadId}/messages/${messageId}/follow`,
+        { following },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['threads', threadId, 'message', messageId],
+      })
+    },
   })
 }
 
@@ -175,6 +223,7 @@ export const useThreadStream = (threadId?: string): StreamState => {
                       id: data.messageId ?? '',
                       reactions: [],
                       role: 'assistant',
+                      rootMessageId: data.rootMessageId ?? null,
                       threadId,
                     }
                     const messages = current ?? []
@@ -189,6 +238,11 @@ export const useThreadStream = (threadId?: string): StreamState => {
                 current.filter((message) => message.runId !== data.runId),
               )
               void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+              if (data.rootMessageId) {
+                void queryClient.invalidateQueries({
+                  queryKey: ['threads', threadId, 'replies', data.rootMessageId],
+                })
+              }
               return
             }
 
