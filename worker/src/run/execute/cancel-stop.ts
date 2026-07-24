@@ -12,6 +12,7 @@ import {
   publishRunUpdated,
   publishTaskUpdated,
 } from './realtime.js'
+import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 import type { BudgetStopStats } from './budget-stop.js'
 
@@ -157,5 +158,11 @@ export const finalizeCancelledRun = async (
   await publishAgentStatus(deps.realtimeTransport, context, {
     currentRunId: context.run.id,
     status: 'idle',
+  })
+  // A cancelled run still releases the (agent, thread) slot: pended messages
+  // are delivered as one batched follow-up run (see thread-serialization.ts).
+  await drainPendingThreadMessagesBestEffort(deps.prisma, {
+    agentId: context.agent.id,
+    threadId: context.run.threadId,
   })
 }

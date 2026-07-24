@@ -1095,6 +1095,7 @@ model Thread {
   messages        Message[]
   readStates      ThreadReadState[]
   runs            Run[]
+  runThreadPendingMessages RunThreadPendingMessage[]
   streamEvents    ThreadStreamEvent[]
   triggerTargets  AgentTrigger[]        @relation("TriggerTargetThread")
   productIntegrationRuns ProductIntegrationRun[]
@@ -1249,6 +1250,7 @@ model Message {
   reactions MessageReaction[]
   productIntegrationRuns ProductIntegrationRun[]
   triggeredRuns Run[]            @relation("RunTriggerMessage")
+  runThreadPendingMessages RunThreadPendingMessage[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
@@ -1331,6 +1333,7 @@ model Agent {
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
+  runThreadPendingMessages      RunThreadPendingMessage[]
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -1504,6 +1507,36 @@ model Run {
   @@index([triggerId, createdAt])
   @@index([restartOfRunId])
   @@map("runs")
+}
+
+// Per-(agent, thread) run serialization: a message that arrives while a run is
+// in flight for the same agent+thread is recorded here instead of spawning a
+// concurrent run. When the in-flight run reaches a terminal state, the worker
+// drains all pending rows into ONE batched follow-up run (seq order preserved).
+// The row is the durable no-lost-messages marker: if the worker crashes before
+// draining, the pending-batch sweep re-discovers it and enqueues the follow-up.
+model RunThreadPendingMessage {
+  // BIGSERIAL primary key doubles as the strict arrival ordering for batching.
+  seq          BigInt   @id @default(autoincrement())
+  agentId      String   @map("agent_id") @db.Uuid
+  threadId     String   @map("thread_id") @db.Uuid
+  messageId    String   @map("message_id") @db.Uuid
+  channelId    String   @map("channel_id") @db.Uuid
+  // Mirrors RunExecuteJobPayload.interactive at record time: a live human chat
+  // turn stays budget-exempt when the batched follow-up run executes it.
+  interactive  Boolean  @default(false)
+  // The base AuthorizedActionContext of the triggering message (before the
+  // run/task ids are injected); the drain re-injects fresh ids for the
+  // follow-up run it creates.
+  actorContext Json     @map("actor_context") @db.JsonB
+  createdAt    DateTime @default(now()) @map("created_at")
+  agent        Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread       Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message      Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, messageId])
+  @@index([threadId, seq])
+  @@map("run_thread_pending_messages")
 }
 
 model AgentTrigger {

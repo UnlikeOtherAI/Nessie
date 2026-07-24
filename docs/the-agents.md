@@ -468,6 +468,18 @@ When a message arrives in a channel, the channel orchestrator decides which agen
 
 **What could still be factored in**: agent current status (don't route to a busy agent if another can handle it), budget/cost awareness, skill matching, and active-plan context.
 
+### Per-Thread Run Serialization
+
+At most **one in-flight run per (agent, thread)**. Without this, N rapid messages in one thread spawn N concurrent runs for the same agent — interleaved replies, duplicated work, multiplied token spend (the `run:{messageId}:{agentId}` dedupe only stops re-processing the *same* message).
+
+**Implementation**: `worker/src/run/thread-serialization.ts` + the `run_thread_pending_messages` table.
+
+1. **Claim or pend.** The `orchestrate.decide` reply path (channel engagement and PA DMs alike) and scheduled/trigger fires (`queueTriggerRun`) open their run-creation transaction with a transaction-scoped advisory lock keyed on `(agentId, threadId)`. If an active run (`pending` / `running` / `waiting_approval`) already holds the slot, no run is created: the message is recorded as a durable `RunThreadPendingMessage` row (base actor context, channel, interactive flag) and the transaction commits.
+2. **Batched follow-up.** Every terminal path of the in-flight run — completion, cooperative cancel, final failure, and the budget-gate block — drains the slot under the same advisory lock: all pending rows become **one** follow-up run whose prompt is the *latest* pending message (earlier ones are already thread history the run loads), enqueued as `run:batch:{runId}` and consumed in thread-arrival order (`message.createdAt`, `seq` tiebreak). Cancelling the in-flight run therefore still delivers the batch.
+3. **No lost messages across restart.** The pending row is the durable marker. A worker sweep (`pendingBatchSweepInterval`, 10s) re-polls for (agent, thread) pairs with pending rows but no in-flight run and drains them — covering a crash between the terminal update and the drain, and an API-side cancel of a queued (never-executed) run.
+
+DeepWater/product-handoff runs keep their own stricter invariants and never touch this module; mailbox, subtask, workflow, restart, and external-agent runs are likewise outside the claim. Workflow-installation triggers fire a `WorkflowRun`, not an agent run, and are unaffected.
+
 ### Task Orchestrator
 
 The task system manages work allocation and lifecycle:

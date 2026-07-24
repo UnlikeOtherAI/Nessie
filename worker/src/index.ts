@@ -63,6 +63,7 @@ import {
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
+import { sweepPendingThreadMessages } from './run/thread-serialization.js'
 import {
   executeCommsIncrementalSyncJob,
   executeCommsInitialSyncJob,
@@ -492,6 +493,25 @@ export const startWorker = async (
     }
   }, 15_000)
 
+  // Re-poll for pended thread messages whose in-flight run vanished without
+  // draining (worker crash between terminal update and drain, or an API-side
+  // cancel of a queued run): enqueue their batched follow-up run.
+  let pendingBatchSweepInFlight = false
+  const pendingBatchSweepInterval = setInterval(async () => {
+    if (pendingBatchSweepInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    pendingBatchSweepInFlight = true
+    try {
+      await sweepPendingThreadMessages(prisma, { limit: 20 })
+    } catch (error) {
+      console.error('[worker.pending-batch-sweep] failed', error)
+    } finally {
+      pendingBatchSweepInFlight = false
+    }
+  }, 10_000)
+
   // Enqueue the communications subscription-renewal sweep on a fixed cadence.
   // The idempotency key is bucketed to the interval so multiple worker replicas
   // ticking together enqueue at most one sweep per window.
@@ -534,6 +554,7 @@ export const startWorker = async (
     clearInterval(mailboxSweepInterval)
     clearInterval(runnerHeartbeatInterval)
     clearInterval(executionLeaseSweepInterval)
+    clearInterval(pendingBatchSweepInterval)
     clearInterval(commsRenewInterval)
     modelClient.close()
     await realtimeTransport.close()
