@@ -13,6 +13,7 @@ import {
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 import { enqueueRunExecution } from '../queue/pgqueue.js'
+import { claimThreadRunOrPend } from '@nessie/db'
 import { dispatchWorkflowTrigger } from './trigger-dispatch-workflow.js'
 import {
   type DispatchTriggerResult,
@@ -137,7 +138,7 @@ export const dispatchAgentTrigger = async (
       triggerId: input.triggerId,
     })
 
-    if (existing?.runId) {
+    if (existing) {
       return {
         kind: 'queued',
         delivery: mapTriggerDeliveryRecord({
@@ -145,7 +146,7 @@ export const dispatchAgentTrigger = async (
           run: existing.delivery.run,
         }),
         existing: true,
-        runId: parseRunId(existing.runId),
+        runId: existing.runId ? parseRunId(existing.runId) : undefined,
         trigger: mapTriggerRecord(trigger),
       }
     }
@@ -208,46 +209,71 @@ export const dispatchAgentTrigger = async (
         },
       })
 
-      const run = await tx.run.create({
-        data: {
-          agentId,
-          status: 'pending',
-          threadId: threadTarget.threadId,
+      // Same per-(agent, thread) claim as the worker's chat/trigger paths:
+      // with a run already in flight the kickoff message pends for the batched
+      // follow-up instead of spawning a concurrent run — the fire is batched,
+      // not dropped. The pending row carries the trigger linkage so the drain
+      // can attach it to the follow-up run.
+      const claim = await claimThreadRunOrPend(tx, {
+        agentId,
+        threadId: threadTarget.threadId,
+        pending: {
+          actorContext,
+          channelId: threadTarget.channelId,
+          // A trigger fire is automation, never a live human turn.
+          interactive: false,
+          messageId: message.id,
           triggerId: trigger.id,
           triggerDeliveryId: delivery.id,
         },
       })
 
-      const task = await tx.task.create({
-        data: {
-          agentId,
-          organizationId: agent.organizationId ?? threadTarget.organizationId,
-          purpose: content.slice(0, 200),
-          runId: run.id,
-          status: 'inbox',
-        },
-      })
-
-      const queuePayload = {
-        actorContext: {
-          ...actorContext,
-          actionContext: {
-            ...actorContext.actionContext,
-            agentId: parseAgentId(agentId),
-            channelId: parseChannelId(threadTarget.channelId),
-            taskId: parseTaskId(task.id),
-            threadId: parseThreadId(threadTarget.threadId),
+      let run: { id: string } | null = null
+      if (claim === 'claimed') {
+        run = await tx.run.create({
+          data: {
+            agentId,
+            status: 'pending',
+            threadId: threadTarget.threadId,
+            triggerId: trigger.id,
+            triggerDeliveryId: delivery.id,
           },
-        },
-        agentId: parseAgentId(agentId),
-        messageId: message.id,
-        runId: parseRunId(run.id),
-        taskId: parseTaskId(task.id),
-        threadId: parseThreadId(threadTarget.threadId),
+        })
+
+        const task = await tx.task.create({
+          data: {
+            agentId,
+            organizationId: agent.organizationId ?? threadTarget.organizationId,
+            purpose: content.slice(0, 200),
+            runId: run.id,
+            status: 'inbox',
+          },
+        })
+
+        const queuePayload = {
+          actorContext: {
+            ...actorContext,
+            actionContext: {
+              ...actorContext.actionContext,
+              agentId: parseAgentId(agentId),
+              channelId: parseChannelId(threadTarget.channelId),
+              taskId: parseTaskId(task.id),
+              threadId: parseThreadId(threadTarget.threadId),
+            },
+          },
+          agentId: parseAgentId(agentId),
+          messageId: message.id,
+          runId: parseRunId(run.id),
+          taskId: parseTaskId(task.id),
+          threadId: parseThreadId(threadTarget.threadId),
+        }
+
+        await enqueueRunExecution(tx, queuePayload, `run:${run.id}`)
       }
 
-      await enqueueRunExecution(tx, queuePayload, `run:${run.id}`)
-
+      // The fire itself is durably recorded in both outcomes: claimed (run
+      // created above) or pended (pending marker + this delivered delivery;
+      // the drain attaches the follow-up run).
       const completedDelivery = await tx.agentTriggerDelivery.update({
         where: { id: delivery.id },
         data: {
@@ -275,7 +301,7 @@ export const dispatchAgentTrigger = async (
       kind: 'queued',
       delivery: mapTriggerDeliveryRecord(result.completedDelivery),
       existing: false,
-      runId: parseRunId(result.run.id),
+      runId: result.run ? parseRunId(result.run.id) : undefined,
       trigger: mapTriggerRecord(trigger),
     }
   } catch (error) {
@@ -289,7 +315,7 @@ export const dispatchAgentTrigger = async (
         triggerId: input.triggerId,
       })
 
-      if (existing?.runId) {
+      if (existing) {
         const latestTrigger = await loadTrigger()
         if (!latestTrigger) {
           return { kind: 'rejected', reason: 'trigger_not_found' }
@@ -302,7 +328,7 @@ export const dispatchAgentTrigger = async (
             run: existing.delivery.run,
           }),
           existing: true,
-          runId: parseRunId(existing.runId),
+          runId: existing.runId ? parseRunId(existing.runId) : undefined,
           trigger: mapTriggerRecord(latestTrigger),
         }
       }

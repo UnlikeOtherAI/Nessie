@@ -119,7 +119,7 @@ const decideReplyForMessage = async (
   prisma: PrismaClient,
   seed: Seed,
   message: { id: string; content: string },
-): Promise<'claimed' | 'pended'> => {
+): Promise<'claimed' | 'pended' | 'duplicate'> => {
   return prisma.$transaction(async (tx) => {
     const claim = await claimThreadRunOrPend(tx, {
       agentId: seed.agentId,
@@ -131,8 +131,8 @@ const decideReplyForMessage = async (
         messageId: message.id,
       },
     })
-    if (claim === 'pended') {
-      return 'pended'
+    if (claim !== 'claimed') {
+      return claim
     }
     const run = await tx.run.create({
       data: {
@@ -361,4 +361,50 @@ runDatabaseTest('cancelling the in-flight run still fires the batched follow-up'
     }),
     0,
   )
+})
+
+runDatabaseTest('decide-job redelivery after commit is a no-op: one run, no pending, nothing to drain', async (t) => {
+  const prisma = new PrismaClient()
+  const seed = await seedWorkspace(prisma)
+  t.after(async () => {
+    await cleanup(prisma, seed)
+    await prisma.$disconnect()
+  })
+
+  const message = await postMessage(prisma, seed, 'hello')
+
+  // First delivery: claims the slot and commits run R1 for message M.
+  assert.equal(await decideReplyForMessage(prisma, seed, message), 'claimed')
+
+  // Redelivery before ack (at-least-once queue): R1 is still active, but the
+  // claim must recognize M as already delivered — no pend, no second run.
+  assert.equal(await decideReplyForMessage(prisma, seed, message), 'duplicate')
+  assert.equal((await runsForThread(prisma, seed)).length, 1)
+  assert.equal(
+    await prisma.runThreadPendingMessage.count({
+      where: { agentId: seed.agentId, threadId: seed.threadId },
+    }),
+    0,
+  )
+
+  // Redelivery after R1 went terminal: any-status dedupe still no-ops, and the
+  // slot being free does NOT produce a fresh run for the same message.
+  const run = (await runsForThread(prisma, seed))[0]
+  assert.ok(run)
+  await prisma.run.update({
+    where: { id: run.id },
+    data: { status: 'completed', finishedAt: new Date() },
+  })
+  assert.equal(await decideReplyForMessage(prisma, seed, message), 'duplicate')
+  assert.equal((await runsForThread(prisma, seed)).length, 1)
+
+  // The drain finds nothing: no batched follow-up is produced for M.
+  assert.equal(
+    await drainPendingThreadMessages(prisma, {
+      agentId: seed.agentId,
+      threadId: seed.threadId,
+    }),
+    null,
+  )
+  assert.equal((await runsForThread(prisma, seed)).length, 1)
 })

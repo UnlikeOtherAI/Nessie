@@ -296,6 +296,10 @@ export const queueTriggerRun = async (
           channelId: input.trigger.targetChannelId,
           interactive: false,
           messageId: message.id,
+          // Copied onto the batched follow-up run when this fire ends up as
+          // the latest pending row at drain time.
+          triggerId: input.trigger.id,
+          triggerDeliveryId: delivery.id,
         },
       })
 

@@ -9,6 +9,8 @@ CREATE TABLE "run_thread_pending_messages" (
     "channel_id" UUID NOT NULL,
     "interactive" BOOLEAN NOT NULL DEFAULT false,
     "actor_context" JSONB NOT NULL,
+    "trigger_id" UUID,
+    "trigger_delivery_id" UUID,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "run_thread_pending_messages_pkey" PRIMARY KEY ("seq")
@@ -24,3 +26,9 @@ CREATE INDEX "run_thread_pending_messages_thread_id_seq_idx" ON "run_thread_pend
 ALTER TABLE "run_thread_pending_messages" ADD CONSTRAINT "run_thread_pending_messages_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "agents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "run_thread_pending_messages" ADD CONSTRAINT "run_thread_pending_messages_thread_id_fkey" FOREIGN KEY ("thread_id") REFERENCES "threads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "run_thread_pending_messages" ADD CONSTRAINT "run_thread_pending_messages_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "messages"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Trigger provenance of a pended trigger fire: the drain copies the latest
+-- pending row's linkage onto the batched follow-up run. SetNull so retiring a
+-- trigger/delivery never blocks the pending marker.
+ALTER TABLE "run_thread_pending_messages" ADD CONSTRAINT "run_thread_pending_messages_trigger_id_fkey" FOREIGN KEY ("trigger_id") REFERENCES "agent_triggers"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "run_thread_pending_messages" ADD CONSTRAINT "run_thread_pending_messages_trigger_delivery_id_fkey" FOREIGN KEY ("trigger_delivery_id") REFERENCES "agent_trigger_deliveries"("id") ON DELETE SET NULL ON UPDATE CASCADE;

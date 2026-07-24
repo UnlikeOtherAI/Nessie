@@ -168,8 +168,20 @@ export const executeOrchestrateDecideJob = async (
       // Per-(agent, thread) serialization: claim the run slot inside this
       // transaction. If a run is already in flight, the message is recorded as
       // a durable pending marker and delivered in the batched follow-up run
-      // the completion path enqueues — no concurrent run is spawned.
-      const outcome = await deps.prisma.$transaction(async (tx) => {
+      // the completion path enqueues — no concurrent run is spawned. The queue
+      // is at-least-once: a redelivery of THIS decide job (already committed)
+      // comes back as 'duplicate' and no-ops, so the message is never replied
+      // to twice.
+      const outcome = await deps.prisma.$transaction(
+        async (tx): Promise<
+          | { kind: 'pended' }
+          | { kind: 'duplicate' }
+          | {
+              kind: 'claimed'
+              run: { agentId: string; id: string; status: string; threadId: string }
+              task: { id: string }
+            }
+        > => {
         const claim = await claimThreadRunOrPend(tx, {
           agentId: decision.agentId,
           threadId,
@@ -182,8 +194,8 @@ export const executeOrchestrateDecideJob = async (
             messageId,
           },
         })
-        if (claim === 'pended') {
-          return { kind: 'pended' as const }
+        if (claim !== 'claimed') {
+          return claim === 'pended' ? { kind: 'pended' as const } : { kind: 'duplicate' as const }
         }
 
         // Wrap run + task creation and job enqueueing in a transaction.
@@ -248,6 +260,20 @@ export const executeOrchestrateDecideJob = async (
         console.log(
           JSON.stringify({
             event: 'orchestrate.pended',
+            agentId: decision.agentId,
+            messageId,
+            threadId,
+          }),
+        )
+        continue
+      }
+      if (outcome.kind === 'duplicate') {
+        // At-least-once redelivery of a decide job that already committed:
+        // the run (or pending marker) for this exact message exists, so this
+        // delivery must not reply again.
+        console.log(
+          JSON.stringify({
+            event: 'orchestrate.duplicate',
             agentId: decision.agentId,
             messageId,
             threadId,

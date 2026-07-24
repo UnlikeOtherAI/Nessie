@@ -271,8 +271,35 @@ runDatabaseTest('restart: a running run is rejected as not-terminal', async (t) 
   assert.deepEqual(result, { kind: 'not_terminal', status: 'running' })
 })
 
-runDatabaseTest('restart: a completed run is rejected as not-restartable', async (t) => {
+runDatabaseTest('restart: another active run on the thread rejects with thread-busy', async (t) => {
   const prisma = new PrismaClient()
+  const seed = await seedWorkspace(prisma)
+  t.after(async () => {
+    await cleanup(prisma, seed)
+    await prisma.$disconnect()
+  })
+
+  const run = await createRun(prisma, seed, 'failed', { withTriggerMessage: true })
+  // A different run is in flight on the same (agent, thread).
+  await prisma.run.create({
+    data: { agentId: seed.agentId, threadId: seed.threadId, status: 'running' },
+  })
+
+  const result = await restartRun(prisma, actorFor(seed), {
+    organizationId: seed.organizationId,
+    runId: run.id,
+  })
+  assert.deepEqual(result, { kind: 'thread_busy' })
+
+  // No restart run was created and nothing was enqueued.
+  const runs = await prisma.run.findMany({
+    where: { agentId: seed.agentId, threadId: seed.threadId },
+  })
+  assert.equal(runs.length, 2)
+  assert.equal(runs.every((entry) => entry.restartOfRunId === null), true)
+})
+
+runDatabaseTest('restart: a completed run is rejected as not-restartable', async (t) => {  const prisma = new PrismaClient()
   const seed = await seedWorkspace(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)

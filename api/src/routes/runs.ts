@@ -125,6 +125,14 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RouteDeps): void =
           'The original input for this run is no longer available to replay',
         )
         return reply
+      case 'thread_busy':
+        sendApiError(
+          reply,
+          409,
+          'RUN_THREAD_BUSY',
+          'Another run is already active on this thread; wait for it to finish before restarting',
+        )
+        return reply
       case 'restarted':
         reply.code(201)
         return createApiResponse({
