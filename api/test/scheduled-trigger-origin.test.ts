@@ -68,6 +68,11 @@ const createHarness = (
       // The per-(agent, thread) slot claim: no active run, so the fire claims.
       findFirst: async () => null,
     },
+    runThreadPendingMessage: {
+      // Redelivery dedupe: no pending marker for this message.
+      findFirst: async () => null,
+      create: async () => ({}),
+    },
     task: {
       create: async () => ({ id: TASK_ID }),
     },
