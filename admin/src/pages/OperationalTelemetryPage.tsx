@@ -272,7 +272,7 @@ export const OperationalTelemetryPage = () => {
                       {row.outcome}
                     </div>
                     <div className="text-xs text-[color:var(--tx2)]">
-                      {formatCount(row.runCount)} runs
+                      {formatCount(row.runCount)} {row.runCount === 1 ? 'run' : 'runs'}
                     </div>
                   </div>
                   <div className="text-right">
