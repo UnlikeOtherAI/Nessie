@@ -15,6 +15,10 @@ Multi-tenant, self-hosted agentic work platform. Organisations host their own Ne
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
 - **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
 
+## Message reply threads (#233)
+
+`Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. A run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`; conversation history and thread-following scope to the reply thread); DeepWater/product-handoff and external-agent paths stay top-level and byte-identical. Admin: reply-summary bar under roots, deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`, pushes ≥1280px, overlay 900–1279px, full-screen <900px, drag-resized width persisted), `T` opens the focused message's thread. Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.
+
 Legacy single-user server lives in `src/` and is being removed — do not rely on it for new work.
 
 ## File storage & accounting — single chokepoint
