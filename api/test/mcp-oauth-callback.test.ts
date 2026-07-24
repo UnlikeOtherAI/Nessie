@@ -6,6 +6,7 @@ import Fastify from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 
 import { registerMcpOAuthRoutes } from '../src/routes/mcp/oauth.js'
+import { RateLimiter } from '../src/services/rate-limit.js'
 import type { SecretStore } from '@nessie/mcp-manage'
 
 /**
@@ -26,8 +27,36 @@ import type { SecretStore } from '@nessie/mcp-manage'
 const makeApp = () => {
   const app = Fastify({ logger: false })
   const oauthSecretStore: SecretStore = { put: async () => 'secret_stub' }
+  // The unauthenticated callback passes through the brute-force guard first:
+  // fake the limiter store (always under the limit) and the audit hash-chain
+  // reads the lockout path would need.
+  const rateLimitTx = {
+    $executeRaw: async () => 0,
+    auditLog: {
+      create: async () => ({}),
+      findFirst: async () => null,
+    },
+  }
+  const rateLimiter = new RateLimiter(
+    {
+      $queryRaw: async () => [{ count: 1 }],
+      $executeRaw: async () => 0,
+      $transaction: async <T>(callback: (tx: typeof rateLimitTx) => Promise<T>) =>
+        callback(rateLimitTx),
+    } as unknown as PrismaClient,
+    { error: () => {} },
+  )
+  const config = {
+    api: {
+      rateLimit: {
+        mcpOauthIp: { max: 100, windowMs: 60_000 },
+      },
+    },
+  }
   registerMcpOAuthRoutes(app, {
     prisma: {} as unknown as PrismaClient,
+    config,
+    rateLimiter,
     requireActorContext: () => null,
     requireOwner: () => false,
     oauthSecretStore,

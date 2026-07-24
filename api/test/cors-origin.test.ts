@@ -9,6 +9,7 @@ const dbStub = [
   'export const getPrismaClient = () => {',
   '  throw new Error("@nessie/db is not used by cors-origin.test.ts")',
   '}',
+  'export const writeAuditEntry = async () => {}',
 ].join('\n')
 
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
