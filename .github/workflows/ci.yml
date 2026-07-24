@@ -201,3 +201,56 @@ jobs:
 
       - name: Smoke-test upgraded database
         run: cd api && node scripts/upgrade-smoke.mjs
+  smoke:
+    name: Mock-LLM Smoke
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: nessie_test
+          POSTGRES_USER: nessie
+          POSTGRES_PASSWORD: nessie
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://nessie:nessie@localhost:5432/nessie_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @nessie/api prisma:generate
+
+      - name: Build shared packages
+        run: pnpm --filter "./packages/*" build
+
+      - name: Apply database migrations
+        run: pnpm --filter @nessie/api prisma:migrate:deploy
+
+      # End-to-end smoke: seeded org → run.execute enqueue → agentic loop →
+      # builtin tool call → completion, with inference served deterministically
+      # by @nessie/mock-llm (no provider tokens). Asserts terminal state, the
+      # tool-call row, token-ledger events, and the run.timing TaskEvent.
+      - name: Run mock-LLM smoke test
+        run: pnpm --filter @nessie/worker test:smoke

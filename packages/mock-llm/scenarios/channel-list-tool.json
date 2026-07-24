@@ -1,0 +1,27 @@
+{
+  "name": "channel-list-tool",
+  "description": "Turn 0 calls the channel_list builtin tool; turn 1 answers with the tool result. Used by the CI smoke test and the default load scenario.",
+  "defaults": {
+    "latencyMs": 0,
+    "model": "mock-model"
+  },
+  "turns": [
+    {
+      "latencyMs": 20,
+      "text": "Let me check which channels exist first.",
+      "toolCalls": [
+        {
+          "arguments": { "limit": 5 },
+          "toolCallId": "mock-call-channel-list-1",
+          "toolName": "channel_list"
+        }
+      ],
+      "usage": { "inputTokens": 140, "outputTokens": 24 }
+    },
+    {
+      "latencyMs": 20,
+      "text": "The workspace has a handful of channels, including the one we are talking in right now.",
+      "usage": { "inputTokens": 210, "outputTokens": 18 }
+    }
+  ]
+}
