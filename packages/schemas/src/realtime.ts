@@ -102,6 +102,26 @@ export type WsEventMap = {
     deletedAt: string
   }
   'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
+  // Message-level reply threads (#233): additive kinds so older clients
+  // degrade by ignoring them.
+  'message.reply': {
+    agentId?: AgentId
+    authorUserId?: UserId
+    channelId?: ChannelId
+    messageId: string
+    rootMessageId: string
+    role: MessageRole
+    contentPreview: string
+    threadId: ThreadId
+  }
+  'message.reply.meta': {
+    channelId?: ChannelId
+    threadId: ThreadId
+    rootMessageId: string
+    replyCount: number
+    lastReplyAt?: string
+    replyParticipantIds: string[]
+  }
   'agent.iteration': {
     agentId: string
     iteration: number
@@ -261,6 +281,27 @@ export const MessageDeletedEventSchema = z.object({
   deletedAt: TimestampSchema,
 })
 export type MessageDeletedEvent = z.infer<typeof MessageDeletedEventSchema>
+// Message-level reply threads (#233): reply-created + root metadata-updated.
+export const MessageReplyEventSchema = z.object({
+  agentId: AgentIdSchema.optional(),
+  authorUserId: UserIdSchema.optional(),
+  channelId: ChannelIdSchema.optional(),
+  messageId: NonEmptyStringSchema,
+  rootMessageId: NonEmptyStringSchema,
+  role: MessageRoleSchema,
+  contentPreview: z.string(),
+  threadId: ThreadIdSchema,
+})
+export type MessageReplyEvent = z.infer<typeof MessageReplyEventSchema>
+export const MessageReplyMetaEventSchema = z.object({
+  channelId: ChannelIdSchema.optional(),
+  threadId: ThreadIdSchema,
+  rootMessageId: NonEmptyStringSchema,
+  replyCount: z.number().int().nonnegative(),
+  lastReplyAt: TimestampSchema.optional(),
+  replyParticipantIds: z.array(z.string().uuid()),
+})
+export type MessageReplyMetaEvent = z.infer<typeof MessageReplyMetaEventSchema>
 export const ApprovalResolvedEventSchema = z.object({
   approvalId: NonEmptyStringSchema,
   taskId: TaskIdSchema,
@@ -304,6 +345,8 @@ export const WsEventNameSchema = z.enum([
   'message.updated',
   'message.deleted',
   'message.reaction',
+  'message.reply',
+  'message.reply.meta',
   'agent.iteration',
   'alert.created',
   'alert.read',
@@ -452,6 +495,18 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('message.reaction'),
     data: MessageReactionEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('message.reply'),
+    data: MessageReplyEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('message.reply.meta'),
+    data: MessageReplyMetaEventSchema,
     ts: TimestampSchema,
   }),
   z.object({

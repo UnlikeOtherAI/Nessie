@@ -242,6 +242,12 @@ export type ThreadMessageRecord = {
   editedAt?: string | null
   deletedAt?: string | null
   id: string
+  // Message-level reply threads (#233): set on replies; the metadata fields
+  // are materialized on roots for collapsed-bar rendering.
+  rootMessageId?: string | null
+  replyCount?: number
+  lastReplyAt?: string | null
+  replyParticipantIds?: string[]
   metadata?: Record<string, unknown>
   reactions?: MessageReaction[]
   role: 'assistant' | 'system' | 'user'

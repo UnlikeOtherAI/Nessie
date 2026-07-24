@@ -43,6 +43,12 @@ export const ThreadMessageRecordSchema = z.object({
   createdAt: TimestampSchema,
   editedAt: TimestampSchema.nullish(),
   deletedAt: TimestampSchema.nullish(),
+  // Message-level reply threads (#233): set on replies (id of the top-level
+  // root they belong to); the metadata fields are materialized on roots.
+  rootMessageId: z.string().uuid().nullish(),
+  replyCount: z.number().int().nonnegative().optional(),
+  lastReplyAt: TimestampSchema.nullish(),
+  replyParticipantIds: z.array(z.string().uuid()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   reactions: MessageReactionRecordSchema.array().optional(),
 })
@@ -115,6 +121,12 @@ export const CreateThreadMessageBodySchema = z.object({
   // Attachments are uploaded first via POST /api/uploads; the returned ids are
   // linked to the message after it is created.
   attachmentIds: z.array(z.string().uuid()).optional(),
+  // Reply threads (#233): when set, the message is a reply under this root
+  // (validated to live in the same container thread and to be a root itself).
+  rootMessageId: z.string().uuid().optional(),
+  // Slack-parity "Also send to #channel": posts an additional top-level copy
+  // referencing the reply thread.
+  alsoSendToChannel: z.boolean().optional(),
 })
 
 // ─── sp-messaging slice: edit, delete, search ──────────────────────────────
@@ -128,8 +140,17 @@ export const ListThreadMessagesQuerySchema = z.object({
   after: z.string().min(1).optional(),
   limit: z.coerce.number().int().positive().max(200).optional(),
   senderId: z.string().uuid().optional(),
+  // When set, lists replies of that root message; otherwise lists top-level
+  // posts (roots) only.
+  rootMessageId: z.string().uuid().optional(),
 })
 export type ListThreadMessagesQuery = z.infer<typeof ListThreadMessagesQuerySchema>
+
+// Explicit follow/unfollow of a reply thread (#233).
+export const SetMessageThreadFollowBodySchema = z.object({
+  following: z.boolean(),
+})
+export type SetMessageThreadFollowBody = z.infer<typeof SetMessageThreadFollowBodySchema>
 
 export const MessageSearchResultSchema = z.object({
   id: z.string().uuid(),

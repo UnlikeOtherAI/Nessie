@@ -670,6 +670,7 @@ model User {
   threadReadStates    ThreadReadState[]
   userAlerts          UserAlert[]
   userAlertActivity   UserAlert[]          @relation("UserAlertActor")
+  messageThreadFollows MessageThreadFollow[]
   favorites           Favorite[]
   assignedTasks       Task[]               @relation("TaskAssignee")
   ownedTasks          Task[]               @relation("TaskOwner")
@@ -1285,21 +1286,48 @@ model Message {
   role      MessageRole
   content   String
   metadata  Json?             @default("{}")
+  // Message-level reply threads: null = top-level post in the container
+  // thread; set = reply belonging to that root's reply thread (one level
+  // deep — replies to replies attach to the same root).
+  rootMessageId String?       @map("root_message_id") @db.Uuid
+  // Materialized per-root reply metadata, maintained transactionally on
+  // reply create. replyParticipantIds holds distinct author ids (user or
+  // agent) of replies, capped for cheap collapsed-bar rendering.
+  replyCount    Int           @default(0) @map("reply_count")
+  lastReplyAt   DateTime?     @map("last_reply_at")
+  replyParticipantIds String[] @map("reply_participant_ids") @db.Uuid
   createdAt DateTime          @default(now()) @map("created_at")
   editedAt  DateTime?         @map("edited_at")
   deletedAt DateTime?         @map("deleted_at")
   thread    Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
   agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
   user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rootMessage  Message?       @relation("MessageReplies", fields: [rootMessageId], references: [id], onDelete: SetNull)
+  replies      Message[]      @relation("MessageReplies")
   reactions MessageReaction[]
   userAlerts UserAlert[]
+  threadFollows MessageThreadFollow[]
   productIntegrationRuns ProductIntegrationRun[]
   triggeredRuns Run[]            @relation("RunTriggerMessage")
   runThreadPendingMessages RunThreadPendingMessage[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
+  @@index([rootMessageId, createdAt])
   @@map("messages")
+}
+
+model MessageThreadFollow {
+  id            String   @id @default(uuid()) @db.Uuid
+  rootMessageId String   @map("root_message_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  rootMessage   Message  @relation(fields: [rootMessageId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([rootMessageId, userId])
+  @@index([userId])
+  @@map("message_thread_follows")
 }
 
 model MessageReaction {
