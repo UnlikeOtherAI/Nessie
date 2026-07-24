@@ -22,6 +22,7 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - **All blob file work** (store, stream, download, delete, version, attachment-linking) goes through the one `@nessie/runtime` `FileService` (`createFileService`). Never call `getStorage` / `storage.*` or `prisma.attachment` for file bytes anywhere else — route uploads, worker tools, avatars, and logos all use the `FileService`.
 - **Accounting is part of every file op, not optional:** each store writes a `+bytes` and each delete a `-bytes` `StorageUsageEvent`, so org / team / space / uploader usage is always known. Uploads are quota-gated by `Budget.storageLimitBytes`.
 - Uploads stream end-to-end (default cap `NESSIE_MAX_UPLOAD_BYTES` = 5 GiB; never buffer whole files). `Attachment.sizeBytes` is `BigInt`, serialized as a string at API boundaries.
+- JPEG/PNG/WebP uploads have EXIF/GPS metadata stripped at the `FileService` store chokepoint (EXIF orientation applied to the pixels first, ICC profiles preserved, accounting records the post-strip size); orgs can opt out via `Organization.stripImageMetadata`, and images over 50 MiB or undecodable pass through unchanged to keep uploads streaming.
 - Backend = S3-compatible MinIO in production, `filesystem` in local dev. KB file nodes (`KnowledgePage.kind = file`) and page attachments live alongside documents — see [docs/knowledge-base-requirements.md](docs/knowledge-base-requirements.md).
 
 ## Web Push (browser notifications)
