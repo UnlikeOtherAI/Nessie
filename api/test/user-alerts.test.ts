@@ -6,7 +6,7 @@ import type { PrismaClient } from '@prisma/client'
 
 import { registerAlertRoutes } from '../src/routes/alerts.js'
 import { listUserAlerts, markUserAlertsRead } from '../src/services/alerts.js'
-import { createThreadMessage } from '../src/services/messages.js'
+import { createThreadMessage } from '../src/services/message-create.js'
 import { actorContext, buildDeps } from './conformance/harness.js'
 import { TenantStore } from './conformance/tenant-store.js'
 

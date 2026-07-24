@@ -14,8 +14,8 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { enqueueOrchestrateDecide, enqueuePushDispatch } from '../queue/pgqueue.js'
+import { createThreadMessage } from '../services/message-create.js'
 import {
-  createThreadMessage,
   findThreadForUser,
   mapMessageRecord,
 } from '../services/messages.js'

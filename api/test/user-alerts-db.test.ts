@@ -5,7 +5,7 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 
 import { listUserAlerts, markUserAlertsRead } from '../src/services/alerts.js'
-import { createThreadMessage } from '../src/services/messages.js'
+import { createThreadMessage } from '../src/services/message-create.js'
 
 // DB-backed coverage for the user_alerts migration (#246): real FKs, the real
 // message-create transaction, and the real list/read queries (including the

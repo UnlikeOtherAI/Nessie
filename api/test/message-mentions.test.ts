@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 
-import { createThreadMessage } from '../src/services/messages.js'
+import { createThreadMessage } from '../src/services/message-create.js'
 
 // A channel with one bound agent ("Bound"); the org also has a shared agent
 // "Scout" that is NOT a member of this channel.
