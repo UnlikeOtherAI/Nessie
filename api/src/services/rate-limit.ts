@@ -76,6 +76,8 @@ export class RateLimiter {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly logger: RateLimitLogger = consoleLogger,
+    /** Fraction of hits that sweep expired rows; 1.0 makes cleanup deterministic in tests. */
+    private readonly cleanupProbability: number = CLEANUP_PROBABILITY,
   ) {}
 
   snapshot() {
@@ -122,10 +124,13 @@ export class RateLimiter {
       `
       const count = rows[0]?.count ?? 1
       // Bounded cleanup: 2% of hits sweep expired rows, keeping the table at
-      // ~live keys per window without a background job.
-      if (Math.random() < CLEANUP_PROBABILITY) {
+      // ~live keys per window without a background job. The sweep is scoped
+      // to the triggering bucket: other buckets run on different windows, so
+      // their still-live rows must never be deleted here.
+      if (Math.random() < this.cleanupProbability) {
         await this.prisma.$executeRaw`
-          DELETE FROM "rate_limit_buckets" WHERE "window_start" < ${new Date(now - rule.windowMs)}
+          DELETE FROM "rate_limit_buckets"
+          WHERE "bucket" = ${bucket} AND "window_start" < ${new Date(now - rule.windowMs)}
         `
       }
       const limited = count > rule.max

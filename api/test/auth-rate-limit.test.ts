@@ -5,12 +5,13 @@ import type { RateLimitDecision, RateLimitRule } from '../src/services/rate-limi
 
 /**
  * Unit coverage for the Postgres-backed auth brute-force limiter (issue #211)
- * using an in-memory fake of the `$queryRaw` upsert-increment store. Route-level
+ * using an in-memory fake of the `$queryRaw` upsert-increment store and the
+ * `$executeRaw` cleanup sweep. Route-level
  * behaviour (429 + Retry-After, proxy trust, /health exemption) is covered in
  * auth-rate-limit-routes.test.ts.
  */
 
-type BucketRow = { count: number }
+type BucketRow = { bucket: string; windowStartMs: number; count: number }
 
 class FakeRateLimitStore {
   readonly rows = new Map<string, BucketRow>()
@@ -33,14 +34,41 @@ class FakeRateLimitStore {
       // Positional args: id, bucket, keyHash, windowStart, ...
       const bucket = String(values[1])
       const keyHash = String(values[2])
-      const windowStart = (values[3] as Date).toISOString()
-      const key = `${bucket}|${keyHash}|${windowStart}`
-      const row = this.rows.get(key) ?? { count: 0 }
+      const windowStart = values[3] as Date
+      const key = `${bucket}|${keyHash}|${windowStart.toISOString()}`
+      const row = this.rows.get(key) ?? {
+        bucket,
+        windowStartMs: windowStart.getTime(),
+        count: 0,
+      }
       row.count += 1
       this.rows.set(key, row)
       return [{ count: row.count }]
     },
-    $executeRaw: async (): Promise<number> => 0,
+    $executeRaw: async (
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Promise<number> => {
+      const query = strings.join('?')
+      assert.ok(
+        query.includes('DELETE FROM "rate_limit_buckets"'),
+        `unexpected $executeRaw query: ${query}`,
+      )
+      // Mirror the real DELETE: optional bucket scoping, then window expiry.
+      const bucketFilter = query.includes('"bucket" = ?')
+        ? String(values[0])
+        : null
+      const thresholdMs = (values[values.length - 1] as Date).getTime()
+      let deleted = 0
+      for (const [key, row] of this.rows) {
+        if (bucketFilter !== null && row.bucket !== bucketFilter) continue
+        if (row.windowStartMs < thresholdMs) {
+          this.rows.delete(key)
+          deleted += 1
+        }
+      }
+      return deleted
+    },
   }
 }
 
@@ -136,6 +164,34 @@ test('guard counts IP and account independently and rejects when either trips', 
     (await limiter.guard({ rules, ip: '198.51.100.2', accountIdentity: 'user-1' })).allowed,
     true,
   )
+})
+
+test('cleanup is scoped to its own bucket: short-window sweeps keep longer-window rows', async (t) => {
+  // Start 14 minutes into a 15-minute window so the long bucket's live row
+  // has a window_start older than the short bucket's 60s sweep threshold.
+  t.mock.timers.enable({ apis: ['Date'], now: 900_000 + 840_000 })
+  const store = new FakeRateLimitStore()
+  const { RateLimiter } = await import('../src/services/rate-limit.js')
+  // cleanupProbability 1.0: every hit sweeps, so the regression is deterministic.
+  const limiter = new RateLimiter(store.prisma as never, noopLogger, 1.0)
+
+  const SHORT: RateLimitRule = { max: 10, windowMs: 60_000 }
+  const LONG: RateLimitRule = { max: 10, windowMs: 15 * 60_000 }
+  const identity = 'ip:203.0.113.9'
+
+  // One live hit on the long (15-min) bucket.
+  assert.equal((await limiter.check('test.long', LONG, identity)).count, 1)
+
+  // Thirty seconds later the long window is still live, but the short bucket's
+  // sweep threshold (now - 60s) is past the long row's window_start. The
+  // unscoped DELETE used to wipe the long row here, resetting its counter.
+  t.mock.timers.tick(30_000)
+  await limiter.check('test.short', SHORT, identity)
+
+  // The long bucket's live row survives and its count continues on the same row.
+  const continued = await limiter.check('test.long', LONG, identity)
+  assert.equal(continued.count, 2)
+  assert.equal(continued.limited, false)
 })
 
 test('the store fails open: a store error allows the request and logs loudly', async () => {

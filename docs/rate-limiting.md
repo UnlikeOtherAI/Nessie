@@ -35,7 +35,9 @@ context.
   across replicas and restarts. There is no Redis in this stack; Postgres is
   the only shared store and the auth endpoints already touch it per request.
   Windows are fixed rather than sliding so each identity costs one row per
-  live window; ~2% of hits sweep rows from expired windows, keeping the table
+  live window; ~2% of hits sweep rows from expired windows **within their own
+  bucket** (buckets run on different windows, so a short-window sweep must
+  never touch a longer bucket's live rows), keeping the table
   bounded by active keys with no background job.
 - **Key hashing**: store keys are `sha256(bucket:identity)` — raw IPs and
   user ids are never persisted in the counters table. The bucket is the
