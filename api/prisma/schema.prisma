@@ -748,6 +748,10 @@ model Organization {
   id               String               @id @default(uuid()) @db.Uuid
   name             String
   logoAttachmentId String?              @map("logo_attachment_id") @db.Uuid
+  // Owner/admin opt-out for EXIF/GPS metadata stripping on image uploads at
+  // the FileService chokepoint. Defaults to stripping (true); set false to
+  // preserve original metadata.
+  stripImageMetadata Boolean             @default(true) @map("strip_image_metadata")
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
   logoAttachment   Attachment?          @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)

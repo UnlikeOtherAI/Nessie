@@ -45,6 +45,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         name: organization.name,
         role: membership?.role ?? 'member',
         logoAttachmentId: organization.logoAttachmentId ?? null,
+        stripImageMetadata: organization.stripImageMetadata,
       }),
     )
   })
@@ -101,12 +102,15 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
     }
 
     // Each field is optional; only apply what was sent so a name-only PATCH
-    // leaves the logo intact and vice versa.
+    // leaves the logo and metadata-stripping flag intact and vice versa.
     const organization = await prisma.organization.update({
       where: { id: organizationId },
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.logoAttachmentId !== undefined ? { logoAttachmentId: body.logoAttachmentId } : {}),
+        ...(body.stripImageMetadata !== undefined
+          ? { stripImageMetadata: body.stripImageMetadata }
+          : {}),
       },
     })
 
@@ -116,6 +120,7 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
         name: organization.name,
         role: membership.role,
         logoAttachmentId: organization.logoAttachmentId ?? null,
+        stripImageMetadata: organization.stripImageMetadata,
       }),
     )
   })

@@ -11,6 +11,7 @@ import {
   type StorageUsageScope,
 } from '../ledger.js'
 import type { Storage } from '../storage/index.js'
+import { isStrippableImageMime, prepareImageUpload } from './strip-image-metadata.js'
 
 /**
  * The single chokepoint for blob file work. Everything that stores, streams,
@@ -23,6 +24,12 @@ import type { Storage } from '../storage/index.js'
  * stays in the knowledge provider; this service only owns the bytes those rows
  * point at. KB-aware scope is derived from the linked page so per-space/team
  * usage nets to zero on delete.
+ *
+ * Privacy: JPEG/PNG/WebP uploads have their EXIF/GPS metadata stripped here
+ * (EXIF orientation applied to the pixels first, ICC profiles preserved), so
+ * stored bytes never leak location/device data into multi-member workspaces.
+ * Orgs can opt out via `Organization.stripImageMetadata`; accounting always
+ * records the post-strip byte size. See ./strip-image-metadata.ts.
  */
 
 export class QuotaExceededError extends Error {
@@ -116,6 +123,16 @@ export const createFileService = (deps: {
     teamId: scope?.teamId ?? null,
   })
 
+  // Org-level opt-out for EXIF/GPS stripping; defaults to stripping when the
+  // org row is missing so privacy is the fail-safe posture.
+  const shouldStripImageMetadata = async (organizationId: string): Promise<boolean> => {
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { stripImageMetadata: true },
+    })
+    return org?.stripImageMetadata ?? true
+  }
+
   // For delete accounting we must mirror the scope the store event used so the
   // per-space/team SUM nets to zero. If the attachment is a KB page attachment,
   // derive the scope from its page; otherwise fall back to org-only.
@@ -158,10 +175,26 @@ export const createFileService = (deps: {
       throw new QuotaExceededError(pre.reason, pre.usedBytes, pre.limitBytes)
     }
 
+    // Privacy: strip EXIF/GPS metadata from JPEG/PNG/WebP uploads (applying
+    // EXIF orientation first) unless the org opted out. Accounting below
+    // records the post-strip byte size. Oversized or undecodable images pass
+    // through unchanged — see strip-image-metadata.ts.
+    let body = input.body
+    let width = input.width ?? null
+    let height = input.height ?? null
+    if (isStrippableImageMime(input.mime) && (await shouldStripImageMetadata(input.organizationId))) {
+      const prepared = await prepareImageUpload(body)
+      body = prepared.body
+      if (prepared.width !== null) {
+        width = prepared.width
+        height = prepared.height
+      }
+    }
+
     const storageKey = `${input.organizationId}/${randomUUID()}`
     let bytesWritten: number
     try {
-      const result = await storage.putStream(storageKey, input.body, {
+      const result = await storage.putStream(storageKey, body, {
         mime: input.mime,
         abortSignal: input.abortSignal,
       })
@@ -196,8 +229,8 @@ export const createFileService = (deps: {
           filename: input.filename,
           sizeBytes: BigInt(bytesWritten),
           storageKey,
-          width: input.width ?? null,
-          height: input.height ?? null,
+          width,
+          height,
         },
       })
     } catch (error) {

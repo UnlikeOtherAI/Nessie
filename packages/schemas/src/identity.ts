@@ -148,6 +148,7 @@ export const OrganizationSummarySchema = z.object({
   name: z.string(),
   role: z.string(),
   logoAttachmentId: z.string().uuid().nullable(),
+  stripImageMetadata: z.boolean(),
 })
 export type OrganizationSummary = z.infer<typeof OrganizationSummarySchema>
 
@@ -157,17 +158,25 @@ export const UpdateOrganizationLogoRequestSchema = z.object({
 })
 export type UpdateOrganizationLogoRequest = z.infer<typeof UpdateOrganizationLogoRequestSchema>
 
-// Owners/admins update the org profile: rename and/or set/clear the logo. Each
-// field is optional so a name-only or logo-only PATCH leaves the other intact;
+// Owners/admins update the org profile: rename, set/clear the logo, and/or
+// toggle EXIF/GPS metadata stripping on image uploads (default on). Each field
+// is optional so a name-only or logo-only PATCH leaves the others intact;
 // at least one must be present.
 export const UpdateOrganizationRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
     logoAttachmentId: z.string().uuid().nullable().optional(),
+    stripImageMetadata: z.boolean().optional(),
   })
-  .refine((body) => body.name !== undefined || body.logoAttachmentId !== undefined, {
-    message: 'Provide a name or logoAttachmentId to update',
-  })
+  .refine(
+    (body) =>
+      body.name !== undefined ||
+      body.logoAttachmentId !== undefined ||
+      body.stripImageMetadata !== undefined,
+    {
+      message: 'Provide a name, logoAttachmentId or stripImageMetadata to update',
+    },
+  )
 export type UpdateOrganizationRequest = z.infer<typeof UpdateOrganizationRequestSchema>
 
 export const FeedbackRecordSchema = z.object({
