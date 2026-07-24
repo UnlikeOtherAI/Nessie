@@ -7,6 +7,7 @@ import {
   parseUserId,
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '../../queue.js'
+import { createMessageMentionAlerts } from '../mention-alerts.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireActingUserId } from './access.js'
 import {
@@ -105,6 +106,27 @@ export const runSendMessageTool = async (
         threadId: parseThreadId(destination.threadId),
       },
       event: 'message.new',
+    },
+  )
+
+  // Agent-authored @mentions (the PA posting as its owner) create the same
+  // durable alerts as human-authored ones.
+  await createMessageMentionAlerts(
+    { prisma: context.prisma, realtimeTransport: context.realtimeTransport },
+    {
+      organizationId: context.channel.organizationId,
+      channelId: destination.channelId,
+      threadId: destination.threadId,
+      messageId: message.id,
+      messageCreatedAt: message.createdAt,
+      content,
+      actorUserId: userId,
+      actorAgentId: context.agentId,
+      scopes: buildRealtimeScopesForChannel({
+        channelId: destination.channelId,
+        organizationId: context.channel.organizationId,
+        systemChannelType: destination.systemChannelType,
+      }),
     },
   )
 

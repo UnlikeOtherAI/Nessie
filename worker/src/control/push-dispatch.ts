@@ -86,14 +86,23 @@ export const handlePushDispatch = async (
     return summary
   }
 
-  // 3. Build the notification payload, shared by native + web push delivery
-  // (deep-link data + per-channel coalescing).
+  // 3. Build the notification payloads (deep-link data + per-channel
+  // coalescing). Mentioned recipients get distinct mention framing; the rest
+  // keep the standard channel-label title. Muted members were filtered out
+  // above for everyone — a muted channel suppresses even mention pushes, but
+  // the durable UserAlert row + bell badge are still created API-side, so a
+  // mention is never lost, just quiet.
   const channel = await deps.prisma.channel.findUnique({
     where: { id: payload.channelId },
     select: { label: true },
   })
-  const pushPayload: PushPayload = {
-    title: channel?.label ?? 'New message',
+  const channelLabel = channel?.label ?? 'New message'
+  const mentionUserIds = new Set(payload.mentionUserIds)
+  const mentionedRecipientIds = recipientIds.filter((id) => mentionUserIds.has(id))
+  const otherRecipientIds = recipientIds.filter((id) => !mentionUserIds.has(id))
+
+  const buildPayload = (title: string): PushPayload => ({
+    title,
     body: payload.contentSnippet,
     data: {
       channelId: payload.channelId,
@@ -101,30 +110,52 @@ export const handlePushDispatch = async (
       messageId: payload.messageId,
     },
     collapseId: payload.channelId,
+  })
+
+  // 4. Deliver over native + Web Push through the shared core, once per
+  // framing group.
+  const deliver = (title: string, ids: string[]) =>
+    deliverToRecipients({
+      prisma: deps.prisma,
+      apnsCreds,
+      fcmCreds,
+      ...(deps.webPush ? { webPush: deps.webPush } : {}),
+      ...(deps.senders ? { senders: deps.senders } : {}),
+      retryDelayMs,
+      payload: buildPayload(title),
+      recipientIds: ids,
+      organizationId: payload.organizationId,
+      deepLinkUrl: `/channels/${payload.channelId}`,
+      messageId: payload.messageId,
+    })
+
+  if (otherRecipientIds.length > 0) {
+    const delivered = await deliver(channelLabel, otherRecipientIds)
+    summary.sent += delivered.sent
+    summary.failed += delivered.failed
+    summary.pruned += delivered.pruned
   }
 
-  // 4. Deliver over native + Web Push through the shared core.
-  const delivered = await deliverToRecipients({
-    prisma: deps.prisma,
-    apnsCreds,
-    fcmCreds,
-    ...(deps.webPush ? { webPush: deps.webPush } : {}),
-    ...(deps.senders ? { senders: deps.senders } : {}),
-    retryDelayMs,
-    payload: pushPayload,
-    recipientIds,
-    organizationId: payload.organizationId,
-    deepLinkUrl: `/channels/${payload.channelId}`,
-    messageId: payload.messageId,
-  })
-  summary.sent += delivered.sent
-  summary.failed += delivered.failed
-  summary.pruned += delivered.pruned
+  if (mentionedRecipientIds.length > 0) {
+    const author = await deps.prisma.user.findUnique({
+      where: { id: payload.authorUserId },
+      select: { displayName: true },
+    })
+    const authorName = author?.displayName ?? 'Someone'
+    const mentionTitle = channel?.label
+      ? `${authorName} mentioned you in ${channel.label}`
+      : `${authorName} mentioned you`
+    const delivered = await deliver(mentionTitle, mentionedRecipientIds)
+    summary.sent += delivered.sent
+    summary.failed += delivered.failed
+    summary.pruned += delivered.pruned
+  }
 
   console.log('[push-dispatch] done', {
     messageId: payload.messageId,
     channelId: payload.channelId,
     recipients: recipientIds.length,
+    mentioned: mentionedRecipientIds.length,
     sent: summary.sent,
     failed: summary.failed,
     pruned: summary.pruned,

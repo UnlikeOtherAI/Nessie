@@ -6,8 +6,18 @@ import {
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
+import {
+  createMentionUserAlerts,
+  mentionedAgentIdsFromContent,
+  resolveMessageMentions,
+  type MessageMentions,
+} from '@nessie/runtime'
 import type { MessageSearchResult, ThreadMessageRecord } from '../contracts.js'
 import { buildGravatarUrl } from '../lib/gravatar.js'
+
+// Mention resolution lives in @nessie/runtime so the api (human-authored
+// messages) and the worker (agent-authored messages) share one implementation.
+export { mentionedAgentIdsFromContent, resolveMessageMentions, type MessageMentions }
 
 // Hydrate every message with its reactions and the authoring user's identity so
 // the client can render the real sender name + avatar without a second lookup.
@@ -63,60 +73,7 @@ const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRec
 })
 
 // ─── sp-messaging slice: mention resolution ────────────────────────────────
-
-export type MessageMentions = {
-  userIds: string[]
-  agentIds: string[]
-  broadcast: 'here' | 'channel' | 'everyone' | null
-}
-
-const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-// Matches a @name token, allowing the name itself to contain spaces (members
-// and agents can have multi-word display names). Same boundary rule the agent
-// orchestrator uses, so resolution is identical on both sides.
-const mentionMatches = (content: string, name: string): boolean => {
-  if (!name) return false
-  const re = new RegExp(`@${escapeRegExp(name)}(?:\\s|$|[^\\w])`, 'i')
-  return re.test(content)
-}
-
-export const resolveMessageMentions = (
-  content: string,
-  input: { members: Array<{ userId: string; displayName: string }> },
-): MessageMentions => {
-  const userIds: string[] = []
-  let broadcast: MessageMentions['broadcast'] = null
-
-  if (content.includes('@')) {
-    for (const member of input.members) {
-      if (mentionMatches(content, member.displayName)) {
-        userIds.push(member.userId)
-      }
-    }
-    // Literal broadcast tokens. `@everyone` wins over `@channel` over `@here`
-    // if multiple are present, mirroring Slack's escalation order.
-    if (/@everyone(?:\s|$|[^\w])/i.test(content)) {
-      broadcast = 'everyone'
-    } else if (/@channel(?:\s|$|[^\w])/i.test(content)) {
-      broadcast = 'channel'
-    } else if (/@here(?:\s|$|[^\w])/i.test(content)) {
-      broadcast = 'here'
-    }
-  }
-
-  return { userIds: [...new Set(userIds)], agentIds: [], broadcast }
-}
-
-export const mentionedAgentIdsFromContent = (
-  content: string,
-  agents: Array<{ id: string; name: string }>,
-): string[] => {
-  if (!content.includes('@')) return []
-  const ids = agents.filter((a) => mentionMatches(content, a.name)).map((a) => a.id)
-  return [...new Set(ids)]
-}
+// (implementations imported from @nessie/runtime above)
 
 export const findThreadForUser = async (
   prisma: PrismaClient,
@@ -291,6 +248,9 @@ export type CreateThreadMessageResult =
       kind: 'created'
       message: MessageWithReactions
       channelAgents: ChannelAgent[]
+      // Users who received a durable `mention` UserAlert row in the create
+      // transaction (direct @mentions minus the author; never broadcast).
+      alertedUserIds: string[]
       // Agents @mentioned in the message that are not members of the channel.
       // They are NOT dispatched; the client offers to invite them.
       pendingAgentInvites: { id: string; name: string }[]
@@ -325,6 +285,7 @@ export const createThreadMessage = async (
               user: { select: { id: true, displayName: true } },
             },
           },
+          id: true,
           organizationId: true,
           systemChannelType: true,
         },
@@ -346,15 +307,29 @@ export const createThreadMessage = async (
     })),
   })
 
-  const message = await prisma.message.create({
-    data: {
+  // The message and its mention alerts commit atomically: a mentioned user
+  // must never lose their durable alert to a partial write. Self-mentions are
+  // skipped and broadcast mentions create no rows (see createMentionUserAlerts).
+  const { message, alertedUserIds } = await prisma.$transaction(async (tx) => {
+    const created = await tx.message.create({
+      data: {
+        threadId: input.threadId,
+        userId: input.userId,
+        role: 'user',
+        content: input.content,
+        metadata: { mentions } as Prisma.InputJsonValue,
+      },
+      include: messageInclude,
+    })
+    const alerted = await createMentionUserAlerts(tx, {
+      organizationId: thread.channel.organizationId,
+      messageId: created.id,
       threadId: input.threadId,
-      userId: input.userId,
-      role: 'user',
-      content: input.content,
-      metadata: { mentions } as Prisma.InputJsonValue,
-    },
-    include: messageInclude,
+      channelId: thread.channel.id,
+      actorUserId: input.userId,
+      mentionedUserIds: mentions.userIds,
+    })
+    return { message: created, alertedUserIds: alerted }
   })
 
   const channelAgents: ChannelAgent[] = thread.channel.agentBindings.map((b) => ({
@@ -417,6 +392,7 @@ export const createThreadMessage = async (
     kind: 'created',
     message: persistedMessage,
     channelAgents: resolvedChannelAgents,
+    alertedUserIds,
     pendingAgentInvites,
   }
 }

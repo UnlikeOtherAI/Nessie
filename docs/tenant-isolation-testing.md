@@ -42,6 +42,7 @@ org A row left untouched.
 | Workflow installations | `GET /api/workflow-installations` (empty) | — | `resources-read.test.ts` |
 | MCP instances | `GET /api/mcp/instances` (empty) | — | `resources-read.test.ts` |
 | Knowledge base | `GET /api/knowledge-base/spaces` forwards the **caller's** org | — | `knowledge.test.ts` |
+| Alerts | `GET /api/alerts` (empty; also per-recipient within the caller's org) | `POST /api/alerts/read` (no-op, row untouched) | `alerts.test.ts` |
 
 ## How it works
 

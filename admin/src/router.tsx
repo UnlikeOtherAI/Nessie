@@ -8,6 +8,7 @@ import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { SearchPage } from './pages/SearchPage'
 import { AgentActivityPage } from './pages/AgentActivityPage'
+import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
@@ -249,6 +250,10 @@ export const router = createBrowserRouter([
       {
         path: '/approvals',
         element: <ApprovalsPage />,
+      },
+      {
+        path: '/alerts',
+        element: <AlertsPage />,
       },
       {
         path: '/tokens',

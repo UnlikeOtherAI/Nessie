@@ -59,7 +59,8 @@ export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPay
  * channel members' registered devices. Ids are plain uuids (not branded) so the
  * worker can use them directly against Prisma. `contentSnippet` is the
  * already-truncated notification body; `mentionUserIds` carries the resolved
- * @mention user ids for future mention-only routing (v1 notifies all members).
+ * @mention user ids — mentioned recipients get distinct '<author> mentioned
+ * you in <channel>' framing while unmentioned members keep standard framing.
  */
 export const PushDispatchJobPayloadSchema = z.object({
   messageId: z.string().uuid(),

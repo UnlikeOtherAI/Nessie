@@ -107,6 +107,24 @@ export type WsEventMap = {
     iteration: number
     runId: string
   }
+  // User alerts (#246): per-recipient events ride the channel scope of the
+  // originating message; clients filter on `userId`.
+  'alert.created': {
+    userId: UserId
+    kind: 'mention'
+    messageId?: string
+    threadId?: ThreadId
+    channelId?: ChannelId
+    actorUserId?: UserId
+    actorAgentId?: AgentId
+    createdAt: string
+  }
+  'alert.read': {
+    userId: UserId
+    alertIds: string[]
+    channelId?: ChannelId
+    readAt: string
+  }
 }
 
 export const StreamStartEventSchema = z.object({
@@ -253,6 +271,26 @@ export const ApprovalResolvedEventSchema = z.object({
 })
 export type ApprovalResolvedEvent = z.infer<typeof ApprovalResolvedEventSchema>
 
+// User alerts (#246): additive kinds per the #225 realtime registry.
+export const AlertCreatedEventSchema = z.object({
+  userId: UserIdSchema,
+  kind: z.enum(['mention']),
+  messageId: z.string().uuid().optional(),
+  threadId: ThreadIdSchema.optional(),
+  channelId: ChannelIdSchema.optional(),
+  actorUserId: UserIdSchema.optional(),
+  actorAgentId: AgentIdSchema.optional(),
+  createdAt: TimestampSchema,
+})
+export type AlertCreatedEvent = z.infer<typeof AlertCreatedEventSchema>
+export const AlertReadEventSchema = z.object({
+  userId: UserIdSchema,
+  alertIds: z.array(z.string().uuid()),
+  channelId: ChannelIdSchema.optional(),
+  readAt: TimestampSchema,
+})
+export type AlertReadEvent = z.infer<typeof AlertReadEventSchema>
+
 export const WsEventNameSchema = z.enum([
   'agent.status',
   'agent.tool.start',
@@ -267,6 +305,8 @@ export const WsEventNameSchema = z.enum([
   'message.deleted',
   'message.reaction',
   'agent.iteration',
+  'alert.created',
+  'alert.read',
 ])
 
 export const WsScopeSchema = z.union([
@@ -422,6 +462,18 @@ export const WsEventSchema = z.union([
       iteration: z.number().int().positive(),
       runId: z.string(),
     }),
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('alert.created'),
+    data: AlertCreatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('alert.read'),
+    data: AlertReadEventSchema,
     ts: TimestampSchema,
   }),
 ])
