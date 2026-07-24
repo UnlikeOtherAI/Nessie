@@ -1,0 +1,9 @@
+{
+  "purpose": "Upgrade-path CI fixture: schema snapshot this many migrations behind HEAD",
+  "through": "20260708152000_product_team_enablements",
+  "baselineMigrations": 113,
+  "deferredMigrations": 20,
+  "totalMigrationsAtGeneration": 133,
+  "generatedAt": "2026-07-24T17:12:41.797Z",
+  "regenerate": "node scripts/generate-upgrade-fixture.mjs --keep-last 20"
+}

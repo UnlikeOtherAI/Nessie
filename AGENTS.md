@@ -17,6 +17,7 @@
   self-contained and may generate before its own compilation. CI must call the
   lint-gated root build; container flows that call Turbo directly must generate
   once in an earlier serialized step.
+- Prisma migration folders under `api/prisma/migrations/` are immutable once committed: never rename, renumber, delete, or edit one. `pnpm lint:migrations` (part of root `pnpm lint`) enforces this against the merge-base and warns on non-`CONCURRENTLY` index creation on `messages`/`task_events`/`runs`/`audit_logs`. The `upgrade-path` CI job restores the checked-in baseline fixture (`api/prisma/upgrade-fixtures/baseline.sql.gz`, regenerable via `scripts/generate-upgrade-fixture.mjs`) and proves `prisma migrate deploy` from HEAD converges it; see `docs/deployment.md` "Supported upgrade paths".
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
 
