@@ -39,6 +39,7 @@ import {
   isUoaConfigured,
   loadUoaSettings,
 } from '../services/uoa-auth.js'
+import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
 
@@ -66,6 +67,7 @@ export const registerAuthCoreRoutes = (
     config,
     getAuthorizationToken,
     prisma,
+    rateLimiter,
     resolveBootstrapState,
   } = deps
 
@@ -111,6 +113,21 @@ export const registerAuthCoreRoutes = (
     async (request, reply) => {
       const query = parseInput(AuthProviderAuthorizeQuerySchema, request.query, reply)
       if (!query) return reply
+      // Brute-force guard on SSO authorize-URL minting (per-IP), same
+      // surface as the OAuth state handshakes it initiates.
+      if (
+        !(await guardAuthRequest(
+          rateLimiter,
+          {
+            bucket: RATE_LIMIT_BUCKETS.ssoAuthorizeIp,
+            rule: config.api.rateLimit.mcpOauthIp,
+          },
+          request,
+          reply,
+        ))
+      ) {
+        return reply
+      }
       const providerId = (request.params as { providerId?: string } | undefined)?.providerId
       if (!providerId) {
         sendApiError(reply, 400, 'PROVIDER_REQUIRED', 'Provider id is required', 'providerId')
@@ -214,6 +231,21 @@ export const registerAuthCoreRoutes = (
   app.post('/api/auth/bootstrap', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(BootstrapRequestSchema, request.body, reply)
     if (!body) return reply
+    // Brute-force guard on the one-time owner bootstrap exchange (per-IP;
+    // there is no account yet).
+    if (
+      !(await guardAuthRequest(
+        rateLimiter,
+        {
+          bucket: RATE_LIMIT_BUCKETS.bootstrapIp,
+          rule: config.api.rateLimit.bootstrapIp,
+        },
+        request,
+        reply,
+      ))
+    ) {
+      return reply
+    }
     const state = await resolveBootstrapState()
     if (!state) {
       sendApiError(reply, 409, 'BOOTSTRAP_DISABLED', 'Bootstrap is no longer available')

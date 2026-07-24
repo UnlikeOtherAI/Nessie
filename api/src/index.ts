@@ -121,6 +121,7 @@ const {
   requireSuperAdmin,
   canAccessChannelRealtimeEvent,
   checkRateLimit,
+  rateLimiter,
   disconnectPrismaClient,
 } = serverContext
 
@@ -425,6 +426,8 @@ export const buildApp = async () => {
   // guard — a deploy without this store fails loud at startup.
   registerMcpRoutes(app, {
     prisma,
+    config,
+    rateLimiter,
     requireActorContext,
     requireOwner,
     oauthSecretStore: createPgSecretStore(prisma, authSecret ?? ''),

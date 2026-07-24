@@ -7,6 +7,7 @@ const dbStub = [
   'export const getPrismaClient = () => {',
   '  throw new Error("@nessie/db is not used by rate-limit-client-id.test.ts")',
   '}',
+  'export const writeAuditEntry = async () => {}',
 ].join('\n')
 
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`

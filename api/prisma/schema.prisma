@@ -3603,3 +3603,23 @@ model CommsSubscription {
   @@index([status, expiresAt])
   @@map("comms_subscriptions")
 }
+
+/// Fixed-window counters for the auth-sensitive request rate limiter
+/// (api/src/services/rate-limit.ts). One row per (bucket, key, window start);
+/// atomic upsert-increment makes multi-replica counting safe. Rows are
+/// deleted once their window has passed (probabilistic cleanup per hit), so
+/// the table stays bounded by active keys per window. `keyHash` is a SHA-256
+/// of the caller identity (IP or user id) — raw IPs are never persisted.
+model RateLimitBucket {
+  id          String   @id @default(uuid()) @db.Uuid
+  bucket      String
+  keyHash     String   @map("key_hash")
+  windowStart DateTime @map("window_start") @db.Timestamptz(6)
+  count       Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([bucket, keyHash, windowStart])
+  @@index([windowStart])
+  @@map("rate_limit_buckets")
+}

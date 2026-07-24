@@ -16,6 +16,7 @@ import { syncUoaProductAccountLinks } from '../services/integrations.js'
 import { RefreshTokenIssuanceError } from '../services/refresh-token.js'
 import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
 import { loadSessionUserByEmail } from '../services/users.js'
+import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import { resolveUoaWorkspaceContext } from '../services/workspace-context.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
@@ -25,11 +26,31 @@ export const registerAuthLoginRoute = (
   deps: RouteDeps,
   issueRefreshCookie: IssueRefreshCookie,
 ): void => {
-  const { authSecret, config, prisma, buildLocalSession, buildSessionForUser } = deps
+  const { authSecret, config, prisma, buildLocalSession, buildSessionForUser, rateLimiter } = deps
 
   app.post('/api/auth/session', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LoginRequestSchema, request.body, reply)
     if (!body) return reply
+    // Brute-force guard: per-IP always, per-account (email, hashed) for the
+    // password path. SSO code exchanges key only off the client IP — the
+    // upstream identity is not known until the exchange succeeds.
+    if (
+      !(await guardAuthRequest(
+        rateLimiter,
+        { bucket: RATE_LIMIT_BUCKETS.loginIp, rule: config.api.rateLimit.loginIp },
+        request,
+        reply,
+        {
+          account: {
+            bucket: RATE_LIMIT_BUCKETS.loginAccount,
+            rule: config.api.rateLimit.loginAccount,
+          },
+          accountIdentity: body.email ?? null,
+        },
+      ))
+    ) {
+      return reply
+    }
 
     if (body.providerId && body.providerId !== LOCAL_AUTH_PROVIDER_ID) {
       if (!body.code || !body.codeVerifier || !body.redirectUri) {

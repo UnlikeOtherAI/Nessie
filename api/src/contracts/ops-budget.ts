@@ -44,6 +44,15 @@ export const OpsHealthResponseSchema = z.object({
     count: z.number().int().nonnegative(),
     recent: z.array(OpsDeadLetterSchema),
   }),
+  // Brute-force limiter counters (api/src/services/rate-limit.ts).
+  // Deployment-global and process-local: `checks`/`limited` are per-process
+  // since boot; `limitedByBucket` breaks lockouts down by limiter.
+  rateLimit: z.object({
+    checks: z.number().int().nonnegative(),
+    limited: z.number().int().nonnegative(),
+    storeErrors: z.number().int().nonnegative(),
+    limitedByBucket: z.record(z.string(), z.number().int().nonnegative()),
+  }),
 })
 export type OpsHealthResponse = z.infer<typeof OpsHealthResponseSchema>
 

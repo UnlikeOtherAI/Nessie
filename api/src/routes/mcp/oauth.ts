@@ -8,6 +8,7 @@ import {
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 import { createApiResponse, sendApiError } from '../../lib/api.js'
+import { guardAuthRequest, RATE_LIMIT_BUCKETS } from '../auth-rate-limit.js'
 
 import { sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
@@ -94,12 +95,27 @@ export const registerMcpOAuthRoutes = (
   app: FastifyInstance,
   ctx: McpSubRegistrarContext,
 ): void => {
-  const { prisma, requireActorContext, oauthSecretStore } = ctx
+  const { prisma, requireActorContext, oauthSecretStore, config, rateLimiter } = ctx
   const stateStore = ctx.oauthStateStore ?? createPgOAuthStateStore(prisma)
 
   app.post('/api/mcp/instances/:instanceId/oauth/start', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    // Brute-force guard on state minting: caps state-token sprays per IP.
+    if (
+      !(await guardAuthRequest(
+        rateLimiter,
+        {
+          bucket: RATE_LIMIT_BUCKETS.mcpOauthIp,
+          rule: config.api.rateLimit.mcpOauthIp,
+        },
+        request,
+        reply,
+        { auditContext: actorContext },
+      ))
+    ) {
+      return reply
+    }
 
     const { instanceId } = request.params as { instanceId: string }
     const instance = await getInstance(
@@ -150,6 +166,21 @@ export const registerMcpOAuthRoutes = (
     // actor context because the user's session may have rotated between
     // `start` and the provider's redirect; the state record carries the
     // original actor id.
+    // Brute-force guard on the unauthenticated callback: caps state-guessing
+    // sprays per IP before any upstream code exchange is attempted.
+    if (
+      !(await guardAuthRequest(
+        rateLimiter,
+        {
+          bucket: RATE_LIMIT_BUCKETS.mcpOauthIp,
+          rule: config.api.rateLimit.mcpOauthIp,
+        },
+        request,
+        reply,
+      ))
+    ) {
+      return reply
+    }
     const query = request.query as {
       code?: string
       state?: string

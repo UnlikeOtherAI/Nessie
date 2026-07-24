@@ -22,6 +22,7 @@ import {
 import { createSessionIssuers } from '../services/session-issuers.js'
 import { createRequestRateLimitChecker } from './rate-limit.js'
 import { createRequestHelpers } from './request-helpers.js'
+import { createRateLimiter } from '../services/rate-limit.js'
 
 export {
   createFastifyTrustProxyConfig,
@@ -455,6 +456,7 @@ export const createServerContext = () => {
     tokenTtlSeconds: config.auth.tokenTtlSeconds,
   })
   const checkRateLimit = createRequestRateLimitChecker()
+  const rateLimiter = createRateLimiter(prisma)
 
   const requestHelpers = createRequestHelpers(prisma)
 
@@ -484,6 +486,7 @@ export const createServerContext = () => {
     buildLocalSession,
     buildSessionForUser,
     checkRateLimit,
+    rateLimiter,
     disconnectPrismaClient,
     ...requestHelpers,
   }

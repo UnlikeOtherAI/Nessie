@@ -6,7 +6,7 @@ import { getOpsHealth, getReadiness } from '../services/ops-health.js'
 import type { RouteDeps } from './types.js'
 
 export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner } = deps
+  const { prisma, rateLimiter, requireActorContext, requireOwner } = deps
 
   app.get('/api/health', { config: { public: true } }, async () =>
     createApiResponse({
@@ -29,7 +29,11 @@ export const registerHealthRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
 
-    const health = await getOpsHealth(prisma, actorContext.tenant.organizationId)
+    const health = await getOpsHealth(
+      prisma,
+      actorContext.tenant.organizationId,
+      rateLimiter,
+    )
     return createApiResponse(OpsHealthResponseSchema.parse(health))
   })
 }

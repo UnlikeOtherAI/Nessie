@@ -15,6 +15,8 @@ import {
   upsertOverride,
 } from '@nessie/mcp-manage'
 
+import { guardMcpSecretWrite } from '../auth-rate-limit.js'
+
 import { sendMcpError, type McpSubRegistrarContext } from './shared.js'
 
 /**
@@ -43,7 +45,7 @@ export const registerMcpCredentialRoutes = (
   app: FastifyInstance,
   ctx: McpSubRegistrarContext,
 ): void => {
-  const { prisma, requireActorContext, requireOwner } = ctx
+  const { prisma, requireActorContext, requireOwner, config, rateLimiter } = ctx
 
   app.get('/api/mcp/instances/:instanceId/credentials', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -68,6 +70,10 @@ export const registerMcpCredentialRoutes = (
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    // Secret writes are brute-force/oracle-sensitive: cap per IP and per owner.
+    if (!(await guardMcpSecretWrite(rateLimiter, config.api.rateLimit, request, reply, actorContext))) {
+      return reply
+    }
 
     const { instanceId } = request.params as { instanceId: string }
     const body = parseInput(UpsertOverrideBodySchema, request.body, reply)
@@ -122,6 +128,10 @@ export const registerMcpCredentialRoutes = (
       const actorContext = requireActorContext(request, reply)
       if (!actorContext) return reply
       if (!requireOwner(actorContext, reply)) return reply
+      // Secret writes are brute-force/oracle-sensitive: cap per IP and per owner.
+      if (!(await guardMcpSecretWrite(rateLimiter, config.api.rateLimit, request, reply, actorContext))) {
+        return reply
+      }
 
       const params = request.params as {
         instanceId: string

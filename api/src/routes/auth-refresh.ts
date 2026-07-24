@@ -6,6 +6,7 @@ import { createApiResponse, sendApiError } from '../lib/api.js'
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refresh-cookie.js'
 import { buildMeResponse } from '../services/auth.js'
 import { resolveExternalWorkspaceSelection } from '../services/identity-display.js'
+import { hashRefreshToken } from '../services/refresh-token-crypto.js'
 import {
   consumeRefreshToken,
   revokeRefreshTokenByRaw,
@@ -21,18 +22,64 @@ import {
   refreshUoaSession,
   UoaSessionRefreshError,
 } from '../services/uoa-session.js'
+import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import type { RouteDeps } from './types.js'
 
 export const registerAuthRefreshRoute = (
   app: FastifyInstance,
   deps: RouteDeps,
 ): void => {
-  const { authSecret, buildLocalSession, buildSessionForUser, config, prisma } = deps
+  const {
+    authSecret,
+    buildLocalSession,
+    buildSessionForUser,
+    config,
+    prisma,
+    rateLimiter,
+  } = deps
 
   app.post('/api/auth/refresh', { config: { public: true } }, async (request, reply) => {
     const rawToken = readRefreshCookie(request)
     if (!rawToken) {
       sendApiError(reply, 401, 'NO_REFRESH_TOKEN', 'No refresh token')
+      return reply
+    }
+    // Brute-force guard on the token-consumption surface: per-IP up front;
+    // the per-account counter binds to the resolved user once the presented
+    // token identifies a session, so stolen-cookie sprays converge on one
+    // account bucket regardless of source IP.
+    if (
+      !(await guardAuthRequest(
+        rateLimiter,
+        {
+          bucket: RATE_LIMIT_BUCKETS.refreshIp,
+          rule: config.api.rateLimit.refreshIp,
+        },
+        request,
+        reply,
+      ))
+    ) {
+      return reply
+    }
+    // Resolve the presented token's owner up front so the per-account
+    // counter binds to the credential itself, before any rotation work runs.
+    const tokenHint = await prisma.refreshToken.findUnique({
+      where: { tokenHash: hashRefreshToken(rawToken) },
+      select: { userId: true },
+    })
+    if (
+      tokenHint
+      && !(await guardAuthRequest(
+        rateLimiter,
+        {
+          bucket: RATE_LIMIT_BUCKETS.refreshAccount,
+          rule: config.api.rateLimit.refreshAccount,
+        },
+        request,
+        reply,
+        { accountIdentity: tokenHint.userId },
+      ))
+    ) {
       return reply
     }
 
