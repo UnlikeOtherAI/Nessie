@@ -489,6 +489,15 @@ importers:
         specifier: ^8.15.5
         version: 8.20.0
 
+  packages/mock-llm:
+    dependencies:
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
   packages/push:
     devDependencies:
       '@types/node':
@@ -621,6 +630,9 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
+      '@nessie/mock-llm':
+        specifier: workspace:*
+        version: link:../packages/mock-llm
       '@types/pdf-parse':
         specifier: ^1.1.5
         version: 1.1.5
