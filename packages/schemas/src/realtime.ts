@@ -36,6 +36,7 @@ export type SseEventMap = {
     agentId?: AgentId
     content?: string
     createdAt?: string
+    rootMessageId?: string
   }
   'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
 }
@@ -167,6 +168,7 @@ export const StreamDoneEventSchema = z.object({
   agentId: AgentIdSchema.optional(),
   content: z.string().optional(),
   createdAt: TimestampSchema.optional(),
+  rootMessageId: z.string().uuid().optional(),
   runId: RunIdSchema,
   messageId: NonEmptyStringSchema,
 })
