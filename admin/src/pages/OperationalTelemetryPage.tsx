@@ -49,6 +49,19 @@ type ConnectorSummary = {
   }>
 }
 
+type OutcomeUsageSummary = {
+  currency: string
+  outcomes: Array<{
+    outcome: string
+    totalTokens: number
+    estimatedCost: number
+    eventCount: number
+    runCount: number
+  }>
+  failedEstimatedCost: number
+  failedTotalTokens: number
+}
+
 type FileUsageSummary = {
   currentStoredBytes: number
   currentAttachmentCount: number
@@ -116,6 +129,12 @@ export const OperationalTelemetryPage = () => {
   const { data: estimate } = useQuery<MonthlyEstimate>({
     queryKey: ['token-estimate'],
     queryFn: () => apiClient.get('/api/ledger/tokens/monthly-estimate'),
+    enabled: isOwner,
+  })
+
+  const { data: outcomeUsage } = useQuery<OutcomeUsageSummary>({
+    queryKey: ['token-by-outcome'],
+    queryFn: () => apiClient.get('/api/ledger/tokens/by-outcome'),
     enabled: isOwner,
   })
 
@@ -231,6 +250,37 @@ export const OperationalTelemetryPage = () => {
                     </div>
                     <div className="text-xs text-[color:var(--tx2)]">
                       {formatCost(breakdown.estimatedCost, summary?.currency ?? 'USD')}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(outcomeUsage?.outcomes ?? []).length > 0 && (
+          <div className="mt-6">
+            <div className={sectionTitle}>Spend by Run Outcome</div>
+            <div className="mt-2 grid gap-2">
+              {(outcomeUsage?.outcomes ?? []).map((row) => (
+                <div
+                  className="admin-card flex items-center justify-between p-3"
+                  key={row.outcome}
+                >
+                  <div>
+                    <div className="font-semibold capitalize text-[color:var(--tx)]">
+                      {row.outcome}
+                    </div>
+                    <div className="text-xs text-[color:var(--tx2)]">
+                      {formatCount(row.runCount)} {row.runCount === 1 ? 'run' : 'runs'}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono text-sm text-[color:var(--tx)]">
+                      {formatTokens(row.totalTokens)}
+                    </div>
+                    <div className="text-xs text-[color:var(--tx2)]">
+                      {formatCost(row.estimatedCost, outcomeUsage?.currency ?? 'USD')}
                     </div>
                   </div>
                 </div>
