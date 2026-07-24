@@ -6,6 +6,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { registerMcpCredentialRoutes } from '../src/routes/mcp/credentials.js'
+import { RateLimiter } from '../src/services/rate-limit.js'
 
 const ORGANIZATION_ID = '11111111-1111-4111-8111-111111111111'
 const USER_ID = '22222222-2222-4222-8222-222222222222'
@@ -62,6 +63,34 @@ test('credential route stores plaintext once and never exposes its opaque ref', 
     },
   } as unknown as PrismaClient
 
+  // Secret writes pass through the brute-force guard before touching prisma:
+  // fake the limiter store (always under the limit) and the audit hash-chain
+  // reads the lockout path would need.
+  const rateLimitTx = {
+    $executeRaw: async () => 0,
+    auditLog: {
+      create: async () => ({}),
+      findFirst: async () => null,
+    },
+  }
+  const rateLimiter = new RateLimiter(
+    {
+      $queryRaw: async () => [{ count: 1 }],
+      $executeRaw: async () => 0,
+      $transaction: async <T>(callback: (tx: typeof rateLimitTx) => Promise<T>) =>
+        callback(rateLimitTx),
+    } as unknown as PrismaClient,
+    { error: () => {} },
+  )
+  const config = {
+    api: {
+      rateLimit: {
+        mcpSecretWriteIp: { max: 100, windowMs: 60_000 },
+        mcpSecretWriteAccount: { max: 100, windowMs: 60_000 },
+      },
+    },
+  }
+
   const app = Fastify()
   registerMcpCredentialRoutes(app, {
     mcpSecretStore: {
@@ -72,6 +101,8 @@ test('credential route stores plaintext once and never exposes its opaque ref', 
     },
     oauthSecretStore: {} as never,
     prisma,
+    config,
+    rateLimiter,
     requireActorContext: () => actorContext,
     requireOwner: () => true,
     secretResolver: {} as never,
