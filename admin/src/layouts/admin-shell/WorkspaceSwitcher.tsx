@@ -2,51 +2,14 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import { useNavigate } from 'react-router-dom'
 import { faCheck, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { MeResponse } from '@nessie/schemas'
 import { useAuthProviders } from '../../facades/auth/hooks'
+import { getInitials } from '../../lib/avatar'
+import { workspacesFromMe, type Workspace } from '../../lib/workspaces'
+import { useWorkspaceAvatarRevision } from '../../facades/workspace/hooks'
+import { WorkspaceAvatar } from '../../components/primitives/WorkspaceAvatar'
 import { startExternalSignIn } from '../../lib/external-auth'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
-
-type Workspace = {
-  organizationId: string
-  projectId: string
-  teamId: string
-  label: string
-  orgName?: string
-}
-
-// Flatten `me.memberships` (org → projects → teams) into the workspace list. In
-// the shared-org model each team is a workspace (the environment the user enters).
-const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
-  if (!me?.memberships) {
-    return []
-  }
-  const list: Workspace[] = []
-  for (const org of me.memberships) {
-    for (const project of org.projects) {
-      for (const team of project.teams) {
-        list.push({
-          organizationId: org.organizationId,
-          projectId: project.projectId,
-          teamId: team.teamId,
-          label: team.teamName ?? project.projectName ?? 'Workspace',
-          orgName: org.organizationName,
-        })
-      }
-    }
-  }
-  return list
-}
-
-const initials = (label: string): string =>
-  label
-    .trim()
-    .split(/\s+/)
-    .map((word) => word[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'W'
 
 type MenuPosition = { left: number; bottom: number }
 
@@ -130,7 +93,7 @@ const WorkspaceMenu = ({
                   'bg-[color:var(--overlay)] text-[color:var(--tx)]',
                 ].join(' ')}
               >
-                {initials(workspace.label)}
+                {getInitials(workspace.label, 'W')}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-[color:var(--tx)]">
@@ -186,8 +149,9 @@ const WorkspaceMenu = ({
  * Hidden when there is nothing to switch to and no SSO provider to add one.
  */
 export const WorkspaceSwitcher = () => {
-  const { me, switchContext } = useAuthSession()
+  const { me, switchContext, token } = useAuthSession()
   const { data: providers = [] } = useAuthProviders()
+  const avatarRevision = useWorkspaceAvatarRevision()
   const { theme } = useTheme()
   const navigate = useNavigate()
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -236,8 +200,7 @@ export const WorkspaceSwitcher = () => {
         aria-haspopup="menu"
         aria-label="Switch workspace"
         className={[
-          'mb-2 flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold',
-          'bg-[color:var(--overlay)] text-[color:var(--tx)] transition-shadow',
+          'mb-2 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
           open ? 'ring-2 ring-[color:var(--accent)]' : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
         ].join(' ')}
         onClick={() => setOpen((value) => !value)}
@@ -245,7 +208,15 @@ export const WorkspaceSwitcher = () => {
         title={active ? `Workspace: ${active.label}` : 'Switch workspace'}
         type="button"
       >
-        {initials(active?.label ?? 'Workspace')}
+        {/* Only the active workspace has a company avatar to show: the relay
+            serves the session's own team, so the menu rows below stay on
+            initials. */}
+        <WorkspaceAvatar
+          label={active?.label ?? 'Workspace'}
+          revision={avatarRevision}
+          size={36}
+          token={token}
+        />
       </button>
       {open ? (
         <WorkspaceMenu

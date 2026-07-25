@@ -47,6 +47,37 @@ export const uploadAttachment = async (
   return payload.data
 }
 
+// Multipart PUT of the workspace ("company") avatar. Like uploadAttachment this
+// bypasses the JSON ApiClient because it cannot send FormData; unlike it, the
+// bytes are relayed straight to UnlikeOtherAI and never stored by Nessie.
+export const uploadWorkspaceAvatar = async (
+  file: File,
+  token: string | null,
+): Promise<void> => {
+  const form = new FormData()
+  form.append('file', file)
+
+  const headers = new Headers()
+  if (token) {
+    headers.set('authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch(`${getBaseUrl()}/api/workspace/avatar`, {
+    body: form,
+    headers,
+    method: 'PUT',
+  })
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null
+    throw new Error(
+      payload?.error?.message || `${response.status} ${response.statusText}`,
+    )
+  }
+}
+
 // URL the browser can use to fetch attachment bytes (image preview / download).
 export const attachmentUrl = (id: string): string => `${getBaseUrl()}/api/attachments/${id}`
 

@@ -6,6 +6,7 @@ import {
 } from '../../facades/organization/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { LogoPanel } from './organization/LogoPanel'
+import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
 import {
   FeedbackBanner,
   sectionTitleClass,
@@ -87,6 +88,7 @@ export const OrganizationSettingsPage = () => {
         </section>
 
         <LogoPanel />
+        <WorkspaceAvatarPanel />
       </div>
     </SettingsPanel>
   )

@@ -7,6 +7,7 @@ import {
   UserRecordSchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
 import {
   fetchUoaUserAvatar,
   resolveUoaAvatarSubject,
@@ -27,11 +28,6 @@ import type { RouteDeps } from './types.js'
 // (after an atomic, row-locked owner-count check); translate it to a 400.
 const isLastOwnerError = (error: unknown): boolean =>
   error instanceof Error && error.message === LAST_OWNER_ERROR
-
-// Avatars are re-rendered on every mount of every surface, so both the hit and
-// the miss must be cacheable — otherwise a deployment without UOA (or with
-// mostly unlinked members) re-asks the API for each one, forever.
-const AVATAR_CACHE_CONTROL = 'private, max-age=300'
 
 export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
@@ -237,31 +233,8 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     }
 
     if (!image) {
-      reply.header('cache-control', AVATAR_CACHE_CONTROL)
-      sendApiError(
-        reply,
-        404,
-        'AVATAR_NOT_FOUND',
-        'This user has no UnlikeOtherAI avatar',
-      )
-      return reply
+      return sendAvatarNotFound(reply, 'This user has no UnlikeOtherAI avatar')
     }
-
-    reply.header(
-      'content-type',
-      image.contentType === 'image/svg+xml'
-        ? 'image/svg+xml; charset=utf-8'
-        : image.contentType,
-    )
-    reply.header('content-length', image.body.byteLength.toString())
-    reply.header('cache-control', AVATAR_CACHE_CONTROL)
-    reply.header('x-content-type-options', 'nosniff')
-    // Generated avatars are SVG documents; deny them every external reference
-    // and script origin even though they are only ever rendered in an <img>.
-    reply.header('content-security-policy', "default-src 'none'")
-    if (image.source) {
-      reply.header('x-uoa-avatar-source', image.source)
-    }
-    return reply.send(image.body)
+    return sendAvatarImage(reply, image)
   })
 }

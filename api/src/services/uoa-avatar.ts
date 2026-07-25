@@ -1,19 +1,28 @@
 import type { PrismaClient } from '@prisma/client'
 
-import { clientHash, isUoaConfigured, loadUoaSettings } from './uoa-auth.js'
+import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from './uoa-auth.js'
 
 /**
- * UOA-hosted user avatars.
+ * UOA-hosted avatars, for users and for workspaces ("teams").
  *
- * UOA always has an avatar for a user it knows: an image uploaded through UOA,
- * a server-side proxy of the social-provider picture, or a deterministic
- * generated SVG. `GET /domain/users/:uoaSub/avatar?domain=…` therefore returns
- * `200` + image bytes for any user visible to the authenticated domain, and the
- * standard generic `404` for anyone else.
+ * UOA always has an avatar for a subject it knows: an image uploaded through
+ * UOA, a server-side proxy of the social-provider picture (users) or the team's
+ * `iconUrl` (workspaces), or a deterministic generated SVG. The `GET` endpoints
+ * therefore return `200` + image bytes for anything visible to the authenticated
+ * domain, and the standard generic `404` for anything else.
  *
- * The endpoint is authenticated with the domain-hash bearer — a server-side
- * secret — so the browser can never call it directly. `GET /api/users/:id/avatar`
- * relays the bytes instead (see `routes/users.ts`).
+ * Every endpoint used here is the `/domain/*` flavour, authenticated with the
+ * domain-hash bearer alone. UOA's own guidance is explicit that this is the path
+ * for a product backend: the dual-auth `/org/*` routes need a spendable end-user
+ * access token, and Nessie deliberately keeps only a bound refresh credential.
+ *
+ * The domain hash is a server-side secret, so the browser can never call UOA
+ * directly — the API relays the bytes (`routes/users.ts`,
+ * `routes/workspace-avatar.ts`).
+ *
+ * It is also full system trust for the domain: the `/domain/*` mutations apply
+ * no role check of their own, and UOA requires the calling product to gate
+ * first. That gate lives in `routes/workspace-avatar.ts` and is load-bearing.
  */
 
 const NESSIE_PRODUCT_SLUG = 'nessie'
@@ -24,6 +33,9 @@ const AVATAR_TIMEOUT_MS = 10_000
 // larger is not an avatar and must not be buffered.
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 
+/** UOA's own upload ceiling; Nessie rejects at the same size before buffering. */
+export const MAX_AVATAR_UPLOAD_BYTES = 1024 * 1024
+
 // Exactly what UOA documents it can return. Allowlisting here keeps the relay
 // from ever becoming a general-purpose proxy for upstream content.
 const ALLOWED_AVATAR_TYPES = new Set([
@@ -33,7 +45,20 @@ const ALLOWED_AVATAR_TYPES = new Set([
   'image/webp',
 ])
 
+/**
+ * What UOA accepts on an upload. It decides the stored type by magic-byte
+ * sniffing rather than the declared mimetype, so this is only a fail-fast check
+ * that turns an obvious mistake into a clear message instead of a round trip.
+ */
+export const ALLOWED_AVATAR_UPLOAD_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
+
 export type UoaAvatarPrisma = Pick<PrismaClient, 'productAccountLink'>
+
+export type UoaWorkspacePrisma = Pick<PrismaClient, 'team'>
 
 export type UoaAvatarImage = {
   body: Buffer
@@ -43,15 +68,38 @@ export type UoaAvatarImage = {
   source: string | null
 }
 
+export type UoaWorkspace = {
+  // The UOA team id — `Team.externalWorkspaceId`.
+  externalTeamId: string
+  name: string
+}
+
+export type UoaAvatarDeps = { fetchImpl?: typeof fetch }
+
 /**
  * The upstream could not be consulted, or answered with something unusable.
- * Distinct from "this user has no UOA avatar", which is a `null` result — the
+ * Distinct from "this subject has no UOA avatar", which is a `null` result — the
  * caller maps the two to different statuses.
  */
 export class UoaAvatarUnavailableError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'UoaAvatarUnavailableError'
+  }
+}
+
+/**
+ * UOA refused the submitted image (too large, not a raster image, rate limited).
+ * The caller's fault rather than the upstream's, so it maps to a 4xx and carries
+ * the status UOA chose.
+ */
+export class UoaAvatarRejectedError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+  ) {
+    super(message)
+    this.name = 'UoaAvatarRejectedError'
   }
 }
 
@@ -77,45 +125,78 @@ export const resolveUoaAvatarSubject = async (
   return link?.status === 'linked' && link.uoaSub ? link.uoaSub : null
 }
 
-const normalizeContentType = (value: string | null): string =>
-  (value ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
-
 /**
- * Fetch a UOA user's avatar bytes with the domain-hash bearer. Returns null when
- * UOA is not configured for this deployment or does not know the subject, and
- * throws {@link UoaAvatarUnavailableError} when the upstream is unreachable or
- * answers with something that is not a usable image.
+ * The UOA workspace behind the actor's session team, or null when there is no
+ * team in context or the team was never bound to a UOA workspace (a purely
+ * local team). The team is looked up through the actor's own organization, so a
+ * caller can only ever address the workspace they are already in — which is what
+ * makes it safe to sit a full-trust domain-hash credential behind this route.
  */
-export const fetchUoaUserAvatar = async (
-  uoaSub: string,
-  deps: { fetchImpl?: typeof fetch } = {},
-): Promise<UoaAvatarImage | null> => {
+export const resolveUoaWorkspace = async (
+  prisma: UoaWorkspacePrisma,
+  input: { organizationId: string; teamId: string | null | undefined },
+): Promise<UoaWorkspace | null> => {
+  if (!input.teamId) {
+    return null
+  }
+  const team = await prisma.team.findFirst({
+    where: {
+      id: input.teamId,
+      project: { organizationId: input.organizationId },
+    },
+    select: { externalWorkspaceId: true, name: true },
+  })
+  return team?.externalWorkspaceId
+    ? { externalTeamId: team.externalWorkspaceId, name: team.name }
+    : null
+}
+
+/** Configured UOA settings, or null when this deployment has no UOA at all. */
+const avatarSettings = (): UoaSettings | null => {
   if (!isUoaConfigured()) {
     return null
   }
   const settings = loadUoaSettings()
-  if (!settings.clientSecret) {
-    return null
-  }
+  return settings.clientSecret ? settings : null
+}
 
-  const url = new URL(
-    `${settings.baseUrl}/domain/users/${encodeURIComponent(uoaSub)}/avatar`,
-  )
+const avatarUrl = (settings: UoaSettings, path: string): URL => {
+  const url = new URL(`${settings.baseUrl}${path}`)
   url.searchParams.set('domain', settings.domain)
+  return url
+}
 
+const authorization = (settings: UoaSettings): string =>
+  `Bearer ${clientHash(settings)}`
+
+const normalizeContentType = (value: string | null): string =>
+  (value ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
+
+const unavailable = (message: string): never => {
+  throw new UoaAvatarUnavailableError(message)
+}
+
+/**
+ * Fetch avatar bytes from a `/domain/*` GET endpoint. Returns null when the
+ * subject is unknown to the domain, and throws when the upstream is unreachable
+ * or answers with something that is not a usable image.
+ */
+const fetchAvatarImage = async (
+  settings: UoaSettings,
+  path: string,
+  deps: UoaAvatarDeps,
+): Promise<UoaAvatarImage | null> => {
   let response: Response
   try {
-    response = await (deps.fetchImpl ?? fetch)(url, {
+    response = await (deps.fetchImpl ?? fetch)(avatarUrl(settings, path), {
       headers: {
         Accept: 'image/*',
-        Authorization: `Bearer ${clientHash(settings)}`,
+        Authorization: authorization(settings),
       },
       signal: AbortSignal.timeout(AVATAR_TIMEOUT_MS),
     })
   } catch {
-    throw new UoaAvatarUnavailableError(
-      '[uoa] the avatar endpoint is temporarily unavailable',
-    )
+    return unavailable('[uoa] the avatar endpoint is temporarily unavailable')
   }
 
   // Generic 404 — unknown to this domain, or not visible to it.
@@ -123,23 +204,17 @@ export const fetchUoaUserAvatar = async (
     return null
   }
   if (!response.ok) {
-    throw new UoaAvatarUnavailableError(
-      `[uoa] the avatar endpoint returned ${response.status}`,
-    )
+    return unavailable(`[uoa] the avatar endpoint returned ${response.status}`)
   }
 
   const contentType = normalizeContentType(response.headers.get('content-type'))
   if (!ALLOWED_AVATAR_TYPES.has(contentType)) {
-    throw new UoaAvatarUnavailableError(
-      '[uoa] the avatar endpoint returned an unsupported content type',
-    )
+    return unavailable('[uoa] the avatar endpoint returned an unsupported content type')
   }
 
   const body = Buffer.from(await response.arrayBuffer())
   if (body.byteLength === 0 || body.byteLength > MAX_AVATAR_BYTES) {
-    throw new UoaAvatarUnavailableError(
-      '[uoa] the avatar endpoint returned an unusable image body',
-    )
+    return unavailable('[uoa] the avatar endpoint returned an unusable image body')
   }
 
   return {
@@ -147,4 +222,135 @@ export const fetchUoaUserAvatar = async (
     contentType,
     source: response.headers.get('x-uoa-avatar-source'),
   }
+}
+
+/** Send a mutation to a `/domain/*` avatar endpoint and check its verdict. */
+const mutateAvatar = async (
+  settings: UoaSettings,
+  path: string,
+  init: { method: 'PUT' | 'DELETE'; body?: FormData },
+  deps: UoaAvatarDeps,
+): Promise<void> => {
+  let response: Response
+  try {
+    response = await (deps.fetchImpl ?? fetch)(avatarUrl(settings, path), {
+      method: init.method,
+      headers: {
+        Accept: 'application/json',
+        Authorization: authorization(settings),
+      },
+      body: init.body,
+      signal: AbortSignal.timeout(AVATAR_TIMEOUT_MS),
+    })
+  } catch {
+    return unavailable('[uoa] the avatar endpoint is temporarily unavailable')
+  }
+
+  if (response.ok) {
+    return
+  }
+  // UOA answers a bad image, an oversize body or an exhausted rate limit with a
+  // 4xx; that is the caller's problem, not an outage.
+  if (response.status === 429) {
+    throw new UoaAvatarRejectedError(
+      'Too many workspace avatar changes. Try again later.',
+      429,
+    )
+  }
+  if (response.status >= 400 && response.status < 500 && response.status !== 404) {
+    throw new UoaAvatarRejectedError(
+      'UnlikeOtherAI rejected the image. Use a PNG, JPEG or WebP under 1 MB.',
+      400,
+    )
+  }
+  return unavailable(`[uoa] the avatar endpoint returned ${response.status}`)
+}
+
+/**
+ * Fetch a UOA user's avatar bytes. Null when UOA is not configured for this
+ * deployment or does not know the subject.
+ */
+export const fetchUoaUserAvatar = async (
+  uoaSub: string,
+  deps: UoaAvatarDeps = {},
+): Promise<UoaAvatarImage | null> => {
+  const settings = avatarSettings()
+  if (!settings) {
+    return null
+  }
+  return fetchAvatarImage(
+    settings,
+    `/domain/users/${encodeURIComponent(uoaSub)}/avatar`,
+    deps,
+  )
+}
+
+/**
+ * Fetch a UOA workspace's ("team") avatar bytes. Null when UOA is not configured
+ * or the team belongs to another domain.
+ */
+export const fetchUoaWorkspaceAvatar = async (
+  externalTeamId: string,
+  deps: UoaAvatarDeps = {},
+): Promise<UoaAvatarImage | null> => {
+  const settings = avatarSettings()
+  if (!settings) {
+    return null
+  }
+  return fetchAvatarImage(
+    settings,
+    `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`,
+    deps,
+  )
+}
+
+/**
+ * Replace a workspace's uploaded avatar. UOA decides the stored type by
+ * magic-byte sniffing, so the declared type here is a hint, not a promise.
+ * Returns false when UOA is not configured (nothing to write to).
+ */
+export const putUoaWorkspaceAvatar = async (
+  externalTeamId: string,
+  image: { body: Buffer; contentType: string; filename: string },
+  deps: UoaAvatarDeps = {},
+): Promise<boolean> => {
+  const settings = avatarSettings()
+  if (!settings) {
+    return false
+  }
+  const form = new FormData()
+  form.append(
+    'file',
+    new Blob([image.body], { type: image.contentType }),
+    image.filename,
+  )
+  await mutateAvatar(
+    settings,
+    `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`,
+    { method: 'PUT', body: form },
+    deps,
+  )
+  return true
+}
+
+/**
+ * Clear a workspace's uploaded avatar; UOA falls resolution back to the team's
+ * `iconUrl` or the generated image. Idempotent. Returns false when UOA is not
+ * configured.
+ */
+export const deleteUoaWorkspaceAvatar = async (
+  externalTeamId: string,
+  deps: UoaAvatarDeps = {},
+): Promise<boolean> => {
+  const settings = avatarSettings()
+  if (!settings) {
+    return false
+  }
+  await mutateAvatar(
+    settings,
+    `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`,
+    { method: 'DELETE' },
+    deps,
+  )
+  return true
 }
