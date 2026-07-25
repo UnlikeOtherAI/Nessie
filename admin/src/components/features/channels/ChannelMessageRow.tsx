@@ -183,6 +183,7 @@ export const ChannelMessageRow = ({
             gravatarUrl={message.author?.gravatarUrl ?? undefined}
             size={36}
             token={token}
+            userId={message.author?.id}
           />
         </button>
       ) : (
@@ -193,6 +194,7 @@ export const ChannelMessageRow = ({
           gravatarUrl={message.author?.gravatarUrl ?? undefined}
           size={36}
           token={token}
+          userId={message.author?.id}
         />
       )}
       <div className="min-w-0 flex-1">

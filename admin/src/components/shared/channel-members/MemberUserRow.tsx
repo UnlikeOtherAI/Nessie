@@ -30,6 +30,7 @@ export const CurrentUserRow = ({
         gravatarUrl={user.gravatarUrl ?? undefined}
         size={32}
         token={token}
+        userId={user.id}
       />
     </AvatarBadges>
     <div className="min-w-0 flex-1">
@@ -90,6 +91,7 @@ export const AvailableUserRow = ({
         gravatarUrl={user.gravatarUrl ?? undefined}
         size={32}
         token={token}
+        userId={user.id}
       />
     </AvatarBadges>
     <div className="min-w-0 flex-1">

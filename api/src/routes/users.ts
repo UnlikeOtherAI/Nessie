@@ -8,6 +8,11 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
+  fetchUoaUserAvatar,
+  resolveUoaAvatarSubject,
+  UoaAvatarUnavailableError,
+} from '../services/uoa-avatar.js'
+import {
   createUserForOrganization,
   getOrganizationMembership,
   getOrganizationUserRecord,
@@ -22,6 +27,11 @@ import type { RouteDeps } from './types.js'
 // (after an atomic, row-locked owner-count check); translate it to a 400.
 const isLastOwnerError = (error: unknown): boolean =>
   error instanceof Error && error.message === LAST_OWNER_ERROR
+
+// Avatars are re-rendered on every mount of every surface, so both the hit and
+// the miss must be cacheable — otherwise a deployment without UOA (or with
+// mostly unlinked members) re-asks the API for each one, forever.
+const AVATAR_CACHE_CONTROL = 'private, max-age=300'
 
 export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
@@ -183,5 +193,75 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     await setOrganizationMemberDeactivated(prisma, { organizationId, userId, deactivated: false })
     const updated = await getOrganizationUserRecord(prisma, organizationId, userId)
     return createApiResponse(UserRecordSchema.parse(updated))
+  })
+
+  /**
+   * Relay a member's UnlikeOtherAuthenticator avatar. UOA's avatar endpoint is
+   * authenticated with a server-side domain-hash secret, so the browser cannot
+   * fetch it directly; the API resolves the caller-visible UOA subject and
+   * streams the bytes back.
+   *
+   * Any authenticated actor may read any avatar in their own organization —
+   * avatars render everywhere, and the `ProductAccountLink` lookup is already
+   * organization-scoped. A user who never linked (or a deployment with no UOA)
+   * is a 404, which the client treats as "no such source" and falls through to
+   * its provider/Gravatar/initials chain.
+   */
+  app.get('/api/users/:userId/avatar', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { userId } = request.params as { userId: string }
+    const uoaSub = await resolveUoaAvatarSubject(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      userId,
+    })
+
+    let image = null
+    try {
+      image = uoaSub ? await fetchUoaUserAvatar(uoaSub) : null
+    } catch (error) {
+      if (error instanceof UoaAvatarUnavailableError) {
+        request.log.warn({ err: error, userId }, 'uoa avatar relay failed')
+        sendApiError(
+          reply,
+          502,
+          'UOA_AVATAR_UNAVAILABLE',
+          'The UnlikeOtherAI avatar service is temporarily unavailable',
+        )
+        return reply
+      }
+      throw error
+    }
+
+    if (!image) {
+      reply.header('cache-control', AVATAR_CACHE_CONTROL)
+      sendApiError(
+        reply,
+        404,
+        'AVATAR_NOT_FOUND',
+        'This user has no UnlikeOtherAI avatar',
+      )
+      return reply
+    }
+
+    reply.header(
+      'content-type',
+      image.contentType === 'image/svg+xml'
+        ? 'image/svg+xml; charset=utf-8'
+        : image.contentType,
+    )
+    reply.header('content-length', image.body.byteLength.toString())
+    reply.header('cache-control', AVATAR_CACHE_CONTROL)
+    reply.header('x-content-type-options', 'nosniff')
+    // Generated avatars are SVG documents; deny them every external reference
+    // and script origin even though they are only ever rendered in an <img>.
+    reply.header('content-security-policy', "default-src 'none'")
+    if (image.source) {
+      reply.header('x-uoa-avatar-source', image.source)
+    }
+    return reply.send(image.body)
   })
 }

@@ -65,6 +65,7 @@ export const AvatarPanel = () => {
           gravatarUrl={me.user.gravatarUrl}
           size={96}
           token={token}
+          userId={me.user.id}
         />
       }
       saveLabel="Save photo"

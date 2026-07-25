@@ -20,6 +20,7 @@ const HeaderMemberAvatar = ({ user }: { user: UserRecord }) => {
       gravatarUrl={user.gravatarUrl ?? undefined}
       size={24}
       token={token}
+      userId={user.id}
     />
   )
 }

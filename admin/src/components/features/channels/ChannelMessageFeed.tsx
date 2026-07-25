@@ -263,6 +263,7 @@ export const ChannelMessageFeed = ({
             gravatarUrl={meAvatar.gravatarUrl}
             size={36}
             token={token}
+            userId={meUserId}
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
