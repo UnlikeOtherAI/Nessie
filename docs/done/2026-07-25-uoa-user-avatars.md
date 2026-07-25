@@ -136,3 +136,29 @@ and an email with no picture at all.
 - [x] `api/test/uoa-avatar.test.ts` — linked user, unlinked user, upstream
       failure, cross-org isolation, content-type allowlist.
 - [x] `docs/functionality.md` — user profile photo row.
+
+## Verification
+
+`pnpm lint`, `pnpm typecheck` and `pnpm test` all green from the repo root
+(41/41 Turbo tasks; 482 API tests pass, 17 pre-existing DB-dependent skips).
+
+Playwright headless against `http://localhost:5455`, both ways round:
+
+- **Without UOA** (the local default — no `UOA_*` set): `/settings/members`,
+  `/settings/profile` and `/channels/…` render the initials fallback with no
+  layout change. The relay answers `404` + `cache-control: private, max-age=300`
+  and the client falls through exactly as before. The clipped role `<select>`
+  label on Settings → Members is pre-existing — the same screenshot on `main`
+  shows it, and the member card's geometry is byte-identical with and without
+  the avatar (card 163→279, select 234→266).
+- **With UOA**, driven by a local stand-in for
+  `GET /domain/users/:sub/avatar` plus a `linked` `ProductAccountLink` for the
+  dev owner: the relay returned `200 image/svg+xml` with `x-uoa-avatar-source:
+  generated`, `nosniff`, `content-security-policy: default-src 'none'` and
+  `cache-control: private, max-age=300`, and the picture rendered on every
+  surface at once — message rows, the sidebar DM entry, the channel-header
+  member stack, the rail avatar (presence dot intact) and Settings → Members.
+  One network request served roughly ten avatar instances on the channels page,
+  confirming the single-URL-per-user caching choice. The stand-in and the
+  fixture link were removed afterwards.
+
