@@ -128,3 +128,44 @@ shows in every UOA surface.
       member and viewer rejection, non-UOA team, oversize and wrong-type upload,
       upstream failure.
 - [x] `docs/functionality.md` row.
+
+## Verification
+
+`pnpm lint`, `pnpm typecheck` and `pnpm test` green from the repo root (11 new
+API tests). The role gate is asserted from the other side too: the `member` and
+`viewer` cases fail the test outright if a request ever reaches the relay.
+
+This machine holds no UOA domain credential, so the live service could not be
+called — and writing a real company avatar into production UOA would not have
+been an appropriate way to test. Instead the endpoints were driven against a
+local stand-in implementing the published `/domain/teams/:teamId/avatar`
+contract (domain-hash check, multipart part `file`, uploaded-over-generated
+precedence, `X-UOA-Avatar-Source`), with `Team.externalWorkspaceId` bound on the
+dev team. Everything below was then exercised through the running app and
+removed afterwards.
+
+- `GET` relayed to
+  `…/domain/teams/<externalWorkspaceId>/avatar?domain=…` with a
+  `Bearer <64-hex>` domain hash, returning `200 image/svg+xml` with
+  `x-uoa-avatar-source: generated`, `nosniff`,
+  `content-security-policy: default-src 'none'` and
+  `cache-control: private, max-age=300`.
+- `PUT` relayed a 207-byte PNG unchanged; the following `GET` returned those
+  exact bytes as `image/png` with `x-uoa-avatar-source: uploaded`. An
+  `image/svg+xml` upload was refused with `415 UNSUPPORTED_IMAGE_TYPE` before any
+  call to UOA.
+- Playwright headless at `/settings/organization`: the panel renders beside the
+  logo panel — square against the logo's circle — with the upload and remove
+  controls. Uploading through the real file input produced `PUT 200` followed by
+  `GET …?v=1` in **both** the panel and the sidebar rail, so the shared revision
+  counter defeats the five-minute cache in every component at once; the rail
+  showed the new image immediately. The remove button produced `DELETE 200` and
+  fell back to the generated image. No page errors throughout.
+- With `UOA_*` unset (the local default) every relay answers a cacheable `404`
+  and both surfaces show workspace initials with no layout change.
+
+Not exercised end to end: the panel's non-admin branch. Settings → Organization
+is owner-only at the page level (pre-existing, shared with the logo panel), so a
+member never reaches the panel to see its "only owners and admins" message. The
+gate that actually matters — the API refusing `PUT`/`DELETE` for a member or
+viewer — is covered by tests.
