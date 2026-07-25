@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import type { UserRecord } from '../../lib/api-client'
+import { UserAvatar } from '../../components/primitives/UserAvatar'
 import {
   useCreateUser,
   useSetUserDeactivated,
@@ -23,6 +24,7 @@ const ROLE_OPTIONS = [
 ] as const
 
 const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
+  const { token } = useAuthSession()
   const updateRole = useUpdateUserRole()
   const setDeactivated = useSetUserDeactivated()
   const [error, setError] = useState<string | null>(null)
@@ -50,12 +52,24 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
   return (
     <div className="admin-card p-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate font-semibold text-[color:var(--tx)]">
-            {user.displayName}
-            {isSelf ? <span className="ml-1 text-[color:var(--tx3)]">(You)</span> : null}
+        <div className="flex min-w-0 items-center gap-3">
+          <UserAvatar
+            avatarAttachmentId={user.avatarAttachmentId ?? undefined}
+            avatarUrl={user.avatarUrl ?? undefined}
+            className={deactivated ? 'opacity-60' : undefined}
+            displayName={user.displayName}
+            gravatarUrl={user.gravatarUrl ?? undefined}
+            size={40}
+            token={token}
+            userId={user.id}
+          />
+          <div className="min-w-0">
+            <div className="truncate font-semibold text-[color:var(--tx)]">
+              {user.displayName}
+              {isSelf ? <span className="ml-1 text-[color:var(--tx3)]">(You)</span> : null}
+            </div>
+            <div className="mt-1 truncate text-sm text-[color:var(--tx2)]">{user.email}</div>
           </div>
-          <div className="mt-1 truncate text-sm text-[color:var(--tx2)]">{user.email}</div>
         </div>
         {deactivated ? (
           <span

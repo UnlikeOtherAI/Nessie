@@ -64,6 +64,7 @@ const CommentRow = ({
         gravatarUrl={author.gravatarUrl}
         size={36}
         token={token}
+        userId={author.userId}
       />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">

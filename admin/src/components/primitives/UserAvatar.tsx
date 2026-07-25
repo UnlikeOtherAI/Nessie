@@ -1,29 +1,44 @@
 import { useEffect, useState } from 'react'
 import { getInitials } from '../../lib/avatar'
-import { useAuthedObjectUrl } from '../../lib/uploads'
+import { useAuthedObjectUrl, useAuthedObjectUrlFromPath } from '../../lib/uploads'
 import { AvatarBadges } from './AvatarBadges'
 
-// Avatar source fields as carried on MeUser. Precedence: a custom uploaded
-// attachment overrides the provider (Google) picture, which overrides Gravatar.
+// Everything that can identify a picture for a user. Precedence: a custom
+// uploaded attachment, then the picture the user manages in UnlikeOtherAI, then
+// the provider (Google) picture, then Gravatar.
 export type AvatarSources = {
   avatarAttachmentId?: string
   avatarUrl?: string
   gravatarUrl?: string
+  // Nessie user id. It resolves the UnlikeOtherAI-hosted avatar through the API
+  // relay, so passing it upgrades the picture wherever it is available.
+  userId?: string
 }
 
-// Resolve the best avatar URL for the precedence custom > provider > gravatar.
-// The custom avatar is an authenticated attachment, so it is fetched as an object
-// URL; until it resolves (or if it fails) we fall back to the provider/Gravatar
-// URL, and ultimately to `null` (the caller renders initials).
+// Resolve the best avatar URL for the precedence
+// custom > UnlikeOtherAI > provider > gravatar.
+//
+// The first two are authenticated byte endpoints, so they are fetched as object
+// URLs; until one resolves (or if it fails — an unlinked user answers 404) we
+// fall back to the next source, and ultimately to `null` (the caller renders
+// initials).
 export const useResolvedAvatarUrl = (
   sources: AvatarSources,
   token: string | null,
 ): string | null => {
   const customUrl = useAuthedObjectUrl(sources.avatarAttachmentId ?? null, token)
+  // The relay answers image/png, image/jpeg, image/webp or (for UOA's generated
+  // avatars) image/svg+xml, so the blob type is not pinned — it is rendered in
+  // an <img>, which never runs scripts in an SVG, and the API allowlists the
+  // upstream content type before any bytes reach the browser.
+  const uoaUrl = useAuthedObjectUrlFromPath(
+    sources.userId ? `/api/users/${sources.userId}/avatar` : null,
+    token,
+  )
   if (sources.avatarAttachmentId && customUrl) {
     return customUrl
   }
-  return sources.avatarUrl ?? sources.gravatarUrl ?? null
+  return uoaUrl ?? sources.avatarUrl ?? sources.gravatarUrl ?? null
 }
 
 type UserAvatarProps = AvatarSources & {
@@ -32,23 +47,21 @@ type UserAvatarProps = AvatarSources & {
   // Rendered diameter in pixels.
   size?: number
   className?: string
-  // When set, overlays the user's active-status emoji + presence dot.
-  userId?: string
+  // Overlay the user's presence dot / active-status emoji. Both need `userId`.
   showPresence?: boolean
   showStatus?: boolean
   // Background the avatar sits on (for the badges' separating ring).
   ringColor?: string
 }
 
-// Round user avatar: renders the resolved image (custom > Google > Gravatar) and
-// falls back to initials on an empty source or a failed/404 image load. When a
-// `userId` is supplied it is wrapped with presence + active-status badges.
+// Round user avatar: renders the resolved image (custom > UnlikeOtherAI >
+// Google > Gravatar) and falls back to initials on an empty source or a
+// failed/404 image load. Presence + active-status badges are opt-in.
 export const UserAvatar = ({
   displayName,
   token,
   size = 32,
   className,
-  userId,
   showPresence,
   showStatus,
   ringColor,
@@ -86,7 +99,7 @@ export const UserAvatar = ({
     </div>
   )
 
-  if (!userId) {
+  if (!sources.userId || (!showPresence && !showStatus)) {
     return circle
   }
 
@@ -96,7 +109,7 @@ export const UserAvatar = ({
       showPresence={showPresence}
       showStatus={showStatus}
       size={size}
-      userId={userId}
+      userId={sources.userId}
     >
       {circle}
     </AvatarBadges>

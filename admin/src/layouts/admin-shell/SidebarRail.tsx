@@ -163,6 +163,8 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
               displayName={me.user.displayName}
               gravatarUrl={me.user.gravatarUrl}
               ringColor="var(--rail)"
+              showPresence
+              showStatus
               size={32}
               token={token}
               userId={me.user.id}

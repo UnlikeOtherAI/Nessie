@@ -42,6 +42,7 @@ const toAvatarSources = (
   avatarAttachmentId: user.avatarAttachmentId ?? undefined,
   avatarUrl: user.avatarUrl ?? undefined,
   gravatarUrl: user.gravatarUrl ?? undefined,
+  userId: user.id,
 })
 
 export const ChannelUserInfoDrawer = ({
@@ -188,7 +189,6 @@ export const ChannelUserInfoDrawer = ({
                 showStatus
                 size={46}
                 token={token}
-                userId={user.id}
               />
               <div className="min-w-0">
                 <h2 className="truncate text-lg font-semibold text-[var(--tx)]">

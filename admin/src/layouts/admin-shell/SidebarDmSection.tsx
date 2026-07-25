@@ -135,6 +135,7 @@ export const SidebarDmSection = ({
               gravatarUrl={person.gravatarUrl ?? undefined}
               size={18}
               token={token}
+              userId={person.id}
             />
             <span className="min-w-0 flex-1 truncate">{person.label}</span>
             {renderUnreadCount(unreadCount)}

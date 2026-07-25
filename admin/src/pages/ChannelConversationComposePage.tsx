@@ -316,6 +316,7 @@ export const ChannelConversationComposePage = () => {
                         gravatarUrl={option.user.gravatarUrl ?? undefined}
                         size={24}
                         token={token}
+                        userId={option.user.id}
                       />
                     ) : (
                       <span

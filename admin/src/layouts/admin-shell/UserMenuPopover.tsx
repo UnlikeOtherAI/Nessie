@@ -80,6 +80,8 @@ export const UserMenuPopover = ({
             displayName={user.displayName}
             gravatarUrl={user.gravatarUrl}
             ringColor="var(--panel)"
+            showPresence
+            showStatus
             size={40}
             token={token}
             userId={user.id}
