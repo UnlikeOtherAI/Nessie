@@ -246,3 +246,29 @@ tokenized `::selection`.
 mobile `tsc`/build, desktop `cargo check` — all green. Playwright: 11 cards +
 swatches render; daylight, sandstone, and high-contrast render correctly; server
 theme hydrates on reload.
+
+## Control sizing lives in `styles.css`, not at the call site (2026-07-26)
+
+`styles.css` declares its component classes **unlayered**, while Tailwind's
+utilities land in the `utilities` cascade layer. Unlayered rules beat every
+layer, so a Tailwind utility can never override a property that a component
+class already sets: `className="admin-input h-8 w-auto py-0 text-sm"` kept
+`.admin-input`'s `width: 100%` and `padding: 10px 12px` and only `h-8` applied
+— a 32px box with 22px of padding and border, which sliced the `<select>`
+label in half. That was the Settings → Members role dropdown.
+
+Rules for compact inline controls:
+
+- Size them with **`admin-input-compact` / `admin-button-compact`**, not with
+  Tailwind padding, width, or font-size utilities. Both modifiers resolve to the
+  same 30px box, so a select and a button align in one row.
+- Both are written as two-class selectors (`.admin-input.admin-input-compact`)
+  so they win regardless of where they sit relative to their base class — within
+  one unlayered stylesheet, single-class modifiers are decided by source order.
+- Only override a property Tailwind can actually reach. Height, margin, and flex
+  utilities work on these controls; padding, width, and font-size do not.
+
+Adding a `@layer components` wrapper around the component classes would let
+utilities win everywhere, but it would silently activate the currently-inert
+padding utilities at every `admin-input` call site — a separate, verify-heavy
+change, not a side effect to smuggle into a control fix.

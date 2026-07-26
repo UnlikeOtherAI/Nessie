@@ -1067,6 +1067,23 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx2);
 }
 
+/* Compact size for a control that sits inline in a row instead of a form
+   column. The size has to live here: these base classes are unlayered, so
+   Tailwind's padding/width/font-size utilities lose the cascade against them
+   and a `py-0` at the call site silently does nothing. Both modifiers are
+   qualified with their base class so they win regardless of source order, and
+   both resolve to the same 30px box so a select and a button align in one row. */
+.admin-input.admin-input-compact,
+.admin-button.admin-button-compact {
+  padding: 5px 10px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.admin-input.admin-input-compact {
+  width: auto;
+}
+
 .admin-inline-code {
   border-radius: 4px;
   background: var(--sep);

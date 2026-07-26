@@ -86,7 +86,7 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
           aria-label={`Role for ${user.displayName}`}
-          className="admin-input h-8 w-auto py-0 text-sm"
+          className="admin-input admin-input-compact"
           disabled={busy}
           onChange={(event) => void changeRole(event.target.value)}
           value={user.role}
@@ -99,7 +99,7 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
         </select>
         {isSelf ? null : (
           <button
-            className="admin-button admin-button-secondary h-8 py-0 text-sm"
+            className="admin-button admin-button-secondary admin-button-compact"
             disabled={busy}
             onClick={() => void toggleDeactivated()}
             type="button"
