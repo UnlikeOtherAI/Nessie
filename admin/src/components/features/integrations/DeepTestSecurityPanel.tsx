@@ -133,7 +133,7 @@ export const DeepTestSecurityPanel = ({
         <div className="flex flex-wrap gap-2">
           {product.launchUrl ? (
             <a
-              className="admin-button admin-button-secondary text-xs"
+              className="admin-button admin-button-secondary admin-button-compact"
               href={product.launchUrl}
               rel="noreferrer"
               target="_blank"
@@ -142,7 +142,7 @@ export const DeepTestSecurityPanel = ({
             </a>
           ) : null}
           {!connectorReady ? (
-            <Link className="admin-button admin-button-secondary text-xs" to={mcpInstallHref(product)}>
+            <Link className="admin-button admin-button-secondary admin-button-compact" to={mcpInstallHref(product)}>
               Install MCP
             </Link>
           ) : null}

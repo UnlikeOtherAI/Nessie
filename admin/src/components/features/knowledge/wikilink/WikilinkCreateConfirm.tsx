@@ -37,14 +37,14 @@ export const WikilinkCreateConfirm = ({
         <p className="text-[color:var(--tx)]">Create page “{title}” in this space?</p>
         <div className="flex justify-end gap-2">
           <button
-            className="admin-button admin-button-secondary rounded-md px-2 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onCancel}
             type="button"
           >
             Cancel
           </button>
           <button
-            className="admin-button admin-button-primary rounded-md px-2 py-1 text-xs"
+            className="admin-button admin-button-primary admin-button-compact"
             onClick={onConfirm}
             type="button"
           >

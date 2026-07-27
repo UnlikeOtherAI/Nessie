@@ -37,7 +37,7 @@ const labelClass = [
 ].join(' ')
 
 const inputClass = [
-  'admin-input mt-1 w-full rounded-md border border-[color:var(--sep)]',
+  'admin-input mt-1',
   'bg-[var(--scrim)] px-3 py-2 text-sm text-[var(--tx)]',
   'focus:border-[color:var(--accent)] focus:outline-none',
 ].join(' ')
@@ -274,7 +274,7 @@ export const LibraryInstallDialog = ({
         <div className="mt-6 flex justify-end gap-2">
           <button
             className={[
-              'admin-button rounded-md border border-[color:var(--sep)]',
+              'admin-button border border-[color:var(--sep)]',
               'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
             ].join(' ')}
             onClick={onCancel}
@@ -285,7 +285,7 @@ export const LibraryInstallDialog = ({
           {oauthInstanceId ? (
             <button
               className={[
-                'admin-button admin-button-primary rounded-md px-4 py-2',
+                'admin-button admin-button-primary',
                 'text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40',
               ].join(' ')}
               disabled={pending}
@@ -297,7 +297,7 @@ export const LibraryInstallDialog = ({
           ) : (
             <button
               className={[
-                'admin-button admin-button-primary rounded-md px-4 py-2',
+                'admin-button admin-button-primary',
                 'text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40',
               ].join(' ')}
               disabled={pending}

@@ -123,7 +123,7 @@ export const WorkflowDesignerHeader = ({
         </label>
 
         <button
-          className="admin-button admin-button-secondary inline-flex items-center gap-1.5"
+          className="admin-button admin-button-secondary gap-1.5"
           disabled={!hasWorkflowToSave || isTestRunBusy || isSavingWorkflow}
           onClick={onTestRun}
           type="button"

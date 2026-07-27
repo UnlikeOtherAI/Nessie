@@ -71,14 +71,14 @@ export const ExternalAgentActivationSection = ({
           {isLinked ? (
             <>
               <button
-                className="admin-button admin-button-primary text-xs"
+                className="admin-button admin-button-primary admin-button-compact"
                 onClick={openChannel}
                 type="button"
               >
                 Open channel
               </button>
               <button
-                className="admin-button admin-button-secondary text-xs"
+                className="admin-button admin-button-secondary admin-button-compact"
                 disabled={deactivate.isPending}
                 onClick={runDeactivate}
                 type="button"
@@ -88,7 +88,7 @@ export const ExternalAgentActivationSection = ({
             </>
           ) : (
             <button
-              className="admin-button admin-button-primary text-xs"
+              className="admin-button admin-button-primary admin-button-compact"
               disabled={!teamEnabled || activate.isPending}
               onClick={() => runActivate()}
               type="button"

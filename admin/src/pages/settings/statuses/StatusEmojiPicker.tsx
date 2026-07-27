@@ -48,7 +48,7 @@ export const StatusEmojiPicker = ({ label, onChange, value }: StatusEmojiPickerP
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={label}
-        className="admin-input flex w-full items-center justify-between gap-2 text-left"
+        className="admin-input flex items-center justify-between gap-2 text-left"
         onClick={() => setOpen((current) => !current)}
         onKeyDown={closeOnEscape}
         type="button"

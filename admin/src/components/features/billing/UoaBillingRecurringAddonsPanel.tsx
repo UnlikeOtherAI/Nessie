@@ -95,8 +95,8 @@ export const UoaBillingRecurringAddonsPanel = () => {
                       {offer.actions.map((action) => (
                         <button
                           className={action.id === 'subscribe'
-                            ? 'admin-button admin-button-primary text-xs'
-                            : 'admin-button admin-button-secondary text-xs'}
+                            ? 'admin-button admin-button-primary admin-button-compact'
+                            : 'admin-button admin-button-secondary admin-button-compact'}
                           disabled={!action.enabled || actionPending}
                           key={action.id}
                           onClick={() => {

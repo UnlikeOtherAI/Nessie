@@ -115,7 +115,7 @@ export const BuildMeProjectPanel = ({
         <div>
           {product.launchUrl ? (
             <a
-              className="admin-button admin-button-secondary text-xs"
+              className="admin-button admin-button-secondary admin-button-compact"
               href={product.launchUrl}
               rel="noreferrer"
               target="_blank"

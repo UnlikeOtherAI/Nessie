@@ -233,7 +233,7 @@ export const McpAppStorePage = () => {
     <ColumnBrowserColumn
       headerAction={
         <button
-          className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs font-semibold"
+          className="admin-button admin-button-primary admin-button-compact"
           onClick={() => setWizardOpen(true)}
           type="button"
         >
@@ -351,7 +351,7 @@ export const McpAppStorePage = () => {
               <h2 className="text-lg font-semibold text-[color:var(--tx)]">Add MCP server</h2>
               <button
                 className={[
-                  'admin-button rounded-md border border-[color:var(--sep)]',
+                  'admin-button border border-[color:var(--sep)]',
                   'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[color:var(--overlay-weak)]',
                 ].join(' ')}
                 onClick={() => setWizardOpen(false)}

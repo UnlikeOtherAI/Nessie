@@ -268,7 +268,60 @@ Rules for compact inline controls:
 - Only override a property Tailwind can actually reach. Height, margin, and flex
   utilities work on these controls; padding, width, and font-size do not.
 
-Adding a `@layer components` wrapper around the component classes would let
-utilities win everywhere, but it would silently activate the currently-inert
-padding utilities at every `admin-input` call site — a separate, verify-heavy
-change, not a side effect to smuggle into a control fix.
+## Which utilities reach a control, and which are inert (2026-07-27)
+
+Measured, not reasoned: each token below was rendered with and without the base
+class against the real compiled stylesheet and the full computed style diffed.
+A token is inert whenever the unlayered rules already claim that property —
+either the component class itself or the `button, input, select, textarea {
+font: inherit }` reset, which claims **font-family, font-size, font-weight and
+line-height** for every control.
+
+| | `.admin-input` | `.admin-button` |
+| --- | --- | --- |
+| **Inert** | `p-*` `px-*` `py-*`, `w-*`, `text-xs\|sm\|…`, `font-mono`, `font-*` weight, `leading-*`, `rounded-*`, `border*`, `resize-y`, `ml-auto` | `p-*` `px-*` `py-*`, `text-xs\|sm\|…`, `font-*` weight, `leading-*`, `rounded-*`, `flex` `inline-flex` `items-*` `justify-*` |
+| **Works** | `h-*`, `max-w-*`, `min-w-*`, `min-h-*`, `flex-1`, `mt-*`, `gap-*`, `opacity-*`, `text-center\|left`, `resize-none` (on `<textarea>`) | `h-*`, `w-*`, `min-w-*`, `mt-*`, `gap-*`, `shrink-0`, and `border*` when no `-primary`/`-secondary` variant is present |
+
+Two traps worth naming:
+
+- **`ml-auto` on an `.admin-input` does nothing** — `width: 100%` leaves no free
+  space for the auto margin. To right-align a sized field, put the width and the
+  margin on a wrapper (`<div class="ml-auto w-48">`) and leave the control bare.
+- **`resize-*` depends on the element.** Tailwind's preflight already sets
+  `resize: vertical` on `<textarea>`, so `resize-y` is redundant but
+  `resize-none` is load-bearing. On `<input>` both are inert.
+
+### Modifiers
+
+`admin-input-compact` / `admin-button-compact` (30px box), plus:
+
+- **`admin-button-danger`** — tints a destructive action with `--danger-text`.
+  Needed because a variant class sets `color`, so
+  `text-[color:var(--danger-text)]` at the call site never applied.
+- **`admin-input-mono`** — `--font-family-mono` for webhook URLs, tokens and
+  JSON payloads. Needed because the `font: inherit` reset claims font-family, so
+  `font-mono` at the call site never applied.
+- `.admin-button-primary` carries no border while `.admin-button-secondary`
+  carries 1px, so the compact rule adds a transparent border to primary. Without
+  it the two differ by 2px and break the shared 30px box. **The same 2px
+  mismatch still exists at the default size (37px vs 39px)** — equalising it
+  would move every primary button in the app, so it is left alone deliberately.
+
+### Why not `@layer components`
+
+Wrapping the component classes in `@layer components` would let utilities win as
+authors expect, and was evaluated by building that stylesheet and re-measuring.
+It was rejected:
+
+- It is not scoped to the four properties in question. The unlayered app CSS is
+  ~44 KB; layering it re-prioritises `color`, `background`, `border` and
+  `border-radius` on every `.admin-*` class at once, so the blast radius is the
+  whole admin, not the call sites carrying padding utilities.
+- Measured effects included inputs collapsing 44px → 26px and a story-points
+  field dropping from full-width to 48px — untested intent that no one has ever
+  seen rendered.
+- It would not even be a complete fix on its own: font-size on inputs is claimed
+  by the `font: inherit` element reset, which is a separate unlayered rule.
+
+The adopted direction is the modifier one: call sites state intent through a
+modifier, and inert utilities are removed rather than left as decoration.

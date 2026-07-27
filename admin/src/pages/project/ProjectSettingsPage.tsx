@@ -23,7 +23,7 @@ const CategorySelect = ({
   onChange: (category: ColumnCategory) => void
 }) => (
   <select
-    className="admin-input max-w-[160px] py-1.5 text-sm"
+    className="admin-input admin-input-compact max-w-[160px]"
     disabled={disabled}
     onChange={(event) => onChange(event.target.value as ColumnCategory)}
     value={value}
@@ -94,7 +94,7 @@ const ColumnRow = ({
         </button>
       </div>
       <input
-        className="admin-input min-w-0 flex-1 py-1.5 text-sm"
+        className="admin-input admin-input-compact min-w-0 flex-1"
         onBlur={commitName}
         onChange={(event) => setName(event.target.value)}
         value={name}
@@ -196,14 +196,14 @@ export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => 
 
           <div className="mt-2 flex items-center gap-2 border-t border-[color:var(--sep)] pt-3">
             <input
-              className="admin-input min-w-0 flex-1 py-1.5 text-sm"
+              className="admin-input admin-input-compact min-w-0 flex-1"
               onChange={(event) => setNewName(event.target.value)}
               placeholder="New column name…"
               value={newName}
             />
             <CategorySelect onChange={setNewCategory} value={newCategory} />
             <button
-              className="admin-button admin-button-primary py-1.5"
+              className="admin-button admin-button-primary admin-button-compact"
               disabled={!newName.trim() || createColumn.isPending}
               onClick={handleAdd}
               type="button"

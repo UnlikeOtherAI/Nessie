@@ -229,7 +229,7 @@ export const ChannelAgentInfoDrawer = ({
               </div>
             </div>
             <button
-              className="admin-button admin-button-secondary h-9 px-3"
+              className="admin-button admin-button-secondary h-9"
               onClick={onClose}
               type="button"
             >
@@ -242,7 +242,7 @@ export const ChannelAgentInfoDrawer = ({
             </p>
           ) : null}
           <button
-            className="admin-button admin-button-secondary mt-4 h-8 px-3 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact mt-4 h-8"
             onClick={() => onOpenActivity(agent.id)}
             type="button"
           >

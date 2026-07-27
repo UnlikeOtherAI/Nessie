@@ -87,7 +87,7 @@ export const InstanceList = ({
             {onTest ? (
               <button
                 className={[
-                  'admin-button rounded-md border border-[color:var(--sep)]',
+                  'admin-button border border-[color:var(--sep)]',
                   'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
                   'disabled:cursor-not-allowed disabled:opacity-40',
                 ].join(' ')}
@@ -101,7 +101,7 @@ export const InstanceList = ({
             {onCredentials ? (
               <button
                 className={[
-                  'admin-button rounded-md border border-[color:var(--sep)]',
+                  'admin-button border border-[color:var(--sep)]',
                   'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
                 ].join(' ')}
                 onClick={() => onCredentials(instance)}

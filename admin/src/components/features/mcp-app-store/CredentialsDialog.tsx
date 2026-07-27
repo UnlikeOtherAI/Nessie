@@ -43,13 +43,13 @@ const labelClass = [
 ].join(' ')
 
 const inputClass = [
-  'admin-input mt-1 w-full rounded-md border border-[color:var(--sep)]',
+  'admin-input mt-1',
   'bg-[var(--scrim)] px-3 py-2 text-sm text-[var(--tx)]',
   'focus:border-[color:var(--accent)] focus:outline-none',
 ].join(' ')
 
 const ghostBtn = [
-  'admin-button rounded-md border border-[color:var(--sep)]',
+  'admin-button border border-[color:var(--sep)]',
   'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
 ].join(' ')
 
@@ -201,7 +201,7 @@ export const CredentialsDialog = ({
         {oauth2 && (
           <button
             className={[
-              'admin-button admin-button-primary mt-4 inline-flex',
+              'admin-button admin-button-primary mt-4',
               'rounded-md px-3 py-1 text-xs font-semibold',
               'disabled:cursor-not-allowed disabled:opacity-40',
             ].join(' ')}
@@ -252,7 +252,7 @@ export const CredentialsDialog = ({
           <div className="flex justify-end">
             <button
               className={[
-                'admin-button admin-button-primary rounded-md',
+                'admin-button admin-button-primary',
                 'px-4 py-2 text-sm font-semibold',
                 'disabled:cursor-not-allowed disabled:opacity-40',
               ].join(' ')}
@@ -317,7 +317,7 @@ export const CredentialsDialog = ({
           <div className="flex justify-end">
             <button
               className={[
-                'admin-button admin-button-primary rounded-md',
+                'admin-button admin-button-primary',
                 'px-4 py-2 text-sm font-semibold',
                 'disabled:cursor-not-allowed disabled:opacity-40',
               ].join(' ')}

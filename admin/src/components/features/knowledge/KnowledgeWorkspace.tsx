@@ -326,10 +326,7 @@ export const KnowledgeWorkspace = () => {
               <StorageUsageMeter />
               <button
                 aria-label="Space settings"
-                className={[
-                  'admin-button admin-button-secondary flex items-center justify-center',
-                  'rounded-md px-2 py-1 text-xs',
-                ].join(' ')}
+                className="admin-button admin-button-secondary admin-button-compact"
                 onClick={openSpaceSettings}
                 title="Space settings"
                 type="button"
@@ -351,14 +348,14 @@ export const KnowledgeWorkspace = () => {
                 </button>
               ) : null}
               <button
-                className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+                className="admin-button admin-button-secondary admin-button-compact"
                 onClick={() => fileInputRef.current?.click()}
                 type="button"
               >
                 Upload file
               </button>
               <button
-                className="admin-button admin-button-secondary flex items-center gap-1.5 rounded-md px-3 py-1 text-xs"
+                className="admin-button admin-button-secondary admin-button-compact gap-1.5"
                 onClick={() => {
                   updateViewMode('column')
                   setCreatingFolder(true)
@@ -369,7 +366,7 @@ export const KnowledgeWorkspace = () => {
                 New folder
               </button>
               <button
-                className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
+                className="admin-button admin-button-primary admin-button-compact"
                 onClick={() => openCreate(currentFolder?.id ?? null)}
                 type="button"
               >

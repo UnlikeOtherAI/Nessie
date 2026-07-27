@@ -9,17 +9,17 @@ export const labelClass = [
 ].join(' ')
 
 export const inputClass = [
-  'admin-input mt-1 w-full rounded-md border border-[color:var(--sep)]',
+  'admin-input mt-1',
   'bg-[var(--scrim)] px-3 py-2 text-sm text-[color:var(--on-accent)]',
   'focus:border-[color:var(--accent)] focus:outline-none',
 ].join(' ')
 
 export const buttonPrimary = [
-  'admin-button admin-button-primary rounded-md px-4 py-2 text-sm font-semibold',
+  'admin-button admin-button-primary',
   'disabled:cursor-not-allowed disabled:opacity-40',
 ].join(' ')
 
 export const buttonGhost = [
-  'admin-button rounded-md border border-[color:var(--sep)]',
+  'admin-button border border-[color:var(--sep)]',
   'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
 ].join(' ')

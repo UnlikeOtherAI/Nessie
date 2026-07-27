@@ -63,7 +63,7 @@ export const FileNodeViewer = ({
       actions={
         <>
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onToggleAttachments}
             type="button"
           >
@@ -71,21 +71,21 @@ export const FileNodeViewer = ({
             Attachments
           </button>
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onOpenHistory}
             type="button"
           >
             History
           </button>
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onUploadVersion}
             type="button"
           >
             Upload new version
           </button>
           <button
-            className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-primary admin-button-compact"
             disabled={!downloadPath}
             onClick={() => downloadPath && void downloadAuthedPath(downloadPath, page.title, token)}
             type="button"
@@ -174,7 +174,7 @@ export const FileNodeViewer = ({
                 No inline preview for this file type.
               </p>
               <button
-                className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+                className="admin-button admin-button-secondary admin-button-compact"
                 onClick={() => downloadPath && void downloadAuthedPath(downloadPath, page.title, token)}
                 type="button"
               >

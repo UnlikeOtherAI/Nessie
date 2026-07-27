@@ -243,7 +243,7 @@ export const ChannelMessageRow = ({
             <div className="flex flex-col gap-2">
               <textarea
                 autoFocus
-                className="admin-input w-full resize-y text-sm"
+                className="admin-input"
                 onChange={(event) => onChangeEditingContent(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {

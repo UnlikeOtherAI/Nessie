@@ -126,7 +126,7 @@ export const ApprovalsPage = () => {
                   {knowledgePublish ? (
                     <div className="mt-2">
                       <button
-                        className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+                        className="admin-button admin-button-secondary admin-button-compact"
                         onClick={() =>
                           navigate(
                             `/knowledge-base?spaceId=${knowledgePublish.spaceId}&pageId=${knowledgePublish.pageId}`,

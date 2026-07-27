@@ -324,7 +324,7 @@ const ProductDetail = ({
           <div className="flex flex-wrap gap-2">
             {product.launchUrl ? (
               <a
-                className="admin-button admin-button-primary gap-1.5 text-xs"
+                className="admin-button admin-button-primary admin-button-compact gap-1.5"
                 href={product.launchUrl}
                 rel="noreferrer"
                 target="_blank"
@@ -334,7 +334,7 @@ const ProductDetail = ({
             ) : null}
             {product.mcpCatalogEntryId ? (
               <Link
-                className="admin-button admin-button-secondary text-xs"
+                className="admin-button admin-button-secondary admin-button-compact"
                 to={mcpCatalogHref(product)}
               >
                 MCP store

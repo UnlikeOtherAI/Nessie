@@ -87,7 +87,7 @@ export const ProductSurfacesPanel = ({
                 </div>
               </div>
               {active && target ? (
-                <Link className="admin-button admin-button-secondary text-xs" to={target}>
+                <Link className="admin-button admin-button-secondary admin-button-compact" to={target}>
                   {actionLabel(surface)}
                 </Link>
               ) : active ? (

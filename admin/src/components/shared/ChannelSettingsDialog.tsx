@@ -226,7 +226,7 @@ export const ChannelSettingsDialog = (
                 {isArchived ? 'Unarchive' : 'Archive'}
               </button>
               <button
-                className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
+                className="admin-button admin-button-secondary admin-button-danger"
                 disabled={archiveChannel.isPending}
                 onClick={handleDelete}
                 type="button"

@@ -54,21 +54,21 @@ export const ReviewPanel = ({ onPublish, onRequestChanges, page, publishPending 
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={() => setShowDiff((value) => !value)}
             type="button"
           >
             {showDiff ? 'Hide changes' : 'Review changes'}
           </button>
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onRequestChanges}
             type="button"
           >
             Request changes
           </button>
           <button
-            className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-primary admin-button-compact"
             disabled={publishPending}
             onClick={onPublish}
             type="button"

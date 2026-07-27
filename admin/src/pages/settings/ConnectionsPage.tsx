@@ -56,7 +56,7 @@ export const ConnectionsPage = () => {
             <div className="mt-4 flex justify-center gap-2">
               {CONNECTABLE.map((entry) => (
                 <button
-                  className="admin-button-primary px-3 py-1.5 text-sm"
+                  className="admin-button admin-button-primary admin-button-compact"
                   disabled={start.isPending}
                   key={entry.provider}
                   onClick={() => void onConnect(entry.provider)}
@@ -75,7 +75,7 @@ export const ConnectionsPage = () => {
             <div className="flex gap-2">
               {CONNECTABLE.map((entry) => (
                 <button
-                  className="admin-button-secondary px-3 py-1.5 text-sm"
+                  className="admin-button admin-button-secondary admin-button-compact"
                   disabled={start.isPending}
                   key={entry.provider}
                   onClick={() => void onConnect(entry.provider)}

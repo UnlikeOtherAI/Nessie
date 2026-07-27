@@ -220,7 +220,7 @@ export const AgentDesignerForm = ({
         <textarea
           autoComplete="off"
           className={[
-            'admin-input resize-none font-mono text-xs leading-relaxed',
+            'admin-input admin-input-compact admin-input-mono resize-none',
             isStreaming('systemPrompt')
               ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
               : '',

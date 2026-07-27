@@ -58,7 +58,7 @@ const DangerButton = ({
   const [armed, setArmed] = useState(false)
   return (
     <button
-      className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
+      className="admin-button admin-button-secondary admin-button-danger"
       disabled={disabled}
       onClick={() => {
         if (armed) {

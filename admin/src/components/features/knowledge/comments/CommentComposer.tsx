@@ -51,7 +51,7 @@ export const CommentComposer = ({
     <div className="flex flex-col gap-2">
       <textarea
         autoFocus={autoFocus}
-        className="admin-input min-h-[64px] resize-y text-sm"
+        className="admin-input admin-input-compact min-h-[64px]"
         disabled={busy}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
@@ -64,7 +64,7 @@ export const CommentComposer = ({
       {error ? <p className="text-xs text-[var(--danger-text)]">{error}</p> : null}
       <div className="flex items-center gap-2">
         <button
-          className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
+          className="admin-button admin-button-primary admin-button-compact"
           disabled={busy || pending || !value.trim()}
           onClick={() => void submit()}
           type="button"
@@ -73,7 +73,7 @@ export const CommentComposer = ({
         </button>
         {onCancel ? (
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onCancel}
             type="button"
           >

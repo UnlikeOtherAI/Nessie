@@ -153,7 +153,7 @@ export const TriggerListColumn = ({
 
       <select
         aria-label="Filter by type"
-        className="admin-input py-1.5 text-xs"
+        className="admin-input admin-input-compact"
         onChange={(event) => onTypeFilterChange(event.target.value as TriggerTypeFilter)}
         value={typeFilter}
       >

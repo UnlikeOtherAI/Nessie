@@ -27,18 +27,18 @@ type CatalogDetailPanelProps = {
 }
 
 const ghostButton = [
-  'admin-button rounded-md border border-[color:var(--sep)]',
+  'admin-button border border-[color:var(--sep)]',
   'px-3 py-1 text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
   'disabled:cursor-not-allowed disabled:opacity-40',
 ].join(' ')
 
 const primaryButton = [
-  'admin-button admin-button-primary rounded-md px-3 py-1 text-xs font-semibold',
+  'admin-button admin-button-primary admin-button-compact',
   'disabled:cursor-not-allowed disabled:opacity-40',
 ].join(' ')
 
 const dangerButton = [
-  'admin-button rounded-md border border-[var(--danger-border)]',
+  'admin-button border border-[var(--danger-border)]',
   'px-3 py-1 text-xs text-[var(--danger-text)] hover:bg-[var(--danger-soft)]',
   'disabled:cursor-not-allowed disabled:opacity-40',
 ].join(' ')

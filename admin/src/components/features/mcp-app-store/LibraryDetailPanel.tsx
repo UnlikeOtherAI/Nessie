@@ -68,7 +68,7 @@ export const LibraryDetailPanel = ({ entry, onAdd }: LibraryDetailPanelProps) =>
     <div>
       <button
         className={[
-          'admin-button admin-button-primary rounded-md px-4 py-2',
+          'admin-button admin-button-primary',
           'text-sm font-semibold',
         ].join(' ')}
         onClick={onAdd}

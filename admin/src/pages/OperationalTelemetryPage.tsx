@@ -163,7 +163,7 @@ export const OperationalTelemetryPage = () => {
         <div className="ml-auto w-40">
           <select
             aria-label="Group token telemetry"
-            className="admin-input w-full"
+            className="admin-input"
             onChange={(event) => setGroupBy(event.target.value)}
             value={groupBy}
           >
@@ -349,18 +349,20 @@ export const OperationalTelemetryPage = () => {
 
         <div className="mt-6 flex items-center gap-4">
           <div className={sectionTitle}>Connector Usage</div>
-          <select
-            aria-label="Group connector telemetry"
-            className="admin-input ml-auto w-44"
-            onChange={(event) => setConnectorGroupBy(event.target.value)}
-            value={connectorGroupBy}
-          >
-            <option value="connectorType">By Type</option>
-            <option value="agentId">By Agent</option>
-            <option value="channelId">By Channel</option>
-            <option value="connectorId">By Connector</option>
-            <option value="operation">By Operation</option>
-          </select>
+          <div className="ml-auto w-44">
+            <select
+              aria-label="Group connector telemetry"
+              className="admin-input"
+              onChange={(event) => setConnectorGroupBy(event.target.value)}
+              value={connectorGroupBy}
+            >
+              <option value="connectorType">By Type</option>
+              <option value="agentId">By Agent</option>
+              <option value="channelId">By Channel</option>
+              <option value="connectorId">By Connector</option>
+              <option value="operation">By Operation</option>
+            </select>
+          </div>
         </div>
         <div className="mt-2 grid gap-4 lg:grid-cols-2">
           <div className="admin-card p-4">

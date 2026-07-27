@@ -54,12 +54,14 @@ export const AuditLogPage = () => {
       <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
         <MobileMenuButton />
         <div className={sectionTitle}>Audit Log</div>
-        <input
-          className="admin-input ml-auto w-48"
-          onChange={(e) => setActionFilter(e.target.value)}
-          placeholder="Filter by action..."
-          value={actionFilter}
-        />
+        <div className="ml-auto w-48">
+          <input
+            className="admin-input"
+            onChange={(e) => setActionFilter(e.target.value)}
+            placeholder="Filter by action..."
+            value={actionFilter}
+          />
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">

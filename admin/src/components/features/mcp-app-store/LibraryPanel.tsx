@@ -26,7 +26,7 @@ type LibraryPanelProps = {
 }
 
 const inputClass = [
-  'admin-input w-full rounded-md border border-[color:var(--sep)]',
+  'admin-input',
   'bg-[var(--scrim)] px-3 py-2 text-sm text-[var(--tx)]',
   'focus:border-[color:var(--accent)] focus:outline-none',
 ].join(' ')
@@ -120,7 +120,7 @@ export const LibraryPanel = ({
           />
           <button
             className={[
-              'admin-button admin-button-primary shrink-0 rounded-md px-3 py-1 text-xs',
+              'admin-button admin-button-primary admin-button-compact shrink-0',
               'font-semibold disabled:cursor-not-allowed disabled:opacity-40',
             ].join(' ')}
             disabled={discover.isPending || !linkUrl.trim()}
