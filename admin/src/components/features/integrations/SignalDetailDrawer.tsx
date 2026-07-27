@@ -74,7 +74,7 @@ export const SignalDetailDrawer = ({ signal, acting, onClose, onAct }: SignalDet
               ) : null}
             </div>
             <button
-              className="admin-button admin-button-secondary h-9 px-3"
+              className="admin-button admin-button-secondary h-9"
               onClick={onClose}
               type="button"
             >

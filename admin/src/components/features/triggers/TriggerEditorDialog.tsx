@@ -355,7 +355,7 @@ export const TriggerEditorDialog = ({
               Description <span className="normal-case tracking-normal opacity-70">(optional)</span>
             </label>
             <textarea
-              className="admin-input min-h-20 resize-y"
+              className="admin-input min-h-20"
               id="trigger-description"
               onChange={(nextEvent) =>
                 setForm((current) => ({

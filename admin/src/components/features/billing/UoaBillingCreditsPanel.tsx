@@ -302,7 +302,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
-                    className="admin-button admin-button-primary text-xs"
+                    className="admin-button admin-button-primary admin-button-compact"
                     disabled={!option.setup_action.enabled || pending}
                     onClick={() => {
                       setup.mutate(optionId, {
@@ -318,7 +318,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
                     {option.setup_action.label}
                   </button>
                   <button
-                    className="admin-button admin-button-secondary text-xs"
+                    className="admin-button admin-button-secondary admin-button-compact"
                     disabled={!option.update_action.enabled || pending}
                     onClick={() => {
                       select.mutate(optionId)
@@ -337,7 +337,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
         <div className="mt-3 flex flex-wrap gap-2">
           {credits.automatic_top_up.disable_action && (
             <button
-              className="admin-button admin-button-secondary text-xs"
+              className="admin-button admin-button-secondary admin-button-compact"
               disabled={!credits.automatic_top_up.disable_action.enabled || pending}
               onClick={() => {
                 disable.mutate()
@@ -349,7 +349,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
           )}
           {credits.automatic_top_up.recover_action && (
             <button
-              className="admin-button admin-button-secondary text-xs"
+              className="admin-button admin-button-secondary admin-button-compact"
               disabled={!credits.automatic_top_up.recover_action.enabled || pending}
               onClick={() => {
                 recover.mutate(undefined, {

@@ -19,7 +19,7 @@ export const WebhookTriggerFields = ({
           Shared endpoint
         </label>
         <input
-          className="admin-input cursor-default font-mono text-xs opacity-80"
+          className="admin-input admin-input-compact admin-input-mono cursor-default opacity-80"
           disabled
           id="trigger-webhook-endpoint"
           value={webhookUrl}
@@ -31,7 +31,7 @@ export const WebhookTriggerFields = ({
           Auth header
         </label>
         <input
-          className="admin-input cursor-default font-mono text-xs opacity-80"
+          className="admin-input admin-input-compact admin-input-mono cursor-default opacity-80"
           disabled
           id="trigger-webhook-auth-header"
           value="Authorization: Bearer <api-key>"
@@ -43,7 +43,7 @@ export const WebhookTriggerFields = ({
           Alternate header
         </label>
         <input
-          className="admin-input cursor-default font-mono text-xs opacity-80"
+          className="admin-input admin-input-compact admin-input-mono cursor-default opacity-80"
           disabled
           id="trigger-webhook-fallback-header"
           value="X-Nessie-Trigger-Key: <api-key>"
@@ -55,7 +55,7 @@ export const WebhookTriggerFields = ({
           API key
         </label>
         <input
-          className="admin-input cursor-default font-mono text-xs opacity-80"
+          className="admin-input admin-input-compact admin-input-mono cursor-default opacity-80"
           disabled
           id="trigger-webhook-api-key"
           value={

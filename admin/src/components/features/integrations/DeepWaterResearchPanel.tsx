@@ -169,7 +169,7 @@ export const DeepWaterResearchPanel = ({
           </div>
           {isOwner ? (
             <Link
-              className="admin-button admin-button-secondary text-xs"
+              className="admin-button admin-button-secondary admin-button-compact"
               to={`/agents/tools?deepWaterInstance=${product.mcpInstallation?.id ?? ''}`}
             >
               Manage individual tools
@@ -219,7 +219,7 @@ export const DeepWaterResearchPanel = ({
                   {isOwner ? (
                     <button
                       className={[
-                        'admin-button text-xs',
+                        'admin-button admin-button-compact',
                         canRevoke
                           ? 'admin-button-secondary'
                           : 'admin-button-primary',
@@ -253,7 +253,7 @@ export const DeepWaterResearchPanel = ({
                   </div>
                 </div>
                 <button
-                  className="admin-button admin-button-primary text-xs"
+                  className="admin-button admin-button-primary admin-button-compact"
                   disabled={
                     setAgentAccess.isPending
                     || accessQuery.data?.configured !== true
@@ -296,7 +296,7 @@ export const DeepWaterResearchPanel = ({
         <label className="grid gap-1 text-sm">
           <span className="font-semibold text-[var(--tx2)]">Research prompt</span>
           <textarea
-            className="admin-input min-h-28 resize-y"
+            className="admin-input min-h-28"
             maxLength={5000}
             onChange={(event) => setQuery(event.target.value)}
             value={query}

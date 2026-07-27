@@ -208,7 +208,7 @@ export const ChannelUserInfoDrawer = ({
               </div>
             </div>
             <button
-              className="admin-button admin-button-secondary h-9 px-3"
+              className="admin-button admin-button-secondary h-9"
               onClick={onClose}
               type="button"
             >

@@ -50,7 +50,7 @@ const SessionRow = ({ session }: { session: SessionSummary }) => {
           </span>
         ) : (
           <button
-            className="admin-button admin-button-secondary h-8 shrink-0 py-0 text-sm"
+            className="admin-button admin-button-secondary admin-button-compact h-8 shrink-0"
             disabled={revokeSession.isPending}
             onClick={() => void revoke()}
             type="button"

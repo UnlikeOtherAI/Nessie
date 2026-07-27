@@ -128,7 +128,7 @@ export const AttachmentsDrawer = ({
 
       <div className="flex-shrink-0 border-t border-[color:var(--sep)] p-3">
         <button
-          className="admin-button admin-button-primary w-full rounded-md px-3 py-2 text-xs"
+          className="admin-button admin-button-primary admin-button-compact w-full"
           disabled={upload.isPending}
           onClick={() => inputRef.current?.click()}
           type="button"

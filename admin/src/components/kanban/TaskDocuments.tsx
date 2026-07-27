@@ -61,7 +61,7 @@ export const TaskDocuments = ({ taskId }: { taskId: string }) => {
         <span className={fieldLabel}>Documents</span>
         <div className="flex gap-2">
           <button
-            className="admin-button admin-button-secondary gap-1.5 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact gap-1.5"
             disabled={uploadFile.isPending}
             onClick={() => fileInputRef.current?.click()}
             type="button"
@@ -73,7 +73,7 @@ export const TaskDocuments = ({ taskId }: { taskId: string }) => {
             Upload file
           </button>
           <button
-            className="admin-button admin-button-secondary gap-1.5 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact gap-1.5"
             onClick={() => setAddingNote(true)}
             type="button"
           >
@@ -109,7 +109,7 @@ export const TaskDocuments = ({ taskId }: { taskId: string }) => {
             value={noteTitle}
           />
           <button
-            className="admin-button admin-button-primary text-xs"
+            className="admin-button admin-button-primary admin-button-compact"
             disabled={!noteTitle.trim() || createPage.isPending}
             onClick={() => void submitNote()}
             type="button"

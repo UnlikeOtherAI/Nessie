@@ -78,7 +78,7 @@ export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembe
                 </span>
                 {isOwner ? (
                   <button
-                    className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
+                    className="admin-button admin-button-secondary admin-button-danger"
                     onClick={() => removeMember.mutate({ projectId: project.id, userId: member.userId })}
                     type="button"
                   >

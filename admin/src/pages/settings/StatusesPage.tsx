@@ -232,7 +232,7 @@ export const StatusesPage = () => {
                     Set active
                   </button>
                   <button
-                    className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
+                    className="admin-button admin-button-secondary admin-button-danger"
                     disabled={deleteStatus.isPending}
                     onClick={() => void deleteSelectedStatus()}
                     onBlur={() => setConfirmingDelete(false)}
@@ -265,7 +265,7 @@ export const StatusesPage = () => {
                 />
               </div>
               <textarea
-                className="admin-input min-h-28 resize-y"
+                className="admin-input min-h-28"
                 onChange={(event) => setAgentInstructions(event.target.value)}
                 placeholder="Agent instructions"
                 value={agentInstructions}
@@ -445,7 +445,7 @@ export const StatusesPage = () => {
                   </div>
                 </div>
                 <textarea
-                  className="admin-input min-h-24 resize-y"
+                  className="admin-input min-h-24"
                   onChange={(event) => setRuleInstructions(event.target.value)}
                   placeholder="Rule-specific instructions"
                   value={ruleInstructions}

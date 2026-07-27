@@ -17,7 +17,7 @@ export const EventTriggerFields = ({
           Event names
         </label>
         <textarea
-          className="admin-input min-h-24 resize-y font-mono text-xs"
+          className="admin-input admin-input-compact admin-input-mono min-h-24"
           id="trigger-event-names"
           onChange={(nextEvent) =>
             setForm((current) => ({
@@ -35,7 +35,7 @@ export const EventTriggerFields = ({
           Event filter JSON
         </label>
         <textarea
-          className="admin-input min-h-28 resize-y font-mono text-xs"
+          className="admin-input admin-input-compact admin-input-mono min-h-28"
           id="trigger-event-filter"
           onChange={(nextEvent) =>
             setForm((current) => ({

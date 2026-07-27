@@ -31,7 +31,7 @@ const PointsInput = ({ task }: { task: TaskRecord }) => {
   return (
     <input
       aria-label="Story points"
-      className="admin-input w-12 py-1 text-center text-xs"
+      className="admin-input admin-input-compact max-w-12 text-center"
       onBlur={commit}
       onChange={(event) => setValue(event.target.value)}
       placeholder="–"
@@ -58,7 +58,7 @@ const TaskRow = ({
       </span>
       <PointsInput task={task} />
       <select
-        className="admin-input max-w-[150px] py-1 text-xs"
+        className="admin-input admin-input-compact max-w-[150px]"
         onChange={(event) =>
           setIteration.mutate({ id: task.id, iterationId: event.target.value || null })
         }
@@ -105,7 +105,7 @@ const IterationCard = ({
           <div className="ml-auto flex gap-2">
             {iteration.status === 'planned' ? (
               <button
-                className="admin-button admin-button-primary py-1 text-xs"
+                className="admin-button admin-button-primary admin-button-compact"
                 disabled={update.isPending}
                 onClick={() => update.mutate({ id: iteration.id, action: 'start' })}
                 type="button"
@@ -115,7 +115,7 @@ const IterationCard = ({
             ) : null}
             {iteration.status === 'active' ? (
               <button
-                className="admin-button admin-button-secondary py-1 text-xs"
+                className="admin-button admin-button-secondary admin-button-compact"
                 disabled={update.isPending}
                 onClick={() => update.mutate({ id: iteration.id, action: 'complete' })}
                 type="button"
@@ -212,13 +212,13 @@ export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
               }}
             >
               <input
-                className="admin-input min-w-0 flex-1 py-1.5 text-sm"
+                className="admin-input admin-input-compact min-w-0 flex-1"
                 onChange={(event) => setNewName(event.target.value)}
                 placeholder="New sprint name…"
                 value={newName}
               />
               <button
-                className="admin-button admin-button-primary py-1.5"
+                className="admin-button admin-button-primary admin-button-compact"
                 disabled={!newName.trim() || createIteration.isPending}
                 type="submit"
               >

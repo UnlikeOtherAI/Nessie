@@ -37,7 +37,7 @@ export const ProductPageHost = () => {
           This page isn’t available. Activate the product from Integrations to unlock it.
         </p>
         <Link
-          className="admin-button admin-button-primary mt-4 inline-flex text-xs"
+          className="admin-button admin-button-primary admin-button-compact mt-4"
           to="/integrations"
         >
           Open Integrations

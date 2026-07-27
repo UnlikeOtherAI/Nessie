@@ -56,7 +56,7 @@ export const ToolFilterBar = ({
     <div className="flex gap-2">
       <select
         aria-label="Filter by status"
-        className="admin-input flex-1 py-1.5 text-xs"
+        className="admin-input admin-input-compact flex-1"
         onChange={(event) =>
           onStatusChange(
             event.target.value === ''
@@ -75,7 +75,7 @@ export const ToolFilterBar = ({
       {tagOptions.length > 0 ? (
         <select
           aria-label="Filter by tag"
-          className="admin-input flex-1 py-1.5 text-xs"
+          className="admin-input admin-input-compact flex-1"
           onChange={(event) => onTagChange(event.target.value || undefined)}
           value={tag ?? ''}
         >

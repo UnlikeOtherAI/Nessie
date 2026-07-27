@@ -151,10 +151,7 @@ export const DesignerChat = ({
           <textarea
             ref={inputRef}
             autoComplete="off"
-            className={[
-              'admin-input flex-1 resize-none text-sm',
-              'min-h-[40px] max-h-[120px]',
-            ].join(' ')}
+            className="admin-input flex-1 resize-none min-h-[40px] max-h-[120px]"
             disabled={streaming}
             onKeyDown={handleKeyDown}
             onChange={(e) => setInput(e.target.value)}

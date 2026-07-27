@@ -90,7 +90,7 @@ export const FeedbackComposer = () => {
       <label className="mt-3 block">
         <span className="text-xs text-[color:var(--tx3)]">Details</span>
         <textarea
-          className="admin-input mt-1 min-h-[120px] resize-y"
+          className="admin-input mt-1 min-h-[120px]"
           maxLength={20000}
           onChange={(event) => setBody(event.target.value)}
           placeholder="What happened, what did you expect, steps to reproduce…"

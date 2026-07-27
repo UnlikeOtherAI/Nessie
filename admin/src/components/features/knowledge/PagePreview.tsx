@@ -57,7 +57,7 @@ export const PagePreview = ({
       actions={
         <>
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onToggleAttachments}
             type="button"
           >
@@ -65,21 +65,21 @@ export const PagePreview = ({
             Attachments
           </button>
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onOpenHistory}
             type="button"
           >
             History
           </button>
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={onEdit}
             type="button"
           >
             Edit
           </button>
           <button
-            className="admin-button admin-button-primary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-primary admin-button-compact"
             disabled={publishPending}
             onClick={onPublish}
             type="button"
@@ -143,7 +143,7 @@ export const PagePreview = ({
               Sub-pages
             </span>
             <button
-              className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+              className="admin-button admin-button-secondary admin-button-compact"
               onClick={onCreateChild}
               type="button"
             >

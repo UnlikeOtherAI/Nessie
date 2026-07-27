@@ -161,7 +161,7 @@ export const ChannelHeader = ({
         && activeChannel.visibility === 'public'
         && !activeChannel.memberRole ? (
         <button
-          className="admin-button admin-button-secondary h-7 px-2 text-xs"
+          className="admin-button admin-button-secondary admin-button-compact h-7"
           disabled={joinPending}
           onClick={onJoin}
           type="button"

@@ -59,8 +59,8 @@ const mcpActionLabel = (product: IntegratedProductResponse): string =>
 
 const mcpActionClass = (product: IntegratedProductResponse): string =>
   product.mcpCatalogEntryId && !product.mcpInstallation
-    ? 'admin-button admin-button-primary text-xs'
-    : 'admin-button admin-button-secondary text-xs'
+    ? 'admin-button admin-button-primary admin-button-compact'
+    : 'admin-button admin-button-secondary admin-button-compact'
 
 export const AgentConnectorSection = ({
   product,

@@ -45,14 +45,14 @@ export const AlertsPage = () => {
         ) : null}
         <div className="ml-auto flex items-center gap-2">
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             onClick={() => setUnreadOnly((value) => !value)}
             type="button"
           >
             {unreadOnly ? 'Show all' : 'Unread only'}
           </button>
           <button
-            className="admin-button admin-button-secondary rounded-md px-3 py-1 text-xs"
+            className="admin-button admin-button-secondary admin-button-compact"
             disabled={unreadCount === 0 || markRead.isPending}
             onClick={() => markRead.mutate({ all: true })}
             type="button"

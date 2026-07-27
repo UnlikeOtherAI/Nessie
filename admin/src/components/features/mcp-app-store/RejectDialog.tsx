@@ -43,7 +43,7 @@ export const RejectDialog = ({
           <textarea
             autoFocus
             className={[
-              'admin-input mt-1 w-full rounded-md border border-[color:var(--sep)]',
+              'admin-input mt-1',
               'bg-[var(--scrim)] px-3 py-2 text-sm text-[var(--tx)]',
               'focus:border-[color:var(--accent)] focus:outline-none',
             ].join(' ')}
@@ -56,7 +56,7 @@ export const RejectDialog = ({
         <div className="mt-5 flex justify-end gap-2">
           <button
             className={[
-              'admin-button rounded-md border border-[color:var(--sep)]',
+              'admin-button border border-[color:var(--sep)]',
               'px-4 py-2 text-sm text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
             ].join(' ')}
             onClick={onCancel}
@@ -66,7 +66,7 @@ export const RejectDialog = ({
           </button>
           <button
             className={[
-              'admin-button rounded-md border border-[var(--danger-border)]',
+              'admin-button border border-[var(--danger-border)]',
               'px-4 py-2 text-sm font-semibold text-[var(--danger-text)] hover:bg-[var(--danger-soft)]',
               'disabled:cursor-not-allowed disabled:opacity-40',
             ].join(' ')}

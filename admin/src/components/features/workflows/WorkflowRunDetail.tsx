@@ -47,7 +47,7 @@ const JsonDetails = ({ label, value }: { label: string; value: unknown }) => {
 }
 
 const stepActionButton =
-  'admin-button admin-button-secondary px-2.5 py-1 text-xs'
+  'admin-button admin-button-secondary admin-button-compact'
 
 export const WorkflowRunDetail = ({ workflowRunId }: WorkflowRunDetailProps) => {
   const { data, isLoading } = useWorkflowRun(workflowRunId)

@@ -188,7 +188,7 @@ export const DebugTokenButton = () => {
             </div>
 
             <textarea
-              className="admin-input font-mono text-xs"
+              className="admin-input admin-input-compact admin-input-mono"
               onFocus={(event) => event.currentTarget.select()}
               readOnly
               rows={16}

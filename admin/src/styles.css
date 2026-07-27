@@ -1067,12 +1067,22 @@ button.reaction-pill-active:focus-visible {
   color: var(--tx2);
 }
 
+/* Modifiers for the unlayered control classes above.
+
+   Every one of these has to live here rather than at the call site. `@import
+   'tailwindcss'` puts utilities in the `utilities` layer; the rules above are
+   unlayered, and unlayered always beats layered no matter the specificity. So
+   a Tailwind utility can only reach a control for a property the base class
+   (or the `button, input, select, textarea { font: inherit }` reset) leaves
+   alone. Padding, width, font-size, font-family, font-weight, border-radius
+   and colour are all claimed; `py-0`, `font-mono` and
+   `text-[color:var(--danger-text)]` at a call site are silently inert.
+   Height, max/min-width, margins, gaps and text-align are not claimed and do
+   still work from utilities. */
+
 /* Compact size for a control that sits inline in a row instead of a form
-   column. The size has to live here: these base classes are unlayered, so
-   Tailwind's padding/width/font-size utilities lose the cascade against them
-   and a `py-0` at the call site silently does nothing. Both modifiers are
-   qualified with their base class so they win regardless of source order, and
-   both resolve to the same 30px box so a select and a button align in one row. */
+   column. Both modifiers resolve to the same 30px box so a select and a
+   button align in one row. */
 .admin-input.admin-input-compact,
 .admin-button.admin-button-compact {
   padding: 5px 10px;
@@ -1082,6 +1092,25 @@ button.reaction-pill-active:focus-visible {
 
 .admin-input.admin-input-compact {
   width: auto;
+}
+
+/* `.admin-button-secondary` carries a 1px border and `.admin-button-primary`
+   does not, so without this the two would differ by 2px and break the shared
+   30px box whenever a primary and a secondary sit side by side. */
+.admin-button.admin-button-compact.admin-button-primary {
+  border: 1px solid transparent;
+}
+
+/* Destructive action. Only the text is tinted — these sit next to ordinary
+   secondary buttons and a filled red would over-weight the row. */
+.admin-button.admin-button-danger {
+  color: var(--danger-text);
+}
+
+/* Monospace content: webhook URLs, tokens, JSON payloads. Needed because the
+   `font: inherit` reset claims font-family for every control. */
+.admin-input.admin-input-mono {
+  font-family: var(--font-family-mono);
 }
 
 .admin-inline-code {

@@ -116,7 +116,7 @@ export const DeepWaterRunHistory = ({
                 </div>
                 {nativeDocument && run.knowledgePageId ? (
                   <Link
-                    className="admin-button admin-button-primary h-8 text-xs"
+                    className="admin-button admin-button-primary admin-button-compact h-8"
                     to={knowledgeHref(run.knowledgePageId)}
                   >
                     Open document
@@ -124,7 +124,7 @@ export const DeepWaterRunHistory = ({
                 ) : null}
                 {run.channelId ? (
                   <Link
-                    className="admin-button admin-button-secondary h-8 text-xs"
+                    className="admin-button admin-button-secondary admin-button-compact h-8"
                     to={`/channels/${run.channelId}`}
                   >
                     Open chat
@@ -132,7 +132,7 @@ export const DeepWaterRunHistory = ({
                 ) : null}
                 {run.reportUrl ? (
                   <a
-                    className="admin-button admin-button-secondary h-8 text-xs"
+                    className="admin-button admin-button-secondary admin-button-compact h-8"
                     href={run.reportUrl}
                     rel="noreferrer"
                     target="_blank"
