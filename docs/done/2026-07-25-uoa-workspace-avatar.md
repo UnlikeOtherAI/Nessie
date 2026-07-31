@@ -53,11 +53,12 @@ important thing to get right here.
 ### Which team
 
 The workspace is the team — the thing `WorkspaceSwitcher` switches between. The
-UOA team id is `Team.externalWorkspaceId` for the actor's **session** team,
-resolved through the actor's own organization. It is never taken from the
-request: a caller can only ever address the workspace they are already in, which
-is what keeps a full-trust domain-hash credential safe to hold behind this
-route. A team with no `externalWorkspaceId` (a local, non-UOA team) is a `404`,
+UOA team id is `Team.externalWorkspaceId`, always resolved through the actor's
+own organization. The current-workspace read and both mutation routes resolve
+the actor's **session** team and never accept a team id from the request. The
+switcher's read-only route accepts a local team id but additionally requires a
+`TeamMember` row for the signed-in user before the full-trust UOA relay is
+called. A team with no `externalWorkspaceId` (a local, non-UOA team) is a `404`,
 exactly like an unlinked user.
 
 Unlike the billing calls, no UOA session identity is required. The team id comes
@@ -69,6 +70,7 @@ workspace's picture should not have to have signed in through SSO this session.
 | Route | Who |
 | --- | --- |
 | `GET /api/workspace/avatar` | any authenticated actor in the workspace |
+| `GET /api/teams/:teamId/avatar` | a signed-in user who belongs to that team |
 | `PUT /api/workspace/avatar` | organisation **owner or admin** |
 | `DELETE /api/workspace/avatar` | organisation **owner or admin** |
 
@@ -98,14 +100,17 @@ cached preview.
 ### Admin
 
 - `WorkspaceAvatar` primitive (`admin/src/components/primitives/`), sibling of
-  `UserAvatar`: resolves `/api/workspace/avatar` through the existing
-  `useAuthedObjectUrlFromPath` bearer-fetch helper, falls back to workspace
-  initials. Square-ish (`rounded-xl`) to match how the workspace already renders,
-  versus the round user avatar.
-- The sidebar rail's workspace-switcher button — the one surface where workspace
-  identity already shows — renders it instead of bare initials. The menu rows
-  keep initials: they list *other* teams, and the relay only serves the session's
-  own workspace.
+  `UserAvatar`: resolves either `/api/workspace/avatar` or the membership-scoped
+  `/api/teams/:teamId/avatar` through the existing
+  `useAuthedObjectUrlFromPath` bearer-fetch helper, and falls back to workspace
+  initials. Square-ish (`rounded-xl`) to match how the workspace already
+  renders, versus the round user avatar.
+- The sidebar rail has one workspace identity control: the workspace-switcher
+  button. The older organization-logo/smiley badge above it was removed. The
+  active button and every menu row render the appropriate UOA team picture.
+- The switcher menu is positioned from its top edge and receives a
+  viewport-bounded maximum height, so opening it near the top of the window
+  cannot grow the menu offscreen.
 - `WorkspaceAvatarPanel` on Settings → Organization → General, directly beside
   the existing `LogoPanel`, whose shape it follows (preview, upload, remove,
   and the same "only owners and admins" message when `canEdit` is false).
@@ -123,6 +128,8 @@ shows in every UOA surface.
 - [x] `api/src/routes/workspace-avatar.ts` — three relay routes + the owner/admin
       gate, registered in `api/src/index.ts`.
 - [x] `WorkspaceAvatar` primitive + sidebar workspace-switcher button.
+- [x] Membership-scoped team-avatar reads for all workspace-switcher rows,
+      duplicate rail branding removal, and viewport-safe menu placement.
 - [x] `WorkspaceAvatarPanel` on Organization → General + facade hooks.
 - [x] `api/test/uoa-workspace-avatar.test.ts` — read/upload/remove happy paths,
       member and viewer rejection, non-UOA team, oversize and wrong-type upload,

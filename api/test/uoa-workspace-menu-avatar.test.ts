@@ -1,0 +1,127 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import multipart from '@fastify/multipart'
+import type { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
+import Fastify from 'fastify'
+
+import { registerWorkspaceAvatarRoutes } from '../src/routes/workspace-avatar.js'
+
+const organizationId = '00000000-0000-4000-8000-000000000001'
+const projectId = '00000000-0000-4000-8000-000000000002'
+const memberTeamId = '00000000-0000-4000-8000-000000000003'
+const otherTeamId = '00000000-0000-4000-8000-000000000004'
+const userId = '00000000-0000-4000-8000-00000000000a'
+const otherUserId = '00000000-0000-4000-8000-00000000000b'
+const externalTeamId = 'uoa-team-42'
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+const actorContext: AuthorizedActionContext = {
+  actor: { actorType: 'user', actorId: userId, roles: ['member'] },
+  tenant: { organizationId, projectId, teamId: memberTeamId },
+  actionContext: { requestId: 'req-workspace-menu-avatar' },
+}
+
+const prisma = {
+  team: {
+    findFirst: async ({
+      where,
+    }: {
+      where: {
+        id: string
+        project: { organizationId: string }
+        members?: { some: { userId: string } }
+      }
+    }) => {
+      const rows = [
+        {
+          id: memberTeamId,
+          members: [userId],
+          externalWorkspaceId: externalTeamId,
+          name: 'Design',
+        },
+        {
+          id: otherTeamId,
+          members: [otherUserId],
+          externalWorkspaceId: 'uoa-team-other',
+          name: 'Other',
+        },
+      ]
+      const row = rows.find(
+        (candidate) =>
+          candidate.id === where.id &&
+          where.project.organizationId === organizationId &&
+          (!where.members || candidate.members.includes(where.members.some.userId)),
+      )
+      return row
+        ? { externalWorkspaceId: row.externalWorkspaceId, name: row.name }
+        : null
+    },
+  },
+} as unknown as PrismaClient
+
+const withUoaEnv = async (run: () => Promise<void>): Promise<void> => {
+  const previous = { ...process.env }
+  Object.assign(process.env, {
+    UOA_BASE_URL: 'https://uoa.test',
+    UOA_CLIENT_SECRET: 'test-client-secret',
+    UOA_CONFIG_JWT_KID: 'test-kid',
+    UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from('unused').toString('base64'),
+    UOA_CONFIG_URL: 'https://nessie.test/uoa/config.jwt',
+    UOA_DOMAIN: 'nessie.test',
+    UOA_JWKS_URL: 'https://nessie.test/.well-known/jwks.json',
+    UOA_REDIRECT_URL: 'https://nessie.test/auth/callback',
+  })
+  try {
+    await run()
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previous)) delete process.env[key]
+    }
+    Object.assign(process.env, previous)
+  }
+}
+
+test('workspace picker relays only team pictures the signed-in user may access', async () => {
+  await withUoaEnv(async () => {
+    const app = Fastify({ logger: false })
+    await app.register(multipart)
+    registerWorkspaceAvatarRoutes(app, {
+      prisma,
+      requireActorContext: () => actorContext,
+    } as unknown as Parameters<typeof registerWorkspaceAvatarRoutes>[1])
+
+    const calls: string[] = []
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input: URL | RequestInfo) => {
+      calls.push(String(input))
+      return new Response(PNG_BYTES, {
+        headers: { 'content-type': 'image/png', 'x-uoa-avatar-source': 'provider' },
+      })
+    }) as typeof fetch
+
+    try {
+      const memberResponse = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${memberTeamId}/avatar`,
+      })
+      assert.equal(memberResponse.statusCode, 200)
+      assert.equal(
+        calls[0],
+        `https://uoa.test/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
+      )
+
+      const nonMemberResponse = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${otherTeamId}/avatar`,
+      })
+      assert.equal(nonMemberResponse.statusCode, 404)
+      assert.equal(nonMemberResponse.json().error.code, 'AVATAR_NOT_FOUND')
+      assert.equal(calls.length, 1)
+    } finally {
+      globalThis.fetch = originalFetch
+      await app.close()
+    }
+  })
+})

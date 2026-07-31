@@ -3,15 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { faCheck, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthProviders } from '../../facades/auth/hooks'
-import { getInitials } from '../../lib/avatar'
 import { workspacesFromMe, type Workspace } from '../../lib/workspaces'
 import { useWorkspaceAvatarRevision } from '../../facades/workspace/hooks'
 import { WorkspaceAvatar } from '../../components/primitives/WorkspaceAvatar'
 import { startExternalSignIn } from '../../lib/external-auth'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
-
-type MenuPosition = { left: number; bottom: number }
+import {
+  resolveWorkspaceMenuPosition,
+  type WorkspaceMenuPosition,
+} from './workspace-menu-position'
 
 type WorkspaceMenuProps = {
   anchorRef: RefObject<HTMLElement | null>
@@ -19,6 +20,8 @@ type WorkspaceMenuProps = {
   activeTeamId: string | null
   ssoProviderId: string | null
   busy: boolean
+  token: string | null
+  avatarRevision: number
   onSelect: (workspace: Workspace) => void
   onAddWorkspace: (providerId: string) => void
   onClose: () => void
@@ -30,19 +33,31 @@ const WorkspaceMenu = ({
   activeTeamId,
   ssoProviderId,
   busy,
+  token,
+  avatarRevision,
   onSelect,
   onAddWorkspace,
   onClose,
 }: WorkspaceMenuProps) => {
-  const [position, setPosition] = useState<MenuPosition | null>(null)
+  const [position, setPosition] = useState<WorkspaceMenuPosition | null>(null)
 
   useLayoutEffect(() => {
     const anchor = anchorRef.current
     if (!anchor) {
       return
     }
-    const rect = anchor.getBoundingClientRect()
-    setPosition({ left: rect.right + 8, bottom: window.innerHeight - rect.bottom })
+    const updatePosition = () => {
+      const rect = anchor.getBoundingClientRect()
+      setPosition(
+        resolveWorkspaceMenuPosition(rect, {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        }),
+      )
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    return () => window.removeEventListener('resize', updatePosition)
   }, [anchorRef])
 
   useEffect(() => {
@@ -64,11 +79,15 @@ const WorkspaceMenu = ({
       <div className="fixed inset-0 z-[60]" onClick={onClose} />
       <div
         className={[
-          'fixed z-[61] max-h-[70vh] w-[260px] overflow-y-auto rounded-xl border',
+          'fixed z-[61] w-[260px] overflow-y-auto rounded-xl border',
           'border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5',
           'shadow-[0_16px_48px_var(--scrim-strong)]',
         ].join(' ')}
-        style={{ left: position.left, bottom: position.bottom }}
+        style={{
+          left: position.left,
+          top: position.top,
+          maxHeight: position.maxHeight,
+        }}
       >
         <div className="px-2 py-1 text-xs uppercase tracking-[0.18em] text-[color:var(--tx3)]">
           Workspaces
@@ -86,15 +105,13 @@ const WorkspaceMenu = ({
               onClick={() => onSelect(workspace)}
               type="button"
             >
-              <span
-                aria-hidden
-                className={[
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold',
-                  'bg-[color:var(--overlay)] text-[color:var(--tx)]',
-                ].join(' ')}
-              >
-                {getInitials(workspace.label, 'W')}
-              </span>
+              <WorkspaceAvatar
+                label={workspace.label}
+                revision={isActive ? avatarRevision : 0}
+                size={32}
+                teamId={workspace.teamId}
+                token={token}
+              />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-[color:var(--tx)]">
                   {workspace.label}
@@ -146,7 +163,7 @@ const WorkspaceMenu = ({
  * Slack-style workspace switcher for the sidebar rail: lists the workspaces
  * (teams) the user belongs to and re-scopes the session to the chosen one via
  * `switch-context`. "Add a workspace" re-runs SSO so UOA's chooser appears.
- * Hidden when there is nothing to switch to and no SSO provider to add one.
+ * Hidden only when there is no workspace and no SSO provider to add one.
  */
 export const WorkspaceSwitcher = () => {
   const { me, switchContext, token } = useAuthSession()
@@ -165,8 +182,9 @@ export const WorkspaceSwitcher = () => {
     providers.find((provider) => provider.enabled && provider.type !== 'local-bootstrap')?.providerId ??
     null
 
-  // Nothing to switch to and no way to add one → don't take up rail space.
-  if (workspaces.length <= 1 && !ssoProviderId) {
+  // The switcher is the rail's single workspace identity control, including
+  // when there is currently only one workspace.
+  if (workspaces.length === 0 && !ssoProviderId) {
     return null
   }
 
@@ -200,7 +218,7 @@ export const WorkspaceSwitcher = () => {
         aria-haspopup="menu"
         aria-label="Switch workspace"
         className={[
-          'mb-2 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
+          'mb-4 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
           open ? 'ring-2 ring-[color:var(--accent)]' : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
         ].join(' ')}
         onClick={() => setOpen((value) => !value)}
@@ -208,13 +226,11 @@ export const WorkspaceSwitcher = () => {
         title={active ? `Workspace: ${active.label}` : 'Switch workspace'}
         type="button"
       >
-        {/* Only the active workspace has a company avatar to show: the relay
-            serves the session's own team, so the menu rows below stay on
-            initials. */}
         <WorkspaceAvatar
           label={active?.label ?? 'Workspace'}
           revision={avatarRevision}
           size={36}
+          teamId={active?.teamId}
           token={token}
         />
       </button>
@@ -222,11 +238,13 @@ export const WorkspaceSwitcher = () => {
         <WorkspaceMenu
           activeTeamId={activeTeamId}
           anchorRef={buttonRef}
+          avatarRevision={avatarRevision}
           busy={busy}
           onAddWorkspace={handleAddWorkspace}
           onClose={() => setOpen(false)}
           onSelect={handleSelect}
           ssoProviderId={ssoProviderId}
+          token={token}
           workspaces={workspaces}
         />
       ) : null}

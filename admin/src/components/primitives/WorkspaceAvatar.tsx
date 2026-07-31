@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { getInitials } from '../../lib/avatar'
 import { useAuthedObjectUrlFromPath } from '../../lib/uploads'
 
-// The company picture UnlikeOtherAI holds for the signed-in workspace. The relay
-// needs a bearer token, so it is fetched as an object URL rather than dropped
-// into an <img src> (see lib/uploads).
+// The company picture UnlikeOtherAI holds for a workspace. The relay needs a
+// bearer token, so it is fetched as an object URL rather than dropped into an
+// <img src> (see lib/uploads).
 export const WORKSPACE_AVATAR_PATH = '/api/workspace/avatar'
+
+export const workspaceAvatarPath = (teamId?: string): string =>
+  teamId ? `/api/teams/${encodeURIComponent(teamId)}/avatar` : WORKSPACE_AVATAR_PATH
 
 type WorkspaceAvatarProps = {
   // Falls back to these initials while loading, on failure, and for a workspace
@@ -18,6 +21,10 @@ type WorkspaceAvatarProps = {
   // Bumping this refetches after an upload/remove, whose new image lives at the
   // same URL and would otherwise be served from the browser cache.
   revision?: number
+  // A specific local team id makes the component use the membership-scoped
+  // relay, which lets workspace pickers show every team's UOA picture. Omitting
+  // it preserves the current-workspace endpoint used by avatar settings.
+  teamId?: string
 }
 
 /**
@@ -32,9 +39,11 @@ export const WorkspaceAvatar = ({
   size = 36,
   className,
   revision = 0,
+  teamId,
 }: WorkspaceAvatarProps) => {
+  const path = workspaceAvatarPath(teamId)
   const url = useAuthedObjectUrlFromPath(
-    revision > 0 ? `${WORKSPACE_AVATAR_PATH}?v=${revision}` : WORKSPACE_AVATAR_PATH,
+    revision > 0 ? `${path}?v=${revision}` : path,
     token,
   )
   const [broken, setBroken] = useState(false)
