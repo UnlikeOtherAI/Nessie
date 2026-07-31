@@ -916,6 +916,12 @@ a {
   padding: 1px 3px;
 }
 
+/* Kept in the document — it is part of the message — but out of the layout, so
+   the caret steps straight from the prose into the snippet and back. */
+.mention-editor-fence[data-markdown-fence='concealed'] {
+  display: none;
+}
+
 .mention-editor-code-block {
   background: var(--overlay-strong);
   box-shadow: 0 0 0 3px var(--overlay-weak);

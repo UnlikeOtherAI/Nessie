@@ -65,9 +65,40 @@ test('finds live-editor inline and multiline code ranges', () => {
   const source = 'one `inline` two ```first\nsecond``` end'
 
   assert.deepEqual(findMarkdownCodeRanges(source), [
-    { end: 12, kind: 'inline', start: 4 },
-    { end: 35, kind: 'block', start: 17 },
+    { contentEnd: 11, contentStart: 5, end: 12, kind: 'inline', start: 4 },
+    { contentEnd: 32, contentStart: 20, end: 35, kind: 'block', start: 17 },
   ])
+})
+
+test('reports the delimiters of a fence the author has not closed yet', () => {
+  assert.deepEqual(findMarkdownCodeRanges('```typing'), [
+    { contentEnd: 9, contentStart: 3, end: 9, kind: 'block', start: 0 },
+  ])
+  assert.deepEqual(findMarkdownCodeRanges('```'), [
+    { contentEnd: 3, contentStart: 3, end: 3, kind: 'block', start: 0 },
+  ])
+})
+
+test('keeps every word of a fence the author never closed', () => {
+  const source = '```is it doneoi?'
+  const html = renderMarkdown(source)
+
+  assert.equal(normalizeMessageMarkdown(source), '\n```\nis it doneoi?\n```\n')
+  assert.ok(html.includes('is it doneoi?'))
+  assert.match(html, /<pre class="admin-message-code-block"/)
+})
+
+test('closes an unterminated fence that opens mid-sentence', () => {
+  const source = 'hey ```is it done\nbi?'
+
+  assert.equal(normalizeMessageMarkdown(source), 'hey \n\n```\nis it done\nbi?\n```\n')
+})
+
+test('leaves an unterminated language-tagged block to standard Markdown', () => {
+  const source = '```ts\nconst answer = 42'
+
+  assert.equal(normalizeMessageMarkdown(source), source)
+  assert.match(renderMarkdown(source), /class="language-ts admin-message-code"/)
 })
 
 test('leaves standard language-tagged fenced blocks unchanged', () => {

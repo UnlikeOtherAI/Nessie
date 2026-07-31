@@ -824,9 +824,17 @@ type ControlCommandDefinition = {
 - The admin channel feed renders every human and agent post as safe
   GitHub-flavoured Markdown, including inline backtick code and fenced code
   blocks. Triple-backtick blocks may begin within a chat line and preserve
-  their internal newlines. The composer and message editor highlight raw code
-  ranges before submission; mentions remain interactive in prose and stay
-  literal inside code.
+  their internal newlines. A fence the author never closed is closed at render
+  time, so a chat line such as ` ```is it done? ` posts as a code block
+  containing those words instead of an empty block; a lone language tag on the
+  opening line still reads as a language.
+- The composer and message editor style code ranges live and conceal the
+  backticks once a delimiter pair wraps something, so the snippet reads the way
+  it will post. An empty pair keeps its backticks visible. A concealed
+  delimiter is atomic: one arrow press crosses it, one delete removes it whole,
+  and typing beside it stays outside the snippet. Shift+Enter inserts a soft
+  line break at the caret, inside a code block or in prose. Mentions remain
+  interactive in prose and stay literal inside code.
 - Add a hidden **organizer** for each scope:
   - sees all inbound messages,
   - resolves implicit mentions,

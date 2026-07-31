@@ -2,8 +2,10 @@ import { useEffect, useRef } from 'react'
 import {
   decorateMarkdownEditor,
   extractEditorText,
+  insertMarkdownEditorText,
   setMarkdownEditorText,
 } from '../../../lib/markdown-editor'
+import { useConcealedFenceInput } from '../../../hooks/useConcealedFenceInput'
 
 interface MarkdownEditInputProps {
   value: string
@@ -28,6 +30,8 @@ export const MarkdownEditInput = ({
     editor.focus()
   }, [value])
 
+  useConcealedFenceInput(editorRef, onChange)
+
   return (
     <div
       ref={editorRef}
@@ -50,7 +54,12 @@ export const MarkdownEditInput = ({
         onChange(text)
       }}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' && !event.shiftKey) {
+        if (event.key === 'Enter' && event.shiftKey) {
+          event.preventDefault()
+          onChange(insertMarkdownEditorText(event.currentTarget, '\n'))
+          return
+        }
+        if (event.key === 'Enter') {
           event.preventDefault()
           onSubmit()
         }
