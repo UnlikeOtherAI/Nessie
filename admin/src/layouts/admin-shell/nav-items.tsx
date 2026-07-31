@@ -23,7 +23,6 @@ export const matchesAdminRoute = (pathname: string): boolean =>
 export type NavSectionId =
   | 'channels'
   | 'projects'
-  | 'integrations'
   | 'knowledge'
   | 'admin'
   | 'search';
@@ -86,15 +85,6 @@ const KnowledgeIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   </svg>
 );
 
-const IntegrationsIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
-  <svg className={className} {...svgProps}>
-    <path d="M8 7h4a3 3 0 010 6H8" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M16 17h-4a3 3 0 010-6h4" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M3 7h3M18 17h3" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M6 4v6M18 14v6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
 const AdminIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   <svg className={className} {...svgProps}>
     <path
@@ -132,14 +122,6 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/projects',
     isActive: (pathname) => pathname.startsWith('/projects'),
     icon: ProjectsIcon,
-  },
-  {
-    id: 'integrations',
-    label: 'Integrations',
-    to: '/integrations',
-    isActive: (pathname) => pathname.startsWith('/integrations'),
-    icon: IntegrationsIcon,
-    showInMobileTab: false,
   },
   {
     id: 'knowledge',

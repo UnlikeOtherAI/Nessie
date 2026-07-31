@@ -141,19 +141,20 @@ rather than a hard-coded ladder.
   (`admin/src/facades/integrations/hooks.ts`), the `SignalsPage`
   (`admin/src/pages/SignalsPage.tsx`) + `SignalCard` row, registered into
   `product-page-registry` at `/signals` (no router/shell change). Loading, empty ("you're all
-  caught up"), needs-setup ("Connect DeepSignal", links `/integrations`), and error states are
-  all handled. The chat-assistant link is Slice A's generic `SidebarDmSection` path (resolves the
-  external-agent channel by label match) and needed no change for DeepSignal.
+  caught up"), needs-setup ("Connect DeepSignal", links `/settings/integrations`), and error
+  states are all handled. The chat-assistant link is Slice A's generic `SidebarDmSection` path
+  (resolves the external-agent channel by label match) and needed no change for DeepSignal.
 - **Slice C — DeepWater Research in Documents** *(done, 2026-07-12)*: `DeepWaterResearchView`
   (`admin/src/components/features/knowledge/DeepWaterResearchView.tsx`) registered into
   `product-documents-registry` under the `deep-water-research` view key, so the generic
   `ProductDocumentsView` host renders it when the pinned Documents entry is selected — no
   shell/sidebar/router change. It reuses the presentational `DeepWaterRunHistory` (imported
   directly, single implementation) fed by `useDeepWaterResearchRuns()`, wrapped in a
-  `KnowledgePane` titled "Research" with a "New research" deep-link to `/integrations` (where
-  the existing `DeepWaterResearchPanel` launch flow lives). Loading, empty ("No researches
-  yet"), and not-connected states handled. `/knowledge-base?view=deep-water-research`
-  deep-links straight into it via Slice A's `selectProductView`.
+  `KnowledgePane` titled "Research" with a "New research" deep-link to
+  `/settings/integrations` (where the existing `DeepWaterResearchPanel` launch flow lives).
+  Loading, empty ("No researches yet"), and not-connected states handled.
+  `/knowledge-base?view=deep-water-research` deep-links straight into it via Slice A's
+  `selectProductView`.
 - **Slice E — DeepSignal DM as a native thinking assistant** *(done, 2026-07-12)*: reframes the
   external-agent DM as a first-class assistant per the verified Slack agent-design guidance
   (research doc §2 / §8.1), gated strictly to `external_agent` channels so the PA and normal

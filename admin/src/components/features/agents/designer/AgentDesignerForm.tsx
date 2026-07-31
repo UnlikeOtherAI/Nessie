@@ -245,7 +245,10 @@ export const AgentDesignerForm = ({
           {canManageExplicitTools ? (
             <>
               Manage them in <Link className="underline" to="/agents/tools">Tools</Link>
-              {' '}or <Link className="underline" to="/integrations">Integrations</Link>.
+              {' '}or{' '}
+              <Link className="underline" to="/settings/integrations">
+                Integrations
+              </Link>.
             </>
           ) : (
             'An organization owner manages them in Tools or Integrations.'

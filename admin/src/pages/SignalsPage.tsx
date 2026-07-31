@@ -116,7 +116,10 @@ export const SignalsPage = ({ surface }: ProductPageProps) => {
           title="Connect DeepSignal to see your signals"
           body="Activate DeepSignal and sign in to start receiving the opportunities and risks that matter to you."
           action={
-            <Link className="admin-button admin-button-primary admin-button-compact" to="/integrations">
+            <Link
+              className="admin-button admin-button-primary admin-button-compact"
+              to="/settings/integrations"
+            >
               Open Integrations
             </Link>
           }
