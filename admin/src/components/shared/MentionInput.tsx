@@ -7,6 +7,10 @@ import {
   useRef,
   useState,
 } from 'react'
+import {
+  decorateMarkdownEditor,
+  extractEditorText,
+} from '../../lib/markdown-editor'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -42,25 +46,6 @@ type Props = {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function extractText(node: Node): string {
-  let out = ''
-  for (const child of node.childNodes) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      out += child.textContent ?? ''
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      const el = child as HTMLElement
-      if (el.dataset.mentionId) {
-        out += el.textContent ?? ''
-      } else if (el.tagName === 'BR') {
-        out += '\n'
-      } else {
-        out += extractText(el)
-      }
-    }
-  }
-  return out
-}
 
 function clearChildren(el: HTMLElement): void {
   while (el.firstChild) {
@@ -160,6 +145,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
   ) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const popupRef = useRef<HTMLDivElement>(null)
+    const composingRef = useRef(false)
     const [mentionContext, setMentionContext] = useState<{
       query: string
       trigger: '@' | '#'
@@ -204,7 +190,8 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
     const sync = useCallback(() => {
       const el = editorRef.current
       if (!el) return
-      const text = extractText(el)
+      const text = extractEditorText(el)
+      if (!composingRef.current) decorateMarkdownEditor(el, text)
       setHasContent(text.trim().length > 0)
       onChange?.(text)
     }, [onChange])
@@ -279,7 +266,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         editorRef.current?.focus()
       },
       getText() {
-        return editorRef.current ? extractText(editorRef.current) : ''
+        return editorRef.current ? extractEditorText(editorRef.current) : ''
       },
       insertAtSign() {
         const el = editorRef.current
@@ -372,6 +359,14 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
           ].join(' ')}
           contentEditable
           data-placeholder={placeholder}
+          onCompositionEnd={() => {
+            composingRef.current = false
+            sync()
+            checkMention()
+          }}
+          onCompositionStart={() => {
+            composingRef.current = true
+          }}
           onBlur={() => {
             // Delay so mouseDown on popup fires first
             setTimeout(() => setMentionContext(null), 150)
@@ -415,7 +410,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
               e.preventDefault()
               const editor = editorRef.current
               if (!editor) return
-              const text = extractText(editor).trim()
+              const text = extractEditorText(editor).trim()
               if (!text) return
               // Clear synchronously BEFORE notifying the caller so a second
               // Enter keystroke can't re-read the same text.
@@ -431,7 +426,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
             const text = e.clipboardData.getData('text/plain')
             if (maxLength && onOversizePaste) {
               const currentLength = editorRef.current
-                ? extractText(editorRef.current).length
+                ? extractEditorText(editorRef.current).length
                 : 0
               if (currentLength + text.length > maxLength) {
                 onOversizePaste(text)

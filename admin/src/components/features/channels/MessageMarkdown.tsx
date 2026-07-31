@@ -1,6 +1,7 @@
 import React, { useMemo, type ReactNode } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { normalizeMessageMarkdown } from '../../../lib/message-markdown'
 
 interface MessageMarkdownProps {
   children: string
@@ -94,7 +95,7 @@ export const MessageMarkdown = ({
   return (
     <div className="admin-message-markdown">
       <Markdown components={components} remarkPlugins={[remarkGfm]}>
-        {children}
+        {normalizeMessageMarkdown(children)}
       </Markdown>
     </div>
   )

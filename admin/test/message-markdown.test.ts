@@ -4,6 +4,10 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { MessageMarkdown } from '../src/components/features/channels/MessageMarkdown.js'
+import {
+  findMarkdownCodeRanges,
+  normalizeMessageMarkdown,
+} from '../src/lib/message-markdown.js'
 
 const renderMarkdown = (
   content: string,
@@ -44,6 +48,32 @@ test('renders single-backtick code and triple-backtick fenced code', () => {
   assert.match(html, /<pre class="admin-message-code-block" tabindex="0">/)
   assert.match(html, /class="language-ts admin-message-code"/)
   assert.match(html, /const answer = 42/)
+})
+
+test('turns inline-position triple backticks into a newline-preserving block', () => {
+  const source = 'hey ```is it done\nbi?```?'
+  const normalized = normalizeMessageMarkdown(source)
+  const html = renderMarkdown(source)
+
+  assert.equal(normalized, 'hey \n\n```\nis it done\nbi?\n```\n\n?')
+  assert.match(html, /<p>hey<\/p>/)
+  assert.ok(html.includes('is it done\nbi?\n</code></pre>'))
+  assert.match(html, /<p>\?<\/p>/)
+})
+
+test('finds live-editor inline and multiline code ranges', () => {
+  const source = 'one `inline` two ```first\nsecond``` end'
+
+  assert.deepEqual(findMarkdownCodeRanges(source), [
+    { end: 12, kind: 'inline', start: 4 },
+    { end: 35, kind: 'block', start: 17 },
+  ])
+})
+
+test('leaves standard language-tagged fenced blocks unchanged', () => {
+  const source = '```ts\nconst answer = 42\n```'
+
+  assert.equal(normalizeMessageMarkdown(source), source)
 })
 
 test('renders mentions in prose without changing code literals', () => {
