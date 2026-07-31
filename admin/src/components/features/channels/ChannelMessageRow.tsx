@@ -10,6 +10,7 @@ import { formatClock, getDisplayName, type MessageUserIdentity } from './channel
 import { MessageUiCards } from './MessageUiCards'
 import { CommsConnectCard } from './CommsConnectCard'
 import { MessageMarkdown } from './MessageMarkdown'
+import { MarkdownEditInput } from './MarkdownEditInput'
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -242,21 +243,11 @@ export const ChannelMessageRow = ({
         >
           {isEditingMessage ? (
             <div className="flex flex-col gap-2">
-              <textarea
-                autoFocus
-                className="admin-input"
-                onChange={(event) => onChangeEditingContent(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    onSubmitEdit(message.id)
-                  }
-                  if (event.key === 'Escape') {
-                    onCancelEdit()
-                  }
-                }}
-                rows={2}
+              <MarkdownEditInput
                 value={editingContent}
+                onCancel={onCancelEdit}
+                onChange={onChangeEditingContent}
+                onSubmit={() => onSubmitEdit(message.id)}
               />
               <div className="flex items-center gap-2">
                 <button

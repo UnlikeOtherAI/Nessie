@@ -903,6 +903,32 @@ a {
   overflow-y: auto;
 }
 
+.mention-editor-code {
+  border-radius: 4px;
+  background: var(--overlay);
+  box-decoration-break: clone;
+  color: var(--tx);
+  font-family: var(--font-family-mono);
+  -webkit-box-decoration-break: clone;
+}
+
+.mention-editor-code-inline {
+  padding: 1px 3px;
+}
+
+.mention-editor-code-block {
+  background: var(--overlay-strong);
+  box-shadow: 0 0 0 3px var(--overlay-weak);
+}
+
+.admin-markdown-edit-input {
+  min-height: 5rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .mention-editor.is-empty::before {
   content: attr(data-placeholder);
   color: var(--tx3);
