@@ -10,7 +10,9 @@ import {
 import {
   decorateMarkdownEditor,
   extractEditorText,
+  insertMarkdownEditorText,
 } from '../../lib/markdown-editor'
+import { useConcealedFenceInput } from '../../hooks/useConcealedFenceInput'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -208,6 +210,38 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
       }
     }, [])
 
+    const onEdit = useCallback(
+      (text: string) => {
+        setHasContent(text.trim().length > 0)
+        onChange?.(text)
+        checkMention()
+      },
+      [checkMention, onChange],
+    )
+
+    useConcealedFenceInput(editorRef, onEdit)
+
+    // Everything the component inserts on the author's behalf — toolbar
+    // triggers, pastes, suggestions — goes through the same splice as typing,
+    // so it lands where the caret is rather than wherever the browser would
+    // put a raw execCommand.
+    const applyInsertion = useCallback(
+      (insertion: string) => {
+        const el = editorRef.current
+        if (!el) return
+        onEdit(insertMarkdownEditorText(el, insertion))
+      },
+      [onEdit],
+    )
+
+    const insertTrigger = useCallback(
+      (trigger: '@' | '#') => {
+        editorRef.current?.focus()
+        applyInsertion(trigger)
+      },
+      [applyInsertion],
+    )
+
     const insertMention = useCallback(
       (entity: MentionEntity) => {
         const editor = editorRef.current
@@ -269,20 +303,10 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         return editorRef.current ? extractEditorText(editorRef.current) : ''
       },
       insertAtSign() {
-        const el = editorRef.current
-        if (!el) return
-        el.focus()
-        document.execCommand('insertText', false, '@')
-        sync()
-        checkMention()
+        insertTrigger('@')
       },
       insertHashSign() {
-        const el = editorRef.current
-        if (!el) return
-        el.focus()
-        document.execCommand('insertText', false, '#')
-        sync()
-        checkMention()
+        insertTrigger('#')
       },
       insertText(text: string) {
         const el = editorRef.current
@@ -296,8 +320,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
         const sel = window.getSelection()
         sel?.removeAllRanges()
         sel?.addRange(range)
-        document.execCommand('insertText', false, text)
-        sync()
+        applyInsertion(text)
       },
     }))
 
@@ -406,6 +429,12 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
               }
             }
 
+            if (e.key === 'Enter' && e.shiftKey) {
+              e.preventDefault()
+              applyInsertion('\n')
+              return
+            }
+
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               const editor = editorRef.current
@@ -433,7 +462,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
                 return
               }
             }
-            document.execCommand('insertText', false, text)
+            applyInsertion(text)
           }}
           role="textbox"
           suppressContentEditableWarning
