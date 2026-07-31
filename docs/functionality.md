@@ -821,6 +821,9 @@ type ControlCommandDefinition = {
 - Add first-class **channels** and **channel membership**.
   - every thread can be scoped to a channel,
   - each channel carries default responder policy and permissions.
+- The admin channel feed renders every human and agent post as safe
+  GitHub-flavoured Markdown, including inline backtick code and fenced code
+  blocks. Mentions remain interactive in prose and stay literal inside code.
 - Add a hidden **organizer** for each scope:
   - sees all inbound messages,
   - resolves implicit mentions,
