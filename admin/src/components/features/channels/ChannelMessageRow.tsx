@@ -9,6 +9,7 @@ import type { ResolveReactorName } from './ReactionPills'
 import { formatClock, getDisplayName, type MessageUserIdentity } from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
 import { CommsConnectCard } from './CommsConnectCard'
+import { MessageMarkdown } from './MessageMarkdown'
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -276,9 +277,9 @@ export const ChannelMessageRow = ({
               </div>
             </div>
           ) : (
-            <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-              {renderContent(message.content)}
-            </p>
+            <MessageMarkdown renderInlineText={renderContent}>
+              {message.content}
+            </MessageMarkdown>
           )}
           {!isEditingMessage ? (
             <MessageUiCards

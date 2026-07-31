@@ -4,6 +4,7 @@ import { usePresenceLookup } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageRow, StatusBadge } from './ChannelMessageRow'
+import { MessageMarkdown } from './MessageMarkdown'
 import type { ResolveReactorName } from './ReactionPills'
 import {
   type FeedItem,
@@ -289,9 +290,9 @@ export const ChannelMessageFeed = ({
               )}
             </div>
             <div className="mt-0.5">
-              <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
-                {renderContent(entry.content)}
-              </p>
+              <MessageMarkdown renderInlineText={renderContent}>
+                {entry.content}
+              </MessageMarkdown>
             </div>
           </div>
         </article>
@@ -339,14 +340,14 @@ export const ChannelMessageFeed = ({
                 </span>
               </div>
               <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
-                <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--tx)]">
+                <MessageMarkdown renderInlineText={renderContent}>
                   {entry.content
-                    ? renderContent(entry.content)
+                    ? entry.content
                     : isDedicatedAgentConversation
                       ? `${pendingDisplayName} is thinking…`
                       : '... thinking ...'}
-                  <span className="streaming-dot" />
-                </p>
+                </MessageMarkdown>
+                <span className="streaming-dot" />
               </div>
             </div>
           </article>
