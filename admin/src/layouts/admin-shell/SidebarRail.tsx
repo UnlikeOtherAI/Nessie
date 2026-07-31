@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces';
-import { useCurrentOrganization } from '../../facades/organization/hooks';
-import { useAuthedObjectUrl } from '../../lib/uploads';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { NAV_ITEMS } from './nav-items';
 import { UserMenuPopover } from './UserMenuPopover';
@@ -20,8 +18,6 @@ type SidebarRailProps = {
 export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
   const { token, me } = useAuthSession();
   const { navPages: productNavPages } = useProductSurfaces();
-  const { data: organization } = useCurrentOrganization();
-  const logoUrl = useAuthedObjectUrl(organization?.logoAttachmentId ?? null, token);
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -32,47 +28,6 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
         'bg-[color:var(--rail)] px-2 py-2',
       ].join(' ')}
     >
-      <Link
-        className={[
-          'mb-4 flex h-9 w-9 items-center justify-center overflow-hidden',
-          logoUrl ? 'rounded-full' : 'rounded-xl',
-        ].join(' ')}
-        style={
-          logoUrl
-            ? undefined
-            : { background: 'linear-gradient(135deg,var(--accent-strong),var(--accent))' }
-        }
-        title={organization?.name}
-        to="/channels"
-      >
-        {logoUrl ? (
-          <img
-            alt={organization?.name ?? 'Workspace'}
-            className="h-full w-full object-cover"
-            src={logoUrl}
-          />
-        ) : (
-          <svg
-            fill="none"
-            height="22"
-            stroke="var(--on-accent)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            width="22"
-          >
-            <path
-              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"
-              fill="var(--overlay)"
-            />
-            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-            <line x1="9" x2="9.01" y1="9" y2="9" />
-            <line x1="15" x2="15.01" y1="9" y2="9" />
-          </svg>
-        )}
-      </Link>
-
       <WorkspaceSwitcher />
 
       {SIDEBAR_RAIL_ITEMS.map((item) => {

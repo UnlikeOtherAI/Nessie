@@ -18,7 +18,7 @@ The target experience:
 - users sign in once through UOA and can see which sibling products are linked;
 - team/workspace owners enable sibling products once for the active team, then
   users inherit access through shared SSO;
-- Nessie shows the sibling products in the left rail as launchable integrations;
+- Nessie shows sibling products in Settings as launchable integrations;
 - each product can also be installed as a Nessie plugin/capability bundle;
 - Nessie agents can use each product through approved MCP tools;
 - Deep Water research can be run natively from Nessie and its reports, sources,
@@ -35,7 +35,8 @@ The target experience:
 Relevant existing foundations:
 
 - authenticated product UI in `admin/`;
-- top-level rail navigation driven by `admin/src/layouts/admin-shell/nav-items.tsx`;
+- Settings navigation driven by
+  `admin/src/layouts/admin-shell/AdminSidebarNav.tsx`;
 - project boards and Kanban under `/projects`;
 - Knowledge spaces and pages in `packages/knowledge`;
 - all blob storage through `@nessie/runtime` `FileService`;
@@ -186,31 +187,26 @@ Current team-enable slice:
 The product registry powers the ESC UI. The MCP catalog powers agent tools.
 They can point to the same product, but they are not the same object.
 
-### 2. ESC Rail Surface
+### 2. ESC Settings Surface
 
-Add a new top-level rail section: **Integrations**.
+Expose **Integrations** from the Account section of Settings. It opens
+`/settings/integrations`; the former `/integrations` URL redirects there so
+existing bookmarks continue to work.
 
-Desktop placement: left rail, near the top, before or after Projects. It opens
-`/integrations`.
-
-Mobile/native placement: do not add a sixth permanent tab until product review;
-put Integrations under Admin or expose it from the workspace menu initially.
-
-`/integrations` should have three layers:
+`/settings/integrations` should have three layers:
 
 - installed products: launch cards for Deep Water, DeepTest, and buildme.live;
 - plugin/library state: installed, needs setup, active, paused, error;
 - account state: linked through UOA, needs product auth, local-only, or admin
   setup required.
 
-Do not put plugin configuration inside the left rail itself. The rail only
-launches the section; product cards and detail pages own configuration.
+Product cards and detail pages own configuration.
 
 Current Nessie slice:
 
-- `/integrations` is a full-width shell route with no secondary channel sidebar;
-- desktop rail exposes Integrations between Projects and Knowledge;
-- mobile web does not add Integrations as a sixth permanent tab;
+- `/settings/integrations` is an Admin-shell route with the Settings sidebar;
+- desktop and mobile web expose Integrations through Settings rather than as a
+  permanent top-level destination;
 - the page renders registry-backed product rows, manifest details, native page
   intent, chat cards, custom controls, agent/MCP access, artifacts, and next
   setup step.
@@ -381,7 +377,7 @@ agents should emit:
       "status": "running",
       "summary": "Collecting sources",
       "fields": [{ "label": "Budget", "value": "$4.00 cap" }],
-      "actions": [{ "label": "Open run", "href": "/integrations", "variant": "primary" }]
+      "actions": [{ "label": "Open run", "href": "/settings/integrations", "variant": "primary" }]
     }
   ]
 }
@@ -497,7 +493,7 @@ Current Nessie slice:
 - manifests are API-versioned as `integrations.nessie.io/v1`;
 - `GET /api/integrations/products/:productSlug/manifest` returns the selected
   manifest for authenticated users;
-- the `/integrations` product detail page renders install modes, MCP/catalog
+- the `/settings/integrations` product detail page renders install modes, MCP/catalog
   intent, declared tools, available UI surfaces, and privacy/import policy;
 - the manifest is intentionally product-level. Tool execution still requires
   MCP catalog installation, tool discovery/projection, admin approval, and
@@ -743,8 +739,8 @@ Acceptance:
 
 ### Phase 1: ESC Shell In Nessie
 
-- Add `Integrations` top-level route and rail item. **Implemented in current
-  slice.**
+- Add `Integrations` to Settings navigation. **Implemented in current slice;
+  the original top-level route now redirects to `/settings/integrations`.**
 - Add `integrated_products` and `product_account_links` schema. **Implemented
   in current slice.**
 - Seed first-party product rows for Deep Water, DeepTest, and buildme.live.
@@ -853,7 +849,7 @@ Acceptance:
 ## Definition Of Done For The Whole Goal
 
 - One UOA login can carry a user across Nessie and the sibling products.
-- Nessie's left rail exposes Integrations/ESC.
+- Nessie's Settings navigation exposes Integrations/ESC.
 - Each sibling product is visible in ESC with status, launch, and setup; usage
   stays on the appropriate UOA customer or owner-only operational surface.
 - Each product has an installable plugin path for open-source Nessie.

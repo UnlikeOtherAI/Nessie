@@ -128,21 +128,29 @@ export const resolveUoaAvatarSubject = async (
 /**
  * The UOA workspace behind the actor's session team, or null when there is no
  * team in context or the team was never bound to a UOA workspace (a purely
- * local team). The team is looked up through the actor's own organization, so a
- * caller can only ever address the workspace they are already in — which is what
- * makes it safe to sit a full-trust domain-hash credential behind this route.
+ * local team). Current-workspace routes scope through the actor's organization.
+ * The workspace picker instead supplies `userId` and requires that user's team
+ * membership, which safely covers workspaces in every organization the user
+ * belongs to.
  */
 export const resolveUoaWorkspace = async (
   prisma: UoaWorkspacePrisma,
-  input: { organizationId: string; teamId: string | null | undefined },
+  input: {
+    organizationId?: string
+    teamId: string | null | undefined
+    userId?: string
+  },
 ): Promise<UoaWorkspace | null> => {
-  if (!input.teamId) {
+  if (!input.teamId || (!input.organizationId && !input.userId)) {
     return null
   }
   const team = await prisma.team.findFirst({
     where: {
       id: input.teamId,
-      project: { organizationId: input.organizationId },
+      ...(input.organizationId
+        ? { project: { organizationId: input.organizationId } }
+        : {}),
+      ...(input.userId ? { members: { some: { userId: input.userId } } } : {}),
     },
     select: { externalWorkspaceId: true, name: true },
   })

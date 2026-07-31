@@ -38,7 +38,7 @@ export const ProductPageHost = () => {
         </p>
         <Link
           className="admin-button admin-button-primary admin-button-compact mt-4"
-          to="/integrations"
+          to="/settings/integrations"
         >
           Open Integrations
         </Link>

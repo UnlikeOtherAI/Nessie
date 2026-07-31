@@ -7,7 +7,10 @@ import { KnowledgePane } from './KnowledgePane'
 // launch panel (DeepWaterResearchPanel) lives — this view is a read surface, so
 // launching stays with its existing owner rather than being rebuilt here.
 const NewResearchAction = () => (
-  <Link className="admin-button admin-button-secondary admin-button-compact h-8" to="/integrations">
+  <Link
+    className="admin-button admin-button-secondary admin-button-compact h-8"
+    to="/settings/integrations"
+  >
     New research
   </Link>
 )

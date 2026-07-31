@@ -19,15 +19,16 @@ import type { RouteDeps } from './types.js'
 /**
  * The workspace ("company") avatar UnlikeOtherAuthenticator holds for the
  * actor's team — read by everyone in the workspace, changed by owners/admins.
+ * A separate read-only membership-scoped route serves the other teams visible
+ * in the workspace picker.
  *
  * UOA's `/domain/teams/:teamId/avatar` endpoints take the domain-hash bearer
  * alone, which is full system trust for the domain and applies **no** role check
  * of its own. UOA requires the calling product to gate first, so the
  * owner/admin check below is the only thing standing between an ordinary member
- * and rewriting the whole workspace's picture. The team id is likewise never
- * taken from the request — it is resolved from the actor's session team through
- * their own organization, so a caller can only ever address the workspace they
- * are already in.
+ * and rewriting the whole workspace's picture. The current-workspace mutation
+ * routes never take a team id from the request. The picker route accepts a team
+ * id only for reads and verifies the signed-in user's membership first.
  */
 
 // Mirrors the org logo route: owners and admins manage organisation identity.
@@ -103,6 +104,25 @@ const sendRelayError = (
   return false
 }
 
+const relayWorkspaceAvatar = async (
+  request: FastifyRequest,
+  reply: FastifyReply,
+  workspace: UoaWorkspace,
+): Promise<FastifyReply> => {
+  let image = null
+  try {
+    image = await fetchUoaWorkspaceAvatar(workspace.externalTeamId)
+  } catch (error) {
+    if (sendRelayError(request, reply, error)) return reply
+    throw error
+  }
+
+  if (!image) {
+    return sendAvatarNotFound(reply, NO_WORKSPACE_MESSAGE)
+  }
+  return sendAvatarImage(reply, image)
+}
+
 export const registerWorkspaceAvatarRoutes = (
   app: FastifyInstance,
   deps: RouteDeps,
@@ -116,18 +136,24 @@ export const registerWorkspaceAvatarRoutes = (
     const workspace = await requireWorkspace(deps, actorContext, reply)
     if (!workspace) return reply
 
-    let image = null
-    try {
-      image = await fetchUoaWorkspaceAvatar(workspace.externalTeamId)
-    } catch (error) {
-      if (sendRelayError(request, reply, error)) return reply
-      throw error
-    }
+    return relayWorkspaceAvatar(request, reply, workspace)
+  })
 
-    if (!image) {
+  app.get<{ Params: { teamId: string } }>('/api/teams/:teamId/avatar', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (actorContext.actor.actorType !== 'user') {
       return sendAvatarNotFound(reply, NO_WORKSPACE_MESSAGE)
     }
-    return sendAvatarImage(reply, image)
+
+    const workspace = await resolveUoaWorkspace(deps.prisma, {
+      teamId: request.params.teamId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!workspace) {
+      return sendAvatarNotFound(reply, NO_WORKSPACE_MESSAGE)
+    }
+    return relayWorkspaceAvatar(request, reply, workspace)
   })
 
   app.put('/api/workspace/avatar', async (request, reply) => {

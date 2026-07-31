@@ -94,6 +94,10 @@ export const router = createBrowserRouter([
     element: <Navigate to="/agents" replace />,
   },
   {
+    path: '/integrations',
+    element: <Navigate to="/settings/integrations" replace />,
+  },
+  {
     element: <AdminShellLayout />,
     children: [
       {
@@ -131,10 +135,6 @@ export const router = createBrowserRouter([
       {
         path: '/projects/:projectId/settings',
         element: <ProjectView />,
-      },
-      {
-        path: '/integrations',
-        element: <IntegrationsPage />,
       },
       {
         // Product `nav_page` surfaces (e.g. DeepSignal's /signals) mount on the
@@ -226,6 +226,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/connections',
         element: <ConnectionsPage />,
+      },
+      {
+        path: '/settings/integrations',
+        element: <IntegrationsPage />,
       },
       {
         path: '/settings/appearance',

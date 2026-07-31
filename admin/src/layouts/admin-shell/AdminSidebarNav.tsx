@@ -33,7 +33,7 @@ const icon = (path: ReactNode) => (
   </svg>
 );
 
-const ADMIN_NAV: AdminNavGroup[] = [
+export const ADMIN_NAV: AdminNavGroup[] = [
   {
     id: 'agents',
     heading: 'Agents',
@@ -176,6 +176,18 @@ const ADMIN_NAV: AdminNavGroup[] = [
               strokeLinecap="round"
               strokeLinejoin="round"
             />
+          </>,
+        ),
+      },
+      {
+        path: '/settings/integrations',
+        label: 'Integrations',
+        icon: icon(
+          <>
+            <path d="M8 7h4a3 3 0 010 6H8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M16 17h-4a3 3 0 010-6h4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M3 7h3M18 17h3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M6 4v6M18 14v6" strokeLinecap="round" strokeLinejoin="round" />
           </>,
         ),
       },
