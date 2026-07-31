@@ -54,11 +54,12 @@ important thing to get right here.
 
 The workspace is the team — the thing `WorkspaceSwitcher` switches between. The
 UOA team id is `Team.externalWorkspaceId`, always resolved through the actor's
-own organization. The current-workspace read and both mutation routes resolve
-the actor's **session** team and never accept a team id from the request. The
-switcher's read-only route accepts a local team id but additionally requires a
-`TeamMember` row for the signed-in user before the full-trust UOA relay is
-called. A team with no `externalWorkspaceId` (a local, non-UOA team) is a `404`,
+own organization for current-workspace operations. The current-workspace read
+and both mutation routes resolve the actor's **session** team and never accept a
+team id from the request. The switcher's read-only route accepts a local team id
+but requires a `TeamMember` row for the signed-in user before the full-trust UOA
+relay is called; this safely covers every organization in the user's workspace
+list. A team with no `externalWorkspaceId` (a local, non-UOA team) is a `404`,
 exactly like an unlinked user.
 
 Unlike the billing calls, no UOA session identity is required. The team id comes

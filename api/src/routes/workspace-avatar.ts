@@ -147,7 +147,6 @@ export const registerWorkspaceAvatarRoutes = (
     }
 
     const workspace = await resolveUoaWorkspace(deps.prisma, {
-      organizationId: actorContext.tenant.organizationId,
       teamId: request.params.teamId,
       userId: actorContext.actor.actorId,
     })

@@ -12,6 +12,7 @@ const organizationId = '00000000-0000-4000-8000-000000000001'
 const projectId = '00000000-0000-4000-8000-000000000002'
 const memberTeamId = '00000000-0000-4000-8000-000000000003'
 const otherTeamId = '00000000-0000-4000-8000-000000000004'
+const otherOrgTeamId = '00000000-0000-4000-8000-000000000005'
 const userId = '00000000-0000-4000-8000-00000000000a'
 const otherUserId = '00000000-0000-4000-8000-00000000000b'
 const externalTeamId = 'uoa-team-42'
@@ -30,7 +31,7 @@ const prisma = {
     }: {
       where: {
         id: string
-        project: { organizationId: string }
+        project?: { organizationId: string }
         members?: { some: { userId: string } }
       }
     }) => {
@@ -47,11 +48,17 @@ const prisma = {
           externalWorkspaceId: 'uoa-team-other',
           name: 'Other',
         },
+        {
+          id: otherOrgTeamId,
+          members: [userId],
+          externalWorkspaceId: 'uoa-team-other-org',
+          name: 'Cross-org member',
+        },
       ]
       const row = rows.find(
         (candidate) =>
           candidate.id === where.id &&
-          where.project.organizationId === organizationId &&
+          (!where.project || where.project.organizationId === organizationId) &&
           (!where.members || candidate.members.includes(where.members.some.userId)),
       )
       return row
@@ -112,13 +119,23 @@ test('workspace picker relays only team pictures the signed-in user may access',
         `https://uoa.test/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
       )
 
+      const crossOrgMemberResponse = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${otherOrgTeamId}/avatar`,
+      })
+      assert.equal(crossOrgMemberResponse.statusCode, 200)
+      assert.equal(
+        calls[1],
+        'https://uoa.test/domain/teams/uoa-team-other-org/avatar?domain=nessie.test',
+      )
+
       const nonMemberResponse = await app.inject({
         method: 'GET',
         url: `/api/teams/${otherTeamId}/avatar`,
       })
       assert.equal(nonMemberResponse.statusCode, 404)
       assert.equal(nonMemberResponse.json().error.code, 'AVATAR_NOT_FOUND')
-      assert.equal(calls.length, 1)
+      assert.equal(calls.length, 2)
     } finally {
       globalThis.fetch = originalFetch
       await app.close()
