@@ -84,6 +84,7 @@ export const useReplyThread = ({
       if (user) {
         return {
           kind: 'user',
+          userId: user.id,
           avatarAttachmentId: user.avatarAttachmentId,
           avatarUrl: user.avatarUrl,
           displayName: user.displayName,

@@ -38,6 +38,7 @@ export const getReplyBroadcastRootId = (
 export type ThreadParticipant =
   | {
       kind: 'user'
+      userId: string
       avatarAttachmentId?: string | null
       avatarUrl?: string | null
       displayName: string

@@ -63,6 +63,7 @@ export const ReplySummaryBar = ({
                   gravatarUrl={participant.gravatarUrl ?? undefined}
                   size={20}
                   token={token}
+                  userId={participant.userId}
                 />
               ) : (
                 <span className="block overflow-hidden rounded-full ring-2 ring-[color:var(--main)]">

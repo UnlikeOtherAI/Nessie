@@ -25,6 +25,8 @@ export type CreateThreadMessageResult =
       kind: 'created'
       message: MessageWithReactions
       channelAgents: ChannelAgent[]
+      // Direct @mentions (excluding the author) that received a durable alert.
+      alertedUserIds: string[]
       // Agents @mentioned in the message that are not members of the channel.
       // They are NOT dispatched; the client offers to invite them.
       pendingAgentInvites: { id: string; name: string }[]
