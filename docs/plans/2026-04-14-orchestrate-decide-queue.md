@@ -814,7 +814,7 @@ Restore the worker code after.
 | Scenario | Behaviour |
 |---|---|
 | `enqueueOrchestrateDecide` DB error | Caught by try/catch in API handler — logged, 201 still returned, agent will not respond to this message |
-| Worker model client unconfigured / API key missing | `decideAgentEngagement` try/catch returns `[]` → job completes with no run created; logged at worker startup |
+| Worker model client unconfigured / API key missing | Shared-channel engagement can still return no decision, but a Personal Assistant DM bypasses the model-driven engagement decision, creates its assistant run, and posts an actionable in-chat credential error. |
 | Agent deleted between message creation and job execution | `prisma.run.create` throws FK violation → transaction rolled back → job nacks → retried up to 3× → goes `dead` → no reply, user message persists |
 | Idempotency key collision (double-enqueue) | `ON CONFLICT DO NOTHING` → second insert silently skipped, only one orchestration runs |
 | `publishWs` fails AFTER transaction commits | Run/task are committed; WS event missed but `run.execute` is already enqueued and will fire. Job nacks and retries; on retry a second run row may be created (orphan), but the deterministic idempotency key `run:<messageId>:<agentId>` prevents a second `run.execute` from being enqueued → agent replies exactly once. The orphan run stays in `pending` indefinitely (harmless for a personal-scale system). |

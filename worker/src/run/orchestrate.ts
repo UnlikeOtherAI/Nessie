@@ -4,6 +4,7 @@ import {
   decideAgentEngagement,
   selectFollowingAgentIds,
   type OrchestratorAgent,
+  type OrchestratorDecision,
   type PgRealtimeTransport,
   type ModelClient,
 } from '@nessie/runtime'
@@ -23,6 +24,30 @@ export type OrchestrateDecideDeps = {
   modelClient: ModelClient
   prisma: PrismaClient
   realtimeTransport: PgRealtimeTransport
+}
+
+type ChannelAgent = OrchestratorAgent
+
+// A personal-assistant DM has exactly one server-managed agent binding. Its
+// replies are not an engagement judgement: every human turn is addressed to
+// that agent. Keeping this structural route out of the model-driven
+// orchestrator prevents a missing provider credential from making the DM go
+// silent before the actual assistant run can report the problem.
+export const resolvePersonalAssistantDecisions = (
+  systemChannelType: string | null,
+  role: string,
+  channelAgents: ChannelAgent[],
+): OrchestratorDecision[] | null => {
+  if (systemChannelType !== 'personal_assistant') {
+    return null
+  }
+
+  const assistant = channelAgents[0]
+  if (role !== 'user' || !assistant) {
+    return []
+  }
+
+  return [{ action: 'reply', agentId: assistant.id }]
 }
 
 export const executeOrchestrateDecideJob = async (
@@ -84,60 +109,64 @@ export const executeOrchestrateDecideJob = async (
     return
   }
 
-  // Fetch the last 6 messages for orchestrator context. The most recent one
-  // is the triggering message (already persisted before this job was enqueued).
-  // After .reverse(), it sits at the end; .slice(0, -1) removes it so the LLM
-  // sees only prior conversation history.
-  const recentDbMessages = await deps.prisma.message.findMany({
-    where: { threadId },
-    orderBy: { createdAt: 'desc' },
-    take: 6,
-    include: { agent: { select: { name: true } } },
-  })
-
-  const recentMessages = recentDbMessages
-    .reverse()
-    .slice(0, -1)
-    .map((m) => ({
-      role: m.role,
-      content: m.content,
-      agentName: m.agent?.name ?? undefined,
-    }))
-
-  // Thread-following: an agent that has already posted in this thread stays
-  // engaged with new *human* messages without a fresh @mention. Only human
-  // messages ever reach an engagement decision, and PA DMs keep their existing
-  // path (their single agent already answers every message), so a follow set is
-  // never computed for them.
-  const triggerIsHuman = role === 'user'
-  let followingAgentIds: string[] = []
-  if (triggerIsHuman && channel.systemChannelType !== 'personal_assistant') {
-    const candidateAgentIds = channelAgents.map((a) => a.id)
-    const authored = await deps.prisma.message.findMany({
-      where: { threadId, role: 'assistant', agentId: { in: candidateAgentIds } },
-      distinct: ['agentId'],
-      select: { agentId: true },
+  let decisions = resolvePersonalAssistantDecisions(
+    channel.systemChannelType,
+    role,
+    channelAgents,
+  )
+  if (!decisions) {
+    // Fetch the last 6 messages for orchestrator context. The most recent one
+    // is the triggering message (already persisted before this job was enqueued).
+    // After .reverse(), it sits at the end; .slice(0, -1) removes it so the LLM
+    // sees only prior conversation history.
+    const recentDbMessages = await deps.prisma.message.findMany({
+      where: { threadId },
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+      include: { agent: { select: { name: true } } },
     })
-    followingAgentIds = selectFollowingAgentIds(
-      candidateAgentIds,
-      authored
-        .map((m) => m.agentId)
-        .filter((id): id is string => id !== null),
-    )
-  }
 
-  const decisions = await decideAgentEngagement(deps.modelClient, {
-    // channelAgents from the payload is structurally identical to OrchestratorAgent[].
-    // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
-    agents: channelAgents satisfies OrchestratorAgent[],
-    content,
-    recentMessages,
-    triggerIsHuman,
-    followingAgentIds,
-    usage: attributionFromActorContext(actorContext, {
-      systemComponent: 'orchestrator',
-    }),
-  })
+    const recentMessages = recentDbMessages
+      .reverse()
+      .slice(0, -1)
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+        agentName: m.agent?.name ?? undefined,
+      }))
+
+    // Thread-following: an agent that has already posted in this thread stays
+    // engaged with new *human* messages without a fresh @mention.
+    const triggerIsHuman = role === 'user'
+    let followingAgentIds: string[] = []
+    if (triggerIsHuman) {
+      const candidateAgentIds = channelAgents.map((a) => a.id)
+      const authored = await deps.prisma.message.findMany({
+        where: { threadId, role: 'assistant', agentId: { in: candidateAgentIds } },
+        distinct: ['agentId'],
+        select: { agentId: true },
+      })
+      followingAgentIds = selectFollowingAgentIds(
+        candidateAgentIds,
+        authored
+          .map((m) => m.agentId)
+          .filter((id): id is string => id !== null),
+      )
+    }
+
+    decisions = await decideAgentEngagement(deps.modelClient, {
+      // channelAgents from the payload is structurally identical to OrchestratorAgent[].
+      // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
+      agents: channelAgents satisfies OrchestratorAgent[],
+      content,
+      recentMessages,
+      triggerIsHuman,
+      followingAgentIds,
+      usage: attributionFromActorContext(actorContext, {
+        systemComponent: 'orchestrator',
+      }),
+    })
+  }
 
   if (decisions.length === 0) {
     return

@@ -5,6 +5,7 @@ import { updateRunStatus, updateTaskStatus, setAgentStatus } from './lifecycle.j
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
+import { classifyError, userMessageForFailureReason } from '../error-classification.js'
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 
 export const handleRunExecutionFailure = async (
@@ -24,36 +25,39 @@ export const handleRunExecutionFailure = async (
   const messageText =
     input.error instanceof Error ? input.error.message : 'Run execution failed unexpectedly'
 
+  const fallbackMessageId = `run-error:${context.run.id}`
+  let terminalMessageId = fallbackMessageId
+  let terminalContent =
+    input.terminalMessage ?? userMessageForFailureReason(classifyError(input.error))
+  let terminalCreatedAt = new Date().toISOString()
+
+  // A failure can happen before stream.start (for example while resolving a
+  // model credential or loading a tool). Persist a regular assistant message
+  // in every terminal path so a user is never left waiting without an outcome.
+  try {
+    const errorMessage = await deps.prisma.message.create({
+      data: {
+        agentId: context.agent.id,
+        content: terminalContent,
+        role: 'assistant',
+        threadId: context.run.threadId,
+      },
+    })
+
+    terminalMessageId = errorMessage.id
+    terminalContent = errorMessage.content
+    terminalCreatedAt = errorMessage.createdAt.toISOString()
+
+    await publishMessageCreated(deps.realtimeTransport, context, {
+      content: errorMessage.content,
+      messageId: errorMessage.id,
+      role: errorMessage.role,
+    })
+  } catch (streamError) {
+    console.error('Failed to persist terminal error message', streamError)
+  }
+
   if (input.streamStarted) {
-    const fallbackMessageId = `run-error:${context.run.id}`
-    let terminalMessageId = fallbackMessageId
-    let terminalContent =
-      input.terminalMessage ?? `I hit an error while processing this request: ${messageText}`
-    let terminalCreatedAt = new Date().toISOString()
-
-    try {
-      const errorMessage = await deps.prisma.message.create({
-        data: {
-          agentId: context.agent.id,
-          content: terminalContent,
-          role: 'assistant',
-          threadId: context.run.threadId,
-        },
-      })
-
-      terminalMessageId = errorMessage.id
-      terminalContent = errorMessage.content
-      terminalCreatedAt = errorMessage.createdAt.toISOString()
-
-      await publishMessageCreated(deps.realtimeTransport, context, {
-        content: errorMessage.content,
-        messageId: errorMessage.id,
-        role: errorMessage.role,
-      })
-    } catch (streamError) {
-      console.error('Failed to persist terminal error message', streamError)
-    }
-
     try {
       await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
         agentId: parseAgentId(context.agent.id),

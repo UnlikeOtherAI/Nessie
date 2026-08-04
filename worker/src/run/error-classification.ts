@@ -1,6 +1,7 @@
 export type FailoverReason =
   | 'auth'
   | 'auth_permanent'
+  | 'credentials_missing'
   | 'rate_limit'
   | 'billing'
   | 'context_overflow'
@@ -18,6 +19,36 @@ export type RecoveryStrategy =
   | { action: 'surface_error'; userMessage: string }
   | { action: 'abort' }
 
+export const userMessageForFailureReason = (reason: FailoverReason): string => {
+  switch (reason) {
+    case 'credentials_missing':
+      return 'No API key is configured for the model provider. Ask a workspace owner to add the provider credential, then try again.'
+    case 'auth_permanent':
+      return 'The model provider rejected its API key. Ask a workspace owner to update the provider credential, then try again.'
+    case 'auth':
+      return 'The model provider could not authenticate this request. Ask a workspace owner to verify the provider credential, then try again.'
+    case 'rate_limit':
+      return 'The model provider is rate limited. Please try again shortly.'
+    case 'billing':
+      return 'The model provider reported a billing or quota problem. Ask a workspace owner to review the provider account, then try again.'
+    case 'context_overflow':
+      return 'This conversation is too long for the configured model. Start a new conversation or ask a shorter follow-up.'
+    case 'timeout':
+    case 'transient':
+      return 'The model provider is temporarily unavailable. Please try again shortly.'
+    case 'overloaded':
+      return 'The model provider is overloaded. Please try again in a few minutes.'
+    case 'model_not_found':
+      return 'The configured model was not found. Ask a workspace owner to check the model configuration.'
+    case 'content_filter':
+      return 'The model provider blocked this request under its content policy. Try rephrasing it.'
+    case 'format':
+      return 'The model provider returned an invalid response. Please try again.'
+    case 'unknown':
+      return 'I could not complete that request because the assistant service encountered an unexpected error. Please try again; if it keeps happening, ask a workspace owner to check the worker logs.'
+  }
+}
+
 export const classifyError = (error: unknown): FailoverReason => {
   if (!(error instanceof Error)) return 'unknown'
 
@@ -25,6 +56,12 @@ export const classifyError = (error: unknown): FailoverReason => {
   const statusMatch = message.match(/status[:\s]*(\d{3})/)
   const status = statusMatch ? parseInt(statusMatch[1]!, 10) : null
 
+  if (
+    (message.includes('api key') || message.includes('api_key'))
+    && (message.includes('missing') || message.includes('not configured') || message.includes('required'))
+  ) {
+    return 'credentials_missing'
+  }
   if (status === 401 || message.includes('unauthorized')) {
     if (message.includes('invalid') || message.includes('malformed') || message.includes('revoked')) {
       return 'auth_permanent'
@@ -88,41 +125,34 @@ export const resolveRecovery = (
     case 'rate_limit':
       return attemptCount < 3
         ? { action: 'retry', delayMs: Math.min(1000 * 2 ** attemptCount, 30_000) }
-        : { action: 'surface_error', userMessage: 'Rate limited by the model provider. Try again shortly.' }
+        : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'overloaded':
       return attemptCount < 3
         ? { action: 'retry', delayMs: Math.min(5000 * 2 ** attemptCount, 60_000) }
-        : { action: 'surface_error', userMessage: 'The model provider is overloaded. Try again in a few minutes.' }
+        : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'transient':
     case 'timeout':
       return attemptCount < 2
         ? { action: 'retry', delayMs: Math.min(2000 * 2 ** attemptCount, 30_000) }
-        : { action: 'surface_error', userMessage: 'The model provider is temporarily unavailable.' }
+        : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'format':
       return attemptCount < 1
         ? { action: 'retry', delayMs: 500 }
-        : { action: 'surface_error', userMessage: 'Received a malformed response from the model.' }
+        : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'context_overflow':
       return { action: 'compact_and_retry' }
 
-    case 'auth':
-      return { action: 'surface_error', userMessage: 'Authentication failed with the model provider. Check API key configuration.' }
-
+    case 'credentials_missing':
     case 'auth_permanent':
-      return { action: 'surface_error', userMessage: 'Invalid API key. Please update your provider credentials.' }
-
+    case 'auth':
     case 'billing':
-      return { action: 'surface_error', userMessage: 'Billing issue with the model provider.' }
-
     case 'model_not_found':
-      return { action: 'surface_error', userMessage: 'The configured model was not found.' }
-
     case 'content_filter':
-      return { action: 'surface_error', userMessage: 'The response was blocked by content policy.' }
+      return { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     default:
       return { action: 'abort' }
