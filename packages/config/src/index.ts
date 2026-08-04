@@ -33,7 +33,7 @@ export type StorageProvider = z.infer<typeof StorageProviderSchema>
 export const QueueProviderSchema = z.enum(['pubsub', 'local'])
 export type QueueProvider = z.infer<typeof QueueProviderSchema>
 
-export const ModelProviderSchema = z.enum(['openai', 'minimax', 'kimi'])
+export const ModelProviderSchema = z.enum(['openai', 'minimax', 'kimi', 'deepseek'])
 export type ModelProvider = z.infer<typeof ModelProviderSchema>
 
 export const ModelConfigSchema = z.object({
@@ -390,6 +390,8 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
       ? 'kimi'
       : env.MINIMAX_API_KEY !== undefined
         ? 'minimax'
+        : env.DEEPSEEK_API_KEY !== undefined
+          ? 'deepseek'
         : env.OPENAI_CHAT_API_KEY !== undefined || env.OPENAI_API_KEY !== undefined
           ? 'openai'
           : undefined)
@@ -408,6 +410,8 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
       ? env.KIMI_API_KEY
       : modelProvider === 'minimax'
         ? env.MINIMAX_API_KEY
+        : modelProvider === 'deepseek'
+          ? env.DEEPSEEK_API_KEY
         : modelProvider === 'openai'
           ? env.OPENAI_CHAT_API_KEY ?? env.OPENAI_API_KEY
           : undefined)

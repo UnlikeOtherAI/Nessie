@@ -53,7 +53,7 @@ export const DESIGNER_TOOLS = [
         properties: {
           provider: {
             type: 'string',
-            enum: ['openai', 'anthropic', 'minimax', 'kimi', 'ollama', 'custom'],
+            enum: ['openai', 'anthropic', 'minimax', 'kimi', 'deepseek', 'ollama', 'custom'],
           },
         },
         required: ['provider'],

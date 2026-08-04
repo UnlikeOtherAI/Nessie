@@ -26,7 +26,7 @@ test('Ledger routing never forwards provider bindings or direct-provider keys', 
   process.env.OPENAI_API_KEY = 'openai-direct-secret'
 
   try {
-    for (const provider of ['openai', 'kimi', 'minimax'] as const) {
+    for (const provider of ['openai', 'kimi', 'minimax', 'deepseek'] as const) {
       assert.equal(
         resolveStageApiKey({
           authSecretRef: 'TEST_PROVIDER_BINDING',

@@ -15,6 +15,10 @@ export const createConnectorRegistry = (): ConnectorRegistry => {
   >([
     ['minimax', createMiniMaxConnector],
     ['kimi', createKimiConnector],
+    ['deepseek', (config) => createOpenAiLikeConnector('deepseek', {
+      ...config,
+      baseUrl: config.baseUrl ?? 'https://api.deepseek.com/v1',
+    })],
     ['openai', (config) => createOpenAiLikeConnector('openai', config)],
     [
       'openai-compatible',

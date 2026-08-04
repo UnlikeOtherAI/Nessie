@@ -2,6 +2,7 @@ export type FailoverReason =
   | 'auth'
   | 'auth_permanent'
   | 'credentials_missing'
+  | 'credentials_scope'
   | 'rate_limit'
   | 'billing'
   | 'context_overflow'
@@ -23,6 +24,8 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
   switch (reason) {
     case 'credentials_missing':
       return 'No API key is configured for the model provider. Ask a workspace owner to add the provider credential, then try again.'
+    case 'credentials_scope':
+      return 'The workspace AI service credential is not permitted to use the configured model. Ask a workspace owner to update its allowed model scope, then try again.'
     case 'auth_permanent':
       return 'The model provider rejected its API key. Ask a workspace owner to update the provider credential, then try again.'
     case 'auth':
@@ -61,6 +64,13 @@ export const classifyError = (error: unknown): FailoverReason => {
     && (message.includes('missing') || message.includes('not configured') || message.includes('required'))
   ) {
     return 'credentials_missing'
+  }
+  if (
+    (message.includes('product app key') || message.includes('api key'))
+    && message.includes('unsafe')
+    && message.includes('scope')
+  ) {
+    return 'credentials_scope'
   }
   if (status === 401 || message.includes('unauthorized')) {
     if (message.includes('invalid') || message.includes('malformed') || message.includes('revoked')) {
@@ -147,6 +157,7 @@ export const resolveRecovery = (
       return { action: 'compact_and_retry' }
 
     case 'credentials_missing':
+    case 'credentials_scope':
     case 'auth_permanent':
     case 'auth':
     case 'billing':

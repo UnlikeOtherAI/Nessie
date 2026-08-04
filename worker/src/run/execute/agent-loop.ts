@@ -143,7 +143,7 @@ export const runExecutionAgentLoop = async (
       invocations: mpr.invocations as unknown as InvocationRecord[],
       model: mpr.invocations[0]?.model ?? '',
       outputText: mpr.finalAnswer ?? '',
-      provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi' | 'openai-compatible',
+      provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi' | 'deepseek' | 'openai-compatible',
       requestId: mpr.requestId,
       toolCalls: mpr.toolCalls,
     }

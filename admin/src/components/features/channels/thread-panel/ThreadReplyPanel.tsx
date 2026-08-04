@@ -59,7 +59,6 @@ export const ThreadReplyPanel = ({
     closeThread,
     followMutation,
     openRootMessageId,
-    openThread,
     panelWidth,
     repliesQuery,
     resizePanel,
@@ -128,10 +127,12 @@ export const ThreadReplyPanel = ({
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [closeThread])
 
-  const replyFeedItems = useMemo(() => buildFeedItems(replies), [replies])
-  const rootFeedItems = useMemo(
-    () => (root && !root.deletedAt ? [{ kind: 'message' as const, message: root }] : []),
-    [root],
+  // Render the root and replies as one continuous conversation. Rendering them
+  // as separate feeds created a reply-count separator directly above the date
+  // separator, even for a simple one-message reply.
+  const threadFeedItems = useMemo(
+    () => (root ? buildFeedItems([root, ...replies]) : []),
+    [replies, root],
   )
 
   useLayoutEffect(() => {
@@ -139,7 +140,7 @@ export const ThreadReplyPanel = ({
     if (container) {
       container.scrollTop = container.scrollHeight
     }
-  }, [openRootMessageId, replyFeedItems.length, optimisticMessages.length])
+  }, [openRootMessageId, threadFeedItems.length, optimisticMessages.length])
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -243,56 +244,23 @@ export const ThreadReplyPanel = ({
           </div>
         ) : (
           <>
-            {rootDeleted ? (
-              <div className="mx-4 mt-3 flex-shrink-0 rounded-lg border border-dashed border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
-                The root message was deleted. Replies are turned off.
-              </div>
-            ) : (
-              <div className="flex-shrink-0 border-b border-[color:var(--sep)] pb-2">
-                <ChannelMessageFeed
-                  agentById={agentMap}
-                  agentMap={agentMap}
-                  channelUsers={channelUsers}
-                  editingContent={editingContent}
-                  editingMessageId={editingMessageId}
-                  feedItems={rootFeedItems}
-                  isPersonalAssistantConversation={false}
-                  meAvatar={meAvatar}
-                  meDisplayName={meDisplayName}
-                  meUserId={meUserId}
-                  optimisticMessages={[]}
-                  pendingMessages={[]}
-                  renderContent={renderContent}
-                  token={token}
-                  updatePending={updatePending}
-                  onAddReaction={addReaction}
-                  onCancelEdit={cancelEdit}
-                  onChangeEditingContent={changeEditingContent}
-                  onConfirmDelete={confirmDelete}
-                  onStartEdit={startEdit}
-                  onSubmitEdit={(messageId) => void submitEdit(messageId)}
-                />
-              </div>
-            )}
-
-            <div className="admin-date-sep flex-shrink-0">
-              <span className="admin-date-pill">
-                {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
-              </span>
-            </div>
-
             <div
               className="min-h-0 flex-1 overflow-y-auto"
               data-testid="thread-panel-replies"
               ref={scrollRef}
             >
+              {rootDeleted ? (
+                <div className="mx-4 mt-3 rounded-lg border border-dashed border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
+                  The root message was deleted. Replies are turned off.
+                </div>
+              ) : null}
               <ChannelMessageFeed
                 agentById={agentMap}
                 agentMap={agentMap}
                 channelUsers={channelUsers}
                 editingContent={editingContent}
                 editingMessageId={editingMessageId}
-                feedItems={replyFeedItems}
+                feedItems={threadFeedItems}
                 isPersonalAssistantConversation={false}
                 meAvatar={meAvatar}
                 meDisplayName={meDisplayName}
@@ -306,7 +274,6 @@ export const ThreadReplyPanel = ({
                 onCancelEdit={cancelEdit}
                 onChangeEditingContent={changeEditingContent}
                 onConfirmDelete={confirmDelete}
-                onOpenThread={openThread}
                 onStartEdit={startEdit}
                 onSubmitEdit={(messageId) => void submitEdit(messageId)}
               />

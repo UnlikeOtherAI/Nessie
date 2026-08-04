@@ -34,3 +34,19 @@ test('rejected model credentials give a safe, actionable error', () => {
     'The model provider rejected its API key. Ask a workspace owner to update the provider credential, then try again.',
   )
 })
+
+test('an unsafe provider scope tells the user which configuration must change', () => {
+  const error = new Error(
+    'openai model error 403: {"error":{"message":"Product app key has an unsafe wildcard scope for kimi"}}',
+  )
+
+  assert.equal(classifyError(error), 'credentials_scope')
+  assert.deepEqual(
+    resolveRecovery(classifyError(error), 0, { remaining: 6, total: 6 }),
+    {
+      action: 'surface_error',
+      userMessage:
+        'The workspace AI service credential is not permitted to use the configured model. Ask a workspace owner to update its allowed model scope, then try again.',
+    },
+  )
+})

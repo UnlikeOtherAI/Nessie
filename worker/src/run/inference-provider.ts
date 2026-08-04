@@ -6,6 +6,7 @@ import { isLedgerEndpoint } from '@nessie/runtime'
 const DEFAULT_MODEL_BY_PROVIDER: Record<ModelProvider, string> = {
   minimax: 'MiniMax-M2.5',
   kimi: 'kimi-for-coding',
+  deepseek: 'deepseek-v4-flash',
   openai: 'gpt-5-mini',
 }
 
@@ -33,6 +34,9 @@ export const resolveRuntimeProvider = (providerKey: string): RunnableProvider | 
   if (normalized === 'kimi') {
     return 'kimi'
   }
+  if (normalized === 'deepseek') {
+    return 'deepseek'
+  }
   return null
 }
 
@@ -47,6 +51,14 @@ const resolveLegacyApiKey = (provider: ModelProvider, modelConfig: ModelConfig):
       (modelConfig.provider === 'openai' ? modelConfig.apiKey : undefined) ??
       process.env.OPENAI_CHAT_API_KEY ??
       process.env.OPENAI_API_KEY ??
+      ''
+    )
+  }
+
+  if (provider === 'deepseek') {
+    return (
+      (modelConfig.provider === 'deepseek' ? modelConfig.apiKey : undefined) ??
+      process.env.DEEPSEEK_API_KEY ??
       ''
     )
   }

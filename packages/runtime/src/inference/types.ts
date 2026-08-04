@@ -1,6 +1,6 @@
 import type { AuthorizedActionContext, ProviderReasoningEffort } from '@nessie/schemas'
 
-export type ModelProviderName = 'openai' | 'minimax' | 'kimi' | 'openai-compatible'
+export type ModelProviderName = 'openai' | 'minimax' | 'kimi' | 'deepseek' | 'openai-compatible'
 
 export type ModelProviderConfig = {
   apiKey?: string

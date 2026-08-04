@@ -8,6 +8,7 @@ import type {
 const DEFAULT_MODELS: Record<ModelProviderConfig['provider'], string> = {
   minimax: 'MiniMax-M2.5',
   kimi: 'kimi-for-coding',
+  deepseek: 'deepseek-v4-flash',
   openai: 'gpt-5-mini',
   'openai-compatible': 'gpt-5-mini',
 }
