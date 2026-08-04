@@ -1,4 +1,5 @@
 import { useCallback, useReducer } from 'react'
+import type { AgentModelOption } from '../../../../lib/api-client'
 
 export type AgentEffortValue = 'low' | 'medium' | 'high' | 'xhigh'
 
@@ -19,6 +20,7 @@ export type AgentDesignerAction =
   | { field: string; type: 'set_streaming' }
   | { effort: AgentEffortValue; type: 'set_effort' }
   | { model: string; type: 'set_model' }
+  | { option: AgentModelOption; type: 'set_model_selection' }
   | { name: string; type: 'set_name' }
   | { prompt: string; type: 'set_system_prompt' }
   | { provider: string; type: 'set_provider' }
@@ -30,9 +32,9 @@ export type AgentDesignerAction =
 // the worker applies to `Agent.toolPolicy`.
 const DEFAULT_STATE: AgentFormState = {
   effort: 'medium',
-  model: 'gpt-5',
+  model: '',
   name: '',
-  provider: 'openai',
+  provider: '',
   role: 'assistant',
   streamingField: null,
   systemPrompt: '',
@@ -53,6 +55,12 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return { ...state, provider: action.provider }
     case 'set_model':
       return { ...state, model: action.model }
+    case 'set_model_selection':
+      return {
+        ...state,
+        model: action.option.model,
+        provider: action.option.provider,
+      }
     case 'set_effort':
       return { ...state, effort: action.effort }
     case 'toggle_tool':
@@ -71,6 +79,7 @@ export type AgentDesignerActions = {
   dispatch: React.Dispatch<AgentDesignerAction>
   setEffort: (effort: AgentEffortValue) => void
   setModel: (model: string) => void
+  setModelSelection: (option: AgentModelOption) => void
   setName: (name: string) => void
   setProvider: (provider: string) => void
   setRole: (role: string) => void
@@ -95,6 +104,10 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
     [],
   )
   const setModel = useCallback((model: string) => dispatch({ type: 'set_model', model }), [])
+  const setModelSelection = useCallback(
+    (option: AgentModelOption) => dispatch({ option, type: 'set_model_selection' }),
+    [],
+  )
   const setEffort = useCallback(
     (effort: AgentEffortValue) => dispatch({ type: 'set_effort', effort }),
     [],
@@ -150,6 +163,7 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
     dispatch,
     setEffort,
     setModel,
+    setModelSelection,
     setName,
     setProvider,
     setRole,

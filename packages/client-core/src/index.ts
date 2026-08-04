@@ -53,6 +53,7 @@ export type {
 
 // Schema-sourced types previously surfaced from the admin api-client module.
 export type {
+  AgentModelOption,
   AgentActivityResponse,
   AgentChild,
   AgentMessage,

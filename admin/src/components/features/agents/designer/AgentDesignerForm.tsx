@@ -1,4 +1,5 @@
 import type { DesignerToolGroup } from '../../../../facades/designer/tool-catalog'
+import type { AgentModelOption } from '../../../../lib/api-client'
 import { Link } from 'react-router-dom'
 import type {
   AgentDesignerActions,
@@ -10,51 +11,14 @@ import { ToolPicker } from './ToolPicker'
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
   canManageExplicitTools: boolean
+  modelOptions: AgentModelOption[]
+  modelOptionsError?: string
+  modelsLoading: boolean
   parentAgentName?: string
   state: AgentFormState
   toolGroups: DesignerToolGroup[]
   toolsLoading: boolean
 }
-
-const PROVIDERS = [
-  { label: 'OpenAI', value: 'openai' },
-  { label: 'Anthropic', value: 'anthropic' },
-  { label: 'MiniMax', value: 'minimax' },
-  { label: 'Kimi (for coding)', value: 'kimi' },
-  { label: 'Ollama', value: 'ollama' },
-  { label: 'Custom', value: 'custom' },
-]
-
-type ModelGroup = { label: string; models: { label: string; value: string }[] }
-
-const OPENAI_MODEL_GROUPS: ModelGroup[] = [
-  {
-    label: 'GPT-5 Series',
-    models: [
-      { value: 'gpt-5', label: 'gpt-5' },
-      { value: 'gpt-5-mini', label: 'gpt-5-mini' },
-      { value: 'gpt-5-nano', label: 'gpt-5-nano' },
-    ],
-  },
-]
-
-const ANTHROPIC_MODEL_GROUPS: ModelGroup[] = [
-  {
-    label: 'Claude 4',
-    models: [
-      { value: 'claude-opus-4-6', label: 'claude-opus-4-6' },
-      { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6' },
-    ],
-  },
-  {
-    label: 'Claude 3.5 / 3.7',
-    models: [
-      { value: 'claude-3-7-sonnet-20250219', label: 'claude-3-7-sonnet' },
-      { value: 'claude-3-5-sonnet-20241022', label: 'claude-3-5-sonnet' },
-      { value: 'claude-3-5-haiku-20241022', label: 'claude-3-5-haiku' },
-    ],
-  },
-]
 
 const fieldLabelClass = [
   'text-xs font-semibold uppercase',
@@ -75,12 +39,30 @@ const EFFORTS: { hint: string; label: string; value: string }[] = [
 export const AgentDesignerForm = ({
   actions,
   canManageExplicitTools,
+  modelOptions,
+  modelOptionsError,
+  modelsLoading,
   parentAgentName,
   state,
   toolGroups,
   toolsLoading,
 }: AgentDesignerFormProps) => {
   const isStreaming = (field: string) => state.streamingField === field
+  const modelOptionKey = (option: Pick<AgentModelOption, 'model' | 'provider'>) =>
+    JSON.stringify([option.provider, option.model])
+  const selectedModel = modelOptions.find(
+    (option) => option.model === state.model && option.provider === state.provider,
+  )
+  const hasUnavailableSelection = Boolean(state.model && state.provider && !selectedModel)
+  const modelsByProvider = modelOptions.reduce<Map<string, AgentModelOption[]>>(
+    (groups, option) => {
+      const current = groups.get(option.providerDisplayName) ?? []
+      current.push(option)
+      groups.set(option.providerDisplayName, current)
+      return groups
+    },
+    new Map(),
+  )
 
   return (
     <div className="grid gap-5">
@@ -128,69 +110,59 @@ export const AgentDesignerForm = ({
         />
       </div>
 
-      {/* Provider & Model */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1.5">
-          <label className={fieldLabelClass} htmlFor="agent-provider">
-            Provider
-          </label>
-          <select
-            className="admin-input"
-            id="agent-provider"
-            onChange={(e) => actions.setProvider(e.target.value)}
-            value={state.provider}
-          >
-            {PROVIDERS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="grid gap-1.5">
-          <label className={fieldLabelClass} htmlFor="agent-model">
-            Model
-          </label>
-          {state.provider === 'openai' || state.provider === 'anthropic' ? (
-            <select
-              className={[
-                'admin-input',
-                isStreaming('model')
-                  ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
-                  : '',
-              ].join(' ')}
-              id="agent-model"
-              onChange={(e) => actions.setModel(e.target.value)}
-              value={state.model}
-            >
-              {(state.provider === 'openai' ? OPENAI_MODEL_GROUPS : ANTHROPIC_MODEL_GROUPS).map(
-                (group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.models.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ),
-              )}
-            </select>
-          ) : (
-            <input
-              autoComplete="off"
-              className={[
-                'admin-input',
-                isStreaming('model')
-                  ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
-                  : '',
-              ].join(' ')}
-              id="agent-model"
-              onChange={(e) => actions.setModel(e.target.value)}
-              placeholder="e.g. llama3.2"
-              value={state.model}
-            />
-          )}
-        </div>
+      {/* Ledger-authorized model */}
+      <div className="grid gap-1.5">
+        <label className={fieldLabelClass} htmlFor="agent-model">
+          Model
+        </label>
+        <select
+          className={[
+            'admin-input',
+            isStreaming('model')
+              ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
+              : '',
+          ].join(' ')}
+          disabled={modelsLoading || modelOptions.length === 0}
+          id="agent-model"
+          onChange={(e) => {
+            const option = modelOptions.find(
+              (candidate) => modelOptionKey(candidate) === e.target.value,
+            )
+            if (option) actions.setModelSelection(option)
+          }}
+          value={selectedModel ? modelOptionKey(selectedModel) : ''}
+        >
+          <option value="">
+            {modelsLoading ? 'Loading Ledger models…' : 'Select a model'}
+          </option>
+          {hasUnavailableSelection ? (
+            <option disabled value="">
+              Current model is no longer available — select a replacement
+            </option>
+          ) : null}
+          {[...modelsByProvider.entries()].map(([provider, models]) => (
+            <optgroup key={provider} label={provider}>
+              {models.map((option) => (
+                <option key={modelOptionKey(option)} value={modelOptionKey(option)}>
+                  {option.displayName === option.model
+                    ? option.model
+                    : `${option.displayName} (${option.model})`}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {selectedModel ? (
+          <p className="text-xs text-[color:var(--tx3)]">
+            {selectedModel.description
+              ?? `Runs through Ledger’s ${selectedModel.providerDisplayName} service.`}
+          </p>
+        ) : null}
+        {modelOptionsError ? (
+          <p className="text-xs text-[color:var(--danger)]" role="alert">
+            {modelOptionsError}
+          </p>
+        ) : null}
       </div>
 
       {/* Effort */}

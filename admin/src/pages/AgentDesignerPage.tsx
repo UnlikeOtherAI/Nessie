@@ -10,7 +10,12 @@ import { AgentDesignerForm } from '../components/features/agents/designer/AgentD
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
 import type { AgentFormState } from '../components/features/agents/designer/useAgentDesigner'
-import { useAgents, useCreateAgent, useUpdateAgent } from '../facades/agents/hooks'
+import {
+  useAgentModelOptions,
+  useAgents,
+  useCreateAgent,
+  useUpdateAgent,
+} from '../facades/agents/hooks'
 import { useDesignerChat } from '../facades/designer/hooks'
 import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/tool-catalog'
 import type { AgentRecord } from '../lib/api-client'
@@ -59,6 +64,8 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
   const isEditMode = Boolean(editingAgent)
 
   const toolCatalog = useDesignerToolCatalog(isOwner)
+  const modelOptionsQuery = useAgentModelOptions()
+  const modelOptions = modelOptionsQuery.data ?? []
 
   const initialState = useMemo<Partial<AgentFormState> | undefined>(() => {
     if (!editingAgent) return undefined
@@ -66,8 +73,8 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
       effort: editingAgent.effort ?? 'medium',
       name: editingAgent.name,
       role: editingAgent.role,
-      provider: editingAgent.provider ?? 'openai',
-      model: editingAgent.model ?? 'gpt-5',
+      provider: editingAgent.provider ?? '',
+      model: editingAgent.model ?? '',
       systemPrompt: editingAgent.systemPrompt ?? '',
       tools: editingAgent.toolPolicy ?? {},
     }
@@ -79,6 +86,15 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
   const updateAgent = useUpdateAgent()
 
   const isSaving = createAgent.isPending || updateAgent.isPending
+  const selectedModel = modelOptions.find(
+    (option) => option.model === state.model && option.provider === state.provider,
+  )
+  const canSave = Boolean(state.name.trim() && selectedModel && !isSaving)
+  const modelOptionsError = modelOptionsQuery.error instanceof Error
+    ? modelOptionsQuery.error.message
+    : modelOptionsQuery.isError
+      ? 'Ledger models could not be loaded.'
+      : undefined
 
   const returnTo = useMemo(() => {
     const state = location.state
@@ -113,7 +129,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
   }
 
   const handleSave = async () => {
-    if (!state.name.trim()) return
+    if (!state.name.trim() || !selectedModel) return
 
     const toolPolicy = buildToolPolicy(toolCatalog.options, state.tools)
 
@@ -183,7 +199,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
           </button>
           <button
             className="admin-button admin-button-primary"
-            disabled={!state.name.trim() || isSaving}
+            disabled={!canSave}
             onClick={handleSave}
             type="button"
           >
@@ -203,6 +219,9 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
             <AgentDesignerForm
               actions={actions}
               canManageExplicitTools={isOwner}
+              modelOptions={modelOptions}
+              modelOptionsError={modelOptionsError}
+              modelsLoading={modelOptionsQuery.isLoading}
               parentAgentName={parentAgent?.name}
               state={state}
               toolGroups={toolCatalog.groups}

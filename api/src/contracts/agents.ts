@@ -12,6 +12,8 @@ import { ThreadRecordSchema } from './messaging.js'
 import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 import { ChannelRecordSchema } from './workspace.js'
 
+export { AgentModelOptionSchema } from '@nessie/schemas'
+
 export const AgentRecordSchema = z.object({
   id: AgentIdSchema,
   name: NonEmptyStringSchema,

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import {
+  AgentModelOptionSchema,
   AgentRecordSchema,
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
@@ -25,6 +26,11 @@ import {
   unbindAgentFromChannel,
   updateAgentRecord,
 } from '../services/agents.js'
+import {
+  assertLedgerAgentModelSelection,
+  LedgerAgentModelCatalogError,
+  listLedgerAgentModels,
+} from '../services/ledger-agent-model-catalog.js'
 import { checkPolicy } from '../services/policy.js'
 import {
   AGENT_TOOL_POLICY_ERROR_CODES,
@@ -57,6 +63,19 @@ const sendAgentManagementError = (
   return false
 }
 
+const sendAgentModelCatalogError = (
+  reply: Parameters<typeof sendApiError>[0],
+  error: unknown,
+): boolean => {
+  if (!(error instanceof LedgerAgentModelCatalogError)) {
+    return false
+  }
+
+  const status = error.code === 'LEDGER_AGENT_MODEL_NOT_AVAILABLE' ? 400 : 503
+  sendApiError(reply, status, error.code, error.message)
+  return true
+}
+
 export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
     prisma,
@@ -83,6 +102,24 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     return createApiResponse(AgentRecordSchema.array().parse(agents))
   })
 
+  app.get('/api/agents/models', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    try {
+      const models = await listLedgerAgentModels({
+        config: deps.config.model,
+        ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
+      })
+      return createApiResponse(AgentModelOptionSchema.array().parse(models))
+    } catch (error) {
+      if (sendAgentModelCatalogError(reply, error)) return reply
+      throw error
+    }
+  })
+
   app.post('/api/agents', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -96,6 +133,12 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
 
     let agent
     try {
+      await assertLedgerAgentModelSelection({
+        config: deps.config.model,
+        ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
+        model: body.model,
+        provider: body.provider,
+      })
       agent = await createAgentRecord(prisma, {
         effort: body.effort,
         model: body.model,
@@ -112,6 +155,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     } catch (error) {
       if (sendProtectedPolicyError(reply, error)) return reply
       if (sendAgentManagementError(reply, error)) return reply
+      if (sendAgentModelCatalogError(reply, error)) return reply
       throw error
     }
 
@@ -135,7 +179,11 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         id: agentId,
         organizationId: actorContext.tenant.organizationId,
       },
-      select: { systemManaged: true },
+      select: {
+        model: true,
+        provider: true,
+        systemManaged: true,
+      },
     })
     if (
       !existingAgent
@@ -150,12 +198,21 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
 
     let agent
     try {
+      if (body.model !== undefined || body.provider !== undefined) {
+        await assertLedgerAgentModelSelection({
+          config: deps.config.model,
+          ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
+          model: body.model ?? existingAgent.model ?? undefined,
+          provider: body.provider ?? existingAgent.provider ?? undefined,
+        })
+      }
       agent = await updateAgentRecord(prisma, agentId, {
         ...body,
         organizationId: actorContext.tenant.organizationId,
       })
     } catch (error) {
       if (sendProtectedPolicyError(reply, error)) return reply
+      if (sendAgentModelCatalogError(reply, error)) return reply
       throw error
     }
     if (!agent) {

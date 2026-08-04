@@ -46,37 +46,6 @@ export const DESIGNER_TOOLS = [
   {
     type: 'function' as const,
     function: {
-      name: 'set_provider',
-      description: 'Set the LLM provider',
-      parameters: {
-        type: 'object',
-        properties: {
-          provider: {
-            type: 'string',
-            enum: ['openai', 'anthropic', 'minimax', 'kimi', 'deepseek', 'ollama', 'custom'],
-          },
-        },
-        required: ['provider'],
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'set_model',
-      description:
-        'Set the LLM model name'
-        + ' (e.g. gpt-5, gpt-5-mini, claude-sonnet-4-20250514)',
-      parameters: {
-        type: 'object',
-        properties: { model: { type: 'string' } },
-        required: ['model'],
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
       name: 'toggle_tool',
       description: 'Enable or disable a tool for this agent',
       parameters: {
@@ -177,8 +146,6 @@ export const buildDesignerSystemPrompt = (
     `- Name: ${formState.name || '(empty)'}`,
     `- Role: ${formState.role || '(empty)'}`,
     `- System prompt: ${summarizedSystemPrompt}`,
-    `- Provider: ${formState.provider}`,
-    `- Model: ${formState.model}`,
     `- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}`,
     '',
     'Available tools (use the exact id with toggle_tool / batch_toggle_tools):',

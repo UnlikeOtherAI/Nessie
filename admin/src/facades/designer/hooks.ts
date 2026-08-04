@@ -25,8 +25,6 @@ const TOOL_TO_FIELD: Record<string, string> = {
   set_name: 'name',
   set_role: 'role',
   set_system_prompt: 'systemPrompt',
-  set_provider: 'provider',
-  set_model: 'model',
 }
 
 type ActiveToolCall = {

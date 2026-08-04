@@ -179,3 +179,65 @@ test('direct provider routes do not require or receive Ledger identity', async (
     undefined,
   )
 })
+
+test('a Ledger catalog service without a compiled connector uses its chat-completions route', async () => {
+  let queryCount = 0
+  const prisma = {
+    $queryRaw: async () => {
+      queryCount += 1
+      return queryCount === 1
+        ? [{
+            authSecretRef: null,
+            baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
+            connectorKind: 'compiled',
+            id: '66666666-6666-4666-8666-666666666666',
+          }]
+        : []
+    },
+  } as unknown as PrismaClient
+
+  const originalFetch = globalThis.fetch
+  let requestedUrl: string | undefined
+  globalThis.fetch = (async (url: string | URL) => {
+    requestedUrl = url.toString()
+    return new Response([
+      'data: {"id":"chatcmpl-1","model":"mistral-large","choices":[{"delta":{"content":"routed"},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-1","model":"mistral-large","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
+      'data: [DONE]\n\n',
+    ].join(''), {
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  try {
+    const result = await runInferenceGraph(prisma, {
+      actorContext,
+      agent: {
+        id: AGENT_ID,
+        model: 'mistral-large',
+        provider: 'mistral',
+        routingProfileId: null,
+      },
+      baseMessages: [{ content: 'Hello', role: 'user' }],
+      modelConfig,
+      organizationId: ORGANIZATION_ID,
+      requestHeadersForProvider: createProviderRequestHeadersResolver({
+        attribution,
+        ledgerIdentity: {
+          requestHeaders: async () => ({
+            'X-Nessie-Context': 'signed-user-team-agent-run',
+          }),
+        },
+      }),
+    })
+
+    assert.equal(result.status, 'completed')
+    assert.equal(result.finalAnswer, 'routed')
+    assert.equal(
+      requestedUrl,
+      'https://ledger.unlikeotherai.com/v1/mistral/chat/completions',
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

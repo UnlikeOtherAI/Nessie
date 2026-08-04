@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import type { ModelConfig } from '@nessie/config'
 import {
+  isLedgerEndpoint,
   createInferenceService,
   type ModelProviderConfig,
   type ProviderMessage,
@@ -184,7 +185,16 @@ export const executeStage = async (
 
     const runtimeProvider =
       resolveRuntimeProvider(providerConfig.providerKey)
-      ?? (providerConfig.connectorKind === 'openai-compatible' ? 'openai-compatible' : null)
+      // Ledger's token-scoped model catalog supplies arbitrary service ids.
+      // Every option we expose to agent configuration is constrained to Ledger
+      // `chat/completions`, so its generic OpenAI-compatible connector is the
+      // correct transport for services without a compiled adapter.
+      ?? (
+        providerConfig.connectorKind === 'openai-compatible'
+        || isLedgerEndpoint(providerConfig.baseUrl)
+          ? 'openai-compatible'
+          : null
+      )
     if (!runtimeProvider) {
       throw new Error(`Provider ${providerConfig.providerKey} is not runnable`)
     }

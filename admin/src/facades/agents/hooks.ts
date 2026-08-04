@@ -4,6 +4,7 @@ export {
   useAgentActivity,
   useAgentChildren,
   useAgentMessages,
+  useAgentModelOptions,
   useAgents,
   useAgentStatus,
   useRunToolCalls,

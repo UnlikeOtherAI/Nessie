@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type {
+  AgentModelOption,
   AgentActivityResponse,
   AgentChild,
   AgentMessage,
@@ -15,6 +16,16 @@ export const useAgents = () => {
   return useQuery<AgentRecord[]>({
     queryKey: ['agents'],
     queryFn: () => apiClient.get('/api/agents'),
+  })
+}
+
+export const useAgentModelOptions = () => {
+  const apiClient = useApiClient()
+
+  return useQuery<AgentModelOption[]>({
+    queryKey: ['agents', 'models'],
+    queryFn: () => apiClient.get('/api/agents/models'),
+    staleTime: 60_000,
   })
 }
 

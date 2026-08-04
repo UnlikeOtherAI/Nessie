@@ -19,6 +19,7 @@ export const createApiClient = (
 // Re-export the shared API data-shape + schema types so existing
 // `import { ... } from '../lib/api-client'` call sites keep working.
 export type {
+  AgentModelOption,
   AgentActivityResponse,
   AgentChild,
   AgentMessage,
