@@ -387,15 +387,32 @@ The supported card kinds are currently `integration`, `deep_research`,
 `security_review`, and `project_board`. The supported statuses are `idle`,
 `queued`, `running`, `needs_setup`, `completed`, `failed`, and `warning`.
 
+Cards may also use the `open_deep_water_research_launcher` action type when
+`productSlug` is exactly `deep-water`. Its optional bounded `preset` follows
+the Deep Water launcher controls (including title, prompt, depth, source
+coverage, destination, and output language). Admin validates the action before
+opening the native launcher and always leaves the user in control of the final
+submit; a card can prefill a research plan but can never start metered work on
+its own. Existing `href` actions remain ordinary `link` actions.
+
 Cards are not a storage layer. Finished reports, source bundles, security
 reports, screenshots, and PDFs must still become Knowledge/FileService artifacts
 when they need to persist beyond the conversation.
 
 Current Deep Water launcher slice:
 
+- The Integrations product detail is divided into **Test run**, **My runs**,
+  and **Settings** tabs. Launch controls, durable run history, readiness,
+  grants, team configuration, and product information therefore no longer
+  compete in one long panel.
 - ESC renders Deep Water controls for title, prompt, depth, chapter detail,
   output tier, language, search quality, recency, section count, searches per
-  pillar, and artifact destination.
+  pillar, and artifact destination. It includes reviewable Quick briefing,
+  Balanced research, Evidence review, and Long-form analysis templates, plus a
+  complete ISO 639-1 language dropdown rather than a free-text language field.
+- The same reviewed launcher is available from the chat composer and from a
+  validated Deep Water chat-card action, so a conversation can provide a
+  structured preset for every control without duplicating the launch flow.
 - Ledger's MCP start contract accepts only `query`, optional `context`, depth
   `light|standard|deep|heavy`, and recency `any|recent`. The handoff maps
   `thesis|dissertation` to `heavy`, maps every non-`any` launcher recency to

@@ -286,6 +286,53 @@ const ProductDetail = ({
     artifacts: 'Durable artifacts stored through Knowledge and FileService.',
     nextStep: 'Publish the product manifest and MCP catalog entry.',
   }
+  const productDetailSections = (
+    <>
+      <TeamAccessSection isOwner={isOwner} product={product} />
+      <AgentConnectorSection product={product} />
+      {product.slug === 'buildme' ? <BuildMeProjectPanel product={product} /> : null}
+      {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}
+      <ExternalAgentActivationSection product={product} />
+
+      <section>
+        <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>
+        <div className="mt-3">
+          <SurfaceRow label="Native page" value={plan.nativePage} />
+          <SurfaceRow label="Chat cards" value={plan.chatCards} />
+          <SurfaceRow label="Custom controls" value={plan.controls} />
+          <SurfaceRow label="Agent access" value={plan.agentAccess} />
+          <SurfaceRow label="Artifacts" value={plan.artifacts} />
+        </div>
+      </section>
+
+      <ProductSurfacesPanel
+        loading={manifestQuery.isLoading}
+        manifest={manifestQuery.data}
+        product={product}
+      />
+
+      <section className="border-t border-[var(--sep)] pt-4">
+        <h3 className="text-sm font-semibold text-[var(--tx)]">Capabilities</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {product.capabilities.map((capability) => (
+            <span
+              className="rounded bg-[var(--overlay)] px-2 py-1 text-xs text-[var(--tx2)]"
+              key={capability}
+            >
+              {capabilityLabel(capability)}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className="border-t border-[var(--sep)] pt-4">
+        <h3 className="text-sm font-semibold text-[var(--tx)]">Next step</h3>
+        <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
+          {product.setupHint ?? plan.nextStep}
+        </p>
+      </section>
+    </>
+  )
 
   return (
     <ColumnBrowserColumn onBack={onBack} showBack={showBack} title={product.name}>
@@ -343,51 +390,9 @@ const ProductDetail = ({
           </div>
         </section>
 
-        <TeamAccessSection isOwner={isOwner} product={product} />
-        <AgentConnectorSection product={product} />
-        {product.slug === 'buildme' ? <BuildMeProjectPanel product={product} /> : null}
-        {product.slug === 'deep-water' ? <DeepWaterResearchPanel product={product} /> : null}
-        {product.slug === 'deeptest' ? <DeepTestSecurityPanel product={product} /> : null}
-
-        <ExternalAgentActivationSection product={product} />
-
-        <section>
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Interface surfaces</h3>
-          <div className="mt-3">
-            <SurfaceRow label="Native page" value={plan.nativePage} />
-            <SurfaceRow label="Chat cards" value={plan.chatCards} />
-            <SurfaceRow label="Custom controls" value={plan.controls} />
-            <SurfaceRow label="Agent access" value={plan.agentAccess} />
-            <SurfaceRow label="Artifacts" value={plan.artifacts} />
-          </div>
-        </section>
-
-        <ProductSurfacesPanel
-          loading={manifestQuery.isLoading}
-          manifest={manifestQuery.data}
-          product={product}
-        />
-
-        <section className="border-t border-[var(--sep)] pt-4">
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Capabilities</h3>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {product.capabilities.map((capability) => (
-              <span
-                className="rounded bg-[var(--overlay)] px-2 py-1 text-xs text-[var(--tx2)]"
-                key={capability}
-              >
-                {capabilityLabel(capability)}
-              </span>
-            ))}
-          </div>
-        </section>
-
-        <section className="border-t border-[var(--sep)] pt-4">
-          <h3 className="text-sm font-semibold text-[var(--tx)]">Next step</h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">
-            {product.setupHint ?? plan.nextStep}
-          </p>
-        </section>
+        {product.slug === 'deep-water' ? (
+          <DeepWaterResearchPanel product={product} settingsContent={productDetailSections} />
+        ) : productDetailSections}
       </div>
     </ColumnBrowserColumn>
   )

@@ -167,7 +167,7 @@ const mapActions = (value: unknown): IntegrationUiCard['actions'] => {
     const href = firstString(raw, ['href', 'url'])
     const variant: 'primary' | 'secondary' | undefined =
       raw.variant === 'primary' || raw.variant === 'secondary' ? raw.variant : undefined
-    return [{ label, ...(href ? { href } : {}), ...(variant ? { variant } : {}) }]
+    return [{ label, type: 'link' as const, ...(href ? { href } : {}), ...(variant ? { variant } : {}) }]
   })
   return actions.length > 0 ? actions : undefined
 }

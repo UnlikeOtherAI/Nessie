@@ -307,6 +307,26 @@ export const DeepWaterResearchLaunchRequestSchema = z.object({
 export type DeepWaterResearchLaunchRequest =
   z.infer<typeof DeepWaterResearchLaunchRequestSchema>
 
+// A chat card can ask the client to open the native DeepWater launcher. Its
+// preset is intentionally bounded to the same safe controls as a manual
+// launch, but every field is optional so a conversation can prefill only the
+// choices it has already established with the user.
+export const DeepWaterResearchLauncherPresetSchema = z.object({
+  artifactDestination: z.enum(['knowledge_draft', 'chat_only']).optional(),
+  chapterDepth: z.enum(['brief', 'standard', 'detailed', 'exhaustive']).optional(),
+  depth: DeepWaterResearchDepthSchema.optional(),
+  outputLanguage: z.string().trim().min(2).max(12).optional(),
+  outputTier: z.enum(['summary', 'full']).optional(),
+  query: z.string().trim().min(1).max(5_000).optional(),
+  recency: z.enum(['any', 'day', 'week', 'month', 'year']).optional(),
+  searchQuality: z.enum(['standard', 'premium']).optional(),
+  searchesPerPillar: z.number().int().min(1).max(20).optional(),
+  sections: z.number().int().min(3).max(20).optional(),
+  title: z.string().trim().max(200).optional(),
+}).strict()
+export type DeepWaterResearchLauncherPreset =
+  z.infer<typeof DeepWaterResearchLauncherPresetSchema>
+
 export const DeepTestReviewDepthSchema = z.enum([
   'shallow',
   'standard',
@@ -353,6 +373,8 @@ export type IntegrationUiCardStatus = z.infer<typeof IntegrationUiCardStatusSche
 export const IntegrationUiCardActionSchema = z.object({
   label: NonEmptyStringSchema,
   href: z.string().min(1).optional(),
+  type: z.enum(['link', 'open_deep_water_research_launcher']).default('link'),
+  preset: DeepWaterResearchLauncherPresetSchema.optional(),
   variant: z.enum(['primary', 'secondary']).optional(),
 })
 export type IntegrationUiCardAction = z.infer<typeof IntegrationUiCardActionSchema>
@@ -376,5 +398,16 @@ export const IntegrationUiCardSchema = z.object({
   summary: z.string().optional(),
   fields: z.array(IntegrationUiCardFieldSchema).optional(),
   actions: z.array(IntegrationUiCardActionSchema).optional(),
+}).superRefine((card, context) => {
+  if (
+    card.actions?.some((action) => action.type === 'open_deep_water_research_launcher')
+    && card.productSlug !== 'deep-water'
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Only Deep Water cards can open the Deep Water research launcher.',
+      path: ['actions'],
+    })
+  }
 })
 export type IntegrationUiCard = z.infer<typeof IntegrationUiCardSchema>

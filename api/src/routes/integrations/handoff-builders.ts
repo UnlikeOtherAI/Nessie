@@ -90,6 +90,24 @@ export const buildDeepWaterLaunchMetadata = (
     IntegrationUiCardSchema.parse({
       actions: [
         { href: `/channels/${context.channelId}`, label: 'Open chat', variant: 'primary' },
+        {
+          label: 'Run again',
+          preset: {
+            artifactDestination: input.artifactDestination,
+            chapterDepth: input.chapterDepth,
+            depth: input.depth,
+            outputLanguage: input.outputLanguage,
+            outputTier: input.outputTier,
+            query: input.query,
+            recency: input.recency,
+            searchQuality: input.searchQuality,
+            searchesPerPillar: input.searchesPerPillar,
+            sections: input.sections,
+            title: input.title,
+          },
+          type: 'open_deep_water_research_launcher',
+          variant: 'secondary',
+        },
       ],
       fields: [
         { label: 'Depth', value: input.depth },

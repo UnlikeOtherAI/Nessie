@@ -11,6 +11,7 @@ import {
   DeepWaterResearchRunRecordSchema,
   DeepTestReviewHandoffRequestSchema,
   DeepWaterResearchLaunchRequestSchema,
+  IntegrationUiCardSchema,
   IntegratedProductResponseSchema,
   SetDeepWaterAgentAccessRequestSchema,
   SetProductTeamEnablementRequestSchema,
@@ -150,6 +151,43 @@ test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', ()
     DeepWaterResearchLaunchRequestSchema.safeParse({
       depth: 'uncapped',
       query: 'x',
+    }).success,
+    false,
+  )
+})
+
+test('Deep Water chat cards can prefill the reviewed research launcher only', () => {
+  const card = IntegrationUiCardSchema.parse({
+    actions: [
+      {
+        label: 'Review research',
+        preset: {
+          depth: 'deep',
+          outputLanguage: 'fr',
+          query: 'Compare European geothermal funding models.',
+          searchesPerPillar: 6,
+          sections: 10,
+        },
+        type: 'open_deep_water_research_launcher',
+        variant: 'primary',
+      },
+    ],
+    kind: 'deep_research',
+    productSlug: 'deep-water',
+    status: 'idle',
+    title: 'Geothermal funding research',
+  })
+
+  assert.equal(card.actions?.[0]?.type, 'open_deep_water_research_launcher')
+  assert.equal(card.actions?.[0]?.preset?.outputLanguage, 'fr')
+  assert.equal(card.actions?.[0]?.preset?.sections, 10)
+  assert.equal(
+    IntegrationUiCardSchema.safeParse({
+      actions: [{ label: 'Open launcher', type: 'open_deep_water_research_launcher' }],
+      kind: 'integration',
+      productSlug: 'deeptest',
+      status: 'idle',
+      title: 'Wrong product',
     }).success,
     false,
   )

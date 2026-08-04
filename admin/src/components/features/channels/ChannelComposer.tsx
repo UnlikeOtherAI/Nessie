@@ -25,6 +25,7 @@ interface ChannelComposerProps {
   inviteErrors: Record<string, string>
   onInvitePendingAgent: (agentId: string) => void
   onDismissPendingAgent: (agentId: string) => void
+  onOpenDeepWaterResearch?: () => void
 }
 
 export const ChannelComposer = ({
@@ -44,6 +45,7 @@ export const ChannelComposer = ({
   inviteErrors,
   onInvitePendingAgent,
   onDismissPendingAgent,
+  onOpenDeepWaterResearch,
 }: ChannelComposerProps) => (
   <div className="flex-shrink-0 px-5 pb-[14px]">
     {pendingAgentInvites.length > 0 && (
@@ -117,6 +119,26 @@ export const ChannelComposer = ({
           >
             #
           </button>
+          {onOpenDeepWaterResearch ? (
+            <button
+              aria-label="Start Deep Water research"
+              className={toolbarButtonClass}
+              onClick={onOpenDeepWaterResearch}
+              title="Start Deep Water research"
+              type="button"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <circle cx="11" cy="11" r="6" />
+                <path d="m16 16 4 4M11 8v6M8 11h6" strokeLinecap="round" />
+              </svg>
+            </button>
+          ) : null}
           <button className={toolbarButtonClass} type="button">
             <svg
               className="h-4 w-4"

@@ -1,4 +1,6 @@
 import { IntegrationUiCardSchema, type IntegrationUiCard } from '@nessie/schemas'
+import { useNavigate } from 'react-router-dom'
+import { deepWaterResearchLauncherNavigationState } from '../../../facades/integrations/deep-water-research-launcher-navigation'
 import { AgentActivityTimeline } from './AgentActivityTimeline'
 
 type IntegrationUiCardAction = NonNullable<IntegrationUiCard['actions']>[number]
@@ -62,6 +64,29 @@ const LaunchIcon = () => (
   </svg>
 )
 
+const DeepWaterResearchLauncherAction = ({
+  action,
+}: {
+  action: IntegrationUiCardAction
+}) => {
+  const navigate = useNavigate()
+
+  return (
+    <button
+      className={`${actionClass(action.variant)} gap-1.5`}
+      data-testid="deep-water-research-launcher-card-action"
+      onClick={() =>
+        navigate('.', {
+          state: deepWaterResearchLauncherNavigationState(action.preset),
+        })
+      }
+      type="button"
+    >
+      {action.label}
+    </button>
+  )
+}
+
 const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
   <div className="rounded-lg border border-[var(--sep)] bg-[var(--panel)] p-3">
     <div className="flex flex-wrap items-center gap-2">
@@ -89,7 +114,9 @@ const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
     {card.actions?.length ? (
       <div className="mt-3 flex flex-wrap gap-2">
         {card.actions.map((action) =>
-          action.href ? (
+          action.type === 'open_deep_water_research_launcher' ? (
+            <DeepWaterResearchLauncherAction action={action} key={action.label} />
+          ) : action.href ? (
             <a
               className={`${actionClass(action.variant)} gap-1.5`}
               href={action.href}

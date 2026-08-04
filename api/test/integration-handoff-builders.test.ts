@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildDeepWaterLaunchMessage } from '../src/routes/integrations/handoff-builders.js'
+import {
+  buildDeepWaterLaunchMessage,
+  buildDeepWaterLaunchMetadata,
+} from '../src/routes/integrations/handoff-builders.js'
 
 test('DeepWater handoff maps legacy launcher controls to Ledger MCP contract', () => {
   const runId = '018f8b91-7c5a-7e6d-8f90-123456789abc'
@@ -98,4 +101,34 @@ test('DeepWater handoff keeps supported Ledger depth and unrestricted recency', 
   assert.match(message, /Recency: any/)
   assert.doesNotMatch(message, /kb_list/)
   assert.doesNotMatch(message, /kb_draft_write/)
+})
+
+test('DeepWater handoff offers a bounded reviewable chat launcher preset', () => {
+  const metadata = buildDeepWaterLaunchMetadata({
+    artifactDestination: 'chat_only',
+    chapterDepth: 'detailed',
+    depth: 'deep',
+    outputLanguage: 'de',
+    outputTier: 'full',
+    query: 'Compare heat-pump adoption across the DACH region.',
+    recency: 'year',
+    searchQuality: 'premium',
+    searchesPerPillar: 6,
+    sections: 10,
+    title: 'DACH heat-pump research',
+  }, {
+    channelId: '018f8b91-7c5a-7e6d-8f90-abcdef012345',
+    connectorId: '018f8b91-7c5a-7e6d-8f90-abcdef012346',
+    productSlug: 'deep-water',
+    runId: '018f8b91-7c5a-7e6d-8f90-abcdef012347',
+  })
+  const cards = metadata.uiCards as Array<{
+    actions: Array<{ preset?: { outputLanguage?: string; sections?: number }; type: string }>
+  }>
+  const action = cards[0]?.actions.find((candidate) =>
+    candidate.type === 'open_deep_water_research_launcher',
+  )
+
+  assert.equal(action?.preset?.outputLanguage, 'de')
+  assert.equal(action?.preset?.sections, 10)
 })

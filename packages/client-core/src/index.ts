@@ -84,6 +84,7 @@ export type {
   DeepWaterResearchDepth,
   DeepWaterAgentAccessResponse,
   DeepWaterAgentAccessTarget,
+  DeepWaterResearchLauncherPreset,
   DeepWaterResearchLaunchRequest,
   DeepWaterResearchRunRecord,
   FeedbackRecord,

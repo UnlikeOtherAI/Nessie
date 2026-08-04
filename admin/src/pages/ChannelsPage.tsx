@@ -4,10 +4,7 @@ import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
-import {
-  useExternalAgentIdentity,
-  useSyncExternalAgentChannel,
-} from '../facades/integrations/hooks'
+import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
 import {
   isExternalAgentChannel,
   isPersonalAssistantChannel,
@@ -35,6 +32,7 @@ import { useChannelComposer } from '../components/features/channels/useChannelCo
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { ChannelInfoDrawers } from './channels/ChannelInfoDrawers'
 import { useChannelCall } from './channels/useChannelCall'
+import { useDeepWaterResearchLauncher } from './channels/useDeepWaterResearchLauncher'
 import { useChannelMentions } from './channels/useChannelMentions'
 import { useAlertMessageHighlight, useChannelMessageSearch } from './channels/useChannelMessageSearch'
 import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
@@ -86,8 +84,7 @@ export const ChannelsPage = () => {
 
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
-  const [selectedMessageUser, setSelectedMessageUser] =
-    useState<MessageUserIdentity | null>(null)
+  const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
   const [selectedMessageAgentId, setSelectedMessageAgentId] = useState<string | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -157,6 +154,7 @@ export const ChannelsPage = () => {
     threadMessages,
     currentUserId: me?.user.id,
   })
+  const deepWaterLauncher = useDeepWaterResearchLauncher(message)
 
   // sp-messaging: inline edit + channel message search.
   const {
@@ -386,6 +384,7 @@ export const ChannelsPage = () => {
         inviteErrors={inviteErrors}
         onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
         onDismissPendingAgent={dismissPendingAgent}
+        onOpenDeepWaterResearch={deepWaterLauncher.open}
       />
       </div>
 
@@ -407,6 +406,8 @@ export const ChannelsPage = () => {
           token={token}
         />
       ) : null}
+
+      {deepWaterLauncher.dialog}
 
       {showMembersPopup && activeChannel ? (
         <ChannelMembersPopup
