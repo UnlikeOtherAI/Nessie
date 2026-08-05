@@ -5,7 +5,8 @@
 //   completion
 //
 // Asserts the terminal state, the assistant message, the tool-call record,
-// the token-ledger events, and the run.timing TaskEvent.
+// the token-ledger events, the run.timing TaskEvent, the resolved reply
+// anchor, and the durable thought log (reasoning + tool chunks, in order).
 //
 // Run: pnpm --filter @nessie/worker test:smoke
 // Requires: Postgres at DATABASE_URL (default the local dev container,
@@ -18,7 +19,9 @@ process.env.NESSIE_MODEL_PROVIDER ??= 'openai'
 process.env.NESSIE_MODEL_API_KEY ??= 'mock-token'
 process.env.OPENAI_API_KEY ??= 'mock-token'
 
-const SCENARIO = 'channel-list-tool'
+// Same tool call and answer as `channel-list-tool`, with scripted visible
+// reasoning on both turns so the run's thought log is exercised too.
+const SCENARIO = 'reasoning-tool-answer'
 const EXPECTED_ANSWER =
   'The workspace has a handful of channels, including the one we are talking in right now.'
 
@@ -46,17 +49,49 @@ const main = async (): Promise<void> => {
     assert.equal(terminal.get(seeded.runId), 'completed', 'run reaches terminal completed state')
 
     const run = await pipeline.prisma.run.findUniqueOrThrow({
-      select: { finishedAt: true, startedAt: true, status: true },
+      select: {
+        finishedAt: true,
+        replyPlacement: true,
+        replyRootMessageId: true,
+        startedAt: true,
+        status: true,
+      },
       where: { id: seeded.runId },
     })
     assert.equal(run.status, 'completed')
     assert.ok(run.startedAt && run.finishedAt, 'run carries start/finish timestamps')
+    // No placement judgement on a directly-enqueued run → the #233 default:
+    // the reply threads under its top-level trigger message, and the resolved
+    // anchor is persisted for REST readers.
+    assert.equal(run.replyPlacement, null)
+    assert.equal(run.replyRootMessageId, seeded.messageId, 'resolved reply anchor persisted')
 
     const assistantMessage = await pipeline.prisma.message.findFirst({
       orderBy: { createdAt: 'desc' },
       where: { agentId: scope.agentId, role: 'assistant', threadId: seeded.threadId },
     })
     assert.equal(assistantMessage?.content, EXPECTED_ANSWER, 'scripted answer is delivered')
+    assert.equal(assistantMessage?.rootMessageId, seeded.messageId, 'answer lands in the thread')
+
+    const thinking = await pipeline.prisma.runThinkingChunk.findMany({
+      orderBy: { id: 'asc' },
+      where: { runId: seeded.runId },
+    })
+    assert.ok(thinking.length >= 3, 'thought log captured reasoning and tool activity')
+    assert.ok(
+      thinking.some((chunk) => chunk.kind === 'reasoning'),
+      'reasoning chunks persisted',
+    )
+    const toolChunks = thinking.filter((chunk) => chunk.kind === 'tool')
+    assert.equal(toolChunks.length, 1, 'one tool line per tool call')
+    assert.match(toolChunks[0]?.content ?? '', /^channel_list/)
+    // Ordering is the log: the reasoning that led to the call precedes it.
+    assert.equal(thinking[0]?.kind, 'reasoning')
+    assert.ok(
+      thinking.findIndex((chunk) => chunk.kind === 'tool')
+      < thinking.map((chunk) => chunk.kind).lastIndexOf('reasoning'),
+      'post-tool reasoning is recorded after the tool line',
+    )
 
     const toolCalls = await pipeline.prisma.toolCall.findMany({
       where: { runId: seeded.runId },
@@ -103,7 +138,8 @@ const main = async (): Promise<void> => {
     console.log('[smoke] PASS: message → run → tool call → completion')
     console.log(
       `[smoke] run ${seeded.runId} completed; `
-      + `ledger events: ${ledgerEvents.length}, run.timing: inferenceCount=${timing['inferenceCount']} toolCount=${timing['toolCount']}`,
+      + `ledger events: ${ledgerEvents.length}, run.timing: inferenceCount=${timing['inferenceCount']} toolCount=${timing['toolCount']}, `
+      + `thinking chunks: ${thinking.length}`,
     )
   } finally {
     await cleanupScope(pipeline.prisma, pipeline.pool, scope, runIds)

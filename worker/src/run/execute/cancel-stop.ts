@@ -172,3 +172,46 @@ export const finalizeCancelledRun = async (
     threadId: context.run.threadId,
   })
 }
+
+// The whole cancel outcome, from the loop's `cancelled` exit to a terminalized
+// run: build the notice, read who asked and when, record the queryable event,
+// then finalize. The caller only decides *whether* the run was cancelled.
+export const handleCancelStop = async (
+  deps: ExecutionDependencies,
+  payload: RunExecuteJobPayload,
+  context: RunContext,
+  planContext: RunPlanContext | null,
+  loopResult: {
+    invocations: InvocationRecord[]
+    iterations: number
+    toolCallsUsed: number
+    totalCostCents: number
+    totalTokensUsed: number
+    wallclockMs: number
+  },
+  responseText: string,
+): Promise<void> => {
+  const hadPartialText = responseText.trim().length > 0
+  const cancelState = await deps.prisma.run.findUnique({
+    where: { id: context.run.id },
+    select: { cancelRequestedAt: true, cancelRequestedByUserId: true },
+  })
+  await recordCancelStopEvent(deps.prisma, context.task.id, {
+    cancelRequestedAt: cancelState?.cancelRequestedAt ?? null,
+    cancelledByUserId: cancelState?.cancelRequestedByUserId ?? null,
+    hadPartialText,
+    stats: {
+      iterations: loopResult.iterations,
+      toolCallsUsed: loopResult.toolCallsUsed,
+      totalCostCents: loopResult.totalCostCents,
+      totalTokensUsed: loopResult.totalTokensUsed,
+      wallclockMs: loopResult.wallclockMs,
+    },
+  })
+  await finalizeCancelledRun(deps, payload, context, planContext, {
+    hadPartialText,
+    invocations: loopResult.invocations,
+    notice: buildCancelStopNotice(hadPartialText),
+    responseText,
+  })
+}

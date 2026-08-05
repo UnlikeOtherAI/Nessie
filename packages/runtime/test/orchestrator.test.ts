@@ -81,7 +81,10 @@ test('an @mention replies to the named agent without consulting the model', asyn
     recentMessages: [],
     triggerIsHuman: true,
   })
-  assert.deepEqual(decisions, [{ action: 'reply', agentId: aria.id }])
+  // Being addressed is a structural fact, so placement is stamped, not judged.
+  assert.deepEqual(decisions, [
+    { action: 'reply', agentId: aria.id, replyPlacement: 'thread' },
+  ])
 })
 
 test('multiple @mentions reply for each named agent (mention behavior intact)', async () => {
@@ -94,8 +97,20 @@ test('multiple @mentions reply for each named agent (mention behavior intact)', 
     followingAgentIds: [aria.id],
   })
   assert.deepEqual(decisions, [
-    { action: 'reply', agentId: aria.id },
-    { action: 'reply', agentId: beck.id },
+    { action: 'reply', agentId: aria.id, replyPlacement: 'thread' },
+    { action: 'reply', agentId: beck.id, replyPlacement: 'thread' },
+  ])
+})
+
+test('an @mention in another language is still a structurally threaded reply', async () => {
+  const decisions = await decideAgentEngagement(forbiddenModel(), {
+    agents: [aria, beck],
+    content: 'ahoj @Aria, můžeš se na to prosím kouknout?',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+  assert.deepEqual(decisions, [
+    { action: 'reply', agentId: aria.id, replyPlacement: 'thread' },
   ])
 })
 
@@ -224,4 +239,106 @@ test('a follow id absent from the agent list is not annotated', async () => {
     followingAgentIds: [beck.id],
   })
   assert.doesNotMatch(captured, ANNOTATION)
+})
+
+// ── Reply placement is judged by the model, never by inspecting the text ───
+//
+// Placement fixtures deliberately use non-English, slang, and misspelled input:
+// the decision must ride entirely on the model's JSON, so the same content
+// yields whatever the model said and nothing in the code may branch on wording.
+
+test('the prompt asks for a placement and explains what it means, without examples', async () => {
+  let captured = ''
+  const model = makeModel(JSON.stringify({ action: 'none' }), (messages) => {
+    captured = systemPromptOf(messages)
+  })
+  await decideAgentEngagement(model, {
+    agents: [aria],
+    content: 'kannst du das bitte nochmal prüfen',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+  assert.match(captured, /replyPlacement/)
+  assert.match(captured, /"thread"/)
+  assert.match(captured, /"channel"/)
+})
+
+test('a "channel" judgement is carried onto the decision (slang input)', async () => {
+  const model = makeModel(
+    JSON.stringify({ action: 'reply', agentId: aria.id, replyPlacement: 'channel' }),
+  )
+  const decisions = await decideAgentEngagement(model, {
+    agents: [aria],
+    content: 'yo team heads up the deploy is prob gonna slip lol',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+  assert.deepEqual(decisions, [
+    { action: 'reply', agentId: aria.id, replyPlacement: 'channel' },
+  ])
+})
+
+test('a "thread" judgement is carried onto the decision (misspelled input)', async () => {
+  const model = makeModel(
+    JSON.stringify({ action: 'reply', agentId: aria.id, replyPlacement: 'thread' }),
+  )
+  const decisions = await decideAgentEngagement(model, {
+    agents: [aria],
+    content: 'coudl u recheck teh deploymnt loggs plz',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+  assert.deepEqual(decisions, [
+    { action: 'reply', agentId: aria.id, replyPlacement: 'thread' },
+  ])
+})
+
+test('an unparseable placement is dropped, leaving the default (non-English input)', async () => {
+  for (const replyPlacement of ['Thread', 'inline', '', 'канал', 42, null, {}, ['thread']]) {
+    const model = makeModel(
+      JSON.stringify({ action: 'reply', agentId: aria.id, replyPlacement }),
+    )
+    const decisions = await decideAgentEngagement(model, {
+      agents: [aria],
+      content: 'сможешь глянуть логи деплоя?',
+      recentMessages: [],
+      triggerIsHuman: true,
+    })
+    assert.deepEqual(
+      decisions,
+      [{ action: 'reply', agentId: aria.id }],
+      `placement ${JSON.stringify(replyPlacement)} must be ignored`,
+    )
+  }
+})
+
+test('a decision with no placement field keeps the historical default', async () => {
+  const model = makeModel(JSON.stringify({ action: 'reply', agentId: aria.id }))
+  const decisions = await decideAgentEngagement(model, {
+    agents: [aria],
+    content: '¿puedes revisar el despliegue?',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+  assert.deepEqual(decisions, [{ action: 'reply', agentId: aria.id }])
+})
+
+test('placement never leaks onto an acknowledge decision', async () => {
+  const model = makeModel(
+    JSON.stringify({
+      action: 'acknowledge',
+      agentId: aria.id,
+      emoji: '👍',
+      replyPlacement: 'channel',
+    }),
+  )
+  const decisions = await decideAgentEngagement(model, {
+    agents: [aria],
+    content: 'díky moc',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+  assert.deepEqual(decisions, [
+    { action: 'acknowledge', agentId: aria.id, emoji: '👍' },
+  ])
 })

@@ -29,6 +29,29 @@ test('channel-list-tool scenario scripts a tool call then an answer', async () =
   }
 })
 
+test('reasoning-tool-answer scenario scripts reasoning on both turns', async () => {
+  const scenario = await loadScenario('reasoning-tool-answer')
+  const [first, second] = scenario.turns
+  assert.ok(first && 'reasoning' in first && first.reasoning)
+  assert.ok(second && 'reasoning' in second && second.reasoning)
+  if ('toolCalls' in first) {
+    assert.equal(first.toolCalls[0]?.toolName, 'channel_list')
+  }
+})
+
+test('parseScenario accepts an optional reasoning field but still rejects unknown keys', () => {
+  const scenario = parseScenario({
+    name: 'reasoning',
+    turns: [{ reasoning: 'thinking out loud', text: 'hi' }],
+  })
+  const turn = scenario.turns[0]
+  assert.ok(turn && 'reasoning' in turn)
+  assert.equal(turn.reasoning, 'thinking out loud')
+  assert.throws(() =>
+    parseScenario({ name: 'broken', turns: [{ reasoningContent: 'typo', text: 'hi' }] }),
+  )
+})
+
 test('parseScenario rejects a scenario without turns', () => {
   assert.throws(() => parseScenario({ name: 'broken', turns: [] }))
   assert.throws(() => parseScenario({ name: 'broken' }))

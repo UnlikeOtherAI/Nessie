@@ -113,6 +113,14 @@ references were verified on branch `claude/agent-communication-thinking-4c7522`.
 - `enum RunReplyPlacement { thread channel }` (map `run_reply_placement`).
 - `Run.replyPlacement RunReplyPlacement? @map("reply_placement")` — nullable;
   null ≡ historical default (thread). No new index.
+- `Run.replyRootMessageId String? @db.Uuid @map("reply_root_message_id")` —
+  the **resolved** anchor, persisted by the worker right after
+  `resolveReplyRootMessageId` (single `run.update` before `stream.start`).
+  Plain uuid, no relation (mirrors `replyParticipantIds` style). This keeps
+  the resolution logic in exactly one place (worker); the API bootstrap
+  endpoint only reads it. Placement (`replyPlacement`) is the pre-run
+  judgment *input*; this column is the resolved *output* including the
+  structural carve-outs.
 
 ### A2. Orchestrator (`packages/runtime/src/orchestrator.ts`)
 
@@ -225,10 +233,14 @@ run→thread ownership check.
    content, createdAt }], truncated: boolean }`. Order by `id`; cap at the
    last 500 entries (`truncated` flags an elided prefix).
 2. `GET /api/threads/:threadId/thinking` — bootstrap for mid-run joiners:
-   active (`pending`/`running`) runs for the thread →
+   `running` runs for the thread (queued runs have not published
+   `stream.start` yet and have no bubble) →
    `{ runs: [{ runId, agentId, rootMessageId, startedAt, entries: last 50,
-   lastChunkId }] }`. `rootMessageId` recomputed via the same resolution used
-   at execution (read `Run.replyPlacement` + trigger message row).
+   lastChunkId }] }`. `rootMessageId` is read straight from the persisted
+   `Run.replyRootMessageId` — never re-derived in the API.
+   Chunk ids are BigInt — serialize as strings at the API boundary (same
+   rule as `Attachment.sizeBytes`), and stringify before `publishSse`
+   payloads too (BigInt breaks `JSON.stringify`).
 
 ### B5. Admin — state (`admin/src/facades/threads/hooks.ts`)
 

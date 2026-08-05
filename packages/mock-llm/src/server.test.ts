@@ -66,6 +66,40 @@ test('streaming completion emits SSE chunks, finish reason, usage, and DONE', as
   }
 })
 
+test('a reasoning turn streams reasoning_content before any text or tool call', async () => {
+  const server = await createMockLlmServer({
+    scenario: await loadScenario('reasoning-tool-answer'),
+  })
+  try {
+    const response = await fetch(`${server.url}/v1/chat/completions`, chatRequest({ stream: true }))
+    const raw = await response.text()
+    const chunks = raw
+      .split('\n')
+      .filter((line) => line.startsWith('data: ') && !line.includes('[DONE]'))
+      .map((line) => JSON.parse(line.slice(6)) as {
+        choices: Array<{
+          delta?: { content?: string; reasoning_content?: string; tool_calls?: unknown[] }
+        }>
+      })
+
+    const reasoning = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.reasoning_content ?? '')
+      .join('')
+    assert.match(reasoning, /^The question is about this workspace/)
+
+    // Ordering matters: the thought recorder must see reasoning ahead of the
+    // answer text and the tool call it leads to.
+    const firstReasoning = chunks.findIndex((c) => c.choices[0]?.delta?.reasoning_content)
+    const firstText = chunks.findIndex((c) => c.choices[0]?.delta?.content)
+    const firstToolCall = chunks.findIndex((c) => c.choices[0]?.delta?.tool_calls)
+    assert.equal(firstReasoning, 0)
+    assert.ok(firstReasoning < firstText)
+    assert.ok(firstText < firstToolCall)
+  } finally {
+    await server.close()
+  }
+})
+
 test('tool-call turn streams function calls and a tool_calls finish reason', async () => {
   const server = await createMockLlmServer({ scenario: await loadScenario('channel-list-tool') })
   try {

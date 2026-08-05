@@ -4,6 +4,8 @@ import {
   CHAT_MESSAGE_MAX_CHARS,
   MessageRoleSchema,
   OrganizationIdSchema,
+  RunIdSchema,
+  RunStatusSchema,
   ThreadIdSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
@@ -115,6 +117,46 @@ export const toAttachmentRecord = (row: AttachmentRowLike): AttachmentRecord =>
     height: row.height ?? undefined,
     createdAt: row.createdAt.toISOString(),
   })
+
+// ─── Agent thought process (thinking bubbles) ──────────────────────────────
+// The durable counterpart of the live `stream.reasoning` /
+// `stream.thinking.tool` SSE events. Chunk ids are BigInt columns, serialized
+// as decimal strings (same rule as `Attachment.sizeBytes`).
+export const RunThinkingEntrySchema = z.object({
+  id: NonEmptyStringSchema,
+  kind: z.enum(['reasoning', 'tool']),
+  content: z.string(),
+  createdAt: TimestampSchema,
+})
+export type RunThinkingEntry = z.infer<typeof RunThinkingEntrySchema>
+
+export const RunThinkingLogSchema = z.object({
+  run: z.object({
+    id: RunIdSchema,
+    agentId: AgentIdSchema,
+    status: RunStatusSchema,
+    // Resolved reply anchor: null when the reply lands top-level.
+    rootMessageId: z.string().uuid().nullable(),
+  }),
+  entries: RunThinkingEntrySchema.array(),
+  // True when older entries were elided from the head of the log.
+  truncated: z.boolean(),
+})
+export type RunThinkingLog = z.infer<typeof RunThinkingLogSchema>
+
+// Mid-run joiner bootstrap: the live runs of a thread with their tail log, so a
+// client that missed the (never-replayed) SSE stream can still render a bubble.
+export const ThreadThinkingSchema = z.object({
+  runs: z.array(z.object({
+    runId: RunIdSchema,
+    agentId: AgentIdSchema,
+    rootMessageId: z.string().uuid().nullable(),
+    startedAt: TimestampSchema.nullable(),
+    entries: RunThinkingEntrySchema.array(),
+    lastChunkId: NonEmptyStringSchema.nullable(),
+  })),
+})
+export type ThreadThinking = z.infer<typeof ThreadThinkingSchema>
 
 export const CreateThreadMessageBodySchema = z.object({
   content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),

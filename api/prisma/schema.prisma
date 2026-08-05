@@ -69,6 +69,22 @@ enum RunStatus {
   cancelled
 }
 
+// Where a run's agent-authored reply belongs. Judged before the run starts by
+// the engagement orchestrator (model-made, never string-matched): `thread` when
+// the answer belongs to the triggering exchange, `channel` when it is a
+// standalone contribution to the room. Null ≡ the historical default (thread).
+enum RunReplyPlacement {
+  thread
+  channel
+}
+
+// A durable thought-process chunk: coalesced visible reasoning, or one tool
+// invocation line. Written by the worker's per-run ThinkingRecorder.
+enum RunThinkingChunkKind {
+  reasoning
+  tool
+}
+
 enum AgentTriggerType {
   manual
   scheduled
@@ -1559,6 +1575,16 @@ model Run {
   // Set on a run created by POST /api/runs/:id/restart, pointing at the original
   // terminal run it re-runs.
   restartOfRunId                String?                        @map("restart_of_run_id") @db.Uuid
+  // Pre-run reply-placement judgement (the orchestrator's model decision, or a
+  // structural 'thread' for @mentions and PA DMs). Null ≡ historical default.
+  // This is the *input* to placement resolution, not its outcome.
+  replyPlacement                RunReplyPlacement?             @map("reply_placement")
+  // The *resolved* reply anchor, persisted by the worker right after
+  // `resolveReplyRootMessageId` runs (so the structural carve-outs — DeepWater
+  // handoff, external agents — are already applied). Plain uuid with no
+  // relation, mirroring `Message.replyParticipantIds`: readers (the thinking
+  // bootstrap endpoint) never re-derive placement.
+  replyRootMessageId            String?                        @map("reply_root_message_id") @db.Uuid
   agent                         Agent                          @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread                        Thread                         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   trigger                       AgentTrigger?                  @relation(fields: [triggerId], references: [id], onDelete: SetNull)
@@ -1575,12 +1601,31 @@ model Run {
   workflowRuns                  WorkflowRun[]                  @relation("WorkflowParentRun")
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowAgentRun")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
+  thinkingChunks                RunThinkingChunk[]
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
   @@index([triggerId, createdAt])
   @@index([restartOfRunId])
   @@map("runs")
+}
+
+// Durable thought log for a run — the retrievable record behind the live
+// "thinking" bubble. The SSE stream is lossy (live-only, never replayed from
+// backlog), so the recorder writes one row per coalesced flush and publishes
+// the same chunk with its id, letting a client merge fetched history with live
+// events without duplication. Per-run order is `id` order: exactly one worker
+// writes a run at a time (the queue renews its lock for the job's lifetime).
+model RunThinkingChunk {
+  id        BigInt               @id @default(autoincrement())
+  runId     String               @map("run_id") @db.Uuid
+  kind      RunThinkingChunkKind
+  content   String
+  createdAt DateTime             @default(now()) @map("created_at")
+  run       Run                  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, id])
+  @@map("run_thinking_chunks")
 }
 
 // Per-(agent, thread) run serialization: a message that arrives while a run is

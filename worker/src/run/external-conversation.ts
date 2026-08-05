@@ -332,6 +332,9 @@ export const runExternalConversation = async (
     })
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
       agentId: parseAgentId(context.agent.id),
+      // External-agent turns are always top-level: their message flow is
+      // proxied verbatim and never threads under the trigger.
+      rootMessageId: null,
       runId: parseRunId(context.run.id),
       threadId: parseThreadId(context.run.threadId),
     })

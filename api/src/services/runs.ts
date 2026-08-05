@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient, RunReplyPlacement } from '@prisma/client'
 import {
   parseAgentId,
   parseChannelId,
@@ -46,6 +46,9 @@ type OrgRun = {
   threadId: string
   triggerMessageId: string | null
   triggerMessageMetadata: unknown
+  // Pre-run reply-placement judgement, replayed onto a restarted run so the
+  // re-run lands where the original one was judged to belong.
+  replyPlacement: RunReplyPlacement | null
 }
 
 const loadRunForOrg = async (
@@ -61,6 +64,7 @@ const loadRunForOrg = async (
       status: true,
       threadId: true,
       triggerMessageId: true,
+      replyPlacement: true,
       thread: { select: { channelId: true } },
       triggerMessage: { select: { metadata: true } },
     },
@@ -74,6 +78,7 @@ const loadRunForOrg = async (
     threadId: run.threadId,
     triggerMessageId: run.triggerMessageId,
     triggerMessageMetadata: run.triggerMessage?.metadata ?? null,
+    replyPlacement: run.replyPlacement,
   }
 }
 
@@ -299,6 +304,9 @@ export const restartRun = async (
         threadId: run.threadId,
         triggerMessageId: message.id,
         restartOfRunId: run.id,
+        // A restart replays the same trigger message, so it inherits the
+        // original run's placement judgement rather than silently re-defaulting.
+        replyPlacement: run.replyPlacement,
       },
       select: { id: true },
     })

@@ -1,4 +1,4 @@
-import type { ChannelSystemType, PrismaClient } from '@prisma/client'
+import type { ChannelSystemType, PrismaClient, RunReplyPlacement } from '@prisma/client'
 import type { AgentEffort } from '@nessie/schemas'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
@@ -57,6 +57,13 @@ export type RunContext = {
     // Run row creation ≈ enqueue instant (run.create + job enqueue share one
     // transaction), used as the queue-wait baseline for run.timing.
     createdAt: Date
+    /**
+     * The pre-run placement judgement recorded on the run row (model-made by
+     * the engagement orchestrator, or structural for @mentions and PA DMs).
+     * `null` ≡ the historical default. Consumed only by
+     * `resolveReplyRootMessageId`.
+     */
+    replyPlacement: RunReplyPlacement | null
   }
   task: {
     id: string
@@ -64,9 +71,11 @@ export type RunContext = {
   /**
    * Reply-thread placement (#233): the root message this run's agent-authored
    * messages attach to — `triggerMessage.rootMessageId ?? triggerMessage.id`
-   * (one level deep). Resolved in `executeRunJob` once the trigger message and
-   * DeepWater handoff marker are known; `undefined` for runs without a trigger
-   * message and for handoff runs, whose message flow stays byte-identical.
+   * (one level deep). Resolved in `executeRunJob` once the trigger message,
+   * DeepWater handoff marker, and placement judgement are known; `undefined`
+   * for runs without a trigger message, for handoff runs (whose message flow
+   * stays byte-identical), and when placement judged the reply to be a
+   * standalone channel post.
    */
   replyRootMessageId?: string
 }
