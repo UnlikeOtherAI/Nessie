@@ -6,6 +6,7 @@ import type {
   AgentEffortValue,
   AgentFormState,
 } from './useAgentDesigner'
+import { ModelCombobox } from './ModelCombobox'
 import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { ToolPicker } from './ToolPicker'
 
@@ -47,21 +48,10 @@ export const AgentDesignerForm = ({
   toolsLoading,
 }: AgentDesignerFormProps) => {
   const isStreaming = (field: string) => state.streamingField === field
-  const modelOptionKey = (option: Pick<AgentModelOption, 'model' | 'provider'>) =>
-    JSON.stringify([option.provider, option.model])
   const selectedModel = modelOptions.find(
     (option) => option.model === state.model && option.provider === state.provider,
   )
   const hasUnavailableSelection = Boolean(state.model && state.provider && !selectedModel)
-  const modelsByProvider = modelOptions.reduce<Map<string, AgentModelOption[]>>(
-    (groups, option) => {
-      const current = groups.get(option.providerDisplayName) ?? []
-      current.push(option)
-      groups.set(option.providerDisplayName, current)
-      return groups
-    },
-    new Map(),
-  )
 
   return (
     <div className="grid gap-5">
@@ -114,43 +104,21 @@ export const AgentDesignerForm = ({
         <label className={fieldLabelClass} htmlFor="agent-model">
           Model
         </label>
-        <select
-          className={[
-            'admin-input',
-            isStreaming('model')
-              ? 'border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]'
-              : '',
-          ].join(' ')}
+        <ModelCombobox
           disabled={modelsLoading || modelOptions.length === 0}
+          emptyLabel="No models match that search"
+          highlighted={isStreaming('model')}
           id="agent-model"
-          onChange={(e) => {
-            const option = modelOptions.find(
-              (candidate) => modelOptionKey(candidate) === e.target.value,
-            )
-            if (option) actions.setModelSelection(option)
-          }}
-          value={selectedModel ? modelOptionKey(selectedModel) : ''}
-        >
-          <option value="">
-            {modelsLoading ? 'Loading Ledger models…' : 'Select a model'}
-          </option>
-          {hasUnavailableSelection ? (
-            <option disabled value="">
-              Current model is no longer available — select a replacement
-            </option>
-          ) : null}
-          {[...modelsByProvider.entries()].map(([provider, models]) => (
-            <optgroup key={provider} label={provider}>
-              {models.map((option) => (
-                <option key={modelOptionKey(option)} value={modelOptionKey(option)}>
-                  {option.displayName === option.model
-                    ? option.model
-                    : `${option.displayName} (${option.model})`}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+          onSelect={actions.setModelSelection}
+          options={modelOptions}
+          placeholder={modelsLoading ? 'Loading Ledger models…' : 'Search models…'}
+          value={selectedModel ?? null}
+        />
+        {hasUnavailableSelection ? (
+          <p className="text-xs text-[color:var(--tx3)]">
+            Current model ({state.model}) is no longer available — select a replacement.
+          </p>
+        ) : null}
         {selectedModel ? (
           <p className="text-xs text-[color:var(--tx3)]">
             {selectedModel.description
