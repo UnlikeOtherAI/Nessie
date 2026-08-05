@@ -20,10 +20,15 @@ import { renderPdfFirstPage } from './pdf-first-page.js'
 export const THUMBNAIL_MAX_EDGE = 640
 export const THUMBNAIL_MIME = 'image/webp'
 
-// Decode budget for sources whose pixel count is not otherwise bounded (most
-// importantly SVG, which sharp renders via librsvg at a caller-chosen size and
-// whose default limit is 268 MP).
-const MAX_DECODE_PIXELS = 4_000_000
+// Decode budget for VECTOR sources, whose pixel count is chosen by the
+// renderer rather than fixed by the file: an inch-sized SVG can declare a
+// gigapixel raster, and sharp's default ceiling (268 MP) is no protection.
+// Raster images keep that default — they are bounded by their own stored
+// pixels, they have already survived a full decode in the strip step, and an
+// ordinary 12 MP phone photo must obviously still get a preview.
+const MAX_VECTOR_PIXELS = 4_000_000
+
+const VECTOR_MIMES = new Set(['image/svg+xml'])
 
 // Rasterizable-but-not-strippable inputs the async path can still preview.
 // (JPEG/PNG/WebP are handled inline at store time; they are listed so a
@@ -69,7 +74,7 @@ const encodeThumbnail = async (pipeline: Sharp): Promise<GeneratedThumbnail | nu
 }
 
 /**
- * Thumbnail for raster/vector image bytes.
+ * Thumbnail for image bytes.
  *
  * Deliberately decoded WITHOUT sharp's `animated: true`: the store path uses it
  * (to preserve animation), and an animated WebP/GIF decoded that way is a
@@ -77,20 +82,20 @@ const encodeThumbnail = async (pipeline: Sharp): Promise<GeneratedThumbnail | nu
  * animated thumbnail a tall smear of frames. Reading frame 0 is what a preview
  * wants anyway.
  *
- * `limitInputPixels` is pinned to the decode budget rather than sharp's
- * default, which matters most for SVG (an inch-sized document can declare a
- * gigapixel raster). Passing a Buffer — never a path — keeps librsvg from
- * resolving anything off the filesystem.
+ * A vector source is decoded under the tight pixel budget and flattened onto
+ * white (it usually assumes a page); a raster keeps its alpha, so a transparent
+ * logo previews as a transparent logo. Input is always a Buffer, never a path,
+ * so librsvg can never resolve anything off the filesystem.
  */
 export const renderImageThumbnail = async (
   input: Buffer,
+  options: { vector?: boolean } = {},
 ): Promise<GeneratedThumbnail | null> => {
   try {
-    return await encodeThumbnail(
-      sharp(input, { limitInputPixels: MAX_DECODE_PIXELS }).flatten({
-        background: '#ffffff',
-      }),
-    )
+    const pipeline = options.vector
+      ? sharp(input, { limitInputPixels: MAX_VECTOR_PIXELS }).flatten({ background: '#ffffff' })
+      : sharp(input)
+    return await encodeThumbnail(pipeline)
   } catch {
     return null
   }
@@ -128,7 +133,7 @@ export const renderThumbnail = async (
     return renderPdfThumbnail(input)
   }
   if (THUMBNAILABLE_IMAGE_MIMES.has(mime)) {
-    return renderImageThumbnail(input)
+    return renderImageThumbnail(input, { vector: VECTOR_MIMES.has(mime) })
   }
   return null
 }

@@ -186,3 +186,36 @@ test('an SVG is rasterized within the decode budget', async () => {
   )
   assert.equal(await renderThumbnail('image/svg+xml', gigapixel), null)
 })
+
+test('an ordinary multi-megapixel photo is previewed, not rejected by the vector budget', async () => {
+  // 4000x3000 = 12 MP, an unremarkable phone photo. The tight pixel budget
+  // exists for vector sources only; applying it here would silently drop the
+  // preview for exactly the uploads this feature is for.
+  const photo = await sharp({
+    create: { width: 4000, height: 3000, channels: 3, background: { r: 20, g: 90, b: 160 } },
+  })
+    .jpeg()
+    .toBuffer()
+  const thumbnail = await renderThumbnail('image/jpeg', photo)
+  assert.ok(thumbnail, '12 MP photo produces a preview')
+  assert.equal(thumbnail.width, 640)
+  assert.equal(thumbnail.height, 480)
+})
+
+test('a transparent raster keeps its alpha; a vector is flattened onto a page', async () => {
+  const transparent = await sharp({
+    create: { width: 200, height: 200, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .png()
+    .toBuffer()
+  const raster = await renderThumbnail('image/png', transparent)
+  assert.ok(raster)
+  assert.equal((await sharp(raster.data).metadata()).hasAlpha, true)
+
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"></svg>',
+  )
+  const vector = await renderThumbnail('image/svg+xml', svg)
+  assert.ok(vector)
+  assert.equal((await sharp(vector.data).metadata()).hasAlpha, false)
+})

@@ -404,8 +404,21 @@ host `.env` — they are the MinIO root credentials and the app's S3 credentials
 Local dev keeps `filesystem` (zero setup); to exercise the S3 path locally, run a
 MinIO container and set the `NESSIE_STORAGE_*` vars.
 
+Uploads that can be previewed also get a small WebP **thumbnail** stored beside
+the original (`<key>.thumb.webp`) so chat feeds never transfer a full-resolution
+file to paint a preview. Raster images are thumbnailed inline at upload; PDFs and
+awkward image formats go through the `attachment.thumbnail` worker job. PDF first
+pages are rasterized by **`@hyzyla/pdfium`**, a pure-WebAssembly build of PDFium:
+it needs **no system packages and no per-architecture native binaries**, so the
+`Dockerfile.app` image is unchanged and stays architecture-independent. Keep it
+that way — a native PDF or video renderer would add hundreds of megabytes per
+architecture, and the GPL/AGPL options (MuPDF, Poppler, ffmpeg) are not
+licence-compatible with this product. No new environment variables.
+
 Every store/delete updates the `storage_usage_events` ledger, so per-org/team/
-space/uploader usage is always known; a per-scope cap (`Budget.storageLimitBytes`)
+space/uploader usage is always known; thumbnails are quota-gated with their
+original and write their own `store.thumbnail` / `delete.thumbnail` events, so
+usage stays an exact sum. A per-scope cap (`Budget.storageLimitBytes`)
 blocks uploads (HTTP 507) when exceeded. The cap is set in the admin **Budgets**
 screen ("Storage cap (GB)") alongside spend caps, and current usage shows in the
 knowledge-base header. `MinIO` data lives in the `nessie_miniodata` volume — back

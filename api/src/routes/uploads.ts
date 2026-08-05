@@ -34,7 +34,9 @@ const isInlineMime = (mime: string): boolean =>
 // content never changes (an "edit" is a fresh upload with a fresh id). So the
 // browser HTTP cache may keep them forever, which is what stops a chat feed
 // re-transferring every image on each render. `private` because the bytes are
-// tenant-scoped and must never land in a shared proxy cache.
+// tenant-scoped and must never land in a shared proxy cache — verified to still
+// be stored by the browser even though these requests carry a bearer token, and
+// `immutable` keeps a manual reload from revalidating them.
 export const ATTACHMENT_CACHE_CONTROL = 'private, max-age=31536000, immutable'
 
 // Strong validator over the only two facts that identify the exact bytes: the
@@ -106,15 +108,17 @@ export const streamAttachmentDownload = (
 // metadata stripping. Fire-and-forget, mirroring enqueueKnowledgeExtract — the
 // upload is already committed, so a queue-insert failure must not fail the
 // request; it only means this file has no preview until something re-enqueues.
+// Returns the attachment as the caller should serialize it, so the upload
+// response reports `pending` rather than claiming there is no preview coming.
 const enqueueAttachmentThumbnail = async (
   prisma: RouteDeps['prisma'],
   attachment: Attachment,
-): Promise<void> => {
+): Promise<Attachment> => {
   if (attachment.thumbnailKey || !isThumbnailableMime(attachment.mime)) {
-    return
+    return attachment
   }
   try {
-    await prisma.attachment.update({
+    const pending = await prisma.attachment.update({
       where: { id: attachment.id },
       data: { thumbnailStatus: 'pending' },
     })
@@ -126,8 +130,10 @@ const enqueueAttachmentThumbnail = async (
       },
       topic: ATTACHMENT_THUMBNAIL_TOPIC,
     })
+    return pending
   } catch (error) {
     console.error('[uploads] Failed to enqueue attachment.thumbnail:', attachment.id, error)
+    return attachment
   }
 }
 
@@ -205,9 +211,9 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         operation: 'upload',
       }).catch(() => undefined)
 
-      await enqueueAttachmentThumbnail(prisma, attachment)
+      const stored = await enqueueAttachmentThumbnail(prisma, attachment)
 
-      return reply.code(201).send(createApiResponse(toAttachmentRecord(attachment)))
+      return reply.code(201).send(createApiResponse(toAttachmentRecord(stored)))
     } catch (error) {
       if (sendFileServiceError(reply, error)) {
         return reply
