@@ -240,6 +240,19 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    // `userId` is raw request body. Confirm it belongs to this organisation so a
+    // foreign-tenant id cannot be written into the membership table.
+    const targetIsOrgMember = await prisma.organizationMember.count({
+      where: {
+        organizationId: actorContext.tenant.organizationId,
+        userId: body.userId,
+      },
+    })
+    if (targetIsOrgMember === 0) {
+      sendApiError(reply, 404, 'USER_NOT_FOUND', 'User is not a member of this organization')
+      return reply
+    }
+
     await prisma.projectMember.create({
       data: {
         projectId,
