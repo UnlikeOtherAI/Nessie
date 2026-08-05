@@ -18,6 +18,7 @@ import {
   trimConversationToFit,
 } from './context-management.js'
 import {
+  shouldWindDown,
   stopAfterInference,
   stopAfterToolBatch,
   stopBeforeIteration,
@@ -71,6 +72,11 @@ export type LoopResult = {
   // because the model finished or a budget cap tripped. `finalText` then holds
   // whatever partial answer was produced so the caller can still deliver it.
   cancelled: boolean
+  // True when the wind-down instruction was injected: the model was told the
+  // run is ending and asked to deliver with what it has. A natural finish after
+  // this is a deliberate handover (the caller checkpoints it quietly); a budget
+  // stop after this means the model overran even the reserve.
+  woundDown: boolean
   invocations: InvocationRecord[]
 }
 
@@ -219,6 +225,14 @@ export const runAgenticLoop = async (input: {
   runInference: (messages: ProviderMessage[]) => Promise<InferenceResult>
   toolTimeoutError?: (toolName: string) => Error | null
   tools: ToolSchemaDescriptor[]
+  // Wind-down (spec §3a): when set, crossing WIND_DOWN_FRACTION of any budget
+  // dimension injects this as a one-time system message so the model can finish
+  // and hand over inside the remaining slice. Absent for delegate sub-agents
+  // (tiny budgets, digest-shaped output) and DeepWater handoff turns.
+  windDownInstruction?: string
+  // Fired once, when the wind-down instruction is injected — the caller closes
+  // structural fan-out (the delegate gate) for the rest of the run.
+  onWindDown?: () => void
 }): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages } = input
   const messages: ProviderMessage[] = [...initialMessages]
@@ -236,6 +250,7 @@ export const runAgenticLoop = async (input: {
   let totalToolMs = 0
   let totalCostCents = 0
   let totalTokensUsed = 0
+  let woundDown = false
   // The most recent assistant text seen. On a budget-cap stop this is the run's
   // partial answer: the caller surfaces it (with a "stopped at the limit"
   // notice) instead of posting nothing, so a capped run is never silent.
@@ -263,6 +278,7 @@ export const runAgenticLoop = async (input: {
     totalCostCents,
     totalTokensUsed,
     wallclockMs: elapsed(),
+    woundDown,
   })
 
   // A cooperative-cancel probe. Between iterations and after each tool batch the
@@ -299,6 +315,21 @@ export const runAgenticLoop = async (input: {
   while (true) {
     if (await cancellationRequested()) {
       return finish(null, lastAssistantText, true)
+    }
+
+    // Wind-down first, stop second: on the iteration where the 80% band is
+    // entered the harder 90% boundary has not tripped yet, so the model gets
+    // the remaining slice to finish and hand over on its own terms.
+    if (input.windDownInstruction && !woundDown && shouldWindDown(budget, {
+      elapsedMs: elapsed(),
+      iterations,
+      toolCallsUsed,
+      totalCostCents,
+      totalTokensUsed,
+    })) {
+      woundDown = true
+      messages.push({ content: input.windDownInstruction, role: 'system' })
+      input.onWindDown?.()
     }
 
     const preIterationStop = stopBeforeIteration(budget, { elapsedMs: elapsed(), iterations })

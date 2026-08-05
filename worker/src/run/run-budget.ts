@@ -88,9 +88,11 @@ export const resolveMaxDelegatesPerRun = (env: Env = process.env): number =>
   nonNegativeInt(env['NESSIE_MAX_DELEGATES_PER_RUN'], DEFAULT_MAX_DELEGATES_PER_RUN)
 
 export type DelegateGate = {
-  /** False once the run has spent its sub-agent allowance. */
+  /** False once the run has spent its sub-agent allowance or is winding down. */
   tryAcquire: () => boolean
   overLimitMessage: () => string
+  /** Wind-down: no NEW fan-out once the model has been told to finish. */
+  closeForWindDown: () => void
 }
 
 // A structural cap, not a run-killer: an over-cap `delegate` call comes back as
@@ -99,12 +101,19 @@ export const createDelegateGate = (
   max: number = resolveMaxDelegatesPerRun(),
 ): DelegateGate => {
   let used = 0
+  let windingDown = false
   return {
+    closeForWindDown: () => {
+      windingDown = true
+    },
     overLimitMessage: () =>
-      `delegate failed: this run has already used its ${max} sub-agents. `
-      + 'Finish the work yourself with the tools you have.',
+      windingDown
+        ? 'delegate failed: this run is winding down — no new sub-agents. '
+          + 'Deliver your answer with what you already have.'
+        : `delegate failed: this run has already used its ${max} sub-agents. `
+          + 'Finish the work yourself with the tools you have.',
     tryAcquire: () => {
-      if (used >= max) return false
+      if (windingDown || used >= max) return false
       used += 1
       return true
     },

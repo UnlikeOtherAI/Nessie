@@ -25,6 +25,17 @@ import type { ExecutionDependencies, RunContext } from './types.js'
 // note, checkpoint, or continuation must never turn a stopped run into a
 // crashed one — the user still gets their partial answer and an explanation.
 
+// Wind-down (spec §3a): injected by the loop as a one-time system message when
+// an interactive, non-handoff run crosses WIND_DOWN_FRACTION of any budget
+// dimension. The model — not a notice — decides what it can hand over; the
+// hard stop below remains only as insurance when it overruns the reserve.
+export const WIND_DOWN_INSTRUCTION =
+  'Budget notice: this run is approaching its limit and the system will stop '
+  + 'it soon. Do not open new lines of work (no new sub-agents, searches, or '
+  + 'research jobs). Using only what you already have, deliver your best '
+  + 'complete answer to the user now. If parts are unfinished, say plainly '
+  + 'what is done and what remains — the user can reply to have you continue.'
+
 export type RunStopPlan = {
   checkpointId: string | null
   continuation: StopContinuation
@@ -143,6 +154,60 @@ export const prepareRunStop = async (
       runId: context.run.id,
       stopReason,
     },
+  }
+}
+
+/**
+ * A wound-down run that delivered (spec §3a): the model finished on its own
+ * terms after the wind-down instruction, so the run completes with the model's
+ * words as the handover — no system notice. The checkpoint is still produced
+ * quietly (reason `wound_down`) so a reply or the Continue button resumes with
+ * full state. Returns null when the checkpoint could not be produced; the run
+ * still completes normally, it just loses the resume affordance.
+ */
+export const prepareWindDownHandover = async (
+  deps: ExecutionDependencies,
+  payload: RunExecuteJobPayload,
+  context: RunContext,
+  input: {
+    goal: string
+    inference: RunInference
+    invocationSink: InvocationRecord[]
+    loopResult: LoopResult
+    priorGeneration: number
+  },
+): Promise<RunStopPlan['runStopMetadata'] | null> => {
+  try {
+    const { note, sources } = await generateCheckpointNote(
+      input.inference,
+      input.invocationSink,
+      {
+        goal: input.goal,
+        lastAssistantText: input.loopResult.finalText,
+        messages: input.loopResult.messages,
+      },
+    )
+    const checkpointId = await persistRunCheckpoint(deps.prisma, {
+      agentId: context.agent.id,
+      generation: input.priorGeneration + 1,
+      note,
+      organizationId: context.channel.organizationId,
+      reason: 'wound_down',
+      rootMessageId: context.replyRootMessageId ?? null,
+      runId: context.run.id,
+      sources,
+      taskId: context.task.id,
+      threadId: context.run.threadId,
+    })
+    return {
+      checkpointId,
+      continuable: isInteractiveRun(payload),
+      runId: context.run.id,
+      stopReason: 'wound_down',
+    }
+  } catch (error) {
+    console.error('[worker] failed to checkpoint wound-down run', context.run.id, error)
+    return null
   }
 }
 

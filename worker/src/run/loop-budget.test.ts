@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  shouldWindDown,
   stopAfterInference,
   stopAfterToolBatch,
   stopBeforeIteration,
@@ -59,5 +60,38 @@ test('absent token/cost limits never stop the loop', () => {
   assert.equal(
     stopAfterInference(noSpendCaps, { totalCostCents: 10_000, totalTokensUsed: 10_000_000 }),
     null,
+  )
+})
+
+const usage = (over: Partial<Parameters<typeof shouldWindDown>[1]> = {}) => ({
+  elapsedMs: 0,
+  iterations: 0,
+  toolCallsUsed: 0,
+  totalCostCents: 0,
+  totalTokensUsed: 0,
+  ...over,
+})
+
+test('wind-down fires at 80% of a fractional dimension, before the 90% stop', () => {
+  const caps = budget({ maxTokens: 100_000 })
+  assert.equal(shouldWindDown(caps, usage({ totalTokensUsed: 79_000 })), false)
+  assert.equal(shouldWindDown(caps, usage({ totalTokensUsed: 80_000 })), true)
+  // The stop boundary has not tripped yet at the wind-down point.
+  assert.equal(stopAfterInference(caps, usage({ totalTokensUsed: 80_000 })), null)
+})
+
+test('countable dimensions wind down one working turn before the stop reserve', () => {
+  const caps = budget({ maxIterations: 10 })
+  assert.equal(shouldWindDown(caps, usage({ iterations: 7 })), false)
+  assert.equal(shouldWindDown(caps, usage({ iterations: 8 })), true)
+  assert.equal(stopBeforeIteration(caps, usage({ iterations: 8 })), null)
+  assert.equal(stopBeforeIteration(caps, usage({ iterations: 9 })), 'iterations')
+})
+
+test('absent spend caps never trigger wind-down on tokens or cost', () => {
+  const noSpendCaps = budget({ maxCostCents: undefined, maxTokens: undefined })
+  assert.equal(
+    shouldWindDown(noSpendCaps, usage({ totalCostCents: 10_000, totalTokensUsed: 10_000_000 })),
+    false,
   )
 })

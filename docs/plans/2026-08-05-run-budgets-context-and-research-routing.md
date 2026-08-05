@@ -116,6 +116,33 @@ Member-visible notices contain **no currency figures** (token/step/time units
 only; the old `~$X.XX` copy is removed — cost stays in the TaskEvent payload
 and `/ops/usage`).
 
+### 3a. Wind-down: the model finishes, the boundary is only insurance
+
+Before the hard stop ever fires, the model gets to land the plane itself
+(owner directive, 2026-08-05): when an **interactive, non-handoff** run
+crosses `WIND_DOWN_FRACTION` (80%) of any effective budget dimension, the loop
+injects a one-time system instruction (`WIND_DOWN_INSTRUCTION`,
+`worker/src/run/execute/run-stop.ts`): stop opening new lines of work, deliver
+the best complete answer with what it already has, and say plainly what is
+done and what remains. The remaining slice (80% → the 90% stop boundary) is
+its emergency budget. On injection the delegate gate closes
+(`DelegateGate.closeForWindDown`) so new fan-out is refused structurally, not
+just by instruction.
+
+- **Delivered handover:** the run completes normally with the model's own
+  words as the notice — no system stop text. A checkpoint is still written
+  quietly (reason `wound_down`, `RunEndReason` in `budget-stop.ts`) and
+  `metadata.runStop` still carries `checkpointId` + `continuable`, so both the
+  Continue button and a plain reply resume with full state. Admin renders this
+  unchanged (`stopReason` is schema'd as an open string).
+- **Overrun:** a model that ignores the instruction hits the 90% boundary and
+  the ordinary §3 stop (checkpoint + notice) fires — wind-down never weakens
+  the hard ceiling.
+- **Out of scope by design:** delegate sub-agents (tiny budgets, digest
+  output), DeepWater handoff turns (server-authored prompt stays
+  byte-identical), and non-interactive runs — automation keeps the silent
+  checkpoint + auto-continue path; a chat-shaped handover has no reader there.
+
 ### 4. Mid-run org-Budget recheck (worker)
 
 Between iterations (throttled to at most one evaluation per 30 s wall-clock)

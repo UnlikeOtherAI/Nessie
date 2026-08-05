@@ -51,10 +51,15 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   explicit caps, Agent Designer "Run limits") `??` the deployment backstop
   (`NESSIE_RUN_BACKSTOP_MAX_{TOKENS,TOOL_CALLS,ITERATIONS,WALLCLOCK_MS,COST_CENTS}`,
   defaults 500k / 2000 / 1000 / 45 min / 2000¢ — a safety envelope, not a user
-  budget; resolution in `worker/src/run/run-budget.ts`). The loop stops at
-  ~90% of any cap with reserved headroom, writes a durable `RunCheckpoint`
-  (work-state note + verbatim sources, `run.checkpointed` `TaskEvent`), then
-  delivers partial text + a classified notice (`iteration_limit` /
+  budget; resolution in `worker/src/run/run-budget.ts`). At 80% of any cap an
+  interactive, non-handoff run is **wound down first**: a one-time injected
+  instruction tells the model to finish and hand over with what it has inside
+  the remaining slice (new delegate fan-out refused structurally); a delivered
+  handover completes with the model's words as the notice plus a quiet
+  `wound_down` checkpoint (spec §3a). Only when the model overruns that does
+  the loop stop at ~90% with reserved headroom, write a durable `RunCheckpoint`
+  (work-state note + verbatim sources, `run.checkpointed` `TaskEvent`), and
+  deliver partial text + a classified notice (`iteration_limit` /
   `tool_call_limit` / `time_limit` / `token_limit` / `cost_limit` /
   `repeated_tool_calls` / `org_budget_blocked`,
   `worker/src/run/execute/budget-stop.ts`; member-visible copy carries **no

@@ -30,6 +30,13 @@ export type BudgetExhaustionReason =
 
 export const BUDGET_HEADROOM_FRACTION = 0.9
 
+// Wind-down fires strictly before the graceful stop: the model is told the run
+// is ending and given the remaining slice (80% → the 90% stop boundary) to
+// deliver its best answer with what it already has. The hard stop then only
+// fires when the model overruns even that — the instruction is the mechanism,
+// the boundary is the insurance.
+export const WIND_DOWN_FRACTION = 0.8
+
 export type BudgetUsage = {
   elapsedMs: number
   iterations: number
@@ -42,6 +49,24 @@ export type BudgetUsage = {
 // 3 iterations" is not a usable reserve. A limit of 1 cannot reserve anything,
 // so it still permits exactly one unit of work.
 const reserveOne = (limit: number): number => Math.max(1, limit - 1)
+
+// Countable wind-down needs one working turn in hand beyond the stop reserve;
+// a limit too small to hold that never winds down — the stop boundary handles
+// it directly.
+const windDownAt = (limit: number): number => Math.max(1, limit - 2)
+
+const overWindDownFraction = (used: number, limit: number | undefined): boolean =>
+  typeof limit === 'number' && limit > 0 && used >= limit * WIND_DOWN_FRACTION
+
+// Checked at the start of every iteration (all prior tool wrappers settled).
+// True once ANY dimension enters its wind-down band — the loop injects the
+// wind-down instruction exactly once and keeps running.
+export const shouldWindDown = (budget: BudgetLimits, usage: BudgetUsage): boolean =>
+  usage.elapsedMs >= budget.maxWallclockMs * WIND_DOWN_FRACTION
+  || usage.iterations >= windDownAt(budget.maxIterations)
+  || usage.toolCallsUsed >= windDownAt(budget.maxToolCalls)
+  || overWindDownFraction(usage.totalTokensUsed, budget.maxTokens)
+  || overWindDownFraction(usage.totalCostCents, budget.maxCostCents)
 
 const overFraction = (used: number, limit: number | undefined): boolean =>
   typeof limit === 'number' && limit > 0 && used >= limit * BUDGET_HEADROOM_FRACTION

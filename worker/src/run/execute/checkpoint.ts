@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { RunStopReason } from './budget-stop.js'
+import type { RunEndReason } from './budget-stop.js'
 
 // Durable work state for a run that stopped at a policy ceiling.
 //
@@ -132,7 +132,7 @@ export const persistRunCheckpoint = async (
     generation: number
     note: string
     organizationId: string
-    reason: RunStopReason
+    reason: RunEndReason
     rootMessageId: string | null
     runId: string
     sources: CheckpointSource[]

@@ -70,6 +70,14 @@ test('the per-run delegate gate opens exactly max times, then refuses clearly', 
   assert.match(gate.overLimitMessage(), /already used its 2 sub-agents/)
 })
 
+test('a wound-down gate refuses new sub-agents with the wind-down message', () => {
+  const gate = createDelegateGate(5)
+  assert.equal(gate.tryAcquire(), true)
+  gate.closeForWindDown()
+  assert.equal(gate.tryAcquire(), false)
+  assert.match(gate.overLimitMessage(), /winding down/)
+})
+
 test('delegate and continuation counts read their env with sane defaults', () => {
   assert.equal(resolveMaxDelegatesPerRun({}), 16)
   assert.equal(resolveMaxDelegatesPerRun({ NESSIE_MAX_DELEGATES_PER_RUN: '3' }), 3)

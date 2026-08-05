@@ -243,3 +243,77 @@ test('oversized tool results are truncated before entering the loop context', as
   assert.ok(content.length < 200_000, 'tool result should have been truncated')
   assert.match(content, /\n\n\[truncated \d+ chars\]$/)
 })
+
+// --- Wind-down (spec §3a) ---
+
+const finalAnswerInference = (outputText: string): InferenceResult => ({
+  correlationId: undefined,
+  finishReason: 'stop',
+  invocations: [],
+  model: 'test-model',
+  outputText,
+  provider: 'openai',
+  requestId: 'req-1',
+  toolCalls: [],
+})
+
+test('wind-down injects the instruction once and the model hands over naturally', async () => {
+  let windDownFired = 0
+  let sawInstruction = false
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 10 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    onWindDown: () => {
+      windDownFired += 1
+    },
+    runInference: async (messages) => {
+      sawInstruction = messages.some(
+        (m) => m.role === 'system' && typeof m.content === 'string'
+          && m.content.includes('WRAP UP NOW'),
+      )
+      return sawInstruction
+        ? finalAnswerInference('here is what I have; X remains')
+        : toolCallInference('working...')
+    },
+    tools: [],
+    windDownInstruction: 'WRAP UP NOW',
+  })
+  assert.equal(result.woundDown, true)
+  assert.equal(result.exhaustedBudget, null)
+  assert.equal(result.finalText, 'here is what I have; X remains')
+  assert.equal(windDownFired, 1)
+  const injected = result.messages.filter(
+    (m) => m.role === 'system' && typeof m.content === 'string'
+      && m.content.includes('WRAP UP NOW'),
+  )
+  assert.equal(injected.length, 1)
+})
+
+test('without a wind-down instruction nothing is injected', async () => {
+  const result = await runCapped({ maxIterations: 6 })
+  assert.equal(result.woundDown, false)
+  assert.equal(
+    result.messages.some(
+      (m) => m.role === 'system' && typeof m.content === 'string'
+        && m.content.includes('WRAP UP')),
+    false,
+  )
+})
+
+test('a model that ignores wind-down still hits the hard stop with a checkpointable transcript', async () => {
+  const result = await runAgenticLoop({
+    budget: budget({ maxIterations: 10 }),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    runInference: async () => toolCallInference('still going'),
+    tools: [],
+    windDownInstruction: 'WRAP UP NOW',
+  })
+  assert.equal(result.woundDown, true)
+  assert.equal(result.exhaustedBudget, 'iterations')
+  assert.equal(result.finalText, 'still going')
+  assert.ok(result.messages.length > 1)
+})

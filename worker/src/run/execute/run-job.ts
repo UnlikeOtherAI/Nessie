@@ -32,9 +32,15 @@ import { runExecutionAgentLoop } from './agent-loop.js'
 import { applyBudgetGate, createBudgetBlockedProbe } from './budget-gate.js'
 import { recordRunTimingEvent, summarizeRunTiming } from './run-timing.js'
 import { classifyBudgetStop } from './budget-stop.js'
+import { isInteractiveRun } from './continuation.js'
 import { createRunInference } from './run-inference.js'
 import { prepareRunExecution } from './run-setup.js'
-import { applyRunStopContinuation, prepareRunStop } from './run-stop.js'
+import {
+  applyRunStopContinuation,
+  prepareRunStop,
+  prepareWindDownHandover,
+  WIND_DOWN_INSTRUCTION,
+} from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
 import { handleCancelStop } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
@@ -275,6 +281,12 @@ export const executeRunJob = async (
       thinkingRecorder,
       toolDefs: setup.toolDefs,
       toolPolicy: setup.toolPolicy,
+      // Wind-down (spec §3a): interactive, non-handoff runs get told to finish
+      // inside the reserve instead of being cut off. Scheduled/trigger runs
+      // keep the silent checkpoint + auto-continue path, and handoff turns keep
+      // their server-authored prompt byte-identical.
+      windDownInstruction:
+        isInteractiveRun(payload) && !handoffLocator ? WIND_DOWN_INSTRUCTION : null,
     })
     // The stream contract is `stream.done` LAST: flush the recorder before any
     // terminal path publishes it, or a trailing `stream.reasoning` would arrive
@@ -351,10 +363,25 @@ export const executeRunJob = async (
       return
     }
 
+    // Wound-down handover (spec §3a): the model was told the run was ending and
+    // finished on its own terms. Its closing words ARE the notice; the
+    // checkpoint is written quietly so a reply or Continue resumes with state.
+    const windDownMetadata =
+      loopResult.woundDown && !handoffLocator && responseText.trim().length > 0
+        ? await prepareWindDownHandover(deps, payload, context, {
+          goal: prompt,
+          inference,
+          invocationSink: invocations,
+          loopResult,
+          priorGeneration: setup.checkpoint?.generation ?? 0,
+        })
+        : null
+
     await completeRunExecution(deps, payload, context, planContext, {
       invocations: loopResult.invocations,
       iterations: loopResult.iterations,
       memories: setup.memories,
+      ...(windDownMetadata ? { messageMetadata: { runStop: windDownMetadata } } : {}),
       responseText,
       toolCallsUsed: loopResult.toolCallsUsed,
     })

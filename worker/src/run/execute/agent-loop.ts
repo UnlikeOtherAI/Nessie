@@ -59,6 +59,10 @@ export const runExecutionAgentLoop = async (
     thinkingRecorder: ThinkingRecorder
     toolDefs: ToolSchemaDescriptor[]
     toolPolicy: Record<string, boolean> | null
+    // Wind-down instruction for the main loop, or null to disable (delegate
+    // sub-agents and DeepWater handoff turns; non-interactive runs keep the
+    // silent checkpoint + auto-continue path instead of a chat handover).
+    windDownInstruction: string | null
   },
 ): Promise<LoopResult> => {
   const subAgentBuiltinDescriptors = input.toolDefs.filter((d) => d.toolName !== 'delegate')
@@ -149,6 +153,14 @@ export const runExecutionAgentLoop = async (
       return row?.cancelRequestedAt != null
     },
     checkBudgetBlocked: input.checkBudgetBlocked,
+    ...(input.windDownInstruction
+      ? {
+        windDownInstruction: input.windDownInstruction,
+        // Once the model has been told to finish, new fan-out is refused
+        // structurally as well as by instruction.
+        onWindDown: () => delegateGate.closeForWindDown(),
+      }
+      : {}),
     compactContext: async ({ messages, targetTokens }) =>
       runContextCompaction({
         generateNote: async (prompt) => {
