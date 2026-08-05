@@ -144,6 +144,9 @@ export const createMiniMaxConnector = (
         provider: 'minimax',
         structuredOutputMode: 'prompt-json',
         supportsEmbeddings: false,
+        // The text models this connector targets take no image parts; the
+        // normalizer below rebuilds user turns without them.
+        supportsVision: false,
         systemPromptMode: 'fold-into-user',
         toolCallingMode: 'prompt-translated',
         toolResultMode: 'context-block',

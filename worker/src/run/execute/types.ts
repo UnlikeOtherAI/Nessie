@@ -7,6 +7,7 @@ import type {
   LedgerIdentityService,
   ModelClient,
   PgRealtimeTransport,
+  ProviderImage,
   QueueProvider,
   ReplyRootMetadata,
 } from '@nessie/runtime'
@@ -84,6 +85,13 @@ export type RunContext = {
    * standalone channel post.
    */
   replyRootMessageId?: string
+  /**
+   * The reply thread this run *reads*, which is not always the one it writes
+   * into: set only when the trigger message is itself a reply, so a run
+   * starting a new reply thread under a top-level message still sees the
+   * channel conversation. See `resolveConversationRootMessageId`.
+   */
+  conversationRootMessageId?: string
 }
 
 export type RunPlanContext = {
@@ -102,6 +110,19 @@ export type ReplyPlacement = {
 export type StoredConversationMessage = {
   content: string
   role: 'assistant' | 'system' | 'user'
+  /**
+   * One rendered line naming the files attached to this message, appended to
+   * its text when the prompt is built. Kept beside `content` rather than inside
+   * it so it never alters what the human actually wrote — the prompt builder's
+   * "is the trigger message already the last turn?" check compares raw content.
+   */
+  attachmentNote?: string | null
+  /**
+   * Attached images, inlined so a vision-capable model can look at them. Only
+   * ever set on `user` turns; connectors whose model is text-only drop them and
+   * fall back to `attachmentNote`. See `../message-attachments.ts`.
+   */
+  images?: ProviderImage[]
   /**
    * The agent that authored this message, when it was produced by an agent
    * (assistant-role turns). `null` for human (`user`) messages. Used by the

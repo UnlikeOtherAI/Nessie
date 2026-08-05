@@ -19,6 +19,7 @@ import {
 } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import { enqueueRunExecution } from '../queue.js'
+import { describeAttachments, loadMessageAttachments } from './message-attachments.js'
 import { claimThreadRunOrPend } from './thread-serialization.js'
 
 export type OrchestrateDecideDeps = {
@@ -176,12 +177,26 @@ export const executeOrchestrateDecideJob = async (
       include: { agent: { select: { name: true } } },
     })
 
-    const recentMessages = recentDbMessages
-      .reverse()
+    const recentOrdered = recentDbMessages.reverse()
+    // A message can be nothing but a photo. Naming its files gives the
+    // engagement judgement something to read — without an inventory line an
+    // image-only post looks like an empty message and nobody answers it.
+    const attachments = await loadMessageAttachments(
+      deps.prisma,
+      channel.organizationId,
+      [...recentOrdered.map((m) => m.id), messageId],
+    )
+    const annotate = (messageContent: string, id: string): string => {
+      const note = describeAttachments(attachments.get(id) ?? [])
+      if (!note) return messageContent
+      return messageContent.trim() ? `${messageContent}\n${note}` : note
+    }
+
+    const recentMessages = recentOrdered
       .slice(0, -1)
       .map((m) => ({
         role: m.role,
-        content: m.content,
+        content: annotate(m.content, m.id),
         agentName: m.agent?.name ?? undefined,
       }))
 
@@ -214,7 +229,7 @@ export const executeOrchestrateDecideJob = async (
       // channelAgents from the payload is structurally identical to OrchestratorAgent[].
       // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
       agents: channelAgents satisfies OrchestratorAgent[],
-      content,
+      content: annotate(content, messageId),
       recentMessages,
       triggerIsHuman,
       followingAgentIds,

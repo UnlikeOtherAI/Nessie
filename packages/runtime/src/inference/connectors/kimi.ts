@@ -97,6 +97,9 @@ export const createKimiConnector = (
         provider: 'kimi',
         structuredOutputMode: 'prompt-json',
         supportsEmbeddings: false,
+        // The coding endpoint this connector targets is text-only; a user turn's
+        // images are dropped from the Anthropic payload it builds.
+        supportsVision: false,
         systemPromptMode: 'native',
         toolCallingMode: 'prompt-translated',
         toolResultMode: 'context-block',
