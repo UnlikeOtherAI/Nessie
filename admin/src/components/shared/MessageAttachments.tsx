@@ -24,8 +24,18 @@ const ImageAttachment = ({
   return (
     <img
       alt={attachment.filename}
-      className="max-h-80 max-w-full rounded-md border border-[color:var(--sep)]"
+      // h-auto/w-auto keep the intrinsic ratio: the column is a flex container,
+      // whose default `align-items: stretch` would otherwise widen the image to
+      // the message column while max-h-80 caps its height, squashing it.
+      className={[
+        'h-auto w-auto max-h-80 max-w-full self-start object-contain',
+        'rounded-md border border-[color:var(--sep)]',
+      ].join(' ')}
+      // Intrinsic size (when the store recorded it) reserves the right box
+      // before the bytes load, so the feed does not jump.
+      height={attachment.height}
       src={url}
+      width={attachment.width}
     />
   )
 }
