@@ -13,6 +13,10 @@ import { messageInclude, type MessageWithReactions } from './messages.js'
 
 // ─── Message creation (top-level posts + reply-thread replies) ─────────────
 
+// Placeholder body for the "Also send to #channel" copy of an attachment-only
+// reply (the copy never carries the attachments themselves).
+const ATTACHMENT_ONLY_BROADCAST_CONTENT = 'Shared an attachment'
+
 export type ChannelAgent = {
   id: string
   name: string
@@ -254,7 +258,10 @@ export const createThreadMessage = async (
         threadId: input.threadId,
         userId: input.userId,
         role: 'user',
-        content: input.content,
+        // Copies carry no attachments, so an attachment-only reply would render
+        // as an empty bubble in the channel — say what it points at instead.
+        content:
+          input.content.trim().length > 0 ? input.content : ATTACHMENT_ONLY_BROADCAST_CONTENT,
         metadata: {
           mentions: mergedMentions,
           replyBroadcast: { rootMessageId: input.rootMessageId },
