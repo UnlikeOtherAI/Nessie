@@ -69,6 +69,11 @@ const INFERENCE_ERROR_MAP: Record<string, { status: number; code: string; messag
     code: 'INFERENCE_PROVIDER_OPENAI_COMPATIBLE_REQUIRES_BINDING',
     message: 'OpenAI-compatible providers must have a credential binding before being enabled',
   },
+  INFERENCE_PROVIDER_BASE_URL_UNSAFE: {
+    status: 400,
+    code: 'INFERENCE_PROVIDER_BASE_URL_UNSAFE',
+    message: 'The provider baseUrl must be a public http(s) address',
+  },
   INFERENCE_CREDENTIAL_BINDING_NOT_FOUND: {
     status: 404,
     code: 'INFERENCE_CREDENTIAL_BINDING_NOT_FOUND',

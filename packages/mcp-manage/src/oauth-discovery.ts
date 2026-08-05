@@ -2,7 +2,11 @@ import crypto from 'node:crypto'
 
 import { z } from 'zod'
 
-import { assertMcpUrlSafe, type McpUrlSafetyOptions } from './mcp-security.js'
+import {
+  assertMcpUrlSafe,
+  pinnedMcpFetch,
+  type McpUrlSafetyOptions,
+} from './mcp-security.js'
 
 /**
  * MCP-spec OAuth discovery (authorization spec 2025-06-18):
@@ -73,7 +77,7 @@ const safeFetchJson = async (
   } catch {
     return null
   }
-  const fetchImpl = options.fetchImpl ?? fetch
+  const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   try {
     const response = await fetchImpl(url, {
       ...init,
@@ -111,7 +115,7 @@ const fetchChallengeHeader = async (
   } catch {
     return null
   }
-  const fetchImpl = options.fetchImpl ?? fetch
+  const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   try {
     const response = await fetchImpl(serverUrl, {
       method: 'POST',
@@ -283,7 +287,7 @@ export const registerDynamicClient = async (
   await assertMcpUrlSafe(input.registrationEndpoint, {
     resolveHost: options.resolveHost,
   })
-  const fetchImpl = options.fetchImpl ?? fetch
+  const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   const response = await fetchImpl(input.registrationEndpoint, {
     method: 'POST',
     redirect: 'manual',
