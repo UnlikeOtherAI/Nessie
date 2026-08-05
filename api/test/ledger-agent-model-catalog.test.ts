@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   assertLedgerAgentModelSelection,
+  ledgerAgentModelCatalogRequestHeaders,
   LedgerAgentModelCatalogError,
   listLedgerAgentModels,
 } from '../src/services/ledger-agent-model-catalog.js'
@@ -20,14 +21,64 @@ const response = (body: unknown, status = 200): Response =>
     status,
   })
 
+test('creates the signed Nessie and UOA headers required for a Ledger model listing', async () => {
+  let received: unknown
+  const headers = await ledgerAgentModelCatalogRequestHeaders({
+    actorContext: {
+      actor: { actorId: 'user_1', actorType: 'user' },
+      actionContext: { requestId: 'request_1' },
+      tenant: { organizationId: 'org_1', projectId: 'project_1', teamId: 'team_1' },
+    } as never,
+    ledgerIdentity: {
+      requestHeaders: async (attribution, options) => {
+        received = { attribution, options }
+        return {
+          'X-Nessie-Context': 'signed-nessie-context',
+          'X-UOA-Delegation': 'signed-uoa-delegation',
+        }
+      },
+    },
+  })
+
+  assert.deepEqual(headers, {
+    'X-Nessie-Context': 'signed-nessie-context',
+    'X-UOA-Delegation': 'signed-uoa-delegation',
+  })
+  assert.deepEqual(received, {
+    attribution: {
+      actorId: 'user_1',
+      actorType: 'user',
+      agentId: null,
+      agentKind: null,
+      channelId: null,
+      correlationId: null,
+      organizationId: 'org_1',
+      projectId: 'project_1',
+      requestId: 'request_1',
+      runId: null,
+      sessionId: null,
+      systemComponent: 'agent-model-catalog',
+      taskId: null,
+      teamId: 'team_1',
+      threadId: null,
+      userId: 'user_1',
+    },
+    options: { requireUoaIdentity: true },
+  })
+})
+
 test('lists only token-authorized chat-completions models from Ledger', async () => {
   let requestedUrl: string | undefined
   let authorization: string | null | undefined
+  let nessieContext: string | null | undefined
+  let uoaDelegation: string | null | undefined
   const models = await listLedgerAgentModels({
     config: catalogConfig,
     fetchImpl: async (input, init) => {
       requestedUrl = input.toString()
       authorization = new Headers(init?.headers).get('authorization')
+      nessieContext = new Headers(init?.headers).get('x-nessie-context')
+      uoaDelegation = new Headers(init?.headers).get('x-uoa-delegation')
       return response({
         object: 'list',
         data: [
@@ -67,10 +118,17 @@ test('lists only token-authorized chat-completions models from Ledger', async ()
       })
     },
     ledgerPublicUrl,
+    requestHeaders: {
+      authorization: 'untrusted-value',
+      'X-Nessie-Context': 'signed-nessie-context',
+      'X-UOA-Delegation': 'signed-uoa-delegation',
+    },
   })
 
   assert.equal(requestedUrl, 'https://ledger.example/v1/models')
   assert.equal(authorization, 'Bearer lk_nessie_test')
+  assert.equal(nessieContext, 'signed-nessie-context')
+  assert.equal(uoaDelegation, 'signed-uoa-delegation')
   assert.deepEqual(models, [
     {
       displayName: 'mistral-large',

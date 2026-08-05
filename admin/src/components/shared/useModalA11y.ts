@@ -37,6 +37,10 @@ export const useModalA11y = (
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
+        // A modal owns Escape exclusively: without this, the same keypress
+        // also reaches window-level listeners (e.g. the reply panel's
+        // close-on-Escape) and dismisses the surface under the dialog.
+        event.stopPropagation()
         onClose()
         return
       }

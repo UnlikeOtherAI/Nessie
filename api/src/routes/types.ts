@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import type {
   DeepSignalMcpIdentityService,
   FileService,
+  LedgerIdentityService,
   ModelClient,
 } from '@nessie/runtime'
 import type { CaptureConfig } from '@nessie/memory'
@@ -27,6 +28,7 @@ export type RouteDeps = ServerContext & {
   sharedModelClient: ModelClient | null
   messageMemoryCaptureConfig: CaptureConfig | null
   thoughtService: ThoughtService | null
+  ledgerIdentity: LedgerIdentityService | null
   deepSignalMcpIdentity: DeepSignalMcpIdentityService | null
   // Single chokepoint for all blob file work (store/stream/delete + accounting).
   fileService: FileService

@@ -4,19 +4,11 @@ import type {
   ProviderMessage,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import { runAgenticLoop, type BudgetLimits } from './agentic-loop.js'
+import { runAgenticLoop } from './agentic-loop.js'
+import { DELEGATE_BUDGET } from './run-budget.js'
 import type { McpToolset } from './mcp-toolset.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
-
-const SUB_AGENT_BUDGET: BudgetLimits = {
-  maxIterations: 4,
-  maxToolCalls: 6,
-  maxWallclockMs: 60_000,
-  maxTokens: 20_000,
-  maxCostCents: 25,
-  toolTimeoutMs: 25_000,
-}
 
 const SUB_AGENT_SYSTEM_PROMPT = `You are a focused sub-agent dispatched by another agent to complete a single task using external tools (MCP).
 
@@ -111,7 +103,7 @@ export const runDelegate = async (
   const mcpExposedNames = mcpView.handledNames
 
   const loopResult = await runAgenticLoop({
-    budget: SUB_AGENT_BUDGET,
+    budget: DELEGATE_BUDGET,
     callbacks: {
       onIterationStart: async () => undefined,
       onToolCallStart: async () => undefined,

@@ -74,9 +74,14 @@ test('provider-record Ledger URL signs complete identity after route resolution'
   } as unknown as PrismaClient
 
   let signedAttribution: LedgerAttribution | undefined
+  let signedOptions: { requireUoaIdentity?: boolean } | undefined
   const identity = {
-    requestHeaders: async (input: LedgerAttribution) => {
+    requestHeaders: async (
+      input: LedgerAttribution,
+      options?: { requireUoaIdentity?: boolean },
+    ) => {
       signedAttribution = input
+      signedOptions = options
       return {
         'X-Nessie-Context': 'signed-user-team-agent-run',
         'X-UOA-Delegation': 'delegated-sso-user',
@@ -123,6 +128,7 @@ test('provider-record Ledger URL signs complete identity after route resolution'
     assert.equal(result.status, 'completed')
     assert.equal(result.finalAnswer, 'signed')
     assert.deepEqual(signedAttribution, attribution)
+    assert.deepEqual(signedOptions, { requireUoaIdentity: true })
     assert.equal(
       captured?.url,
       'https://ledger.unlikeotherai.com/v1/openai/chat/completions',

@@ -24,6 +24,11 @@ export const completeRunExecution = async (
     invocations: InvocationRecord[]
     iterations: number
     memories: RetrievedMemory[]
+    /**
+     * Extra metadata for the terminal message — currently `runStop` (§6), which
+     * is what admin renders its Continue affordance from.
+     */
+    messageMetadata?: Record<string, unknown>
     responseText: string
     toolCallsUsed: number
   },
@@ -58,11 +63,13 @@ export const completeRunExecution = async (
   // top-level (it is authored as the owner, not as the assistant).
   const rootMessageId = delegatedOwnerId ? undefined : context.replyRootMessageId
 
+  const extraMetadata = input.messageMetadata ?? {}
   const assistantMessage = await deps.prisma.message.create({
     data: delegatedOwnerId
       ? {
           content: input.responseText,
           metadata: {
+            ...extraMetadata,
             delegatedByAgentId: context.agent.id,
             delegatedFromRunId: context.run.id,
           } as Prisma.InputJsonValue,
@@ -75,6 +82,9 @@ export const completeRunExecution = async (
           content: input.responseText,
           role: 'assistant',
           threadId: context.run.threadId,
+          ...(input.messageMetadata
+            ? { metadata: extraMetadata as Prisma.InputJsonValue }
+            : {}),
           ...(rootMessageId ? { rootMessageId } : {}),
         },
   })

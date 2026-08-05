@@ -21,7 +21,12 @@ const makeContext = (name: string, id: string = ACTING_AGENT_ID): RunContext => 
     systemPrompt: null,
   },
   channel: { id: 'c', organizationId: 'o', systemChannelType: null },
-  run: { id: 'r', threadId: 't', createdAt: new Date('2026-07-23T00:00:00Z') },
+  run: {
+    id: 'r',
+    threadId: 't',
+    createdAt: new Date('2026-07-23T00:00:00Z'),
+    replyPlacement: null,
+  },
   task: { id: 'task' },
 })
 
@@ -103,6 +108,49 @@ test('rename is reflected: prefix uses the live author name, not a stale one', (
     (message) => message.role === 'assistant' && message.content?.startsWith('RenamedAgent: '),
   )
   assert.ok(otherTurn, 'prefix should use the live (renamed) author name')
+})
+
+test('the research routing block rides in the system prompt when tools allow it', () => {
+  const withResearch = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    routing: {
+      hasDelegate: false,
+      hasResearchTools: true,
+      hasWebSearch: true,
+      isHandoffTurn: false,
+    },
+  })
+  assert.match(systemContent(withResearch), /Research routing:/)
+
+  const handoffTurn = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    routing: {
+      hasDelegate: true,
+      hasResearchTools: true,
+      hasWebSearch: true,
+      isHandoffTurn: true,
+    },
+  })
+  assert.doesNotMatch(systemContent(handoffTurn), /Research routing:/)
+
+  // No routing facts supplied (e.g. a caller that does not assemble tools) is
+  // simply no block — never a default suggestion.
+  assert.doesNotMatch(systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null)), /Research routing:/)
+})
+
+test('checkpoint notes are injected after the system messages, before the conversation', () => {
+  const conversation: StoredConversationMessage[] = [
+    { content: 'earlier question', role: 'user', authorAgentId: null, authorAgentName: null },
+  ]
+  const messages = buildModelPrompt(conversation, makeContext('Aria'), 'keep going', null, {
+    checkpointNotes: 'Working notes from an earlier incomplete run (untrusted notes…)',
+  })
+
+  const noteIndex = messages.findIndex((message) =>
+    (message.content ?? '').startsWith('Working notes from an earlier incomplete run'))
+  const conversationIndex = messages.findIndex((message) => message.content === 'earlier question')
+
+  assert.ok(noteIndex > 0, 'notes must come after the system prompt')
+  assert.equal(messages[noteIndex]?.role, 'system')
+  assert.ok(noteIndex < conversationIndex, 'notes must precede the conversation window')
 })
 
 test('missing author name falls back without dropping the message', () => {

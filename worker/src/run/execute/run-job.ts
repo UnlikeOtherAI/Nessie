@@ -1,7 +1,4 @@
-import { markRecallsInjected } from '@nessie/memory'
 import {
-  attributionFromActorContext,
-  BUILTIN_TOOL_DEFINITIONS,
   failDeepWaterHandoffStart,
   findDeepWaterHandoffRun,
   markAmbiguousDeepWaterHandoffRecoveryNeeded,
@@ -15,7 +12,6 @@ import {
   parseThreadId,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
-import { buildMcpToolset } from '../mcp-toolset.js'
 import {
   createDeepWaterHandoffGuard,
   DeepWaterHandoffFatalError,
@@ -25,26 +21,28 @@ import {
 import { promoteUnresolvedDeepWaterHandoffError } from '../deepwater-handoff-failure.js'
 import { resolveDeepWaterHandoffMarker } from '../deepwater-handoff-metadata.js'
 import { ensureRunPlanContext, markRunPlanStarted } from '../plans.js'
-import { resolveAgentTools } from '../tool-policy.js'
 import {
   isFinalQueueAttempt,
   shouldRetryRunWithoutTerminalizing,
   type QueueAttempt,
 } from '../tool-execution-errors.js'
 import type { LoopResult } from '../agentic-loop.js'
+import { resolveEffectiveRunBudget } from '../run-budget.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
-import { applyBudgetGate } from './budget-gate.js'
+import { applyBudgetGate, createBudgetBlockedProbe } from './budget-gate.js'
 import { recordRunTimingEvent, summarizeRunTiming } from './run-timing.js'
+import { classifyBudgetStop } from './budget-stop.js'
+import { isInteractiveRun } from './continuation.js'
+import { createRunInference } from './run-inference.js'
+import { prepareRunExecution } from './run-setup.js'
 import {
-  buildBudgetStopNotice,
-  classifyBudgetStop,
-  recordBudgetStopEvent,
-} from './budget-stop.js'
-import {
-  buildCancelStopNotice,
-  finalizeCancelledRun,
-  recordCancelStopEvent,
-} from './cancel-stop.js'
+  applyRunStopContinuation,
+  prepareRunStop,
+  prepareWindDownHandover,
+  WIND_DOWN_INSTRUCTION,
+} from './run-stop.js'
+import { resolveUtilityModel } from './utility-model.js'
+import { handleCancelStop } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { runExternalConversation } from '../external-conversation.js'
 import { persistInvocationLedgerEvents } from '../inference.js'
@@ -55,23 +53,13 @@ import {
   setAgentStatus,
   updateTaskStatus,
 } from './lifecycle.js'
-import { buildMemoryContext, retrieveRelevantMemories, stripLeadingSectionTag } from './memory.js'
-import { buildModelPrompt, loadConversation } from './prompt.js'
+import { stripLeadingSectionTag } from './memory.js'
 import { validateRunActorContext } from './policy.js'
 import { publishAgentStatus, publishRunUpdated, publishTaskUpdated } from './realtime.js'
+import { persistResolvedReplyAnchor, resolveReplyRootMessageId } from './reply-placement.js'
 import { buildScopes } from './scopes.js'
-import { loadAllowedToolIds } from './tool-registry.js'
+import { createThinkingRecorder, type ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
-
-// Reply-thread placement (#233): an ordinary run replies into its trigger
-// message's reply thread — a trigger that is itself a reply attaches to the
-// same root (one level deep). DeepWater handoff runs keep their exact
-// top-level placement so their message flow stays byte-identical.
-export const resolveReplyRootMessageId = (
-  triggerMessage: { id: string; rootMessageId: string | null },
-  handoffLocator: DeepWaterHandoffRunLocator | null,
-): string | undefined =>
-  handoffLocator ? undefined : triggerMessage.rootMessageId ?? triggerMessage.id
 
 export const executeRunJob = async (
   deps: ExecutionDependencies,
@@ -159,7 +147,19 @@ export const executeRunJob = async (
   context.replyRootMessageId = resolveReplyRootMessageId(
     { id: payload.messageId, rootMessageId: message.rootMessageId },
     handoffLocator,
+    context.run.replyPlacement,
   )
+  await persistResolvedReplyAnchor(deps.prisma, context.run.id, context.replyRootMessageId)
+
+  // Durable thought log + coalesced live thinking events. Created before the
+  // loop so every reasoning delta and tool line is captured; closed in the
+  // `finally` below so a crash, cancel, or budget stop still flushes it.
+  const thinkingRecorder: ThinkingRecorder = createThinkingRecorder({
+    prisma: deps.prisma,
+    realtimeTransport: deps.realtimeTransport,
+    runId: context.run.id,
+    threadId: context.run.threadId,
+  })
 
   try {
     if (
@@ -239,79 +239,59 @@ export const executeRunJob = async (
       status: 'thinking',
     })
 
-    const allowedToolIds = await loadAllowedToolIds(deps.prisma, context)
-
-    const agentRecord = await deps.prisma.agent.findUnique({
-      where: { id: context.agent.id },
-      select: { toolPolicy: true, parentAgentId: true },
-    })
-    const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
-    const { descriptors: toolDefs, allowedIds: resolvedToolIds } = resolveAgentTools(
-      allowedToolIds,
-      BUILTIN_TOOL_DEFINITIONS,
-      toolPolicy,
-      context.agent.parentAgentId,
-      context.agent.agentKind,
-    )
-
-    const mcpToolset = await buildMcpToolset(
-      deps.prisma,
-      context.channel.organizationId,
-      toolPolicy,
-      payload.actorContext,
-      {
-        agentId: context.agent.id,
-        agentKind: context.agent.agentKind,
-        channelId: context.channel.id,
-      },
-      attributionFromActorContext(payload.actorContext, {
-        agentId: context.agent.id,
-        agentKind: context.agent.agentKind,
-        runId: context.run.id,
-      }),
-      {
-        deepWaterHandoffGuard,
-        ledgerIdentity: deps.ledgerIdentity,
-        secretResolver: deps.mcpSecrets?.resolver,
-      },
-    )
-
-    const conversation = await loadConversation(deps.prisma, context.run.threadId, context.replyRootMessageId)
-    const memories = await retrieveRelevantMemories(deps, context, payload, prompt)
-    const injectedRecallIds = memories.flatMap((memory) =>
-      memory.recallId ? [memory.recallId] : [],
-    )
-    const memoryContext = buildMemoryContext(memories)
-
-    if (injectedRecallIds.length > 0) {
-      await markRecallsInjected(injectedRecallIds, deps.searchConfig.pool)
-    }
-
-    const initialMessages = buildModelPrompt(
-      conversation,
-      context,
+    const setup = await prepareRunExecution(deps, payload, context, {
+      deepWaterHandoffGuard,
+      isHandoffTurn: handoffLocator !== null,
       prompt,
-      memoryContext,
-    )
+    })
 
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
       agentId: parseAgentId(context.agent.id),
+      // Where this run's reply will land, so viewers can anchor the live
+      // thinking surface to the right surface from the first token.
+      rootMessageId: context.replyRootMessageId ?? null,
       runId: parseRunId(context.run.id),
       threadId: parseThreadId(context.run.threadId),
     })
     streamStarted = true
 
-    loopResult = await runExecutionAgentLoop(deps, payload, context, {
-      allowedToolIds,
+    // Utility model resolution is telemetry-grade: if it cannot be confirmed on
+    // the run's own provider route, the run's own model is used.
+    const utilityModel = await resolveUtilityModel(deps.prisma, {
+      organizationId: context.channel.organizationId,
+      providerKey: budgetGate.modelOverride?.provider ?? context.agent.provider,
+    }).catch(() => null)
+
+    const inference = createRunInference(deps, payload, context, {
       budgetModelOverride: budgetGate.modelOverride,
-      initialMessages,
+      thinkingRecorder,
+      utilityModel,
+    })
+
+    loopResult = await runExecutionAgentLoop(deps, payload, context, {
+      allowedToolIds: setup.allowedToolIds,
+      budget: resolveEffectiveRunBudget(context.agent.runLimits),
+      checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload),
+      inference,
+      initialMessages: setup.initialMessages,
       invocationSink: invocations,
       deepWaterHandoffGuard,
-      mcpToolset,
-      resolvedToolIds,
-      toolDefs,
-      toolPolicy,
+      mcpToolset: setup.mcpToolset,
+      resolvedToolIds: setup.resolvedToolIds,
+      thinkingRecorder,
+      toolDefs: setup.toolDefs,
+      toolPolicy: setup.toolPolicy,
+      // Wind-down (spec §3a): interactive, non-handoff runs get told to finish
+      // inside the reserve instead of being cut off. Scheduled/trigger runs
+      // keep the silent checkpoint + auto-continue path, and handoff turns keep
+      // their server-authored prompt byte-identical.
+      windDownInstruction:
+        isInteractiveRun(payload) && !handoffLocator ? WIND_DOWN_INSTRUCTION : null,
     })
+    // The stream contract is `stream.done` LAST: flush the recorder before any
+    // terminal path publishes it, or a trailing `stream.reasoning` would arrive
+    // after the stream terminator (clients treat the run as live again).
+    await thinkingRecorder.close()
     deepWaterHandoffGuard.assertCompletion()
 
     const responseText = stripLeadingSectionTag(loopResult.finalText)
@@ -323,30 +303,7 @@ export const executeRunJob = async (
     // is never set on them; the `!handoffLocator` check keeps their invariants
     // untouched even if the flag somehow appeared.
     if (loopResult.cancelled && !handoffLocator) {
-      const hadPartialText = responseText.trim().length > 0
-      const notice = buildCancelStopNotice(hadPartialText)
-      const cancelState = await deps.prisma.run.findUnique({
-        where: { id: context.run.id },
-        select: { cancelRequestedAt: true, cancelRequestedByUserId: true },
-      })
-      await recordCancelStopEvent(deps.prisma, context.task.id, {
-        cancelRequestedAt: cancelState?.cancelRequestedAt ?? null,
-        cancelledByUserId: cancelState?.cancelRequestedByUserId ?? null,
-        hadPartialText,
-        stats: {
-          iterations: loopResult.iterations,
-          toolCallsUsed: loopResult.toolCallsUsed,
-          totalCostCents: loopResult.totalCostCents,
-          totalTokensUsed: loopResult.totalTokensUsed,
-          wallclockMs: loopResult.wallclockMs,
-        },
-      })
-      await finalizeCancelledRun(deps, payload, context, planContext, {
-        hadPartialText,
-        invocations: loopResult.invocations,
-        notice,
-        responseText,
-      })
+      await handleCancelStop(deps, payload, context, planContext, loopResult, responseText)
       terminalOutcome = 'cancelled'
       return
     }
@@ -356,26 +313,25 @@ export const executeRunJob = async (
     // existing completion path so their strict invariants are untouched.
     if (loopResult.exhaustedBudget && !handoffLocator) {
       const hadPartialText = responseText.trim().length > 0
-      const notice = buildBudgetStopNotice(
-        loopResult.exhaustedBudget,
-        loopResult,
+      // Reserved headroom pays for the checkpoint here, before anything is
+      // delivered — a checkpoint cannot be produced after the budget is gone.
+      const stopPlan = await prepareRunStop(deps, payload, context, {
+        goal: prompt,
         hadPartialText,
-      )
-      await recordBudgetStopEvent(
-        deps.prisma,
-        context.task.id,
-        loopResult.exhaustedBudget,
-        loopResult,
-        hadPartialText,
-      )
+        inference,
+        invocationSink: invocations,
+        loopResult: { ...loopResult, exhaustedBudget: loopResult.exhaustedBudget },
+        priorGeneration: setup.checkpoint?.generation ?? 0,
+      })
       if (hadPartialText) {
         // Partial answer present: deliver it with the stop notice appended and
         // complete the run normally.
         await completeRunExecution(deps, payload, context, planContext, {
           invocations: loopResult.invocations,
           iterations: loopResult.iterations,
-          memories,
-          responseText: `${responseText}\n\n${notice}`,
+          memories: setup.memories,
+          messageMetadata: { runStop: stopPlan.runStopMetadata },
+          responseText: `${responseText}\n\n${stopPlan.notice}`,
           toolCallsUsed: loopResult.toolCallsUsed,
         })
         terminalOutcome = 'completed'
@@ -396,22 +352,46 @@ export const executeRunJob = async (
           ),
           planContext,
           streamStarted,
-          terminalMessage: notice,
+          terminalMessage: stopPlan.notice,
+          terminalMessageMetadata: { runStop: stopPlan.runStopMetadata },
         })
         terminalOutcome = 'failed'
       }
+      // Enqueued only after this run is terminal, so the per-(agent, thread)
+      // single-run invariant is never broken to force a continuation.
+      await applyRunStopContinuation(deps, payload, context, stopPlan)
       return
     }
+
+    // Wound-down handover (spec §3a): the model was told the run was ending and
+    // finished on its own terms. Its closing words ARE the notice; the
+    // checkpoint is written quietly so a reply or Continue resumes with state.
+    const windDownMetadata =
+      loopResult.woundDown && !handoffLocator && responseText.trim().length > 0
+        ? await prepareWindDownHandover(deps, payload, context, {
+          goal: prompt,
+          inference,
+          invocationSink: invocations,
+          loopResult,
+          priorGeneration: setup.checkpoint?.generation ?? 0,
+        })
+        : null
 
     await completeRunExecution(deps, payload, context, planContext, {
       invocations: loopResult.invocations,
       iterations: loopResult.iterations,
-      memories,
+      memories: setup.memories,
+      ...(windDownMetadata ? { messageMetadata: { runStop: windDownMetadata } } : {}),
       responseText,
       toolCallsUsed: loopResult.toolCallsUsed,
     })
     terminalOutcome = 'completed'
   } catch (caughtError) {
+    // Same stream-contract rule as the success path: the failure handler will
+    // publish `stream.done`, so drain any buffered thinking first. Idempotent,
+    // error-swallowing, and also correct on the retry-throw path (the retry
+    // republishes `stream.start`, so its stream stays well-formed).
+    await thinkingRecorder.close()
     const error = promoteUnresolvedDeepWaterHandoffError(
       caughtError,
       deepWaterHandoffGuard,
@@ -465,6 +445,11 @@ export const executeRunJob = async (
 
     throw error
   } finally {
+    // Flush whatever thought process is still buffered, on every exit path
+    // (completion, classified stop, crash, retry-throw). Idempotent and
+    // error-swallowing by construction, so it can never mask a run outcome.
+    await thinkingRecorder.close()
+
     // Record the run's stage-timing breakdown at every terminal state
     // (completion and failure), reusing timestamps the run already produced.
     // Skipped when the run never reached terminal in this execution: a

@@ -6,17 +6,16 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react'
+import { countThinkingEntries } from '../../../facades/threads/thinking'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { AgentRecord, ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
+import type { PendingStreamMessage } from '../../../facades/threads/thinking'
 import { OversizePasteDialog } from '../../shared/OversizePasteDialog'
 import type { MentionEntity } from '../../shared/MentionInput'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelComposer } from './ChannelComposer'
 import { ChannelMessageFeed } from './ChannelMessageFeed'
-import {
-  buildFeedItems,
-  type PendingStreamMessage,
-} from './channel-helpers'
+import { buildFeedItems } from './channel-helpers'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
 import type { AvatarSources } from '../../primitives/UserAvatar'
@@ -183,7 +182,14 @@ export const ChannelAgentInfoDrawer = ({
       return
     }
     container.scrollTop = container.scrollHeight
-  }, [agent?.id, feedItems.length, optimisticMessages.length, agentPendingMessages.length])
+    // The thinking ticker grows the bubble's content, so it pins like a new row.
+  }, [
+    agent?.id,
+    feedItems.length,
+    optimisticMessages.length,
+    agentPendingMessages.length,
+    countThinkingEntries(agentPendingMessages),
+  ])
 
   if (!agent || !activeChannel) {
     return null
@@ -270,6 +276,7 @@ export const ChannelAgentInfoDrawer = ({
             optimisticMessages={optimisticMessages}
             pendingMessages={agentPendingMessages}
             renderContent={renderContent}
+            threadId={activeChannel.defaultThreadId}
             token={token}
             updatePending={updatePending}
             onAddReaction={addReaction}

@@ -99,8 +99,20 @@ type TaskStatus = 'inbox' | 'assigned' | 'in_progress' | 'review' | 'done' | 'fa
 
 // SSE events — chat/thread streaming
 type SseEventMap = {
-  'stream.start': { runId: string; threadId: string; agentId: string };
-  'stream.reasoning': { runId: string; content: string };
+  // rootMessageId is the run's resolved reply anchor (null = top-level), so a
+  // client can place the live thinking surface where the reply will land.
+  'stream.start': {
+    runId: string;
+    threadId: string;
+    agentId: string;
+    rootMessageId?: string | null;
+  };
+  // chunkId is the durable RunThinkingChunk id (BigInt serialized as a string),
+  // present when the chunk was persisted; clients dedupe live events against the
+  // REST thought log with it.
+  'stream.reasoning': { runId: string; content: string; chunkId?: string };
+  // One tool line of the thought process: `toolName: inputSummary`.
+  'stream.thinking.tool': { runId: string; content: string; chunkId?: string };
   'stream.delta': { runId: string; content: string };
   'stream.done': {
     runId: string;
@@ -108,6 +120,7 @@ type SseEventMap = {
     agentId?: string;
     content?: string;
     createdAt?: string;
+    rootMessageId?: string;
   };
 };
 
@@ -175,6 +188,8 @@ Rules:
 - **do not put chat streaming events on the WebSocket**
 - **do not put agent activity events on SSE**
 - `stream.reasoning` is for provider-supplied chat reasoning/thinking text only; it is scoped to the active thread stream and is separate from Phase 2 `agent.thought` activity events
+- `stream.reasoning` and `stream.thinking.tool` are published by the worker's per-run thought recorder, one event per coalesced flush (not one per provider token); each carries the id of the `run_thinking_chunks` row it persisted
+- `stream.*` events are never replayed from the SSE backlog. A client that joined mid-run recovers the thinking state over REST (`GET /api/threads/:threadId/thinking`) and merges it with live events by `chunkId`
 - `message.new` is a WebSocket event for cache invalidation; the actual message content arrives via SSE `stream.done` or REST query — not duplicated on both transports
 - legacy event names (`streaming.start`, `subagent.started`, `task.state_changed`) are historical only and must not be used for new `/api` or `/admin` work
 - `agent.thought`, `agent.tool.progress`, and `approval.resolved` are Phase 2 events; do not implement in Phase 1

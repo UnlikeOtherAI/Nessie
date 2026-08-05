@@ -5,7 +5,9 @@ import {
 } from '@nessie/schemas'
 import {
   ListThreadMessagesQuerySchema,
+  RunThinkingLogSchema,
   ThreadMessageRecordSchema,
+  ThreadThinkingSchema,
   UpdateThreadMessageBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -20,6 +22,7 @@ import {
   updateMessage,
 } from '../services/messages.js'
 import { toggleUserReaction } from '../services/message-reactions.js'
+import { loadRunThinkingLog, loadThreadThinking } from '../services/run-thinking.js'
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
 import type { RouteDeps } from './types.js'
@@ -71,6 +74,60 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
   registerCreateThreadMessageRoute(app, deps)
   registerThreadReplyRoutes(app, deps)
+
+  // ─── Agent thought process ────────────────────────────────────────────────
+  // Both routes gate on thread visibility exactly like the SSE stream route
+  // below, then require the run to belong to that thread — a run from another
+  // thread is indistinguishable from a missing one.
+  app.get('/api/threads/:threadId/thinking', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { threadId } = request.params as { threadId: string }
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
+    if (!thread) {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    return createApiResponse(
+      ThreadThinkingSchema.parse(await loadThreadThinking(prisma, thread.id)),
+    )
+  })
+
+  app.get('/api/threads/:threadId/runs/:runId/thinking', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { threadId, runId } = request.params as { threadId: string; runId: string }
+    const thread = await findThreadForUser(
+      prisma,
+      threadId,
+      actorContext.actor.actorId,
+      actorContext.tenant.organizationId,
+    )
+    if (!thread) {
+      sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+      return reply
+    }
+
+    const log = await loadRunThinkingLog(prisma, { runId, threadId: thread.id })
+    if (!log) {
+      sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
+      return reply
+    }
+
+    return createApiResponse(RunThinkingLogSchema.parse(log))
+  })
 
   app.post('/api/threads/:threadId/read', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

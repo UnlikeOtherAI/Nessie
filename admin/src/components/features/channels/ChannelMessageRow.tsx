@@ -11,6 +11,7 @@ import { MessageUiCards } from './MessageUiCards'
 import { CommsConnectCard } from './CommsConnectCard'
 import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
+import { RunStopContinue } from './RunStopContinue'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
 import {
   getReplyBroadcastRootId,
@@ -312,6 +313,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <CommsConnectCard metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <RunStopContinue metadata={message.metadata} />
           ) : null}
           <MessageAttachments messageId={message.id} />
           {broadcastRootId && onOpenThread ? (

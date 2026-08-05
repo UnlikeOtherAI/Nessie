@@ -12,8 +12,6 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { updateAgentAvatar } from '../services/agent-avatars.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import {
-  AGENT_MANAGEMENT_ERROR_CODES,
-  AgentManagementError,
   bindAgentToChannel,
   cloneAgentRecord,
   createAgentRecord,
@@ -28,53 +26,16 @@ import {
 } from '../services/agents.js'
 import {
   assertLedgerAgentModelSelection,
-  LedgerAgentModelCatalogError,
+  ledgerAgentModelCatalogRequestHeaders,
   listLedgerAgentModels,
 } from '../services/ledger-agent-model-catalog.js'
 import { checkPolicy } from '../services/policy.js'
 import {
-  AGENT_TOOL_POLICY_ERROR_CODES,
-  AgentToolPolicyError,
-} from '../services/agent-tool-policy.js'
+  sendAgentManagementError,
+  sendAgentModelCatalogError,
+  sendProtectedPolicyError,
+} from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
-
-const sendProtectedPolicyError = (reply: Parameters<typeof sendApiError>[0], error: unknown) => {
-  if (
-    error instanceof AgentToolPolicyError
-    && error.code === AGENT_TOOL_POLICY_ERROR_CODES.PROTECTED_INPUT
-  ) {
-    sendApiError(reply, 400, error.code, error.message)
-    return true
-  }
-  return false
-}
-
-const sendAgentManagementError = (
-  reply: Parameters<typeof sendApiError>[0],
-  error: unknown,
-): boolean => {
-  if (
-    error instanceof AgentManagementError
-    && error.code === AGENT_MANAGEMENT_ERROR_CODES.PARENT_NOT_FOUND
-  ) {
-    sendApiError(reply, 404, error.code, error.message)
-    return true
-  }
-  return false
-}
-
-const sendAgentModelCatalogError = (
-  reply: Parameters<typeof sendApiError>[0],
-  error: unknown,
-): boolean => {
-  if (!(error instanceof LedgerAgentModelCatalogError)) {
-    return false
-  }
-
-  const status = error.code === 'LEDGER_AGENT_MODEL_NOT_AVAILABLE' ? 400 : 503
-  sendApiError(reply, status, error.code, error.message)
-  return true
-}
 
 export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -112,6 +73,10 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       const models = await listLedgerAgentModels({
         config: deps.config.model,
         ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
+        requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
+          actorContext,
+          ledgerIdentity: deps.ledgerIdentity,
+        }),
       })
       return createApiResponse(AgentModelOptionSchema.array().parse(models))
     } catch (error) {
@@ -133,12 +98,18 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
 
     let agent
     try {
-      await assertLedgerAgentModelSelection({
-        config: deps.config.model,
-        ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
-        model: body.model,
-        provider: body.provider,
-      })
+      if (body.model !== undefined || body.provider !== undefined) {
+        await assertLedgerAgentModelSelection({
+          config: deps.config.model,
+          ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
+          model: body.model,
+          provider: body.provider,
+          requestHeaders: () => ledgerAgentModelCatalogRequestHeaders({
+            actorContext,
+            ledgerIdentity: deps.ledgerIdentity,
+          }),
+        })
+      }
       agent = await createAgentRecord(prisma, {
         effort: body.effort,
         model: body.model,
@@ -148,6 +119,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         projectId: actorContext.tenant.projectId,
         provider: body.provider,
         role: body.role ?? 'assistant',
+        runLimits: body.runLimits,
         systemPrompt: body.systemPrompt,
         teamId: actorContext.tenant.teamId,
         toolPolicy: body.toolPolicy,
@@ -204,6 +176,10 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
           ledgerPublicUrl: process.env.LEDGER_PUBLIC_URL,
           model: body.model ?? existingAgent.model ?? undefined,
           provider: body.provider ?? existingAgent.provider ?? undefined,
+          requestHeaders: () => ledgerAgentModelCatalogRequestHeaders({
+            actorContext,
+            ledgerIdentity: deps.ledgerIdentity,
+          }),
         })
       }
       agent = await updateAgentRecord(prisma, agentId, {

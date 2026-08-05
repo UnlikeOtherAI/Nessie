@@ -6,6 +6,7 @@ import type {
   AgentEffortValue,
   AgentFormState,
 } from './useAgentDesigner'
+import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { ToolPicker } from './ToolPicker'
 
 type AgentDesignerFormProps = {
@@ -25,15 +26,13 @@ const fieldLabelClass = [
   'tracking-[0.16em] text-[color:var(--tx3)]',
 ].join(' ')
 
+// Reasoning effort maps only to the provider's `reasoning_effort` — how hard
+// the model thinks per turn. Spend ceilings live in the Run limits fieldset.
 const EFFORTS: { hint: string; label: string; value: string }[] = [
-  { value: 'low', label: 'Low', hint: 'quick, cheap responses' },
+  { value: 'low', label: 'Low', hint: 'quick, shallow reasoning' },
   { value: 'medium', label: 'Medium', hint: 'balanced — default' },
-  { value: 'high', label: 'High', hint: 'thorough multi-step work' },
-  {
-    value: 'xhigh',
-    label: 'Ultra',
-    hint: 'maximum effort, effectively unlimited token usage — governed only by team/org budgets',
-  },
+  { value: 'high', label: 'High', hint: 'thorough multi-step reasoning' },
+  { value: 'xhigh', label: 'Ultra', hint: 'deepest reasoning the model offers' },
 ]
 
 export const AgentDesignerForm = ({
@@ -165,10 +164,10 @@ export const AgentDesignerForm = ({
         ) : null}
       </div>
 
-      {/* Effort */}
+      {/* Reasoning effort */}
       <div className="grid gap-1.5">
         <label className={fieldLabelClass} htmlFor="agent-effort">
-          Effort
+          Reasoning effort
         </label>
         <select
           className="admin-input"
@@ -182,7 +181,17 @@ export const AgentDesignerForm = ({
             </option>
           ))}
         </select>
+        <p className="text-xs text-[color:var(--tx3)]">
+          How hard the model thinks — does not limit what a run may spend.
+        </p>
       </div>
+
+      {/* Run limits */}
+      <RunLimitsFieldset
+        labelClassName={fieldLabelClass}
+        onChange={actions.setRunLimit}
+        value={state.runLimits}
+      />
 
       {/* System prompt */}
       <div className="grid gap-1.5">

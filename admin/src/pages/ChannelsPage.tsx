@@ -11,6 +11,7 @@ import {
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
+import { countThinkingEntries, selectPendingForRoot } from '../facades/threads/thinking'
 import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
@@ -232,6 +233,12 @@ export const ChannelsPage = () => {
   }, [activeChannel, channelId, navigate])
 
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
+  // Runs replying into the open reply thread render their bubble (and streaming
+  // text) inside the panel, not at the bottom of the channel.
+  const threadPendingMessages = useMemo(
+    () => selectPendingForRoot(pendingMessages, replyThread.openRootMessageId),
+    [pendingMessages, replyThread.openRootMessageId],
+  )
 
   useLayoutEffect(() => {
     const container = contentScrollRef.current
@@ -240,12 +247,15 @@ export const ChannelsPage = () => {
     }
 
     container.scrollTop = container.scrollHeight
+    // Thinking bubbles grow as their ticker fills, so their content counts as a
+    // layout change just like a new message row.
   }, [
     activeChannel?.id,
     visibleActiveTab,
     feedItems.length,
     optimisticMessages.length,
     pendingMessages.length,
+    countThinkingEntries(pendingMessages),
     scopedAgents.length,
   ])
 
@@ -336,6 +346,7 @@ export const ChannelsPage = () => {
               ) : undefined
             }
             renderContent={renderContent}
+            threadId={activeChannel?.defaultThreadId}
             editingMessageId={editingMessageId}
             editingContent={editingContent}
             updatePending={updatePending}
@@ -405,6 +416,8 @@ export const ChannelsPage = () => {
           activeChannel={activeChannel}
           agentMap={agentMap}
           channelUsers={channelUsers}
+          isExternalAgentConversation={isExternalAgentActiveChannel}
+          isPersonalAssistantConversation={isPersonalAssistantConversation}
           meAvatar={{
             avatarUrl: me.user.avatarUrl,
             avatarAttachmentId: me.user.avatarAttachmentId,
@@ -413,6 +426,7 @@ export const ChannelsPage = () => {
           meDisplayName={me.user.displayName}
           meUserId={me.user.id}
           mentionEntities={mentionEntities}
+          pendingMessages={threadPendingMessages}
           renderContent={renderContent}
           thread={replyThread}
           token={token}

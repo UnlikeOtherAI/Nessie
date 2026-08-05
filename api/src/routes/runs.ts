@@ -3,6 +3,10 @@ import type { FastifyInstance } from 'fastify'
 import { parseAgentId, parseChannelId, parseOrganizationId, parseRunId } from '@nessie/schemas'
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import {
+  continueRun,
+  type NotContinuableDetail,
+} from '../services/run-continuation.js'
+import {
   listActiveRuns,
   listRestartableRuns,
   requestRunCancellation,
@@ -22,6 +26,14 @@ const runScopes = (organizationId: string, channelId: string, agentId: string) =
 const HANDOFF_CANCEL_HINT =
   'This run is managed by an integration handoff. Cancel it through the product '
   + 'itself (for Deep Water, ask the Personal Assistant to run research_cancel).'
+
+// Why a stopped run has nothing to resume from. All three are the same 409
+// code; the message tells the operator which situation they are in.
+const NOT_CONTINUABLE_MESSAGE: Record<NotContinuableDetail, string> = {
+  input_unavailable: 'The original input for this run is no longer available to replay',
+  no_checkpoint: 'This run has no saved working state to continue from',
+  not_terminal: 'This run is still active; wait for it to stop before continuing it',
+}
 
 export const registerRunRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, realtimeHub, requireActorContext } = deps
@@ -138,6 +150,55 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RouteDeps): void =
         return createApiResponse({
           run: { id: result.runId, restartOfRunId: runId, status: 'pending', taskId: result.taskId },
         })
+    }
+  })
+
+  // Resume a run that stopped at a policy ceiling, seeding the new run from the
+  // stopped run's durable checkpoint. Restart stays available and does not
+  // consume the checkpoint; Continue claims it exactly once.
+  app.post('/api/runs/:runId/continue', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const { runId } = request.params as { runId: string }
+    const result = await continueRun(prisma, actorContext, {
+      organizationId: actorContext.tenant.organizationId,
+      runId,
+    })
+
+    switch (result.kind) {
+      case 'not_found':
+        sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
+        return reply
+      case 'handoff_managed':
+        sendApiError(reply, 409, 'RUN_HANDOFF_MANAGED', HANDOFF_CANCEL_HINT)
+        return reply
+      case 'busy':
+        sendApiError(
+          reply,
+          409,
+          'RUN_BUSY',
+          'This agent is already running on this thread; wait for it to finish before continuing',
+        )
+        return reply
+      case 'checkpoint_consumed':
+        sendApiError(
+          reply,
+          409,
+          'RUN_CHECKPOINT_CONSUMED',
+          'This run has already been continued',
+        )
+        return reply
+      case 'not_continuable':
+        sendApiError(
+          reply,
+          409,
+          'RUN_NOT_CONTINUABLE',
+          NOT_CONTINUABLE_MESSAGE[result.detail],
+        )
+        return reply
+      case 'continued':
+        return createApiResponse({ runId: result.runId })
     }
   })
 }

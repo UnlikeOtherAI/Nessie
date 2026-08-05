@@ -285,8 +285,9 @@ test('circuit breaker resets on success', async () => {
 
   const result = await runAgenticLoop({
     budget: {
-      maxIterations: 6,
-      maxToolCalls: 6,
+      // Six iterations of real work plus the reserved graceful-stop headroom.
+      maxIterations: 8,
+      maxToolCalls: 8,
       maxWallclockMs: 10_000,
     },
     callbacks: {

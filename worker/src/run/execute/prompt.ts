@@ -1,5 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
 import type { ProviderMessage } from '@nessie/runtime'
+import {
+  buildResearchRoutingBlock,
+  type ResearchRoutingFacts,
+} from './research-routing.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 
 /**
@@ -31,6 +35,15 @@ export const buildModelPrompt = (
   context: RunContext,
   prompt: string,
   memoryContext: string | null,
+  options: {
+    /**
+     * Untrusted working notes from an earlier incomplete run in this thread,
+     * already framed by `buildCheckpointInjection`.
+     */
+    checkpointNotes?: string | null
+    /** Structural toolset facts driving the research routing block (§9). */
+    routing?: ResearchRoutingFacts
+  } = {},
 ): ProviderMessage[] => {
   const hasOtherAgentTurn = conversation.some(
     (message) =>
@@ -80,6 +93,7 @@ export const buildModelPrompt = (
       ].join(' '),
       '- Match the register of the message you are replying to. Short casual question → short casual answer.',
     ].join('\n'),
+    options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
   ].filter((part) => part.length > 0)
 
   const messages: ProviderMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]
@@ -89,6 +103,12 @@ export const buildModelPrompt = (
       content: memoryContext,
       role: 'system',
     })
+  }
+
+  // Checkpoint notes come after the system messages and before the
+  // conversation, carrying their own untrusted framing (§5).
+  if (options.checkpointNotes) {
+    messages.push({ content: options.checkpointNotes, role: 'system' })
   }
 
   if (conversation.length > 0) {

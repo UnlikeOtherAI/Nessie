@@ -23,11 +23,11 @@ export type AgentKind = z.infer<typeof AgentKindSchema>
 export const AgentSurfacePolicySchema = z.enum(['shared', 'dm_only'])
 export type AgentSurfacePolicy = z.infer<typeof AgentSurfacePolicySchema>
 
-// How much work an agent may put into each run. Scales the agentic-loop run
-// budget (iterations / tool calls / wallclock / tokens / cost) and the
-// provider `reasoning_effort`. Modeled on OpenAI Codex's reasoning-effort
-// levels. `xhigh` is effectively unbounded: the org/team `Budget` gate and the
-// loop's repeated-call detection are its only governors.
+// How hard the model thinks per turn — maps ONLY to the provider
+// `reasoning_effort` (modeled on OpenAI Codex's levels; `xhigh` clamps to
+// `high` for OpenAI-compatible providers). Spend/iteration caps are a separate
+// concern: `Agent.runLimits` (explicit, optional) and the deployment backstop.
+// See docs/plans/2026-08-05-run-budgets-context-and-research-routing.md.
 export const AgentEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh'])
 export type AgentEffort = z.infer<typeof AgentEffortSchema>
 
@@ -40,6 +40,20 @@ export type ProviderReasoningEffort = 'low' | 'medium' | 'high'
 export const reasoningEffortForAgentEffort = (
   effort: AgentEffort,
 ): ProviderReasoningEffort => (effort === 'xhigh' ? 'high' : effort)
+
+// Optional explicit per-run caps stored in `Agent.runLimits`. Every key is
+// optional; an absent key means that dimension is governed only by the
+// deployment backstop (NESSIE_RUN_BACKSTOP_*). Values are positive integers.
+export const AgentRunLimitsSchema = z
+  .object({
+    maxTokens: z.number().int().positive().optional(),
+    maxToolCalls: z.number().int().positive().optional(),
+    maxIterations: z.number().int().positive().optional(),
+    maxWallclockMs: z.number().int().positive().optional(),
+    maxCostCents: z.number().int().positive().optional(),
+  })
+  .strict()
+export type AgentRunLimits = z.infer<typeof AgentRunLimitsSchema>
 
 export const AgentDelegationModeSchema = z.enum([
   'none',

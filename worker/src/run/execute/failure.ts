@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client'
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { buildScopes } from './scopes.js'
@@ -20,6 +21,8 @@ export const handleRunExecutionFailure = async (
     // are not crashes — e.g. a budget-cap stop that produced no partial answer,
     // which posts a clear "stopped at the limit" notice instead.
     terminalMessage?: string
+    /** Metadata for that terminal message — `runStop` (§6) for a capped run. */
+    terminalMessageMetadata?: Record<string, unknown>
   },
 ): Promise<void> => {
   const messageText =
@@ -41,6 +44,9 @@ export const handleRunExecutionFailure = async (
         content: terminalContent,
         role: 'assistant',
         threadId: context.run.threadId,
+        ...(input.terminalMessageMetadata
+          ? { metadata: input.terminalMessageMetadata as Prisma.InputJsonValue }
+          : {}),
         ...(context.replyRootMessageId
           ? { rootMessageId: context.replyRootMessageId }
           : {}),

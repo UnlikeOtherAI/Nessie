@@ -131,6 +131,28 @@ const streamCompletion = async (
   const baseChoice = { index: 0, finish_reason: null }
 
   const stream: MockStream = turn.stream ?? { chunkDelayMs: 0, chunkSize: turn.text.length || 1 }
+
+  // Reasoning models emit their visible thinking as `reasoning_content` deltas
+  // before any answer text or tool call, so the worker's thought recorder sees
+  // the same ordering it would from a real provider.
+  const reasoning = turn.reasoning ?? ''
+  for (let offset = 0; offset < reasoning.length; offset += stream.chunkSize) {
+    writeChunk({
+      choices: [{
+        ...baseChoice,
+        delta: {
+          reasoning_content: reasoning.slice(offset, offset + stream.chunkSize),
+          role: 'assistant',
+        },
+      }],
+      created,
+      id: completionId,
+      model: engine.model,
+      object: 'chat.completion.chunk',
+    })
+    await sleep(stream.chunkDelayMs)
+  }
+
   for (let offset = 0; offset < turn.text.length; offset += stream.chunkSize) {
     writeChunk({
       choices: [{ ...baseChoice, delta: { content: turn.text.slice(offset, offset + stream.chunkSize), role: 'assistant' } }],

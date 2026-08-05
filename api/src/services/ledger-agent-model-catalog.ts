@@ -1,5 +1,10 @@
 import type { ModelConfig } from '@nessie/config'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 import { type AgentModelOption, AgentModelOptionSchema } from '@nessie/schemas'
+import {
+  attributionFromActorContext,
+  type LedgerIdentityService,
+} from '@nessie/runtime'
 import { z } from 'zod'
 
 const DEFAULT_LEDGER_URL = 'https://ledger.unlikeotherai.com'
@@ -47,6 +52,7 @@ type ListLedgerAgentModelsOptions = {
   config: LedgerAgentModelCatalogConfig
   fetchImpl?: typeof fetch
   ledgerPublicUrl?: string
+  requestHeaders?: Record<string, string>
 }
 
 const trimmed = (value: string | undefined): string | undefined => {
@@ -85,6 +91,37 @@ const ledgerModelsEndpoint = (input: {
 
 const optionKey = (option: Pick<AgentModelOption, 'model' | 'provider'>): string =>
   `${option.provider}\u0000${option.model}`
+
+/**
+ * The Ledger app key identifies Nessie's budget, but Ledger also requires
+ * signed user/run provenance for every Nessie-bound request. Keep catalogue
+ * discovery on that same authenticated path as model inference.
+ */
+export const ledgerAgentModelCatalogRequestHeaders = async (input: {
+  actorContext: AuthorizedActionContext
+  ledgerIdentity: LedgerIdentityService | null
+}): Promise<Record<string, string>> => {
+  if (!input.ledgerIdentity) {
+    throw new LedgerAgentModelCatalogError(
+      LEDGER_AGENT_MODEL_CATALOG_ERROR_CODES.UNCONFIGURED,
+      'Agent model selection requires configured Ledger identity signing.',
+    )
+  }
+
+  try {
+    return await input.ledgerIdentity.requestHeaders(
+      attributionFromActorContext(input.actorContext, {
+        systemComponent: 'agent-model-catalog',
+      }),
+      { requireUoaIdentity: true },
+    )
+  } catch {
+    throw new LedgerAgentModelCatalogError(
+      LEDGER_AGENT_MODEL_CATALOG_ERROR_CODES.REQUEST_FAILED,
+      'Agent model selection requires a linked UnlikeOtherAI identity for the active workspace.',
+    )
+  }
+}
 
 const toAgentModelOptions = (
   payload: z.infer<typeof LedgerModelListSchema>,
@@ -144,11 +181,13 @@ export const listLedgerAgentModels = async (
     baseUrl: input.config.baseUrl,
     ledgerPublicUrl: input.ledgerPublicUrl,
   })
+  const headers = new Headers(input.requestHeaders)
+  headers.set('Authorization', `Bearer ${apiKey}`)
 
   let response: Response
   try {
     response = await (input.fetchImpl ?? fetch)(endpoint, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers,
       method: 'GET',
       signal: AbortSignal.timeout(LEDGER_MODELS_TIMEOUT_MS),
     })
@@ -184,6 +223,9 @@ export const assertLedgerAgentModelSelection = async (input: {
   ledgerPublicUrl?: string
   model: string | undefined
   provider: string | undefined
+  requestHeaders?:
+    | Record<string, string>
+    | (() => Promise<Record<string, string>>)
 }): Promise<void> => {
   const model = trimmed(input.model)
   const provider = trimmed(input.provider)
@@ -197,9 +239,14 @@ export const assertLedgerAgentModelSelection = async (input: {
     )
   }
 
+  const requestHeaders =
+    typeof input.requestHeaders === 'function'
+      ? await input.requestHeaders()
+      : input.requestHeaders
   const availableModels = await listLedgerAgentModels({
     config: input.config,
     ledgerPublicUrl: input.ledgerPublicUrl,
+    requestHeaders,
   })
   if (!availableModels.some((option) => option.model === model && option.provider === provider)) {
     throw new LedgerAgentModelCatalogError(

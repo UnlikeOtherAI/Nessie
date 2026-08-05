@@ -1,6 +1,7 @@
 import {
   AgentEffortSchema,
   AgentIdSchema,
+  AgentRunLimitsSchema,
   AgentStatusSchema,
   ChannelIdSchema,
   PersonalAssistantConfigSummarySchema,
@@ -32,6 +33,10 @@ export const AgentRecordSchema = z.object({
   provider: z.string().optional(),
   model: z.string().optional(),
   effort: AgentEffortSchema.optional(),
+  // Explicit per-run caps. Absent = every dimension governed by the deployment
+  // backstop; `effort` carries no spend meaning (see
+  // docs/plans/2026-08-05-run-budgets-context-and-research-routing.md §1).
+  runLimits: AgentRunLimitsSchema.optional(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
   routingProfileId: z.string().uuid().optional(),
@@ -41,6 +46,9 @@ export const AgentRecordSchema = z.object({
 })
 export type AgentRecord = z.infer<typeof AgentRecordSchema>
 
+// `runLimits` is an ordinary agent-edit field (existing authorization, not a
+// protected tool-policy key): omit it to leave the stored value untouched, send
+// an object to replace it, send `null` to clear every explicit limit.
 export const CreateAgentBodySchema = z.object({
   name: NonEmptyStringSchema,
   role: NonEmptyStringSchema.optional(),
@@ -51,6 +59,7 @@ export const CreateAgentBodySchema = z.object({
   provider: z.string().optional(),
   model: z.string().optional(),
   effort: AgentEffortSchema.optional(),
+  runLimits: AgentRunLimitsSchema.nullish(),
 })
 
 export const UpdateAgentBodySchema = z.object({
@@ -61,6 +70,7 @@ export const UpdateAgentBodySchema = z.object({
   provider: z.string().optional(),
   model: z.string().optional(),
   effort: AgentEffortSchema.optional(),
+  runLimits: AgentRunLimitsSchema.nullish(),
 })
 
 export const UpdateAgentAvatarBodySchema = z.object({

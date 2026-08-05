@@ -215,7 +215,9 @@ test('delivery is acknowledged only after callback and message incorporation', a
   let acknowledgements = 0
   let inference = 0
   const result = await runAgenticLoop({
-    budget: { maxIterations: 2, maxToolCalls: 2, maxWallclockMs: 10_000 },
+    // Two iterations of real work, plus the headroom the loop reserves for a
+    // graceful stop (see loop-budget.ts).
+    budget: { maxIterations: 3, maxToolCalls: 3, maxWallclockMs: 10_000 },
     callbacks: {
       onIterationStart: async () => {},
       onToolCallStart: async () => {},

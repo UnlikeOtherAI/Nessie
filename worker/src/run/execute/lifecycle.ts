@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { applyReplyBookkeeping } from '@nessie/runtime'
 import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schemas'
+import { parseAgentRunLimits } from '../run-budget.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 
 export const updateTaskStatus = async (
@@ -95,6 +96,9 @@ export const loadRunContext = async (
           name: true,
           parentAgentId: true,
           provider: true,
+          // Optional explicit per-run caps; absent keys fall through to the
+          // deployment backstop (see run-budget.ts).
+          runLimits: true,
           systemPrompt: true,
         },
       },
@@ -124,12 +128,13 @@ export const loadRunContext = async (
   }
 
   return {
-    agent: run.agent,
+    agent: { ...run.agent, runLimits: parseAgentRunLimits(run.agent.runLimits) },
     channel: run.thread.channel,
     run: {
       id: run.id,
       threadId: run.thread.id,
       createdAt: run.createdAt,
+      replyPlacement: run.replyPlacement,
     },
     task,
   }

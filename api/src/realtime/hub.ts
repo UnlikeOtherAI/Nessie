@@ -220,13 +220,16 @@ export const createRealtimeHub = async (input: {
           continue
         }
 
-        // stream.start, stream.reasoning, and stream.delta are ephemeral — don't replay from backlog.
-        // A reconnecting client missed the live stream; the final message is already
-        // in the messages table. Replaying live chunks would show a zombie pending
-        // message or orphaned reasoning until stream.done arrives.
+        // stream.start, stream.reasoning, stream.thinking.tool, and stream.delta
+        // are ephemeral — don't replay from backlog. A reconnecting client missed
+        // the live stream; the final message is already in the messages table, and
+        // an in-flight run's thought log is re-fetched over REST
+        // (GET /api/threads/:threadId/thinking). Replaying live chunks would show a
+        // zombie pending message or orphaned reasoning until stream.done arrives.
         if (
           event.event === 'stream.start' ||
           event.event === 'stream.reasoning' ||
+          event.event === 'stream.thinking.tool' ||
           event.event === 'stream.delta'
         ) {
           connection.lastSequence = event.sequence
