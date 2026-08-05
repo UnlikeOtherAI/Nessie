@@ -8,7 +8,7 @@ test('http: open → listTools → callTool → close', async () => {
   const fake = await startHttpFake()
   const mgr = new McpClientManager()
   try {
-    const id = await mgr.open({ transport: 'http', url: fake.url })
+    const id = await mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch })
     const tools = await mgr.listTools(id)
     assert.ok(tools.find((t) => t.name === 'echo'))
     const sum = await mgr.callTool(id, 'add', { a: 2, b: 3 })
@@ -23,7 +23,7 @@ test('http: reconnect after transport drop invalidates discovery cache', async (
   const fake = await startHttpFake()
   const mgr = new McpClientManager()
   try {
-    const id = await mgr.open({ transport: 'http', url: fake.url })
+    const id = await mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch })
     const before = await mgr.listTools(id)
 
     fake.dropConnections()
@@ -46,7 +46,7 @@ test('http: 401 surfaces as AUTH error', async () => {
   const mgr = new McpClientManager()
   try {
     await assert.rejects(
-      () => mgr.open({ transport: 'http', url: fake.url }),
+      () => mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch }),
       (err: unknown) => err instanceof McpAuthError && err.kind === 'AUTH',
     )
 
@@ -55,10 +55,28 @@ test('http: 401 surfaces as AUTH error', async () => {
       transport: 'http',
       url: fake.url,
       headers: { authorization: 'Bearer sekret' },
+      fetchImpl: globalThis.fetch,
     })
     const tools = await mgr.listTools(id)
     assert.ok(tools.length > 0)
     await mgr.close(id)
+  } finally {
+    await fake.close()
+  }
+})
+
+test('the transport refuses a private address when no fetch override is given', async () => {
+  // Production callers get the SSRF-safe, IP-pinned fetch by default. The tests
+  // above opt out explicitly because their fixture is on loopback; without that
+  // opt-out the guard must block it, which is what keeps a connector URL from
+  // reaching internal infrastructure.
+  const fake = await startHttpFake()
+  const mgr = new McpClientManager()
+  try {
+    await assert.rejects(
+      () => mgr.open({ transport: 'http', url: fake.url }),
+      /private or local network/i,
+    )
   } finally {
     await fake.close()
   }

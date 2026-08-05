@@ -12,7 +12,7 @@ export function createHttpTransport(spec: McpHttpSpec): StreamableHTTPClientTran
     ? { headers: spec.headers }
     : undefined
   return new StreamableHTTPClientTransport(new URL(spec.url), {
-    fetch: safeMcpFetch,
+    fetch: spec.fetchImpl ?? safeMcpFetch,
     requestInit,
     reconnectionOptions: {
       // We do reconnection at the manager layer so the SDK's per-stream
