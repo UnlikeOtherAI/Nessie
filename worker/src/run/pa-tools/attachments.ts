@@ -1,14 +1,7 @@
 import { Readable } from 'node:stream'
 
-import { loadConfig } from '@nessie/config'
-import {
-  attributionFromActorContext,
-  collectStream,
-  createFileService,
-  getStorage,
-  type FileService,
-} from '@nessie/runtime'
-import type { PrismaClient } from '@prisma/client'
+import { attributionFromActorContext, collectStream } from '@nessie/runtime'
+import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildVisibleChannelWhere } from './access.js'
 import { clampLimit, formatSection, truncate } from './tool-output.js'
@@ -21,17 +14,6 @@ const isTextLikeMime = (mime: string): boolean =>
   mime === 'application/xml' ||
   mime.endsWith('+json') ||
   mime.endsWith('+xml')
-
-// All blob work goes through the single FileService (storage + Attachment row +
-// stored-bytes accounting), same as the API. Built from config per call.
-const fileServiceFor = (prisma: PrismaClient): FileService => {
-  const config = loadConfig()
-  return createFileService({
-    prisma,
-    storage: getStorage(config.storage),
-    maxUploadBytes: config.storage.maxUploadBytes,
-  })
-}
 
 export const runAttachmentUploadTool = async (
   context: BuiltinToolRuntimeContext,

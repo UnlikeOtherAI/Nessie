@@ -7,7 +7,11 @@ import { finalizeCancelledRun } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { handleRunExecutionFailure } from './failure.js'
 import { loadConversation } from './prompt.js'
-import { persistResolvedReplyAnchor, resolveReplyRootMessageId } from './reply-placement.js'
+import {
+  persistResolvedReplyAnchor,
+  resolveConversationRootMessageId,
+  resolveReplyRootMessageId,
+} from './reply-placement.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 const AGENT_ID = '00000000-0000-0000-0000-0000000000a1'
@@ -331,13 +335,34 @@ test('loadConversation scopes to the reply thread when rootMessageId is set', as
     },
   } as unknown as Parameters<typeof loadConversation>[0]
 
-  await loadConversation(prisma, THREAD_ID, ROOT_MESSAGE_ID)
+  await loadConversation(prisma, {
+    organizationId: ORGANIZATION_ID,
+    rootMessageId: ROOT_MESSAGE_ID,
+    threadId: THREAD_ID,
+  })
   assert.deepEqual(wheres[0], {
     threadId: THREAD_ID,
     role: { not: 'system' },
     OR: [{ id: ROOT_MESSAGE_ID }, { rootMessageId: ROOT_MESSAGE_ID }],
   })
 
-  await loadConversation(prisma, THREAD_ID)
+  await loadConversation(prisma, { organizationId: ORGANIZATION_ID, threadId: THREAD_ID })
   assert.deepEqual(wheres[1], { threadId: THREAD_ID, role: { not: 'system' } })
+})
+
+test('a run inside an existing reply thread reads that thread', () => {
+  assert.equal(
+    resolveConversationRootMessageId({ rootMessageId: ROOT_MESSAGE_ID }),
+    ROOT_MESSAGE_ID,
+  )
+})
+
+test('a run triggered by a top-level message reads the channel, not itself', () => {
+  // It replies *under* the trigger, but scoping its reading there too would
+  // leave it a one-message window — no history, and no earlier photo in sight.
+  assert.equal(resolveConversationRootMessageId({ rootMessageId: null }), undefined)
+  assert.equal(
+    resolveReplyRootMessageId({ id: TRIGGER_MESSAGE_ID, rootMessageId: null }, null, null),
+    TRIGGER_MESSAGE_ID,
+  )
 })

@@ -6,6 +6,7 @@ export const createBaseSnapshot = (input: {
   model: string
   provider: ModelCapabilitySnapshot['provider']
   supportsEmbeddings: boolean
+  supportsVision: boolean
   structuredOutputMode: ModelCapabilitySnapshot['structuredOutputMode']
   systemPromptMode: ModelCapabilitySnapshot['systemPromptMode']
   toolCallingMode: ModelCapabilitySnapshot['toolCallingMode']
@@ -24,7 +25,7 @@ export const createBaseSnapshot = (input: {
     supportsEmbeddings: input.supportsEmbeddings,
     supportsModelDiscovery: false,
     supportsStreaming: true,
-    supportsVision: false,
+    supportsVision: input.supportsVision,
     systemPromptMode: input.systemPromptMode,
     toolCallingMode: input.toolCallingMode,
     toolResultMode: input.toolResultMode,
