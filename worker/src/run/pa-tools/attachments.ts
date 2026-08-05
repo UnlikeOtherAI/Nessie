@@ -84,9 +84,13 @@ export const runAttachmentListTool = async (
   // then list attachments linked to those messages. Without a user context fall
   // back to the run's own thread.
   const threadId = input.threadId ?? (input.channelId ? undefined : context.run.threadId)
+  // A user actor (or the PA acting for its owner) sees attachments in channels
+  // that user can reach. An autonomous run has no user to inherit reach from, so
+  // it must NOT fall back to the whole organisation — that hands it every
+  // channel's attachments. Its own channel is the correct bound.
   const visibleChannel = userId
     ? buildVisibleChannelWhere(organizationId, userId)
-    : { organizationId }
+    : { id: context.channel.id, organizationId }
 
   const messageWhere = input.channelId
     ? { thread: { channelId: input.channelId, channel: visibleChannel } }
@@ -157,7 +161,8 @@ export const runAttachmentReadTool = async (
   }
   const visibleChannel = readerId
     ? buildVisibleChannelWhere(attachment.organizationId, readerId)
-    : { organizationId: attachment.organizationId }
+    // As in attachment_list: an autonomous run is bounded by its own channel.
+    : { id: context.channel.id, organizationId: attachment.organizationId }
   const visibleMessage = await context.prisma.message.findFirst({
     where: { id: attachment.messageId, thread: { channel: visibleChannel } },
     select: { id: true },

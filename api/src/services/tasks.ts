@@ -61,6 +61,28 @@ export const listAssignableUsers = async (
   }))
 }
 
+/**
+ * Membership visibility for a non-owner caller: the projects they belong to,
+ * plus tasks that have no project, plus tasks they own or are assigned. Owners
+ * pass `undefined` and keep full org visibility.
+ */
+export type TaskVisibility = {
+  accessibleProjectIds: string[]
+  actorUserId: string
+}
+
+export const taskVisibilityWhere = (visibility?: TaskVisibility) =>
+  visibility
+    ? {
+        OR: [
+          { projectId: { in: visibility.accessibleProjectIds } },
+          { projectId: null },
+          { ownerUserId: visibility.actorUserId },
+          { assigneeUserId: visibility.actorUserId },
+        ],
+      }
+    : {}
+
 export const listTasks = async (
   prisma: PrismaClient,
   organizationId: string,
@@ -70,6 +92,7 @@ export const listTasks = async (
     status?: TaskStatus
     projectId?: string
   },
+  visibility?: TaskVisibility,
 ): Promise<TaskRecord[]> => {
   const tasks = await prisma.task.findMany({
     where: {
@@ -78,6 +101,7 @@ export const listTasks = async (
       ...(filters.ownerUserId ? { ownerUserId: filters.ownerUserId } : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.projectId ? { projectId: filters.projectId } : {}),
+      ...taskVisibilityWhere(visibility),
     },
     include: taskInclude,
     // Manual per-column order first (position asc), newest first within a tie so
@@ -92,9 +116,10 @@ export const getTask = async (
   prisma: PrismaClient,
   taskId: string,
   organizationId: string,
+  visibility?: TaskVisibility,
 ): Promise<TaskRecord | null> => {
   const task = await prisma.task.findFirst({
-    where: { id: taskId, organizationId },
+    where: { id: taskId, organizationId, ...taskVisibilityWhere(visibility) },
     include: taskInclude,
   })
   return task ? mapTask(task) : null

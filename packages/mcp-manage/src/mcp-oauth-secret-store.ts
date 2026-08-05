@@ -8,7 +8,7 @@ import {
   encryptWithKey,
 } from '@nessie/runtime'
 
-import { assertMcpUrlSafe } from './mcp-security.js'
+import { assertMcpUrlSafe, pinnedMcpFetch } from './mcp-security.js'
 import type { SecretStore } from './mcp-oauth.js'
 import {
   createLayeredSecretResolver,
@@ -180,7 +180,7 @@ export const createPgSecretResolver = (
   options: { fetchImpl?: typeof fetch } = {},
 ): SecretResolver => {
   const key = deriveSecretKey(encryptionSecret)
-  const fetchImpl = options.fetchImpl ?? fetch
+  const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   return {
     resolve: async (ref) => {
       if (!ref.startsWith('secret_')) {

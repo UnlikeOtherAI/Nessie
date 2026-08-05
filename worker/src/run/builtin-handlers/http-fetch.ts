@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import {
   assertSafeUrl,
+  pinnedFetch,
   UrlSafetyError,
   type ResolveHost,
 } from './url-safety.js'
@@ -134,7 +135,13 @@ export const runHttpFetch = async (
   options?: { fetchImpl?: typeof fetch; resolveHost?: ResolveHost },
 ): Promise<HttpFetchOutput> => {
   const input = InputSchema.parse(rawArgs)
-  const fetchImpl = options?.fetchImpl ?? fetch
+  // Default to the IP-pinned transport: this handler already re-validates its
+  // one redirect hop, but an unpinned socket could still be rebound to a private
+  // address between the check and the connection.
+  const fetchImpl =
+    options?.fetchImpl
+    ?? ((url: string | URL, requestInit?: RequestInit) =>
+      pinnedFetch(url, requestInit, options?.resolveHost ? { resolveHost: options.resolveHost } : {}))
   const resolveHost = options?.resolveHost
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES

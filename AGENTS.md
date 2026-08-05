@@ -75,6 +75,17 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.
 - Follow the implementation phases in `docs/implementation-phases.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
+- **Outbound egress is IP-pinned, not just validated.** Validating a URL and
+  then calling plain `fetch` leaves a DNS-rebinding window between the check and
+  the socket. Use `@nessie/runtime` `safeFetch` (or `pinnedFetch` when you
+  handle redirects yourself) for anything reaching a caller-, operator- or
+  model-supplied address: it resolves once, pins the connection to the vetted
+  IPs, re-checks each address as it dials, and re-validates every redirect hop.
+  `assertSafeUrl` alone is only enough where nothing is fetched afterwards.
+  Current callers: MCP OAuth exchange/refresh/discovery/registration, the MCP
+  SDK HTTP+SSE transports, FCM `token_uri`, `web_fetch` and `http_fetch`.
+  Inference provider `baseUrl` is validated at write time as well as use time.
+  See `docs/security-audit-2026-06.md`.
 - MCP connector management logic (catalog, instances, probe, projection,
   credentials, secret store, library, discovery, OAuth) lives in
   `@nessie/mcp-manage` and is shared by the API routes and the worker's

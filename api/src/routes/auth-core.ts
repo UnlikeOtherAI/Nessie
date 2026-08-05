@@ -344,7 +344,19 @@ export const registerAuthCoreRoutes = (
 
   app.delete('/api/auth/session', { config: { public: true } }, async (request, reply) => {
     const rawToken = readRefreshCookie(request)
-    if (rawToken) await revokeRefreshTokenByRaw(prisma, rawToken)
+    if (rawToken) {
+      const revoked = await revokeRefreshTokenByRaw(prisma, rawToken)
+      // Revoking the refresh family alone leaves the access token valid for the
+      // rest of its TTL. Bumping tokenVersion rejects it on the very next
+      // request; other devices re-authenticate silently with their own refresh
+      // token, which mints a session carrying the new generation.
+      if (revoked) {
+        await prisma.user.update({
+          where: { id: revoked.userId },
+          data: { tokenVersion: { increment: 1 } },
+        })
+      }
+    }
     clearRefreshCookie(reply, config)
     reply.code(204)
     return null

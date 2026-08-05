@@ -1,5 +1,6 @@
 import {
   assertSafeUrl,
+  safeFetch,
   UrlSafetyError,
   type ResolveHost,
 } from '@nessie/runtime'
@@ -59,6 +60,41 @@ export const assertMcpUrlSafe = async (
     }
     throw error
   }
+}
+
+/**
+ * Outbound HTTP for MCP control-plane calls (OAuth exchange/refresh, metadata
+ * discovery, dynamic client registration). Validating the URL and then calling
+ * plain `fetch` leaves a rebinding window between the check and the socket, so
+ * every one of those calls goes through here instead: resolve once, pin the
+ * connection to the vetted IPs, and re-validate each redirect hop.
+ */
+export const mcpSafeFetch = async (
+  rawUrl: string | URL,
+  init?: RequestInit,
+  options: McpUrlSafetyOptions = {},
+): Promise<Response> => {
+  try {
+    return await safeFetch(rawUrl, init, options)
+  } catch (error) {
+    if (error instanceof UrlSafetyError) {
+      throw new McpSecurityError(
+        MCP_SECURITY_ERROR_CODES.URL_UNSAFE,
+        error.message,
+      )
+    }
+    throw error
+  }
+}
+
+/**
+ * `mcpSafeFetch` shaped as a drop-in for the global `fetch`, so the helpers that
+ * take an injectable `fetchImpl` default to a pinned transport instead of the
+ * unpinned platform one.
+ */
+export const pinnedMcpFetch: typeof fetch = async (input, init) => {
+  const target = input instanceof Request ? input.url : input
+  return mcpSafeFetch(target, init)
 }
 
 export const assertMcpTransportSafe = async (

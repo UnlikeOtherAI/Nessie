@@ -155,9 +155,11 @@ export const queueTriggerRun = async (
     }
   },
 ): Promise<void> => {
-  // The personal assistant is its owner's delegate: it reaches every channel in
-  // the organization, so the binding gate and the membership re-check below do
-  // not apply to it. It always keeps acting as its owner.
+  // The personal assistant is its owner's delegate, so it is exempt from the
+  // *binding* gate — it is not bound to channels the way a shared agent is. It
+  // is NOT exempt from the membership re-check: a PA's reach is its owner's
+  // reach, so if the owner has since lost access to a private target channel
+  // the trigger must not fire and load that channel's conversation.
   const isPersonalAssistantTrigger =
     input.trigger.agent.agentKind === 'personal_assistant'
   const existingDelivery = input.dedupeKey
@@ -221,14 +223,11 @@ export const queueTriggerRun = async (
     })
     await assertTriggerExecutionOriginTenant(prisma, executionOrigin)
 
-    // Shared agents must still be usable by the saved user at fire time. Losing
-    // that authorization fails closed; it must never silently erase the user
-    // while retaining their immutable billing team.
-    if (
-      !isPersonalAssistantTrigger
-      && executionOrigin.userId
-      && thread.channel.visibility !== 'public'
-    ) {
+    // The saved user must still be able to reach the target channel at fire
+    // time — for a shared agent's saved launcher and equally for the personal
+    // assistant's owner. Losing that authorization fails closed; it must never
+    // silently erase the user while retaining their immutable billing team.
+    if (executionOrigin.userId && thread.channel.visibility !== 'public') {
       const membership = await prisma.channelMember.findFirst({
         where: {
           channelId: input.trigger.targetChannelId,

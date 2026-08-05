@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient as PrismaDbClient } from '@prisma/client'
+import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { parseOrganizationId } from '@nessie/schemas'
 import {
@@ -28,6 +29,24 @@ import {
 // The generated Prisma client lags the schema surface during local typechecking.
 // We widen it here so the control-plane helpers can compile against the current runtime client.
 type PrismaClient = PrismaDbClient & Record<string, unknown>
+
+/**
+ * Reject a private/loopback/link-local/metadata provider base URL at write time.
+ * The runtime path validates too, but a stored internal URL is a persisted SSRF
+ * primitive: every later inference call re-aims at it, and the failure surfaces
+ * far from the operator who typed it in.
+ */
+const assertProviderBaseUrlSafe = async (baseUrl: string | null): Promise<void> => {
+  if (!baseUrl) return
+  try {
+    await assertSafeUrl(baseUrl)
+  } catch (error) {
+    if (error instanceof UrlSafetyError) {
+      throw new Error('INFERENCE_PROVIDER_BASE_URL_UNSAFE')
+    }
+    throw error
+  }
+}
 
 const asJsonValue = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue
 
@@ -362,6 +381,7 @@ export const createInferenceProvider = async (
   if (input.connectorKind === 'openai-compatible' && input.enabled) {
     throw new Error('INFERENCE_PROVIDER_OPENAI_COMPATIBLE_REQUIRES_BINDING')
   }
+  await assertProviderBaseUrlSafe(input.baseUrl ?? null)
 
   const provider = await prisma.inferenceProvider.create({
     data: {
@@ -419,6 +439,10 @@ export const updateInferenceProvider = async (
     if (!nextBaseUrl || !nextActiveBindingId) {
       throw new Error('INFERENCE_PROVIDER_OPENAI_COMPATIBLE_REQUIRES_BINDING')
     }
+  }
+
+  if (input.baseUrl !== undefined) {
+    await assertProviderBaseUrlSafe(nextBaseUrl)
   }
 
   if (input.activeCredentialBindingId) {

@@ -14,6 +14,7 @@ import {
   assertUserAuthoredMcpTransportSafe,
 } from './mcp-security.js'
 import { findApplicableLock } from './mcp-catalog-endpoint-lock.js'
+import { catalogTenancyWhere } from './mcp-catalog-visibility.js'
 import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
 
 /**
@@ -243,28 +244,31 @@ export const getAccessibleCatalogEntry = async (
   actorContext: AuthorizedActionContext,
   id: string,
 ): Promise<McpCatalogEntryRow | null> => {
-  if (isOwnerRole(actorContext)) {
-    return prisma.mcpCatalogEntry.findFirst({ where: { id } })
-  }
-  return prisma.mcpCatalogEntry.findFirst({
-    where: {
-      id,
-      OR: [
-        { visibility: 'public', status: 'published' },
-        { ownerUserId: actorContext.actor.actorId },
-      ],
-    },
+  const entry = await prisma.mcpCatalogEntry.findFirst({
+    where: { id, ...catalogTenancyWhere(actorContext) },
   })
+  if (!entry) return null
+  const visible =
+    isOwnerRole(actorContext)
+    || entry.ownerUserId === actorContext.actor.actorId
+    || (entry.visibility === 'public' && entry.status === 'published')
+  return visible ? entry : null
 }
 
 /**
- * True when `actorContext` may mutate the entry: its owner, or a superuser.
+ * True when `actorContext` may mutate the entry: its author, or an org owner
+ * acting on an entry inside their own tenant (or on an instance-global one,
+ * whose real gate is `assertCatalogLifecycleIsUserManaged`). An org owner is NOT
+ * a superuser, so ownership of one tenant must never confer management of
+ * another tenant's connector — those rows hold plaintext OAuth client secrets.
  */
 export const canManageEntry = (
   actorContext: AuthorizedActionContext,
   entry: McpCatalogEntryRow,
 ): boolean =>
-  isOwnerRole(actorContext)
+  (isOwnerRole(actorContext)
+    && (entry.organizationId === null
+      || entry.organizationId === actorContext.tenant.organizationId))
   || (entry.ownerUserId !== null && entry.ownerUserId === actorContext.actor.actorId)
 
 const requireManageable = async (

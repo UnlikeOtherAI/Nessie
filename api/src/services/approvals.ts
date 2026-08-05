@@ -63,9 +63,36 @@ const parseCursor = (raw: string): { cursorDate: Date; cursorId: string } | null
   return { cursorDate: d, cursorId: idPart }
 }
 
+/**
+ * Which approvals an actor may see. An approval carries a free-text `reason`,
+ * a `context` blob and the originating channel/task ids, so org scope alone
+ * leaks private-channel activity — and the task ids it exposes are usable
+ * against other endpoints. Owners see everything in their org; everyone else
+ * sees what they requested plus what happened in a channel they can reach.
+ */
+export const approvalVisibilityWhere = (
+  actorContext: AuthorizedActionContext,
+): Prisma.ApprovalRequestWhereInput => {
+  if (actorContext.actor.roles?.includes('owner')) return {}
+  const userId = actorContext.actor.actorId
+  return {
+    OR: [
+      { requesterId: userId },
+      {
+        channel: {
+          OR: [
+            { visibility: 'public' },
+            { members: { some: { userId } } },
+          ],
+        },
+      },
+    ],
+  }
+}
+
 export const listApprovalRequests = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
   filters?: {
     status?: string
     agentId?: string
@@ -75,7 +102,10 @@ export const listApprovalRequests = async (
   },
 ) => {
   const limit = Math.min(filters?.limit ?? 50, 200)
-  const where: Record<string, unknown> = { organizationId }
+  const where: Record<string, unknown> = {
+    organizationId: actorContext.tenant.organizationId,
+    AND: [approvalVisibilityWhere(actorContext)],
+  }
   if (filters?.status) where['status'] = filters.status
   if (filters?.agentId) where['agentId'] = filters.agentId
   if (filters?.channelId) where['channelId'] = filters.channelId
@@ -111,10 +141,14 @@ export const listApprovalRequests = async (
 export const getApprovalRequest = async (
   prisma: PrismaClient,
   approvalId: string,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
 ) => {
   const approval = await prisma.approvalRequest.findFirst({
-    where: { id: approvalId, organizationId },
+    where: {
+      id: approvalId,
+      organizationId: actorContext.tenant.organizationId,
+      AND: [approvalVisibilityWhere(actorContext)],
+    },
   })
   return approval ? mapApproval(approval) : null
 }
@@ -130,6 +164,10 @@ export const resolveApprovalRequest = async (
     where: {
       id: approvalId,
       organizationId: actorContext.tenant.organizationId,
+      // Resolving is a stronger act than reading, so it takes the same gate:
+      // an org member with no line of sight to the channel must not be able to
+      // approve an agent action inside it.
+      AND: [approvalVisibilityWhere(actorContext)],
     },
   })
 
@@ -249,10 +287,14 @@ export const resolveApprovalRequest = async (
 
 export const getPendingApprovalCount = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
 ) => {
   return prisma.approvalRequest.count({
-    where: { organizationId, status: 'pending' },
+    where: {
+      organizationId: actorContext.tenant.organizationId,
+      status: 'pending',
+      AND: [approvalVisibilityWhere(actorContext)],
+    },
   })
 }
 

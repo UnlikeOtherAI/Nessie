@@ -1,5 +1,7 @@
 import crypto from 'node:crypto'
 
+import { safeFetch } from '@nessie/runtime'
+
 /**
  * Push-credential validation + signing.
  *
@@ -222,12 +224,22 @@ export const liveFcmTokenExchange: FcmTokenExchange = async (account) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 10_000)
   try {
-    const response = await fetch(account.token_uri ?? GOOGLE_TOKEN_URI, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body,
-      signal: controller.signal,
-    })
+    // `token_uri` comes straight out of operator-supplied service-account JSON,
+    // so it is attacker-controllable input. safeFetch blocks private/loopback/
+    // link-local/metadata targets, pins the socket to the validated address, and
+    // re-checks every redirect — otherwise credential validation doubles as an
+    // SSRF probe whose response body is reflected in the error message.
+    const response = await safeFetch(
+      account.token_uri ?? GOOGLE_TOKEN_URI,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: controller.signal,
+      },
+      // The signed assertion is a credential; never chase a redirect with it.
+      { maxRedirects: 0 },
+    )
     if (!response.ok) {
       const text = await response.text().catch(() => '')
       return {

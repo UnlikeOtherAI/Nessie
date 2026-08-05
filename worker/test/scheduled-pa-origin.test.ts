@@ -79,6 +79,8 @@ type TriggerPrismaHarness = {
 const createTriggerHarness = (
   teamScopeValid = true,
   organizationMemberActive = true,
+  // Users who are members of the private target channel at fire time.
+  channelMembers: string[] = [USER_ID],
 ): TriggerPrismaHarness => {
   const failedDeliveries: Array<Record<string, unknown>> = []
   const organizationMemberQueries: Array<Record<string, unknown>> = []
@@ -162,6 +164,13 @@ const createTriggerHarness = (
           visibility: 'private',
         },
       }),
+    },
+    // The PA is its owner's delegate, so firing into a private channel is
+    // re-checked against that owner's membership at fire time — exactly like a
+    // shared agent's saved launcher.
+    channelMember: {
+      findFirst: async (args: { where: { userId: string } }) =>
+        channelMembers.includes(args.where.userId) ? { userId: args.where.userId } : null,
     },
     $transaction: async (callback: (client: typeof tx) => Promise<void>) => {
       transactionCount += 1
@@ -276,6 +285,19 @@ test('revoked team member fails before a scheduled PA run is enqueued', async ()
   assert.deepEqual(harness.teamQueries[0]?.['members'], {
     some: { userId: USER_ID },
   })
+  assert.equal(harness.transactionCount, 0)
+  assert.equal(harness.queuePayloads.length, 0)
+  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+})
+
+test('a PA schedule stops firing once its owner loses the private channel', async () => {
+  // The PA reaches exactly what its owner reaches. A schedule created while the
+  // owner was a member must not keep firing — and loading that channel's
+  // conversation — after the owner is removed from it.
+  const config = await createSchedule()
+  const harness = createTriggerHarness(true, true, [])
+
+  await assert.rejects(fireSchedule(harness, config), /no longer has access/)
   assert.equal(harness.transactionCount, 0)
   assert.equal(harness.queuePayloads.length, 0)
   assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])

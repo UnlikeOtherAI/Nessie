@@ -224,7 +224,7 @@ export const registerAuthSecurityRoutes = (
       )
       return reply
     }
-    const session = buildSessionForUser({
+    const session = await buildSessionForUser({
       organizationId,
       projectId,
       providerId: currentClaims.providerId,

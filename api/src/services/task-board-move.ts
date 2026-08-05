@@ -1,4 +1,5 @@
-import type { Prisma, PrismaClient, TaskStatus } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import type { PrismaClient, TaskStatus } from '@prisma/client'
 import type { TaskRecord } from '../contracts.js'
 import { mapTask, taskInclude } from './task-records.js'
 import { isValidTransition } from './task-status.js'
@@ -36,9 +37,19 @@ const reindexColumn = async (
   })
   const ordered = siblings.map((s) => s.id).filter((id) => id !== movedTaskId)
   ordered.splice(Math.min(Math.max(index, 0), ordered.length), 0, movedTaskId)
-  await Promise.all(
-    ordered.map((id, position) => tx.task.update({ where: { id }, data: { position } })),
+  if (ordered.length === 0) return
+  // One bulk UPDATE ... FROM (VALUES ...) instead of an UPDATE per card: a
+  // single drag on a busy column otherwise issued one statement per sibling,
+  // all inside the move transaction.
+  const values = Prisma.join(
+    ordered.map((id, position) => Prisma.sql`(${id}::uuid, ${position}::int)`),
   )
+  await tx.$executeRaw`
+    UPDATE "tasks" AS t
+       SET "position" = v.position
+      FROM (VALUES ${values}) AS v(id, position)
+     WHERE t."id" = v.id
+  `
 }
 
 export const moveTaskToColumn = async (

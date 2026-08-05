@@ -153,7 +153,7 @@ export const registerAuthLoginRoute = (
           }
         }
 
-        const session = buildSessionForUser({
+        const session = await buildSessionForUser({
           organizationId: context.organizationId,
           projectId: context.projectId,
           providerId: provider.providerId,

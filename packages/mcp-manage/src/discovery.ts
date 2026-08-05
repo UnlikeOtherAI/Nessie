@@ -1,6 +1,7 @@
 import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
 
 import { probeConnection, type ManagerFactory } from './mcp-instance-probe.js'
+import { pinnedMcpFetch } from './mcp-security.js'
 import { discoverOAuthServerConfig } from './oauth-discovery.js'
 import type { McpLibraryAuthMethod, McpLibraryTransport } from './library.js'
 
@@ -136,7 +137,7 @@ export const discoverMcpEndpoint = async (
   rawUrl: string,
   options: DiscoverOptions = {},
 ): Promise<McpDiscoveryResult> => {
-  const fetchImpl = options.fetchImpl ?? fetch
+  const fetchImpl = options.fetchImpl ?? pinnedMcpFetch
   const probeTimeoutMs = options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
   const attempts: McpDiscoveryAttempt[] = []
   const input = normalizeInputUrl(rawUrl)

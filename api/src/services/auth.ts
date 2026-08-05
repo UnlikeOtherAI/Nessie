@@ -87,50 +87,49 @@ export const loadUserMemberships = async (
   prisma: PrismaClient,
   userId: string,
 ): Promise<MeMembership[]> => {
-  const orgMembers = await prisma.organizationMember.findMany({
-    where: { userId },
-    include: {
-      organization: { select: { id: true, name: true } },
-    },
-  })
+  // Three flat queries grouped in memory rather than a nested loop: this runs on
+  // every /auth/me, and the previous shape issued one project query per
+  // organisation plus one team query per project.
+  const [orgMembers, projectMembers, teamMembers] = await Promise.all([
+    prisma.organizationMember.findMany({
+      where: { userId },
+      include: { organization: { select: { id: true, name: true } } },
+    }),
+    prisma.projectMember.findMany({
+      where: { userId },
+      include: { project: { select: { id: true, name: true, organizationId: true } } },
+    }),
+    prisma.teamMember.findMany({
+      where: { userId },
+      include: { team: { select: { id: true, name: true, projectId: true } } },
+    }),
+  ])
 
-  const memberships: MeMembership[] = []
-  for (const om of orgMembers) {
-    const projectMembers = await prisma.projectMember.findMany({
-      where: { userId, project: { organizationId: om.organizationId } },
-      include: {
-        project: { select: { id: true, name: true } },
-      },
-    })
-
-    const projects = await Promise.all(
-      projectMembers.map(async (pm) => {
-        const teamMembers = await prisma.teamMember.findMany({
-          where: { userId, team: { projectId: pm.projectId } },
-          include: {
-            team: { select: { id: true, name: true } },
-          },
-        })
-        return {
-          projectId: parseProjectId(pm.project.id),
-          projectName: pm.project.name,
-          teams: teamMembers.map((tm) => ({
-            teamId: parseTeamId(tm.team.id),
-            teamName: tm.team.name,
-          })),
-        }
-      }),
-    )
-
-    memberships.push({
-      organizationId: parseOrganizationId(om.organization.id),
-      organizationName: om.organization.name,
-      role: om.role,
-      projects,
-    })
+  type MeTeam = MeMembership['projects'][number]['teams'][number]
+  const teamsByProject = new Map<string, MeTeam[]>()
+  for (const tm of teamMembers) {
+    const list = teamsByProject.get(tm.team.projectId) ?? []
+    list.push({ teamId: parseTeamId(tm.team.id), teamName: tm.team.name })
+    teamsByProject.set(tm.team.projectId, list)
   }
 
-  return memberships
+  const projectsByOrganization = new Map<string, MeMembership['projects']>()
+  for (const pm of projectMembers) {
+    const list = projectsByOrganization.get(pm.project.organizationId) ?? []
+    list.push({
+      projectId: parseProjectId(pm.project.id),
+      projectName: pm.project.name,
+      teams: teamsByProject.get(pm.projectId) ?? [],
+    })
+    projectsByOrganization.set(pm.project.organizationId, list)
+  }
+
+  return orgMembers.map((om) => ({
+    organizationId: parseOrganizationId(om.organization.id),
+    organizationName: om.organization.name,
+    role: om.role,
+    projects: projectsByOrganization.get(om.organizationId) ?? [],
+  }))
 }
 
 export const buildMeResponse = async (

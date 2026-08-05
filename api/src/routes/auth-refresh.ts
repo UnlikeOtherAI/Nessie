@@ -179,7 +179,7 @@ export const registerAuthRefreshRoute = (
       return reply
     }
     const session = uoaContext && consumed.uoaIdentity
-      ? buildSessionForUser({
+      ? await buildSessionForUser({
           organizationId: uoaContext.organizationId,
           projectId: uoaContext.projectId,
           providerId: consumed.providerId,

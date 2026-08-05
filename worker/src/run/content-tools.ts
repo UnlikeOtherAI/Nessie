@@ -7,7 +7,7 @@ import {
   runWebSearch,
   type WebSearchOptions,
 } from './builtin-handlers/index.js'
-import { assertSafeUrl, UrlSafetyError } from './builtin-handlers/url-safety.js'
+import { assertSafeUrl, safeFetch, UrlSafetyError } from './builtin-handlers/url-safety.js'
 import { hashJsonValue, MAX_TOOL_RESULT_CHARS, truncate } from './tool-util.js'
 import type {
   BuiltinToolRuntimeContext,
@@ -156,22 +156,26 @@ export const collectWebFetchResult = async (
   truncated: boolean
   url: string
 }> => {
+  // The model chooses this URL, so it is the most directly attacker-steerable
+  // egress in the product. safeFetch resolves once, pins the socket to the
+  // vetted address (no rebinding window), and re-validates every redirect hop
+  // rather than refusing redirects outright.
+  let response: Response
   let safeUrl: URL
   try {
     safeUrl = await assertSafeUrl(rawUrl)
+    response = await safeFetch(safeUrl, {
+      headers: {
+        'user-agent': 'NessieWorker/0.0.0',
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
   } catch (error) {
     if (error instanceof UrlSafetyError) {
       throw new HttpFetchError(error.message)
     }
     throw error
   }
-  const response = await fetch(safeUrl, {
-    headers: {
-      'user-agent': 'NessieWorker/0.0.0',
-    },
-    redirect: 'error',
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
   const contentType = response.headers.get('content-type') ?? 'text/plain'
   const { text: body, truncated: bodyTruncated } = await readResponseText(
     response,

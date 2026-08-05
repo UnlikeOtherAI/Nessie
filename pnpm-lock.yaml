@@ -452,6 +452,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@3.25.76)
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       zod:
         specifier: ^3.25.76
@@ -552,6 +555,9 @@ importers:
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@20.19.39)
+      undici:
+        specifier: ^6.26.0
+        version: 6.26.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76

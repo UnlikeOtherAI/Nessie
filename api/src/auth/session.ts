@@ -16,6 +16,10 @@ export type SessionTokenClaims = {
   sid: string
   sub: string
   team: string
+  // `User.tokenVersion` at issue time. A mismatch on verify means this token was
+  // revoked (logout, forced sign-out), so it is rejected before its TTL expires.
+  // Distinct from `uoaIdentity.uoaTokenVersion`, which is UOA's own epoch.
+  tv?: number
   uoaIdentity?: UoaSessionIdentity
 }
 
@@ -58,6 +62,19 @@ export const issueSessionToken = (
     sessionId: claims.sid,
   }
 }
+
+/**
+ * True when this token predates the user's current revocation generation.
+ *
+ * A logout (or forced sign-out) bumps `User.tokenVersion`; every access token
+ * minted at an older generation must stop working immediately rather than
+ * lingering for the rest of its TTL. Tokens issued before the claim existed
+ * carry no `tv` and read as generation 0, which matches the column default.
+ */
+export const isSessionTokenRevoked = (
+  claims: Pick<SessionTokenClaims, 'tv'>,
+  currentTokenVersion: number,
+): boolean => (claims.tv ?? 0) !== currentTokenVersion
 
 export const verifySessionToken = (
   token: string,

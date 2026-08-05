@@ -357,16 +357,18 @@ export const consumeRefreshToken = async (
 }
 
 // Logout: revoke the family of the presented token. Missing/unknown tokens are
-// a no-op so logout is always idempotent.
+// a no-op so logout is always idempotent. Returns the owning user id when a
+// family was actually revoked, so the caller can also bump that user's
+// tokenVersion and kill their outstanding access token.
 export const revokeRefreshTokenByRaw = async (
   prisma: PrismaClient,
   rawToken: string,
-): Promise<void> => {
+): Promise<{ userId: string } | null> => {
   const record = await prisma.refreshToken.findUnique({
     where: { tokenHash: hashRefreshToken(rawToken) },
-    select: { familyId: true },
+    select: { familyId: true, userId: true },
   })
-  if (record) {
-    await revokeFamily(prisma, record.familyId)
-  }
+  if (!record) return null
+  await revokeFamily(prisma, record.familyId)
+  return { userId: record.userId }
 }
