@@ -15,7 +15,7 @@ import {
 import { getCookie, setCookie } from '../../../lib/storage'
 import type { UploadProgress } from '../../../lib/upload-xhr'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
-import { DropZoneOverlay } from './DropZoneOverlay'
+import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
 import { isMarkdownFilename } from './file-icons'
 import { FileNodeViewer } from './FileNodeViewer'
 import { FileVersionUploadDialog } from './FileVersionUploadDialog'
@@ -33,7 +33,7 @@ import {
 import { PageEditor } from './PageEditor'
 import { PagePreview } from './PagePreview'
 import { SpaceSettingsDialog } from './SpaceSettingsDialog'
-import { useFileDrop } from './useFileDrop'
+import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import { VersionHistory } from './VersionHistory'
 
 const VIEW_MODE_COOKIE = 'knowledgeViewMode'
@@ -179,8 +179,8 @@ export const KnowledgeWorkspace = () => {
     )
   }
 
-  const fileNodeDrop = useFileDrop(uploadFileNode, !selectedSpaceId)
-  const attachmentDrop = useFileDrop(uploadPageAttachment, !current)
+  const fileNodeDrop = useFileDrop(firstFileOnly(uploadFileNode), !selectedSpaceId)
+  const attachmentDrop = useFileDrop(firstFileOnly(uploadPageAttachment), !current)
 
   const updateViewMode = (nextMode: KnowledgeViewMode) => {
     setViewMode(nextMode)

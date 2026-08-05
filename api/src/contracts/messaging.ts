@@ -2,6 +2,7 @@ import {
   AgentIdSchema,
   ChannelIdSchema,
   CHAT_MESSAGE_MAX_CHARS,
+  MESSAGE_ATTACHMENT_LIMIT,
   MessageRoleSchema,
   OrganizationIdSchema,
   RunIdSchema,
@@ -158,18 +159,26 @@ export const ThreadThinkingSchema = z.object({
 })
 export type ThreadThinking = z.infer<typeof ThreadThinkingSchema>
 
-export const CreateThreadMessageBodySchema = z.object({
-  content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
-  // Attachments are uploaded first via POST /api/uploads; the returned ids are
-  // linked to the message after it is created.
-  attachmentIds: z.array(z.string().uuid()).optional(),
-  // Reply threads (#233): when set, the message is a reply under this root
-  // (validated to live in the same container thread and to be a root itself).
-  rootMessageId: z.string().uuid().optional(),
-  // Slack-parity "Also send to #channel": posts an additional top-level copy
-  // referencing the reply thread.
-  alsoSendToChannel: z.boolean().optional(),
-})
+export const CreateThreadMessageBodySchema = z
+  .object({
+    // Optional: an attachment-only post (drag-drop / paperclip with no text) is
+    // a valid message. The refine below keeps "neither text nor files" out.
+    content: z.string().max(CHAT_MESSAGE_MAX_CHARS).optional(),
+    // Attachments are uploaded first via POST /api/uploads; the returned ids are
+    // linked to the message after it is created (uploader-scoped, see the route).
+    attachmentIds: z.array(z.string().uuid()).max(MESSAGE_ATTACHMENT_LIMIT).optional(),
+    // Reply threads (#233): when set, the message is a reply under this root
+    // (validated to live in the same container thread and to be a root itself).
+    rootMessageId: z.string().uuid().optional(),
+    // Slack-parity "Also send to #channel": posts an additional top-level copy
+    // referencing the reply thread.
+    alsoSendToChannel: z.boolean().optional(),
+  })
+  .refine(
+    (body) =>
+      (body.content?.trim().length ?? 0) > 0 || (body.attachmentIds?.length ?? 0) > 0,
+    { message: 'A message needs content or at least one attachment' },
+  )
 
 // ─── sp-messaging slice: edit, delete, search ──────────────────────────────
 export const UpdateThreadMessageBodySchema = z.object({

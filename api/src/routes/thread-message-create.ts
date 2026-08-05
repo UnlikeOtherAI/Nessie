@@ -80,8 +80,12 @@ export const registerCreateThreadMessageRoute = (
       return reply
     }
 
+    // Attachment-only posts carry no text; the stored message content is the
+    // empty string and the attachments are the payload.
+    const content = body.content ?? ''
+
     const result = await createThreadMessage(prisma, {
-      content: body.content,
+      content,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
       rootMessageId: body.rootMessageId,
@@ -102,12 +106,15 @@ export const registerCreateThreadMessageRoute = (
       return reply
     }
 
-    // Link pre-uploaded attachments within the actor's organization.
+    // Link pre-uploaded attachments. Scoped to the sender's own still-unlinked
+    // uploads so one member cannot attach another member's pending upload to
+    // their message by guessing its id.
     if (body.attachmentIds && body.attachmentIds.length > 0) {
       await prisma.attachment.updateMany({
         where: {
           id: { in: body.attachmentIds },
           organizationId: actorContext.tenant.organizationId,
+          uploaderId: actorContext.actor.actorId,
           messageId: null,
         },
         data: { messageId: result.message.id },
@@ -296,7 +303,7 @@ export const registerCreateThreadMessageRoute = (
             actorContext: orchestrationActorContext,
             channelAgents: result.channelAgents,
             channelId: parseChannelId(thread.channel.id),
-            content: body.content,
+            content,
             messageId: result.message.id,
             role: result.message.role,
             threadId: parseThreadId(thread.id),

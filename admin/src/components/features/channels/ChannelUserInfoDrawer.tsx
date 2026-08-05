@@ -122,6 +122,8 @@ export const ChannelUserInfoDrawer = ({
     setOversizePaste,
     mentionRef,
     isSendPending,
+    attachments,
+    insertEmoji,
     sendText,
     sendMessageSubmit,
     sendAsFile,
@@ -260,6 +262,7 @@ export const ChannelUserInfoDrawer = ({
 
         {dmChannel ? (
           <ChannelComposer
+            attachments={attachments}
             isSendPending={isSendPending}
             mentionEntities={emptyMentions}
             mentionRef={mentionRef}
@@ -267,6 +270,7 @@ export const ChannelUserInfoDrawer = ({
             placeholder={`Message ${user.displayName}`}
             onChangeMessage={setMessage}
             onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+            onInsertEmoji={insertEmoji}
             onInsertHashSign={() => mentionRef.current?.insertHashSign()}
             onOversizePaste={(paste) => setOversizePaste(paste)}
             onSubmitForm={(event) => void sendMessageSubmit(event)}

@@ -10,9 +10,9 @@ import {
   usePageAttachments,
   useUploadPageAttachment,
 } from '../../../facades/knowledge/file-hooks'
-import { DropZoneOverlay } from './DropZoneOverlay'
+import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
 import { iconForMime } from './file-icons'
-import { useFileDrop } from './useFileDrop'
+import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 
 // Right-hand attachments drawer. On desktop it docks as a right rail; on mobile
 // (`open` over a full-screen sheet) it covers the page. Drag-and-drop, a button,
@@ -40,7 +40,7 @@ export const AttachmentsDrawer = ({
       { onSettled: () => setProgress(null) },
     )
   }
-  const { isDragging, dropHandlers } = useFileDrop(handleFile, upload.isPending)
+  const { isDragging, dropHandlers } = useFileDrop(firstFileOnly(handleFile), upload.isPending)
 
   const attachments = attachmentsQuery.data ?? []
 

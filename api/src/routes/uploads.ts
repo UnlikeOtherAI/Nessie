@@ -2,6 +2,7 @@ import type { Readable } from 'node:stream'
 
 import type { Attachment } from '@prisma/client'
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import { MESSAGE_UPLOAD_MAX_BYTES } from '@nessie/schemas'
 import {
   attributionFromActorContext,
   FileTooLargeError,
@@ -16,7 +17,8 @@ import type { RouteDeps } from './types.js'
 
 // Chat/avatar uploads keep a 25 MB ceiling even though the global multipart
 // limit is the (much larger) configured max — large files belong in the KB.
-const MESSAGE_UPLOAD_BYTES = 25 * 1024 * 1024
+// Shared with the admin composer's pre-flight check via @nessie/schemas.
+const MESSAGE_UPLOAD_BYTES = MESSAGE_UPLOAD_MAX_BYTES
 
 const INLINE_DISPOSITION_MIMES = new Set(['application/pdf'])
 
@@ -44,6 +46,13 @@ export const streamAttachmentDownload = (
   )
   return reply.send(stream)
 }
+
+// A row this service does not model still points at the attachment; deleting
+// the bytes would orphan it, so the caller gets a 409 instead.
+const isForeignKeyViolation = (error: unknown): boolean =>
+  typeof error === 'object'
+  && error !== null
+  && (error as { code?: unknown }).code === 'P2003'
 
 // Map FileService errors to HTTP. Returns true when it handled the error.
 export const sendFileServiceError = (reply: FastifyReply, error: unknown): boolean => {
@@ -180,5 +189,59 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       operation: 'download',
     }).catch(() => undefined)
     return streamAttachmentDownload(reply, opened)
+  })
+
+  // Discard a staged-then-removed composer upload. Deliberately narrow: only
+  // the uploader's own attachment, and only while nothing references it yet.
+  // Anything already attached to a message, KB page, logo, avatar, or feedback
+  // item is not deletable here (its owning surface deletes it).
+  app.delete('/api/attachments/:id', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { id } = request.params as { id: string }
+    const organizationId = actorContext.tenant.organizationId
+    const deletable = await prisma.attachment.findFirst({
+      where: {
+        id,
+        organizationId,
+        uploaderId: actorContext.actor.actorId,
+        messageId: null,
+        knowledgePageId: null,
+        logoForOrganizations: { none: {} },
+        avatarForUsers: { none: {} },
+        avatarForAgents: { none: {} },
+        feedbackItems: { none: {} },
+      },
+      select: { id: true },
+    })
+    if (!deletable) {
+      sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
+      return reply
+    }
+
+    try {
+      // The FileService is the chokepoint: it removes the row, the object, and
+      // writes the -bytes StorageUsageEvent in one place.
+      const deleted = await fileService.delete(
+        id,
+        organizationId,
+        attributionFromActorContext(actorContext),
+      )
+      if (!deleted) {
+        sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
+        return reply
+      }
+    } catch (error) {
+      if (isForeignKeyViolation(error)) {
+        sendApiError(reply, 409, 'ATTACHMENT_IN_USE', 'Attachment is still referenced')
+        return reply
+      }
+      throw error
+    }
+
+    return reply.code(204).send()
   })
 }

@@ -10,6 +10,7 @@ import {
 import { useBindAgent } from '../../../facades/agents/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { OptimisticMessage } from './channel-helpers'
+import { useComposerAttachments, type ComposerAttachments } from './useComposerAttachments'
 
 interface UseChannelComposerParams {
   activeChannel: ChannelRecord | null
@@ -28,6 +29,9 @@ interface UseChannelComposerResult {
   setOversizePaste: React.Dispatch<React.SetStateAction<string | null>>
   mentionRef: React.RefObject<MentionInputHandle | null>
   isSendPending: boolean
+  // Files staged for the next send (paperclip + drag-and-drop).
+  attachments: ComposerAttachments
+  insertEmoji: (emoji: string) => void
   sendText: (rawText: string) => Promise<void>
   sendMessageSubmit: (event?: FormEvent<HTMLFormElement>) => Promise<void>
   sendAsFile: (rawText: string) => Promise<void>
@@ -46,6 +50,7 @@ export const useChannelComposer = ({
 }: UseChannelComposerParams): UseChannelComposerResult => {
   const sendMessage = useSendMessage(activeChannel?.defaultThreadId)
   const uploadAttachment = useUploadAttachment()
+  const attachments = useComposerAttachments()
   const bindAgent = useBindAgent()
   const [message, setMessage] = useState('')
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
@@ -82,7 +87,9 @@ export const useChannelComposer = ({
   const sendText = useCallback(
     async (rawText: string) => {
       const text = rawText.trim()
-      if (!activeChannel || !text) {
+      const attachmentIds = attachments.attachmentIds
+      // A post needs text or at least one uploaded file (attachment-only send).
+      if (!activeChannel || (!text && attachmentIds.length === 0)) {
         return
       }
 
@@ -98,21 +105,29 @@ export const useChannelComposer = ({
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random()}`
-      const optimistic: OptimisticMessage = {
-        clientId,
-        content: text,
-        createdAt: new Date().toISOString(),
-        status: 'sending',
+      // An attachment-only post has no text to echo, so it skips the optimistic
+      // bubble and appears on the refetch the send triggers.
+      if (text) {
+        const optimistic: OptimisticMessage = {
+          clientId,
+          content: text,
+          createdAt: new Date().toISOString(),
+          status: 'sending',
+        }
+        setOptimisticMessages((current) => [...current, optimistic])
       }
-      setOptimisticMessages((current) => [...current, optimistic])
       setMessage('')
       mentionRef.current?.clear()
 
       try {
         const result = await sendMessage.mutateAsync({
           content: text,
+          ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
           ...getSendExtras?.(),
         })
+        // Staged files are dropped only once they are safely linked, so a
+        // failed send keeps them for a retry.
+        attachments.clearStaged()
         // Surface @mentioned agents that aren't members of this channel so the
         // user can invite them; they were not dispatched.
         if (result.pendingAgentInvites.length > 0) {
@@ -129,8 +144,13 @@ export const useChannelComposer = ({
         )
       }
     },
-    [activeChannel, sendMessage, getSendExtras],
+    [activeChannel, attachments, sendMessage, getSendExtras],
   )
+
+  const insertEmoji = useCallback((emoji: string) => {
+    mentionRef.current?.insertText(emoji)
+    mentionRef.current?.focus()
+  }, [])
 
   const clearInviteError = (agentId: string) =>
     setInviteErrors((current) => {
@@ -194,10 +214,13 @@ export const useChannelComposer = ({
       await sendMessage.mutateAsync({
         attachmentIds: [attachment.id],
         content: `Shared file: ${attachment.filename}`,
+        // Same routing as a typed reply — without this the escape hatch posted
+        // to the channel instead of into the open reply thread.
+        ...getSendExtras?.(),
       })
       setOversizePaste(null)
     },
-    [activeChannel, uploadAttachment, sendMessage],
+    [activeChannel, uploadAttachment, sendMessage, getSendExtras],
   )
 
   return {
@@ -208,6 +231,8 @@ export const useChannelComposer = ({
     setOversizePaste,
     mentionRef,
     isSendPending: sendMessage.isPending,
+    attachments,
+    insertEmoji,
     sendText,
     sendMessageSubmit,
     sendAsFile,

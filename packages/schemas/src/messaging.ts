@@ -8,5 +8,20 @@ import { z } from 'zod'
  */
 export const CHAT_MESSAGE_MAX_CHARS = 4000
 
+/**
+ * How many attachments a single chat message may carry. The composer stages
+ * uploads client-side and the message-create body caps the linked ids, so the
+ * same number bounds both sides.
+ */
+export const MESSAGE_ATTACHMENT_LIMIT = 10
+
+/**
+ * Per-file ceiling for chat/avatar uploads (`POST /api/uploads`). Larger files
+ * belong in the knowledge base, which uses the (much larger) configured
+ * `NESSIE_MAX_UPLOAD_BYTES`. The composer pre-checks against this value; the
+ * server's 413 stays the source of truth.
+ */
+export const MESSAGE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024
+
 export const MessageRoleSchema = z.enum(['user', 'assistant', 'system'])
 export type MessageRole = z.infer<typeof MessageRoleSchema>
