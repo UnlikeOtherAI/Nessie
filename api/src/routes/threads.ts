@@ -16,7 +16,7 @@ import { canManageChannel } from '../services/channels.js'
 import {
   findThreadForUser,
   listThreadMessages,
-  mapMessageRecord,
+  mapMessageRecordWithAttachments,
   markThreadRead,
   softDeleteMessage,
   updateMessage,
@@ -249,7 +249,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const record = mapMessageRecord(result.message)
+    const record = await mapMessageRecordWithAttachments(prisma, result.message)
     await realtimeHub.publishWs(
       buildChannelRealtimeScopes({
         channelId: thread.channel.id,
@@ -319,7 +319,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const record = mapMessageRecord(result.message)
+    const record = await mapMessageRecordWithAttachments(prisma, result.message)
     await realtimeHub.publishWs(
       buildChannelRealtimeScopes({
         channelId: thread.channel.id,

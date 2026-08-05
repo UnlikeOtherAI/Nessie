@@ -31,7 +31,43 @@ export type MessageWithReactions = Prisma.MessageGetPayload<{
   include: typeof messageInclude
 }>
 
-const mapThreadMessageRecord = (message: MessageWithReactions): ThreadMessageRecord => ({
+/**
+ * How many attachments each of these messages carries.
+ *
+ * One grouped query per page — the feed previously mounted an attachment fetch
+ * per rendered row, so a 200-message channel issued 200 requests to learn that
+ * 199 of them had nothing. `Attachment.messageId` is deliberately a bare
+ * indexed column with no FK relation (adding one would change delete
+ * semantics), so this groups by that column rather than using an include.
+ */
+export const loadAttachmentCounts = async (
+  prisma: PrismaClient,
+  messageIds: string[],
+): Promise<Map<string, number>> => {
+  if (messageIds.length === 0) {
+    return new Map()
+  }
+  const rows = await prisma.attachment.groupBy({
+    by: ['messageId'],
+    where: { messageId: { in: messageIds } },
+    _count: { _all: true },
+  })
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    if (row.messageId) {
+      counts.set(row.messageId, row._count._all)
+    }
+  }
+  return counts
+}
+
+const mapThreadMessageRecord = (
+  message: MessageWithReactions,
+  // Omitted when the caller genuinely cannot know: the client then falls back
+  // to fetching the attachment list, so a real attachment is never hidden.
+  attachmentCount?: number,
+): ThreadMessageRecord => ({
+  attachmentCount,
   id: message.id,
   threadId: parseThreadId(message.threadId),
   agentId: message.agentId ? parseAgentId(message.agentId) : undefined,
@@ -201,9 +237,13 @@ export const listThreadMessages = async (
   const hasMore = rows.length > limit
   const page = hasMore ? rows.slice(0, limit) : rows
   const oldest = page.at(-1)
+  const attachmentCounts = await loadAttachmentCounts(prisma, page.map((row) => row.id))
 
   return {
-    data: page.slice().reverse().map(mapThreadMessageRecord),
+    data: page
+      .slice()
+      .reverse()
+      .map((row) => mapThreadMessageRecord(row, attachmentCounts.get(row.id) ?? 0)),
     meta: {
       cursor: hasMore && oldest ? `${oldest.createdAt.toISOString()}|${oldest.id}` : null,
       hasMore,
@@ -309,8 +349,19 @@ export const softDeleteMessage = async (
   return { kind: 'deleted', message }
 }
 
-export const mapMessageRecord = (message: MessageWithReactions): ThreadMessageRecord =>
-  mapThreadMessageRecord(message)
+export const mapMessageRecord = (
+  message: MessageWithReactions,
+  attachmentCount?: number,
+): ThreadMessageRecord => mapThreadMessageRecord(message, attachmentCount)
+
+/** `mapMessageRecord` for a single row whose attachment count is not yet known. */
+export const mapMessageRecordWithAttachments = async (
+  prisma: PrismaClient,
+  message: MessageWithReactions,
+): Promise<ThreadMessageRecord> => {
+  const counts = await loadAttachmentCounts(prisma, [message.id])
+  return mapThreadMessageRecord(message, counts.get(message.id) ?? 0)
+}
 
 type MessageSearchRow = {
   id: string

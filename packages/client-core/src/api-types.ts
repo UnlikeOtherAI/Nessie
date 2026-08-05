@@ -237,6 +237,10 @@ export type MessageAuthor = {
 
 export type ThreadMessageRecord = {
   agentId?: string | null
+  // How many files this message carries, so the feed only fetches the
+  // attachment list for messages that actually have one. Absent when the
+  // producer could not determine it — fetch, rather than hide an attachment.
+  attachmentCount?: number
   author?: MessageAuthor | null
   content: string
   createdAt: string

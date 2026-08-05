@@ -395,14 +395,12 @@ export const registerKnowledgeBaseFileRoutes = (
     }
     const opened = await fileService.openStream(version.attachmentId, actorContext.tenant.organizationId)
     if (!opened) return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'File bytes not found')
-    void recordStorageTransferUsage(prisma, {
+    return streamAttachmentDownload(request, reply, opened, {
       attribution: attributionFromActorContext(actorContext),
-      bytes: Number(opened.attachment.sizeBytes),
-      latencyMs: Date.now() - startedAt,
-      metadata: { attachmentId: opened.attachment.id, source: 'api.kb.fileVersion' },
-      operation: 'download',
-    }).catch(() => undefined)
-    return streamAttachmentDownload(reply, opened)
+      prisma,
+      source: 'api.kb.fileVersion',
+      startedAt,
+    })
   })
 
   // ─── List the contents of a zip file node (no extraction to disk) ─────────
@@ -558,14 +556,12 @@ export const registerKnowledgeBaseFileRoutes = (
     if (!(await accessPageSpace(actorContext, page, viewer, 'read', reply))) return reply
     const opened = await fileService.openStream(attachmentId, actorContext.tenant.organizationId)
     if (!opened) return sendApiError(reply, 404, 'ATTACHMENT_BYTES_MISSING', 'Attachment bytes not found')
-    void recordStorageTransferUsage(prisma, {
+    return streamAttachmentDownload(request, reply, opened, {
       attribution: attributionFromActorContext(actorContext),
-      bytes: Number(opened.attachment.sizeBytes),
-      latencyMs: Date.now() - startedAt,
-      metadata: { attachmentId, source: 'api.kb.attachment' },
-      operation: 'download',
-    }).catch(() => undefined)
-    return streamAttachmentDownload(reply, opened)
+      prisma,
+      source: 'api.kb.attachment',
+      startedAt,
+    })
   })
 
   // ─── Delete a page attachment ─────────────────────────────────────────────

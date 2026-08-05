@@ -11,6 +11,7 @@ import { ChannelMessageRow, StatusBadge } from './ChannelMessageRow'
 import { MessageMarkdown } from './MessageMarkdown'
 import type { ResolveReactorName } from './ReactionPills'
 import { ThinkingBubble } from './ThinkingBubble'
+import { useAttachmentViewer } from '../../shared/AttachmentViewer'
 import { useThoughtProcessDialog } from './ThoughtProcessDialog'
 import {
   type FeedItem,
@@ -134,6 +135,10 @@ export const ChannelMessageFeed = ({
     },
     [agentById, assistantFallbackName, isDedicatedAgentConversation],
   )
+  // Full-size attachment viewer, owned here so it works identically from the
+  // channel feed, the reply panel, and the info drawers — same seam as the
+  // thought-process dialog below.
+  const { openAttachment, attachmentViewer } = useAttachmentViewer(token)
   const { openThoughtProcess, thoughtProcessDialog } = useThoughtProcessDialog(
     pendingMessages,
     resolveAgentIdentity,
@@ -323,6 +328,7 @@ export const ChannelMessageFeed = ({
               onCancelEdit={onCancelEdit}
               onChangeEditingContent={onChangeEditingContent}
               onConfirmDelete={onConfirmDelete}
+              onOpenAttachment={openAttachment}
               onOpenThread={onOpenThread}
               onSelectAgent={onSelectAgent}
               onSelectUser={onSelectUser}
@@ -444,6 +450,7 @@ export const ChannelMessageFeed = ({
           </Fragment>
         )
       })}
+      {attachmentViewer}
       {thoughtProcessDialog}
       <div className="h-3" />
     </>

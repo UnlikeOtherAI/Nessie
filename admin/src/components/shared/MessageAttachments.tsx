@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { ApiResponse } from '@nessie/schemas'
 import { getBaseUrl } from '../../lib/api-client'
-import { attachmentUrl, useAuthedObjectUrl, type AttachmentRecord } from '../../lib/uploads'
+import {
+  attachmentPath,
+  attachmentThumbnailPath,
+  attachmentUrl,
+  useAuthedObjectUrlFromPath,
+  type AttachmentRecord,
+} from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { canViewAttachment } from './AttachmentViewer'
 
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`
@@ -10,18 +17,49 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const ImageAttachment = ({
+// Short label for a previewable non-image (today: PDF), so a rendered first
+// page still reads as a document rather than as a picture of one.
+const typeBadge = (attachment: AttachmentRecord): string | null =>
+  attachment.mime === 'application/pdf' ? 'PDF' : null
+
+/**
+ * Inline preview of one attachment.
+ *
+ * The feed loads the THUMBNAIL, never the original — that is the whole point:
+ * a 4 MB photo used to transfer 4 MB to paint a 320px box. The original is
+ * fetched only when the reader opens the full-size viewer. Attachments stored
+ * before thumbnails existed have none (there is no backfill), so an image
+ * without one falls back to the original and everything else to a chip.
+ */
+const AttachmentPreview = ({
   attachment,
+  onOpen,
   token,
 }: {
   attachment: AttachmentRecord
+  onOpen?: (attachment: AttachmentRecord) => void
   token: string | null
 }) => {
-  const url = useAuthedObjectUrl(attachment.id, token)
+  const isImage = attachment.kind === 'image'
+  const path = attachment.hasThumbnail
+    ? attachmentThumbnailPath(attachment.id)
+    : isImage
+      ? attachmentPath(attachment.id)
+      : null
+  const url = useAuthedObjectUrlFromPath(path, token)
+  const badge = typeBadge(attachment)
+
   if (!url) {
     return <DownloadChip attachment={attachment} token={token} />
   }
-  return (
+
+  // Prefer the thumbnail's own geometry so the box is reserved at the size that
+  // will actually be painted; fall back to the original's when there is none.
+  const width = attachment.hasThumbnail ? attachment.thumbnailWidth : attachment.width
+  const height = attachment.hasThumbnail ? attachment.thumbnailHeight : attachment.height
+  const openable = Boolean(onOpen) && canViewAttachment(attachment)
+
+  const image = (
     <img
       alt={attachment.filename}
       // h-auto/w-auto keep the intrinsic ratio: the column is a flex container,
@@ -31,12 +69,51 @@ const ImageAttachment = ({
         'h-auto w-auto max-h-80 max-w-full self-start object-contain',
         'rounded-md border border-[color:var(--sep)]',
       ].join(' ')}
-      // Intrinsic size (when the store recorded it) reserves the right box
-      // before the bytes load, so the feed does not jump.
-      height={attachment.height}
+      decoding="async"
+      // Intrinsic size reserves the right box before the bytes load, so the
+      // feed does not jump.
+      height={height}
+      // Below-the-fold previews are not fetched until they approach the
+      // viewport — a long channel no longer pays for its whole history.
+      loading="lazy"
       src={url}
-      width={attachment.width}
+      width={width}
     />
+  )
+
+  const framed = badge ? (
+    <span className="relative inline-flex self-start">
+      {image}
+      <span
+        className={[
+          'pointer-events-none absolute left-2 top-2 rounded px-1.5 py-0.5',
+          'bg-[var(--scrim-strong)] text-[10px] font-semibold tracking-wide',
+          'text-[color:var(--tx)]',
+        ].join(' ')}
+      >
+        {badge}
+      </span>
+    </span>
+  ) : (
+    image
+  )
+
+  if (!openable) {
+    return framed
+  }
+  return (
+    <button
+      aria-label={`View ${attachment.filename}`}
+      className={[
+        'inline-flex w-fit cursor-zoom-in self-start rounded-md',
+        'transition-opacity hover:opacity-90',
+      ].join(' ')}
+      data-testid="attachment-preview-open"
+      onClick={() => onOpen?.(attachment)}
+      type="button"
+    >
+      {framed}
+    </button>
   )
 }
 
@@ -82,7 +159,17 @@ const DownloadChip = ({
   )
 }
 
-export const MessageAttachments = ({ messageId }: { messageId: string }) => {
+// Anything with a rendered preview shows it; everything else keeps the chip.
+const hasPreview = (attachment: AttachmentRecord): boolean =>
+  attachment.hasThumbnail === true || attachment.kind === 'image'
+
+export const MessageAttachments = ({
+  messageId,
+  onOpenAttachment,
+}: {
+  messageId: string
+  onOpenAttachment?: (attachment: AttachmentRecord) => void
+}) => {
   const { token } = useAuthSession()
   const [attachments, setAttachments] = useState<AttachmentRecord[]>([])
 
@@ -110,8 +197,13 @@ export const MessageAttachments = ({ messageId }: { messageId: string }) => {
   return (
     <div className="mt-2 flex flex-col gap-2">
       {attachments.map((attachment) =>
-        attachment.kind === 'image' ? (
-          <ImageAttachment attachment={attachment} key={attachment.id} token={token} />
+        hasPreview(attachment) ? (
+          <AttachmentPreview
+            attachment={attachment}
+            key={attachment.id}
+            token={token}
+            onOpen={onOpenAttachment}
+          />
         ) : (
           <DownloadChip attachment={attachment} key={attachment.id} token={token} />
         ),

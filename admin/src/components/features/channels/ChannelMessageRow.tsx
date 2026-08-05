@@ -3,6 +3,7 @@ import type { AgentRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { MessageAttachments } from '../../shared/MessageAttachments'
+import type { AttachmentRecord } from '../../../lib/uploads'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageActions } from './ChannelMessageActions'
 import type { ResolveReactorName } from './ReactionPills'
@@ -75,6 +76,9 @@ interface ChannelMessageRowProps {
   // Opens the reply-thread panel for this message's root (#233). When absent
   // the row renders no thread affordances at all.
   onOpenThread?: (rootMessageId: string) => void
+  // Opens the full-size viewer. Owned by the feed, not by this row: a modal
+  // rendered here would inherit the row's stacking/overflow ancestors.
+  onOpenAttachment?: (attachment: AttachmentRecord) => void
   onSelectAgent?: (agent: AgentRecord) => void
   onSelectUser?: (user: MessageUserIdentity) => void
   resolveReactorName: ResolveReactorName
@@ -110,6 +114,7 @@ export const ChannelMessageRow = ({
   onAddReaction,
   onConfirmDelete,
   onOpenThread,
+  onOpenAttachment,
   onSelectAgent,
   onSelectUser,
   resolveReactorName,
@@ -317,7 +322,13 @@ export const ChannelMessageRow = ({
           {!isEditingMessage ? (
             <RunStopContinue metadata={message.metadata} />
           ) : null}
-          <MessageAttachments messageId={message.id} />
+          {/* Mount only when the message actually has files. The count comes
+              from the message contract; when it is absent (an optimistic or
+              realtime-seeded row) we still mount, so a real attachment is
+              never hidden by a missing count. */}
+          {(message.attachmentCount ?? 1) > 0 ? (
+            <MessageAttachments messageId={message.id} onOpenAttachment={onOpenAttachment} />
+          ) : null}
           {broadcastRootId && onOpenThread ? (
             <button
               className={[

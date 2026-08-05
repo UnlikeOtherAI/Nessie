@@ -61,12 +61,35 @@ const makePrisma = (budgets: BudgetRow[] = []) => {
           height: null,
           messageId: null,
           knowledgePageId: null,
+          // Prisma returns NULL for nullable columns the create omitted.
+          thumbnailKey: null,
+          thumbnailMime: null,
+          thumbnailSizeBytes: null,
+          thumbnailWidth: null,
+          thumbnailHeight: null,
+          thumbnailStatus: null,
           ...data,
         }
         attachments.set(row.id as string, row)
         return row
       },
       findUnique: async ({ where }: { where: { id: string } }) => attachments.get(where.id) ?? null,
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: Record<string, unknown>
+        data: Record<string, unknown>
+      }) => {
+        const row = attachments.get(where.id as string)
+        // Mirrors the conditional claim FileService relies on: a row that
+        // already has a thumbnailKey does not match `thumbnailKey: null`.
+        if (!row || ('thumbnailKey' in where && row.thumbnailKey !== where.thumbnailKey)) {
+          return { count: 0 }
+        }
+        Object.assign(row, data)
+        return { count: 1 }
+      },
       delete: async ({ where }: { where: { id: string } }) => {
         const row = attachments.get(where.id)
         attachments.delete(where.id)
@@ -111,6 +134,9 @@ test('store records a positive usage delta and delete records a negative one', a
 
   assert.equal(bytesWritten, 11)
   assert.equal(attachment.sizeBytes, 11n)
+  // One object: a spreadsheet has no preview. The image case — where a second
+  // object exists and must also be freed — is covered below and in
+  // file-service-strip-metadata.test.ts.
   assert.equal(storage.blobs.size, 1)
   assert.equal((await files.usageForScope({ organizationId: ORG })).toString(), '11')
 
@@ -118,6 +144,87 @@ test('store records a positive usage delta and delete records a negative one', a
   assert.equal(deleted, true)
   assert.equal(storage.blobs.size, 0)
   assert.equal((await files.usageForScope({ organizationId: ORG })).toString(), '0')
+})
+
+test('a thumbnail attached after the fact is stored, metered, and freed with the file', async () => {
+  const prisma = makePrisma()
+  const storage = makeStorage()
+  const files = createFileService({ prisma, storage, maxUploadBytes: 1_000_000 })
+
+  const { attachment } = await files.store({
+    attribution,
+    organizationId: ORG,
+    uploaderId: 'user-1',
+    filename: 'report.pdf',
+    mime: 'application/pdf',
+    body: Readable.from(Buffer.from('%PDF-1.4 pretend document')),
+  })
+  assert.equal(storage.blobs.size, 1)
+
+  // What the `attachment.thumbnail` worker job reports back.
+  const preview = { data: Buffer.alloc(40, 7), width: 320, height: 200, mime: 'image/webp' }
+  assert.equal(
+    await files.setThumbnail({
+      attachmentId: attachment.id,
+      attribution,
+      organizationId: ORG,
+      thumbnail: preview,
+    }),
+    true,
+  )
+
+  assert.equal(storage.blobs.size, 2)
+  assert.equal((await files.usageForScope({ organizationId: ORG })).toString(), '65')
+  const opened = await files.openThumbnailStream(attachment.id, ORG)
+  assert.ok(opened)
+  assert.equal(opened.attachment.mime, 'image/webp')
+  assert.equal(opened.attachment.sizeBytes, 40n)
+
+  // A re-run must not write a second object or double-count its bytes.
+  assert.equal(
+    await files.setThumbnail({
+      attachmentId: attachment.id,
+      attribution,
+      organizationId: ORG,
+      thumbnail: preview,
+    }),
+    true,
+  )
+  assert.equal(storage.blobs.size, 2)
+  assert.equal((await files.usageForScope({ organizationId: ORG })).toString(), '65')
+
+  // Deleting the attachment must free BOTH objects — a leaked thumbnail is
+  // storage nothing accounts for and nothing can ever reach.
+  assert.equal(await files.delete(attachment.id, ORG, attribution), true)
+  assert.equal(storage.blobs.size, 0)
+  assert.equal((await files.usageForScope({ organizationId: ORG })).toString(), '0')
+})
+
+test('a file with no possible preview is recorded as unavailable, not retried forever', async () => {
+  const prisma = makePrisma()
+  const storage = makeStorage()
+  const files = createFileService({ prisma, storage, maxUploadBytes: 1_000_000 })
+
+  const { attachment } = await files.store({
+    attribution,
+    organizationId: ORG,
+    uploaderId: 'user-1',
+    filename: 'archive.zip',
+    mime: 'application/zip',
+    body: Readable.from(Buffer.from('PK...')),
+  })
+  assert.equal(
+    await files.setThumbnail({
+      attachmentId: attachment.id,
+      attribution,
+      organizationId: ORG,
+      thumbnail: null,
+    }),
+    true,
+  )
+  assert.equal(storage.blobs.size, 1)
+  assert.equal(await files.openThumbnailStream(attachment.id, ORG), null)
+  assert.equal((await files.usageForScope({ organizationId: ORG })).toString(), '5')
 })
 
 test('uploads over the org storage quota are rejected and leave no residue', async () => {
