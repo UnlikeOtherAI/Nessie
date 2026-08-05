@@ -35,14 +35,27 @@ const toProjectRecord = (project: ProjectWithCounts) => ({
 })
 
 export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
+  const {
+    prisma,
+    requireActorContext,
+    requireOwner,
+    resolveMembershipRole,
+    MEMBERSHIP_ROLES,
+    isProjectAccessibleToActor,
+    listAccessibleProjectIds,
+  } = deps
 
   app.get('/api/projects', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
+    // Non-owners only see the projects they are a member of.
+    const accessible = await listAccessibleProjectIds(actorContext)
     const projects = await prisma.project.findMany({
-      where: { organizationId: actorContext.tenant.organizationId },
+      where: {
+        organizationId: actorContext.tenant.organizationId,
+        ...(accessible === 'all' ? {} : { id: { in: accessible } }),
+      },
       include: projectCountsInclude,
       orderBy: { createdAt: 'asc' },
     })
@@ -57,6 +70,10 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     if (!actorContext) return reply
 
     const { projectId } = request.params as { projectId: string }
+    if (!(await isProjectAccessibleToActor(actorContext, projectId))) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
     const project = await prisma.project.findFirst({
       where: { id: projectId, organizationId: actorContext.tenant.organizationId },
       include: projectCountsInclude,
@@ -74,6 +91,10 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     if (!actorContext) return reply
 
     const { projectId } = request.params as { projectId: string }
+    if (!(await isProjectAccessibleToActor(actorContext, projectId))) {
+      sendApiError(reply, 404, 'PROJECT_NOT_FOUND', 'Project not found')
+      return reply
+    }
     const project = await prisma.project.findFirst({
       where: { id: projectId, organizationId: actorContext.tenant.organizationId },
       include: {

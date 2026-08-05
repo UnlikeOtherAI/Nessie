@@ -473,11 +473,49 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     return authorizedScopes
   }
 
+  // Project read access: an org owner sees every project in their org;
+  // everyone else only projects they are an explicit ProjectMember of. This is
+  // what keeps one team's tickets, board and iterations off another team's
+  // screen — org scope alone made them readable by every member.
+  const isProjectAccessibleToActor = async (
+    actorContext: AuthorizedActionContext,
+    projectId: string,
+  ): Promise<boolean> => {
+    const project = await prisma.project.count({
+      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+    })
+    if (project === 0) return false
+    if (actorContext.actor.roles?.includes('owner')) return true
+    return (
+      (await prisma.projectMember.count({
+        where: { projectId, userId: actorContext.actor.actorId },
+      })) > 0
+    )
+  }
+
+  // `'all'` for owners (no project filter at all), otherwise the id list of the
+  // projects the actor belongs to.
+  const listAccessibleProjectIds = async (
+    actorContext: AuthorizedActionContext,
+  ): Promise<string[] | 'all'> => {
+    if (actorContext.actor.roles?.includes('owner')) return 'all'
+    const memberships = await prisma.projectMember.findMany({
+      where: {
+        userId: actorContext.actor.actorId,
+        project: { organizationId: actorContext.tenant.organizationId },
+      },
+      select: { projectId: true },
+    })
+    return memberships.map((membership) => membership.projectId)
+  }
+
   return {
     isPersonalAssistantChannelType,
     buildChannelRealtimeScopes,
     loadPersonalAssistantState,
     isAgentAccessibleToActor,
+    isProjectAccessibleToActor,
+    listAccessibleProjectIds,
     getVisibleChannel,
     getChannelIfMember,
     isWorkflowInstallationAccessibleToActor,
