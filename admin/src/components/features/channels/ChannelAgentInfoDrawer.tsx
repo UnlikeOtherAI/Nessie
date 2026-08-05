@@ -110,6 +110,8 @@ export const ChannelAgentInfoDrawer = ({
     setOversizePaste,
     mentionRef,
     isSendPending,
+    attachments,
+    insertEmoji,
     sendText,
     sendAsFile,
     pendingAgentInvites,
@@ -280,6 +282,7 @@ export const ChannelAgentInfoDrawer = ({
         </div>
 
         <ChannelComposer
+          attachments={attachments}
           isSendPending={isSendPending}
           mentionEntities={mentionEntities}
           mentionRef={mentionRef}
@@ -287,6 +290,7 @@ export const ChannelAgentInfoDrawer = ({
           placeholder={`Message @${agent.name} in ${channelLabel(activeChannel)}`}
           onChangeMessage={setMessage}
           onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+          onInsertEmoji={insertEmoji}
           onInsertHashSign={() => mentionRef.current?.insertHashSign()}
           onOversizePaste={(paste) => setOversizePaste(paste)}
           onSubmitForm={(event) => void sendAddressedForm(event)}

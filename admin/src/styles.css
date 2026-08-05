@@ -878,9 +878,31 @@ a {
 }
 
 .admin-compose {
+  position: relative;
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--main-hover);
+}
+
+/* The emoji button sits at the left of the toolbar, but its popover is
+   anchored to the composer itself so it stays inside narrow hosts (the reply
+   panel at its minimum width, the full-screen thread panel below 900px)
+   instead of overflowing like the right-aligned message-reaction picker. */
+.admin-compose-emoji {
+  position: static;
+}
+
+.admin-compose-emoji-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 60;
+  width: min(20rem, 100%);
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 8px;
+  box-shadow: 0 16px 36px rgb(0 0 0 / 18%);
 }
 
 .admin-compose textarea,

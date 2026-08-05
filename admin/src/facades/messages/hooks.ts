@@ -128,3 +128,14 @@ export const useUploadAttachment = () => {
     mutationFn: (file: File): Promise<AttachmentRecord> => uploadAttachment(file, token),
   })
 }
+
+// Discard an upload that was staged in the composer and then removed before the
+// message was sent. The server accepts this only for the uploader's own
+// attachment while it is still unlinked, and frees the stored bytes.
+export const useDiscardAttachment = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: (attachmentId: string) =>
+      apiClient.delete<null>(`/api/attachments/${attachmentId}`),
+  })
+}
