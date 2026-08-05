@@ -11,7 +11,14 @@ export type StorageUsageScope = {
   uploaderId?: string | null
 }
 
-export type StorageStoreOperation = 'store' | 'delete'
+// Thumbnails get their own signed events rather than being folded into the
+// original's delta: usage is the sum of every row, so a preview's bytes stay
+// individually auditable and its +/- pair nets to zero on delete.
+export type StorageStoreOperation =
+  | 'store'
+  | 'delete'
+  | 'store.thumbnail'
+  | 'delete.thumbnail'
 
 /**
  * Record a signed at-rest byte delta. FileService is the sole writer, making

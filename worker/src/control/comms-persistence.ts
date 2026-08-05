@@ -65,7 +65,9 @@ const mapEventToCreateInput = (
   params: { connectionId: string; organizationId: string },
   version: number,
 ): Prisma.CommsEventCreateInput => ({
-  organizationId: params.organizationId,
+  // `organization` now has a real FK, so the checked create takes the relation
+  // rather than the bare scalar.
+  organization: { connect: { id: params.organizationId } },
   connection: { connect: { id: params.connectionId } },
   canonicalMessageId: event.canonicalMessageId,
   version,

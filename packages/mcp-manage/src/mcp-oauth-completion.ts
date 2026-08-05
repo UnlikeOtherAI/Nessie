@@ -8,7 +8,7 @@ import {
 import { getInstance, resolveMcpUserAccess } from './mcp-instances.js'
 import {
   assertMcpAuthUrlsSafe,
-  assertMcpUrlSafe,
+  mcpSafeFetch,
   type McpUrlSafetyOptions,
 } from './mcp-security.js'
 import { isManagedIntegrationCatalogEntry } from './managed-products.js'
@@ -58,11 +58,6 @@ export const defaultTokenExchange: TokenExchangeFn = async ({
   resource,
   resolveHost,
 }) => {
-  try {
-    await assertMcpUrlSafe(tokenUrl, { resolveHost })
-  } catch (error) {
-    mapOAuthSecurityError(error)
-  }
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -72,14 +67,33 @@ export const defaultTokenExchange: TokenExchangeFn = async ({
   if (clientSecret) body.set('client_secret', clientSecret)
   if (codeVerifier) body.set('code_verifier', codeVerifier)
   if (resource) body.set('resource', resource)
-  const response = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
-    body,
-  })
+  // The client secret rides in this body, so the socket must be pinned to the
+  // address the guard vetted and every redirect re-checked: a validated public
+  // token endpoint that 3xx'd to an internal host would otherwise leak it.
+  let response: Response
+  try {
+    response = await mcpSafeFetch(
+      tokenUrl,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+        },
+        body,
+      },
+      { resolveHost },
+    )
+  } catch (error) {
+    mapOAuthSecurityError(error)
+    throw error
+  }
+  if (response.status >= 300 && response.status < 400) {
+    throw new McpOAuthError(
+      MCP_OAUTH_ERROR_CODES.TOKEN_EXCHANGE_FAILED,
+      'Token endpoint attempted a redirect',
+    )
+  }
   if (!response.ok) {
     throw new McpOAuthError(
       MCP_OAUTH_ERROR_CODES.TOKEN_EXCHANGE_FAILED,

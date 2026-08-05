@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client'
+import { buildPrefixTsQuery } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import {
   buildVisibleChannelWhere,
@@ -12,6 +14,60 @@ import {
   MAX_SEARCH_RESULTS,
   truncate,
 } from './tool-output.js'
+
+type MessageIdRow = { id: string }
+
+/**
+ * Candidate message ids for an agent content search, matched through the
+ * message full-text index rather than a `contains` (ILIKE) predicate, which
+ * Postgres cannot serve from an index and which therefore scanned every message
+ * the agent could reach. Access scoping is unchanged: the caller supplies either
+ * an explicit accessible-channel id list or the visible-channel predicate, and
+ * both are applied inside this query.
+ */
+const searchMessageIdsByContent = async (
+  context: BuiltinToolRuntimeContext,
+  input: {
+    authorUserId?: string
+    channelIds?: string[]
+    query: string
+    take: number
+    visibleChannelWhere?: Prisma.ChannelWhereInput
+  },
+): Promise<string[]> => {
+  const prefixQuery = buildPrefixTsQuery(input.query)
+  if (!prefixQuery) return []
+
+  // The visible-channel form is a Prisma predicate, so resolve it to ids first
+  // and keep one SQL shape for both callers.
+  const channelIds = input.channelIds
+    ?? (input.visibleChannelWhere
+      ? (
+        await context.prisma.channel.findMany({
+          where: input.visibleChannelWhere,
+          select: { id: true },
+        })
+      ).map((channel) => channel.id)
+      : [])
+  if (channelIds.length === 0) return []
+
+  const rows = await context.prisma.$queryRaw<MessageIdRow[]>(Prisma.sql`
+    SELECT m."id"
+      FROM "messages" m
+      JOIN "threads" t ON t."id" = m."thread_id"
+     WHERE t."channel_id" IN (${Prisma.join(
+       channelIds.map((id) => Prisma.sql`${id}::uuid`),
+     )})
+       AND m."deleted_at" IS NULL
+       AND to_tsvector('english', m."content") @@ to_tsquery('english', ${prefixQuery})
+       ${input.authorUserId
+         ? Prisma.sql`AND m."user_id" = ${input.authorUserId}::uuid`
+         : Prisma.empty}
+     ORDER BY m."created_at" DESC
+     LIMIT ${input.take}
+  `)
+  return rows.map((row) => row.id)
+}
 
 export const runWorkspaceSearchTool = async (
   context: BuiltinToolRuntimeContext,
@@ -34,7 +90,16 @@ export const runWorkspaceSearchTool = async (
   }
 
   const channelFilter = { id: { in: channelIds } }
+  // Channel and thread *labels* are short and few, so a contains match is fine.
+  // Message *content* is the big table: match it through the FTS index
+  // (messages_content_fts_idx) instead of an un-indexable ILIKE that scans every
+  // message the agent can see.
   const textFilter = { contains: searchQuery, mode: 'insensitive' as const }
+  const messageIds = await searchMessageIdsByContent(context, {
+    channelIds,
+    query: searchQuery,
+    take,
+  })
 
   const [channels, threads, messages] = await Promise.all([
     context.prisma.channel.findMany({
@@ -88,12 +153,7 @@ export const runWorkspaceSearchTool = async (
       take,
     }),
     context.prisma.message.findMany({
-      where: {
-        content: textFilter,
-        thread: {
-          channelId: { in: channelIds },
-        },
-      },
+      where: { id: { in: messageIds } },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -213,16 +273,17 @@ export const runAuthoredMessageSearchTool = async (
     context.channel.organizationId,
     userId,
   )
-  const textFilter = { contains: searchQuery, mode: 'insensitive' as const }
+  // Same reasoning as workspace_search: FTS the candidate ids, then hydrate them
+  // through the rich select below.
+  const messageIds = await searchMessageIdsByContent(context, {
+    authorUserId: userId,
+    query: searchQuery,
+    take,
+    visibleChannelWhere,
+  })
 
   const messages = await context.prisma.message.findMany({
-    where: {
-      userId,
-      content: textFilter,
-      thread: {
-        channel: visibleChannelWhere,
-      },
-    },
+    where: { id: { in: messageIds } },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,

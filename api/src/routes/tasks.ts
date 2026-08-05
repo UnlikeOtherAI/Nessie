@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { type AuthorizedActionContext, ProjectIdSchema, TaskStatusSchema } from '@nessie/schemas'
 import {
@@ -28,7 +28,12 @@ import {
 import type { RouteDeps } from './types.js'
 
 export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireUserActor } = deps
+  const {
+    prisma,
+    requireActorContext,
+    requireUserActor,
+    listAccessibleProjectIds,
+  } = deps
 
   const resolveTaskUserFilter = (
     value: string | undefined,
@@ -38,6 +43,38 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     return value === 'me' ? actorContext.actor.actorId : value
   }
 
+  // Owners see every task in the org; everyone else is limited to their project
+  // memberships (plus projectless and owned/assigned tasks).
+  const taskVisibilityFor = async (actorContext: AuthorizedActionContext) => {
+    const accessible = await listAccessibleProjectIds(actorContext)
+    return accessible === 'all'
+      ? undefined
+      : { accessibleProjectIds: accessible, actorUserId: actorContext.actor.actorId }
+  }
+
+  /**
+   * Gate for every task mutation. Reads were gated but the mutation handlers
+   * passed org scope only, so a non-member could both tamper with another
+   * project's task and read it back out of the mutation response.
+   */
+  const requireTaskAccess = async (
+    actorContext: AuthorizedActionContext,
+    taskId: string,
+    reply: FastifyReply,
+  ): Promise<boolean> => {
+    const task = await getTask(
+      prisma,
+      taskId,
+      actorContext.tenant.organizationId,
+      await taskVisibilityFor(actorContext),
+    )
+    if (!task) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
+      return false
+    }
+    return true
+  }
+
   app.get('/api/tasks', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -45,12 +82,17 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const query = request.query as Record<string, string | undefined>
     const statusFilter = TaskStatusSchema.safeParse(query['status'])
     const projectFilter = ProjectIdSchema.safeParse(query['project'])
-    const tasks = await listTasks(prisma, actorContext.tenant.organizationId, {
-      assigneeUserId: resolveTaskUserFilter(query['assignee'], actorContext),
-      ownerUserId: resolveTaskUserFilter(query['owner'], actorContext),
-      status: statusFilter.success ? statusFilter.data : undefined,
-      projectId: projectFilter.success ? projectFilter.data : undefined,
-    })
+    const tasks = await listTasks(
+      prisma,
+      actorContext.tenant.organizationId,
+      {
+        assigneeUserId: resolveTaskUserFilter(query['assignee'], actorContext),
+        ownerUserId: resolveTaskUserFilter(query['owner'], actorContext),
+        status: statusFilter.success ? statusFilter.data : undefined,
+        projectId: projectFilter.success ? projectFilter.data : undefined,
+      },
+      await taskVisibilityFor(actorContext),
+    )
     return createApiResponse(TaskRecordSchema.array().parse(tasks))
   })
 
@@ -119,7 +161,12 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     if (!actorContext) return reply
 
     const { taskId } = request.params as { taskId: string }
-    const task = await getTask(prisma, taskId, actorContext.tenant.organizationId)
+    const task = await getTask(
+      prisma,
+      taskId,
+      actorContext.tenant.organizationId,
+      await taskVisibilityFor(actorContext),
+    )
     if (!task) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
       return reply
@@ -136,6 +183,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const { taskId } = request.params as { taskId: string }
     const body = parseInput(AssignTaskBodySchema, request.body, reply)
     if (!body) return reply
+    if (!(await requireTaskAccess(actorContext, taskId, reply))) return reply
 
     const result = await assignTask(prisma, {
       taskId,
@@ -165,6 +213,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const { taskId } = request.params as { taskId: string }
     const body = parseInput(MoveTaskBodySchema, request.body, reply)
     if (!body) return reply
+    if (!(await requireTaskAccess(actorContext, taskId, reply))) return reply
 
     const result = await moveTaskToColumn(prisma, {
       taskId,
@@ -203,6 +252,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const { taskId } = request.params as { taskId: string }
     const body = parseInput(SetTaskIterationBodySchema, request.body, reply)
     if (!body) return reply
+    if (!(await requireTaskAccess(actorContext, taskId, reply))) return reply
 
     const result = await setTaskIteration(prisma, {
       taskId,
@@ -228,6 +278,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const { taskId } = request.params as { taskId: string }
     const body = parseInput(UpdateTaskBodySchema, request.body, reply)
     if (!body) return reply
+    if (!(await requireTaskAccess(actorContext, taskId, reply))) return reply
     const fields = {
       ...(body.title !== undefined ? { title: body.title } : {}),
       ...(body.purpose !== undefined ? { purpose: body.purpose } : {}),
@@ -262,6 +313,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const { taskId } = request.params as { taskId: string }
     const body = parseInput(TransitionTaskBodySchema, request.body, reply)
     if (!body) return reply
+    if (!(await requireTaskAccess(actorContext, taskId, reply))) return reply
 
     const result = await transitionTask(prisma, {
       taskId,

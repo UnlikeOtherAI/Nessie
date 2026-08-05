@@ -18,7 +18,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!actorContext) return reply
 
     const query = request.query as Record<string, string | undefined>
-    const result = await listApprovalRequests(prisma, actorContext.tenant.organizationId, {
+    const result = await listApprovalRequests(prisma, actorContext, {
       status: query['status'],
       agentId: query['agentId'],
       channelId: query['channelId'],
@@ -33,7 +33,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
 
-    const count = await getPendingApprovalCount(prisma, actorContext.tenant.organizationId)
+    const count = await getPendingApprovalCount(prisma, actorContext)
     return createApiResponse({ count })
   })
 
@@ -42,7 +42,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
     if (!actorContext) return reply
 
     const { approvalId } = request.params as { approvalId: string }
-    const approval = await getApprovalRequest(prisma, approvalId, actorContext.tenant.organizationId)
+    const approval = await getApprovalRequest(prisma, approvalId, actorContext)
     if (!approval) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Approval request not found')
       return reply

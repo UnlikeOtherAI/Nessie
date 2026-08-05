@@ -40,6 +40,8 @@ const makeApp = (initialPreferences: Record<string, unknown>) => {
       },
     },
     organizationMember: { findMany: async () => [] },
+    projectMember: { findMany: async () => [] },
+    teamMember: { findMany: async () => [] },
   } as unknown as PrismaClient
 
   const app = Fastify({ logger: false })

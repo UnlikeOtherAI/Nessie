@@ -1,10 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
-import { decryptWithKey, deriveSecretKey } from '@nessie/runtime'
+import { decryptWithKey, deriveSecretKey, safeFetch } from '@nessie/runtime'
 import {
   sendApns,
   sendFcm,
   type ApnsCredentials,
   type FcmCredentials,
+  type FetchLike,
   type PushPayload,
   type PushResult,
   type PushTarget,
@@ -45,6 +46,22 @@ export type PushSenders = {
     target: PushTarget,
     payload: PushPayload,
   ) => Promise<PushResult>
+}
+
+// FCM's OAuth token exchange targets the service account's own `token_uri`,
+// which is operator-supplied JSON and therefore attacker-controllable. Validate
+// it, pin the socket to the vetted address, and refuse redirects outright — an
+// unsafe URL throws and that one send fails, which is the correct outcome.
+const safeFcmFetch: FetchLike = (url, init) =>
+  safeFetch(
+    url,
+    { method: init.method, headers: init.headers, body: init.body },
+    { maxRedirects: 0 },
+  ).then((response) => ({ status: response.status, text: () => response.text() }))
+
+export const defaultPushSenders: PushSenders = {
+  sendApns,
+  sendFcm: (creds, target, payload) => sendFcm(creds, target, payload, safeFcmFetch),
 }
 
 export type PushDispatchSummary = {
@@ -366,7 +383,7 @@ export const deliverToRecipients = async (
   if (input.recipientIds.length === 0) {
     return summary
   }
-  const senders: PushSenders = input.senders ?? { sendApns, sendFcm }
+  const senders: PushSenders = input.senders ?? defaultPushSenders
   const messageId = input.messageId ?? null
 
   if (input.apnsCreds || input.fcmCreds) {

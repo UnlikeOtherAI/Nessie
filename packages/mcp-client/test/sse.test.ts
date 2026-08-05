@@ -8,7 +8,7 @@ test('sse: open → listTools → callTool → close', async () => {
   const fake = await startSseFake()
   const mgr = new McpClientManager()
   try {
-    const id = await mgr.open({ transport: 'sse', url: fake.url })
+    const id = await mgr.open({ transport: 'sse', url: fake.url, fetchImpl: globalThis.fetch })
     const tools = await mgr.listTools(id)
     assert.ok(tools.find((t) => t.name === 'echo'))
     const echoed = await mgr.callTool(id, 'echo', { message: 'sse-hello' })
@@ -23,7 +23,7 @@ test('sse: reconnect after transport drop invalidates discovery cache', async ()
   const fake = await startSseFake()
   const mgr = new McpClientManager()
   try {
-    const id = await mgr.open({ transport: 'sse', url: fake.url })
+    const id = await mgr.open({ transport: 'sse', url: fake.url, fetchImpl: globalThis.fetch })
     const before = await mgr.listTools(id)
     fake.dropConnections()
     const reconnected = await mgr.reconnect(id)

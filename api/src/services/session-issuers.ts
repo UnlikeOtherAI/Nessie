@@ -63,6 +63,7 @@ export const createSessionIssuers = (input: {
         roles: resolvedRoles,
         providerId: provider?.providerId ?? LOCAL_AUTH_PROVIDER_ID,
         providerType: provider?.providerType ?? input.defaultProviderType,
+        tv: user?.tokenVersion ?? 0,
         ...(uoaIdentity ? { uoaIdentity } : {}),
       },
       input.authSecret,
@@ -71,7 +72,7 @@ export const createSessionIssuers = (input: {
     )
   }
 
-  const buildSessionForUser = (session: {
+  const buildSessionForUser = async (session: {
     organizationId: string
     projectId: string
     providerId: string
@@ -81,21 +82,30 @@ export const createSessionIssuers = (input: {
     teamId: string
     uoaIdentity?: UoaSessionIdentity
     userId: string
-  }) => issueSessionToken(
-    {
-      sub: session.userId,
-      org: session.organizationId,
-      proj: session.projectId,
-      team: session.teamId,
-      roles: session.roles,
-      providerId: session.providerId,
-      providerType: session.providerType,
-      ...(session.uoaIdentity ? { uoaIdentity: session.uoaIdentity } : {}),
-    },
-    input.authSecret,
-    input.tokenTtlSeconds,
-    session.sessionId,
-  )
+  }) => {
+    // Stamp the current revocation generation so a logout that happened between
+    // this issue and the next request invalidates the token immediately.
+    const user = await input.prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { tokenVersion: true },
+    })
+    return issueSessionToken(
+      {
+        sub: session.userId,
+        org: session.organizationId,
+        proj: session.projectId,
+        team: session.teamId,
+        roles: session.roles,
+        providerId: session.providerId,
+        providerType: session.providerType,
+        tv: user?.tokenVersion ?? 0,
+        ...(session.uoaIdentity ? { uoaIdentity: session.uoaIdentity } : {}),
+      },
+      input.authSecret,
+      input.tokenTtlSeconds,
+      session.sessionId,
+    )
+  }
 
   return { buildLocalSession, buildSessionForUser }
 }

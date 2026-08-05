@@ -16,6 +16,8 @@ import {
   type PendingStreamMessage,
 } from '../../../../facades/threads/thinking'
 import type { useReplyThread } from '../../../../pages/channels/useReplyThread'
+import { useFileDrop } from '../../../../hooks/useFileDrop'
+import { DropZoneOverlay } from '../../../shared/DropZoneOverlay'
 import { OversizePasteDialog } from '../../../shared/OversizePasteDialog'
 import type { MentionEntity } from '../../../shared/MentionInput'
 import type { AvatarSources } from '../../../primitives/UserAvatar'
@@ -98,6 +100,8 @@ export const ThreadReplyPanel = ({
     setOversizePaste,
     mentionRef,
     isSendPending,
+    attachments,
+    insertEmoji,
     sendText,
     sendMessageSubmit,
     sendAsFile,
@@ -112,6 +116,10 @@ export const ThreadReplyPanel = ({
     currentUserId: meUserId,
     getSendExtras,
   })
+  // The panel is its own drop target in every responsive mode (in-flow pane,
+  // overlay, full screen) — files land on the reply composer, not the channel.
+  // Disabled while there is no composer to stage them in.
+  const replyDrop = useFileDrop(attachments.addFiles, !root || Boolean(root.deletedAt))
   const {
     addReaction,
     cancelEdit,
@@ -207,6 +215,7 @@ export const ThreadReplyPanel = ({
           'min-[1280px]:relative min-[1280px]:z-auto min-[1280px]:h-full min-[1280px]:shrink-0',
         ].join(' ')}
         style={{ '--thread-panel-width': `${panelWidth}px` } as CSSProperties}
+        {...replyDrop.dropHandlers}
       >
         <div
           aria-label="Resize thread panel"
@@ -319,6 +328,7 @@ export const ThreadReplyPanel = ({
                   Also send to {channelLabel(activeChannel)}
                 </label>
                 <ChannelComposer
+                  attachments={attachments}
                   isSendPending={isSendPending}
                   mentionEntities={mentionEntities}
                   mentionRef={mentionRef}
@@ -326,6 +336,7 @@ export const ThreadReplyPanel = ({
                   placeholder="Reply to thread"
                   onChangeMessage={setMessage}
                   onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+                  onInsertEmoji={insertEmoji}
                   onInsertHashSign={() => mentionRef.current?.insertHashSign()}
                   onOversizePaste={(paste) => setOversizePaste(paste)}
                   onSubmitForm={(event) => void sendMessageSubmit(event)}
@@ -340,6 +351,8 @@ export const ThreadReplyPanel = ({
             )}
           </>
         )}
+
+        <DropZoneOverlay active={replyDrop.isDragging} label="Drop files to reply with" />
       </aside>
 
       <OversizePasteDialog

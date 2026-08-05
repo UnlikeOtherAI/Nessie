@@ -70,7 +70,7 @@ test('listTools uses cache; refresh forces a fresh round trip', async () => {
   const fake = await startHttpFake()
   const mgr = new McpClientManager()
   try {
-    const id = await mgr.open({ transport: 'http', url: fake.url })
+    const id = await mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch })
     const a = await mgr.listTools(id)
     const b = await mgr.listTools(id)
     // Same array reference if cached
@@ -91,7 +91,7 @@ test('callTool honours an external AbortSignal', async () => {
   const fake = await startHttpFake({ echoDelayMs: 500 })
   const mgr = new McpClientManager()
   try {
-    const id = await mgr.open({ transport: 'http', url: fake.url })
+    const id = await mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch })
     const ctrl = new AbortController()
     setTimeout(() => ctrl.abort(new Error('user-cancel')), 20)
     await assert.rejects(
@@ -109,7 +109,7 @@ test('callTool timeoutMs raises a typed TIMEOUT error', async () => {
   const fake = await startHttpFake({ echoDelayMs: 500 })
   const mgr = new McpClientManager()
   try {
-    const id = await mgr.open({ transport: 'http', url: fake.url })
+    const id = await mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch })
     await assert.rejects(
       () => mgr.callTool(id, 'echo', { message: 'slow' }, { timeoutMs: 10 }),
       (err: unknown) => err instanceof McpTimeoutError && err.kind === 'TIMEOUT',
@@ -123,7 +123,7 @@ test('callTool timeoutMs raises a typed TIMEOUT error', async () => {
 test('listTools timeoutMs raises a typed TIMEOUT error', async () => {
   const conn = new McpConnection(
     'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' as McpConnectionId,
-    { transport: 'http', url: 'http://127.0.0.1/mcp' },
+    { transport: 'http', url: 'http://127.0.0.1/mcp', fetchImpl: globalThis.fetch },
     {
       onState: () => {},
       onError: () => {},
@@ -165,7 +165,7 @@ test('on(state) receives lifecycle transitions and unsubscribes cleanly', async 
   const events: McpManagerEvent[] = []
   const off = mgr.on('state', (e) => events.push(e))
   try {
-    const id = await mgr.open({ transport: 'http', url: fake.url })
+    const id = await mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch })
     await mgr.close(id)
   } finally {
     off()
@@ -180,8 +180,8 @@ test('closeAll tears down every open connection', async () => {
   const fake = await startHttpFake()
   const mgr = new McpClientManager()
   try {
-    const a = await mgr.open({ transport: 'http', url: fake.url })
-    const b = await mgr.open({ transport: 'http', url: fake.url })
+    const a = await mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch })
+    const b = await mgr.open({ transport: 'http', url: fake.url, fetchImpl: globalThis.fetch })
     await mgr.closeAll()
     await assert.rejects(() => mgr.listTools(a), (err: unknown) => err instanceof McpNotConnectedError)
     await assert.rejects(() => mgr.listTools(b), (err: unknown) => err instanceof McpNotConnectedError)

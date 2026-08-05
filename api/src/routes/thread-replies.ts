@@ -8,7 +8,7 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   findThreadForUser,
-  mapMessageRecord,
+  mapMessageRecordWithAttachments,
   messageInclude,
 } from '../services/messages.js'
 import type { RouteDeps } from './types.js'
@@ -62,7 +62,9 @@ export const registerThreadReplyRoutes = (app: FastifyInstance, deps: RouteDeps)
     })
 
     return createApiResponse({
-      message: ThreadMessageRecordSchema.parse(mapMessageRecord(message)),
+      message: ThreadMessageRecordSchema.parse(
+        await mapMessageRecordWithAttachments(prisma, message),
+      ),
       viewerFollowing: follow !== null,
     })
   })

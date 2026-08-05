@@ -8,6 +8,7 @@ import type {
   CatalogView,
   McpCatalogEntryRow,
 } from './mcp-catalog.js'
+import { catalogTenancyWhere } from './mcp-catalog-visibility.js'
 
 const listWhere = (
   actorContext: AuthorizedActionContext,
@@ -39,7 +40,9 @@ export const listCatalogEntries = async (
     where.status = filters.status
   }
   return prisma.mcpCatalogEntry.findMany({
-    where,
+    // Every view is tenancy-floored: `all` and `queue` would otherwise return
+    // other tenants' rows, and the public store is readable by everyone.
+    where: { ...where, ...catalogTenancyWhere(actorContext) },
     orderBy: [{ status: 'asc' }, { label: 'asc' }],
   })
 }

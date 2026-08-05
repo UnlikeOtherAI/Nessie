@@ -9,8 +9,15 @@ export const estimateToolSchemaTokens = (tools: ToolSchemaDescriptor[]): number 
     return sum + estimateTokens(schemaText)
   }, 0)
 
+// An inlined image is billed as image tokens the character heuristic cannot
+// see. One flat, deliberately generous figure per image (a 640-1024px picture
+// lands well under this on every provider) keeps the window math honest, so a
+// thread full of photos triggers compaction instead of overflowing the model.
+const IMAGE_TOKEN_ESTIMATE = 1500
+
 export const estimateMessageTokens = (msg: ProviderMessage): number => {
   let content = ''
+  let imageTokens = 0
   if (msg.role === 'assistant') {
     content = msg.content ?? ''
     if (msg.toolCalls) {
@@ -18,8 +25,11 @@ export const estimateMessageTokens = (msg: ProviderMessage): number => {
     }
   } else {
     content = msg.content
+    if (msg.role === 'user' && msg.images) {
+      imageTokens = msg.images.length * IMAGE_TOKEN_ESTIMATE
+    }
   }
-  return estimateTokens(content) + 4
+  return estimateTokens(content) + imageTokens + 4
 }
 
 export const estimateMessagesTokens = (messages: ProviderMessage[]): number =>

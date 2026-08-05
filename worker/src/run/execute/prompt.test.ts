@@ -169,3 +169,76 @@ test('missing author name falls back without dropping the message', () => {
   )
   assert.ok(otherTurn, 'unnamed other-agent turn should fall back to a generic label')
 })
+
+test('an image posted in the thread reaches the model as image bytes on that turn', () => {
+  const conversation: StoredConversationMessage[] = [
+    {
+      content: '',
+      role: 'user',
+      authorAgentId: null,
+      authorAgentName: null,
+      attachmentNote: '[attached: gallus.png (image/png, 812 KB, id=att-1)]',
+      images: [{ mime: 'image/png', dataBase64: 'AAEC' }],
+    },
+    {
+      content: 'what is on this image?',
+      role: 'user',
+      authorAgentId: null,
+      authorAgentName: null,
+    },
+  ]
+
+  const messages = buildModelPrompt(
+    conversation,
+    makeContext('Aria'),
+    'what is on this image?',
+    null,
+  )
+
+  const imageTurn = messages.find(
+    (message) => message.role === 'user' && message.images !== undefined,
+  )
+  assert.ok(imageTurn, 'the turn that carried the image must carry its bytes')
+  assert.equal(imageTurn.role === 'user' ? imageTurn.images?.length : 0, 1)
+  // An image-only post is not an empty turn: it names what it carried.
+  assert.equal(imageTurn.content, '[attached: gallus.png (image/png, 812 KB, id=att-1)]')
+
+  // The question is already the last turn of the window; it must not be appended twice.
+  const asked = messages.filter((message) => message.content === 'what is on this image?')
+  assert.equal(asked.length, 1)
+})
+
+test('an attachment note annotates a turn without altering what the human wrote', () => {
+  const conversation: StoredConversationMessage[] = [
+    {
+      content: 'have a look',
+      role: 'user',
+      authorAgentId: null,
+      authorAgentName: null,
+      attachmentNote: '[attached: spec.pdf (application/pdf, 40 KB, id=att-9)]',
+    },
+  ]
+
+  const messages = buildModelPrompt(conversation, makeContext('Aria'), 'have a look', null)
+  const turn = messages.find((message) => message.role === 'user')
+  assert.equal(
+    turn?.content,
+    'have a look\n[attached: spec.pdf (application/pdf, 40 KB, id=att-9)]',
+  )
+  assert.equal(messages.filter((message) => message.role === 'user').length, 1)
+})
+
+test('an empty prompt never appends an empty trailing user turn', () => {
+  const conversation: StoredConversationMessage[] = [
+    {
+      content: '',
+      role: 'user',
+      authorAgentId: null,
+      authorAgentName: null,
+      attachmentNote: '[attached: photo.jpg (image/jpeg, 200 KB, id=att-2)]',
+    },
+  ]
+
+  const messages = buildModelPrompt(conversation, makeContext('Aria'), '', null)
+  assert.equal(messages.filter((message) => message.role === 'user').length, 1)
+})

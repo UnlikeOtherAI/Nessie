@@ -148,6 +148,13 @@ export const exchangeExternalAuthCode = async (
   }
 
   const userInfo = (await userInfoResponse.json()) as UserInfoResponse
+  // Accounts are linked and provisioned by email, so an IdP that hands back an
+  // address it has itself marked unverified would let anyone who can assert an
+  // email take over the matching Nessie account. Providers that omit the claim
+  // are trusted as before; only an explicit `false` is rejected.
+  if (userInfo.email_verified === false) {
+    throw new Error(`Provider ${provider.providerId} returned an unverified email address`)
+  }
   const email = userInfo.email?.trim().toLowerCase()
   if (!email) {
     throw new Error(`Provider ${provider.providerId} did not return an email address`)

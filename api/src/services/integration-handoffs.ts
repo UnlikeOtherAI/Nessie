@@ -113,7 +113,8 @@ export const createPersonalAssistantIntegrationHandoff = async (
       },
       include: messageInclude,
     })
-    const messageRecord = mapMessageRecord(message)
+    // A product handoff prompt is server-authored and never carries files.
+    const messageRecord = mapMessageRecord(message, 0)
 
     await input.beforeEnqueue?.(tx, {
       channelId: channelState.id,

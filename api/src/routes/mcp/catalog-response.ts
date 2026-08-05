@@ -1,11 +1,16 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   isManagedIntegrationCatalogRecord,
+  redactConfigSecrets,
   type McpCatalogEntryRow,
 } from '@nessie/mcp-manage'
 
-export type McpCatalogApiEntry = Omit<McpCatalogEntryRow, 'authConfig'> & {
+export type McpCatalogApiEntry = Omit<
+  McpCatalogEntryRow,
+  'authConfig' | 'defaultTransportConfig'
+> & {
   authConfig: unknown
+  defaultTransportConfig: unknown
   managedByIntegration: boolean
 }
 
@@ -50,6 +55,10 @@ export const presentCatalogEntries = async (
   return entries.map((entry) => ({
     ...entry,
     authConfig: redactCatalogAuthConfig(entry.authConfig),
+    // The published store is readable by every member of the instance, so an
+    // API key or Authorization header parked in the entry's default transport
+    // config is just as exposed as an OAuth client secret.
+    defaultTransportConfig: redactConfigSecrets(entry.defaultTransportConfig),
     managedByIntegration: isManagedIntegrationCatalogRecord(
       entry,
       slugsByCatalogId.get(entry.id) ?? [],

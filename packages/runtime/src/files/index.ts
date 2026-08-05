@@ -11,7 +11,15 @@ import {
   type StorageUsageScope,
 } from '../ledger.js'
 import type { Storage } from '../storage/index.js'
+import {
+  createThumbnailOps,
+  type SetThumbnailInput,
+  thumbnailColumns,
+  thumbnailStorageKey,
+  type ThumbnailOps,
+} from './attachment-thumbnails.js'
 import { isStrippableImageMime, prepareImageUpload } from './strip-image-metadata.js'
+import type { GeneratedThumbnail } from './thumbnail.js'
 
 /**
  * The single chokepoint for blob file work. Everything that stores, streams,
@@ -30,6 +38,13 @@ import { isStrippableImageMime, prepareImageUpload } from './strip-image-metadat
  * stored bytes never leak location/device data into multi-member workspaces.
  * Orgs can opt out via `Organization.stripImageMetadata`; accounting always
  * records the post-strip byte size. See ./strip-image-metadata.ts.
+ *
+ * Thumbnails: an attachment may own a second object, `<storageKey>.thumb.webp`,
+ * so a feed can preview a file without transferring the original. It is a
+ * derived artifact of the same file, which is exactly why it belongs here — the
+ * quota gate covers it, it gets its own signed usage events, and `delete` frees
+ * both objects. Every caller that deletes attachment bytes already routes
+ * through this service, so nothing can leak a thumbnail by forgetting about it.
  */
 
 export class QuotaExceededError extends Error {
@@ -85,7 +100,9 @@ export type StoreFileInput = {
   abortSignal?: AbortSignal
 }
 
-export type FileService = {
+export type { SetThumbnailInput }
+
+export type FileService = ThumbnailOps & {
   store(input: StoreFileInput): Promise<{ attachment: Attachment; bytesWritten: number }>
   openStream(
     attachmentId: string,
@@ -182,9 +199,13 @@ export const createFileService = (deps: {
     let body = input.body
     let width = input.width ?? null
     let height = input.height ?? null
+    // Preview derived from the same buffered bytes the strip step already
+    // holds — no second decode, no queued job for the common chat photo.
+    let thumbnail: GeneratedThumbnail | null = null
     if (isStrippableImageMime(input.mime) && (await shouldStripImageMetadata(input.organizationId))) {
       const prepared = await prepareImageUpload(body)
       body = prepared.body
+      thumbnail = prepared.thumbnail ?? null
       if (prepared.width !== null) {
         width = prepared.width
         height = prepared.height
@@ -209,11 +230,28 @@ export const createFileService = (deps: {
       throw new FileTooLargeError(bytesWritten, maxUploadBytes)
     }
 
-    // Authoritative quota re-check now that the exact size is known.
-    const post = await checkStorageQuota(prisma, scope, bytesWritten)
+    // Authoritative quota re-check now that the exact size is known. The
+    // thumbnail counts against the same budget — it is stored bytes like any
+    // other — so it can never push an org over the cap after the fact.
+    const thumbnailBytes = thumbnail?.data.byteLength ?? 0
+    const post = await checkStorageQuota(prisma, scope, bytesWritten + thumbnailBytes)
     if (!post.allowed) {
       await storage.delete(storageKey).catch(() => undefined)
       throw new QuotaExceededError(post.reason, post.usedBytes, post.limitBytes)
+    }
+
+    // Write the preview before the row so the row is never created pointing at
+    // an object that does not exist. A failed preview write is not fatal: the
+    // upload succeeds without one.
+    const thumbnailKey = thumbnail ? thumbnailStorageKey(storageKey) : null
+    let storedThumbnail: GeneratedThumbnail | null = null
+    if (thumbnail && thumbnailKey) {
+      try {
+        await storage.put(thumbnailKey, thumbnail.data, thumbnail.mime)
+        storedThumbnail = thumbnail
+      } catch {
+        await storage.delete(thumbnailKey).catch(() => undefined)
+      }
     }
 
     let attachment: Attachment
@@ -231,26 +269,45 @@ export const createFileService = (deps: {
           storageKey,
           width,
           height,
+          ...(storedThumbnail && thumbnailKey
+            ? thumbnailColumns(thumbnailKey, storedThumbnail)
+            : {}),
         },
       })
     } catch (error) {
       await storage.delete(storageKey).catch(() => undefined)
+      if (thumbnailKey) {
+        await storage.delete(thumbnailKey).catch(() => undefined)
+      }
       throw error
     }
 
+    const usageScope = {
+      organizationId: input.organizationId,
+      projectId: input.scope?.projectId ?? null,
+      teamId: input.scope?.teamId ?? null,
+      spaceId: input.scope?.spaceId ?? null,
+      uploaderId: input.uploaderId,
+    }
     await recordStorageStored(prisma, {
       attribution: input.attribution,
-      scope: {
-        organizationId: input.organizationId,
-        projectId: input.scope?.projectId ?? null,
-        teamId: input.scope?.teamId ?? null,
-        spaceId: input.scope?.spaceId ?? null,
-        uploaderId: input.uploaderId,
-      },
+      scope: usageScope,
       deltaBytes: BigInt(bytesWritten),
       operation: 'store',
       attachmentId: attachment.id,
     })
+    if (storedThumbnail) {
+      // A separate signed event, not a larger `store`: usage sums every row, so
+      // the preview's bytes stay individually auditable and its later `-bytes`
+      // counterpart nets it to zero.
+      await recordStorageStored(prisma, {
+        attribution: input.attribution,
+        scope: usageScope,
+        deltaBytes: BigInt(storedThumbnail.data.byteLength),
+        operation: 'store.thumbnail',
+        attachmentId: attachment.id,
+      })
+    }
 
     return { attachment, bytesWritten }
   }
@@ -278,10 +335,15 @@ export const createFileService = (deps: {
       return false
     }
     const usageScope = await deriveScope(attachment, scope)
-    // Delete the row first so a re-delete is a clean no-op, then the object
-    // (best-effort — a missing object is harmless), then the negative delta.
+    // Delete the row first so a re-delete is a clean no-op, then the objects
+    // (best-effort — a missing object is harmless), then the negative deltas.
+    // The thumbnail is freed here and nowhere else: every caller that deletes
+    // attachment bytes goes through this function, so one place covers them all.
     await prisma.attachment.delete({ where: { id: attachment.id } })
     await storage.delete(attachment.storageKey).catch(() => undefined)
+    if (attachment.thumbnailKey) {
+      await storage.delete(attachment.thumbnailKey).catch(() => undefined)
+    }
     await recordStorageStored(prisma, {
       attribution,
       scope: usageScope,
@@ -289,6 +351,15 @@ export const createFileService = (deps: {
       operation: 'delete',
       attachmentId: attachment.id,
     })
+    if (attachment.thumbnailKey && attachment.thumbnailSizeBytes) {
+      await recordStorageStored(prisma, {
+        attribution,
+        scope: usageScope,
+        deltaBytes: -attachment.thumbnailSizeBytes,
+        operation: 'delete.thumbnail',
+        attachmentId: attachment.id,
+      })
+    }
     return true
   }
 
@@ -323,6 +394,10 @@ export const createFileService = (deps: {
   }
 
   return {
+    // Preview lifecycle (serve + attach-after-the-fact) lives in
+    // ./attachment-thumbnails.ts, constructed with this service's own
+    // prisma/storage/scope so it stays inside the chokepoint.
+    ...createThumbnailOps({ prisma, storage, deriveScope: (row) => deriveScope(row) }),
     store,
     openStream,
     delete: deleteFile,

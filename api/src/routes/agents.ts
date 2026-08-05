@@ -164,7 +164,11 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
-    if (existingAgent.systemManaged && !requireOwner(actorContext, reply)) {
+    // Seeing a shared agent is not permission to rewrite it. Visibility comes
+    // from a channel binding, so any member of a public channel the agent is
+    // bound to could otherwise change its systemPrompt, toolPolicy or model —
+    // a same-tenant takeover of an agent other people rely on.
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 
@@ -219,7 +223,8 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
-    if (existingAgent.systemManaged && !requireOwner(actorContext, reply)) {
+    // Same rule as the main edit route: visibility is not edit permission.
+    if (!requireOwner(actorContext, reply)) {
       return reply
     }
 

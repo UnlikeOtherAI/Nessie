@@ -14,10 +14,12 @@ import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { countThinkingEntries, selectPendingForRoot } from '../facades/threads/thinking'
 import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
+import { useFileDrop } from '../hooks/useFileDrop'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { CallBanner } from '../components/shared/CallBanner'
 import { CallOverlay } from '../components/shared/CallOverlay'
+import { DropZoneOverlay } from '../components/shared/DropZoneOverlay'
 import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
 import { ChannelSettingsDialog } from '../components/shared/ChannelSettingsDialog'
 import { ChannelComposer } from '../components/features/channels/ChannelComposer'
@@ -142,6 +144,8 @@ export const ChannelsPage = () => {
     setOversizePaste,
     mentionRef,
     isSendPending,
+    attachments,
+    insertEmoji,
     sendText,
     sendMessageSubmit,
     sendAsFile,
@@ -155,6 +159,10 @@ export const ChannelsPage = () => {
     threadMessages,
     currentUserId: me?.user.id,
   })
+  // Dropping files anywhere over the conversation column stages them in the
+  // composer. The reply panel is a sibling with its own zone, so the two never
+  // both fire for one drop.
+  const chatDrop = useFileDrop(attachments.addFiles)
   const deepWaterLauncher = useDeepWaterResearchLauncher(message)
 
   // sp-messaging: inline edit + channel message search.
@@ -257,7 +265,7 @@ export const ChannelsPage = () => {
 
   return (
     <section className="flex h-full min-h-0">
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col" {...chatDrop.dropHandlers}>
         <ChannelHeader
         activeChannel={activeChannel}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
@@ -384,12 +392,14 @@ export const ChannelsPage = () => {
         placeholder={composePlaceholder}
         message={message}
         isSendPending={isSendPending}
+        attachments={attachments}
         onChangeMessage={setMessage}
         onOversizePaste={(paste) => setOversizePaste(paste)}
         onSubmitText={(text) => void sendText(text)}
         onSubmitForm={(event) => void sendMessageSubmit(event)}
         onInsertHashSign={() => mentionRef.current?.insertHashSign()}
         onInsertAtSign={() => mentionRef.current?.insertAtSign()}
+        onInsertEmoji={insertEmoji}
         pendingAgentInvites={pendingAgentInvites}
         invitingAgentId={invitingAgentId}
         inviteErrors={inviteErrors}
@@ -397,6 +407,8 @@ export const ChannelsPage = () => {
         onDismissPendingAgent={dismissPendingAgent}
         onOpenDeepWaterResearch={deepWaterLauncher.open}
       />
+
+      <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />
       </div>
 
       {replyThread.openRootMessageId && activeChannel ? (

@@ -1,33 +1,61 @@
 import type { PrismaClient } from '@prisma/client'
-import type { ProviderMessage } from '@nessie/runtime'
+import type { FileService, ProviderImage, ProviderMessage } from '@nessie/runtime'
+import {
+  describeAttachments,
+  loadInlineImages,
+  loadMessageAttachments,
+} from '../message-attachments.js'
 import {
   buildResearchRoutingBlock,
   type ResearchRoutingFacts,
 } from './research-routing.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 
+// A turn's text as the model sees it: what was written, plus the inventory of
+// any files that came with it. The note is what makes an image-only message a
+// message at all, and what tells the model which attachments it can reach with
+// `attachment_read` when it cannot look at them directly.
+const withAttachmentNote = (message: StoredConversationMessage): string => {
+  if (!message.attachmentNote) {
+    return message.content
+  }
+  return message.content.trim()
+    ? `${message.content}\n${message.attachmentNote}`
+    : message.attachmentNote
+}
+
 /**
  * Render a stored conversation turn as a provider message. Assistant turns
  * authored by a *different* agent than the one now acting are prefixed with the
  * author's name so the model can tell "someone else said this" from "I said
  * this" — the acting agent's own turns stay unprefixed. Human turns pass through
- * unchanged (they are already the distinct `user` role).
+ * unchanged (they are already the distinct `user` role), carrying any inlined
+ * images so a vision-capable model can look at what was posted.
  */
 const toProviderConversationMessage = (
   message: StoredConversationMessage,
   actingAgentId: string,
 ): ProviderMessage => {
+  const content = withAttachmentNote(message)
   const isOtherAgent =
     message.role === 'assistant'
     && !!message.authorAgentId
     && message.authorAgentId !== actingAgentId
 
+  if (message.role === 'user') {
+    return {
+      content,
+      role: 'user',
+      ...(message.images?.length ? { images: message.images } : {}),
+    }
+  }
+
   if (!isOtherAgent) {
-    return { content: message.content, role: message.role }
+    return { content, role: message.role }
   }
 
   const authorName = message.authorAgentName?.trim() || 'Another agent'
-  return { content: `${authorName}: ${message.content}`, role: 'assistant' }
+  return { content: `${authorName}: ${content}`, role: 'assistant' }
 }
 
 export const buildModelPrompt = (
@@ -120,10 +148,15 @@ export const buildModelPrompt = (
   }
 
   const lastConversationMessage = conversation.at(-1)
+  // Compared against the raw stored content, never the attachment-annotated
+  // render: a message whose only payload is a photo has empty text, and its
+  // turn is already in the window above — appending it again would duplicate
+  // the turn and strip its images.
   const shouldAppendPrompt =
-    !lastConversationMessage
-    || lastConversationMessage.role !== 'user'
-    || lastConversationMessage.content.trim() !== prompt.trim()
+    prompt.trim().length > 0
+    && (!lastConversationMessage
+      || lastConversationMessage.role !== 'user'
+      || lastConversationMessage.content.trim() !== prompt.trim())
 
   if (shouldAppendPrompt) {
     messages.push({ content: prompt.trim(), role: 'user' })
@@ -134,25 +167,32 @@ export const buildModelPrompt = (
 
 export const loadConversation = async (
   prisma: PrismaClient,
-  threadId: string,
-  // Reply-thread placement (#233): when set, the window is scoped to that root
-  // message and its replies, so a run answering inside a reply thread sees
-  // that thread's context rather than the whole channel thread.
-  rootMessageId?: string,
+  input: {
+    organizationId: string
+    // The one FileService chokepoint, so the window's images can be inlined for
+    // a vision-capable model. Omit it and turns still name their attachments.
+    files?: FileService
+    // Reply-thread placement (#233): when set, the window is scoped to that root
+    // message and its replies, so a run answering inside a reply thread sees
+    // that thread's context rather than the whole channel thread.
+    rootMessageId?: string | undefined
+    threadId: string
+  },
 ): Promise<StoredConversationMessage[]> => {
   const messages = await prisma.message.findMany({
     // Exclude internal `system`-role messages (e.g. a PA scheduled kickoff
     // prompt) so they never leak into the model's conversation window. The
     // current run still receives its prompt directly via payload.messageId.
-    where: rootMessageId
+    where: input.rootMessageId
       ? {
-          threadId,
+          threadId: input.threadId,
           role: { not: 'system' },
-          OR: [{ id: rootMessageId }, { rootMessageId }],
+          OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
         }
-      : { threadId, role: { not: 'system' } },
+      : { threadId: input.threadId, role: { not: 'system' } },
     orderBy: { createdAt: 'desc' },
     select: {
+      id: true,
       content: true,
       role: true,
       agentId: true,
@@ -164,10 +204,23 @@ export const loadConversation = async (
     take: 20,
   })
 
-  return messages.reverse().map((message) => ({
-    content: message.content,
-    role: message.role,
-    authorAgentId: message.agentId,
-    authorAgentName: message.agent?.name ?? null,
-  }))
+  const ordered = messages.reverse()
+  const messageIds = ordered.map((message) => message.id)
+  const attachments = await loadMessageAttachments(prisma, input.organizationId, messageIds)
+  const images = input.files
+    ? await loadInlineImages(input.files, input.organizationId, messageIds, attachments)
+    : new Map<string, ProviderImage[]>()
+
+  return ordered.map((message) => {
+    const note = describeAttachments(attachments.get(message.id) ?? [])
+    const inlined = images.get(message.id)
+    return {
+      content: message.content,
+      role: message.role,
+      authorAgentId: message.agentId,
+      authorAgentName: message.agent?.name ?? null,
+      ...(note ? { attachmentNote: note } : {}),
+      ...(inlined?.length ? { images: inlined } : {}),
+    }
+  })
 }

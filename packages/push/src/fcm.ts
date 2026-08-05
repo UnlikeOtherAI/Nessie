@@ -217,9 +217,14 @@ export class FcmClient {
   }
 }
 
-/** One-shot FCM send. Builds a client and sends a single message. */
+/**
+ * One-shot FCM send. Builds a client and sends a single message. Callers should
+ * pass an SSRF-safe `fetchImpl`: the service-account `token_uri` is
+ * attacker-controllable and the default global fetch validates no URL.
+ */
 export const sendFcm = (
   creds: FcmCredentials,
   target: PushTarget,
   payload: PushPayload,
-): Promise<PushResult> => new FcmClient(creds).send(target, payload)
+  fetchImpl?: FetchLike,
+): Promise<PushResult> => new FcmClient(creds, fetchImpl).send(target, payload)

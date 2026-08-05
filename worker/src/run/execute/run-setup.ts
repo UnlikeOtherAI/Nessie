@@ -6,6 +6,7 @@ import {
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
+import { fileServiceFor } from '../file-service.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { resolveAgentTools } from '../tool-policy.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
@@ -117,11 +118,12 @@ export const prepareRunExecution = async (
     },
   )
 
-  const conversation = await loadConversation(
-    deps.prisma,
-    context.run.threadId,
-    context.replyRootMessageId,
-  )
+  const conversation = await loadConversation(deps.prisma, {
+    files: fileServiceFor(deps.prisma),
+    organizationId: context.channel.organizationId,
+    rootMessageId: context.conversationRootMessageId,
+    threadId: context.run.threadId,
+  })
   const memories = await retrieveRelevantMemories(deps, context, payload, input.prompt)
   const injectedRecallIds = memories.flatMap((memory) =>
     memory.recallId ? [memory.recallId] : [],

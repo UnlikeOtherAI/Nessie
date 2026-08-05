@@ -2,6 +2,7 @@ import {
   AgentIdSchema,
   ChannelIdSchema,
   CHAT_MESSAGE_MAX_CHARS,
+  MESSAGE_ATTACHMENT_LIMIT,
   MessageRoleSchema,
   OrganizationIdSchema,
   RunIdSchema,
@@ -53,6 +54,11 @@ export const ThreadMessageRecordSchema = z.object({
   replyParticipantIds: z.array(z.string().uuid()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   reactions: MessageReactionRecordSchema.array().optional(),
+  // How many files this message carries. Lets the feed skip the per-message
+  // attachment fetch entirely for the (overwhelming) majority that carry none.
+  // Absent when a producer could not determine it — clients must then fetch,
+  // so an attachment is never silently hidden.
+  attachmentCount: z.number().int().nonnegative().optional(),
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
 
@@ -81,6 +87,20 @@ export const AttachmentRecordSchema = z.object({
   width: z.number().int().nonnegative().optional(),
   height: z.number().int().nonnegative().optional(),
   createdAt: TimestampSchema,
+  // Cheap preview served from GET /api/attachments/:id/thumbnail. Present only
+  // once one exists; clients fall back to the original (or a download chip)
+  // when it is absent — including for every attachment stored before this
+  // existed, which is never backfilled. `thumbnailSizeBytes` is a BigInt
+  // column, serialized as a decimal string like `sizeBytes`.
+  hasThumbnail: z.boolean(),
+  thumbnailStatus: z.enum(['pending', 'ready', 'unavailable']).optional(),
+  thumbnailMime: NonEmptyStringSchema.optional(),
+  thumbnailSizeBytes: z
+    .union([z.bigint(), z.number(), z.string()])
+    .transform((value) => value.toString())
+    .optional(),
+  thumbnailWidth: z.number().int().nonnegative().optional(),
+  thumbnailHeight: z.number().int().nonnegative().optional(),
 })
 export type AttachmentRecord = z.infer<typeof AttachmentRecordSchema>
 
@@ -98,7 +118,21 @@ type AttachmentRowLike = {
   width: number | null
   height: number | null
   createdAt: Date
+  thumbnailKey: string | null
+  thumbnailMime: string | null
+  thumbnailSizeBytes: bigint | null
+  thumbnailWidth: number | null
+  thumbnailHeight: number | null
+  thumbnailStatus: string | null
 }
+
+// The column is a plain String (statuses are only ever written by this
+// codebase); anything unrecognized is treated as "not stated" rather than
+// failing the parse of an otherwise-valid attachment.
+const isThumbnailStatus = (
+  value: string | null,
+): value is 'pending' | 'ready' | 'unavailable' =>
+  value === 'pending' || value === 'ready' || value === 'unavailable'
 
 // Single mapper from a stored attachment row to the wire record, so every route
 // serializes attachments identically (and handles the BigInt → string cast).
@@ -116,6 +150,14 @@ export const toAttachmentRecord = (row: AttachmentRowLike): AttachmentRecord =>
     width: row.width ?? undefined,
     height: row.height ?? undefined,
     createdAt: row.createdAt.toISOString(),
+    // The storage key itself is never exposed — only whether bytes exist at the
+    // thumbnail endpoint, and the geometry needed to reserve the right box.
+    hasThumbnail: row.thumbnailKey !== null,
+    thumbnailStatus: isThumbnailStatus(row.thumbnailStatus) ? row.thumbnailStatus : undefined,
+    thumbnailMime: row.thumbnailMime ?? undefined,
+    thumbnailSizeBytes: row.thumbnailSizeBytes ?? undefined,
+    thumbnailWidth: row.thumbnailWidth ?? undefined,
+    thumbnailHeight: row.thumbnailHeight ?? undefined,
   })
 
 // ─── Agent thought process (thinking bubbles) ──────────────────────────────
@@ -158,18 +200,26 @@ export const ThreadThinkingSchema = z.object({
 })
 export type ThreadThinking = z.infer<typeof ThreadThinkingSchema>
 
-export const CreateThreadMessageBodySchema = z.object({
-  content: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
-  // Attachments are uploaded first via POST /api/uploads; the returned ids are
-  // linked to the message after it is created.
-  attachmentIds: z.array(z.string().uuid()).optional(),
-  // Reply threads (#233): when set, the message is a reply under this root
-  // (validated to live in the same container thread and to be a root itself).
-  rootMessageId: z.string().uuid().optional(),
-  // Slack-parity "Also send to #channel": posts an additional top-level copy
-  // referencing the reply thread.
-  alsoSendToChannel: z.boolean().optional(),
-})
+export const CreateThreadMessageBodySchema = z
+  .object({
+    // Optional: an attachment-only post (drag-drop / paperclip with no text) is
+    // a valid message. The refine below keeps "neither text nor files" out.
+    content: z.string().max(CHAT_MESSAGE_MAX_CHARS).optional(),
+    // Attachments are uploaded first via POST /api/uploads; the returned ids are
+    // linked to the message after it is created (uploader-scoped, see the route).
+    attachmentIds: z.array(z.string().uuid()).max(MESSAGE_ATTACHMENT_LIMIT).optional(),
+    // Reply threads (#233): when set, the message is a reply under this root
+    // (validated to live in the same container thread and to be a root itself).
+    rootMessageId: z.string().uuid().optional(),
+    // Slack-parity "Also send to #channel": posts an additional top-level copy
+    // referencing the reply thread.
+    alsoSendToChannel: z.boolean().optional(),
+  })
+  .refine(
+    (body) =>
+      (body.content?.trim().length ?? 0) > 0 || (body.attachmentIds?.length ?? 0) > 0,
+    { message: 'A message needs content or at least one attachment' },
+  )
 
 // ─── sp-messaging slice: edit, delete, search ──────────────────────────────
 export const UpdateThreadMessageBodySchema = z.object({

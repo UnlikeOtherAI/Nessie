@@ -46,9 +46,22 @@ export type ProviderToolCall = {
   arguments: Record<string, unknown>
 }
 
+/**
+ * An image riding along with a user turn so a vision-capable model can actually
+ * look at it. The bytes are inlined rather than referenced by URL: attachment
+ * bytes are private to the workspace and no provider can fetch them.
+ *
+ * Connectors whose model cannot take images drop these and send the text alone
+ * — the turn still names its attachments, so the model knows they exist.
+ */
+export type ProviderImage = {
+  mime: string
+  dataBase64: string
+}
+
 export type ProviderMessage =
   | { role: 'system'; content: string }
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; images?: ProviderImage[] }
   | { role: 'assistant'; content: string | null; toolCalls?: ProviderToolCall[] }
   | { role: 'tool'; content: string; toolCallId: string }
 
