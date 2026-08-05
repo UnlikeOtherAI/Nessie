@@ -78,6 +78,19 @@ attachment reply sends and renders; 9. emoji popover fits the thread composer;
 drop; 12. a 26 MiB file is rejected client-side with an inline error and no
 network call.
 
+### Fix: stretched inline images (post-merge)
+
+Reported from production: a posted image rendered squashed. `MessageAttachments`
+lays attachments out in a `flex flex-col` column, whose default
+`align-items: stretch` widened the `<img>` to the full message column while
+`max-h-80` capped its height — breaking the ratio. The image now carries
+`h-auto w-auto self-start object-contain` plus the stored intrinsic
+`width`/`height` (which also reserves the box before the bytes load). Verified
+by measuring rendered vs `naturalWidth`/`naturalHeight`: a 600×120 source
+renders 602×122 (the 2px is the border) and a 300×900 source renders 108×320,
+i.e. height-capped with width scaled — screenshots `16-aspect-ratio-fixed.png`
+and `17-aspect-ratio-portrait.png`.
+
 ## Follow-ups (deliberately not built)
 
 - Agent visibility of attachments (`loadConversation` ignores them;
