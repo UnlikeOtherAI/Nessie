@@ -112,6 +112,15 @@ still a possible refinement.
 
 #### F2. Tool results persist verbatim for the rest of the run; nothing summarizes
 
+> **Resolved (2026-08-05).** Real compaction now exists:
+> `worker/src/run/context-compaction.ts` folds the elder transcript into a
+> rolling work-state note (verbatim-URL sources section, closed tool groups
+> only, cooldown + bounded attempts, invocations counted in run totals);
+> `trimConversationToFit` is demoted to emergency fallback and the dead
+> `buildCompactionPrompt` was removed. See
+> `docs/plans/2026-08-05-run-budgets-context-and-research-routing.md` §8.
+> Original finding kept below for context.
+
 **Location:** `worker/src/run/agentic-loop.ts` (the `messages` array is grown
 and re-sent each iteration; tool results appended as `role: 'tool'` are never
 removed or condensed after use). `buildCompactionPrompt`
@@ -132,6 +141,12 @@ same tool with the same args twice (both below the loop-detection threshold of
 **Effort:** Large. Recommended as its own focused slice — see §4, item 3.
 
 #### F3. Context budget is a hard-coded 100k, not model-aware
+
+> **Resolved (2026-08-05).** `worker/src/run/context-window.ts` supplies a
+> per-model window (small conservative map, 100k default for unknown models,
+> 0.85 estimator safety factor); compaction triggers at ~80% of the effective
+> window. Revisit the map as real model metadata becomes available. Original
+> finding kept below for context.
 
 **Location:** `worker/src/run/agentic-loop.ts` —
 `CONTEXT_BUDGET_TOKENS = 100_000`, `CONTEXT_TRIM_THRESHOLD = 0.85`,

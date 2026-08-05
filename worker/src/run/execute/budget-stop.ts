@@ -1,16 +1,18 @@
 import type { PrismaClient } from '@prisma/client'
 import type { BudgetExhaustionReason } from '../agentic-loop.js'
 
-// A run that ends because the agentic loop hit a per-effort cap (rather than the
-// model deciding it was done). Classifying the raw loop reason gives the run a
-// stable, user-facing outcome instead of a silent empty reply — the "single
-// worst UX failure mode" the harness-v2 plan calls out.
+// A run that ends at a policy ceiling — its effective run budget (explicit
+// `Agent.runLimits` or the deployment backstop), the loop-detection guard, or
+// the organization's `Budget` — rather than because the model decided it was
+// done. Classifying the raw loop reason gives the run a stable, user-facing
+// outcome instead of a silent empty reply.
 export type RunStopReason =
   | 'iteration_limit'
   | 'tool_call_limit'
   | 'time_limit'
   | 'token_limit'
   | 'cost_limit'
+  | 'org_budget_blocked'
   | 'repeated_tool_calls'
 
 export type BudgetStopStats = {
@@ -21,41 +23,62 @@ export type BudgetStopStats = {
   wallclockMs: number
 }
 
+// How the user gets the work continued. Decided by the caller from structural
+// facts (a checkpoint exists; the run is interactive; a continuation was
+// enqueued) — never from message content.
+export type StopContinuation =
+  | { kind: 'auto'; part: number }
+  | { kind: 'none' }
+  | { kind: 'reply' }
+
 const REASON_TO_STOP: Record<BudgetExhaustionReason, RunStopReason> = {
   cost: 'cost_limit',
   iterations: 'iteration_limit',
   loop_detected: 'repeated_tool_calls',
+  org_budget_blocked: 'org_budget_blocked',
   tokens: 'token_limit',
   tool_calls: 'tool_call_limit',
   wallclock: 'time_limit',
 }
 
-const STOP_LABELS: Record<RunStopReason, string> = {
-  cost_limit: 'cost limit',
-  iteration_limit: 'reasoning-step limit',
-  repeated_tool_calls: 'loop-detection guard',
-  time_limit: 'time limit',
-  token_limit: 'token limit',
-  tool_call_limit: 'tool-call limit',
-}
-
 export const classifyBudgetStop = (reason: BudgetExhaustionReason): RunStopReason =>
   REASON_TO_STOP[reason]
 
-const stopDetail = (stop: RunStopReason, stats: BudgetStopStats): string => {
+// Member-visible copy carries units of work only — never a currency figure.
+// Local cost telemetry belongs in the TaskEvent payload and /ops/usage, not in
+// a chat thread where members can read it.
+const stopPhrase = (stop: RunStopReason, stats: BudgetStopStats): string => {
   switch (stop) {
     case 'iteration_limit':
-      return `${stats.iterations} reasoning steps`
+      return `its reasoning-step limit (${stats.iterations} steps)`
     case 'tool_call_limit':
-      return `${stats.toolCallsUsed} tool calls`
+      return `its tool-call limit (${stats.toolCallsUsed} tool calls)`
     case 'time_limit':
-      return `${Math.round(stats.wallclockMs / 1000)}s`
+      return `its time limit (${Math.round(stats.wallclockMs / 1000)}s)`
     case 'token_limit':
-      return `${stats.totalTokensUsed.toLocaleString('en-US')} tokens`
+      return `its token limit (${stats.totalTokensUsed.toLocaleString('en-US')} tokens)`
     case 'cost_limit':
-      return `~$${(stats.totalCostCents / 100).toFixed(2)}`
+      return 'its configured cost limit'
+    case 'org_budget_blocked':
+      return 'the organization\'s budget'
     case 'repeated_tool_calls':
-      return 'a repeated tool-call loop'
+      return 'the loop-detection guard (a repeated tool-call loop)'
+  }
+}
+
+const continuationSentence = (
+  continuation: StopContinuation,
+  hadPartialText: boolean,
+): string => {
+  switch (continuation.kind) {
+    case 'auto':
+      return `Continuing automatically from a saved checkpoint (part ${continuation.part}).`
+    case 'reply':
+      return 'Reply to continue from the saved checkpoint.'
+    case 'none':
+      return hadPartialText
+        ? 'Reply to have me continue.'
+        : 'Reply to have me try again, ideally with a narrower request.'
   }
 }
 
@@ -67,16 +90,24 @@ export const buildBudgetStopNotice = (
   reason: BudgetExhaustionReason,
   stats: BudgetStopStats,
   hadPartialText: boolean,
+  continuation: StopContinuation = { kind: 'none' },
 ): string => {
   const stop = classifyBudgetStop(reason)
-  const label = STOP_LABELS[stop]
-  const detail = stopDetail(stop, stats)
+  const next = continuationSentence(continuation, hadPartialText)
+
+  if (stop === 'org_budget_blocked') {
+    return hadPartialText
+      ? '_⚠️ I stopped here: this run was paused by the organization\'s budget — owners '
+        + `have been notified. The answer above may be incomplete. ${next}_`
+      : '⚠️ This run was paused by the organization\'s budget — owners have been '
+        + `notified. ${next}`
+  }
+
   return hadPartialText
-    ? `_⚠️ I stopped here because this run reached its ${label} (${detail}). `
-      + 'The answer above may be incomplete — reply to have me continue._'
-    : `⚠️ This run stopped before I could finish: it reached its ${label} (${detail}) `
-      + 'without producing an answer. Reply to have me try again, ideally with a '
-      + 'narrower request.'
+    ? `_⚠️ I stopped here because this run reached ${stopPhrase(stop, stats)}. `
+      + `The answer above may be incomplete. ${next}_`
+    : `⚠️ This run stopped before I could finish: it reached ${stopPhrase(stop, stats)} `
+      + `without producing an answer. ${next}`
 }
 
 // Structured, queryable record of the classified stop reason on the run's task.
@@ -88,11 +119,13 @@ export const recordBudgetStopEvent = async (
   reason: BudgetExhaustionReason,
   stats: BudgetStopStats,
   hadPartialText: boolean,
+  checkpointId?: string | null,
 ): Promise<void> => {
   await prisma.taskEvent.create({
     data: {
       eventType: 'run.budget_exhausted',
       payload: {
+        checkpointId: checkpointId ?? null,
         costCents: stats.totalCostCents,
         hadPartialText,
         iterations: stats.iterations,

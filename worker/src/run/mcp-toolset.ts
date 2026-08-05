@@ -187,6 +187,12 @@ export type McpToolEntry = {
 export type McpToolset = {
   entries: McpToolEntry[]
   /**
+   * True when the managed DeepWater projections actually reached this run
+   * (granted AND in scope) — the structural fact behind the research routing
+   * block in the system prompt.
+   */
+  hasManagedResearchTools: boolean
+  /**
    * `inline` exposes every tool schema directly (small setups); `deferred`
    * exposes the mcp_find_tools / mcp_load_tools / mcp_drop_tools flow so a
    * large connector fleet doesn't flood the model's context with schemas.
@@ -475,6 +481,7 @@ export const buildMcpToolset = async (
 
   return {
     entries,
+    hasManagedResearchTools: [...transportByExposedName.values()].some((t) => t.deepWater),
     mode,
     createView: () =>
       mode === 'deferred'

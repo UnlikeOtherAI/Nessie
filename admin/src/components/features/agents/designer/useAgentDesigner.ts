@@ -1,5 +1,10 @@
 import { useCallback, useReducer } from 'react'
 import type { AgentModelOption } from '../../../../lib/api-client'
+import {
+  emptyRunLimitsForm,
+  type RunLimitsField,
+  type RunLimitsFormState,
+} from './run-limits'
 
 export type AgentEffortValue = 'low' | 'medium' | 'high' | 'xhigh'
 
@@ -9,6 +14,9 @@ export type AgentFormState = {
   name: string
   provider: string
   role: string
+  // Optional explicit per-run caps; blank fields mean "governed by the
+  // deployment backstop". Separate from `effort`, which is reasoning depth only.
+  runLimits: RunLimitsFormState
   streamingField: string | null
   systemPrompt: string
   tools: Record<string, boolean>
@@ -25,6 +33,7 @@ export type AgentDesignerAction =
   | { prompt: string; type: 'set_system_prompt' }
   | { provider: string; type: 'set_provider' }
   | { role: string; type: 'set_role' }
+  | { field: RunLimitsField; type: 'set_run_limit'; value: string }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
 
 // `tools` is a sparse overlay over the org tool catalog: unset keys fall back
@@ -36,6 +45,7 @@ const DEFAULT_STATE: AgentFormState = {
   name: '',
   provider: '',
   role: 'assistant',
+  runLimits: emptyRunLimitsForm,
   streamingField: null,
   systemPrompt: '',
   tools: {},
@@ -63,6 +73,11 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       }
     case 'set_effort':
       return { ...state, effort: action.effort }
+    case 'set_run_limit':
+      return {
+        ...state,
+        runLimits: { ...state.runLimits, [action.field]: action.value },
+      }
     case 'toggle_tool':
       return { ...state, tools: { ...state.tools, [action.toolId]: action.enabled } }
     case 'set_streaming':
@@ -83,6 +98,7 @@ export type AgentDesignerActions = {
   setName: (name: string) => void
   setProvider: (provider: string) => void
   setRole: (role: string) => void
+  setRunLimit: (field: RunLimitsField, value: string) => void
   setSystemPrompt: (prompt: string) => void
   toggleTool: (toolId: string, enabled: boolean) => void
 }
@@ -110,6 +126,11 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
   )
   const setEffort = useCallback(
     (effort: AgentEffortValue) => dispatch({ type: 'set_effort', effort }),
+    [],
+  )
+  const setRunLimit = useCallback(
+    (field: RunLimitsField, value: string) =>
+      dispatch({ field, type: 'set_run_limit', value }),
     [],
   )
   const toggleTool = useCallback(
@@ -167,6 +188,7 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
     setName,
     setProvider,
     setRole,
+    setRunLimit,
     setSystemPrompt,
     toggleTool,
   }

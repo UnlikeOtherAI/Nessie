@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
-import type { AgentEffort } from '@nessie/schemas'
+import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
 import {
+  AgentRunLimitsSchema,
   parseAgentId,
   parseChannelId,
   parseRunId,
@@ -53,6 +54,19 @@ const toToolPolicyRecord = (
   return Object.keys(policy).length > 0 ? policy : undefined
 }
 
+/**
+ * Read the stored `Agent.runLimits` JSON back through the shared schema. A row
+ * written before the column existed (or hand-edited into a shape the contract
+ * no longer accepts) reads as "no explicit limits" rather than leaking an
+ * unvalidated blob into API responses.
+ */
+export const readAgentRunLimits = (value: unknown): AgentRunLimits | null => {
+  if (value === null || value === undefined) return null
+  const parsed = AgentRunLimitsSchema.safeParse(value)
+  if (!parsed.success || Object.keys(parsed.data).length === 0) return null
+  return parsed.data
+}
+
 export const mapAgentRecord = (agent: {
   bindings: Array<{ channelId: string }>
   createdAt: Date
@@ -77,6 +91,7 @@ export const mapAgentRecord = (agent: {
   delegationMode: 'act_as_requesting_user' | 'none'
   status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
   systemPrompt: string | null
+  runLimits?: unknown
   toolPolicy?: unknown
   updatedAt: Date
 }): AgentRecord => {
@@ -120,6 +135,7 @@ export const mapAgentRecord = (agent: {
     provider: agent.provider ?? undefined,
     model: agent.model ?? undefined,
     effort: agent.effort,
+    runLimits: readAgentRunLimits(agent.runLimits) ?? undefined,
     toolPolicy: toToolPolicyRecord(agent.toolPolicy),
     avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
     createdAt: agent.createdAt.toISOString(),

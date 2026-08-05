@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AgentRunLimits } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -14,6 +15,8 @@ export const useCreateAgent = () => {
       parentAgentId?: string
       provider?: string
       role: string
+      // Omitted leaves the agent on the deployment backstop only.
+      runLimits?: AgentRunLimits
       systemPrompt?: string
       toolPolicy?: Record<string, boolean>
     }) =>
@@ -36,6 +39,8 @@ export const useUpdateAgent = () => {
       name?: string
       provider?: string
       role?: string
+      // Omitted leaves the stored limits untouched; `null` clears them.
+      runLimits?: AgentRunLimits | null
       systemPrompt?: string
       toolPolicy?: Record<string, boolean>
     }) => {

@@ -1,6 +1,6 @@
 # Run budgets, context lifecycle, and research routing
 
-**Status: authoritative spec, implementation in progress (2026-08-05).**
+**Status: implemented (2026-08-05).**
 Supersedes the effort-scaled hard-cap run budget model described in
 `docs/plans/2026-07-20-agent-harness-v2.md` §3.5.1. Reviewed adversarially by
 two independent externals (Codex SOL, kimix) on 2026-08-05; their findings are

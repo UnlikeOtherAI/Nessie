@@ -8,6 +8,11 @@ import {
 import { AgentAvatarPanel } from '../components/features/agents/AgentAvatarPanel'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
+import {
+  buildRunLimits,
+  readAgentRunLimits,
+  runLimitsToForm,
+} from '../components/features/agents/designer/run-limits'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
 import type { AgentFormState } from '../components/features/agents/designer/useAgentDesigner'
 import {
@@ -75,6 +80,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
       role: editingAgent.role,
       provider: editingAgent.provider ?? '',
       model: editingAgent.model ?? '',
+      runLimits: runLimitsToForm(readAgentRunLimits(editingAgent)),
       systemPrompt: editingAgent.systemPrompt ?? '',
       tools: editingAgent.toolPolicy ?? {},
     }
@@ -132,6 +138,8 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
     if (!state.name.trim() || !selectedModel) return
 
     const toolPolicy = buildToolPolicy(toolCatalog.options, state.tools)
+    // All fields blank sends an explicit `null`, which clears any stored limits.
+    const runLimits = buildRunLimits(state.runLimits)
 
     if (isEditMode && editingAgent) {
       await updateAgent.mutateAsync({
@@ -139,6 +147,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
         effort: state.effort,
         name: state.name.trim(),
         role: state.role.trim() || 'assistant',
+        runLimits,
         systemPrompt: state.systemPrompt.trim() || undefined,
         provider: state.provider || undefined,
         model: state.model || undefined,
@@ -149,6 +158,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
         effort: state.effort,
         name: state.name.trim(),
         role: state.role.trim() || 'assistant',
+        runLimits: runLimits ?? undefined,
         systemPrompt: state.systemPrompt.trim() || undefined,
         provider: state.provider || undefined,
         model: state.model || undefined,

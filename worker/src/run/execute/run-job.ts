@@ -1,7 +1,4 @@
-import { markRecallsInjected } from '@nessie/memory'
 import {
-  attributionFromActorContext,
-  BUILTIN_TOOL_DEFINITIONS,
   failDeepWaterHandoffStart,
   findDeepWaterHandoffRun,
   markAmbiguousDeepWaterHandoffRecoveryNeeded,
@@ -15,7 +12,6 @@ import {
   parseThreadId,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
-import { buildMcpToolset } from '../mcp-toolset.js'
 import {
   createDeepWaterHandoffGuard,
   DeepWaterHandoffFatalError,
@@ -25,21 +21,21 @@ import {
 import { promoteUnresolvedDeepWaterHandoffError } from '../deepwater-handoff-failure.js'
 import { resolveDeepWaterHandoffMarker } from '../deepwater-handoff-metadata.js'
 import { ensureRunPlanContext, markRunPlanStarted } from '../plans.js'
-import { resolveAgentTools } from '../tool-policy.js'
 import {
   isFinalQueueAttempt,
   shouldRetryRunWithoutTerminalizing,
   type QueueAttempt,
 } from '../tool-execution-errors.js'
 import type { LoopResult } from '../agentic-loop.js'
+import { resolveEffectiveRunBudget } from '../run-budget.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
-import { applyBudgetGate } from './budget-gate.js'
+import { applyBudgetGate, createBudgetBlockedProbe } from './budget-gate.js'
 import { recordRunTimingEvent, summarizeRunTiming } from './run-timing.js'
-import {
-  buildBudgetStopNotice,
-  classifyBudgetStop,
-  recordBudgetStopEvent,
-} from './budget-stop.js'
+import { classifyBudgetStop } from './budget-stop.js'
+import { createRunInference } from './run-inference.js'
+import { prepareRunExecution } from './run-setup.js'
+import { applyRunStopContinuation, prepareRunStop } from './run-stop.js'
+import { resolveUtilityModel } from './utility-model.js'
 import {
   buildCancelStopNotice,
   finalizeCancelledRun,
@@ -55,12 +51,10 @@ import {
   setAgentStatus,
   updateTaskStatus,
 } from './lifecycle.js'
-import { buildMemoryContext, retrieveRelevantMemories, stripLeadingSectionTag } from './memory.js'
-import { buildModelPrompt, loadConversation } from './prompt.js'
+import { stripLeadingSectionTag } from './memory.js'
 import { validateRunActorContext } from './policy.js'
 import { publishAgentStatus, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import { buildScopes } from './scopes.js'
-import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 
 // Reply-thread placement (#233): an ordinary run replies into its trigger
@@ -239,60 +233,11 @@ export const executeRunJob = async (
       status: 'thinking',
     })
 
-    const allowedToolIds = await loadAllowedToolIds(deps.prisma, context)
-
-    const agentRecord = await deps.prisma.agent.findUnique({
-      where: { id: context.agent.id },
-      select: { toolPolicy: true, parentAgentId: true },
-    })
-    const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
-    const { descriptors: toolDefs, allowedIds: resolvedToolIds } = resolveAgentTools(
-      allowedToolIds,
-      BUILTIN_TOOL_DEFINITIONS,
-      toolPolicy,
-      context.agent.parentAgentId,
-      context.agent.agentKind,
-    )
-
-    const mcpToolset = await buildMcpToolset(
-      deps.prisma,
-      context.channel.organizationId,
-      toolPolicy,
-      payload.actorContext,
-      {
-        agentId: context.agent.id,
-        agentKind: context.agent.agentKind,
-        channelId: context.channel.id,
-      },
-      attributionFromActorContext(payload.actorContext, {
-        agentId: context.agent.id,
-        agentKind: context.agent.agentKind,
-        runId: context.run.id,
-      }),
-      {
-        deepWaterHandoffGuard,
-        ledgerIdentity: deps.ledgerIdentity,
-        secretResolver: deps.mcpSecrets?.resolver,
-      },
-    )
-
-    const conversation = await loadConversation(deps.prisma, context.run.threadId, context.replyRootMessageId)
-    const memories = await retrieveRelevantMemories(deps, context, payload, prompt)
-    const injectedRecallIds = memories.flatMap((memory) =>
-      memory.recallId ? [memory.recallId] : [],
-    )
-    const memoryContext = buildMemoryContext(memories)
-
-    if (injectedRecallIds.length > 0) {
-      await markRecallsInjected(injectedRecallIds, deps.searchConfig.pool)
-    }
-
-    const initialMessages = buildModelPrompt(
-      conversation,
-      context,
+    const setup = await prepareRunExecution(deps, payload, context, {
+      deepWaterHandoffGuard,
+      isHandoffTurn: handoffLocator !== null,
       prompt,
-      memoryContext,
-    )
+    })
 
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
       agentId: parseAgentId(context.agent.id),
@@ -301,16 +246,30 @@ export const executeRunJob = async (
     })
     streamStarted = true
 
-    loopResult = await runExecutionAgentLoop(deps, payload, context, {
-      allowedToolIds,
+    // Utility model resolution is telemetry-grade: if it cannot be confirmed on
+    // the run's own provider route, the run's own model is used.
+    const utilityModel = await resolveUtilityModel(deps.prisma, {
+      organizationId: context.channel.organizationId,
+      providerKey: budgetGate.modelOverride?.provider ?? context.agent.provider,
+    }).catch(() => null)
+
+    const inference = createRunInference(deps, payload, context, {
       budgetModelOverride: budgetGate.modelOverride,
-      initialMessages,
+      utilityModel,
+    })
+
+    loopResult = await runExecutionAgentLoop(deps, payload, context, {
+      allowedToolIds: setup.allowedToolIds,
+      budget: resolveEffectiveRunBudget(context.agent.runLimits),
+      checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload),
+      inference,
+      initialMessages: setup.initialMessages,
       invocationSink: invocations,
       deepWaterHandoffGuard,
-      mcpToolset,
-      resolvedToolIds,
-      toolDefs,
-      toolPolicy,
+      mcpToolset: setup.mcpToolset,
+      resolvedToolIds: setup.resolvedToolIds,
+      toolDefs: setup.toolDefs,
+      toolPolicy: setup.toolPolicy,
     })
     deepWaterHandoffGuard.assertCompletion()
 
@@ -356,26 +315,25 @@ export const executeRunJob = async (
     // existing completion path so their strict invariants are untouched.
     if (loopResult.exhaustedBudget && !handoffLocator) {
       const hadPartialText = responseText.trim().length > 0
-      const notice = buildBudgetStopNotice(
-        loopResult.exhaustedBudget,
-        loopResult,
+      // Reserved headroom pays for the checkpoint here, before anything is
+      // delivered — a checkpoint cannot be produced after the budget is gone.
+      const stopPlan = await prepareRunStop(deps, payload, context, {
+        goal: prompt,
         hadPartialText,
-      )
-      await recordBudgetStopEvent(
-        deps.prisma,
-        context.task.id,
-        loopResult.exhaustedBudget,
-        loopResult,
-        hadPartialText,
-      )
+        inference,
+        invocationSink: invocations,
+        loopResult: { ...loopResult, exhaustedBudget: loopResult.exhaustedBudget },
+        priorGeneration: setup.checkpoint?.generation ?? 0,
+      })
       if (hadPartialText) {
         // Partial answer present: deliver it with the stop notice appended and
         // complete the run normally.
         await completeRunExecution(deps, payload, context, planContext, {
           invocations: loopResult.invocations,
           iterations: loopResult.iterations,
-          memories,
-          responseText: `${responseText}\n\n${notice}`,
+          memories: setup.memories,
+          messageMetadata: { runStop: stopPlan.runStopMetadata },
+          responseText: `${responseText}\n\n${stopPlan.notice}`,
           toolCallsUsed: loopResult.toolCallsUsed,
         })
         terminalOutcome = 'completed'
@@ -396,17 +354,21 @@ export const executeRunJob = async (
           ),
           planContext,
           streamStarted,
-          terminalMessage: notice,
+          terminalMessage: stopPlan.notice,
+          terminalMessageMetadata: { runStop: stopPlan.runStopMetadata },
         })
         terminalOutcome = 'failed'
       }
+      // Enqueued only after this run is terminal, so the per-(agent, thread)
+      // single-run invariant is never broken to force a continuation.
+      await applyRunStopContinuation(deps, payload, context, stopPlan)
       return
     }
 
     await completeRunExecution(deps, payload, context, planContext, {
       invocations: loopResult.invocations,
       iterations: loopResult.iterations,
-      memories,
+      memories: setup.memories,
       responseText,
       toolCallsUsed: loopResult.toolCallsUsed,
     })

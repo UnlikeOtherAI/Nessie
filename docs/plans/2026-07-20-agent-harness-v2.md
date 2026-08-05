@@ -163,7 +163,14 @@ ignores all of it and reads `Agent.model` or the env default. Wire it up:
 - Difficulty-based auto-escalation (start swift, escalate on failure) is
   explicitly **deferred** — task-kind routing first, evidence later.
 
-### 3.5.1 Effort levels (implemented)
+### 3.5.1 Effort levels (implemented — budget scaling SUPERSEDED 2026-08-05)
+
+> **Superseded in part:** effort-scaled run budgets (`EFFORT_BUDGETS` /
+> `budgetForEffort`) were retired by
+> `docs/plans/2026-08-05-run-budgets-context-and-research-routing.md`. `effort`
+> now maps only to provider `reasoning_effort`; run caps are
+> `Agent.runLimits ?? NESSIE_RUN_BACKSTOP_*`, with checkpointed graceful stops
+> and continuation. The text below is historical.
 
 Shipped ahead of the tier work: a per-agent **effort** setting, modeled on
 OpenAI Codex's reasoning-effort levels, with four levels — `low | medium |

@@ -1,5 +1,5 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
-import type { AgentEffort } from '@nessie/schemas'
+import { Prisma, type PrismaClient } from '@prisma/client'
+import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
 
 import type { AgentRecord } from '../contracts.js'
 import {
@@ -12,7 +12,18 @@ import {
   buildAccessibleChannelWhere,
   isSystemManagedAgent,
   mapAgentRecord,
+  readAgentRunLimits,
 } from './agent-record.js'
+
+// `Agent.runLimits` write value. `undefined` leaves the stored limits alone
+// (the ordinary "field omitted" carry-forward), an explicit `null` clears them,
+// and an object replaces them wholesale.
+const runLimitsWriteValue = (
+  runLimits: AgentRunLimits | null | undefined,
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined => {
+  if (runLimits === undefined) return undefined
+  return runLimits ?? Prisma.DbNull
+}
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
@@ -123,6 +134,7 @@ export const createAgentRecord = async (
     projectId?: string
     provider?: string
     role: string
+    runLimits?: AgentRunLimits | null
     surfacePolicy?: 'dm_only' | 'shared'
     systemPrompt?: string
     systemManaged?: boolean
@@ -178,6 +190,7 @@ export const createAgentRecord = async (
       projectId: input.projectId,
       provider: input.provider,
       role: input.role,
+      runLimits: runLimitsWriteValue(input.runLimits),
       surfacePolicy: 'shared',
       systemPrompt: input.systemPrompt,
       systemManaged: false,
@@ -224,6 +237,7 @@ export const updateAgentRecord = async (
     name?: string
     provider?: string
     role?: string
+    runLimits?: AgentRunLimits | null
     surfacePolicy?: 'dm_only' | 'shared'
     systemPrompt?: string
     systemManaged?: boolean
@@ -270,6 +284,7 @@ export const updateAgentRecord = async (
           : input.name ?? existing.name,
         provider: input.provider ?? existing.provider,
         role: input.role ?? existing.role,
+        runLimits: runLimitsWriteValue(input.runLimits),
         surfacePolicy: existing.surfacePolicy,
         systemPrompt: input.systemPrompt ?? existing.systemPrompt,
         systemManaged: existing.systemManaged,
@@ -326,6 +341,7 @@ export const cloneAgentRecord = async (
       provider: true,
       projectId: true,
       role: true,
+      runLimits: true,
       surfacePolicy: true,
       systemManaged: true,
       systemPrompt: true,
@@ -350,6 +366,9 @@ export const cloneAgentRecord = async (
       provider: source.provider,
       projectId: source.projectId,
       role: source.role,
+      // Run limits are ordinary agent configuration (not a protected key), so a
+      // clone inherits them the same way it inherits effort/model.
+      runLimits: runLimitsWriteValue(readAgentRunLimits(source.runLimits)),
       surfacePolicy: 'shared',
       systemPrompt: source.systemPrompt,
       systemManaged: false,

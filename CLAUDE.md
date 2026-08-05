@@ -42,25 +42,52 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - Node/TypeScript (strict mode), Fastify, Prisma + PostgreSQL
 - Multi-tenancy: Organisation → Project → Team → Channel schema with `organization_id` scoping on all child tables
 - RBAC policy engine with deny-overrides; OIDC SSO with PKCE
-- Agentic loop: run budget is per-agent effort-scaled (`Agent.effort` =
-  low/medium/high/xhigh; medium = 12 iterations / 20 tool calls / 90 s / cost
-  cap, the historical default). `xhigh` is effectively unbounded — governed
-  only by the scope `Budget` gate and the loop's repeated-call detection. See
-  `worker/src/run/agentic-loop.ts` (`EFFORT_BUDGETS`) and
-  `docs/plans/2026-07-20-agent-harness-v2.md` §3.5.1. A budget-cap stop is
-  never silent: it is classified (`iteration_limit` / `tool_call_limit` /
-  `time_limit` / `token_limit` / `cost_limit` / `repeated_tool_calls`,
-  `worker/src/run/execute/budget-stop.ts`) and always surfaced — partial
-  assistant text is delivered with a "stopped at the limit" notice (run
-  `completed`), or a clear notice is posted and the run `failed` when the loop
-  produced nothing; a `run.budget_exhausted` `TaskEvent` records the reason.
-  All tool results (builtin, MCP, `delegate`) are truncated at the single loop
-  chokepoint before entering context. Every run also records a wall-clock-only
-  stage-latency breakdown at its terminal state (completion **and** failure) as
-  a `run.timing` `TaskEvent` — `{ outcome, runId, queueWaitMs, totalMs,
-  inferenceMs, inferenceCount, toolMs, toolCount }`, no cost data
-  (`worker/src/run/execute/run-timing.ts`) — so a slow run is diagnosable;
-  owners read recent summaries at `GET /api/ledger/runs/timing`.
+- Agentic loop — run budgets (2026-08-05 redesign,
+  `docs/plans/2026-08-05-run-budgets-context-and-research-routing.md`):
+  `Agent.effort` maps **only** to provider `reasoning_effort`; it no longer
+  implies spend caps. Per-dimension budget = `Agent.runLimits` (optional
+  explicit caps, Agent Designer "Run limits") `??` the deployment backstop
+  (`NESSIE_RUN_BACKSTOP_MAX_{TOKENS,TOOL_CALLS,ITERATIONS,WALLCLOCK_MS,COST_CENTS}`,
+  defaults 500k / 2000 / 1000 / 45 min / 2000¢ — a safety envelope, not a user
+  budget; resolution in `worker/src/run/run-budget.ts`). The loop stops at
+  ~90% of any cap with reserved headroom, writes a durable `RunCheckpoint`
+  (work-state note + verbatim sources, `run.checkpointed` `TaskEvent`), then
+  delivers partial text + a classified notice (`iteration_limit` /
+  `tool_call_limit` / `time_limit` / `token_limit` / `cost_limit` /
+  `repeated_tool_calls` / `org_budget_blocked`,
+  `worker/src/run/execute/budget-stop.ts`; member-visible copy carries **no
+  currency figures**). The org `Budget` verdict is re-checked mid-run between
+  iterations (≥30 s apart, same human-interactive exemption as the pre-run
+  gate). Any follow-up run in the same thread/reply-thread auto-loads and
+  claims the newest unconsumed checkpoint (set-once conditional update) and
+  injects it as explicitly untrusted working notes — so a plain "keep going"
+  reply resumes instead of re-doing the work; the stop notice's
+  `metadata.runStop = { runId, stopReason, checkpointId?, continuable }`
+  additionally drives a one-tap admin Continue. Non-interactive runs
+  (triggers/schedules/workflows; `payload.interactive !== true`) never ask:
+  the worker auto-continues up to `NESSIE_RUN_AUTO_CONTINUATIONS` (default 2)
+  generations (`run.continued` `TaskEvent`, `Run.continuationOfRunId`
+  lineage), yielding to the per-(agent, thread) run slot when busy. Context is
+  managed per-model (`worker/src/run/context-window.ts`, conservative 100k
+  default): at ~80% of the window the elder transcript folds into a rolling
+  work-state note via real compaction (`worker/src/run/context-compaction.ts`,
+  verbatim-URL sources, closed tool groups only, cooldown + bounded attempts,
+  invocations counted in run totals); silent trimming is emergency-fallback
+  only. `delegate` sub-agents run a fixed small budget, are capped per run by
+  `NESSIE_MAX_DELEGATES_PER_RUN` (default 16), and — like compaction — use
+  `NESSIE_UTILITY_MODEL` when it resolves through the run's own org provider
+  (else the run's model). A structural research-routing prompt block (from
+  toolset facts only, never message content) steers granted agents to offer
+  DeepWater for deep research and ungranted agents to research via
+  `web_search` + delegate digests; DeepWater launch turns get no routing block
+  and no checkpoint injection. All tool results (builtin, MCP, `delegate`) are
+  truncated at the single loop chokepoint before entering context. Every run
+  also records a wall-clock-only stage-latency breakdown at its terminal state
+  (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
+  runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
+  toolCount }`, no cost data (`worker/src/run/execute/run-timing.ts`) — so a
+  slow run is diagnosable; owners read recent summaries at
+  `GET /api/ledger/runs/timing`.
 - **Budget threshold alerts + failed-run attribution** (local ops only, never
   UOA credits). The gate no longer only observes usage passively: `evaluateBudget`
   (`packages/runtime/src/budget.ts`) returns the byte-identical verdict PLUS an
@@ -91,13 +118,22 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   budget-stop: partial text delivered + a "cancelled" notice, run `cancelled`,
   `run.cancelled` `TaskEvent`). `POST /api/runs/:id/restart` re-runs a terminal
   `failed`/`cancelled` run, enqueuing a fresh run that replays the same trigger
-  message and thread and links back via `Run.restartOfRunId`. A run whose
+  message and thread and links back via `Run.restartOfRunId`.
+  `POST /api/runs/:id/continue` (`api/src/services/run-continuation.ts`)
+  resumes a terminal run from its unconsumed `RunCheckpoint`: same channel
+  access that could have triggered the run, one transaction claiming the
+  checkpoint (set-once `consumedByRunId`) + creating the continuation run
+  (`Run.continuationOfRunId`) + task + enqueue; 409s: `RUN_BUSY`,
+  `RUN_CHECKPOINT_CONSUMED`, `RUN_NOT_CONTINUABLE`. A run whose
   trigger message carries `integrationLaunch` metadata (DeepWater handoff) is
-  rejected from both with `409 RUN_HANDOFF_MANAGED` → use `research_cancel`; the
+  rejected from cancel/restart/continue with `409 RUN_HANDOFF_MANAGED` → use
+  `research_cancel`; the
   handoff invariants are never touched. `Run.triggerMessageId` (populated by the
   chat orchestrator + integration handoffs) backs both the guard and the replay.
-  Admin surfaces cancel/restart on the Agents → Activity page
-  (`admin/src/components/features/runs/RunLifecyclePanel.tsx`).
+  Admin surfaces cancel/restart/continue on the Agents → Activity page
+  (`admin/src/components/features/runs/RunLifecyclePanel.tsx`; recently-ended
+  runs expose `checkpointId`) and a Continue button on budget-stop notices
+  (`admin/src/components/features/channels/RunStopContinue.tsx`).
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 

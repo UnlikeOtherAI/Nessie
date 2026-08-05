@@ -1,5 +1,5 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
-import type { AgentEffort } from '@nessie/schemas'
+import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type {
@@ -44,6 +44,12 @@ export type RunContext = {
     model: string | null
     parentAgentId: string | null
     provider: string | null
+    /**
+     * Optional explicit per-run caps (`Agent.runLimits`). Absent/`null` means
+     * every dimension is governed by the deployment backstop — `effort` is
+     * reasoning effort only, never a spend cap.
+     */
+    runLimits?: AgentRunLimits | null
     systemPrompt: string | null
   }
   channel: {

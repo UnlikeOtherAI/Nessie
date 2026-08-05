@@ -148,6 +148,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         projectId: actorContext.tenant.projectId,
         provider: body.provider,
         role: body.role ?? 'assistant',
+        runLimits: body.runLimits,
         systemPrompt: body.systemPrompt,
         teamId: actorContext.tenant.teamId,
         toolPolicy: body.toolPolicy,

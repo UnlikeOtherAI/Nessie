@@ -1,9 +1,6 @@
-import { loadConfig } from '@nessie/config'
 import {
-  attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
   DEEP_WATER_START_FAILURE_DETAIL,
-  type InferenceResult,
   type InvocationRecord,
   type ProviderMessage,
   type ToolSchemaDescriptor,
@@ -12,13 +9,14 @@ import {
   parseAgentId,
   parseOrganizationId,
   parseRunId,
-  reasoningEffortForAgentEffort,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
-import { budgetForEffort, runAgenticLoop, type LoopResult } from '../agentic-loop.js'
+import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
+import { buildContextPlan } from '../context-window.js'
+import { runContextCompaction } from '../context-compaction.js'
+import { estimateToolSchemaTokens } from '../context-management.js'
 import { runDelegate } from '../delegate.js'
-import { runInferenceGraph } from '../inference.js'
-import { createProviderRequestHeadersResolver } from '../inference-identity.js'
+import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import { authorizeToolCall } from '../tool-policy.js'
@@ -33,19 +31,9 @@ import {
   toolDeniedResult,
 } from './policy.js'
 import { publishAgentStatus } from './realtime.js'
+import type { RunInference } from './run-inference.js'
 import { recordToolEnd } from './tool-events.js'
-import type {
-  BudgetModelOverride,
-  ExecutionDependencies,
-  RunContext,
-} from './types.js'
-
-const runtimeModelConfig = loadConfig().model
-
-type InferenceCallbacks = {
-  onVisibleReasoningDelta: (chunk: string) => Promise<void>
-  onVisibleTextDelta: (chunk: string) => Promise<void>
-}
+import type { ExecutionDependencies, RunContext } from './types.js'
 
 export const runExecutionAgentLoop = async (
   deps: ExecutionDependencies,
@@ -53,10 +41,13 @@ export const runExecutionAgentLoop = async (
   context: RunContext,
   input: {
     allowedToolIds: Set<string>
-    budgetModelOverride: BudgetModelOverride | null
+    budget: BudgetLimits
+    // Mid-run org-`Budget` probe (throttled by its factory in budget-gate.ts).
+    checkBudgetBlocked: () => Promise<boolean>
     deepWaterHandoffGuard: DeepWaterHandoffGuard
     initialMessages: ProviderMessage[]
-    // Caller-owned accumulator: every main-loop AND delegate sub-agent
+    inference: RunInference
+    // Caller-owned accumulator: every main-loop, sub-agent AND compaction
     // invocation is pushed here live, so the run's spend is attributable even if
     // the loop throws before returning (see run-job's failure path).
     invocationSink: InvocationRecord[]
@@ -66,9 +57,6 @@ export const runExecutionAgentLoop = async (
     toolPolicy: Record<string, boolean> | null
   },
 ): Promise<LoopResult> => {
-  let currentTurnStreamed = false
-  const reasoningEffort = reasoningEffortForAgentEffort(context.agent.effort)
-
   const subAgentBuiltinDescriptors = input.toolDefs.filter((d) => d.toolName !== 'delegate')
   const subAgentBuiltinIds = new Set(
     [...input.resolvedToolIds].filter((id) => id !== 'delegate'),
@@ -79,83 +67,8 @@ export const runExecutionAgentLoop = async (
   const mcpView = input.mcpToolset.createView()
   const mcpExposedNames = mcpView.handledNames
   const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
-  const requestHeadersForProvider = createProviderRequestHeadersResolver({
-    attribution: attributionFromActorContext(payload.actorContext, {
-      agentId: context.agent.id,
-      agentKind: context.agent.agentKind,
-      runId: context.run.id,
-    }),
-    ledgerIdentity: deps.ledgerIdentity,
-  })
 
-  const mainInferenceCallbacks: InferenceCallbacks = {
-    onVisibleReasoningDelta: async (chunk) => {
-      await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
-        content: chunk,
-        runId: parseRunId(context.run.id),
-      })
-    },
-    onVisibleTextDelta: async (chunk) => {
-      currentTurnStreamed = true
-      await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-        content: chunk,
-        runId: parseRunId(context.run.id),
-      })
-    },
-  }
-  const silentInferenceCallbacks: InferenceCallbacks = {
-    onVisibleReasoningDelta: async () => undefined,
-    onVisibleTextDelta: async () => undefined,
-  }
-
-  const runInferenceWithCallbacks = async (
-    messages: ProviderMessage[],
-    tools: ToolSchemaDescriptor[],
-    callbacks: InferenceCallbacks,
-  ): Promise<InferenceResult> => {
-    const mpr = await runInferenceGraph(deps.prisma, {
-      actorContext: payload.actorContext,
-      agent: {
-        id: context.agent.id,
-        model: input.budgetModelOverride?.model ?? context.agent.model,
-        provider: input.budgetModelOverride?.provider ?? context.agent.provider,
-        routingProfileId: null,
-      },
-      baseMessages: messages,
-      modelConfig: runtimeModelConfig,
-      onVisibleReasoningDelta: callbacks.onVisibleReasoningDelta,
-      onVisibleTextDelta: callbacks.onVisibleTextDelta,
-      organizationId: context.channel.organizationId,
-      reasoningEffort,
-      requestHeadersForProvider,
-      toolChoice: 'auto',
-      tools,
-    })
-    if (
-      mpr.status !== 'completed'
-      || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
-    ) {
-      throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
-    }
-    return {
-      correlationId: mpr.correlationId,
-      finishReason: mpr.invocations[0]?.finishReason,
-      invocations: mpr.invocations as unknown as InvocationRecord[],
-      model: mpr.invocations[0]?.model ?? '',
-      outputText: mpr.finalAnswer ?? '',
-      provider: (mpr.invocations[0]?.provider ?? 'openai') as 'openai' | 'minimax' | 'kimi' | 'deepseek' | 'openai-compatible',
-      requestId: mpr.requestId,
-      toolCalls: mpr.toolCalls,
-    }
-  }
-
-  const runMainInference = (messages: ProviderMessage[], tools: ToolSchemaDescriptor[]) => {
-    currentTurnStreamed = false
-    return runInferenceWithCallbacks(messages, tools, mainInferenceCallbacks)
-  }
-
-  const runSubAgentInference = (messages: ProviderMessage[], tools: ToolSchemaDescriptor[]) =>
-    runInferenceWithCallbacks(messages, tools, silentInferenceCallbacks)
+  const delegateGate = createDelegateGate()
 
   const buildBuiltinCtx = (
     toolActorContext: ReturnType<typeof buildToolActorContext>,
@@ -213,8 +126,13 @@ export const runExecutionAgentLoop = async (
     )
   }
 
+  const contextPlan = buildContextPlan({
+    model: context.agent.model,
+    toolSchemaTokens: estimateToolSchemaTokens(mainToolDefs),
+  })
+
   const loopResult = await runAgenticLoop({
-    budget: budgetForEffort(context.agent.effort),
+    budget: input.budget,
     // Cooperative-cancel probe: a cheap status read the loop consults between
     // iterations and after each tool-call batch. `POST /api/runs/:id/cancel`
     // stamps `cancelRequestedAt`; the loop then exits and run-job terminalizes
@@ -226,6 +144,23 @@ export const runExecutionAgentLoop = async (
       })
       return row?.cancelRequestedAt != null
     },
+    checkBudgetBlocked: input.checkBudgetBlocked,
+    compactContext: async ({ messages, targetTokens }) =>
+      runContextCompaction({
+        generateNote: async (prompt) => {
+          const result = await input.inference.runUtility(
+            [{ content: prompt, role: 'user' }],
+            [],
+          )
+          // Compaction is inference the run paid for: it counts in the run's
+          // totals and against the backstop like any other call.
+          input.invocationSink.push(...result.invocations)
+          return result.outputText
+        },
+        messages,
+        targetTokens,
+      }),
+    contextPlan,
     callbacks: {
       onIterationStart: async (iteration) => {
         await deps.realtimeTransport.publishWs(buildScopes(context), {
@@ -281,8 +216,7 @@ export const runExecutionAgentLoop = async (
         })
       },
       onTextDelta: async (delta) => {
-        if (currentTurnStreamed) {
-          currentTurnStreamed = false
+        if (input.inference.consumeStreamedFlag()) {
           return
         }
         await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
@@ -304,9 +238,16 @@ export const runExecutionAgentLoop = async (
         }
       }
       if (toolName === 'delegate') {
+        if (!delegateGate.tryAcquire()) {
+          return {
+            inputSummary: summarizeToolInput(args),
+            output: delegateGate.overLimitMessage(),
+            success: false,
+          }
+        }
         const result = await runDelegate(args, {
           mcpToolset: input.mcpToolset,
-          runInference: runSubAgentInference,
+          runInference: input.inference.runUtility,
           executeBuiltinTool: (n, a, id) =>
             executeGuardedBuiltin(n, a, toolActorContext, id),
           builtinDescriptors: subAgentBuiltinDescriptors,
@@ -398,12 +339,12 @@ export const runExecutionAgentLoop = async (
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
     runInference: (messages) =>
-      runMainInference(messages, [...input.toolDefs, ...mcpView.descriptors]),
+      input.inference.runMain(messages, [...input.toolDefs, ...mcpView.descriptors]),
     toolTimeoutError: input.mcpToolset.timeoutErrorFor,
     tools: mainToolDefs,
   })
 
-  // Main-loop and delegate invocations were both accumulated into the shared
-  // sink, which backs loopResult.invocations — nothing left to append.
+  // Main-loop, delegate and compaction invocations were all accumulated into
+  // the shared sink, which backs loopResult.invocations — nothing to append.
   return loopResult
 }

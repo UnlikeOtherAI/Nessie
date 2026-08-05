@@ -1,4 +1,10 @@
-import { useActiveRuns, useCancelRun, useRestartRun } from '../../../facades/runs/hooks'
+import {
+  useActiveRuns,
+  useCancelRun,
+  useContinueRun,
+  useRestartRun,
+} from '../../../facades/runs/hooks'
+import { useToasts } from '../../../providers/ToastProvider'
 
 const statusBadge = (status: string) => (
   <span
@@ -25,13 +31,34 @@ const buttonClass = [
   'disabled:cursor-not-allowed disabled:opacity-50',
 ].join(' ')
 
+const primaryButtonClass = [
+  'rounded-md border border-[color:var(--accent)] bg-[var(--accent)] px-2.5 py-1',
+  'text-xs font-semibold text-[var(--on-accent)] transition hover:opacity-90',
+  'disabled:cursor-not-allowed disabled:opacity-50',
+].join(' ')
+
 export const RunLifecyclePanel = () => {
   const { data, isLoading } = useActiveRuns()
   const cancelRun = useCancelRun()
   const restartRun = useRestartRun()
+  const continueRun = useContinueRun()
+  const { pushToast } = useToasts()
 
   const active = data?.runs ?? []
   const restartable = data?.restartable ?? []
+
+  // The API authors the meaning of every refusal (already continued, agent
+  // busy, handoff-managed), so the toast repeats its message verbatim.
+  const onContinue = (runId: string) => {
+    continueRun.mutate(runId, {
+      onError: (error) => {
+        pushToast({ body: error.message, title: 'Could not continue the run' })
+      },
+      onSuccess: () => {
+        pushToast({ body: 'The agent picks up where it stopped.', title: 'Run continued' })
+      },
+    })
+  }
 
   return (
     <section className="flex flex-col gap-4" data-testid="run-lifecycle-panel">
@@ -103,8 +130,21 @@ export const RunLifecyclePanel = () => {
                   </div>
                   <div className="mt-0.5 text-[11px] text-[color:var(--tx3)]">
                     ended {formatTime(run.finishedAt)} · {run.toolCallCount} tool calls
+                    {run.checkpointId ? ' · working state saved' : ''}
                   </div>
                 </div>
+                {/* A saved checkpoint makes Continue the primary action; restart
+                    stays available and does not consume the checkpoint. */}
+                {run.checkpointId ? (
+                  <button
+                    className={primaryButtonClass}
+                    disabled={continueRun.isPending}
+                    onClick={() => onContinue(run.id)}
+                    type="button"
+                  >
+                    Continue
+                  </button>
+                ) : null}
                 <button
                   className={buttonClass}
                   disabled={restartRun.isPending}

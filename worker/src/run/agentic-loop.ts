@@ -17,71 +17,23 @@ import {
   estimateToolSchemaTokens,
   trimConversationToFit,
 } from './context-management.js'
-import type { AgentEffort } from '@nessie/schemas'
+import {
+  stopAfterInference,
+  stopAfterToolBatch,
+  stopBeforeIteration,
+  type BudgetExhaustionReason,
+  type BudgetLimits,
+} from './loop-budget.js'
+import {
+  buildContextPlan,
+  createCompactionGovernor,
+  type ContextPlan,
+} from './context-window.js'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
 import { summarizeToolInput, truncateToolResult } from './tool-util.js'
 
-export type BudgetLimits = {
-  maxIterations: number
-  maxToolCalls: number
-  maxWallclockMs: number
-  maxTokens?: number
-  maxCostCents?: number
-  toolTimeoutMs?: number
-}
-
-const TOOL_TIMEOUT_MS = 75_000
-
-// Per-agent run budget, scaled by the agent's effort level (see AgentEffort).
-// `medium` is the historical default. `xhigh` is effectively unbounded: the
-// org/team `Budget` gate and the loop's repeated-tool-call detection remain the
-// only governors. `toolTimeoutMs` is identical across levels.
-export const EFFORT_BUDGETS: Record<AgentEffort, BudgetLimits> = {
-  low: {
-    maxIterations: 8,
-    maxToolCalls: 12,
-    maxWallclockMs: 60_000,
-    maxTokens: 30_000,
-    maxCostCents: 25,
-    toolTimeoutMs: TOOL_TIMEOUT_MS,
-  },
-  medium: {
-    maxIterations: 12,
-    maxToolCalls: 20,
-    maxWallclockMs: 90_000,
-    maxTokens: 50_000,
-    maxCostCents: 50,
-    toolTimeoutMs: TOOL_TIMEOUT_MS,
-  },
-  high: {
-    maxIterations: 36,
-    maxToolCalls: 60,
-    maxWallclockMs: 600_000,
-    maxTokens: 200_000,
-    maxCostCents: 500,
-    toolTimeoutMs: TOOL_TIMEOUT_MS,
-  },
-  xhigh: {
-    maxIterations: 10_000,
-    maxToolCalls: 20_000,
-    maxWallclockMs: 4 * 60 * 60 * 1_000,
-    maxTokens: Number.MAX_SAFE_INTEGER,
-    maxCostCents: Number.MAX_SAFE_INTEGER,
-    toolTimeoutMs: TOOL_TIMEOUT_MS,
-  },
-}
-
-export const budgetForEffort = (effort: AgentEffort): BudgetLimits =>
-  EFFORT_BUDGETS[effort]
-
-export type BudgetExhaustionReason =
-  | 'cost'
-  | 'iterations'
-  | 'loop_detected'
-  | 'tokens'
-  | 'tool_calls'
-  | 'wallclock'
+export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
 export type LoopCallbacks = {
   onIterationStart: (iteration: number) => Promise<void>
@@ -102,6 +54,9 @@ export type LoopCallbacks = {
 export type LoopResult = {
   finalText: string
   iterations: number
+  // The conversation as it stood when the loop exited. The caller reads it to
+  // produce a checkpoint note from the reserved budget headroom.
+  messages: ProviderMessage[]
   toolCallsUsed: number
   // Aggregate wall-clock time spent inside tool executions. Tools within one
   // iteration run concurrently (Promise.allSettled), so this sums per-tool
@@ -172,18 +127,16 @@ const sumCostCents = (invocations: InvocationRecord[]): number =>
     return sum + Math.round(inv.providerReportedCost.amount * 100)
   }, 0)
 
-const CONTEXT_BUDGET_TOKENS = 100_000
-const CONTEXT_TRIM_THRESHOLD = 0.85
-const CONTEXT_TRIM_TARGET = 0.75
-const MAX_COMPACTION_ATTEMPTS = 2
+const MAX_OVERFLOW_TRIM_ATTEMPTS = 2
 
 const callInferenceWithRetry = async (
   messages: ProviderMessage[],
   runInference: (msgs: ProviderMessage[]) => Promise<InferenceResult>,
   retryBudget: RetryBudget,
+  overflowTrimTarget: number,
 ): Promise<InferenceResult> => {
   let lastError: unknown
-  let compactionAttempts = 0
+  let trimAttempts = 0
 
   for (let attempt = 0; attempt <= 3; attempt++) {
     try {
@@ -200,11 +153,14 @@ const callInferenceWithRetry = async (
       }
 
       if (recovery.action === 'compact_and_retry') {
-        if (compactionAttempts >= MAX_COMPACTION_ATTEMPTS) {
+        // Emergency path only: the provider rejected the request as too large
+        // even though compaction runs between iterations. Truncate hard rather
+        // than spend another model call inside a failing request.
+        if (trimAttempts >= MAX_OVERFLOW_TRIM_ATTEMPTS) {
           throw new Error('Context overflow: unable to compact messages further')
         }
-        compactionAttempts += 1
-        const trimmed = trimConversationToFit(messages, Math.floor(CONTEXT_BUDGET_TOKENS * 0.6))
+        trimAttempts += 1
+        const trimmed = trimConversationToFit(messages, overflowTrimTarget)
         messages.length = 0
         messages.push(...trimmed)
         continue
@@ -238,6 +194,21 @@ export const runAgenticLoop = async (input: {
   // returns a `cancelled` result carrying any partial answer. Kept side-effect
   // free (a cheap status read) — the caller owns terminalization and notices.
   checkCancelled?: () => Promise<boolean>
+  // Optional org-`Budget` probe, consulted between iterations. The caller owns
+  // throttling and alerting; a `true` verdict stops the loop with the
+  // `org_budget_blocked` classification so the run is checkpointed like any
+  // other policy-ceiling stop.
+  checkBudgetBlocked?: () => Promise<boolean>
+  // Optional real-compaction hook. Called BETWEEN iterations only (every tool
+  // wrapper of the previous batch has settled), with the current transcript and
+  // the rebuild target. Returning null means "compaction unavailable" and the
+  // loop falls back to emergency truncation.
+  compactContext?: (input: {
+    messages: ProviderMessage[]
+    targetTokens: number
+  }) => Promise<ProviderMessage[] | null>
+  // Compaction/trim thresholds for this run's model (see context-window.ts).
+  contextPlan?: ContextPlan
   executeTool: ExecuteToolFn
   initialMessages: ProviderMessage[]
   // Optional caller-owned accumulator for every inference invocation the loop
@@ -256,6 +227,9 @@ export const runAgenticLoop = async (input: {
   const retryBudget = createRetryBudget(6)
   const toolSchemaTokens = estimateToolSchemaTokens(input.tools)
   const circuitBreaker = new ToolCircuitBreaker()
+  const contextPlan = input.contextPlan
+    ?? buildContextPlan({ model: null, toolSchemaTokens })
+  const compactionGovernor = createCompactionGovernor(contextPlan)
 
   let iterations = 0
   let toolCallsUsed = 0
@@ -283,6 +257,7 @@ export const runAgenticLoop = async (input: {
     finalText,
     invocations: allInvocations,
     iterations,
+    messages,
     toolCallsUsed,
     toolMs: totalToolMs,
     totalCostCents,
@@ -296,31 +271,54 @@ export const runAgenticLoop = async (input: {
   const cancellationRequested = async (): Promise<boolean> =>
     input.checkCancelled ? input.checkCancelled() : false
 
-  while (iterations < budget.maxIterations) {
+  const stop = async (reason: BudgetExhaustionReason): Promise<LoopResult> => {
+    await callbacks.onBudgetExhausted(reason)
+    return finish(reason)
+  }
+
+  // Fold the elder transcript into a rolling work-state note. Safe here and
+  // only here: the previous tool batch has fully settled, so no group is open.
+  // A failed or unavailable compaction degrades to emergency truncation rather
+  // than letting the transcript grow into a provider overflow.
+  const maintainContext = async (iteration: number): Promise<void> => {
+    // The plan's thresholds already exclude the tool schemas, so only the
+    // transcript is measured against them.
+    const transcriptTokens = estimateMessagesTokens(messages)
+    if (!compactionGovernor.shouldAttempt({ iteration, transcriptTokens })) return
+    compactionGovernor.recordAttempt(iteration)
+    const compacted = input.compactContext
+      ? await input
+        .compactContext({ messages, targetTokens: contextPlan.targetTokens })
+        .catch(() => null)
+      : null
+    const rebuilt = compacted ?? trimConversationToFit(messages, contextPlan.targetTokens)
+    messages.length = 0
+    messages.push(...rebuilt)
+  }
+
+  while (true) {
     if (await cancellationRequested()) {
       return finish(null, lastAssistantText, true)
     }
 
-    if (elapsed() >= budget.maxWallclockMs) {
-      await callbacks.onBudgetExhausted('wallclock')
-      return finish('wallclock')
+    const preIterationStop = stopBeforeIteration(budget, { elapsedMs: elapsed(), iterations })
+    if (preIterationStop) return stop(preIterationStop)
+
+    if (input.checkBudgetBlocked && (await input.checkBudgetBlocked())) {
+      return stop('org_budget_blocked')
     }
 
     iterations += 1
     await callbacks.onIterationStart(iterations)
 
-    const currentTokens = estimateMessagesTokens(messages)
-    if (currentTokens + toolSchemaTokens > CONTEXT_BUDGET_TOKENS * CONTEXT_TRIM_THRESHOLD) {
-      const trimmed = trimConversationToFit(
-        messages,
-        Math.floor(CONTEXT_BUDGET_TOKENS * CONTEXT_TRIM_TARGET),
-        toolSchemaTokens,
-      )
-      messages.length = 0
-      messages.push(...trimmed)
-    }
+    await maintainContext(iterations)
 
-    const result = await callInferenceWithRetry(messages, input.runInference, retryBudget)
+    const result = await callInferenceWithRetry(
+      messages,
+      input.runInference,
+      retryBudget,
+      contextPlan.targetTokens,
+    )
     allInvocations.push(...result.invocations)
     totalCostCents = sumCostCents(allInvocations)
     totalTokensUsed = sumTokens(allInvocations)
@@ -328,15 +326,8 @@ export const runAgenticLoop = async (input: {
       lastAssistantText = result.outputText
     }
 
-    if (budget.maxTokens && totalTokensUsed >= budget.maxTokens) {
-      await callbacks.onBudgetExhausted('tokens')
-      return finish('tokens')
-    }
-
-    if (budget.maxCostCents && totalCostCents >= budget.maxCostCents) {
-      await callbacks.onBudgetExhausted('cost')
-      return finish('cost')
-    }
+    const spendStop = stopAfterInference(budget, { totalCostCents, totalTokensUsed })
+    if (spendStop) return stop(spendStop)
 
     if (!result.toolCalls || result.toolCalls.length === 0) {
       if (result.outputText) {
@@ -473,10 +464,8 @@ export const runAgenticLoop = async (input: {
       })
     }
 
-    if (toolCallsUsed >= budget.maxToolCalls) {
-      await callbacks.onBudgetExhausted('tool_calls')
-      return finish('tool_calls')
-    }
+    const batchStop = stopAfterToolBatch(budget, { elapsedMs: elapsed(), toolCallsUsed })
+    if (batchStop === 'tool_calls') return stop(batchStop)
 
     // Cooperative cancel between tool-call batches: the just-completed tools have
     // been recorded and their results incorporated, so stopping here is clean.
@@ -484,12 +473,6 @@ export const runAgenticLoop = async (input: {
       return finish(null, lastAssistantText, true)
     }
 
-    if (elapsed() >= budget.maxWallclockMs) {
-      await callbacks.onBudgetExhausted('wallclock')
-      return finish('wallclock')
-    }
+    if (batchStop) return stop(batchStop)
   }
-
-  await callbacks.onBudgetExhausted('iterations')
-  return finish('iterations')
 }

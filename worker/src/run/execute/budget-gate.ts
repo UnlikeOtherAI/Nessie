@@ -105,3 +105,50 @@ export const applyBudgetGate = async (
   await maybeEmitBudgetAlerts(deps, context, evaluation)
   return { blocked: false, modelOverride: budgetModelOverride }
 }
+
+// The gate only ran pre-run, so a long run could spend far past the cap it was
+// admitted under. This probe re-applies the SAME verdict logic (including the
+// human-interactive exemption) between iterations, throttled to at most one
+// evaluation per interval so a long run adds a handful of cheap reads.
+//
+// A block is sticky and fires the existing 'blocked' alert dedupe machinery
+// once; the loop then stops via the classified-stop path (checkpoint + notice).
+// Probe failures are swallowed: budget telemetry must never crash a run.
+const BUDGET_RECHECK_INTERVAL_MS = 30_000
+
+export const createBudgetBlockedProbe = (
+  deps: ExecutionDependencies,
+  context: RunContext,
+  payload: RunExecuteJobPayload,
+): (() => Promise<boolean>) => {
+  // The pre-run gate just evaluated; start the throttle window from now.
+  let lastEvaluatedAt = Date.now()
+  let blocked = false
+
+  return async () => {
+    if (blocked) return true
+    if (Date.now() - lastEvaluatedAt < BUDGET_RECHECK_INTERVAL_MS) return false
+    lastEvaluatedAt = Date.now()
+    try {
+      const evaluation = await evaluateBudget(
+        deps.prisma,
+        {
+          organizationId: payload.actorContext.tenant.organizationId,
+          projectId: payload.actorContext.tenant.projectId,
+          teamId: payload.actorContext.tenant.teamId,
+        },
+        { isHuman: payload.interactive === true },
+      )
+      if (evaluation.decision.action !== 'block') return false
+      blocked = true
+      await maybeEmitBudgetAlerts(deps, context, evaluation)
+      console.warn(
+        `[worker] run ${context.run.id} paused mid-run by budget: ${evaluation.decision.reason}`,
+      )
+      return true
+    } catch (error) {
+      console.error('[worker] mid-run budget recheck failed for run', context.run.id, error)
+      return false
+    }
+  }
+}

@@ -373,6 +373,10 @@ production settings:
 | Storage endpoint | `NESSIE_STORAGE_ENDPOINT`, `NESSIE_STORAGE_REGION`, `NESSIE_STORAGE_FORCE_PATH_STYLE` | `http://nessie-minio:9000`, `us-east-1`, `true` (path-style is required for MinIO) |
 | Storage bucket/creds | `NESSIE_STORAGE_BUCKET`, `NESSIE_STORAGE_ACCESS_KEY_ID`, `NESSIE_STORAGE_SECRET_ACCESS_KEY` | bucket defaults to `nessie`; the key id/secret double as the MinIO root user/password (host `.env`) |
 | Max upload size | `NESSIE_MAX_UPLOAD_BYTES` | default `5368709120` (5 GiB); also pins the API multipart limit |
+| Run backstop caps | `NESSIE_RUN_BACKSTOP_MAX_TOKENS`, `NESSIE_RUN_BACKSTOP_MAX_TOOL_CALLS`, `NESSIE_RUN_BACKSTOP_MAX_ITERATIONS`, `NESSIE_RUN_BACKSTOP_MAX_WALLCLOCK_MS`, `NESSIE_RUN_BACKSTOP_MAX_COST_CENTS` | optional; deployment-wide safety envelope for agent runs without explicit `Agent.runLimits` (defaults `500000` / `2000` / `1000` / `2700000` (45 min) / `2000`). Stops are graceful: checkpointed + classified notice |
+| Run auto-continuations | `NESSIE_RUN_AUTO_CONTINUATIONS` | optional; how many times a non-interactive (trigger/schedule/workflow) run auto-continues from its checkpoint after a cap stop (default `2`) |
+| Delegate cap | `NESSIE_MAX_DELEGATES_PER_RUN` | optional; max `delegate` sub-agent calls per run (default `16`) |
+| Utility model | `NESSIE_UTILITY_MODEL` | optional; model id used for context compaction + delegate sub-agents when it resolves through the run's own org provider (falls back to the run's model) |
 | Web Push public key | `NESSIE_WEBPUSH_PUBLIC_KEY` | optional; VAPID public key served to browsers. Enables browser web push when set with the two below. See [web-push.md](web-push.md) |
 | Web Push private key | `NESSIE_WEBPUSH_PRIVATE_KEY` | optional; VAPID private key that signs push JWTs (secret) |
 | Web Push subject | `NESSIE_WEBPUSH_SUBJECT` | optional; VAPID subject, a `mailto:`/`https:` operator-contact URI. Generate the trio with `node scripts/generate-vapid-keys.mjs` |

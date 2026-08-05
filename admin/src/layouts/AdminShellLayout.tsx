@@ -9,6 +9,7 @@ import {
 } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
+import { ToastProvider } from '../providers/ToastProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
@@ -179,6 +180,7 @@ const AuthenticatedAdminShellLayout = () => {
 
   return (
     <PresenceProvider>
+      <ToastProvider>
       <NotificationsProvider>
       <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
         <div className={frameClassName}>
@@ -217,6 +219,7 @@ const AuthenticatedAdminShellLayout = () => {
         />
       </MobileNavProvider>
       </NotificationsProvider>
+      </ToastProvider>
     </PresenceProvider>
   );
 };

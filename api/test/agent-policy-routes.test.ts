@@ -156,6 +156,10 @@ const makeApp = (
   }
   const app = Fastify({ logger: false })
   registerAgentRoutes(app, {
+    // The create/update handlers read `config.model` before touching the
+    // catalog; payloads without a model/provider short-circuit inside
+    // `assertLedgerAgentModelSelection`, so an empty model config is enough.
+    config: { model: {} },
     createAgentVisibilityScope: () => ({}),
     getChannelIfMember: async () => null,
     isAgentAccessibleToActor: async (

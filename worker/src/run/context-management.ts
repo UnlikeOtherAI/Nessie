@@ -25,7 +25,10 @@ export const estimateMessageTokens = (msg: ProviderMessage): number => {
 export const estimateMessagesTokens = (messages: ProviderMessage[]): number =>
   messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
 
-const groupMessages = (messages: ProviderMessage[]): ProviderMessage[][] => {
+// Closed units of context: an assistant turn that requested tool calls stays
+// glued to its tool results. Every context operation (trim, compaction) works
+// on groups so a tool result can never be orphaned from its call.
+export const groupMessages = (messages: ProviderMessage[]): ProviderMessage[][] => {
   const groups: ProviderMessage[][] = []
   let i = 0
 
@@ -55,6 +58,10 @@ const groupMessages = (messages: ProviderMessage[]): ProviderMessage[][] => {
   return groups
 }
 
+// Emergency fallback ONLY: silent truncation of the oldest groups. Real
+// context lifecycle is compaction (context-compaction.ts); this runs when a
+// compaction call itself fails, or on a provider-overflow retry after
+// compaction has already been attempted.
 export const trimConversationToFit = (
   messages: ProviderMessage[],
   maxTokens: number,
@@ -84,27 +91,4 @@ export const trimConversationToFit = (
   }
 
   return [...systemGroups.flat(), ...reversedKept.reverse().flat()]
-}
-
-export const buildCompactionPrompt = (
-  messagesToCompact: ProviderMessage[],
-): string => {
-  const transcript = messagesToCompact
-    .map((m) => {
-      if (m.role === 'tool') return `[tool:${m.toolCallId}]: ${m.content.slice(0, 500)}`
-      if (m.role === 'assistant' && m.toolCalls) {
-        return `[assistant]: ${m.content ?? ''}\n  [called: ${m.toolCalls.map((tc) => tc.toolName).join(', ')}]`
-      }
-      return `[${m.role}]: ${typeof m.content === 'string' ? m.content : '(content)'}`
-    })
-    .join('\n')
-
-  return [
-    'Summarize this conversation history into a concise context paragraph.',
-    'Preserve: key facts, decisions made, tool results that matter, and the current goal.',
-    'Drop: greetings, acknowledgments, redundant information, verbose tool output.',
-    'Output only the summary, no preamble.',
-    '',
-    transcript,
-  ].join('\n')
 }

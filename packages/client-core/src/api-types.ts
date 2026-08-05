@@ -1,4 +1,4 @@
-import type { AgentStatusResponse, MeResponse } from '@nessie/schemas'
+import type { AgentRunLimits, AgentStatusResponse, MeResponse } from '@nessie/schemas'
 
 export type AuthProviderDescriptor = {
   autoRedirect: boolean
@@ -108,6 +108,7 @@ export type AgentRecord = {
   delegationMode?: 'none' | 'act_as_requesting_user'
   ownerUserId?: string | null
   role: string
+  runLimits?: AgentRunLimits | null
   surfacePolicy?: 'shared' | 'dm_only'
   systemManaged?: boolean
   status: AgentStatusResponse['status']
