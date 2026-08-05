@@ -476,6 +476,17 @@ and HTTP/SSE/OAuth URLs are checked by the shared SSRF guard before save or use.
 Use remote MCP runners for private networks, local machines, or subprocess-based
 servers.
 
+Outbound egress to any caller-, operator- or model-supplied address goes through
+`@nessie/runtime` `safeFetch` (or `pinnedFetch` where the caller handles
+redirects itself), not `assertSafeUrl` + `fetch`: validating a URL and then
+letting the platform re-resolve it at connect time leaves a DNS-rebinding
+window. `safeFetch` resolves once, pins the socket to the vetted IPs via an
+undici dispatcher that re-checks each address as it dials, and re-validates
+every redirect hop. It covers MCP OAuth exchange/refresh/discovery/registration,
+the MCP SDK HTTP + SSE transports, FCM `token_uri`, `web_fetch` and
+`http_fetch`; inference provider `baseUrl` is SSRF-validated at write time as
+well as use time. See [docs/security-audit-2026-06.md](docs/security-audit-2026-06.md).
+
 deep.agent crawl web scanning uses the MCP connector path: install a
 Nessie-reachable SSE endpoint (`/mcp/sse`) with bearer auth, approve the
 discovered tools, and grant them to agents. The crawl library implementation
