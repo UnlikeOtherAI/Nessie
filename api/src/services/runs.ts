@@ -251,6 +251,9 @@ export const restartRun = async (
         threadId: run.threadId,
         triggerMessageId: message.id,
         restartOfRunId: run.id,
+        // A restart replays the same trigger message, so it inherits the
+        // original run's placement judgement rather than silently re-defaulting.
+        replyPlacement: run.replyPlacement,
       },
       select: { id: true },
     })

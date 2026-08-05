@@ -1550,6 +1550,30 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
+/*
+ * Thinking-bubble ticker: a fixed-height viewport that shows the tail of an
+ * agent's live thought process. New lines are appended at the bottom and older
+ * ones are pushed up and clipped away — the bubble is deliberately lossy; the
+ * full record lives in the thought-process dialog.
+ */
+.thinking-ticker {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  /*
+   * Alpha stencil, not a colour: the gradient's opaque end simply keeps the
+   * text visible while the top edge fades out as lines scroll away, so it is
+   * theme-independent by construction.
+   */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, rgb(0 0 0) 12px);
+  mask-image: linear-gradient(to bottom, transparent 0, rgb(0 0 0) 12px);
+}
+
+.thinking-ticker > * {
+  flex: 0 0 auto;
+}
+
 .create-channel-panel {
   border: 1px solid var(--sep);
   border-radius: 14px;

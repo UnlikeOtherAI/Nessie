@@ -7,7 +7,7 @@ import { finalizeCancelledRun } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { handleRunExecutionFailure } from './failure.js'
 import { loadConversation } from './prompt.js'
-import { resolveReplyRootMessageId } from './run-job.js'
+import { persistResolvedReplyAnchor, resolveReplyRootMessageId } from './reply-placement.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 const AGENT_ID = '00000000-0000-0000-0000-0000000000a1'
@@ -40,7 +40,12 @@ const makeContext = (replyRootMessageId?: string): RunContext => ({
     systemPrompt: null,
   },
   channel: { id: CHANNEL_ID, organizationId: ORGANIZATION_ID, systemChannelType: null },
-  run: { id: RUN_ID, threadId: THREAD_ID, createdAt: new Date('2026-07-24T09:00:00Z') },
+  run: {
+    id: RUN_ID,
+    threadId: THREAD_ID,
+    createdAt: new Date('2026-07-24T09:00:00Z'),
+    replyPlacement: null,
+  },
   task: { id: TASK_ID },
   ...(replyRootMessageId ? { replyRootMessageId } : {}),
 })
@@ -115,39 +120,84 @@ const makeDeps = () => {
 const wsEvents = (ws: WsCall[], event: string): WsCall[] =>
   ws.filter((call) => call.event === event)
 
-test('resolveReplyRootMessageId: a root trigger replies into itself', () => {
-  assert.equal(
-    resolveReplyRootMessageId({ id: TRIGGER_MESSAGE_ID, rootMessageId: null }, null),
-    TRIGGER_MESSAGE_ID,
-  )
+const HANDOFF_LOCATOR = {
+  messageId: TRIGGER_MESSAGE_ID,
+  organizationId: ORGANIZATION_ID,
+  runId: RUN_ID,
+  teamId: TEAM_ID,
+  threadId: THREAD_ID,
+}
+
+// Full precedence matrix: handoff × in-thread trigger × placement judgement.
+// Reading down the table, each row states which rule won and why.
+const PRECEDENCE_MATRIX: Array<{
+  expected: string | undefined
+  handoff: boolean
+  placement: 'thread' | 'channel' | null
+  triggerRootMessageId: string | null
+  why: string
+}> = [
+  // 1. Handoff carve-out wins over everything else, unconditionally.
+  { expected: undefined, handoff: true, placement: null, triggerRootMessageId: null, why: 'handoff, top-level trigger' },
+  { expected: undefined, handoff: true, placement: 'thread', triggerRootMessageId: null, why: 'handoff beats a thread judgement' },
+  { expected: undefined, handoff: true, placement: 'channel', triggerRootMessageId: null, why: 'handoff, channel judgement' },
+  { expected: undefined, handoff: true, placement: null, triggerRootMessageId: ROOT_MESSAGE_ID, why: 'handoff beats an in-thread trigger' },
+  { expected: undefined, handoff: true, placement: 'thread', triggerRootMessageId: ROOT_MESSAGE_ID, why: 'handoff beats both' },
+  { expected: undefined, handoff: true, placement: 'channel', triggerRootMessageId: ROOT_MESSAGE_ID, why: 'handoff beats both' },
+  // 2. A trigger already inside a reply thread stays there — structural
+  //    continuity outranks the model's placement judgement.
+  { expected: ROOT_MESSAGE_ID, handoff: false, placement: null, triggerRootMessageId: ROOT_MESSAGE_ID, why: 'in-thread trigger, no judgement' },
+  { expected: ROOT_MESSAGE_ID, handoff: false, placement: 'thread', triggerRootMessageId: ROOT_MESSAGE_ID, why: 'in-thread trigger, thread judgement' },
+  { expected: ROOT_MESSAGE_ID, handoff: false, placement: 'channel', triggerRootMessageId: ROOT_MESSAGE_ID, why: 'in-thread trigger outranks a channel judgement' },
+  // 3./4. Top-level trigger: the judgement decides, defaulting to a thread.
+  { expected: undefined, handoff: false, placement: 'channel', triggerRootMessageId: null, why: 'standalone contribution to the room' },
+  { expected: TRIGGER_MESSAGE_ID, handoff: false, placement: 'thread', triggerRootMessageId: null, why: 'answer belongs to the asker' },
+  { expected: TRIGGER_MESSAGE_ID, handoff: false, placement: null, triggerRootMessageId: null, why: 'no judgement ≡ #233 default' },
+]
+
+for (const row of PRECEDENCE_MATRIX) {
+  const label = `handoff=${row.handoff} root=${row.triggerRootMessageId ? 'set' : 'null'} placement=${row.placement}`
+  test(`resolveReplyRootMessageId: ${label} → ${row.why}`, () => {
+    assert.equal(
+      resolveReplyRootMessageId(
+        { id: TRIGGER_MESSAGE_ID, rootMessageId: row.triggerRootMessageId },
+        row.handoff ? HANDOFF_LOCATOR : null,
+        row.placement,
+      ),
+      row.expected,
+    )
+  })
+}
+
+test('persistResolvedReplyAnchor writes the resolved anchor (null when top-level)', async () => {
+  const updates: Array<Record<string, unknown>> = []
+  const prisma = {
+    run: {
+      update: async (args: { data: Record<string, unknown> }) => {
+        updates.push(args.data)
+        return {}
+      },
+    },
+  } as unknown as Parameters<typeof persistResolvedReplyAnchor>[0]
+
+  await persistResolvedReplyAnchor(prisma, RUN_ID, ROOT_MESSAGE_ID)
+  await persistResolvedReplyAnchor(prisma, RUN_ID, undefined)
+  assert.deepEqual(updates, [
+    { replyRootMessageId: ROOT_MESSAGE_ID },
+    { replyRootMessageId: null },
+  ])
 })
 
-test('resolveReplyRootMessageId: a reply trigger attaches to the same root (one level)', () => {
-  assert.equal(
-    resolveReplyRootMessageId({ id: TRIGGER_MESSAGE_ID, rootMessageId: ROOT_MESSAGE_ID }, null),
-    ROOT_MESSAGE_ID,
-  )
-})
+test('persistResolvedReplyAnchor swallows write failures', async () => {
+  const prisma = {
+    run: {
+      update: async () => {
+        throw new Error('db down')
+      },
+    },
+  } as unknown as Parameters<typeof persistResolvedReplyAnchor>[0]
 
-test('resolveReplyRootMessageId: a DeepWater handoff run stays top-level', () => {
-  const handoffLocator = {
-    messageId: TRIGGER_MESSAGE_ID,
-    organizationId: ORGANIZATION_ID,
-    runId: RUN_ID,
-    teamId: TEAM_ID,
-    threadId: THREAD_ID,
-  }
-  assert.equal(
-    resolveReplyRootMessageId({ id: TRIGGER_MESSAGE_ID, rootMessageId: null }, handoffLocator),
-    undefined,
-  )
-  assert.equal(
-    resolveReplyRootMessageId(
-      { id: TRIGGER_MESSAGE_ID, rootMessageId: ROOT_MESSAGE_ID },
-      handoffLocator,
-    ),
-    undefined,
-  )
+  await persistResolvedReplyAnchor(prisma, RUN_ID, ROOT_MESSAGE_ID)
 })
 
 test('completeRunExecution attaches rootMessageId, bookkeeping, and reply events', async () => {

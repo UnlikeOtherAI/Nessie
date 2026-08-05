@@ -64,6 +64,12 @@ export const MockTurnSchema = z.union([
     finishReason: z
       .enum(['stop', 'length', 'tool-call', 'content-filter', 'error', 'other'])
       .optional(),
+    // Visible reasoning ("thinking") emitted before the answer, mirroring the
+    // `reasoning_content` deltas OpenAI-compatible reasoning models produce.
+    // Streamed turns emit it as its own delta chunks ahead of the text/tool
+    // chunks; non-streamed turns ignore it, exactly like a real provider that
+    // only surfaces reasoning on the stream.
+    reasoning: z.string().optional(),
     stream: MockStreamSchema.optional(),
     text: z.string().default(''),
     toolCalls: z.array(MockToolCallSchema).default([]),

@@ -110,6 +110,9 @@ export const continueRun = async (
         threadId: run.threadId,
         triggerMessageId: message.id,
         continuationOfRunId: run.id,
+        // A continuation resumes the same exchange, so it inherits the original
+        // run's placement judgement rather than silently re-defaulting.
+        replyPlacement: run.replyPlacement,
       },
       select: { id: true },
     })

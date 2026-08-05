@@ -29,7 +29,6 @@ import {
   getStorage,
   isLedgerEndpoint,
   ModelUsageTracker,
-  recordInferenceUsage,
 } from '@nessie/runtime'
 import { sendApiError } from './lib/api.js'
 import { createRealtimeHub } from './realtime/hub.js'
@@ -41,6 +40,7 @@ import {
 import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage'
 import { createThoughtService } from './services/thoughts.js'
 import { runKnowledgeInferenceRequestContext } from './services/knowledge-inference-origin.js'
+import { recordModelUsage } from './services/model-usage-recorder.js'
 import {
   createCorsOriginChecker,
   createFastifyTrustProxyConfig,
@@ -131,6 +131,7 @@ const apiUsageTracker = new ModelUsageTracker()
 let sharedModelClient: import('@nessie/runtime').ModelClient | null = null
 
 export const buildApp = async () => {
+  let ledgerIdentity: import('@nessie/runtime').LedgerIdentityService | null = null
   const app = Fastify({
     trustProxy: createFastifyTrustProxyConfig(config.api.trustedProxyHops),
     logger: {
@@ -175,8 +176,9 @@ export const buildApp = async () => {
       ?? process.env.OPENAI_CHAT_API_KEY
       ?? ''
   if (modelApiKey) {
-    const ledgerIdentity = createLedgerIdentityServiceFromEnv(prisma)
-    if (isLedgerEndpoint(config.model.baseUrl) && !ledgerIdentity) {
+    const configuredLedgerIdentity = createLedgerIdentityServiceFromEnv(prisma)
+    ledgerIdentity = configuredLedgerIdentity
+    if (isLedgerEndpoint(config.model.baseUrl) && !configuredLedgerIdentity) {
       throw new Error(
         'Ledger-routed inference requires configured UOA signing and client credentials.',
       )
@@ -188,20 +190,11 @@ export const buildApp = async () => {
       },
       {
         tracker: apiUsageTracker,
-        // Persist operational usage for every metered call (designer,
-        // orchestrator, memory, thoughts) that supplies attribution. This local
-        // ledger is not customer billing; UOA rates Ledger's raw records. Log
-        // (never throw) so a dropped event remains visible.
-        recordUsage: async (invocations, attribution) => {
-          try {
-            await recordInferenceUsage(prisma, { attribution, invocations })
-          } catch (err) {
-            app.log.warn({ err }, 'ledger: token usage write failed')
-          }
-        },
+        recordUsage: (invocations, attribution) =>
+          recordModelUsage(prisma, app.log, invocations, attribution),
         requestHeaders:
-          isLedgerEndpoint(config.model.baseUrl) && ledgerIdentity
-            ? (attribution) => ledgerIdentity.requestHeaders(attribution)
+          isLedgerEndpoint(config.model.baseUrl) && configuredLedgerIdentity
+            ? (attribution) => configuredLedgerIdentity.requestHeaders(attribution)
             : undefined,
         systemComponent: 'api-model-service',
       },
@@ -358,6 +351,7 @@ export const buildApp = async () => {
     sharedModelClient,
     messageMemoryCaptureConfig,
     thoughtService,
+    ledgerIdentity,
     deepSignalMcpIdentity,
     fileService,
   }

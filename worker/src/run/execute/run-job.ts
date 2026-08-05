@@ -36,11 +36,7 @@ import { createRunInference } from './run-inference.js'
 import { prepareRunExecution } from './run-setup.js'
 import { applyRunStopContinuation, prepareRunStop } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
-import {
-  buildCancelStopNotice,
-  finalizeCancelledRun,
-  recordCancelStopEvent,
-} from './cancel-stop.js'
+import { handleCancelStop } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { runExternalConversation } from '../external-conversation.js'
 import { persistInvocationLedgerEvents } from '../inference.js'
@@ -54,18 +50,10 @@ import {
 import { stripLeadingSectionTag } from './memory.js'
 import { validateRunActorContext } from './policy.js'
 import { publishAgentStatus, publishRunUpdated, publishTaskUpdated } from './realtime.js'
+import { persistResolvedReplyAnchor, resolveReplyRootMessageId } from './reply-placement.js'
 import { buildScopes } from './scopes.js'
+import { createThinkingRecorder, type ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
-
-// Reply-thread placement (#233): an ordinary run replies into its trigger
-// message's reply thread — a trigger that is itself a reply attaches to the
-// same root (one level deep). DeepWater handoff runs keep their exact
-// top-level placement so their message flow stays byte-identical.
-export const resolveReplyRootMessageId = (
-  triggerMessage: { id: string; rootMessageId: string | null },
-  handoffLocator: DeepWaterHandoffRunLocator | null,
-): string | undefined =>
-  handoffLocator ? undefined : triggerMessage.rootMessageId ?? triggerMessage.id
 
 export const executeRunJob = async (
   deps: ExecutionDependencies,
@@ -153,7 +141,19 @@ export const executeRunJob = async (
   context.replyRootMessageId = resolveReplyRootMessageId(
     { id: payload.messageId, rootMessageId: message.rootMessageId },
     handoffLocator,
+    context.run.replyPlacement,
   )
+  await persistResolvedReplyAnchor(deps.prisma, context.run.id, context.replyRootMessageId)
+
+  // Durable thought log + coalesced live thinking events. Created before the
+  // loop so every reasoning delta and tool line is captured; closed in the
+  // `finally` below so a crash, cancel, or budget stop still flushes it.
+  const thinkingRecorder: ThinkingRecorder = createThinkingRecorder({
+    prisma: deps.prisma,
+    realtimeTransport: deps.realtimeTransport,
+    runId: context.run.id,
+    threadId: context.run.threadId,
+  })
 
   try {
     if (
@@ -241,6 +241,9 @@ export const executeRunJob = async (
 
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.start', {
       agentId: parseAgentId(context.agent.id),
+      // Where this run's reply will land, so viewers can anchor the live
+      // thinking surface to the right surface from the first token.
+      rootMessageId: context.replyRootMessageId ?? null,
       runId: parseRunId(context.run.id),
       threadId: parseThreadId(context.run.threadId),
     })
@@ -255,6 +258,7 @@ export const executeRunJob = async (
 
     const inference = createRunInference(deps, payload, context, {
       budgetModelOverride: budgetGate.modelOverride,
+      thinkingRecorder,
       utilityModel,
     })
 
@@ -268,9 +272,14 @@ export const executeRunJob = async (
       deepWaterHandoffGuard,
       mcpToolset: setup.mcpToolset,
       resolvedToolIds: setup.resolvedToolIds,
+      thinkingRecorder,
       toolDefs: setup.toolDefs,
       toolPolicy: setup.toolPolicy,
     })
+    // The stream contract is `stream.done` LAST: flush the recorder before any
+    // terminal path publishes it, or a trailing `stream.reasoning` would arrive
+    // after the stream terminator (clients treat the run as live again).
+    await thinkingRecorder.close()
     deepWaterHandoffGuard.assertCompletion()
 
     const responseText = stripLeadingSectionTag(loopResult.finalText)
@@ -282,30 +291,7 @@ export const executeRunJob = async (
     // is never set on them; the `!handoffLocator` check keeps their invariants
     // untouched even if the flag somehow appeared.
     if (loopResult.cancelled && !handoffLocator) {
-      const hadPartialText = responseText.trim().length > 0
-      const notice = buildCancelStopNotice(hadPartialText)
-      const cancelState = await deps.prisma.run.findUnique({
-        where: { id: context.run.id },
-        select: { cancelRequestedAt: true, cancelRequestedByUserId: true },
-      })
-      await recordCancelStopEvent(deps.prisma, context.task.id, {
-        cancelRequestedAt: cancelState?.cancelRequestedAt ?? null,
-        cancelledByUserId: cancelState?.cancelRequestedByUserId ?? null,
-        hadPartialText,
-        stats: {
-          iterations: loopResult.iterations,
-          toolCallsUsed: loopResult.toolCallsUsed,
-          totalCostCents: loopResult.totalCostCents,
-          totalTokensUsed: loopResult.totalTokensUsed,
-          wallclockMs: loopResult.wallclockMs,
-        },
-      })
-      await finalizeCancelledRun(deps, payload, context, planContext, {
-        hadPartialText,
-        invocations: loopResult.invocations,
-        notice,
-        responseText,
-      })
+      await handleCancelStop(deps, payload, context, planContext, loopResult, responseText)
       terminalOutcome = 'cancelled'
       return
     }
@@ -374,6 +360,11 @@ export const executeRunJob = async (
     })
     terminalOutcome = 'completed'
   } catch (caughtError) {
+    // Same stream-contract rule as the success path: the failure handler will
+    // publish `stream.done`, so drain any buffered thinking first. Idempotent,
+    // error-swallowing, and also correct on the retry-throw path (the retry
+    // republishes `stream.start`, so its stream stays well-formed).
+    await thinkingRecorder.close()
     const error = promoteUnresolvedDeepWaterHandoffError(
       caughtError,
       deepWaterHandoffGuard,
@@ -427,6 +418,11 @@ export const executeRunJob = async (
 
     throw error
   } finally {
+    // Flush whatever thought process is still buffered, on every exit path
+    // (completion, classified stop, crash, retry-throw). Idempotent and
+    // error-swallowing by construction, so it can never mask a run outcome.
+    await thinkingRecorder.close()
+
     // Record the run's stage-timing breakdown at every terminal state
     // (completion and failure), reusing timestamps the run already produced.
     // Skipped when the run never reached terminal in this execution: a

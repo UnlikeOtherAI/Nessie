@@ -10,10 +10,12 @@ const personalAssistant = {
   systemPrompt: null,
 }
 
-test('a personal-assistant DM always creates a reply decision for a human turn', () => {
+test('a personal-assistant DM always creates a threaded reply decision for a human turn', () => {
   assert.deepEqual(
     resolvePersonalAssistantDecisions('personal_assistant', 'user', [personalAssistant]),
-    [{ action: 'reply', agentId: personalAssistant.id }],
+    // Structural, like the @mention fast path: the turn is addressed to this
+    // one assistant, so its answer belongs to that exchange.
+    [{ action: 'reply', agentId: personalAssistant.id, replyPlacement: 'thread' }],
   )
 })
 

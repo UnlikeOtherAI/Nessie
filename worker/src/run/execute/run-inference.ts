@@ -13,6 +13,7 @@ import {
 } from '@nessie/schemas'
 import { runInferenceGraph } from '../inference.js'
 import { createProviderRequestHeadersResolver } from '../inference-identity.js'
+import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { UtilityModel } from './utility-model.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
 
@@ -47,6 +48,11 @@ export const createRunInference = (
   context: RunContext,
   options: {
     budgetModelOverride: BudgetModelOverride | null
+    // Durable thought log for the main turn: the recorder persists each
+    // coalesced reasoning chunk and publishes the matching `stream.reasoning`
+    // event with that chunk's id (one publish per flush, never per token).
+    // Utility calls (sub-agents, compaction, checkpoint notes) stay silent.
+    thinkingRecorder: ThinkingRecorder
     utilityModel: UtilityModel | null
   },
 ): RunInference => {
@@ -84,10 +90,7 @@ export const createRunInference = (
       modelConfig: runtimeModelConfig,
       onVisibleReasoningDelta: async (chunk) => {
         if (!streaming) return
-        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.reasoning', {
-          content: chunk,
-          runId: parseRunId(context.run.id),
-        })
+        await options.thinkingRecorder.appendReasoning(chunk)
       },
       onVisibleTextDelta: async (chunk) => {
         if (!streaming) return

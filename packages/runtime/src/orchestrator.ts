@@ -8,10 +8,24 @@ export type OrchestratorAgent = {
   systemPrompt: string | null
 }
 
+/**
+ * Where a reply belongs. `thread` keeps the answer inside the exchange that
+ * asked for it; `channel` posts it as a standalone contribution to the room.
+ * Absent ≡ the default (thread). This is a judgement about meaning, so it is
+ * made by the model — never by inspecting the message text in code.
+ */
+export type ReplyPlacementDecision = 'thread' | 'channel'
+
 export type OrchestratorDecision =
-  | { action: 'reply'; agentId: string }
+  | { action: 'reply'; agentId: string; replyPlacement?: ReplyPlacementDecision }
   | { action: 'acknowledge'; agentId: string; emoji: string }
   | { action: 'none' }
+
+// Accept only the two literals the contract defines; anything else (missing,
+// misspelled, a sentence) yields no field, so placement falls back to the
+// default. Same fail-silent style as the surrounding decision parse.
+const parseReplyPlacement = (value: unknown): ReplyPlacementDecision | undefined =>
+  value === 'thread' || value === 'channel' ? value : undefined
 
 /**
  * Thread-following predicate. An agent *follows* a thread once it has authored a
@@ -85,7 +99,10 @@ export const decideAgentEngagement = async (
     if (new RegExp(`@${escaped}(?:\\s|$|[^\\w])`, 'i').test(input.content)) {
       if (!mentionedIds.has(agent.id)) {
         mentionedIds.add(agent.id)
-        mentionedReplies.push({ action: 'reply', agentId: agent.id })
+        // Being addressed by an explicit @mention is a structural fact, not an
+        // interpretation: the answer belongs to the asker's exchange, so it is
+        // always threaded.
+        mentionedReplies.push({ action: 'reply', agentId: agent.id, replyPlacement: 'thread' })
       }
     }
   }
@@ -160,6 +177,19 @@ export const decideAgentEngagement = async (
       '   but they SHOULD answer direct questions in their own',
       '   working channels.',
       '',
+      'Every "reply" decision also carries "replyPlacement",',
+      'which says where the reply belongs:',
+      '- "thread": the reply is owed to the latest message —',
+      '  it answers it, continues that specific exchange, or',
+      '  reports on what that message asked for — so it stays',
+      '  attached to it and does not interrupt the room.',
+      '- "channel": the reply stands on its own as a',
+      '  contribution addressed to everyone in the room rather',
+      '  than to the exchange that prompted it.',
+      'If the distinction is unclear, use "thread".',
+      'Shape: {"action":"reply","agentId":"<id>",',
+      '"replyPlacement":"thread"}',
+      '',
       'Return ONLY valid JSON. No explanation.',
     ].join('\n'),
     role: 'system',
@@ -191,9 +221,19 @@ export const decideAgentEngagement = async (
   }
 
   try {
-    const parsed = JSON.parse(raw.trim()) as { action?: string; agentId?: string; emoji?: string }
+    const parsed = JSON.parse(raw.trim()) as {
+      action?: string
+      agentId?: string
+      emoji?: string
+      replyPlacement?: unknown
+    }
     if (parsed.action === 'reply' && input.agents.some((a) => a.id === parsed.agentId)) {
-      return [{ action: 'reply', agentId: parsed.agentId! }]
+      const replyPlacement = parseReplyPlacement(parsed.replyPlacement)
+      return [{
+        action: 'reply',
+        agentId: parsed.agentId!,
+        ...(replyPlacement ? { replyPlacement } : {}),
+      }]
     }
     if (
       parsed.action === 'acknowledge' &&

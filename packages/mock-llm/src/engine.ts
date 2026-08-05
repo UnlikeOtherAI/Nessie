@@ -9,6 +9,8 @@ export type MockCompletionTurn = {
   finishReason?: 'stop' | 'length' | 'tool-call' | 'content-filter' | 'error' | 'other'
   kind: 'completion'
   latencyMs: number
+  // Visible reasoning emitted ahead of the answer on streamed turns.
+  reasoning?: string
   stream?: MockStream
   text: string
   toolCalls: MockToolCall[]
@@ -108,6 +110,7 @@ export class MockLlmEngine {
       latencyMs,
       turnIndex,
       ...(turn.finishReason !== undefined ? { finishReason: turn.finishReason } : {}),
+      ...(turn.reasoning !== undefined ? { reasoning: turn.reasoning } : {}),
       ...(turn.stream !== undefined ? { stream: turn.stream } : {}),
       text: turn.text,
       toolCalls: turn.toolCalls,

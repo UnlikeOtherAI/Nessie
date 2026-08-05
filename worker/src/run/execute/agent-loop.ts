@@ -32,6 +32,7 @@ import {
 } from './policy.js'
 import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
+import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
@@ -53,6 +54,9 @@ export const runExecutionAgentLoop = async (
     invocationSink: InvocationRecord[]
     mcpToolset: McpToolset
     resolvedToolIds: Set<string>
+    // Durable thought log + coalesced live thinking events for the main agent.
+    // Delegate sub-agents stay silent, exactly as before.
+    thinkingRecorder: ThinkingRecorder
     toolDefs: ToolSchemaDescriptor[]
     toolPolicy: Record<string, boolean> | null
   },
@@ -174,6 +178,8 @@ export const runExecutionAgentLoop = async (
       },
       onToolCallStart: async (toolName, _args) => {
         const startedAt = new Date()
+        // Tool activity is part of the thought process, not a separate feed.
+        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args))
         await setAgentStatus(deps.prisma, context.agent.id, 'executing')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,

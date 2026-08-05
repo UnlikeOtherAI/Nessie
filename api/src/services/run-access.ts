@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient, RunReplyPlacement } from '@prisma/client'
 import type { RunStatus } from '@nessie/schemas'
 
 // Statuses a run can be in while it is still live — the set the status surface
@@ -21,6 +21,9 @@ export type OrgRun = {
   threadId: string
   triggerMessageId: string | null
   triggerMessageMetadata: unknown
+  // Pre-run reply-placement judgement, replayed onto restarted and continued
+  // runs so the re-run lands where the original one was judged to belong.
+  replyPlacement: RunReplyPlacement | null
 }
 
 export const loadRunForOrg = async (
@@ -36,6 +39,7 @@ export const loadRunForOrg = async (
       status: true,
       threadId: true,
       triggerMessageId: true,
+      replyPlacement: true,
       thread: { select: { channelId: true } },
       triggerMessage: { select: { metadata: true } },
     },
@@ -49,6 +53,7 @@ export const loadRunForOrg = async (
     threadId: run.threadId,
     triggerMessageId: run.triggerMessageId,
     triggerMessageMetadata: run.triggerMessage?.metadata ?? null,
+    replyPlacement: run.replyPlacement,
   }
 }
 

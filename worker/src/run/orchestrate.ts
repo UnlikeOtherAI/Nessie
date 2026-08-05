@@ -48,7 +48,9 @@ export const resolvePersonalAssistantDecisions = (
     return []
   }
 
-  return [{ action: 'reply', agentId: assistant.id }]
+  // Structural, like the @mention fast path: every turn in a PA DM is addressed
+  // to this one assistant, so its answer belongs to that exchange.
+  return [{ action: 'reply', agentId: assistant.id, replyPlacement: 'thread' }]
 }
 
 export const executeOrchestrateDecideJob = async (
@@ -294,6 +296,9 @@ export const executeOrchestrateDecideJob = async (
             // Backlink to the user message that started this run. Enables the
             // cancel handoff-guard and restart replay (see api/src/services/runs.ts).
             triggerMessageId: messageId,
+            // Pre-run reply-placement judgement (model-made, or structural for
+            // @mentions/PA DMs). Null keeps the historical threaded default.
+            replyPlacement: decision.replyPlacement ?? null,
           },
           select: { agentId: true, id: true, status: true, threadId: true },
         })

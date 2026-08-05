@@ -64,7 +64,7 @@ test('a pre-stream failure is persisted as an actionable assistant message', asy
       organizationId: ID.organization,
       systemChannelType: 'personal_assistant',
     },
-    run: { createdAt: new Date(), id: ID.run, threadId: ID.thread },
+    run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },
     task: { id: ID.task },
   } satisfies RunContext
 
