@@ -64,6 +64,13 @@ const makePrisma = (stripImageMetadata = true) => {
           height: null,
           messageId: null,
           knowledgePageId: null,
+          // Prisma returns NULL for nullable columns the create omitted.
+          thumbnailKey: null,
+          thumbnailMime: null,
+          thumbnailSizeBytes: null,
+          thumbnailWidth: null,
+          thumbnailHeight: null,
+          thumbnailStatus: null,
           ...data,
         }
         attachments.set(row.id as string, row)

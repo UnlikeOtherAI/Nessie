@@ -11,21 +11,15 @@ import {
   type StorageUsageScope,
 } from '../ledger.js'
 import type { Storage } from '../storage/index.js'
+import {
+  createThumbnailOps,
+  type SetThumbnailInput,
+  thumbnailColumns,
+  thumbnailStorageKey,
+  type ThumbnailOps,
+} from './attachment-thumbnails.js'
 import { isStrippableImageMime, prepareImageUpload } from './strip-image-metadata.js'
-import { type GeneratedThumbnail, THUMBNAIL_MIME } from './thumbnail.js'
-
-// Thumbnails live next to the object they describe, so a backend listing shows
-// the pair together and a stray object is obviously derived.
-const thumbnailStorageKey = (storageKey: string): string => `${storageKey}.thumb.webp`
-
-// Swap in the preview's own identity (name/type/size) so download routes serve
-// it — and derive its ETag from it — exactly like a first-class object.
-const asThumbnailAttachment = (attachment: Attachment): Attachment => ({
-  ...attachment,
-  filename: `${attachment.filename.replace(/\.[^./\\]+$/, '')}.webp`,
-  mime: attachment.thumbnailMime ?? THUMBNAIL_MIME,
-  sizeBytes: attachment.thumbnailSizeBytes ?? 0n,
-})
+import type { GeneratedThumbnail } from './thumbnail.js'
 
 /**
  * The single chokepoint for blob file work. Everything that stores, streams,
@@ -106,32 +100,14 @@ export type StoreFileInput = {
   abortSignal?: AbortSignal
 }
 
-// Async thumbnail generation (`attachment.thumbnail` worker job) reports back
-// through setThumbnail: a rendered preview, or null when this file has none.
-export type SetThumbnailInput = {
-  attachmentId: string
-  organizationId: string
-  attribution: LedgerAttribution
-  thumbnail: GeneratedThumbnail | null
-}
+export type { SetThumbnailInput }
 
-export type FileService = {
+export type FileService = ThumbnailOps & {
   store(input: StoreFileInput): Promise<{ attachment: Attachment; bytesWritten: number }>
   openStream(
     attachmentId: string,
     organizationId: string,
   ): Promise<{ stream: Readable; attachment: Attachment } | null>
-  // Bytes of the attachment's thumbnail, presented as an Attachment whose
-  // mime/size/filename describe the preview — so download routes serve and
-  // validate it exactly like any other object. Null when there is none.
-  openThumbnailStream(
-    attachmentId: string,
-    organizationId: string,
-  ): Promise<{ stream: Readable; attachment: Attachment } | null>
-  // Attach (or definitively give up on) a thumbnail generated after the fact.
-  // Idempotent: the first writer wins and a loser's object is cleaned up, so a
-  // re-run can never double-count bytes.
-  setThumbnail(input: SetThumbnailInput): Promise<boolean>
   delete(
     attachmentId: string,
     organizationId: string,
@@ -271,7 +247,7 @@ export const createFileService = (deps: {
     let storedThumbnail: GeneratedThumbnail | null = null
     if (thumbnail && thumbnailKey) {
       try {
-        await storage.put(thumbnailKey, thumbnail.data, THUMBNAIL_MIME)
+        await storage.put(thumbnailKey, thumbnail.data, thumbnail.mime)
         storedThumbnail = thumbnail
       } catch {
         await storage.delete(thumbnailKey).catch(() => undefined)
@@ -293,12 +269,9 @@ export const createFileService = (deps: {
           storageKey,
           width,
           height,
-          thumbnailKey: storedThumbnail ? thumbnailKey : null,
-          thumbnailMime: storedThumbnail ? storedThumbnail.mime : null,
-          thumbnailSizeBytes: storedThumbnail ? BigInt(storedThumbnail.data.byteLength) : null,
-          thumbnailWidth: storedThumbnail?.width ?? null,
-          thumbnailHeight: storedThumbnail?.height ?? null,
-          thumbnailStatus: storedThumbnail ? 'ready' : null,
+          ...(storedThumbnail && thumbnailKey
+            ? thumbnailColumns(thumbnailKey, storedThumbnail)
+            : {}),
         },
       })
     } catch (error) {
@@ -390,91 +363,6 @@ export const createFileService = (deps: {
     return true
   }
 
-  const openThumbnailStream: FileService['openThumbnailStream'] = async (
-    attachmentId,
-    organizationId,
-  ) => {
-    const attachment = await prisma.attachment.findUnique({ where: { id: attachmentId } })
-    if (!attachment || attachment.organizationId !== organizationId || !attachment.thumbnailKey) {
-      return null
-    }
-    const stream = await storage.getStream(attachment.thumbnailKey)
-    if (!stream) {
-      return null
-    }
-    return { stream, attachment: asThumbnailAttachment(attachment) }
-  }
-
-  const setThumbnail: FileService['setThumbnail'] = async (input) => {
-    const attachment = await prisma.attachment.findUnique({
-      where: { id: input.attachmentId },
-    })
-    if (!attachment || attachment.organizationId !== input.organizationId) {
-      return false
-    }
-    if (!input.thumbnail) {
-      // Definitively no preview for this file. Recorded so the client stops
-      // asking and a retry does not re-render it.
-      await prisma.attachment.updateMany({
-        where: { id: attachment.id, thumbnailKey: null },
-        data: { thumbnailStatus: 'unavailable' },
-      })
-      return true
-    }
-    if (attachment.thumbnailKey) {
-      // Already has one — leave it and its accounting alone.
-      return true
-    }
-
-    const usageScope = await deriveScope(attachment)
-    const bytes = input.thumbnail.data.byteLength
-    const quota = await checkStorageQuota(
-      prisma,
-      {
-        organizationId: usageScope.organizationId,
-        projectId: usageScope.projectId ?? null,
-        teamId: usageScope.teamId ?? null,
-      },
-      bytes,
-    )
-    if (!quota.allowed) {
-      await prisma.attachment.updateMany({
-        where: { id: attachment.id, thumbnailKey: null },
-        data: { thumbnailStatus: 'unavailable' },
-      })
-      return false
-    }
-
-    const key = thumbnailStorageKey(attachment.storageKey)
-    await storage.put(key, input.thumbnail.data, input.thumbnail.mime)
-    // Conditional on thumbnailKey still being null: if a concurrent writer won,
-    // this claims nothing, and the object written above is dropped rather than
-    // counted. Accounting only follows a claim, so bytes can never double-count.
-    const claimed = await prisma.attachment.updateMany({
-      where: { id: attachment.id, thumbnailKey: null },
-      data: {
-        thumbnailKey: key,
-        thumbnailMime: input.thumbnail.mime,
-        thumbnailSizeBytes: BigInt(bytes),
-        thumbnailWidth: input.thumbnail.width,
-        thumbnailHeight: input.thumbnail.height,
-        thumbnailStatus: 'ready',
-      },
-    })
-    if (claimed.count === 0) {
-      await storage.delete(key).catch(() => undefined)
-      return false
-    }
-    await recordStorageStored(prisma, {
-      attribution: input.attribution,
-      scope: usageScope,
-      deltaBytes: BigInt(bytes),
-      operation: 'store.thumbnail',
-      attachmentId: attachment.id,
-    })
-    return true
-  }
-
   const purgeKnowledgePageFiles: FileService['purgeKnowledgePageFiles'] = async (
     pageId,
     organizationId,
@@ -506,10 +394,12 @@ export const createFileService = (deps: {
   }
 
   return {
+    // Preview lifecycle (serve + attach-after-the-fact) lives in
+    // ./attachment-thumbnails.ts, constructed with this service's own
+    // prisma/storage/scope so it stays inside the chokepoint.
+    ...createThumbnailOps({ prisma, storage, deriveScope: (row) => deriveScope(row) }),
     store,
     openStream,
-    openThumbnailStream,
-    setThumbnail,
     delete: deleteFile,
     purgeKnowledgePageFiles,
     checkQuota: (scope, addBytes) => checkStorageQuota(prisma, scope, addBytes),

@@ -16,6 +16,15 @@ export type AttachmentRecord = {
   width?: number
   height?: number
   createdAt: string
+  // Small WebP preview at /api/attachments/:id/thumbnail. Absent for
+  // attachments stored before thumbnails existed (never backfilled) and for
+  // kinds with no preview — render the original or a download chip instead.
+  hasThumbnail?: boolean
+  thumbnailStatus?: 'pending' | 'ready' | 'unavailable'
+  thumbnailMime?: string
+  thumbnailSizeBytes?: string
+  thumbnailWidth?: number
+  thumbnailHeight?: number
 }
 
 // Multipart upload helper. The shared JSON ApiClient cannot send FormData, so
@@ -81,6 +90,11 @@ export const uploadWorkspaceAvatar = async (
 // URL the browser can use to fetch attachment bytes (image preview / download).
 export const attachmentUrl = (id: string): string => `${getBaseUrl()}/api/attachments/${id}`
 
+// Paths (not absolute URLs) for the authed-fetch hooks below.
+export const attachmentPath = (id: string): string => `/api/attachments/${id}`
+export const attachmentThumbnailPath = (id: string): string =>
+  `/api/attachments/${id}/thumbnail`
+
 // Fetch a download path with the bearer token and expose it as an object URL so
 // authenticated previews work (a bare <img>/<iframe> src cannot send an auth
 // header). Returns null while loading, on error, or when `path` is null.
@@ -115,7 +129,14 @@ export const useAuthedObjectUrlFromPath = (
       .catch(() => setUrl(null))
     return () => {
       revoked = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+        // Clear the state with the URL it points at. Without this, a dep
+        // change (most often the 30-minute token rotation) leaves every
+        // <img>/<iframe> pointing at a just-revoked blob until the refetch
+        // lands, which renders as a broken image.
+        setUrl(null)
+      }
     }
   }, [path, token, mimeOverride])
   return url
