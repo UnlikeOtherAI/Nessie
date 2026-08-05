@@ -48,7 +48,7 @@ const makeStorage = (): Storage & { blobs: Map<string, Buffer> } => {
 // plus the organization row for the strip opt-out flag.
 const makePrisma = (stripImageMetadata = true) => {
   const attachments = new Map<string, Record<string, unknown>>()
-  const usage: { deltaBytes: bigint }[] = []
+  const usage: { deltaBytes: bigint; operation: string }[] = []
   let seq = 0
 
   const prisma = {
@@ -70,9 +70,14 @@ const makePrisma = (stripImageMetadata = true) => {
         return row
       },
       findUnique: async ({ where }: { where: { id: string } }) => attachments.get(where.id) ?? null,
+      delete: async ({ where }: { where: { id: string } }) => {
+        const row = attachments.get(where.id)
+        attachments.delete(where.id)
+        return row
+      },
     },
     storageUsageEvent: {
-      create: async ({ data }: { data: { deltaBytes: bigint } }) => {
+      create: async ({ data }: { data: { deltaBytes: bigint; operation: string } }) => {
         usage.push(data)
         return data
       },
@@ -87,7 +92,7 @@ const makePrisma = (stripImageMetadata = true) => {
       findUnique: async () => null,
     },
   }
-  return prisma as unknown as PrismaClient
+  return Object.assign(prisma as unknown as PrismaClient, { __usage: usage })
 }
 
 // Builds a minimal little-endian TIFF/EXIF block: IFD0 with Orientation=6
@@ -212,7 +217,12 @@ test('JPEG with GPS EXIF is stored stripped, orientation normalized, accounting 
   assert.equal(attachment.height, 100)
   // Accounting records the post-strip byte size.
   assert.equal(attachment.sizeBytes, BigInt(stored.length))
-  assert.equal((await files.usageForScope({ organizationId: ORG })).toString(), String(stored.length))
+  // Usage now sums the original plus its generated preview; both are stored
+  // bytes and both are metered (see the thumbnail tests at the end).
+  assert.equal(
+    (await files.usageForScope({ organizationId: ORG })).toString(),
+    String(stored.length + Number(attachment.thumbnailSizeBytes)),
+  )
 })
 
 test('ICC color profile survives the strip', async () => {
@@ -310,4 +320,124 @@ test('images above the strip threshold stream through unchanged', async () => {
   }
   assert.equal(prepared.width, null)
   assert.equal(actual.digest('hex'), expected.digest('hex'))
+})
+
+// ─── Thumbnails ────────────────────────────────────────────────────────────
+// The preview is derived from the already-stripped buffer at the same
+// chokepoint, so it is covered by the same fixtures.
+
+test('an image upload stores a thumbnail alongside it, accounted separately', async () => {
+  const fixture = await sharp({
+    create: { width: 1200, height: 800, channels: 3, background: { r: 10, g: 120, b: 200 } },
+  })
+    .jpeg()
+    .toBuffer()
+  const prisma = makePrisma()
+  const storage = makeStorage()
+  const files = createFileService({ prisma, storage, maxUploadBytes: 10_000_000 })
+
+  const { attachment } = await storeOne(files, 'image/jpeg', fixture)
+
+  // Two objects: the original and `<key>.thumb.webp`.
+  assert.equal(storage.blobs.size, 2)
+  assert.equal(attachment.thumbnailKey, `${attachment.storageKey}.thumb.webp`)
+  assert.equal(attachment.thumbnailMime, 'image/webp')
+  assert.equal(attachment.thumbnailStatus, 'ready')
+  // Fitted inside the 640px box, keeping the 3:2 ratio.
+  assert.equal(attachment.thumbnailWidth, 640)
+  assert.equal(attachment.thumbnailHeight, 427)
+
+  const thumbBytes = storage.blobs.get(attachment.thumbnailKey as string) as Buffer
+  assert.equal(attachment.thumbnailSizeBytes, BigInt(thumbBytes.length))
+  assert.equal((await sharp(thumbBytes).metadata()).format, 'webp')
+  // The whole point: a preview is a small fraction of the original.
+  assert.ok(thumbBytes.length < Number(attachment.sizeBytes))
+
+  // Served through its own stream, presenting the preview's identity.
+  const opened = await files.openThumbnailStream(attachment.id, ORG)
+  assert.ok(opened)
+  assert.equal(opened.attachment.mime, 'image/webp')
+  assert.equal(opened.attachment.sizeBytes, BigInt(thumbBytes.length))
+  assert.deepEqual(await collectStream(opened.stream), thumbBytes)
+
+  // Accounting: one +bytes event per object, and usage sums both.
+  const usage = (prisma as unknown as { __usage: { deltaBytes: bigint; operation: string }[] })
+    .__usage
+  assert.deepEqual(
+    usage.map((row) => row.operation),
+    ['store', 'store.thumbnail'],
+  )
+  assert.equal(
+    (await files.usageForScope({ organizationId: ORG })).toString(),
+    String(Number(attachment.sizeBytes) + thumbBytes.length),
+  )
+})
+
+test('deleting an attachment frees the thumbnail object and nets its bytes to zero', async () => {
+  const fixture = await sharp({
+    create: { width: 900, height: 900, channels: 3, background: { r: 200, g: 30, b: 30 } },
+  })
+    .png()
+    .toBuffer()
+  const prisma = makePrisma()
+  const storage = makeStorage()
+  const files = createFileService({ prisma, storage, maxUploadBytes: 10_000_000 })
+
+  const { attachment } = await storeOne(files, 'image/png', fixture)
+  assert.equal(storage.blobs.size, 2)
+
+  assert.equal(await files.delete(attachment.id, ORG, attribution), true)
+
+  // Neither object may survive — a leaked thumbnail is invisible storage.
+  assert.equal(storage.blobs.size, 0)
+  assert.equal((await files.usageForScope({ organizationId: ORG })).toString(), '0')
+  const usage = (prisma as unknown as { __usage: { deltaBytes: bigint; operation: string }[] })
+    .__usage
+  assert.deepEqual(
+    usage.map((row) => row.operation),
+    ['store', 'store.thumbnail', 'delete', 'delete.thumbnail'],
+  )
+})
+
+test('an animated WebP thumbnail keeps frame-0 geometry, not the filmstrip', async () => {
+  // Three 60x40 frames. sharp decodes an animated image as a vertically
+  // stacked filmstrip when `animated: true` (which the store pipeline uses),
+  // so a naive thumbnail would come out 60x120 instead of 60x40.
+  const frame = async (r: number, g: number, b: number): Promise<Buffer> =>
+    sharp({ create: { width: 60, height: 40, channels: 3, background: { r, g, b } } })
+      .png()
+      .toBuffer()
+  const animated = await sharp(
+    [await frame(255, 0, 0), await frame(0, 255, 0), await frame(0, 0, 255)],
+    { join: { animated: true } },
+  )
+    .webp({ loop: 0 })
+    .toBuffer()
+  assert.equal((await sharp(animated, { animated: true }).metadata()).pages, 3, 'fixture animates')
+  assert.equal((await sharp(animated, { animated: true }).metadata()).height, 120, 'filmstrip')
+
+  const files = createFileService({
+    prisma: makePrisma(),
+    storage: makeStorage(),
+    maxUploadBytes: 10_000_000,
+  })
+  const { attachment } = await storeOne(files, 'image/webp', animated)
+
+  assert.equal(attachment.thumbnailWidth, 60)
+  assert.equal(attachment.thumbnailHeight, 40)
+})
+
+test('an undecodable image still uploads — it just has no thumbnail', async () => {
+  const garbage = Buffer.from('declared image/png, decodes as nothing')
+  const storage = makeStorage()
+  const files = createFileService({
+    prisma: makePrisma(),
+    storage,
+    maxUploadBytes: 1_000_000,
+  })
+  const { attachment } = await storeOne(files, 'image/png', garbage)
+
+  assert.equal(storage.blobs.size, 1)
+  assert.equal(attachment.thumbnailKey, null)
+  assert.equal(attachment.thumbnailStatus, null)
 })

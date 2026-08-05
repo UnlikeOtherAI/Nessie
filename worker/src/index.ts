@@ -17,6 +17,8 @@ import {
   COMMS_SYNC_INCREMENTAL_TOPIC,
   COMMS_SYNC_INITIAL_TOPIC,
   COMMS_WEBHOOK_PROCESS_TOPIC,
+  AttachmentThumbnailJobPayloadSchema,
+  ATTACHMENT_THUMBNAIL_TOPIC,
   CommsSubscriptionsRenewJobPayloadSchema,
   CommsSyncIncrementalJobPayloadSchema,
   CommsSyncInitialJobPayloadSchema,
@@ -42,6 +44,7 @@ import {
   renewExecutionLeases,
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
+import { executeAttachmentThumbnailJob } from './control/attachment-thumbnail.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
@@ -290,6 +293,15 @@ export const startWorker = async (
     async (job) => {
       const payload = KnowledgeExtractJobPayloadSchema.parse(job.payload)
       await executeKnowledgeExtractJob({ fileService, prisma }, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    ATTACHMENT_THUMBNAIL_TOPIC,
+    async (job) => {
+      const payload = AttachmentThumbnailJobPayloadSchema.parse(job.payload)
+      await executeAttachmentThumbnailJob({ fileService, prisma }, payload)
     },
     { signal: abortController.signal },
   )

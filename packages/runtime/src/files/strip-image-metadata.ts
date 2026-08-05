@@ -2,6 +2,8 @@ import { Readable } from 'node:stream'
 
 import sharp from 'sharp'
 
+import { type GeneratedThumbnail, renderImageThumbnail } from './thumbnail.js'
+
 /**
  * Privacy stripping for uploaded images, applied at the FileService store
  * chokepoint so every upload route inherits it.
@@ -38,6 +40,10 @@ export type PreparedImageUpload = {
   // image was actually re-encoded; null when passed through untouched.
   width: number | null
   height: number | null
+  // Small WebP preview derived from the same buffered bytes, so the common
+  // case (a chat photo) never needs a second decode or a queued job. Null when
+  // the image passed through untouched or the preview could not be produced.
+  thumbnail?: GeneratedThumbnail | null
 }
 
 export const prepareImageUpload = async (body: Readable): Promise<PreparedImageUpload> => {
@@ -83,7 +89,13 @@ export const prepareImageUpload = async (body: Readable): Promise<PreparedImageU
     else if (format === 'webp') pipeline.webp({ quality: 95 })
     // png and any mislabeled-but-decodable content keep their input format.
     const { data, info } = await pipeline.toBuffer({ resolveWithObject: true })
-    return { body: Readable.from(data), width: info.width, height: info.height }
+    // Derive the preview from the RESULT: already oriented and stripped, so it
+    // needs no re-rotate and can never carry back metadata this step removed.
+    // renderImageThumbnail swallows its own failures (and decodes frame 0, not
+    // the animated filmstrip this pipeline produces), so a preview problem can
+    // never cost us the stripped bytes by falling into the catch below.
+    const thumbnail = await renderImageThumbnail(data)
+    return { body: Readable.from(data), height: info.height, thumbnail, width: info.width }
   } catch {
     // Undecodable content: store the original bytes untouched rather than
     // failing the upload.

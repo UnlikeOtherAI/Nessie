@@ -3439,6 +3439,18 @@ model Attachment {
   storageKey     String   @map("storage_key")
   width          Int?
   height         Int?
+  // Cheap inline preview derived from the stored bytes and kept next to them
+  // (`<storage_key>.thumb.webp`), so a feed never transfers a multi-megabyte
+  // original to paint a 320px box. Null on every attachment with no preview:
+  // pre-existing rows (never backfilled), unsupported kinds, and failures.
+  // `thumbnailStatus` is pending|ready|unavailable for the async (worker)
+  // path; images thumbnailed inline at store time go straight to ready.
+  thumbnailKey       String?  @map("thumbnail_key")
+  thumbnailMime      String?  @map("thumbnail_mime")
+  thumbnailSizeBytes BigInt?  @map("thumbnail_size_bytes")
+  thumbnailWidth     Int?     @map("thumbnail_width")
+  thumbnailHeight    Int?     @map("thumbnail_height")
+  thumbnailStatus    String?  @map("thumbnail_status")
   createdAt      DateTime @default(now()) @map("created_at")
 
   logoForOrganizations Organization[] @relation("OrganizationLogo")

@@ -204,6 +204,23 @@ export const KnowledgeExtractJobPayloadSchema = z.object({
 })
 export type KnowledgeExtractJobPayload = z.infer<typeof KnowledgeExtractJobPayloadSchema>
 
+// `attachment.thumbnail` queue job — enqueued after an upload whose preview
+// could not be produced inline at the FileService store chokepoint: PDFs
+// (first-page raster), animated/exotic images, images above the metadata-strip
+// buffering threshold, and orgs that opted out of stripping. The worker
+// re-opens the stored bytes under a hard size cap, renders one small WebP, and
+// reports it back through `fileService.setThumbnail` (which owns the storage
+// write, the quota gate, and the +bytes usage event). Failure is never fatal:
+// the attachment simply ends up `thumbnailStatus = 'unavailable'` and clients
+// fall back to the original. Idempotency key: thumb:<attachmentId>.
+export const ATTACHMENT_THUMBNAIL_TOPIC = 'attachment.thumbnail'
+
+export const AttachmentThumbnailJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  attachmentId: z.string().uuid(),
+})
+export type AttachmentThumbnailJobPayload = z.infer<typeof AttachmentThumbnailJobPayloadSchema>
+
 export const TriggerEventDispatchJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   dedupeKey: NonEmptyStringSchema.optional(),
