@@ -109,8 +109,9 @@ export const registerCreateThreadMessageRoute = (
     // Link pre-uploaded attachments. Scoped to the sender's own still-unlinked
     // uploads so one member cannot attach another member's pending upload to
     // their message by guessing its id.
+    let linkedAttachmentCount = 0
     if (body.attachmentIds && body.attachmentIds.length > 0) {
-      await prisma.attachment.updateMany({
+      const linked = await prisma.attachment.updateMany({
         where: {
           id: { in: body.attachmentIds },
           organizationId: actorContext.tenant.organizationId,
@@ -119,6 +120,9 @@ export const registerCreateThreadMessageRoute = (
         },
         data: { messageId: result.message.id },
       })
+      // The authoritative count is what actually linked, not what was asked
+      // for: an id the sender does not own is silently skipped above.
+      linkedAttachmentCount = linked.count
     }
 
     if (messageMemoryCaptureConfig) {
@@ -320,7 +324,9 @@ export const registerCreateThreadMessageRoute = (
 
     return reply.code(201).send(
       createApiResponse({
-        message: ThreadMessageRecordSchema.parse(mapMessageRecord(result.message)),
+        message: ThreadMessageRecordSchema.parse(
+          mapMessageRecord(result.message, linkedAttachmentCount),
+        ),
         pendingAgentInvites: result.pendingAgentInvites,
       }),
     )
