@@ -1,16 +1,21 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AgentRecord, MessageReaction, UserRecord } from '../../../lib/api-client'
+import {
+  groupPendingByRoot,
+  type PendingStreamMessage,
+} from '../../../facades/threads/thinking'
 import { usePresenceLookup } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageRow, StatusBadge } from './ChannelMessageRow'
 import { MessageMarkdown } from './MessageMarkdown'
 import type { ResolveReactorName } from './ReactionPills'
+import { ThinkingBubble } from './ThinkingBubble'
+import { useThoughtProcessDialog } from './ThoughtProcessDialog'
 import {
   type FeedItem,
   type MessageUserIdentity,
   type OptimisticMessage,
-  type PendingStreamMessage,
 } from './channel-helpers'
 import type { ThreadParticipant } from './thread-panel/thread-panel-helpers'
 
@@ -63,6 +68,14 @@ interface ChannelMessageFeedProps {
   onSelectAgent?: (agent: AgentRecord) => void
   onSelectUser?: (user: MessageUserIdentity) => void
   resolveThreadParticipant?: (participantId: string) => ThreadParticipant | null
+  // Container thread of this feed — the thought-process dialog reads a run's
+  // full log from it.
+  threadId?: string
+  // Where a thinking bubble belongs on this surface. In the channel feed a
+  // thread-anchored run gets a compact bubble under its root and only top-level
+  // runs get the full bubble at the bottom; a reply panel is already scoped to
+  // one root, so every run it is handed lands at the bottom of its list.
+  thinkingSurface?: 'channel' | 'thread'
 }
 
 export const ChannelMessageFeed = ({
@@ -94,6 +107,8 @@ export const ChannelMessageFeed = ({
   onSelectAgent,
   onSelectUser,
   resolveThreadParticipant,
+  threadId,
+  thinkingSurface = 'channel',
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
   // Both the Personal Assistant and any external agent (DeepSignal, ...) read
@@ -108,6 +123,62 @@ export const ChannelMessageFeed = ({
       : 'Agent'
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null)
   const lastPointerDownAt = useRef(0)
+  // One identity resolution for both the streaming reply rows and the bubbles.
+  const resolveAgentIdentity = useCallback(
+    (agentId: string) => {
+      const agent = agentById.get(agentId) ?? null
+      return {
+        agent,
+        name: isDedicatedAgentConversation ? assistantFallbackName : agent?.name ?? 'Agent',
+      }
+    },
+    [agentById, assistantFallbackName, isDedicatedAgentConversation],
+  )
+  const { openThoughtProcess, thoughtProcessDialog } = useThoughtProcessDialog(
+    pendingMessages,
+    resolveAgentIdentity,
+    threadId,
+    token,
+  )
+  // Thread-anchored runs render under the message their reply will hang from;
+  // only the channel feed shows those, since a reply panel is already scoped.
+  const pendingByRoot = useMemo(
+    () =>
+      thinkingSurface === 'channel'
+        ? groupPendingByRoot(pendingMessages)
+        : new Map<string, PendingStreamMessage[]>(),
+    [pendingMessages, thinkingSurface],
+  )
+  // Everything at the bottom of this surface is a reply that will land at the
+  // bottom of this surface: a reply panel owns every run it was handed, the
+  // channel feed only the top-level ones. A thread-anchored run's live surface
+  // in the channel is the compact bubble under its root — its reply text
+  // streams where the reply will actually land (the thread panel), never at
+  // the bottom of the main window.
+  const bottomPendingEntries = useMemo(
+    () =>
+      thinkingSurface === 'thread'
+        ? pendingMessages
+        : pendingMessages.filter((entry) => entry.rootMessageId == null),
+    [pendingMessages, thinkingSurface],
+  )
+  const renderThinkingBubble = (
+    entry: PendingStreamMessage,
+    variant: 'compact' | 'full',
+  ) => {
+    const identity = resolveAgentIdentity(entry.agentId)
+    return (
+      <ThinkingBubble
+        agent={identity.agent}
+        agentName={identity.name}
+        entry={entry}
+        key={`thinking:${entry.runId}`}
+        token={token}
+        variant={variant}
+        onOpen={openThoughtProcess}
+      />
+    )
+  }
   // Name resolution for the "who reacted" popover, layered from what this feed
   // already knows: the viewer ("You"), channel members (when provided), the
   // loaded messages' embedded authors, and the agent maps for agent reactions.
@@ -225,38 +296,42 @@ export const ChannelMessageFeed = ({
           return index < lastMessageIndex ? <DeletedBubble key={item.message.id} /> : null
         }
 
+        const anchoredThinking = pendingByRoot.get(item.message.id) ?? []
+
         return (
-          <ChannelMessageRow
-            activeActionMessageId={activeActionMessageId}
-            agentMap={agentMap}
-            assistantFallbackName={assistantFallbackName}
-            editingContent={editingContent}
-            editingMessageId={editingMessageId}
-            getPresence={getPresence}
-            isDedicatedAgentConversation={isDedicatedAgentConversation}
-            isExternalAgentConversation={isExternalAgentConversation}
-            key={item.message.id}
-            lastPointerDownAt={lastPointerDownAt}
-            meAvatar={meAvatar}
-            meDisplayName={meDisplayName}
-            meUserId={meUserId}
-            message={item.message}
-            renderContent={renderContent}
-            resolveReactorName={resolveReactorName}
-            setActiveActionMessageId={setActiveActionMessageId}
-            token={token}
-            updatePending={updatePending}
-            onAddReaction={onAddReaction}
-            onCancelEdit={onCancelEdit}
-            onChangeEditingContent={onChangeEditingContent}
-            onConfirmDelete={onConfirmDelete}
-            onOpenThread={onOpenThread}
-            onSelectAgent={onSelectAgent}
-            onSelectUser={onSelectUser}
-            onStartEdit={onStartEdit}
-            onSubmitEdit={onSubmitEdit}
-            resolveThreadParticipant={resolveThreadParticipant}
-          />
+          <Fragment key={item.message.id}>
+            <ChannelMessageRow
+              activeActionMessageId={activeActionMessageId}
+              agentMap={agentMap}
+              assistantFallbackName={assistantFallbackName}
+              editingContent={editingContent}
+              editingMessageId={editingMessageId}
+              getPresence={getPresence}
+              isDedicatedAgentConversation={isDedicatedAgentConversation}
+              isExternalAgentConversation={isExternalAgentConversation}
+              lastPointerDownAt={lastPointerDownAt}
+              meAvatar={meAvatar}
+              meDisplayName={meDisplayName}
+              meUserId={meUserId}
+              message={item.message}
+              renderContent={renderContent}
+              resolveReactorName={resolveReactorName}
+              setActiveActionMessageId={setActiveActionMessageId}
+              token={token}
+              updatePending={updatePending}
+              onAddReaction={onAddReaction}
+              onCancelEdit={onCancelEdit}
+              onChangeEditingContent={onChangeEditingContent}
+              onConfirmDelete={onConfirmDelete}
+              onOpenThread={onOpenThread}
+              onSelectAgent={onSelectAgent}
+              onSelectUser={onSelectUser}
+              onStartEdit={onStartEdit}
+              onSubmitEdit={onSubmitEdit}
+              resolveThreadParticipant={resolveThreadParticipant}
+            />
+            {anchoredThinking.map((entry) => renderThinkingBubble(entry, 'compact'))}
+          </Fragment>
         )
       })}
 
@@ -307,7 +382,7 @@ export const ChannelMessageFeed = ({
         </article>
       ))}
 
-      {pendingMessages.length > 0 ? (
+      {bottomPendingEntries.length > 0 ? (
         <div className="admin-date-sep">
           <span className="admin-date-pill">
             Live
@@ -324,44 +399,52 @@ export const ChannelMessageFeed = ({
         </div>
       ) : null}
 
-      {pendingMessages.map((entry) => {
-        const pendingAgent = agentById.get(entry.agentId) ?? null
-        const pendingDisplayName = isDedicatedAgentConversation
-          ? assistantFallbackName
-          : pendingAgent?.name ?? 'Agent'
+      {bottomPendingEntries.map((entry) => {
+        const { agent: pendingAgent, name: pendingDisplayName } = resolveAgentIdentity(
+          entry.agentId,
+        )
+        // A bubble directly above already says the agent is thinking, so the
+        // streaming row waits for actual reply text instead of repeating it.
+        const showStreamingRow = entry.content.length > 0
 
         return (
-          <article key={entry.runId} className="admin-msg-row py-1">
-            <ChannelAgentGlyph agent={pendingAgent} token={token} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-sm font-bold text-[var(--tx)]">
-                  {pendingDisplayName}
-                </span>
-                <span
-                  className={[
-                    'inline-flex items-center rounded',
-                    'bg-[var(--accent-soft)] px-2 py-0.5',
-                    'text-[11px] font-semibold text-[var(--thinking)]',
-                  ].join(' ')}
-                >
-                  {isDedicatedAgentConversation ? 'thinking' : 'running'}
-                </span>
-              </div>
-              <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
-                <MessageMarkdown renderInlineText={renderContent}>
-                  {entry.content
-                    ? entry.content
-                    : isDedicatedAgentConversation
-                      ? `${pendingDisplayName} is thinking…`
-                      : '... thinking ...'}
-                </MessageMarkdown>
-                <span className="streaming-dot" />
-              </div>
-            </div>
-          </article>
+          <Fragment key={entry.runId}>
+            {renderThinkingBubble(entry, 'full')}
+            {showStreamingRow ? (
+              <article className="admin-msg-row py-1">
+                <ChannelAgentGlyph agent={pendingAgent} token={token} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-bold text-[var(--tx)]">
+                      {pendingDisplayName}
+                    </span>
+                    <span
+                      className={[
+                        'inline-flex items-center rounded',
+                        'bg-[var(--accent-soft)] px-2 py-0.5',
+                        'text-[11px] font-semibold text-[var(--thinking)]',
+                      ].join(' ')}
+                    >
+                      {isDedicatedAgentConversation ? 'thinking' : 'running'}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
+                    <MessageMarkdown renderInlineText={renderContent}>
+                      {entry.content
+                        ? entry.content
+                        : isDedicatedAgentConversation
+                          ? `${pendingDisplayName} is thinking…`
+                          : '... thinking ...'}
+                    </MessageMarkdown>
+                    <span className="streaming-dot" />
+                  </div>
+                </div>
+              </article>
+            ) : null}
+          </Fragment>
         )
       })}
+      {thoughtProcessDialog}
       <div className="h-3" />
     </>
   )

@@ -10,10 +10,8 @@ import type { AvatarSources } from '../../components/primitives/UserAvatar'
 import type { MentionEntity } from '../../components/shared/MentionInput'
 import { ChannelAgentInfoDrawer } from '../../components/features/channels/ChannelAgentInfoDrawer'
 import { ChannelUserInfoDrawer } from '../../components/features/channels/ChannelUserInfoDrawer'
-import type {
-  MessageUserIdentity,
-  PendingStreamMessage,
-} from '../../components/features/channels/channel-helpers'
+import type { MessageUserIdentity } from '../../components/features/channels/channel-helpers'
+import type { PendingStreamMessage } from '../../facades/threads/thinking'
 
 interface ChannelInfoDrawersProps {
   activeChannel: ChannelRecord | null

@@ -11,6 +11,10 @@ import {
 } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../../lib/api-client'
+import {
+  countThinkingEntries,
+  type PendingStreamMessage,
+} from '../../../../facades/threads/thinking'
 import type { useReplyThread } from '../../../../pages/channels/useReplyThread'
 import { OversizePasteDialog } from '../../../shared/OversizePasteDialog'
 import type { MentionEntity } from '../../../shared/MentionInput'
@@ -29,6 +33,9 @@ interface ThreadReplyPanelProps {
   meDisplayName: string
   meUserId: string
   mentionEntities: MentionEntity[]
+  // Live agent runs whose reply will land in THIS reply thread — the page
+  // filters the thread stream by anchor before handing them down.
+  pendingMessages: PendingStreamMessage[]
   renderContent: (text: string) => ReactNode
   thread: ReturnType<typeof useReplyThread>
   token: string | null
@@ -50,6 +57,7 @@ export const ThreadReplyPanel = ({
   meDisplayName,
   meUserId,
   mentionEntities,
+  pendingMessages,
   renderContent,
   thread,
   token,
@@ -140,7 +148,14 @@ export const ThreadReplyPanel = ({
     if (container) {
       container.scrollTop = container.scrollHeight
     }
-  }, [openRootMessageId, threadFeedItems.length, optimisticMessages.length])
+    // A growing thinking bubble changes the list height like a new reply does.
+  }, [
+    openRootMessageId,
+    threadFeedItems.length,
+    optimisticMessages.length,
+    pendingMessages.length,
+    countThinkingEntries(pendingMessages),
+  ])
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -266,8 +281,10 @@ export const ThreadReplyPanel = ({
                 meDisplayName={meDisplayName}
                 meUserId={meUserId}
                 optimisticMessages={optimisticMessages}
-                pendingMessages={[]}
+                pendingMessages={pendingMessages}
                 renderContent={renderContent}
+                thinkingSurface="thread"
+                threadId={activeThreadId}
                 token={token}
                 updatePending={updatePending}
                 onAddReaction={addReaction}

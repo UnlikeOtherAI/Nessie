@@ -4,23 +4,34 @@ import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
 import { readSseStream } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import {
+  appendThinkingEntry,
+  reconcileThreadThinking,
+  type PendingStreamMessage,
+  type RunThinkingLog,
+  type ThinkingEntryKind,
+  type ThreadThinking,
+} from './thinking'
 
 type StreamState = {
-  pendingMessages: Array<{
-    agentId: string
-    content: string
-    reasoningContent: string
-    runId: string
-  }>
+  pendingMessages: PendingStreamMessage[]
 }
 
 type StreamEventData = {
   agentId?: string
+  // Durable `run_thinking_chunks` id on thought-process events, so a bootstrap
+  // fetch and the live stream can overlap without duplicating a chunk.
+  chunkId?: string
   content?: string
   createdAt?: string
   messageId?: string
   rootMessageId?: string | null
   runId: string
+}
+
+const THINKING_EVENT_KINDS: Record<string, ThinkingEntryKind> = {
+  'stream.reasoning': 'reasoning',
+  'stream.thinking.tool': 'tool',
 }
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
@@ -108,6 +119,22 @@ export const useMarkThreadRead = () => {
   })
 }
 
+// Full durable thought log for one run. The bubble's own state is lossy (and
+// starts mid-run for anyone who joined late), so the dialog reads the record.
+export const useRunThinkingLog = (
+  threadId: string | undefined,
+  runId: string | null,
+  enabled: boolean,
+) => {
+  const apiClient = useApiClient()
+
+  return useQuery<RunThinkingLog>({
+    queryKey: ['threads', threadId, 'runs', runId, 'thinking'],
+    queryFn: () => apiClient.get(`/api/threads/${threadId}/runs/${runId}/thinking`),
+    enabled: enabled && Boolean(threadId) && Boolean(runId),
+  })
+}
+
 export const useThreadStream = (threadId?: string): StreamState => {
   const { token } = useAuthSession()
   const queryClient = useQueryClient()
@@ -126,6 +153,40 @@ export const useThreadStream = (threadId?: string): StreamState => {
     let cancelled = false
     let lastEventId = ''
     let activeController: AbortController | null = null
+    // When each live run announced itself, so a bootstrap response that was
+    // already in flight never discards a run that started after it was sent.
+    const liveRunStartedAt = new Map<string, number>()
+
+    // `stream.*` is never replayed from the backlog, so a mid-run joiner (or a
+    // reconnect that missed events) rebuilds its bubbles over REST instead.
+    const bootstrapThinking = async (signal: AbortSignal) => {
+      const requestedAt = Date.now()
+      try {
+        const response = await fetch(`${baseUrl}/api/threads/${threadId}/thinking`, {
+          headers: { authorization: `Bearer ${token}` },
+          signal,
+        })
+        if (!response.ok || cancelled) {
+          return
+        }
+
+        const payload = (await response.json()) as { data?: ThreadThinking }
+        if (cancelled) {
+          return
+        }
+
+        const protectedRunIds = new Set(
+          [...liveRunStartedAt.entries()]
+            .filter(([, startedAt]) => startedAt >= requestedAt)
+            .map(([runId]) => runId),
+        )
+        setPendingMessages((current) =>
+          reconcileThreadThinking(current, payload.data?.runs ?? [], protectedRunIds),
+        )
+      } catch {
+        // Best effort: a failed bootstrap only costs a mid-run joiner its bubble.
+      }
+    }
 
     const connectStream = async () => {
       while (!cancelled) {
@@ -150,6 +211,8 @@ export const useThreadStream = (threadId?: string): StreamState => {
             break
           }
 
+          void bootstrapThinking(controller.signal)
+
           await readSseStream(response.body, (frame) => {
             if (cancelled) {
               return
@@ -167,6 +230,7 @@ export const useThreadStream = (threadId?: string): StreamState => {
             const data = JSON.parse(frame.data) as StreamEventData
 
             if (frame.event === 'stream.start') {
+              liveRunStartedAt.set(data.runId, Date.now())
               setPendingMessages((current) =>
                 current.some((message) => message.runId === data.runId)
                   ? current
@@ -175,24 +239,35 @@ export const useThreadStream = (threadId?: string): StreamState => {
                       {
                         agentId: data.agentId ?? '',
                         content: '',
-                        reasoningContent: '',
+                        // Absent/null anchors the reply at the top level of the
+                        // channel; an id anchors it in that message's thread.
+                        rootMessageId: data.rootMessageId ?? null,
                         runId: data.runId,
+                        thinking: [],
                       },
                     ],
               )
               return
             }
 
-            if (frame.event === 'stream.reasoning') {
+            const thinkingKind = frame.event ? THINKING_EVENT_KINDS[frame.event] : undefined
+            if (thinkingKind) {
+              const content = data.content ?? ''
+              if (!content) {
+                return
+              }
               setPendingMessages((current) =>
-                current.map((message) =>
-                  message.runId === data.runId
-                    ? {
-                        ...message,
-                        reasoningContent: `${message.reasoningContent}${data.content ?? ''}`,
-                      }
-                    : message,
-                ),
+                current.map((message) => {
+                  if (message.runId !== data.runId) {
+                    return message
+                  }
+                  const thinking = appendThinkingEntry(message.thinking, {
+                    content,
+                    id: data.chunkId,
+                    kind: thinkingKind,
+                  })
+                  return thinking === message.thinking ? message : { ...message, thinking }
+                }),
               )
               return
             }
@@ -234,6 +309,7 @@ export const useThreadStream = (threadId?: string): StreamState => {
                   },
                 )
               }
+              liveRunStartedAt.delete(data.runId)
               setPendingMessages((current) =>
                 current.filter((message) => message.runId !== data.runId),
               )
