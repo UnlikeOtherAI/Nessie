@@ -26,5 +26,7 @@ export const createProviderRequestHeadersResolver = (input: {
         'Ledger identity service is unavailable for routed inference.',
       )
     }
-    return input.ledgerIdentity.requestHeaders(input.attribution)
+    return input.ledgerIdentity.requestHeaders(input.attribution, {
+      requireUoaIdentity: true,
+    })
   }

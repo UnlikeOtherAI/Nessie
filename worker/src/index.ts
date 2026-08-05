@@ -143,7 +143,8 @@ export const startWorker = async (
     },
     requestHeaders:
       isLedgerEndpoint(config.model.baseUrl) && ledgerIdentity
-        ? (attribution) => ledgerIdentity.requestHeaders(attribution)
+        ? (attribution) =>
+            ledgerIdentity.requestHeaders(attribution, { requireUoaIdentity: true })
         : undefined,
     systemComponent: 'worker-model-service',
   })
