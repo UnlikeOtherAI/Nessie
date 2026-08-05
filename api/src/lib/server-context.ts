@@ -13,7 +13,11 @@ import {
   isBootstrapTokenExpired,
   type BootstrapTokenState,
 } from '../auth/bootstrap.js'
-import { verifySessionToken, type SessionTokenClaims } from '../auth/session.js'
+import {
+  isSessionTokenRevoked,
+  verifySessionToken,
+  type SessionTokenClaims,
+} from '../auth/session.js'
 import { sendApiError } from './api.js'
 import {
   buildMeResponse,
@@ -266,6 +270,15 @@ export const createServerContext = () => {
 
     if (!user) {
       sendApiError(reply, 401, 'USER_NOT_FOUND', 'User no longer exists')
+      return null
+    }
+
+    // Revocation: logout (and any forced sign-out) bumps User.tokenVersion,
+    // which invalidates every access token minted at an older generation.
+    // Without this, revoking the refresh family still left the already-issued
+    // access token usable for the remainder of its TTL.
+    if (isSessionTokenRevoked(verification.claims, user.tokenVersion)) {
+      sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
       return null
     }
 

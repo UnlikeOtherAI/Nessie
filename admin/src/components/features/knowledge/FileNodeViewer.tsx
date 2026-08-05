@@ -128,6 +128,9 @@ export const FileNodeViewer = ({
               // previewUrl's blob MIME is pinned to application/pdf (above), so a
               // file with an attacker-controlled content-type (e.g. text/html
               // named "x.pdf") renders as a failed PDF, never executable HTML.
+              // Deliberately NOT sandboxed: any `sandbox` attribute stops
+              // Chrome's PDF viewer from loading a blob: URL at all (verified),
+              // and the MIME pin already closes the script-execution path.
               src={previewUrl}
               title={page.title}
             />

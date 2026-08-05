@@ -96,6 +96,11 @@ export const streamAttachmentDownload = (
   reply.header('content-length', attachment.sizeBytes.toString())
   // Never let the browser sniff a download into active content.
   reply.header('x-content-type-options', 'nosniff')
+  // Defence in depth for anything served inline (today: PDFs). A sandboxed,
+  // origin-less document cannot run scripts, load subresources or reach the
+  // admin origin even if a file's declared type is wrong or a viewer is
+  // exploitable — the bytes here are user-uploaded.
+  reply.header('content-security-policy', "default-src 'none'; sandbox")
   reply.header(
     'content-disposition',
     `${disposition}; filename="${attachment.filename.replace(/"/g, '')}"`,

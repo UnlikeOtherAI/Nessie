@@ -671,6 +671,12 @@ model User {
   // manage platform-global resources such as the push credentials that drive
   // the central push gateway. Defaults to false; granted out-of-band.
   superAdmin          Boolean              @default(false) @map("super_admin")
+  // Access-token generation. Minted into the session JWT as `tv` and compared on
+  // every request, so bumping it revokes every outstanding access token at once.
+  // Revoking the refresh family alone is not enough: an access token stays valid
+  // for its whole TTL, leaving a window after logout or a forced sign-out.
+  // Unrelated to `UoaProductLink.uoaTokenVersion`, which is UOA's own epoch.
+  tokenVersion        Int                  @default(0) @map("token_version")
   preferences         Json?
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
@@ -2525,6 +2531,10 @@ model PolicyRule {
 
   @@index([organizationId, scope, resourceType])
   @@index([organizationId, scopeId])
+  // checkPolicy runs on every tool invocation and filters on exactly this
+  // prefix, ordering by priority. The two indexes above lead with `scope` or
+  // stop at `scope_id`, so neither serves it.
+  @@index([organizationId, resourceType, action, scopeId, priority])
   @@map("policy_rules")
 }
 
