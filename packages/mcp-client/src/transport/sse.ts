@@ -13,7 +13,7 @@ export function createSseTransport(spec: McpSseSpec): SSEClientTransport {
     ? { headers: spec.headers }
     : undefined
   return new SSEClientTransport(new URL(spec.url), {
-    fetch: safeMcpFetch,
+    fetch: spec.fetchImpl ?? safeMcpFetch,
     requestInit,
   })
 }

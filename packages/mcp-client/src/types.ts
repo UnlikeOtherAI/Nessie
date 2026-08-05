@@ -29,6 +29,13 @@ export type McpHttpSpec = {
   transport: 'http'
   url: string
   headers?: Record<string, string>
+  /**
+   * Override the outbound transport. Defaults to the SSRF-safe, IP-pinned
+   * fetch, which is what every production caller wants. Tests that talk to a
+   * controlled loopback fixture pass the platform fetch instead, since the
+   * guard blocks private addresses by design.
+   */
+  fetchImpl?: typeof globalThis.fetch
 }
 
 /** Legacy SSE transport — separate GET (SSE) + POST endpoint. */
@@ -36,6 +43,8 @@ export type McpSseSpec = {
   transport: 'sse'
   url: string
   headers?: Record<string, string>
+  /** See `McpHttpSpec.fetchImpl`. */
+  fetchImpl?: typeof globalThis.fetch
 }
 
 /**
