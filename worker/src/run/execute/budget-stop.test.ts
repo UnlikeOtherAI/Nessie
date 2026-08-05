@@ -109,3 +109,54 @@ test('recordBudgetStopEvent writes a classified run.budget_exhausted task event'
   assert.equal(payload.costCents, 50)
   assert.equal(payload.checkpointId, 'checkpoint-1')
 })
+
+test('a cache-heavy stop reports the metered number, and the raw one beside it', async () => {
+  const created: { data: { payload: Record<string, unknown> } }[] = []
+  const prisma = {
+    taskEvent: {
+      create: async (arg: unknown) => {
+        created.push(arg as { data: { payload: Record<string, unknown> } })
+        return arg
+      },
+    },
+  } as unknown as PrismaClient
+
+  // The 2026-08-05 incident's shape: raw ≈ 3× what the budget actually metered.
+  const cacheHeavy = {
+    ...STATS,
+    cacheReadTokens: 360_960,
+    effectiveTokensUsed: 182_961,
+    totalTokensUsed: 507_825,
+  }
+
+  await recordBudgetStopEvent(prisma, 'task-1', 'tokens', cacheHeavy, true, null)
+
+  const payload = created[0]!.data.payload
+  assert.equal(payload.tokensUsed, 182_961)
+  assert.equal(payload.rawTokensUsed, 507_825)
+  assert.equal(payload.cacheReadTokens, 360_960)
+
+  // The member-visible notice quotes the metered number, never the raw one.
+  const notice = buildBudgetStopNotice('tokens', cacheHeavy, true)
+  assert.match(notice, /182,961 tokens/)
+  assert.doesNotMatch(notice, /507,825/)
+})
+
+test('a stop with no separate metering falls back to the raw total', async () => {
+  const created: { data: { payload: Record<string, unknown> } }[] = []
+  const prisma = {
+    taskEvent: {
+      create: async (arg: unknown) => {
+        created.push(arg as { data: { payload: Record<string, unknown> } })
+        return arg
+      },
+    },
+  } as unknown as PrismaClient
+
+  await recordBudgetStopEvent(prisma, 'task-1', 'tokens', STATS, true, null)
+
+  const payload = created[0]!.data.payload
+  assert.equal(payload.tokensUsed, STATS.totalTokensUsed)
+  assert.equal(payload.rawTokensUsed, STATS.totalTokensUsed)
+  assert.equal(payload.cacheReadTokens, 0)
+})

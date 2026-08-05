@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import type { PrismaClient } from '@prisma/client'
+import { DEFAULT_CACHE_READ_WEIGHT } from './loop-budget.js'
 import {
   createDelegateGate,
   DELEGATE_BUDGET,
   parseAgentRunLimits,
   resolveAutoContinuations,
+  resolveCacheReadWeight,
+  resolveCacheReadWeightFromEnv,
   resolveEffectiveRunBudget,
   resolveMaxDelegatesPerRun,
   RUN_BACKSTOP_DEFAULTS,
@@ -84,4 +88,77 @@ test('delegate and continuation counts read their env with sane defaults', () =>
   assert.equal(resolveMaxDelegatesPerRun({ NESSIE_MAX_DELEGATES_PER_RUN: '0' }), 0)
   assert.equal(resolveAutoContinuations({}), 2)
   assert.equal(resolveAutoContinuations({ NESSIE_RUN_AUTO_CONTINUATIONS: '5' }), 5)
+})
+
+// --- Cache-read weight ---
+
+const decimal = (value: number) => ({ toNumber: () => value })
+
+const pricingPrisma = (row: unknown): PrismaClient =>
+  ({ modelPricingProfile: { findFirst: async () => row } }) as unknown as PrismaClient
+
+const MODEL = { model: 'deepseek-v4-flash', organizationId: 'org-1', provider: 'deepseek' }
+
+test('the env weight is the fallback, and junk values fall back to the default', () => {
+  assert.equal(resolveCacheReadWeightFromEnv({}), DEFAULT_CACHE_READ_WEIGHT)
+  assert.equal(resolveCacheReadWeightFromEnv({ NESSIE_CACHE_READ_WEIGHT: '0.1' }), 0.1)
+  assert.equal(resolveCacheReadWeightFromEnv({ NESSIE_CACHE_READ_WEIGHT: '0' }), 0)
+  // Out of range or unparseable: a weight is a price ratio in [0, 1].
+  for (const raw of ['1.5', '-0.2', 'cheap', '']) {
+    assert.equal(
+      resolveCacheReadWeightFromEnv({ NESSIE_CACHE_READ_WEIGHT: raw }),
+      DEFAULT_CACHE_READ_WEIGHT,
+    )
+  }
+})
+
+test('the org pricing rows win over the env fallback', async () => {
+  const weight = await resolveCacheReadWeight(
+    pricingPrisma({ cacheReadPerMillion: decimal(0.028), inputPerMillion: decimal(0.28) }),
+    MODEL,
+    { NESSIE_CACHE_READ_WEIGHT: '0.5' },
+  )
+  assert.ok(Math.abs(weight - 0.1) < 1e-9)
+})
+
+test('a cache rate dearer than input clamps to 1 rather than inflating the meter', async () => {
+  const weight = await resolveCacheReadWeight(
+    pricingPrisma({ cacheReadPerMillion: decimal(5), inputPerMillion: decimal(1) }),
+    MODEL,
+    {},
+  )
+  assert.equal(weight, 1)
+})
+
+test('incomplete, missing or unreadable pricing degrades to the env default', async () => {
+  const env = { NESSIE_CACHE_READ_WEIGHT: '0.3' }
+  const cases: PrismaClient[] = [
+    pricingPrisma(null),
+    pricingPrisma({ cacheReadPerMillion: null, inputPerMillion: decimal(0.28) }),
+    // A zero input rate cannot form a ratio.
+    pricingPrisma({ cacheReadPerMillion: decimal(0.028), inputPerMillion: decimal(0) }),
+    ({
+      modelPricingProfile: {
+        findFirst: async () => {
+          throw new Error('db is down')
+        },
+      },
+    }) as unknown as PrismaClient,
+  ]
+  for (const prisma of cases) {
+    assert.equal(await resolveCacheReadWeight(prisma, MODEL, env), 0.3)
+  }
+})
+
+test('an agent without a resolved provider/model never queries pricing', async () => {
+  const prisma = {
+    modelPricingProfile: {
+      findFirst: async () => {
+        throw new Error('should not be queried')
+      },
+    },
+  } as unknown as PrismaClient
+  const env = { NESSIE_CACHE_READ_WEIGHT: '0.2' }
+  assert.equal(await resolveCacheReadWeight(prisma, { ...MODEL, model: null }, env), 0.2)
+  assert.equal(await resolveCacheReadWeight(prisma, { ...MODEL, provider: null }, env), 0.2)
 })

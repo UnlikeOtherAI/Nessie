@@ -8,7 +8,9 @@ import { prepareWindDownHandover, WIND_DOWN_INSTRUCTION } from './run-stop.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 const loopResult = (over: Partial<LoopResult> = {}): LoopResult => ({
+  cacheReadTokens: 12_000,
   cancelled: false,
+  effectiveTokensUsed: 31_000,
   exhaustedBudget: null,
   finalText: 'here is what I found; X remains',
   invocations: [],

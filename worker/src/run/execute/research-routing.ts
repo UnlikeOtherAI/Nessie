@@ -34,9 +34,11 @@ const SELF_RESEARCH_BLOCK = [
 ].join('\n')
 
 const DELEGATE_LINE = [
-  '- For broad discovery, fan the search out with delegate: one sub-agent per angle,'
-    + ' each returning a short digest rather than raw pages. Keep the digests, not the'
-    + ' transcripts.',
+  '- Default to delegate for discovery: fan the searches and fetches out, one sub-agent'
+    + ' per angle, and keep only the digests they hand back. Raw pages and search'
+    + ' transcripts stay out of this conversation.',
+  '- Look something up yourself when a single search settles it; delegate when it takes'
+    + ' several.',
   '- A sub-agent that fails or returns nothing is a gap in your coverage, not a source.'
     + ' Say so, or cover it yourself.',
 ].join('\n')

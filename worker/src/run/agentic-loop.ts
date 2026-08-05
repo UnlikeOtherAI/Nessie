@@ -6,24 +6,25 @@ import type {
   ProviderToolCall,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import {
-  classifyError,
-  resolveRecovery,
-  createRetryBudget,
-  type RetryBudget,
-} from './error-classification.js'
+import { createRetryBudget } from './error-classification.js'
+import { callInferenceWithRetry } from './inference-retry.js'
 import {
   estimateMessagesTokens,
   estimateToolSchemaTokens,
   trimConversationToFit,
 } from './context-management.js'
 import {
+  DEFAULT_CACHE_READ_WEIGHT,
+  meterSpend,
   shouldWindDown,
   stopAfterInference,
   stopAfterToolBatch,
+  stopBeforeInference,
   stopBeforeIteration,
+  ZERO_SPEND,
   type BudgetExhaustionReason,
   type BudgetLimits,
+  type SpendTotals,
 } from './loop-budget.js'
 import {
   buildContextPlan,
@@ -65,7 +66,14 @@ export type LoopResult = {
   toolMs: number
   totalCostCents: number
   wallclockMs: number
+  // Raw provider-reported tokens, unchanged: what the ledger and telemetry read.
   totalTokensUsed: number
+  // What the budget actually metered — fresh input + output + cache reads
+  // discounted by the run's cache-read weight. Every token verdict uses this.
+  effectiveTokensUsed: number
+  // Provider-reported cache reads, summed, so a stop can show the composition
+  // instead of only the number that tripped it.
+  cacheReadTokens: number
   exhaustedBudget: BudgetExhaustionReason | null
   // True when the loop exited because a cooperative cancel was observed (via
   // `checkCancelled`) between iterations or after a tool-call batch, rather than
@@ -122,78 +130,12 @@ const makeToolCallSignature = (
   args: Record<string, unknown>,
 ): string => name + ':' + JSON.stringify(args)
 
-const sumTokens = (invocations: InvocationRecord[]): number =>
-  invocations.reduce((sum, inv) => sum + (inv.usage.totalTokens ?? 0), 0)
-
-const sumCostCents = (invocations: InvocationRecord[]): number =>
-  invocations.reduce((sum, inv) => {
-    if (inv.providerReportedCost?.currency.toUpperCase() !== 'USD') {
-      return sum
-    }
-    return sum + Math.round(inv.providerReportedCost.amount * 100)
-  }, 0)
-
-const MAX_OVERFLOW_TRIM_ATTEMPTS = 2
-
-const callInferenceWithRetry = async (
-  messages: ProviderMessage[],
-  runInference: (msgs: ProviderMessage[]) => Promise<InferenceResult>,
-  retryBudget: RetryBudget,
-  overflowTrimTarget: number,
-): Promise<InferenceResult> => {
-  let lastError: unknown
-  let trimAttempts = 0
-
-  for (let attempt = 0; attempt <= 3; attempt++) {
-    try {
-      return await runInference(messages)
-    } catch (error) {
-      lastError = error
-      const reason = classifyError(error)
-      const recovery = resolveRecovery(reason, attempt, retryBudget)
-
-      if (recovery.action === 'retry') {
-        retryBudget.remaining -= 1
-        await new Promise((resolve) => setTimeout(resolve, recovery.delayMs))
-        continue
-      }
-
-      if (recovery.action === 'compact_and_retry') {
-        // Emergency path only: the provider rejected the request as too large
-        // even though compaction runs between iterations. Truncate hard rather
-        // than spend another model call inside a failing request.
-        if (trimAttempts >= MAX_OVERFLOW_TRIM_ATTEMPTS) {
-          throw new Error('Context overflow: unable to compact messages further')
-        }
-        trimAttempts += 1
-        const trimmed = trimConversationToFit(messages, overflowTrimTarget)
-        messages.length = 0
-        messages.push(...trimmed)
-        continue
-      }
-
-      if (recovery.action === 'surface_error') {
-        return {
-          correlationId: undefined,
-          finishReason: 'error',
-          invocations: [],
-          model: '',
-          outputText: recovery.userMessage,
-          provider: 'openai',
-          requestId: '',
-          toolCalls: [],
-        }
-      }
-
-      throw error
-    }
-  }
-
-  throw lastError
-}
-
 export const runAgenticLoop = async (input: {
   budget: BudgetLimits
+  // Fraction of the input price a cache read costs on this run's provider+model,
+  // resolved once per run (run-budget.ts `resolveCacheReadWeight`). Cache reads
+  // are metered at this weight against the token budget.
+  cacheReadWeight?: number
   callbacks: LoopCallbacks
   // Optional cooperative-cancel probe. Consulted between iterations and after
   // each tool-call batch; when it resolves `true` the loop stops immediately and
@@ -235,6 +177,7 @@ export const runAgenticLoop = async (input: {
   onWindDown?: () => void
 }): Promise<LoopResult> => {
   const { budget, callbacks, executeTool, initialMessages } = input
+  const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
   const messages: ProviderMessage[] = [...initialMessages]
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
   const signatureCounts = new Map<string, number>()
@@ -248,8 +191,7 @@ export const runAgenticLoop = async (input: {
   let iterations = 0
   let toolCallsUsed = 0
   let totalToolMs = 0
-  let totalCostCents = 0
-  let totalTokensUsed = 0
+  let spend: SpendTotals = ZERO_SPEND
   let woundDown = false
   // The most recent assistant text seen. On a budget-cap stop this is the run's
   // partial answer: the caller surfaces it (with a "stopped at the limit"
@@ -267,7 +209,9 @@ export const runAgenticLoop = async (input: {
     finalText: string = lastAssistantText,
     cancelled = false,
   ): LoopResult => ({
+    cacheReadTokens: spend.cacheReadTokens,
     cancelled,
+    effectiveTokensUsed: spend.effectiveTokensUsed,
     exhaustedBudget,
     finalText,
     invocations: allInvocations,
@@ -275,8 +219,8 @@ export const runAgenticLoop = async (input: {
     messages,
     toolCallsUsed,
     toolMs: totalToolMs,
-    totalCostCents,
-    totalTokensUsed,
+    totalCostCents: spend.totalCostCents,
+    totalTokensUsed: spend.totalTokensUsed,
     wallclockMs: elapsed(),
     woundDown,
   })
@@ -321,11 +265,11 @@ export const runAgenticLoop = async (input: {
     // entered the harder 90% boundary has not tripped yet, so the model gets
     // the remaining slice to finish and hand over on its own terms.
     if (input.windDownInstruction && !woundDown && shouldWindDown(budget, {
+      effectiveTokensUsed: spend.effectiveTokensUsed,
       elapsedMs: elapsed(),
       iterations,
       toolCallsUsed,
-      totalCostCents,
-      totalTokensUsed,
+      totalCostCents: spend.totalCostCents,
     })) {
       woundDown = true
       messages.push({ content: input.windDownInstruction, role: 'system' })
@@ -344,6 +288,14 @@ export const runAgenticLoop = async (input: {
 
     await maintainContext(iterations)
 
+    // Measured after compaction, so the gate judges the context that will
+    // actually be sent rather than the one that was about to be folded away.
+    const preInferenceStop = stopBeforeInference(budget, {
+      effectiveTokensUsed: spend.effectiveTokensUsed,
+      projectedCallTokens: estimateMessagesTokens(messages) + toolSchemaTokens,
+    })
+    if (preInferenceStop) return stop(preInferenceStop)
+
     const result = await callInferenceWithRetry(
       messages,
       input.runInference,
@@ -351,13 +303,12 @@ export const runAgenticLoop = async (input: {
       contextPlan.targetTokens,
     )
     allInvocations.push(...result.invocations)
-    totalCostCents = sumCostCents(allInvocations)
-    totalTokensUsed = sumTokens(allInvocations)
+    spend = meterSpend(allInvocations, cacheReadWeight)
     if (result.outputText) {
       lastAssistantText = result.outputText
     }
 
-    const spendStop = stopAfterInference(budget, { totalCostCents, totalTokensUsed })
+    const spendStop = stopAfterInference(budget, spend)
     if (spendStop) return stop(spendStop)
 
     if (!result.toolCalls || result.toolCalls.length === 0) {

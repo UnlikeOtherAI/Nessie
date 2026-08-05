@@ -322,9 +322,11 @@ export const buildMcpToolset = async (
   const managedToolNames = rows.some(isManagedDeepWaterRow)
     ? MANAGED_DEEP_WATER_TOOL_NAMES
     : new Set<string>()
-  const orderedRows = [...rows].sort((left, right) =>
-    Number(isManagedDeepWaterRow(right)) - Number(isManagedDeepWaterRow(left)),
-  )
+  // Managed DeepWater rows claim the canonical names first, then a fixed key —
+  // Prisma reads unordered, and a reshuffle would re-suffix a colliding tool.
+  const allocationKey = (row: RegistryRow): string =>
+    `${isManagedDeepWaterRow(row) ? 0 : 1} ${row.toolId} ${row.id}`
+  const orderedRows = [...rows].sort((left, right) => (allocationKey(left) < allocationKey(right) ? -1 : 1))
   const allocateExposedName = createMcpToolNameAllocator(managedToolNames)
 
   for (const row of orderedRows) {

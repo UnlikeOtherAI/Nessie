@@ -24,10 +24,24 @@ export type RunEndReason = RunStopReason | 'wound_down'
 export type BudgetStopStats = {
   iterations: number
   toolCallsUsed: number
+  /** Raw provider-reported tokens. Reported as `rawTokensUsed`, never metered. */
   totalTokensUsed: number
+  /**
+   * What the token budget actually metered: fresh input + output + cache reads
+   * discounted by the run's cache-read weight. Absent on stop paths that never
+   * metered separately (cancellation), where the raw total stands in.
+   */
+  effectiveTokensUsed?: number
+  /** Provider-reported cache reads, summed, so the composition is visible. */
+  cacheReadTokens?: number
   totalCostCents: number
   wallclockMs: number
 }
+
+// The number a token limit was judged against — never the raw total, which on a
+// cache-heavy run can be several times larger than what the budget metered.
+const meteredTokens = (stats: BudgetStopStats): number =>
+  stats.effectiveTokensUsed ?? stats.totalTokensUsed
 
 // How the user gets the work continued. Decided by the caller from structural
 // facts (a checkpoint exists; the run is interactive; a continuation was
@@ -62,7 +76,7 @@ const stopPhrase = (stop: RunStopReason, stats: BudgetStopStats): string => {
     case 'time_limit':
       return `its time limit (${Math.round(stats.wallclockMs / 1000)}s)`
     case 'token_limit':
-      return `its token limit (${stats.totalTokensUsed.toLocaleString('en-US')} tokens)`
+      return `its token limit (${meteredTokens(stats).toLocaleString('en-US')} tokens)`
     case 'cost_limit':
       return 'its configured cost limit'
     case 'org_budget_blocked':
@@ -131,13 +145,18 @@ export const recordBudgetStopEvent = async (
     data: {
       eventType: 'run.budget_exhausted',
       payload: {
+        // `tokensUsed` is the metered number the limit was judged against;
+        // `rawTokensUsed` + `cacheReadTokens` show why the two differ, so a
+        // cache-heavy stop is diagnosable from the event alone.
+        cacheReadTokens: stats.cacheReadTokens ?? 0,
         checkpointId: checkpointId ?? null,
         costCents: stats.totalCostCents,
         hadPartialText,
         iterations: stats.iterations,
         rawReason: reason,
+        rawTokensUsed: stats.totalTokensUsed,
         stopReason: classifyBudgetStop(reason),
-        tokensUsed: stats.totalTokensUsed,
+        tokensUsed: meteredTokens(stats),
         toolCallsUsed: stats.toolCallsUsed,
         wallclockMs: stats.wallclockMs,
       },

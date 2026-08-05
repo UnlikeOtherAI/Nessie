@@ -29,6 +29,20 @@ import type { McpToolEntry } from './mcp-toolset.js'
 export const DEFAULT_INLINE_TOOL_LIMIT = 12
 export const MAX_LOADED_TOOLS = 15
 
+/**
+ * Tool-name ordering for everything the model sees. Code-unit comparison, not
+ * `localeCompare`: the point is a byte-identical tool array across iterations,
+ * replicas and runs so the provider's prompt cache keeps its prefix. A
+ * locale-sensitive collation would drift with the host's ICU data.
+ */
+const compareToolName = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0
+
+const sortedByToolName = (entries: McpToolEntry[]): McpToolEntry[] =>
+  [...entries].sort((left, right) =>
+    compareToolName(left.exposedName, right.exposedName),
+  )
+
 export type McpToolsetView = {
   /** LIVE array — recompose the model's tool list from it each inference. */
   descriptors: ToolSchemaDescriptor[]
@@ -81,9 +95,12 @@ const formatMatch = (entry: McpToolEntry): string =>
   + `  ${truncate(entry.description || entry.originalToolName, 140)}`
 
 export const buildDeferredView = (
-  entries: McpToolEntry[],
+  rawEntries: McpToolEntry[],
   baseDispatch: McpToolsetView['dispatch'],
 ): McpToolsetView => {
+  // Name-ordered so the directory, the find-tool ranking's ties, and the loaded
+  // schemas are identical for the same fleet on every run.
+  const entries = sortedByToolName(rawEntries)
   const byExposedName = new Map(entries.map((entry) => [entry.exposedName, entry]))
   const directory = buildDirectory(entries)
 
@@ -144,9 +161,21 @@ export const buildDeferredView = (
     },
   ]
 
-  // Live array: metas stay at the front, loaded schemas append after them.
+  // Live array: metas stay at the front, loaded schemas sit after them in name
+  // order. `loadedOrder` (insertion order) still drives eviction, but what the
+  // model sees must not depend on the order it happened to load tools in —
+  // that would invalidate the prompt-cache prefix on every load.
   const descriptors: ToolSchemaDescriptor[] = [...metaDescriptors]
   const loadedOrder: string[] = []
+
+  const insertLoadedDescriptor = (descriptor: ToolSchemaDescriptor): void => {
+    const loadedCount = descriptors.length - metaDescriptors.length
+    const tail = descriptors
+      .slice(metaDescriptors.length)
+      .concat(descriptor)
+      .sort((left, right) => compareToolName(left.toolName, right.toolName))
+    descriptors.splice(metaDescriptors.length, loadedCount, ...tail)
+  }
 
   const removeLoaded = (name: string): void => {
     const index = loadedOrder.indexOf(name)
@@ -198,7 +227,7 @@ export const buildDeferredView = (
         continue
       }
       removeLoaded(name)
-      descriptors.push({
+      insertLoadedDescriptor({
         toolName: entry.exposedName,
         description: entry.description || `MCP tool ${entry.originalToolName}`,
         inputSchema: entry.inputSchema,
@@ -259,14 +288,19 @@ export const buildDeferredView = (
 
 /** Inline mode: every schema visible, no meta tools — small setups keep the best UX. */
 export const buildInlineView = (
-  entries: McpToolEntry[],
+  rawEntries: McpToolEntry[],
   baseDispatch: McpToolsetView['dispatch'],
-): McpToolsetView => ({
-  descriptors: entries.map((entry) => ({
-    toolName: entry.exposedName,
-    description: entry.description || `MCP tool ${entry.originalToolName}`,
-    inputSchema: entry.inputSchema,
-  })),
-  handledNames: new Set(entries.map((entry) => entry.exposedName)),
-  dispatch: baseDispatch,
-})
+): McpToolsetView => {
+  // Name-ordered: the model's tool array must be byte-identical across
+  // iterations and runs for the same fleet, whatever order the rows arrived in.
+  const entries = sortedByToolName(rawEntries)
+  return {
+    descriptors: entries.map((entry) => ({
+      toolName: entry.exposedName,
+      description: entry.description || `MCP tool ${entry.originalToolName}`,
+      inputSchema: entry.inputSchema,
+    })),
+    handledNames: new Set(entries.map((entry) => entry.exposedName)),
+    dispatch: baseDispatch,
+  }
+}

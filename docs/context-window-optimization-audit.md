@@ -80,10 +80,11 @@ data, and the current cap (if any).
 
 | Tool(s) | Effective cap before context |
 |---|---|
-| `web_search`, `web_fetch`, `document_read` | ~1,200 chars (`MAX_PREVIEW_LENGTH`) |
+| `web_search`, `web_fetch`, `document_read` | ~4,000 chars (`MAX_PREVIEW_LENGTH`) |
 | `workspace_search` | ~4,000 chars |
+| `http_fetch` (and HTTP-transport tools) | 12,000 chars middle-out (`MAX_RAW_BODY_CHARS`) |
 | `kb_page_read` | 20,000 chars (`PAGE_BODY_CHAR_CAP`) |
-| `file_read`, `file_glob`, `http_fetch`, other builtins | 32,000 chars (`truncateToolResult`) |
+| `file_read`, `file_glob`, other builtins | 32,000 chars (`truncateToolResult`) |
 | **MCP tools** | **none** |
 | **`delegate` sub-agent result** | **none** |
 
@@ -105,10 +106,23 @@ often verbose JSON).
 single point where it enters context — `messages.push({ role: 'tool', … })` in
 `worker/src/run/agentic-loop.ts` — via `truncateToolResult` (32k cap). This
 catches MCP dispatch and `delegate` output, which previously had no cap. The
-builtin per-tool caps in `tools.ts` still run first; the truncation marker is
-`\n\n[truncated N chars]` and is idempotent (a pre-truncated string is detected
-and not re-marked), so the double pass is safe. A tighter MCP-specific limit is
-still a possible refinement.
+builtin per-tool caps in `tools.ts` still run first.
+
+Truncation is **middle-out**: the head (~70% of the budget) and the tail (~30%)
+are both kept, joined by `\n\n[... truncated N chars ...]\n\n`. A tail-only cut
+discarded the second half of every oversized result, which is where "did it
+finish?" lives — totals, the closing brace, the last log lines. The marker is
+detected anywhere in the string, so a result already cut at its per-tool cap
+passes the chokepoint unchanged and the double pass stays safe.
+
+The per-tool caps were rebalanced at the same time (see the table above). The
+web tools previously self-capped at 1,200 chars while a raw `http_fetch` body
+rode the 32k chokepoint at roughly 8k tokens — a 26× gap that taught the model
+to prefer the bulky tool, and every oversized result is re-billed on every
+remaining iteration. `http_fetch` now caps its body at 12,000 chars in
+`worker/src/run/builtin-handlers/http-fetch.ts` (which also covers the HTTP
+transport in `tool-http.ts`), and the web tools sit at 4,000. A tighter
+MCP-specific limit is still a possible refinement.
 
 #### F2. Tool results persist verbatim for the rest of the run; nothing summarizes
 
@@ -260,8 +274,10 @@ What is **already** capped (do not regress these):
 | Injected long-term memories | ≤ 5 items × ≤ 220 chars | `worker/src/run/execute/memory.ts` (`MAX_MEMORY_RESULTS`, `MAX_MEMORY_CONTEXT_LENGTH`) |
 | Conversation history | 20 most-recent non-system messages | `worker/src/run/execute/prompt.ts` (`loadConversation`, `take: 20`) |
 | MCP tool schemas | inline ≤ 12 tools, else deferred; ≤ 15 loaded at once | `worker/src/run/mcp-toolset.ts`, `mcp-toolset-deferred.ts` |
-| Most builtin tool results | 32,000 chars | `worker/src/run/tool-util.ts` (`truncateToolResult`) |
-| Web tool results | ~1,200 chars | `worker/src/run/content-tools.ts` |
+| MCP tool ordering | name-sorted descriptors, fixed allocation order | `worker/src/run/mcp-toolset.ts`, `mcp-toolset-deferred.ts` |
+| Most builtin tool results | 32,000 chars, middle-out | `worker/src/run/tool-util.ts` (`truncateToolResult`) |
+| Web tool results (`web_search`, `web_fetch`, `document_read`) | ~4,000 chars | `worker/src/run/content-tools.ts` (`MAX_PREVIEW_LENGTH`) |
+| Raw HTTP bodies (`http_fetch`, HTTP transport) | 12,000 chars, middle-out | `worker/src/run/builtin-handlers/http-fetch.ts` (`MAX_RAW_BODY_CHARS`) |
 | `kb_page_read` | 20,000 chars | `worker/src/run/pa-tools/knowledge.ts` |
 | Post-run memory consolidation | heuristic extraction, ≤ ~5 short memories | `packages/memory/src/consolidate.ts` |
 

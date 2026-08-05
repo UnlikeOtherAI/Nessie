@@ -43,15 +43,20 @@ const registryRow = (input: {
   },
 })
 
-const prisma = {
+type RowSeed = { id: string; managed: boolean; toolName: string }
+
+// Deliberately returns the private collision first — Prisma has no `orderBy`
+// here, so production row order is whatever Postgres yields.
+const SEEDS: RowSeed[] = [
+  { id: 'private', managed: false, toolName: 'research_start' },
+  { id: 'private-status', managed: false, toolName: 'research_status' },
+  { id: 'private-punctuation', managed: false, toolName: 'research-start' },
+  { id: 'managed', managed: true, toolName: 'research_start' },
+]
+
+const makePrisma = (seeds: RowSeed[]): PrismaClient => ({
   toolRegistryEntry: {
-    // Deliberately return the private collision first.
-    findMany: async () => [
-      registryRow({ id: 'private', managed: false, toolName: 'research_start' }),
-      registryRow({ id: 'private-status', managed: false, toolName: 'research_status' }),
-      registryRow({ id: 'private-punctuation', managed: false, toolName: 'research-start' }),
-      registryRow({ id: 'managed', managed: true, toolName: 'research_start' }),
-    ],
+    findMany: async () => seeds.map(registryRow),
   },
   mcpServerCredentialOverride: {
     findUnique: async () => null,
@@ -59,7 +64,9 @@ const prisma = {
   mcpServerInstance: {
     findUnique: async () => ({ credentialRef: null, id: 'inst-private' }),
   },
-} as unknown as PrismaClient
+} as unknown as PrismaClient)
+
+const prisma = makePrisma(SEEDS)
 
 const actorContext = {
   actor: { actorType: 'agent', actorId: 'agent-1', roles: [] },
@@ -74,9 +81,10 @@ const actorContext = {
 const build = (
   toolPolicy: Record<string, boolean> | null,
   deepWaterHandoffGuard?: DeepWaterHandoffGuard,
+  client: PrismaClient = prisma,
 ) =>
   buildMcpToolset(
-    prisma,
+    client,
     'org-1',
     toolPolicy,
     actorContext,
@@ -96,6 +104,8 @@ test('managed DeepWater owns the canonical exposed name despite row order', asyn
       exposedName: entry.exposedName,
       instanceId: entry.instanceId,
     })),
+    // Managed first, then the private rows by `toolId` — a fixed allocation
+    // order, so a colliding connector keeps the same suffix between runs.
     [
       {
         exposedName: 'mcp_research_start',
@@ -103,7 +113,7 @@ test('managed DeepWater owns the canonical exposed name despite row order', asyn
       },
       {
         exposedName: 'mcp_research_start_2',
-        instanceId: 'inst-private',
+        instanceId: 'inst-private-punctuation',
       },
       {
         exposedName: 'mcp_research_status_2',
@@ -111,10 +121,33 @@ test('managed DeepWater owns the canonical exposed name despite row order', asyn
       },
       {
         exposedName: 'mcp_research_start_3',
-        instanceId: 'inst-private-punctuation',
+        instanceId: 'inst-private',
       },
     ],
   )
+})
+
+test('exposed names do not depend on the order Postgres returns rows in', async () => {
+  const baseline = await build({ managed: true })
+  const expected = baseline.entries.map((entry) => ({
+    exposedName: entry.exposedName,
+    instanceId: entry.instanceId,
+  }))
+
+  // Every permutation of the same fleet must allocate identically; otherwise a
+  // colliding tool silently changes name between runs and the model's cached
+  // tool prefix is invalidated on every reconnect.
+  for (let rotation = 1; rotation < SEEDS.length; rotation += 1) {
+    const rotated = [...SEEDS.slice(rotation), ...SEEDS.slice(0, rotation)]
+    const toolset = await build({ managed: true }, undefined, makePrisma(rotated))
+    assert.deepEqual(
+      toolset.entries.map((entry) => ({
+        exposedName: entry.exposedName,
+        instanceId: entry.instanceId,
+      })),
+      expected,
+    )
+  }
 })
 
 test('private collision cannot take the reserved name when DeepWater is ungranted', async () => {

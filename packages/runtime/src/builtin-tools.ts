@@ -75,6 +75,39 @@ const WEB_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   safe: true,
 }
 
+// Fan-out to a sub-agent. Advertised to ordinary agent runs so the model can
+// push discovery legwork out of its own context; the worker dispatches it
+// itself (nested loop, isolated MCP view, small fixed budget) rather than
+// through the builtin executor, and never advertises it inside a sub-agent or
+// on a DeepWater launch turn.
+const DELEGATE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'delegate',
+  label: 'Delegate to Sub-agent',
+  description:
+    'Dispatch a focused sub-agent to do discovery legwork — searches, fetches, ' +
+    'and external (MCP) lookups — and report back a short digest instead of raw ' +
+    'results. Use one sub-agent per angle to keep bulky pages and transcripts out ' +
+    'of this conversation, then work from the digests. The sub-agent sees only the ' +
+    'task you write, cannot ask you questions, and cannot delegate further.',
+  parameters: {
+    type: 'object',
+    properties: {
+      task: {
+        type: 'string',
+        description:
+          'A self-contained task description for the sub-agent. Include any relevant context — the sub-agent only sees this string, not the rest of your conversation.',
+      },
+      hint: {
+        type: 'string',
+        description:
+          'Optional hint about which tool category to favor (e.g. "web search", "filesystem", "github").',
+      },
+    },
+    required: ['task'],
+  },
+  safe: true,
+}
+
 export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'workspace_search',
@@ -227,6 +260,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     },
     safe: true,
   },
+  DELEGATE_TOOL_DEFINITION,
   WEB_SEARCH_TOOL_DEFINITION,
   WEB_FETCH_TOOL_DEFINITION,
   HTTP_FETCH_TOOL_DEFINITION,
@@ -437,6 +471,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = buildWorkflowToolDefinitions(
   WEB_SEARCH_TOOL_DEFINITION,
   WEB_FETCH_TOOL_DEFINITION,
+  DELEGATE_TOOL_DEFINITION,
 )
 
 export const BUILTIN_TOOL_IDS = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id))

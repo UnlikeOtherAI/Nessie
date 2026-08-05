@@ -241,7 +241,10 @@ test('oversized tool results are truncated before entering the loop context', as
   assert.ok(toolMessage, 'expected a tool result message in context')
   const content = (toolMessage as { content: string }).content
   assert.ok(content.length < 200_000, 'tool result should have been truncated')
-  assert.match(content, /\n\n\[truncated \d+ chars\]$/)
+  // Middle-out: the head and the tail of the result both survive the cut.
+  assert.match(content, /\n\n\[\.\.\. truncated \d+ chars \.\.\.\]\n\n/)
+  assert.ok(content.startsWith('Z'.repeat(1_000)))
+  assert.ok(content.endsWith('Z'.repeat(1_000)))
 })
 
 // --- Wind-down (spec §3a) ---

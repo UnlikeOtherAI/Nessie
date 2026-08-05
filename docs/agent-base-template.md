@@ -261,7 +261,7 @@ Tool results are fed into the LLM as context alongside the user message. The age
 
 | Tool | Trigger | Capability | Limit |
 |------|---------|------------|-------|
-| `document_read` | Prompt mentions docs | Read `.md` files from project | 1200 chars output |
+| `document_read` | Prompt mentions docs | Read `.md` files from project | 4000 chars output |
 | `web_fetch` | Prompt contains URL | Fetch and strip HTML from URL | Blocks private IPs |
 | `web_search` | Prompt mentions search | DuckDuckGo search | Top 3 results |
 

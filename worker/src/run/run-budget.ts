@@ -1,5 +1,6 @@
+import type { PrismaClient } from '@prisma/client'
 import { AgentRunLimitsSchema, type AgentRunLimits } from '@nessie/schemas'
-import type { BudgetLimits } from './loop-budget.js'
+import { DEFAULT_CACHE_READ_WEIGHT, type BudgetLimits } from './loop-budget.js'
 
 // Effective run budget.
 //
@@ -122,3 +123,54 @@ export const createDelegateGate = (
 
 export const resolveAutoContinuations = (env: Env = process.env): number =>
   nonNegativeInt(env['NESSIE_RUN_AUTO_CONTINUATIONS'], DEFAULT_AUTO_CONTINUATIONS)
+
+// Cache-read weight: what a cache read costs relative to a fresh input token on
+// the run's provider+model. It is a *price* ratio, so the org's own pricing rows
+// are the truth when they carry both rates; the env value is the fallback for
+// orgs that never configured pricing. Clamped to [0, 1]: a cache read is never
+// free-with-credit and never dearer than fresh input.
+const clampWeight = (value: number): number => Math.min(1, Math.max(0, value))
+
+export const resolveCacheReadWeightFromEnv = (env: Env = process.env): number => {
+  const raw = env['NESSIE_CACHE_READ_WEIGHT']?.trim()
+  // An empty value is "unset", not "cache reads are free": `Number('')` is 0,
+  // which would silently stop metering re-served context altogether.
+  if (!raw) return DEFAULT_CACHE_READ_WEIGHT
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : DEFAULT_CACHE_READ_WEIGHT
+}
+
+// Best-effort by construction: budget metering must never fail a run, so any
+// lookup error (or missing/zero rates) degrades to the env default. Mirrors the
+// active-profile selection `@nessie/runtime` ledger pricing uses — exact
+// `modelPattern` wins over the `*` catch-all, expired profiles are excluded.
+export const resolveCacheReadWeight = async (
+  prisma: PrismaClient,
+  input: { model: string | null; organizationId: string; provider: string | null },
+  env: Env = process.env,
+): Promise<number> => {
+  const fallback = resolveCacheReadWeightFromEnv(env)
+  if (!input.model || !input.provider) return fallback
+  try {
+    const row = await prisma.modelPricingProfile.findFirst({
+      where: {
+        AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }],
+        organizationId: input.organizationId,
+        OR: [{ modelPattern: input.model }, { modelPattern: '*' }],
+        provider: input.provider,
+      },
+      orderBy: { modelPattern: 'desc' },
+      select: { cacheReadPerMillion: true, inputPerMillion: true },
+    })
+    const cacheRead = row?.cacheReadPerMillion?.toNumber()
+    const fresh = row?.inputPerMillion?.toNumber()
+    if (typeof cacheRead === 'number' && typeof fresh === 'number' && fresh > 0) {
+      return clampWeight(cacheRead / fresh)
+    }
+  } catch (error) {
+    console.warn('[worker] cache-read weight lookup failed; using the configured default', error)
+  }
+  return fallback
+}

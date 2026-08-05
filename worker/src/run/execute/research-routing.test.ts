@@ -27,7 +27,8 @@ test('without research tools the agent researches itself and fans out via delega
   )
   assert.ok(withDelegate)
   assert.doesNotMatch(withDelegate, /mcp_research_start/)
-  assert.match(withDelegate, /fan the search out with delegate/)
+  assert.match(withDelegate, /Default to delegate for discovery/)
+  assert.match(withDelegate, /keep only the digests/)
   assert.match(withDelegate, /gap in your coverage, not a source/)
 
   const withoutDelegate = buildResearchRoutingBlock(facts({ hasWebSearch: true }))

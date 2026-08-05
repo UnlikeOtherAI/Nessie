@@ -95,13 +95,57 @@ Backstop env (deployment law, safety envelope — not a user budget):
 | `NESSIE_RUN_AUTO_CONTINUATIONS` | `2` |
 | `NESSIE_MAX_DELEGATES_PER_RUN` | `16` |
 | `NESSIE_UTILITY_MODEL` | unset |
+| `NESSIE_CACHE_READ_WEIGHT` | `0.25` (fallback only — see §2a) |
 
 `EFFORT_BUDGETS` is removed from the run path. The delegate sub-agent budget is
 fixed (6 iterations / 10 tool calls / 90 s / 30k tokens / 100¢) and the
 per-run delegate counter is a structural cap (over-cap `delegate` calls fail
 with a clear tool error, they do not kill the run).
 
+### 2a. Effective tokens: cache reads are metered at their price
+
+**Added 2026-08-05 after a production incident.** A personal-assistant run was
+killed by the 500k backstop at a claimed 504,738 tokens. Its per-invocation
+ledger rows showed the real composition across 17 DeepSeek v4-flash calls:
+**142,354 fresh input + 360,960 cache reads + 10,074 output**. A cache read on
+that provider costs about a tenth of fresh input, so the run was judged on a
+number roughly three times its true spend, and cut off mid-task.
+
+The token dimension therefore meters **effective** tokens, per invocation:
+
+```
+effective = inputTokens + outputTokens + round(weight × cacheReadTokens)
+```
+
+falling back to `totalTokens` when a provider reports no granular split (no
+discount can be inferred without knowing the composition). Providers report
+`totalTokens = input + cacheRead + output`, so a run with no cache hits meters
+exactly as it did before.
+
+- **Every token verdict uses effective tokens** — the 90% `stopAfterInference`
+  stop, the 80% wind-down band, and the pre-flight gate below. The cost
+  dimension is untouched (`providerReportedCost` already prices cache reads).
+- **`weight` is a price ratio, resolved once per run** in
+  `run-budget.ts` `resolveCacheReadWeight`, against the model the run will
+  actually use (a budget-gate degrade override wins over the agent's own). When
+  the org's `ModelPricingProfile` carries both rates for that provider+model,
+  `weight = clamp(cacheReadPerMillion / inputPerMillion, 0, 1)`; otherwise
+  `NESSIE_CACHE_READ_WEIGHT` (default `0.25`). Resolution is best-effort by
+  construction — any lookup error, missing rate, or zero input rate degrades to
+  the env value and never fails the run.
+- **Raw totals are unchanged.** `LoopResult.totalTokensUsed` still carries the
+  provider-reported total for the ledger and `run.timing`; the new
+  `effectiveTokensUsed` and `cacheReadTokens` sit beside it.
+
 ### 3. Graceful stop with reserved headroom (worker)
+
+The token check was also **post-hoc only**, so the run that tripped the cap had
+already bought an entire 76k-token context. A **pre-flight gate**
+(`stopBeforeInference`) now runs after compaction and before every dispatch: if
+`effectiveTokensUsed + estimateMessagesTokens(messages) + toolSchemaTokens`
+would exceed the **full** (100%) token limit, the call is never made and the run
+stops on the ordinary classified-stop path. This is the one boundary judged at
+100% rather than 90% — the reserve still belongs to the checkpoint.
 
 The loop triggers its stop at **90%** of any effective dimension (or ≤1
 remaining iteration/tool call), reserving the last 10% to:
@@ -194,7 +238,10 @@ as toasts with the code's meaning.
 
 - `run.checkpointed` — `{ runId, checkpointId, generation, reason }`
 - `run.continued` — `{ runId, fromCheckpointId, continuationOfRunId, auto }`
-- `run.budget_exhausted` — unchanged payload, plus `checkpointId?`.
+- `run.budget_exhausted` — plus `checkpointId?`; `tokensUsed` is the **effective**
+  number the limit was judged against, with `rawTokensUsed` and
+  `cacheReadTokens` beside it so a cache-heavy stop is diagnosable from the
+  event alone (§2a). The member-visible notice quotes the effective number.
 
 ### 8. Context lifecycle (worker)
 
@@ -213,6 +260,17 @@ as toasts with the code's meaning.
   Silent truncation (`trimConversationToFit`) remains only as the emergency
   fallback when compaction itself fails, and for provider-overflow retry after
   compaction has been attempted.
+- **Tool-result caps:** every result is truncated **middle-out** (head ~70% /
+  tail ~30%, marker `\n\n[... truncated N chars ...]\n\n`, idempotent) at the
+  single loop chokepoint, on top of per-tool caps: 4,000 chars for
+  `web_search` / `web_fetch` / `document_read`, 12,000 for raw `http_fetch`
+  bodies, 32,000 as the chokepoint ceiling. Oversized results are re-billed on
+  every remaining iteration, so no ordinary discovery tool may dwarf the
+  others. See `docs/context-window-optimization-audit.md` §F1.
+- **Stable tool array:** MCP descriptors are name-sorted and exposed names are
+  allocated in a fixed order (Prisma reads the registry unordered), so the
+  tool list is byte-identical across iterations and the provider's
+  prompt-cache prefix is not invalidated between turns.
 - **Utility model:** `NESSIE_UTILITY_MODEL` names a model id used for
   compaction and delegate sub-agents **only when it resolves through the
   run's own org provider route** (same Ledger routing and attribution);
@@ -236,6 +294,18 @@ assembly and appends exactly one routing block:
   governs; `delegate` is blocked during launch turns and must not be
   suggested).
 - No ungranted-DeepWater hint in v1 (config leakage / upsell nag).
+
+**`delegate` is advertised to ordinary agent runs.** Its schema lives in
+`BUILTIN_TOOL_DEFINITIONS` (`packages/runtime/src/builtin-tools.ts`, shared with
+the workflow tool list), so it seeds into `ToolRegistryEntry` like any other
+builtin and is governed by ordinary `toolPolicy` — available to PA and shared
+agents alike, never `requiresExplicitGrant`, removed by a `delegate: false`
+deny. It is withheld in exactly two structural cases: **inside a delegate
+sub-agent** (no recursion — `execute/agent-loop.ts` filters it out of the
+sub-agent's descriptors, and `runDelegate` refuses the call anyway) and on a
+**DeepWater launch turn** (`applyHandoffToolExclusions` in
+`execute/run-setup.ts`, matching the handoff guard that already blocks the
+call). `hasDelegate` is therefore true exactly when the run resolved the tool.
 
 DeepWater launch invariants, the handoff path, and ordinary granted
 `mcp_research_*` calls are unchanged by this spec.

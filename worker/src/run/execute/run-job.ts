@@ -27,7 +27,7 @@ import {
   type QueueAttempt,
 } from '../tool-execution-errors.js'
 import type { LoopResult } from '../agentic-loop.js'
-import { resolveEffectiveRunBudget } from '../run-budget.js'
+import { resolveCacheReadWeight, resolveEffectiveRunBudget } from '../run-budget.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import { applyBudgetGate, createBudgetBlockedProbe } from './budget-gate.js'
 import { recordRunTimingEvent, summarizeRunTiming } from './run-timing.js'
@@ -271,6 +271,13 @@ export const executeRunJob = async (
     loopResult = await runExecutionAgentLoop(deps, payload, context, {
       allowedToolIds: setup.allowedToolIds,
       budget: resolveEffectiveRunBudget(context.agent.runLimits),
+      // Resolved once per run against the model this run will actually use
+      // (the budget gate's degrade override wins over the agent's own).
+      cacheReadWeight: await resolveCacheReadWeight(deps.prisma, {
+        model: budgetGate.modelOverride?.model ?? context.agent.model,
+        organizationId: context.channel.organizationId,
+        provider: budgetGate.modelOverride?.provider ?? context.agent.provider,
+      }),
       checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload),
       inference,
       initialMessages: setup.initialMessages,

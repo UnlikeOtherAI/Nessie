@@ -23,6 +23,36 @@ import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types
 // conversation window, retrieved memories, any checkpoint left by an earlier
 // incomplete run, and the resulting model prompt.
 
+const DELEGATE_TOOL_ID = 'delegate'
+
+export type ResolvedRunToolset = {
+  allowedIds: Set<string>
+  descriptors: ToolSchemaDescriptor[]
+}
+
+/**
+ * `delegate` is an ordinary builtin for agent runs, but a DeepWater launch turn
+ * blocks it outright (the handoff guard refuses the call so result delivery
+ * cannot hide inside a sub-agent). Withhold the schema on that turn too, so the
+ * model is never shown a tool it cannot call.
+ */
+export const applyHandoffToolExclusions = (
+  resolved: ResolvedRunToolset,
+  isHandoffTurn: boolean,
+): ResolvedRunToolset => {
+  if (!isHandoffTurn) {
+    return resolved
+  }
+  return {
+    allowedIds: new Set(
+      [...resolved.allowedIds].filter((toolId) => toolId !== DELEGATE_TOOL_ID),
+    ),
+    descriptors: resolved.descriptors.filter(
+      (descriptor) => descriptor.toolName !== DELEGATE_TOOL_ID,
+    ),
+  }
+}
+
 export type RunExecutionSetup = {
   allowedToolIds: Set<string>
   /** The checkpoint this run claimed, if any — its generation seeds the next. */
@@ -54,12 +84,15 @@ export const prepareRunExecution = async (
     select: { toolPolicy: true, parentAgentId: true },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
-  const { descriptors: toolDefs, allowedIds: resolvedToolIds } = resolveAgentTools(
-    allowedToolIds,
-    BUILTIN_TOOL_DEFINITIONS,
-    toolPolicy,
-    context.agent.parentAgentId,
-    context.agent.agentKind,
+  const { descriptors: toolDefs, allowedIds: resolvedToolIds } = applyHandoffToolExclusions(
+    resolveAgentTools(
+      allowedToolIds,
+      BUILTIN_TOOL_DEFINITIONS,
+      toolPolicy,
+      context.agent.parentAgentId,
+      context.agent.agentKind,
+    ),
+    input.isHandoffTurn,
   )
 
   const mcpToolset = await buildMcpToolset(

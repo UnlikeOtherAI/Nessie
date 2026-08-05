@@ -117,6 +117,56 @@ test('runHttpFetch caps response body when maxBytes exceeded', async () => {
   assert.equal(result.bodyText.length, 100)
 })
 
+test('runHttpFetch caps the body that reaches the model at 12k chars', async () => {
+  // Well under the 5 MiB byte ceiling, far over what may enter context.
+  const body = `${'H'.repeat(30_000)}${'T'.repeat(30_000)}`
+  const { fetchImpl } = makeFakeFetch(() => new Response(body, { status: 200 }))
+
+  const result = await runHttpFetch(
+    { url: 'https://example.com/api' },
+    { fetchImpl, resolveHost: publicResolver },
+  )
+
+  assert.equal(result.truncated, true)
+  // Byte accounting still reports what was actually read off the wire.
+  assert.equal(result.bytesRead, 60_000)
+  // Middle-out: 12,000 kept chars plus the additive marker.
+  assert.ok(result.bodyText.length < 12_200)
+  assert.ok(result.bodyText.startsWith('H'.repeat(8_400)))
+  assert.ok(result.bodyText.endsWith('T'.repeat(3_600)))
+  assert.match(result.bodyText, /\n\n\[\.\.\. truncated 48000 chars \.\.\.\]\n\n/)
+})
+
+test('runHttpFetch caps the body of a followed redirect too', async () => {
+  const { fetchImpl } = makeFakeFetch((url) =>
+    url.includes('/moved')
+      ? new Response('', { status: 302, headers: { location: 'https://example.com/final' } })
+      : new Response('B'.repeat(40_000), { status: 200 }),
+  )
+
+  const result = await runHttpFetch(
+    { url: 'https://example.com/moved' },
+    { fetchImpl, resolveHost: publicResolver },
+  )
+
+  assert.equal(result.url, 'https://example.com/final')
+  assert.equal(result.truncated, true)
+  assert.ok(result.bodyText.length < 12_200)
+})
+
+test('runHttpFetch leaves a body under the char cap untouched', async () => {
+  const body = 'y'.repeat(11_999)
+  const { fetchImpl } = makeFakeFetch(() => new Response(body, { status: 200 }))
+
+  const result = await runHttpFetch(
+    { url: 'https://example.com/api' },
+    { fetchImpl, resolveHost: publicResolver },
+  )
+
+  assert.equal(result.truncated, false)
+  assert.equal(result.bodyText, body)
+})
+
 test('runHttpFetch refuses redirects to file:// URLs', async () => {
   const fetchImpl: typeof fetch = async () =>
     new Response('', {

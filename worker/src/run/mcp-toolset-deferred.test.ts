@@ -122,3 +122,97 @@ test('inline view exposes every schema with no meta tools', () => {
   assert.equal(view.descriptors.length, FLEET.length)
   assert.ok(!view.handledNames.has('mcp_find_tools'))
 })
+
+// --- Deterministic ordering (prompt-cache prefix stability) ---
+//
+// The model's tool array is rebuilt from `descriptors` on every inference call.
+// If the order shifts between iterations the provider's cached prefix is thrown
+// away and the whole prompt is re-billed, so the array must be name-ordered and
+// independent of the order rows or load requests happened to arrive in.
+
+test('inline descriptors are name-ordered whatever order entries arrive in', () => {
+  const forward = buildInlineView(FLEET, baseDispatch)
+  const reversed = buildInlineView([...FLEET].reverse(), baseDispatch)
+
+  assert.deepEqual(
+    forward.descriptors.map((d) => d.toolName),
+    [
+      'mcp_create_customer',
+      'mcp_create_issue',
+      'mcp_create_page',
+      'mcp_list_charges',
+      'mcp_search_pages',
+    ],
+  )
+  assert.deepEqual(
+    reversed.descriptors.map((d) => d.toolName),
+    forward.descriptors.map((d) => d.toolName),
+  )
+})
+
+test('loaded schemas sort after the fixed meta block, not in load order', async () => {
+  const view = buildDeferredView(FLEET, baseDispatch)
+  await view.dispatch('mcp_load_tools', {
+    names: ['mcp_search_pages', 'mcp_create_issue', 'mcp_create_customer'],
+  })
+
+  assert.deepEqual(
+    view.descriptors.map((d) => d.toolName),
+    [
+      'mcp_find_tools',
+      'mcp_load_tools',
+      'mcp_drop_tools',
+      'mcp_create_customer',
+      'mcp_create_issue',
+      'mcp_search_pages',
+    ],
+  )
+})
+
+test('the same loaded set yields the same descriptor array in any load order', async () => {
+  const names = ['mcp_search_pages', 'mcp_list_charges', 'mcp_create_page']
+
+  const oneShot = buildDeferredView(FLEET, baseDispatch)
+  await oneShot.dispatch('mcp_load_tools', { names })
+
+  const drip = buildDeferredView([...FLEET].reverse(), baseDispatch)
+  for (const name of [...names].reverse()) {
+    await drip.dispatch('mcp_load_tools', { names: [name] })
+  }
+
+  assert.deepEqual(
+    drip.descriptors.map((d) => d.toolName),
+    oneShot.descriptors.map((d) => d.toolName),
+  )
+})
+
+test('dropping a tool leaves the remaining descriptors name-ordered', async () => {
+  const view = buildDeferredView(FLEET, baseDispatch)
+  await view.dispatch('mcp_load_tools', {
+    names: ['mcp_search_pages', 'mcp_create_page', 'mcp_list_charges'],
+  })
+  await view.dispatch('mcp_drop_tools', { names: ['mcp_create_page'] })
+
+  assert.deepEqual(
+    view.descriptors.map((d) => d.toolName).slice(3),
+    ['mcp_list_charges', 'mcp_search_pages'],
+  )
+})
+
+test('eviction still drops the oldest load, not the first name', async () => {
+  const many = Array.from({ length: MAX_LOADED_TOOLS + 1 }, (_, i) =>
+    entry(`tool_${i}`, 'Bulk', `Bulk tool ${i}`),
+  )
+  const view = buildDeferredView(many, baseDispatch)
+  // Load newest-name first so name order and load order disagree.
+  for (const item of [...many].reverse()) {
+    await view.dispatch('mcp_load_tools', { names: [item.exposedName] })
+  }
+
+  const loaded = view.descriptors.slice(3).map((d) => d.toolName)
+  assert.equal(loaded.length, MAX_LOADED_TOOLS)
+  // The last-named tool was loaded first, so it is the one evicted.
+  assert.ok(!loaded.includes(`mcp_tool_${MAX_LOADED_TOOLS}`))
+  assert.ok(loaded.includes('mcp_tool_0'))
+  assert.deepEqual(loaded, [...loaded].sort())
+})

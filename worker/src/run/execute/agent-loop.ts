@@ -43,6 +43,10 @@ export const runExecutionAgentLoop = async (
   input: {
     allowedToolIds: Set<string>
     budget: BudgetLimits
+    // Fraction of the input price a cache read costs on this run's model
+    // (resolved once per run in run-job). Cache reads are metered at this
+    // weight against the token budget instead of at full input price.
+    cacheReadWeight: number
     // Mid-run org-`Budget` probe (throttled by its factory in budget-gate.ts).
     checkBudgetBlocked: () => Promise<boolean>
     deepWaterHandoffGuard: DeepWaterHandoffGuard
@@ -141,6 +145,7 @@ export const runExecutionAgentLoop = async (
 
   const loopResult = await runAgenticLoop({
     budget: input.budget,
+    cacheReadWeight: input.cacheReadWeight,
     // Cooperative-cancel probe: a cheap status read the loop consults between
     // iterations and after each tool-call batch. `POST /api/runs/:id/cancel`
     // stamps `cancelRequestedAt`; the loop then exits and run-job terminalizes

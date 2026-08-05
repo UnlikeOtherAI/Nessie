@@ -63,7 +63,19 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   `tool_call_limit` / `time_limit` / `token_limit` / `cost_limit` /
   `repeated_tool_calls` / `org_budget_blocked`,
   `worker/src/run/execute/budget-stop.ts`; member-visible copy carries **no
-  currency figures**). The org `Budget` verdict is re-checked mid-run between
+  currency figures**). The token dimension meters **effective** tokens —
+  `input + output + round(weight × cacheRead)` per invocation, degrading to
+  `totalTokens` when a provider reports no split — because cache reads are
+  re-served context priced at a fraction of fresh input; metering them flat
+  killed a run at a claimed 504,738 tokens whose true spend was ~37% of that.
+  The weight is a price ratio resolved once per run from the org's
+  `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
+  [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (default 0.25); resolution is
+  best-effort and never fails a run. A **pre-flight gate** also refuses to
+  dispatch a call whose estimated context would carry the run past the full
+  (100%) token limit, so a run can no longer overshoot by a whole context.
+  `run.budget_exhausted` reports the effective `tokensUsed` plus
+  `rawTokensUsed` + `cacheReadTokens`. The org `Budget` verdict is re-checked mid-run between
   iterations (≥30 s apart, same human-interactive exemption as the pre-run
   gate). Any follow-up run in the same thread/reply-thread auto-loads and
   claims the newest unconsumed checkpoint (set-once conditional update) and
@@ -88,7 +100,16 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   DeepWater for deep research and ungranted agents to research via
   `web_search` + delegate digests; DeepWater launch turns get no routing block
   and no checkpoint injection. All tool results (builtin, MCP, `delegate`) are
-  truncated at the single loop chokepoint before entering context. Every run
+  truncated **middle-out** at the single loop chokepoint before entering
+  context (head ~70% / tail ~30%, joined by
+  `\n\n[... truncated N chars ...]\n\n`, idempotent so a per-tool cap applied
+  earlier passes through unchanged). Per-tool caps keep discovery tools within
+  one order of magnitude of each other: 4,000 chars for `web_search` /
+  `web_fetch` / `document_read`, 12,000 for raw `http_fetch` bodies, 32,000 as
+  the chokepoint ceiling (`worker/src/run/tool-util.ts`). MCP tool descriptors
+  are name-sorted and their exposed names allocated in a fixed order, so the
+  model's tool array is byte-identical across iterations and the provider's
+  prompt-cache prefix survives. Every run
   also records a wall-clock-only stage-latency breakdown at its terminal state
   (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
   runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
