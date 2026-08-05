@@ -194,7 +194,10 @@ export const buildApp = async () => {
           recordModelUsage(prisma, app.log, invocations, attribution),
         requestHeaders:
           isLedgerEndpoint(config.model.baseUrl) && configuredLedgerIdentity
-            ? (attribution) => configuredLedgerIdentity.requestHeaders(attribution)
+            ? (attribution) =>
+                configuredLedgerIdentity.requestHeaders(attribution, {
+                  requireUoaIdentity: true,
+                })
             : undefined,
         systemComponent: 'api-model-service',
       },
