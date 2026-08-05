@@ -1375,6 +1375,11 @@ model Agent {
   effort                        AgentEffort                    @default(medium)
   systemPrompt                  String?                        @map("system_prompt")
   toolPolicy                    Json?                          @map("tool_policy")
+  // Optional explicit per-run caps ({ maxTokens?, maxToolCalls?, maxIterations?,
+  // maxWallclockMs?, maxCostCents? }). Absent key = that dimension is governed
+  // only by the deployment backstop. `effort` no longer implies spend caps —
+  // see docs/plans/2026-08-05-run-budgets-context-and-research-routing.md.
+  runLimits                     Json?                          @map("run_limits")
   provider                      String?                        @map("provider")
   model                         String?                        @map("model")
   routingProfileId              String?                        @map("routing_profile_id") @db.Uuid
@@ -1559,6 +1564,10 @@ model Run {
   // Set on a run created by POST /api/runs/:id/restart, pointing at the original
   // terminal run it re-runs.
   restartOfRunId                String?                        @map("restart_of_run_id") @db.Uuid
+  // Set on a run created by continue (user tap, natural-language resume, or the
+  // worker's non-interactive auto-continue), pointing at the run whose
+  // RunCheckpoint seeded it.
+  continuationOfRunId           String?                        @map("continuation_of_run_id") @db.Uuid
   agent                         Agent                          @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread                        Thread                         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   trigger                       AgentTrigger?                  @relation(fields: [triggerId], references: [id], onDelete: SetNull)
@@ -1567,6 +1576,9 @@ model Run {
   triggerMessage                Message?                       @relation("RunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: SetNull)
   restartOfRun                  Run?                           @relation("RunRestart", fields: [restartOfRunId], references: [id], onDelete: SetNull)
   restarts                      Run[]                          @relation("RunRestart")
+  continuationOfRun             Run?                           @relation("RunContinuation", fields: [continuationOfRunId], references: [id], onDelete: SetNull)
+  continuations                 Run[]                          @relation("RunContinuation")
+  checkpoint                    RunCheckpoint?
   tasks                         Task[]
   toolCalls                     ToolCall[]
   plans                         Plan[]
@@ -1580,7 +1592,42 @@ model Run {
   @@index([threadId, createdAt])
   @@index([triggerId, createdAt])
   @@index([restartOfRunId])
+  @@index([continuationOfRunId])
   @@map("runs")
+}
+
+// Durable work-state saved when a run stops at a policy ceiling (explicit run
+// limit, backstop, org-budget block). `note` is model-written UNTRUSTED
+// narrative — injected into follow-up runs as clearly-labeled notes, never as
+// instructions, and never carrying approval/side-effect state. `sources` is
+// the typed verbatim source list. A follow-up run in the same (thread, root)
+// claims the checkpoint via the race-safe conditional update on
+// `consumedByRunId` (set-once); see
+// docs/plans/2026-08-05-run-budgets-context-and-research-routing.md §5.
+model RunCheckpoint {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  runId           String    @unique @map("run_id") @db.Uuid
+  taskId          String?   @map("task_id") @db.Uuid
+  agentId         String    @map("agent_id") @db.Uuid
+  threadId        String    @map("thread_id") @db.Uuid
+  rootMessageId   String?   @map("root_message_id") @db.Uuid
+  // 1-based continuation depth along the continuationOfRunId chain; the
+  // worker's non-interactive auto-continue stops after
+  // NESSIE_RUN_AUTO_CONTINUATIONS generations.
+  generation      Int       @default(1)
+  // The RunStopReason that produced this checkpoint (string, not enum, so the
+  // worker's classification can evolve without migrations).
+  reason          String
+  note            String
+  sources         Json?
+  consumedByRunId String?   @map("consumed_by_run_id") @db.Uuid
+  consumedAt      DateTime? @map("consumed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  run             Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, rootMessageId, createdAt])
+  @@map("run_checkpoints")
 }
 
 // Per-(agent, thread) run serialization: a message that arrives while a run is
