@@ -6,6 +6,7 @@ import {
   type LedgerIdentityService,
 } from '@nessie/runtime'
 import { z } from 'zod'
+import { compareAgentModelOptions } from './agent-model-order.js'
 
 const DEFAULT_LEDGER_URL = 'https://ledger.unlikeotherai.com'
 const LEDGER_MODELS_PATH = '/v1/models'
@@ -154,11 +155,7 @@ const toAgentModelOptions = (
     options.set(optionKey(option), option)
   }
 
-  return [...options.values()].sort((left, right) =>
-    left.providerDisplayName.localeCompare(right.providerDisplayName)
-    || left.displayName.localeCompare(right.displayName)
-    || left.model.localeCompare(right.model),
-  )
+  return [...options.values()].sort(compareAgentModelOptions)
 }
 
 /**

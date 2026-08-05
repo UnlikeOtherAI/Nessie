@@ -26,6 +26,21 @@ export const resolveReplyRootMessageId = (
 }
 
 /**
+ * Where a run's *reading* is scoped, which is not the same question as where
+ * its reply lands.
+ *
+ * A run answering **inside** an existing reply thread reads that thread: the
+ * exchange it is continuing is the replies under the root, not the room. A run
+ * whose trigger is a top-level message is not inside a reply thread — it is
+ * about to start one — so its conversation is the channel thread. Scoping that
+ * run to its own trigger message would leave it a window of exactly one
+ * message: no history, and no sight of a photo posted a moment earlier.
+ */
+export const resolveConversationRootMessageId = (
+  triggerMessage: { rootMessageId: string | null },
+): string | undefined => triggerMessage.rootMessageId ?? undefined
+
+/**
  * Persist the resolved anchor onto the run row so REST readers (the thinking
  * bootstrap endpoint) can place a live bubble without re-deriving placement.
  * Best-effort: an anchor write must never fail a run that is otherwise fine —

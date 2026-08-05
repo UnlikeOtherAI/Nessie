@@ -1,6 +1,7 @@
 import type {
   InvocationUsage,
   NormalizedFinishReason,
+  ProviderImage,
   ProviderMessage,
   ProviderToolCall,
   ToolSchemaDescriptor,
@@ -317,8 +318,29 @@ export const mapToolCallsFromOpenAi = (
     toolName: toolCall.function.name,
   }))
 
+// A user turn carrying images becomes the multi-part content form every
+// OpenAI-compatible chat endpoint accepts. Bytes go inline as a data URI —
+// attachment bytes are private, so a URL would be unfetchable for the provider.
+const toOpenAiUserContent = (
+  message: { content: string; images?: ProviderImage[] },
+): string | Array<Record<string, unknown>> => {
+  if (!message.images?.length) {
+    return message.content
+  }
+  return [
+    ...(message.content ? [{ text: message.content, type: 'text' }] : []),
+    ...message.images.map((image) => ({
+      image_url: { url: `data:${image.mime};base64,${image.dataBase64}` },
+      type: 'image_url',
+    })),
+  ]
+}
+
 export const mapMessagesToOpenAi = (
   messages: ProviderMessage[],
+  // Off unless the caller's model can see: a text-only model rejects the
+  // multi-part form outright, so its turns keep the plain string content.
+  options: { vision?: boolean } = {},
 ): Array<Record<string, unknown>> =>
   messages.map((message) => {
     if (message.role === 'assistant') {
@@ -344,5 +366,12 @@ export const mapMessagesToOpenAi = (
       }
     }
 
-    return message
+    if (message.role === 'user') {
+      return {
+        content: options.vision ? toOpenAiUserContent(message) : message.content,
+        role: 'user',
+      }
+    }
+
+    return { content: message.content, role: 'system' }
   })

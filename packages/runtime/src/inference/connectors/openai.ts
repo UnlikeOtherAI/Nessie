@@ -50,6 +50,11 @@ export const createOpenAiLikeConnector = (
   const resolveChatModel = (model?: string): string =>
     model ?? config.modelName ?? DEFAULT_OPENAI_MODEL
 
+  // OpenAI's chat endpoint — and the OpenAI-compatible endpoints Nessie routes
+  // through Ledger — take inline image parts. DeepSeek's chat API is text-only
+  // and rejects them, so its turns stay plain strings.
+  const supportsVision = provider !== 'deepseek'
+
   const invokeRequest = async (
     body: Record<string, unknown>,
     requestHeaders?: Record<string, string>,
@@ -243,6 +248,7 @@ export const createOpenAiLikeConnector = (
         provider,
         structuredOutputMode: 'native-json',
         supportsEmbeddings: true,
+        supportsVision,
         systemPromptMode: 'native',
         toolCallingMode: 'native',
         toolResultMode: 'native-tool-message',
@@ -267,7 +273,7 @@ export const createOpenAiLikeConnector = (
         const tools = mapToolsToOpenAi(request.tools)
         const response = await invokeRequest({
           max_completion_tokens: request.maxOutputTokens ?? 1024,
-          messages: mapMessagesToOpenAi(request.messages),
+          messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
           model,
           // Routes requests with the same prefix to the same prompt cache for a
           // higher hit rate (undefined is dropped by JSON.stringify).
@@ -334,7 +340,7 @@ export const createOpenAiLikeConnector = (
         const tools = mapToolsToOpenAi(request.tools)
         const response = await invokeRequest({
           max_completion_tokens: request.maxOutputTokens ?? 1024,
-          messages: mapMessagesToOpenAi(request.messages),
+          messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
           model,
           prompt_cache_key: request.promptCacheKey,
           reasoning_effort: request.reasoningEffort,

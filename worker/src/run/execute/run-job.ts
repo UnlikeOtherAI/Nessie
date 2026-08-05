@@ -56,7 +56,11 @@ import {
 import { stripLeadingSectionTag } from './memory.js'
 import { validateRunActorContext } from './policy.js'
 import { publishAgentStatus, publishRunUpdated, publishTaskUpdated } from './realtime.js'
-import { persistResolvedReplyAnchor, resolveReplyRootMessageId } from './reply-placement.js'
+import {
+  persistResolvedReplyAnchor,
+  resolveConversationRootMessageId,
+  resolveReplyRootMessageId,
+} from './reply-placement.js'
 import { buildScopes } from './scopes.js'
 import { createThinkingRecorder, type ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
@@ -149,6 +153,9 @@ export const executeRunJob = async (
     handoffLocator,
     context.run.replyPlacement,
   )
+  context.conversationRootMessageId = resolveConversationRootMessageId({
+    rootMessageId: message.rootMessageId,
+  })
   await persistResolvedReplyAnchor(deps.prisma, context.run.id, context.replyRootMessageId)
 
   // Durable thought log + coalesced live thinking events. Created before the
