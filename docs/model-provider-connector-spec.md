@@ -29,7 +29,7 @@ This system must:
 
 - the worker must not contain provider-specific `if provider === ...`
   behavior beyond connector registration.
-- provider and model identity must be stored as raw strings, not fixed enums. Agent Designer options come only from Nessie's `GET /api/agents/models`, which calls Ledger's token-scoped `GET /v1/models` without exposing the deployment credential; it admits direct service rows advertising OpenAI-compatible `chat/completions` only, validates create/update pairs against the current catalog, and routes uncompiled services through the generic OpenAI-compatible Ledger transport.
+- provider and model identity must be stored as raw strings, not fixed enums. Agent Designer options come only from Nessie's `GET /api/agents/models`, which calls Ledger's token-scoped `GET /v1/models` without exposing the deployment credential and with the same signed Nessie/UOA provenance as inference; it admits direct service rows advertising OpenAI-compatible `chat/completions` only, validates create/update pairs against the current catalog, and routes uncompiled services through the generic OpenAI-compatible Ledger transport.
 - capability decisions are model-scoped. Provider defaults are hints only.
 - tool use is an explicit strategy on the selected model route:
   - `native`
