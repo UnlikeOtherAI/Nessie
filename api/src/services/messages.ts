@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
+import { buildPrefixTsQuery } from '@nessie/runtime'
 import {
   parseAgentId,
   parseChannelId,
@@ -421,16 +422,7 @@ export const searchMessages = async (
     return []
   }
 
-  // Predictive full-text query: each term gets a `:*` prefix match so a partial
-  // word like "tick" finds "ticket". Sanitized down to bare word tokens so the
-  // raw input can never inject tsquery operators.
-  const prefixQuery = input.query
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((term) => `${term}:*`)
-    .join(' & ')
+  const prefixQuery = buildPrefixTsQuery(input.query)
   if (!prefixQuery) {
     return []
   }

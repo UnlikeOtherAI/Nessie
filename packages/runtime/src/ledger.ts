@@ -285,19 +285,45 @@ export const recordInferenceUsage = async (
     return
   }
   const occurredAt = new Date()
+  // A run's invocations almost always share one (provider, model) pair, so look
+  // the pricing profile and catalog ids up once per distinct pair instead of
+  // once per invocation. Promise caches, so concurrent map callbacks for the
+  // same pair await a single query rather than racing duplicates.
+  const pricingByPair = new Map<string, Promise<PricingProfile | null>>()
+  const idsByPair = new Map<
+    string,
+    Promise<{ modelId: string | null; providerId: string | null }>
+  >()
+  const cached = <T>(
+    cache: Map<string, Promise<T>>,
+    key: string,
+    load: () => Promise<T>,
+  ): Promise<T> => {
+    const existing = cache.get(key)
+    if (existing) return existing
+    const pending = load()
+    cache.set(key, pending)
+    return pending
+  }
+
   const rows = await Promise.all(
     input.invocations.map(async (invocation) => {
-      const pricing = await findPricingProfile(
-        prisma,
-        attribution.organizationId,
-        invocation.provider,
-        invocation.model,
+      const pairKey = `${invocation.provider} ${invocation.model}`
+      const pricing = await cached(pricingByPair, pairKey, () =>
+        findPricingProfile(
+          prisma,
+          attribution.organizationId,
+          invocation.provider,
+          invocation.model,
+        ),
       )
-      const { modelId, providerId } = await resolveProviderModelIds(
-        prisma,
-        attribution.organizationId,
-        invocation.provider,
-        invocation.model,
+      const { modelId, providerId } = await cached(idsByPair, pairKey, () =>
+        resolveProviderModelIds(
+          prisma,
+          attribution.organizationId,
+          invocation.provider,
+          invocation.model,
+        ),
       )
       return {
         inferenceInvocationId: invocation.invocationId,

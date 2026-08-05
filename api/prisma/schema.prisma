@@ -748,8 +748,10 @@ model UoaSessionCredential {
   familyId              String   @id @map("family_id") @db.Uuid
   userId                String   @map("user_id") @db.Uuid
   providerId            String   @map("provider_id")
-  subject               String   @map("subject")
-  organizationId        String   @map("organization_id")
+  subject                String   @map("subject")
+  // UOA's OWN organization/team identifiers, not local Organization/Team ids —
+  // they are opaque provider strings, so no foreign key belongs here.
+  organizationId         String   @map("organization_id")
   teamId                 String   @map("team_id")
   tokenVersion           Int      @map("token_version")
   configUrl              String   @map("config_url")
@@ -810,6 +812,45 @@ model Organization {
   inferenceRoutingProfiles    InferenceRoutingProfile[]
   mcpCatalogEntries           McpCatalogEntry[]
   mcpOAuthClients             McpOAuthClient[]
+  boardColumns                BoardColumn[]
+  iterations                  Iteration[]
+  realtimeEvents              RealtimeEvent[]
+  userPresences               UserPresence[]
+  agents                      Agent[]
+  runCheckpoints              RunCheckpoint[]
+  agentMailboxMessages        AgentMailboxMessage[]
+  workflowTemplates           WorkflowTemplate[]
+  workflowInstallations       WorkflowInstallation[]
+  workflowStateEntrys         WorkflowStateEntry[]
+  workflowRuns                WorkflowRun[]
+  executionEnvironmentTemplates ExecutionEnvironmentTemplate[]
+  executionEnvironmentInstances ExecutionEnvironmentInstance[]
+  executionRunners            ExecutionRunner[]
+  executionUsageLedgers       ExecutionUsageLedger[]
+  toolRegistryEntrys          ToolRegistryEntry[]
+  mcpServerInstances          McpServerInstance[]
+  toolBundles                 ToolBundle[]
+  temporaryContextSessions    TemporaryContextSession[]
+  policyRules                 PolicyRule[]
+  auditLogs                   AuditLog[]
+  tokenLedgerEvents           TokenLedgerEvent[]
+  budgetAlerts                BudgetAlert[]
+  modelPricingProfiles        ModelPricingProfile[]
+  connectorUsageEvents        ConnectorUsageEvent[]
+  storageUsageEvents          StorageUsageEvent[]
+  knowledgeSpaceMembers       KnowledgeSpaceMember[]
+  knowledgePageLinks          KnowledgePageLink[]
+  pageLabels                  PageLabel[]
+  knowledgePageAnnotations    KnowledgePageAnnotation[]
+  knowledgePageAnnotationReactions KnowledgePageAnnotationReaction[]
+  thoughtReasonings           ThoughtReasoning[]
+  attachments                 Attachment[]
+  deviceTokens                DeviceToken[]
+  webPushSubscriptions        WebPushSubscription[]
+  pushDeliverys               PushDelivery[]
+  commsConnections            CommsConnection[]
+  commsOAuthStates            CommsOAuthState[]
+  commsEvents                 CommsEvent[]
 
   @@map("organizations")
 }
@@ -967,6 +1008,9 @@ model Project {
   tasks            Task[]
   boardColumns     BoardColumn[]
   iterations       Iteration[]
+  knowledgeSpaces   KnowledgeSpace[]
+  knowledgePages    KnowledgePage[]
+  knowledgePageChunks KnowledgePageChunk[]
 
   @@map("projects")
 }
@@ -982,6 +1026,7 @@ model BoardColumn {
   updatedAt      DateTime       @updatedAt @map("updated_at")
   project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks          Task[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([projectId, position])
   @@map("board_columns")
@@ -1003,6 +1048,7 @@ model Iteration {
   updatedAt      DateTime        @updatedAt @map("updated_at")
   project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks          Task[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([projectId, position])
   @@index([projectId, status])
@@ -1205,6 +1251,7 @@ model RealtimeEvent {
   eventType      String   @map("event_type")
   payload        Json     @db.JsonB
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([channelId, id], map: "idx_realtime_events_replay")
   @@index([organizationId, createdAt])
@@ -1228,6 +1275,7 @@ model UserPresence {
   lastActiveAt   DateTime?                @map("last_active_at")
   manualState    UserPresenceManualState? @map("manual_state")
   updatedAt      DateTime                 @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([lastSeenAt])
   @@index([organizationId])
@@ -1435,6 +1483,7 @@ model Agent {
   knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
   userAlertActivity             UserAlert[]
   runThreadPendingMessages      RunThreadPendingMessage[]
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -1658,6 +1707,7 @@ model RunCheckpoint {
   consumedAt      DateTime? @map("consumed_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   run             Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([threadId, rootMessageId, createdAt])
   @@map("run_checkpoints")
@@ -1867,6 +1917,7 @@ model AgentMailboxMessage {
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")
   thread            Thread?              @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([toAgentId, correlationId])
   @@index([organizationId, status, visibleAt])
@@ -1898,6 +1949,7 @@ model WorkflowTemplate {
   createdAt                      DateTime               @default(now()) @map("created_at")
   updatedAt                      DateTime               @updatedAt @map("updated_at")
   installations                  WorkflowInstallation[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, name])
@@ -1924,6 +1976,7 @@ model WorkflowInstallation {
   runs                    WorkflowRun[]
   triggers                AgentTrigger[]
   stateEntries            WorkflowStateEntry[]       @relation("WorkflowInstallationStateEntries")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
@@ -1946,6 +1999,7 @@ model WorkflowStateEntry {
   workflowInstallation   WorkflowInstallation @relation("WorkflowInstallationStateEntries", fields: [workflowInstallationId], references: [id], onDelete: Cascade)
   workflowRun            WorkflowRun?         @relation("WorkflowRunStateEntries", fields: [workflowRunId], references: [id], onDelete: SetNull)
   workflowStepRun        WorkflowStepRun?     @relation("WorkflowStepRunStateEntries", fields: [workflowStepRunId], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([workflowInstallationId, key])
   @@index([organizationId, updatedAt(sort: Desc)])
@@ -1986,6 +2040,7 @@ model WorkflowRun {
   stateEntries                  WorkflowStateEntry[]           @relation("WorkflowRunStateEntries")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   executionUsageEntries         ExecutionUsageLedger[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([installationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
@@ -2047,6 +2102,7 @@ model ExecutionEnvironmentTemplate {
   updatedAt          DateTime                       @updatedAt @map("updated_at")
   instances          ExecutionEnvironmentInstance[]
   usageEntries       ExecutionUsageLedger[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, enabled, createdAt(sort: Desc)])
   @@index([organizationId, provider, mode])
@@ -2084,6 +2140,7 @@ model ExecutionEnvironmentInstance {
   agent               Agent?                             @relation(fields: [agentId], references: [id], onDelete: SetNull)
   leases              ExecutionLease[]
   usageEntries        ExecutionUsageLedger[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status, createdAt(sort: Desc)])
   @@index([templateId, createdAt(sort: Desc)])
@@ -2103,6 +2160,7 @@ model ExecutionRunner {
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
   leases         ExecutionLease[]
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([provider, label])
   @@index([organizationId, provider, status])
@@ -2153,6 +2211,7 @@ model ExecutionUsageLedger {
   template          ExecutionEnvironmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   workflowRun       WorkflowRun?                 @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
   workflowStepRun   WorkflowStepRun?             @relation(fields: [workflowStepRunId], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, recordedAt(sort: Desc)])
   @@index([instanceId, recordedAt(sort: Desc)])
@@ -2225,6 +2284,7 @@ model ToolRegistryEntry {
   bundle      ToolBundle?        @relation(fields: [bundleId], references: [id], onDelete: SetNull)
   mcpInstance McpServerInstance? @relation(fields: [mcpInstanceId], references: [id], onDelete: SetNull)
   grants      ToolGrant[]
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, scopeKey, toolId], map: "tool_registry_entries_org_scope_tool_key")
   @@index([organizationId, enabled])
@@ -2309,6 +2369,7 @@ model McpServerInstance {
   credentialOverrides McpServerCredentialOverride[]
   toolRegistryEntries ToolRegistryEntry[]
   productIntegrationRuns ProductIntegrationRun[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([catalogEntryId, scopeType, scopeId])
   @@index([organizationId, scopeType, scopeId])
@@ -2350,6 +2411,7 @@ model ToolBundle {
   updatedAt      DateTime         @updatedAt @map("updated_at")
 
   tools ToolRegistryEntry[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, bundleName, version])
   @@index([organizationId, status])
@@ -2391,6 +2453,7 @@ model TemporaryContextSession {
   droppedAt          DateTime? @map("dropped_at")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, droppedAt, createdAt(sort: Desc)])
   @@index([agentId, droppedAt])
@@ -2528,6 +2591,7 @@ model PolicyRule {
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   bindings       PolicyBinding[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, scope, resourceType])
   @@index([organizationId, scopeId])
@@ -2615,6 +2679,7 @@ model AuditLog {
   // @nessie/db audit-chain.ts and docs/functionality.md §Audit trail.
   prevHash       String?        @map("prev_hash")
   entryHash      String?        @map("entry_hash")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, action, createdAt(sort: Desc)])
@@ -2675,6 +2740,7 @@ model TokenLedgerEvent {
   metadata              Json?
   inferenceProvider     InferenceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   inferenceModel        InferenceModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, provider, model, occurredAt(sort: Desc)])
@@ -2756,6 +2822,7 @@ model BudgetAlert {
   spentUsd       Decimal?        @map("spent_usd") @db.Decimal(14, 4)
   costLimitUsd   Decimal?        @map("cost_limit_usd") @db.Decimal(14, 4)
   createdAt      DateTime        @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([scopeType, scopeId, periodStart, kind])
   @@index([organizationId, createdAt])
@@ -2779,6 +2846,7 @@ model ModelPricingProfile {
   effectiveTo            DateTime?     @map("effective_to") @db.Timestamptz(6)
   createdAt              DateTime      @default(now()) @map("created_at")
   updatedAt              DateTime      @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, provider, modelPattern])
   /// At most one ACTIVE profile per (organizationId, provider, modelPattern):
@@ -2834,6 +2902,7 @@ model ConnectorUsageEvent {
   success        Boolean?
   latencyMs      Int?           @map("latency_ms")
   metadata       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, connectorType, occurredAt(sort: Desc)])
@@ -2866,6 +2935,7 @@ model StorageUsageEvent {
   requestId      String?         @map("request_id")
   correlationId  String?         @map("correlation_id")
   metadata       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, projectId])
@@ -2974,6 +3044,7 @@ model KnowledgeSpace {
 
   pages   KnowledgePage[]
   members KnowledgeSpaceMember[]
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_spaces_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_spaces_org_visibility_updated_idx")
@@ -2999,6 +3070,7 @@ model KnowledgeSpaceMember {
   space KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   agent Agent?         @relation("KnowledgeSpaceAgentMembers", fields: [agentId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([spaceId, userId])
   @@unique([spaceId, agentId])
@@ -3056,6 +3128,7 @@ model KnowledgePage {
   outgoingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkSource")
   incomingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkTarget")
   productIntegrationRuns ProductIntegrationRun[]
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([taskId], map: "knowledge_pages_task_id_idx")
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
@@ -3131,6 +3204,7 @@ model KnowledgePageChunk {
 
   page    KnowledgePage        @relation(fields: [pageId], references: [id], onDelete: Cascade)
   version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([versionId, chunkIndex], map: "knowledge_page_chunks_version_chunk_key")
   @@index([pageId, versionId], map: "knowledge_page_chunks_page_version_idx")
@@ -3156,6 +3230,7 @@ model KnowledgePageLink {
 
   sourcePage KnowledgePage  @relation("KnowledgePageLinkSource", fields: [sourcePageId], references: [id], onDelete: Cascade)
   targetPage KnowledgePage? @relation("KnowledgePageLinkTarget", fields: [targetPageId], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([sourcePageId])
   @@index([targetPageId])
@@ -3172,6 +3247,7 @@ model PageLabel {
   createdAt      DateTime @default(now()) @map("created_at")
 
   page KnowledgePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([pageId, normalizedName], map: "page_labels_page_normalized_key")
   @@index([organizationId, normalizedName], map: "page_labels_org_normalized_idx")
@@ -3219,6 +3295,7 @@ model KnowledgePageAnnotation {
   parent    KnowledgePageAnnotation?          @relation("AnnotationReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies   KnowledgePageAnnotation[]         @relation("AnnotationReplies")
   reactions KnowledgePageAnnotationReaction[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([pageId, kind, parentId, createdAt(sort: Desc)], map: "kb_annotations_page_kind_parent_created_idx")
   @@index([organizationId, pageId], map: "kb_annotations_org_page_idx")
@@ -3236,6 +3313,7 @@ model KnowledgePageAnnotationReaction {
   createdAt      DateTime @default(now()) @map("created_at")
 
   annotation KnowledgePageAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([annotationId, userId, emoji], map: "kb_annotation_reactions_user_emoji_key")
   @@unique([annotationId, agentId, emoji], map: "kb_annotation_reactions_agent_emoji_key")
@@ -3267,6 +3345,7 @@ model ThoughtReasoning {
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([thoughtId, createdAt])
   @@index([organizationId, outcome])
@@ -3467,6 +3546,7 @@ model Attachment {
   avatarForUsers       User[]         @relation("UserAvatar")
   avatarForAgents      Agent[]        @relation("AgentAvatar")
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([messageId])
   @@index([knowledgePageId])
@@ -3516,6 +3596,7 @@ model DeviceToken {
   appVersion     String?        @map("app_version")
   lastSeenAt     DateTime       @default(now()) @map("last_seen_at")
   createdAt      DateTime       @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, token])
   @@index([organizationId])
@@ -3541,6 +3622,7 @@ model WebPushSubscription {
   userAgent      String?  @map("user_agent")
   lastSeenAt     DateTime @default(now()) @map("last_seen_at")
   createdAt      DateTime @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, endpoint])
   @@index([organizationId])
@@ -3601,6 +3683,7 @@ model PushDelivery {
   errorCode      String?            @map("error_code")
   attempts       Int                @default(1)
   createdAt      DateTime           @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
   @@index([userId])
@@ -3672,6 +3755,7 @@ model CommsConnection {
   syncJobs      CommsSyncJob[]
   events        CommsEvent[]
   subscriptions CommsSubscription[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, ownerUserId, provider, externalTenantId, externalUserId])
   @@index([organizationId, ownerUserId])
@@ -3714,6 +3798,7 @@ model CommsOAuthState {
   expiresAt      DateTime      @map("expires_at")
   consumedAt     DateTime?     @map("consumed_at")
   createdAt      DateTime      @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId, provider])
   @@index([expiresAt])
@@ -3808,6 +3893,7 @@ model CommsEvent {
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
   connection CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, canonicalMessageId, version])
   @@index([organizationId, connectionId, occurredAt])

@@ -41,9 +41,13 @@ const makeUser = (displayName: string): User => ({
 const makePrisma = () => {
   const updates: Array<{ displayName: string; id: string }> = []
   const prisma = {
+    // loadUserMemberships now issues its three membership queries in parallel
+    // rather than nesting them, so all three must exist on the fake.
     organizationMember: {
       findMany: async () => [],
     },
+    projectMember: { findMany: async () => [] },
+    teamMember: { findMany: async () => [] },
     user: {
       update: async ({ data, where }: { data: { displayName: string }; where: { id: string } }) => {
         updates.push({ displayName: data.displayName, id: where.id })

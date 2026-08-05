@@ -101,27 +101,23 @@ export const loadUnreadCountsByThread = async (
     return new Map()
   }
 
+  // The author and read-cursor predicates live in the JOIN's ON clause, not in a
+  // CASE over the joined rows: that way Postgres walks only the unread tail via
+  // the messages (thread_id, created_at) index instead of joining a thread's
+  // entire history and discarding most of it. This runs on the channel-list hot
+  // path, so the difference is the whole message table on a busy workspace.
   const rows = await prisma.$queryRaw<ThreadUnreadRow[]>(Prisma.sql`
     SELECT
       t.id AS thread_id,
-      COALESCE(
-        SUM(
-          CASE
-            WHEN m.id IS NOT NULL
-              AND (m.user_id IS NULL OR m.user_id <> ${userId}::uuid)
-              AND (trs.last_read_at IS NULL OR m.created_at > trs.last_read_at)
-            THEN 1
-            ELSE 0
-          END
-        ),
-        0
-      ) AS unread_count
+      COUNT(m.id) AS unread_count
     FROM "threads" t
     LEFT JOIN "thread_read_states" trs
       ON trs.thread_id = t.id
       AND trs.user_id = ${userId}::uuid
     LEFT JOIN "messages" m
       ON m.thread_id = t.id
+      AND (m.user_id IS NULL OR m.user_id <> ${userId}::uuid)
+      AND (trs.last_read_at IS NULL OR m.created_at > trs.last_read_at)
     WHERE t.id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})
     GROUP BY t.id
   `)
