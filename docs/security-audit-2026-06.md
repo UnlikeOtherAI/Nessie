@@ -4,7 +4,12 @@ A multi-round security and database audit ran in June 2026 on the branch
 `security/audit-2026-06-13`. That branch was never merged and fell ~336 commits
 behind `main`, which was heavily refactored in the meantime. Rather than merge a
 stale branch, every finding was **re-verified against the current code** and the
-ones that still applied were re-implemented here. The original branch is retired.
+ones that still applied were re-implemented here.
+
+The original branch was deleted on 2026-08-06 once this work landed. Its tip was
+`e1518015` ("fix(security): KB-comment tools respect owner space access for the
+PA"), carrying 22 commits from `d9a4dc20` onward; the findings themselves are
+recorded below, so the branch itself is no longer needed.
 
 **How to read this.** Each finding below records what the June audit found and
 what the 2026-08-06 re-verification concluded. "Obsolete" means current `main`
