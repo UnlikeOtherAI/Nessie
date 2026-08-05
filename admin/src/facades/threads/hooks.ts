@@ -156,6 +156,11 @@ export const useThreadStream = (threadId?: string): StreamState => {
     // When each live run announced itself, so a bootstrap response that was
     // already in flight never discards a run that started after it was sent.
     const liveRunStartedAt = new Map<string, number>()
+    // Runs whose `stream.done` this session has seen. A bootstrap response
+    // captured while such a run was still live must not re-seed it — that is
+    // the zombie-bubble race. Run ids are never reused, so this only grows by
+    // one entry per finished run in the open channel.
+    const finishedRunIds = new Set<string>()
 
     // `stream.*` is never replayed from the backlog, so a mid-run joiner (or a
     // reconnect that missed events) rebuilds its bubbles over REST instead.
@@ -181,7 +186,12 @@ export const useThreadStream = (threadId?: string): StreamState => {
             .map(([runId]) => runId),
         )
         setPendingMessages((current) =>
-          reconcileThreadThinking(current, payload.data?.runs ?? [], protectedRunIds),
+          reconcileThreadThinking(
+            current,
+            payload.data?.runs ?? [],
+            protectedRunIds,
+            finishedRunIds,
+          ),
         )
       } catch {
         // Best effort: a failed bootstrap only costs a mid-run joiner its bubble.
@@ -310,6 +320,7 @@ export const useThreadStream = (threadId?: string): StreamState => {
                 )
               }
               liveRunStartedAt.delete(data.runId)
+              finishedRunIds.add(data.runId)
               setPendingMessages((current) =>
                 current.filter((message) => message.runId !== data.runId),
               )

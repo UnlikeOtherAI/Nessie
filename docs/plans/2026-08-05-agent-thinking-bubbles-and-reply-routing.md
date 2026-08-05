@@ -208,9 +208,12 @@ Per-run object created in `run-job.ts` alongside the loop:
   tool lines). One durable row + one SSE event per flush (this *replaces* the
   current per-delta `stream.reasoning` publish, cutting `thread_stream_events`
   spam).
-- `close()` — final flush; idempotent; called in run-job's `finally` before
-  `stream.done` paths run (completion/failure/cancel/budget all publish
-  `stream.done` already — bubble teardown is unchanged).
+- `close()` — final flush; idempotent. **Stream contract: `stream.done` is
+  always last.** run-job closes the recorder immediately after the loop
+  returns (covers completion/cancel/budget paths), at the top of its `catch`
+  (covers the failure and retry-throw paths), and again in `finally` as a
+  no-op safety net — so no thinking event is ever published after the
+  stream terminator.
 - Failures inside the recorder are swallowed with a `console.warn` — thinking
   capture must never fail a run.
 
@@ -253,7 +256,11 @@ run→thread ownership check.
 - Dedupe by `chunkId` when merging bootstrap/fetch data with live events.
 - On mount and on SSE reconnect, fetch the bootstrap endpoint and seed/
   reconcile `pendingMessages` (also clears zombies: drop local runs the
-  bootstrap no longer reports).
+  bootstrap no longer reports). Two race guards: a run whose `stream.start`
+  arrived after the bootstrap request was sent is never dropped by the stale
+  response, and a run whose `stream.done` this session has seen is never
+  re-seeded by a response captured while it was still live (run ids are never
+  reused, so "finished" is final).
 
 ### B6. Admin — UI
 

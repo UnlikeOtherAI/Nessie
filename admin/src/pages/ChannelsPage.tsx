@@ -404,6 +404,8 @@ export const ChannelsPage = () => {
           activeChannel={activeChannel}
           agentMap={agentMap}
           channelUsers={channelUsers}
+          isExternalAgentConversation={isExternalAgentActiveChannel}
+          isPersonalAssistantConversation={isPersonalAssistantConversation}
           meAvatar={{
             avatarUrl: me.user.avatarUrl,
             avatarAttachmentId: me.user.avatarAttachmentId,

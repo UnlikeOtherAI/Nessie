@@ -198,6 +198,31 @@ test('reconcileThreadThinking drops runs the bootstrap no longer reports', () =>
   assert.deepEqual(reconciled, [])
 })
 
+// The zombie-bubble race: a bootstrap response captured while a run was live
+// resolves after that run's `stream.done` removed it locally. The finished-run
+// guard must stop the stale response from re-seeding the bubble.
+test('reconcileThreadThinking never re-seeds a run whose stream.done was seen', () => {
+  const reconciled = reconcileThreadThinking(
+    [],
+    [
+      bootstrapRun({
+        entries: [
+          { content: 'stale view', createdAt: '2026-08-05T10:00:01.000Z', id: '9', kind: 'reasoning' },
+        ],
+        runId: 'run-finished',
+      }),
+      bootstrapRun({ entries: [], runId: 'run-still-live' }),
+    ],
+    new Set<string>(),
+    new Set(['run-finished']),
+  )
+
+  assert.deepEqual(
+    reconciled.map((entry) => entry.runId),
+    ['run-still-live'],
+  )
+})
+
 test('reconcileThreadThinking keeps a run that started after the request went out', () => {
   const reconciled = reconcileThreadThinking(
     [pending({ runId: 'run-fresh' })],

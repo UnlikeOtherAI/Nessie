@@ -29,6 +29,10 @@ interface ThreadReplyPanelProps {
   activeChannel: ChannelRecord
   agentMap: Map<string, AgentRecord>
   channelUsers: UserRecord[]
+  // The panel inherits the page's conversation kind so agent naming (e.g. the
+  // Personal Assistant fallback) matches the main feed.
+  isPersonalAssistantConversation: boolean
+  isExternalAgentConversation: boolean
   meAvatar: AvatarSources
   meDisplayName: string
   meUserId: string
@@ -53,6 +57,8 @@ export const ThreadReplyPanel = ({
   activeChannel,
   agentMap,
   channelUsers,
+  isPersonalAssistantConversation,
+  isExternalAgentConversation,
   meAvatar,
   meDisplayName,
   meUserId,
@@ -276,7 +282,8 @@ export const ThreadReplyPanel = ({
                 editingContent={editingContent}
                 editingMessageId={editingMessageId}
                 feedItems={threadFeedItems}
-                isPersonalAssistantConversation={false}
+                isExternalAgentConversation={isExternalAgentConversation}
+                isPersonalAssistantConversation={isPersonalAssistantConversation}
                 meAvatar={meAvatar}
                 meDisplayName={meDisplayName}
                 meUserId={meUserId}

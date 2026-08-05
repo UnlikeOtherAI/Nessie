@@ -197,14 +197,20 @@ export const toThinkingLines = (
  * - a run only the bootstrap reports is seeded (the viewer joined mid-run);
  * - a run only the client holds is a zombie and is dropped — unless its
  *   `stream.start` landed after the bootstrap request was sent, in which case
- *   the response is simply older than the run.
+ *   the response is simply older than the run;
+ * - a run this session already saw `stream.done` for is never re-seeded, even
+ *   when the bootstrap response still lists it: the response was captured
+ *   while the run was live and lost the race with its completion. Run ids are
+ *   never reused (a restart mints a new run), so "finished" is final.
  */
 export const reconcileThreadThinking = (
   current: PendingStreamMessage[],
   runs: ThreadThinkingRun[],
   protectedRunIds: ReadonlySet<string> = new Set<string>(),
+  finishedRunIds: ReadonlySet<string> = new Set<string>(),
 ): PendingStreamMessage[] => {
-  const unmatched = new Map(runs.map((run) => [run.runId, run]))
+  const liveRuns = runs.filter((run) => !finishedRunIds.has(run.runId))
+  const unmatched = new Map(liveRuns.map((run) => [run.runId, run]))
   const reconciled: PendingStreamMessage[] = []
 
   for (const pending of current) {
@@ -223,7 +229,7 @@ export const reconcileThreadThinking = (
     })
   }
 
-  for (const run of runs) {
+  for (const run of liveRuns) {
     if (!unmatched.has(run.runId)) {
       continue
     }

@@ -316,6 +316,10 @@ export const executeRunJob = async (
       toolDefs,
       toolPolicy,
     })
+    // The stream contract is `stream.done` LAST: flush the recorder before any
+    // terminal path publishes it, or a trailing `stream.reasoning` would arrive
+    // after the stream terminator (clients treat the run as live again).
+    await thinkingRecorder.close()
     deepWaterHandoffGuard.assertCompletion()
 
     const responseText = stripLeadingSectionTag(loopResult.finalText)
@@ -393,6 +397,11 @@ export const executeRunJob = async (
     })
     terminalOutcome = 'completed'
   } catch (caughtError) {
+    // Same stream-contract rule as the success path: the failure handler will
+    // publish `stream.done`, so drain any buffered thinking first. Idempotent,
+    // error-swallowing, and also correct on the retry-throw path (the retry
+    // republishes `stream.start`, so its stream stays well-formed).
+    await thinkingRecorder.close()
     const error = promoteUnresolvedDeepWaterHandoffError(
       caughtError,
       deepWaterHandoffGuard,
