@@ -1,6 +1,6 @@
 import {
   assertSafeUrl,
-  safeFetch,
+  pinnedFetch,
   UrlSafetyError,
   type ResolveHost,
 } from '@nessie/runtime'
@@ -66,8 +66,13 @@ export const assertMcpUrlSafe = async (
  * Outbound HTTP for MCP control-plane calls (OAuth exchange/refresh, metadata
  * discovery, dynamic client registration). Validating the URL and then calling
  * plain `fetch` leaves a rebinding window between the check and the socket, so
- * every one of those calls goes through here instead: resolve once, pin the
- * connection to the vetted IPs, and re-validate each redirect hop.
+ * every one of those calls goes through here instead: resolve once, then pin the
+ * connection to the vetted IPs.
+ *
+ * Deliberately `pinnedFetch`, not `safeFetch`: these callers already pass
+ * `redirect: 'manual'` and decide for themselves what a 3xx means (a token
+ * endpoint that redirects is a failed exchange, not a hop to chase). Pinning
+ * must not silently turn that into redirect-following.
  */
 export const mcpSafeFetch = async (
   rawUrl: string | URL,
@@ -75,7 +80,7 @@ export const mcpSafeFetch = async (
   options: McpUrlSafetyOptions = {},
 ): Promise<Response> => {
   try {
-    return await safeFetch(rawUrl, init, options)
+    return await pinnedFetch(rawUrl, init, options)
   } catch (error) {
     if (error instanceof UrlSafetyError) {
       throw new McpSecurityError(
