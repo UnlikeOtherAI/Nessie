@@ -6,6 +6,18 @@ import { PrismaClient } from '@prisma/client'
 
 import { resolveUoaWorkspaceContext } from '../src/services/workspace-context.js'
 
+// This suite has the same global-scope dependency as its sibling
+// (`workspace-context-postgres-race.test.ts`), but it cannot be anchored the
+// same way: its subject IS the first-ever login, so it asserts that the
+// database holds no organization and no user at all, and it leaves behind the
+// bootstrap records it creates. It therefore needs a database of its own, and
+// stays opt-in rather than flaking against the shared one — an unset
+// NESSIE_TEST_PRISTINE_DATABASE skips it, which is why it does not run in CI's
+// shared-database test job.
+//
+// Run it against a dedicated, freshly migrated database:
+//   DATABASE_URL=<pristine db> NESSIE_TEST_PRISTINE_DATABASE=1 \
+//     node --test --import tsx test/workspace-bootstrap-postgres-race.test.ts
 const runPristineDatabaseTest =
   process.env.DATABASE_URL && process.env.NESSIE_TEST_PRISTINE_DATABASE === '1'
     ? test
