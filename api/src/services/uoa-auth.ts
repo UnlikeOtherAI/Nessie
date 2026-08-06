@@ -278,7 +278,12 @@ export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string 
     ui_theme: defaultUiTheme(settings, theme),
     org_features: {
       enabled: true,
+      // First organisation for a user with none.
       allow_user_create_org: true,
+      // Further workspaces inside an organisation the user already runs, offered
+      // in the SSO workspace chooser to ACTIVE org owners/admins. Without this,
+      // anyone who already belongs to a workspace sees no create option.
+      allow_user_create_team: true,
     },
     // Slack-style workspace login: ask UOA to show the workspace chooser (and to
     // offer email sign-in codes) so a user picks the workspace they're entering.

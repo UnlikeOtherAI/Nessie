@@ -338,7 +338,13 @@ For SSO providers, the flow is:
 For the `uoa` provider, Nessie's config JWT enables UOA's workspace chooser
 (`login_flow.workspace_selection: "auto"`), so the user picks a **workspace**
 before returning; UOA then carries the selection in the access-token
-`active { orgId, teamId }` claim plus the authentication epoch in `tv`. On
+`active { orgId, teamId }` claim plus the authentication epoch in `tv`. The same
+config JWT sets `org_features.allow_user_create_org` **and**
+`allow_user_create_team`, so the chooser offers self-service workspace creation
+both to a user with no organisation yet (`_org`, their first one) and to an
+ACTIVE owner/admin of an organisation they already run (`_team`, a further
+workspace via UOA's `POST /auth/create-team`). Without the `_team` flag the
+chooser shows no create option to anyone who already belongs to a workspace. On
 exchange, `POST /api/auth/session` routes
 the session to that workspace instead of the first org's default team: the
 selected UOA workspace maps to a Nessie **Team** inside the one shared
