@@ -15,7 +15,36 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": []
+      "outputs": [],
+      // Test results are not a pure function of the hashed inputs: the
+      // Postgres-backed suites read a database Turbo cannot hash. Replaying a
+      // cached pass over a database that has since been reset, re-migrated or
+      // pointed elsewhere is a false green on exactly the coverage `env` below
+      // exists to restore, so these tasks always run.
+      "cache": false,
+      // Turbo runs in strict env mode, so a variable the task does not declare
+      // is removed from its environment. Without this every Postgres-backed
+      // suite hits its `process.env.DATABASE_URL ? test : test.skip` gate and
+      // reports `# SKIP` — `pnpm test` silently gave zero database coverage
+      // while looking green (47 skipped in @nessie/api alone).
+      "env": ["DATABASE_URL", "NESSIE_TEST_PRISTINE_DATABASE"]
+    },
+    // `test` depends only on `^build`, so Turbo — unlike `pnpm -r`, which is
+    // topological — is free to run @nessie/api's and @nessie/worker's suites at
+    // the same time, against the one database. `worker/test/db` drives the
+    // GLOBAL queue pollers (`dispatchNextMailboxMessage`,
+    // `sweepPendingThreadMessages`) and so refuses, via `assertGlobalQueuesQuiet`,
+    // to start on a database holding rows they would claim — and api's
+    // trigger-dispatch suites legitimately pass through exactly that state
+    // (an orphaned (agent, thread) pending pair). Measured: one such pair held
+    // open fails all four worker DB tests. Ordering api after worker gives the
+    // worker suites the exclusive database they require and matches the order
+    // `pnpm -r --if-present test` already produces in CI.
+    "@nessie/api#test": {
+      "dependsOn": ["^build", "@nessie/worker#test"],
+      "outputs": [],
+      "cache": false,
+      "env": ["DATABASE_URL", "NESSIE_TEST_PRISTINE_DATABASE"]
     },
     "dev": {
       "cache": false,
