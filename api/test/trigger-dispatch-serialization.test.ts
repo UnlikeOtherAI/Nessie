@@ -60,8 +60,14 @@ const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
   }
 }
 
+// `run.execute` payloads carry a top-level `threadId`, so the seed's thread
+// scopes the delete to this suite's own jobs. An `idempotency_key LIKE
+// 'run:batch:%'` sweep would match every suite's jobs — and `pnpm -r test`
+// (CI) runs the api and worker suites concurrently against one database, so it
+// would delete a job the worker's serialization suite is about to count.
 const cleanup = async (prisma: PrismaClient, seed: Seed) => {
-  await prisma.$executeRaw`DELETE FROM queue_jobs WHERE idempotency_key LIKE ${'run:batch:%'}`
+  await prisma
+    .$executeRaw`DELETE FROM queue_jobs WHERE payload->>'threadId' = ${seed.threadId}`
     .catch(() => undefined)
   await prisma.runThreadPendingMessage.deleteMany({ where: { threadId: seed.threadId } })
   await prisma.agentTriggerDelivery.deleteMany({ where: { triggerId: seed.triggerId } })

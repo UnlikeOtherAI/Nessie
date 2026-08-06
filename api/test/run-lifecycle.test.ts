@@ -72,8 +72,13 @@ const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
   }
 }
 
+// Scoped by the seed's thread (every `run.execute` payload carries a top-level
+// `threadId`) rather than an `idempotency_key LIKE 'run:restart:%'` sweep,
+// which would also delete concurrently-running suites' jobs — `pnpm -r test`
+// runs the api and worker packages against one database at the same time.
 const cleanup = async (prisma: PrismaClient, seed: Seed) => {
-  await prisma.$executeRaw`DELETE FROM queue_jobs WHERE idempotency_key LIKE ${'run:restart:%'}`
+  await prisma
+    .$executeRaw`DELETE FROM queue_jobs WHERE payload->>'threadId' = ${seed.threadId}`
     .catch(() => undefined)
   await prisma.taskEvent.deleteMany({ where: { task: { organizationId: seed.organizationId } } })
   await prisma.task.deleteMany({ where: { organizationId: seed.organizationId } })

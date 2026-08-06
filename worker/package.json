@@ -13,7 +13,9 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch --env-file=../.env src/index.ts",
     "lint": "eslint src --max-warnings 0",
-    "test": "node --test --import tsx 'test/**/*.test.ts' 'src/**/*.test.ts'",
+    "test": "pnpm run test:unit && pnpm run test:db",
+    "test:unit": "node --test --import tsx 'test/*.test.ts' 'src/**/*.test.ts'",
+    "test:db": "node --test --test-concurrency=1 --import tsx 'test/db/*.test.ts'",
     "test:load": "tsx test-harness/load.ts",
     "test:smoke": "tsx test-harness/smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
