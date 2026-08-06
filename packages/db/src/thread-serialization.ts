@@ -34,6 +34,14 @@ import { enqueueRunExecution } from './queue.js'
 // product-handoff runs keep their own stricter invariants and never touch this
 // module.
 //
+// Batch ordering caveat: arrival order is read from `messages.created_at`,
+// which is `timestamp(3)`, so messages that arrive within the same millisecond
+// tie and fall back to the pending row's `seq` — the order concurrent claims
+// happened to record their markers, which need not be arrival order. Accepted:
+// every pended message is loaded into the follow-up as thread history either
+// way, and the only thing the tie can reorder is which of two same-millisecond
+// messages is treated as "latest" for the prompt and `triggerMessageId`.
+//
 // Batch visibility caveat: the batched follow-up loads pended `user`/
 // `assistant` messages as ordinary thread history, but `loadConversation`
 // excludes `system`-role messages (e.g. PA scheduled-trigger kickoffs), so

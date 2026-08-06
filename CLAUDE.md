@@ -191,6 +191,7 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   login will stall at "Loading providers...". See
   [docs/running-the-apps.md](docs/running-the-apps.md).
 - Rebuild the worker after every turn where worker code changed: `pnpm --filter @nessie/worker build`. In local mode the API runs the worker **embedded from its built `dist`** (`import('@nessie/worker')`), so worker source edits do not take effect until rebuilt. The dev API watches `worker/dist`, so a rebuild auto-restarts the embedded worker.
+- `@nessie/worker`'s `test` runs `test:unit` (parallel, `test/*.test.ts` + `src/**/*.test.ts`) then `test:db` (`test/db/*.test.ts`, `--test-concurrency=1`). The `test/db/` suites drive **global** queue pollers — `dispatchNextMailboxMessage` claims the oldest queued mailbox row anywhere, `sweepPendingThreadMessages` drains every orphaned `(agent, thread)` pair anywhere — so they need a database where they are the only actor and refuse to run against one holding foreign rows. Details and the rules every DB-backed suite follows: `AGENTS.md` → Workflow.
 - Root `pnpm build`, `make build`, and the production Dockerfiles are lint-gated. Keep lint in those build paths instead of replacing them with raw `turbo build` or package build calls. Partial Docker build contexts must copy the root build/lint config files they invoke, including `eslint.config.js`.
 - Root `pnpm build` and `pnpm typecheck` serialize one Prisma client generation,
   exclude `@nessie/cli` from Turbo, then compile/typecheck the CLI through its

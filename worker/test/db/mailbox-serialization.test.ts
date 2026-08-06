@@ -1,17 +1,25 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import type { PgRealtimeTransport } from '@nessie/runtime'
 
-import { dispatchNextMailboxMessage } from '../src/control/mailbox.js'
+import { dispatchNextMailboxMessage } from '../../src/control/mailbox.js'
+import {
+  assertGlobalQueuesQuiet,
+  deleteThreadQueueJobs,
+  runDatabaseTest,
+} from './support.js'
 
 // Integration tests against the local Postgres (see AGENTS.md): mailbox
 // deliveries take the same per-(agent, thread) claim as chat replies, so a
 // delivery that arrives while a run is in flight pends instead of spawning a
 // concurrent run.
-const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
+//
+// `dispatchNextMailboxMessage` is a GLOBAL poller — it claims the oldest queued
+// mailbox row in the database, with no tenant filter — so these tests can only
+// assert their own delivery when no other queued mail exists. Hence the
+// `assertGlobalQueuesQuiet` preflight; see `./support.ts`.
 
 type Seed = {
   organizationId: string
@@ -58,10 +66,7 @@ const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
 }
 
 const cleanup = async (prisma: PrismaClient, seed: Seed) => {
-  await prisma.$executeRaw`DELETE FROM queue_jobs WHERE idempotency_key LIKE ${'mailbox:%'}`
-    .catch(() => undefined)
-  await prisma.$executeRaw`DELETE FROM queue_jobs WHERE idempotency_key LIKE ${'run:batch:%'}`
-    .catch(() => undefined)
+  await deleteThreadQueueJobs(prisma, seed.threadId)
   await prisma.runThreadPendingMessage.deleteMany({ where: { threadId: seed.threadId } })
   await prisma.agentMailboxMessage.deleteMany({ where: { organizationId: seed.organizationId } })
   await prisma.taskEvent.deleteMany({ where: { task: { organizationId: seed.organizationId } } })
@@ -82,6 +87,14 @@ const realtime = {
   publishWs: async () => undefined,
 } as unknown as PgRealtimeTransport
 
+// `visibleAt` is set explicitly in the past instead of defaulting to
+// `CURRENT_TIMESTAMP`. The column is `timestamp(3)`, and Postgres ROUNDS to
+// that precision on storage while the poller's `visible_at <= now()` predicate
+// compares against full-microsecond `now()` — so a row written at x.9995ms is
+// stored as (x+1).000ms and is briefly due in the future. The real poller loops
+// and picks it up microseconds later; a test that dispatches exactly once would
+// just be flaky (~1 in 10). What these tests are about is the (agent, thread)
+// claim, not visibility timing, so the seeded mail is unambiguously due.
 const queueMail = async (
   prisma: PrismaClient,
   seed: Seed,
@@ -98,13 +111,35 @@ const queueMail = async (
       actorType: 'agent',
       body,
       correlationId: randomUUID(),
+      visibleAt: new Date(Date.now() - 60_000),
     },
     select: { id: true },
   })
 }
 
+// Dispatch and prove the seeded mail is the row that was claimed. The poller
+// picks the globally oldest queued message, so a foreign row appearing between
+// the preflight and here would otherwise surface as a confusing "0 pending
+// markers" further down instead of naming the real cause.
+const dispatchSeededMail = async (
+  prisma: PrismaClient,
+  mail: { id: string },
+): Promise<void> => {
+  assert.equal(await dispatchNextMailboxMessage(prisma, realtime), true)
+  const dispatched = await prisma.agentMailboxMessage.findUnique({
+    where: { id: mail.id },
+    select: { status: true },
+  })
+  assert.equal(
+    dispatched?.status,
+    'delivered',
+    'the poller claimed a different mailbox row — the database is not exclusive to this suite',
+  )
+}
+
 runDatabaseTest('mailbox delivery while the thread is busy pends instead of spawning a concurrent run', async (t) => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const seed = await seedWorkspace(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
@@ -117,7 +152,7 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
   })
 
   const mail = await queueMail(prisma, seed, 'subtask result payload')
-  assert.equal(await dispatchNextMailboxMessage(prisma, realtime), true)
+  await dispatchSeededMail(prisma, mail)
 
   // No concurrent run: the delivery is a durable pending marker instead.
   const runs = await prisma.run.findMany({
@@ -149,7 +184,7 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
     where: { id: activeRun.id },
     data: { status: 'completed', finishedAt: new Date() },
   })
-  const { drainPendingThreadMessages } = await import('../src/run/thread-serialization.js')
+  const { drainPendingThreadMessages } = await import('../../src/run/thread-serialization.js')
   const followUpRunId = await drainPendingThreadMessages(prisma, {
     agentId: seed.toAgentId,
     threadId: seed.threadId,
@@ -165,6 +200,7 @@ runDatabaseTest('mailbox delivery while the thread is busy pends instead of spaw
 
 runDatabaseTest('mailbox delivery on a free thread claims the slot and enqueues the run', async (t) => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const seed = await seedWorkspace(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
@@ -172,7 +208,7 @@ runDatabaseTest('mailbox delivery on a free thread claims the slot and enqueues 
   })
 
   const mail = await queueMail(prisma, seed, 'do the subtask')
-  assert.equal(await dispatchNextMailboxMessage(prisma, realtime), true)
+  await dispatchSeededMail(prisma, mail)
 
   const runs = await prisma.run.findMany({
     where: { agentId: seed.toAgentId, threadId: seed.threadId },

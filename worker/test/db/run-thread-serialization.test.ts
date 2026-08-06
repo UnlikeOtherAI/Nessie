@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import {
@@ -19,17 +18,27 @@ import {
   claimThreadRunOrPend,
   drainPendingThreadMessages,
   sweepPendingThreadMessages,
-} from '../src/run/thread-serialization.js'
-import { finalizeCancelledRun } from '../src/run/execute/cancel-stop.js'
+} from '../../src/run/thread-serialization.js'
+import { finalizeCancelledRun } from '../../src/run/execute/cancel-stop.js'
 import type {
   ExecutionDependencies,
   RunContext,
-} from '../src/run/execute/types.js'
+} from '../../src/run/execute/types.js'
+import {
+  assertGlobalQueuesQuiet,
+  deleteThreadQueueJobs,
+  runDatabaseTest,
+} from './support.js'
 
 // Integration tests against the local Postgres (see AGENTS.md): the invariant
 // under test — at most one in-flight run per (agent, thread), with mid-run
 // messages batched into one durable follow-up — only exists in the database.
-const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
+//
+// `sweepPendingThreadMessages` is a GLOBAL poller: it drains every orphaned
+// (agent, thread) pair in the database, with no tenant filter. So these tests
+// assert their own seed's outcome rather than the sweep's global return count,
+// and refuse to run against a database holding foreign orphans — which the
+// sweep would otherwise force-deliver. See `./support.ts`.
 
 type Seed = {
   organizationId: string
@@ -73,8 +82,7 @@ const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
 }
 
 const cleanup = async (prisma: PrismaClient, seed: Seed) => {
-  await prisma.$executeRaw`DELETE FROM queue_jobs WHERE idempotency_key LIKE ${'run:batch:%'}`
-    .catch(() => undefined)
+  await deleteThreadQueueJobs(prisma, seed.threadId)
   await prisma.runThreadPendingMessage.deleteMany({ where: { threadId: seed.threadId } })
   await prisma.taskEvent.deleteMany({ where: { task: { organizationId: seed.organizationId } } })
   await prisma.task.deleteMany({ where: { organizationId: seed.organizationId } })
@@ -102,13 +110,27 @@ const actorFor = (seed: Seed): AuthorizedActionContext => ({
   },
 })
 
+// `messages.created_at` is `timestamp(3)`, so back-to-back inserts routinely
+// land on the same millisecond (5 rapid inserts typically record only ~3
+// distinct values). The drain orders by that timestamp and falls back to the
+// pending row's `seq` — the order concurrent decides happened to record their
+// markers — so with tied timestamps there is no arrival order to preserve and
+// no well-defined answer to assert. `arrivedAt` lets a test state the arrival
+// order it means to test instead of racing the clock for it.
 const postMessage = async (
   prisma: PrismaClient,
   seed: Seed,
   content: string,
+  arrivedAt?: Date,
 ): Promise<{ id: string; content: string }> => {
   return prisma.message.create({
-    data: { threadId: seed.threadId, role: 'user', content, userId: seed.userId },
+    data: {
+      threadId: seed.threadId,
+      role: 'user',
+      content,
+      userId: seed.userId,
+      ...(arrivedAt ? { createdAt: arrivedAt } : {}),
+    },
     select: { id: true, content: true },
   })
 }
@@ -172,16 +194,22 @@ const queueJobCount = async (prisma: PrismaClient, idempotencyKey: string) => {
 
 runDatabaseTest('5 rapid messages spawn at most 2 runs; the batch preserves order', async (t) => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const seed = await seedWorkspace(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
   })
 
-  // Sequential inserts so array order IS the thread's arrival order.
+  // Explicitly spaced arrival timestamps so array order IS the thread's arrival
+  // order. What this test races is the five concurrent decides below, not the
+  // clock: leaving the timestamps to `now()` makes several messages tie at
+  // millisecond resolution, and the assertion on batch order then has no
+  // well-defined answer (see `postMessage`).
+  const arrivalBase = Date.now()
   const messages = []
-  for (const content of ['first', 'second', 'third', 'fourth', 'fifth']) {
-    messages.push(await postMessage(prisma, seed, content))
+  for (const [index, content] of ['first', 'second', 'third', 'fourth', 'fifth'].entries()) {
+    messages.push(await postMessage(prisma, seed, content, new Date(arrivalBase + index * 10)))
   }
 
   // Five rapid decides race for the same (agent, thread) slot.
@@ -249,21 +277,23 @@ runDatabaseTest('5 rapid messages spawn at most 2 runs; the batch preserves orde
   )
 
   // The follow-up now holds the slot: the next rapid message pends again.
-  const sixth = await postMessage(prisma, seed, 'sixth')
+  const sixth = await postMessage(prisma, seed, 'sixth', new Date(arrivalBase + 50))
   assert.equal(await decideReplyForMessage(prisma, seed, sixth), 'pended')
 })
 
 runDatabaseTest('pending survives a lost drain: the re-poll sweep enqueues the follow-up', async (t) => {
   const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
   const seed = await seedWorkspace(prisma)
   t.after(async () => {
     await cleanup(prisma, seed)
     await prisma.$disconnect()
   })
 
-  const first = await postMessage(prisma, seed, 'first')
-  const second = await postMessage(prisma, seed, 'second')
-  const third = await postMessage(prisma, seed, 'third')
+  const arrivalBase = Date.now()
+  const first = await postMessage(prisma, seed, 'first', new Date(arrivalBase))
+  const second = await postMessage(prisma, seed, 'second', new Date(arrivalBase + 10))
+  const third = await postMessage(prisma, seed, 'third', new Date(arrivalBase + 20))
 
   assert.equal(await decideReplyForMessage(prisma, seed, first), 'claimed')
   assert.equal(await decideReplyForMessage(prisma, seed, second), 'pended')
@@ -279,14 +309,18 @@ runDatabaseTest('pending survives a lost drain: the re-poll sweep enqueues the f
   })
 
   // The re-poll finds the orphaned pendings and enqueues the batched follow-up.
-  assert.equal(await sweepPendingThreadMessages(prisma), 1)
+  // Asserted on this seed's own outcome, not the sweep's return count: the
+  // sweep is global, so a concurrent suite's orphan (the api trigger-dispatch
+  // test has such a window, and `pnpm -r test` runs both packages at once)
+  // legitimately raises that count without saying anything about this thread.
+  await sweepPendingThreadMessages(prisma)
   const runs = await runsForThread(prisma, seed)
   assert.equal(runs.length, 2)
   assert.equal(runs[1]?.triggerMessageId, third.id)
   assert.equal(await queueJobCount(prisma, `run:batch:${runs[1]?.id}`), 1)
 
-  // Idempotent: a later sweep finds nothing to do.
-  assert.equal(await sweepPendingThreadMessages(prisma), 0)
+  // Idempotent: a later sweep produces no further run for this pair.
+  await sweepPendingThreadMessages(prisma)
   assert.equal((await runsForThread(prisma, seed)).length, 2)
 })
 
@@ -298,9 +332,10 @@ runDatabaseTest('cancelling the in-flight run still fires the batched follow-up'
     await prisma.$disconnect()
   })
 
-  const first = await postMessage(prisma, seed, 'first')
-  const second = await postMessage(prisma, seed, 'second')
-  const third = await postMessage(prisma, seed, 'third')
+  const arrivalBase = Date.now()
+  const first = await postMessage(prisma, seed, 'first', new Date(arrivalBase))
+  const second = await postMessage(prisma, seed, 'second', new Date(arrivalBase + 10))
+  const third = await postMessage(prisma, seed, 'third', new Date(arrivalBase + 20))
 
   assert.equal(await decideReplyForMessage(prisma, seed, first), 'claimed')
   assert.equal(await decideReplyForMessage(prisma, seed, second), 'pended')
