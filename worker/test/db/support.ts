@@ -25,6 +25,14 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 //       each other's rows and still assert their own outcome. This is why they
 //       live under `test/db/` rather than beside the unit suites: `test:unit`
 //       globs `test/*.test.ts`, so the split is the directory itself.
+//
+// One file at a time is only exclusivity *within* this package. `@nessie/api`'s
+// trigger-dispatch suites pass through the very state the preflight below
+// refuses — an orphaned (agent, thread) pending pair — so the two packages must
+// not run at once either. `pnpm -r` gets that from its topological order;
+// `turbo run test` gets it because `turbo.json` pins `@nessie/api#test` behind
+// `@nessie/worker#test`. If this preflight starts failing on a database you
+// believe is yours alone, check what else is running against it first.
 
 // Suites are skipped, not failed, when no database is configured: the worker's
 // unit suites must stay runnable without Postgres.
@@ -86,8 +94,9 @@ export const assertGlobalQueuesQuiet = async (prisma: PrismaClient): Promise<voi
 // Scoped replacement for `DELETE FROM queue_jobs WHERE idempotency_key LIKE
 // 'run:batch:%'` and friends. Those patterns match every suite's jobs, not just
 // the caller's, so a cleanup running while another suite asserts its own job
-// count silently deletes that job first — `pnpm -r test` (CI) and `turbo run
-// test` run the api and worker suites concurrently against one database. Every
+// count silently deletes that job first. The api and worker packages no longer
+// overlap under either runner, but every suite still shares the one database
+// with its own package's files and with `packages/*`'s database suites. Every
 // `run.execute` payload carries a top-level `threadId`, so the seed's thread
 // scopes the delete exactly.
 export const deleteThreadQueueJobs = async (
