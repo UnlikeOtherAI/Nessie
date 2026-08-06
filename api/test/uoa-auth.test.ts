@@ -197,6 +197,7 @@ test('buildConfigJwt requests UOA workspace features', async () => {
 
     assert.deepEqual(payload.org_features, {
       allow_user_create_org: true,
+      allow_user_create_team: true,
       enabled: true,
     })
     // Slack-style workspace chooser must be requested so UOA issues the
