@@ -1,7 +1,7 @@
 # E2E verification: a hardware-diagnostics monitoring agent, built by a user
 
 **Date:** 2026-08-11
-**Status:** in progress — 4 defects fixed and deployed, 1 reverted, 2 blocked on Ledger
+**Status:** 6 defects fixed and deployed, 1 reverted pending rework, 1 blocked on a Ledger token grant, 1 designed and not yet built
 **Target:** production `https://app.nessie.works` (pre-release; database will be wiped before launch)
 
 ## Why this exists
@@ -81,7 +81,7 @@ control.
 | 4 | Personal Assistant | The PA cannot reach parity with the click path: no `channel_create`, no agent creation, no agent→channel binding, no trigger creation. It said so honestly rather than faking it, but a user who does not want to click cannot get there. | **High** | Designed (Fable + Kimix agreed); not yet built |
 | 5 | Runs / scheduling | A run **always** posts a message, so a monitoring agent cannot stay quiet; a 15-minute sweep reports "nothing changed" forever. | **High** | Built, then **reverted** — the `conclude_silently` descriptor made the provider return empty completions and failed every trigger run. Design stands; mechanism needs rework |
 | 6 | Ledger / embeddings | Production had no `NESSIE_EMBEDDING_*`, so embeddings fell back to the chat provider and 403'd. Fixed the routing — but the Ledger key is then rejected with `token not allowed for jina`, so memory recall and `kb_search` still run without vectors. | **High** | Routing fixed + deployed; **blocked on the Ledger token being granted the jina service** |
-| 7 | Triggers / Ledger | Every **scheduler-fired** run fails with `Ledger requires a linked UnlikeOtherAI SSO identity for the originating user`. Manual "Run now" and @mentions work, because they carry the caller's linked identity. The unattended schedule has therefore never delivered on its own. | **Blocker** | Open — needs the scheduler's execution origin to resolve a linked UOA identity |
+| 7 | Triggers / Ledger | Every **scheduler-fired** run fails with `Ledger requires a linked UnlikeOtherAI SSO identity for the originating user`. Manual "Run now" and @mentions work, because they carry the caller's linked identity. The unattended schedule has therefore never delivered on its own. | **Blocker** | **Fixed** — the trigger persists the creator's UOA tuple in `launchOrigin` and re-verifies it against the live link at each fire. Verified: an unattended scheduler run completed in production for the first time |
 | 8 | Add MCP server wizard | Transport dropdown offers `stdio` and `ws`, which the server rejects for user-authored connectors (HTTP/SSE only). Dead options in a picker. | Minor | Open |
 | 9 | Install form | Scope-id is a raw UUID text box with no picker. Works for `organization` (pre-filled) but is a dead end for project/team/channel scope. | Minor | Open |
 | 10 | Connectors, installed scopes | Empty state reads «Pick a catalog entry and click "Install"» while the selected entry is a draft and no Install button exists (it appears only after Publish). | Cosmetic | Open |
@@ -156,6 +156,27 @@ member-level for route parity. **Checked in code — Fable is right:**
 while `POST /api/agents/:id/bindings` adds `requireOwner` + channel membership
 + not-a-PA-DM + `checkPolicy('agent','bind')`. Matching the routes exactly is
 the whole point, so create is member-level and bind/trigger are owner-gated.
+
+### Defect 7 (scheduler identity) — design agreement
+
+Both consultants chose **shape B**: capture the creator's immutable UOA tuple
+(`{subject, organizationId, teamId, tokenVersion}`) into the trigger's
+server-owned `launchOrigin` while a session exists, replay it at fire time, and
+re-verify it against the live `ProductAccountLink` exactly as a session is
+verified. Both rejected reading the link's `activeOrgId`/`activeTeamId`
+instead — the docs call those non-authoritative last-seen metadata, and signing
+background work into whatever workspace someone last looked at is the bug that
+invites.
+
+Fable added the observation that settles it: `buildSubjectAssertion` never uses
+a live user credential — it is Nessie's own RS256 assertion over
+`{sub, tv, active}` — so replaying a captured tuple is cryptographically
+identical to a live session, and every fail-closed gate is source-agnostic.
+Fable also **corrected Kimix on the backfill**: Kimix proposed a one-off script
+seeding the tuple from the link's `active*` fields, which would have
+reintroduced exactly the non-authoritative source both had just rejected. No
+backfill was written; the one pre-existing trigger errored once with the
+recreate message and moved to `status: error`, which is the intended path.
 
 ## Notes
 
