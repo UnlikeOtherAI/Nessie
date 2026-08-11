@@ -8,7 +8,7 @@ type MaterialIconName = ComponentProps<typeof MaterialIcons>['name']
 // The native bottom tab bar mirrors the admin's top-level sections. Tapping a tab
 // drives the WebView to `path` (window.__nessieNavigate); the SPA reports its
 // route back so `matches` can resync the selected tab. iOS uses SF Symbols for
-// the glass bar; Android uses Material icons (rendered to image sources). The
+// the glass bar; Android uses Material icons. The
 // Search tab uses the iOS 26 search role so it renders separated on the trailing
 // edge.
 export type TabKey = 'channels' | 'projects' | 'knowledge' | 'admin' | 'search'
@@ -19,7 +19,6 @@ export type TabDef = {
   path: string
   sfSymbol: SFSymbol
   materialIcon: MaterialIconName
-  activeMaterialIcon: MaterialIconName
   role?: TabRole
   matches: (pathname: string) => boolean
 }
@@ -47,7 +46,6 @@ export const TABS: TabDef[] = [
     path: '/channels',
     sfSymbol: 'message',
     materialIcon: 'chat-bubble-outline',
-    activeMaterialIcon: 'chat',
     matches: (p) => p.startsWith('/channels'),
   },
   {
@@ -56,7 +54,6 @@ export const TABS: TabDef[] = [
     path: '/projects',
     sfSymbol: 'folder',
     materialIcon: 'folder-open',
-    activeMaterialIcon: 'folder',
     matches: (p) => p.startsWith('/projects'),
   },
   {
@@ -65,7 +62,6 @@ export const TABS: TabDef[] = [
     path: '/knowledge-base',
     sfSymbol: 'book',
     materialIcon: 'menu-book',
-    activeMaterialIcon: 'book',
     matches: (p) => p.startsWith('/knowledge-base'),
   },
   {
@@ -73,8 +69,7 @@ export const TABS: TabDef[] = [
     title: 'Admin',
     path: '/settings',
     sfSymbol: 'gearshape',
-    materialIcon: 'settings-applications',
-    activeMaterialIcon: 'settings',
+    materialIcon: 'settings',
     matches: matchesAdmin,
   },
   {
@@ -83,7 +78,6 @@ export const TABS: TabDef[] = [
     path: '/search',
     sfSymbol: 'magnifyingglass',
     materialIcon: 'search',
-    activeMaterialIcon: 'search',
     role: 'search',
     matches: (p) => p.startsWith('/search'),
   },

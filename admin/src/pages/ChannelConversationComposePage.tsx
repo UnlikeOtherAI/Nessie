@@ -7,8 +7,8 @@ import { useSendMessageToThread } from '../facades/messages/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { agentGradient } from '../lib/avatar'
-import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { UserAvatar } from '../components/primitives/UserAvatar'
+import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -231,14 +231,7 @@ export const ChannelConversationComposePage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <h1 className="truncate text-[17px] font-bold text-[var(--tx)]">
-            New chat
-          </h1>
-        </div>
-      </header>
+      <AdminPageHeader title="New chat" />
 
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-5 py-5">
         <div className="rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)]">

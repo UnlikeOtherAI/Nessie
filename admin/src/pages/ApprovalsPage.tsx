@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
+import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -82,17 +82,14 @@ export const ApprovalsPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className={sectionTitle}>Approvals</div>
-        {pending.length > 0 && (
-          <span className="ml-2 rounded-full bg-[color:var(--warning-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--warning-text)]">
-            {pending.length} pending
-          </span>
-        )}
-      </header>
+      <AdminPageHeader title="Approvals" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {pending.length > 0 ? (
+          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--warning-text)]">
+            {pending.length} pending
+          </div>
+        ) : null}
         {pending.length > 0 && (
           <div className="mb-4">
             <div className={sectionTitle}>Pending</div>

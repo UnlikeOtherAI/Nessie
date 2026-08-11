@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom'
 import { UoaBillingCreditsPanel } from '../components/features/billing/UoaBillingCreditsPanel'
 import { UoaBillingRecurringAddonsPanel } from '../components/features/billing/UoaBillingRecurringAddonsPanel'
 import { UoaBillingStatementPanel } from '../components/features/billing/UoaBillingStatementPanel'
+import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import {
   getUoaBillingCheckoutReturnNotice,
   readUoaBillingCheckoutReturn,
@@ -13,11 +14,7 @@ import {
   billingRecurringAddonsKey,
   billingStatementKey,
 } from '../facades/billing/hooks'
-import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 export const TokenUsagePage = () => {
   const { me } = useAuthSession()
@@ -63,10 +60,7 @@ export const TokenUsagePage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className={sectionTitle}>Credits &amp; Billing</div>
-      </header>
+      <AdminPageHeader title="Credits & Billing" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {checkoutNotice && (

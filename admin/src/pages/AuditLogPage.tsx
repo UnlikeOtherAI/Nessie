@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
+import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -20,9 +20,6 @@ type AuditResponse = {
   data: AuditEntry[]
   meta: { cursor: string | null; hasMore: boolean }
 }
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 export const AuditLogPage = () => {
   const { me } = useAuthSession()
@@ -51,10 +48,10 @@ export const AuditLogPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className={sectionTitle}>Audit Log</div>
-        <div className="ml-auto w-48">
+      <AdminPageHeader title="Audit Log" />
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mb-4 w-full max-w-xs">
           <input
             className="admin-input"
             onChange={(e) => setActionFilter(e.target.value)}
@@ -62,9 +59,6 @@ export const AuditLogPage = () => {
             value={actionFilter}
           />
         </div>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid gap-2">
           {(data?.data ?? []).map((entry) => (
             <div key={entry.id} className="admin-card p-3">

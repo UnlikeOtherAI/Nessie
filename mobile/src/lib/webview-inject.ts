@@ -1,9 +1,11 @@
-// Injected into the admin page. The WebView fills the area above the native tab
-// bar; the admin's full-height columns run edge to edge. This (1) enables CSS
-// safe-area insets via viewport-fit=cover, (2) keeps iPhone page chrome below the
-// status bar while column backgrounds remain edge to edge, (3) pads column
-// content up from the home indicator, and (4) reports the document background so
-// the native view behind the WebView matches during load/overscroll.
+// Injected into the admin page. The Android WebView continues beneath its
+// floating dock so full-height columns and dividers do not stop at a detached
+// native slab; its content reserves the dock through a shared CSS custom
+// property. This (1) enables CSS safe-area insets via viewport-fit=cover, (2)
+// keeps iPhone page chrome below the status bar while column backgrounds remain
+// edge to edge, (3) pads content clear of native overlays, and (4) reports the
+// document background so the native view behind the WebView matches during
+// load/overscroll.
 export const INJECTED = `
 (function () {
   var vp = document.querySelector('meta[name=viewport]');
@@ -24,7 +26,9 @@ export const INJECTED = `
     var nativeTopbarOwnsSafeArea = shell && shell.platform === 'android';
     var androidNativeFrameCss = nativeTopbarOwnsSafeArea
       ? [
+          ':root { --nessie-native-bottom-overlay: 94px; }',
           '.admin-topbar { height: var(--topbar-h); padding-top: 0; }',
+          '.admin-shell > aside, .admin-shell > main { padding-bottom: calc(var(--nessie-native-bottom-overlay) + env(safe-area-inset-bottom)); }',
           '[data-testid="channel-content-scroll"] { overflow-x: hidden; }',
           '.admin-message-markdown .admin-message-code-block { overflow-x: auto; overflow-y: hidden; }'
         ].join('')
