@@ -1293,6 +1293,30 @@ answers. Two structural facts govern how that reads to a person:
   the agent posts top-level where an alert belongs. Stamped structurally from
   the fact that it is a trigger run — never judged from message content.
 
+#### Giving a recurring schedule an end
+
+A recurring trigger (interval or cron) may carry `until` in its config — an
+ISO-8601 instant after which it stops. This is the shape of a temporary watch:
+an incident window, a migration, an overnight soak. Without it every schedule
+ran forever and had to be remembered and paused by hand.
+
+Enforcement reuses the existing stop signal rather than adding one: a computed
+fire time past `until` becomes `null`, which clears `next_run_at`, and the
+scheduler only claims rows where that column is set
+(`parseScheduleUntil` + the `withinScheduleEnd` guard in
+`packages/runtime/src/scheduling.ts`). The API's own arming path
+(`normalizeNextRunAt`, `api/src/services/trigger-shared.ts`) applies the same
+guard, because it does not go through the worker's initial-arm function — a
+schedule submitted with an end already past must not arm and fire once.
+
+A lapsed recurring trigger is set to **paused**, not left `active` with no next
+run, which would be a zombie indistinguishable from a broken config. Pause is
+already the product's reversible stop state, so resuming works — and
+`resumeAgentTrigger` re-arms a scheduler-type trigger whose `next_run_at` is
+null, or leaves it paused when the end is still in the past. A malformed
+`until` reads as "no end" so a bad value can never silently stop a schedule.
+Set it in the trigger editor's optional **Stop after** field.
+
 #### A scheduled agent can stay quiet
 
 A run used to always post: the terminal path wrote a message unconditionally,

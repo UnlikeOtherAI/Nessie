@@ -460,14 +460,48 @@ export const pauseAgentTrigger = async (
     status: 'paused',
   })
 
+/**
+ * Resume a paused trigger.
+ *
+ * A schedule can be paused two ways: by a person, which leaves `next_run_at`
+ * intact, or by reaching its `config.until`, which cleared it. Flipping status
+ * alone would revive the second kind as `active` with no next run — enabled to
+ * look at, silently dead forever — so a scheduler-type trigger with no armed
+ * next run is re-armed here. If its end is still in the past there is nothing
+ * to arm and it stays paused, which is the honest answer: extend the end first.
+ */
 export const resumeAgentTrigger = async (
   prisma: PrismaClient,
   triggerId: string,
-): Promise<AgentTriggerRecord | null> =>
-  updateAgentTrigger(prisma, triggerId, {
+): Promise<AgentTriggerRecord | null> => {
+  const existing = await prisma.agentTrigger.findUnique({
+    select: { config: true, nextRunAt: true, type: true },
+    where: { id: triggerId },
+  })
+  if (!existing) return null
+
+  const needsRearm =
+    existing.nextRunAt === null
+    && SCHEDULER_TRIGGER_TYPES.includes(existing.type as AgentTriggerType)
+  const rearmed = needsRearm
+    ? normalizeNextRunAt({
+        config: (existing.config ?? {}) as Record<string, unknown>,
+        type: existing.type as AgentTriggerType,
+      })
+    : undefined
+
+  if (needsRearm && !rearmed) {
+    return mapTriggerRecord(
+      await prisma.agentTrigger.findUniqueOrThrow({ where: { id: triggerId } }),
+    )
+  }
+
+  return updateAgentTrigger(prisma, triggerId, {
     enabled: true,
     status: 'active',
+    ...(rearmed ? { nextRunAt: rearmed.toISOString() } : {}),
   })
+}
 
 export const listAgentTriggerDeliveries = async (
   prisma: PrismaClient,

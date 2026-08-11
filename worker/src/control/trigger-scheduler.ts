@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { buildNextScheduledRunAt } from '@nessie/runtime'
+import { buildNextScheduledRunAt, isOneOffConfig } from '@nessie/runtime'
 import type { AgentTriggerType } from '@nessie/schemas'
 import {
   emptySkipReferenceTime,
@@ -76,12 +76,36 @@ const claimDueScheduledTriggers = async (
   )
 }
 
+/**
+ * Next fire time plus the status the row should carry afterwards.
+ *
+ * `buildNextScheduledRunAt` returns null for two different reasons, and they
+ * must not look the same on the row: a one-off has simply done its job, while
+ * a recurring schedule that returned null has reached its `until` and lapsed.
+ * Leaving the latter `active` with no next run would be a silent zombie —
+ * indistinguishable from a broken config. Pausing it is reversible: extend the
+ * end date and resume.
+ */
+const settleRecurringClaim = (input: {
+  config: unknown
+  from: Date
+  now: Date
+  type: Parameters<typeof buildNextScheduledRunAt>[0]['type']
+}): { nextRunAt: Date | null; status: 'active' | 'paused' } => {
+  const nextRunAt = buildNextScheduledRunAt(input)
+  return {
+    nextRunAt,
+    status:
+      nextRunAt === null && !isOneOffConfig(input.config) ? 'paused' : 'active',
+  }
+}
+
 const finalizeScheduledTriggerClaim = async (
   prisma: PrismaClient,
   input: {
     claimId: string
     nextRunAt: Date | null
-    status?: 'active' | 'error'
+    status?: 'active' | 'error' | 'paused'
     triggerId: string
   },
 ): Promise<void> => {
@@ -177,13 +201,12 @@ export const sweepDueScheduledTriggers = async (
 
         await finalizeScheduledTriggerClaim(prisma, {
           claimId: trigger.schedulerClaimId,
-          nextRunAt: buildNextScheduledRunAt({
+          ...settleRecurringClaim({
             config: trigger.config,
             from: trigger.nextRunAt,
             now,
             type: trigger.type,
           }),
-          status: 'active',
           triggerId: trigger.id,
         })
       } catch {
@@ -249,13 +272,12 @@ export const sweepDueScheduledTriggers = async (
       })
       await finalizeScheduledTriggerClaim(prisma, {
         claimId: trigger.schedulerClaimId,
-        nextRunAt: buildNextScheduledRunAt({
+        ...settleRecurringClaim({
           config: trigger.config,
           from: trigger.nextRunAt,
           now,
           type: trigger.type,
         }),
-        status: 'active',
         triggerId: trigger.id,
       })
       continue
@@ -282,13 +304,12 @@ export const sweepDueScheduledTriggers = async (
 
       await finalizeScheduledTriggerClaim(prisma, {
         claimId: trigger.schedulerClaimId,
-        nextRunAt: buildNextScheduledRunAt({
+        ...settleRecurringClaim({
           config: trigger.config,
           from: trigger.nextRunAt,
           now,
           type: trigger.type,
         }),
-        status: 'active',
         triggerId: trigger.id,
       })
     } catch {
