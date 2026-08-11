@@ -1,6 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  NATIVE_PUSH_TOKEN_EVENT,
+  NATIVE_PUSH_UNREGISTER_EVENT,
+  readNativePushRegistration,
+} from '../lib/native-push-registration';
 import { isReactNativeWebView } from '../lib/mobile-shell';
+import { useApiClient } from './ApiClientProvider';
 import { useShakeFeedback } from './ShakeFeedbackContext';
 
 type RnWindow = Window & {
@@ -40,7 +46,72 @@ const dataUriToFile = (dataUri: string, filename: string): File | null => {
 export const NativeShellBridge = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const apiClient = useApiClient();
   const { setScreenshot } = useShakeFeedback();
+  const registeredToken = useRef<string | null>(null);
+  const registeredApiClient = useRef<typeof apiClient | null>(null);
+  const pendingToken = useRef<string | null>(null);
+  const pendingRegistrations = useRef(new Set<Promise<void>>());
+
+  useEffect(() => {
+    if (!isReactNativeWebView()) {
+      return undefined;
+    }
+    const register = (event: Event): void => {
+      const registration = readNativePushRegistration(event);
+      if (
+        !registration
+        || (
+          registeredToken.current === registration.token
+          && registeredApiClient.current === apiClient
+        )
+      ) {
+        return;
+      }
+      pendingToken.current = registration.token;
+      const registrationRequest: Promise<void> = apiClient.post('/api/devices', registration)
+        .then(() => {
+          registeredToken.current = registration.token;
+          registeredApiClient.current = apiClient;
+        })
+        .catch(() => undefined);
+      pendingRegistrations.current.add(registrationRequest);
+      void registrationRequest.finally(() => pendingRegistrations.current.delete(registrationRequest));
+    };
+    const unregister = (event: Event): void => {
+      const complete = (event as CustomEvent<{ complete?: unknown }>).detail?.complete;
+      const finish: () => void = typeof complete === 'function'
+        ? (complete as () => void)
+        : () => undefined;
+      void (async () => {
+        // Do not let an earlier registration complete after this delete and
+        // recreate a signed-out user's device binding.
+        await Promise.all([...pendingRegistrations.current]);
+        const token = pendingToken.current ?? registeredToken.current;
+        pendingToken.current = null;
+        registeredToken.current = null;
+        registeredApiClient.current = null;
+        if (!token) {
+          finish();
+          return;
+        }
+        await apiClient.delete(`/api/devices/${encodeURIComponent(token)}`).catch(() => undefined);
+        finish();
+      })();
+    };
+    window.addEventListener(NATIVE_PUSH_TOKEN_EVENT, register);
+    window.addEventListener(NATIVE_PUSH_UNREGISTER_EVENT, unregister);
+    // A workspace switch changes the authenticated API client without
+    // necessarily changing the pathname. Ask the native shell to repost its
+    // cached installation token for this newly scoped session.
+    (window as RnWindow).ReactNativeWebView?.postMessage(
+      JSON.stringify({ type: 'nessie:request-push-registration' }),
+    );
+    return () => {
+      window.removeEventListener(NATIVE_PUSH_TOKEN_EVENT, register);
+      window.removeEventListener(NATIVE_PUSH_UNREGISTER_EVENT, unregister);
+    };
+  }, [apiClient]);
 
   useEffect(() => {
     if (!isReactNativeWebView()) {

@@ -161,7 +161,7 @@ export const ApnsCard = ({ status }: ApnsCardProps) => {
                 onClick={() => void onTest()}
                 type="button"
               >
-                Send test
+                Send test to this iPhone
               </button>
               <button
                 className="admin-button admin-button-secondary"

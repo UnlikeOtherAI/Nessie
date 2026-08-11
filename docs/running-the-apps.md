@@ -215,12 +215,39 @@ The WebView shows the admin's own login (SSO + local-dev email/password); there
 is no separate native login. ATS allows the dev LAN `http://` origin via
 `NSAllowsLocalNetworking` in `mobile/app.json`.
 
-## iPhone Dev Build And Push - After Apple Enrollment
+## iPhone Dev Build And Direct APNs Push
 
-Prerequisites:
+Nessie sends iOS notifications **directly from its own worker/API to APNs**. It
+does not use Expo Push. The iOS app registers its raw APNs token after an
+authenticated WebView route loads; the authenticated admin then stores that
+token with the current organization. A notification tap returns to the exact
+channel message when its deep-link target is still available.
 
-- Apple Developer Program membership, currently required for real iOS device provisioning.
-- Expo/EAS account.
+Before a real-device build can receive pushes, an Apple Developer Account
+Holder or Admin must do the one-time Apple portal setup for
+`com.unlikeotherai.nessie`:
+
+- Enable the **Push Notifications** capability on the App ID.
+- Create an APNs **Authentication Key** (`.p8`) with its Key ID. Download it
+  once and put it in the platform secret-management process; Apple does not
+  allow it to be downloaded again.
+- Record the Apple Team ID and use `com.unlikeotherai.nessie` as the APNs
+  topic. The `.p8` key replaces APNs certificate files; it is valid for both
+  sandbox and production hosts.
+
+The application configuration includes Expo's `expo-notifications` plugin.
+After `npx expo prebuild --platform ios --no-install`, confirm Xcode generated
+`ios/Nessie/Nessie.entitlements` with `aps-environment`. Xcode's automatic
+signing must use the Apple team whose App ID has the capability above. The
+development build reports `sandbox` with its device token; TestFlight and App
+Store builds report `production`, and Nessie records that environment per token
+so both can coexist.
+
+The remaining prerequisites are:
+
+- Apple Developer Program membership for device provisioning and the portal
+  actions above.
+- An Expo/EAS account for remote builds (optional for a local Xcode build).
 - The `extra.eas.projectId` value in `mobile/app.json` filled by `eas init`.
 - The `owner` value in `mobile/app.json` replaced with the Expo account name.
 
@@ -244,6 +271,33 @@ npx eas-cli build -p ios --profile development
 ```
 
 Install the development build on the device. Unlike Expo Go, the development build gets a native APNs token, so push notifications can work.
+
+### Configure and prove the in-house sender
+
+1. Sign in to Nessie on that physical iPhone or iPad and grant notification
+   permission. This registers the native APNs token for the signed-in user and
+   current organization. Every signed session has a globally ordered,
+   server-issued registration generation, so out-of-order former-session
+   requests — including those from a former account — cannot reclaim it. Logout
+   retains a non-deliverable tombstone with a newer generation for the same
+   reason. A simulator cannot prove APNs delivery.
+2. Sign in as a platform super-admin, open **Settings → Push credentials**, and
+   upload the `.p8` key with its Key ID, Team ID, topic
+   `com.unlikeotherai.nessie`, and either environment. The secret is encrypted
+   in Nessie's server-side secret store and is never returned to a client.
+3. Select **Send test to this iPhone**. Nessie looks up only the operator's
+   newest iOS token in the current organization, selects that token's APNs host
+   (`sandbox` or `production`), and sends a real alert directly to APNs. An
+   “APNs accepted” response is provider acceptance, not a claim that iOS
+   displayed the banner.
+4. Send a channel message. The worker sends the channel/mention framing and a
+   truncated message preview (at most 140 characters), coalesces bursts by
+   channel, and includes the channel/message deep link. Muted channels and
+   quiet-hours remain suppressed. Tokens from another organization are never
+   selected.
+
+For a production check, repeat step 3 with a TestFlight build. It must reach
+the production APNs host; a sandbox development token must not be sent there.
 
 ## TestFlight
 

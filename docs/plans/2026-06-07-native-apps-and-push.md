@@ -1,8 +1,8 @@
 # Native Apps + Self-Operated Push — Plan
 
-Status: **proposed** (2026-06-07). Bringing Nessie to phones and desktops as
-real native apps, with a push-notification server we build and operate
-ourselves (no third-party push relay).
+Status: **in progress** (updated 2026-08-11). Bringing Nessie to phones and
+desktops as real native apps, with a push-notification server we build and
+operate ourselves (no third-party push relay).
 
 ## Goals
 
@@ -92,11 +92,14 @@ Foreground clients should use one user-scoped connection:
 
 ## The push server (self-operated)
 
-The centerpiece. One central service we run (`push-gateway/`) that owns the
-APNs/FCM credentials and the published app identity, and fans notifications out
-to devices. Every Nessie backend — including self-hosted ones — asks the gateway
-to deliver; the gateway is the single component that is *not* self-hostable,
-because the signing keys and the App Store / Play listing belong to us.
+The hosted deployment currently sends directly from Nessie's API/worker through
+`@nessie/push`: the API stores platform credentials in its encrypted secret
+store, while the worker selects recipients and opens the APNs/FCM connection.
+That is the operative, fully in-house path — no Expo Push or other message relay
+receives notification content or device tokens. The separately deployable
+`push-gateway/` remains an optional central boundary for future self-hosted
+instances; it must preserve the same payload, credential, tenant, and dead-token
+contracts rather than becoming a second delivery implementation.
 
 ### Topology
 
@@ -105,24 +108,24 @@ because the signing keys and the App Store / Play listing belong to us.
         │  (Postgres pubsub event)
         ▼
  worker push-dispatch ── resolves recipients → their device tokens
-        │  authenticated HTTPS (per-instance API key)
+        │  decrypts platform credential only in server process
         ▼
- push-gateway ── APNs (HTTP/2 + .p8 JWT) ──► iPhones
+ @nessie/push ── APNs (HTTP/2 + .p8 JWT) ──► iPhones
               └─ FCM  (v1 API + service acct) ─► Android
 ```
 
 - The **worker** decides *who* should be notified and *what the payload is*
   (this needs tenant/RBAC context, so it stays inside each instance).
-- The **gateway** is dumb fan-out: "deliver this payload to these tokens via
-  APNs/FCM." It holds the secrets; it does not need tenant context.
-- Self-hosted instances call the gateway over HTTPS with a per-instance key.
-  The single-tenant hosted deployment calls the same gateway in-process or over
-  localhost.
+- The **direct server sender** is dumb fan-out: "deliver this payload to these
+  tokens via APNs/FCM." Recipient selection and tenant policy stay in the
+  worker; decrypted secret bytes never leave the server process.
+- If the optional gateway is enabled for a self-hosted topology, it is an
+  authenticated forwarding boundary, not a client-facing push service.
 
 ### Device-token registry
 
-New table (per-instance, in each Nessie DB), `organization_id`-scoped like every
-other child table:
+New table (per-instance, in each Nessie DB). A token has one current owner;
+the worker additionally filters that owner by its organization before delivery:
 
 ```
 device_tokens
@@ -132,15 +135,26 @@ device_tokens
   platform        enum(ios, android)
   token           text   (the *native* APNs/FCM token, not an Expo token)
   app_version     text
+  apns_environment enum(sandbox, production), nullable for Android
+  registration_version bigint (server-issued global ownership generation)
+  inactive_at      timestamptz (logout tombstone; never delivered)
   last_seen_at    timestamptz
   created_at      timestamptz
-  unique(user_id, token)
+  unique(token)
 ```
 
 Endpoints (in `api/`):
 
-- `POST /api/devices` — register/refresh `{ platform, token, appVersion }`.
+- `POST /api/devices` — register/refresh `{ platform, token, appVersion,
+  apnsEnvironment? }`; iOS supplies the host selected by its signed build.
+  A native token represents one installation, so registration transfers it to
+  the current user and organization rather than retaining a former login. The
+  server signs every access session with a strictly increasing global ownership
+  generation, then rejects a late former-session request — even from a
+  different account — rather than restoring stale ownership.
 - `DELETE /api/devices/:token` — unregister (logout / token invalidated).
+  This tombstones the installation with a newer server generation instead of
+  deleting it, so an in-flight former-session registration remains rejected.
 
 Token hygiene: APNs/FCM report invalid tokens on send; the gateway returns those
 to the worker, which prunes them. Tokens also rotate on reinstall — clients
@@ -184,12 +198,16 @@ device token**, not an Expo push token:
 
 - Per-instance gateway API key; the gateway never trusts a token→user mapping it
   did not receive over an authenticated call.
-- Device tokens are `organization_id`-scoped; the worker only ever sends a
-  user's own tokens.
-- `.p8` / FCM service-account secrets live only in the gateway (reuse the
-  existing prod secret-store pattern), never in client apps or instance configs.
-- Gateway is stateless w.r.t. tenant data — it stores no messages, only does
-  authenticated fan-out and reports back dead tokens.
+- Device tokens are `organization_id`-scoped; the worker filters every native
+  fan-out by both organization and recipient user, so a multi-workspace user
+  never receives another workspace's notification on a shared device.
+- iOS records the APNs environment of the signed build with its token. The
+  worker uses that environment for each send, so sandbox development builds
+  and TestFlight/production builds can coexist against the same `.p8` key.
+- `.p8` / FCM service-account secrets live only in the platform's encrypted
+  server-side secret store, never in client apps or organization configs.
+- The direct sender is stateless with respect to tenant content — it stores no
+  messages, only does scoped fan-out and reports dead tokens for pruning.
 
 ## Push credentials — super-user upload (admin)
 
@@ -223,8 +241,9 @@ which is per-tenant and therefore the wrong gate for global creds).
   prove it signs; reject otherwise.
 - On FCM JSON upload: parse, assert `type: "service_account"` and the required
   fields, and do a token exchange to prove the account is live.
-- A **"Send test push"** action delivers to a chosen registered device so the
-  operator confirms the whole chain before shipping.
+- A **"Send test to this iPhone"** action delivers directly to the requesting
+  operator's newest registered iOS device in the current workspace, so it
+  verifies the exact server → APNs → device chain before shipping.
 
 ### Storage & UX
 

@@ -93,7 +93,7 @@ export const FcmCard = ({ status }: FcmCardProps) => {
                 onClick={() => void onTest()}
                 type="button"
               >
-                Send test
+                Validate account
               </button>
               <button
                 className="admin-button admin-button-secondary"

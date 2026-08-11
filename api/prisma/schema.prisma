@@ -712,6 +712,16 @@ model User {
   @@map("users")
 }
 
+// A single server-side generation orders device-token ownership handoffs across
+// every account and workspace. It is deliberately not tied to an individual
+// user: an old session for a former user must never reclaim a shared device.
+model PushRegistrationGeneration {
+  id    Int    @id
+  value BigInt
+
+  @@map("push_registration_generations")
+}
+
 // Rotating refresh tokens for the short-lived access JWT. Only the SHA-256 hash
 // of the opaque token is stored (never the raw value). Each login starts a
 // `familyId` chain; on every refresh the presented token is revoked and a
@@ -3577,11 +3587,11 @@ model Feedback {
 }
 
 // ─── Device-token registry (native push targeting) ──────────────────────────
-// One row per (user, native device token). Mobile apps register the *native*
-// APNs/FCM token on every launch so the push pipeline can fan a notification
-// out to a user's devices. `organization_id`-scoped like every other child
-// table; the worker only ever sends a user's own tokens. Relation-free so the
-// slice lands additively; integrity is enforced at the application layer.
+// One row per native device token. Mobile apps register the *native* APNs/FCM
+// token on every launch. Registering transfers the installation to the current
+// user and organization, so a shared device cannot retain a former person's
+// private notification previews. Relation-free so the slice lands additively;
+// integrity is enforced at the application layer.
 enum DevicePlatform {
   ios
   android
@@ -3594,11 +3604,14 @@ model DeviceToken {
   platform       DevicePlatform
   token          String
   appVersion     String?        @map("app_version")
+  apnsEnvironment PushApnsEnvironment? @map("apns_environment")
+  registrationVersion BigInt    @default(0) @map("registration_version")
+  inactiveAt     DateTime?      @map("inactive_at")
   lastSeenAt     DateTime       @default(now()) @map("last_seen_at")
   createdAt      DateTime       @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, token])
+  @@unique([token])
   @@index([organizationId])
   @@index([userId])
   @@map("device_tokens")

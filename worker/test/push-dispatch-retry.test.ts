@@ -89,7 +89,11 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findMany: async () => state.tokens.map((token) => ({ userId: token.userId, muted: false })),
     },
     deviceToken: {
-      findMany: async ({ where }: { where: { userId: { in: string[] } } }) =>
+      findMany: async ({
+        where,
+      }: {
+        where: { organizationId: string; userId: { in: string[] } }
+      }) =>
         state.tokens.filter((token) => where.userId.in.includes(token.userId)),
       deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         state.deleted.push(...where.id.in)
