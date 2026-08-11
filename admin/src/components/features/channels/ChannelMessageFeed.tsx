@@ -5,10 +5,9 @@ import {
   type PendingStreamMessage,
 } from '../../../facades/threads/thinking'
 import { usePresenceLookup } from '../../../providers/PresenceProvider'
-import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
-import { ChannelAgentGlyph } from './ChannelAgentGlyph'
-import { ChannelMessageRow, StatusBadge } from './ChannelMessageRow'
-import { MessageMarkdown } from './MessageMarkdown'
+import type { AvatarSources } from '../../primitives/UserAvatar'
+import { ChannelMessageRow } from './ChannelMessageRow'
+import { OptimisticMessageRow, StreamingMessageRow } from './ChannelTransientMessageRows'
 import type { ResolveReactorName } from './ReactionPills'
 import { ThinkingBubble } from './ThinkingBubble'
 import { useAttachmentViewer } from '../../shared/AttachmentViewer'
@@ -261,7 +260,7 @@ export const ChannelMessageFeed = ({
   )
 
   return (
-    <>
+    <div className="admin-chat-feed">
       {feedItems.length === 0 &&
       pendingMessages.length === 0 &&
       optimisticMessages.length === 0 ? (
@@ -348,50 +347,16 @@ export const ChannelMessageFeed = ({
       })}
 
       {optimisticMessages.map((entry) => (
-        <article
+        <OptimisticMessageRow
+          entry={entry}
+          getPresence={getPresence}
           key={entry.clientId}
-          className="admin-msg-row py-1"
-          data-testid="optimistic-message"
-        >
-          <UserAvatar
-            avatarAttachmentId={meAvatar.avatarAttachmentId}
-            avatarUrl={meAvatar.avatarUrl}
-            displayName={meDisplayName}
-            gravatarUrl={meAvatar.gravatarUrl}
-            size={36}
-            token={token}
-            userId={meUserId}
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2">
-              <span className="text-sm font-bold text-[var(--tx)]">{meDisplayName}</span>
-              <StatusBadge presence={getPresence(meUserId)} />
-              {entry.status === 'failed' ? (
-                <span
-                  className={[
-                    'inline-flex items-center rounded px-1.5 py-0.5',
-                    'bg-[var(--danger-soft)] text-[11px] font-semibold text-[var(--danger-text)]',
-                  ].join(' ')}
-                >
-                  failed
-                </span>
-              ) : (
-                <span
-                  className="inline-flex items-center gap-1 text-xs text-[color:var(--tx3)]"
-                  title="Sending…"
-                >
-                  sending
-                  <span className="streaming-dot" />
-                </span>
-              )}
-            </div>
-            <div className="mt-0.5">
-              <MessageMarkdown renderInlineText={renderContent}>
-                {entry.content}
-              </MessageMarkdown>
-            </div>
-          </div>
-        </article>
+          meAvatar={meAvatar}
+          meDisplayName={meDisplayName}
+          meUserId={meUserId}
+          renderContent={renderContent}
+          token={token}
+        />
       ))}
 
       {bottomPendingEntries.length > 0 ? (
@@ -423,35 +388,14 @@ export const ChannelMessageFeed = ({
           <Fragment key={entry.runId}>
             {renderThinkingBubble(entry, 'full')}
             {showStreamingRow ? (
-              <article className="admin-msg-row py-1">
-                <ChannelAgentGlyph agent={pendingAgent} token={token} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-bold text-[var(--tx)]">
-                      {pendingDisplayName}
-                    </span>
-                    <span
-                      className={[
-                        'inline-flex items-center rounded',
-                        'bg-[var(--accent-soft)] px-2 py-0.5',
-                        'text-[11px] font-semibold text-[var(--thinking)]',
-                      ].join(' ')}
-                    >
-                      {isDedicatedAgentConversation ? 'thinking' : 'running'}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
-                    <MessageMarkdown renderInlineText={renderContent}>
-                      {entry.content
-                        ? entry.content
-                        : isDedicatedAgentConversation
-                          ? `${pendingDisplayName} is thinking…`
-                          : '... thinking ...'}
-                    </MessageMarkdown>
-                    <span className="streaming-dot" />
-                  </div>
-                </div>
-              </article>
+              <StreamingMessageRow
+                agent={pendingAgent}
+                displayName={pendingDisplayName}
+                entry={entry}
+                isDedicatedAgentConversation={isDedicatedAgentConversation}
+                renderContent={renderContent}
+                token={token}
+              />
             ) : null}
           </Fragment>
         )
@@ -479,6 +423,6 @@ export const ChannelMessageFeed = ({
       {attachmentViewer}
       {thoughtProcessDialog}
       <div className="h-3" />
-    </>
+    </div>
   )
 }

@@ -210,7 +210,7 @@ export const ThreadReplyPanel = ({
       <aside
         aria-label="Thread"
         className={[
-          'z-50 flex w-full flex-col border-l border-[color:var(--sep)] bg-[color:var(--main)]',
+          'admin-chat-surface z-50 flex w-full flex-col border-l border-[color:var(--sep)] bg-[color:var(--main)]',
           'max-[899px]:fixed max-[899px]:inset-0',
           'min-[900px]:w-[var(--thread-panel-width)]',
           'min-[900px]:max-[1279px]:fixed min-[900px]:max-[1279px]:inset-y-0 min-[900px]:max-[1279px]:right-0',

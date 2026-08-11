@@ -189,7 +189,7 @@ export const ChannelAgentInfoDrawer = ({
       <aside
         aria-label={`${agent.name} info`}
         className={[
-          'fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
+          'admin-chat-surface fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
           'border-l border-[color:var(--sep)] bg-[color:var(--main)]',
           'shadow-[0_32px_80px_var(--scrim-strong)]',
         ].join(' ')}

@@ -273,7 +273,7 @@ export const ChannelsPage = () => {
 
   return (
     <section className="flex h-full min-h-0">
-      <div className="relative flex min-w-0 flex-1 flex-col" {...chatDrop.dropHandlers}>
+      <div className="admin-chat-surface relative flex min-w-0 flex-1 flex-col" {...chatDrop.dropHandlers}>
         <ChannelHeader
         activeChannel={activeChannel}
         isPersonalAssistantConversation={isPersonalAssistantConversation}

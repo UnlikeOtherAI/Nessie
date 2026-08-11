@@ -5,6 +5,7 @@ import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { MessageAttachments } from '../../shared/MessageAttachments'
 import type { AttachmentRecord } from '../../../lib/uploads'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
+import { ChatMessageCopyAction } from './ChatMessageCopyAction'
 import { ChannelMessageActions } from './ChannelMessageActions'
 import type { ResolveReactorName } from './ReactionPills'
 import { formatClock, getDisplayName, type MessageUserIdentity } from './channel-helpers'
@@ -176,26 +177,49 @@ export const ChannelMessageRow = ({
   }
 
   return (
-    <article
-      key={message.id}
-      id={`msg-${message.id}`}
-      aria-label={`Message from ${displayName}`}
-      className="admin-msg-row relative py-1"
-      data-actions-open={activeActionMessageId === message.id}
-      onClick={() =>
-        setActiveActionMessageId((current) => (current === message.id ? null : message.id))
-      }
-      onFocus={() => {
-        if (Date.now() - lastPointerDownAt.current > 500) {
-          setActiveActionMessageId(message.id)
-        }
-      }}
-      onKeyDown={openThreadOnKey}
-      onPointerDown={() => {
-        lastPointerDownAt.current = Date.now()
-      }}
-      tabIndex={0}
+    <ChatMessageCopyAction
+      content={message.content}
+      onLongPress={() => setActiveActionMessageId(null)}
     >
+      {({
+        consumeLongPressClick,
+        copyAction,
+        onContextMenu,
+        onPointerCancel,
+        onPointerDown,
+        onPointerLeave,
+        onPointerMove,
+        onPointerUp,
+      }) => (
+        <article
+          key={message.id}
+          id={`msg-${message.id}`}
+          aria-label={`Message from ${displayName}`}
+          className="admin-msg-row relative py-1"
+          data-actions-open={activeActionMessageId === message.id}
+          onClick={() => {
+            if (consumeLongPressClick()) {
+              return
+            }
+            setActiveActionMessageId((current) => (current === message.id ? null : message.id))
+          }}
+          onContextMenu={onContextMenu}
+          onFocus={() => {
+            if (Date.now() - lastPointerDownAt.current > 500) {
+              setActiveActionMessageId(message.id)
+            }
+          }}
+          onKeyDown={openThreadOnKey}
+          onPointerCancel={onPointerCancel}
+          onPointerDown={(event) => {
+            lastPointerDownAt.current = Date.now()
+            onPointerDown(event)
+          }}
+          onPointerLeave={onPointerLeave}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          tabIndex={0}
+        >
       {messageAgent ? (
         <button
           aria-label={`Open ${displayName}`}
@@ -371,7 +395,10 @@ export const ChannelMessageRow = ({
             />
           ) : null}
         </div>
-      </div>
-    </article>
+          </div>
+          {copyAction}
+        </article>
+      )}
+    </ChatMessageCopyAction>
   )
 }
