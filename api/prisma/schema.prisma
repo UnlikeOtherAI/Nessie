@@ -2847,7 +2847,8 @@ model Executor {
   label                       String
   profiles                    ExecutorProfile[]              @default([])
   platformFacts               Json                           @default("{}") @map("platform_facts")
-  machineKeyFingerprint       String                         @map("machine_key_fingerprint")
+  machinePublicKey            String?                        @map("machine_public_key")
+  machineKeyFingerprint       String?                        @unique @map("machine_key_fingerprint")
   status                      ExecutorStatus                 @default(pending_pairing)
   authorizationRevision       Int                            @default(1) @map("authorization_revision")
   activeConnectionEpoch       BigInt                         @default(0) @map("active_connection_epoch")

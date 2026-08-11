@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@nessie/schemas": "workspace:*"
+    "@nessie/schemas": "workspace:*",
+    "@prisma/client": "^6.17.1"
   },
   "devDependencies": {
     "@types/node": "^20.19.24"

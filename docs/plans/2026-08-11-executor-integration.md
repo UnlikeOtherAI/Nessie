@@ -1,6 +1,6 @@
 # Executor Integration Plan
 
-**Status:** approved — Phase 0 contract in progress
+**Status:** approved — Phase 1 pairing control plane in progress
 
 ## Decision
 

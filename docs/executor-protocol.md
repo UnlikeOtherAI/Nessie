@@ -1,6 +1,6 @@
 # Executor Protocol and Threat Model
 
-**Status:** Phase 0 contract
+**Status:** Phase 1 pairing control plane in progress
 
 This is the implementation contract for paired Nessie executors. It implements
 the approved [executor integration plan](plans/2026-08-11-executor-integration.md)
