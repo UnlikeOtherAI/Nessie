@@ -341,14 +341,60 @@ through exactly the paths Part 1 closes.
 ## The card
 
 Rendered on the restricted reply — the "Restricted sources" chip made actionable.
-It never shows privileged content beyond what the viewer already sees:
+It never shows privileged content beyond what the viewer already sees. Using
+placeholder names (`Meridian` a project, `#launch` a channel, `Scout` an agent):
 
-> **This reply uses Project Atlas material.** 3 of 5 people in #launch can't see it.
-> **Keep restricted** · **Share this reply** · **Always allow Atlas → #launch (by Scout)**
+> **This reply uses Project Meridian material.** 3 of 5 people in #launch can't see it.
+> **Keep restricted** · **Share this reply** · **Allow Scout to use Meridian here ▾**
 
 It names the source scope, the destination, the agent, and the concrete effect —
 "this reply" versus a standing rule. Counts, never member lists: a list leaks the
 membership gap itself.
+
+### The third button is a duration menu, not a switch
+
+The standing option is a **dropdown**, so choosing *how long* is the same gesture
+as choosing *to allow*. Owner's decision, 2026-08-11: a blanket grant should be
+bounded by time, on the reasoning that a grant is only really intended to last
+while the granting human is around.
+
+```
+Allow Scout to use Meridian here  ▾
+  ├─ for 10 minutes
+  ├─ for the rest of today        (granter's local end-of-day)
+  ├─ for 30 days
+  └─ until I revoke it
+```
+
+**The available durations are capped by the source's tier** — the same rule that
+governs whether a standing option appears at all, generalised from a binary to a
+ceiling:
+
+| Source | Ceiling |
+|---|---|
+| `organization`, `team`, `project`, `channel` audience, `normal` sensitivity | full menu, including *until revoked* |
+| `sensitive` sensitivity (any audience) | short durations only — no *30 days*, no *until revoked* |
+| `user` audience, or `restricted` sensitivity | **no menu at all** — Deny / Allow-once only |
+
+Rationale: duration does not change the *kind* of consent — a 10-minute grant
+still covers future, unseen replies — so the wiretap argument against standing
+grants over private material holds at every duration. But it does change the
+*blast radius*, so material that merely warrants care can have a short leash
+rather than none.
+
+**Defaults matter more than options here.** The menu's default selection is a
+bounded duration, never *until revoked*; the unbounded choice stays available but
+is not the path of least resistance.
+
+**Presence-bound grants ("only while I'm here") are deliberately not built.**
+Time is the enforceable proxy for presence. Tying a grant to a live session means
+it dies when a laptop sleeps or a network blips — mid-run, unpredictably — and it
+invites the question of what happens to a reply composed one second before the
+granter's connection dropped. A stated duration is legible to the granter, stable
+under flaky connectivity, and trivially auditable. `expiresAt` already carries it.
+
+Renewal is always a fresh entitled click, never a timestamp bump: re-granting is a
+new decision, and it re-runs the live membership check.
 
 **Who may answer:** a human session currently passing the full basis predicate,
 checked against live membership at click time rather than card-render time. Never
@@ -382,7 +428,9 @@ Each dimension, argued:
 - **Granter, recorded but not evaluated.** Evaluation is the exact key plus a
   **live recheck of the granter's current source-scope membership** — so a grant
   goes inert the moment its granter loses access, with no propagation needed.
-- **Expiry.** Renewal is a fresh entitled click, never a timestamp bump.
+- **Expiry — chosen by the granter at click time**, from the duration menu above,
+  capped by the source's tier. Not a hidden system default. `expiresAt` is null
+  only for the *until revoked* choice, which the top two tiers cannot select.
 - **Omitted: content selectors** ("only the billing parts"). That requires judging
   content — forbidden, and unenforceable.
 
@@ -422,6 +470,10 @@ Postgres-backed, seed-scoped per the shared-DB rules in `AGENTS.md`:
    effect; a model-judged proposal only ever renders a card.
 6. Granter loses source-scope membership → grant inert on the next read.
 7. Expired grant → restricted. Replayed consent token after expiry → rejected.
+   Cover each duration preset, including that a *rest of today* grant expires at
+   the granter's local midnight and not UTC's.
+7b. Duration ceiling: a `sensitive`-sourced card offers no *until revoked* option,
+   and a crafted request for one → 422. A `user`-audience source offers no menu.
 8. Revoked grant → restricted on the next load.
 9. Grant does not cover `user`-audience or `sensitive`-tier basis rows even when
    the source scope matches.
@@ -453,20 +505,41 @@ replies; retrieval-time consent; standing grants to named users, threads, or "al
 my scopes"; grant inheritance across agents; content-selective grants; retroactive
 tier backfill.
 
+## Decisions taken (Part 2)
+
+**A grant widens visibility within its destination, and is time-bounded**
+(owner, 2026-08-11). A grant admits *any* material from the granted source scope
+into the granted channel, for everyone currently in that channel, for the chosen
+duration. The granter's reasoning: if they hold the permission themselves, they
+are content to allow anything from that scope into that place — but only while
+they are effectively around, which the duration menu expresses.
+
+Note what this does and does not widen. Within the destination channel, members
+may receive answers drawing on the source. It grants **nothing** outside that
+channel: a member who could not otherwise reach the source still cannot use it
+elsewhere, because grant evaluation is keyed to the destination.
+
+**Sensitivity stays KB-only** (inferred from the owner's stated requirement,
+confirmed as a recommendation). Every tier described — 1:1, channel, project,
+organization — is an *audience* distinction, and audiences already exist for
+memories. No second axis was asked for. Practically, KB pages are deliberately
+authored and can be deliberately marked; memories are auto-captured in volume, so
+a per-memory sensitivity control would be a switch nobody ever sets. The
+`sensitive` row in the duration-ceiling table therefore applies to KB-sourced
+basis rows today, and stays available for memories if the axis is ever given a
+writer.
+
 ## Open questions (Part 2)
 
-1. **Does a standing grant widen visibility, or only use?** "Always allow Atlas →
-   #launch" most naturally means everyone *currently in #launch* may receive
-   Atlas-derived answers there. That is the only place a grant does more than
-   reduce friction, so it needs an explicit yes.
-2. Should repeated Allow-once for the same (scope, channel, agent) triple prompt
+1. Should repeated Allow-once for the same (scope, channel, agent) triple prompt
    *"make this standing?"* — proposing only, never auto-granting?
-3. `SensitivityTier` on `Thought` has no writer today. Ship the UI control and
-   make the axis real, or keep sensitivity KB-only?
-4. Does a standing grant cover people who join the destination channel later?
+2. Does a standing grant cover people who join the destination channel later?
    (Recommended yes, matching channel-audience semantics and Part 1 Q5.)
-5. Restricted-by-default replies may be frequent in mixed channels until grants
+3. Restricted-by-default replies may be frequent in mixed channels until grants
    accumulate. Accept that friction, or narrow autonomous recall first (Part 1 Q2)?
+4. Exact duration presets: are *10 minutes / rest of today / 30 days / until
+   revoked* the right four, and should "rest of today" use the granter's local
+   timezone (recommended) or UTC?
 
 ---
 
