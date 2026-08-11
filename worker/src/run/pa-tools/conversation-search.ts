@@ -6,6 +6,7 @@ import {
   resolveAccessibleChannelIds,
 } from './access.js'
 import {
+  buildChannelLink,
   buildSnippet,
   clampLimit,
   formatChannelRef,
@@ -159,6 +160,7 @@ export const runWorkspaceSearchTool = async (
         id: true,
         content: true,
         createdAt: true,
+        rootMessageId: true,
         thread: {
           select: {
             id: true,
@@ -203,12 +205,14 @@ export const runWorkspaceSearchTool = async (
       thread
         ? `   threadId=${thread.id}${thread.title ? ` | thread="${thread.title}"` : ''}`
         : '   threadId=none',
+      `   link=${buildChannelLink(channel.id)}`,
     ].join('\n')
   })
   const threadLines = threads.map((thread, index) =>
     [
       `${index + 1}. ${formatChannelRef(thread.channel)} / ${thread.title ?? '(untitled)'} | threadId=${thread.id}`,
       `   channelId=${thread.channel.id} | visibility=${thread.channel.visibility}`,
+      `   link=${buildChannelLink(thread.channel.id)}`,
     ].join('\n'),
   )
   const messageLines = messages.map((message, index) =>
@@ -217,9 +221,11 @@ export const runWorkspaceSearchTool = async (
         message.user?.displayName ??
         message.agent?.name ??
         'Unknown',
+      channelId: message.thread.channel.id,
       channelLabel: formatChannelRef(message.thread.channel),
       createdAt: message.createdAt.toISOString(),
       messageId: message.id,
+      rootMessageId: message.rootMessageId,
       snippet: buildSnippet(message.content, searchQuery),
       threadLabel: message.thread.title ?? null,
       threadId: message.thread.id,
@@ -289,6 +295,7 @@ export const runAuthoredMessageSearchTool = async (
       id: true,
       content: true,
       createdAt: true,
+      rootMessageId: true,
       thread: {
         select: {
           id: true,
@@ -312,11 +319,17 @@ export const runAuthoredMessageSearchTool = async (
   })
 
   const messageLines = messages.map((message, index) =>
-    [
-      `${index + 1}. ${formatChannelRef(message.thread.channel)} / ${message.thread.title ?? '(untitled)'}`,
-      `   ${message.createdAt.toISOString()} | messageId=${message.id} | threadId=${message.thread.id}`,
-      `   ${buildSnippet(message.content, searchQuery)}`,
-    ].join('\n'),
+    formatMessageLine({
+      author: 'You',
+      channelId: message.thread.channel.id,
+      channelLabel: formatChannelRef(message.thread.channel),
+      createdAt: message.createdAt.toISOString(),
+      messageId: message.id,
+      rootMessageId: message.rootMessageId,
+      snippet: buildSnippet(message.content, searchQuery),
+      threadLabel: message.thread.title ?? null,
+      threadId: message.thread.id,
+    }).replace(/^-\s/, `${index + 1}. `),
   )
 
   return {

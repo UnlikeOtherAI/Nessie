@@ -41,6 +41,12 @@ test('acting agent is told its own name in the system prompt', () => {
   assert.match(systemContent(messages), /^You are Aria\./)
 })
 
+test('the system prompt tells the agent to link to tool-sourced locations, not describe them', () => {
+  const messages = buildModelPrompt([], makeContext('Aria'), 'hi', null)
+  assert.match(systemContent(messages), /link directly to it/)
+  assert.match(systemContent(messages), /link=` value/)
+})
+
 test('other agents\' turns are name-prefixed; the acting agent\'s own turns are not', () => {
   const conversation: StoredConversationMessage[] = [
     { content: 'What is the status?', role: 'user', authorAgentId: null, authorAgentName: null },

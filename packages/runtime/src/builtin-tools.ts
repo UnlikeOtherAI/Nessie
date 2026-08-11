@@ -113,7 +113,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'workspace_search',
     label: 'Workspace Search',
     description:
-      'Search past conversations (channels, threads, and messages) you have access to. Returns compact results with IDs and snippets.',
+      'Search past conversations (channels, threads, and messages) you have access to. Returns compact results with IDs, snippets, and a `link=` path — quote that link directly rather than describing the location in prose.',
     parameters: {
       type: 'object',
       properties: {
@@ -135,7 +135,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Authored Message Search',
     personalAssistantOnly: true,
     description:
-      'Search messages authored by the current user across visible workspace channels and threads.',
+      'Search messages authored by the current user across visible workspace channels and threads. Each result carries a `link=` path — quote that link directly rather than describing the location in prose.',
     parameters: {
       type: 'object',
       properties: {
@@ -276,7 +276,9 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Message Search',
     description:
       'Full-text search across messages in channels visible to you. Returns ' +
-      'compact results with message IDs, snippets, channel, and author.',
+      'compact results with message IDs, snippets, channel, author, and a ' +
+      '`link=` path — quote that link directly rather than describing the ' +
+      'location in prose.',
     parameters: {
       type: 'object',
       properties: {

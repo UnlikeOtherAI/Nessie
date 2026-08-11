@@ -31,6 +31,26 @@ export const formatChannelScope = (channel: ChannelScopeSource): string => {
 export const formatChannelRef = (channel: ChannelScopeSource): string =>
   `#${channel.label} (${formatChannelScope(channel)})`
 
+// The one place a search-tool result becomes a clickable admin path, so the
+// model never has to assemble route segments itself — it copies `link=`
+// verbatim. Relative (no origin): every caller renders these inside the
+// admin app that posted the message, where a relative href already resolves
+// correctly (see MessageMarkdown's plain <a> renderer).
+export const buildChannelLink = (channelId: string): string => `/channels/${channelId}`
+
+// A reply-thread deep link is always anchored to the ROOT of its thread
+// (`Message.rootMessageId ?? Message.id` — the same resolution the worker
+// uses to place a run's own reply, `resolveReplyRootMessageId`), never to an
+// arbitrary reply within it: there is no URL form for "highlight this one
+// reply" today (only in-app navigation state can do that).
+export const buildMessageLink = (input: {
+  channelId: string
+  messageId: string
+  rootMessageId: string | null
+  threadId: string
+}): string =>
+  `/channels/${input.channelId}/threads/${input.threadId}/replies/${input.rootMessageId ?? input.messageId}`
+
 export const buildSnippet = (
   content: string,
   query: string,
@@ -66,9 +86,11 @@ export const formatSection = (title: string, lines: string[]): string => {
 
 export const formatMessageLine = (input: {
   author: string
+  channelId: string
   channelLabel: string
   createdAt: string
   messageId: string
+  rootMessageId: string | null
   snippet: string
   threadLabel: string | null
   threadId: string
@@ -76,5 +98,6 @@ export const formatMessageLine = (input: {
   [
     `- ${input.author} | ${input.channelLabel}${input.threadLabel ? ` / ${input.threadLabel}` : ''}`,
     `  ${input.createdAt} | messageId=${input.messageId} | threadId=${input.threadId}`,
+    `  link=${buildMessageLink(input)}`,
     `  ${input.snippet}`,
   ].join('\n')

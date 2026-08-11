@@ -5,6 +5,7 @@ import { resolveAccessibleChannelIds } from './access.js'
 import {
   buildSnippet,
   clampLimit,
+  formatMessageLine,
   formatSection,
   MAX_SEARCH_RESULTS,
 } from './tool-output.js'
@@ -19,6 +20,7 @@ type MessageSearchRow = {
   author_name: string | null
   project_name: string
   team_name: string
+  root_message_id: string | null
 }
 
 export const runMessageSearchTool = async (
@@ -49,6 +51,7 @@ export const runMessageSearchTool = async (
     SELECT
       m."id",
       m."thread_id",
+      m."root_message_id",
       c."id" AS channel_id,
       c."label" AS channel_label,
       p."name" AS project_name,
@@ -71,11 +74,17 @@ export const runMessageSearchTool = async (
   `)
 
   const lines = rows.map((row, index) =>
-    [
-      `${index + 1}. ${row.author_name ?? 'Unknown'} | #${row.channel_label} (${row.project_name} / ${row.team_name})`,
-      `   ${row.created_at.toISOString()} | messageId=${row.id} | threadId=${row.thread_id}`,
-      `   ${buildSnippet(row.content, searchQuery)}`,
-    ].join('\n'),
+    formatMessageLine({
+      author: row.author_name ?? 'Unknown',
+      channelId: row.channel_id,
+      channelLabel: `#${row.channel_label} (${row.project_name} / ${row.team_name})`,
+      createdAt: row.created_at.toISOString(),
+      messageId: row.id,
+      rootMessageId: row.root_message_id,
+      snippet: buildSnippet(row.content, searchQuery),
+      threadId: row.thread_id,
+      threadLabel: null,
+    }).replace(/^-\s/, `${index + 1}. `),
   )
 
   return {
