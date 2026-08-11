@@ -14,7 +14,11 @@ import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
-import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
+import {
+  ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
+  ANDROID_TABLET_TAB_BAR_CONTENT_INSET,
+  AndroidTabletTabBar,
+} from './src/components/AndroidTabletTabBar'
 import {
   DEFAULT_TOOLBAR_STATE,
   IpadNativeToolbar,
@@ -31,7 +35,6 @@ const AUTH_CALLBACK_URL = 'nessie://auth/callback'
 // WebView's own content (e.g. the channel composer) is never hidden. iOS 26 on
 // iPad puts the tab bar at the TOP; iPhone and Android keep it at the bottom.
 const IPHONE_TAB_BAR_HEIGHT = 49
-const ANDROID_TABLET_TAB_BAR_HEIGHT = 78
 const IPAD_TAB_BAR_HEIGHT = 50
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
@@ -243,7 +246,7 @@ const Shell = (): React.JSX.Element => {
   const topInset = IS_IPAD && showBar ? insets.top + IPAD_TAB_BAR_HEIGHT : IS_ANDROID ? insets.top : 0
   const bottomInset =
     showBar && !IS_IPAD
-      ? (IS_ANDROID ? ANDROID_TABLET_TAB_BAR_HEIGHT : IPHONE_TAB_BAR_HEIGHT) + insets.bottom
+      ? (IS_ANDROID ? ANDROID_TABLET_TAB_BAR_CONTENT_INSET : IPHONE_TAB_BAR_HEIGHT) + insets.bottom
       : IS_ANDROID
         ? insets.bottom
         : 0
@@ -281,11 +284,12 @@ const Shell = (): React.JSX.Element => {
           activeIndex={index}
           activeIndicatorColor={withOpacity(accent, 0.14)}
           activeTintColor={accent}
-          bottom={insets.bottom + 6}
+          bottom={insets.bottom + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP}
           dark={isDark(bg)}
           inactiveTintColor={inactive}
           onIndexChange={onIndexChange}
           rippleColor={withOpacity(accent, 0.18)}
+          separatorColor={withOpacity(isDark(bg) ? '#ffffff' : '#49341f', 0.18)}
         />
       ) : null}
 
