@@ -580,7 +580,7 @@ Each chunk stores `pageId`, `versionId`, `chunkIndex`, `content`,
 `contentHash`, plain-text offsets, approximate token count, and the full
 KnowledgePage scoping envelope (`organizationId`, project/team/channel/thread/
 user, `visibility`, `sensitivityTier`, `privateToAgentId`). The table also
-declares optional `embedding vector(1536)`, `embeddingModel`, `dims`, and a
+declares optional `embedding vector(1024)`, `embeddingModel`, `dims`, and a
 generated `searchVector` with HNSW/GIN indexes.
 
 Embeddings are now populated asynchronously: every version save enqueues a

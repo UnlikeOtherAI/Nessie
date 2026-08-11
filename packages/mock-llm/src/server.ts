@@ -1,5 +1,6 @@
 import { createServer, type Server, type ServerResponse } from 'node:http'
 import type { IncomingMessage } from 'node:http'
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import type { ProviderMessage } from '@nessie/runtime'
 import { MockLlmEngine, type MockCompletionTurn } from './engine.js'
 import type { MockScenario, MockStream } from './scenario.js'
@@ -10,7 +11,9 @@ import type { MockScenario, MockStream } from './scenario.js'
 // so full-pipeline smoke and load runs exercise the production inference path
 // with zero token spend.
 
-export const MOCK_EMBEDDING_DIMENSIONS = 1536
+// Mirrors the production vector width so a smoke run writes rows the real
+// pgvector columns accept.
+export const MOCK_EMBEDDING_DIMENSIONS = EMBEDDING_DIMENSIONS
 
 export type MockLlmServer = {
   close: () => Promise<void>

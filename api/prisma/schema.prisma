@@ -2951,7 +2951,7 @@ model Thought {
   id             String                       @id @default(uuid()) @db.Uuid
   content        String
   contentHash    String                       @map("content_hash")
-  embedding      Unsupported("vector(1536)")?
+  embedding      Unsupported("vector(1024)")?
   embeddingModel String?                      @map("embedding_model")
   dims           Int?
   searchVector   Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))")) @map("search_vector")
@@ -3180,7 +3180,7 @@ model KnowledgePageChunk {
   endOffset   Int    @map("end_offset")
   tokenCount  Int?   @map("token_count")
 
-  embedding      Unsupported("vector(1536)")?
+  embedding      Unsupported("vector(1024)")?
   embeddingModel String?                      @map("embedding_model")
   dims           Int?
   searchVector   Unsupported("tsvector")?     @default(dbgenerated("to_tsvector('english'::regconfig, COALESCE(content, ''::text))")) @map("search_vector")
@@ -3392,7 +3392,7 @@ model ThoughtRecall {
   outputAudienceType ThoughtAudienceType?         @map("output_audience_type")
   outputAudienceId   String?                      @map("output_audience_id") @db.Uuid
   queryText          String                       @map("query_text")
-  queryEmbedding     Unsupported("vector(1536)")? @map("query_embedding")
+  queryEmbedding     Unsupported("vector(1024)")? @map("query_embedding")
   similarity         Float?
   rankPosition       Int                          @map("rank_position")
   retrievalMode      String                       @default("hybrid") @map("retrieval_mode")

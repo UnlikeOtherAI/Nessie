@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@nessie/runtime": "workspace:*",
+    "@nessie/schemas": "workspace:*",
     "zod": "^3.25.76"
   }
 }

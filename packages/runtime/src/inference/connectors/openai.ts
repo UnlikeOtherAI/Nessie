@@ -1,3 +1,4 @@
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import type {
   ModelCapabilitySnapshot,
   ModelProviderConfig,
@@ -116,6 +117,12 @@ export const createOpenAiLikeConnector = (
       // Stateless HTTP connector.
     },
 
+    // `dimensions` is sent on every embed call, not left to the model's
+    // default: the destination column is `vector(EMBEDDING_DIMENSIONS)`, so a
+    // provider that would answer at some other width has to say so by
+    // rejecting the request rather than by returning vectors the database
+    // silently refuses later. OpenAI's text-embedding-3-* and Jina v3 both
+    // honour it.
     async embed(
       request: ProviderEmbeddingRequest,
     ): Promise<ProviderEmbeddingResult> {
@@ -125,6 +132,7 @@ export const createOpenAiLikeConnector = (
       try {
         const response = await fetch(`${baseUrl}/embeddings`, {
           body: JSON.stringify({
+            dimensions: EMBEDDING_DIMENSIONS,
             input: request.input.slice(0, 8000),
             model,
           }),
@@ -179,6 +187,7 @@ export const createOpenAiLikeConnector = (
       try {
         const response = await fetch(`${baseUrl}/embeddings`, {
           body: JSON.stringify({
+            dimensions: EMBEDDING_DIMENSIONS,
             input: request.input.map((text) => text.slice(0, 8000)),
             model,
           }),

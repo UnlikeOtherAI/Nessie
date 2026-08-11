@@ -46,6 +46,40 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - **Agents can see the images in their thread.** A run's conversation window carries every message's attachments: each turn gets an inventory line (`[attached: gallus.png (image/png, 812 KB, id=att-1)]`) appended at render time — never folded into `Message.content`, so the prompt builder's "is the trigger already the last turn?" check still matches — and `user` turns additionally carry inlined image bytes on `ProviderMessage.images` (`{ mime, dataBase64 }`, `worker/src/run/message-attachments.ts`). Source: the original for a PNG/JPEG/WebP/GIF ≤ 4 MiB, otherwise the stored `.thumb.webp` (so HEIC/TIFF/SVG and oversized photos still arrive), otherwise nothing; max 6 images per prompt, newest message first, read through the one `FileService`, non-fatal on failure, counted at ~1500 tokens each for the context window. Connectors gate on their own truthful `supportsVision`: `openai`/`openai-compatible` emit OpenAI multi-part `image_url` data URIs; `deepseek`/`kimi`/`minimax` drop the bytes and keep the inventory line. The engagement orchestrator sees the same line, so an image-only post can start a run. PDFs are named, not read. See [docs/plans/2026-08-07-images-in-agent-context.md](docs/plans/2026-08-07-images-in-agent-context.md).
 - Backend = S3-compatible MinIO in production, `filesystem` in local dev. KB file nodes (`KnowledgePage.kind = file`) and page attachments live alongside documents — see [docs/knowledge-base-requirements.md](docs/knowledge-base-requirements.md).
 
+## Embeddings — routed separately, one pinned width
+
+- Chat and embeddings are separate capabilities. `NESSIE_EMBEDDING_PROVIDER` /
+  `NESSIE_EMBEDDING_MODEL` / `NESSIE_EMBEDDING_SERVICE_ID` /
+  `NESSIE_EMBEDDING_BASE_URL` / `NESSIE_EMBEDDING_API_KEY` name the embedding
+  destination; every unset field inherits the chat provider, so a deployment
+  that sets none of them embeds exactly as before. This exists because the
+  chat provider may serve no embeddings endpoint at all — production runs chat
+  on Ledger's DeepSeek adapter, which answers `403 embeddings is not allowed
+  for deepseek`, and embeddings go to `/v1/jina` instead
+  (`packages/runtime/src/inference/embedding-provider.ts`). Signed
+  `X-Nessie-Context` / `X-UOA-Delegation` identity follows the embedding leg
+  only while it stays on the chat host, so an operator-named third-party
+  embedding endpoint never receives a delegation assertion.
+- **The vector width is a schema contract, stated once.**
+  `EMBEDDING_DIMENSIONS` (`packages/schemas/src/embedding.ts`, currently 1024 —
+  the native width of `jina-embeddings-v3`) is the only place the number
+  appears; `thoughts.embedding`, `thought_recalls.query_embedding`, and
+  `knowledge_page_chunks.embedding` are `vector(EMBEDDING_DIMENSIONS)`, and every
+  embed request sends `dimensions` so a provider answering at another width
+  fails loudly instead of writing rows the database rejects. Changing the
+  embedding model to a different width means editing that constant, writing a
+  Prisma migration that re-types the three columns (drop the HNSW index, null
+  the vectors, `ALTER COLUMN`, recreate — see
+  `20260811120000_embeddings_1024_dimensions`), and re-embedding: vectors of
+  different widths are not convertible, so old ones are discarded rather than
+  truncated. The `match_thoughts_*` functions need no change — PostgreSQL
+  discards the typmod on function parameters.
+- Which model produced a vector is not a constant either: it is
+  `ModelClient.embeddingModel`, resolved from deployment config and used for the
+  `embedding_model` column and the query-embedding cache key, so both sides of a
+  similarity comparison agree because they resolved the same configuration.
+- Details: [docs/deployment.md](docs/deployment.md) "Embedding model and vector width".
+
 ## Web Push (browser notifications)
 
 - Browser Web Push is a second push transport alongside native APNs/FCM: the worker's `handlePushDispatch` also fans messages out to users' `WebPushSubscription` rows. Crypto is in-process (`packages/push`, RFC 8291 + RFC 8292 VAPID, no third-party deps).
@@ -406,7 +440,8 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   locked and product-link epochs cannot regress. Ledger therefore authenticates Nessie independently from the
   human whose research and raw usage it attributes. Setting
   `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` applies the
-  same signed attribution to all model and embedding calls; runtime routing
+  same signed attribution to all model and embedding calls (embeddings resolve
+  their own `/v1/:serviceId` segment — see "Embeddings" above); runtime routing
   rewrites the final path to Ledger's `/v1/:serviceId/*` adapter for the
   selected OpenAI, Kimi, MiniMax, or custom provider. When the deployment-wide
   URL is absent, signing is decided after resolving the effective organization

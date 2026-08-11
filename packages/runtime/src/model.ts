@@ -1,6 +1,12 @@
 import type { ProviderReasoningEffort } from '@nessie/schemas'
+import {
+  isSameInferenceHost,
+  resolveEmbeddingProvider,
+  type EmbeddingProviderOverride,
+} from './inference/embedding-provider.js'
 import { createInferenceService } from './inference/service.js'
 import type {
+  InferenceService,
   ModelProviderConfig,
   ProviderMessage,
 } from './inference/types.js'
@@ -9,6 +15,14 @@ import { completeLedgerAttribution } from './ledger-attribution.js'
 import { ModelUsageTracker } from './usage.js'
 
 export type { ModelProviderConfig, ModelProviderName } from './inference/types.js'
+export type {
+  EmbeddingProviderOverride,
+  ResolvedEmbeddingProvider,
+} from './inference/embedding-provider.js'
+export {
+  isSameInferenceHost,
+  resolveEmbeddingProvider,
+} from './inference/embedding-provider.js'
 
 export type ModelMessage = {
   role: 'system' | 'user' | 'assistant'
@@ -31,8 +45,11 @@ export type ModelOptions = {
   usage?: LedgerAttribution
 }
 
+// No `model` here on purpose. Which model produces embeddings is a deployment
+// decision, not a per-call one: every vector in a pgvector column has to come
+// from the same model or cosine distance across them is meaningless. Callers
+// that need to record or cache by model read `ModelClient.embeddingModel`.
 export type EmbedOptions = {
-  model?: string
   usage?: LedgerAttribution
 }
 
@@ -55,6 +72,9 @@ export type CreateModelClientOptions = {
   requestHeaders?: (
     attribution: LedgerAttribution,
   ) => Promise<Record<string, string>>
+  // Sends embeddings somewhere other than the chat provider. Omit it and
+  // embeddings go exactly where they went before.
+  embedding?: EmbeddingProviderOverride
 }
 
 export interface ModelClient {
@@ -62,6 +82,10 @@ export interface ModelClient {
   chatJson<T = unknown>(messages: ModelMessage[], options?: ModelOptions): Promise<T>
   embed(text: string, options?: EmbedOptions): Promise<number[]>
   embedMany(texts: string[], options?: EmbedOptions): Promise<number[][]>
+  // The model `embed`/`embedMany` ask for. Persisted alongside stored vectors
+  // and used as the query-embedding cache key, so both sides of a similarity
+  // comparison can prove they came from the same model.
+  readonly embeddingModel: string
   stream(
     messages: ModelMessage[],
     options?: ModelOptions,
@@ -112,6 +136,27 @@ export const createModelClient = (
   const systemComponent = options.systemComponent
   const inferenceService = createInferenceService(config)
 
+  // Embeddings get their own connector only when the deployment named a
+  // separate destination; otherwise they share the chat service object, so an
+  // unconfigured deployment behaves as if none of this existed.
+  const embedding = resolveEmbeddingProvider(config, options.embedding)
+  const embeddingService: InferenceService = embedding.config
+    ? createInferenceService(embedding.config)
+    : inferenceService
+
+  // The caller wires a signer for the destination it built this client around.
+  // An embedding override that names its own host is a different destination,
+  // and a UOA delegation assertion must not follow it there — an operator
+  // pointing embeddings at their own inference box would otherwise have one
+  // posted to it. Same host (Ledger's `/v1/jina` beside `/v1/deepseek`) is the
+  // same destination, so it signs exactly as chat does.
+  const embeddingSigner = isSameInferenceHost(
+    embedding.config?.baseUrl ?? config.baseUrl,
+    config.baseUrl,
+  )
+    ? requestHeaders
+    : undefined
+
   const resolveAttribution = (
     attribution: LedgerAttribution | undefined,
   ): LedgerAttribution | undefined => {
@@ -128,9 +173,10 @@ export const createModelClient = (
 
   const resolveHeaders = (
     attribution: LedgerAttribution | undefined,
+    signer: CreateModelClientOptions['requestHeaders'],
   ): Promise<Record<string, string> | undefined> =>
-    requestHeaders && attribution
-      ? requestHeaders(attribution)
+    signer && attribution
+      ? signer(attribution)
       : Promise.resolve(undefined)
 
   // Persist invocations to the durable ledger when the caller supplied
@@ -152,7 +198,7 @@ export const createModelClient = (
 
   const chat: ModelClient['chat'] = async (messages, options) => {
     const attribution = resolveAttribution(options?.usage)
-    const headers = await resolveHeaders(attribution)
+    const headers = await resolveHeaders(attribution, requestHeaders)
     const result = await inferenceService.run({
       maxOutputTokens: options?.maxTokens,
       messages: toProviderMessages(messages),
@@ -185,9 +231,9 @@ export const createModelClient = (
 
   const embed: ModelClient['embed'] = async (text, options) => {
     const attribution = resolveAttribution(options?.usage)
-    const headers = await resolveHeaders(attribution)
-    const result = await inferenceService.embed(text, {
-      model: options?.model,
+    const headers = await resolveHeaders(attribution, embeddingSigner)
+    const result = await embeddingService.embed(text, {
+      model: embedding.model,
       requestHeaders: headers,
     })
 
@@ -203,9 +249,9 @@ export const createModelClient = (
 
   const embedMany: ModelClient['embedMany'] = async (texts, options) => {
     const attribution = resolveAttribution(options?.usage)
-    const headers = await resolveHeaders(attribution)
-    const result = await inferenceService.embedBatch(texts, {
-      model: options?.model,
+    const headers = await resolveHeaders(attribution, embeddingSigner)
+    const result = await embeddingService.embedBatch(texts, {
+      model: embedding.model,
       requestHeaders: headers,
     })
 
@@ -221,7 +267,7 @@ export const createModelClient = (
 
   const stream: ModelClient['stream'] = async function* (messages, options) {
     const attribution = resolveAttribution(options?.usage)
-    const headers = await resolveHeaders(attribution)
+    const headers = await resolveHeaders(attribution, requestHeaders)
     const source = inferenceService.stream?.({
       maxOutputTokens: options?.maxTokens,
       messages: toProviderMessages(messages),
@@ -260,14 +306,18 @@ export const createModelClient = (
     chatJson,
     close: () => {
       inferenceService.close()
+      if (embeddingService !== inferenceService) {
+        embeddingService.close()
+      }
     },
     embed,
+    embeddingModel: embedding.model,
     embedMany,
     fetchCompletion: async (body, fetchOptions) => {
       const attribution = resolveAttribution(fetchOptions?.usage)
       return inferenceService.fetchCompletion(
         body,
-        await resolveHeaders(attribution),
+        await resolveHeaders(attribution, requestHeaders),
       )
     },
     stream,

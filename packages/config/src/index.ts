@@ -59,6 +59,34 @@ export const ModelConfigSchema = z.object({
 })
 export type ModelConfig = z.infer<typeof ModelConfigSchema>
 
+// Embeddings do not have to come from the chat provider. Chat routes through
+// whichever model the deployment picked (DeepSeek, Kimi, …); embeddings need a
+// provider that actually serves an embeddings endpoint at the width
+// `EMBEDDING_DIMENSIONS` pins. Every field is optional and every unset field
+// falls back to the chat provider's, so a deployment that configures none of
+// these embeds exactly as it did before this block existed.
+export const EmbeddingProviderSchema = z.enum([
+  'openai',
+  'minimax',
+  'kimi',
+  'deepseek',
+  'openai-compatible',
+])
+export type EmbeddingProvider = z.infer<typeof EmbeddingProviderSchema>
+
+export const EmbeddingConfigSchema = z.object({
+  provider: EmbeddingProviderSchema.optional(),
+  apiKey: z.string().min(1).optional(),
+  baseUrl: z.string().url().optional(),
+  modelName: z.string().min(1).optional(),
+  // Ledger's provider proxy is `/v1/:serviceId/*`. A Ledger base URL is
+  // rewritten to this segment, which is how embeddings reach `/v1/jina` while
+  // chat stays on `/v1/deepseek`. Defaults to the provider name, which is only
+  // meaningful for a provider Ledger exposes under its own name.
+  serviceId: z.string().min(1).regex(/^[A-Za-z0-9._-]+$/).optional(),
+})
+export type EmbeddingConfig = z.infer<typeof EmbeddingConfigSchema>
+
 const RateLimitRuleSchema = z.object({
   max: z.number().int().positive(),
   windowMs: z.number().int().positive(),
@@ -105,6 +133,7 @@ export const NessieConfigSchema = z.object({
     projectId: z.string().min(1).optional(),
   }),
   model: ModelConfigSchema,
+  embedding: EmbeddingConfigSchema.default({}),
   api: z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.number().int().positive().default(5454),
@@ -192,6 +221,11 @@ export const ConfigEnvMap = {
   NESSIE_MODEL_NAME: 'model.modelName',
   NESSIE_MODEL_BACKENDS: 'model.backends',
   NESSIE_MODEL_TEMPERATURE: 'model.temperature',
+  NESSIE_EMBEDDING_PROVIDER: 'embedding.provider',
+  NESSIE_EMBEDDING_API_KEY: 'embedding.apiKey',
+  NESSIE_EMBEDDING_BASE_URL: 'embedding.baseUrl',
+  NESSIE_EMBEDDING_MODEL: 'embedding.modelName',
+  NESSIE_EMBEDDING_SERVICE_ID: 'embedding.serviceId',
   NESSIE_API_HOST: 'api.host',
   NESSIE_API_PORT: 'api.port',
   NESSIE_API_TRUSTED_PROXY_HOPS: 'api.trustedProxyHops',
@@ -275,6 +309,7 @@ const DEFAULT_CONFIG: NessieConfig = {
     temperature: 0.2,
     backends: [],
   },
+  embedding: {},
   api: {
     host: '0.0.0.0',
     port: 5454,

@@ -506,6 +506,9 @@ importers:
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       zod:
         specifier: ^3.25.76
         version: 3.25.76

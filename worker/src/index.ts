@@ -145,6 +145,7 @@ export const startWorker = async (
     )
   }
   const modelClient = createModelClient(config.model, {
+    embedding: config.embedding,
     recordUsage: async (invocations, attribution) => {
       try {
         await recordInferenceUsage(prisma, { attribution, invocations })

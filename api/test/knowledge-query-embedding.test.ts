@@ -10,7 +10,7 @@ const usage: LedgerAttribution = {
 }
 
 const fakeModelClient = (embed: ModelClient['embed']): ModelClient =>
-  ({ embed }) as unknown as ModelClient
+  ({ embed, embeddingModel: 'jina-embeddings-v3' }) as unknown as ModelClient
 
 test('getQueryEmbedding returns null when there is no model client', async () => {
   const result = await getQueryEmbedding(null, 'hello world', usage)

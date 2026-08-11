@@ -1,8 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
 import {
-  KNOWLEDGE_EMBEDDING_DIMS,
-  KNOWLEDGE_EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS,
   KnowledgeInferenceOriginSchema,
   type KnowledgeEmbedJobPayload,
 } from '@nessie/schemas'
@@ -31,6 +30,7 @@ const toVectorLiteral = (vector: number[]): string => `[${vector.join(',')}]`
 const copySameHashEmbeddings = async (
   prisma: PrismaClient,
   payload: KnowledgeEmbedJobPayload,
+  embeddingModel: string,
 ): Promise<void> => {
   await prisma.$executeRaw(Prisma.sql`
     UPDATE knowledge_page_chunks c
@@ -41,7 +41,7 @@ const copySameHashEmbeddings = async (
       FROM knowledge_page_chunks
       WHERE organization_id = ${payload.organizationId}::uuid
         AND embedding IS NOT NULL
-        AND embedding_model = ${KNOWLEDGE_EMBEDDING_MODEL}
+        AND embedding_model = ${embeddingModel}
         AND content_hash IN (
           SELECT content_hash FROM knowledge_page_chunks
           WHERE version_id = ${payload.versionId}::uuid AND embedding IS NULL
@@ -66,6 +66,7 @@ const loadPendingChunks = async (
 const writeEmbeddingBatch = async (
   prisma: PrismaClient,
   rows: Array<{ id: string; vector: number[] }>,
+  embeddingModel: string,
 ): Promise<void> => {
   if (rows.length === 0) {
     return
@@ -74,8 +75,8 @@ const writeEmbeddingBatch = async (
   await prisma.$executeRaw(Prisma.sql`
     UPDATE knowledge_page_chunks c
     SET embedding = v.embedding::vector,
-        embedding_model = ${KNOWLEDGE_EMBEDDING_MODEL},
-        dims = ${KNOWLEDGE_EMBEDDING_DIMS},
+        embedding_model = ${embeddingModel},
+        dims = ${EMBEDDING_DIMENSIONS},
         updated_at = now()
     FROM (VALUES ${Prisma.join(
       rows.map((row) => Prisma.sql`(${row.id}::uuid, ${toVectorLiteral(row.vector)})`),
@@ -108,7 +109,7 @@ const embedPendingChunks = async (
     const batch = pending.slice(offset, offset + EMBED_BATCH_SIZE)
     const vectors = await deps.modelClient.embedMany(
       batch.map((chunk) => chunk.content),
-      { model: KNOWLEDGE_EMBEDDING_MODEL, usage: attribution },
+      { usage: attribution },
     )
 
     const rows: Array<{ id: string; vector: number[] }> = []
@@ -117,10 +118,10 @@ const embedPendingChunks = async (
       if (!chunk) {
         return
       }
-      if (vector.length !== KNOWLEDGE_EMBEDDING_DIMS) {
+      if (vector.length !== EMBEDDING_DIMENSIONS) {
         console.error('[worker.knowledge-embed] embedding dims mismatch, skipping chunk', {
           chunkId: chunk.id,
-          expectedDims: KNOWLEDGE_EMBEDDING_DIMS,
+          expectedDims: EMBEDDING_DIMENSIONS,
           gotDims: vector.length,
           organizationId: payload.organizationId,
           pageId: payload.pageId,
@@ -131,7 +132,7 @@ const embedPendingChunks = async (
       rows.push({ id: chunk.id, vector })
     })
 
-    await writeEmbeddingBatch(deps.prisma, rows)
+    await writeEmbeddingBatch(deps.prisma, rows, deps.modelClient.embeddingModel)
   }
 }
 
@@ -162,7 +163,11 @@ export const executeKnowledgeEmbedJob = async (
     return
   }
 
-  await copySameHashEmbeddings(deps.prisma, payload)
+  await copySameHashEmbeddings(
+    deps.prisma,
+    payload,
+    deps.modelClient.embeddingModel,
+  )
 
   const pending = await loadPendingChunks(deps.prisma, payload)
 

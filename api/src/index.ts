@@ -200,6 +200,7 @@ export const buildApp = async () => {
         apiKey: modelApiKey,
       },
       {
+        embedding: config.embedding,
         tracker: apiUsageTracker,
         recordUsage: (invocations, attribution) =>
           recordModelUsage(prisma, app.log, invocations, attribution),

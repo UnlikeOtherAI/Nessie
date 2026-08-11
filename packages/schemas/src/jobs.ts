@@ -177,12 +177,11 @@ export const KnowledgeEmbedJobPayloadSchema = z.object({
 })
 export type KnowledgeEmbedJobPayload = z.infer<typeof KnowledgeEmbedJobPayloadSchema>
 
-// Embedding model for knowledge page chunks. Shared by the worker (chunk
-// embedding) and the api (query embedding) — the two sides must agree or
-// cosine distances are meaningless. Dims are pinned by the
-// knowledge_page_chunks.embedding vector(1536) column.
-export const KNOWLEDGE_EMBEDDING_MODEL = 'text-embedding-3-small'
-export const KNOWLEDGE_EMBEDDING_DIMS = 1536
+// The embedding model for knowledge page chunks is not pinned here: the worker
+// (chunk embedding) and the api (query embedding) both read
+// `ModelClient.embeddingModel`, so the two sides agree because they resolve the
+// same deployment configuration rather than because two constants happen to
+// match. Width is pinned by `EMBEDDING_DIMENSIONS` (./embedding.ts).
 
 // `knowledge.extract` queue job — enqueued whenever a file-node page (or a new
 // version of one) is written, consumed by the worker to deterministically pull

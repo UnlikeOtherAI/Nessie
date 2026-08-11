@@ -1,4 +1,5 @@
 import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import type { ThoughtAudienceType, ThoughtVisibility } from '@nessie/schemas'
 import type { Pool } from 'pg'
 import { computeFingerprint } from './fingerprint.js'
@@ -85,8 +86,6 @@ const VISIBILITY_BY_AUDIENCE_TYPE: Record<ThoughtAudienceType, ThoughtVisibility
   organization: 'organization',
 }
 
-const CURRENT_EMBEDDING_DIMS = 1536
-const CURRENT_EMBEDDING_MODEL = 'text-embedding-3-small'
 
 const CATEGORY_BY_METADATA_TYPE: Record<ThoughtMetadata['type'], ThoughtMemoryCategory> = {
   constraint: 'constraint',
@@ -348,8 +347,8 @@ export const captureThought = async (
         importance,
         mergedMetadata ? JSON.stringify(mergedMetadata) : null,
         input.privateToAgentId ?? null,
-        embedding ? CURRENT_EMBEDDING_MODEL : null,
-        embedding ? CURRENT_EMBEDDING_DIMS : null,
+        embedding ? config.modelClient.embeddingModel : null,
+        embedding ? EMBEDDING_DIMENSIONS : null,
         memoryType,
         memoryCategory,
       ],

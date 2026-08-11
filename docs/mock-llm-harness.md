@@ -17,7 +17,8 @@ load runs.
     `(messages, tools?) => Promise<InferenceResult>`.
   - `createMockLlmServer({ scenario, port? })` — OpenAI-compatible HTTP server
     (`POST /v1/chat/completions` with SSE streaming, `POST /v1/embeddings`
-    returning deterministic 1536-dim vectors, `GET /v1/models`, `GET /health`).
+    returning deterministic vectors at `EMBEDDING_DIMENSIONS`, `GET /v1/models`,
+    `GET /health`).
     The worker's real OpenAI connector talks to it unchanged via
     `NESSIE_MODEL_BASE_URL`.
   - `MockLlmEngine` — the shared scripted-turn engine behind both adapters.

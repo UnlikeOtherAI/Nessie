@@ -240,7 +240,8 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` is the
   deployment-wide inference chokepoint; runtime routing rewrites it to Ledger's
   `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi, MiniMax, or custom
-  provider, including embeddings and designer/orchestrator calls. If the
+  provider, including designer/orchestrator calls; embeddings resolve their own
+  `/v1/:serviceId` segment (see "Embeddings" below). If the
   deployment-wide URL is absent, signing is decided after the effective
   organization provider-record URL resolves, so a Ledger route an organization
   provider record introduced still receives complete attribution. **Inference
@@ -470,6 +471,37 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   deactivation revokes comms import immediately — matching the API auth and
   scheduled-trigger owner-revocation gates. Spec:
   `docs/plans/2026-07-21-individual-communications-connector.md`.
+
+## Embeddings — routed separately, one pinned width
+
+- Embeddings are configured independently of chat via `NESSIE_EMBEDDING_*`
+  (`PROVIDER`, `MODEL`, `SERVICE_ID`, `BASE_URL`, `API_KEY`); every unset field
+  inherits the chat provider, so an unconfigured deployment is byte-identical to
+  before. The chat provider may serve no embeddings endpoint at all — Ledger's
+  DeepSeek adapter answers `403 embeddings is not allowed for deepseek` — so
+  production embeds through `/v1/jina` while chat stays on `/v1/deepseek`.
+  Resolution lives in `packages/runtime/src/inference/embedding-provider.ts` and
+  is applied once in `createModelClient`; do not fetch embeddings through any
+  other path. Signed `X-Nessie-Context` / `X-UOA-Delegation` identity travels
+  with the embedding leg only while it stays on the chat host, so a third-party
+  embedding endpoint an operator names never receives a delegation assertion.
+- **`EMBEDDING_DIMENSIONS` (`packages/schemas/src/embedding.ts`) is the single
+  source of truth for the vector width** (currently 1024, `jina-embeddings-v3`'s
+  native width). Never write the number anywhere else — not in a producer, a
+  validator, a test fixture, or the mock-LLM harness. The three pgvector columns
+  (`thoughts.embedding`, `thought_recalls.query_embedding`,
+  `knowledge_page_chunks.embedding`) are declared at that width, and every embed
+  request sends `dimensions` so a provider answering differently fails loudly.
+  Changing the embedding model to another width = edit the constant + one Prisma
+  migration re-typing the columns + re-embedding; vectors of different widths are
+  not convertible, so the migration nulls them rather than truncating (a
+  truncated vector is neither model's output and poisons later comparisons).
+- The model that produced a vector is `ModelClient.embeddingModel`, resolved from
+  deployment config — not a constant. It is what gets written to
+  `embedding_model` and what keys the query-embedding cache, so the two sides of
+  a similarity comparison agree by construction rather than by two constants
+  happening to match.
+- Spec: `docs/deployment.md` "Embedding model and vector width".
 
 ## File storage & accounting — single chokepoint
 

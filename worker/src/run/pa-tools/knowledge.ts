@@ -12,7 +12,6 @@ import {
   type SpaceViewer,
 } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
-import { KNOWLEDGE_EMBEDDING_MODEL } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { truncate } from './tool-output.js'
@@ -39,7 +38,6 @@ const resolveQueryEmbedding = async (
   if (!context.modelClient) return null
   try {
     return await context.modelClient.embed(query, {
-      model: KNOWLEDGE_EMBEDDING_MODEL,
       usage: attributionFromActorContext(context.actorContext, {
         agentId: context.agentId,
         agentKind: context.agentKind,

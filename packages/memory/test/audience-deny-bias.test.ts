@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import { Pool } from 'pg'
 
-const vectorLiteral = (): string => `[${[1, ...Array<number>(1535).fill(0)].join(',')}]`
+const vectorLiteral = (): string =>
+  `[${[1, ...Array<number>(EMBEDDING_DIMENSIONS - 1).fill(0)].join(',')}]`
 
 const runIfDatabase = process.env.DATABASE_URL ? test : test.skip
 
@@ -113,13 +115,13 @@ runIfDatabase('scoped recall denies channel and team memories in incompatible au
            $1, 'Layoff planning remains confidential to management.',
            $2, $3::vector, $4, 'service', 'channel', $5,
            $6, $7, $8, $5, 'channel', 'normal', 0.9, '{}'::jsonb,
-           'test-embedding', 1536, now(), now()
+           'test-embedding', ${EMBEDDING_DIMENSIONS}, now(), now()
          ),
          (
            $9, 'Management budget constraint is confidential.',
            $10, $3::vector, $4, 'service', 'team', $8,
            $6, $7, $8, NULL, 'team', 'normal', 0.9, '{}'::jsonb,
-           'test-embedding', 1536, now(), now()
+           'test-embedding', ${EMBEDDING_DIMENSIONS}, now(), now()
          )`,
       [
         ids.writtenThought,

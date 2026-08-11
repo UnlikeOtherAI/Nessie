@@ -2,8 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { ModelClient } from '@nessie/runtime'
-import { KNOWLEDGE_EMBEDDING_DIMS, KNOWLEDGE_EMBEDDING_MODEL } from '@nessie/schemas'
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 import { executeKnowledgeEmbedJob } from '../src/control/knowledge-embed.js'
+
+// The model name is now whatever the deployment resolved, carried on the
+// client, so the job records and matches on it rather than on a constant.
+const EMBEDDING_MODEL = 'jina-embeddings-v3'
 
 type SqlLike = { sql: string; values: unknown[] }
 type CapturedCall = { sql: string; values: unknown[] }
@@ -79,6 +83,7 @@ test('executeKnowledgeEmbedJob rejects missing origin before any provider call',
       embedManyCalls += 1
       return []
     },
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
   const invalidPayload = {
     ...PAYLOAD,
@@ -108,6 +113,7 @@ test('executeKnowledgeEmbedJob returns early with no writes when the page is mis
       embedManyCalls += 1
       return []
     },
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
 
   await executeKnowledgeEmbedJob({ modelClient, prisma }, PAYLOAD)
@@ -133,6 +139,7 @@ test('executeKnowledgeEmbedJob makes no model calls when the copy step satisfies
       embedManyCalls += 1
       return []
     },
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
 
   await executeKnowledgeEmbedJob({ modelClient, prisma }, PAYLOAD)
@@ -164,8 +171,9 @@ test('executeKnowledgeEmbedJob batches embedding calls at 64 chunks and cleans u
     embedMany: async (texts: string[], options: unknown) => {
       batchSizes.push(texts.length)
       usages.push(options)
-      return texts.map(() => Array<number>(KNOWLEDGE_EMBEDDING_DIMS).fill(0.1))
+      return texts.map(() => Array<number>(EMBEDDING_DIMENSIONS).fill(0.1))
     },
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
 
   await executeKnowledgeEmbedJob({ modelClient, prisma }, PAYLOAD)
@@ -211,8 +219,8 @@ test('executeKnowledgeEmbedJob batches embedding calls at 64 chunks and cleans u
   const updateCalls = executeRawCalls.filter((c) => c.sql.includes('embedding = v.embedding::vector'))
   assert.equal(updateCalls.length, 2)
   for (const call of updateCalls) {
-    assert.ok(call.values.includes(KNOWLEDGE_EMBEDDING_MODEL))
-    assert.ok(call.values.includes(KNOWLEDGE_EMBEDDING_DIMS))
+    assert.ok(call.values.includes(EMBEDDING_MODEL))
+    assert.ok(call.values.includes(EMBEDDING_DIMENSIONS))
   }
   assert.ok(executeRawCalls.at(-1)!.sql.includes('DELETE FROM knowledge_page_chunks'))
 })
@@ -233,9 +241,10 @@ test('executeKnowledgeEmbedJob skips vectors with the wrong dims without throwin
 
   const modelClient = {
     embedMany: async () => [
-      Array<number>(KNOWLEDGE_EMBEDDING_DIMS).fill(0.1),
-      Array<number>(KNOWLEDGE_EMBEDDING_DIMS - 1).fill(0.1),
+      Array<number>(EMBEDDING_DIMENSIONS).fill(0.1),
+      Array<number>(EMBEDDING_DIMENSIONS - 1).fill(0.1),
     ],
+    embeddingModel: EMBEDDING_MODEL,
   } as unknown as ModelClient
 
   const originalConsoleError = console.error

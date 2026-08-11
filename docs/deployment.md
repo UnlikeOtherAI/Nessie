@@ -34,7 +34,7 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 ## Why these choices
 
 - **Dedicated Postgres, not the shared one.** Nessie's migrations require the
-  `vector` extension (`CREATE EXTENSION vector`, `vector(1536)` columns). The
+  `vector` extension (`CREATE EXTENSION vector`, `vector(1024)` columns). The
   host's shared `postgres:17-alpine` lacks pgvector, so Nessie runs its own
   `pgvector/pgvector:pg17` container on the shared `db` network. Fully additive —
   it does not touch the shared Postgres or any other app's data. **The Compose
@@ -366,7 +366,8 @@ production settings:
 | DeepSignal MCP boundary | `DEEPSIGNAL_MCP_APP_KEY` | DeepSignal-issued, Nessie-only `dsk_` application key. Required at API and worker startup in hosted/self-hosted modes and installed into the production host `.env` from the same-named GitHub Actions secret. It must differ from every configured secret-bearing environment credential (Ledger/model/billing, UOA signing/client, auth/session, DB, storage, email/admin, provider, push, or webhook credentials) and every encrypted per-org DeepSignal webhook signing secret; API and worker startup validate both boundaries. The user-scoped managed instance stores only this env reference; each outbound chat/history/digest/action request adds exact `ai.invoke` UOA delegation and fresh signed Nessie provenance independently. There is no OAuth or personal-credential fallback. |
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Session TTLs | `NESSIE_AUTH_TOKEN_TTL`, `NESSIE_AUTH_REFRESH_TOKEN_TTL` | optional, seconds; access JWT default 1800 (30 min), rotating refresh cookie default 2592000 (30 days). See [auth spec](deployment-modes-and-auth-spec.md) |
-| Model | `NESSIE_MODEL_PROVIDER`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | Hosted production routes OpenAI-compatible chat and `text-embedding-3-small` embeddings through Ledger; direct provider keys are not used by Nessie. A Ledger `NESSIE_MODEL_BASE_URL` always takes its bearer from `NESSIE_MODEL_API_KEY` and never inherits `OPENAI_API_KEY`/`OPENAI_CHAT_API_KEY`; startup fails if a Ledger URL is set with no key at all. |
+| Model (chat) | `NESSIE_MODEL_PROVIDER`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | Hosted production routes OpenAI-compatible chat through Ledger; direct provider keys are not used by Nessie. A Ledger `NESSIE_MODEL_BASE_URL` always takes its bearer from `NESSIE_MODEL_API_KEY` and never inherits `OPENAI_API_KEY`/`OPENAI_CHAT_API_KEY`; startup fails if a Ledger URL is set with no key at all. |
+| Model (embeddings) | `NESSIE_EMBEDDING_PROVIDER`, `NESSIE_EMBEDDING_MODEL`, `NESSIE_EMBEDDING_SERVICE_ID`, `NESSIE_EMBEDDING_BASE_URL`, `NESSIE_EMBEDDING_API_KEY` | Optional; every unset field inherits the chat provider, so a deployment that sets none of these embeds exactly as before. Set them when the chat provider serves no embeddings endpoint — DeepSeek does not, and Ledger answers `403 embeddings is not allowed for deepseek`. `NESSIE_EMBEDDING_SERVICE_ID` is the Ledger `/v1/:serviceId/*` segment embeddings are rewritten to; without it the segment defaults to the provider name, which is meaningless for `openai-compatible`. Production uses `openai-compatible` + `jina` + `jina-embeddings-v3`, inheriting the Ledger host and key. **Changing the embedding model is a schema change** — see "Embedding model and vector width" below. |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |
 | Feedback → GitHub | `NESSIE_GITHUB_TOKEN`, `NESSIE_GITHUB_OWNER`, `NESSIE_GITHUB_REPO` | token (repo-scoped PAT) required to file issues from the Feedback section; owner/repo default to `UnlikeOtherAI`/`Nessie`. Without a token, feedback is stored but no issue is created (`status: saved`) |
 | Storage backend | `NESSIE_STORAGE_PROVIDER` | `s3` in prod (MinIO); `filesystem` in local dev |
@@ -520,6 +521,59 @@ the `nessie-api` container.
 `nessie.config.json` enables the provider (`type: "uoa"`, `enabled: true`); no
 `clientId`/`issuerUrl` are needed (the config-JWT `config_url` identifies the
 client, and the secret derives the bearer hash).
+
+### Embedding model and vector width
+
+Embeddings are routed separately from chat, because they are a separate
+capability the chat provider may not offer at all. Production runs chat on
+Ledger's DeepSeek adapter, which has no embeddings endpoint; embeddings go to
+Ledger's Jina adapter instead:
+
+```
+NESSIE_MODEL_PROVIDER=deepseek
+NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/deepseek
+NESSIE_MODEL_API_KEY=lk_...
+
+NESSIE_EMBEDDING_PROVIDER=openai-compatible
+NESSIE_EMBEDDING_SERVICE_ID=jina
+NESSIE_EMBEDDING_MODEL=jina-embeddings-v3
+```
+
+The embedding block inherits the chat host and key, so the request lands on
+`https://ledger.unlikeotherai.com/v1/jina/embeddings` on the same Ledger bearer.
+Leave the block unset and embeddings follow chat exactly as they did before it
+existed. `NESSIE_EMBEDDING_BASE_URL` / `NESSIE_EMBEDDING_API_KEY` point
+embeddings at a different host entirely (a self-hosted inference box, say); a
+signed `X-Nessie-Context` / `X-UOA-Delegation` pair is **not** sent to a host
+that differs from the chat host, so a third-party embedding endpoint never
+receives a delegation assertion.
+
+**The vector width is coupled to the schema.** `thoughts.embedding`,
+`thought_recalls.query_embedding`, and `knowledge_page_chunks.embedding` are
+`vector(N)` columns, and `N` is stated once in
+`packages/schemas/src/embedding.ts` as `EMBEDDING_DIMENSIONS` (currently 1024,
+the native width of `jina-embeddings-v3`). Every embed request sends
+`dimensions: EMBEDDING_DIMENSIONS`, so a provider that would answer at another
+width fails loudly instead of writing vectors the database rejects.
+
+Changing the embedding model to one of a different width therefore requires all
+three of:
+
+1. editing `EMBEDDING_DIMENSIONS`,
+2. a Prisma migration re-typing those three columns (drop the
+   `knowledge_page_chunks_embedding_idx` HNSW index, null the existing vectors,
+   `ALTER COLUMN ... TYPE vector(N)`, recreate the index — see
+   `20260811120000_embeddings_1024_dimensions`), and
+3. re-embedding, because **vectors of different widths are not convertible**.
+   The migration nulls them rather than truncating: a truncated vector is
+   neither model's output and would silently poison every later cosine
+   comparison. Nulled rows re-embed naturally — memory capture writes a fresh
+   vector on the next write, `knowledge.embed` refills any chunk whose
+   `embedding IS NULL`, and recall degrades to its lexical channel until then.
+
+The `match_thoughts_scoped` / `match_thoughts_hybrid` / `match_thoughts_in_scopes`
+functions need no change: PostgreSQL discards the typmod on function parameters,
+so their `query_embedding vector(...)` declaration accepts any width.
 
 ### Ledger inference without UOA
 
