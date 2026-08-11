@@ -258,6 +258,9 @@ export const runExecutionAgentLoop = async (
         console.warn(`[worker] Agentic loop budget exhausted: ${reason} for run ${context.run.id}`)
       },
     },
+    shouldConcludeSilently: input.silenceSink
+      ? () => input.silenceSink?.concluded ?? false
+      : undefined,
     executeTool: async (toolName, args, toolCallId) => {
       const toolActorContext = buildToolActorContext(payload.actorContext, context, toolName)
       if (await input.deepWaterHandoffGuard.suppressBuiltin(toolName)) {

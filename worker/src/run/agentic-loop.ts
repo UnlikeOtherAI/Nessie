@@ -85,6 +85,11 @@ export type LoopResult = {
   // this is a deliberate handover (the caller checkpoints it quietly); a budget
   // stop after this means the model overran even the reserve.
   woundDown: boolean
+  // True when the model called the loop-control tool that ends a run without
+  // posting (`execute/silence.ts`). The loop stops immediately: asking the
+  // model for more after it has said "nothing to report" produces an empty
+  // completion, which the inference stage rejects as a failed run.
+  concludedSilently: boolean
   invocations: InvocationRecord[]
 }
 
@@ -142,6 +147,11 @@ export const runAgenticLoop = async (input: {
   // returns a `cancelled` result carrying any partial answer. Kept side-effect
   // free (a cheap status read) — the caller owns terminalization and notices.
   checkCancelled?: () => Promise<boolean>
+  /**
+   * Probe for "the model asked to end this run without posting". Owned by the
+   * caller (run-job's silence sink) so the loop stays agnostic about why.
+   */
+  shouldConcludeSilently?: () => boolean
   // Optional org-`Budget` probe, consulted between iterations. The caller owns
   // throttling and alerting; a `true` verdict stops the loop with the
   // `org_budget_blocked` classification so the run is checkpointed like any
@@ -211,6 +221,7 @@ export const runAgenticLoop = async (input: {
   ): LoopResult => ({
     cacheReadTokens: spend.cacheReadTokens,
     cancelled,
+    concludedSilently: input.shouldConcludeSilently?.() ?? false,
     effectiveTokensUsed: spend.effectiveTokensUsed,
     exhaustedBudget,
     finalText,
@@ -448,6 +459,13 @@ export const runAgenticLoop = async (input: {
 
     const batchStop = stopAfterToolBatch(budget, { elapsedMs: elapsed(), toolCallsUsed })
     if (batchStop === 'tool_calls') return stop(batchStop)
+
+    // The model asked to end without posting. Stop here rather than looping
+    // for another completion it has no reason to produce — an empty one is
+    // rejected by the inference stage and would fail the run.
+    if (input.shouldConcludeSilently?.()) {
+      return finish(null, lastAssistantText)
+    }
 
     // Cooperative cancel between tool-call batches: the just-completed tools have
     // been recorded and their results incorporated, so stopping here is clean.
