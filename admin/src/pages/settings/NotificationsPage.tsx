@@ -15,6 +15,7 @@ import {
   unsubscribeBrowser,
 } from '../../lib/web-push'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { sectionTitleClass, SettingsPanel } from './settings-shared'
 
 const DEFAULT_QUIET_START = '22:00'
@@ -314,16 +315,18 @@ export const NotificationsPage = () => {
     <SettingsPanel
       eyebrow="Account"
       title="Notifications"
-      actions={
-        <button
-          className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={updatePreferences.isPending}
-          form="notification-preferences-form"
-          type="submit"
-        >
-          {updatePreferences.isPending ? 'Saving...' : 'Save preferences'}
-        </button>
-      }
+      actions={[
+        {
+          disabled: updatePreferences.isPending,
+          form: 'notification-preferences-form',
+          id: 'save-preferences',
+          label: updatePreferences.isPending ? 'Saving...' : 'Save preferences',
+          onSelect: () => undefined,
+          primary: true,
+          priority: 100,
+          submit: true,
+        } satisfies PageHeaderAction,
+      ]}
     >
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.8fr)]">
         <form

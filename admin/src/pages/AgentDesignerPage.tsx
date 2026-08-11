@@ -9,6 +9,10 @@ import { AgentAvatarPanel } from '../components/features/agents/AgentAvatarPanel
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import {
+  ResponsivePageHeader,
+  type PageHeaderAction,
+} from '../components/shared/ResponsivePageHeader'
+import {
   buildRunLimits,
   readAgentRunLimits,
   runLimitsToForm,
@@ -169,56 +173,32 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
 
     void navigate('/agents')
   }
+  const headerActions: PageHeaderAction[] = [
+    {
+      id: 'cancel',
+      label: 'Cancel',
+      onSelect: handleBack,
+      priority: 60,
+    },
+    {
+      disabled: !canSave,
+      id: 'save-agent',
+      label: isSaving
+        ? (isEditMode ? 'Saving...' : 'Creating...')
+        : (isEditMode ? 'Save changes' : 'Create agent'),
+      onSelect: () => void handleSave(),
+      primary: true,
+      priority: 100,
+    },
+  ]
 
   return (
     <div className="flex h-full flex-col">
-      {/* Top bar */}
-      <div className="flex items-center justify-between border-b border-[color:var(--sep)] px-5 py-3">
-        <div className="flex items-center gap-3">
-          <button
-            className={[
-              'flex h-8 w-8 items-center justify-center rounded',
-              'text-[color:var(--tx3)] transition-colors',
-              'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
-            ].join(' ')}
-            onClick={handleBack}
-            title="Back to agents"
-            type="button"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <h1 className="text-base font-bold text-[color:var(--tx)]">
-            {isEditMode ? 'Edit Agent' : 'Agent Designer'}
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="admin-button admin-button-secondary"
-            onClick={handleBack}
-            type="button"
-          >
-            Cancel
-          </button>
-          <button
-            className="admin-button admin-button-primary"
-            disabled={!canSave}
-            onClick={handleSave}
-            type="button"
-          >
-            {isSaving
-              ? (isEditMode ? 'Saving...' : 'Creating...')
-              : (isEditMode ? 'Save Changes' : 'Create Agent')}
-          </button>
-        </div>
-      </div>
+      <ResponsivePageHeader
+        actions={headerActions}
+        onBack={handleBack}
+        title={isEditMode ? 'Edit Agent' : 'Agent Designer'}
+      />
 
       {/* Two-column layout: 70% form, 30% chat */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">

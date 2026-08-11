@@ -17,6 +17,7 @@ import {
   useUpdateStatus,
 } from '../../facades/statuses/hooks'
 import type { UserStatusRuleScope, UserStatusScheduleKind } from '../../lib/api-client'
+import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { sectionTitleClass, SettingsPanel } from './settings-shared'
 import {
   dayLabels,
@@ -175,15 +176,14 @@ export const StatusesPage = () => {
     <SettingsPanel
       eyebrow="Account"
       title="Statuses"
-      actions={
-        <button
-          className="admin-button admin-button-secondary"
-          onClick={() => clearActiveStatus.mutate()}
-          type="button"
-        >
-          Clear active
-        </button>
-      }
+      actions={[
+        {
+          id: 'clear-active',
+          label: 'Clear active',
+          onSelect: () => clearActiveStatus.mutate(),
+          priority: 100,
+        } satisfies PageHeaderAction,
+      ]}
     >
       <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
         <section className="admin-card p-4">

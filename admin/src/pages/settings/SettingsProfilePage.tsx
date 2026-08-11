@@ -5,6 +5,7 @@ import { useTeams } from '../../facades/projects/hooks'
 import { useStatuses } from '../../facades/statuses/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { AvatarPanel } from './profile/AvatarPanel'
+import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { sectionTitleClass, SettingsPanel } from './settings-shared'
 
 // Friendly names for the authenticator a user signed in through. Keyed by the
@@ -50,15 +51,14 @@ export const SettingsProfilePage = () => {
     <SettingsPanel
       eyebrow="Account"
       title="Profile & Session"
-      actions={
-        <button
-          className="admin-button admin-button-secondary"
-          onClick={() => void logout().then(() => navigate('/login', { replace: true }))}
-          type="button"
-        >
-          Sign out
-        </button>
-      }
+      actions={[
+        {
+          id: 'sign-out',
+          label: 'Sign out',
+          onSelect: () => void logout().then(() => navigate('/login', { replace: true })),
+          priority: 100,
+        } satisfies PageHeaderAction,
+      ]}
     >
       <div className="mb-4">
         <AvatarPanel />

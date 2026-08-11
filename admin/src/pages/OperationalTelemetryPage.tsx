@@ -6,7 +6,7 @@ import {
   PRICING_PROFILES_KEY,
   type PricingProfile,
 } from '../components/features/budgets/PricingManager'
-import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
+import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -157,10 +157,10 @@ export const OperationalTelemetryPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className={`${sectionTitle} whitespace-nowrap`}>Operational usage</div>
-        <div className="ml-auto w-40">
+      <AdminPageHeader title="Operational usage" />
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mb-4 w-full max-w-xs">
           <select
             aria-label="Group token telemetry"
             className="admin-input"
@@ -175,9 +175,6 @@ export const OperationalTelemetryPage = () => {
             <option value="runId">By Run</option>
           </select>
         </div>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="admin-card mb-4 border border-[color:var(--sep)] p-4">
           <div className={sectionTitle}>Internal operations only</div>
           <p className="mt-1 text-sm text-[color:var(--tx2)]">

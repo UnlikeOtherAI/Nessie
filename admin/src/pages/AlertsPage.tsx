@@ -1,16 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertRow } from '../components/shared/AlertRow'
+import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import {
   getAlertLink,
   useAlerts,
   useMarkAlertsRead,
   type UserAlertRecord,
 } from '../facades/alerts/hooks'
-import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 export const AlertsPage = () => {
   const navigate = useNavigate()
@@ -22,6 +20,22 @@ export const AlertsPage = () => {
 
   const alerts = data?.alerts ?? []
   const unreadCount = data?.unreadCount ?? 0
+  const headerActions: PageHeaderAction[] = [
+    {
+      id: 'unread-only',
+      label: unreadOnly ? 'Show all' : `Unread only${unreadCount > 0 ? ` (${unreadCount})` : ''}`,
+      onSelect: () => setUnreadOnly((value) => !value),
+      priority: 80,
+      selected: unreadOnly,
+    },
+    {
+      disabled: unreadCount === 0 || markRead.isPending,
+      id: 'mark-all-read',
+      label: 'Mark all read',
+      onSelect: () => markRead.mutate({ all: true }),
+      priority: 60,
+    },
+  ]
 
   const openAlert = (alert: UserAlertRecord) => {
     if (!alert.readAt) {
@@ -35,32 +49,7 @@ export const AlertsPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-2 border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className={sectionTitle}>Alerts</div>
-        {unreadCount > 0 ? (
-          <span className="rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--accent)]">
-            {unreadCount} unread
-          </span>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={() => setUnreadOnly((value) => !value)}
-            type="button"
-          >
-            {unreadOnly ? 'Show all' : 'Unread only'}
-          </button>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            disabled={unreadCount === 0 || markRead.isPending}
-            onClick={() => markRead.mutate({ all: true })}
-            type="button"
-          >
-            Mark all read
-          </button>
-        </div>
-      </header>
+      <AdminPageHeader actions={headerActions} title="Alerts" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid gap-2">

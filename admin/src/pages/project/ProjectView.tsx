@@ -1,22 +1,22 @@
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
-import { NewTaskButton } from '../../components/kanban/NewTaskButton'
+import { TaskDialog } from '../../components/kanban/TaskDialog'
+import { AdminPageHeader } from '../../components/shared/AdminPageHeader'
+import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
-import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
+import { useState } from 'react'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectDocsTab } from './ProjectDocsTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
-
 export const ProjectView = () => {
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const { data: board } = useProjectBoard(projectId)
 
@@ -26,6 +26,7 @@ export const ProjectView = () => {
   const isScrum = board?.style === 'scrum'
   const { data: iterations = [] } = useIterations(isScrum ? projectId : undefined)
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const tab = location.pathname.endsWith('/settings')
     ? 'settings'
     : location.pathname.endsWith('/docs')
@@ -50,44 +51,35 @@ export const ProjectView = () => {
     { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs` },
     { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
   ]
+  const activeTab = tabs.find((item) => item.id === tab)
+  const headerActions: PageHeaderAction[] = [
+    {
+      id: 'project-section',
+      items: tabs.map((item) => ({
+        checked: item.id === tab,
+        id: item.id,
+        label: item.label,
+        onSelect: () => void navigate(item.to),
+      })),
+      kind: 'menu',
+      label: activeTab?.label ?? 'Section',
+      priority: 80,
+      title: 'Choose project section',
+    },
+    ...(tab === 'board'
+      ? [{
+          id: 'new-task',
+          label: 'New task',
+          onSelect: () => setTaskDialogOpen(true),
+          primary: true,
+          priority: 100,
+        } satisfies PageHeaderAction]
+      : []),
+  ]
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-4 border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className={sectionTitle}>{project?.name ?? 'Project'}</div>
-        <nav className="flex gap-1">
-          {tabs.map((item) => (
-            <Link
-              key={item.id}
-              className={[
-                'rounded-md px-2.5 py-1 text-xs font-semibold',
-                tab === item.id
-                  ? 'bg-[color:var(--overlay)] text-[color:var(--tx)]'
-                  : 'text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
-              ].join(' ')}
-              to={item.to}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="ml-auto flex items-center gap-3">
-          {board ? (
-            <span className="text-xs text-[color:var(--tx3)]">
-              {board.style === 'scrum' ? 'Scrum' : 'Kanban'}
-            </span>
-          ) : null}
-          {tab === 'board' ? (
-            <div>
-              <NewTaskButton
-                iterationId={isScrum ? activeIteration?.id : undefined}
-                projectId={projectId}
-              />
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <AdminPageHeader actions={headerActions} title={project?.name ?? 'Project'} titleTone="page" />
 
       <div className="min-h-0 flex-1">
         {tab === 'settings' ? (
@@ -104,6 +96,12 @@ export const ProjectView = () => {
           <ProjectBoardTab projectId={projectId} />
         )}
       </div>
+      <TaskDialog
+        iterationId={isScrum ? activeIteration?.id : undefined}
+        onClose={() => setTaskDialogOpen(false)}
+        open={taskDialogOpen}
+        projectId={projectId}
+      />
     </section>
   )
 }

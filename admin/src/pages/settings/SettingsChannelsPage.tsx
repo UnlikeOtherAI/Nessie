@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { ChannelSettingsDialog } from '../../components/shared/ChannelSettingsDialog'
+import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useAllChannels, useArchiveChannel } from '../../facades/channels/hooks'
 import type { ChannelRecord } from '../../lib/api-client'
 import type { AdminShellOutletContext } from '../../layouts/AdminShellLayout'
@@ -50,15 +51,15 @@ export const SettingsChannelsPage = () => {
     <SettingsPanel
       eyebrow="Organization"
       title="Channels"
-      actions={
-        <button
-          className="admin-button admin-button-primary"
-          onClick={() => onCreateChannel()}
-          type="button"
-        >
-          Create channel
-        </button>
-      }
+      actions={[
+        {
+          id: 'create-channel',
+          label: 'Create channel',
+          onSelect: onCreateChannel,
+          primary: true,
+          priority: 100,
+        } satisfies PageHeaderAction,
+      ]}
     >
       <section className="admin-card p-4">
         <div className={sectionTitleClass}>All channels</div>

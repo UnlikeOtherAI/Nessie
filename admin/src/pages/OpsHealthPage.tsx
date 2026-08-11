@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { MobileMenuButton } from '../layouts/admin-shell/MobileMenuButton'
+import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -69,6 +70,16 @@ export const OpsHealthPage = () => {
 
   const worker = data?.worker
   const heartbeat = worker?.heartbeatAgeSeconds
+  const headerActions: PageHeaderAction[] = [
+    {
+      disabled: refresh.isPending,
+      id: 'refresh',
+      label: 'Refresh',
+      onSelect: () => refresh.mutate(),
+      primary: true,
+      priority: 100,
+    },
+  ]
 
   if (!isOwner) {
     return (
@@ -80,28 +91,7 @@ export const OpsHealthPage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-[50px] items-center gap-3 border-b border-[color:var(--sep)] px-5">
-        <MobileMenuButton />
-        <div className={sectionTitle}>System Health</div>
-        {worker && (
-          <span
-            className={[
-              'rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]',
-              WORKER_TONE[worker.status],
-            ].join(' ')}
-          >
-            worker {worker.status}
-          </span>
-        )}
-        <button
-          className="admin-button admin-button-secondary ml-auto"
-          disabled={refresh.isPending}
-          onClick={() => refresh.mutate()}
-          type="button"
-        >
-          Refresh
-        </button>
-      </header>
+      <AdminPageHeader actions={headerActions} title="System Health" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <p className="mb-4 text-xs text-[color:var(--tx3)]">
