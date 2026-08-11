@@ -1,7 +1,7 @@
 # E2E verification: a hardware-diagnostics monitoring agent, built by a user
 
 **Date:** 2026-08-11
-**Status:** in progress
+**Status:** in progress — 4 defects fixed and deployed, 1 reverted, 2 blocked on Ledger
 **Target:** production `https://app.nessie.works` (pre-release; database will be wiped before launch)
 
 ## Why this exists
@@ -79,10 +79,12 @@ control.
 | 2 | Triggers / channels | A trigger fire posted its kickoff prompt as a visible channel message **attributed to the human owner** (raw JSON payload, "A interval trigger…"), and the agent's finding threaded *under* it — so a monitoring channel showed only plumbing. | **High** | Fixed — kickoff is `role: 'system'`; trigger runs stamp `replyPlacement: 'channel'`; grammar + payload leak fixed |
 | 3 | `message_search` builtin | `t."channel_id" IN (${Prisma.join(channelIds)})` sent text params against a `uuid` column → every call failed with Postgres 42883 `operator does not exist: uuid = text`. A default-on builtin, broken for every agent in production. | **High** | Fixed — cast each id, matching the working sibling in `conversation-search.ts` |
 | 4 | Personal Assistant | The PA cannot reach parity with the click path: no `channel_create`, no agent creation, no agent→channel binding, no trigger creation. It said so honestly rather than faking it, but a user who does not want to click cannot get there. | **High** | Designed (Fable + Kimix agreed); not yet built |
-| 5 | Runs / scheduling | A run **always** posts a message (`completion.ts` unconditional `message.create`), so a monitoring agent cannot stay quiet. A 15-minute sweep therefore reports "nothing changed" forever and the channel becomes unusable. | **High** | Design in progress |
-| 6 | Add MCP server wizard | Transport dropdown offers `stdio` and `ws`, which the server rejects for user-authored connectors (HTTP/SSE only). Dead options in a picker. | Minor | Open |
-| 7 | Install form | Scope-id is a raw UUID text box with no picker. Works for `organization` (pre-filled) but is a dead end for project/team/channel scope. | Minor | Open |
-| 8 | Connectors, installed scopes | Empty state reads «Pick a catalog entry and click "Install"» while the selected entry is a draft and no Install button exists (it appears only after Publish). | Cosmetic | Open |
+| 5 | Runs / scheduling | A run **always** posts a message, so a monitoring agent cannot stay quiet; a 15-minute sweep reports "nothing changed" forever. | **High** | Built, then **reverted** — the `conclude_silently` descriptor made the provider return empty completions and failed every trigger run. Design stands; mechanism needs rework |
+| 6 | Ledger / embeddings | Production had no `NESSIE_EMBEDDING_*`, so embeddings fell back to the chat provider and 403'd. Fixed the routing — but the Ledger key is then rejected with `token not allowed for jina`, so memory recall and `kb_search` still run without vectors. | **High** | Routing fixed + deployed; **blocked on the Ledger token being granted the jina service** |
+| 7 | Triggers / Ledger | Every **scheduler-fired** run fails with `Ledger requires a linked UnlikeOtherAI SSO identity for the originating user`. Manual "Run now" and @mentions work, because they carry the caller's linked identity. The unattended schedule has therefore never delivered on its own. | **Blocker** | Open — needs the scheduler's execution origin to resolve a linked UOA identity |
+| 8 | Add MCP server wizard | Transport dropdown offers `stdio` and `ws`, which the server rejects for user-authored connectors (HTTP/SSE only). Dead options in a picker. | Minor | Open |
+| 9 | Install form | Scope-id is a raw UUID text box with no picker. Works for `organization` (pre-filled) but is a dead end for project/team/channel scope. | Minor | Open |
+| 10 | Connectors, installed scopes | Empty state reads «Pick a catalog entry and click "Install"» while the selected entry is a draft and no Install button exists (it appears only after Publish). | Cosmetic | Open |
 
 ### Defect 1 — design agreement
 
