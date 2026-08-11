@@ -533,13 +533,187 @@ writer.
 
 1. Should repeated Allow-once for the same (scope, channel, agent) triple prompt
    *"make this standing?"* — proposing only, never auto-granting?
-2. Does a standing grant cover people who join the destination channel later?
-   (Recommended yes, matching channel-audience semantics and Part 1 Q5.)
-3. Restricted-by-default replies may be frequent in mixed channels until grants
+2. Restricted-by-default replies may be frequent in mixed channels until grants
    accumulate. Accept that friction, or narrow autonomous recall first (Part 1 Q2)?
-4. Exact duration presets: are *10 minutes / rest of today / 30 days / until
+3. Exact duration presets: are *10 minutes / rest of today / 30 days / until
    revoked* the right four, and should "rest of today" use the granter's local
    timezone (recommended) or UTC?
+
+---
+
+# Part 3 — Grants are to places, and knowledge-base sharing
+
+Added 2026-08-11 from two owner decisions.
+
+## The governing principle: a grant names a place, never a list of people
+
+> Whoever is in a channel or project has immediately the same permissions as
+> everyone else there, **including the history**. (Owner, 2026-08-11.)
+
+This settles Part 1 Q5 and Part 2 Q2 together, and it applies to **every** grant
+family in this document — message-scoped nods, scope disclosure grants, and the
+knowledge shares below.
+
+Mechanically it is already free: everything here evaluates at **read time**
+against live membership. A person added to `#launch` on Friday passes the same
+predicate on Monday's load *and* on every message stamped before they arrived.
+No backfill, no per-person fan-out, no propagation job. A departure is symmetric —
+they simply stop passing.
+
+**The consequence must be stated plainly, because it relocates the control:
+adding someone to a channel or project is itself a disclosure act.** Add a person
+to `#launch` and they immediately receive everything ever granted into `#launch`,
+retroactively. Channel membership, not the grant click, becomes the thing to be
+careful with. Two implications for the build:
+
+- The member-add UI must say so when the destination carries live grants —
+  *"#launch has 3 active disclosures; new members can read them, including
+  history."* Naming counts, never contents.
+- The Disclosures panel is therefore also the answer to "what did we just give
+  this person?", and should be reachable from the member-add flow.
+
+We are not building per-person "joined after" cutoffs. A grant to a place whose
+members see different slices of that place is not a place any more, and the
+bookkeeping would be endless.
+
+## Knowledge-base sharing
+
+> We should be able to attach files from the knowledge base even if they're
+> gated — forever. If a user drops a link to a KB file, it should stay available
+> unless the user goes back and removes access. Better: a sharing/info panel on a
+> document or folder specifying who has access, so I can remove it. After that,
+> going back to the file says the file either doesn't exist or you don't have
+> access any more. (Owner, 2026-08-11.)
+
+### What exists today
+
+- **Access is per-space only.** `KnowledgeSpaceMember`
+  (`api/prisma/schema.prisma:3062-3081`) grants one principal — a user XOR an
+  agent — access to a whole space. No expiry, no per-page equivalent.
+- **Pages have a tree and two kinds.** `KnowledgePage.parentPageId`
+  (`:3091`) with `KnowledgePageKind = document | file` (`:450-453`), so "folder"
+  is a page with children.
+- **Page-level controls are denials only**, never grants: `sensitivityTier =
+  restricted` (humans-only, beating even an agent's explicit grant —
+  `packages/knowledge/src/access.ts:89`) and `privateToAgentId`.
+- **There is no share concept and no "who has access" view.** Both are new.
+
+### `KnowledgeShare`
+
+```
+KnowledgeShare {
+  id, organizationId,
+  pageId,                       -- the document or folder shared
+  includeDescendants  Boolean,  -- true for a folder share
+  audienceKind        channel | team | project | user,
+  audienceId,
+  sharedByUserId,
+  sourceMessageId?,             -- set when the share came from a pasted link
+  revokedAt?
+}
+unique (pageId, audienceKind, audienceId)
+```
+
+**Durable by design — no expiry.** This is the deliberate opposite of the Part 2
+scope grants, and the asymmetry is principled rather than an inconsistency:
+
+| | Scope disclosure grant | Knowledge share |
+|---|---|---|
+| Covers | future, unseen material from a whole scope | one artifact the sharer has looked at |
+| Granted by | answering a card the system raised | a deliberate act of sharing |
+| Lifetime | time-capped by tier | until revoked |
+
+Consenting to an agent's ongoing use of a scope is consent to content that does
+not exist yet, which is why it has a leash. Handing someone a specific document
+is a bounded act about a known thing, so it persists until withdrawn.
+
+### Link-drop is a share
+
+Pasting a KB link into a channel creates the share — that is what makes "attach
+files even if gated" work. Two guardrails, because this makes an ordinary paste
+consequential:
+
+- **Recorded, not implicit.** A real `KnowledgeShare` row with `sourceMessageId`,
+  audit entry, and a place in the access panel. **Not** an unguessable capability
+  URL: those cannot be revoked per-recipient, leak by forwarding, and leave no
+  list to inspect.
+- **A visible, non-blocking notice at share time** naming who gains access, with
+  undo — *"Sharing 'Q3 Plan' with #launch (5 people)."* Non-blocking because the
+  sharer is entitled and acting deliberately, consistent with the settled position
+  that the asker's entitlement governs their own disclosure.
+
+Only a user who can currently read the page may share it, checked server-side at
+share time. Agents cannot create shares.
+
+### Folder shares follow the live tree
+
+`includeDescendants` is evaluated against the tree at read time, so a page added
+to a shared folder next month is covered without a re-share — the same "grants
+name a place" principle applied to the content axis rather than the people axis.
+Moving a page *out* of a shared folder removes access, with no cleanup job.
+
+### Revocation and the denial message
+
+Revocation is immediate everywhere, because access is evaluated per read.
+
+Denial is **deliberately ambiguous and identical to not-found**:
+
+> This file doesn't exist, or you no longer have access.
+
+One message, one HTTP status, for revoked access, a deleted page, and a page that
+never existed. Distinguishing them would let anyone enumerate the knowledge base
+by probing ids, and would confirm the existence of documents whose existence is
+itself the sensitive fact.
+
+**Honest limitation:** revoking a share does not retroactively redact content an
+agent already quoted into a transcript. Those replies carry their own Part 1 basis
+stamps and stay governed by them; the *file* becomes unreachable, but a quotation
+already posted remains what it was. Retro-redaction is out of scope here as it is
+everywhere else in this document.
+
+### The access panel — the owning surface
+
+On any document or folder, an **Access** panel answering "who can see this":
+
+- inherited space access (read-only here — managed on the space);
+- explicit shares, one row each: audience, who shared it, when, source
+  ("shared in #launch"), and **Remove**;
+- for a folder, a note that shares cascade to everything inside.
+
+Rule zero: this panel is the owning surface, and it is the **same component**
+rendering the Part 2 Disclosures list — one access list parameterised by subject
+(a page here, a channel there), never two implementations. In-context doorways:
+a lock/share affordance on the page header, the same control on the file
+attachment card in a message, and a link from the channel Disclosures panel.
+
+### How this composes with Parts 1 and 2
+
+A page shared into `#launch` is readable there, so an agent in `#launch` may read
+it and answer from it. That reply is basis-stamped as ever — but the share
+already covers `#launch`, so **no consent card fires** for members of that
+channel. Sharing a document into a room is exactly the standing permission the
+card would otherwise ask for, which is why the two must consult the same
+evaluation path rather than each keeping its own.
+
+Two rules survive contact with sharing:
+
+- `restricted` pages remain humans-only. A share makes a page reachable by
+  *people* in the audience; it never overrides the agent denial at
+  `packages/knowledge/src/access.ts:89`.
+- A share grants nothing outside its audience. A `#launch` member cannot use the
+  page in `#finance`.
+
+### Phase (Part 3)
+
+Ships after Part 2C, since it reuses the grant-evaluation path and the access-list
+component: `KnowledgeShare` migration; share-on-link-drop with the notice and
+undo; folder cascade over the live tree; the Access panel; the unified
+not-found/no-access response; member-add warning when a destination carries live
+grants. Tests: share/revoke round-trip; folder cascade including a page added
+after the share; live-membership joiners reading shared history; revoked share and
+deleted page returning byte-identical responses; agent denied a `restricted`
+shared page; share created by a user who cannot read the page → 403; agent
+attempts share creation → no endpoint.
 
 ---
 
@@ -593,3 +767,10 @@ Same two designers, same method. Resolved disagreements:
 - **2026-08-11** — Created from two independent design passes plus verification.
 - **2026-08-11** — Part 2 added: memory tiers, the consent card, and provably
   bounded standing grants, from a second two-model design round.
+- **2026-08-11** — Standing grants became a tier-capped duration menu
+  (10 min / rest of today / 30 days / until revoked); presence-bound grants
+  explicitly not built; sensitivity confirmed KB-only.
+- **2026-08-11** — Part 3 added: grants name places rather than people (joiners
+  get full access including history, which relocates the control to channel
+  membership), plus durable, revocable knowledge-base sharing with an access
+  panel and an ambiguous not-found/no-access response.
