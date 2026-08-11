@@ -109,6 +109,8 @@ export const loadRunContext = async (
             select: {
               id: true,
               organizationId: true,
+              projectId: true,
+              teamId: true,
               systemChannelType: true,
             },
           },

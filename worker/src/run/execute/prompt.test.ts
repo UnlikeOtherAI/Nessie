@@ -20,7 +20,13 @@ const makeContext = (name: string, id: string = ACTING_AGENT_ID): RunContext => 
     provider: null,
     systemPrompt: null,
   },
-  channel: { id: 'c', organizationId: 'o', systemChannelType: null },
+  channel: {
+    id: 'c',
+    organizationId: 'o',
+    projectId: 'p',
+    teamId: 't',
+    systemChannelType: null,
+  },
   run: {
     id: 'r',
     threadId: 't',

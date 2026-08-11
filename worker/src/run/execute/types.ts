@@ -56,6 +56,11 @@ export type RunContext = {
   channel: {
     id: string
     organizationId: string
+    // The destination's own scope chain, used to contain memory recall to what
+    // this room already implies (packages/memory `constrainScopesToDestination`).
+    // Non-nullable on `Channel`, so always populated for a real destination.
+    projectId: string
+    teamId: string
     systemChannelType: ChannelSystemType | null
   }
   run: {

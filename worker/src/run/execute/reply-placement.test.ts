@@ -43,7 +43,13 @@ const makeContext = (replyRootMessageId?: string): RunContext => ({
     provider: null,
     systemPrompt: null,
   },
-  channel: { id: CHANNEL_ID, organizationId: ORGANIZATION_ID, systemChannelType: null },
+  channel: {
+    id: CHANNEL_ID,
+    organizationId: ORGANIZATION_ID,
+    projectId: '00000000-0000-0000-0000-000000000066',
+    teamId: TEAM_ID,
+    systemChannelType: null,
+  },
   run: {
     id: RUN_ID,
     threadId: THREAD_ID,
