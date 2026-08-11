@@ -22,7 +22,6 @@ const loopResult = (over: Partial<LoopResult> = {}): LoopResult => ({
   totalTokensUsed: 40_000,
   wallclockMs: 1_000,
   woundDown: true,
-  concludedSilently: false,
   ...over,
 })
 

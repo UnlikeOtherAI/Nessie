@@ -1317,48 +1317,6 @@ null, or leaves it paused when the end is still in the past. A malformed
 `until` reads as "no end" so a bad value can never silently stop a schedule.
 Set it in the trigger editor's optional **Stop after** field.
 
-#### A scheduled agent can stay quiet
-
-A run used to always post: the terminal path wrote a message unconditionally,
-so a monitoring agent on a 15-minute schedule announced "nothing changed"
-ninety-six times a day and the channel it existed to protect became unreadable.
-
-A run that is **not** answering a person is now offered a `conclude_silently`
-loop-control tool (`worker/src/run/execute/silence.ts`). Calling it ends the
-run with no message written: no `message.create`, no mention alerts, no reply
-bookkeeping. The run is still `completed` and the task still `done` — silence
-is the output, not a failure — and a `run.completed_silently` `TaskEvent`
-records it, with the model's own one-line reason when it gave one.
-
-Three properties are deliberate:
-
-- **Silence is model-judged, observed structurally.** The code reacts to the
-  fact that the tool was called, never to what the prose said. Inspecting the
-  final text for "nothing to report" would be the string-matching of
-  natural-language intent that `AGENTS.md` forbids, and it would also mistake a
-  provider returning an empty completion — a real failure mode — for a
-  deliberate decision.
-- **Only runs where silence is coherent get the tool.** Interactive turns are
-  excluded (someone is waiting for an answer), as are DeepWater handoff turns
-  (fixed message contract) and workflow steps (a parent consumes the run's
-  `responseText`). Eligibility is the presence of the descriptor in the run's
-  toolset, so an @mention structurally cannot come back empty.
-- **The viewer sees the thinking bubble, then nothing.** The silent path
-  publishes `stream.done` with no `messageId`/`content`. Clients already treat
-  `stream.done` as the run terminator and clear the pending bubble
-  unconditionally, appending a message row only when both fields are present —
-  so "it shows it is checking, then the bubble disappears" needed no client
-  change. `StreamDoneEvent.messageId` is therefore optional.
-
-The bubble is ephemeral, so it is not the proof-of-life answer: whether a sweep
-ran at 3am is answered durably by the trigger's delivery log and the
-`run.completed_silently` events, not by having watched.
-
-Whether the agent *should* be quiet is prompting, not product. With
-`message_search` fixed the agent can read its own last report and decide
-whether anything changed; the channel history is the baseline, and silence
-preserves it.
-
 These two are one change and must stay paired: a hidden kickoff with the
 default thread placement would anchor every reply under an invisible root and
 drop it out of the feed. Both the direct claim path

@@ -15,41 +15,6 @@ import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js
 import type { ExecutionDependencies, RetrievedMemory, RunContext, RunPlanContext } from './types.js'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 
-/**
- * Terminate a run that chose to say nothing.
- *
- * Publishes a `stream.done` carrying no `messageId`/`content`. The admin's
- * stream handler removes the pending thinking bubble for the run
- * unconditionally and only appends a message row when both of those are
- * present, so this is exactly "the bubble appears while it checks, then
- * disappears" with no client change.
- *
- * The bubble is ephemeral, though — nobody watching at 3am sees it. Durable
- * evidence that the sweep ran lives in the `run.completed_silently` TaskEvent
- * and the trigger's delivery log, which is what answers "is it still alive?".
- */
-const completeSilently = async (
-  deps: ExecutionDependencies,
-  context: RunContext,
-  reason: string | null,
-): Promise<void> => {
-  await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
-    agentId: parseAgentId(context.agent.id),
-    runId: parseRunId(context.run.id),
-  })
-  await deps.prisma.taskEvent.create({
-    data: {
-      eventType: 'run.completed_silently',
-      payload: {
-        agentId: context.agent.id,
-        runId: context.run.id,
-        ...(reason ? { reason } : {}),
-      } as Prisma.InputJsonValue,
-      taskId: context.task.id,
-    },
-  })
-}
-
 export const completeRunExecution = async (
   deps: ExecutionDependencies,
   payload: RunExecuteJobPayload,
@@ -65,12 +30,6 @@ export const completeRunExecution = async (
      */
     messageMetadata?: Record<string, unknown>
     responseText: string
-    /**
-     * Set when the model called `conclude_silently`: the run finished
-     * successfully and deliberately has nothing to say, so no message is
-     * written and `responseText` is discarded. See `./silence.ts`.
-     */
-    silent?: { reason: string | null }
     toolCallsUsed: number
   },
 ): Promise<void> => {
@@ -86,9 +45,6 @@ export const completeRunExecution = async (
     await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
   }
 
-  if (input.silent) {
-    await completeSilently(deps, context, input.silent.reason)
-  } else {
   // The personal assistant is its owner's delegate: anything it posts into a
   // shared channel is authored as that owner (mirroring the immediate
   // send_message tool), not as the assistant bot. Replies inside its own DM
@@ -170,8 +126,6 @@ export const completeRunExecution = async (
     },
   )
 
-  }
-
   await updateRunStatus(deps.prisma, context.run.id, 'completed')
   await updateTaskStatus(deps.prisma, context.task.id, 'done')
   // Memory consolidation is best-effort: a failure to enqueue it must never
@@ -193,9 +147,7 @@ export const completeRunExecution = async (
     planId: planContext.planId,
     rootStepId: planContext.rootStepId,
     success: true,
-    summary: input.silent
-      ? `(concluded silently)${input.silent.reason ? ` ${input.silent.reason}` : ''}`.slice(0, 500)
-      : input.responseText.slice(0, 500),
+    summary: input.responseText.slice(0, 500),
   })
   await markDelegationStepFinished(deps.prisma, {
     artifacts: {
