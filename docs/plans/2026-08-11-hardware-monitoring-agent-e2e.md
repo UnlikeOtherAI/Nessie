@@ -78,9 +78,11 @@ control.
 | 1 | Tools / Connectors | MCP tools discovered at a **shared** install scope project as `pending_review`; the worker only exposes `active`; **no route or UI anywhere transitions them**. Every org/project/team/channel-scoped connector was permanently inert. | **Blocker** | Fixed — `POST /api/mcp/tools/status` + review controls on `/agents/tools` + "N tools awaiting review" chip on Connectors |
 | 2 | Triggers / channels | A trigger fire posted its kickoff prompt as a visible channel message **attributed to the human owner** (raw JSON payload, "A interval trigger…"), and the agent's finding threaded *under* it — so a monitoring channel showed only plumbing. | **High** | Fixed — kickoff is `role: 'system'`; trigger runs stamp `replyPlacement: 'channel'`; grammar + payload leak fixed |
 | 3 | `message_search` builtin | `t."channel_id" IN (${Prisma.join(channelIds)})` sent text params against a `uuid` column → every call failed with Postgres 42883 `operator does not exist: uuid = text`. A default-on builtin, broken for every agent in production. | **High** | Fixed — cast each id, matching the working sibling in `conversation-search.ts` |
-| 4 | Add MCP server wizard | Transport dropdown offers `stdio` and `ws`, which the server rejects for user-authored connectors (HTTP/SSE only). Dead options in a picker. | Minor | Open |
-| 5 | Install form | Scope-id is a raw UUID text box with no picker. Works for `organization` (pre-filled) but is a dead end for project/team/channel scope. | Minor | Open |
-| 6 | Connectors, installed scopes | Empty state reads «Pick a catalog entry and click "Install"» while the selected entry is a draft and no Install button exists (it appears only after Publish). | Cosmetic | Open |
+| 4 | Personal Assistant | The PA cannot reach parity with the click path: no `channel_create`, no agent creation, no agent→channel binding, no trigger creation. It said so honestly rather than faking it, but a user who does not want to click cannot get there. | **High** | Designed (Fable + Kimix agreed); not yet built |
+| 5 | Runs / scheduling | A run **always** posts a message (`completion.ts` unconditional `message.create`), so a monitoring agent cannot stay quiet. A 15-minute sweep therefore reports "nothing changed" forever and the channel becomes unusable. | **High** | Design in progress |
+| 6 | Add MCP server wizard | Transport dropdown offers `stdio` and `ws`, which the server rejects for user-authored connectors (HTTP/SSE only). Dead options in a picker. | Minor | Open |
+| 7 | Install form | Scope-id is a raw UUID text box with no picker. Works for `organization` (pre-filled) but is a dead end for project/team/channel scope. | Minor | Open |
+| 8 | Connectors, installed scopes | Empty state reads «Pick a catalog entry and click "Install"» while the selected entry is a draft and no Install button exists (it appears only after Publish). | Cosmetic | Open |
 
 ### Defect 1 — design agreement
 
@@ -126,6 +128,32 @@ A third path neither brief mentioned turned up during implementation and got
 the same treatment: `api/src/services/trigger-dispatch.ts` (webhook intake)
 created its kickoff as `role: 'user'` with no placement, exactly like the
 worker path.
+
+### Defect 4 (PA parity) — design agreement
+
+Both agreed: give the Personal Assistant four provisioning tools —
+`channel_create`, `agent_create`, `agent_bind_channel`,
+`agent_trigger_create` — each mirroring the REST route's own authorization
+rather than inventing a new one, and each delegating to the *same* service
+function the route uses (moved into a shared package, never forked — the
+existing "mirrored from" comment in `pa-tools/channels.ts` is the Rule-zero-#4
+defect not to extend).
+
+On the escalation question both landed in the same place: the boundary is
+"could the acting owner click this today", re-derived live per call. The
+existing walls already hold — `assertGenericAgentToolPolicyInput` refuses every
+`requiresExplicitGrant` key and DeepWater provenance marker, `createAgentRecord`
+refuses `agentKind`/`systemManaged`/`delegationMode`, bindings refuse the PA DM,
+and a member-created agent is inert until an owner binds/triggers it. Both
+explicitly withheld `agent_update`, `agent_delete`, and any DeepWater
+grant machinery.
+
+They disagreed on one point: Kimix wanted `agent_create` owner-only; Fable said
+member-level for route parity. **Checked in code — Fable is right:**
+`POST /api/agents` and `POST /api/channels` carry only `requireActorContext`,
+while `POST /api/agents/:id/bindings` adds `requireOwner` + channel membership
++ not-a-PA-DM + `checkPolicy('agent','bind')`. Matching the routes exactly is
+the whole point, so create is member-level and bind/trigger are owner-gated.
 
 ## Notes
 
