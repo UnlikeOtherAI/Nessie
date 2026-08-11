@@ -311,7 +311,9 @@ test('handleRunExecutionFailure attaches rootMessageId and emits reply events', 
   const { deps, messageCreates, queryRawCalls, ws } = makeDeps()
   const context = makeContext(ROOT_MESSAGE_ID)
 
-  await handleRunExecutionFailure(deps, makePayload(), context, {
+  // Interactive: only a run somebody is waiting on posts its failure at all,
+  // so only that case has a message to attach to the reply thread.
+  await handleRunExecutionFailure(deps, { ...makePayload(), interactive: true }, context, {
     error: new Error('boom'),
     planContext: null,
     streamStarted: true,

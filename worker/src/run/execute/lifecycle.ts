@@ -2,7 +2,9 @@ import type { PrismaClient } from '@prisma/client'
 import { applyReplyBookkeeping } from '@nessie/runtime'
 import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schemas'
 import { parseAgentRunLimits } from '../run-budget.js'
+import type { PgRealtimeTransport } from '@nessie/runtime'
 import type { ReplyPlacement, RunContext } from './types.js'
+import { clearWorking } from './working-marker.js'
 
 export const updateTaskStatus = async (
   prisma: PrismaClient,
@@ -19,18 +21,44 @@ export const updateRunStatus = async (
   prisma: PrismaClient,
   runId: string,
   status: RunStatus,
+  // Supplied wherever the caller has one, so the cleared working marker
+  // reaches open clients immediately. Its absence only delays the repaint to
+  // the next refetch — the row is already gone either way.
+  transport?: PgRealtimeTransport,
 ): Promise<void> => {
+  const terminal =
+    status === 'completed' || status === 'failed' || status === 'cancelled'
   await prisma.run.update({
     where: { id: runId },
     data: {
-      finishedAt:
-        status === 'completed' || status === 'failed' || status === 'cancelled'
-          ? new Date()
-          : null,
+      finishedAt: terminal ? new Date() : null,
       startedAt: status === 'running' ? new Date() : undefined,
       status,
     },
   })
+
+  // Clearing the "looking at this" reaction is fused to the terminal
+  // transition rather than to any one terminal path, so completion, failure,
+  // budget stop and cancellation all drop it without having to remember. A
+  // crashed run is re-delivered by the queue and ends up here too, which is
+  // what keeps the marker from outliving the work.
+  if (!terminal) return
+  // Wrapped: the run is already terminal in the database, and a decoration
+  // must never be able to turn that into a thrown error.
+  try {
+    const run = await prisma.run.findUnique({
+      select: { agentId: true, threadId: true, triggerMessageId: true },
+      where: { id: runId },
+    })
+    if (!run?.triggerMessageId) return
+    await clearWorking(prisma, transport ?? null, {
+      agentId: run.agentId,
+      messageId: run.triggerMessageId,
+      threadId: run.threadId,
+    })
+  } catch (error) {
+    console.warn('[worker] could not clear working reaction for run', runId, error)
+  }
 }
 
 // Atomic start claim: flips a still-claimable run to `running` in a single

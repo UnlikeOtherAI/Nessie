@@ -26,6 +26,41 @@ Multi-tenant, self-hosted agentic work platform. Organisations host their own Ne
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
 - **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
 
+## Agent voice and reactions
+
+Agents answer at colleague length by default. The base system prompt
+(`worker/src/run/execute/prompt.ts` `buildModelPrompt`) gives that a *shape*
+rather than an adjective — lead with the answer, one short paragraph of plain
+prose, no headers/tables/bullets unless the content genuinely is a list, go
+long only when asked or when the content is irreducibly large, and on a
+scheduled run report by exception. "Concise" alone had been in there for a
+while and did not work: a routine hardware sweep still came back as ~400 words
+with a table. This is prompt guidance and never an output cap — depth has to
+stay one request away.
+
+Agents react rather than reply when a message needs registering but no answer.
+Two paths, both producing real `MessageReaction` rows (an emoji typed into a
+reply is still a message):
+
+- **Before a run** — the engagement decision can return
+  `{"action":"acknowledge", emoji}` instead of `{"action":"reply"}`, spending
+  no run at all. Use for a thank-you, an FYI, a decision already made:
+  anything where a prose reply would carry no information the person does not
+  already have (`packages/runtime/src/orchestrator.ts`, applied in
+  `worker/src/run/orchestrate.ts`).
+- **During a run** — the `react` builtin adds or removes the agent's own
+  reaction on any message its run can already see, the same buttons a person
+  clicks (`worker/src/run/pa-tools/agent-messages.ts` `runReactTool`).
+
+A run also paints 👀 on the message it is working from
+(`worker/src/run/execute/working-marker.ts`), so a person scrolling back can
+see which message an agent picked up — the thinking bubble only shows in the
+composer, and only while somebody is watching. The run owns that marker, not
+the model: removal is fused to the terminal status transition in
+`lifecycle.ts` `updateRunStatus`, so completion, failure, budget stop and
+cancellation all clear it without having to remember, and a crashed run clears
+it when the queue re-delivers it to a terminal state.
+
 ## Message reply threads (#233)
 
 `Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. A run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`), and thread-following scopes to that reply thread; DeepWater/product-handoff and external-agent paths stay top-level and byte-identical. **Where a run replies and what it reads are separate questions** (`resolveReplyRootMessageId` vs `resolveConversationRootMessageId`): the conversation window narrows to a reply thread only when the trigger message is *itself* a reply. A run answering a top-level message is starting a reply thread, not sitting in one, so it reads the channel thread — scoping it to its own trigger would leave it a one-message window with no history. Admin: reply-summary bar under roots, deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`, pushes ≥1280px, overlay 900–1279px, full-screen <900px, drag-resized width persisted), `T` opens the focused message's thread. Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.

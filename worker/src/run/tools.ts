@@ -31,6 +31,7 @@ import {
   runKbPublishRequestTool,
   runKbSearchTool,
   runMessageDeleteTool,
+  runReactTool,
   runMessageEditTool,
   runMessageSearchTool,
   runPeopleSearchTool,
@@ -276,6 +277,14 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () =>
         runMessageDeleteTool(context, {
           messageId: String(args.messageId ?? ''),
+        }),
+      )
+    case 'react':
+      return wrapTool(inputSummary, () =>
+        runReactTool(context, {
+          emoji: String(args.emoji ?? ''),
+          messageId: String(args.messageId ?? ''),
+          ...(args.remove === true ? { remove: true } : {}),
         }),
       )
     case 'attachment_upload':
