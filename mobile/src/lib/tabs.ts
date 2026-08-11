@@ -19,6 +19,7 @@ export type TabDef = {
   path: string
   sfSymbol: SFSymbol
   materialIcon: MaterialIconName
+  activeMaterialIcon: MaterialIconName
   role?: TabRole
   matches: (pathname: string) => boolean
 }
@@ -45,7 +46,8 @@ export const TABS: TabDef[] = [
     title: 'Channels',
     path: '/channels',
     sfSymbol: 'message',
-    materialIcon: 'forum',
+    materialIcon: 'chat-bubble-outline',
+    activeMaterialIcon: 'chat',
     matches: (p) => p.startsWith('/channels'),
   },
   {
@@ -53,7 +55,8 @@ export const TABS: TabDef[] = [
     title: 'Projects',
     path: '/projects',
     sfSymbol: 'folder',
-    materialIcon: 'folder',
+    materialIcon: 'folder-open',
+    activeMaterialIcon: 'folder',
     matches: (p) => p.startsWith('/projects'),
   },
   {
@@ -62,6 +65,7 @@ export const TABS: TabDef[] = [
     path: '/knowledge-base',
     sfSymbol: 'book',
     materialIcon: 'menu-book',
+    activeMaterialIcon: 'book',
     matches: (p) => p.startsWith('/knowledge-base'),
   },
   {
@@ -69,7 +73,8 @@ export const TABS: TabDef[] = [
     title: 'Admin',
     path: '/settings',
     sfSymbol: 'gearshape',
-    materialIcon: 'settings',
+    materialIcon: 'settings-applications',
+    activeMaterialIcon: 'settings',
     matches: matchesAdmin,
   },
   {
@@ -78,6 +83,7 @@ export const TABS: TabDef[] = [
     path: '/search',
     sfSymbol: 'magnifyingglass',
     materialIcon: 'search',
+    activeMaterialIcon: 'search',
     role: 'search',
     matches: (p) => p.startsWith('/search'),
   },
