@@ -1273,6 +1273,34 @@ A dispatch that fails transiently is recorded as a `failed` delivery with
 deliveries with exponential backoff (30s × 2^n, capped at 30 min, up to 5 retries)
 before exhausting them.
 
+#### What a trigger fire looks like in the channel
+
+A fire creates a kickoff `Message` that drives the run, and the agent then
+answers. Two structural facts govern how that reads to a person:
+
+- **The kickoff is `role: 'system'`.** It is an internal directive — generated
+  text like `Trigger fired: interval (source: scheduler).` plus the payload
+  JSON, or an operator's saved prompt plus the memory nudge — so it is
+  excluded from the channel feed and from later model context, while the row
+  itself persists for audit and for restart replay (which loads it by id and
+  never checks role). The run still receives it as its prompt through
+  `payload.messageId`. Rendering it as a `user` message previously attributed
+  it to the trigger's owner, who wrote none of it, and filled monitoring
+  channels with plumbing. Human-facing provenance is the Triggers page
+  delivery log.
+- **The run is stamped `replyPlacement: 'channel'`.** A trigger fire is a
+  standalone contribution to the room, not an answer owed to the kickoff, so
+  the agent posts top-level where an alert belongs. Stamped structurally from
+  the fact that it is a trigger run — never judged from message content.
+
+These two are one change and must stay paired: a hidden kickoff with the
+default thread placement would anchor every reply under an invisible root and
+drop it out of the feed. Both the direct claim path
+(`worker/src/control/trigger-run.ts`), the API webhook-intake path
+(`api/src/services/trigger-dispatch.ts`), and the batched pending-drain path
+(`packages/db/src/thread-serialization.ts`, which derives placement from the
+pending row's `triggerId`) apply them.
+
 ### Human Input suspension model
 
 When a Human Input node is reached:
