@@ -52,6 +52,7 @@
           }
         }
       ],
+      "expo-notifications",
       "react-native-bottom-tabs"
     ],
     "extra": {

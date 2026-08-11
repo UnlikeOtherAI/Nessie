@@ -4,6 +4,13 @@ import type {
   PushApnsEnvironment,
   PushStatusResponse,
 } from '@nessie/schemas'
+import {
+  sendApns,
+  type ApnsCredentials,
+  type PushPayload,
+  type PushResult,
+  type PushTarget,
+} from '@nessie/push'
 
 import type { PushSecretStore } from './push-secret-store.js'
 import {
@@ -43,9 +50,16 @@ export const createPushCredentialsService = (deps: {
   secretStore: PushSecretStore
   /** Injectable for tests; defaults to the live Google exchange. */
   fcmTokenExchange?: FcmTokenExchange
+  /** Injectable for tests; defaults to a direct in-house APNs send. */
+  apnsSender?: (
+    credentials: ApnsCredentials,
+    target: PushTarget,
+    payload: PushPayload,
+  ) => Promise<PushResult>
 }) => {
   const { prisma, secretStore } = deps
   const fcmExchange = deps.fcmTokenExchange ?? liveFcmTokenExchange
+  const apnsSender = deps.apnsSender ?? sendApns
 
   /**
    * Validate + store (or replace) the APNs `.p8` credential. Minting the ES256
@@ -181,14 +195,14 @@ export const createPushCredentialsService = (deps: {
   }
 
   /**
-   * Re-validate the stored credential end-to-end. Re-mints the APNs JWT /
-   * re-runs the FCM exchange from the stored secret. A real send is out of
-   * scope for the per-instance API (the gateway owns the wire); a supplied
-   * device token is acknowledged but delivery is reported as not attempted.
+   * Re-validate the stored credential end-to-end. APNs sends an actual alert
+   * directly to the requesting operator's registered iOS device; FCM re-runs
+   * its service-account token exchange.
    */
   const test = async (input: {
     provider: 'apns' | 'fcm'
     deviceToken?: string
+    apnsEnvironment?: PushApnsEnvironment
   }): Promise<{ ok: boolean; message: string; delivered?: boolean }> => {
     const row = await prisma.pushCredential.findUnique({
       where: { provider: input.provider },
@@ -218,22 +232,58 @@ export const createPushCredentialsService = (deps: {
           message: error instanceof Error ? error.message : 'APNs validation failed.',
         }
       }
-      return {
-        ok: true,
-        message: input.deviceToken
-          ? 'APNs credential valid. Real send is performed by the push gateway, not the API.'
-          : 'APNs credential valid (ES256 JWT minted).',
-        delivered: false,
+
+      if (!input.deviceToken) {
+        return {
+          ok: false,
+          message: 'No iOS device is registered for your current workspace.',
+          delivered: false,
+        }
       }
+
+      let result: PushResult
+      try {
+        result = await apnsSender(
+          {
+            p8: secret,
+            keyId: row.apnsKeyId ?? '',
+            teamId: row.apnsTeamId ?? '',
+            topic: row.apnsTopic ?? '',
+            environment: input.apnsEnvironment ?? row.apnsEnvironment ?? 'production',
+          },
+          { token: input.deviceToken },
+          {
+            title: 'Nessie push is connected',
+            body: 'This test was sent directly from your Nessie server.',
+            data: { url: '/settings/push' },
+            collapseId: 'nessie-apns-test',
+          },
+        )
+      } catch (error) {
+        return {
+          ok: false,
+          message: `APNs test could not be sent: ${error instanceof Error ? error.message : String(error)}.`,
+          delivered: true,
+        }
+      }
+      return result.ok
+        ? {
+            ok: true,
+            message: 'APNs accepted the test notification.',
+            delivered: true,
+          }
+        : {
+            ok: false,
+            message: `APNs rejected the test notification: ${result.error ?? `status ${result.status}`}.`,
+            delivered: true,
+          }
     }
 
     const account = parseFcmServiceAccount(secret)
     const exchange = await fcmExchange(account)
     return {
       ok: exchange.ok,
-      message: exchange.ok && input.deviceToken
-        ? 'FCM credential valid. Real send is performed by the push gateway, not the API.'
-        : exchange.message,
+      message: exchange.message,
       delivered: false,
     }
   }

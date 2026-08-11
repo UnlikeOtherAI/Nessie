@@ -29,6 +29,7 @@ type TokenRow = {
   userId: string
   token: string
   platform: 'ios' | 'android'
+  apnsEnvironment?: 'sandbox' | 'production'
 }
 
 type SecretRow = { ref: string; ciphertext: string; iv: string; authTag: string }
@@ -69,7 +70,11 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findMany: async () => state.members,
     },
     deviceToken: {
-      findMany: async ({ where }: { where: { userId: { in: string[] } } }) =>
+      findMany: async ({
+        where,
+      }: {
+        where: { organizationId: string; userId: { in: string[] } }
+      }) =>
         state.tokens.filter((token) => where.userId.in.includes(token.userId)),
       deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         state.deleted.push(...where.id.in)
@@ -107,19 +112,22 @@ const recordingSenders = (): {
   apnsCalls: PushTarget[]
   fcmCalls: PushTarget[]
   apnsPayloads: PushPayload[]
+  apnsCredentials: ApnsCredentials[]
   fcmPayloads: PushPayload[]
   results: Map<string, PushResult>
 } => {
   const apnsCalls: PushTarget[] = []
   const fcmCalls: PushTarget[] = []
   const apnsPayloads: PushPayload[] = []
+  const apnsCredentials: ApnsCredentials[] = []
   const fcmPayloads: PushPayload[] = []
   const results = new Map<string, PushResult>()
   const okResult: PushResult = { ok: true, status: 200, deadToken: false }
   const senders: PushSenders = {
-    sendApns: async (_c: ApnsCredentials, target, p: PushPayload) => {
+    sendApns: async (credentials: ApnsCredentials, target, p: PushPayload) => {
       apnsCalls.push(target)
       apnsPayloads.push(p)
+      apnsCredentials.push(credentials)
       return results.get(target.token) ?? okResult
     },
     sendFcm: async (_c: FcmCredentials, target, p: PushPayload) => {
@@ -128,7 +136,7 @@ const recordingSenders = (): {
       return results.get(target.token) ?? okResult
     },
   }
-  return { senders, apnsCalls, fcmCalls, apnsPayloads, fcmPayloads, results }
+  return { senders, apnsCalls, fcmCalls, apnsPayloads, apnsCredentials, fcmPayloads, results }
 }
 
 const apnsCred = (): CredRow => ({
@@ -238,6 +246,34 @@ test('only sends to configured-provider tokens', async () => {
   assert.equal(summary.sent, 1)
 })
 
+test('scopes native device-token delivery to the dispatch organization', async () => {
+  const state: FakeState = {
+    creds: [apnsCred()],
+    members: [member('u2')],
+    tokens: [{ id: 'ios1', userId: 'u2', token: 'ios-tok', platform: 'ios' }],
+    secrets: [apnsSecret()],
+    channel: { label: 'General' },
+    deleted: [],
+  }
+  const prisma = makeFakePrisma(state)
+  let deviceWhere: unknown
+  prisma.deviceToken.findMany = (async ({ where }: { where: unknown }) => {
+    deviceWhere = where
+    return state.tokens
+  }) as typeof prisma.deviceToken.findMany
+
+  await handlePushDispatch(
+    { prisma, authSecret: AUTH_SECRET, senders: recordingSenders().senders },
+    payload({ organizationId: 'org-push-scope' }),
+  )
+
+  assert.deepEqual(deviceWhere, {
+    organizationId: 'org-push-scope',
+    userId: { in: ['u2'] },
+    inactiveAt: null,
+  })
+})
+
 test('routes ios→apns and android→fcm when both providers configured', async () => {
   const state: FakeState = {
     creds: [apnsCred(), fcmCred()],
@@ -258,6 +294,33 @@ test('routes ios→apns and android→fcm when both providers configured', async
   assert.deepEqual(apnsCalls.map((c) => c.token), ['ios-tok'])
   assert.deepEqual(fcmCalls.map((c) => c.token), ['and-tok'])
   assert.equal(summary.sent, 2)
+})
+
+test('uses the APNs host environment registered by an iOS device', async () => {
+  const state: FakeState = {
+    creds: [apnsCred()],
+    members: [member('u2')],
+    tokens: [
+      {
+        id: 'ios1',
+        userId: 'u2',
+        token: 'ios-sandbox-token',
+        platform: 'ios',
+        apnsEnvironment: 'sandbox',
+      },
+    ],
+    secrets: [apnsSecret()],
+    channel: { label: 'General' },
+    deleted: [],
+  }
+  const { senders, apnsCredentials } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload(),
+  )
+
+  assert.equal(apnsCredentials[0]?.environment, 'sandbox')
 })
 
 test('a deadToken result prunes that device-token row', async () => {
@@ -438,9 +501,10 @@ test('mentioned recipients get mention framing; unmentioned keep channel framing
     deleted: [],
   }
   const { senders, apnsCalls, apnsPayloads } = recordingSenders()
+  const dispatchPayload = payload({ mentionUserIds: ['u2'] })
   const summary = await handlePushDispatch(
     { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
-    payload({ mentionUserIds: ['u2'] }),
+    dispatchPayload,
   )
 
   assert.equal(summary.sent, 2)
@@ -452,6 +516,10 @@ test('mentioned recipients get mention framing; unmentioned keep channel framing
   // Both groups carry the same deep-link data and coalescing key.
   assert.equal(apnsPayloads[mentionedIdx]?.collapseId, 'channel-1')
   assert.deepEqual(apnsPayloads[mentionedIdx]?.data, apnsPayloads[unmentionedIdx]?.data)
+  assert.equal(
+    apnsPayloads[mentionedIdx]?.data?.url,
+    `/channels/channel-1?messageId=${dispatchPayload.messageId}`,
+  )
 })
 
 test('a muted member receives no push even when mentioned', async () => {

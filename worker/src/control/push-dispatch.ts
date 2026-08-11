@@ -108,6 +108,7 @@ export const handlePushDispatch = async (
       channelId: payload.channelId,
       threadId: payload.threadId,
       messageId: payload.messageId,
+      url: `/channels/${payload.channelId}?messageId=${payload.messageId}`,
     },
     collapseId: payload.channelId,
   })

@@ -18,6 +18,8 @@ export const RegisterDeviceRequestSchema = z.object({
   platform: DevicePlatformSchema,
   token: z.string().min(1),
   appVersion: z.string().min(1).optional(),
+  /** APNs host selected by the native iOS build; absent for Android. */
+  apnsEnvironment: z.enum(['sandbox', 'production']).optional(),
 })
 export type RegisterDeviceRequest = z.infer<typeof RegisterDeviceRequestSchema>
 
@@ -27,6 +29,7 @@ export const DeviceTokenRecordSchema = z.object({
   platform: DevicePlatformSchema,
   token: z.string().min(1),
   appVersion: z.string().min(1).optional(),
+  apnsEnvironment: z.enum(['sandbox', 'production']).optional(),
   lastSeenAt: z.string().min(1),
   createdAt: z.string().min(1),
 })

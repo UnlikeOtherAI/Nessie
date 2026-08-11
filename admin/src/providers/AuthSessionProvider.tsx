@@ -24,6 +24,10 @@ import {
   storeToken,
 } from '../lib/storage'
 import { getBaseUrl } from '../lib/api-client'
+import {
+  NATIVE_PUSH_UNREGISTER_EVENT,
+} from '../lib/native-push-registration'
+import { isReactNativeWebView } from '../lib/mobile-shell'
 
 type AuthSessionContextValue = {
   applyMeResponse: (nextMe: MeResponse) => void
@@ -45,6 +49,13 @@ const AuthSessionContext = createContext<AuthSessionContextValue | null>(null)
 const RETRY_DELAYS_MS = [1_000, 2_500, 5_000, 10_000, 30_000] as const
 const retryDelay = (attempt: number): number =>
   RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? 30_000
+
+const unregisterNativePushDevice = (): Promise<void> =>
+  new Promise((resolve) => {
+    window.dispatchEvent(
+      new CustomEvent(NATIVE_PUSH_UNREGISTER_EVENT, { detail: { complete: resolve } }),
+    )
+  })
 
 // Admin (web) supplies the Vite-resolved base URL; @nessie/client-core stays
 // env-agnostic. localStorage is the web TokenStore backing.
@@ -179,6 +190,9 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   }
 
   const logout = async (): Promise<void> => {
+    if (isReactNativeWebView()) {
+      await unregisterNativePushDevice()
+    }
     await authApi.logout(token)
     clearSession()
   }

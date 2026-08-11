@@ -77,7 +77,11 @@ const makeFakePrisma = (state: FakeState): BudgetAlertDispatchPrisma =>
         state.users.filter((u) => where.id.in.includes(u.id)),
     },
     deviceToken: {
-      findMany: async ({ where }: { where: { userId: { in: string[] } } }) =>
+      findMany: async ({
+        where,
+      }: {
+        where: { organizationId: string; userId: { in: string[] } }
+      }) =>
         state.tokens.filter((t) => where.userId.in.includes(t.userId)),
       deleteMany: async () => ({ count: 0 }),
     },

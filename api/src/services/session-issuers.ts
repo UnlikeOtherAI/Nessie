@@ -7,6 +7,7 @@ import {
 } from '../auth/session.js'
 import { DEFAULT_BOOTSTRAP_RECORD_IDS } from '../db/bootstrap.js'
 import { LOCAL_AUTH_PROVIDER_ID } from './auth.js'
+import { nextPushRegistrationGeneration } from './push-registration-generation.js'
 
 /** Build fresh or renewed access sessions from authoritative local context. */
 export const createSessionIssuers = (input: {
@@ -54,6 +55,7 @@ export const createSessionIssuers = (input: {
       ? roles
       : [user?.organizationMembers[0]?.role ?? 'member']
 
+    const pushRegistrationVersion = (await nextPushRegistrationGeneration(input.prisma)).toString()
     return issueSessionToken(
       {
         sub: userId,
@@ -64,6 +66,7 @@ export const createSessionIssuers = (input: {
         providerId: provider?.providerId ?? LOCAL_AUTH_PROVIDER_ID,
         providerType: provider?.providerType ?? input.defaultProviderType,
         tv: user?.tokenVersion ?? 0,
+        pv: pushRegistrationVersion,
         ...(uoaIdentity ? { uoaIdentity } : {}),
       },
       input.authSecret,
@@ -89,6 +92,7 @@ export const createSessionIssuers = (input: {
       where: { id: session.userId },
       select: { tokenVersion: true },
     })
+    const pushRegistrationVersion = (await nextPushRegistrationGeneration(input.prisma)).toString()
     return issueSessionToken(
       {
         sub: session.userId,
@@ -99,6 +103,7 @@ export const createSessionIssuers = (input: {
         providerId: session.providerId,
         providerType: session.providerType,
         tv: user?.tokenVersion ?? 0,
+        pv: pushRegistrationVersion,
         ...(session.uoaIdentity ? { uoaIdentity: session.uoaIdentity } : {}),
       },
       input.authSecret,

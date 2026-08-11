@@ -76,10 +76,9 @@ export const PushCredentialResultSchema = z.object({
 })
 export type PushCredentialResult = z.infer<typeof PushCredentialResultSchema>
 
-/** Optional body for `POST /api/platform/push/test`. */
+/** Body for `POST /api/platform/push/test`. */
 export const PushTestRequestSchema = z.object({
   provider: PushProviderSchema,
-  deviceToken: z.string().min(1).optional(),
 })
 export type PushTestRequest = z.infer<typeof PushTestRequestSchema>
 
@@ -87,7 +86,7 @@ export const PushTestResultSchema = z.object({
   provider: PushProviderSchema,
   ok: z.boolean(),
   message: z.string(),
-  /** True when a real send to a supplied device token was attempted. */
+  /** True when a real send to the requesting operator's registered device was attempted. */
   delivered: z.boolean().optional(),
 })
 export type PushTestResult = z.infer<typeof PushTestResultSchema>

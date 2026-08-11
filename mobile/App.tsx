@@ -12,6 +12,12 @@ import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 
 import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
+import {
+  getNativePushRegistration,
+  subscribeToPushTokenChanges,
+  subscribeToPushNavigation,
+  type NativePushRegistration,
+} from './src/lib/push-notifications'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import {
@@ -38,6 +44,7 @@ const IPHONE_TAB_BAR_HEIGHT = 49
 const IPAD_TAB_BAR_HEIGHT = 50
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
+const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 const NATIVE_SHELL_INFO_SCRIPT = `
 window.__nessieNativeShell = { platform: ${JSON.stringify(Platform.OS)}, formFactor: ${
   IS_IPAD ? "'ipad'" : "'phone'"
@@ -97,6 +104,10 @@ const Shell = (): React.JSX.Element => {
   const adminBooted = useRef(false)
   const bootRetries = useRef(0)
   const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const currentPathRef = useRef<string | null>(null)
+  const pendingPushPath = useRef<string | null>(null)
+  const nativePushRegistration = useRef<NativePushRegistration | null>(null)
+  const nativePushRegistrationPromise = useRef<Promise<NativePushRegistration | null> | null>(null)
 
   const sourceUri =
     reloadNonce === 0
@@ -109,6 +120,53 @@ const Shell = (): React.JSX.Element => {
       bootTimer.current = null
     }
   }, [])
+
+  const runScript = useCallback((script: string): void => {
+    webRef.current?.injectJavaScript(`${script} true;`)
+  }, [])
+
+  const navigateTo = useCallback((path: string): void => {
+    runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
+  }, [runScript])
+
+  const sendNativePushRegistration = useCallback((registration: NativePushRegistration): void => {
+    runScript(
+      `window.dispatchEvent(new CustomEvent(${JSON.stringify(NATIVE_PUSH_TOKEN_EVENT)}, { detail: ${
+        JSON.stringify(registration)
+      } }));`,
+    )
+  }, [runScript])
+
+  const publishNativePushRegistration = useCallback((registration: NativePushRegistration): void => {
+    nativePushRegistration.current = registration
+    const current = currentPathRef.current
+    if (current && !isAuthGateRoute(current)) {
+      sendNativePushRegistration(registration)
+    }
+  }, [sendNativePushRegistration])
+
+  const ensureNativePushRegistration = (): void => {
+    if (nativePushRegistration.current) {
+      sendNativePushRegistration(nativePushRegistration.current)
+      return
+    }
+    if (nativePushRegistrationPromise.current) {
+      return
+    }
+    const registrationPromise = getNativePushRegistration()
+    nativePushRegistrationPromise.current = registrationPromise
+    void registrationPromise
+      .then((registration) => {
+        if (!registration) return
+        publishNativePushRegistration(registration)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (nativePushRegistrationPromise.current === registrationPromise) {
+          nativePushRegistrationPromise.current = null
+        }
+      })
+  }
 
   const loadFreshWebView = useCallback((): void => {
     clearBootTimer()
@@ -132,13 +190,23 @@ const Shell = (): React.JSX.Element => {
     }
   }, [])
 
-  const runScript = (script: string): void => {
-    webRef.current?.injectJavaScript(`${script} true;`)
-  }
+  useEffect(
+    () =>
+      subscribeToPushNavigation((path) => {
+        pendingPushPath.current = path
+        const current = currentPathRef.current
+        if (current && !isAuthGateRoute(current)) {
+          pendingPushPath.current = null
+          navigateTo(path)
+        }
+      }),
+    [navigateTo],
+  )
 
-  const navigateTo = (path: string): void => {
-    runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
-  }
+  useEffect(
+    () => subscribeToPushTokenChanges(publishNativePushRegistration),
+    [publishNativePushRegistration],
+  )
 
   const openSearchOverlay = (): void => {
     runScript('window.__nessieOpenSearchOverlay && window.__nessieOpenSearchOverlay();')
@@ -197,6 +265,13 @@ const Shell = (): React.JSX.Element => {
       void runExternalAuth(msg.url)
       return
     }
+    if (msg.type === 'nessie:request-push-registration') {
+      const path = currentPathRef.current
+      if (path && !isAuthGateRoute(path)) {
+        ensureNativePushRegistration()
+      }
+      return
+    }
     if (msg.type === 'nessie:search-overlay') {
       if (msg.active) {
         const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
@@ -220,9 +295,18 @@ const Shell = (): React.JSX.Element => {
       adminBooted.current = true
       bootRetries.current = 0
       clearBootTimer()
+      currentPathRef.current = msg.path
       setCurrentPath(msg.path)
       const next = tabIndexForPath(msg.path)
       setIndex((current) => (current === next ? current : next))
+      if (!isAuthGateRoute(msg.path)) {
+        ensureNativePushRegistration()
+        const pendingPath = pendingPushPath.current
+        if (pendingPath) {
+          pendingPushPath.current = null
+          navigateTo(pendingPath)
+        }
+      }
     }
   }
 

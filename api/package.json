@@ -33,6 +33,7 @@
     "@nessie/mcp-client": "workspace:*",
     "@nessie/mcp-manage": "workspace:*",
     "@nessie/memory": "workspace:*",
+    "@nessie/push": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@nessie/worker": "workspace:*",

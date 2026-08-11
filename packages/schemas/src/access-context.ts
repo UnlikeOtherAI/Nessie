@@ -52,6 +52,7 @@ export const ActionContextSchema = z.object({
   toolId: NonEmptyStringSchema.optional(),
   taskId: TaskIdSchema.optional(),
   sessionId: NonEmptyStringSchema.optional(),
+  pushRegistrationVersion: NonEmptyStringSchema.optional(),
   threadId: ThreadIdSchema.optional(),
   requestId: NonEmptyStringSchema,
   correlationId: NonEmptyStringSchema.optional(),

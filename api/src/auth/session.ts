@@ -16,6 +16,8 @@ export type SessionTokenClaims = {
   sid: string
   sub: string
   team: string
+  // Server-issued generation for native device registration context changes.
+  pv?: string
   // `User.tokenVersion` at issue time. A mismatch on verify means this token was
   // revoked (logout, forced sign-out), so it is rejected before its TTL expires.
   // Distinct from `uoaIdentity.uoaTokenVersion`, which is UOA's own epoch.

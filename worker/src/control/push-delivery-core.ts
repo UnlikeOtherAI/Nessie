@@ -150,6 +150,7 @@ const sendWithRetry = async (
 type PushDeviceTokenForSend = {
   platform: 'ios' | 'android'
   token: string
+  apnsEnvironment?: 'sandbox' | 'production' | null
 }
 
 type PushSendOutcome = {
@@ -169,7 +170,9 @@ const sendConfiguredToken = async (
   },
 ): Promise<PushSendOutcome | null> => {
   if (input.token.platform === 'ios' && input.apnsCreds) {
-    const apnsCreds = input.apnsCreds
+    const apnsCreds = input.token.apnsEnvironment
+      ? { ...input.apnsCreds, environment: input.token.apnsEnvironment }
+      : input.apnsCreds
     return {
       provider: 'apns',
       ...(await sendWithRetry({
@@ -284,7 +287,11 @@ const deliverNativeTokens = async (
 ): Promise<{ summary: PushDispatchSummary; tokenCount: number }> => {
   const summary: PushDispatchSummary = { sent: 0, failed: 0, pruned: 0 }
   const tokens = await input.prisma.deviceToken.findMany({
-    where: { userId: { in: input.recipientIds } },
+    where: {
+      organizationId: input.organizationId,
+      userId: { in: input.recipientIds },
+      inactiveAt: null,
+    },
   })
   if (tokens.length === 0) {
     return { summary, tokenCount: 0 }

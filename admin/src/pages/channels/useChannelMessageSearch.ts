@@ -62,15 +62,24 @@ export const useAlertMessageHighlight = (
 ) => {
   const location = useLocation()
   const navigate = useNavigate()
-  const highlightMessageId = (
+  const alertMessageId = (
     location.state as { highlightMessageId?: unknown } | null
   )?.highlightMessageId
+  const messageIdFromPush = new URLSearchParams(location.search).get('messageId')
+  const highlightMessageId = typeof alertMessageId === 'string'
+    ? alertMessageId
+    : messageIdFromPush
 
   useEffect(() => {
     if (typeof highlightMessageId !== 'string' || !highlightMessageId || !messagesLoaded) {
       return
     }
     jumpToMessage(highlightMessageId)
-    void navigate(location.pathname, { replace: true, state: null })
-  }, [highlightMessageId, jumpToMessage, location.pathname, messagesLoaded, navigate])
+    const search = new URLSearchParams(location.search)
+    search.delete('messageId')
+    void navigate(
+      { pathname: location.pathname, search: search.size > 0 ? `?${search.toString()}` : '' },
+      { replace: true, state: null },
+    )
+  }, [highlightMessageId, jumpToMessage, location.pathname, location.search, messagesLoaded, navigate])
 }
