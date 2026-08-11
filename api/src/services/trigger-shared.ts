@@ -5,6 +5,7 @@ import {
   computeNextCronRunAt,
   computeNextRetryAt,
   parseIntervalMinutes,
+  parseScheduleUntil,
 } from '@nessie/runtime'
 import {
   parseAgentId,
@@ -139,15 +140,26 @@ export const normalizeNextRunAt = (input: {
     return input.nextRunAt ? new Date(input.nextRunAt) : undefined
   }
 
+  // A recurring schedule may carry an end (`config.until`). This is the arming
+  // path for API- and admin-created triggers — the worker's own
+  // `computeInitialScheduleRunAt` does not run here — so the same guard has to
+  // live on both, or a schedule submitted with an end already in the past arms
+  // anyway and fires once before the scheduler notices.
+  const withinEnd = (next: Date | null): Date | null => {
+    if (!next) return null
+    const until = parseScheduleUntil(input.config)
+    return until && next.getTime() > until.getTime() ? null : next
+  }
+
   if (input.type === 'scheduled') {
     if (input.nextRunAt) {
-      return new Date(input.nextRunAt)
+      return withinEnd(new Date(input.nextRunAt))
     }
 
-    return computeNextCronRunAt({
+    return withinEnd(computeNextCronRunAt({
       config: input.config,
       currentDate: new Date(),
-    })
+    }))
   }
 
   const intervalMinutes = parseIntervalMinutes(input.config)
@@ -155,9 +167,11 @@ export const normalizeNextRunAt = (input: {
     return null
   }
 
-  return input.nextRunAt
-    ? new Date(input.nextRunAt)
-    : new Date(Date.now() + intervalMinutes * 60_000)
+  return withinEnd(
+    input.nextRunAt
+      ? new Date(input.nextRunAt)
+      : new Date(Date.now() + intervalMinutes * 60_000),
+  )
 }
 
 export const resolveExecutionTarget = async (

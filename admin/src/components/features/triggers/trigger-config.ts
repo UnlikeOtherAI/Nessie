@@ -17,6 +17,8 @@ export type TriggerFormState = {
   name: string
   nextRunAt: string
   scheduleMode: ScheduleMode
+  /** Optional end of a recurring schedule; empty means "runs until paused". */
+  until: string
   targetChannelId: string
   targetKind: TriggerTargetKind
   triggerType: AgentTriggerRecord['type']
@@ -135,6 +137,7 @@ export const getDefaultCreateState = (
     cron: '',
     timezone: getLocalTimezone(),
     intervalMinutes: '60',
+    until: '',
     eventNames: '',
     eventFilter: '',
   }
@@ -169,6 +172,8 @@ export const getEditState = (
     timezone: typeof config.timezone === 'string' ? config.timezone : getLocalTimezone(),
     intervalMinutes:
       typeof config.interval_minutes === 'number' ? `${config.interval_minutes}` : '60',
+    until:
+      typeof config.until === 'string' ? toDatetimeLocalValue(config.until) : '',
     eventNames: toEventNamesValue(config),
     eventFilter: toEventFilterValue(config),
   }
@@ -305,6 +310,7 @@ export const buildSubmitPayload = (
         enabled: form.enabled,
         config: {
           interval_minutes: intervalMinutes,
+          ...(toIsoString(form.until) ? { until: toIsoString(form.until) } : {}),
         },
         nextRunAt,
       },

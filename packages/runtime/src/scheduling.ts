@@ -90,6 +90,22 @@ export const computeNextCronRunAt = (input: {
 export const isOneOffConfig = (config: unknown): boolean =>
   isJsonRecord(config) && config['mode'] === 'once'
 
+/**
+ * Optional end of a recurring schedule ("watch this until 9am tomorrow").
+ *
+ * A temporary watch — an incident window, a migration, an overnight soak — is
+ * a normal shape, and without this every recurring trigger runs forever and
+ * has to be remembered and paused by hand. Invalid or absent reads as "no
+ * end", so a malformed value can never silently stop a schedule.
+ */
+export const parseScheduleUntil = (config: unknown): Date | null => {
+  if (!isJsonRecord(config)) return null
+  const raw = config['until']
+  if (typeof raw !== 'string') return null
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 export const buildNextScheduledRunAt = (input: {
   config: unknown
   from: Date
@@ -103,7 +119,10 @@ export const buildNextScheduledRunAt = (input: {
   }
 
   if (input.type === 'scheduled') {
-    return computeNextCronRunAt({ config: input.config, currentDate: input.from })
+    return withinScheduleEnd(
+      computeNextCronRunAt({ config: input.config, currentDate: input.from }),
+      input.config,
+    )
   }
 
   if (input.type !== 'interval') {
@@ -116,7 +135,21 @@ export const buildNextScheduledRunAt = (input: {
   }
 
   const base = input.from.getTime() > input.now.getTime() ? input.from : input.now
-  return new Date(base.getTime() + intervalMinutes * 60_000)
+  return withinScheduleEnd(
+    new Date(base.getTime() + intervalMinutes * 60_000),
+    input.config,
+  )
+}
+
+/**
+ * Drop a computed fire time that falls past the schedule's end. Returning null
+ * is the existing stop signal: it clears `next_run_at`, and the scheduler's
+ * claim query requires that column to be non-null.
+ */
+const withinScheduleEnd = (next: Date | null, config: unknown): Date | null => {
+  if (!next) return null
+  const until = parseScheduleUntil(config)
+  return until && next.getTime() > until.getTime() ? null : next
 }
 
 /**
@@ -138,12 +171,18 @@ export const computeInitialScheduleRunAt = (input: {
   }
 
   if (input.type === 'scheduled') {
-    return computeNextCronRunAt({ config: input.config, currentDate: input.now })
+    return withinScheduleEnd(
+      computeNextCronRunAt({ config: input.config, currentDate: input.now }),
+      input.config,
+    )
   }
 
   if (input.type === 'interval') {
     const intervalMinutes = parseIntervalMinutes(input.config)
-    return intervalMinutes ? new Date(input.now.getTime() + intervalMinutes * 60_000) : null
+    return withinScheduleEnd(
+      intervalMinutes ? new Date(input.now.getTime() + intervalMinutes * 60_000) : null,
+      input.config,
+    )
   }
 
   return null
