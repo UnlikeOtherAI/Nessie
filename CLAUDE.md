@@ -397,8 +397,19 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   rewrites the final path to Ledger's `/v1/:serviceId/*` adapter for the
   selected OpenAI, Kimi, MiniMax, or custom provider. When the deployment-wide
   URL is absent, signing is decided after resolving the effective organization
-  provider-record URL, so a Ledger route still receives complete attribution
-  and fails before fetch when signing identity is unavailable. User-triggered
+  provider-record URL, so a Ledger route introduced by an organization provider
+  record still receives complete attribution. **Signing is best-effort by
+  deployment, mandatory once available.** A deployment that configured the UOA
+  signer signs every Ledger inference call and still fails closed when the
+  originating user has no linked SSO identity; a deployment that configured no
+  signer at all (no `UOA_*` env — an operator using a personal Ledger API key)
+  dispatches on `NESSIE_MODEL_API_KEY` alone. That is Ledger's call, not
+  Nessie's: Ledger authenticates the bearer and enforces per token whether
+  signed provenance is additionally required, answering 401 when it is. The
+  choice is read once from process env at startup
+  (`loadLedgerIdentitySettings`), never per request, organization, or user, so
+  nothing reachable from a request can downgrade a signing deployment.
+  User-triggered
   background jobs persist their user/team origin and named system agent/run, and
   fail before model dispatch if it is unavailable. DeepWater research launch
   retries reuse the provider's stable `tool_call_id`. Ledger owns job isolation,

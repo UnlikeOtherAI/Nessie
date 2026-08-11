@@ -361,12 +361,12 @@ production settings:
 | Auth brute-force limits | `NESSIE_RATE_LIMIT_*` (`_MAX` / `_WINDOW_MS` per rule) | Postgres-backed fixed-window counters (`rate_limit_buckets`) on login (`LOGIN_IP` 10/10min, `LOGIN_ACCOUNT` 5/10min), refresh (`REFRESH_IP` 30, `REFRESH_ACCOUNT` 20), bootstrap (`BOOTSTRAP_IP` 10), MCP OAuth start/callback (`MCP_OAUTH_IP` 20), MCP secret writes (`MCP_SECRET_WRITE_IP` 20, `MCP_SECRET_WRITE_ACCOUNT` 10), and step-up password re-proof (`STEP_UP_IP` 10, `STEP_UP_ACCOUNT` 5). Trips return 429 + `Retry-After` and emit an `auth.rate_limit.lockout` audit event; the store fails open with a loud log on outage. Counters on `/api/ops/health`. Full table: [rate-limiting.md](rate-limiting.md) |
 | Public API origin | `NESSIE_API_PUBLIC_URL` | `https://api.nessie.works` in production. Used to mint OAuth redirect URIs outside an HTTP request (personal-assistant `connector_authorize`); defaults to `http://localhost:<port>` |
 | Public admin origin | `NESSIE_ADMIN_PUBLIC_URL` | `https://app.nessie.works` in production. UOA separately pins this origin on Nessie's billing lifecycle app key and authors Checkout/Portal return URLs; callers cannot supply or widen them through Nessie. |
-| Ledger routing | `LEDGER_PUBLIC_URL`, `LEDGER_PROXY_TOKEN`, `LEDGER_DEEPWATER_MCP_URL`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | `LEDGER_PUBLIC_URL=https://ledger.unlikeotherai.com`; DeepWater uses `https://ledger.unlikeotherai.com/v1/mcp/deepwater`; builtin web search uses `/v1/serper/search`; configure inference with `https://ledger.unlikeotherai.com/v1/openai`, which Nessie rewrites per request to Ledger's `/v1/:serviceId/*` route for OpenAI, Kimi, MiniMax, DeepSeek, or a custom adapter. `LEDGER_PROXY_TOKEN` is Nessie's dedicated, product-bound Ledger app API key used for DeepWater and Serper; `NESSIE_MODEL_API_KEY` is configured with that same Nessie key for the Ledger model transport. Never reuse another product's app key or a webhook signing secret. Every Ledger inference request carries signed non-null user/org/team/agent/run attribution and requires a linked SSO identity with UOA delegation; tool calls also carry their stable tool-call id. Direct provider keys, including `SERPER_API_KEY`, are not consumed. The deployment-wide model URL wins; when it is absent and an approved organization provider record resolves to Ledger, Nessie signs after route resolution and fails before fetch if signing identity is unavailable. User-triggered background jobs persist origin and fail before provider dispatch if it cannot be resolved. Workflow execution additionally checks queued actor/scope against its durable run and installation. DeepWater enablement fails closed when its adapter URL, Nessie app API key, UOA signing/client settings, or first-party catalog is absent. Integration-managed instances reject generic test, refresh, healthcheck, secret, and delete operations; the Integrations toggle is their sole lifecycle path. Personal DeepWater credentials are unsupported. |
+| Ledger routing | `LEDGER_PUBLIC_URL`, `LEDGER_PROXY_TOKEN`, `LEDGER_DEEPWATER_MCP_URL`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | `LEDGER_PUBLIC_URL=https://ledger.unlikeotherai.com`; DeepWater uses `https://ledger.unlikeotherai.com/v1/mcp/deepwater`; builtin web search uses `/v1/serper/search`; configure inference with `https://ledger.unlikeotherai.com/v1/openai`, which Nessie rewrites per request to Ledger's `/v1/:serviceId/*` route for OpenAI, Kimi, MiniMax, DeepSeek, or a custom adapter. `LEDGER_PROXY_TOKEN` is Nessie's dedicated, product-bound Ledger app API key used for DeepWater and Serper; `NESSIE_MODEL_API_KEY` is configured with that same Nessie key for the Ledger model transport. Never reuse another product's app key or a webhook signing secret. Inference signing is best-effort by deployment and mandatory once available: with the `UOA_*` signer configured, every Ledger inference request carries signed non-null user/org/team/agent/run attribution, requires a linked SSO identity with UOA delegation, and fails before fetch when that identity is missing; with no signer configured at all, inference dispatches on `NESSIE_MODEL_API_KEY` alone and Ledger enforces per token whether signed provenance is also required (see "Ledger inference without UOA" below). Tool calls also carry their stable tool-call id. Direct provider keys, including `SERPER_API_KEY`, are not consumed. The deployment-wide model URL wins; when it is absent and an approved organization provider record resolves to Ledger, Nessie signs after route resolution. User-triggered background jobs persist origin and fail before provider dispatch if it cannot be resolved. Workflow execution additionally checks queued actor/scope against its durable run and installation. DeepWater enablement fails closed when its adapter URL, Nessie app API key, UOA signing/client settings, or first-party catalog is absent. Integration-managed instances reject generic test, refresh, healthcheck, secret, and delete operations; the Integrations toggle is their sole lifecycle path. Personal DeepWater credentials are unsupported. |
 | UOA commercial billing boundary | `UOA_BILLING_APP_KEY_NESSIE`, `UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE`, `UOA_BASE_URL` | Nessie's own `uoa_app_` customer-lifecycle key bound in UOA to the `nessie` service, exact actor issuer/audience/key, public half of the dedicated RS256 actor key, and `https://app.nessie.works` return origin. The app key and private JWK are separate GitHub Actions secrets. The deploy runner cryptographically validates both before its dependency-free host installer atomically updates the root-readable `.env`; neither may be reused by Ledger or another product. Every credits/add-on read, top-up/automatic-top-up/add-on action, customer-statement, Checkout, Portal, cancellation-preview, cancellation-confirm, and direct-session access-confirmation request carries a fresh 45-second actor JWT for the exact linked UOA user/org/team. Direct access is confirmed only after direct SSO exchange and before local session issuance; UOA failure blocks login and indirect product use never calls the seam. Nessie fixed-allowlists UOA's action id/path/body and renders UOA's display-ready remaining-credit model; browsers cannot provide upstream paths, action bodies, return URLs, app keys, actor assertions, balances, or commercial calculations. |
 | DeepSignal MCP boundary | `DEEPSIGNAL_MCP_APP_KEY` | DeepSignal-issued, Nessie-only `dsk_` application key. Required at API and worker startup in hosted/self-hosted modes and installed into the production host `.env` from the same-named GitHub Actions secret. It must differ from every configured secret-bearing environment credential (Ledger/model/billing, UOA signing/client, auth/session, DB, storage, email/admin, provider, push, or webhook credentials) and every encrypted per-org DeepSignal webhook signing secret; API and worker startup validate both boundaries. The user-scoped managed instance stores only this env reference; each outbound chat/history/digest/action request adds exact `ai.invoke` UOA delegation and fresh signed Nessie provenance independently. There is no OAuth or personal-credential fallback. |
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Session TTLs | `NESSIE_AUTH_TOKEN_TTL`, `NESSIE_AUTH_REFRESH_TOKEN_TTL` | optional, seconds; access JWT default 1800 (30 min), rotating refresh cookie default 2592000 (30 days). See [auth spec](deployment-modes-and-auth-spec.md) |
-| Model | `NESSIE_MODEL_PROVIDER`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | Hosted production routes OpenAI-compatible chat and `text-embedding-3-small` embeddings through Ledger; direct provider keys are not used by Nessie. |
+| Model | `NESSIE_MODEL_PROVIDER`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | Hosted production routes OpenAI-compatible chat and `text-embedding-3-small` embeddings through Ledger; direct provider keys are not used by Nessie. A Ledger `NESSIE_MODEL_BASE_URL` always takes its bearer from `NESSIE_MODEL_API_KEY` and never inherits `OPENAI_API_KEY`/`OPENAI_CHAT_API_KEY`; startup fails if a Ledger URL is set with no key at all. |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |
 | Feedback → GitHub | `NESSIE_GITHUB_TOKEN`, `NESSIE_GITHUB_OWNER`, `NESSIE_GITHUB_REPO` | token (repo-scoped PAT) required to file issues from the Feedback section; owner/repo default to `UnlikeOtherAI`/`Nessie`. Without a token, feedback is stored but no issue is created (`status: saved`) |
 | Storage backend | `NESSIE_STORAGE_PROVIDER` | `s3` in prod (MinIO); `filesystem` in local dev |
@@ -520,3 +520,52 @@ the `nessie-api` container.
 `nessie.config.json` enables the provider (`type: "uoa"`, `enabled: true`); no
 `clientId`/`issuerUrl` are needed (the config-JWT `config_url` identifies the
 client, and the secret derives the bearer hash).
+
+### Ledger inference without UOA
+
+The onboarding above is required for SSO and for signed Ledger identity. It is
+**not** required to run inference through Ledger. A deployment can point
+`NESSIE_MODEL_BASE_URL` at a Ledger route and set `NESSIE_MODEL_API_KEY` to a
+Ledger API key with nothing else — no `UOA_*` variables, no OAuth client, no
+RS256 keypair — and the API, the embedded worker, model dispatch, and the agent
+model catalogue all work on that bearer alone:
+
+```
+NESSIE_MODEL_PROVIDER=deepseek
+NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/deepseek
+NESSIE_MODEL_API_KEY=lk_...
+```
+
+Ledger — not Nessie — decides what a given key must present. A key whose
+`identityMode` is `optional` authenticates on the bearer; a key that requires
+`X-Nessie-Context`, or that is product-bound, is rejected by Ledger with a 401
+the operator sees immediately. Nessie pre-empting that decision is what used to
+make an ordinary personal key unusable, so it no longer does.
+
+Configure the `UOA_*` signer and the guarantees come back in full and
+unweakened: every Ledger inference call carries `X-Nessie-Context` plus
+`X-UOA-Delegation`, and a request whose originating user has no linked UOA
+identity still fails closed before dispatch. The two modes are chosen once from
+process env at startup — `loadLedgerIdentitySettings` returning null is the only
+bearer-only condition — so no organization, user, or request shape can move a
+signing deployment onto the unsigned path.
+
+The signer is all-or-nothing across five variables, so a single typo silently
+selects the unsigned mode. Both the API and the worker therefore log which mode
+they resolved at startup whenever the model URL is a Ledger route — check that
+line before concluding a deployment is signing.
+
+**Multi-tenant caveat.** Without a signer, Ledger sees one deployment-wide key
+and no per-call provenance, so Ledger-side usage cannot be attributed to a
+specific organization. Nessie's own accounting is unaffected — `token_ledger_events`
+and the `Budget` gate are scoped per tenant and enforced identically in both
+modes — but Nessie budgets are soft caps recorded after spend, and they only
+bind where an operator configured them. On a single-tenant or personal
+deployment this is moot; on a multi-tenant one, either configure the `UOA_*`
+signer so upstream usage stays attributable, or set per-organization budgets
+deliberately.
+
+This covers model/embedding inference and the agent model catalogue only.
+DeepWater (`LEDGER_DEEPWATER_MCP_URL`, `LEDGER_PROXY_TOKEN`), builtin
+`web_search`, and UOA billing keep their own product-bound credentials and
+identity requirements unchanged, and still fail closed without them.

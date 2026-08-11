@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import {
   createLedgerIdentityService,
+  createLedgerIdentityServiceFromEnv,
   LedgerIdentityError,
   loadLedgerIdentitySettings,
   type LedgerIdentitySettings,
@@ -466,4 +467,27 @@ test('loads existing UOA signing settings without introducing a client id', () =
   })
   assert.equal(loaded?.ledgerAudience, settings.ledgerAudience)
   assert.equal('clientId' in (loaded ?? {}), false)
+})
+
+test('startup env alone decides whether a deployment can sign', () => {
+  const signingEnv = {
+    UOA_DOMAIN: settings.sourceDomain,
+    UOA_CONFIG_URL: settings.configUrl,
+    UOA_CONFIG_JWT_KID: settings.kid,
+    UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(privateKeyPem).toString('base64'),
+    UOA_CLIENT_SECRET: settings.clientSecret,
+  }
+  const prisma = {} as never
+
+  assert.notEqual(
+    createLedgerIdentityServiceFromEnv(prisma, signingEnv),
+    null,
+  )
+  // Null is the sole bearer-only condition, and no partial UOA env produces it
+  // by accident — each missing variable independently withholds the signer.
+  for (const omitted of Object.keys(signingEnv)) {
+    const partial = { ...signingEnv, [omitted]: '' }
+    assert.equal(createLedgerIdentityServiceFromEnv(prisma, partial), null)
+  }
+  assert.equal(createLedgerIdentityServiceFromEnv(prisma, {}), null)
 })

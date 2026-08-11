@@ -53,9 +53,19 @@ const envValue = (env: NodeJS.ProcessEnv, name: string): string | null => {
 }
 
 /**
- * Load the shared UOA signer plus Ledger's audience. Returning null keeps
- * local/direct-provider development operational; Ledger dispatch still fails
- * closed when this service is required.
+ * Load the shared UOA signer plus Ledger's audience.
+ *
+ * Null means this deployment configured no signer at all, and it is the ONLY
+ * condition under which a Ledger call may go out unsigned. Ledger authenticates
+ * the caller by its own bearer token and decides per token whether signed
+ * provenance is additionally required, so a deployment holding nothing but a
+ * Ledger API key dispatches bearer-only and lets Ledger answer 401 if that token
+ * demands more. Nessie must not guess that answer on Ledger's behalf.
+ *
+ * A configured signer is the opposite: every Ledger call signs, and a request
+ * whose originating user has no linked UOA identity still fails closed. The
+ * choice is made once from process env at startup — never per request, per
+ * organization, or per user — so no caller can downgrade a signing deployment.
  */
 export const loadLedgerIdentitySettings = (
   env: NodeJS.ProcessEnv = process.env,

@@ -126,14 +126,22 @@ export const startWorker = async (
   const deepSignalMcpIdentity =
     createDeepSignalMcpIdentityServiceFromEnv(prisma)
   await deepSignalMcpIdentity?.validateStoredCredentialSeparation()
-  if (isLedgerEndpoint(config.model.baseUrl) && !ledgerIdentity) {
-    throw new Error(
-      'Ledger-routed inference requires configured UOA signing and client credentials.',
-    )
-  }
+  // A signer, when this deployment has one, signs every Ledger call below.
+  // Without one the Ledger API key stands alone and Ledger enforces whatever
+  // that token requires — see `loadLedgerIdentitySettings`.
   if (isLedgerEndpoint(config.model.baseUrl) && !config.model.apiKey) {
     throw new Error(
       'Ledger-routed inference requires NESSIE_MODEL_API_KEY; direct-provider keys are not accepted.',
+    )
+  }
+  // Same reason as the API: the signer is all-or-nothing across five variables,
+  // so one typo silently selects the unsigned mode. State which mode booted.
+  if (isLedgerEndpoint(config.model.baseUrl)) {
+    console.log(
+      ledgerIdentity
+        ? '[worker.ledger] signing identity configured; calls carry signed provenance.'
+        : '[worker.ledger] no signing identity configured; calls authenticate with the '
+          + 'Ledger API key alone. Set all five UOA_* variables to enable signing.',
     )
   }
   const modelClient = createModelClient(config.model, {

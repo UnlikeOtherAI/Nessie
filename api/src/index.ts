@@ -176,11 +176,21 @@ export const buildApp = async () => {
       ?? process.env.OPENAI_CHAT_API_KEY
       ?? ''
   if (modelApiKey) {
+    // Signing is attached whenever this deployment has a signer; without one the
+    // Ledger API key is the whole credential and Ledger decides for itself
+    // whether that token also demands signed provenance.
     const configuredLedgerIdentity = createLedgerIdentityServiceFromEnv(prisma)
     ledgerIdentity = configuredLedgerIdentity
-    if (isLedgerEndpoint(config.model.baseUrl) && !configuredLedgerIdentity) {
-      throw new Error(
-        'Ledger-routed inference requires configured UOA signing and client credentials.',
+    // Say which of the two modes this process actually resolved. The signer is
+    // all-or-nothing across five variables, so a single typo silently produces
+    // the unsigned mode; an operator who meant to sign needs to see that at boot
+    // rather than infer it from missing provenance later.
+    if (isLedgerEndpoint(config.model.baseUrl)) {
+      app.log.info(
+        configuredLedgerIdentity
+          ? 'Ledger inference: signing identity configured; calls carry signed provenance.'
+          : 'Ledger inference: no signing identity configured; calls authenticate with '
+            + 'the Ledger API key alone. Set all five UOA_* variables to enable signing.',
       )
     }
     sharedModelClient = createModelClient(

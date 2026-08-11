@@ -94,19 +94,19 @@ const optionKey = (option: Pick<AgentModelOption, 'model' | 'provider'>): string
   `${option.provider}\u0000${option.model}`
 
 /**
- * The Ledger app key identifies Nessie's budget, but Ledger also requires
- * signed user/run provenance for every Nessie-bound request. Keep catalogue
- * discovery on that same authenticated path as model inference.
+ * Keep catalogue discovery on the same authenticated path as model inference:
+ * a signing deployment signs the listing with the caller's user/run provenance
+ * and still fails closed when that user has no linked UOA identity. A
+ * deployment with no signer configured lists on the Ledger API key alone, which
+ * is exactly what the token scopes the catalogue to — see
+ * `loadLedgerIdentitySettings`. `listLedgerAgentModels` adds the bearer.
  */
 export const ledgerAgentModelCatalogRequestHeaders = async (input: {
   actorContext: AuthorizedActionContext
   ledgerIdentity: LedgerIdentityService | null
 }): Promise<Record<string, string>> => {
   if (!input.ledgerIdentity) {
-    throw new LedgerAgentModelCatalogError(
-      LEDGER_AGENT_MODEL_CATALOG_ERROR_CODES.UNCONFIGURED,
-      'Agent model selection requires configured Ledger identity signing.',
-    )
+    return {}
   }
 
   try {

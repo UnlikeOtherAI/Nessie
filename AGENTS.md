@@ -205,8 +205,21 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi, MiniMax, or custom
   provider, including embeddings and designer/orchestrator calls. If the
   deployment-wide URL is absent, signing is decided after the effective
-  organization provider-record URL resolves, so Ledger routes still receive
-  complete attribution and fail before fetch without signing identity.
+  organization provider-record URL resolves, so a Ledger route an organization
+  provider record introduced still receives complete attribution. **Inference
+  signing is best-effort by deployment, mandatory once available.** With the
+  `UOA_*` signer configured, every Ledger inference call signs and still fails
+  closed when the originating user has no linked SSO identity. With no signer
+  configured at all — an operator running on a personal Ledger API key — the
+  call goes out on `NESSIE_MODEL_API_KEY` alone, because Ledger authenticates
+  that bearer and decides per token whether signed provenance is also required;
+  Nessie must not refuse on Ledger's behalf and force a UOA OAuth client on a
+  deployment whose token does not need one. The condition is read once from
+  process env at startup (`loadLedgerIdentitySettings` returning null) and is
+  unreachable per request, per organization, or per user, so a signing
+  deployment cannot be downgraded. This applies to model/embedding inference and
+  its model catalogue only; DeepWater, `web_search`, and billing keep their own
+  product-bound credentials and identity requirements unchanged.
   DeepWater `research_start` must reuse the provider's stable `tool_call_id` on
   logical retries. The projected tools and `deep_water_run_update` are flagged
   `requiresExplicitGrant`, so an agent sees them ONLY when its `toolPolicy`

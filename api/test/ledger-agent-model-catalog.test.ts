@@ -67,6 +67,42 @@ test('creates the signed Nessie and UOA headers required for a Ledger model list
   })
 })
 
+test('lists on the Ledger API key alone when no signer is configured', async () => {
+  const headers = await ledgerAgentModelCatalogRequestHeaders({
+    actorContext: {
+      actor: { actorId: 'user_1', actorType: 'user' },
+      actionContext: { requestId: 'request_1' },
+      tenant: { organizationId: 'org_1', projectId: 'project_1', teamId: 'team_1' },
+    } as never,
+    ledgerIdentity: null,
+  })
+
+  assert.deepEqual(headers, {})
+
+  let authorization: string | null | undefined
+  const models = await listLedgerAgentModels({
+    config: catalogConfig,
+    fetchImpl: async (_input, init) => {
+      authorization = new Headers(init?.headers).get('authorization')
+      return response({
+        data: [
+          {
+            id: 'deepseek-v4-flash',
+            kind: 'service',
+            service: { id: 'deepseek', name: 'DeepSeek' },
+            endpoints: ['chat/completions'],
+          },
+        ],
+      })
+    },
+    ledgerPublicUrl,
+    requestHeaders: headers,
+  })
+
+  assert.equal(authorization, 'Bearer lk_nessie_test')
+  assert.deepEqual(models.map((option) => option.model), ['deepseek-v4-flash'])
+})
+
 test('lists only token-authorized chat-completions models from Ledger', async () => {
   let requestedUrl: string | undefined
   let authorization: string | null | undefined
