@@ -1270,7 +1270,8 @@ button.reaction-pill-active:focus-visible {
 .admin-message-markdown .admin-message-code-block {
   max-width: 100%;
   margin: 0.5rem 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--overlay-weak);

@@ -328,7 +328,7 @@ export const ChannelsPage = () => {
       />
 
       <div
-        className="min-h-0 flex-1 overflow-y-auto"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
         data-testid="channel-content-scroll"
         ref={feedScroll.containerRef}
       >

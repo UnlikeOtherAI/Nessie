@@ -21,12 +21,21 @@ export const INJECTED = `
     var shell = window.__nessieNativeShell;
     var insetIosPhoneTop =
       shell && shell.platform === 'ios' && shell.formFactor === 'phone';
+    var nativeTopbarOwnsSafeArea = shell && shell.platform === 'android';
+    var androidNativeFrameCss = nativeTopbarOwnsSafeArea
+      ? [
+          '.admin-topbar { height: var(--topbar-h); padding-top: 0; }',
+          '[data-testid="channel-content-scroll"] { overflow-x: hidden; }',
+          '.admin-message-markdown .admin-message-code-block { overflow-x: auto; overflow-y: hidden; }'
+        ].join('')
+      : '';
     st.id = styleId;
     st.textContent =
       '.admin-shell > aside, .admin-shell > main {' +
       (insetIosPhoneTop ? '  padding-top: env(safe-area-inset-top);' : '') +
       '  padding-bottom: env(safe-area-inset-bottom);' +
-      '}';
+      '}' +
+      androidNativeFrameCss;
     (document.head || document.documentElement).appendChild(st);
   }
 
