@@ -566,6 +566,7 @@ enum ToolRegistrySource {
   custom
   mcp_remote          @map("mcp-remote")
   interactive_session @map("interactive-session")
+  executor
 }
 
 enum ToolRegistryTransport {
@@ -574,6 +575,7 @@ enum ToolRegistryTransport {
   http
   stdio
   pty
+  executor
 }
 
 enum ToolRegistryEntryStatus {

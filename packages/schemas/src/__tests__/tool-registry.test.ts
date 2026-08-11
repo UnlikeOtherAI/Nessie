@@ -5,6 +5,7 @@ import {
   PromptMergeModeSchema,
   ToolBasePromptSchema,
   ToolCommonPromptSchema,
+  ToolTransportConfigSchema,
   ToolRegistryEntryExtensionsSchema,
 } from '../tools.js'
 
@@ -166,5 +167,24 @@ test('ToolRegistryEntryExtensionsSchema rejects unknown source/transport', () =>
       source: 'builtin',
       transport: 'carrier-pigeon',
     }),
+  )
+})
+
+test('executor transport accepts a logical operation but rejects an executor ID', () => {
+  const transport = ToolTransportConfigSchema.parse({
+    operationKey: 'file.read',
+    transport: 'executor',
+  })
+  assert.deepEqual(transport, {
+    operationKey: 'file.read',
+    transport: 'executor',
+  })
+  assert.equal(
+    ToolTransportConfigSchema.safeParse({
+      executorId: '2c85024e-a05b-4c89-8adc-36448a51d125',
+      operationKey: 'file.read',
+      transport: 'executor',
+    }).success,
+    false,
   )
 })
