@@ -96,6 +96,15 @@ services:
       # (the worker's personal assistant connector_authorize flow).
       NESSIE_API_PUBLIC_URL: https://api.nessie.works
       NESSIE_ADMIN_PUBLIC_URL: https://app.nessie.works
+      # Embeddings do not follow chat. Chat runs on Ledger's DeepSeek adapter,
+      # which answers `403 embeddings is not allowed for deepseek`, so the
+      # embedding destination is named separately: same Ledger host and same
+      # LEDGER/NESSIE_MODEL_API_KEY credential (inherited from the chat
+      # provider), but the `/v1/jina` service segment. Without these, memory
+      # recall and kb_search silently degrade to lexical-only on every run.
+      NESSIE_EMBEDDING_PROVIDER: openai-compatible
+      NESSIE_EMBEDDING_SERVICE_ID: jina
+      NESSIE_EMBEDDING_MODEL: jina-embeddings-v3
       UOA_BASE_URL: https://authentication.unlikeotherai.com
       DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
@@ -150,6 +159,15 @@ services:
       NESSIE_STORAGE_ACCESS_KEY_ID: ${NESSIE_STORAGE_ACCESS_KEY_ID}
       NESSIE_STORAGE_SECRET_ACCESS_KEY: ${NESSIE_STORAGE_SECRET_ACCESS_KEY}
       NESSIE_MAX_UPLOAD_BYTES: "5368709120"
+      # Embeddings do not follow chat. Chat runs on Ledger's DeepSeek adapter,
+      # which answers `403 embeddings is not allowed for deepseek`, so the
+      # embedding destination is named separately: same Ledger host and same
+      # LEDGER/NESSIE_MODEL_API_KEY credential (inherited from the chat
+      # provider), but the `/v1/jina` service segment. Without these, memory
+      # recall and kb_search silently degrade to lexical-only on every run.
+      NESSIE_EMBEDDING_PROVIDER: openai-compatible
+      NESSIE_EMBEDDING_SERVICE_ID: jina
+      NESSIE_EMBEDDING_MODEL: jina-embeddings-v3
     volumes:
       - ./nessie.config.json:/app/nessie.config.json:ro
     networks:

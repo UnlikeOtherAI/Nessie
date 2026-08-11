@@ -541,6 +541,14 @@ NESSIE_EMBEDDING_MODEL=jina-embeddings-v3
 
 The embedding block inherits the chat host and key, so the request lands on
 `https://ledger.unlikeotherai.com/v1/jina/embeddings` on the same Ledger bearer.
+The three `NESSIE_EMBEDDING_*` values are **not** secrets and are therefore set
+in `infrastructure/compose/docker-compose.prod.yml` on both the `api` and
+`worker` services, not in the host `.env` — a host-only copy is invisible to
+review and is lost when the host is rebuilt. They were missing in production
+until 2026-08-11, and the symptom was quiet rather than loud: every run logged
+`Memory search failed` / `kb_search: query embedding failed, degrading to
+lexical-only` and carried on, so memory recall and knowledge-base search
+silently ran without vectors.
 Leave the block unset and embeddings follow chat exactly as they did before it
 existed. `NESSIE_EMBEDDING_BASE_URL` / `NESSIE_EMBEDDING_API_KEY` point
 embeddings at a different host entirely (a self-hosted inference box, say); a
