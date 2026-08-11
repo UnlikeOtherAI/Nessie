@@ -7,6 +7,53 @@
 
 ---
 
+> ## ⚠ Amended after third review — read this before the work packages
+>
+> A third review (Codex Sol) found that **a message-only basis cannot enforce the
+> boundary**, and that the "security cut" below does not close the leak. Three
+> findings, all verified:
+>
+> **1. Content is laundered into unrestricted memory within one run.**
+> `loadThreadTail` ([`consolidate.ts:262`](../../packages/memory/src/consolidate.ts#L262))
+> selects thread messages by raw SQL with no filter, and consolidation writes the
+> result back as a **`channel`-audience thought**
+> ([`consolidate.ts:350`](../../packages/memory/src/consolidate.ts#L350)). A
+> restricted reply therefore becomes ordinary channel memory that feeds
+> *everyone's* future prompts through `user_shared` recall. The message predicate
+> never sees it. `send_message`'s capture at
+> [`message-delivery.ts:64`](../../worker/src/run/pa-tools/message-delivery.ts#L64)
+> does the same — this document previously called that path "untouched (good)",
+> which was wrong.
+>
+> **2. Basis does not survive derivation — the one-turn laundering hole.**
+> `loadConversation` returns content but no basis. So when the entitled asker
+> says *"summarise that"*, the reply is built from the **transcript**, not from
+> retrieval; its computed basis is empty; and the resulting message is
+> unrestricted. One turn erases the boundary, and no work package below closed it.
+> **Basis must propagate through derivation:** a reply's basis is the union of its
+> retrieval basis **and** the basis of every transcript turn admitted into its
+> window. `loadConversation` must return basis alongside content.
+>
+> **3. The boundary must attach to derived artifacts, not only messages.**
+> Verified readers that materialise message content elsewhere and serve it on
+> different access rules: thinking chunks
+> ([`thinking-recorder.ts:55`](../../worker/src/run/execute/thinking-recorder.ts#L55),
+> returned to any thread viewer via
+> [`threads.ts:82`](../../api/src/routes/threads.ts#L82)); `ToolCall.outputPreview`
+> carrying KB page bodies ([`tool-events.ts:38`](../../worker/src/run/execute/tool-events.ts#L38))
+> served by `/agents/:id/activity`; `/api/agents/:id/messages` returning
+> `fullContent` ([`agent-read-model.ts:289`](../../api/src/services/agent-read-model.ts#L289));
+> trigger content copied into `Task.purpose` where project-null tasks are
+> org-visible; reply text copied into plan artifacts and workflow outputs
+> ([`completion.ts:150-163`](../../worker/src/run/execute/completion.ts#L150));
+> and attachment bytes authorised by channel visibility alone.
+>
+> Consequences for the plan: **WP1 grows** to carry transitive inheritance,
+> **WP2 is re-specified** (see its note — the SSE citation was wrong), **WP0
+> grows** to cover four more create paths and message *edits*, and a new
+> **WP2.5 — derived-artifact containment** becomes part of the security cut.
+> The revised cut is stated at the end.
+
 ## The one thing to get right first
 
 **Every agent-originated post must go through one stamping chokepoint before any
@@ -23,6 +70,30 @@ agent-originated messages today:
 
 Stamping only the first closes the front door and leaves four side doors emitting
 content drawn from the identical context. **WP0 exists so this cannot happen.**
+
+**Four more create paths, found in the third review** — verify each before
+declaring the set closed:
+[`external-conversation.ts:263`](../../worker/src/run/external-conversation.ts#L263),
+[`comms-card.ts:44`](../../worker/src/run/pa-tools/comms-card.ts#L44),
+[`orchestrate.ts:104`](../../worker/src/run/orchestrate.ts#L104), and
+agent-to-agent delivery at
+[`mailbox.ts:258`](../../worker/src/control/mailbox.ts#L258).
+
+**And creation is not the only mutation.** `message_edit`
+([`agent-messages.ts:117`](../../worker/src/run/pa-tools/agent-messages.ts#L117))
+can replace the content of an existing zero-basis message with privileged text
+and leave it unstamped. WP0 therefore needs a **stamped content-replacement**
+operation, not only a stamped create.
+
+**Do not build one function taking arbitrary Prisma `data`** — the five paths
+differ in role, `userId`, `metadata`, `rootMessageId`, and reply bookkeeping, and
+a single entry point becomes parameter soup. The shape that holds:
+
+1. `persistMessageWithBasis(tx, draft, inheritedBasis)` — small, transactional.
+2. Discriminated draft composers for `assistant` and `delegated_user` authorship.
+3. Separate run-terminal and delegated-send coordinators owning their own
+   post-commit effects.
+4. A stamped content-replacement operation for edits.
 
 Note the delegated-PA branch: it posts agent-generated content with
 `role: 'user'`. A predicate keyed on *agent-authored* rows would miss it
@@ -133,10 +204,23 @@ carries full content on the same basis.
 
 **Fix:** for a message with a non-empty basis, publish **content-free** —
 `messageId`, `threadId`, `role`, and a `restricted: true` marker — and let
-entitled clients refetch through the WP3 predicate. SSE connections register
-per-user ([`api/src/routes/events.ts:94`](../../api/src/routes/events.ts#L94)),
-so per-viewer filtering is possible later; content-free push is the smaller,
-safer first move.
+entitled clients refetch through the WP3 predicate.
+
+**Correction from the third review:** an earlier draft said per-viewer SSE
+filtering would be possible later, citing the per-user global event stream. That
+was the wrong stream. The *thread* SSE registers with `thread.id` only —
+`realtimeHub.addSseConnection(thread.id, reply.raw, lastEventId)`
+([`threads.ts:395`](../../api/src/routes/threads.ts#L395)) — so there is no
+viewer to filter on without re-architecting the hub. **Content-free push is not
+the first move, it is the only move** available at this cost.
+
+**Live text precedes the message.** Reasoning and reply deltas stream from
+[`run-inference.ts:98`](../../worker/src/run/execute/run-inference.ts#L98) before
+any message row or basis exists. Streaming to a thread-scoped connection
+therefore cannot be gated by a message predicate at all. Until the hub carries a
+viewer, **a run whose retrieval basis is non-empty must not stream deltas** —
+it posts its reply on completion instead. The thinking bubble degrades to a
+content-free "working" state for those runs.
 
 **Mention alerts are part of this WP.** `createMessageMentionAlerts`
 ([`completion.ts:107`](../../worker/src/run/execute/completion.ts#L107)) writes a
@@ -145,6 +229,28 @@ restricted reply mentioning a non-entitled person hands them an alert and a
 doorway. Suppress the alert row for recipients who fail the basis predicate.
 
 ---
+
+## WP2.5 — derived-artifact containment  ·  size L  ·  **in the security cut**
+
+Added by the third review. A message-only basis does not hold, because content is
+materialised into other stores that serve it on different rules.
+
+**Must be closed before the cut is claimed:**
+
+| Artifact | Where | Fix |
+|---|---|---|
+| Consolidated memory | [`consolidate.ts:262`](../../packages/memory/src/consolidate.ts#L262) unfiltered tail → [`:350`](../../packages/memory/src/consolidate.ts#L350) channel-audience thought | Inherit basis onto the thought's audience, or skip restricted candidates entirely |
+| `send_message` capture | [`message-delivery.ts:64`](../../worker/src/run/pa-tools/message-delivery.ts#L64) | Same |
+| Thinking chunks | [`thinking-recorder.ts:55`](../../worker/src/run/execute/thinking-recorder.ts#L55), served by [`threads.ts:82`](../../api/src/routes/threads.ts#L82) | Gate the read on the run's basis |
+| Tool output previews | [`tool-events.ts:38`](../../worker/src/run/execute/tool-events.ts#L38) → `/agents/:id/activity` | Gate on the run's basis |
+| Agent message read model | [`agent-read-model.ts:289`](../../api/src/services/agent-read-model.ts#L289) `fullContent` | Apply the message predicate |
+| `Task.purpose` | [`orchestrate.ts:321`](../../worker/src/run/orchestrate.ts#L321); project-null tasks are org-visible | Do not copy trigger content, or carry basis |
+| Plan artifacts / workflow output | [`completion.ts:150-163`](../../worker/src/run/execute/completion.ts#L150) | Carry basis or omit content |
+| Attachment bytes | [`attachments.ts:46`](../../api/src/services/attachments.ts#L46) | Authorise on the owning message's basis, not channel visibility alone |
+
+Prefer **skip-if-restricted** over **inherit** wherever the artifact has no
+natural audience to carry a basis. Inheriting is more capable; skipping is
+smaller and fails closed. Decide per row, record which.
 
 ## WP3 — the read predicate  ·  size L  ·  **riskiest**
 
@@ -291,16 +397,29 @@ spawn), and the standalone `attachment_read` entitlement check.
 ## Sequencing
 
 ```
-WP0 ─→ WP1 ─→ WP2 ──┐
-                     ├─→ WP3a ─→ WP3b ─→ WP3c ─→ WP4 ─→ WP5
-WP6 (any time) ─────┘
+WP0 ─→ WP1 ─→ WP2 ─→ WP2.5 ─→ WP3a ─→ WP3b ─→ WP3c ──┐
+                                                       ├─→ WP4 ─→ WP5
+WP6 (any time) ───────────────────────────────────────┘
                                      WP7 ─→ WP8 ─→ WP9 ─→ WP10 ─→ WP11
 ```
 
-**The security cut is WP0 + WP1 + WP2 + WP3a.** That closes the wire and the
-prompt window — the two places content actually escapes. WP3b/c, WP4 and WP5
-follow within days as correctness and UX. WP7 onward is the consent product built
-on a boundary that already holds.
+**Revised security cut: WP0 + WP1 (with transitive inheritance) + WP2 + WP2.5 +
+WP3a + WP3b.** The earlier cut (WP0–WP3a) was shown not to close the leak — three
+concrete escapes survived it:
+
+1. **The API still served it.** WP3b was scheduled later, so a non-entitled viewer
+   could simply call `GET /api/threads/:id/messages`
+   ([`threads.ts:40`](../../api/src/routes/threads.ts#L40) →
+   [`messages.ts:231`](../../api/src/services/messages.ts#L231)) and read full
+   content. WP3b is therefore **inside** the cut, not after it.
+2. **Live text preceded the message** (see WP2's note) — no message, no basis,
+   nothing to predicate on.
+3. **One turn laundered it.** A's "summarise that" produced a zero-basis reply
+   from restricted transcript content, which B's window then admitted. Closed
+   only by WP1's transitive inheritance.
+
+WP3c, WP4 and WP5 follow within days as correctness and UX. WP7 onward is the
+consent product, built on a boundary that by then actually holds.
 
 Each WP is one landable change. WP3 is explicitly three.
 
@@ -308,11 +427,22 @@ Each WP is one landable change. WP3 is explicitly three.
 
 ## Open decisions
 
-1. **What may an autonomous run see?** `{ kind: 'autonomous' }` needs a concrete
-   meaning: zero-basis-only (safest, and scheduled agents lose cross-scope
-   recall), or the trigger owner's entitlements (more capable, and makes a
-   schedule a standing delegation). Not resolvable from the design doc; needed
-   before WP3a.
+1. ~~**What may an autonomous run see?**~~ **Resolved by the third review, on
+   evidence:** use the saved trigger owner when one exists, otherwise
+   zero-basis-only. User-created schedules already carry an immutable
+   `createdByUserId`/`launchOrigin`
+   ([`trigger-origin.ts:39`](../../worker/src/control/trigger-origin.ts#L39)),
+   already revalidate active org/team membership at fire time
+   ([`:104`](../../worker/src/control/trigger-origin.ts#L104)), and already place
+   that identity in `actorContext.actionContext.effectiveUserId`
+   ([`trigger-run.ts:275`](../../worker/src/control/trigger-run.ts#L275)) — where
+   memory retrieval already treats it as `user_shared`
+   ([`memory.ts:111`](../../worker/src/run/execute/memory.ts#L111)). So the
+   viewer resolves as `effectiveUserId → user viewer`, and only genuine
+   `userId: null` automation ([`trigger-origin.ts:96`](../../worker/src/control/trigger-origin.ts#L96))
+   becomes autonomous. Entitlements resolve live from the user id — **never** from
+   the stored project/team tuple, which is last-seen metadata. This makes the
+   disclosure boundary consistent with recall, which already behaves this way.
 2. **Denormalised `has_basis` on `messages`?** Reviewers split. **Decision: no,
    not in v1** — an anti-join on an indexed FK at `take: 20` is cheap, search
    needs its own SQL mechanism regardless, and WP2 removes realtime from the hot
@@ -340,7 +470,28 @@ read (Kimix); the delegated-PA `role: 'user'` predicate gap and the
 
 Split and adjudicated: the `has_basis` denormalisation — see Open decision 2.
 
+**Third review (Codex Sol), on the corrected document.** Found what the first two
+and I all missed: that a message-only basis cannot enforce the boundary at all.
+Its three structural findings — memory-consolidation laundering, one-turn
+derivation laundering, and the derived-artifact readers — are verified above and
+produced WP2.5, the WP1 transitive-inheritance requirement, the WP2 correction,
+and a redefined security cut. It also resolved Open decision 1 from evidence
+rather than opinion.
+
+**Highest-value single test**, per that review — the hole most likely to ship
+silently: a three-turn Postgres test where A causes a P-derived reply `m1` in
+channel C; A then asks *"summarise that"* **with retrieval disabled**, so the only
+possible source is the transcript; assert `m2` inherits P's basis; then assert B's
+follow-up receives placeholders for both. Repeat with `send_message` triggering a
+second agent. Without transitive inheritance this passes turn one and fails turn
+two — which is exactly how it would have reached production.
+
 ## Changelog
 
 - **2026-08-11** — Created from a reviewed draft; WP0 and WP2 added as a direct
   result of review, WP4's mechanism corrected, WP3 split into three.
+- **2026-08-11** — Amended after a third review: WP2.5 added (derived-artifact
+  containment), WP1 extended to transitive basis inheritance, WP0 extended to four
+  further create paths plus message edits, WP2's SSE architecture corrected and
+  streaming restricted, the security cut redefined to include WP3b, and the
+  autonomous-viewer decision resolved.
