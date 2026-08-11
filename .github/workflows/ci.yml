@@ -73,6 +73,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history, same as the lint job: `pnpm build` is lint-gated and
+          # runs `pnpm lint:migrations`, which needs a merge-base against the
+          # base branch. A shallow branch checkout has no `origin/main` to
+          # resolve, so every feature-branch build died before compiling.
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
