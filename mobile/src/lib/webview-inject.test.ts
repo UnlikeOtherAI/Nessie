@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE } from './android-tablet-dock'
 import { INJECTED } from './webview-inject'
 
 type FakeElement = {
@@ -66,7 +67,10 @@ test('iPad and Android keep top safe-area ownership in the native frame', () => 
   assert.doesNotMatch(androidCss, /padding-top: env/)
   assert.match(ipadCss, /padding-bottom: env\(safe-area-inset-bottom\)/)
   assert.match(androidCss, /padding-bottom: env\(safe-area-inset-bottom\)/)
-  assert.match(androidCss, /--nessie-native-bottom-overlay: 94px/)
+  assert.match(
+    androidCss,
+    new RegExp(`--nessie-native-bottom-overlay: ${ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE}px`),
+  )
   assert.match(
     androidCss,
     /padding-bottom: calc\(var\(--nessie-native-bottom-overlay\) \+ env\(safe-area-inset-bottom\)\)/,
