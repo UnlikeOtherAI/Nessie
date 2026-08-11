@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
-import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
@@ -19,15 +17,11 @@ import { useStickToBottom } from '../hooks/useStickToBottom'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { CallBanner } from '../components/shared/CallBanner'
-import { CallOverlay } from '../components/shared/CallOverlay'
 import { DropZoneOverlay } from '../components/shared/DropZoneOverlay'
-import { ChannelMembersPopup } from '../components/shared/ChannelMembersPopup'
-import { ChannelSettingsDialog } from '../components/shared/ChannelSettingsDialog'
 import { ChannelComposer } from '../components/features/channels/ChannelComposer'
 import { ChannelHeader } from '../components/features/channels/ChannelHeader'
 import { ChannelMessageFeed } from '../components/features/channels/ChannelMessageFeed'
 import { ExternalAgentIntro } from '../components/features/channels/ExternalAgentIntro'
-import { ThreadReplyPanel } from '../components/features/channels/thread-panel/ThreadReplyPanel'
 import { ChannelSearchPanel } from '../components/features/channels/ChannelSearchPanel'
 import { ChannelTabBar } from '../components/features/channels/ChannelTabBar'
 import { ChannelTabPanels } from '../components/features/channels/ChannelTabPanels'
@@ -35,7 +29,7 @@ import { buildFeedItems, isOperationsTab, type ChannelTab, type MessageUserIdent
 import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
-import { ChannelInfoDrawers } from './channels/ChannelInfoDrawers'
+import { ChannelOverlays } from './channels/ChannelOverlays'
 import { useChannelCall } from './channels/useChannelCall'
 import { useDeepWaterResearchLauncher } from './channels/useDeepWaterResearchLauncher'
 import { useChannelMentions } from './channels/useChannelMentions'
@@ -436,96 +430,53 @@ export const ChannelsPage = () => {
       <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />
       </div>
 
-      {replyThread.openRootMessageId && activeChannel ? (
-        <ThreadReplyPanel
-          activeChannel={activeChannel}
-          agentMap={agentMap}
-          channelUsers={channelUsers}
-          hasRespondingAgent={hasRespondingAgent}
-          isExternalAgentConversation={isExternalAgentActiveChannel}
-          isPersonalAssistantConversation={isPersonalAssistantConversation}
-          meAvatar={{
-            avatarUrl: me.user.avatarUrl,
-            avatarAttachmentId: me.user.avatarAttachmentId,
-            gravatarUrl: me.user.gravatarUrl,
-          }}
-          meDisplayName={me.user.displayName}
-          meUserId={me.user.id}
-          mentionEntities={mentionEntities}
-          pendingMessages={threadPendingMessages}
-          renderContent={renderContent}
-          thread={replyThread}
-          token={token}
-        />
-      ) : null}
-
-      {deepWaterLauncher.dialog}
-
-      {showMembersPopup && activeChannel ? (
-        <ChannelMembersPopup
-          allAgents={agents}
-          allUsers={allUsers}
-          boundAgents={boundAgents}
-          channelId={activeChannel.id}
-          channelLabel={activeChannel.label}
-          channelType={activeChannel.type}
-          channelUsers={channelUsers}
-          currentUserId={me.user.id}
-          onClose={() => setShowMembersPopup(false)}
-          onGroupCreated={(newChannelId) => {
-            setShowMembersPopup(false)
-            navigate(`/channels/${newChannelId}`)
-          }}
-          onSelectAgent={onSelectAgent}
-        />
-      ) : null}
-
-      {activeChannel ? (
-        <ChannelSettingsDialog
-          channel={activeChannel}
-          onClose={() => setShowChannelSettings(false)}
-          open={showChannelSettings}
-        />
-      ) : null}
-
-      <OversizePasteDialog
-        limit={CHAT_MESSAGE_MAX_CHARS}
-        onCancel={() => setOversizePaste(null)}
+      <ChannelOverlays
+        activeCall={activeCall}
+        activeChannel={activeChannel}
+        agentMap={agentMap}
+        agents={agents}
+        allUsers={allUsers}
+        boundAgents={boundAgents}
+        channelUsers={channelUsers}
+        deepWaterDialog={deepWaterLauncher.dialog}
+        hasRespondingAgent={hasRespondingAgent}
+        isExternalAgentConversation={isExternalAgentActiveChannel}
+        isInCall={isInCall}
+        isPersonalAssistantConversation={isPersonalAssistantConversation}
+        me={me}
+        mentionEntities={mentionEntities}
+        oversizePaste={oversizePaste}
+        pendingMessages={pendingMessages}
+        renderContent={renderContent}
+        replyThread={replyThread}
+        selectedMessageAgent={selectedMessageAgent}
+        selectedMessageUser={selectedMessageUser}
+        showCallOverlay={showCallOverlay}
+        showChannelSettings={showChannelSettings}
+        showMembersPopup={showMembersPopup}
+        threadMessages={threadMessages}
+        threadPendingMessages={threadPendingMessages}
+        token={token}
+        onCancelOversizePaste={() => setOversizePaste(null)}
+        onCloseMembers={() => setShowMembersPopup(false)}
+        onCloseSelectedAgent={() => setSelectedMessageAgentId(null)}
+        onCloseSelectedUser={() => setSelectedMessageUser(null)}
+        onCloseSettings={() => setShowChannelSettings(false)}
+        onGroupCreated={(newChannelId) => {
+          setShowMembersPopup(false)
+          navigate(`/channels/${newChannelId}`)
+        }}
         onInsertTrimmed={(trimmed) => {
           setOversizePaste(null)
           mentionRef.current?.insertText(trimmed)
         }}
-        onSendAsFile={(text) => sendAsFile(text)}
-        open={oversizePaste !== null}
-        pastedText={oversizePaste ?? ''}
-      />
-
-      {showCallOverlay && activeCall && isInCall && (
-        <CallOverlay
-          displayName={me?.user.displayName ?? 'User'}
-          onLeave={onOverlayLeave}
-          roomId={activeCall.roomId}
-        />
-      )}
-
-      <ChannelInfoDrawers
-        activeChannel={activeChannel}
-        agents={agents}
-        allUsers={allUsers}
-        me={me}
-        mentionEntities={mentionEntities}
-        pendingMessages={pendingMessages}
-        renderContent={renderContent}
-        selectedMessageAgent={selectedMessageAgent}
-        selectedMessageUser={selectedMessageUser}
-        threadMessages={threadMessages}
-        token={token}
-        onCloseAgent={() => setSelectedMessageAgentId(null)}
-        onCloseUser={() => setSelectedMessageUser(null)}
-        onOpenActivity={(agentId) => {
+        onLeaveCall={onOverlayLeave}
+        onOpenAgentActivity={(agentId) => {
           setSelectedMessageAgentId(null)
           onSelectAgent(agentId)
         }}
+        onSelectAgent={onSelectAgent}
+        onSendAsFile={sendAsFile}
       />
     </section>
   )
