@@ -52,7 +52,8 @@ This avoids context pollution while still allowing sub-agents to discover what e
    - small `k` with short snippets
    - no automatic full-document injection
    - explicit `read` required to get full body
-   - project-aware default scope using `projectId`
+   - project-aware **opt-in** scope using `projectId` — the default scope is the
+     organization, narrowed per space by visibility (see §5)
 7. Full content access should support read-level policy checks.
    - cross-project reads require explicit sharing/allow policy.
 8. Thread-local ephemeral retrieval must be supported:
@@ -291,7 +292,17 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
     (via `ProjectMember`) read and write.
   - **Private** — `visibility = private`: only listed `KnowledgeSpaceMember`s +
     creator read and write.
-  The creator always has full access. `listSpaces` filters to readable spaces;
+  The creator always has full access. **Visibility is the only scope.** The
+  space list (`GET /api/knowledge-base/spaces`), search, and summarize are
+  organization-wide and narrow only when the caller passes an explicit
+  `projectId`; they never fall back to the session's `proj` claim, which is just
+  the caller's oldest `ProjectMember` row (`session-issuers.ts`) and has nothing
+  to do with entitlement. Scoping the list to it hid spaces the caller was
+  entitled to read — org-visibility spaces filed in a sibling project, their own
+  personal "My Docs" when it was provisioned under a different project — and,
+  because the admin treats an empty list as a first visit, made it seed a second
+  "General" space beside the real one.
+  `listSpaces` filters to readable spaces;
   `getSpace`/page reads return 403 to non-readers; create/edit/delete/publish/
   move/restore return 403 to non-writers; search drops unreadable hits. The space
   record exposes the caller's effective `canWrite`. Non-human actors (agents /
@@ -307,7 +318,9 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
 ## 7) Release safety scenario
 
 - Each project can bind an isolated knowledge corpus for release workflows.
-- Searches and reads default to project namespace and may not leak across projects by default.
+- Isolation comes from `visibility = project` on the space (readable only by
+  that project's `ProjectMember`s), not from an ambient list/search filter — a
+  space marked `organization` is org-wide by definition and is listed as such.
 - Project-specific document links can be promoted/denied to other projects through explicit grants only.
 
 ## 8) Additional enterprise scenarios

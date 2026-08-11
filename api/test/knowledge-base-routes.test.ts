@@ -405,3 +405,59 @@ test('knowledge mutations map Prisma unique conflicts without leaking constraint
   assert.equal(payload.error.message.includes('page_id'), false)
   await app.close()
 })
+
+// The session's `proj` claim is only the caller's oldest project membership, so
+// scoping the space list to it hid org-visibility spaces filed in a sibling
+// project and the caller's own "My Docs" when it lived under another project —
+// and an empty list makes the admin seed a duplicate "General". What the caller
+// may see is canReadSpace's decision inside listSpaces, not their session.
+test('knowledge space listing is organization-wide unless a project is requested', async () => {
+  const seen: Array<string | undefined> = []
+  const { app } = makeApp('allow', {
+    listSpaces: async (input) => {
+      seen.push(input.projectId)
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+  })
+
+  const orgWide = await app.inject({ method: 'GET', url: '/api/knowledge-base/spaces' })
+  assert.equal(orgWide.statusCode, 200)
+
+  const otherProjectId = '00000000-0000-4000-8000-0000000000a1'
+  const narrowed = await app.inject({
+    method: 'GET',
+    url: `/api/knowledge-base/spaces?projectId=${otherProjectId}`,
+  })
+  assert.equal(narrowed.statusCode, 200)
+
+  assert.deepEqual(seen, [undefined, otherProjectId])
+  await app.close()
+})
+
+test('knowledge search is organization-wide unless a project is requested', async () => {
+  const seen: Array<string | undefined> = []
+  const { app } = makeApp('allow', {
+    searchPagesHybrid: async (input) => {
+      seen.push(input.projectId)
+      return { data: [], meta: { cursor: null, hasMore: false } }
+    },
+  })
+
+  const orgWide = await app.inject({
+    method: 'POST',
+    url: '/api/knowledge-base/search',
+    payload: { query: 'runbook' },
+  })
+  assert.equal(orgWide.statusCode, 200)
+
+  const otherProjectId = '00000000-0000-4000-8000-0000000000a2'
+  const narrowed = await app.inject({
+    method: 'POST',
+    url: '/api/knowledge-base/search',
+    payload: { query: 'runbook', projectId: otherProjectId },
+  })
+  assert.equal(narrowed.statusCode, 200)
+
+  assert.deepEqual(seen, [undefined, otherProjectId])
+  await app.close()
+})

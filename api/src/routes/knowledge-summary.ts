@@ -56,7 +56,10 @@ export const registerKnowledgeSummaryRoutes = (
 
     const viewer = await buildViewer(actorContext)
     const organizationId = actorContext.tenant.organizationId
-    const projectId = body.projectId ?? actorContext.tenant.projectId ?? undefined
+    // Explicit-only: the summary searches the same corpus as
+    // POST /api/knowledge-base/search, and narrowing to the session's project
+    // would answer from a strict subset of what the caller may read.
+    const projectId = body.projectId
     const query = body.query.trim()
     const trace = policyTrace(decision)
 

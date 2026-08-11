@@ -52,9 +52,19 @@ export const registerKnowledgeBaseRoutes = (
     )
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
+    // Org-wide by default, narrowed only when the caller explicitly asks for a
+    // project. The session's `proj` claim is just the caller's oldest project
+    // membership (session-issuers.ts) — falling back to it here silently hid
+    // spaces the caller is fully entitled to read: org-visibility spaces filed
+    // in a sibling project, their own personal "My Docs" when it was
+    // provisioned under a different project, and any project's "Project
+    // Documents" they belong to. Worse, the admin reads an empty list as "first
+    // visit" and seeds a fresh "General" space, so the narrowing manufactured
+    // duplicate spaces. What the caller may see is `canReadSpace`'s decision,
+    // applied inside listSpaces — never the session's incidental project.
     const result = await provider.listSpaces({
       organizationId: actorContext.tenant.organizationId,
-      projectId: query.projectId ?? actorContext.tenant.projectId ?? undefined,
+      projectId: query.projectId,
       cursor: query.cursor,
       limit: query.limit,
       viewer,
@@ -252,7 +262,10 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const viewer = await buildViewer(actorContext)
     const organizationId = actorContext.tenant.organizationId
-    const projectId = body.projectId ?? actorContext.tenant.projectId ?? undefined
+    // Explicit-only, for the same reason the space list is org-wide: the
+    // viewer's own read rules already gate every hit (readableSpaceIdsSql), so
+    // defaulting to the session's project only hid pages the caller may read.
+    const projectId = body.projectId
     const query = body.query?.trim()
     // Hybrid needs query text and provider support; force keyword mode
     // otherwise. Both paths pass `viewer` through so the provider applies the
