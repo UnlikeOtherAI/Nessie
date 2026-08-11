@@ -19,6 +19,7 @@ import {
   getReplyBroadcastRootId,
   type ThreadParticipant,
 } from './thread-panel/thread-panel-helpers'
+import { readWatchStatusSummary } from '../../../facades/channels/watch-status'
 
 const SpeechBubbleIcon = () => (
   <svg
@@ -125,6 +126,7 @@ export const ChannelMessageRow = ({
   setActiveActionMessageId,
   lastPointerDownAt,
 }: ChannelMessageRowProps) => {
+  const watchStatus = readWatchStatusSummary(message.metadata)
   const displayName = getDisplayName(message, meDisplayName, agentMap, assistantFallbackName)
   const canManageOwnMessage = message.role === 'user' && message.userId === meUserId
   const isEditingMessage = editingMessageId === message.id
@@ -290,7 +292,14 @@ export const ChannelMessageRow = ({
           <span className="text-xs text-[color:var(--tx3)]">
             {formatClock(message.createdAt)}
           </span>
-          {message.editedAt ? (
+          {watchStatus ? (
+            // A recurring watch keeps one status line and edits it in place, so
+            // "(edited)" would be misleading — the useful facts are how many
+            // times it has run and when it last did.
+            <span className="text-xs text-[color:var(--tx3)]">
+              {`checked ${watchStatus.runCount}× · last ${formatClock(watchStatus.lastRunAt)}`}
+            </span>
+          ) : message.editedAt ? (
             <span className="text-xs italic text-[color:var(--tx3)]">(edited)</span>
           ) : null}
         </div>

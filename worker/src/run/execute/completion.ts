@@ -7,10 +7,17 @@ import { enqueueRunMemoryConsolidation } from '../memory-consolidation.js'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { createMessageMentionAlerts } from '../mention-alerts.js'
 import { buildScopes } from './scopes.js'
+import { foldWatchStatus } from './watch-status.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
 import { detectReferencedRecallIds } from './memory.js'
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
-import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
+import {
+  publishAgentStatus,
+  publishMessageCreated,
+  publishMessageUpdated,
+  publishRunUpdated,
+  publishTaskUpdated,
+} from './realtime.js'
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext, RunPlanContext } from './types.js'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
@@ -30,6 +37,12 @@ export const completeRunExecution = async (
      */
     messageMetadata?: Record<string, unknown>
     responseText: string
+    /**
+     * Set for a recurring watch whose sweep found nothing new: this text
+     * becomes the watch's rolling status line instead of a new message.
+     * Decided by the model (`watch-status.ts`), never by reading the prose.
+     */
+    rollingWatch?: { triggerId: string }
     toolCallsUsed: number
   },
 ): Promise<void> => {
@@ -45,6 +58,27 @@ export const completeRunExecution = async (
     await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
   }
 
+  if (input.rollingWatch) {
+    const fold = await foldWatchStatus(deps.prisma, {
+      agentId: context.agent.id,
+      content: input.responseText,
+      lastRunId: context.run.id,
+      now: new Date(),
+      threadId: context.run.threadId,
+      triggerId: input.rollingWatch.triggerId,
+    })
+    // An edit adds no row, so unread counts do not move and no mention alert
+    // fires — which is the point: a quiet sweep must not light the channel up.
+    await publishMessageUpdated(deps.realtimeTransport, context, {
+      messageId: fold.messageId,
+    })
+    await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
+      agentId: parseAgentId(context.agent.id),
+      content: input.responseText,
+      messageId: fold.messageId,
+      runId: parseRunId(context.run.id),
+    })
+  } else {
   // The personal assistant is its owner's delegate: anything it posts into a
   // shared channel is authored as that owner (mirroring the immediate
   // send_message tool), not as the assistant bot. Replies inside its own DM
@@ -126,7 +160,9 @@ export const completeRunExecution = async (
     },
   )
 
-  await updateRunStatus(deps.prisma, context.run.id, 'completed')
+  }
+
+  await updateRunStatus(deps.prisma, context.run.id, 'completed', deps.realtimeTransport)
   await updateTaskStatus(deps.prisma, context.task.id, 'done')
   // Memory consolidation is best-effort: a failure to enqueue it must never
   // turn an already-completed run into a failed one (the outer catch would).

@@ -61,6 +61,38 @@ the model: removal is fused to the terminal status transition in
 cancellation all clear it without having to remember, and a crashed run clears
 it when the queue re-delivers it to a terminal state.
 
+## A recurring watch keeps one rolling status message
+
+A sweep that finds nothing does not add a message. It edits the watch's own
+status line in place — the model's latest words, plus a `checked 54× · last
+09:12` counter rendered from `metadata.watchStatus` — so ninety-six quiet
+sweeps a day stay one line instead of ninety-six messages burying the findings
+the channel exists for.
+
+Mechanics (`worker/src/run/execute/watch-status.ts` +
+`watch-status-gate.ts`, folded in `completion.ts`):
+
+- **The model always writes text.** Only the *routing* changes. Nothing here
+  offers the model an "output is optional" affordance — that shape is what
+  made every trigger run fail when `conclude_silently` shipped.
+- **Two gates, structural first.** Only an unattended run belonging to an
+  `interval`/`scheduled` trigger that has not set `config.rollingStatus:false`
+  is eligible; then one small utility-model call judges the text as a finding
+  or a no-change. That judgement **fails open** — any error, timeout or
+  unparseable answer posts normally, because a missed finding is far worse
+  than one redundant message.
+- **The roll resets when anything else is said.** The fold only continues while
+  the status line is still the newest visible message in the thread; a human
+  post, another agent, or the watch's own finding starts a fresh line at 1.
+  Purely structural (authorship + recency), never a reading of content.
+- **Race-safe.** Find-newest → check-superseded → update-or-create runs inside
+  one transaction under `pg_advisory_xact_lock(threadId, agentId)`, so two
+  sweeps cannot both create a status row or both increment from the same count.
+- **Quiet by construction.** An edit adds no row, so unread counts
+  (`created_at > last_read_at`) do not move and `createMessageMentionAlerts`
+  never runs. Realtime uses a `message.updated` event that refreshes only the
+  open thread — deliberately not `['channels']`, so badges stay put.
+
 ## Message reply threads (#233)
 
 `Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. A run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`), and thread-following scopes to that reply thread; DeepWater/product-handoff and external-agent paths stay top-level and byte-identical. **Where a run replies and what it reads are separate questions** (`resolveReplyRootMessageId` vs `resolveConversationRootMessageId`): the conversation window narrows to a reply thread only when the trigger message is *itself* a reply. A run answering a top-level message is starting a reply thread, not sitting in one, so it reads the channel thread — scoping it to its own trigger would leave it a one-message window with no history. Admin: reply-summary bar under roots, deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`, pushes ≥1280px, overlay 900–1279px, full-screen <900px, drag-resized width persisted), `T` opens the focused message's thread. Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.
