@@ -62,6 +62,8 @@ test('an interactive run tells the person waiting what went wrong', async () => 
     channel: {
       id: ID.channel,
       organizationId: ID.organization,
+      projectId: '00000000-0000-0000-0000-0000000000d1',
+      teamId: '00000000-0000-0000-0000-0000000000d2',
       systemChannelType: 'personal_assistant',
     },
     run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },

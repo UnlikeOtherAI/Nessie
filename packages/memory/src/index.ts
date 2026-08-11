@@ -43,8 +43,10 @@ export {
   type SearchExecutionConfig,
 } from './search.js'
 export {
+  constrainScopesToDestination,
   resolveAccessibleScopes,
   type AccessibleScopes,
+  type DestinationScopeChain,
   type ScopeResolutionMode,
   type ResolveAccessibleScopesInput,
 } from './scopes.js'

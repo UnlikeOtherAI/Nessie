@@ -1,4 +1,5 @@
 import {
+  constrainScopesToDestination,
   resolveAccessibleScopes,
   searchAndLogThoughtsInScopes,
   type ScopeResolutionMode,
@@ -10,6 +11,20 @@ import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types
 const MAX_MEMORY_RESULTS = 5
 const MAX_MEMORY_CONTEXT_LENGTH = 220
 const MIN_REFERENCE_TOKENS = 5
+
+const CONTAINMENT_DISABLED = new Set(['0', 'false', 'off', 'no'])
+
+/**
+ * Recall containment is ON by default. It is the safe floor the full disclosure
+ * boundary is built behind, so disabling it is an explicit deployment act and
+ * should only happen once that boundary ships.
+ */
+export const isContainmentEnabled = (
+  env: NodeJS.ProcessEnv = process.env,
+): boolean =>
+  !CONTAINMENT_DISABLED.has(
+    (env['NESSIE_DISCLOSURE_CONTAINMENT'] ?? '').trim().toLowerCase(),
+  )
 
 const truncateForContext = (value: string, maxLength: number): string =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`
@@ -131,7 +146,7 @@ export const retrieveRelevantMemories = async (
       : 'autonomous'
 
   try {
-    const scopes = await resolveAccessibleScopes(
+    const reachableScopes = await resolveAccessibleScopes(
       {
         agentId: context.agent.id,
         mode,
@@ -140,6 +155,23 @@ export const retrieveRelevantMemories = async (
       },
       deps.searchConfig.pool,
     )
+
+    // Containment (default on): a shared or autonomous run recalls only what the
+    // destination room's own scope chain already implies, so cross-scope material
+    // never enters the run — and therefore cannot reach the transcript, the
+    // realtime wire, consolidated memory, or any artifact derived from the run.
+    // The personal assistant is exempt: it acts as its owner, in a DM whose only
+    // human is that owner, and its owner's private memories are the point.
+    // See docs/plans/2026-08-11-disclosure-boundaries-build.md.
+    const scopes =
+      isPersonalAssistant || !isContainmentEnabled()
+        ? reachableScopes
+        : constrainScopesToDestination(reachableScopes, {
+          channelId: context.channel.id,
+          organizationId: context.channel.organizationId,
+          projectId: context.channel.projectId,
+          teamId: context.channel.teamId,
+        })
 
     if (scopes.audienceTypes.length === 0) {
       return []

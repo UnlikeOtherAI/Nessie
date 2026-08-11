@@ -15,7 +15,47 @@
 > Round 4 found a fourth escape class *and* a missing durable object. That is four
 > rounds, each finding a category the previous one could not see.
 >
-> **Two honest options. This is the decision to take before writing code.**
+> ### ✅ Decided (owner, 2026-08-11): Option A, reached through Option B
+>
+> The requirement was always A — *"I ask it something in front of others; it can
+> reply"* is precisely the capability B removes. But A's objection was never its
+> size; it was that **no partial landing is honestly safe**, leaving months of
+> exposure while it is built. B resolves that, as scaffolding rather than as an
+> alternative:
+>
+> **Containment ships first and stays on.** With recall constrained to what the
+> destination room's own scope chain implies, privileged material never enters a
+> shared run at all — so the transcript cannot carry it, the wire cannot broadcast
+> it, consolidation cannot launder it, tool side effects cannot write it out, and
+> search cannot find it. **Every escape class all four rounds found is empty,
+> because nothing crosses.**
+>
+> A is then built behind that floor, and containment is relaxed progressively —
+> per scope-pair or per channel — as each package proves out. This inverts the
+> risk: instead of ten load-bearing packages where a gap anywhere means a leak,
+> there is a safe floor from day one and **each package widens what is permitted**
+> rather than closing an exposure that already exists. No interim state ever
+> claims a boundary it does not have.
+>
+> The cost is an interval where agents are more conservative in mixed channels
+> than intended — declining to use knowledge the asker is personally entitled to,
+> and saying so. That is visible and annoying, and it is the opposite failure mode
+> from the one that matters.
+>
+> **Status: containment is implemented** (`constrainScopesToDestination`,
+> `packages/memory/src/scopes.ts`; applied in
+> `worker/src/run/execute/memory.ts`). Default on; `NESSIE_DISCLOSURE_CONTAINMENT=off`
+> disables it, and that switch should not be thrown until the boundary below
+> holds. The personal assistant is exempt — it acts as its owner in a DM whose
+> only human is that owner.
+>
+> **Containment covers memory recall and conversation search only.** It is a
+> floor, not the boundary: KB tool reads, attachment reads, and MCP results are
+> still governed by their own access rules, and a human pasting privileged text
+> into a channel is unaffected by design. The remaining packages are what turn the
+> floor into the boundary.
+
+> **The two options as they were framed. Retained for the reasoning.**
 >
 > **Option A — the full disclosure boundary.** What this document describes:
 > agents may answer from the asker's broader access, with provenance tracked
@@ -617,6 +657,37 @@ escape *class* the previous could not see (side-door writes → the wire → der
 artifacts and derivation laundering → tool side effects and the missing ledger).
 That trend is the strongest argument for taking Option B seriously rather than
 assuming round 5 finds nothing.
+
+## Staged path — the plan of record
+
+**Stage 0 — containment. Done.** `constrainScopesToDestination`
+(`packages/memory/src/scopes.ts`) narrows a run's accessible scopes to those the
+destination channel's own chain implies, applied at
+`worker/src/run/execute/memory.ts` for shared and autonomous runs. The PA is
+exempt. Default on, `NESSIE_DISCLOSURE_CONTAINMENT=off` to disable. Covered by
+eight unit tests in `packages/memory/test/scopes.test.ts` including the
+wrong-audience-type-same-id case and index alignment after filtering.
+
+**Stage 1 — the ledger.** `RunBasisScope` as the primary provenance record, and
+WP0's nine post paths plus stamped replacement routing through it. Nothing is
+relaxed yet; this is pure groundwork, safe because containment holds the floor.
+
+**Stage 2 — the message boundary.** WP1 transitive inheritance, WP3a/b the read
+predicate, fail-closed search, WP2 the wire. **First relaxation:** with these in
+place, cross-scope recall may be re-enabled for a chosen scope-pair and its
+replies will be correctly stamped and withheld.
+
+**Stage 3 — derived artifacts and side effects.** WP2.5 (skip-if-restricted
+everywhere) and WP2.6 (tool side-effect destination comparison; deny for MCP).
+Relaxation widens accordingly.
+
+**Stage 4 — cross-thread.** WP11's `promptOverride`/mailbox basis chaining, plus
+WP4 checkpoints and WP5's placeholder UX. After this, containment can default off.
+
+**Stage 5 — the consent product.** WP7–WP10: the card, the tier-capped duration
+menu, KB sharing, the member-add warning. This is the part that *lifts*
+restrictions rather than enforcing them, and it is what makes the conservative
+interval tolerable, so bring it forward if the friction bites before Stage 4.
 
 ## Changelog
 

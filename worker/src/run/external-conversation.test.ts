@@ -211,7 +211,13 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       provider: null,
       systemPrompt: null,
     },
-    channel: { id: CHANNEL, organizationId: ORG, systemChannelType: 'external_agent' },
+    channel: {
+      id: CHANNEL,
+      organizationId: ORG,
+      projectId: '00000000-0000-0000-0000-0000000000f1',
+      teamId: TEAM,
+      systemChannelType: 'external_agent',
+    },
     run: { id: RUN, threadId: THREAD, createdAt: new Date(), replyPlacement: null },
     task: { id: TASK },
   }

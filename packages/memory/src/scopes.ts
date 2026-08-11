@@ -278,3 +278,71 @@ export const resolveAccessibleScopes = async (
     userPrivateId: null,
   })
 }
+
+/**
+ * The scope chain a destination surface itself sits on. Every `Channel` carries
+ * a complete, non-nullable chain (organization → project → team → channel), so
+ * this is always fully populated for a real destination.
+ */
+export type DestinationScopeChain = {
+  organizationId: string
+  projectId: string
+  teamId: string
+  channelId: string
+}
+
+/**
+ * Containment: narrow accessible scopes to those the *destination* implies.
+ *
+ * `resolveAccessibleScopes` answers "what may this agent, acting for this user,
+ * reach?" — which is deliberately wider than the room the answer lands in. A
+ * shared agent recalling a private-project memory into a channel outside that
+ * project would be disclosing it to everyone present, and once that reply exists
+ * it propagates through the transcript, the realtime wire, consolidated memory,
+ * and every artifact derived from the run.
+ *
+ * Containment removes the possibility rather than tracking it: a run whose
+ * destination is narrower than its reach recalls only what the destination's own
+ * chain already implies, so nothing cross-scope enters the run at all. This is
+ * the safe floor the full disclosure boundary is built behind — see
+ * docs/plans/2026-08-11-disclosure-boundaries-build.md.
+ *
+ * `user`-audience (private) memories are never implied by any destination, so
+ * they are always dropped here. Personal-assistant runs must therefore NOT be
+ * contained — the PA acts as its owner, in a DM whose only human is that owner.
+ *
+ * Structural only: this compares scope ids, never message content.
+ */
+export const constrainScopesToDestination = (
+  scopes: AccessibleScopes,
+  destination: DestinationScopeChain,
+): AccessibleScopes => {
+  const implied = new Set<string>([
+    `organization:${destination.organizationId}`,
+    `project:${destination.projectId}`,
+    `team:${destination.teamId}`,
+    `channel:${destination.channelId}`,
+  ])
+
+  const audienceTypes: string[] = []
+  const audienceIds: string[] = []
+  for (let index = 0; index < scopes.audienceTypes.length; index += 1) {
+    const audienceType = scopes.audienceTypes[index]
+    const audienceId = scopes.audienceIds[index]
+    if (audienceType === undefined || audienceId === undefined) {
+      continue
+    }
+    if (implied.has(`${audienceType}:${audienceId}`)) {
+      audienceTypes.push(audienceType)
+      audienceIds.push(audienceId)
+    }
+  }
+
+  return {
+    audienceTypes,
+    audienceIds,
+    // Past-conversation search narrows to the destination channel for the same
+    // reason: another channel's history is not implied by this room.
+    channelIds: scopes.channelIds.filter((id) => id === destination.channelId),
+  }
+}
