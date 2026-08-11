@@ -7,6 +7,112 @@
 
 ---
 
+> ## ⛔ Round 4 — the decision that comes before the work packages
+>
+> Three independent reviews of the amended plan (Fable, Kimix, Codex Sol) agree on
+> a conclusion the plan itself does not state: **as specified, this boundary is
+> all-or-nothing, and the current work-package list still does not close it.**
+> Round 4 found a fourth escape class *and* a missing durable object. That is four
+> rounds, each finding a category the previous one could not see.
+>
+> **Two honest options. This is the decision to take before writing code.**
+>
+> **Option A — the full disclosure boundary.** What this document describes:
+> agents may answer from the asker's broader access, with provenance tracked
+> through every derivation and every artifact. Roughly ten work packages, several
+> size L, and every one of them load-bearing — a partial landing demos as safe and
+> is not. Round 4's additions (below) are mandatory parts of it, not extras.
+>
+> **Option B — containment.** Cut the product behaviour instead of tracking it.
+> In a shared channel, retrieve **only** sources implied by the destination's own
+> scope chain; omit prior agent turns and checkpoints from cross-viewer windows;
+> disable conversation search and cross-destination content-writing tools for runs
+> whose retrieval touched anything narrower. Small, provably correct, shippable in
+> a fraction of the time — and it **abandons** "the agent answers from what *you*
+> can reach." Label it containment; do not call it the disclosure boundary.
+>
+> Option B is not a lesser version of A; it is a different product decision. A
+> keeps the capability and pays for it in provenance plumbing. B keeps the
+> guarantee and pays for it in capability. **Owner's call.**
+>
+> ### The missing object (Sol) — applies to both options
+>
+> WP2.5 says "gate on the run's basis." **There is no run basis.** This plan
+> specified `MessageBasisScope` and `RunCheckpointBasisScope` only, so every
+> instruction to gate a thinking chunk, tool call, task, plan, or workflow output
+> on "the run's basis" has nothing durable to evaluate.
+>
+> **Correction: `RunBasisScope` is the primary ledger.** The *run* is the unit of
+> provenance. Messages, thinking chunks, tool calls, tasks, plans, workflow
+> outputs, checkpoints, queued jobs, and tool side effects all copy or reference
+> the run's basis. `MessageBasisScope` becomes a denormalised copy for the message
+> read predicate, not the source of truth. This simplifies the plan rather than
+> growing it — one ledger, one write, everything else references it.
+>
+> ### Round 4's four verified additions
+>
+> **1. WP0's path list is still incomplete — nine, not five.** Confirmed by all
+> three: `external-conversation.ts:263`, `comms-card.ts:44`, `orchestrate.ts:104`,
+> `mailbox.ts:258`, plus `trigger-run.ts:254`, `deepsignal-digest.ts:219`,
+> `external-agent-sync.ts:281,292`. There is also a **second edit path**
+> (`deepsignal-digest.ts:213`), so stamped replacement must be a service function,
+> not a patch on the one tool. Two of the nine (`comms-card`, `orchestrate.ts:104`)
+> emit fixed server-authored strings and can only ever stamp empty — route them for
+> uniformity, but they close nothing.
+>
+> **2. Cross-thread laundering sits outside the cut.**
+> [`mailbox.ts:258`](../../worker/src/control/mailbox.ts#L258) writes another
+> agent's body as `{ content, role: 'user', threadId }` — **no `userId`, no
+> `metadata`, no `agentId`** — so the predicate's keys miss it entirely, and
+> `promptOverride` carries no basis field at all
+> ([`jobs.ts:13-29`](../../packages/schemas/src/jobs.ts#L13)). An agent that
+> consumed project-P material can summarise it to an agent in an unentitled
+> channel. All three reviewers independently said: **promote WP11's basis chaining
+> into the cut.** It is the only remaining path that moves restricted content
+> across *threads*, and deferring it while claiming the boundary holds is the
+> plan's most serious remaining dishonesty.
+>
+> **3. The fourth escape class: tool side effects.** A privileged run can write
+> model-generated text to a differently-scoped destination —
+> [`knowledge-write.ts:99-140`](../../worker/src/run/pa-tools/knowledge-write.ts#L99)
+> (a KB page, then chunked, embedded, and served org-wide by KB search),
+> `kb-comments.ts:82-92`, or an **arbitrary MCP destination**
+> (`agent-loop.ts:286-287`). No read predicate can retract those writes. New
+> **WP2.6**: a run whose basis is non-empty must have content-bearing side effects
+> structurally compared against the destination's scope, and denied or escalated to
+> approval when narrower. MCP destinations are unbounded, so the honest v1 is
+> **deny**, not compare.
+>
+> **4. Search must be in the cut.** `searchMessages`
+> ([`messages.ts:392`](../../api/src/services/messages.ts#L392)) matches
+> `to_tsvector('english', m."content")` scoped by channel membership alone and
+> returns content snippets. Every other hole found in four rounds needs an agent or
+> a race; this one is a text box. A fail-closed anti-join excluding any
+> basis-carrying message is hours; entitlement-aware search follows.
+>
+> ### Resolved: the stickiness question
+>
+> All three, independently: **accept it, build no decay.** Basis inheritance is a
+> ratchet — a restricted turn in the window propagates to every later reply, and
+> the restriction self-renews. That is correct rather than a defect: restriction is
+> per-viewer, so entitled people lose nothing, and the designed pressure valve is
+> the consent card, not expiry. Any structural decay rule (time, distance) fails
+> open; any relevance rule judges content and is forbidden. Provide an explicit
+> **"start with clean context"** action instead, and document the cost.
+>
+> ### Also folded in
+>
+> WP2.5 mandates **skip-if-restricted everywhere** rather than per-row
+> inherit-vs-skip — collapses it from L to M and removes a design debate per
+> artifact. `send_message`'s capture is **user-private**
+> (`user-message-memory.ts:39` `audienceType: 'user'`), not channel memory as an
+> earlier note said — it still loses the source basis and defeats source-membership
+> revocation. `attachment_read` repeats the channel-only check in the worker
+> (`pa-tools/attachments.ts:147-168`). Trigger text also lands in `Plan.goal` and
+> step payloads (`worker/src/run/plans.ts:51-83`). Compaction covers dropped turns
+> **only if** window bases enter the run sink at admission — state it explicitly or
+> it is a gap.
+
 > ## ⚠ Amended after third review — read this before the work packages
 >
 > A third review (Codex Sol) found that **a message-only basis cannot enforce the
@@ -403,7 +509,16 @@ WP6 (any time) ─────────────────────�
                                      WP7 ─→ WP8 ─→ WP9 ─→ WP10 ─→ WP11
 ```
 
-**Revised security cut: WP0 + WP1 (with transitive inheritance) + WP2 + WP2.5 +
+> **Round 4 supersedes this section.** If Option A is chosen, the cut is
+> **WP0 (nine paths + replacement) + WP1 (transitive inheritance, on a durable
+> `RunBasisScope`) + WP2 + WP2.5 (skip-everywhere) + WP2.6 (tool side effects) +
+> WP3a + WP3b + fail-closed search + WP11's `promptOverride`/mailbox chaining** —
+> i.e. essentially everything except WP4/WP5 polish and the WP7+ consent product.
+> That is the finding: there is no smaller subset of Option A that is honestly
+> safe. If that scope is unacceptable, the answer is Option B (containment), not a
+> partial A.
+
+**Superseded cut: WP0 + WP1 (with transitive inheritance) + WP2 + WP2.5 +
 WP3a + WP3b.** The earlier cut (WP0–WP3a) was shown not to close the leak — three
 concrete escapes survived it:
 
@@ -485,6 +600,23 @@ possible source is the transcript; assert `m2` inherits P's basis; then assert B
 follow-up receives placeholders for both. Repeat with `send_message` triggering a
 second agent. Without transitive inheritance this passes turn one and fails turn
 two — which is exactly how it would have reached production.
+
+**Round 4 (Fable, Kimix, Codex Sol — all three on the amended plan).** Verified
+every unreviewed amendment claim; all confirmed except line-number drift and one
+correction (`send_message` capture is user-private, not channel memory). Found:
+the create-path set is nine not five, plus a second edit path; cross-thread
+laundering via `mailbox`/`promptOverride` sits outside the cut (**all three said
+promote it**); tool side effects are a fourth escape class no WP covered; search
+is the cheapest exploit and belongs in the cut; and — Sol alone — **`RunBasisScope`
+is the missing durable object without which WP2.5's central instruction cannot be
+implemented**. All three independently resolved the stickiness question the same
+way: accept the ratchet, build no decay.
+
+Convergence across four rounds is now the signal to act on: each round found an
+escape *class* the previous could not see (side-door writes → the wire → derived
+artifacts and derivation laundering → tool side effects and the missing ledger).
+That trend is the strongest argument for taking Option B seriously rather than
+assuming round 5 finds nothing.
 
 ## Changelog
 
