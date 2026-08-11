@@ -10,6 +10,8 @@ const ID = {
   organization: '00000000-0000-4000-8000-000000000003',
   run: '00000000-0000-4000-8000-000000000004',
   task: '00000000-0000-4000-8000-000000000005',
+  project: '00000000-0000-4000-8000-00000000000b',
+  team: '00000000-0000-4000-8000-00000000000c',
   thread: '00000000-0000-4000-8000-000000000006',
 }
 
@@ -145,7 +147,13 @@ test('an unattended run fails quietly — no message into a room that did not as
       provider: null,
       systemPrompt: null,
     },
-    channel: { id: ID.channel, organizationId: ID.organization, systemChannelType: null },
+    channel: {
+      id: ID.channel,
+      organizationId: ID.organization,
+      projectId: ID.project,
+      systemChannelType: null,
+      teamId: ID.team,
+    },
     run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },
     task: { id: ID.task },
   } satisfies RunContext
