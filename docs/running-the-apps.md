@@ -182,7 +182,7 @@ xcodebuild -workspace Nessie.xcworkspace -scheme Nessie -configuration Debug \
   -destination "id=<DEVICE-UDID>" -allowProvisioningUpdates build
 # then locate Nessie.app from the build log and:
 xcrun devicectl device install app --device <DEVICE-UDID> <path/to/Nessie.app>
-xcrun devicectl device process launch --device <DEVICE-UDID> com.unlikeotherai.nessie
+xcrun devicectl device process launch --device <DEVICE-UDID> com.km.nessie
 ```
 
 ### Simulators & emulators (headless verification)
@@ -202,7 +202,7 @@ job pins Metro to 8081, and the Nessie dev build (no `expo-dev-client`) hardwire
 `expo-dev-client` (the durable fix — then `--port`/the dev-launcher URL is
 honoured directly), run Nessie's Metro on **8082** and point each device at it:
 
-- iOS sim: `xcrun simctl spawn booted defaults write com.unlikeotherai.nessie RCT_jsLocation "<MAC-LAN-IP>:8082"` then relaunch.
+- iOS sim: `xcrun simctl spawn booted defaults write com.km.nessie RCT_jsLocation "<MAC-LAN-IP>:8082"` then relaunch.
 - Android emu: `adb reverse tcp:8082 tcp:8082` (the run command above sets this).
 
 Metro shares the data-volume fsevents problem (see Dev mode), so after editing
@@ -225,13 +225,13 @@ channel message when its deep-link target is still available.
 
 Before a real-device build can receive pushes, an Apple Developer Account
 Holder or Admin must do the one-time Apple portal setup for
-`com.unlikeotherai.nessie`:
+`com.km.nessie`:
 
 - Enable the **Push Notifications** capability on the App ID.
 - Create an APNs **Authentication Key** (`.p8`) with its Key ID. Download it
   once and put it in the platform secret-management process; Apple does not
   allow it to be downloaded again.
-- Record the Apple Team ID and use `com.unlikeotherai.nessie` as the APNs
+- Record the Apple Team ID and use `com.km.nessie` as the APNs
   topic. The `.p8` key replaces APNs certificate files; it is valid for both
   sandbox and production hosts.
 
@@ -283,7 +283,7 @@ Install the development build on the device. Unlike Expo Go, the development bui
    reason. A simulator cannot prove APNs delivery.
 2. Sign in as a platform super-admin, open **Settings → Push credentials**, and
    upload the `.p8` key with its Key ID, Team ID, topic
-   `com.unlikeotherai.nessie`, and either environment. The secret is encrypted
+   `com.km.nessie`, and either environment. The secret is encrypted
    in Nessie's server-side secret store and is never returned to a client.
 3. Select **Send test to this iPhone**. Nessie looks up only the operator's
    newest iOS token in the current organization, selects that token's APNs host

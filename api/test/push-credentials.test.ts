@@ -24,7 +24,7 @@ const service = (options: { apnsSender?: typeof sentApns } = {}) => {
         secretRef: 'secret_push_apns',
         apnsKeyId: 'KEY123',
         apnsTeamId: 'TEAM123',
-        apnsTopic: 'com.unlikeotherai.nessie',
+        apnsTopic: 'com.km.nessie',
         apnsEnvironment: 'sandbox',
       }),
     },
@@ -67,7 +67,7 @@ test('APNs test sends the standard alert directly to the registered device', asy
     message: 'APNs accepted the test notification.',
     delivered: true,
   })
-  assert.equal(received?.credentials.topic, 'com.unlikeotherai.nessie')
+  assert.equal(received?.credentials.topic, 'com.km.nessie')
   assert.deepEqual(received?.target, { token: 'apns-device-token' })
   assert.deepEqual(received?.payload, {
     title: 'Nessie push is connected',
