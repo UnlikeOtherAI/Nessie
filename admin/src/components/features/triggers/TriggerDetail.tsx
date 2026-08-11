@@ -278,6 +278,20 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
                     {delivery.source ?? 'manual'}
                     {delivery.runId ? ` · run ${delivery.runId.slice(0, 8)}` : ''}
                   </span>
+                  {/* The delivery reached a worker; whether the run then
+                      succeeded is a different question, and the one the owner
+                      is actually asking when a schedule looks broken. */}
+                  {delivery.runStatus && delivery.runStatus !== 'completed' ? (
+                    <span
+                      className="flex-shrink-0 rounded px-1.5 py-0.5 text-xs"
+                      style={{
+                        background: 'var(--danger-soft)',
+                        color: 'var(--danger-text)',
+                      }}
+                    >
+                      run {delivery.runStatus}
+                    </span>
+                  ) : null}
                   <span className="ml-auto flex-shrink-0 text-xs tabular-nums text-[color:var(--tx3)]">
                     {formatTimestamp(delivery.createdAt)}
                   </span>

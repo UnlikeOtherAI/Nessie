@@ -464,6 +464,8 @@ export type AgentTriggerDeliveryRecord = {
   payload: unknown
   errorMessage?: string
   runId?: string
+  /** The run's terminal status, distinct from the delivery's dispatch status. */
+  runStatus?: string
   deliveredAt?: string
   createdAt: string
 }

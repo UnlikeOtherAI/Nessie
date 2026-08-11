@@ -1293,6 +1293,22 @@ answers. Two structural facts govern how that reads to a person:
   the agent posts top-level where an alert belongs. Stamped structurally from
   the fact that it is a trigger run — never judged from message content.
 
+#### When a scheduled run fails, the channel does not hear about it
+
+An interactive turn that fails posts the error, because a person is waiting for
+an answer. An unattended run — schedule, interval, webhook — does not: nobody
+asked, and a broken integration would otherwise turn its own alert channel into
+a repeating apology (a 15-minute sweep that could not reach its provider wrote
+the same "I could not complete that request" four times an hour, burying the
+findings the channel existed for).
+
+The failure is not hidden, it is moved to where the owner looks: the run is
+`failed`, the worker logs it, and the Triggers page delivery row now shows the
+**run's** outcome next to the delivery's. Those are different questions — a
+fire that dispatched fine and then failed mid-run still reads
+`status: 'delivered'`, which is why a red "run failed" chip had to be added
+before the channel message could be taken away.
+
 #### Giving a recurring schedule an end
 
 A recurring trigger (interval or cron) may carry `until` in its config — an

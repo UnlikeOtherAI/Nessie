@@ -512,7 +512,7 @@ export const listAgentTriggerDeliveries = async (
     where: { triggerId },
     include: {
       run: {
-        select: { id: true },
+        select: { id: true, status: true },
       },
     },
     orderBy: [{ createdAt: 'desc' }],

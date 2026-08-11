@@ -459,7 +459,16 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   nothing reachable from a request can downgrade a signing deployment.
   User-triggered
   background jobs persist their user/team origin and named system agent/run, and
-  fail before model dispatch if it is unavailable. DeepWater research launch
+  fail before model dispatch if it is unavailable. A scheduled trigger also
+  persists the creator's immutable UOA identity tuple in its server-owned
+  `launchOrigin.uoaIdentity`, captured while a real session exists: a fire has
+  no session, and the account link proves subject/status/epoch but not the UOA
+  workspace, so without it every scheduled run failed closed at dispatch. The
+  tuple is replayed at fire time and re-verified against the live link exactly
+  as a session is (link `linked`, matching `uoaSub` and `uoaTokenVersion`, and
+  the target team's external mapping), and `queueTriggerRun` pre-flights that
+  check so a schedule which can no longer sign errors once on the Triggers page
+  instead of burning a failed run every sweep. DeepWater research launch
   retries reuse the provider's stable `tool_call_id`. Ledger owns job isolation,
   budget enforcement, audit, and raw usage metering; UOA alone rates that usage.
   `deep_water_run_update`

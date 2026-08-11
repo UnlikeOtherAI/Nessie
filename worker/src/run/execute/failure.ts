@@ -7,6 +7,10 @@ import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import { classifyError, userMessageForFailureReason } from '../error-classification.js'
+import { isInteractiveRun } from './continuation.js'
+
+/** Control-flow marker: this run has nobody waiting, so it posts nothing. */
+class SkipTerminalMessage extends Error {}
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 
 export const handleRunExecutionFailure = async (
@@ -34,10 +38,21 @@ export const handleRunExecutionFailure = async (
     input.terminalMessage ?? userMessageForFailureReason(classifyError(input.error))
   let terminalCreatedAt = new Date().toISOString()
 
-  // A failure can happen before stream.start (for example while resolving a
-  // model credential or loading a tool). Persist a regular assistant message
-  // in every terminal path so a user is never left waiting without an outcome.
+  // Only tell somebody who is waiting.
+  //
+  // An interactive turn has a person on the other end who must not be left
+  // hanging, so every terminal path posts. An unattended run — a schedule, an
+  // interval, a webhook fire — has nobody waiting, and posting there turns a
+  // broken integration into a repeating apology: a 15-minute sweep that cannot
+  // reach its provider wrote the same "I could not complete that request" into
+  // its own alert channel four times an hour, burying the findings it existed
+  // to deliver. The failure is not hidden — the run is `failed`, the Triggers
+  // page delivery row now shows that outcome, and the error is logged — it
+  // simply stops being announced to a room that did not ask.
+  const announceFailure = isInteractiveRun(payload)
+
   try {
+    if (!announceFailure) throw new SkipTerminalMessage()
     const errorMessage = await deps.prisma.message.create({
       data: {
         agentId: context.agent.id,
@@ -70,7 +85,13 @@ export const handleRunExecutionFailure = async (
       ...(reply ? { reply } : {}),
     })
   } catch (streamError) {
-    console.error('Failed to persist terminal error message', streamError)
+    if (streamError instanceof SkipTerminalMessage) {
+      console.warn(
+        `[worker] run ${context.run.id} failed unattended (no channel message): ${messageText}`,
+      )
+    } else {
+      console.error('Failed to persist terminal error message', streamError)
+    }
   }
 
   if (input.streamStarted) {

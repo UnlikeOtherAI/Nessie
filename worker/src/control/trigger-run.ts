@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { buildTriggerPrompt } from '@nessie/runtime'
+import {
+  buildTriggerPrompt,
+  loadLedgerIdentitySettings,
+  loadLedgerUoaIdentity,
+} from '@nessie/runtime'
+
+// Read once at startup: whether this deployment signs Ledger calls is never a
+// per-request, per-organization or per-user decision.
+const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
 import {
   type AgentTriggerType,
   parseAgentId,
@@ -14,6 +22,7 @@ import {
   parseUserId,
   withActionContext,
   type AuthorizedActionContext,
+  type UoaSessionIdentity,
 } from '@nessie/schemas'
 import { enqueueRunExecution } from '../queue.js'
 import { claimThreadRunOrPend } from '../run/thread-serialization.js'
@@ -104,6 +113,12 @@ const buildActorContext = (input: {
   // task id via withActionContext once the task exists.
   taskId?: string
   source: string
+  /**
+   * The creator's UOA workspace, replayed from the trigger's launch origin.
+   * A fire has no session, so without this the Ledger signer has no identity
+   * to verify and every scheduled run fails before dispatch.
+   */
+  uoaIdentity?: UoaSessionIdentity
 }): AuthorizedActionContext => ({
   actor: {
     actorId: input.agentId,
@@ -122,6 +137,7 @@ const buildActorContext = (input: {
       : {}),
     purpose: input.source,
     requestId: randomUUID(),
+    ...(input.uoaIdentity ? { uoaIdentity: input.uoaIdentity } : {}),
     threadId: parseThreadId(input.threadId),
     ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
   },
@@ -223,6 +239,28 @@ export const queueTriggerRun = async (
     })
     await assertTriggerExecutionOriginTenant(prisma, executionOrigin)
 
+    // Pre-flight the Ledger identity, so a schedule that can never sign says so
+    // once on the Triggers page instead of burning a failed run every sweep.
+    // Catches the three ways a captured identity goes stale: the link was
+    // revoked, the user's credential epoch rotated (logout, password change,
+    // deactivation), or the schedule predates identity capture entirely.
+    if (ledgerSigningConfigured && executionOrigin.userId) {
+      const identity = executionOrigin.uoaIdentity
+        ? await loadLedgerUoaIdentity(prisma, {
+            actorId: executionOrigin.userId,
+            actorType: 'user',
+            organizationId: executionOrigin.organizationId,
+            uoaIdentity: executionOrigin.uoaIdentity,
+            userId: executionOrigin.userId,
+          })
+        : null
+      if (!identity) {
+        throw new TriggerLaunchOriginError(
+          'its saved UnlikeOtherAI identity is missing or no longer valid',
+        )
+      }
+    }
+
     // The saved user must still be able to reach the target channel at fire
     // time — for a shared agent's saved launcher and equally for the personal
     // assistant's owner. Losing that authorization fails closed; it must never
@@ -290,6 +328,9 @@ export const queueTriggerRun = async (
         source: input.source,
         teamId: executionOrigin.teamId,
         threadId: input.trigger.targetThreadId,
+        ...(executionOrigin.uoaIdentity
+          ? { uoaIdentity: executionOrigin.uoaIdentity }
+          : {}),
       })
 
       // Scheduled/trigger runs respect the same per-(agent, thread) claim as

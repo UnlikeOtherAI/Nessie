@@ -4,12 +4,17 @@ import {
   extractTriggerLaunchOrigin,
   isJsonRecord,
 } from '@nessie/runtime'
-import type { AgentTriggerType } from '@nessie/schemas'
+import type { AgentTriggerType, UoaSessionIdentity } from '@nessie/schemas'
 
 export type TriggerExecutionOrigin = {
   organizationId: string
   projectId?: string
   teamId?: string
+  /**
+   * The creator's UOA workspace, replayed from the trigger's launch origin.
+   * Present only for schedules created once it started being captured.
+   */
+  uoaIdentity?: UoaSessionIdentity
   userId: string | null
 }
 
@@ -19,7 +24,8 @@ export class TriggerLaunchOriginError extends Error {
   constructor(detail: string) {
     super(
       `Scheduled task cannot run because ${detail}. `
-      + 'Cancel and recreate the schedule to capture its authenticated team scope.',
+      + 'Sign in again if needed, then recreate the schedule so it captures '
+      + 'your current authenticated team and UnlikeOtherAI identity.',
     )
     this.name = 'TriggerLaunchOriginError'
   }
@@ -70,6 +76,13 @@ export const resolveTriggerExecutionOrigin = (input: {
       organizationId: launchOrigin.organizationId,
       ...(launchOrigin.projectId ? { projectId: launchOrigin.projectId } : {}),
       teamId: launchOrigin.teamId,
+      // Replayed onto the run's actor context so the Ledger signer can verify
+      // it against the product account link exactly as it verifies a live
+      // session. Absent for schedules created before this was captured: those
+      // fail closed at dispatch rather than signing as an unproven identity.
+      ...(launchOrigin.uoaIdentity
+        ? { uoaIdentity: launchOrigin.uoaIdentity }
+        : {}),
       userId: launchOrigin.userId,
     }
   }

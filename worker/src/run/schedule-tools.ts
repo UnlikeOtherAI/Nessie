@@ -309,6 +309,13 @@ export const runScheduleTaskTool = async (
               ? { projectId: context.actorContext.tenant.projectId }
               : {}),
             teamId: launchTeamId!,
+            // The creator's UOA workspace, captured while this conversation's
+            // session exists. A fire has none, and a signing deployment needs
+            // it to sign the Ledger call — see the schema comment on
+            // ScheduledTriggerLaunchOrigin.
+            ...(context.actorContext.actionContext.uoaIdentity
+              ? { uoaIdentity: context.actorContext.actionContext.uoaIdentity }
+              : {}),
             userId,
           },
         }
