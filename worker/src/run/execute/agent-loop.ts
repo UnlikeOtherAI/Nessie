@@ -34,6 +34,7 @@ import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
+import { CONCLUDE_SILENTLY_TOOL_NAME, type SilenceSink } from './silence.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 export const runExecutionAgentLoop = async (
@@ -57,6 +58,12 @@ export const runExecutionAgentLoop = async (
     // the loop throws before returning (see run-job's failure path).
     invocationSink: InvocationRecord[]
     mcpToolset: McpToolset
+    /**
+     * Present only when this run is allowed to end without posting; the
+     * `conclude_silently` descriptor is in `toolDefs` in exactly the same
+     * cases. Absent means the tool is not offered and cannot be honoured.
+     */
+    silenceSink?: SilenceSink
     resolvedToolIds: Set<string>
     // Durable thought log + coalesced live thinking events for the main agent.
     // Delegate sub-agents stay silent, exactly as before.
@@ -258,6 +265,16 @@ export const runExecutionAgentLoop = async (
           inputSummary: summarizeToolInput(args),
           output: DEEP_WATER_START_FAILURE_DETAIL,
           success: false,
+        }
+      }
+      // Loop-control, not a registry tool: it takes no policy verdict and
+      // touches nothing, it only records the model's decision to end quietly.
+      // Reachable only when run-job put the descriptor in `toolDefs`.
+      if (toolName === CONCLUDE_SILENTLY_TOOL_NAME && input.silenceSink) {
+        return {
+          inputSummary: summarizeToolInput(args),
+          output: input.silenceSink.record(args),
+          success: true,
         }
       }
       if (toolName === 'delegate') {
