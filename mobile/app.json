@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.unlikeotherai.nessie",
+      "bundleIdentifier": "com.km.nessie",
       "buildNumber": "1",
       "infoPlist": {
         "NSAppTransportSecurity": {
@@ -25,7 +25,7 @@
       }
     },
     "android": {
-      "package": "com.unlikeotherai.nessie",
+      "package": "com.km.nessie",
       "edgeToEdgeEnabled": true,
       "versionCode": 1,
       "usesCleartextTraffic": true,
