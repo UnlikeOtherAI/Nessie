@@ -1,6 +1,6 @@
 # Executor Integration Plan
 
-**Status:** proposed — ready for architecture review
+**Status:** approved — Phase 0 contract in progress
 
 ## Decision
 
