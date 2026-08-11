@@ -2,6 +2,17 @@
 
 Multi-tenant, self-hosted agentic work platform. Organisations host their own Nessie instance; users collaborate in a hierarchy of Organisation → Project → Team → Channel, with RBAC, approval gates, an audit trail, a token-cost ledger, MCP connector management, triggers/scheduling, video calling, and human work distribution.
 
+> **Rule zero — a capability is not done until a person can reach it.** Before
+> anything else in this file: every capability needs one owning surface *and* an
+> in-context entry point where the work actually happens; lists are scoped by
+> what the caller is entitled to see, never by whatever the session claim
+> happens to say; every element on a screen must name the decision it drives or
+> be cut; and one thing shown in two places is one component parameterised by
+> scope, never a second implementation. A new server capability ships with its
+> surface in the same change or with a written decision that it is machine-only.
+> Authoritative version, with the history behind each rule: `AGENTS.md` →
+> "Rule zero".
+
 > **Voice:** Voice is a secondary, nice-to-have control surface — used mainly from the companion mobile app to issue commands — not the primary interface. The primary interface is the admin web UI (`admin/`). A voice companion (OpenAI Realtime API, `gpt-4o-realtime-preview`) exists in `macos/` but is optional and architecturally separate from the main control plane.
 
 @./AGENTS.md

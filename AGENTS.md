@@ -1,5 +1,42 @@
 # Nessie Agent Standards
 
+## Rule zero — a capability is not done until a person can reach it
+
+This is the standard every other one serves. Nessie's recurring failure is not
+missing features; it is finished features nobody can get to, and screens padded
+with data that answers no question. A project's documents existed for months but
+were not *in* the project. Run timing, scheduled triggers, the audit-chain
+verifier, the whole execution-runner subsystem — all shipped, none reachable
+from anywhere in the UI. That work counts as unfinished.
+
+Four checks, applied to every change that adds or alters a capability:
+
+1. **Name the home and the doorways.** Every capability has one owning surface
+   *and* at least one in-context entry point on the screen where a person is
+   standing when the question arises — a link, a badge, an inline row, a tab. If
+   you cannot name both in the same turn, the feature is not finished. One page
+   that nobody has a reason to open is not a surface.
+2. **Scope by entitlement, never by ambient context.** Show what the caller is
+   allowed to see, decided by the access rules. Do not narrow a list by whatever
+   the session claim happens to say — a session's project/team is an accident of
+   how the account was created, not a statement about what the person may read.
+   Narrowing is an explicit filter the caller asks for, never a silent default.
+   (This exact mistake hid people's own documents and made the admin seed
+   duplicate spaces beside the real ones.)
+3. **Every element names the decision it drives.** If you cannot say which
+   decision or action a number, row, or chip enables, cut it. Prefer a short
+   screen that is all signal. Owner-only operational telemetry never appears on
+   a member-facing surface, and customer billing never renders beside local
+   ops telemetry (see the `/tokens` vs `/ops/usage` split).
+4. **Reuse the surface; never fork it.** When the same thing must appear in two
+   places, it is one component parameterised by scope — as the project Docs tab
+   reuses the knowledge workspace. A second implementation of the same view is a
+   defect, not a feature.
+
+A new server capability ships with its surface in the same change, or with a
+deliberate, written decision that it is machine-only. "The API exists" is not a
+delivery.
+
 ## Workflow
 
 - Worktrees are mandatory. The main project checkout always stays on `main`; never edit it directly. Every task — and every parallel agent/CLI — works in its own git worktree under `.worktrees/` (gitignored), on a task-specific branch. Never reset, clean, or discard another worktree's or agent's work. When any task is done, merge the completed task branch into `main` in the same turn after review, linting, and tests pass; do not leave completed work parked in a worktree unless the user explicitly says not to or verification is blocked. After merge, remove the worktree and delete the merged branch.
