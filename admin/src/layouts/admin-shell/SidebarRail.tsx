@@ -1,11 +1,8 @@
-import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces';
-import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { NAV_ITEMS } from './nav-items';
-import { UserMenuPopover } from './UserMenuPopover';
+import { UserMenuTrigger } from './UserMenuTrigger';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
@@ -16,10 +13,7 @@ type SidebarRailProps = {
 };
 
 export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
-  const { token, me } = useAuthSession();
   const { navPages: productNavPages } = useProductSurfaces();
-  const avatarButtonRef = useRef<HTMLButtonElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <aside
@@ -96,47 +90,7 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
 
       <DebugTokenButton />
 
-      {me && (
-        <>
-          <button
-            aria-haspopup="menu"
-            aria-label="Account menu"
-            className={[
-              'rounded-full transition-shadow',
-              menuOpen
-                ? 'ring-2 ring-[color:var(--accent)]'
-                : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
-            ].join(' ')}
-            onClick={() => setMenuOpen((open) => !open)}
-            ref={avatarButtonRef}
-            title={me.user.displayName}
-            type="button"
-          >
-            <UserAvatar
-              avatarAttachmentId={me.user.avatarAttachmentId}
-              avatarUrl={me.user.avatarUrl}
-              displayName={me.user.displayName}
-              gravatarUrl={me.user.gravatarUrl}
-              ringColor="var(--rail)"
-              showPresence
-              showStatus
-              size={32}
-              token={token}
-              userId={me.user.id}
-            />
-          </button>
-          {menuOpen && (
-            <UserMenuPopover
-              anchorRef={avatarButtonRef}
-              auth={me.auth}
-              onClose={() => setMenuOpen(false)}
-              onLogout={onLogout}
-              token={token}
-              user={me.user}
-            />
-          )}
-        </>
-      )}
+      <UserMenuTrigger onLogout={onLogout} />
     </aside>
   );
 };

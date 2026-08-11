@@ -205,11 +205,14 @@ larger phases.
   a recent-channels menu, a centered **command-palette search** (inline grouped
   results across channels/people/projects/messages/knowledge, reusing
   `useGlobalSearch`; `⌘K`/`Ctrl-K` to focus), a persisted Text/Semantic mode
-  toggle for memory search, a workspace badge, and a help shortcut. Shared across
-  web and the Tauri desktop app, where it doubles as the window title bar
-  (traffic-light gap + drag region). Native mobile shells replace it with native
-  navigation; the iPhone WebView applies `env(safe-area-inset-top)` to page
-  content so its mobile headers stay clear of the status bar.
+  toggle for memory search, notifications, and a help shortcut. The desktop rail
+  owns the canonical account avatar/menu; rail-free mobile shells reuse that
+  exact control in their headers instead of showing a second workspace badge.
+  The bar is shared across web and the Tauri desktop app, where it doubles as
+  the window title bar (traffic-light gap + drag region). Native mobile shells
+  replace it with native navigation; the iPhone WebView applies
+  `env(safe-area-inset-top)` to page content so its mobile headers stay clear of
+  the status bar.
 - **Chat author identity (implemented 2026-06-12)**: thread messages now embed the
   real `author` (`displayName` + avatar sources), so every message renders the
   actual sender's name and avatar via `UserAvatar` (profile picture when one

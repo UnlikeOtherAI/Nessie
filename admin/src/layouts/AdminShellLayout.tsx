@@ -12,6 +12,7 @@ import { PresenceProvider } from '../providers/PresenceProvider';
 import { ToastProvider } from '../providers/ToastProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
+import { AccountMenuProvider } from './admin-shell/AccountMenuContext';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
@@ -181,44 +182,55 @@ const AuthenticatedAdminShellLayout = () => {
   return (
     <PresenceProvider>
       <ToastProvider>
-      <NotificationsProvider>
-      <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
-        <div className={frameClassName}>
-          {hideTopBar ? null : <TopBar hideSearch={nativeIPadApp} />}
+        <NotificationsProvider>
+          <AccountMenuProvider
+            onLogout={shell.logoutAndRedirect}
+            showHeaderAccountMenu={hideTopBar && mobileLayout}
+          >
+            <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
+              <div className={frameClassName}>
+                {hideTopBar ? null : (
+                  <TopBar
+                    hideSearch={nativeIPadApp}
+                    onLogout={shell.logoutAndRedirect}
+                    showAccountMenu={mobileLayout}
+                  />
+                )}
 
-          <div className="admin-shell">
-            {!mobileLayout && (
-              <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
-            )}
+                <div className="admin-shell">
+                  {!mobileLayout && (
+                    <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
+                  )}
 
-            {shell.isKnowledgeRoute ? (
-              <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
-            ) : (
-              contentRegion
-            )}
-          </div>
-        </div>
+                  {shell.isKnowledgeRoute ? (
+                    <KnowledgeProvider>{contentRegion}</KnowledgeProvider>
+                  ) : (
+                    contentRegion
+                  )}
+                </div>
+              </div>
 
-        {showWebTabBar && <MobileTabBar />}
-        {nativeIPadApp && <NativeIPadToolbarBridge />}
-        {nativeIPadApp && <NativeSearchOverlay />}
+              {showWebTabBar && <MobileTabBar />}
+              {nativeIPadApp && <NativeIPadToolbarBridge />}
+              {nativeIPadApp && <NativeSearchOverlay />}
 
-        <SidebarDialogs
-          createChannelTarget={shell.createChannelTarget}
-          createProjectOpen={shell.createProjectOpen}
-          onCloseCreateChannel={shell.closeCreateChannel}
-          onCloseCreateProject={shell.closeCreateProject}
-          onCloseRenameProject={shell.closeRenameProject}
-          renameProjectTarget={shell.renameProjectTarget}
-        />
+              <SidebarDialogs
+                createChannelTarget={shell.createChannelTarget}
+                createProjectOpen={shell.createProjectOpen}
+                onCloseCreateChannel={shell.closeCreateChannel}
+                onCloseCreateProject={shell.closeCreateProject}
+                onCloseRenameProject={shell.closeRenameProject}
+                renameProjectTarget={shell.renameProjectTarget}
+              />
 
-        <AgentDetailDrawer
-          agent={shell.selectedAgent}
-          onClose={shell.closeAgentDrawer}
-          onSelectAgent={shell.selectAgent}
-        />
-      </MobileNavProvider>
-      </NotificationsProvider>
+              <AgentDetailDrawer
+                agent={shell.selectedAgent}
+                onClose={shell.closeAgentDrawer}
+                onSelectAgent={shell.selectAgent}
+              />
+            </MobileNavProvider>
+          </AccountMenuProvider>
+        </NotificationsProvider>
       </ToastProvider>
     </PresenceProvider>
   );

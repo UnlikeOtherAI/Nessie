@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { isDesktopApp } from '../../lib/desktop'
-import { useAuthedObjectUrl } from '../../lib/uploads'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { AlertsBell } from './AlertsBell'
 import { TopBarSearch } from './TopBarSearch'
 import { RecentChannelsMenu, useHistoryNav, useRecordRecentChannelVisits } from './topbar-navigation'
+import { UserMenuTrigger } from './UserMenuTrigger'
 
 const iconProps = {
   fill: 'none',
@@ -80,36 +78,16 @@ const RecentMenu = () => {
   )
 }
 
-// Workspace badge: the org's round logo (or its initial), linking to settings.
-const WorkspaceBadge = () => {
-  const { token } = useAuthSession()
-  const { data: organization } = useCurrentOrganization()
-  const logoUrl = useAuthedObjectUrl(organization?.logoAttachmentId ?? null, token)
-
-  return (
-    <Link
-      aria-label="Workspace settings"
-      className="admin-topbar-workspace"
-      title={organization?.name ?? 'Workspace'}
-      to="/settings"
-    >
-      {logoUrl ? (
-        <img alt="" className="h-full w-full object-cover" src={logoUrl} />
-      ) : (
-        <span>{(organization?.name ?? 'N').charAt(0).toUpperCase()}</span>
-      )}
-    </Link>
-  )
-}
-
 type TopBarProps = {
   hideSearch?: boolean
+  onLogout: () => void
+  showAccountMenu: boolean
 }
 
 // Slack-style global top bar. Rendered full-width above the rail and content. On
 // the desktop (Tauri) app it doubles as the window title bar, with dedicated
 // drag regions around the interactive search field and buttons.
-export const TopBar = ({ hideSearch = false }: TopBarProps) => {
+export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBarProps) => {
   const desktop = isDesktopApp()
   const { goBack, goForward, canBack, canForward } = useHistoryNav()
 
@@ -163,7 +141,7 @@ export const TopBar = ({ hideSearch = false }: TopBarProps) => {
 
       <div className="flex items-center gap-1">
         <AlertsBell />
-        <WorkspaceBadge />
+        {showAccountMenu ? <UserMenuTrigger onLogout={onLogout} placement="topbar" /> : null}
         <Link aria-label="Help & feedback" className="admin-topbar-btn" title="Help & feedback" to="/feedback">
           <Help />
         </Link>
