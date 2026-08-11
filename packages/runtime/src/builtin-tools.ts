@@ -322,6 +322,36 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
+    id: 'react',
+    label: 'React To Message',
+    description:
+      'Add or remove an emoji reaction on a message — the same buttons a person '
+      + 'clicks. Use it to acknowledge something that needs registering but no '
+      + 'reply (👍 to confirm, 🎉 for good news, 👀 when you have seen it and will '
+      + 'act later): a reaction says it without adding a message to read. Typing '
+      + 'an emoji into a reply is not the same thing — that is still a message. '
+      + 'Set remove: true to take one of your own reactions back off.',
+    parameters: {
+      type: 'object',
+      properties: {
+        messageId: {
+          type: 'string',
+          description: 'The message to react to.',
+        },
+        emoji: {
+          type: 'string',
+          description: 'A single emoji, e.g. 👍',
+        },
+        remove: {
+          type: 'boolean',
+          description: 'Remove this reaction instead of adding it.',
+        },
+      },
+      required: ['messageId', 'emoji'],
+    },
+    safe: false,
+  },
+  {
     id: 'message_delete',
     label: 'Message Delete',
     description:

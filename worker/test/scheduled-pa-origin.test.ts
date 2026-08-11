@@ -256,13 +256,13 @@ test('legacy user-owned PA schedule fails closed before run enqueue', async () =
   delete config['launchOrigin']
   const harness = createTriggerHarness()
 
-  await assert.rejects(fireSchedule(harness, config), /Cancel and recreate/)
+  await assert.rejects(fireSchedule(harness, config), /then recreate the schedule/)
   assert.equal(harness.transactionCount, 0)
   assert.equal(harness.queuePayloads.length, 0)
   assert.equal(harness.failedDeliveries.length, 1)
   assert.match(
     String(harness.failedDeliveries[0]?.['errorMessage']),
-    /Cancel and recreate/,
+    /then recreate the schedule/,
   )
   assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
 })
@@ -343,7 +343,7 @@ test('legacy REST schedule without an origin fails before run enqueue', async ()
         teamId: TEAM_ID,
       },
     ),
-    /legacy user-facing schedule.*Cancel and recreate/,
+    /legacy user-facing schedule[\s\S]*then recreate the schedule/,
   )
   assert.equal(harness.transactionCount, 0)
   assert.equal(harness.queuePayloads.length, 0)

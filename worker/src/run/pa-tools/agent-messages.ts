@@ -167,3 +167,75 @@ export const runMessageDeleteTool = async (
     toolName: 'message_delete',
   }
 }
+
+/**
+ * React to a message — the same emoji buttons a person clicks.
+ *
+ * A reaction is how a colleague says "seen", "agreed", "on it" without adding
+ * a message nobody needs to read. Reacting is a real reaction row, not an
+ * emoji typed into a reply: text renders as text, and a paragraph containing
+ * 👍 is still a paragraph.
+ *
+ * Scoped to messages the run can already reach — the same accessible-channel
+ * set that governs conversation search — so an agent cannot annotate a
+ * conversation it could not read.
+ */
+export const runReactTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { messageId: string; emoji: string; remove?: boolean },
+): Promise<ToolExecutionResult> => {
+  const emoji = input.emoji.trim()
+  if (!input.messageId) {
+    throw new Error('messageId is required.')
+  }
+  if (!emoji) {
+    throw new Error('emoji is required.')
+  }
+  if ([...emoji].length > 8) {
+    throw new Error('emoji must be a single emoji, not text.')
+  }
+
+  const channelIds = await resolveAccessibleChannelIds(context)
+  const message = channelIds.length
+    ? await context.prisma.message.findFirst({
+        select: { id: true, threadId: true },
+        where: {
+          deletedAt: null,
+          id: input.messageId,
+          thread: { channelId: { in: channelIds } },
+        },
+      })
+    : null
+  if (!message) {
+    throw new Error('Message not found in a conversation this agent can see.')
+  }
+
+  const summary = `messageId=${input.messageId} emoji=${emoji}`
+  if (input.remove) {
+    await context.prisma.messageReaction.deleteMany({
+      where: { agentId: context.agentId, emoji, messageId: message.id },
+    })
+    return {
+      inputSummary: summary,
+      outputPreview: `Removed ${emoji} from messageId=${message.id}`,
+      toolName: 'react',
+    }
+  }
+
+  await context.prisma.messageReaction.upsert({
+    create: { agentId: context.agentId, emoji, messageId: message.id },
+    update: {},
+    where: {
+      messageId_agentId_emoji: {
+        agentId: context.agentId,
+        emoji,
+        messageId: message.id,
+      },
+    },
+  })
+  return {
+    inputSummary: summary,
+    outputPreview: `Reacted ${emoji} to messageId=${message.id}`,
+    toolName: 'react',
+  }
+}

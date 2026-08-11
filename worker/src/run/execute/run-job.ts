@@ -42,6 +42,7 @@ import {
   WIND_DOWN_INSTRUCTION,
 } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
+import { markWorking } from './working-marker.js'
 import { handleCancelStop } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { runExternalConversation } from '../external-conversation.js'
@@ -231,6 +232,14 @@ export const executeRunJob = async (
       return
     }
     claimedAt = new Date()
+    // Show on the message itself that this run picked it up. Cleared by the
+    // terminal status transition in `lifecycle.ts`, so no path here has to
+    // remember to take it back off.
+    await markWorking(deps.prisma, deps.realtimeTransport, {
+      agentId: context.agent.id,
+      messageId: payload.messageId,
+      threadId: context.run.threadId,
+    })
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
     await markRunPlanStarted(deps.prisma, planContext)
     await setAgentStatus(deps.prisma, context.agent.id, 'thinking')

@@ -13,7 +13,7 @@ const ID = {
   thread: '00000000-0000-4000-8000-000000000006',
 }
 
-test('a pre-stream failure is persisted as an actionable assistant message', async () => {
+test('an interactive run tells the person waiting what went wrong', async () => {
   const messages: Array<{ content: string; role: string }> = []
   const streamEvents: string[] = []
   const transaction = {
@@ -73,6 +73,8 @@ test('a pre-stream failure is persisted as an actionable assistant message', asy
     {
       actorContext: {} as never,
       agentId: ID.agent as never,
+      // Somebody is waiting on this turn, so the failure has an audience.
+      interactive: true,
       messageId: '00000000-0000-4000-8000-000000000008',
       runId: ID.run as never,
       taskId: ID.task as never,
@@ -96,4 +98,76 @@ test('a pre-stream failure is persisted as an actionable assistant message', asy
     },
   ])
   assert.deepEqual(streamEvents, [])
+})
+
+test('an unattended run fails quietly — no message into a room that did not ask', async () => {
+  const messages: Array<{ content: string; role: string }> = []
+  const transaction = {
+    $executeRaw: async () => undefined,
+    run: { findFirst: async () => null },
+    runThreadPendingMessage: { findMany: async () => [] },
+  }
+  const deps = {
+    prisma: {
+      $transaction: async (work: (tx: typeof transaction) => Promise<unknown>) => work(transaction),
+      agent: { update: async () => undefined },
+      message: {
+        create: async ({ data }: { data: { content: string; role: string } }) => {
+          messages.push(data)
+          return {
+            content: data.content,
+            createdAt: new Date('2026-08-11T20:00:00.000Z'),
+            id: '00000000-0000-4000-8000-000000000009',
+            role: 'assistant' as const,
+          }
+        },
+      },
+      run: { update: async () => undefined },
+      task: { update: async () => undefined },
+      taskEvent: { create: async () => undefined },
+    },
+    realtimeTransport: {
+      publishSse: async () => undefined,
+      publishWs: async () => undefined,
+    },
+  } as unknown as ExecutionDependencies
+  const context = {
+    agent: {
+      agentKind: 'shared',
+      effort: 'medium',
+      executionMode: 'inference',
+      id: ID.agent,
+      name: 'Hardware Watch',
+      parentAgentId: null,
+      model: null,
+      provider: null,
+      systemPrompt: null,
+    },
+    channel: { id: ID.channel, organizationId: ID.organization, systemChannelType: null },
+    run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },
+    task: { id: ID.task },
+  } satisfies RunContext
+
+  await handleRunExecutionFailure(
+    deps,
+    {
+      actorContext: {} as never,
+      agentId: ID.agent as never,
+      // No `interactive` flag: a scheduled sweep. Nobody is waiting, and
+      // repeating the same apology every 15 minutes would bury the findings
+      // the channel exists for.
+      messageId: '00000000-0000-4000-8000-00000000000a',
+      runId: ID.run as never,
+      taskId: ID.task as never,
+      threadId: ID.thread as never,
+    },
+    context,
+    {
+      error: new Error('Missing API key for provider kimi'),
+      planContext: null,
+      streamStarted: false,
+    },
+  )
+
+  assert.deepEqual(messages, [])
 })

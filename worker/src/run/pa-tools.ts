@@ -2,6 +2,7 @@ export {
   runMessageDeleteTool,
   runMessageEditTool,
   runMessageSearchTool,
+  runReactTool,
 } from './pa-tools/agent-messages.js'
 export {
   runAttachmentListTool,
