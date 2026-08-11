@@ -1,6 +1,7 @@
 # Project Dashboard — the interface for running a project
 
-**Date:** 2026-08-11 · **Status:** Design spec, ready to build
+**Date:** 2026-08-11 · **Status:** Built. §9 records where the build deviates from
+this spec and why — **§9 wins wherever it contradicts §1–§8.**
 **Routes:** `/channels/projects/:projectId` (chat entry) and `/projects/:projectId` (Projects → Overview tab)
 
 ---
@@ -310,20 +311,28 @@ No entry-point prop, no render forks: link targets are identical from both hosts
 
 ## 7. Data/API gaps
 
-### 7.1 NEW — `GET /api/knowledge-base/recent-pages?projectId=<id>&limit=<n>`
+### 7.1 NEW — `GET /api/knowledge-base/recent-pages?projectId=<id>&limit=<n>` (built)
 
 The only new endpoint this screen needs.
 
 - **Contract:** query `projectId` (required, must be accessible to the actor — same
-  `isProjectAccessibleToActor` gate the project routes use), `limit` (default 5, max 20).
+  `isProjectAccessibleToActor` gate the project routes use; an unreachable or foreign project
+  404s as `PROJECT_NOT_FOUND` rather than returning an empty list), `limit` (default 5, clamped
+  server-side to 20 — an over-large ask is capped, not rejected).
   Response `data`: array of
-  `{ id, spaceId, spaceName, title, kind, status, summary, updatedAt }`, ordered `updatedAt`
+  `{ id, spaceId, spaceName, title, kind, status, updatedAt }`, ordered `updatedAt`
   desc, spanning **only spaces the caller can read** (the provider's existing per-space
   read-access filtering, the same enforcement `GET /spaces?projectId=` performs), excluding
-  `archived` pages and archived spaces.
-- **Where:** `api/src/routes/knowledge-base.ts` beside the other space/page reads, implemented
-  through the knowledge provider (which owns access filtering) — not a raw Prisma query in the
-  route.
+  soft-deleted pages, pages in soft-deleted spaces, and `archived` pages.
+  (`summary` was cut in review: the list never renders it.)
+- **Where:** `api/src/routes/knowledge-recent-pages.ts` — split out of `knowledge-base.ts`,
+  which is already at the 500-line file cap, exactly as `knowledge-links.ts` was; it reuses
+  the shared `createKnowledgeAccess` / `requireKnowledgePolicy` helpers. The query itself is a
+  new provider method, `KnowledgeProvider.listRecentPages`
+  (`packages/knowledge/src/native-recent-pages.ts`), reusing the same
+  `readableSpaceIdsSqlForViewer` pre-filter search uses — not a raw Prisma query in the route,
+  and not `searchPages` bent with an empty query (that contract returns scored hits and
+  snippets; recency is not its semantic).
 - **Why client-side assembly is not good enough:** the client would need
   `GET /spaces?projectId=` (1 request) then `GET /spaces/:id/pages` **per space** — 1+N
   requests with N unbounded, each returning full page lists (with version envelopes) only to
@@ -331,14 +340,25 @@ The only new endpoint this screen needs.
   provider; fanning out from the client re-derives that expensively and pushes page-sized
   payloads over the wire for a 5-row card.
 
-### 7.2 NEW field — `ChannelRecord.lastMessageAt: string | null`
+### 7.2 NEW field — `ChannelRecord.lastMessageAt: string | null` (built)
 
 - **Contract:** additive nullable ISO timestamp on the existing channel record
-  (`api/src/contracts/workspace.ts`), populated in `mapChannelRecord` /
-  `loadUnreadCountsByThread` (`api/src/services/channel-records.ts`) by adding
-  `MAX(m.created_at)` over the default thread's messages to the channel-list query path — the
-  `(thread_id, created_at)` index that already serves the unread computation makes the MAX an
-  index-tail read. `null` for message-less channels.
+  (`api/src/contracts/workspace.ts`, mirrored optional on the client type in
+  `packages/client-core/src/api-types.ts`), `null` for message-less channels. Source is
+  `MAX(m.created_at)` over the channel's default thread, served by the existing
+  `messages (thread_id, created_at)` index.
+- **It is its own aggregate** (`loadLastMessageAtByThread`,
+  `api/src/services/channel-records.ts`), *not* an addition to
+  `loadUnreadCountsByThread`: that query deliberately walks only the unread tail (its
+  predicates live in the JOIN's ON clause for exactly that reason), and folding a
+  full-history MAX into it would make it scan work it currently avoids.
+- **Every emission populates it**, not just the list read: `mapChannelRecord` (single-channel
+  reads and post-mutation responses), the batch list path in `api/src/services/channels.ts`,
+  and the hand-built PA channel record in `loadPersonalAssistantState`
+  (`api/src/lib/request-helpers.ts`). The admin caches channels with `staleTime: Infinity` and
+  patches them in place from mutation responses, so a path that omitted the field would blank
+  a row's recency on any rename or join. The contract field is required-and-nullable to keep
+  that a compile/parse error rather than a silent regression.
 - **Why:** it is the honest, cheap version of "last activity" — it orders the channel list by
   recency and stamps each row with a relative time. The client-side alternative is fetching
   message pages per channel (N requests on a cached-forever list), which is disqualifying.
@@ -400,3 +420,118 @@ The only new endpoint this screen needs.
     `/channels/projects/:id` and `/projects/:id` on a seeded project confirm all four sections
     render with data, plus one phone-width screenshot; lint and typecheck pass; root build's
     lint gate untouched.
+
+---
+
+## 9. Build notes — how the built screen differs from §1–§8
+
+Written at implementation time (2026-08-11). Where this section contradicts an
+earlier one, this section is the truth; the earlier text is kept because the
+reasoning behind it still explains the shape of the screen.
+
+### 9.1 A fifth section: **Agents**
+
+§2's four sections omitted the agents doing the work, which on an agentic work
+platform misrepresents project state. The dashboard renders a compact
+`AGENTS · N` card under Members: the shared agents bound to one of this
+project's channels (`AgentRecord.channelIds` ∩ project channels; personal
+assistants excluded — a PA belongs to a person, not a project), ordered
+`error → waiting_approval → executing → thinking → idle → offline` then name,
+each row showing the house `AgentStatusDot` and opening the channel it is bound
+to. No new endpoint: `GET /api/agents` already carries live `status`. The card
+renders nothing at all when no agent is bound.
+
+### 9.2 Work chips: exceptions only
+
+Final set, in render order: **`Open` (anchor, always shown), `Overdue`,
+`Urgent`, `Failed`, `Awaiting approval`** — every chip but `Open` is omitted at
+zero. `In progress` and `In review` from §3.2 are **dropped**: they restate
+`Open` minus two states and route to the same unfiltered board, and five
+steady-state chips is exactly the stat-tile row §4.2 rejects. `Urgent`
+(`TaskRecord.priority`) and `Failed` (a real `TaskStatus` §3.2 forgot) are
+added. A healthy project therefore shows one chip.
+
+`Open` counts every non-archived task that is not `done`/`cancelled` — `failed`
+counts as open, because a failed task still needs a person.
+
+### 9.3 Work is scoped exactly like the board it links to
+
+`ProjectBoardTab` filters a scrum board to the active iteration, so project-wide
+chips would claim "Overdue 5" and open a board showing two. When the board style
+is `scrum` the chips count only the active sprint's tasks
+(`scopeTasksToBoard`). Scrum projects also get a one-line strip above the chips
+— sprint name, goal, end date, `pointsDone/pointsTotal`, linking to the board —
+and the Work header links to **Board · Backlog · Insights** rather than Board
+alone, so the two scrum-only tabs are reachable from the chat entry point (which
+still grows no tab bar).
+
+### 9.4 "Manage →" gates on the project role, not `isOwner`
+
+Project membership carries its own roles (`owner | admin | member | viewer`), so
+a project admin manages members without being an organisation owner. The link
+shows when the caller's row in the members payload is `owner`/`admin`, **or**
+when the caller is an organisation owner — the latter covers an org owner
+viewing a project they are not a member of, who therefore has no row of their
+own (the list simply does not contain them).
+
+### 9.5 Rows carry less than §3 asked for
+
+- **No `topic` on channel rows.** A topic helps you choose what to say inside a
+  channel, not which channel to open; label + unread + recency route on their own.
+- **No `draft` pill on document rows.** Report detail, not routing.
+- **`teamName` is a muted suffix on channel rows, shown only when the project's
+  channels span more than one team.** On a single-team project repeating the
+  same team on every row is noise; across teams it is what tells two rooms apart.
+- **Relative time is coarse** ("now", "4h", "3d", "2w"). `['channels']` is a
+  cached list refreshed by mutations and realtime `message.new`, so
+  minute-precision on `lastMessageAt` would be a lie.
+
+### 9.6 No expand-in-place
+
+§3.1/§3.4's "Show all N" control is replaced by a plain, non-interactive
+"…and N more channels/members/agents" hint. Everything is one click away in the
+owning surface; a second, differently-ordered full list inside a card is the
+duplication §4.7 already rejects.
+
+### 9.7 The breakpoint is a container query
+
+§5 asks for 900px of **content** width, and the same component sits behind a
+325px shell on one route and a collapsed drawer on another — so a viewport media
+query measures the wrong thing (verified: at a 940px viewport the two-column
+layout truncated channel labels to "leaders…"). The grid uses Tailwind's
+container queries (`@container` + `@min-[900px]:`) on the dashboard's own
+scroll box. While stacked, the two column wrappers are `display: contents`, so
+the sections are direct flex children of the page and their `order` gives the
+§5 phone order: Work, Channels, Documents, Members, Agents.
+
+### 9.8 Shared seams (§6, extended)
+
+| File | Role |
+|------|------|
+| `admin/src/components/features/projects/ProjectDashboard.tsx` | Shared container + layout |
+| `…/DashboardSectionCard.tsx` | Card chrome, skeleton, notice, overflow hint, row class. Owns the `sectionTitle` constant — the host pages' copies are not imported. |
+| `…/ProjectChannelsSection.tsx`, `…/ProjectWorkSection.tsx`, `…/ProjectDocumentsSection.tsx`, `…/ProjectMembersSection.tsx`, `…/ProjectAgentsSection.tsx` | The five sections |
+| `…/project-dashboard-data.ts` | Every ordering/counting rule as pure functions (unit-tested in `admin/test/project-dashboard-data.test.ts`) |
+| `admin/src/facades/knowledge/recent-pages-hooks.ts` | `useProjectRecentPages` (§7.1; the response carries no `summary`) |
+| `admin/src/facades/channels/dm-navigation.ts` | `useNavigateToDm`, consumed by both the Members section and `useAdminShell` |
+| `admin/src/components/features/knowledge/useKnowledgePageDeepLink.ts` | `?spaceId=&pageId=` handling, consumed by both `KnowledgeBasePage` and `ProjectDocsTab` — extracted rather than copied into the Docs tab |
+
+`useNavigateToDm` must tolerate an empty user list: `GET /api/users` is
+owner-gated, so a member has no cached `users` to resolve an existing DM from.
+The client-side lookup is only an optimisation (the hook calls `useUsers(false)`
+and never issues that request itself); the `POST /api/dm/:userId` mutation,
+which resolves an existing DM server-side, is the unconditional fallback.
+Verified with `/api/users` forced to 403: the member row still opens the DM.
+
+Presence comes from `PresenceProvider` (`UserAvatar … showPresence showStatus`),
+not the raw `/api/presence` facade, so self-optimistic state folds in as it does
+everywhere else.
+
+### 9.9 Acceptance criteria that changed
+
+§8.2 (four sections) → five, see §9.1. §8.3 and §8.7 ("Show all N" expands in
+place) → §9.6. §8.4 (chip set) → §9.2/§9.3. §8.5 (`draft` pill) → §9.5. §8.7
+("owners only") → §9.4. Everything else was verified as written, including the
+independent per-section loading/empty/error states, token-only colour (checked
+in the default nebula dark theme and a light theme), no owner-only telemetry,
+and no horizontal overflow at 375/940/1024/1440px.

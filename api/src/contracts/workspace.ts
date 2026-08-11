@@ -27,6 +27,11 @@ export const ChannelRecordSchema = z.object({
   teamName: NonEmptyStringSchema,
   defaultThreadId: ThreadIdSchema,
   unreadCount: z.number().int().nonnegative(),
+  // When the channel's default thread last received a message; null when it has
+  // none. Populated on every channel-record emission (list, single read, and
+  // post-mutation responses) so a cached list patched from a mutation response
+  // never loses a row's recency.
+  lastMessageAt: TimestampSchema.nullable(),
   // sp-channels: channel lifecycle fields
   topic: z.string().nullish(),
   description: z.string().nullish(),

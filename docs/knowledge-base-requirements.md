@@ -250,6 +250,31 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
     to the token ledger.
   - Both modes enforce viewer access with an in-SQL readable-spaces pre-filter
     (`readableSpaceIdsSql`, mirrors `canReadSpace`) — no post-filtering.
+- `GET /api/knowledge-base/recent-pages` (implemented,
+  `api/src/routes/knowledge-recent-pages.ts`)
+  - query: `projectId` (**required**, UUID), `limit` (optional; defaults to 5,
+    clamped server-side to 20 — an over-large ask is capped, not rejected).
+  - answers "what was last written down in this project", across **every space
+    of that project the caller may read**. It is a recency read, not a search:
+    no query text, no snippets, no scoring.
+  - response `data`: `[{ id, spaceId, spaceName, title, kind, status,
+    updatedAt }]`, ordered `updatedAt DESC, id DESC`, served by the
+    `(organization_id, project_id, updated_at DESC, id DESC)` index on
+    `knowledge_pages`. Deliberately no `summary` and no version envelope — the
+    contract is exactly what a capped list renders.
+  - excludes soft-deleted pages, pages in soft-deleted spaces, and pages with
+    `status = 'archived'`.
+  - access: the `knowledge_page:view` policy gate, then the project-reach gate
+    the project/board/iteration reads use (a project the caller cannot reach
+    404s as `PROJECT_NOT_FOUND` rather than returning an empty list), then the
+    same in-SQL readable-spaces pre-filter as search
+    (`readableSpaceIdsSqlForViewer`, mirrors `canReadSpace`) — one access rule,
+    not a second one. Provider seam:
+    `KnowledgeProvider.listRecentPages` (`packages/knowledge/src/native-recent-pages.ts`).
+  - why server-side: the client alternative is `GET /spaces?projectId=` plus one
+    `GET /spaces/:id/pages` per space (1 + N, N unbounded), each returning full
+    page lists only to keep five rows, re-deriving access filtering the server
+    already owns.
 - `POST /api/knowledge-base/read`
   - accepts `docId`, `projectId`, `accessContext`
 - `POST /api/knowledge-base/search-summary` (or `search.summary`)

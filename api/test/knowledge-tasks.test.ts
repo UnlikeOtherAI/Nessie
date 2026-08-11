@@ -187,6 +187,7 @@ const makeApp = (options: MakeAppOptions = {}) => {
       updatedAt: '2026-07-06T10:00:00.000Z',
     }),
     listPages: async () => [],
+    listRecentPages: async () => [],
     listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
     listVersions: async () => [],
     movePage: async () => null,

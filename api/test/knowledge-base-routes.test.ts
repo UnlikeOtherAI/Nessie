@@ -137,6 +137,7 @@ const makeProvider = (
     getPage: async () => makePage(),
     getSpace: async () => makeSpace(),
     listPages: async () => [],
+    listRecentPages: async () => [],
     listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
     listVersions: async () => [],
     movePage: async () => null,

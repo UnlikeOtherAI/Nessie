@@ -36,6 +36,10 @@ export type ChannelRecord = {
   type: 'dm' | 'standard'
   dmUserId?: string | null
   unreadCount: number
+  // When the channel's default thread last received a message; null when it has
+  // none. Optional on the client so a UI stays functional against a server that
+  // predates the field.
+  lastMessageAt?: string | null
   updatedAt: string
   visibility: 'private' | 'protected' | 'public'
   // sp-channels: channel lifecycle fields

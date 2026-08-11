@@ -25,6 +25,11 @@ type ThreadUnreadRow = {
   unread_count: bigint | number
 }
 
+type ThreadLastMessageRow = {
+  thread_id: string
+  last_message_at: Date | null
+}
+
 export type TeamProjectScope = {
   projectId: string
   projectName: string
@@ -132,6 +137,40 @@ export const loadUnreadCountsByThread = async (
   )
 }
 
+// Last activity per thread: `MAX(created_at)` over the thread's messages, the
+// honest source for "when did this room last say anything". It is deliberately
+// a *separate* aggregate from loadUnreadCountsByThread — that query walks only
+// the unread tail (its predicates live in the JOIN's ON clause for exactly that
+// reason), and folding a full-history MAX into it would make it scan work it
+// currently avoids. Here the messages (thread_id, created_at) index serves each
+// group from its tail. Tombstoned messages still count, matching the unread
+// computation: a deleted message is an event the room saw.
+export const loadLastMessageAtByThread = async (
+  prisma: PrismaClient,
+  threadIds: string[],
+): Promise<Map<string, string>> => {
+  if (threadIds.length === 0) {
+    return new Map()
+  }
+
+  const rows = await prisma.$queryRaw<ThreadLastMessageRow[]>(Prisma.sql`
+    SELECT
+      m.thread_id AS thread_id,
+      MAX(m.created_at) AS last_message_at
+    FROM "messages" m
+    WHERE m.thread_id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})
+    GROUP BY m.thread_id
+  `)
+
+  const activity = new Map<string, string>()
+  for (const row of rows) {
+    if (row.last_message_at) {
+      activity.set(row.thread_id, row.last_message_at.toISOString())
+    }
+  }
+  return activity
+}
+
 export const ensureDefaultThread = async (
   prisma: PrismaClient,
   channelId: string,
@@ -173,6 +212,13 @@ export const mapChannelRecord = async (
   const unreadCount = userId
     ? (await loadUnreadCountsByThread(prisma, [defaultThreadId], userId)).get(defaultThreadId) ?? 0
     : 0
+  // Every emission of a channel record carries lastMessageAt, not just the list
+  // read: single-channel reads and post-mutation responses flow through here
+  // too, and the admin patches its cached channel list in place from those
+  // responses — a record without the field would blank a row's recency the
+  // moment anyone renamed or joined a channel.
+  const lastMessageAt =
+    (await loadLastMessageAtByThread(prisma, [defaultThreadId])).get(defaultThreadId) ?? null
   const team = channel.team ?? await prisma.team.findUniqueOrThrow({
     where: { id: channel.teamId },
     select: {
@@ -198,6 +244,7 @@ export const mapChannelRecord = async (
     teamId: parseTeamId(channel.teamId),
     teamName: team.name,
     unreadCount,
+    lastMessageAt,
     topic: channel.topic ?? null,
     description: channel.description ?? null,
     archivedAt: channel.archivedAt?.toISOString() ?? null,

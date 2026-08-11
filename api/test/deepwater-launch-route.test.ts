@@ -265,6 +265,7 @@ test('research-launch persists and enqueues the exact full created durable run i
         topic: null,
         type: 'dm',
         unreadCount: 0,
+        lastMessageAt: null,
         updatedAt: now.toISOString(),
         visibility: 'private',
       },

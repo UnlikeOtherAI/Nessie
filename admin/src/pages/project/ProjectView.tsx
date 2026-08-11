@@ -1,5 +1,5 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { ProjectOverviewPlaceholder } from '../../components/features/projects/ProjectOverviewPlaceholder'
+import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
 import { NewTaskButton } from '../../components/kanban/NewTaskButton'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
@@ -99,7 +99,7 @@ export const ProjectView = () => {
         ) : tab === 'insights' ? (
           <ProjectInsightsTab projectId={projectId} />
         ) : tab === 'overview' ? (
-          <ProjectOverviewPlaceholder projectName={project?.name ?? 'Project'} />
+          <ProjectDashboard projectId={projectId} />
         ) : (
           <ProjectBoardTab projectId={projectId} />
         )}
