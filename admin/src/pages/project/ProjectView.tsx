@@ -7,6 +7,7 @@ import { useProjects } from '../../facades/projects/hooks'
 import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
+import { ProjectDocsTab } from './ProjectDocsTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
@@ -27,13 +28,15 @@ export const ProjectView = () => {
   const activeIteration = iterations.find((iteration) => iteration.status === 'active')
   const tab = location.pathname.endsWith('/settings')
     ? 'settings'
-    : location.pathname.endsWith('/backlog')
-      ? 'backlog'
-      : location.pathname.endsWith('/insights')
-        ? 'insights'
-        : location.pathname.endsWith('/board')
-          ? 'board'
-          : 'overview'
+    : location.pathname.endsWith('/docs')
+      ? 'docs'
+      : location.pathname.endsWith('/backlog')
+        ? 'backlog'
+        : location.pathname.endsWith('/insights')
+          ? 'insights'
+          : location.pathname.endsWith('/board')
+            ? 'board'
+            : 'overview'
 
   const tabs = [
     { id: 'overview', label: 'Overview', to: `/projects/${projectId}` },
@@ -44,6 +47,7 @@ export const ProjectView = () => {
           { id: 'insights', label: 'Insights', to: `/projects/${projectId}/insights` },
         ]
       : []),
+    { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs` },
     { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
   ]
 
@@ -88,6 +92,8 @@ export const ProjectView = () => {
       <div className="min-h-0 flex-1">
         {tab === 'settings' ? (
           <ProjectSettingsPage projectId={projectId} />
+        ) : tab === 'docs' ? (
+          <ProjectDocsTab projectId={projectId} />
         ) : tab === 'backlog' ? (
           <ProjectBacklogTab projectId={projectId} />
         ) : tab === 'insights' ? (

@@ -36,6 +36,10 @@ export type KnowledgeEditorState =
   | null
 
 type KnowledgeContextValue = {
+  // Set when this provider is scoped to one project (a project's Documents
+  // tab). Consumers use it to drop org-level chrome that makes no sense inside
+  // a single project.
+  scopeProjectId?: string
   spaces: KnowledgeSpaceRecord[]
   // The caller's personal "My Docs" space, provisioned once per session via
   // the idempotent ensure endpoint. Undefined until that call resolves.
@@ -101,14 +105,31 @@ export const useKnowledge = (): KnowledgeContextValue => {
   return value
 }
 
-export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
+// `projectId` puts the provider in project scope — the Documents tab of one
+// project. The space list narrows to that project, the personal "My Docs"
+// space is neither ensured nor pinned (it is the caller's, not the project's),
+// and the first-visit seed is off: an empty project means "no documents filed
+// here yet", never "this account has no knowledge base".
+export const KnowledgeProvider = ({
+  children,
+  projectId,
+}: {
+  children: ReactNode
+  projectId?: string
+}) => {
   const { me } = useAuthSession()
-  const spacesQuery = useKnowledgeSpaces()
-  const myDocsQuery = useEnsureMyDocsSpace()
-  const spaces = useMemo(
-    () => [...(spacesQuery.data ?? [])].sort((left, right) => left.name.localeCompare(right.name)),
-    [spacesQuery.data],
-  )
+  const spacesQuery = useKnowledgeSpaces(projectId)
+  const myDocsQuery = useEnsureMyDocsSpace(!projectId)
+  const spaces = useMemo(() => {
+    const all = spacesQuery.data ?? []
+    // A personal "My Docs" space is filed under whichever project provisioned
+    // it, so a project-scoped list would otherwise show someone's private
+    // notebook as project documentation. The global surface still pins it.
+    const scoped = projectId
+      ? all.filter((space) => (space.metadata as { personal?: boolean } | null)?.personal !== true)
+      : all
+    return [...scoped].sort((left, right) => left.name.localeCompare(right.name))
+  }, [projectId, spacesQuery.data])
 
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>()
   const [pagePath, setPagePath] = useState<string[]>([])
@@ -138,7 +159,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   // First visit with no spaces: seed a "General" space + one example page.
   const seededRef = useRef(false)
   useEffect(() => {
-    if (seededRef.current || !spacesQuery.isSuccess || spaces.length > 0) return
+    if (projectId || seededRef.current || !spacesQuery.isSuccess || spaces.length > 0) return
     // Seed at most once per mount — never reset the guard on error, so a
     // persistent failure can't spin into a retry loop of failed POSTs.
     seededRef.current = true
@@ -154,7 +175,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
         onSuccess: (space) => setSelectedSpaceId(space.id),
       },
     )
-  }, [spacesQuery.isSuccess, spaces.length, me, seedMutation])
+  }, [projectId, spacesQuery.isSuccess, spaces.length, me, seedMutation])
 
   const pagesById = useMemo(() => {
     const map = new Map<string, KnowledgePageRecord>()
@@ -218,7 +239,9 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
     const created = await createSpaceMutation.mutateAsync({
       name,
       memberAgentIds,
-      projectId: me?.context.projectId,
+      // In project scope a new space belongs to the project being viewed, not
+      // to whichever project the session's claim happens to name.
+      projectId: projectId ?? me?.context.projectId,
       visibility,
     })
     setSelectedSpaceId(created.id)
@@ -335,6 +358,7 @@ export const KnowledgeProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const value: KnowledgeContextValue = {
+    scopeProjectId: projectId,
     spaces,
     myDocsSpaceId: myDocsQuery.data?.spaceId,
     selectedSpaceId,

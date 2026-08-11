@@ -385,7 +385,19 @@ that column):
 
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the
-route outlet on the Knowledge route. The page hierarchy is derived client-side
+route outlet on the Knowledge route.
+
+**Two surfaces, one workspace.** `KnowledgeProvider` takes an optional
+`projectId`, which puts it in *project scope* — the **Docs** tab of a project
+(`/projects/:projectId/docs`, `ProjectDocsTab`). In that scope the space list is
+fetched with `?projectId=`, the caller's personal "My Docs" space is neither
+ensured nor listed (it belongs to the person, not the project, even though it is
+filed under whichever project provisioned it), first-visit seeding is off (an
+empty project means "nothing filed here", never "no knowledge base"), a new
+space is created in the project being viewed rather than the session's project,
+and the org-wide storage meter is hidden. Everything else is the same code: the
+space rows are the shared `KnowledgeSpaceList` and the document area is the same
+`KnowledgeWorkspace` the Knowledge section renders. The page hierarchy is derived client-side
 from the flat `GET /spaces/:id/pages` list via `parentPageId` and `childPageIds`.
 That list **omits each page's latest-version body** (it can be large and the
 tree/column/preview-header views never need it); the body is fetched on demand
@@ -396,7 +408,10 @@ initialises from — and cannot save over — an empty body.
 ### First-visit seeding
 
 When the spaces list loads empty, `KnowledgeProvider` seeds a **"General"** space
-with one example page (`useSeedKnowledgeBase`, fired once via a ref guard). The
+with one example page (`useSeedKnowledgeBase`, fired once via a ref guard) —
+org-scope only, and only because the list is now genuinely org-wide: while it
+was filtered to the session's project this seeded a duplicate "General" beside
+spaces the caller already had (see §5). The
 example page (`example-page.ts`) is authored as HTML and demonstrates the editor.
 
 ### Page bodies are rich HTML (TipTap)
