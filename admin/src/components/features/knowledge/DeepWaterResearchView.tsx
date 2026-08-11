@@ -1,19 +1,8 @@
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useDeepWaterResearchRuns } from '../../../facades/integrations/hooks'
 import { DeepWaterRunHistory } from '../integrations/DeepWaterRunHistory'
 import { KnowledgePane } from './KnowledgePane'
-
-// "New research" deep-links to the Integrations page, where the DeepWater
-// launch panel (DeepWaterResearchPanel) lives — this view is a read surface, so
-// launching stays with its existing owner rather than being rebuilt here.
-const NewResearchAction = () => (
-  <Link
-    className="admin-button admin-button-secondary admin-button-compact h-8"
-    to="/settings/integrations"
-  >
-    New research
-  </Link>
-)
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 const CenteredNote = ({ title, body }: { title: string; body: string }) => (
   <div className="mx-auto max-w-md px-6 py-16 text-center">
@@ -28,6 +17,7 @@ const CenteredNote = ({ title, body }: { title: string; body: string }) => (
 // fork of the DeepWater service or list logic. Registered into
 // `product-documents-registry` under the `deep-water-research` view key.
 export const DeepWaterResearchView = () => {
+  const navigate = useNavigate()
   const runsQuery = useDeepWaterResearchRuns()
   const runs = runsQuery.data ?? []
 
@@ -48,7 +38,18 @@ export const DeepWaterResearchView = () => {
   )
 
   return (
-    <KnowledgePane title="Research" actions={<NewResearchAction />}>
+    <KnowledgePane
+      actions={[
+        {
+          id: 'new-research',
+          label: 'New research',
+          onSelect: () => void navigate('/settings/integrations'),
+          primary: true,
+          priority: 100,
+        } satisfies PageHeaderAction,
+      ]}
+      title="Research"
+    >
       {body}
     </KnowledgePane>
   )

@@ -9,6 +9,7 @@ import { KnowledgePane } from './KnowledgePane'
 import { PageNotesLayer } from './notes/PageNotesLayer'
 import { isAgentDraft, pageStatusTone } from './page-status'
 import { ReviewPanel } from './ReviewPanel'
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type PagePreviewProps = {
   // True while the page body is still being fetched on demand (the list omits it).
@@ -51,43 +52,39 @@ export const PagePreview = ({
     commentsComposerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     commentsComposerRef.current?.focus()
   }
+  const headerActions: PageHeaderAction[] = [
+    {
+      icon: faPaperclip,
+      id: 'attachments',
+      label: 'Attachments',
+      onSelect: onToggleAttachments,
+      priority: 60,
+    },
+    {
+      id: 'history',
+      label: 'History',
+      onSelect: onOpenHistory,
+      priority: 50,
+    },
+    {
+      id: 'edit',
+      label: 'Edit',
+      onSelect: onEdit,
+      priority: 40,
+    },
+    {
+      disabled: publishPending,
+      id: 'publish',
+      label: 'Publish',
+      onSelect: onPublish,
+      primary: true,
+      priority: 100,
+    },
+  ]
 
   return (
     <KnowledgePane
-      actions={
-        <>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={onToggleAttachments}
-            type="button"
-          >
-            <FontAwesomeIcon className="mr-1.5 h-3 w-3" icon={faPaperclip} />
-            Attachments
-          </button>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={onOpenHistory}
-            type="button"
-          >
-            History
-          </button>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={onEdit}
-            type="button"
-          >
-            Edit
-          </button>
-          <button
-            className="admin-button admin-button-primary admin-button-compact"
-            disabled={publishPending}
-            onClick={onPublish}
-            type="button"
-          >
-            Publish
-          </button>
-        </>
-      }
+      actions={headerActions}
       onBack={onBack}
       title={page.title}
     >

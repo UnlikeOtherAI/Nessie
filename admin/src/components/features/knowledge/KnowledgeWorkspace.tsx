@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { faFolderPlus, faGear } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   useConvertToDocument,
   useUploadFileNode,
@@ -24,10 +23,9 @@ import { useKnowledge } from './KnowledgeProvider'
 import { KnowledgePane } from './KnowledgePane'
 import { ProductDocumentsView } from './ProductDocumentsView'
 import { isAgentDraft } from './page-status'
-import { StorageUsageMeter } from './StorageUsageMeter'
 import {
   isKnowledgeViewMode,
-  KnowledgeViewToggle,
+  knowledgeViewOptions,
   type KnowledgeViewMode,
 } from './KnowledgeViewToggle'
 import { PageEditor } from './PageEditor'
@@ -35,13 +33,13 @@ import { PagePreview } from './PagePreview'
 import { SpaceSettingsDialog } from './SpaceSettingsDialog'
 import { firstFileOnly, useFileDrop } from '../../../hooks/useFileDrop'
 import { VersionHistory } from './VersionHistory'
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 
 export const KnowledgeWorkspace = () => {
   const {
     activeProductView,
-    scopeProjectId,
     selectedSpace,
     selectedSpaceId,
     pages,
@@ -318,67 +316,72 @@ export const KnowledgeWorkspace = () => {
 
   // No document open → the selected space's filesystem browser. Dropping a file
   // here uploads it as a new file node in the current folder.
+  const selectedView = knowledgeViewOptions.find((option) => option.value === viewMode)
+  const workspaceActions: PageHeaderAction[] | undefined = selectedSpaceId
+    ? [
+        {
+          icon: selectedView?.icon,
+          id: 'view-mode',
+          items: knowledgeViewOptions.map((option) => ({
+            checked: option.value === viewMode,
+            icon: option.icon,
+            id: option.value,
+            label: option.label,
+            onSelect: () => updateViewMode(option.value),
+            title: option.title,
+          })),
+          kind: 'menu',
+          label: `View: ${selectedView?.label ?? 'Column'}`,
+          priority: 80,
+          title: 'Choose knowledge view',
+        },
+        ...(agentDraftCount > 0 || needsReviewOnly
+          ? [{
+              id: 'needs-review',
+              label: `Needs review (${agentDraftCount})`,
+              onSelect: () => setNeedsReviewOnly((value) => !value),
+              priority: 60,
+              selected: needsReviewOnly,
+            } satisfies PageHeaderAction]
+          : []),
+        {
+          id: 'upload-file',
+          label: 'Upload file',
+          onSelect: () => fileInputRef.current?.click(),
+          priority: 40,
+        },
+        {
+          icon: faFolderPlus,
+          id: 'new-folder',
+          label: 'New folder',
+          onSelect: () => {
+            updateViewMode('column')
+            setCreatingFolder(true)
+          },
+          priority: 30,
+        },
+        {
+          compact: true,
+          icon: faGear,
+          id: 'space-settings',
+          label: 'Space settings',
+          onSelect: openSpaceSettings,
+          priority: 10,
+        },
+        {
+          id: 'new-page',
+          label: 'New page',
+          onSelect: () => openCreate(currentFolder?.id ?? null),
+          primary: true,
+          priority: 100,
+        },
+      ]
+    : undefined
+
   return (
     <div className="relative h-full w-full" {...fileNodeDrop.dropHandlers}>
       <KnowledgePane
-        actions={
-          selectedSpaceId ? (
-            <>
-              {/* Organization-wide usage — out of place, and too wide, inside
-                  one project's Documents tab. */}
-              {scopeProjectId ? null : <StorageUsageMeter />}
-              <button
-                aria-label="Space settings"
-                className="admin-button admin-button-secondary admin-button-compact"
-                onClick={openSpaceSettings}
-                title="Space settings"
-                type="button"
-              >
-                <FontAwesomeIcon className="h-3 w-3" icon={faGear} />
-              </button>
-              {agentDraftCount > 0 || needsReviewOnly ? (
-                <button
-                  className={[
-                    'rounded-md px-3 py-1 text-xs font-medium',
-                    needsReviewOnly
-                      ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
-                      : 'admin-button admin-button-secondary',
-                  ].join(' ')}
-                  onClick={() => setNeedsReviewOnly((value) => !value)}
-                  type="button"
-                >
-                  Needs review ({agentDraftCount})
-                </button>
-              ) : null}
-              <button
-                className="admin-button admin-button-secondary admin-button-compact"
-                onClick={() => fileInputRef.current?.click()}
-                type="button"
-              >
-                Upload file
-              </button>
-              <button
-                className="admin-button admin-button-secondary admin-button-compact gap-1.5"
-                onClick={() => {
-                  updateViewMode('column')
-                  setCreatingFolder(true)
-                }}
-                type="button"
-              >
-                <FontAwesomeIcon className="h-3 w-3" icon={faFolderPlus} />
-                New folder
-              </button>
-              <button
-                className="admin-button admin-button-primary admin-button-compact"
-                onClick={() => openCreate(currentFolder?.id ?? null)}
-                type="button"
-              >
-                New page
-              </button>
-            </>
-          ) : undefined
-        }
-        center={<KnowledgeViewToggle mode={viewMode} onChange={updateViewMode} />}
+        actions={workspaceActions}
         title={selectedSpace?.name ?? 'Pages'}
       >
         <div className="h-full w-full">

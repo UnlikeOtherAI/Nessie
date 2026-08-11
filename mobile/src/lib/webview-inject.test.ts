@@ -66,6 +66,11 @@ test('iPad and Android keep top safe-area ownership in the native frame', () => 
   assert.doesNotMatch(androidCss, /padding-top: env/)
   assert.match(ipadCss, /padding-bottom: env\(safe-area-inset-bottom\)/)
   assert.match(androidCss, /padding-bottom: env\(safe-area-inset-bottom\)/)
+  assert.match(androidCss, /--nessie-native-bottom-overlay: 94px/)
+  assert.match(
+    androidCss,
+    /padding-bottom: calc\(var\(--nessie-native-bottom-overlay\) \+ env\(safe-area-inset-bottom\)\)/,
+  )
   assert.match(androidCss, /\.admin-topbar \{ height: var\(--topbar-h\); padding-top: 0; \}/)
   assert.match(androidCss, /\[data-testid="channel-content-scroll"\] \{ overflow-x: hidden; \}/)
   assert.match(androidCss, /\.admin-message-code-block \{ overflow-x: auto; overflow-y: hidden; \}/)
