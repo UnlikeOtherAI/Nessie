@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAgentRealtime, useAgents } from '../../facades/agents/hooks';
-import { useChannels, useOpenDm } from '../../facades/channels/hooks';
+import { useChannels } from '../../facades/channels/hooks';
+import { useNavigateToDm } from '../../facades/channels/dm-navigation';
 import { useFavorites, useSetFavorite } from '../../facades/favorites/hooks';
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces';
 import {
   isPersonalAssistantChannel,
-  isUserDmChannel,
   usePersonalAssistant,
   usePersonalAssistantBootstrap,
 } from '../../facades/personal-assistant/hooks';
@@ -78,7 +78,6 @@ export const useAdminShell = () => {
       ? channels.find((channel) => channel.id === currentChannelId)?.defaultThreadId
       : undefined,
   });
-  const openDm = useOpenDm();
   const activeDmChannel = currentChannelId
       ? channels.find((c) => c.id === currentChannelId && c.type === 'dm')
     : undefined;
@@ -248,32 +247,7 @@ export const useAdminShell = () => {
     setSelectedAgentId(null);
   }, []);
 
-  const navigateToDm = useCallback((userId: string) => {
-    if (userId === me?.user.id) {
-      openDm.mutate(userId, {
-        onSuccess: (channel) => {
-          void navigate(`/channels/${channel.id}`);
-        },
-      });
-      return;
-    }
-
-    const targetUser = users.find((u) => u.id === userId);
-    if (targetUser) {
-      const dmChannel = channels.find(
-        (c) => isUserDmChannel(c) && targetUser.channelIds.includes(c.id),
-      );
-      if (dmChannel) {
-        void navigate(`/channels/${dmChannel.id}`);
-        return;
-      }
-    }
-    openDm.mutate(userId, {
-      onSuccess: (channel) => {
-        void navigate(`/channels/${channel.id}`);
-      },
-    });
-  }, [channels, me?.user.id, navigate, openDm, users]);
+  const navigateToDm = useNavigateToDm();
 
   const navigateToChannel = useCallback((channelId: string) => {
     void navigate(`/channels/${channelId}`);

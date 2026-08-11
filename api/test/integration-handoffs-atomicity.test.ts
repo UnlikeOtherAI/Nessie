@@ -143,6 +143,7 @@ const createHarness = (options: HarnessOptions = {}) => {
         topic: null,
         type: 'dm',
         unreadCount: 0,
+        lastMessageAt: null,
         updatedAt: '2026-07-19T10:00:00.000Z',
         visibility: 'private',
       },

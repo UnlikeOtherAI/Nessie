@@ -218,6 +218,7 @@ test('enqueue collision rolls back the PA handoff and fails the exact DeepWater 
         topic: null,
         type: 'dm',
         unreadCount: 0,
+        lastMessageAt: null,
         updatedAt: now.toISOString(),
         visibility: 'private',
       },

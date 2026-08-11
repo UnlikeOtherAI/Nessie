@@ -200,6 +200,7 @@ const makeProvider = (overrides: Partial<KnowledgeProvider> = {}): KnowledgeProv
     getPage: async () => null,
     getSpace: async () => null,
     listPages: async () => [],
+    listRecentPages: async () => [],
     listSpaces: async () => ({ data: [], meta: { cursor: null, hasMore: false } }),
     listVersions: async () => [],
     movePage: async () => null,

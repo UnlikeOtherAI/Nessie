@@ -11,6 +11,7 @@ import type { ChannelRecord } from '../contracts.js'
 import {
   channelTeamInclude,
   ensureDefaultThread,
+  loadLastMessageAtByThread,
   loadUnreadCountsByThread,
   mapChannelRecord,
   resolveDmUserId,
@@ -98,11 +99,9 @@ export const listChannelsForUser = async (
     return leftPriority - rightPriority || left.createdAt.getTime() - right.createdAt.getTime()
   })
 
-  const unreadCountsByThread = await loadUnreadCountsByThread(
-    prisma,
-    channels.map((channel) => channel.threads[0]!.id),
-    userId,
-  )
+  const defaultThreadIds = channels.map((channel) => channel.threads[0]!.id)
+  const unreadCountsByThread = await loadUnreadCountsByThread(prisma, defaultThreadIds, userId)
+  const lastMessageAtByThread = await loadLastMessageAtByThread(prisma, defaultThreadIds)
 
   return channels.map((channel) => ({
     id: parseChannelId(channel.id),
@@ -119,6 +118,7 @@ export const listChannelsForUser = async (
     teamName: channel.team.name,
     defaultThreadId: parseThreadId(channel.threads[0]!.id),
     unreadCount: unreadCountsByThread.get(channel.threads[0]!.id) ?? 0,
+    lastMessageAt: lastMessageAtByThread.get(channel.threads[0]!.id) ?? null,
     topic: channel.topic ?? null,
     description: channel.description ?? null,
     archivedAt: channel.archivedAt?.toISOString() ?? null,

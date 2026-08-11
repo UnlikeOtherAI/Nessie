@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { ProjectOverviewPlaceholder } from '../../components/features/projects/ProjectOverviewPlaceholder'
+import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
 import { useProjects } from '../../facades/projects/hooks'
 import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
 
@@ -21,7 +21,7 @@ export const ChannelProjectOverviewPage = () => {
         <div className={sectionTitle}>{projectName}</div>
       </header>
       <div className="min-h-0 flex-1">
-        <ProjectOverviewPlaceholder projectName={projectName} />
+        <ProjectDashboard projectId={projectId} />
       </div>
     </section>
   )

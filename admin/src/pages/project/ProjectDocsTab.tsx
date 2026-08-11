@@ -3,6 +3,7 @@ import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpa
 import { KnowledgeProvider, useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
 import { KnowledgeSpaceList } from '../../components/features/knowledge/KnowledgeSpaceList'
 import { KnowledgeWorkspace } from '../../components/features/knowledge/KnowledgeWorkspace'
+import { useKnowledgePageDeepLink } from '../../components/features/knowledge/useKnowledgePageDeepLink'
 
 // The project's own documents: the same knowledge workspace the Knowledge
 // section renders, scoped by KnowledgeProvider to this project. Nothing is
@@ -11,6 +12,9 @@ import { KnowledgeWorkspace } from '../../components/features/knowledge/Knowledg
 const ProjectDocsLayout = () => {
   const { spaces, selectedSpaceId, selectSpace, createSpace, createSpacePending } = useKnowledge()
   const [createOpen, setCreateOpen] = useState(false)
+
+  // `?spaceId=&pageId=` — how the dashboard's Documents rows land on a document.
+  useKnowledgePageDeepLink()
 
   return (
     <div className="flex h-full min-h-0">

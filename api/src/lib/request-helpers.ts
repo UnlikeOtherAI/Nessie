@@ -16,7 +16,10 @@ import {
   ThreadRecordSchema,
 } from '../contracts.js'
 import { buildAccessibleChannelWhere } from '../services/agents.js'
-import { ensureDefaultThread } from '../services/channel-records.js'
+import {
+  ensureDefaultThread,
+  loadLastMessageAtByThread,
+} from '../services/channel-records.js'
 
 /**
  * Request-scoped authorization + visibility helpers. These all close over the
@@ -182,6 +185,10 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
           },
         })
       : null
+    // The PA channel record is built here rather than through mapChannelRecord,
+    // so its recency has to be loaded here too — every emission of a channel
+    // record carries lastMessageAt.
+    const lastMessageAt = (await loadLastMessageAtByThread(prisma, [thread.id])).get(thread.id)
     const latestRun = agent?.runs[0]
     const latestToolCall = latestRun?.toolCalls[0]
     const latestMessage = agent?.messages[0]
@@ -238,6 +245,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
         teamName: channel.team.name,
         defaultThreadId: parseThreadId(thread.id),
         unreadCount: 0,
+        lastMessageAt: lastMessageAt ?? null,
         createdAt: channel.createdAt.toISOString(),
         updatedAt: channel.updatedAt.toISOString(),
       },

@@ -179,6 +179,26 @@ export const CreateTaskDocumentBodySchema = z.object({
   body: z.string().nullable().optional(),
 })
 
+// GET /api/knowledge-base/recent-pages — "what was written down lately in this
+// project". projectId is required: this list is always about one project, never
+// a silently-narrowed org-wide read.
+// `limit` is clamped by the provider (default 5, ceiling 20) rather than
+// rejected here: an over-large ask is a capped list, not a client error.
+export const KnowledgeRecentPagesQuerySchema = z.object({
+  projectId: UuidSchema,
+  limit: z.coerce.number().int().positive().optional(),
+})
+
+export const KnowledgeRecentPageRecordSchema = z.object({
+  id: UuidSchema,
+  spaceId: UuidSchema,
+  spaceName: NonEmptyStringSchema,
+  title: NonEmptyStringSchema,
+  kind: z.enum(['document', 'file']),
+  status: KnowledgePageStatusSchema,
+  updatedAt: NonEmptyStringSchema,
+})
+
 export const KnowledgeListQuerySchema = z.object({
   cursor: z.string().optional(),
   includeArchived: z.enum(['true', 'false']).optional(),

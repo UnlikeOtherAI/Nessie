@@ -3,6 +3,7 @@ import { KnowledgeConflictError } from './errors.js'
 import { replaceLabels } from './native-labels.js'
 import { canReadSpace } from './access.js'
 import { mapPage, mapSpace, mapVersion, pageInclude, spaceInclude } from './native-mappers.js'
+import { listNativeRecentPages } from './native-recent-pages.js'
 import { searchNativePages } from './native-search.js'
 import { searchNativePagesHybrid } from './native-search-hybrid.js'
 import { replaceKnowledgePageVersionChunks, type ChunkablePage } from './native-chunks.js'
@@ -577,6 +578,8 @@ export const createNativeKnowledgeProvider = (
   },
 
   listPages: (input) => listPages(prisma, input),
+
+  listRecentPages: (input) => listNativeRecentPages(prisma, input),
 
   listSpaces: async (input) => {
     const limit = clampLimit(input.limit)
