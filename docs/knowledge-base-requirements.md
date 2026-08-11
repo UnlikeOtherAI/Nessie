@@ -376,13 +376,18 @@ that column):
 - The second column is **only the Spaces list** — styled like the channels list
   (a collapsible "Spaces" header with a `+` that opens a centered
   `CreateSpaceDialog` modal). No pages live here.
-- The main area uses shared `KnowledgePane` chrome (a 50px header with optional
-  **Back** + title + centered view switcher + actions: **Upload file**, **New
-  folder**, **New page**). The root browsing state is a filesystem-style view
-  with folders first, then files, and every row starts with a folder/file icon:
-  - The centered segmented switcher offers **Full page**, **Column**, and
-    **Tree** views. **Column** is the default and the selected view persists in a
-    cookie.
+- The main area uses `KnowledgePane` with the shared `ResponsivePageHeader`: a
+  50px leading title/back region and a declarative, right-aligned action list.
+  It measures the actual action widths with `ResizeObserver`, keeps the primary
+  action visible, and moves low-priority actions into an accessible **More**
+  menu rather than allowing a narrow project Documents tab to overlap controls.
+  The view choice is a radio menu (**Full page**, **Column**, **Tree**), and
+  remains available from **More** when constrained. **Column** is the default
+  and the selected view persists in a cookie. This same header is used by page,
+  file, and product-document views. Organization storage usage lives in the
+  global Knowledge sidebar rather than the per-space action row. The root
+  browsing state is a filesystem-style view with folders first, then files, and
+  every row starts with a folder/file icon:
   - **Folders** sort first and carry a right chevron to signal they drill in. A
     folder is any page flagged `metadata.folder` (an empty folder created via
     **New folder**) **or** any page that already has children — so folders never

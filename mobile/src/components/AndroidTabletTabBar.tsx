@@ -7,8 +7,6 @@ const BAR_HEIGHT = 70
 export const ANDROID_TABLET_TAB_BAR_BOTTOM_GAP = 8
 const CONTENT_GAP = 16
 
-export const ANDROID_TABLET_TAB_BAR_CONTENT_INSET = BAR_HEIGHT + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP + CONTENT_GAP
-
 type AndroidTabletTabBarProps = {
   activeIndex: number
   activeIndicatorColor: string
@@ -62,7 +60,7 @@ export const AndroidTabletTabBar = ({
           >
             <MaterialIcons
               color={color}
-              name={active ? tab.activeMaterialIcon : tab.materialIcon}
+              name={tab.materialIcon}
               size={24}
             />
             <Text numberOfLines={1} style={[styles.label, { color }]}>

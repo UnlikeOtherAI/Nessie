@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
 import { KnowledgeSpaceList } from '../../components/features/knowledge/KnowledgeSpaceList'
+import { StorageUsageMeter } from '../../components/features/knowledge/StorageUsageMeter'
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
 import { useProjects } from '../../facades/projects/hooks'
 
@@ -12,6 +13,7 @@ export const KnowledgeSidebarNav = () => {
     spaces,
     myDocsSpaceId,
     selectedSpaceId,
+    scopeProjectId,
     selectSpace,
     activeProductView,
     selectProductView,
@@ -123,6 +125,15 @@ export const KnowledgeSidebarNav = () => {
           spaces={otherSpaces}
         />
       </div>
+
+      {/* Storage is organization-wide context, not a per-space action. Keeping
+          it in the global Knowledge sidebar makes that scope clear and leaves
+          the shared page header room for actions on a narrow project tab. */}
+      {!scopeProjectId ? (
+        <div className="border-t border-[color:var(--sep)] px-4 py-3">
+          <StorageUsageMeter />
+        </div>
+      ) : null}
 
       <CreateSpaceDialog
         onClose={() => setCreateOpen(false)}

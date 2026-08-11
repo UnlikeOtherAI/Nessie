@@ -12,6 +12,7 @@ import { CommentsSection } from './comments/CommentsSection'
 import { iconForFilename, isZipFilename, previewKindForFilename } from './file-icons'
 import { KnowledgePane } from './KnowledgePane'
 import { ZipContents } from './ZipContents'
+import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type FileNodeViewerProps = {
   page: KnowledgePageRecord
@@ -57,44 +58,40 @@ export const FileNodeViewer = ({
     previewKind === 'text' && downloadPath ? downloadPath : null,
     token,
   )
+  const headerActions: PageHeaderAction[] = [
+    {
+      icon: faPaperclip,
+      id: 'attachments',
+      label: 'Attachments',
+      onSelect: onToggleAttachments,
+      priority: 60,
+    },
+    {
+      id: 'history',
+      label: 'History',
+      onSelect: onOpenHistory,
+      priority: 50,
+    },
+    {
+      id: 'upload-version',
+      label: 'Upload new version',
+      onSelect: onUploadVersion,
+      priority: 40,
+    },
+    {
+      disabled: !downloadPath,
+      icon: faDownload,
+      id: 'download',
+      label: 'Download',
+      onSelect: () => downloadPath && void downloadAuthedPath(downloadPath, page.title, token),
+      primary: true,
+      priority: 100,
+    },
+  ]
 
   return (
     <KnowledgePane
-      actions={
-        <>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={onToggleAttachments}
-            type="button"
-          >
-            <FontAwesomeIcon className="mr-1.5 h-3 w-3" icon={faPaperclip} />
-            Attachments
-          </button>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={onOpenHistory}
-            type="button"
-          >
-            History
-          </button>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={onUploadVersion}
-            type="button"
-          >
-            Upload new version
-          </button>
-          <button
-            className="admin-button admin-button-primary admin-button-compact"
-            disabled={!downloadPath}
-            onClick={() => downloadPath && void downloadAuthedPath(downloadPath, page.title, token)}
-            type="button"
-          >
-            <FontAwesomeIcon className="mr-1.5 h-3 w-3" icon={faDownload} />
-            Download
-          </button>
-        </>
-      }
+      actions={headerActions}
       onBack={onBack}
       title={page.title}
     >

@@ -16,7 +16,6 @@ import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
-  ANDROID_TABLET_TAB_BAR_CONTENT_INSET,
   AndroidTabletTabBar,
 } from './src/components/AndroidTabletTabBar'
 import {
@@ -240,15 +239,17 @@ const Shell = (): React.JSX.Element => {
   const showBar = currentPath != null && !isAuthGateRoute(currentPath)
 
   // Inset the WebView for the status bar (Android draws edge-to-edge) and for the
-  // native tab bar when it's shown (top on iPad, bottom elsewhere). The iPhone
-  // WebView stays edge to edge; INJECTED gives its page content the top safe-area
-  // padding so each column background still reaches behind the status bar.
+  // native tab bar when it's shown (top on iPad, bottom elsewhere). Android's
+  // floating dock overlays the WebView rather than shortening it: injected CSS
+  // reserves interaction space while the page background and column dividers
+  // continue beneath the dock. The iPhone WebView stays edge to edge; INJECTED
+  // gives its page content the top safe-area padding.
   const topInset = IS_IPAD && showBar ? insets.top + IPAD_TAB_BAR_HEIGHT : IS_ANDROID ? insets.top : 0
   const bottomInset =
-    showBar && !IS_IPAD
-      ? (IS_ANDROID ? ANDROID_TABLET_TAB_BAR_CONTENT_INSET : IPHONE_TAB_BAR_HEIGHT) + insets.bottom
-      : IS_ANDROID
-        ? insets.bottom
+    IS_ANDROID
+      ? insets.bottom
+      : showBar && !IS_IPAD
+        ? IPHONE_TAB_BAR_HEIGHT + insets.bottom
         : 0
   const webviewLayerStyle = { ...styles.webviewLayer, top: topInset, bottom: bottomInset }
 
