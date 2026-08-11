@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -11,12 +10,10 @@ import {
 } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../../lib/api-client'
-import {
-  countThinkingEntries,
-  type PendingStreamMessage,
-} from '../../../../facades/threads/thinking'
+import type { PendingStreamMessage } from '../../../../facades/threads/thinking'
 import type { useReplyThread } from '../../../../pages/channels/useReplyThread'
 import { useFileDrop } from '../../../../hooks/useFileDrop'
+import { useStickToBottom } from '../../../../hooks/useStickToBottom'
 import { DropZoneOverlay } from '../../../shared/DropZoneOverlay'
 import { OversizePasteDialog } from '../../../shared/OversizePasteDialog'
 import type { MentionEntity } from '../../../shared/MentionInput'
@@ -84,7 +81,6 @@ export const ThreadReplyPanel = ({
   const viewerFollowing = rootQuery.data?.viewerFollowing ?? false
   const replies = useMemo(() => repliesQuery.data ?? [], [repliesQuery.data])
   const [alsoSendToChannel, setAlsoSendToChannel] = useState(false)
-  const scrollRef = useRef<HTMLDivElement | null>(null)
   const resizeCleanup = useRef<(() => void) | null>(null)
   useEffect(() => () => resizeCleanup.current?.(), [])
 
@@ -157,19 +153,9 @@ export const ThreadReplyPanel = ({
     [replies, root],
   )
 
-  useLayoutEffect(() => {
-    const container = scrollRef.current
-    if (container) {
-      container.scrollTop = container.scrollHeight
-    }
-    // A growing thinking bubble changes the list height like a new reply does.
-  }, [
-    openRootMessageId,
-    threadFeedItems.length,
-    optimisticMessages.length,
-    pendingMessages.length,
-    countThinkingEntries(pendingMessages),
-  ])
+  // Same stick-to-bottom behaviour as the channel feed: the panel opens on the
+  // newest reply and follows growing rows until the reader scrolls up.
+  const threadScroll = useStickToBottom(openRootMessageId)
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -277,39 +263,41 @@ export const ThreadReplyPanel = ({
             <div
               className="min-h-0 flex-1 overflow-y-auto"
               data-testid="thread-panel-replies"
-              ref={scrollRef}
+              ref={threadScroll.containerRef}
             >
-              {rootDeleted ? (
-                <div className="mx-4 mt-3 rounded-lg border border-dashed border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
-                  The root message was deleted. Replies are turned off.
-                </div>
-              ) : null}
-              <ChannelMessageFeed
-                agentById={agentMap}
-                agentMap={agentMap}
-                channelUsers={channelUsers}
-                editingContent={editingContent}
-                editingMessageId={editingMessageId}
-                feedItems={threadFeedItems}
-                isExternalAgentConversation={isExternalAgentConversation}
-                isPersonalAssistantConversation={isPersonalAssistantConversation}
-                meAvatar={meAvatar}
-                meDisplayName={meDisplayName}
-                meUserId={meUserId}
-                optimisticMessages={optimisticMessages}
-                pendingMessages={pendingMessages}
-                renderContent={renderContent}
-                thinkingSurface="thread"
-                threadId={activeThreadId}
-                token={token}
-                updatePending={updatePending}
-                onAddReaction={addReaction}
-                onCancelEdit={cancelEdit}
-                onChangeEditingContent={changeEditingContent}
-                onConfirmDelete={confirmDelete}
-                onStartEdit={startEdit}
-                onSubmitEdit={(messageId) => void submitEdit(messageId)}
-              />
+              <div ref={threadScroll.contentRef}>
+                {rootDeleted ? (
+                  <div className="mx-4 mt-3 rounded-lg border border-dashed border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
+                    The root message was deleted. Replies are turned off.
+                  </div>
+                ) : null}
+                <ChannelMessageFeed
+                  agentById={agentMap}
+                  agentMap={agentMap}
+                  channelUsers={channelUsers}
+                  editingContent={editingContent}
+                  editingMessageId={editingMessageId}
+                  feedItems={threadFeedItems}
+                  isExternalAgentConversation={isExternalAgentConversation}
+                  isPersonalAssistantConversation={isPersonalAssistantConversation}
+                  meAvatar={meAvatar}
+                  meDisplayName={meDisplayName}
+                  meUserId={meUserId}
+                  optimisticMessages={optimisticMessages}
+                  pendingMessages={pendingMessages}
+                  renderContent={renderContent}
+                  thinkingSurface="thread"
+                  threadId={activeThreadId}
+                  token={token}
+                  updatePending={updatePending}
+                  onAddReaction={addReaction}
+                  onCancelEdit={cancelEdit}
+                  onChangeEditingContent={changeEditingContent}
+                  onConfirmDelete={confirmDelete}
+                  onStartEdit={startEdit}
+                  onSubmitEdit={(messageId) => void submitEdit(messageId)}
+                />
+              </div>
             </div>
 
             {rootDeleted ? (
@@ -339,8 +327,14 @@ export const ThreadReplyPanel = ({
                   onInsertEmoji={insertEmoji}
                   onInsertHashSign={() => mentionRef.current?.insertHashSign()}
                   onOversizePaste={(paste) => setOversizePaste(paste)}
-                  onSubmitForm={(event) => void sendMessageSubmit(event)}
-                  onSubmitText={(text) => void sendText(text)}
+                  onSubmitForm={(event) => {
+                    threadScroll.pinToBottom()
+                    void sendMessageSubmit(event)
+                  }}
+                  onSubmitText={(text) => {
+                    threadScroll.pinToBottom()
+                    void sendText(text)
+                  }}
                   pendingAgentInvites={pendingAgentInvites}
                   invitingAgentId={invitingAgentId}
                   inviteErrors={inviteErrors}

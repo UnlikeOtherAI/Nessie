@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  type FormEvent,
-  type ReactNode,
-} from 'react'
-import { countThinkingEntries } from '../../../facades/threads/thinking'
+import { useCallback, useMemo, type FormEvent, type ReactNode } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { AgentRecord, ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { PendingStreamMessage } from '../../../facades/threads/thinking'
@@ -16,6 +8,7 @@ import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelComposer } from './ChannelComposer'
 import { ChannelMessageFeed } from './ChannelMessageFeed'
 import { buildFeedItems } from './channel-helpers'
+import { useStickToBottom } from '../../../hooks/useStickToBottom'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
 import type { AvatarSources } from '../../primitives/UserAvatar'
@@ -100,7 +93,6 @@ export const ChannelAgentInfoDrawer = ({
   threadMessages,
   token,
 }: ChannelAgentInfoDrawerProps) => {
-  const scrollRef = useRef<HTMLDivElement | null>(null)
   const {
     message,
     setMessage,
@@ -176,20 +168,9 @@ export const ChannelAgentInfoDrawer = ({
     [mentionRef, message, sendAddressedText],
   )
 
-  useLayoutEffect(() => {
-    const container = scrollRef.current
-    if (!container) {
-      return
-    }
-    container.scrollTop = container.scrollHeight
-    // The thinking ticker grows the bubble's content, so it pins like a new row.
-  }, [
-    agent?.id,
-    feedItems.length,
-    optimisticMessages.length,
-    agentPendingMessages.length,
-    countThinkingEntries(agentPendingMessages),
-  ])
+  // Same stick-to-bottom behaviour as the channel feed: opens on the newest
+  // message and follows rows that keep growing (media, thinking tickers).
+  const drawerScroll = useStickToBottom(agent?.id)
 
   if (!agent || !activeChannel) {
     return null
@@ -261,31 +242,33 @@ export const ChannelAgentInfoDrawer = ({
         <div
           className="min-h-0 flex-1 overflow-y-auto py-2"
           data-testid="agent-info-drawer-messages"
-          ref={scrollRef}
+          ref={drawerScroll.containerRef}
         >
-          <ChannelMessageFeed
-            agentById={agentMap}
-            agentMap={agentMap}
-            editingContent={editingContent}
-            editingMessageId={editingMessageId}
-            feedItems={feedItems}
-            isPersonalAssistantConversation={false}
-            meAvatar={meAvatar}
-            meDisplayName={meDisplayName}
-            meUserId={meUserId}
-            optimisticMessages={optimisticMessages}
-            pendingMessages={agentPendingMessages}
-            renderContent={renderContent}
-            threadId={activeChannel.defaultThreadId}
-            token={token}
-            updatePending={updatePending}
-            onAddReaction={addReaction}
-            onCancelEdit={cancelEdit}
-            onChangeEditingContent={changeEditingContent}
-            onConfirmDelete={confirmDelete}
-            onStartEdit={startEdit}
-            onSubmitEdit={(messageId) => void submitEdit(messageId)}
-          />
+          <div ref={drawerScroll.contentRef}>
+            <ChannelMessageFeed
+              agentById={agentMap}
+              agentMap={agentMap}
+              editingContent={editingContent}
+              editingMessageId={editingMessageId}
+              feedItems={feedItems}
+              isPersonalAssistantConversation={false}
+              meAvatar={meAvatar}
+              meDisplayName={meDisplayName}
+              meUserId={meUserId}
+              optimisticMessages={optimisticMessages}
+              pendingMessages={agentPendingMessages}
+              renderContent={renderContent}
+              threadId={activeChannel.defaultThreadId}
+              token={token}
+              updatePending={updatePending}
+              onAddReaction={addReaction}
+              onCancelEdit={cancelEdit}
+              onChangeEditingContent={changeEditingContent}
+              onConfirmDelete={confirmDelete}
+              onStartEdit={startEdit}
+              onSubmitEdit={(messageId) => void submitEdit(messageId)}
+            />
+          </div>
         </div>
 
         <ChannelComposer
@@ -300,8 +283,14 @@ export const ChannelAgentInfoDrawer = ({
           onInsertEmoji={insertEmoji}
           onInsertHashSign={() => mentionRef.current?.insertHashSign()}
           onOversizePaste={(paste) => setOversizePaste(paste)}
-          onSubmitForm={(event) => void sendAddressedForm(event)}
-          onSubmitText={(text) => void sendAddressedText(text)}
+          onSubmitForm={(event) => {
+            drawerScroll.pinToBottom()
+            void sendAddressedForm(event)
+          }}
+          onSubmitText={(text) => {
+            drawerScroll.pinToBottom()
+            void sendAddressedText(text)
+          }}
           pendingAgentInvites={pendingAgentInvites}
           invitingAgentId={invitingAgentId}
           inviteErrors={inviteErrors}

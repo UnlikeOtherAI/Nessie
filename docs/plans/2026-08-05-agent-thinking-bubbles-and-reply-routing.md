@@ -300,8 +300,11 @@ Placement (`ChannelMessageFeed.tsx` + `ThreadReplyPanel.tsx` + `ChannelsPage.tsx
   panel is open on that root (replace the `pendingMessages={[]}` at
   `ThreadReplyPanel.tsx:269` with anchored filtering passed down from
   `ChannelsPage`).
-- Add bubble presence/length to both scroll-pin `useLayoutEffect` deps
-  (`ChannelsPage.tsx:228-242`, `ThreadReplyPanel.tsx:138-143`).
+- Keep the bubble's growth pinned to the bottom. (Superseded: the per-render
+  `useLayoutEffect` scroll-pin these panels used has been replaced by the shared
+  `useStickToBottom` hook — `admin/src/hooks/useStickToBottom.ts` — which
+  observes the feed's content and re-pins on any height change, so a growing
+  ticker needs no dependency list at all.)
 - The DM agent drawer (`ChannelAgentInfoDrawer`) reuses the feed and gets the
   top-level bubble for free; verify it renders.
 

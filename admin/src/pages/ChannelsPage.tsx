@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
@@ -11,10 +11,11 @@ import {
   usePersonalAssistant,
 } from '../facades/personal-assistant/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
-import { countThinkingEntries, selectPendingForRoot } from '../facades/threads/thinking'
+import { selectPendingForRoot } from '../facades/threads/thinking'
 import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
+import { useStickToBottom } from '../hooks/useStickToBottom'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { CallBanner } from '../components/shared/CallBanner'
@@ -89,7 +90,6 @@ export const ChannelsPage = () => {
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
   const [selectedMessageAgentId, setSelectedMessageAgentId] = useState<string | null>(null)
-  const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
   const isConversationSurface =
@@ -186,7 +186,21 @@ export const ChannelsPage = () => {
     setSearchQuery,
     toggleSearch,
   } = useChannelMessageSearch(activeChannel?.id)
-  useAlertMessageHighlight(threadMessagesFetched, jumpToMessage)
+  // The feed opens on its newest message and stays there while rows settle
+  // (media decoding, streaming replies, growing thinking bubbles), so nothing
+  // is left hiding behind the composer.
+  const feedScroll = useStickToBottom(`${activeChannel?.id ?? ''}:${visibleActiveTab}`)
+  const releaseFeedPin = feedScroll.releasePin
+  // Jumping to an older message is the reader taking over: stop following the
+  // bottom, or the next row that settles would yank them back down.
+  const jumpToFeedMessage = useCallback(
+    (messageId: string) => {
+      releaseFeedPin()
+      jumpToMessage(messageId)
+    },
+    [jumpToMessage, releaseFeedPin],
+  )
+  useAlertMessageHighlight(threadMessagesFetched, jumpToFeedMessage)
   // sp-channels: channel settings dialog + join.
   const [showChannelSettings, setShowChannelSettings] = useState(false)
   const joinChannel = useJoinChannel()
@@ -240,25 +254,6 @@ export const ChannelsPage = () => {
     [pendingMessages, replyThread.openRootMessageId],
   )
 
-  useLayoutEffect(() => {
-    const container = contentScrollRef.current
-    if (!container) {
-      return
-    }
-
-    container.scrollTop = container.scrollHeight
-    // Thinking bubbles grow as their ticker fills, so their content counts as a
-    // layout change just like a new message row.
-  }, [
-    activeChannel?.id,
-    visibleActiveTab,
-    feedItems.length,
-    optimisticMessages.length,
-    pendingMessages.length,
-    countThinkingEntries(pendingMessages),
-    scopedAgents.length,
-  ])
-
   if (!me) {
     return null
   }
@@ -295,7 +290,7 @@ export const ChannelsPage = () => {
           onChangeQuery={setSearchQuery}
           onClose={closeSearch}
           onSelectResult={(messageId) => {
-            jumpToMessage(messageId)
+            jumpToFeedMessage(messageId)
             closeSearch()
           }}
           searchQuery={searchQuery}
@@ -316,74 +311,76 @@ export const ChannelsPage = () => {
       <div
         className="min-h-0 flex-1 overflow-y-auto"
         data-testid="channel-content-scroll"
-        ref={contentScrollRef}
+        ref={feedScroll.containerRef}
       >
-        {visibleActiveTab === 'messages' ? (
-          <ChannelMessageFeed
-            feedItems={feedItems}
-            optimisticMessages={optimisticMessages}
-            pendingMessages={pendingMessages}
-            agentMap={agentMap}
-            agentById={agentMap}
-            meDisplayName={me.user.displayName}
-            meUserId={me.user.id}
-            meAvatar={{
-              avatarUrl: me.user.avatarUrl,
-              avatarAttachmentId: me.user.avatarAttachmentId,
-              gravatarUrl: me.user.gravatarUrl,
-            }}
-            channelUsers={channelUsers}
-            token={token}
-            isPersonalAssistantConversation={isPersonalAssistantConversation}
-            isExternalAgentConversation={isExternalAgentActiveChannel}
-            externalAgentDisplayName={activeChannel?.label}
-            emptyState={
-              isExternalAgentActiveChannel && externalAgentIdentity ? (
-                <ExternalAgentIntro
-                  identity={externalAgentIdentity}
-                  onSelectStarter={(prompt) => void sendText(prompt)}
-                />
-              ) : undefined
-            }
-            renderContent={renderContent}
-            threadId={activeChannel?.defaultThreadId}
-            editingMessageId={editingMessageId}
-            editingContent={editingContent}
-            updatePending={updatePending}
-            onStartEdit={startEdit}
-            onChangeEditingContent={changeEditingContent}
-            onSubmitEdit={(messageId) => void submitEdit(messageId)}
-            onCancelEdit={cancelEdit}
-            onAddReaction={addReaction}
-            onConfirmDelete={confirmDelete}
-            onOpenThread={replyThread.openThread}
-            resolveThreadParticipant={replyThread.resolveThreadParticipant}
-            onSelectAgent={
-              isPersonalAssistantConversation
-                ? undefined
-                : (agent) => setSelectedMessageAgentId(agent.id)
-            }
-            onSelectUser={
-              activeChannel?.type === 'dm' ? undefined : setSelectedMessageUser
-            }
-          />
-        ) : null}
+        <div ref={feedScroll.contentRef}>
+          {visibleActiveTab === 'messages' ? (
+            <ChannelMessageFeed
+              feedItems={feedItems}
+              optimisticMessages={optimisticMessages}
+              pendingMessages={pendingMessages}
+              agentMap={agentMap}
+              agentById={agentMap}
+              meDisplayName={me.user.displayName}
+              meUserId={me.user.id}
+              meAvatar={{
+                avatarUrl: me.user.avatarUrl,
+                avatarAttachmentId: me.user.avatarAttachmentId,
+                gravatarUrl: me.user.gravatarUrl,
+              }}
+              channelUsers={channelUsers}
+              token={token}
+              isPersonalAssistantConversation={isPersonalAssistantConversation}
+              isExternalAgentConversation={isExternalAgentActiveChannel}
+              externalAgentDisplayName={activeChannel?.label}
+              emptyState={
+                isExternalAgentActiveChannel && externalAgentIdentity ? (
+                  <ExternalAgentIntro
+                    identity={externalAgentIdentity}
+                    onSelectStarter={(prompt) => void sendText(prompt)}
+                  />
+                ) : undefined
+              }
+              renderContent={renderContent}
+              threadId={activeChannel?.defaultThreadId}
+              editingMessageId={editingMessageId}
+              editingContent={editingContent}
+              updatePending={updatePending}
+              onStartEdit={startEdit}
+              onChangeEditingContent={changeEditingContent}
+              onSubmitEdit={(messageId) => void submitEdit(messageId)}
+              onCancelEdit={cancelEdit}
+              onAddReaction={addReaction}
+              onConfirmDelete={confirmDelete}
+              onOpenThread={replyThread.openThread}
+              resolveThreadParticipant={replyThread.resolveThreadParticipant}
+              onSelectAgent={
+                isPersonalAssistantConversation
+                  ? undefined
+                  : (agent) => setSelectedMessageAgentId(agent.id)
+              }
+              onSelectUser={
+                activeChannel?.type === 'dm' ? undefined : setSelectedMessageUser
+              }
+            />
+          ) : null}
 
-        <ChannelTabPanels
-          visibleActiveTab={visibleActiveTab}
-          isConversationSurface={isConversationSurface}
-          isPersonalAssistantConversation={isPersonalAssistantConversation}
-          activeChannel={activeChannel}
-          boundAgents={boundAgents}
-          scopedAgents={scopedAgents}
-          toolsCount={tools.length}
-          pendingMessagesCount={pendingMessages.length}
-          personalAssistantAgent={personalAssistantAgent}
-          personalAssistantChannel={personalAssistantChannel}
-          personalAssistantState={personalAssistantState}
-          onSelectAgent={onSelectAgent}
-          onCreateAgent={() => void navigate('/agents/designer')}
-        />
+          <ChannelTabPanels
+            visibleActiveTab={visibleActiveTab}
+            isConversationSurface={isConversationSurface}
+            isPersonalAssistantConversation={isPersonalAssistantConversation}
+            activeChannel={activeChannel}
+            boundAgents={boundAgents}
+            scopedAgents={scopedAgents}
+            toolsCount={tools.length}
+            pendingMessagesCount={pendingMessages.length}
+            personalAssistantAgent={personalAssistantAgent}
+            personalAssistantChannel={personalAssistantChannel}
+            personalAssistantState={personalAssistantState}
+            onSelectAgent={onSelectAgent}
+            onCreateAgent={() => void navigate('/agents/designer')}
+          />
+        </div>
       </div>
 
       <ChannelComposer
@@ -395,8 +392,14 @@ export const ChannelsPage = () => {
         attachments={attachments}
         onChangeMessage={setMessage}
         onOversizePaste={(paste) => setOversizePaste(paste)}
-        onSubmitText={(text) => void sendText(text)}
-        onSubmitForm={(event) => void sendMessageSubmit(event)}
+        onSubmitText={(text) => {
+          feedScroll.pinToBottom()
+          void sendText(text)
+        }}
+        onSubmitForm={(event) => {
+          feedScroll.pinToBottom()
+          void sendMessageSubmit(event)
+        }}
         onInsertHashSign={() => mentionRef.current?.insertHashSign()}
         onInsertAtSign={() => mentionRef.current?.insertAtSign()}
         onInsertEmoji={insertEmoji}
