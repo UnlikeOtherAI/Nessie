@@ -60,8 +60,6 @@ export const WorkflowDesignerPage = () => {
   })
 
   const handleMenuItemClick = (item: ToolbarMenuItem) => {
-    canvas.setOpenMenu(null)
-
     if (item.nodeType) {
       state.addNodeFromItem(item)
       return
@@ -103,10 +101,8 @@ export const WorkflowDesignerPage = () => {
       />
 
       <WorkflowToolbar
-        toolbarActions={state.toolbarActions}
-        openMenu={canvas.openMenu}
-        setOpenMenu={canvas.setOpenMenu}
         onMenuItemClick={handleMenuItemClick}
+        toolbarActions={state.toolbarActions}
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">

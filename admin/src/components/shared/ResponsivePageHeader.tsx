@@ -21,6 +21,7 @@ import {
 
 export type PageHeaderMenuItem = {
   checked?: boolean
+  disabled?: boolean
   icon?: IconDefinition
   id: string
   label: string
@@ -37,6 +38,7 @@ type PageHeaderActionBase = {
   label: string
   primary?: boolean
   priority: number
+  pressed?: boolean
   selected?: boolean
   title?: string
 }
@@ -60,6 +62,12 @@ export type ResponsivePageHeaderProps = {
   leading?: ReactNode
   onBack?: () => void
   title: string
+  titleInput?: {
+    ariaLabel: string
+    onChange: (value: string) => void
+    placeholder: string
+    value: string
+  }
   titleTone?: 'page' | 'section'
 }
 
@@ -120,7 +128,9 @@ const HeaderMenu = ({ action, onSelect }: HeaderMenuProps) => {
               'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs',
               'text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
               checked ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]' : '',
+              item.disabled ? 'cursor-not-allowed opacity-50' : '',
             ].join(' ')}
+            disabled={item.disabled}
             key={item.id}
             onClick={() => onSelect(item)}
             role={role}
@@ -146,6 +156,7 @@ export const ResponsivePageHeader = ({
   leading,
   onBack,
   title,
+  titleInput,
   titleTone = 'page',
 }: ResponsivePageHeaderProps) => {
   const headerRef = useRef<HTMLElement>(null)
@@ -286,6 +297,7 @@ export const ResponsivePageHeader = ({
         aria-expanded={isMenu ? isOpen : undefined}
         aria-haspopup={isMenu ? 'menu' : undefined}
         aria-label={action.compact ? action.label : undefined}
+        aria-pressed={isMenu ? undefined : action.pressed}
         className={actionClassName(action, isOpen)}
         disabled={action.disabled}
         form={action.form}
@@ -337,7 +349,15 @@ export const ResponsivePageHeader = ({
               {eyebrow}
             </div>
           ) : null}
-          {titleTone === 'section' ? (
+          {titleInput ? (
+            <input
+              aria-label={titleInput.ariaLabel}
+              className="w-full border-none bg-transparent text-[15px] font-semibold text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+              onChange={(event) => titleInput.onChange(event.target.value)}
+              placeholder={titleInput.placeholder}
+              value={titleInput.value}
+            />
+          ) : titleTone === 'section' ? (
             <h2 className="truncate text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
               {title}
             </h2>
