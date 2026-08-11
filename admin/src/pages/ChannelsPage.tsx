@@ -32,6 +32,7 @@ import { ChannelSearchPanel } from '../components/features/channels/ChannelSearc
 import { ChannelTabBar } from '../components/features/channels/ChannelTabBar'
 import { ChannelTabPanels } from '../components/features/channels/ChannelTabPanels'
 import { buildFeedItems, isOperationsTab, type ChannelTab, type MessageUserIdentity } from '../components/features/channels/channel-helpers'
+import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
 import { ChannelInfoDrawers } from './channels/ChannelInfoDrawers'
@@ -246,6 +247,24 @@ export const ChannelsPage = () => {
     }
   }, [activeChannel, channelId, navigate])
 
+  // Structural only: is there an agent here at all? Whether one engages is the
+  // orchestrator's model-judged call. The Personal Assistant and external-agent
+  // DMs own their channel without appearing in `boundAgents`.
+  const hasRespondingAgent =
+    boundAgents.length > 0 || isPersonalAssistantActiveChannel || isExternalAgentActiveChannel
+  // Ambient liveness for the channel surface. `pendingMessages` is the full set
+  // this feed renders bubbles for — top-level runs at the bottom, thread-anchored
+  // ones compactly under their root — so a bubble anywhere in the feed hides the
+  // hint rather than stacking with it.
+  const channelLiveness = useAgentLivenessHint({
+    hasRespondingAgent,
+    meUserId: me?.user.id ?? '',
+    messages: threadMessages,
+    pendingMessages,
+    surfaceKey: activeChannel?.defaultThreadId,
+  })
+  const markChannelSent = channelLiveness.markSent
+
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
   // Runs replying into the open reply thread render their bubble (and streaming
   // text) inside the panel, not at the bottom of the channel.
@@ -342,6 +361,7 @@ export const ChannelsPage = () => {
                 ) : undefined
               }
               renderContent={renderContent}
+              showLivenessHint={channelLiveness.visible}
               threadId={activeChannel?.defaultThreadId}
               editingMessageId={editingMessageId}
               editingContent={editingContent}
@@ -394,10 +414,12 @@ export const ChannelsPage = () => {
         onOversizePaste={(paste) => setOversizePaste(paste)}
         onSubmitText={(text) => {
           feedScroll.pinToBottom()
+          markChannelSent()
           void sendText(text)
         }}
         onSubmitForm={(event) => {
           feedScroll.pinToBottom()
+          markChannelSent()
           void sendMessageSubmit(event)
         }}
         onInsertHashSign={() => mentionRef.current?.insertHashSign()}
@@ -419,6 +441,7 @@ export const ChannelsPage = () => {
           activeChannel={activeChannel}
           agentMap={agentMap}
           channelUsers={channelUsers}
+          hasRespondingAgent={hasRespondingAgent}
           isExternalAgentConversation={isExternalAgentActiveChannel}
           isPersonalAssistantConversation={isPersonalAssistantConversation}
           meAvatar={{

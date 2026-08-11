@@ -1,9 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
-import { readSseStream } from '../../lib/sse'
+import { readSseStream, type SseFrame } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import {
+  classifyStreamResponse,
+  runStreamConnectionLoop,
+  type StreamAttemptOutcome,
+} from './stream-retry'
 import {
   appendThinkingEntry,
   reconcileThreadThinking,
@@ -198,161 +203,167 @@ export const useThreadStream = (threadId?: string): StreamState => {
       }
     }
 
-    const connectStream = async () => {
-      while (!cancelled) {
-        const controller = new AbortController()
-        activeController = controller
+    const handleFrame = (frame: SseFrame) => {
+      if (cancelled) {
+        return
+      }
 
-        try {
-          const headers: Record<string, string> = {
-            authorization: `Bearer ${token}`,
-          }
-          // Resume from last known event ID on reconnect
-          if (lastEventId) {
-            headers['Last-Event-ID'] = lastEventId
-          }
+      // Track Last-Event-ID for reconnection
+      if (frame.id) {
+        lastEventId = frame.id
+      }
 
-          const response = await fetch(`${baseUrl}/api/threads/${threadId}/stream`, {
-            headers,
-            signal: controller.signal,
+      if (!frame.event || !frame.data) {
+        return
+      }
+
+      const data = JSON.parse(frame.data) as StreamEventData
+
+      if (frame.event === 'stream.start') {
+        liveRunStartedAt.set(data.runId, Date.now())
+        setPendingMessages((current) =>
+          current.some((message) => message.runId === data.runId)
+            ? current
+            : [
+                ...current,
+                {
+                  agentId: data.agentId ?? '',
+                  content: '',
+                  // Absent/null anchors the reply at the top level of the
+                  // channel; an id anchors it in that message's thread.
+                  rootMessageId: data.rootMessageId ?? null,
+                  runId: data.runId,
+                  thinking: [],
+                },
+              ],
+        )
+        return
+      }
+
+      const thinkingKind = frame.event ? THINKING_EVENT_KINDS[frame.event] : undefined
+      if (thinkingKind) {
+        const content = data.content ?? ''
+        if (!content) {
+          return
+        }
+        setPendingMessages((current) =>
+          current.map((message) => {
+            if (message.runId !== data.runId) {
+              return message
+            }
+            const thinking = appendThinkingEntry(message.thinking, {
+              content,
+              id: data.chunkId,
+              kind: thinkingKind,
+            })
+            return thinking === message.thinking ? message : { ...message, thinking }
+          }),
+        )
+        return
+      }
+
+      if (frame.event === 'stream.delta') {
+        setPendingMessages((current) =>
+          current.map((message) =>
+            message.runId === data.runId
+              ? {
+                  ...message,
+                  content: `${message.content}${data.content ?? ''}`,
+                }
+              : message,
+          ),
+        )
+        return
+      }
+
+      if (frame.event === 'stream.done') {
+        if (data.messageId && data.content !== undefined) {
+          queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
+            ['threads', threadId, 'messages'],
+            (current) => {
+              const finalMessage: ThreadMessageRecord = {
+                agentId: data.agentId ?? null,
+                content: data.content ?? '',
+                createdAt: data.createdAt ?? new Date().toISOString(),
+                id: data.messageId ?? '',
+                reactions: [],
+                role: 'assistant',
+                rootMessageId: data.rootMessageId ?? null,
+                threadId,
+              }
+              const messages = current ?? []
+              return [
+                ...messages.filter((message) => message.id !== finalMessage.id),
+                finalMessage,
+              ]
+            },
+          )
+        }
+        liveRunStartedAt.delete(data.runId)
+        finishedRunIds.add(data.runId)
+        setPendingMessages((current) =>
+          current.filter((message) => message.runId !== data.runId),
+        )
+        void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+        if (data.rootMessageId) {
+          void queryClient.invalidateQueries({
+            queryKey: ['threads', threadId, 'replies', data.rootMessageId],
           })
+        }
+        return
+      }
 
-          if (!response.ok || !response.body) {
-            break
-          }
+      if (frame.event === 'message.reaction') {
+        void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+      }
+    }
 
-          void bootstrapThinking(controller.signal)
+    // One connect-and-drain cycle. The loop around it decides whether to try
+    // again; only 403/404 end it, so a 401 mid token rotation or a transient
+    // 5xx no longer kills this thread's stream for the rest of the mount.
+    const connectOnce = async (): Promise<StreamAttemptOutcome> => {
+      const controller = new AbortController()
+      activeController = controller
 
-          await readSseStream(response.body, (frame) => {
-            if (cancelled) {
-              return
-            }
-
-            // Track Last-Event-ID for reconnection
-            if (frame.id) {
-              lastEventId = frame.id
-            }
-
-            if (!frame.event || !frame.data) {
-              return
-            }
-
-            const data = JSON.parse(frame.data) as StreamEventData
-
-            if (frame.event === 'stream.start') {
-              liveRunStartedAt.set(data.runId, Date.now())
-              setPendingMessages((current) =>
-                current.some((message) => message.runId === data.runId)
-                  ? current
-                  : [
-                      ...current,
-                      {
-                        agentId: data.agentId ?? '',
-                        content: '',
-                        // Absent/null anchors the reply at the top level of the
-                        // channel; an id anchors it in that message's thread.
-                        rootMessageId: data.rootMessageId ?? null,
-                        runId: data.runId,
-                        thinking: [],
-                      },
-                    ],
-              )
-              return
-            }
-
-            const thinkingKind = frame.event ? THINKING_EVENT_KINDS[frame.event] : undefined
-            if (thinkingKind) {
-              const content = data.content ?? ''
-              if (!content) {
-                return
-              }
-              setPendingMessages((current) =>
-                current.map((message) => {
-                  if (message.runId !== data.runId) {
-                    return message
-                  }
-                  const thinking = appendThinkingEntry(message.thinking, {
-                    content,
-                    id: data.chunkId,
-                    kind: thinkingKind,
-                  })
-                  return thinking === message.thinking ? message : { ...message, thinking }
-                }),
-              )
-              return
-            }
-
-            if (frame.event === 'stream.delta') {
-              setPendingMessages((current) =>
-                current.map((message) =>
-                  message.runId === data.runId
-                    ? {
-                        ...message,
-                        content: `${message.content}${data.content ?? ''}`,
-                      }
-                    : message,
-                ),
-              )
-              return
-            }
-
-            if (frame.event === 'stream.done') {
-              if (data.messageId && data.content !== undefined) {
-                queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
-                  ['threads', threadId, 'messages'],
-                  (current) => {
-                    const finalMessage: ThreadMessageRecord = {
-                      agentId: data.agentId ?? null,
-                      content: data.content ?? '',
-                      createdAt: data.createdAt ?? new Date().toISOString(),
-                      id: data.messageId ?? '',
-                      reactions: [],
-                      role: 'assistant',
-                      rootMessageId: data.rootMessageId ?? null,
-                      threadId,
-                    }
-                    const messages = current ?? []
-                    return [
-                      ...messages.filter((message) => message.id !== finalMessage.id),
-                      finalMessage,
-                    ]
-                  },
-                )
-              }
-              liveRunStartedAt.delete(data.runId)
-              finishedRunIds.add(data.runId)
-              setPendingMessages((current) =>
-                current.filter((message) => message.runId !== data.runId),
-              )
-              void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
-              if (data.rootMessageId) {
-                void queryClient.invalidateQueries({
-                  queryKey: ['threads', threadId, 'replies', data.rootMessageId],
-                })
-              }
-              return
-            }
-
-            if (frame.event === 'message.reaction') {
-              void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
-            }
-          })
-        } catch {
-          // Connection lost — will reconnect
-        } finally {
-          if (activeController === controller) {
-            activeController = null
-          }
+      try {
+        const headers: Record<string, string> = {
+          authorization: `Bearer ${token}`,
+        }
+        // Resume from last known event ID on reconnect
+        if (lastEventId) {
+          headers['Last-Event-ID'] = lastEventId
         }
 
-        // Reconnect after 2 seconds unless cancelled
-        if (!cancelled) {
-          await new Promise((resolve) => setTimeout(resolve, 2_000))
+        const response = await fetch(`${baseUrl}/api/threads/${threadId}/stream`, {
+          headers,
+          signal: controller.signal,
+        })
+
+        const outcome = classifyStreamResponse(response)
+        if (outcome !== 'connected' || !response.body) {
+          return outcome
+        }
+
+        void bootstrapThinking(controller.signal)
+        try {
+          await readSseStream(response.body, handleFrame)
+        } catch {
+          // Dropped mid-stream. The connection itself worked, so this still
+          // counts as connected and the next attempt starts at the base delay.
+        }
+        return 'connected'
+      } finally {
+        if (activeController === controller) {
+          activeController = null
         }
       }
     }
 
-    void connectStream()
+    void runStreamConnectionLoop({
+      attempt: connectOnce,
+      isCancelled: () => cancelled,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    })
 
     return () => {
       cancelled = true

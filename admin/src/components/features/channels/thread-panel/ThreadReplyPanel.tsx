@@ -21,6 +21,7 @@ import type { AvatarSources } from '../../../primitives/UserAvatar'
 import { ChannelComposer } from '../ChannelComposer'
 import { ChannelMessageFeed } from '../ChannelMessageFeed'
 import { buildFeedItems } from '../channel-helpers'
+import { useAgentLivenessHint } from '../useAgentLivenessHint'
 import { useChannelComposer } from '../useChannelComposer'
 import { useChannelMessageActions } from '../useChannelMessageActions'
 
@@ -28,6 +29,9 @@ interface ThreadReplyPanelProps {
   activeChannel: ChannelRecord
   agentMap: Map<string, AgentRecord>
   channelUsers: UserRecord[]
+  // Structural fact from the page: the channel has at least one agent that
+  // could pick a reply up, so the ambient liveness hint is worth showing.
+  hasRespondingAgent: boolean
   // The panel inherits the page's conversation kind so agent naming (e.g. the
   // Personal Assistant fallback) matches the main feed.
   isPersonalAssistantConversation: boolean
@@ -56,6 +60,7 @@ export const ThreadReplyPanel = ({
   activeChannel,
   agentMap,
   channelUsers,
+  hasRespondingAgent,
   isPersonalAssistantConversation,
   isExternalAgentConversation,
   meAvatar,
@@ -148,10 +153,22 @@ export const ThreadReplyPanel = ({
   // Render the root and replies as one continuous conversation. Rendering them
   // as separate feeds created a reply-count separator directly above the date
   // separator, even for a simple one-message reply.
-  const threadFeedItems = useMemo(
-    () => (root ? buildFeedItems([root, ...replies]) : []),
+  const threadMessages = useMemo(
+    () => (root ? [root, ...replies] : []),
     [replies, root],
   )
+  const threadFeedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
+  // Same ambient hint as the channel feed, scoped to this reply thread: the
+  // page already filtered `pendingMessages` to runs replying here, so a bubble
+  // in this panel hides the hint instead of stacking with it.
+  const liveness = useAgentLivenessHint({
+    hasRespondingAgent,
+    meUserId,
+    messages: threadMessages,
+    pendingMessages,
+    surfaceKey: openRootMessageId ?? undefined,
+  })
+  const markReplySent = liveness.markSent
 
   // Same stick-to-bottom behaviour as the channel feed: the panel opens on the
   // newest reply and follows growing rows until the reader scrolls up.
@@ -286,6 +303,7 @@ export const ThreadReplyPanel = ({
                   optimisticMessages={optimisticMessages}
                   pendingMessages={pendingMessages}
                   renderContent={renderContent}
+                  showLivenessHint={liveness.visible}
                   thinkingSurface="thread"
                   threadId={activeThreadId}
                   token={token}
@@ -329,10 +347,12 @@ export const ThreadReplyPanel = ({
                   onOversizePaste={(paste) => setOversizePaste(paste)}
                   onSubmitForm={(event) => {
                     threadScroll.pinToBottom()
+                    markReplySent()
                     void sendMessageSubmit(event)
                   }}
                   onSubmitText={(text) => {
                     threadScroll.pinToBottom()
+                    markReplySent()
                     void sendText(text)
                   }}
                   pendingAgentInvites={pendingAgentInvites}

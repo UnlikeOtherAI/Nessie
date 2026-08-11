@@ -1573,6 +1573,36 @@ button.reaction-pill-active:focus-visible {
 }
 
 /*
+ * Ambient liveness dots: the single uninvited line between "you sent it" and a
+ * run announcing itself. Quieter than .thinking-dots on purpose — muted text
+ * colour, smaller, slower — because it claims only that a message is in flight,
+ * not that an agent has taken it. It never renders beside a thinking bubble.
+ */
+.liveness-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.liveness-dots span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--tx3);
+  animation: thinking-bounce 1.5s ease-in-out infinite;
+}
+
+.liveness-dots span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.liveness-dots span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+/*
  * Thinking-bubble ticker: a fixed-height viewport that shows the tail of an
  * agent's live thought process. New lines are appended at the bottom and older
  * ones are pushed up and clipped away — the bubble is deliberately lossy; the

@@ -350,3 +350,73 @@ Placement (`ChannelMessageFeed.tsx` + `ThreadReplyPanel.tsx` + `ChannelsPage.tsx
   `run_thinking_chunks` (cascade-on-run-delete only for now).
 - Native/mobile surfaces; the voice companion.
 - Any change to DeepWater/product-handoff or external-agent message flows.
+
+## Follow-up shipped 2026-08-11 — liveness phase 0 (client only)
+
+Two defects surfaced once the bubbles were in daily use. Both are fixed
+client-side; no new server events, tables, or schema.
+
+### 1. The thread SSE stream could die permanently
+
+`useThreadStream`'s reconnect loop `break`ed on **any** non-OK response, so one
+401 during token rotation or one transient 5xx ended the stream for the rest of
+the component's mount: no thinking bubbles, no streaming reply text, no future
+liveness — while replies still arrived over the WebSocket refetch path, which
+reads as a broken feature rather than a dropped connection.
+
+The policy now lives in `admin/src/facades/threads/stream-retry.ts` (React-free,
+unit-tested):
+
+- `isTerminalStreamStatus` — only **403** and **404** end the loop; the viewer
+  cannot see this thread and reconnecting cannot change that.
+- `classifyStreamResponse` — everything else, including a bodyless 200, is
+  `failed` and retried.
+- `streamRetryDelayMs` — equal-jitter exponential backoff, 1 s base, 30 s cap
+  (each delay lands in `[half, full]` of the window) so many tabs recovering
+  from one API restart do not stampede.
+- `runStreamConnectionLoop` — connect, drain, decide; the backoff resets on
+  every connection that was actually established (a mid-stream drop still
+  counts, so flaky networks do not escalate into 30 s dark periods).
+
+`Last-Event-ID` resume and the `/thinking` bootstrap call are unchanged. The
+hook's frame handler moved out of the loop into a named `handleFrame` so the
+connect cycle stays readable.
+
+### 2. Several seconds of silence after sending
+
+`stream.start` is the first thread-visible signal, and the worker only publishes
+it after queue pickup, the engagement-decision call, a second queue hop, run
+claim, MCP toolset assembly and memory retrieval. Until then the feed looked
+inert.
+
+A client-local, optimistic, **anonymous** hint fills exactly that gap
+(`liveness-hint.ts` + `useAgentLivenessHint.ts`, beside `useChannelComposer`):
+
+- Shown only when the viewer posts into a surface that structurally has an agent
+  that could answer (`boundAgents.length > 0`, the Personal Assistant DM, or an
+  external-agent DM). It never names one: the engagement decision is
+  model-judged and may decline, so naming an actor before a durable `Run` exists
+  would promise a reply the system may never send. Message content is never
+  inspected.
+- One quiet line at the bottom of the feed — three muted `.liveness-dots`
+  (`var(--tx3)`, smaller and slower than `.thinking-dots`), no avatar, no text,
+  `role="status"`. Idle renders nothing.
+- Cleared on the first of: **a pending stream entry for this surface** (the
+  bubble is the indicator), **a message from anyone but the viewer** (the
+  viewer's own message coming back from the server deliberately does not
+  count), **an agent reaction** (the orchestrator's `acknowledge` outcome), or
+  **10 s** (`LIVENESS_HINT_TIMEOUT_MS`).
+- Dots and bubble can never be painted in the same frame: `shouldShowLivenessHint`
+  is evaluated **during render** from the surface's own pending-run list, and the
+  effect that releases the state runs afterwards purely as cleanup.
+- Both surfaces use it through the same hook + the shared `ChannelMessageFeed`
+  `showLivenessHint` prop — the channel feed passes every pending run it renders
+  (bottom bubbles *and* compact under-root ones), the reply panel passes the set
+  already filtered to its root.
+
+Verified headless with the mock-LLM harness: dots alone for ~1.5 s then replaced
+by the bubble in a PA DM; dots alone for 9 s then gone by 11.5 s in a channel
+whose orchestrator returned `{"action":"none"}`; the same single line inside the
+reply panel with nothing duplicated in the channel feed; and, with the stream
+endpoint forced to 500 three times, reconnect gaps of 542/1946/3404 ms followed
+by a working bubble.

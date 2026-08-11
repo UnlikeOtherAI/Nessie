@@ -69,6 +69,11 @@ interface ChannelMessageFeedProps {
   onSelectAgent?: (agent: AgentRecord) => void
   onSelectUser?: (user: MessageUserIdentity) => void
   resolveThreadParticipant?: (participantId: string) => ThreadParticipant | null
+  // Ambient liveness (`useAgentLivenessHint`): one quiet, anonymous line at the
+  // bottom while the viewer's just-sent message has produced no signal yet. The
+  // host guarantees it is false whenever this surface renders a thinking
+  // bubble, so the two never stack.
+  showLivenessHint?: boolean
   // Container thread of this feed — the thought-process dialog reads a run's
   // full log from it.
   threadId?: string
@@ -108,6 +113,7 @@ export const ChannelMessageFeed = ({
   onSelectAgent,
   onSelectUser,
   resolveThreadParticipant,
+  showLivenessHint = false,
   threadId,
   thinkingSurface = 'channel',
 }: ChannelMessageFeedProps) => {
@@ -450,6 +456,26 @@ export const ChannelMessageFeed = ({
           </Fragment>
         )
       })}
+      {/*
+        The ambient line, last so it sits directly under the newest row. It is
+        anonymous by design — no avatar, no agent name — because no run exists
+        yet and the engagement decision may still decline.
+      */}
+      {showLivenessHint ? (
+        <div
+          aria-label="Waiting for a reply"
+          className="flex items-center py-1 pl-12 pr-5"
+          data-testid="liveness-hint"
+          role="status"
+        >
+          <span aria-hidden="true" className="liveness-dots">
+            <span />
+            <span />
+            <span />
+          </span>
+        </div>
+      ) : null}
+
       {attachmentViewer}
       {thoughtProcessDialog}
       <div className="h-3" />
