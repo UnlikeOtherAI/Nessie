@@ -3,6 +3,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { TABS } from '../lib/tabs'
 
+const BAR_HEIGHT = 70
+export const ANDROID_TABLET_TAB_BAR_BOTTOM_GAP = 8
+const CONTENT_GAP = 16
+
+export const ANDROID_TABLET_TAB_BAR_CONTENT_INSET = BAR_HEIGHT + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP + CONTENT_GAP
+
 type AndroidTabletTabBarProps = {
   activeIndex: number
   activeIndicatorColor: string
@@ -12,6 +18,7 @@ type AndroidTabletTabBarProps = {
   inactiveTintColor: string
   onIndexChange: (index: number) => void
   rippleColor: string
+  separatorColor: string
 }
 
 export const AndroidTabletTabBar = ({
@@ -23,8 +30,13 @@ export const AndroidTabletTabBar = ({
   inactiveTintColor,
   onIndexChange,
   rippleColor,
+  separatorColor,
 }: AndroidTabletTabBarProps): React.JSX.Element => (
   <View pointerEvents="box-none" style={[styles.layer, { bottom }]}>
+    <View
+      pointerEvents="none"
+      style={[styles.separator, { backgroundColor: separatorColor, bottom: BAR_HEIGHT + CONTENT_GAP }]}
+    />
     <View style={[styles.bar, dark ? styles.barDark : styles.barLight]}>
       {TABS.map((tab, index) => {
         const active = index === activeIndex
@@ -67,7 +79,7 @@ const styles = StyleSheet.create({
   bar: {
     width: '88%',
     maxWidth: 700,
-    height: 70,
+    height: BAR_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 6,
@@ -99,6 +111,12 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 20,
     alignItems: 'center',
+  },
+  separator: {
+    position: 'absolute',
+    right: 0,
+    left: 0,
+    height: StyleSheet.hairlineWidth,
   },
   tab: {
     height: 58,
