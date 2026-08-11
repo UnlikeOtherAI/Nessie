@@ -204,7 +204,12 @@ export const dispatchAgentTrigger = async (
       const message = await tx.message.create({
         data: {
           content,
-          role: 'user',
+          // Internal kickoff, not a post a human made — see the matching
+          // comment in `worker/src/control/trigger-run.ts`. `system` keeps the
+          // row for audit and restart replay while excluding it from the
+          // channel feed and later model context; the run still gets this
+          // content as its prompt via `payload.messageId`, which ignores role.
+          role: 'system',
           threadId: threadTarget.threadId,
         },
       })
@@ -233,6 +238,11 @@ export const dispatchAgentTrigger = async (
         run = await tx.run.create({
           data: {
             agentId,
+            // A trigger fire is a standalone contribution to the room, not an
+            // answer owed to the kickoff. Paired with the `system` message
+            // above: threading under a hidden root would drop the reply out
+            // of the channel entirely.
+            replyPlacement: 'channel',
             status: 'pending',
             threadId: threadTarget.threadId,
             triggerId: trigger.id,

@@ -253,12 +253,21 @@ export const queueTriggerRun = async (
 
       const message = await tx.message.create({
         data: {
+          // A trigger kickoff is an internal directive that drives the run, not
+          // a post any human made — nobody types "A schedule trigger fired" or
+          // the memory nudge appended to a saved prompt. Rendering it as a
+          // `user` message attributed it to the trigger's owner, so a
+          // 15-minute sweep filled its own alert channel with plumbing signed
+          // by someone who never wrote it. `system` keeps the row (audit,
+          // restart replay by id) while excluding it from the channel feed and
+          // from future model context (see listThreadMessages /
+          // loadConversation) — the same treatment the PA path already used.
+          // The run still receives this content as its prompt via
+          // `payload.messageId`, which does not consult role, so the payload
+          // JSON stays useful to the model (webhook event data) without ever
+          // being shown to a person. Provenance for humans lives on the
+          // Triggers page delivery log.
           content,
-          // A PA-owned scheduled run posts AS the owner, so its kickoff prompt is
-          // an internal system-injected directive rather than a post the owner
-          // made. Mark it `system` so it drives the run but is excluded from both
-          // the channel feed and future model context (see listThreadMessages /
-          // loadConversation). Shared agents keep the visible `user` kickoff.
           ...(isPersonalAssistantTrigger
             ? {
                 metadata: {
@@ -266,7 +275,7 @@ export const queueTriggerRun = async (
                 } as Prisma.InputJsonValue,
               }
             : {}),
-          role: isPersonalAssistantTrigger ? 'system' : 'user',
+          role: 'system',
           threadId: input.trigger.targetThreadId,
         },
         select: { id: true },
@@ -306,6 +315,14 @@ export const queueTriggerRun = async (
         const run = await tx.run.create({
           data: {
             agentId: input.trigger.agentId,
+            // A trigger fire is a standalone contribution to the room, not an
+            // answer owed to whoever last spoke — the definition of `channel`
+            // placement. Stamped structurally from the fact that this is a
+            // trigger run, never judged from content. This must stay paired
+            // with the `system` kickoff above: a hidden root plus the default
+            // thread placement would bury every sweep under an invisible
+            // message and drop it out of the feed entirely.
+            replyPlacement: 'channel',
             status: 'pending',
             threadId: input.trigger.targetThreadId,
             triggerDeliveryId: delivery.id,

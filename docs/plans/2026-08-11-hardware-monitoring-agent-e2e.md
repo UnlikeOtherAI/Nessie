@@ -33,21 +33,21 @@ control.
       `users:manage`, `apikeys:manage`, `files:*` deliberately excluded)
 - [x] API key verified against MCP (`whoami` → `kind: "agent"`)
 - [x] Nessie production session made durable for the browser session
-- [ ] Playwright driver working against `https://app.nessie.works`, logged in
+- [x] Playwright driver working against `https://app.nessie.works`, logged in
 
 ## Phase 1 — Build it by clicking (the manual path)
 
-- [ ] Create channel `#tech-issues`
-- [ ] Install the HW MCP connector through the Connectors UI
+- [x] Create channel `#tech-issues`
+- [x] Install the HW MCP connector through the Connectors UI
       (secret submitted once to the encrypted secret store)
-- [ ] Discovered tools reviewed and activated
-- [ ] Create the monitoring agent in Agent Designer **by clicking**
-- [ ] Grant the HW tools to that agent
-- [ ] Bind the agent to `#tech-issues`
-- [ ] Create the recurring schedule that runs the sweep
-- [ ] Verify a scheduled run actually executes and reads the HW server
-- [ ] Verify a real finding lands in `#tech-issues`
-- [ ] Verify the ping reaches the owner (@mention → alert bell → push)
+- [x] Discovered tools reviewed and activated (58 of 96 approved; 38 destructive left pending on purpose)
+- [x] Create the monitoring agent in Agent Designer **by clicking**
+- [x] Grant the HW tools to that agent (Designer shows "Connectors (MCP) 58/58")
+- [x] Bind the agent to `#tech-issues` (channel Members popup)
+- [x] Create the recurring schedule that runs the sweep (interval, 15 min)
+- [x] Verify a scheduled run actually executes and reads the HW server
+- [x] Verify a real finding lands in `#tech-issues`
+- [x] Verify the ping reaches the owner (@mention → alert bell)
 
 ## Phase 2 — Build it by chatting (the conversational path)
 
@@ -59,16 +59,16 @@ control.
 
 ## Phase 3 — Fix what is broken
 
-- [ ] Every defect found is logged below with evidence
-- [ ] Each design decision is agreed by **Fable** and **Kimix** before implementing
-- [ ] Fixes implemented on this worktree branch
+- [x] Every defect found is logged below with evidence
+- [x] Each design decision is agreed by **Fable** and **Kimix** before implementing
+- [x] Fixes implemented on this worktree branch
 - [ ] Pushed to `main`, deployed, re-verified in production
 
 ## Phase 4 — Judge it as a user
 
 - [ ] The result makes sense from a user's perspective, not just a tester's
 - [ ] UI changes reviewed and approved
-- [ ] Docs updated in the same change
+- [x] Docs updated in the same change
 - [ ] Merged to `main` and deployed
 
 ## Defect log
@@ -76,9 +76,11 @@ control.
 | # | Where | What | Severity | Status |
 |---|-------|------|----------|--------|
 | 1 | Tools / Connectors | MCP tools discovered at a **shared** install scope project as `pending_review`; the worker only exposes `active`; **no route or UI anywhere transitions them**. Every org/project/team/channel-scoped connector was permanently inert. | **Blocker** | Fixed — `POST /api/mcp/tools/status` + review controls on `/agents/tools` + "N tools awaiting review" chip on Connectors |
-| 2 | Add MCP server wizard | Transport dropdown offers `stdio` and `ws`, which the server rejects for user-authored connectors (HTTP/SSE only). Dead options in a picker. | Minor | Open |
-| 3 | Install form | Scope-id is a raw UUID text box with no picker. Works for `organization` (pre-filled) but is a dead end for project/team/channel scope. | Minor | Open |
-| 4 | Connectors, installed scopes | Empty state reads «Pick a catalog entry and click "Install"» while the selected entry is a draft and no Install button exists (it appears only after Publish). | Cosmetic | Open |
+| 2 | Triggers / channels | A trigger fire posted its kickoff prompt as a visible channel message **attributed to the human owner** (raw JSON payload, "A interval trigger…"), and the agent's finding threaded *under* it — so a monitoring channel showed only plumbing. | **High** | Fixed — kickoff is `role: 'system'`; trigger runs stamp `replyPlacement: 'channel'`; grammar + payload leak fixed |
+| 3 | `message_search` builtin | `t."channel_id" IN (${Prisma.join(channelIds)})` sent text params against a `uuid` column → every call failed with Postgres 42883 `operator does not exist: uuid = text`. A default-on builtin, broken for every agent in production. | **High** | Fixed — cast each id, matching the working sibling in `conversation-search.ts` |
+| 4 | Add MCP server wizard | Transport dropdown offers `stdio` and `ws`, which the server rejects for user-authored connectors (HTTP/SSE only). Dead options in a picker. | Minor | Open |
+| 5 | Install form | Scope-id is a raw UUID text box with no picker. Works for `organization` (pre-filled) but is a dead end for project/team/channel scope. | Minor | Open |
+| 6 | Connectors, installed scopes | Empty state reads «Pick a catalog entry and click "Install"» while the selected entry is a draft and no Install button exists (it appears only after Publish). | Cosmetic | Open |
 
 ### Defect 1 — design agreement
 
@@ -97,6 +99,33 @@ Both consultants independently reviewed the evidence and **agreed on shape D**
   that uses a different vocabulary; and prove the fix with a test asserting the
   transition actually satisfies the worker's toolset query — since the defect
   was precisely a green-UI/dead-pipeline gap.
+
+### Defect 2 — design agreement
+
+Both consultants independently reached the same answer, and both rejected the
+alternatives:
+
+- **(a) Where the output lands.** Both confirmed a trigger fire is the textbook
+  case of `channel` placement — "a standalone contribution to the room, not an
+  answer owed to the trigger" — and that it must be stamped *structurally* from
+  the fact that it is a trigger run, never judged from content.
+- **(b) The kickoff message.** Both chose option A (`role: 'system'`, like the
+  Personal-Assistant path already did) over keeping it visible. **Kimix**
+  verified it breaks neither the audit trail (`AgentTriggerDelivery` +
+  `Run.triggerId` carry provenance; the row persists, it is only filtered from
+  rendering) nor cancel/restart/continue (`Run.triggerMessageId` is
+  role-agnostic and replays by id). **Fable** added the decisive catch: the
+  *batched pending-drain* path in `packages/db/src/thread-serialization.ts`
+  creates runs too and sets no placement, so **(a) and (b) must ship together
+  and cover the drain** — otherwise a fire landing on a busy thread would reply
+  under an invisible root and disappear from the channel entirely. Both also
+  flagged the "A interval" article bug and the raw payload dump; the payload is
+  kept (it is model-only now, and a webhook fire is useless without it).
+
+A third path neither brief mentioned turned up during implementation and got
+the same treatment: `api/src/services/trigger-dispatch.ts` (webhook intake)
+created its kickoff as `role: 'user'` with no placement, exactly like the
+worker path.
 
 ## Notes
 

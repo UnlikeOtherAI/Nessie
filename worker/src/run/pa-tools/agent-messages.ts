@@ -67,7 +67,13 @@ export const runMessageSearchTool = async (
     LEFT JOIN "users" u ON u."id" = m."user_id"
     LEFT JOIN "agents" a ON a."id" = m."agent_id"
     WHERE m."deleted_at" IS NULL
-      AND t."channel_id" IN (${Prisma.join(channelIds)})
+      AND t."channel_id" IN (${Prisma.join(
+        // `threads.channel_id` is `uuid`; Prisma sends a bare string parameter
+        // as `text`, and Postgres has no `uuid = text` operator, so an uncast
+        // list fails the whole query with 42883 at runtime. Cast each element,
+        // matching `conversation-search.ts`.
+        channelIds.map((id) => Prisma.sql`${id}::uuid`),
+      )})
       AND to_tsvector('english', m."content") @@ plainto_tsquery('english', ${searchQuery})
     ORDER BY m."created_at" DESC
     LIMIT ${take}

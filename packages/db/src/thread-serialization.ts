@@ -211,6 +211,14 @@ export const drainPendingThreadMessages = async (
       data: {
         agentId: input.agentId,
         threadId: input.threadId,
+        // A batched follow-up driven by a trigger fire is still a trigger run,
+        // so it posts to the room rather than threading under its kickoff —
+        // matching the direct claim path in `worker/src/control/trigger-run.ts`.
+        // Without this, a fire that lands while the slot is busy would reply
+        // under a `system` kickoff nobody can see, and the sweep would vanish
+        // from the channel. Structural: derived from the pending row's
+        // triggerId, never from content.
+        replyPlacement: latest.triggerId ? 'channel' : null,
         status: 'pending',
         triggerMessageId: latest.messageId,
         triggerId: latest.triggerId ?? null,

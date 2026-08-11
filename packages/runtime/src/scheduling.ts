@@ -205,7 +205,10 @@ export const buildTriggerPrompt = (input: {
     return `${instruction}\n\n${MEMORY_NUDGE}`
   }
 
-  const prefix = `A ${input.triggerType} trigger fired from ${input.source}.`
+  // Model-facing only: the kickoff message is `system`, so it drives the run
+  // but is never rendered in the channel. Phrased without an article because
+  // the trigger type is interpolated ("A interval trigger" was the old bug).
+  const prefix = `Trigger fired: ${input.triggerType} (source: ${input.source}).`
   if (input.payload === undefined) {
     return `${prefix}\n\nNo payload was provided.`
   }
