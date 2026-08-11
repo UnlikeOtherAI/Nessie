@@ -25,6 +25,11 @@ import {
 } from '../services/triggers.js'
 import { registerTriggerIntakeRoutes } from './trigger-intake.js'
 import type { RouteDeps } from './types.js'
+import { loadLedgerIdentitySettings } from '@nessie/runtime'
+
+// Read once at startup, exactly like the runtime signer itself: whether this
+// deployment signs Ledger calls is never a per-request or per-user decision.
+const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
 
 export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -101,9 +106,34 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
             ? { projectId: actorContext.tenant.projectId }
             : {}),
           teamId: teamId!,
+          // Captured here because this is the only moment a real session
+          // exists. A fire has none, and signing a Ledger call needs the UOA
+          // workspace the creator was acting in — the account link proves
+          // subject/status/epoch but not that. Re-verified against the link at
+          // fire time, so this is replay, not a second source of truth.
+          ...(actorContext.actionContext.uoaIdentity
+            ? { uoaIdentity: actorContext.actionContext.uoaIdentity }
+            : {}),
           userId: parseUserId(actorContext.actor.actorId),
         }
       : undefined
+
+    // A signing deployment cannot fire a schedule whose creator left no UOA
+    // identity: it would mint a trigger that fails at every sweep forever.
+    // Refuse now, while there is somebody to tell.
+    if (
+      isScheduled
+      && ledgerSigningConfigured
+      && !actorContext.actionContext.uoaIdentity
+    ) {
+      sendApiError(
+        reply,
+        400,
+        'TRIGGER_UOA_IDENTITY_REQUIRED',
+        'Scheduled triggers require an UnlikeOtherAI SSO session. Sign in through SSO and create the schedule again.',
+      )
+      return reply
+    }
 
     const trigger = await createAgentTrigger(
       prisma,

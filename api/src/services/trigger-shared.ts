@@ -114,7 +114,9 @@ export const mapTriggerDeliveryRecord = (delivery: {
   errorMessage: string | null
   id: string
   payload: unknown
-  run: { id: string } | null
+  // `status` is selected only where the run's outcome matters (the deliveries
+  // list); dispatch-time callers create the run as `pending` and omit it.
+  run: { id: string; status?: string } | null
   source: string | null
   status: 'pending' | 'delivered' | 'failed' | 'skipped'
   triggerId: string
@@ -127,6 +129,7 @@ export const mapTriggerDeliveryRecord = (delivery: {
   payload: delivery.payload,
   errorMessage: delivery.errorMessage ?? undefined,
   runId: delivery.run ? parseRunId(delivery.run.id) : undefined,
+  ...(delivery.run?.status ? { runStatus: delivery.run.status } : {}),
   deliveredAt: toTimestamp(delivery.deliveredAt),
   createdAt: delivery.createdAt.toISOString(),
 })

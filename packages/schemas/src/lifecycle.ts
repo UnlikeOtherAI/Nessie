@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { UoaSessionIdentitySchema } from './access-context.js'
 
 import {
   OrganizationIdSchema,
@@ -81,6 +82,22 @@ export const ScheduledTriggerLaunchOriginSchema = z.object({
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema.optional(),
   teamId: TeamIdSchema,
+  /**
+   * The UOA workspace the creator was standing in, captured while a real
+   * session existed.
+   *
+   * A fire has no session, and signing a Ledger call needs one: the product
+   * account link proves the user's subject, status and credential epoch, but
+   * not which UOA workspace they were acting in — that only a session knows.
+   * Without this every scheduled run failed before dispatch with
+   * "Ledger requires a linked UnlikeOtherAI SSO identity". It is replayed at
+   * fire time and then verified against the link exactly as a live session is,
+   * so a revoked link or a rotated credential epoch still fails closed.
+   *
+   * Optional because triggers created before this existed have none; those
+   * keep failing loudly rather than silently signing as somebody else.
+   */
+  uoaIdentity: UoaSessionIdentitySchema.optional(),
   userId: UserIdSchema,
 })
 export type ScheduledTriggerLaunchOrigin = z.infer<

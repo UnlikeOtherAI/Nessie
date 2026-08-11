@@ -82,6 +82,11 @@ export const AgentTriggerDeliveryRecordSchema = z.object({
   payload: z.unknown(),
   errorMessage: z.string().optional(),
   runId: RunIdSchema.optional(),
+  // The run's own outcome, which is a different question from whether the
+  // delivery reached a worker. A fire that dispatched fine and then failed
+  // during execution reads `status: 'delivered'` — without this the Triggers
+  // page cannot tell anyone their schedule is broken.
+  runStatus: z.string().optional(),
   deliveredAt: TimestampSchema.optional(),
   createdAt: TimestampSchema,
 })
