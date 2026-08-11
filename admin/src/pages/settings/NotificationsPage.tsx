@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { PushQuietHours, UserPreferences } from '@nessie/schemas'
 import { useUpdatePreferences } from '../../facades/auth/hooks'
 import { useChannels, useSetChannelMute } from '../../facades/channels/hooks'
@@ -16,7 +16,11 @@ import {
 } from '../../lib/web-push'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
-import { sectionTitleClass, SettingsPanel } from './settings-shared'
+import {
+  NotificationToggle,
+  PushPreferenceCard,
+} from './notification-preference-controls'
+import { FeedbackBanner, type SettingsFeedback, sectionTitleClass, SettingsPanel } from './settings-shared'
 
 const DEFAULT_QUIET_START = '22:00'
 const DEFAULT_QUIET_END = '07:00'
@@ -38,18 +42,6 @@ type SupportedValuesIntl = typeof Intl & {
   supportedValuesOf?: (key: 'timeZone') => string[]
 }
 
-type Feedback = {
-  kind: 'error' | 'success'
-  message: string
-}
-
-type ToggleControlProps = {
-  checked: boolean
-  disabled?: boolean
-  label: string
-  onChange: (next: boolean) => void
-}
-
 const getBrowserTimeZone = (): string =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
@@ -69,53 +61,20 @@ const getTimeZoneOptions = (selectedTimeZone: string, browserTimeZone: string): 
 // `pushQuietHours: null` clears quiet hours; sibling keys (theme, fontScale,
 // starred) are preserved server-side.
 const buildPreferencesPayload = (
-  pushEnabled: boolean,
-  quietHours: PushQuietHours | null,
+  input: {
+    pushBudgetAlerts: boolean
+    pushEnabled: boolean
+    pushMentions: boolean
+    pushMessages: boolean
+    quietHours: PushQuietHours | null
+  },
 ): UserPreferences => ({
-  pushEnabled,
-  pushQuietHours: quietHours,
+  pushBudgetAlerts: input.pushBudgetAlerts,
+  pushEnabled: input.pushEnabled,
+  pushMentions: input.pushMentions,
+  pushMessages: input.pushMessages,
+  pushQuietHours: input.quietHours,
 })
-
-const feedbackClass = (kind: Feedback['kind']): string =>
-  [
-    'rounded-md border px-3 py-2 text-sm',
-    kind === 'success'
-      ? 'border-[color:var(--success-border)] bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
-      : 'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
-  ].join(' ')
-
-const FeedbackBanner = ({ feedback }: { feedback: Feedback | null }) => {
-  if (!feedback) {
-    return null
-  }
-
-  return <div className={feedbackClass(feedback.kind)}>{feedback.message}</div>
-}
-
-const ToggleControl = ({ checked, disabled = false, label, onChange }: ToggleControlProps) => (
-  <button
-    aria-checked={checked}
-    aria-label={label}
-    className={[
-      'inline-flex h-8 min-w-[76px] items-center rounded-full border px-1 transition',
-      checked
-        ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--on-accent)]'
-        : 'border-[color:var(--sep)] bg-[color:var(--scrim)] text-[color:var(--tx3)]',
-      disabled ? 'cursor-not-allowed opacity-60' : '',
-    ].join(' ')}
-    disabled={disabled}
-    onClick={() => onChange(!checked)}
-    role="switch"
-    type="button"
-  >
-    <span
-      className={[
-        'h-6 w-6 rounded-full bg-current transition-transform',
-        checked ? 'translate-x-10' : 'translate-x-0',
-      ].join(' ')}
-    />
-  </button>
-)
 
 const getNotificationPermission = (): NotificationPermission | null =>
   typeof Notification === 'undefined' ? null : Notification.permission
@@ -132,7 +91,7 @@ const BrowserNotificationsSection = () => {
   const [supported] = useState(() => isWebPushSupported())
   const [subscribed, setSubscribed] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [feedback, setFeedback] = useState<SettingsFeedback | null>(null)
 
   useEffect(() => {
     if (!supported) {
@@ -209,7 +168,7 @@ const BrowserNotificationsSection = () => {
           <div className="font-semibold text-[color:var(--tx)]">Browser notifications</div>
           <div className="mt-1 text-sm text-[color:var(--tx2)]">{describeState()}</div>
         </div>
-        <ToggleControl
+        <NotificationToggle
           checked={subscribed}
           disabled={toggleDisabled}
           label="Toggle browser notifications"
@@ -231,24 +190,40 @@ export const NotificationsPage = () => {
   const setChannelMute = useSetChannelMute()
 
   const [pushEnabled, setPushEnabled] = useState(true)
+  const [pushMessages, setPushMessages] = useState(true)
+  const [pushMentions, setPushMentions] = useState(true)
+  const [pushBudgetAlerts, setPushBudgetAlerts] = useState(true)
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false)
   const [quietStart, setQuietStart] = useState(DEFAULT_QUIET_START)
   const [quietEnd, setQuietEnd] = useState(DEFAULT_QUIET_END)
   const [quietTimezone, setQuietTimezone] = useState(browserTimeZone)
-  const [preferenceFeedback, setPreferenceFeedback] = useState<Feedback | null>(null)
-  const [channelFeedback, setChannelFeedback] = useState<Feedback | null>(null)
+  const [preferencesHydrated, setPreferencesHydrated] = useState(false)
+  const [preferenceFeedback, setPreferenceFeedback] = useState<SettingsFeedback | null>(null)
+  const [channelFeedback, setChannelFeedback] = useState<SettingsFeedback | null>(null)
   const [channelMuteOverrides, setChannelMuteOverrides] = useState<Record<string, boolean>>({})
+  const hydratedUserId = useRef<string | null>(null)
 
   useEffect(() => {
+    if (!me) {
+      setPreferencesHydrated(false)
+      hydratedUserId.current = null
+      return
+    }
+    if (hydratedUserId.current === me.user.id) return
     const preferences = me?.user.preferences
     const quietHours = preferences?.pushQuietHours
 
     setPushEnabled(preferences?.pushEnabled ?? true)
+    setPushMessages(preferences?.pushMessages ?? true)
+    setPushMentions(preferences?.pushMentions ?? true)
+    setPushBudgetAlerts(preferences?.pushBudgetAlerts ?? true)
     setQuietHoursEnabled(Boolean(quietHours))
     setQuietStart(quietHours?.start ?? DEFAULT_QUIET_START)
     setQuietEnd(quietHours?.end ?? DEFAULT_QUIET_END)
     setQuietTimezone(quietHours?.timezone ?? browserTimeZone)
-  }, [browserTimeZone, me?.user.preferences])
+    setPreferencesHydrated(true)
+    hydratedUserId.current = me.user.id
+  }, [browserTimeZone, me])
 
   const timeZoneOptions = useMemo(
     () => getTimeZoneOptions(quietTimezone, browserTimeZone),
@@ -261,6 +236,9 @@ export const NotificationsPage = () => {
 
   const savePreferences = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!preferencesHydrated) {
+      return
+    }
     // Submitting the form is a user gesture, so this is a safe point to ask for
     // native notification permission when push is on (Safari rejects off-gesture
     // requests). No-op once permission is already granted or denied.
@@ -278,9 +256,13 @@ export const NotificationsPage = () => {
       : null
 
     try {
-      await updatePreferences.mutateAsync(
-        buildPreferencesPayload(pushEnabled, quietHours),
-      )
+      await updatePreferences.mutateAsync(buildPreferencesPayload({
+        pushBudgetAlerts,
+        pushEnabled,
+        pushMentions,
+        pushMessages,
+        quietHours,
+      }))
       setPreferenceFeedback({ kind: 'success', message: 'Notification preferences saved.' })
     } catch (error) {
       setPreferenceFeedback({
@@ -317,10 +299,14 @@ export const NotificationsPage = () => {
       title="Notifications"
       actions={[
         {
-          disabled: updatePreferences.isPending,
+          disabled: !preferencesHydrated || updatePreferences.isPending,
           form: 'notification-preferences-form',
           id: 'save-preferences',
-          label: updatePreferences.isPending ? 'Saving...' : 'Save preferences',
+          label: updatePreferences.isPending
+            ? 'Saving...'
+            : preferencesHydrated
+              ? 'Save preferences'
+              : 'Loading...',
           onSelect: () => undefined,
           primary: true,
           priority: 100,
@@ -334,30 +320,22 @@ export const NotificationsPage = () => {
           id="notification-preferences-form"
           onSubmit={savePreferences}
         >
-          <section className="admin-card p-4">
-            <div className={sectionTitleClass}>Push</div>
-            <div className="mt-4 flex items-center justify-between gap-4">
-              <div>
-                <div className="font-semibold text-[color:var(--tx)]">Push enabled</div>
-                <div className="mt-1 text-sm text-[color:var(--tx2)]">
-                  {pushEnabled ? 'Enabled' : 'Disabled'}
-                </div>
-              </div>
-              <ToggleControl
-                checked={pushEnabled}
-                disabled={updatePreferences.isPending}
-                label="Toggle push notifications"
-                onChange={(next) => {
-                  setPushEnabled(next)
-                  // Enabling is a user gesture — the only context Safari allows a
-                  // native notification permission prompt.
-                  if (next) {
-                    requestNotificationPermission()
-                  }
-                }}
-              />
-            </div>
-          </section>
+          <PushPreferenceCard
+            disabled={!preferencesHydrated || updatePreferences.isPending}
+            pushBudgetAlerts={pushBudgetAlerts}
+            pushEnabled={pushEnabled}
+            pushMentions={pushMentions}
+            pushMessages={pushMessages}
+            setPushBudgetAlerts={setPushBudgetAlerts}
+            setPushEnabled={(next) => {
+              setPushEnabled(next)
+              if (next) {
+                requestNotificationPermission()
+              }
+            }}
+            setPushMentions={setPushMentions}
+            setPushMessages={setPushMessages}
+          />
 
           <section className="admin-card p-4">
             <div className={sectionTitleClass}>Quiet hours</div>
@@ -368,9 +346,9 @@ export const NotificationsPage = () => {
                   {quietHoursEnabled ? 'Enabled' : 'Disabled'}
                 </div>
               </div>
-              <ToggleControl
+              <NotificationToggle
                 checked={quietHoursEnabled}
-                disabled={updatePreferences.isPending}
+                disabled={!preferencesHydrated || updatePreferences.isPending}
                 label="Toggle quiet hours"
                 onChange={setQuietHoursEnabled}
               />
@@ -381,7 +359,7 @@ export const NotificationsPage = () => {
                 Start
                 <input
                   className="admin-input"
-                  disabled={!quietHoursEnabled || updatePreferences.isPending}
+                  disabled={!quietHoursEnabled || !preferencesHydrated || updatePreferences.isPending}
                   onChange={(event) => setQuietStart(event.target.value)}
                   required={quietHoursEnabled}
                   type="time"
@@ -392,7 +370,7 @@ export const NotificationsPage = () => {
                 End
                 <input
                   className="admin-input"
-                  disabled={!quietHoursEnabled || updatePreferences.isPending}
+                  disabled={!quietHoursEnabled || !preferencesHydrated || updatePreferences.isPending}
                   onChange={(event) => setQuietEnd(event.target.value)}
                   required={quietHoursEnabled}
                   type="time"
@@ -403,7 +381,7 @@ export const NotificationsPage = () => {
                 Timezone
                 <select
                   className="admin-input"
-                  disabled={!quietHoursEnabled || updatePreferences.isPending}
+                  disabled={!quietHoursEnabled || !preferencesHydrated || updatePreferences.isPending}
                   onChange={(event) => setQuietTimezone(event.target.value)}
                   required={quietHoursEnabled}
                   value={quietTimezone}
@@ -447,7 +425,7 @@ export const NotificationsPage = () => {
                         {muted ? 'Muted' : channel.visibility}
                       </div>
                     </div>
-                    <ToggleControl
+                    <NotificationToggle
                       checked={muted}
                       disabled={pending}
                       label={`Toggle ${channel.label} notifications`}

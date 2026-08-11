@@ -684,6 +684,7 @@ model User {
   projectMembers      ProjectMember[]
   teamMembers         TeamMember[]
   channelMembers      ChannelMember[]
+  pushSurfacePresences UserPushSurfacePresence[]
   knowledgeSpaceMembers KnowledgeSpaceMember[]
   callsStarted        Call[]               @relation("CallStarter")
   callParticipants    CallParticipant[]    @relation("CallParticipation")
@@ -862,6 +863,7 @@ model Organization {
   thoughtReasonings           ThoughtReasoning[]
   attachments                 Attachment[]
   deviceTokens                DeviceToken[]
+  pushSurfacePresences        UserPushSurfacePresence[]
   webPushSubscriptions        WebPushSubscription[]
   pushDeliverys               PushDelivery[]
   commsConnections            CommsConnection[]
@@ -1155,6 +1157,7 @@ model Channel {
   statusRules       UserStatusRule[]
   userAlerts        UserAlert[]
   productIntegrationRuns ProductIntegrationRun[]
+  pushSurfacePresences UserPushSurfacePresence[]
 
   @@index([organizationId, type])
   @@index([projectId])
@@ -1297,6 +1300,34 @@ model UserPresence {
   @@index([lastSeenAt])
   @@index([organizationId])
   @@map("user_presence")
+}
+
+// Each active app/browser surface reports its structured destination every
+// 25 seconds. Delivery workers use this short-lived, per-session state to skip
+// a push only when the recipient is already looking at that exact destination.
+enum PushSurfaceKind {
+  channel
+  ops_usage
+}
+
+model UserPushSurfacePresence {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  clientId       String           @map("client_id") @db.Uuid
+  surfaceKind    PushSurfaceKind? @map("surface_kind")
+  channelId      String?          @map("channel_id") @db.Uuid
+  heartbeatSequence BigInt        @map("heartbeat_sequence")
+  lastSeenAt     DateTime         @map("last_seen_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel        Channel?         @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+  @@index([organizationId, userId, surfaceKind, channelId, lastSeenAt])
+  @@index([userId, lastSeenAt])
+  @@map("user_push_surface_presence")
 }
 
 model UserStatus {

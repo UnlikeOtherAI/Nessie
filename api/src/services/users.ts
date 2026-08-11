@@ -213,6 +213,11 @@ export const setOrganizationMemberDeactivated = async (
       await revokeUserRefreshFamilies(transaction, {
         userId: input.userId,
       })
+      // Channel memberships and device tokens remain as audit/device history,
+      // but an inactive member must not retain an in-app suppression target.
+      await transaction.userPushSurfacePresence.deleteMany({
+        where: { userId: input.userId },
+      })
     }
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }

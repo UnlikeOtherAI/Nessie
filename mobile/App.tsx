@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  AppState,
   Platform,
   StyleSheet,
   View,
@@ -44,12 +45,32 @@ const IPAD_TAB_BAR_HEIGHT = 50
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
-const NATIVE_SHELL_INFO_SCRIPT = `
+const NATIVE_APP_FOREGROUND_EVENT = 'nessie:native-app-foreground'
+const createNativePushSurfaceClientId = (): string => {
+  const fragment = (): string => Math.floor(Math.random() * 0x1_0000_0000)
+    .toString(16)
+    .padStart(8, '0')
+  const random = `${fragment()}${fragment()}${fragment()}${fragment()}`
+  return `${random.slice(0, 8)}-${random.slice(8, 12)}-4${random.slice(13, 16)}-8${random.slice(17, 20)}-${random.slice(20, 32)}`
+}
+
+const nativeShellInfoScript = (pushSurfaceClientId: string): string => `
 window.__nessieNativeShell = { platform: ${JSON.stringify(Platform.OS)}, formFactor: ${
   IS_IPAD ? "'ipad'" : "'phone'"
 } };
+window.__nessieNativeAppForeground = true;
+window.__nessiePushSurfaceClientId = ${JSON.stringify(pushSurfaceClientId)};
 try { window.dispatchEvent(new Event('nessie:native-shell-info')); } catch (e) {}
 true;
+`
+
+const nativeAppForegroundScript = (foreground: boolean): string => `
+window.__nessieNativeAppForeground = ${JSON.stringify(foreground)};
+try {
+  window.dispatchEvent(new CustomEvent(${JSON.stringify(NATIVE_APP_FOREGROUND_EVENT)}, {
+    detail: ${JSON.stringify(foreground)},
+  }));
+} catch (e) {}
 `
 
 const DEFAULT_ACTIVE_TINT = '#7c3aed'
@@ -105,6 +126,8 @@ const Shell = (): React.JSX.Element => {
   const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const currentPathRef = useRef<string | null>(null)
   const pendingPushPath = useRef<string | null>(null)
+  const pushSurfaceClientId = useRef(createNativePushSurfaceClientId())
+  const nativeAppForeground = useRef(AppState.currentState === 'active')
   const nativePushRegistration = useRef<NativePushRegistration | null>(null)
   const nativePushRegistrationPromise = useRef<Promise<NativePushRegistration | null> | null>(null)
 
@@ -206,6 +229,17 @@ const Shell = (): React.JSX.Element => {
     () => subscribeToPushTokenChanges(publishNativePushRegistration),
     [publishNativePushRegistration],
   )
+
+  // WKWebView does not reliably emit `visibilitychange` while React Native is
+  // backgrounding the app. Tell the hosted admin explicitly so it clears its
+  // page-aware push target before iOS suspends the WebView.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      nativeAppForeground.current = nextState === 'active'
+      runScript(nativeAppForegroundScript(nativeAppForeground.current))
+    })
+    return () => subscription.remove()
+  }, [runScript])
 
   const openSearchOverlay = (): void => {
     runScript('window.__nessieOpenSearchOverlay && window.__nessieOpenSearchOverlay();')
@@ -381,14 +415,15 @@ const Shell = (): React.JSX.Element => {
         <WebView
           allowsBackForwardNavigationGestures
           domStorageEnabled
-          injectedJavaScriptBeforeContentLoaded={NATIVE_SHELL_INFO_SCRIPT}
-          injectedJavaScript={`${NATIVE_SHELL_INFO_SCRIPT}\n${INJECTED}`}
+          injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript(pushSurfaceClientId.current)}
+          injectedJavaScript={`${nativeShellInfoScript(pushSurfaceClientId.current)}\n${INJECTED}`}
           key={webviewKey}
           mediaPlaybackRequiresUserAction={false}
           onContentProcessDidTerminate={() => webRef.current?.reload()}
           onError={recoverBlankWebView}
           onHttpError={recoverBlankWebView}
           onLoadEnd={() => {
+            runScript(nativeAppForegroundScript(nativeAppForeground.current))
             // Page finished loading; give the admin a window to report itself
             // mounted before assuming the WebView is blank/white.
             clearBootTimer()

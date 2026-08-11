@@ -61,10 +61,20 @@ export const handlePushDispatch = async (
     return summary
   }
 
-  // 2. Resolve recipients: channel members minus the author, muted members,
-  // disabled push preferences, and users currently inside quiet hours.
+  // 2. Resolve recipients: active organization members of the channel minus
+  // the author, muted members, disabled push preferences, and users currently
+  // inside quiet hours. Channel rows are retained when somebody is
+  // deactivated, so membership alone must never be treated as current access.
   const members = await deps.prisma.channelMember.findMany({
-    where: { channelId: payload.channelId, userId: { not: payload.authorUserId } },
+    where: {
+      channelId: payload.channelId,
+      userId: { not: payload.authorUserId },
+      user: {
+        organizationMembers: {
+          some: { deactivatedAt: null, organizationId: payload.organizationId },
+        },
+      },
+    },
     select: { muted: true, userId: true },
   })
   const unmutedRecipientIds = members
@@ -79,13 +89,6 @@ export const handlePushDispatch = async (
     select: { id: true, preferences: true },
   })
   const now = deps.now?.() ?? new Date()
-  const recipientIds = users
-    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now))
-    .map((user) => user.id)
-  if (recipientIds.length === 0) {
-    return summary
-  }
-
   // 3. Build the notification payloads (deep-link data + per-channel
   // coalescing). Mentioned recipients get distinct mention framing; the rest
   // keep the standard channel-label title. Muted members were filtered out
@@ -98,12 +101,18 @@ export const handlePushDispatch = async (
   })
   const channelLabel = channel?.label ?? 'New message'
   const mentionUserIds = new Set(payload.mentionUserIds)
-  const mentionedRecipientIds = recipientIds.filter((id) => mentionUserIds.has(id))
-  const otherRecipientIds = recipientIds.filter((id) => !mentionUserIds.has(id))
+  const mentionedRecipientIds = users
+    .filter((user) => mentionUserIds.has(user.id))
+    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'mentions'))
+    .map((user) => user.id)
+  const otherRecipientIds = users
+    .filter((user) => !mentionUserIds.has(user.id))
+    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
+    .map((user) => user.id)
 
   const buildPayload = (title: string): PushPayload => ({
     title,
-    body: payload.contentSnippet,
+    body: payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
     data: {
       channelId: payload.channelId,
       threadId: payload.threadId,
@@ -128,6 +137,8 @@ export const handlePushDispatch = async (
       organizationId: payload.organizationId,
       deepLinkUrl: `/channels/${payload.channelId}`,
       messageId: payload.messageId,
+      surface: { kind: 'channel', channelId: payload.channelId },
+      now: deps.now ?? (() => new Date()),
     })
 
   if (otherRecipientIds.length > 0) {
@@ -155,7 +166,7 @@ export const handlePushDispatch = async (
   console.log('[push-dispatch] done', {
     messageId: payload.messageId,
     channelId: payload.channelId,
-    recipients: recipientIds.length,
+    recipients: otherRecipientIds.length + mentionedRecipientIds.length,
     mentioned: mentionedRecipientIds.length,
     sent: summary.sent,
     failed: summary.failed,

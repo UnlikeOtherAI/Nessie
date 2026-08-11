@@ -38,12 +38,26 @@ export const PushQuietHoursSchema = z.object({
 })
 export type PushQuietHours = z.infer<typeof PushQuietHoursSchema>
 
+// A structured, foreground destination. This is intentionally not a free-form
+// URL: delivery can only suppress a notification for a concrete surface it
+// already understands how to target.
+export const PushSurfaceSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('channel'), channelId: ChannelIdSchema }),
+  z.object({ kind: z.literal('ops_usage') }),
+])
+export type PushSurface = z.infer<typeof PushSurfaceSchema>
+
 export const UserPreferencesSchema = z.object({
   starred: z.array(z.object({
     type: z.enum(['channel', 'project', 'user']),
     id: z.string(),
   })).optional(),
   pushEnabled: z.boolean().optional(),
+  // Per-event delivery controls default to enabled when absent so existing
+  // users retain the current important-notifications behaviour.
+  pushMessages: z.boolean().optional(),
+  pushMentions: z.boolean().optional(),
+  pushBudgetAlerts: z.boolean().optional(),
   // `null` clears quiet hours via the partial-merge PATCH; absent leaves them unchanged.
   pushQuietHours: PushQuietHoursSchema.nullish(),
   theme: z.enum([

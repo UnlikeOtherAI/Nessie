@@ -9,6 +9,7 @@ import {
 } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
+import { PushSurfacePresenceHeartbeat } from '../providers/PushSurfacePresenceHeartbeat';
 import { ToastProvider } from '../providers/ToastProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
@@ -181,6 +182,7 @@ const AuthenticatedAdminShellLayout = () => {
 
   return (
     <PresenceProvider>
+      <PushSurfacePresenceHeartbeat />
       <ToastProvider>
         <NotificationsProvider>
           <AccountMenuProvider

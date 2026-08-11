@@ -33,6 +33,7 @@ import {
 import { canAccessAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl } from '../services/external-auth.js'
 import { revokeRefreshTokenByRaw } from '../services/refresh-token.js'
+import { clearPushSurfacePresenceForUser } from '../services/push-surface-presence.js'
 import {
   buildConfigJwt,
   buildPublicJwks,
@@ -355,6 +356,7 @@ export const registerAuthCoreRoutes = (
           where: { id: revoked.userId },
           data: { tokenVersion: { increment: 1 } },
         })
+        await clearPushSurfacePresenceForUser(prisma, revoked.userId)
       }
     }
     clearRefreshCookie(reply, config)

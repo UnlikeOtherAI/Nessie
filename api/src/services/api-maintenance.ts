@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 
 import { sweepExpiredApprovals } from './approvals.js'
+import { sweepStalePushSurfacePresence } from './push-surface-presence.js'
 import { sweepExpiredUoaSessionCredentials } from './refresh-session-management.js'
 
 const runApprovalSweep = async (prisma: PrismaClient): Promise<void> => {
@@ -26,6 +27,14 @@ export const runRefreshCredentialSweep = async (
   }
 }
 
+const runPushSurfaceSweep = async (prisma: PrismaClient): Promise<void> => {
+  try {
+    await sweepStalePushSurfacePresence(prisma)
+  } catch {
+    console.error('[push-surface-sweep] Failed to remove stale push surfaces')
+  }
+}
+
 /** Start bounded API housekeeping and return one shutdown callback. */
 export const startApiMaintenance = (
   prisma: PrismaClient,
@@ -36,8 +45,12 @@ export const startApiMaintenance = (
   const refreshCredentialInterval = setInterval(() => {
     void runRefreshCredentialSweep(prisma)
   }, 5 * 60_000)
+  const pushSurfaceInterval = setInterval(() => {
+    void runPushSurfaceSweep(prisma)
+  }, 5 * 60_000)
   return () => {
     clearInterval(approvalInterval)
     clearInterval(refreshCredentialInterval)
+    clearInterval(pushSurfaceInterval)
   }
 }

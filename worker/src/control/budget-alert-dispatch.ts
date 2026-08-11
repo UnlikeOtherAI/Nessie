@@ -16,9 +16,9 @@ import {
  * has crossed its warn threshold ('threshold') or first blocked a run
  * ('blocked') this period; the once-per-period dedupe was already claimed by the
  * `budget_alerts` marker before enqueue. This resolves the people who should
- * know — the org owners plus the budget scope's managers — filters them by their
- * push preferences, and delivers through the shared {@link deliverToRecipients}
- * core, deep-linking to `/ops/usage` (the owner-only local telemetry surface).
+ * know — the organisation owners who can inspect and change operational
+ * budgets — filters them by their push preferences, and delivers through the
+ * shared {@link deliverToRecipients} core, deep-linking to `/ops/usage`.
  *
  * This carries ONLY Nessie-local operational budget telemetry; it never touches
  * UOA customer credits/statements, which live on a separate surface.
@@ -26,7 +26,7 @@ import {
 
 /** Minimal Prisma surface this handler touches — keeps tests light. */
 export type BudgetAlertDispatchPrisma = PushDeliveryPrisma &
-  Pick<PrismaClient, 'organizationMember' | 'projectMember' | 'teamMember' | 'user'>
+  Pick<PrismaClient, 'organizationMember' | 'user'>
 
 export type BudgetAlertDispatchDeps = {
   prisma: BudgetAlertDispatchPrisma
@@ -42,45 +42,25 @@ export type BudgetAlertDispatchDeps = {
   retryDelayMs?: (completedAttempt: number) => number
 }
 
-const MANAGER_ROLES = ['owner', 'admin'] as const
-
 /**
- * The people who should be told about a budget alert: the org owners always,
- * plus the budget scope's managers (team/project owners + admins, or org admins
- * for an org-scoped budget). Deactivated org members are excluded.
+ * Budget management and the operational-usage page are owner-only. Keep the
+ * recipient set to the people who can act on the alert instead of taking a
+ * project or team manager to a page they cannot read. Deactivated members are
+ * excluded.
  */
 const resolveRecipientUserIds = async (
   prisma: BudgetAlertDispatchPrisma,
   payload: BudgetAlertDispatchJobPayload,
 ): Promise<string[]> => {
-  const ids = new Set<string>()
-
-  const orgRoles = payload.scopeType === 'organization' ? [...MANAGER_ROLES] : ['owner']
   const orgMembers = await prisma.organizationMember.findMany({
     where: {
       organizationId: payload.organizationId,
       deactivatedAt: null,
-      role: { in: orgRoles as ('owner' | 'admin')[] },
+      role: 'owner',
     },
     select: { userId: true },
   })
-  for (const member of orgMembers) ids.add(member.userId)
-
-  if (payload.scopeType === 'team') {
-    const managers = await prisma.teamMember.findMany({
-      where: { teamId: payload.scopeId, role: { in: [...MANAGER_ROLES] } },
-      select: { userId: true },
-    })
-    for (const member of managers) ids.add(member.userId)
-  } else if (payload.scopeType === 'project') {
-    const managers = await prisma.projectMember.findMany({
-      where: { projectId: payload.scopeId, role: { in: [...MANAGER_ROLES] } },
-      select: { userId: true },
-    })
-    for (const member of managers) ids.add(member.userId)
-  }
-
-  return [...ids]
+  return orgMembers.map((member) => member.userId)
 }
 
 const buildBudgetAlertPayload = (payload: BudgetAlertDispatchJobPayload): PushPayload => {
@@ -97,6 +77,7 @@ const buildBudgetAlertPayload = (payload: BudgetAlertDispatchJobPayload): PushPa
       kind: payload.kind,
       scopeType: payload.scopeType,
       scopeId: payload.scopeId,
+      url: '/ops/usage',
     },
     collapseId: `budget:${payload.scopeType}:${payload.scopeId}:${payload.kind}`,
   }
@@ -126,7 +107,7 @@ export const handleBudgetAlertDispatch = async (
   })
   const now = deps.now?.() ?? new Date()
   const recipientIds = users
-    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now))
+    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'budgetAlerts'))
     .map((user) => user.id)
   if (recipientIds.length === 0) {
     return summary
@@ -144,6 +125,8 @@ export const handleBudgetAlertDispatch = async (
     organizationId: payload.organizationId,
     deepLinkUrl: '/ops/usage',
     messageId: null,
+    surface: { kind: 'ops_usage' },
+    now: deps.now ?? (() => new Date()),
   })
   summary.sent += delivered.sent
   summary.failed += delivered.failed

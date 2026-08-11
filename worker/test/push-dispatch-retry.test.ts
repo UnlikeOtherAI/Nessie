@@ -117,6 +117,9 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
         return { id: crypto.randomUUID(), createdAt: new Date(), ...data }
       },
     },
+    userPushSurfacePresence: {
+      findMany: async () => [],
+    },
   }) as unknown as PushDispatchPrisma
 
 const sequenceSenders = (sequences: Record<string, PushResult[]>): {
