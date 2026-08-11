@@ -41,6 +41,7 @@ const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 export const KnowledgeWorkspace = () => {
   const {
     activeProductView,
+    scopeProjectId,
     selectedSpace,
     selectedSpaceId,
     pages,
@@ -323,7 +324,9 @@ export const KnowledgeWorkspace = () => {
         actions={
           selectedSpaceId ? (
             <>
-              <StorageUsageMeter />
+              {/* Organization-wide usage — out of place, and too wide, inside
+                  one project's Documents tab. */}
+              {scopeProjectId ? null : <StorageUsageMeter />}
               <button
                 aria-label="Space settings"
                 className="admin-button admin-button-secondary admin-button-compact"

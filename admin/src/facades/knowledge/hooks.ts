@@ -23,6 +23,9 @@ export type KnowledgeSpaceRecord = {
   id: string
   name: string
   description: string | null
+  // Server-set space metadata. `personal: true` marks the caller's own
+  // "My Docs" space, provisioned by the my-docs ensure endpoint.
+  metadata: Record<string, unknown> | null
   projectId: string
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
@@ -86,6 +89,10 @@ export type SavePageInput = {
 export type EnsureMyDocsResponse = { spaceId: string }
 
 const spacesKey = ['knowledge-spaces'] as const
+// A project-scoped list is a different corpus from the org-wide one, so it gets
+// its own cache entry; invalidation covers the whole `knowledge-spaces` prefix.
+const scopedSpacesKey = (projectId?: string) =>
+  [...spacesKey, projectId ?? 'organization'] as const
 const myDocsKey = ['knowledge-my-docs'] as const
 const pagesKey = (spaceId?: string) => ['knowledge-pages', spaceId ?? 'none'] as const
 const pageKey = (pageId?: string) => ['knowledge-page', pageId ?? 'none'] as const
@@ -103,12 +110,16 @@ const invalidateKnowledge = (
   }
 }
 
-export const useKnowledgeSpaces = () => {
+// Org-wide by default (the Knowledge section). Pass a projectId for a
+// project's own Documents tab: the API narrows the list to that project on top
+// of the caller's per-space read access.
+export const useKnowledgeSpaces = (projectId?: string) => {
   const apiClient = useApiClient()
+  const scope = projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''
 
   return useQuery<KnowledgeSpaceRecord[]>({
-    queryKey: spacesKey,
-    queryFn: () => apiClient.get('/api/knowledge-base/spaces?limit=100'),
+    queryKey: scopedSpacesKey(projectId),
+    queryFn: () => apiClient.get(`/api/knowledge-base/spaces?limit=100${scope}`),
   })
 }
 
@@ -164,13 +175,16 @@ export const useKnowledgeVersions = (pageId?: string) => {
 // Idempotent "ensure my personal space" call — provisions (or fetches) the
 // caller's private "My Docs" space. staleTime: Infinity because the result
 // never changes for the session; we only need to call it once per mount.
-export const useEnsureMyDocsSpace = () => {
+// `enabled` is false on project-scoped surfaces, which have no business
+// provisioning the caller's personal space.
+export const useEnsureMyDocsSpace = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<EnsureMyDocsResponse>({
     queryKey: myDocsKey,
     queryFn: () => apiClient.post('/api/knowledge-base/my-docs', {}),
     staleTime: Infinity,
+    enabled,
   })
 }
 

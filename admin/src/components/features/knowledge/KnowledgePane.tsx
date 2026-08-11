@@ -31,8 +31,15 @@ export const KnowledgePane = ({ actions, center, children, onBack, title }: Know
         ) : null}
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">{title}</h2>
       </div>
-      {center ? <div className="justify-self-center">{center}</div> : <div />}
-      {actions ? <div className="flex flex-shrink-0 items-center gap-2 justify-self-end">{actions}</div> : <div />}
+      {center ? <div className="min-w-0 justify-self-center">{center}</div> : <div />}
+      {/* min-w-0 so a narrow container (e.g. a project's Docs tab, which sits
+          behind two nav columns) clips the header instead of overlapping the
+          view toggle with the actions. */}
+      {actions ? (
+        <div className="flex min-w-0 items-center gap-2 justify-self-end">{actions}</div>
+      ) : (
+        <div />
+      )}
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
   </div>
