@@ -72,6 +72,46 @@ export type ToolRegistryEntryStatus = z.infer<
   typeof ToolRegistryEntryStatusSchema
 >
 
+/**
+ * Owner review verdict on a discovered MCP tool.
+ *
+ * A strict subset of `ToolRegistryEntryStatus`: `pending_review` is
+ * deliberately absent because only the projection sets it — when a
+ * shared-scope install first discovers a tool, or when a re-probe finds an
+ * already-approved tool's schema has drifted. A reviewer moves a tool *out* of
+ * that state, never back into it, so "pending" always means "the server said
+ * something new that nobody has looked at yet".
+ *
+ * Distinct from `ToolBundleStatusSchema` below, which governs tool *bundles*
+ * and has its own approved/rejected vocabulary.
+ */
+export const ToolReviewVerdictSchema = z.enum(['active', 'disabled'])
+export type ToolReviewVerdict = z.infer<typeof ToolReviewVerdictSchema>
+
+/**
+ * Bulk review of discovered MCP tools.
+ *
+ * Ids are explicit rather than "everything matching a filter": one connector
+ * routinely projects dozens of tools, some of them destructive, so an approval
+ * must only ever cover rows the reviewer actually had on screen. A one-element
+ * array is the single-tool case — there is no separate per-tool route.
+ */
+export const SetToolRegistryStatusRequestSchema = z.object({
+  status: ToolReviewVerdictSchema,
+  toolRegistryEntryIds: z.array(z.string().uuid()).min(1).max(200),
+})
+export type SetToolRegistryStatusRequest = z.infer<
+  typeof SetToolRegistryStatusRequestSchema
+>
+
+export const SetToolRegistryStatusResponseSchema = z.object({
+  status: ToolReviewVerdictSchema,
+  updatedIds: z.array(z.string().uuid()),
+})
+export type SetToolRegistryStatusResponse = z.infer<
+  typeof SetToolRegistryStatusResponseSchema
+>
+
 export const ToolBundleStatusSchema = z.enum([
   'pending_review',
   'approved',

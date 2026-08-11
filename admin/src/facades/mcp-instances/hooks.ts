@@ -9,6 +9,7 @@ import type {
   McpServerScopeType,
 } from '@nessie/schemas'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { mcpInstancesKeyPrefix } from '../integration-query-keys'
 
 /**
  * Domain facade for `McpServerInstance` rows (installed servers at a scope).
@@ -27,6 +28,13 @@ export type McpServerInstanceRecord = {
   lifecycleState: McpServerLifecycleState
   healthLastCheckedAt: string | null
   healthFailureCount: number
+  /**
+   * Tools this instance projected that no owner has reviewed yet. Drives the
+   * "N tools awaiting review" doorway on the Connectors page — a connector
+   * with a non-zero count is installed but inert, because the worker only
+   * exposes `active` tools.
+   */
+  pendingToolCount: number
   installedBy: string
   createdAt: string
   updatedAt: string
@@ -55,7 +63,7 @@ export type UpsertCredentialOverrideInput = {
   secret: string
 }
 
-const INSTANCE_QUERY_KEY = ['mcp-instances'] as const
+const INSTANCE_QUERY_KEY = mcpInstancesKeyPrefix
 
 const buildSearch = (filters: {
   scopeType?: McpServerScopeType

@@ -18,6 +18,7 @@ import {
   type McpUserAccess,
 } from '@nessie/mcp-manage'
 import { McpServerScopeTypeSchema, type AuthorizedActionContext } from '@nessie/schemas'
+import type { PrismaClient } from '@prisma/client'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
@@ -60,6 +61,38 @@ const publicInstance = <T extends { credentialRef: string | null }>(
   const safe = { ...instance } as Record<string, unknown>
   delete safe.credentialRef
   return safe as Omit<T, 'credentialRef'>
+}
+
+/**
+ * How many of each instance's projected tools are still awaiting owner review.
+ *
+ * Counted only over instance ids the caller was already entitled to see — the
+ * list above resolves entitlement, this just annotates it. Without this the
+ * Connectors page cannot tell anyone that a freshly installed connector has
+ * tools nobody has approved yet, and the review surface has no doorway.
+ */
+const countPendingToolsByInstance = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  instanceIds: string[],
+): Promise<Map<string, number>> => {
+  if (instanceIds.length === 0) return new Map()
+  const grouped = await prisma.toolRegistryEntry.groupBy({
+    _count: { _all: true },
+    by: ['mcpInstanceId'],
+    where: {
+      handlerKind: 'mcp',
+      mcpInstanceId: { in: instanceIds },
+      organizationId,
+      status: 'pending_review',
+    },
+  })
+  return new Map(
+    grouped
+      .filter((row): row is typeof row & { mcpInstanceId: string } =>
+        row.mcpInstanceId !== null)
+      .map((row) => [row.mcpInstanceId, row._count._all]),
+  )
 }
 
 const FORBIDDEN_SCOPE = {
@@ -157,7 +190,17 @@ export const registerMcpInstanceRoutes = (
             (!scopeType || instance.scopeType === scopeType)
             && (!query.scopeId || instance.scopeId === query.scopeId),
         )
-    return createApiResponse(instances.map(publicInstance))
+    const pendingByInstance = await countPendingToolsByInstance(
+      prisma,
+      actorContext.tenant.organizationId,
+      instances.map((instance) => instance.id),
+    )
+    return createApiResponse(
+      instances.map((instance) => ({
+        ...publicInstance(instance),
+        pendingToolCount: pendingByInstance.get(instance.id) ?? 0,
+      })),
+    )
   })
 
   app.post('/api/mcp/instances', async (request, reply) => {

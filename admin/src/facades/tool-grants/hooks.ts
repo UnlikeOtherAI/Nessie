@@ -6,6 +6,8 @@ import {
 import type {
   AgentToolPolicyTarget,
   SetAgentToolPolicyEntryRequest,
+  SetToolRegistryStatusRequest,
+  SetToolRegistryStatusResponse,
   ToolGrantSource,
   ToolGrantState,
   ToolRegistryEntryStatus,
@@ -16,6 +18,7 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   deepWaterAgentAccessKeyPrefix,
+  mcpInstancesKeyPrefix,
   mcpToolRegistryKey,
   mcpToolRegistryKeyPrefix,
   toolPolicyTargetsKey,
@@ -154,6 +157,32 @@ export const useSetAgentToolPolicyEntry = () => {
       void queryClient.invalidateQueries({
         queryKey: deepWaterAgentAccessKeyPrefix,
       })
+    },
+  })
+}
+
+/**
+ * Owner review verdict on discovered MCP tools.
+ *
+ * Bulk by design — a connector routinely projects dozens of tools — but the
+ * caller always names the exact ids, so what the reviewer had on screen is
+ * exactly what changes.
+ */
+export const useSetToolRegistryStatus = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: SetToolRegistryStatusRequest) =>
+      apiClient.post<SetToolRegistryStatusResponse>(
+        '/api/mcp/tools/status',
+        input,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: mcpToolRegistryKeyPrefix })
+      // The Connectors page shows a pending-review count per installed scope;
+      // approving here is what makes that chip disappear.
+      void queryClient.invalidateQueries({ queryKey: mcpInstancesKeyPrefix })
     },
   })
 }

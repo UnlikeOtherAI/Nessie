@@ -2,6 +2,8 @@ import type { PrismaClient } from '@prisma/client'
 import {
   AgentToolPolicyTargetSchema,
   SetAgentToolPolicyEntryRequestSchema,
+  SetToolRegistryStatusRequestSchema,
+  SetToolRegistryStatusResponseSchema,
   ToolGrantStateSchema,
   ToolRegistryEntryStatusSchema,
   ToolRegistrySourceSchema,
@@ -18,7 +20,10 @@ import {
   type ToolGrantRow,
   type ToolRegistryRow,
 } from '../../services/tool-grants.js'
-import { fromPrismaToolGrantSource } from '@nessie/mcp-manage'
+import {
+  fromPrismaToolGrantSource,
+  setToolRegistryEntriesStatus,
+} from '@nessie/mcp-manage'
 import { ensureBuiltinToolsRegistered } from '../../services/tools.js'
 import {
   listAgentToolPolicyTargets,
@@ -157,6 +162,37 @@ export const registerMcpToolsRoutes = (
     })
     const withGrants = await attachGrantsToRegistryEntries(prisma, tools)
     return createApiResponse(withGrants)
+  })
+
+  /**
+   * Owner review verdict on discovered MCP tools.
+   *
+   * Registered before the `:toolRegistryEntryId` routes below because
+   * `status` would otherwise be a candidate id segment. Bulk by design: one
+   * connector routinely projects dozens of tools, so approving them one HTTP
+   * call at a time is not a usable surface. Ids are explicit — the body can
+   * never say "approve everything matching my filter", because the reviewer
+   * must have had each destructive tool on screen to approve it.
+   */
+  app.post('/api/mcp/tools/status', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const body = parseInput(SetToolRegistryStatusRequestSchema, request.body, reply)
+    if (!body) return reply
+
+    try {
+      const result = await setToolRegistryEntriesStatus(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        status: body.status,
+        toolRegistryEntryIds: body.toolRegistryEntryIds,
+      })
+      return createApiResponse(SetToolRegistryStatusResponseSchema.parse(result))
+    } catch (error) {
+      if (sendMcpError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.get('/api/mcp/tools/policy-targets', async (request, reply) => {

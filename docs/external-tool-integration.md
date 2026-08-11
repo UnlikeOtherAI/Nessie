@@ -175,6 +175,40 @@ Example:
          Agents can now discover and use these tools
 ```
 
+**Where step 8 happens.** Owner review of discovered tools lives on
+`/agents/tools`, and the Connectors page is its doorway:
+
+- Each installed scope on the Connectors page shows an **"N tools awaiting
+  review"** chip when that instance has `pending_review` rows. It links to
+  `/agents/tools?status=pending_review&instance=<instanceId>`, so the owner
+  lands on exactly that connector's unreviewed tools. `GET /api/mcp/instances`
+  carries `pendingToolCount` per instance for this (counted only over
+  instances the caller was already entitled to see).
+- On `/agents/tools`, reviewable rows carry a checkbox plus **Select all
+  shown**, and a review bar offers **Approve selected** / **Disable selected**.
+  The selected tool's detail column also has single **Approve** / **Disable**
+  buttons.
+- Both call `POST /api/mcp/tools/status` (owner-gated) with
+  `{ status: 'active' | 'disabled', toolRegistryEntryIds: [...] }`.
+
+Three properties of that route are deliberate. Ids are **explicit** rather
+than "everything matching a filter", because one connector routinely projects
+dozens of tools and may expose `database_reset` beside `sites_list` — an
+approval must only ever cover rows the reviewer had on screen, so unchecking
+the dangerous one actually means something. The verdict enum **excludes
+`pending_review`**: only the projection sets that state, so "pending" always
+means "the server said something new that nobody has looked at yet". And ids
+belonging to a **first-party integration** instance (DeepWater, DeepSignal)
+are refused with `MCP_INSTANCE_MANAGED_BY_INTEGRATION`, because those
+projections are managed as a bundle from Integrations and their readiness
+check reads the same registry rows.
+
+Review is recurring, not one-time install ceremony: a re-probe that finds a
+tool's schema or description has drifted flips it back to `pending_review`
+(and a tool that disappeared upstream likewise), so the same surface is the
+post-approval supply-chain checkpoint — an approved tool whose remote
+definition later changes stops reaching agents until someone looks again.
+
 **User-scope installs are self-service.** Tools discovered from a `user`-scoped
 instance project as `active` immediately (and drift re-activates rather than
 re-flagging): the installer is the only person whose runs can ever reach those
