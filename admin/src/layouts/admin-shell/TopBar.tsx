@@ -139,7 +139,7 @@ export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBar
         <div aria-hidden="true" className="admin-topbar-drag-zone" data-tauri-drag-region />
       ) : null}
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <AlertsBell />
         {showAccountMenu ? <UserMenuTrigger onLogout={onLogout} placement="topbar" /> : null}
         <Link aria-label="Help & feedback" className="admin-topbar-btn" title="Help & feedback" to="/feedback">
