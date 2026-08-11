@@ -70,6 +70,8 @@ export const completeRunExecution = async (
     // An edit adds no row, so unread counts do not move and no mention alert
     // fires — which is the point: a quiet sweep must not light the channel up.
     await publishMessageUpdated(deps.realtimeTransport, context, {
+      content: input.responseText,
+      editedAt: fold.editedAt,
       messageId: fold.messageId,
     })
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {

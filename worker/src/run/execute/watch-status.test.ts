@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { MessageUpdatedEventSchema } from '@nessie/schemas'
 import {
   classifyWatchDisposition,
   isRollingStatusEnabled,
@@ -73,4 +74,23 @@ test('status metadata round-trips, and junk reads as absent', () => {
   for (const junk of [null, {}, { watchStatus: {} }, { watchStatus: { runCount: 'x' } }]) {
     assert.equal(readWatchStatus(junk), null)
   }
+})
+
+test('the realtime payload matches the message.updated contract', () => {
+  // The fold publishes `message.updated`, whose schema requires
+  // contentPreview + editedAt. Sending the wrong shape threw inside publishWs
+  // *after* the status row was written, so the fold succeeded and the run
+  // still failed. Pin the fields the publisher depends on.
+  const fold = { created: false, editedAt: new Date(), messageId: 'm1', runCount: 2 }
+  assert.ok(fold.editedAt instanceof Date)
+  assert.equal(typeof fold.messageId, 'string')
+  assert.equal(
+    MessageUpdatedEventSchema.safeParse({
+      contentPreview: 'all quiet'.slice(0, 200),
+      editedAt: fold.editedAt.toISOString(),
+      messageId: fold.messageId,
+      threadId: '00000000-0000-4000-8000-000000000001',
+    }).success,
+    true,
+  )
 })

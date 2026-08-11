@@ -49,6 +49,7 @@ type FoldInput = {
 
 export type FoldResult = {
   created: boolean
+  editedAt: Date
   messageId: string
   runCount: number
 }
@@ -119,7 +120,7 @@ export const foldWatchStatus = async (
         },
         where: { id: existing.id },
       })
-      return { created: false, messageId: existing.id, runCount }
+      return { created: false, editedAt: input.now, messageId: existing.id, runCount }
     }
 
     const created = await tx.message.create({
@@ -139,7 +140,7 @@ export const foldWatchStatus = async (
       },
       select: { id: true },
     })
-    return { created: true, messageId: created.id, runCount: 1 }
+    return { created: true, editedAt: input.now, messageId: created.id, runCount: 1 }
   })
 
 export const readWatchStatus = (metadata: unknown): WatchStatusMetadata | null => {
