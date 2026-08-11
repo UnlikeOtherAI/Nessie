@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { faLayerGroup, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
 import { useKnowledge } from '../../components/features/knowledge/KnowledgeProvider'
 import { KnowledgeSpaceList } from '../../components/features/knowledge/KnowledgeSpaceList'
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
+import { useProjects } from '../../facades/projects/hooks'
 
 export const KnowledgeSidebarNav = () => {
   const {
@@ -18,12 +19,22 @@ export const KnowledgeSidebarNav = () => {
     createSpacePending,
   } = useKnowledge()
   const { documentsSections } = useProductSurfaces()
-  const [collapsed, setCollapsed] = useState(false)
+  const { data: projects = [] } = useProjects()
   const [createOpen, setCreateOpen] = useState(false)
 
   const myDocsSpace = spaces.find((space) => space.id === myDocsSpaceId)
   // The personal space is pinned above "Spaces" — never duplicated below.
   const otherSpaces = spaces.filter((space) => space.id !== myDocsSpaceId)
+
+  // This list is organization-wide, so two projects that each seeded a
+  // "General" space render as two identical rows. Name the project on every
+  // row as soon as the list spans more than one — and never when it doesn't,
+  // where it would just repeat the same word down the column.
+  const projectLabels = useMemo(() => {
+    const distinct = new Set(otherSpaces.map((space) => space.projectId))
+    if (distinct.size < 2) return undefined
+    return Object.fromEntries(projects.map((project) => [project.id, project.name]))
+  }, [otherSpaces, projects])
 
   return (
     <aside
@@ -85,22 +96,15 @@ export const KnowledgeSidebarNav = () => {
           </div>
         ) : null}
 
+        {/* A plain label, not a collapsible group: space rows never expand
+            (the page tree lives in the main area), this is the only group
+            below the pinned sections, and the collapse was component state
+            that reset on every navigation — unlike the channels sidebar,
+            which persists its own. It hosts the create action, nothing more. */}
         <div className="admin-sec-row">
-          <button className="admin-sec-hdr" onClick={() => setCollapsed((value) => !value)} type="button">
-            <svg
-              className={[
-                'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-                collapsed ? '-rotate-90' : '',
-              ].join(' ')}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              viewBox="0 0 24 24"
-            >
-              <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          <span className="admin-sec-hdr" style={{ cursor: 'default' }}>
             Spaces
-          </button>
+          </span>
           <button
             aria-label="Create space"
             className="admin-sidebar-plus"
@@ -111,14 +115,13 @@ export const KnowledgeSidebarNav = () => {
           </button>
         </div>
 
-        {!collapsed && (
-          <KnowledgeSpaceList
-            emptyLabel="No spaces yet"
-            onSelect={selectSpace}
-            selectedSpaceId={activeProductView ? undefined : selectedSpaceId}
-            spaces={otherSpaces}
-          />
-        )}
+        <KnowledgeSpaceList
+          emptyLabel="No spaces yet"
+          onSelect={selectSpace}
+          projectLabels={projectLabels}
+          selectedSpaceId={activeProductView ? undefined : selectedSpaceId}
+          spaces={otherSpaces}
+        />
       </div>
 
       <CreateSpaceDialog
