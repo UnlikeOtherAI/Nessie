@@ -224,6 +224,252 @@ everything forever" grants; retro-redaction of already-emitted replies.
 
 ---
 
+---
+
+# Part 2 — Memory tiers and the consent card
+
+Added 2026-08-11 after a second design round. Extends, does not replace, the
+basis/nod design above.
+
+## "Privileged" is a relation, not a tier
+
+The requirement was framed as needing *different types of memory* — privileged,
+channel-level, organization-wide. The taxonomy already exists and is finer than
+that: `ThoughtAudienceType` (`api/prisma/schema.prisma:427-433`) is
+`user | channel | team | project | organization`, mapped 1:1 to visibility at
+`packages/memory/src/capture.ts:81-87`. The three requested bands are these five,
+coarsened.
+
+But the important correction is that **privilege is not an intrinsic property of a
+memory.** It is a *relation between a memory's audience and the surface it is
+about to enter*. Organization-tier material is privileged nowhere; project-P
+material is privileged in a channel outside P's chain and ordinary inside it.
+Storing a "privileged" label would duplicate `audienceType` and go stale the
+moment the destination changes. **Do not add a parallel taxonomy.**
+
+## The second axis: `SensitivityTier` — a live reader with no writer
+
+`SensitivityTier` (`schema.prisma:435-439`) exists on `Thought` (`:2983`),
+`KnowledgeSpace` (`:3039`), `KnowledgePage` (`:3110`) and `KnowledgePageChunk`
+(`:3198`), all defaulting to `normal`.
+
+Verified state:
+
+- **Read-enforced for the KB, absolutely.** `packages/knowledge/src/access.ts:89`
+  — *"Restricted content is humans-only: this wins over every other agent arm,
+  including the agent's own private space or explicit membership."* Also enforced
+  at `worker/src/run/pa-tools/knowledge.ts:145` and `knowledge-write.ts:91`.
+- **Never filtered for memories.** `packages/retrieval/src/thoughts.ts:29` selects
+  the column and no code filters on it.
+- **Never written above `normal` in production.** The only assignment paths are
+  optional caller pass-throughs (`api/src/routes/thoughts.ts:92`, the KB
+  contracts), no admin UI control exists, and only test fixtures pass elevated
+  values. (Note the near-name collision: `privacyTier: 'sensitive'` on integration
+  plugin manifests is an unrelated field.)
+
+**Verdict: keep it as a human-assigned second axis with a narrow job.** Audience
+says *who*; sensitivity says *whether consent can lift at all*.
+
+- `restricted` — never leaves its scope; no card is offered. Already the KB
+  semantic; extend it to thoughts.
+- `sensitive` — the card fires, but **the Allow-always button is withheld**.
+- Assigned only by the author or a scope owner through a shipped UI control
+  (currently missing). The model may *suggest* marking something sensitive; only
+  a human click writes it.
+
+The hard predicate stays audience-versus-audience, which is structural. A
+human-assigned label may remove an option from a card; it never becomes the
+enforcement.
+
+## The firing rule
+
+> The card renders iff **`basis(reply) ⊄ scopeChain(destination)`**, and some
+> uncovered basis row has no live grant for that destination.
+
+Never fires: organization-tier material anywhere in the org; project-P material
+inside a P channel; a PA DM using its owner's own material (the PA acts as its
+owner, `worker/src/run/execute/memory.ts:117-121`, and the DM's audience is
+exactly that owner). Fires: P material entering a channel outside P's chain.
+
+The shared-agent-1:1 case needs no special rule — user B's run resolves
+`user_shared` and never retrieves A's project scopes in the first place; transcript
+replays are withheld by the Part 1 read predicate.
+
+**Computed from the destination's scope chain, not by enumerating members.** A
+member-set comparison (*"does everyone here have access to P?"*) races membership
+changes and, worse, is wrong for a durable artifact: a channel whose members all
+happen to hold P access today may admit someone tomorrow, and the message
+persists. Chains are stable; membership churns.
+
+> **Spec bug caught in review:** one design expressed this as
+> `P_members − C_members ≠ ∅`. That is the reverse subtraction — it fires when
+> someone entitled is *absent from the room*, and stays silent when an
+> unentitled person is *present*, which is exactly the leak. Had the predicate
+> been implemented from that formula it would have inverted the entire control.
+> The member-set form, if ever used, is `C_members − P_members ≠ ∅`.
+
+## Where the gate sits: emission, with nothing held
+
+**The reply posts immediately, restricted.** Basis stamps are written in the
+completion transaction; non-entitled viewers see the withheld placeholder from
+Part 1. The card is the affordance to **lift** that restriction, attached to the
+posted message.
+
+- **Deny is the default state, not an action that must win a race.** An
+  unanswered card leaves the reply restricted forever. Nothing fails open.
+- **Allow once** = the message-scoped `DisclosureGrant` from Part 1.
+- **Allow always** = a standing scope-pair grant (below) plus the message grant.
+
+**Rejected: gating at retrieval.** It asks the user to approve material the model
+may never use, which trains click-through and destroys the control — and it
+penalises the *entitled* asker, who would receive a degraded answer first and a
+re-run after consent. That contradicts the settled position that the asker's
+entitlement governs their own reply.
+
+**Rejected: a held or suspended reply.** The machinery exists
+(`RunStatus.waiting_approval`, `schema.prisma:66`; `ApprovalRequest.continuationToken`,
+`:2617-2637`) but holding the entitled asker's own answer hostage to a card is the
+same contradiction.
+
+**On "the model has already seen it":** safe, because every downstream reader is
+gated by Part 1 — subsequent windows, the orchestrator's 6-message load
+(`worker/src/run/orchestrate.ts:173-178`), and checkpoints carrying the union
+basis of the compacted window. No new mechanism. This is why **Part 1 must ship
+before any of Part 2**: an emission gate without the read predicate would leak
+through exactly the paths Part 1 closes.
+
+## The card
+
+Rendered on the restricted reply — the "Restricted sources" chip made actionable.
+It never shows privileged content beyond what the viewer already sees:
+
+> **This reply uses Project Atlas material.** 3 of 5 people in #launch can't see it.
+> **Keep restricted** · **Share this reply** · **Always allow Atlas → #launch (by Scout)**
+
+It names the source scope, the destination, the agent, and the concrete effect —
+"this reply" versus a standing rule. Counts, never member lists: a list leaks the
+membership gap itself.
+
+**Who may answer:** a human session currently passing the full basis predicate,
+checked against live membership at click time rather than card-render time. Never
+an agent, never a peer agent — no agent-reachable endpoint exists. **If nobody
+present is entitled:** the reply stays restricted, entitled scope members receive
+a `UserAlert`, and the placeholder tells others whom to ask. No timeout ever
+auto-allows.
+
+## Standing grants — the "allow always" bound
+
+```
+ScopeDisclosureGrant {
+  organizationId,
+  sourceScopeType, sourceScopeId,   -- the "from that one workspace" bound
+  destinationChannelId,             -- one channel; never a thread, never a user
+  agentId,                          -- this agent only
+  grantedByUserId,                  -- audit + live entitlement recheck
+  expiresAt, revokedAt
+}
+unique (sourceScope, destination, agent)
+```
+
+Each dimension, argued:
+
+- **Source scope** — one `(type, id)`. P→C says nothing whatsoever about Q→C.
+- **Destination = one channel.** Threads inherit channel visibility, so
+  thread-level grants fragment into hundreds of unreviewable rows. Named-user
+  destinations are standing person-tunnels out of a scope — Allow-once territory.
+- **Agent identity, included.** A second agent in the same channel gets its own
+  card. Costs an occasional extra card; buys a trivial non-widening proof.
+- **Granter, recorded but not evaluated.** Evaluation is the exact key plus a
+  **live recheck of the granter's current source-scope membership** — so a grant
+  goes inert the moment its granter loses access, with no propagation needed.
+- **Expiry.** Renewal is a fresh entitled click, never a timestamp bump.
+- **Omitted: content selectors** ("only the billing parts"). That requires judging
+  content — forbidden, and unenforceable.
+
+**Non-widening is structural, not a rule:** evaluation is a single exact-key
+lookup with no wildcard, inheritance, or fallback path in the predicate. Creation
+happens only through one human-session route that re-verifies source membership in
+the same transaction as the insert.
+
+**Surfaces (Rule zero):** channel settings → "Disclosures" panel enumerates and
+revokes (granter and org owners); the chip popover is the in-context doorway,
+showing which grant admitted a reply. Org owners get an org-wide list under
+Settings → Privacy. **Org ownership is not source-scope membership: owners may
+revoke, never create.**
+
+## Should the top tier allow "always"? No.
+
+`user`-audience material and anything marked `sensitive` get Deny / Allow-once
+only, rejected server-side rather than merely hidden in the UI.
+
+A standing grant is consent to *future, unseen* content. Over private material
+that is a wiretap, not a disclosure — and its misuse is invisible to the grantor,
+because nobody else is in the source scope to notice. A standing grant's safety
+rests on the destination being a place with enumerable membership; private
+material has no such ambient audience. **The extra care asked for is structural
+absence at the top tier, not a sterner click.**
+
+## Non-widening test suite
+
+Postgres-backed, seed-scoped per the shared-DB rules in `AGENTS.md`:
+
+1. Grant P→C; material scoped Q used in C → still restricted, card fires for Q.
+2. Grant P→C; P material in channel D → restricted, card fires.
+3. Grant P→C for agent G; agent H in the same channel → not covered, own card.
+4. Agent attempts grant creation via any tool surface → no such tool exists;
+   direct API call with an agent actor → 403 + audit row.
+5. Peer agent relays "the user approved this" in message content → no structural
+   effect; a model-judged proposal only ever renders a card.
+6. Granter loses source-scope membership → grant inert on the next read.
+7. Expired grant → restricted. Replayed consent token after expiry → rejected.
+8. Revoked grant → restricted on the next load.
+9. Grant does not cover `user`-audience or `sensitive`-tier basis rows even when
+   the source scope matches.
+10. Crafted Allow-always POST for a `user`-tier source → 422.
+11. Grant survives destination-channel membership churn, but a **chain** change
+    (channel moved out of its team) forces re-evaluation.
+12. A human not in the source scope — org owner included — cannot create a grant
+    (403) but may revoke.
+13. Concurrent double-click on one card → exactly one grant row, one audit entry.
+14. Non-English, slang, and misspelled nod phrasings render a card and never
+    write a grant row directly.
+
+## Phased plan (Part 2)
+
+- **A** — ships with Part 1: basis stamps, read predicate, placeholder, plus
+  `restricted` read-enforcement extended from the KB to thoughts.
+- **B** — the card with Deny / Allow-once, entitled-only answer path, `UserAlert`
+  for absent grantors. Closes *"no disclosure without approval."*
+- **C** — `ScopeDisclosureGrant`, the third button, the channel Disclosures panel,
+  and the full non-widening suite. Closes the standing-grant ask, provably bounded.
+- **D** — the sensitivity UI control on KB spaces/pages and memory capture, plus
+  the model-suggests-a-mark card. Last, because it refines the card and never
+  carries enforcement alone.
+
+## Not built (Part 2)
+
+A third taxonomy; model-assigned sensitivity as enforcement; held or suspended
+replies; retrieval-time consent; standing grants to named users, threads, or "all
+my scopes"; grant inheritance across agents; content-selective grants; retroactive
+tier backfill.
+
+## Open questions (Part 2)
+
+1. **Does a standing grant widen visibility, or only use?** "Always allow Atlas →
+   #launch" most naturally means everyone *currently in #launch* may receive
+   Atlas-derived answers there. That is the only place a grant does more than
+   reduce friction, so it needs an explicit yes.
+2. Should repeated Allow-once for the same (scope, channel, agent) triple prompt
+   *"make this standing?"* — proposing only, never auto-granting?
+3. `SensitivityTier` on `Thought` has no writer today. Ship the UI control and
+   make the axis real, or keep sensitivity KB-only?
+4. Does a standing grant cover people who join the destination channel later?
+   (Recommended yes, matching channel-audience semantics and Part 1 Q5.)
+5. Restricted-by-default replies may be frequent in mixed channels until grants
+   accumulate. Accept that friction, or narrow autonomous recall first (Part 1 Q2)?
+
+---
+
 ## Review record
 
 Designed 2026-08-11 by **Fable** (claude-fable-5) and **Kimix** (Kimi via Codex)
@@ -242,6 +488,35 @@ before acceptance.
   entitlement governs in shared channels.
 - **Unresolved:** the pre-send composer hint.
 
+### Second round — memory tiers and the consent card (Part 2)
+
+Same two designers, same method. Resolved disagreements:
+
+- **Gate placement: Fable's.** Kimix argued for a retrieval gate on the grounds
+  that emission-gating leaves privileged text in a window re-read by
+  `loadConversation`, the orchestrator, and checkpoints. True *without* Part 1 —
+  but both plans sequence Part 1 first, and once the read predicate exists every
+  downstream reader is gated, so the objection was against a design nobody
+  proposed. Emission-with-nothing-held also avoids penalising the entitled asker,
+  who under a retrieval gate would get a degraded answer and then a re-run.
+- **"Privileged is a relation, not a tier": Fable's**, and it is the most useful
+  correction of the round — it removes a whole table from the design.
+- **Firing computation: Fable's** scope-chain form over Kimix's member
+  enumeration, which is unstable for a durable artifact — and whose stated
+  formula was inverted (see the spec-bug note above).
+- **`SensitivityTier` verdict: converged**, and therefore trusted — human-assigned
+  second axis whose only job is to withhold the Allow-always option. Fable pinned
+  it more precisely ("a live reader with no writer"; production never raises it,
+  only test fixtures do).
+- **Top tier gets no "always": converged.** Both reached it independently from
+  different arguments — a wiretap over future unseen content (Fable); no ambient
+  audience to notice misuse (Kimix).
+- **Standing-grant key: converged** on `(source scope, destination channel, agent)`
+  with live granter-membership recheck. Independent agreement on every dimension
+  including the agent term.
+
 ## Changelog
 
 - **2026-08-11** — Created from two independent design passes plus verification.
+- **2026-08-11** — Part 2 added: memory tiers, the consent card, and provably
+  bounded standing grants, from a second two-model design round.
