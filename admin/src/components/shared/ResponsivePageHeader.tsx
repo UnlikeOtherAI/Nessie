@@ -31,6 +31,7 @@ export type PageHeaderMenuItem = {
 type PageHeaderActionBase = {
   compact?: boolean
   disabled?: boolean
+  form?: string
   icon?: IconDefinition
   id: string
   label: string
@@ -43,6 +44,7 @@ type PageHeaderActionBase = {
 export type PageHeaderButtonAction = PageHeaderActionBase & {
   kind?: 'button'
   onSelect: () => void
+  submit?: boolean
 }
 
 export type PageHeaderMenuAction = PageHeaderActionBase & {
@@ -52,10 +54,13 @@ export type PageHeaderMenuAction = PageHeaderActionBase & {
 
 export type PageHeaderAction = PageHeaderButtonAction | PageHeaderMenuAction
 
-type ResponsivePageHeaderProps = {
+export type ResponsivePageHeaderProps = {
   actions?: PageHeaderAction[]
+  eyebrow?: string
+  leading?: ReactNode
   onBack?: () => void
   title: string
+  titleTone?: 'page' | 'section'
 }
 
 type HeaderMenuProps = {
@@ -65,6 +70,7 @@ type HeaderMenuProps = {
 
 const ACTION_GAP = 8
 const MIN_LEADING_WIDTH = 152
+const MIN_LEADING_WIDTH_WITH_LEADING = 200
 const MIN_LEADING_WIDTH_WITH_BACK = 210
 const MORE_ACTION_ID = '__page-header-more'
 const moreAction: PageHeaderButtonAction = {
@@ -134,7 +140,14 @@ const HeaderMenu = ({ action, onSelect }: HeaderMenuProps) => {
 // A shared header for dense admin surfaces. It measures the actual controls at
 // runtime, so the same action declarations remain usable in a wide workspace,
 // a narrow project tab, and a tablet WebView without brittle viewport rules.
-export const ResponsivePageHeader = ({ actions = [], onBack, title }: ResponsivePageHeaderProps) => {
+export const ResponsivePageHeader = ({
+  actions = [],
+  eyebrow,
+  leading,
+  onBack,
+  title,
+  titleTone = 'page',
+}: ResponsivePageHeaderProps) => {
   const headerRef = useRef<HTMLElement>(null)
   const measurementRef = useRef<HTMLDivElement>(null)
   const actionMeasureRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -145,6 +158,7 @@ export const ResponsivePageHeader = ({ actions = [], onBack, title }: Responsive
   const [overflowIds, setOverflowIds] = useState<string[]>([])
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const menuIdPrefix = useId().replaceAll(':', '')
+  const hasLeading = Boolean(leading)
 
   const actionById = useMemo(
     () => new Map(actions.map((action) => [action.id, action])),
@@ -176,7 +190,16 @@ export const ResponsivePageHeader = ({ actions = [], onBack, title }: Responsive
 
       const next = partitionPageHeaderActions(
         layouts,
-        Math.max(0, header.clientWidth - (onBack ? MIN_LEADING_WIDTH_WITH_BACK : MIN_LEADING_WIDTH)),
+        Math.max(
+          0,
+          header.clientWidth - (
+            onBack
+              ? MIN_LEADING_WIDTH_WITH_BACK
+              : hasLeading
+                ? MIN_LEADING_WIDTH_WITH_LEADING
+                : MIN_LEADING_WIDTH
+          ),
+        ),
         moreWidth,
         ACTION_GAP,
       )
@@ -195,7 +218,7 @@ export const ResponsivePageHeader = ({ actions = [], onBack, title }: Responsive
       if (frame !== undefined) cancelAnimationFrame(frame)
       observer?.disconnect()
     }
-  }, [actions, onBack])
+  }, [actions, hasLeading, onBack])
 
   useEffect(() => {
     if (!openMenu) return undefined
@@ -254,6 +277,7 @@ export const ResponsivePageHeader = ({ actions = [], onBack, title }: Responsive
   const toggleMenu = (id: string) => setOpenMenu((current) => (current === id ? null : id))
   const renderAction = (action: PageHeaderAction, measuring = false): ReactNode => {
     const isMenu = action.kind === 'menu'
+    const buttonAction = isMenu ? null : action
     const isOpen = !measuring && openMenu === action.id
     const menuId = `${menuIdPrefix}-${action.id}`
     return (
@@ -264,6 +288,7 @@ export const ResponsivePageHeader = ({ actions = [], onBack, title }: Responsive
         aria-label={action.compact ? action.label : undefined}
         className={actionClassName(action, isOpen)}
         disabled={action.disabled}
+        form={action.form}
         onClick={
           measuring
             ? undefined
@@ -275,7 +300,7 @@ export const ResponsivePageHeader = ({ actions = [], onBack, title }: Responsive
           if (!measuring) triggerRefs.current[action.id] = element
         }}
         title={action.title ?? action.label}
-        type="button"
+        type={buttonAction?.submit ? 'submit' : 'button'}
       >
         {action.icon ? <FontAwesomeIcon className="h-3 w-3" fixedWidth icon={action.icon} /> : null}
         {action.compact ? null : <span>{action.label}</span>}
@@ -290,6 +315,7 @@ export const ResponsivePageHeader = ({ actions = [], onBack, title }: Responsive
       ref={headerRef}
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
+        {leading}
         {onBack ? (
           <button
             className={[
@@ -305,7 +331,20 @@ export const ResponsivePageHeader = ({ actions = [], onBack, title }: Responsive
             Back
           </button>
         ) : null}
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">{title}</h2>
+        <div className="min-w-0 flex-1">
+          {eyebrow ? (
+            <div className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+              {eyebrow}
+            </div>
+          ) : null}
+          {titleTone === 'section' ? (
+            <h2 className="truncate text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+              {title}
+            </h2>
+          ) : (
+            <h1 className="truncate text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
+          )}
+        </div>
       </div>
 
       {actions.length > 0 ? (

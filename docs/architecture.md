@@ -60,6 +60,11 @@ creating files, moving code, reusing logic, or widening an existing service.
 - Prefer focused tests around new boundaries: service error mapping, private
   resource access, SSRF rejection, redaction, rate-limit identity, and build or
   deploy gates.
+- Admin route headers own their actions as typed `PageHeaderAction` values and
+  render them through `ResponsivePageHeader`/`AdminPageHeader`. Give each action
+  an explicit priority, preserve one primary action where applicable, and let
+  the shared measured overflow menu decide what moves into **More**; do not add
+  page-specific breakpoint hiding or arbitrary React-node action slots.
 - Keep docs next to architecture changes. If behavior, topology, ports,
   deployment, MCP surface, or workflow changes, update the corresponding
   document before committing.
