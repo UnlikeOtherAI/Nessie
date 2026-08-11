@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  type ImageSourcePropType,
   Platform,
   StyleSheet,
   View,
 } from 'react-native'
-import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import TabView from 'react-native-bottom-tabs'
@@ -16,6 +14,7 @@ import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
+import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
 import {
   DEFAULT_TOOLBAR_STATE,
   IpadNativeToolbar,
@@ -31,7 +30,8 @@ const AUTH_CALLBACK_URL = 'nessie://auth/callback'
 // The native tab bar sits beside the WebView; reserve room for it so the
 // WebView's own content (e.g. the channel composer) is never hidden. iOS 26 on
 // iPad puts the tab bar at the TOP; iPhone and Android keep it at the bottom.
-const TAB_BAR_BASE_HEIGHT = Platform.OS === 'ios' ? 49 : 64
+const IPHONE_TAB_BAR_HEIGHT = 49
+const ANDROID_TABLET_TAB_BAR_HEIGHT = 78
 const IPAD_TAB_BAR_HEIGHT = 50
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
@@ -45,7 +45,23 @@ true;
 
 const DEFAULT_ACTIVE_TINT = '#7c3aed'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
-const ANDROID_ICON_SIZE = 26
+const withOpacity = (color: string, opacity: number): string => {
+  const rgb = parseRgb(color)
+  if (rgb) {
+    const [red, green, blue] = rgb
+    return `rgba(${red}, ${green}, ${blue}, ${opacity})`
+  }
+
+  const hex = color.replace(/^#/, '')
+  if (/^[0-9a-f]{6}$/i.test(hex)) {
+    const alpha = Math.round(opacity * 255)
+      .toString(16)
+      .padStart(2, '0')
+    return `#${hex}${alpha}`
+  }
+
+  return color
+}
 
 // If the admin never reports itself mounted (it posts a `nessie:route` message on
 // boot) within this window after a load finishes, the WebView is blank/white —
@@ -60,8 +76,6 @@ const MAX_BOOT_RETRIES = 4
 const isAuthGateRoute = (path: string): boolean =>
   path.startsWith('/login') || path.startsWith('/bootstrap')
 
-type AndroidIconSet = { active: Record<string, ImageSourcePropType>; inactive: Record<string, ImageSourcePropType> }
-
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
@@ -70,7 +84,6 @@ const Shell = (): React.JSX.Element => {
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
-  const [androidIcons, setAndroidIcons] = useState<AndroidIconSet | null>(null)
   const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
   // Bumping this remounts the WebView — used to recover Android after its render
   // process is killed (the instance is unusable until recreated).
@@ -115,32 +128,6 @@ const Shell = (): React.JSX.Element => {
       if (bootTimer.current) clearTimeout(bootTimer.current)
     }
   }, [])
-
-  // Android tab icons are Material glyphs rendered to image sources (SF Symbols
-  // are iOS-only); re-render them whenever the theme tints change.
-  useEffect(() => {
-    if (!IS_ANDROID) return undefined
-    let cancelled = false
-    const resolve = async (): Promise<void> => {
-      const activeIcons: Record<string, ImageSourcePropType> = {}
-      const inactiveIcons: Record<string, ImageSourcePropType> = {}
-      await Promise.all(
-        TABS.map(async (tab) => {
-          const [activeIcon, inactiveIcon] = await Promise.all([
-            MaterialIcons.getImageSource(tab.materialIcon, ANDROID_ICON_SIZE, accent),
-            MaterialIcons.getImageSource(tab.materialIcon, ANDROID_ICON_SIZE, inactive),
-          ])
-          if (activeIcon) activeIcons[tab.key] = activeIcon
-          if (inactiveIcon) inactiveIcons[tab.key] = inactiveIcon
-        }),
-      )
-      if (!cancelled) setAndroidIcons({ active: activeIcons, inactive: inactiveIcons })
-    }
-    void resolve()
-    return () => {
-      cancelled = true
-    }
-  }, [accent, inactive])
 
   const runScript = (script: string): void => {
     webRef.current?.injectJavaScript(`${script} true;`)
@@ -255,7 +242,11 @@ const Shell = (): React.JSX.Element => {
   // padding so each column background still reaches behind the status bar.
   const topInset = IS_IPAD && showBar ? insets.top + IPAD_TAB_BAR_HEIGHT : IS_ANDROID ? insets.top : 0
   const bottomInset =
-    showBar && !IS_IPAD ? TAB_BAR_BASE_HEIGHT + insets.bottom : IS_ANDROID ? insets.bottom : 0
+    showBar && !IS_IPAD
+      ? (IS_ANDROID ? ANDROID_TABLET_TAB_BAR_HEIGHT : IPHONE_TAB_BAR_HEIGHT) + insets.bottom
+      : IS_ANDROID
+        ? insets.bottom
+        : 0
   const webviewLayerStyle = { ...styles.webviewLayer, top: topInset, bottom: bottomInset }
 
   const navigationState = {
@@ -267,16 +258,12 @@ const Shell = (): React.JSX.Element => {
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
 
-      {showBar && !IS_IPAD ? (
+      {showBar && !IS_IPAD && !IS_ANDROID ? (
         <View style={StyleSheet.absoluteFill}>
           <TabView
-            getIcon={({ route, focused }) => {
+            getIcon={({ route }) => {
               const tab = TABS.find((item) => item.key === route.key)
               if (!tab) return undefined
-              if (IS_ANDROID) {
-                if (!androidIcons) return undefined
-                return focused ? androidIcons.active[tab.key] : androidIcons.inactive[tab.key]
-              }
               return { sfSymbol: tab.sfSymbol }
             }}
             navigationState={navigationState}
@@ -287,6 +274,19 @@ const Shell = (): React.JSX.Element => {
             translucent
           />
         </View>
+      ) : null}
+
+      {showBar && IS_ANDROID ? (
+        <AndroidTabletTabBar
+          activeIndex={index}
+          activeIndicatorColor={withOpacity(accent, 0.14)}
+          activeTintColor={accent}
+          bottom={insets.bottom + 6}
+          dark={isDark(bg)}
+          inactiveTintColor={inactive}
+          onIndexChange={onIndexChange}
+          rippleColor={withOpacity(accent, 0.18)}
+        />
       ) : null}
 
       <View style={webviewLayerStyle}>
