@@ -176,6 +176,19 @@ export const useAgentRealtime = (input: {
         return
       }
 
+      // A message changed in place — today the rolling watch status line.
+      // Deliberately refreshes only the open thread and NOT ['channels']: an
+      // edit is not new activity, so channel badges and unread counts must
+      // stay exactly where they were.
+      if (message.event === 'message.updated') {
+        if (message.data.threadId === threadIdRef.current) {
+          void queryClient.invalidateQueries({
+            queryKey: ['threads', message.data.threadId, 'messages'],
+          })
+        }
+        return
+      }
+
       // Reply threads (#233): a new reply or updated root summary refreshes
       // both the top-level feed (summary bars) and any open reply panel.
       if (message.event === 'message.reply' || message.event === 'message.reply.meta') {

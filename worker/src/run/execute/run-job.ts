@@ -43,6 +43,7 @@ import {
 } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
 import { markWorking } from './working-marker.js'
+import { resolveRollingWatch } from './watch-status-gate.js'
 import { handleCancelStop } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { runExternalConversation } from '../external-conversation.js'
@@ -400,12 +401,22 @@ export const executeRunJob = async (
         })
         : null
 
+    // A recurring watch that found nothing folds into its rolling status line
+    // rather than adding another "nothing changed" to the channel. Gated on
+    // structural facts — an unattended run belonging to a trigger that has not
+    // opted out — and then judged by the model, which fails open to posting.
+    const rollingWatch = await resolveRollingWatch(deps, payload, context, {
+      responseText,
+      runUtility: inference.runUtility,
+    })
+
     await completeRunExecution(deps, payload, context, planContext, {
       invocations: loopResult.invocations,
       iterations: loopResult.iterations,
       memories: setup.memories,
       ...(windDownMetadata ? { messageMetadata: { runStop: windDownMetadata } } : {}),
       responseText,
+      ...(rollingWatch ? { rollingWatch } : {}),
       toolCallsUsed: loopResult.toolCallsUsed,
     })
     terminalOutcome = 'completed'

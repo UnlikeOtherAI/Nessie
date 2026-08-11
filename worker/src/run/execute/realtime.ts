@@ -110,3 +110,23 @@ export const publishTaskUpdated = async (
     event: 'task.updated',
   })
 }
+
+/**
+ * A message changed in place (the rolling watch status). Distinct from
+ * `message.created`: clients refresh the thread but must not treat it as new
+ * activity — no unread bump, no notification.
+ */
+export const publishMessageUpdated = async (
+  transport: PgRealtimeTransport,
+  context: RunContext,
+  input: { messageId: string },
+): Promise<void> => {
+  await transport.publishWs(buildScopes(context), {
+    data: {
+      channelId: context.channel.id,
+      messageId: input.messageId,
+      threadId: context.run.threadId,
+    },
+    event: 'message.updated',
+  })
+}
