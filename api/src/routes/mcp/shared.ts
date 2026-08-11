@@ -15,6 +15,7 @@ import {
   MCP_INSTANCE_ERROR_CODES,
   McpOAuthError,
   MCP_OAUTH_ERROR_CODES,
+  McpToolReviewError,
   type OAuthStateStore,
   type SecretResolver,
   type SecretStore,
@@ -145,6 +146,13 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
             ? 502
             : 400
     sendApiError(reply, status, error.code, error.message)
+    return true
+  }
+  // An id that resolves to nothing reviewable is a 404 over the set: review is
+  // all-or-nothing, so a caller must never read a 200 as "the rows I listed
+  // are approved" when some of them were silently skipped.
+  if (error instanceof McpToolReviewError) {
+    sendApiError(reply, 404, error.code, error.message)
     return true
   }
   if (error instanceof McpCredentialError) {

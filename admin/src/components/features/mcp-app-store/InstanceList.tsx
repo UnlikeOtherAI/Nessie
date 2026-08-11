@@ -1,6 +1,8 @@
+import { Link } from 'react-router-dom'
 import type { McpServerLifecycleState } from '@nessie/schemas'
 import { StatusPill } from '../../primitives/StatusPill'
 import type { McpServerInstanceRecord } from '../../../facades/mcp-instances/hooks'
+import { mcpInstanceToolsPath } from '../../../facades/mcp-instance-tool-filter'
 
 /**
  * Installed-server list used in the App Store right column. Renders lifecycle
@@ -83,6 +85,25 @@ export const InstanceList = ({
               {instance.lifecycleState}
             </StatusPill>
           </button>
+          {instance.pendingToolCount > 0 ? (
+            <Link
+              className={[
+                'mt-2 flex items-center justify-between gap-2 rounded-lg border',
+                'border-[var(--warning-border)] bg-[var(--warning-soft)] px-3 py-2',
+                'text-xs text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)]',
+              ].join(' ')}
+              to={mcpInstanceToolsPath(instance.id)}
+            >
+              <span>
+                <strong className="font-semibold text-[color:var(--tx)]">
+                  {instance.pendingToolCount}{' '}
+                  {instance.pendingToolCount === 1 ? 'tool' : 'tools'} awaiting review
+                </strong>
+                {' — '}agents cannot use this connector until they are approved.
+              </span>
+              <span aria-hidden className="flex-shrink-0">→</span>
+            </Link>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             {onTest ? (
               <button

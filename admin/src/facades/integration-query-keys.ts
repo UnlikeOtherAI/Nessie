@@ -48,6 +48,8 @@ export const deepSignalSignalsKey = (
   include,
 ] as const
 
+export const mcpInstancesKeyPrefix = ['mcp-instances'] as const
+
 export const mcpToolRegistryKeyPrefix = ['mcp-tools'] as const
 
 export const mcpToolRegistryKey = (

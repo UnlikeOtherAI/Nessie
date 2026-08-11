@@ -12,11 +12,27 @@ import type { McpToolRegistryRecord } from '../../../facades/tool-grants/hooks'
 
 type ToolListProps = {
   onSelect: (tool: McpToolRegistryRecord) => void
+  /**
+   * Set only when the caller is running a review pass. Reviewable rows then
+   * grow a checkbox so a connector's tools can be approved as a batch — with
+   * every name still on screen, so a destructive tool is unchecked
+   * deliberately rather than swept in by a blanket "approve all".
+   */
+  onToggleSelected?: (toolId: string) => void
+  selectedForReview?: ReadonlySet<string>
+  isReviewable?: (tool: McpToolRegistryRecord) => boolean
   selectedId?: string
   tools: McpToolRegistryRecord[]
 }
 
-export const ToolList = ({ onSelect, selectedId, tools }: ToolListProps) => {
+export const ToolList = ({
+  isReviewable,
+  onSelect,
+  onToggleSelected,
+  selectedForReview,
+  selectedId,
+  tools,
+}: ToolListProps) => {
   if (tools.length === 0) {
     return (
       <div className="py-10 text-center text-sm text-[color:var(--tx3)]">
@@ -27,40 +43,61 @@ export const ToolList = ({ onSelect, selectedId, tools }: ToolListProps) => {
 
   return (
     <div className="divide-y divide-[color:var(--sep)] overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]">
-      {tools.map((tool) => (
-        <button
-          className={[
-            'w-full border-l-2 px-3 py-2.5 text-left transition-colors',
-            tool.id === selectedId
-              ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
-              : 'border-transparent hover:bg-[var(--overlay-weak)]',
-          ].join(' ')}
-          key={tool.id}
-          onClick={() => onSelect(tool)}
-          type="button"
-        >
-          <div className="flex items-center gap-2">
-            <span className="min-w-0 truncate text-sm font-medium text-[var(--tx)]">
-              {tool.label}
-            </span>
-            {tool.source !== 'builtin' ? (
-              <ToolBadge label={tool.source} source={tool.source} />
+      {tools.map((tool) => {
+        const reviewable = Boolean(onToggleSelected && isReviewable?.(tool))
+        return (
+          <div
+            className={[
+              'flex items-start gap-2 border-l-2 pr-3 transition-colors',
+              tool.id === selectedId
+                ? 'border-[color:var(--accent)] bg-[var(--accent-soft)]'
+                : 'border-transparent hover:bg-[var(--overlay-weak)]',
+            ].join(' ')}
+            key={tool.id}
+          >
+            {reviewable ? (
+              <label className="flex flex-shrink-0 items-center self-stretch pl-3">
+                <input
+                  aria-label={`Select ${tool.label} for review`}
+                  checked={selectedForReview?.has(tool.id) ?? false}
+                  className="h-4 w-4 accent-[var(--accent)]"
+                  onChange={() => onToggleSelected?.(tool.id)}
+                  type="checkbox"
+                />
+              </label>
             ) : null}
-            {tool.transport !== 'direct' ? (
-              <ToolTransportPill transport={tool.transport} />
-            ) : null}
-            {tool.status !== 'active' ? (
-              <ToolPermissionPill status={tool.status} />
-            ) : null}
+            <button
+              className={[
+                'min-w-0 flex-1 py-2.5 text-left',
+                reviewable ? 'pl-1' : 'pl-3',
+              ].join(' ')}
+              onClick={() => onSelect(tool)}
+              type="button"
+            >
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 truncate text-sm font-medium text-[var(--tx)]">
+                  {tool.label}
+                </span>
+                {tool.source !== 'builtin' ? (
+                  <ToolBadge label={tool.source} source={tool.source} />
+                ) : null}
+                {tool.transport !== 'direct' ? (
+                  <ToolTransportPill transport={tool.transport} />
+                ) : null}
+                {tool.status !== 'active' ? (
+                  <ToolPermissionPill status={tool.status} />
+                ) : null}
+              </div>
+              <div className="mt-0.5 flex items-baseline gap-2 text-xs text-[color:var(--tx3)]">
+                <code className="flex-shrink-0">{tool.toolId}</code>
+                {tool.description ? (
+                  <span className="truncate">{tool.description}</span>
+                ) : null}
+              </div>
+            </button>
           </div>
-          <div className="mt-0.5 flex items-baseline gap-2 text-xs text-[color:var(--tx3)]">
-            <code className="flex-shrink-0">{tool.toolId}</code>
-            {tool.description ? (
-              <span className="truncate">{tool.description}</span>
-            ) : null}
-          </div>
-        </button>
-      ))}
+        )
+      })}
     </div>
   )
 }

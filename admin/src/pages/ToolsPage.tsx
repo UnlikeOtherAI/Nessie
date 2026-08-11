@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type {
   ToolRegistryEntryStatus,
@@ -11,15 +11,22 @@ import { ExplicitToolAgentAccessPanel } from '../components/features/workflow-to
 import { ToolDetailDrawer } from '../components/features/workflow-tools/ToolDetailDrawer'
 import { ToolFilterBar } from '../components/features/workflow-tools/ToolFilterBar'
 import { ToolList } from '../components/features/workflow-tools/ToolList'
+import { ToolReviewActions } from '../components/features/workflow-tools/ToolReviewActions'
+import { ToolReviewBar } from '../components/features/workflow-tools/ToolReviewBar'
 import { useAgents } from '../facades/agents/hooks'
 import {
   matchesDeepWaterInstanceFilter,
   readDeepWaterInstanceFilter,
 } from '../facades/deep-water-tool-filter'
 import {
+  matchesMcpInstanceToolFilter,
+  readMcpInstanceToolFilter,
+} from '../facades/mcp-instance-tool-filter'
+import {
   useAgentToolPolicyTargets,
   useMcpToolRegistry,
 } from '../facades/tool-grants/hooks'
+import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -39,14 +46,28 @@ export const ToolsPage = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const [searchParams] = useSearchParams()
   const deepWaterInstanceId = readDeepWaterInstanceFilter(searchParams)
+  // The Connectors page links here with `?instance=…&status=pending_review`
+  // when an install has tools nobody has reviewed yet.
+  const instanceId = readMcpInstanceToolFilter(searchParams)
 
   const [source, setSource] = useState<ToolRegistrySource | undefined>()
-  const [status, setStatus] = useState<ToolRegistryEntryStatus | undefined>()
+  const [status, setStatus] = useState<ToolRegistryEntryStatus | undefined>(
+    () => {
+      const initial = searchParams.get('status')
+      return initial === 'pending_review' || initial === 'active'
+        || initial === 'disabled'
+        ? initial
+        : undefined
+    },
+  )
   const [tag, setTag] = useState<string | undefined>()
   const [searchQuery, setSearchQuery] = useState(
     () => searchParams.get('search') ?? '',
   )
   const [selectedToolId, setSelectedToolId] = useState<string | undefined>()
+  const [selectedForReview, setSelectedForReview] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
 
   const toolsQuery = useMcpToolRegistry({ source, status }, isOwner)
   const agentsQuery = useAgents()
@@ -69,6 +90,7 @@ export const ToolsPage = () => {
       if (!matchesDeepWaterInstanceFilter(tool, deepWaterInstanceId)) {
         return false
       }
+      if (!matchesMcpInstanceToolFilter(tool, instanceId)) return false
       if (tag && !tool.tags.includes(tag)) return false
       if (!query) return true
       return (
@@ -77,7 +99,7 @@ export const ToolsPage = () => {
         tool.description.toLowerCase().includes(query)
       )
     })
-  }, [allTools, deepWaterInstanceId, searchQuery, tag])
+  }, [allTools, deepWaterInstanceId, instanceId, searchQuery, tag])
 
   const sortedTools = useMemo(
     () =>
@@ -105,6 +127,39 @@ export const ToolsPage = () => {
     [allTools],
   )
 
+  /**
+   * A row is reviewable when its status is something an owner can change here:
+   * connector-projected tools that no first-party integration owns. Built-ins
+   * have no review state, and DeepWater/DeepSignal projections are managed
+   * from Integrations (the API refuses those ids).
+   */
+  const isReviewable = useCallback(
+    (tool: McpToolRegistryRecord) =>
+      !tool.builtin
+      && tool.mcpInstanceId !== null
+      && tool.managedProductSlug === null,
+    [],
+  )
+  const reviewableShown = useMemo(
+    () => sortedTools.filter(isReviewable),
+    [isReviewable, sortedTools],
+  )
+  const selectedReviewIds = useMemo(
+    () =>
+      reviewableShown
+        .filter((tool) => selectedForReview.has(tool.id))
+        .map((tool) => tool.id),
+    [reviewableShown, selectedForReview],
+  )
+  const toggleSelected = useCallback((toolId: string) => {
+    setSelectedForReview((current) => {
+      const next = new Set(current)
+      if (next.has(toolId)) next.delete(toolId)
+      else next.add(toolId)
+      return next
+    })
+  }, [])
+
   if (!isOwner) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
@@ -124,7 +179,10 @@ export const ToolsPage = () => {
     </div>
   ) : (
     <ToolList
+      isReviewable={isReviewable}
       onSelect={(tool) => setSelectedToolId(tool.id)}
+      onToggleSelected={toggleSelected}
+      selectedForReview={selectedForReview}
       selectedId={selectedTool?.id}
       tools={sortedTools}
     />
@@ -150,6 +208,14 @@ export const ToolsPage = () => {
           tag={tag}
           tagOptions={tagOptions}
         />
+        <ToolReviewBar
+          onClearSelection={() => setSelectedForReview(new Set())}
+          onSelectAllShown={() =>
+            setSelectedForReview(new Set(reviewableShown.map((tool) => tool.id)))
+          }
+          reviewableCount={reviewableShown.length}
+          selectedIds={selectedReviewIds}
+        />
         {listBody}
       </div>
     </ColumnBrowserColumn>,
@@ -165,6 +231,7 @@ export const ToolsPage = () => {
       >
         <div className="grid max-w-3xl gap-6">
           <ToolDetailDrawer tool={selectedTool} />
+          <ToolReviewActions tool={selectedTool} />
           <section>
             <h3 className="text-sm font-semibold text-[color:var(--tx)]">Agent access</h3>
             <p className="mt-1 text-xs text-[color:var(--tx3)]">
