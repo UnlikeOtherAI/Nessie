@@ -1,3 +1,5 @@
+import { ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE } from './android-tablet-dock'
+
 // Injected into the admin page. The Android WebView continues beneath its
 // floating dock so full-height columns and dividers do not stop at a detached
 // native slab; its content reserves the dock through a shared CSS custom
@@ -26,8 +28,11 @@ export const INJECTED = `
     var nativeTopbarOwnsSafeArea = shell && shell.platform === 'android';
     var androidNativeFrameCss = nativeTopbarOwnsSafeArea
       ? [
-          ':root { --nessie-native-bottom-overlay: 94px; }',
+          ':root { --nessie-native-bottom-overlay: ${ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE}px; }',
           '.admin-topbar { height: var(--topbar-h); padding-top: 0; }',
+          // The channel composer is part of main's flex flow, so this shared
+          // bottom padding keeps the input, controls, and send button clear of
+          // the floating dock without adding a disconnected native slab.
           '.admin-shell > aside, .admin-shell > main { padding-bottom: calc(var(--nessie-native-bottom-overlay) + env(safe-area-inset-bottom)); }',
           '[data-testid="channel-content-scroll"] { overflow-x: hidden; }',
           '.admin-message-markdown .admin-message-code-block { overflow-x: auto; overflow-y: hidden; }'

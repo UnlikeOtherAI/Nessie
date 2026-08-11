@@ -127,7 +127,10 @@ from `admin/src/layouts/admin-shell/NativeIPadToolbarBridge.tsx`, while global
 search opens from the native Search tab overlay. Because that web top bar is
 absent on iPhone, `mobile/src/lib/webview-inject.ts` applies the top safe-area
 inset to the admin columns' content while leaving their backgrounds edge to
-edge; iPad and Android reserve their top inset in the native frame. The
+edge; iPad and Android reserve their top inset in the native frame. Android's
+floating dock has no independent separator: the shared dock-geometry contract
+adds its exact interaction clearance to the WebView columns, keeping the chat
+composer entirely above the dock while page backgrounds continue beneath it. The
 per-section secondary sidebar (channel list, admin sub-pages, …) opens from a
 **top-left hamburger** as a slide-in drawer. Mobile *web* (a phone browser, no
 native shell) gets an equivalent web-rendered bottom tab bar instead — and, like

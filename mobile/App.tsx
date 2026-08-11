@@ -16,8 +16,8 @@ import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
-  AndroidTabletTabBar,
-} from './src/components/AndroidTabletTabBar'
+} from './src/lib/android-tablet-dock'
+import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
 import {
   DEFAULT_TOOLBAR_STATE,
   IpadNativeToolbar,
@@ -290,7 +290,6 @@ const Shell = (): React.JSX.Element => {
           inactiveTintColor={inactive}
           onIndexChange={onIndexChange}
           rippleColor={withOpacity(accent, 0.18)}
-          separatorColor={withOpacity(isDark(bg) ? '#ffffff' : '#49341f', 0.18)}
         />
       ) : null}
 
