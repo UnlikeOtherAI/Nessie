@@ -3,6 +3,10 @@
 **Status:** research captured, current state audited, plan proposed. Not yet implemented.
 **Date:** 2026-08-11
 **Owner:** Ondrej Rafaj
+**Companion:** [2026-08-11-viewer-scoped-agent-knowledge.md](2026-08-11-viewer-scoped-agent-knowledge.md)
+— the entitlement boundary between an agent's knowledge and the person asking it.
+This document governs how agents talk to *each other*; that one governs what an
+agent may say to *whom*.
 **Related:** [`docs/plans/2026-04-06-multi-agent-orchestration.md`](2026-04-06-multi-agent-orchestration.md),
 [`docs/plans/2026-04-15-n8n-inspired-workflow-tools-and-triggers.md`](2026-04-15-n8n-inspired-workflow-tools-and-triggers.md),
 [`docs/security-audit-2026-06.md`](../security-audit-2026-06.md),
