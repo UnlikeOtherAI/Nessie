@@ -42,11 +42,6 @@ import {
   WIND_DOWN_INSTRUCTION,
 } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
-import {
-  CONCLUDE_SILENTLY_DESCRIPTOR,
-  createSilenceSink,
-  isSilenceEligible,
-} from './silence.js'
 import { handleCancelStop } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
 import { runExternalConversation } from '../external-conversation.js'
@@ -280,13 +275,6 @@ export const executeRunJob = async (
       utilityModel,
     })
 
-    // A scheduled sweep is usually supposed to say nothing. Offering the tool
-    // is what makes silence reachable; runs that are answering a person never
-    // see it, so an @mention structurally cannot come back empty.
-    const silenceSink = isSilenceEligible({ handoffLocator, payload })
-      ? createSilenceSink()
-      : null
-
     loopResult = await runExecutionAgentLoop(deps, payload, context, {
       allowedToolIds: setup.allowedToolIds,
       budget: resolveEffectiveRunBudget(context.agent.runLimits),
@@ -305,10 +293,7 @@ export const executeRunJob = async (
       mcpToolset: setup.mcpToolset,
       resolvedToolIds: setup.resolvedToolIds,
       thinkingRecorder,
-      ...(silenceSink ? { silenceSink } : {}),
-      toolDefs: silenceSink
-        ? [...setup.toolDefs, CONCLUDE_SILENTLY_DESCRIPTOR]
-        : setup.toolDefs,
+      toolDefs: setup.toolDefs,
       toolPolicy: setup.toolPolicy,
       // Wind-down (spec §3a): interactive, non-handoff runs get told to finish
       // inside the reserve instead of being cut off. Scheduled/trigger runs
@@ -412,9 +397,6 @@ export const executeRunJob = async (
       memories: setup.memories,
       ...(windDownMetadata ? { messageMetadata: { runStop: windDownMetadata } } : {}),
       responseText,
-      ...(silenceSink?.concluded
-        ? { silent: { reason: silenceSink.reason } }
-        : {}),
       toolCallsUsed: loopResult.toolCallsUsed,
     })
     terminalOutcome = 'completed'
