@@ -504,20 +504,6 @@ a {
   font-size: 13px;
 }
 
-.admin-topbar-workspace {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
-}
-
 .mobile-tabbar {
   position: fixed;
   right: 0;

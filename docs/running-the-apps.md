@@ -137,7 +137,11 @@ native shell) gets an equivalent web-rendered bottom tab bar instead — and, li
 the native phone layout, hides the admin top bar entirely whenever that bottom
 tab bar is shown (`hideTopBar` in `AdminShellLayout.tsx`). Global search is
 reached from the bottom bar's **Search** tab, and each page renders its own
-mobile header (hamburger + title) for drawer access.
+mobile header (hamburger + title) for drawer access. Where that top bar is
+hidden, the mobile header also provides the signed-in user's canonical account
+control: the same avatar, presence/status badges, and account menu used at the
+bottom of the desktop rail. A shell with that rail never renders a second
+top-bar account badge.
 
 The login route is its own full-height touch-scroll container because the page
 root remains fixed for the authenticated shell. On phone widths it presents the

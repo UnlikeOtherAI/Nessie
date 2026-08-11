@@ -18,6 +18,10 @@ import {
   partitionPageHeaderActions,
   type PageHeaderActionLayout,
 } from './responsive-page-header-layout'
+import {
+  HeaderAccountMenu,
+  useHeaderAccountMenuVisible,
+} from '../../layouts/admin-shell/AccountMenuContext'
 
 export type PageHeaderMenuItem = {
   checked?: boolean
@@ -77,6 +81,7 @@ type HeaderMenuProps = {
 }
 
 const ACTION_GAP = 8
+const ACCOUNT_MENU_WIDTH = 40
 const MIN_LEADING_WIDTH = 152
 const MIN_LEADING_WIDTH_WITH_LEADING = 200
 const MIN_LEADING_WIDTH_WITH_BACK = 210
@@ -159,6 +164,7 @@ export const ResponsivePageHeader = ({
   titleInput,
   titleTone = 'page',
 }: ResponsivePageHeaderProps) => {
+  const showHeaderAccountMenu = useHeaderAccountMenuVisible()
   const headerRef = useRef<HTMLElement>(null)
   const measurementRef = useRef<HTMLDivElement>(null)
   const actionMeasureRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -209,7 +215,7 @@ export const ResponsivePageHeader = ({
               : hasLeading
                 ? MIN_LEADING_WIDTH_WITH_LEADING
                 : MIN_LEADING_WIDTH
-          ),
+          ) - (showHeaderAccountMenu ? ACCOUNT_MENU_WIDTH : 0),
         ),
         moreWidth,
         ACTION_GAP,
@@ -229,7 +235,7 @@ export const ResponsivePageHeader = ({
       if (frame !== undefined) cancelAnimationFrame(frame)
       observer?.disconnect()
     }
-  }, [actions, hasLeading, onBack])
+  }, [actions, hasLeading, onBack, showHeaderAccountMenu])
 
   useEffect(() => {
     if (!openMenu) return undefined
@@ -367,7 +373,7 @@ export const ResponsivePageHeader = ({
         </div>
       </div>
 
-      {actions.length > 0 ? (
+      {actions.length > 0 || showHeaderAccountMenu ? (
         <div className="flex flex-shrink-0 items-center gap-2">
           {visibleActions.map((action) => (
             <div className="relative" key={action.id}>
@@ -418,6 +424,7 @@ export const ResponsivePageHeader = ({
               ) : null}
             </div>
           ) : null}
+          <HeaderAccountMenu />
         </div>
       ) : null}
 

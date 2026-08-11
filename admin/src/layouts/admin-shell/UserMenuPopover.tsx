@@ -16,7 +16,14 @@ const providerLabel = (auth: MeAuth): string => {
   return `${name} account`
 }
 
-type MenuPosition = { left: number; bottom: number }
+const MENU_GAP = 8
+const MENU_WIDTH = 252
+
+export type UserMenuPopoverPlacement = 'rail' | 'topbar'
+
+type MenuPosition =
+  | { left: number; bottom: number; top?: never }
+  | { left: number; top: number; bottom?: never }
 
 type UserMenuPopoverProps = {
   anchorRef: RefObject<HTMLElement | null>
@@ -25,6 +32,7 @@ type UserMenuPopoverProps = {
   token: string | null
   onClose: () => void
   onLogout: () => void
+  placement?: UserMenuPopoverPlacement
 }
 
 const rowClassName = [
@@ -32,9 +40,11 @@ const rowClassName = [
   'text-sm text-[color:var(--tx)] transition-colors hover:bg-[color:var(--overlay-weak)]',
 ].join(' ')
 
-// Avatar menu: anchored to the rail avatar, showing the user's identity and the
-// account/log-out actions. Rendered fixed so the rail's `overflow-hidden` does not
-// clip it; a transparent full-screen scrim catches outside clicks.
+const clampMenuLeft = (left: number): number =>
+  Math.max(MENU_GAP, Math.min(left, window.innerWidth - MENU_WIDTH - MENU_GAP))
+
+// Avatar menu: shared by the desktop rail and native-shell top bar. It keeps
+// one set of account actions while opening away from the trigger in each shell.
 export const UserMenuPopover = ({
   anchorRef,
   user,
@@ -42,15 +52,28 @@ export const UserMenuPopover = ({
   token,
   onClose,
   onLogout,
+  placement = 'rail',
 }: UserMenuPopoverProps) => {
   const [position, setPosition] = useState<MenuPosition | null>(null)
 
   useLayoutEffect(() => {
-    const anchor = anchorRef.current
-    if (!anchor) return
-    const rect = anchor.getBoundingClientRect()
-    setPosition({ left: rect.right + 8, bottom: window.innerHeight - rect.bottom })
-  }, [anchorRef])
+    const updatePosition = () => {
+      const anchor = anchorRef.current
+      if (!anchor) return
+      const rect = anchor.getBoundingClientRect()
+      setPosition(
+        placement === 'topbar'
+          ? { left: clampMenuLeft(rect.right - MENU_WIDTH), top: rect.bottom + MENU_GAP }
+          : {
+              left: clampMenuLeft(rect.right + MENU_GAP),
+              bottom: Math.max(MENU_GAP, window.innerHeight - rect.bottom),
+            },
+      )
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    return () => window.removeEventListener('resize', updatePosition)
+  }, [anchorRef, placement])
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -71,7 +94,9 @@ export const UserMenuPopover = ({
           'border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5',
           'shadow-[0_16px_48px_var(--scrim-strong)]',
         ].join(' ')}
-        style={{ left: position.left, bottom: position.bottom }}
+        style={position.top === undefined
+          ? { left: position.left, bottom: position.bottom }
+          : { left: position.left, top: position.top }}
       >
         <div className="flex items-center gap-3 px-2 py-2">
           <UserAvatar
