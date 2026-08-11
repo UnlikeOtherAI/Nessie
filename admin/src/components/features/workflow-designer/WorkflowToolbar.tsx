@@ -1,121 +1,46 @@
-import type { Dispatch, SetStateAction } from 'react'
-import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
-  dividerClass,
-  menuItemClass,
-  sectionLabelClass,
-  toolbarButtonClass,
-} from '../../../lib/workflow-designer/constants'
+  ResponsivePageHeader,
+  type PageHeaderAction,
+} from '../../shared/ResponsivePageHeader'
 import type { ToolbarAction, ToolbarMenuItem } from '../../../lib/workflow-designer/types'
 
 type WorkflowToolbarProps = {
-  toolbarActions: ToolbarAction[]
-  openMenu: string | null
-  setOpenMenu: Dispatch<SetStateAction<string | null>>
   onMenuItemClick: (item: ToolbarMenuItem) => void
+  toolbarActions: ToolbarAction[]
 }
 
-export const WorkflowToolbar = ({
-  toolbarActions,
-  openMenu,
-  setOpenMenu,
-  onMenuItemClick,
-}: WorkflowToolbarProps) => {
-  return (
-    <header className="flex h-12 items-center gap-2 border-b border-[var(--line)] bg-[var(--surface-inverse)] px-4">
-      {toolbarActions.map((action) => {
-        const isOpen = openMenu === action.key
+// The designer's source menus use the same overflowable action model as every
+// other header. Each category remains a menu, and its creation shortcut stays
+// first, but low-priority categories now move into More when the canvas narrows.
+export const WorkflowToolbar = ({ onMenuItemClick, toolbarActions }: WorkflowToolbarProps) => {
+  const actions: PageHeaderAction[] = toolbarActions.map((action, index) => ({
+    icon: action.icon,
+    id: action.key,
+    items: [
+      ...(action.createItem ? [{
+        icon: action.createItem.icon,
+        id: `${action.key}:${action.createItem.key}`,
+        label: action.createItem.label,
+        onSelect: () => onMenuItemClick(action.createItem!),
+      }] : []),
+      ...action.items.map((item) => ({
+        icon: item.icon,
+        id: `${action.key}:${item.key}`,
+        label: item.meta ? `${item.label} — ${item.meta}` : item.label,
+        onSelect: () => onMenuItemClick(item),
+      })),
+      ...(action.items.length === 0 ? [{
+        disabled: true,
+        id: `${action.key}:empty`,
+        label: action.emptyLabel,
+        onSelect: () => undefined,
+      }] : []),
+    ],
+    kind: 'menu',
+    label: action.label,
+    priority: 100 - index,
+    title: action.sectionLabel,
+  }))
 
-        return (
-          <div
-            key={action.key}
-            className="relative"
-            data-workflow-menu-root="true"
-          >
-            <button
-              aria-expanded={isOpen}
-              aria-haspopup="menu"
-              aria-label={action.label}
-              className={toolbarButtonClass}
-              onClick={() => setOpenMenu(isOpen ? null : action.key)}
-              type="button"
-            >
-              <FontAwesomeIcon className="text-[11px]" fixedWidth icon={action.icon} />
-              <span>{action.label}</span>
-              <FontAwesomeIcon
-                className={[
-                  'text-[10px] text-[var(--muted)] transition-transform',
-                  isOpen ? 'rotate-180' : '',
-                ].join(' ')}
-                fixedWidth
-                icon={faChevronDown}
-              />
-            </button>
-
-            {isOpen ? (
-              <div
-                className="absolute left-0 top-full z-10 mt-1 w-64 rounded-lg border border-[var(--line)] bg-[var(--surface-inverse)] p-1 shadow-[0_12px_30px_var(--scrim)]"
-                role="menu"
-              >
-                {action.createItem ? (
-                  <button
-                    className={menuItemClass}
-                    onClick={() => onMenuItemClick(action.createItem!)}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <FontAwesomeIcon
-                      className="text-[12px]"
-                      fixedWidth
-                      icon={action.createItem.icon}
-                    />
-                    <span className="truncate text-[11px]">
-                      {action.createItem.label}
-                    </span>
-                  </button>
-                ) : null}
-
-                {action.createItem ? <div className={dividerClass} /> : null}
-
-                <div className={sectionLabelClass}>{action.sectionLabel}</div>
-
-                <div className="max-h-72 overflow-y-auto">
-                  {action.items.length > 0 ? (
-                    action.items.map((item) => (
-                      <button
-                        key={item.key}
-                        className={menuItemClass}
-                        onClick={() => onMenuItemClick(item)}
-                        role="menuitem"
-                        type="button"
-                      >
-                        <FontAwesomeIcon
-                          className="text-[12px]"
-                          fixedWidth
-                          icon={item.icon}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-[11px]">
-                          {item.label}
-                        </span>
-                        {item.meta ? (
-                          <span className="truncate text-[10px] text-[var(--tx3)]">
-                            {item.meta}
-                          </span>
-                        ) : null}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-2.5 py-2 text-[11px] text-[var(--tx3)]">
-                      {action.emptyLabel}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        )
-      })}
-    </header>
-  )
+  return <ResponsivePageHeader actions={actions} title="Add workflow node" titleTone="section" />
 }
