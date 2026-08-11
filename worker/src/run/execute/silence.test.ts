@@ -80,6 +80,6 @@ test('an over-long reason is bounded', () => {
 
 test('the descriptor tells the model silence is the normal outcome', () => {
   assert.equal(CONCLUDE_SILENTLY_DESCRIPTOR.toolName, CONCLUDE_SILENTLY_TOOL_NAME)
-  // No required arguments: needing to justify silence would discourage it.
-  assert.deepEqual(CONCLUDE_SILENTLY_DESCRIPTOR.inputSchema.required, [])
+  // Nothing is required: needing to justify silence would discourage it.
+  assert.equal(CONCLUDE_SILENTLY_DESCRIPTOR.inputSchema.required, undefined)
 })

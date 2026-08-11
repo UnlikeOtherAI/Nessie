@@ -43,7 +43,9 @@ export const CONCLUDE_SILENTLY_DESCRIPTOR: ToolSchemaDescriptor = {
           + 'why it did not warrant a message. Never shown in the channel.',
       },
     },
-    required: [],
+    // No `required` key at all: every other builtin declares at least one
+    // required argument, and an empty array is a shape no provider here is
+    // exercised with. Absent means "nothing required" in JSON Schema anyway.
   },
 }
 
