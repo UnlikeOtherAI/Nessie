@@ -73,6 +73,7 @@ public func requireSupportedHost() throws {
 public func configuration(
   for input: VMInput,
   consoleURL: URL? = nil,
+  enableGuestControl: Bool = false,
 ) throws -> VZVirtualMachineConfiguration {
   guard (1...4).contains(input.cpuCount), (2048...8192).contains(input.memoryMiB) else {
     throw VMError.invalidArgument
@@ -102,10 +103,13 @@ public func configuration(
     )
     configuration.serialPorts = [serialPort]
   }
+  if enableGuestControl {
+    configuration.socketDevices = [VZVirtioSocketDeviceConfiguration()]
+  }
 
-  // A guest broker must explicitly add its COW and forced-egress transports.
-  // This substrate therefore has no NIC, filesystem share, graphics device,
-  // or host-process bridge that could become an unreviewed host fallback.
+  // Guest control is a per-VM virtio socket, never a network adapter or host
+  // filesystem bridge. The broker must still add COW and forced egress before
+  // executable browser or coding descriptors can be advertised.
   try configuration.validate()
   return configuration
 }

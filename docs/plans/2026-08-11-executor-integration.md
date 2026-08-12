@@ -101,6 +101,10 @@ neither a NIC, host filesystem share, graphics device, nor host process bridge.
 It is not command-reachable and advertises no new descriptor operation. The
 browser/coding slice must add guest COW transport and a forced-egress broker as
 one reviewed unit; it may not turn this validator into a host-browser fallback.
+Its only guest-control primitive is a fixed virtio socket on the individual VM:
+the guest initiates one connection and the host rejects a replacement while it
+is live. It is not a host network listener and carries no executable protocol
+or descriptor operation on its own.
 
 The companion now also contains the inactive foundation for that egress broker:
 an owner-only Unix-socket HTTPS CONNECT gateway whose local policy names exact,

@@ -362,6 +362,11 @@ stop one signed helper process only to prove the packaging boundary. A later
 guest broker must add the COW share and forced-egress endpoint as one reviewed
 unit; a browser or coding descriptor is forbidden until that unit is live.
 The macOS-native verification command is `swift test --package-path executor/vm`.
+The bootstrap also has a fixed, guest-initiated virtio-socket control port for
+that future broker. It is one connection on one VM's device, rejects replacement
+while live, and is neither a host TCP listener nor a route to another VM. It
+carries no executable framing or descriptor capability until the guest broker,
+run binding, COW transport, and egress route are delivered together.
 The helper carries the `com.apple.security.virtualization` and
 `com.apple.security.hypervisor` entitlements. `sh
 executor/vm/scripts/build-signed-vm-helper.sh` creates an ad-hoc local validator
