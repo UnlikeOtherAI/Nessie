@@ -149,8 +149,13 @@ Membership is required to participate (as-of-2026-07-02):
   dispatched by an `@mention`. Mentioning an agent that is not a member does not
   silently pull it in.
 - The message-create response returns those mentioned non-member agents as
-  `pendingAgentInvites`; the client offers to invite (bind) them. Once bound,
-  the agent participates on subsequent mentions like any other member.
+  `pendingAgentInvites`; the client offers to invite (bind) them. Accepting
+  that invitation replays the exact user-authored mention to the newly bound
+  agent, so the original request is answered without being reposted. The
+  replay is idempotent and refuses a message that is deleted, belongs to a
+  different channel/user, or does not structurally mention that agent. Once
+  bound, the agent also participates on subsequent mentions like any other
+  member.
 - This is enforced in both the API (`createThreadMessage`,
   `api/src/services/messages.ts`) and the worker's `send_message` destination
   resolver (`resolveChannelAgents`, `worker/src/run/pa-tools/message-destination.ts`),

@@ -73,9 +73,10 @@ export const useBindAgent = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { agentId: string; channelId: string }) =>
+    mutationFn: (input: { agentId: string; channelId: string; triggerMessageId?: string }) =>
       apiClient.post(`/api/agents/${input.agentId}/bindings`, {
         channelId: input.channelId,
+        ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['agents'] })

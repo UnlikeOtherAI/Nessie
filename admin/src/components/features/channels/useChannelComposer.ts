@@ -56,6 +56,7 @@ export const useChannelComposer = ({
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
   const [pendingAgentInvites, setPendingAgentInvites] = useState<PendingAgentInvite[]>([])
+  const [pendingInviteMessageIds, setPendingInviteMessageIds] = useState<Record<string, string>>({})
   const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
   const mentionRef = useRef<MentionInputHandle>(null)
@@ -81,6 +82,7 @@ export const useChannelComposer = ({
   useEffect(() => {
     setOptimisticMessages([])
     setPendingAgentInvites([])
+    setPendingInviteMessageIds({})
     setInviteErrors({})
   }, [activeChannel?.id])
 
@@ -135,6 +137,13 @@ export const useChannelComposer = ({
             const seen = new Set(current.map((a) => a.id))
             return [...current, ...result.pendingAgentInvites.filter((a) => !seen.has(a.id))]
           })
+          setPendingInviteMessageIds((current) => {
+            const next = { ...current }
+            for (const agent of result.pendingAgentInvites) {
+              next[agent.id] ??= result.message.id
+            }
+            return next
+          })
         }
       } catch {
         setOptimisticMessages((current) =>
@@ -164,6 +173,11 @@ export const useChannelComposer = ({
 
   const dismissPendingAgent = useCallback((agentId: string) => {
     setPendingAgentInvites((current) => current.filter((a) => a.id !== agentId))
+    setPendingInviteMessageIds((current) => {
+      const next = { ...current }
+      delete next[agentId]
+      return next
+    })
     clearInviteError(agentId)
   }, [])
 
@@ -175,8 +189,18 @@ export const useChannelComposer = ({
       setInvitingAgentId(agentId)
       clearInviteError(agentId)
       try {
-        await bindAgent.mutateAsync({ agentId, channelId: activeChannel.id })
+        const triggerMessageId = pendingInviteMessageIds[agentId]
+        await bindAgent.mutateAsync({
+          agentId,
+          channelId: activeChannel.id,
+          ...(triggerMessageId ? { triggerMessageId } : {}),
+        })
         setPendingAgentInvites((current) => current.filter((a) => a.id !== agentId))
+        setPendingInviteMessageIds((current) => {
+          const next = { ...current }
+          delete next[agentId]
+          return next
+        })
       } catch (error) {
         setInviteErrors((current) => ({
           ...current,
@@ -189,7 +213,7 @@ export const useChannelComposer = ({
         setInvitingAgentId(null)
       }
     },
-    [activeChannel, bindAgent],
+    [activeChannel, bindAgent, pendingInviteMessageIds],
   )
 
   const sendMessageSubmit = async (event?: FormEvent<HTMLFormElement>) => {

@@ -51,6 +51,8 @@ export const UpdateAgentAvatarBodySchema = z.object({
 
 export const CreateAgentBindingBodySchema = z.object({
   channelId: ChannelIdSchema,
+  /** Original @mention to replay after a successful invitation. */
+  triggerMessageId: z.string().uuid().optional(),
 })
 
 export const PersonalAssistantStateResponseSchema = z.object({
