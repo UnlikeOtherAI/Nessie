@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -320,6 +321,22 @@ func TestGuestCodingUsesOneDedicatedTmuxServerAndExactTarget(t *testing.T) {
 	}
 	if _, ok := sanitizeCodingOutput([]byte{0}); ok {
 		t.Fatal("accepted binary terminal output")
+	}
+}
+
+func TestGuestCodexConformanceDeniesEveryExecutorControlFileAndRequiresAnActualNetworkDenial(t *testing.T) {
+	if !reflect.DeepEqual(codexSandboxConfiguration(), []string{
+		"-c", "permissions." + codingSandboxProfile + ".extends=\":workspace\"",
+		"-c", "permissions." + codingSandboxProfile + ".filesystem={\"" + codingControlDirectory + "\"=\"deny\"}",
+		"-c", "permissions." + codingSandboxProfile + ".network.enabled=false",
+	}) {
+		t.Fatal("Codex child policy does not deny the whole executor control directory")
+	}
+	if !codingSandboxDenied(syscall.EACCES) || !codingSandboxDenied(syscall.EPERM) {
+		t.Fatal("Codex conformance did not recognize sandbox network denials")
+	}
+	if codingSandboxDenied(syscall.ECONNREFUSED) || codingSandboxDenied(syscall.ETIMEDOUT) {
+		t.Fatal("Codex conformance accepted an unavailable proxy as a sandbox denial")
 	}
 }
 

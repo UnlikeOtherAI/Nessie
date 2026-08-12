@@ -15,6 +15,8 @@ import (
 
 const (
 	codingConfigPath               = "/run/nessie-executor/tmux.conf"
+	codingControlCanary            = "/run/nessie-executor/control-canary"
+	codingControlDirectory         = "/run/nessie-executor"
 	codingCredentialHome           = "/run/nessie-executor/codex-home"
 	codingCredentialCanary         = codingCredentialHome + "/auth-canary"
 	codingProfileRoot              = "/work"
@@ -62,7 +64,7 @@ type codingRuntime struct {
 func codexSandboxConfiguration() []string {
 	return []string{
 		"-c", "permissions." + codingSandboxProfile + ".extends=\":workspace\"",
-		"-c", "permissions." + codingSandboxProfile + ".filesystem={\"" + codingCredentialHome + "\"=\"deny\"}",
+		"-c", "permissions." + codingSandboxProfile + ".filesystem={\"" + codingControlDirectory + "\"=\"deny\"}",
 		"-c", "permissions." + codingSandboxProfile + ".network.enabled=false",
 	}
 }

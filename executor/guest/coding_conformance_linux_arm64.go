@@ -18,19 +18,32 @@ func runCodingConformanceProbe(arguments []string) int {
 	if len(arguments) > 1 {
 		return 64
 	}
-	for _, candidate := range []string{
-		codingCredentialCanary,
-		"/proc/self/root" + codingCredentialCanary,
-		"/proc/" + strconv.Itoa(os.Getppid()) + "/root" + codingCredentialCanary,
-	} {
-		if descriptor, err := os.Open(candidate); err == nil {
-			_ = descriptor.Close()
-			return 65
+	for _, protected := range []string{codingCredentialCanary, codingControlCanary} {
+		for _, candidate := range []string{
+			protected,
+			"/proc/self/root" + protected,
+			"/proc/" + strconv.Itoa(os.Getppid()) + "/root" + protected,
+		} {
+			if descriptor, err := os.Open(candidate); err == nil {
+				_ = descriptor.Close()
+				return 65
+			}
 		}
+	}
+	controlConnection, err := net.DialTimeout("unix", codingSocketPath, 500*time.Millisecond)
+	if err == nil {
+		_ = controlConnection.Close()
+		return 66
+	}
+	if !codingSandboxDenied(err) {
+		return 66
 	}
 	connection, err := net.DialTimeout("tcp4", guestEgressProxyAddress, 500*time.Millisecond)
 	if err == nil {
 		_ = connection.Close()
+		return 66
+	}
+	if !codingSandboxDenied(err) {
 		return 66
 	}
 	if len(arguments) == 0 {

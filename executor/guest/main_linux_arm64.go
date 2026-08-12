@@ -173,6 +173,20 @@ func main() {
 		os.Exit(1)
 	}
 	defer connection.Close()
+	if egressRequestedFromProc() {
+		egressToken, err := deriveEgressToken(string(token))
+		if err != nil {
+			clearBytes(token)
+			os.Exit(1)
+		}
+		// The listener is live before hello makes the host session ready. The
+		// Codex conformance probe can therefore distinguish a policy denial
+		// from a merely absent loopback service.
+		if _, err := startGuestEgressProxy(guestEgressProxyAddress, egressToken, dialGuestEgress); err != nil {
+			clearBytes(token)
+			os.Exit(1)
+		}
+	}
 	if err := writeControlFrame(connection, controlEnvelope{
 		Kind:         "hello",
 		Payload:      []byte{},
@@ -182,17 +196,6 @@ func main() {
 	}); err != nil {
 		clearBytes(token)
 		os.Exit(1)
-	}
-	if egressRequestedFromProc() {
-		egressToken, err := deriveEgressToken(string(token))
-		if err != nil {
-			clearBytes(token)
-			os.Exit(1)
-		}
-		if _, err := startGuestEgressProxy(guestEgressProxyAddress, egressToken, dialGuestEgress); err != nil {
-			clearBytes(token)
-			os.Exit(1)
-		}
 	}
 	clearBytes(token)
 

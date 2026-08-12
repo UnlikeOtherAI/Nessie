@@ -27,6 +27,9 @@ func prepareCodingRuntime(identity guestIdentity) error {
 	if err := os.Chmod(codingRuntimeDirectory, 0o755); err != nil {
 		return err
 	}
+	if err := prepareCodingControlCanary(identity); err != nil {
+		return err
+	}
 	if err := prepareCodexCredentialHome(identity); err != nil {
 		return err
 	}
@@ -67,6 +70,36 @@ func prepareCodingRuntime(identity guestIdentity) error {
 	}
 	socketMetadata, ok := socketDirectory.Sys().(*syscall.Stat_t)
 	if !ok || socketMetadata.Uid != identity.userID || socketMetadata.Gid != identity.groupID {
+		return errInvalidFrame
+	}
+	return nil
+}
+
+// The canary sits beside the tmux socket. A passing Codex conformance probe
+// must be unable to read it, protecting the other executor-private control
+// files in this directory; the probe separately verifies that it cannot
+// connect to the same-UID tmux control socket.
+func prepareCodingControlCanary(identity guestIdentity) error {
+	canary, err := os.OpenFile(codingControlCanary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o400)
+	if err != nil {
+		return err
+	}
+	if _, err := canary.WriteString("nessie-codex-control-canary\n"); err != nil {
+		_ = canary.Close()
+		return err
+	}
+	if err := canary.Close(); err != nil {
+		return err
+	}
+	if err := os.Chown(codingControlCanary, int(identity.userID), int(identity.groupID)); err != nil {
+		return err
+	}
+	info, err := os.Lstat(codingControlCanary)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o400 {
+		return errInvalidFrame
+	}
+	metadata, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || metadata.Uid != identity.userID || metadata.Gid != identity.groupID {
 		return errInvalidFrame
 	}
 	return nil

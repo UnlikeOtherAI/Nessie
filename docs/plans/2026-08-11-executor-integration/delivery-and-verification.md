@@ -47,8 +47,10 @@ uses the manifest-pinned tmux and Codex/Claude argv directly; accepts only a
 fixed session/pane target; retains exited panes; and bounds/sanitizes
 observation. Codex has an additional launch-time conformance gate: a
 workspace-write child and a nested Codex sandbox that asks for
-danger-full-access must both fail to read the private future auth home or reach
-the guest-local egress proxy. This is the required credential-principal
+danger-full-access must both fail to read the private future auth home or the
+executor-control directory, connect to tmux's Unix control socket, or reach the
+known-live guest-local egress proxy.
+This is the required credential-principal
 boundary; same-UID modes and an inherited proof are not. It exposes no
 `coding.*` executor operation yet. The next coding slice can materialize a
 locally selected Codex auth profile only after coupling that launch gate to a

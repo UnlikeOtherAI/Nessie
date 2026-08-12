@@ -621,11 +621,14 @@ targets. An existing dedicated socket makes launch fail closed.
 The credential-free Claude profile is created inside the guest COW workspace.
 Codex instead receives a fresh, private guest home below
 `/run/nessie-executor`, never below `/work`. It contains a non-secret canary
-and no host profile today. Before the guest will launch Codex, its exact
+and no host profile today. The entire guest executor-control directory is also
+denied to model-generated children, so they cannot reach the same-UID tmux
+control socket. Before the guest will launch Codex, its exact
 manifest-pinned binary must run a conformance probe in the same
 workspace-write mode that it assigns to model-generated commands. The probe
-must be unable to read that home or connect to the guest-local forced-egress
-proxy; it then starts a nested Codex sandbox explicitly requesting
+must be unable to read either canary, connect to the tmux control socket, or
+connect to the known-live guest-local forced-egress proxy with the sandbox's
+explicit denial error; it then starts a nested Codex sandbox explicitly requesting
 danger-full-access, and that nested probe must be unable to do either as well.
 A failure is a launch failure. This makes the outer authenticated Codex process
 and its model-controlled children distinct security principals by enforced
