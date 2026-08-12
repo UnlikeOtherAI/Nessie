@@ -214,10 +214,12 @@ The signed helper now has the companion-internal long-lived `session` command.
 It requires a lease-derived COW directory, an existing owner-private gateway
 socket, and bootstrap on stdin; it boots guest egress with admission closed and
 opens it only after the exact control hello. Every authenticated tunnel gets its
-own bounded bridge and all bridges close on VM/control shutdown. This is still
-not an executor capability: the daemon has no session launcher, descriptors
-still omit browser/shell/coding operations, and there is no UI or model path to
-invoke it.
+own bounded bridge and all bridges close on VM/control shutdown. The companion
+places that socket in a separately-created short owner-private temporary
+directory, then removes it with the session; a deep COW path never causes the
+Unix-socket bound to be widened. This is still not an executor capability: the
+daemon has no session launcher, descriptors still omit browser/shell/coding
+operations, and there is no UI or model path to invoke it.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for

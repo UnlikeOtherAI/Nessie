@@ -8,6 +8,7 @@ import test from 'node:test'
 import { executeExecutorCommand } from '../src/daemon.js'
 import { createGuestWorkspaceLease, releaseGuestWorkspaceLease } from '../src/guest-workspace-lease.js'
 import { runGuestVmHandshake } from '../src/guest-vm-handshake.js'
+import { startGuestVmSession } from '../src/guest-vm-session.js'
 import { parseCommand } from '../src/index.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
 import {
@@ -299,6 +300,65 @@ test('the VM handshake receives only a current COW lease and passes its token th
     assert.equal(calls[1].path, await realpath(helperPath))
     assert.equal(calls[1].input, calls[0].input)
     assert.equal(calls[1].argv.includes(lease.workspace), true)
+    await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)
+    assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
+  }
+})
+
+test('a guest VM session binds its private gateway and lease without exposing a token in argv', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-session-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-session-state-'))
+  const runId = '00000000-0000-4000-8000-000000000121'
+  const builderPath = join(stateDir, 'builder')
+  const helperPath = join(stateDir, 'helper')
+  const kernelPath = join(stateDir, 'kernel')
+  try {
+    await writeFile(join(root, 'base.txt'), 'host source')
+    await Promise.all([
+      writeFile(builderPath, 'builder'),
+      writeFile(helperPath, 'helper'),
+      writeFile(kernelPath, 'kernel'),
+    ])
+    await Promise.all([chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)])
+    const lease = await createGuestWorkspaceLease(stateDir, root, {
+      bindingFence: '1',
+      commandId: '00000000-0000-4000-8000-000000000122',
+      runId,
+    })
+    const calls: Array<{ argv: string[]; input: string; path: string }> = []
+    let resolveClosed: (() => void) | undefined
+    const session = await startGuestVmSession({
+      egressPolicy: { allowedOrigins: ['https://app.example.test'] },
+      guestInitrdBuilderPath: builderPath,
+      kernelPath,
+      lease,
+      stateDir,
+      vmHelperPath: helperPath,
+    }, {
+      runProcess: async (call) => { calls.push(call) },
+      launchProcess: async (call) => {
+        calls.push(call)
+        return {
+          closed: new Promise<void>((resolvePromise) => { resolveClosed = resolvePromise }),
+          stop: async () => { resolveClosed?.() },
+        }
+      },
+    })
+    assert.equal(calls.length, 2)
+    assert.equal(calls[0].path, await realpath(builderPath))
+    assert.deepEqual(calls[0].argv.slice(-1), ['--bootstrap-token-stdin'])
+    assert.equal(calls[1].path, await realpath(helperPath))
+    assert.equal(calls[1].argv[0], 'session')
+    assert.equal(calls[1].argv.includes(lease.workspace), true)
+    assert.equal(calls[1].argv.includes(calls[1].input), false)
+    const gatewayIndex = calls[1].argv.indexOf('--egress-gateway')
+    assert.equal(gatewayIndex >= 0, true)
+    assert.match(calls[1].argv[gatewayIndex + 1]!, /egress\.sock$/)
+    await session.stop()
+    await session.closed
     await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)
     assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
   } finally {

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
-import { chmod, lstat, mkdir, mkdtemp, realpath } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 
 import { ensureExecutorRuntimeDirectory } from './state-store.js'
@@ -79,4 +80,27 @@ export const secureGuestVmSessionDirectory = async (
   const directory = await mkdtemp(join(parent, `${basename(lease.leaseId)}-`))
   await chmod(directory, 0o700)
   return directory
+}
+
+/** Unix socket paths are short on macOS, so gateway transport gets its own
+ * owner-private ephemeral directory rather than widening the socket limit. */
+export const secureGuestVmGatewayDirectory = async (): Promise<string> => {
+  const directory = await mkdtemp(join(tmpdir(), 'nex-egress-'))
+  try {
+    await chmod(directory, 0o700)
+    const info = await lstat(directory)
+    if (
+      info.isSymbolicLink()
+      || !info.isDirectory()
+      || (ownerId() !== undefined && info.uid !== ownerId())
+      || (info.mode & 0o077) !== 0
+      || join(directory, 'egress.sock').length > 96
+    ) {
+      throw new WorkspacePathError('The executor egress socket directory is unavailable.')
+    }
+    return directory
+  } catch (error) {
+    await rm(directory, { force: true, recursive: true })
+    throw error
+  }
 }

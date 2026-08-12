@@ -442,18 +442,21 @@ in an owner-only directory (maximum 96 path bytes). It copies bounded buffered
 bytes in each direction to that socket, then closes both ends on EOF, I/O
 failure, or overflow. It has no origin, HTTP, DNS, credential, TCP, or remote
 socket code; those decisions remain inside the already owner-private CONNECT
-gateway. No current helper command sets this flag, attaches the host egress
-listener and bridge together, or exposes either to browser/coding operations.
+gateway. No daemon command starts the helper session, attaches the host egress
+listener and bridge, or exposes either to browser/coding operations.
 
 The signed helper now has an internal long-lived `session` command for the
 companion launcher. It requires the lease-derived COW directory, an existing
 owner-private CONNECT-gateway socket, and the boot token on standard input. It
 starts the VM with egress booted but admission closed; only a verified control
 hello opens the egress listener, which then creates one bridge per authenticated
-tunnel. It emits a sanitized ready result and stops every bridge, socket, and
-VM on signal or control-channel termination. This is transport activation, not
-product availability: no daemon command starts it yet, no descriptor contains a
-browser/shell/coding operation, and it has no user-facing doorway.
+tunnel. The companion allocates that socket in a distinct short owner-private
+temporary directory—rather than relaxing the 96-byte Unix-socket bound for a
+possibly deep COW path—and deletes it with the session. It emits a sanitized
+ready result and stops every bridge, socket, and VM on signal or control-channel
+termination. This is transport activation, not product availability: no daemon
+command starts it yet, no descriptor contains a browser/shell/coding operation,
+and it has no user-facing doorway.
 
 Before that launch, the companion creates an owner-only `guest-lease.json`
 beside the exact COW draft. It contains the run ID, executor binding fence, and
