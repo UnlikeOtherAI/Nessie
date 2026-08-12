@@ -16,6 +16,8 @@ export type ExecutorLocalState = {
   executorId: string
   machinePrivateKey: string
   machinePublicKey: string
+  /** Canonical, single read-only host directory selected during pairing. */
+  workspaceRoot: string
 }
 
 const statePath = (stateDir: string): string => resolve(stateDir, STATE_FILE)
@@ -54,6 +56,7 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
     || typeof parsed.executorId !== 'string'
     || typeof parsed.machinePrivateKey !== 'string'
     || typeof parsed.machinePublicKey !== 'string'
+    || typeof parsed.workspaceRoot !== 'string'
     || !parsed.descriptor
   ) {
     throw new Error('Executor state is malformed.')

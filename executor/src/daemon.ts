@@ -9,6 +9,7 @@ import {
 import { executorApi } from './api-client.js'
 import { signedDescriptorForState } from './pair.js'
 import { saveExecutorState, type ExecutorLocalState } from './state-store.js'
+import { listWorkspaceFiles, readWorkspaceFile, workspaceFailure } from './workspace.js'
 
 const signDaemonPayload = (
   privateKeyDer: string,
@@ -112,9 +113,25 @@ const executeLocalCommand = async (
   if (!state.descriptor.operationKeys.includes(command.operationKey)) {
     return { code: 'EXECUTOR_LOCAL_POLICY_DENIED', success: false }
   }
-  // Pairing/presence profile intentionally has no data or shell capability.
-  // `sandbox.stop` is safe locally and establishes the complete signed receipt
-  // path before a micro-VM backend advertises further operations.
+  if (digest(command.payload) !== command.argumentDigest) {
+    return { code: 'EXECUTOR_COMMAND_DIGEST_INVALID', success: false }
+  }
+  if (command.operationKey === 'file.list') {
+    try {
+      return await listWorkspaceFiles(state.workspaceRoot, command.payload.args)
+    } catch (error) {
+      return workspaceFailure(error)
+    }
+  }
+  if (command.operationKey === 'file.read') {
+    try {
+      return await readWorkspaceFile(state.workspaceRoot, command.payload.args)
+    } catch (error) {
+      return workspaceFailure(error)
+    }
+  }
+  // The presence-only stop operation is harmless. Shell, write, browser, and
+  // coding operations remain absent from the descriptor and are denied here.
   if (command.operationKey === 'sandbox.stop') {
     return { status: 'no_active_sandbox', success: true }
   }

@@ -38,11 +38,39 @@ class ExecutorUnknownOutcomeError extends FatalToolExecutionError {
 const descriptorFor = (operationKey: string): ToolSchemaDescriptor | null => {
   const definition = executorLogicalToolDefinitions().find((tool) => tool.key === operationKey)
   if (!definition) return null
+  const inputSchema = (() => {
+    switch (operationKey) {
+      case 'file.list':
+        return {
+          additionalProperties: false,
+          properties: {
+            maxEntries: { maximum: 100, minimum: 1, type: 'integer' },
+            path: { maxLength: 1_024, type: 'string' },
+          },
+          type: 'object',
+        }
+      case 'file.read':
+        return {
+          additionalProperties: false,
+          properties: {
+            maxBytes: { maximum: 8_192, minimum: 1, type: 'integer' },
+            path: { maxLength: 1_024, minLength: 1, type: 'string' },
+          },
+          required: ['path'],
+          type: 'object',
+        }
+      case 'sandbox.stop':
+        return { additionalProperties: false, properties: {}, type: 'object' }
+      default:
+        // A descriptor alone cannot enable an operation. Add its hardened
+        // companion backend and exact model schema before it is reachable.
+        return null
+    }
+  })()
+  if (!inputSchema) return null
   return {
     description: definition.description,
-    inputSchema: operationKey === 'sandbox.stop'
-      ? { additionalProperties: false, properties: {}, type: 'object' }
-      : { type: 'object' },
+    inputSchema,
     toolName: `executor.${operationKey}`,
   }
 }

@@ -97,6 +97,25 @@ export const ExecutorOperationKeySchema = z.enum([
 ])
 export type ExecutorOperationKey = z.infer<typeof ExecutorOperationKeySchema>
 
+/** Arguments accepted by the first read-only workspace backend. */
+export const ExecutorFileListArgumentsSchema = z
+  .object({
+    path: z.string().max(1_024).optional(),
+    maxEntries: z.number().int().min(1).max(100).optional(),
+  })
+  .strict()
+export type ExecutorFileListArguments = z.infer<typeof ExecutorFileListArgumentsSchema>
+
+export const ExecutorFileReadArgumentsSchema = z
+  .object({
+    path: z.string().min(1).max(1_024),
+    // Eight KiB leaves room for JSON escaping inside the command's 64 KiB
+    // terminal-result limit.
+    maxBytes: z.number().int().min(1).max(8_192).optional(),
+  })
+  .strict()
+export type ExecutorFileReadArguments = z.infer<typeof ExecutorFileReadArgumentsSchema>
+
 export const ExecutorPrivateAssignmentSchema = z.discriminatedUnion(
   'principalKind',
   [

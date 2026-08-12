@@ -9,6 +9,7 @@ import {
 import { executorApi } from './api-client.js'
 import { buildSignedDescriptor } from './descriptor.js'
 import { saveExecutorState, type ExecutorLocalState } from './state-store.js'
+import { configureWorkspaceRoot } from './workspace.js'
 
 const rawEd25519PublicKey = (publicKey: KeyObject): string =>
   publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64url')
@@ -18,19 +19,20 @@ export type PairExecutorInput = {
   challenge: string
   enrollmentId: string
   stateDir: string
+  workspaceRoot: string
 }
 
 const initialLocalPolicy = {
   limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
-  // The first companion release owns pairing/presence only. It advertises a
-  // harmless stop capability but refuses every data or terminal operation
-  // until the separately hardened backend is installed.
-  operationKeys: ['sandbox.stop'],
+  // The first concrete backend is a single, user-selected read-only root.
+  // It has no shell, write, browser, or host-promotion capability.
+  operationKeys: ['file.list', 'file.read', 'sandbox.stop'],
   profiles: ['workspace_sandbox'],
   revision: 1,
 }
 
 export const pairExecutor = async (input: PairExecutorInput): Promise<{ fingerprint: string }> => {
+  const workspaceRoot = await configureWorkspaceRoot(input.workspaceRoot)
   const keys = generateKeyPairSync('ed25519')
   const machinePublicKey = rawEd25519PublicKey(keys.publicKey)
   const descriptor = buildSignedDescriptor(
@@ -63,6 +65,7 @@ export const pairExecutor = async (input: PairExecutorInput): Promise<{ fingerpr
     executorId: pending.executorId,
     machinePrivateKey: keys.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url'),
     machinePublicKey,
+    workspaceRoot,
   }
   await saveExecutorState(input.stateDir, state)
   return { fingerprint: pending.fingerprint }

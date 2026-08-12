@@ -4,7 +4,14 @@ import { pairExecutor } from './pair.js'
 import { loadExecutorState } from './state-store.js'
 
 type ParsedCommand =
-  | { kind: 'pair'; apiBaseUrl: string; challenge: string; enrollmentId: string; stateDir: string }
+  | {
+    kind: 'pair'
+    apiBaseUrl: string
+    challenge: string
+    enrollmentId: string
+    stateDir: string
+    workspaceRoot: string
+  }
   | { kind: 'connect'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
   | { kind: 'serve'; stateDir: string }
@@ -12,7 +19,7 @@ type ParsedCommand =
 const usage = (): never => {
   throw new Error(
     'Usage: nessie-executor pair --api <https://api.example> --enrollment <uuid> '
-    + '--challenge <token> --state-dir <owner-only-path>\n'
+    + '--challenge <token> --state-dir <owner-only-path> --workspace <absolute-read-only-root>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>',
   )
 }
@@ -44,6 +51,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       enrollmentId: option(args, '--enrollment'),
       kind: 'pair',
       stateDir: option(args, '--state-dir'),
+      workspaceRoot: option(args, '--workspace'),
     }
   }
   if (command === 'connect' || command === 'heartbeat' || command === 'serve') {

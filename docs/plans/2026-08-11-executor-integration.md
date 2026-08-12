@@ -28,7 +28,8 @@ structured terminal results are AES-256-GCM encrypted at rest, bounded to 64
 KiB, and linked to the existing queue job and `ToolCall`. The daemon receives a
 short-lived envelope only after the linked job is processing and must emit
 monotonic `accepted → started → result_acknowledged` receipts. The current
-companion executes only the harmless `sandbox.stop` presence operation.
+companion executes `sandbox.stop` plus bounded `file.list` and `file.read`
+against one canonical, explicitly paired workspace root.
 
 The worker dispatch adapter is now enabled for a run only after a human has
 submitted an opaque availability handle to `POST /api/runs/:runId/executor-bind`.
@@ -41,11 +42,16 @@ dispatch, the server rechecks the bound human, agent, scope/membership,
 descriptor, operation and logical grants, lifecycle, and revision under the
 executor fence. An absent terminal receipt becomes `unknown_outcome` and is
 fatal/retry-safe, never a model-visible success; a late receipt for that exact
-already-delivered command can resolve it without issuing new work. The current
-live operation remains `sandbox.stop` only.
+already-delivered command can resolve it without issuing new work. The model
+schemas permit only bounded read-only file operations and `sandbox.stop`.
 
-It does **not** dispatch files, browser work, or coding sessions yet; those
-operations remain unavailable until a concrete isolated backend is delivered.
+It does **not** dispatch writes, commands, browser work, or coding sessions;
+those operations remain unavailable until their concrete isolated backends are
+delivered. The initial read-only root is a path-constrained local backend, not
+a micro-VM or copy-on-write sandbox: it rejects traversal and every symbolic
+link, keeps a fixed canonical root in owner-only daemon state, bounds every
+listing/read result, and returns no host paths. A future write or command
+backend must use the planned isolated COW workspace and promotion protocol.
 Neither does it expose the planned availability union with connectors.
 
 The availability endpoint deliberately creates a five-minute, one-use opaque
@@ -708,11 +714,13 @@ API or daemon without either is not a completed slice.
 ### 2. Read-only workspace sandbox
 
 Ship one concrete supported backend, or advertise no workspace operations on
-that platform. The companion grants one workspace; file list/read run within a
-real fail-closed sandbox. Add the channel task/composer doorway, binding
+that platform. The initial companion grants one explicit, canonical read-only
+workspace root; file list/read reject traversal and symbolic links, use only
+relative paths, and have bounded output. It is deliberately not described as a
+micro-VM: the isolated COW sandbox is a prerequisite for any write, command,
+browser, or coding operation. Add the channel task/composer doorway, binding
 selection/pinning, registry projection, bounded result handling, and an
-inspect-safe activity receipt. No writes, command execution, or browser actions
-are enabled in this slice. Agent Designer's exact executor-operation grants
+inspect-safe activity receipt. Agent Designer's exact executor-operation grants
 and their PA prepare/confirmed-apply counterpart must be live before the
 composer can present a candidate.
 

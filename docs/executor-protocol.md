@@ -232,6 +232,15 @@ at rest; the database retains only bounded ciphertext and canonical digests.
 The daemon sends each receipt under a distinct signed `receipt` domain, and the
 server recomputes the supplied terminal result digest before accepting it.
 
+The initial local backend has only `file.list`, `file.read`, and `sandbox.stop`.
+Pairing requires one existing absolute workspace directory; the daemon stores
+only its canonical path in owner-only local state. File requests accept only
+relative paths, reject traversal and every symbolic-link component, re-check
+that the configured root is still an ordinary directory, and return bounded
+structured results without a host path. It is a read-only path boundary, not a
+micro-VM or a COW sandbox. No write, command, browser, or coding operation is
+advertised until its isolated backend is implemented and reviewed.
+
 Before the worker adds an executor logical schema to a model request, a human
 must bind one opaque candidate to the exact run through the executor-bind
 endpoint. The schema carries no executor id; it dispatches only to that binding.

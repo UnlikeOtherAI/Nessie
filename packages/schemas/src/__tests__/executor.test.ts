@@ -154,7 +154,7 @@ test('availability responses separate opaque candidates from safe explanations',
 test('command envelopes carry fences and digests rather than raw result data', () => {
   const envelope = ExecutorCommandEnvelopeSchema.parse({
     argumentDigest: digest,
-    bindingFence: 4,
+    bindingFence: '4',
     bindingId: ids.binding,
     capabilityRevision: 3,
     commandId: ids.executor,
@@ -164,7 +164,7 @@ test('command envelopes carry fences and digests rather than raw result data', (
     payload: { pathHandle: 'workspace-file-1' },
   })
 
-  assert.equal(envelope.bindingFence, 4)
+  assert.equal(envelope.bindingFence, '4')
   assert.equal(
     ExecutorCommandEnvelopeSchema.safeParse({
       ...envelope,
