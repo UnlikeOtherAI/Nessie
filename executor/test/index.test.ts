@@ -206,7 +206,7 @@ test('daemon commands bind COW drafts to one run and never write the paired root
     apiBaseUrl: 'https://api.example.test',
     descriptor: {
       limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
-      operationKeys: ['file.list', 'file.read', 'file.write', 'sandbox.stop'],
+      operationKeys: ['file.list', 'file.read', 'file.write', 'workspace.review', 'sandbox.stop'],
       profiles: ['workspace_sandbox'],
       revision: 1,
     },
@@ -232,6 +232,17 @@ test('daemon commands bind COW drafts to one run and never write the paired root
       { byteCount: 5, content: 'draft', path: 'draft.txt', success: true, truncated: false },
     )
     await assert.rejects(readFile(join(root, 'draft.txt'), 'utf8'), { code: 'ENOENT' })
+    const review = await executeExecutorCommand(stateDir, state, commandFor('workspace.review', {
+      args: {},
+      runId,
+    }))
+    assert.deepEqual(review, {
+      changeCount: 1,
+      changes: [{ byteCount: 5, kind: 'created', path: 'draft.txt' }],
+      manifestDigest: review.manifestDigest,
+      success: true,
+    })
+    assert.match(String(review.manifestDigest), /^sha256:[a-f0-9]{64}$/)
     assert.deepEqual(
       await executeExecutorCommand(stateDir, state, commandFor('sandbox.stop', { args: {}, runId })),
       { status: 'stopped', success: true },

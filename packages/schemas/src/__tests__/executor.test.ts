@@ -173,27 +173,34 @@ test('availability responses separate opaque candidates from safe explanations',
   assert.equal(response.explanations[0]?.reason, 'logical_tool_ungranted')
 })
 
-test('a direct executor run always names an agent, opaque choice, and one operation', () => {
+test('a direct executor run names an agent, opaque choice, and an exact operation bundle', () => {
   const request = ExecutorRunLaunchRequestSchema.parse({
     agentId: ids.agent,
     candidateHandle: 'candidate_handle_which_is_deliberately_opaque',
     content: 'Read nested/notes.txt and summarize the first paragraph.',
-    operationKey: 'file.read',
+    operationKeys: ['file.read', 'workspace.review'],
   })
   const response = ExecutorRunLaunchResponseSchema.parse({
-    binding: {
+    bindings: [{
       bindingId: ids.binding,
       capabilityRevision: 1,
       fence: '1',
-      operationKey: request.operationKey,
+      operationKey: request.operationKeys[0],
       runId: ids.run,
-    },
+    }, {
+      bindingId: ids.executor,
+      capabilityRevision: 1,
+      fence: '2',
+      operationKey: request.operationKeys[1],
+      runId: ids.run,
+    }],
     messageId: ids.user,
     runId: ids.run,
     taskId: ids.task,
   })
-  assert.equal(response.binding.operationKey, 'file.read')
-  assert.equal('executorId' in response.binding, false)
+  assert.deepEqual(response.bindings.map((binding) => binding.operationKey), ['file.read', 'workspace.review'])
+  assert.equal('executorId' in response.bindings[0]!, false)
+  assert.equal(ExecutorRunLaunchRequestSchema.safeParse({ ...request, operationKeys: ['file.read', 'file.read'] }).success, false)
 })
 
 test('command envelopes carry fences and digests rather than raw result data', () => {

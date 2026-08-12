@@ -19,6 +19,10 @@ export type ExecutorBindingInput = {
   runId: string
 }
 
+export type ExecutorBindingBundleInput = Omit<ExecutorBindingInput, 'operationKey'> & {
+  operationKeys: ExecutorOperationKey[]
+}
+
 export type ExecutorBindingRecord = {
   bindingId: string
   capabilityRevision: number
@@ -73,6 +77,7 @@ export const bindExecutorCandidateInTransaction = async (
   tx: Prisma.TransactionClient,
   input: ExecutorBindingInput,
   now = new Date(),
+  consumeCandidate = true,
 ): Promise<ExecutorBindingRecord> => {
   const candidateHandle = ExecutorCandidateHandleSchema.parse(input.candidateHandle)
   const operationKey = ExecutorOperationKeySchema.parse(input.operationKey)
@@ -224,12 +229,14 @@ export const bindExecutorCandidateInTransaction = async (
     return candidateError('CANDIDATE_INVALID', 'The executor choice is no longer authorized.')
   }
 
-  const consumed = await tx.executorAvailabilityCandidate.updateMany({
-    where: { consumedAt: null, handleDigest: candidateHandleDigest },
-    data: { consumedAt: now },
-  })
-  if (consumed.count !== 1) {
-    return candidateError('CANDIDATE_INVALID', 'The executor choice has already been used.')
+  if (consumeCandidate) {
+    const consumed = await tx.executorAvailabilityCandidate.updateMany({
+      where: { consumedAt: null, handleDigest: candidateHandleDigest },
+      data: { consumedAt: now },
+    })
+    if (consumed.count !== 1) {
+      return candidateError('CANDIDATE_INVALID', 'The executor choice has already been used.')
+    }
   }
   const fencedExecutor = await tx.executor.update({
     where: { id: candidate.executorId },
@@ -264,3 +271,45 @@ export const bindExecutorCandidate = async (
   now = new Date(),
 ): Promise<ExecutorBindingRecord> =>
   prisma.$transaction((tx) => bindExecutorCandidateInTransaction(tx, input, now))
+
+/**
+ * Consume one opaque availability choice for a small, exact operation bundle.
+ * The candidate is marked consumed only after every binding has revalidated;
+ * a failure rolls the whole transaction back, so no partial toolset can reach
+ * a run. The same candidate lock prevents two bundle launches from racing its
+ * one-use provenance.
+ */
+export const bindExecutorCandidateBundleInTransaction = async (
+  tx: Prisma.TransactionClient,
+  input: ExecutorBindingBundleInput,
+  now = new Date(),
+): Promise<ExecutorBindingRecord[]> => {
+  const candidateHandle = ExecutorCandidateHandleSchema.parse(input.candidateHandle)
+  const operationKeys = [...new Set(input.operationKeys.map((key) => ExecutorOperationKeySchema.parse(key)))]
+  if (operationKeys.length === 0 || operationKeys.length > 4 || operationKeys.length !== input.operationKeys.length) {
+    return candidateError('CANDIDATE_INVALID', 'The executor operation bundle is invalid.')
+  }
+  const candidateHandleDigest = executorCandidateHandleDigest(candidateHandle)
+  await tx.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${`executor-binding-bundle:${input.runId}:${candidateHandleDigest}`}, 0)
+    )
+  `)
+  const bindings: ExecutorBindingRecord[] = []
+  for (const operationKey of operationKeys) {
+    bindings.push(await bindExecutorCandidateInTransaction(
+      tx,
+      { ...input, candidateHandle, operationKey },
+      now,
+      false,
+    ))
+  }
+  const consumed = await tx.executorAvailabilityCandidate.updateMany({
+    where: { consumedAt: null, handleDigest: candidateHandleDigest },
+    data: { consumedAt: now },
+  })
+  if (consumed.count !== 1) {
+    return candidateError('CANDIDATE_INVALID', 'The executor choice has already been used.')
+  }
+  return bindings
+}

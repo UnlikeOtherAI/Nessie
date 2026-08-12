@@ -107,14 +107,14 @@ export const useLaunchExecutorRun = () => {
       agentId: string
       candidateHandle: string
       content: string
-      operationKey: ExecutorOperationKey
+      operationKeys: ExecutorOperationKey[]
       threadId: string
     }) => ExecutorRunLaunchResponseSchema.parse(
       await apiClient.post(`/api/threads/${input.threadId}/executor-runs`, {
         agentId: input.agentId,
         candidateHandle: input.candidateHandle,
         content: input.content,
-        operationKey: input.operationKey,
+        operationKeys: input.operationKeys,
       }),
     ),
     onSuccess: (_result, input) => {

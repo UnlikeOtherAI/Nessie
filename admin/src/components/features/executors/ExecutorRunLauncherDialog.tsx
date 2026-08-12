@@ -25,28 +25,36 @@ type ExecutorRunLauncherDialogProps = {
 type OperationOption = {
   description: string
   label: string
-  value: ExecutorOperationKey
+  operationKeys: ExecutorOperationKey[]
+  value: string
 }
 
-// The companion currently executes these two bounded, read-only workspace
-// operations. The launcher is deliberately data-driven so later reviewed
-// sandbox/browser/coding-session capabilities can be added without exposing
-// unimplemented daemon actions.
+// Each selection binds only the exact reviewed operation bundle. The companion
+// never infers a related privilege just because the user permitted a draft.
 const operationOptions: OperationOption[] = [
   {
     description: 'Let the selected agent inspect the names of files in its paired workspace.',
     label: 'List workspace files',
+    operationKeys: ['file.list'],
     value: 'file.list',
   },
   {
     description: 'Let the selected agent read a named file from its paired workspace.',
     label: 'Read a workspace file',
+    operationKeys: ['file.read'],
     value: 'file.read',
   },
   {
-    description: 'Let the selected agent create a draft in a copy-on-write workspace; it cannot alter the paired root.',
+    description: 'Let the selected agent create a copy-on-write draft; it cannot alter the paired root.',
     label: 'Write a sandbox draft',
+    operationKeys: ['file.write'],
     value: 'file.write',
+  },
+  {
+    description: 'Let the selected agent write a draft and produce a read-only change manifest for human review.',
+    label: 'Write and review a sandbox draft',
+    operationKeys: ['file.write', 'workspace.review'],
+    value: 'file.write+workspace.review',
   },
 ]
 
@@ -81,7 +89,7 @@ export const ExecutorRunLauncherDialog = ({
   } = useExecutorAvailability()
   const launch = useLaunchExecutorRun()
   const [agentId, setAgentId] = useState('')
-  const [operationKey, setOperationKey] = useState<ExecutorOperationKey>('file.list')
+  const [operationValue, setOperationValue] = useState('file.list')
   const [content, setContent] = useState('')
   const [candidates, setCandidates] = useState<ExecutorAvailabilityCandidate[]>([])
   const [explanation, setExplanation] = useState<string | null>(null)
@@ -93,7 +101,7 @@ export const ExecutorRunLauncherDialog = ({
   useEffect(() => {
     if (!open) return
     setAgentId(agents[0]?.id ?? '')
-    setOperationKey('file.list')
+    setOperationValue('file.list')
     setContent(initialContent)
     setCandidates([])
     setExplanation(null)
@@ -108,19 +116,24 @@ export const ExecutorRunLauncherDialog = ({
     setExplanation(null)
     setAvailabilityError(null)
     setSelectedHandle('')
+    const option = operationOptions.find((entry) => entry.value === operationValue)
+    if (!option) return
     void resolveAvailability({
       agentId,
-      operationKeys: [operationKey],
+      operationKeys: option.operationKeys,
       projectId,
     }).then((response) => {
       if (cancelled) return
-      setCandidates(response.candidates)
+      const eligible = response.candidates.filter((candidate) => (
+        option.operationKeys.every((key) => candidate.operationKeys.includes(key))
+      ))
+      setCandidates(eligible)
       setExplanation(
-        response.candidates.length === 0
+        eligible.length === 0
           ? response.explanations[0]?.reason.replaceAll('_', ' ') ?? 'No eligible executor is online.'
           : null,
       )
-      const onlyCandidate = response.candidates.length === 1 ? response.candidates[0] : undefined
+      const onlyCandidate = eligible.length === 1 ? eligible[0] : undefined
       if (onlyCandidate) {
         setSelectedHandle(onlyCandidate.handle)
       }
@@ -128,19 +141,21 @@ export const ExecutorRunLauncherDialog = ({
       if (!cancelled) setAvailabilityError(errorMessage(error))
     })
     return () => { cancelled = true }
-  }, [agentId, open, operationKey, projectId, resolveAvailability])
+  }, [agentId, open, operationValue, projectId, resolveAvailability])
 
-  const selectedOperation = operationOptions.find((option) => option.value === operationKey)
-  const canLaunch = Boolean(threadId && agentId && selectedHandle && content.trim()) && !launch.isPending
+  const selectedOperation = operationOptions.find((option) => option.value === operationValue)
+  const canLaunch = Boolean(
+    threadId && agentId && selectedHandle && content.trim() && selectedOperation,
+  ) && !launch.isPending
 
   const submit = async () => {
-    if (!canLaunch || !threadId) return
+    if (!canLaunch || !threadId || !selectedOperation) return
     try {
       await launch.mutateAsync({
         agentId,
         candidateHandle: selectedHandle,
         content: content.trim(),
-        operationKey,
+        operationKeys: selectedOperation.operationKeys,
         threadId,
       })
       onLaunched()
@@ -209,8 +224,8 @@ export const ExecutorRunLauncherDialog = ({
             <select
               aria-label="Executor capability"
               className="admin-input"
-              onChange={(event) => setOperationKey(event.target.value as ExecutorOperationKey)}
-              value={operationKey}
+              onChange={(event) => setOperationValue(event.target.value)}
+              value={operationValue}
             >
               {operationOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -224,7 +239,7 @@ export const ExecutorRunLauncherDialog = ({
             {isCheckingAvailability ? <p className="text-sm text-[var(--tx3)]">Checking eligibility…</p> : null}
             {availabilityError ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{availabilityError}</p> : null}
             {explanation ? <p className="text-sm text-[var(--tx3)]">No executor ready: {explanation}.</p> : null}
-            {candidates.map((candidate, index) => (
+              {candidates.map((candidate, index) => (
               <label
                 className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--sep)] px-3 py-2 text-sm text-[var(--tx2)] has-[:checked]:border-[var(--accent)] has-[:checked]:bg-[var(--accent-soft)]"
                 key={candidate.handle}

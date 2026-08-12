@@ -226,8 +226,8 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         actorContext,
         metadata: {
           agentId: launched.agentId,
-          bindingId: launched.binding.bindingId,
-          operationKey: launched.binding.operationKey,
+          bindingIds: launched.bindings.map((binding) => binding.bindingId),
+          operationKeys: launched.bindings.map((binding) => binding.operationKey),
           runId: launched.runId,
         },
         outcome: 'success',
@@ -235,7 +235,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         resourceType: 'executor_run',
       })
       return reply.code(201).send(createApiResponse(ExecutorRunLaunchSchema.parse({
-        binding: launched.binding,
+        bindings: launched.bindings,
         messageId: launched.message.id,
         runId: launched.runId,
         taskId: launched.taskId,

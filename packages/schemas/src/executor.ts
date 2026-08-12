@@ -88,6 +88,7 @@ export const ExecutorOperationKeySchema = z.enum([
   'browser.open',
   'browser.observe',
   'browser.act',
+  'workspace.review',
   'workspace.promote',
   'sandbox.stop',
   'coding.launch',
@@ -364,12 +365,19 @@ export const ExecutorRunLaunchRequestSchema = z.object({
   agentId: AgentIdSchema,
   candidateHandle: ExecutorCandidateHandleSchema,
   content: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_CHARS),
-  operationKey: ExecutorOperationKeySchema,
+  // Every operation in this bundle is independently re-authorized and bound
+  // under the same opaque candidate. This lets draft work and its read-only
+  // review stay on the same COW workspace without a model selecting a machine.
+  operationKeys: z.array(ExecutorOperationKeySchema).min(1).max(4).superRefine((value, context) => {
+    if (new Set(value).size !== value.length) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Operation keys must be unique.' })
+    }
+  }),
 }).strict()
 export type ExecutorRunLaunchRequest = z.infer<typeof ExecutorRunLaunchRequestSchema>
 
 export const ExecutorRunLaunchResponseSchema = z.object({
-  binding: ExecutorRunBindResponseSchema,
+  bindings: z.array(ExecutorRunBindResponseSchema).min(1).max(4),
   messageId: z.string().uuid(),
   runId: RunIdSchema,
   taskId: TaskIdSchema,

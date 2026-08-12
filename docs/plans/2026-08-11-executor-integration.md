@@ -28,19 +28,23 @@ structured terminal results are AES-256-GCM encrypted at rest, bounded to 64
 KiB, and linked to the existing queue job and `ToolCall`. The daemon receives a
 short-lived envelope only after the linked job is processing and must emit
 monotonic `accepted → started → result_acknowledged` receipts. The current
-companion executes `sandbox.stop` plus bounded `file.list`, `file.read`, and
-`file.write`. Reads start at one canonical, explicitly paired workspace root;
-writes create a bounded daemon-owned COW tree keyed to the server-provenanced
-run ID, and subsequent file reads/lists for that run use that same draft tree.
+companion executes `sandbox.stop` plus bounded `file.list`, `file.read`,
+`file.write`, and `workspace.review`. Reads start at one canonical, explicitly
+paired workspace root; writes create a bounded daemon-owned COW tree keyed to
+the server-provenanced run ID, and subsequent file reads/lists for that run use
+that same draft tree. Review returns a bounded hash-backed change manifest from
+the COW base, never a host-write command.
 
 The worker dispatch adapter is now enabled for a run only after a human has
 submitted an opaque availability handle. The normal launch path is
 `POST /api/threads/:threadId/executor-runs`: it atomically creates the human
-message, pending run, task, binding, and existing `run.execute` queue job for
-one bound channel agent. `POST /api/runs/:runId/executor-bind` remains the
-narrow internal/continuation binding seam for an already-created run. Neither
-endpoint accepts an executor id; the model receives only the bound, explicitly
-granted logical operation and never a selection parameter. Command creation
+message, pending run, task, bindings, and existing `run.execute` queue job for
+one bound channel agent. The launch accepts a small exact operation bundle;
+each member is independently revalidated against the same opaque candidate in
+one transaction. `POST /api/runs/:runId/executor-bind` remains the narrow
+internal/continuation binding seam for an already-created single operation.
+Neither endpoint accepts an executor id; the model receives only the bound,
+explicitly granted logical operations and never a selection parameter. Command creation
 reserves the normal `ToolCall`, creates an existing `executor.command` queue
 job, and blocks on the encrypted receipt.
 The queue handler retains its lease while the paired daemon works. Before
@@ -49,8 +53,8 @@ descriptor, operation and logical grants, lifecycle, and revision under the
 executor fence. An absent terminal receipt becomes `unknown_outcome` and is
 fatal/retry-safe, never a model-visible success; a late receipt for that exact
 already-delivered command can resolve it without issuing new work. The model
-schemas permit only bounded file operations and `sandbox.stop`; no host
-promotion schema is present.
+schemas permit only bounded file operations, `workspace.review`, and
+`sandbox.stop`; no host-promotion schema is present.
 
 It does **not** dispatch host promotion, commands, browser work, or coding
 sessions; those operations remain unavailable until their concrete isolated
@@ -58,10 +62,14 @@ backends are delivered. The paired root is a path-constrained local read
 boundary: it rejects traversal and every symbolic link, keeps a fixed canonical
 root in owner-only daemon state, bounds every listing/read result, and returns
 no host paths. `file.write` is narrower: it creates a COW draft in an
-owner-only per-run scratch directory, rejects links, special files and
-oversized source trees, and discards only that exact scratch directory on stop.
-It is dispatched only after descriptor review, the exact executor-operation
-grant, logical-tool grant, and a human-bound run choice. Until the micro-VM,
+owner-only per-run scratch directory, records a hash-only base manifest, rejects
+links, special files and oversized source trees, and discards only that exact
+scratch directory on stop. `workspace.review` can disclose at most 100 changed
+relative paths, kinds, byte counts, and a digest after the same exact grants,
+but fails closed if JSON encoding would exceed the command-receipt cap; it
+cannot mutate the host. These operations are dispatched only after descriptor
+review, the exact executor-operation grant, logical-tool grant, and a
+human-bound run choice. Until the micro-VM,
 forced egress, and reviewed promotion protocol exist, the paired host root
 remains read-only.
 Neither does it expose the planned availability union with connectors.
@@ -474,7 +482,7 @@ Initial operation families are deliberately narrow and schema-first:
 
 | Profile | Operations | Notes |
 | --- | --- | --- |
-| Workspace sandbox | `file.list`, `file.read`, `file.write`, `command.run`, `browser.open`, `browser.observe`, `browser.act`, `workspace.promote`, `sandbox.stop` | Paths and command argv are validated locally for every call. Browser actions run in the executor's isolated profile; promotion is a separate host-write operation. |
+| Workspace sandbox | `file.list`, `file.read`, `file.write`, `workspace.review`, `command.run`, `browser.open`, `browser.observe`, `browser.act`, `workspace.promote`, `sandbox.stop` | Paths and command argv are validated locally for every call. `workspace.review` is a bounded COW delta only. Browser actions run in the executor's isolated profile; promotion is a separate host-write operation. |
 | Coding session | `coding.launch`, `coding.attach`, `coding.observe`, `coding.prompt`, `coding.interrupt`, `coding.close` | `prompt` and `interrupt` are control operations; they are never implicit in observation. |
 
 Each approved **logical operation** becomes one stable, scoped

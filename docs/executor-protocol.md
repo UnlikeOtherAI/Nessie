@@ -232,37 +232,45 @@ at rest; the database retains only bounded ciphertext and canonical digests.
 The daemon sends each receipt under a distinct signed `receipt` domain, and the
 server recomputes the supplied terminal result digest before accepting it.
 
-The initial local backend has `file.list`, `file.read`, `file.write`, and
-`sandbox.stop`. Pairing requires one existing absolute workspace directory; the
-daemon stores only its canonical path in owner-only local state. File requests
-accept only relative paths, reject traversal and every symbolic-link component,
-re-check that the configured root is still an ordinary directory, and return
-bounded structured results without a host path. `file.write` first creates a
-bounded daemon-owned COW tree under the secure state directory using the
-server-provenanced run ID; it never opens the paired root for write, and later
-file reads/lists for that run use the draft tree. It is not yet a micro-VM or
-network isolation boundary. No host promotion, command, browser, or coding
-operation is advertised until its isolated backend is implemented and reviewed.
+The initial local backend has `file.list`, `file.read`, `file.write`,
+`workspace.review`, and `sandbox.stop`. Pairing requires one existing absolute
+workspace directory; the daemon stores only its canonical path in owner-only
+local state. File requests accept only relative paths, reject traversal and
+every symbolic-link component, re-check that the configured root is still an
+ordinary directory, and return bounded structured results without a host path.
+`file.write` first creates a bounded daemon-owned COW tree under the secure
+state directory using the server-provenanced run ID; it never opens the paired
+root for write, and later file reads/lists for that run use the draft tree.
+`workspace.review` emits at most 100 changed relative paths with kind and byte
+count plus a canonical manifest digest only when the fully encoded result fits
+the command receipt cap; otherwise it fails closed. It never reads the paired
+root for write or applies a change. It is not yet a micro-VM or network isolation
+boundary. No host promotion, command, browser, or coding operation is
+advertised until its isolated backend is implemented and reviewed.
 
 The daemon's owner-only runtime directory already contains a per-run COW
 substrate for that later backend. It atomically snapshots a paired root into a
 daemon-owned scratch tree, rejecting every symbolic link, hard-linked file,
 special file, and source tree over the file/byte limits. Scratch writes can
 never touch the paired host root, and `sandbox.stop` can remove only the exact
-derived run directory. `file.write` is the only advertised consumer of this
-substrate after normal descriptor and grant review. It is not a substitute for
-the required guest VM/forced egress and has no promotion operation; it gives
-draft work a tested no-host-write base.
+derived run directory. `file.write` and the read-only `workspace.review` are
+the only advertised consumers of this substrate after normal descriptor and
+grant review. The daemon records a hash-only base manifest alongside the draft,
+so review can report its exact COW delta without trusting a mutable host tree.
+It is not a substitute for the required guest VM/forced egress and has no
+promotion operation; it gives draft work a tested no-host-write base.
 
 Before the worker adds an executor logical schema to a model request, a human
 must bind one opaque candidate to the exact run. The user-facing launch endpoint
 `POST /api/threads/:threadId/executor-runs` creates the human message, pending
-run, task, binding, and `run.execute` job in one transaction for one selected
+run, task, bindings, and `run.execute` job in one transaction for one selected
 bound channel agent. It accepts an agent id, one opaque candidate handle,
-content, and one operation key—but never an executor id. The older
-`POST /api/runs/:runId/executor-bind` route is limited to binding an
-already-created run. Both paths use the same fenced binding helper and the
-schema carries no executor id; dispatch only sees that binding.
+content, and a small exact operation bundle—but never an executor id. Every
+operation is independently rechecked and bound before the candidate is
+consumed, so a failed member rolls back the complete bundle. The older
+`POST /api/runs/:runId/executor-bind` route is limited to binding one
+already-created run operation. Both paths use the same fenced binding helper
+and the schema carries no executor id; dispatch only sees that binding.
 The worker creates the regular `ToolCall` before command dispatch and completes
 that same row when the terminal receipt returns. It also creates the existing
 `executor.command` queue job; its worker subscription holds the ordinary queue

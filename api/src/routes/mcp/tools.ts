@@ -127,7 +127,7 @@ const isExecutorManagedTool = async (
 ): Promise<boolean> => Boolean(await prisma.toolRegistryEntry.findFirst({
   where: {
     id: toolRegistryEntryId,
-    organizationId,
+    OR: [{ organizationId }],
     source: 'executor',
   },
   select: { id: true },

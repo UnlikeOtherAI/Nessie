@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { bindExecutorCandidateInTransaction } from '@nessie/executor-manage'
+import { bindExecutorCandidateBundleInTransaction } from '@nessie/executor-manage'
 import { enqueueRunExecution, isThreadRunSlotBusy } from '@nessie/db'
 import { followReplyThread } from '@nessie/runtime'
 import {
@@ -22,13 +22,13 @@ export type ExecutorRunLaunchResult =
   | {
     kind: 'launched'
     agentId: string
-    binding: {
+    bindings: Array<{
       bindingId: string
       capabilityRevision: number
       fence: string
       operationKey: ExecutorOperationKey
       runId: string
-    }
+    }>
     channelId: string
     message: ReturnType<typeof mapMessageRecord>
     runId: string
@@ -47,7 +47,7 @@ export const launchExecutorRun = async (
     agentId: string
     candidateHandle: string
     content: string
-    operationKey: ExecutorOperationKey
+    operationKeys: ExecutorOperationKey[]
     threadId: string
   },
 ): Promise<ExecutorRunLaunchResult> => {
@@ -80,7 +80,7 @@ export const launchExecutorRun = async (
     const message = await tx.message.create({
       data: {
         content: input.content,
-        metadata: { executorLaunch: { operationKey: input.operationKey } },
+        metadata: { executorLaunch: { operationKeys: input.operationKeys } },
         role: 'user',
         threadId: thread.id,
         userId: actorContext.actor.actorId,
@@ -107,10 +107,10 @@ export const launchExecutorRun = async (
       },
       select: { id: true },
     })
-    const binding = await bindExecutorCandidateInTransaction(tx, {
+    const bindings = await bindExecutorCandidateBundleInTransaction(tx, {
       actorUserId: actorContext.actor.actorId,
       candidateHandle: input.candidateHandle,
-      operationKey: input.operationKey as ExecutorOperationKey,
+      operationKeys: input.operationKeys,
       runId: run.id,
     })
     const queued = await enqueueRunExecution(
@@ -135,13 +135,13 @@ export const launchExecutorRun = async (
 
     return {
       agentId: agent.id,
-      binding: {
+      bindings: bindings.map((binding) => ({
         bindingId: binding.bindingId,
         capabilityRevision: binding.capabilityRevision,
         fence: binding.fence,
         operationKey: binding.operationKey,
         runId: binding.runId,
-      },
+      })),
       channelId: thread.channel.id,
       kind: 'launched' as const,
       message: mapMessageRecord(message, 0),

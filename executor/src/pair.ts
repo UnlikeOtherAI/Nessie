@@ -26,7 +26,7 @@ const initialLocalPolicy = {
   limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
   // File writes land in the daemon-owned COW scratch workspace. The paired
   // root stays read-only: there is still no shell, browser, or host promotion.
-  operationKeys: ['file.list', 'file.read', 'file.write', 'sandbox.stop'],
+  operationKeys: ['file.list', 'file.read', 'file.write', 'workspace.review', 'sandbox.stop'],
   profiles: ['workspace_sandbox'],
   revision: 1,
 }

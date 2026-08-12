@@ -71,6 +71,8 @@ const descriptorFor = (operationKey: string): ToolSchemaDescriptor | null => {
           required: ['content', 'path'],
           type: 'object',
         }
+      case 'workspace.review':
+        return { additionalProperties: false, properties: {}, type: 'object' }
       case 'sandbox.stop':
         return { additionalProperties: false, properties: {}, type: 'object' }
       default:

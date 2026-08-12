@@ -20,6 +20,7 @@ const logicalTools: ExecutorLogicalTool[] = [
   { key: 'browser.open', label: 'Open sandbox browser', description: 'Open a URL in an isolated executor browser.' },
   { key: 'browser.observe', label: 'Observe sandbox browser', description: 'Observe bounded state from an isolated executor browser.' },
   { key: 'browser.act', label: 'Act in sandbox browser', description: 'Perform an approved action in an isolated executor browser.' },
+  { key: 'workspace.review', label: 'Review sandbox changes', description: 'Produce a bounded, read-only manifest of copy-on-write workspace changes.' },
   { key: 'workspace.promote', label: 'Promote workspace changes', description: 'Promote a reviewed workspace change back to its approved host root.' },
   { key: 'sandbox.stop', label: 'Stop executor sandbox', description: 'Stop an executor sandbox or session.' },
   { key: 'coding.launch', label: 'Launch coding session', description: 'Launch a dedicated executor coding session.' },

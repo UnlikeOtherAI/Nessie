@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 
 import {
   bindExecutorCandidate,
+  bindExecutorCandidateBundleInTransaction,
   executorCandidateHandleDigest,
 } from '../src/index.js'
 
@@ -19,7 +20,7 @@ const handle = 'a'.repeat(43)
 const descriptor = {
   limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
   localPolicyDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  operationKeys: ['sandbox.stop'],
+  operationKeys: ['file.read', 'sandbox.stop', 'workspace.review'],
   platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
   profiles: ['workspace_sandbox'],
   protocolVersion: 1,
@@ -52,7 +53,7 @@ const candidate = {
   },
   executorId,
   expiresAt: new Date('2026-08-12T12:05:00.000Z'),
-  operationKeys: ['sandbox.stop'],
+  operationKeys: ['file.read', 'sandbox.stop', 'workspace.review'],
   runId,
 }
 
@@ -61,7 +62,15 @@ const bindingPrisma = (state: { authorizationRevision?: number; consumed?: numbe
   const client = {
     $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(client),
     $executeRaw: async () => 1,
-    agent: { findFirst: async () => ({ toolPolicy: { 'executor.sandbox.stop': true } }) },
+    agent: {
+      findFirst: async () => ({
+        toolPolicy: {
+          'executor.file.read': true,
+          'executor.sandbox.stop': true,
+          'executor.workspace.review': true,
+        },
+      }),
+    },
     executor: {
       findUnique: async () => ({
         ...executor,
@@ -137,4 +146,21 @@ test('binding rejects a candidate after its authorization revision changes', asy
     ),
     { code: 'EXECUTOR_CANDIDATE_INVALID' },
   )
+})
+
+test('a candidate binds an exact operation bundle before one final consume', async () => {
+  const state: { consumed?: number } = {}
+  const result = await bindExecutorCandidateBundleInTransaction(
+    bindingPrisma(state) as unknown as Prisma.TransactionClient,
+    {
+      actorUserId,
+      candidateHandle: handle,
+      operationKeys: ['file.read', 'workspace.review'],
+      runId,
+    },
+    new Date('2026-08-12T12:00:00.000Z'),
+  )
+
+  assert.deepEqual(result.map((binding) => binding.operationKey), ['file.read', 'workspace.review'])
+  assert.equal(state.consumed, 1)
 })

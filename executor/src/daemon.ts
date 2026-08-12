@@ -11,6 +11,7 @@ import { executorApi } from './api-client.js'
 import { signedDescriptorForState } from './pair.js'
 import {
   stopSandboxWorkspace,
+  reviewSandboxWorkspace,
   workspaceForRun,
   writeSandboxFile,
 } from './sandbox-workspace.js'
@@ -145,6 +146,13 @@ export const executeExecutorCommand = async (
   if (command.operationKey === 'file.write') {
     try {
       return await writeSandboxFile(stateDir, state.workspaceRoot, runId.data, command.payload.args)
+    } catch (error) {
+      return workspaceFailure(error)
+    }
+  }
+  if (command.operationKey === 'workspace.review') {
+    try {
+      return await reviewSandboxWorkspace(stateDir, runId.data)
     } catch (error) {
       return workspaceFailure(error)
     }

@@ -36,12 +36,13 @@ test('only operations already bound to this run and explicitly granted to its ag
   assert.deepEqual([...toolset.handledNames], ['executor.sandbox.stop'])
 })
 
-test('the read-only backend exposes bounded schemas and withholds unimplemented operations', async () => {
+test('the bounded backend exposes reviewed workspace schemas and withholds unimplemented operations', async () => {
   const prisma = {
     executorBinding: {
       findMany: async () => [
         { id: '00000000-0000-4000-8000-000000000004', operationKey: 'file.read' },
         { id: '00000000-0000-4000-8000-000000000005', operationKey: 'command.run' },
+        { id: '00000000-0000-4000-8000-000000000006', operationKey: 'workspace.review' },
       ],
     },
     toolRegistryEntry: {
@@ -53,7 +54,7 @@ test('the read-only backend exposes bounded schemas and withholds unimplemented 
 
   const toolset = await buildExecutorToolset(prisma, {
     agentId,
-    agentToolPolicy: { 'executor.command.run': true, 'executor.file.read': true },
+    agentToolPolicy: { 'executor.command.run': true, 'executor.file.read': true, 'executor.workspace.review': true },
     encryptionSecret: 'test-secret',
     organizationId,
     runId,
@@ -71,5 +72,9 @@ test('the read-only backend exposes bounded schemas and withholds unimplemented 
       type: 'object',
     },
     toolName: 'executor.file.read',
+  }, {
+    description: 'Produce a bounded, read-only manifest of copy-on-write workspace changes.',
+    inputSchema: { additionalProperties: false, properties: {}, type: 'object' },
+    toolName: 'executor.workspace.review',
   }])
 })

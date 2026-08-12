@@ -14,7 +14,9 @@ export {
 export { executorCandidateHandleDigest } from './executor-candidate-handle.js'
 export {
   bindExecutorCandidate,
+  bindExecutorCandidateBundleInTransaction,
   bindExecutorCandidateInTransaction,
+  type ExecutorBindingBundleInput,
   type ExecutorBindingInput,
   type ExecutorBindingRecord,
 } from './executor-binding.js'

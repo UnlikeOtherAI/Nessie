@@ -1,9 +1,13 @@
 import { constants } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, open, readdir, rename, rm } from 'node:fs/promises'
 import { basename, dirname, relative, resolve, sep } from 'node:path'
 
-import { ExecutorFileWriteArgumentsSchema, RunIdSchema } from '@nessie/schemas'
+import {
+  canonicalExecutorJson,
+  ExecutorFileWriteArgumentsSchema,
+  RunIdSchema,
+} from '@nessie/schemas'
 
 import { ensureExecutorRuntimeDirectory } from './state-store.js'
 import {
@@ -14,12 +18,24 @@ import {
 } from './workspace-paths.js'
 import { configureWorkspaceRoot } from './workspace.js'
 
-const MAX_SOURCE_BYTES = 512 * 1024 * 1024
+// A draft never has more storage than the snapshot it started from. Keeping
+// these limits equal avoids copying a source tree that can never accept a
+// write, while still leaving ordinary read-only operations unconstrained by
+// the COW cap.
+const MAX_SOURCE_BYTES = 128 * 1024 * 1024
 const MAX_SOURCE_FILES = 10_000
-const MAX_SCRATCH_BYTES = 128 * 1024 * 1024
+const MAX_SCRATCH_BYTES = MAX_SOURCE_BYTES
+const MAX_REVIEW_CHANGES = 100
+// Command receipts are capped at 64 KiB server-side. Keep margin for JSON
+// escaping of otherwise valid local filenames and never turn a large review
+// into an ambiguous terminal receipt.
+const MAX_REVIEW_RESULT_BYTES = 60 * 1024
 const COPY_BUFFER_BYTES = 64 * 1024
 
 type CopyBudget = { bytes: number; files: number }
+type ManifestEntry = { byteCount: number; digest: string }
+type BaseManifest = { files: Record<string, ManifestEntry>; version: 1 }
+type WorkspaceChange = ManifestEntry & { kind: 'created' | 'deleted' | 'modified'; path: string }
 
 const missing = (error: unknown): boolean =>
   Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
@@ -44,14 +60,20 @@ const sandboxPaths = async (stateDir: string, runId: string) => {
   if (!isInsideDirectory(parent, root) || basename(root) !== parsedRunId) {
     throw new WorkspacePathError('The sandbox identity is invalid.')
   }
-  return { parent, root, workspace: resolve(root, 'workspace') }
+  return { baseManifest: resolve(root, 'base-manifest.json'), parent, root, workspace: resolve(root, 'workspace') }
 }
+
+const digest = (value: Buffer | string): string =>
+  `sha256:${createHash('sha256').update(value).digest('hex')}`
+
+const relativeManifestPath = (workspace: string, path: string): string =>
+  relative(workspace, path).split(sep).join('/')
 
 const copyFileWithoutFollowingLinks = async (
   source: string,
   destination: string,
   budget: CopyBudget,
-): Promise<void> => {
+): Promise<ManifestEntry> => {
   const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const info = await sourceHandle.stat()
@@ -70,11 +92,13 @@ const copyFileWithoutFollowingLinks = async (
     )
     try {
       const buffer = Buffer.allocUnsafe(COPY_BUFFER_BYTES)
+      const hasher = createHash('sha256')
       let position = 0
       while (true) {
         const { bytesRead } = await sourceHandle.read(buffer, 0, buffer.length, position)
         if (bytesRead === 0) break
         let written = 0
+        hasher.update(buffer.subarray(0, bytesRead))
         while (written < bytesRead) {
           const write = await destinationHandle.write(buffer, written, bytesRead - written, position + written)
           written += write.bytesWritten
@@ -82,6 +106,7 @@ const copyFileWithoutFollowingLinks = async (
         position += bytesRead
       }
       await destinationHandle.sync()
+      return { byteCount: info.size, digest: `sha256:${hasher.digest('hex')}` }
     } finally {
       await destinationHandle.close()
     }
@@ -94,6 +119,8 @@ const copyTreeWithoutLinks = async (
   source: string,
   destination: string,
   budget: CopyBudget,
+  baseFiles: Record<string, ManifestEntry>,
+  sourceRoot: string,
 ): Promise<void> => {
   const info = await lstat(source)
   if (info.isSymbolicLink()) {
@@ -103,15 +130,144 @@ const copyTreeWithoutLinks = async (
     await mkdir(destination, { mode: 0o700 })
     const entries = await readdir(source, { withFileTypes: true })
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      await copyTreeWithoutLinks(resolve(source, entry.name), resolve(destination, entry.name), budget)
+      await copyTreeWithoutLinks(
+        resolve(source, entry.name),
+        resolve(destination, entry.name),
+        budget,
+        baseFiles,
+        sourceRoot,
+      )
     }
     return
   }
   if (info.isFile()) {
-    await copyFileWithoutFollowingLinks(source, destination, budget)
+    baseFiles[relativeManifestPath(sourceRoot, source)] = await copyFileWithoutFollowingLinks(
+      source,
+      destination,
+      budget,
+    )
     return
   }
   throw new WorkspacePathError('Sandbox sources may not contain special files.')
+}
+
+const parseBaseManifest = (value: unknown): BaseManifest => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new WorkspacePathError('The executor sandbox base manifest is invalid.')
+  }
+  const manifest = value as { files?: unknown; version?: unknown }
+  if (manifest.version !== 1 || !manifest.files || typeof manifest.files !== 'object' || Array.isArray(manifest.files)) {
+    throw new WorkspacePathError('The executor sandbox base manifest is invalid.')
+  }
+  const files: Record<string, ManifestEntry> = {}
+  for (const [path, entry] of Object.entries(manifest.files)) {
+    if (
+      path.length === 0
+      || path.length > 1_024
+      || path.includes('..')
+      || !entry
+      || typeof entry !== 'object'
+      || Array.isArray(entry)
+      || !Number.isInteger((entry as ManifestEntry).byteCount)
+      || (entry as ManifestEntry).byteCount < 0
+      || !/^sha256:[a-f0-9]{64}$/.test((entry as ManifestEntry).digest)
+    ) {
+      throw new WorkspacePathError('The executor sandbox base manifest is invalid.')
+    }
+    files[path] = entry as ManifestEntry
+    if (Object.keys(files).length > MAX_SOURCE_FILES) {
+      throw new WorkspacePathError('The executor sandbox base manifest is invalid.')
+    }
+  }
+  return { files, version: 1 }
+}
+
+const readBaseManifest = async (path: string): Promise<BaseManifest> => {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    const info = await handle.stat()
+    if (!info.isFile() || info.nlink > 1 || info.size > 4 * 1024 * 1024) {
+      throw new WorkspacePathError('The executor sandbox base manifest is invalid.')
+    }
+    const bytes = Buffer.allocUnsafe(info.size)
+    let offset = 0
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset)
+      if (bytesRead === 0) break
+      offset += bytesRead
+    }
+    if (offset !== bytes.byteLength) throw new WorkspacePathError('The executor sandbox base manifest is invalid.')
+    try {
+      return parseBaseManifest(JSON.parse(bytes.toString('utf8')))
+    } catch (error) {
+      if (error instanceof WorkspacePathError) throw error
+      throw new WorkspacePathError('The executor sandbox base manifest is invalid.')
+    }
+  } finally {
+    await handle.close()
+  }
+}
+
+const workspaceManifest = async (workspace: string): Promise<Record<string, ManifestEntry>> => {
+  const files: Record<string, ManifestEntry> = {}
+  const walk = async (path: string): Promise<void> => {
+    const info = await lstat(path)
+    if (info.isSymbolicLink()) {
+      throw new WorkspacePathError('Sandbox workspaces may not contain symbolic links.')
+    }
+    if (info.isDirectory()) {
+      const entries = await readdir(path, { withFileTypes: true })
+      for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+        await walk(resolve(path, entry.name))
+      }
+      return
+    }
+    if (!info.isFile() || info.nlink > 1) {
+      throw new WorkspacePathError('Sandbox workspaces may contain only non-linked regular files.')
+    }
+    if (Object.keys(files).length >= MAX_SOURCE_FILES) {
+      throw new WorkspacePathError('The sandbox workspace exceeds its storage limit.')
+    }
+    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const current = await handle.stat()
+      if (!current.isFile() || current.nlink > 1 || current.size !== info.size) {
+        throw new WorkspacePathError('The sandbox workspace changed during review.')
+      }
+      const hasher = createHash('sha256')
+      const buffer = Buffer.allocUnsafe(COPY_BUFFER_BYTES)
+      let offset = 0
+      while (offset < current.size) {
+        const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, offset)
+        if (bytesRead === 0) throw new WorkspacePathError('The sandbox workspace changed during review.')
+        hasher.update(buffer.subarray(0, bytesRead))
+        offset += bytesRead
+      }
+      files[relativeManifestPath(workspace, path)] = {
+        byteCount: current.size,
+        digest: `sha256:${hasher.digest('hex')}`,
+      }
+    } finally {
+      await handle.close()
+    }
+  }
+  await walk(workspace)
+  return files
+}
+
+const changesFrom = (base: BaseManifest, current: Record<string, ManifestEntry>): WorkspaceChange[] => {
+  const paths = [...new Set([...Object.keys(base.files), ...Object.keys(current)])].sort()
+  const changes: WorkspaceChange[] = []
+  for (const path of paths) {
+    const before = base.files[path]
+    const after = current[path]
+    if (!before && after) changes.push({ ...after, kind: 'created', path })
+    else if (before && !after) changes.push({ ...before, kind: 'deleted', path })
+    else if (before && after && (before.digest !== after.digest || before.byteCount !== after.byteCount)) {
+      changes.push({ ...after, kind: 'modified', path })
+    }
+  }
+  return changes
 }
 
 const scratchUsage = async (root: string): Promise<CopyBudget> => {
@@ -161,7 +317,15 @@ export const ensureSandboxWorkspace = async (
     }
     await mkdir(staging, { mode: 0o700 })
     try {
-      await copyTreeWithoutLinks(source, resolve(staging, 'workspace'), { bytes: 0, files: 0 })
+      const base: BaseManifest = { files: {}, version: 1 }
+      await copyTreeWithoutLinks(
+        source,
+        resolve(staging, 'workspace'),
+        { bytes: 0, files: 0 },
+        base.files,
+        source,
+      )
+      await writeAll(resolve(staging, 'base-manifest.json'), canonicalExecutorJson(base))
       await rename(staging, paths.root)
     } catch (copyError) {
       await rm(staging, { force: true, recursive: true })
@@ -196,6 +360,49 @@ export const workspaceForRun = async (
     }
     throw error
   }
+}
+
+/**
+ * Returns the exact bounded delta between a run's COW snapshot and its draft.
+ * This is a review-only primitive: it never opens or mutates the paired root.
+ */
+export const reviewSandboxWorkspace = async (
+  stateDir: string,
+  runId: string,
+): Promise<Record<string, unknown>> => {
+  const paths = await sandboxPaths(stateDir, runId)
+  await assertOrdinaryDirectory(paths.root, 'The executor sandbox is unavailable.')
+  const workspace = await configureOrdinaryDirectory(paths.workspace, 'The executor sandbox workspace')
+  const [base, current] = await Promise.all([
+    readBaseManifest(paths.baseManifest),
+    workspaceManifest(workspace),
+  ])
+  const changes = changesFrom(base, current)
+  if (changes.length > MAX_REVIEW_CHANGES) {
+    return {
+      changeCount: changes.length,
+      code: 'EXECUTOR_REVIEW_TOO_LARGE',
+      success: false,
+    }
+  }
+  const manifest = {
+    changes: changes.map(({ byteCount, kind, path }) => ({ byteCount, kind, path })),
+    runId,
+  }
+  const result = {
+    changeCount: changes.length,
+    changes: manifest.changes,
+    manifestDigest: digest(canonicalExecutorJson(manifest)),
+    success: true,
+  }
+  if (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_REVIEW_RESULT_BYTES) {
+    return {
+      changeCount: changes.length,
+      code: 'EXECUTOR_REVIEW_TOO_LARGE',
+      success: false,
+    }
+  }
+  return result
 }
 
 const ensureWriteParents = async (
