@@ -187,6 +187,15 @@ request ID, command, bootstrap credential, or policy field. The host must
 reject a malformed, non-canonical, short, long, or unrecognized-version frame
 before it forwards a byte to the Unix-socket CONNECT gateway.
 
+The native core now has the complementary per-VM egress listener on the
+separate virtio port. It permits only 1–16 concurrent admitting/active tunnels,
+constant-time checks the supplied derived proof, and hands the resulting
+descriptor to a VM-bound callback which owns closure. It never interprets the
+tunnel as control traffic, resolves an origin, or opens a host/network socket.
+It remains deliberately unconnected while the guest-local proxy and its
+single-purpose bridge to the Unix CONNECT gateway are still absent, so this is
+not browser/coding availability.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

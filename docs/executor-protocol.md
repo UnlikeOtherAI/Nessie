@@ -392,7 +392,8 @@ placed in an egress frame, or retained after that hello. The derived value is
 kept only by the guest proxy and the matching host VM broker, which use it to
 authenticate a dedicated guest-initiated tunnel before the broker can connect
 to the owner-only local CONNECT gateway. This derivation is checked in on both
-the Swift host and Linux guest, but no egress listener or browser descriptor
+the Swift host and Linux guest. The host now has the corresponding per-VM
+virtio listener, but no guest proxy, gateway bridge, or browser descriptor
 exists yet.
 
 That future tunnel begins with exactly 48 bytes: ASCII `NEXG`, byte version
@@ -400,7 +401,12 @@ That future tunnel begins with exactly 48 bytes: ASCII `NEXG`, byte version
 prelude, not a control envelope: it has no request ID, payload, operation,
 policy, or bootstrap credential. Any short, long, unknown-version, malformed,
 or non-canonical prelude is rejected before its remaining bytes could reach the
-daemon's CONNECT gateway.
+daemon's CONNECT gateway. The listener rejects a wrong but well-formed session
+proof in constant time, has a maximum of 16 active or admitting tunnels, and
+gives an authenticated descriptor only to its VM-bound bridge callback. It
+does not parse HTTP, resolve a name, create a TCP connection, or point at a
+generic host socket; the descriptor is closed when its exact tunnel owner
+releases it.
 
 `executor/guest` is the first guest image component: a statically linked Linux
 arm64 `/init`, with no shell, package manager, host mount, or network client.

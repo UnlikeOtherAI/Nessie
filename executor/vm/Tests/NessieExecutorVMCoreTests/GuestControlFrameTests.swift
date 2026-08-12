@@ -64,6 +64,65 @@ func guestEgressTunnelPrelude() throws {
   }
 }
 
+@Test("guest egress admission releases only a verified tunnel descriptor")
+func guestEgressAdmissionSession() throws {
+  var descriptors = [Int32](repeating: -1, count: 2)
+  guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else {
+    throw NSError(domain: "GuestEgressTest", code: 0)
+  }
+  let host = descriptors[0]
+  let guest = descriptors[1]
+  defer {
+    close(host)
+    close(guest)
+  }
+
+  let authenticated = DispatchSemaphore(value: 0)
+  let terminated = DispatchSemaphore(value: 0)
+  let token = "AN43IKRZz4QAd6L6iE-D9mklr0Pm6SEq9jiiB9PAVPo"
+  let session = try GuestEgressTunnelSession(
+    fileDescriptor: host,
+    expectedSessionToken: token,
+    onAuthenticated: { authenticated.signal() },
+    onTerminated: { _ in terminated.signal() },
+  )
+  try session.start()
+  try writeGuestBytes(GuestEgressTunnelCodec.encodePrelude(sessionToken: token), to: guest)
+  #expect(authenticated.wait(timeout: .now() + 1) == .success)
+  session.stop()
+  #expect(terminated.wait(timeout: .now() + 0.05) == .timedOut)
+}
+
+@Test("guest egress admission rejects a different canonical session proof")
+func guestEgressAdmissionRejectsWrongToken() throws {
+  var descriptors = [Int32](repeating: -1, count: 2)
+  guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else {
+    throw NSError(domain: "GuestEgressTest", code: 1)
+  }
+  let host = descriptors[0]
+  let guest = descriptors[1]
+  defer {
+    close(host)
+    close(guest)
+  }
+
+  let authenticated = DispatchSemaphore(value: 0)
+  let terminated = DispatchSemaphore(value: 0)
+  let session = try GuestEgressTunnelSession(
+    fileDescriptor: host,
+    expectedSessionToken: "AN43IKRZz4QAd6L6iE-D9mklr0Pm6SEq9jiiB9PAVPo",
+    onAuthenticated: { authenticated.signal() },
+    onTerminated: { _ in terminated.signal() },
+  )
+  try session.start()
+  try writeGuestBytes(
+    GuestEgressTunnelCodec.encodePrelude(sessionToken: String(repeating: "A", count: 43)),
+    to: guest,
+  )
+  #expect(terminated.wait(timeout: .now() + 1) == .success)
+  #expect(authenticated.wait(timeout: .now() + 0.05) == .timedOut)
+}
+
 @Test("guest control rejects malformed or oversized length-delimited input")
 func guestControlFrameBounds() throws {
   #expect(throws: GuestControlFrameError.self) {
@@ -197,7 +256,11 @@ func guestControlHostSession() throws {
 }
 
 private func writeGuestFrame(_ envelope: GuestControlEnvelope, to descriptor: Int32) throws {
-  var remaining = try GuestControlFrameCodec.encode(envelope)
+  try writeGuestBytes(GuestControlFrameCodec.encode(envelope), to: descriptor)
+}
+
+private func writeGuestBytes(_ value: Data, to descriptor: Int32) throws {
+  var remaining = value
   while !remaining.isEmpty {
     let count = remaining.withUnsafeBytes { bytes in
       Darwin.write(descriptor, bytes.baseAddress, bytes.count)
