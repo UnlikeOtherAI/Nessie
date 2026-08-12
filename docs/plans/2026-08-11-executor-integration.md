@@ -237,6 +237,14 @@ entrypoints not declared executable. This is an artifact verifier only: it
 never executes a host file, searches `PATH`, or changes descriptor availability
 until a guest mount and in-guest digest recheck are delivered.
 
+The session helper now requires that verified bundle and passes only its
+owner-private root into a distinct read-only `nessie-runtime` virtiofs share.
+The guest mounts it at `/runtime` with `nosuid,nodev` (not `noexec`, because the
+verified browser/tmux/CLI must run there), while the separate writable COW
+share remains `nodev,nosuid,noexec`. A missing explicit runtime mount fails
+before control hello. Operations remain unavailable until an in-guest manifest
+check and typed process backend are added.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

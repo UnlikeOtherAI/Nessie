@@ -70,6 +70,15 @@ func TestEgressMustBeExplicitlyRequestedByTheHostBootCommand(t *testing.T) {
 	}
 }
 
+func TestRuntimeMustBeExplicitlyRequestedByTheHostBootCommand(t *testing.T) {
+	if !runtimeRequested("console=hvc0 rdinit=/init nessie.runtime=1") {
+		t.Fatal("expected explicit runtime command-line flag")
+	}
+	if runtimeRequested("console=hvc0 rdinit=/init nessie.runtime=10") {
+		t.Fatal("accepted a lookalike runtime command-line flag")
+	}
+}
+
 func TestGuestDropsToTheCOWOwnerOrAnUnprivilegedFallback(t *testing.T) {
 	withoutWorkspace, err := selectGuestIdentity(false, 0, 0)
 	if err != nil || withoutWorkspace.userID != guestFallbackID || withoutWorkspace.groupID != guestFallbackID {

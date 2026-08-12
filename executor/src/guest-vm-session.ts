@@ -14,6 +14,7 @@ import {
   type GuestVmProcessRunner,
   verifyPrivateGuestVmFile,
 } from './guest-vm-artifacts.js'
+import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
 import type { GuestVmHandshakeInput } from './guest-vm-handshake.js'
 import {
   assertGuestWorkspaceLeaseCurrent,
@@ -37,6 +38,7 @@ type GuestVmSessionLauncher = (input: {
 
 export type GuestVmSessionInput = GuestVmHandshakeInput & {
   egressPolicy: ExecutorEgressPolicy
+  guestRuntimeBundlePath: string
 }
 
 export type GuestVmSession = {
@@ -153,6 +155,7 @@ export const startGuestVmSession = async (
     verifyPrivateGuestVmFile(input.kernelPath, false),
     verifyPrivateGuestVmFile(input.vmHelperPath, true),
   ])
+  const runtimeBundle = await verifyGuestRuntimeBundle(input.guestRuntimeBundlePath)
   const sessionDirectory = await secureGuestVmSessionDirectory(input.stateDir, input.lease)
   const initrdPath = join(sessionDirectory, 'guest-initrd')
   const consolePath = join(sessionDirectory, 'console')
@@ -188,6 +191,7 @@ export const startGuestVmSession = async (
         '--kernel', kernelPath,
         '--initrd', initrdPath,
         '--workspace-cow', input.lease.workspace,
+        '--runtime-bundle', runtimeBundle.root,
         '--egress-gateway', gateway.socketPath,
         '--bootstrap-token-stdin',
       ],

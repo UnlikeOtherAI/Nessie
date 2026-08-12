@@ -51,6 +51,10 @@ func egressRequested(commandLine string) bool {
 	return strings.Contains(" "+commandLine+" ", " nessie.egress=1 ")
 }
 
+func runtimeRequested(commandLine string) bool {
+	return strings.Contains(" "+commandLine+" ", " nessie.runtime=1 ")
+}
+
 func validateEnvelope(envelope controlEnvelope) error {
 	if envelope.Version != guestControlVersion || envelope.RequestID == "" || len(envelope.Payload) > guestControlPayloadMaxBytes {
 		return errInvalidFrame

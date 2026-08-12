@@ -108,9 +108,26 @@ func mountGuestWorkspaceIfRequested() (bool, error) {
 	return true, syscall.Mount("nessie-cow", "/work", "virtiofs", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "")
 }
 
+func mountGuestRuntimeIfRequested() (bool, error) {
+	commandLine, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return false, err
+	}
+	if !runtimeRequested(string(commandLine)) {
+		return false, nil
+	}
+	if err := os.Mkdir("/runtime", 0o755); err != nil && !os.IsExist(err) {
+		return true, err
+	}
+	return true, syscall.Mount("nessie-runtime", "/runtime", "virtiofs", syscall.MS_RDONLY|syscall.MS_NOSUID|syscall.MS_NODEV, "")
+}
+
 func main() {
 	workspaceAttached, err := mountGuestWorkspaceIfRequested()
 	if err != nil {
+		os.Exit(1)
+	}
+	if _, err := mountGuestRuntimeIfRequested(); err != nil {
 		os.Exit(1)
 	}
 	token, err := readBootstrapToken()

@@ -352,6 +352,7 @@ test('a guest VM session binds its private gateway and lease without exposing a 
   const builderPath = join(stateDir, 'builder')
   const helperPath = join(stateDir, 'helper')
   const kernelPath = join(stateDir, 'kernel')
+  const runtimeBundlePath = join(stateDir, 'guest-runtime')
   try {
     await writeFile(join(root, 'base.txt'), 'host source')
     await Promise.all([
@@ -360,6 +361,20 @@ test('a guest VM session binds its private gateway and lease without exposing a 
       writeFile(kernelPath, 'kernel'),
     ])
     await Promise.all([chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)])
+    await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
+    await chmod(runtimeBundlePath, 0o700)
+    await writeFile(join(runtimeBundlePath, 'bin', 'browser'), 'browser-runtime')
+    await chmod(join(runtimeBundlePath, 'bin', 'browser'), 0o700)
+    await writeFile(join(runtimeBundlePath, 'nessie-guest-runtime.json'), JSON.stringify({
+      entrypoints: { browser: 'bin/browser' },
+      files: [{
+        executable: true,
+        path: 'bin/browser',
+        sha256: createHash('sha256').update('browser-runtime').digest('hex'),
+      }],
+      version: 1,
+    }))
+    await chmod(join(runtimeBundlePath, 'nessie-guest-runtime.json'), 0o600)
     const lease = await createGuestWorkspaceLease(stateDir, root, {
       bindingFence: '1',
       commandId: '00000000-0000-4000-8000-000000000122',
@@ -370,6 +385,7 @@ test('a guest VM session binds its private gateway and lease without exposing a 
     const session = await startGuestVmSession({
       egressPolicy: { allowedOrigins: ['https://app.example.test'] },
       guestInitrdBuilderPath: builderPath,
+      guestRuntimeBundlePath: runtimeBundlePath,
       kernelPath,
       lease,
       stateDir,
@@ -390,6 +406,7 @@ test('a guest VM session binds its private gateway and lease without exposing a 
     assert.equal(calls[1].path, await realpath(helperPath))
     assert.equal(calls[1].argv[0], 'session')
     assert.equal(calls[1].argv.includes(lease.workspace), true)
+    assert.equal(calls[1].argv.includes(runtimeBundlePath), true)
     assert.equal(calls[1].argv.includes(calls[1].input), false)
     const gatewayIndex = calls[1].argv.indexOf('--egress-gateway')
     assert.equal(gatewayIndex >= 0, true)

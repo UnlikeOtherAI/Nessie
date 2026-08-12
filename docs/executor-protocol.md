@@ -477,6 +477,14 @@ reference only: it does not execute a host file, search `PATH`, or make the
 bundle an advertised descriptor capability. A later guest-image mount must
 still carry the verified bundle into the VM and re-check its exact digest.
 
+The VM now mounts that verified bundle on its own `nessie-runtime` virtiofs tag
+at `/runtime`, read-only with `nosuid,nodev`. Unlike the COW workspace it is
+executable: a `noexec` runtime mount would make a browser, tmux, or CLI
+impossible. The writable `/work` COW mount remains `nodev,nosuid,noexec`, so
+guest execution can originate only from the read-only runtime payload (or the
+fixed initrd `/init`), never from a workspace edit. A runtime-requested boot
+fails before control hello if its exact mount is unavailable.
+
 Before that launch, the companion creates an owner-only `guest-lease.json`
 beside the exact COW draft. It contains the run ID, executor binding fence, and
 server command ID plus a random local lease ID—never a host path, token, or raw

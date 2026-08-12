@@ -8,6 +8,7 @@ public enum VMError: Error {
   case invalidArgument
   case unsupportedHost
   case unsafeImage
+  case unsafeRuntime
   case unsafeWorkspace
 }
 
@@ -74,6 +75,22 @@ public func safeGuestWorkspaceDirectory(_ rawPath: String) throws -> URL {
   return resolved
 }
 
+/** A runtime payload is a separate, read-only guest share—not a workspace. */
+public func safeGuestRuntimeDirectory(_ rawPath: String) throws -> URL {
+  guard rawPath.hasPrefix("/") else { throw VMError.unsafeRuntime }
+  let url = URL(fileURLWithPath: rawPath).standardizedFileURL
+  var metadata = stat()
+  guard lstat(url.path, &metadata) == 0, (metadata.st_mode & S_IFMT) == S_IFDIR else {
+    throw VMError.unsafeRuntime
+  }
+  guard metadata.st_uid == getuid(), metadata.st_mode & (S_IWGRP | S_IWOTH) == 0 else {
+    throw VMError.unsafeRuntime
+  }
+  let resolved = url.resolvingSymlinksInPath()
+  guard resolved.path == url.path else { throw VMError.unsafeRuntime }
+  return resolved
+}
+
 public func hostProbe() -> VMHostProbe {
   #if arch(arm64)
   let architecture = "arm64"
@@ -103,11 +120,21 @@ func guestWorkspaceShareConfiguration(_ workspaceURL: URL) -> VZVirtioFileSystem
 }
 
 @available(macOS 15.0, *)
+func guestRuntimeShareConfiguration(_ runtimeURL: URL) -> VZVirtioFileSystemDeviceConfiguration {
+  let sharedDirectory = VZSharedDirectory(url: runtimeURL, readOnly: true)
+  let share = VZSingleDirectoryShare(directory: sharedDirectory)
+  let device = VZVirtioFileSystemDeviceConfiguration(tag: "nessie-runtime")
+  device.share = share
+  return device
+}
+
+@available(macOS 15.0, *)
 public func configuration(
   for input: VMInput,
   consoleURL: URL? = nil,
   enableGuestControl: Bool = false,
   enableGuestEgress: Bool = false,
+  guestRuntimeURL: URL? = nil,
   guestWorkspaceURL: URL? = nil,
 ) throws -> VZVirtualMachineConfiguration {
   guard (1...4).contains(input.cpuCount), (2048...8192).contains(input.memoryMiB) else {
@@ -121,6 +148,7 @@ public func configuration(
     ? "console=hvc0 rdinit=/init panic=-1"
     : "console=hvc0 root=/dev/vda ro panic=-1"
   let bootArguments = [
+    guestRuntimeURL == nil ? nil : "nessie.runtime=1",
     guestWorkspaceURL == nil ? nil : "nessie.workspace=1",
     enableGuestEgress ? "nessie.egress=1" : nil,
   ].compactMap { $0 }
@@ -149,9 +177,10 @@ public func configuration(
   if enableGuestControl {
     configuration.socketDevices = [VZVirtioSocketDeviceConfiguration()]
   }
-  if let guestWorkspaceURL {
-    configuration.directorySharingDevices = [guestWorkspaceShareConfiguration(guestWorkspaceURL)]
-  }
+  configuration.directorySharingDevices = [
+    guestRuntimeURL.map(guestRuntimeShareConfiguration),
+    guestWorkspaceURL.map(guestWorkspaceShareConfiguration),
+  ].compactMap { $0 }
 
   // Guest control is a per-VM virtio socket, never a network adapter. The only
   // filesystem bridge is the exact daemon-owned COW workspace above; a paired

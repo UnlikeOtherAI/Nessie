@@ -10,7 +10,7 @@ private func json(_ value: [String: Any]) {
 }
 
 private func usage() -> Never {
-  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm session --console <owner-only-path> --kernel <path> --initrd <path> --workspace-cow <owner-only-draft> --egress-gateway <owner-only-socket> --bootstrap-token-stdin [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
+  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm session --console <owner-only-path> --kernel <path> --initrd <path> --workspace-cow <owner-only-draft> --runtime-bundle <owner-only-runtime> --egress-gateway <owner-only-socket> --bootstrap-token-stdin [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
   exit(64)
 }
 
@@ -284,6 +284,7 @@ private func session(_ arguments: [String]) throws {
   let input = try parseInput(arguments)
   let consoleURL = try safeConsoleFile(try requiredOption(arguments, "--console"))
   let guestWorkspaceURL = try safeGuestWorkspaceDirectory(try requiredOption(arguments, "--workspace-cow"))
+  let guestRuntimeURL = try safeGuestRuntimeDirectory(try requiredOption(arguments, "--runtime-bundle"))
   let gatewaySocketPath = try requiredOption(arguments, "--egress-gateway")
   guard input.initrdURL != nil else { throw VMError.invalidArgument }
   let bootstrapToken = try bootstrapTokenFromStandardInput(arguments)
@@ -297,6 +298,7 @@ private func session(_ arguments: [String]) throws {
         consoleURL: consoleURL,
         enableGuestControl: true,
         enableGuestEgress: true,
+        guestRuntimeURL: guestRuntimeURL,
         guestWorkspaceURL: guestWorkspaceURL,
       ))
       let egress = try GuestEgressTunnelListener(

@@ -32,6 +32,18 @@ func workspaceShareIsExplicitAndWritableOnlyInsideTheGuest() throws {
   }
 }
 
+@Test("a guest runtime is a separate read-only virtiofs share")
+func runtimeShareIsExplicitAndReadOnly() throws {
+  let runtime = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+  let safeRuntime = try safeGuestRuntimeDirectory(runtime.path)
+  if #available(macOS 15.0, *) {
+    let device = guestRuntimeShareConfiguration(safeRuntime)
+    #expect(device.tag == "nessie-runtime")
+    let share = try #require(device.share as? VZSingleDirectoryShare)
+    #expect(share.directory.isReadOnly)
+  }
+}
+
 @Test("guest egress cannot be configured without the paired control socket")
 func egressRequiresGuestControl() throws {
   let sourceFile = URL(fileURLWithPath: #filePath).standardizedFileURL
