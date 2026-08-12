@@ -4,13 +4,22 @@ import { KnowledgeProvider, useKnowledge } from '../../components/features/knowl
 import { KnowledgeSpaceList } from '../../components/features/knowledge/KnowledgeSpaceList'
 import { KnowledgeWorkspace } from '../../components/features/knowledge/KnowledgeWorkspace'
 import { useKnowledgePageDeepLink } from '../../components/features/knowledge/useKnowledgePageDeepLink'
+import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 
 // The project's own documents: the same knowledge workspace the Knowledge
 // section renders, scoped by KnowledgeProvider to this project. Nothing is
 // duplicated — the space rail is the shared KnowledgeSpaceList and the
 // document area is KnowledgeWorkspace, both driven by the scoped provider.
-const ProjectDocsLayout = () => {
-  const { spaces, selectedSpaceId, selectSpace, createSpace, createSpacePending } = useKnowledge()
+const ProjectDocsLayout = ({ projectId }: { projectId: string }) => {
+  const {
+    spaces,
+    spacesLoaded,
+    selectedSpaceId,
+    selectSpace,
+    createSpace,
+    createSpacePending,
+  } = useKnowledge()
+  useClearProjectAttention(projectId, 'knowledge_published', spacesLoaded)
   const [createOpen, setCreateOpen] = useState(false)
 
   // `?spaceId=&pageId=` — how the dashboard's Documents rows land on a document.
@@ -73,6 +82,6 @@ const ProjectDocsLayout = () => {
 
 export const ProjectDocsTab = ({ projectId }: { projectId: string }) => (
   <KnowledgeProvider projectId={projectId}>
-    <ProjectDocsLayout />
+    <ProjectDocsLayout projectId={projectId} />
   </KnowledgeProvider>
 )

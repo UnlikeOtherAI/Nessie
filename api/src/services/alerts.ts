@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { visibleUserAlertWhere } from '@nessie/db'
 
 import type { UserAlertRecord } from '../contracts.js'
 
@@ -37,6 +38,9 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   threadId: alert.threadId,
   channelId: alert.channelId,
   channelLabel: alert.channel?.label ?? null,
+  projectId: alert.projectId ?? null,
+  taskId: alert.taskId ?? null,
+  knowledgePageId: alert.knowledgePageId ?? null,
   actorUserId: alert.actorUserId,
   actorAgentId: alert.actorAgentId,
   actorDisplayName: alert.actorUser?.displayName ?? alert.actorAgent?.name ?? null,
@@ -48,13 +52,7 @@ const unreadCount = (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string },
 ): Promise<number> =>
-  prisma.userAlert.count({
-    where: {
-      organizationId: input.organizationId,
-      userId: input.userId,
-      readAt: null,
-    },
-  })
+  prisma.userAlert.count({ where: { ...visibleUserAlertWhere(input), readAt: null } })
 
 export const listUserAlerts = async (
   prisma: PrismaClient,
@@ -70,19 +68,19 @@ export const listUserAlerts = async (
   meta: { cursor: string | null; hasMore: boolean }
 }> => {
   const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT)
-  const where: Prisma.UserAlertWhereInput = {
-    organizationId: input.organizationId,
-    userId: input.userId,
-    ...(input.unreadOnly ? { readAt: null } : {}),
-  }
+  const conditions: Prisma.UserAlertWhereInput[] = [
+    visibleUserAlertWhere(input),
+    ...(input.unreadOnly ? [{ readAt: null }] : []),
+  ]
 
   const cursor = parseCursor(input.cursor)
   if (cursor) {
-    where['OR'] = [
+    conditions.push({ OR: [
       { createdAt: { lt: cursor.cursorDate } },
       { createdAt: cursor.cursorDate, id: { lt: cursor.cursorId } },
-    ]
+    ] })
   }
+  const where: Prisma.UserAlertWhereInput = { AND: conditions }
 
   const [rows, unread] = await Promise.all([
     prisma.userAlert.findMany({
@@ -111,9 +109,36 @@ export type MarkUserAlertsReadResult = {
   read: number
   unreadCount: number
   readAt: Date
-  // Channel ids that had alerts marked read — the route fans one
-  // `alert.read` realtime event per channel for cross-device sync.
+  // Channel ids that had alerts marked read. Existing channel-scoped realtime
+  // frames can synchronize these safely; private attention kinds reconcile by
+  // their short client refresh instead of being exposed to another channel.
   readAlerts: { id: string; channelId: string | null }[]
+}
+
+export const getAttentionSummary = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; userId: string },
+): Promise<{
+  assignedWork: { projects: Record<string, number>; total: number }
+  knowledge: { projects: Record<string, number>; total: number }
+  unreadCount: number
+}> => {
+  const rows = await prisma.userAlert.findMany({
+    where: {
+      ...visibleUserAlertWhere(input),
+      readAt: null,
+      kind: { in: ['task_assigned', 'knowledge_published'] },
+    },
+    select: { kind: true, projectId: true },
+  })
+  const assignedWork = { projects: {} as Record<string, number>, total: 0 }
+  const knowledge = { projects: {} as Record<string, number>, total: 0 }
+  for (const row of rows) {
+    const category = row.kind === 'task_assigned' ? assignedWork : knowledge
+    category.total += 1
+    if (row.projectId) category.projects[row.projectId] = (category.projects[row.projectId] ?? 0) + 1
+  }
+  return { assignedWork, knowledge, unreadCount: await unreadCount(prisma, input) }
 }
 
 export const markUserAlertsRead = async (
@@ -126,10 +151,11 @@ export const markUserAlertsRead = async (
   },
 ): Promise<MarkUserAlertsReadResult> => {
   const where: Prisma.UserAlertWhereInput = {
-    organizationId: input.organizationId,
-    userId: input.userId,
-    readAt: null,
-    ...(input.all ? {} : { id: { in: input.ids ?? [] } }),
+    AND: [
+      visibleUserAlertWhere(input),
+      { readAt: null },
+      ...(input.all ? [] : [{ id: { in: input.ids ?? [] } }]),
+    ],
   }
 
   // Read the affected rows first so the route can publish per-channel
@@ -139,15 +165,25 @@ export const markUserAlertsRead = async (
     select: { id: true, channelId: true },
   })
   const readAt = new Date()
+  let read = 0
   if (readAlerts.length > 0) {
-    await prisma.userAlert.updateMany({
-      where: { id: { in: readAlerts.map((alert) => alert.id) } },
+    const updated = await prisma.userAlert.updateMany({
+      // Repeat the complete authorization/lifecycle predicate at mutation
+      // time. A task reassignment or access revocation between the selection
+      // and this write must not let a stale screen alter an unrelated row.
+      where: {
+        AND: [
+          where,
+          { id: { in: readAlerts.map((alert) => alert.id) } },
+        ],
+      },
       data: { readAt },
     })
+    read = updated.count
   }
 
   return {
-    read: readAlerts.length,
+    read,
     unreadCount: await unreadCount(prisma, input),
     readAt,
     readAlerts,

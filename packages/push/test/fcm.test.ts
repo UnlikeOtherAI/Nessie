@@ -76,6 +76,7 @@ test('buildFcmBody includes token, notification, data, and collapse keys', () =>
       title: 'Hi',
       body: 'There',
       data: { url: 'nessie://x' },
+      badge: 7,
       collapseId: 'chan-1',
     }),
   )
@@ -84,8 +85,8 @@ test('buildFcmBody includes token, notification, data, and collapse keys', () =>
       token: 'dev-token',
       notification: { title: 'Hi', body: 'There' },
       data: { url: 'nessie://x' },
-      android: { collapse_key: 'chan-1' },
-      apns: { headers: { 'apns-collapse-id': 'chan-1' } },
+      android: { collapse_key: 'chan-1', notification: { notification_count: 7 } },
+      apns: { headers: { 'apns-collapse-id': 'chan-1' }, payload: { aps: { badge: 7 } } },
     },
   })
 })

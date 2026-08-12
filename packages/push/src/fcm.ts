@@ -81,10 +81,18 @@ export const buildFcmBody = (token: string, payload: PushPayload): string => {
     notification: { title: payload.title, body: payload.body },
   }
   if (payload.data !== undefined) message.data = payload.data
+  const android: Record<string, unknown> = {}
+  const apns: Record<string, unknown> = {}
   if (payload.collapseId !== undefined) {
-    message.android = { collapse_key: payload.collapseId }
-    message.apns = { headers: { 'apns-collapse-id': payload.collapseId } }
+    android.collapse_key = payload.collapseId
+    apns.headers = { 'apns-collapse-id': payload.collapseId }
   }
+  if (payload.badge !== undefined) {
+    android.notification = { notification_count: payload.badge }
+    apns.payload = { aps: { badge: payload.badge } }
+  }
+  if (Object.keys(android).length > 0) message.android = android
+  if (Object.keys(apns).length > 0) message.apns = apns
   return JSON.stringify({ message })
 }
 

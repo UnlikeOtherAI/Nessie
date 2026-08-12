@@ -7,16 +7,25 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 
 export type UserAlertRecord = {
   id: string
-  kind: 'mention'
+  kind: 'mention' | 'task_assigned' | 'knowledge_published'
   messageId: string | null
   threadId: string | null
   channelId: string | null
   channelLabel: string | null
+  projectId: string | null
+  taskId: string | null
+  knowledgePageId: string | null
   actorUserId: string | null
   actorAgentId: string | null
   actorDisplayName: string | null
   readAt: string | null
   createdAt: string
+}
+
+export type AttentionSummary = {
+  assignedWork: { projects: Record<string, number>; total: number }
+  knowledge: { projects: Record<string, number>; total: number }
+  unreadCount: number
 }
 
 export type AlertsListResponse = {
@@ -30,6 +39,7 @@ type MarkAlertsReadResponse = {
 }
 
 const RECONNECT_DELAY_MS = 2_000
+const ATTENTION_REFRESH_MS = 15_000
 
 const baseUrl = getBaseUrl()
 
@@ -70,6 +80,16 @@ export const useAlerts = (options?: { limit?: number; unreadOnly?: boolean }) =>
       }
       return apiClient.get(`/api/alerts?${params.toString()}`)
     },
+    refetchInterval: ATTENTION_REFRESH_MS,
+  })
+}
+
+export const useAttentionSummary = () => {
+  const apiClient = useApiClient()
+  return useQuery<AttentionSummary>({
+    queryKey: ['alerts', 'summary'],
+    queryFn: () => apiClient.get('/api/alerts/summary'),
+    refetchInterval: ATTENTION_REFRESH_MS,
   })
 }
 
@@ -175,17 +195,23 @@ export const useAlertEvents = (): void => {
   }, [currentUserId, queryClient, token])
 }
 
-// Deep-link target for an alert: the channel route plus the message id to
-// highlight (consumed and cleared by ChannelsPage). Null when the alert has
-// no channel to open.
+// Deep-link target for an alert. Every durable attention kind has one owning
+// surface, so the bell and /alerts list never turn a user action into a dead
+// row that merely marks itself read.
 export const getAlertLink = (
   alert: UserAlertRecord,
 ): { to: string; state?: { highlightMessageId: string } } | null => {
-  if (!alert.channelId) {
-    return null
+  if (alert.kind === 'task_assigned' && alert.projectId) {
+    return { to: `/projects/${alert.projectId}/board` }
   }
-  return {
-    to: `/channels/${alert.channelId}`,
-    state: alert.messageId ? { highlightMessageId: alert.messageId } : undefined,
+  if (alert.kind === 'knowledge_published' && alert.projectId && alert.knowledgePageId) {
+    return { to: `/projects/${alert.projectId}/docs?pageId=${alert.knowledgePageId}` }
   }
+  if (alert.channelId) {
+    return {
+      to: `/channels/${alert.channelId}`,
+      state: alert.messageId ? { highlightMessageId: alert.messageId } : undefined,
+    }
+  }
+  return null
 }

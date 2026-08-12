@@ -268,6 +268,10 @@ export type MovePageInput = {
 }
 
 export type PublishPageInput = {
+  // The authenticated human that made publication happen. Optional for
+  // service-level callers; when present, they are excluded from their own
+  // publication attention item.
+  actorUserId?: string | null
   organizationId: string
   pageId: string
 }

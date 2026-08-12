@@ -2,9 +2,9 @@ import { z } from 'zod'
 
 import { TimestampSchema } from './shared.js'
 
-// User alerts (#246): persistent per-user alert records. v1 kind is `mention`;
-// the enum is ready for future kinds (approval nudges, needs-action items).
-export const UserAlertKindSchema = z.enum(['mention'])
+// Persistent recipient-private attention. Every kind is revalidated against
+// its linked resource before it is returned or counted.
+export const UserAlertKindSchema = z.enum(['mention', 'task_assigned', 'knowledge_published'])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
 export const UserAlertRecordSchema = z.object({
@@ -14,6 +14,9 @@ export const UserAlertRecordSchema = z.object({
   threadId: z.string().uuid().nullable(),
   channelId: z.string().uuid().nullable(),
   channelLabel: z.string().nullable(),
+  projectId: z.string().uuid().nullable(),
+  taskId: z.string().uuid().nullable(),
+  knowledgePageId: z.string().uuid().nullable(),
   actorUserId: z.string().uuid().nullable(),
   actorAgentId: z.string().uuid().nullable(),
   actorDisplayName: z.string().nullable(),
@@ -27,6 +30,19 @@ export const ListAlertsResponseSchema = z.object({
   unreadCount: z.number().int().nonnegative(),
 })
 export type ListAlertsResponse = z.infer<typeof ListAlertsResponseSchema>
+
+export const AttentionSummarySchema = z.object({
+  assignedWork: z.object({
+    projects: z.record(z.string().uuid(), z.number().int().nonnegative()),
+    total: z.number().int().nonnegative(),
+  }),
+  knowledge: z.object({
+    projects: z.record(z.string().uuid(), z.number().int().nonnegative()),
+    total: z.number().int().nonnegative(),
+  }),
+  unreadCount: z.number().int().nonnegative(),
+})
+export type AttentionSummary = z.infer<typeof AttentionSummarySchema>
 
 export const MarkAlertsReadBodySchema = z
   .object({

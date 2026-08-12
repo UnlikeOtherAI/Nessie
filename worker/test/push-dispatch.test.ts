@@ -44,6 +44,11 @@ type DeliveryRow = {
   errorCode: string | null
   attempts: number
 }
+type SurfaceViewer = {
+  channelId: string | null
+  kind: 'channel' | 'ops_usage'
+  userId: string
+}
 
 const encrypt = (plaintext: string): Omit<SecretRow, 'ref'> =>
   encryptWithKey(deriveSecretKey(AUTH_SECRET), plaintext)
@@ -57,6 +62,7 @@ type FakeState = {
   channel: { label: string } | null
   deleted: string[]
   deliveries?: DeliveryRow[]
+  surfaceViewers?: SurfaceViewer[]
 }
 
 const member = (userId: string, muted = false): MemberRow => ({ userId, muted })
@@ -104,6 +110,16 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
         state.deliveries?.push(data)
         return { id: crypto.randomUUID(), createdAt: new Date(), ...data }
       },
+    },
+    userPushSurfacePresence: {
+      findMany: async ({ where }: { where: { channelId: string | null; surfaceKind: string; userId: { in: string[] } } }) =>
+        (state.surfaceViewers ?? [])
+          .filter((viewer) =>
+            where.userId.in.includes(viewer.userId)
+            && viewer.kind === where.surfaceKind
+            && viewer.channelId === where.channelId,
+          )
+          .map((viewer) => ({ userId: viewer.userId })),
     },
   }) as unknown as PushDispatchPrisma
 
@@ -193,9 +209,30 @@ test('early-returns when no push credentials are configured', async () => {
   assert.equal(fcmCalls.length, 0)
 })
 
-test('excludes the author and notifies only members (via channelMember filter)', async () => {
-  // The handler passes `userId: { not: authorUserId }` to channelMember.findMany;
-  // assert that filter is applied and only the returned members are targeted.
+test('skips a push when the recipient is actively viewing its channel', async () => {
+  const state: FakeState = {
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('u2')],
+    secrets: [apnsSecret()],
+    surfaceViewers: [{ userId: 'u2', kind: 'channel', channelId: 'channel-1' }],
+    tokens: [{ id: 't2', userId: 'u2', token: 'tok-u2', platform: 'ios' }],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+
+  const summary = await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload(),
+  )
+
+  assert.deepEqual(summary, { sent: 0, failed: 0, pruned: 0 })
+  assert.deepEqual(apnsCalls, [])
+})
+
+test('excludes the author and notifies only active organization members', async () => {
+  // The handler requires an active organization membership as well as channel
+  // membership, so deactivated users cannot receive a retained-channel push.
   let appliedWhere: unknown
   const state: FakeState = {
     creds: [apnsCred()],
@@ -218,6 +255,11 @@ test('excludes the author and notifies only members (via channelMember filter)',
   assert.deepEqual(appliedWhere, {
     channelId: 'channel-1',
     userId: { not: 'author-1' },
+    user: {
+      organizationMembers: {
+        some: { deactivatedAt: null, organizationId: 'org-1' },
+      },
+    },
   })
   assert.equal(summary.sent, 1)
   assert.deepEqual(apnsCalls.map((c) => c.token), ['tok-u2'])

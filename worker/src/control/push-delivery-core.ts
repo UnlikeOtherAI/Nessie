@@ -17,6 +17,8 @@ import {
   shouldRetryPushFailure,
   type PushRetryProvider,
 } from './push-retry.js'
+import { findRecipientsViewingPushSurface } from './push-surface-presence.js'
+import type { PushSurfaceTarget } from './push-surface-presence.js'
 
 /**
  * Provider-agnostic push delivery core, shared by every notification source:
@@ -32,7 +34,12 @@ import {
 /** Minimal Prisma surface the delivery core touches — keeps tests light. */
 export type PushDeliveryPrisma = Pick<
   PrismaClient,
-  'pushCredential' | 'deviceToken' | 'mcpOAuthSecret' | 'pushDelivery' | 'webPushSubscription'
+  | 'pushCredential'
+  | 'deviceToken'
+  | 'mcpOAuthSecret'
+  | 'pushDelivery'
+  | 'userPushSurfacePresence'
+  | 'webPushSubscription'
 >
 
 export type PushSenders = {
@@ -266,7 +273,7 @@ export const loadPushCredentials = async (
 }
 
 type NativeDeliveryInput = {
-  prisma: Pick<PushDeliveryPrisma, 'deviceToken' | 'pushDelivery'>
+  prisma: Pick<PushDeliveryPrisma, 'deviceToken' | 'pushDelivery' | 'userPushSurfacePresence'>
   apnsCreds: ApnsCredentials | null
   fcmCreds: FcmCredentials | null
   senders: PushSenders
@@ -275,6 +282,8 @@ type NativeDeliveryInput = {
   recipientIds: string[]
   organizationId: string
   messageId: string | null
+  surface: PushSurfaceTarget
+  now: () => Date
 }
 
 /**
@@ -298,7 +307,22 @@ const deliverNativeTokens = async (
   }
 
   const deadTokenIds: string[] = []
+  const checkedRecipients = new Set<string>()
+  const recipientsViewingTarget = new Set<string>()
   for (const token of tokens) {
+    if (!checkedRecipients.has(token.userId)) {
+      checkedRecipients.add(token.userId)
+      const viewers = await findRecipientsViewingPushSurface(input.prisma, {
+        now: input.now(),
+        organizationId: input.organizationId,
+        recipientIds: [token.userId],
+        surface: input.surface,
+      })
+      for (const viewer of viewers) recipientsViewingTarget.add(viewer)
+    }
+    if (recipientsViewingTarget.has(token.userId)) {
+      continue
+    }
     let outcome: PushSendOutcome | null = null
     try {
       outcome = await sendConfiguredToken({
@@ -375,6 +399,10 @@ export type DeliverToRecipientsInput = {
   organizationId: string
   /** Deep link the notification opens (e.g. `/channels/:id`, `/ops/usage`). */
   deepLinkUrl: string
+  /** Structured equivalent of the deep link for exact page-aware suppression. */
+  surface: PushSurfaceTarget
+  /** Current clock, sampled immediately before every delivery path. */
+  now: () => Date
   /** Optional source message; null for non-message notifications. */
   messageId?: string | null
 }
@@ -390,6 +418,16 @@ export const deliverToRecipients = async (
   if (input.recipientIds.length === 0) {
     return summary
   }
+  const recipientsViewingTarget = await findRecipientsViewingPushSurface(input.prisma, {
+    now: input.now(),
+    organizationId: input.organizationId,
+    recipientIds: input.recipientIds,
+    surface: input.surface,
+  })
+  const recipientIds = input.recipientIds.filter((id) => !recipientsViewingTarget.has(id))
+  if (recipientIds.length === 0) {
+    return summary
+  }
   const senders: PushSenders = input.senders ?? defaultPushSenders
   const messageId = input.messageId ?? null
 
@@ -401,9 +439,11 @@ export const deliverToRecipients = async (
       senders,
       retryDelayMs: input.retryDelayMs,
       payload: input.payload,
-      recipientIds: input.recipientIds,
+      recipientIds,
       organizationId: input.organizationId,
       messageId,
+      surface: input.surface,
+      now: input.now,
     })
     summary.sent += native.summary.sent
     summary.failed += native.summary.failed
@@ -411,10 +451,20 @@ export const deliverToRecipients = async (
   }
 
   if (input.webPush) {
+    const recipientsViewingTarget = await findRecipientsViewingPushSurface(input.prisma, {
+      now: input.now(),
+      organizationId: input.organizationId,
+      recipientIds,
+      surface: input.surface,
+    })
+    const webRecipientIds = recipientIds.filter((id) => !recipientsViewingTarget.has(id))
+    if (webRecipientIds.length === 0) {
+      return summary
+    }
     const web = await deliverWebPush({
       prisma: input.prisma,
       creds: input.webPush,
-      recipientIds: input.recipientIds,
+      recipientIds: webRecipientIds,
       payload: input.payload,
       organizationId: input.organizationId,
       messageId,

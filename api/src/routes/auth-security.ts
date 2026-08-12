@@ -7,6 +7,7 @@ import { ChangePasswordRequestSchema } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { clearRefreshCookie } from '../lib/refresh-cookie.js'
 import { buildMeResponse } from '../services/auth.js'
+import { clearPushSurfacePresenceForUser } from '../services/push-surface-presence.js'
 import {
   listUserSessions,
   revokeUserRefreshFamilies,
@@ -65,6 +66,7 @@ export const registerAuthSecurityRoutes = (
       sendApiError(reply, 404, 'SESSION_NOT_FOUND', 'No such active session')
       return reply
     }
+    await clearPushSurfacePresenceForUser(prisma, actorContext.actor.actorId)
     if (currentSessionId(request) === sessionId) clearRefreshCookie(reply, config)
     return createApiResponse({ revoked })
   })

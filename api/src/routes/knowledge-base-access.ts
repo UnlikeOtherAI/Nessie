@@ -21,6 +21,7 @@ import type {
 } from '@nessie/schemas'
 import { sendApiError } from '../lib/api.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
+import { createKnowledgePublicationAttention } from '../services/push-attention.js'
 import {
   enterKnowledgeInferenceActorContext,
   requireApiKnowledgeInferenceOrigin,
@@ -133,6 +134,9 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
         payload: { ...event, origin },
         topic: KNOWLEDGE_EMBED_TOPIC,
       })
+    },
+    onPagePublished: async (tx, event) => {
+      await createKnowledgePublicationAttention(tx, event)
     },
   })
 

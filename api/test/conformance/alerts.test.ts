@@ -11,7 +11,10 @@ import { TenantStore } from './tenant-store.js'
 const ALERT_A = '00000000-0000-4000-8000-000000000301'
 
 const seedAlert = (store: TenantStore) =>
-  store.seed('userAlert', [
+  {
+    store.seed('channel', [{ id: IDS.channelA, organizationId: IDS.orgA }])
+    store.seed('channelMember', [{ id: 'alert-channel-member-a', channelId: IDS.channelA, userId: IDS.userA }])
+    return store.seed('userAlert', [
     {
       id: ALERT_A,
       organizationId: IDS.orgA,
@@ -25,7 +28,8 @@ const seedAlert = (store: TenantStore) =>
       readAt: null,
       createdAt: new Date('2026-07-24T10:00:00.000Z'),
     },
-  ])
+    ])
+  }
 
 test('GET /api/alerts never lists another org\'s alerts', async () => {
   const store = new TenantStore()

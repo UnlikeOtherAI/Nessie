@@ -8,6 +8,7 @@ import type {
 } from './types';
 
 type SidebarProjectsSectionProps = {
+  attentionCountByProjectId: Map<string, number>;
   currentChannelId?: string;
   currentProjectId?: string;
   onNavigateChannel: (channelId: string) => void;
@@ -27,6 +28,7 @@ type SidebarProjectsSectionProps = {
 };
 
 export const SidebarProjectsSection = ({
+  attentionCountByProjectId,
   currentChannelId,
   currentProjectId,
   onNavigateChannel,
@@ -78,7 +80,7 @@ export const SidebarProjectsSection = ({
         const projectUnreadCount = project.channels.reduce(
           (total, channel) => total + channel.unreadCount,
           0,
-        );
+        ) + (attentionCountByProjectId.get(project.id) ?? 0);
 
         return (
           <div key={project.id} className="mt-1">

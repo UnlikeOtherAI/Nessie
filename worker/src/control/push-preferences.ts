@@ -41,6 +41,7 @@ export const isWithinPushQuietHours = (
 export const shouldSuppressPushForPreferences = (
   preferences: unknown,
   now: Date,
+  kind: 'messages' | 'mentions' | 'budgetAlerts' | 'assignedWork' | 'publishedKnowledge',
 ): boolean => {
   const parsed = UserPreferencesSchema.safeParse(preferences ?? {})
   if (!parsed.success) {
@@ -48,6 +49,17 @@ export const shouldSuppressPushForPreferences = (
   }
 
   if (parsed.data.pushEnabled === false) {
+    return true
+  }
+
+  const enabledForKind = {
+    budgetAlerts: parsed.data.pushBudgetAlerts,
+    assignedWork: parsed.data.pushAssignedWork,
+    mentions: parsed.data.pushMentions,
+    messages: parsed.data.pushMessages,
+    publishedKnowledge: parsed.data.pushPublishedKnowledge,
+  }[kind]
+  if (enabledForKind === false) {
     return true
   }
 

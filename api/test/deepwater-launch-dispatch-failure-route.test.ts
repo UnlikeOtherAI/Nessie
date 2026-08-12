@@ -115,6 +115,7 @@ test('enqueue collision rolls back the PA handoff and fails the exact DeepWater 
           editedAt: null,
           id: messageId,
           metadata: input.data.metadata,
+          basisScopes: [],
           reactions: [],
           role: 'user',
           threadId,

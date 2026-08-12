@@ -2,6 +2,7 @@ import {
   AgentIdSchema,
   ChannelIdSchema,
   OrganizationIdSchema,
+  PushSurfaceSchema,
   ProjectIdSchema,
   UserIdSchema,
 } from '@nessie/schemas'
@@ -51,6 +52,15 @@ export const PresenceHeartbeatBodySchema = z.object({
   active: z.boolean(),
 })
 export type PresenceHeartbeatBody = z.infer<typeof PresenceHeartbeatBodySchema>
+
+export const PushSurfaceHeartbeatBodySchema = z.object({
+  clientId: z.string().uuid(),
+  // JSON has no bigint type. The client sends its strictly-increasing logical
+  // clock as a decimal string and the API persists it as PostgreSQL BIGINT.
+  sequence: z.string().regex(/^(?:0|[1-9]\d{0,18})$/),
+  surface: PushSurfaceSchema.nullable(),
+})
+export type PushSurfaceHeartbeatBody = z.infer<typeof PushSurfaceHeartbeatBodySchema>
 
 export const UserStatusScheduleKindSchema = z.enum(['date_range', 'weekly'])
 export type UserStatusScheduleKind = z.infer<typeof UserStatusScheduleKindSchema>

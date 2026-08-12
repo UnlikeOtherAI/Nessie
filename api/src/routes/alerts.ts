@@ -3,11 +3,12 @@ import type { FastifyInstance } from 'fastify'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
 import {
   ListAlertsResponseSchema,
+  AttentionSummarySchema,
   MarkAlertsReadBodySchema,
   MarkAlertsReadResponseSchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { listUserAlerts, markUserAlertsRead } from '../services/alerts.js'
+import { getAttentionSummary, listUserAlerts, markUserAlertsRead } from '../services/alerts.js'
 import type { RouteDeps } from './types.js'
 
 // User alerts (#246): the durable alerts surface. Every read is pinned to the
@@ -42,6 +43,16 @@ export const registerAlertRoutes = (app: FastifyInstance, deps: RouteDeps): void
     })
 
     return createApiResponse(ListAlertsResponseSchema.parse(result.data), result.meta)
+  })
+
+  app.get('/api/alerts/summary', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const summary = await getAttentionSummary(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    return createApiResponse(AttentionSummarySchema.parse(summary))
   })
 
   app.post('/api/alerts/read', async (request, reply) => {

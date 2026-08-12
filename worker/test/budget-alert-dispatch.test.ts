@@ -54,10 +54,10 @@ const makeFakePrisma = (state: FakeState): BudgetAlertDispatchPrisma =>
       findMany: async ({
         where,
       }: {
-        where: { deactivatedAt: null; role: { in: string[] } }
+        where: { deactivatedAt: null; role: 'owner' }
       }) =>
         state.orgMembers
-          .filter((m) => m.deactivatedAt === null && where.role.in.includes(m.role))
+          .filter((m) => m.deactivatedAt === null && m.role === where.role)
           .map((m) => ({ userId: m.userId })),
     },
     teamMember: {
@@ -88,23 +88,32 @@ const makeFakePrisma = (state: FakeState): BudgetAlertDispatchPrisma =>
     pushDelivery: {
       create: async ({ data }: { data: unknown }) => ({ id: crypto.randomUUID(), ...(data as object) }),
     },
+    userPushSurfacePresence: {
+      findMany: async () => [],
+    },
     webPushSubscription: {
       findMany: async () => [],
       deleteMany: async () => ({ count: 0 }),
     },
   }) as unknown as BudgetAlertDispatchPrisma
 
-const recordingSenders = (): { senders: PushSenders; apnsCalls: PushTarget[] } => {
+const recordingSenders = (): {
+  senders: PushSenders
+  apnsCalls: PushTarget[]
+  apnsPayloads: PushPayload[]
+} => {
   const apnsCalls: PushTarget[] = []
+  const apnsPayloads: PushPayload[] = []
   const ok: PushResult = { ok: true, status: 200, deadToken: false }
   const senders: PushSenders = {
-    sendApns: async (_c: ApnsCredentials, target: PushTarget, _p: PushPayload) => {
+    sendApns: async (_c: ApnsCredentials, target: PushTarget, payload: PushPayload) => {
       apnsCalls.push(target)
+      apnsPayloads.push(payload)
       return ok
     },
     sendFcm: async () => ok,
   }
-  return { senders, apnsCalls }
+  return { senders, apnsCalls, apnsPayloads }
 }
 
 const teamPayload = (): BudgetAlertDispatchJobPayload => ({
@@ -125,7 +134,7 @@ const tok = (userId: string): FakeState['tokens'][number] => ({
   platform: 'ios',
 })
 
-test('notifies org owners plus team managers, dedup across roles, excludes deactivated', async () => {
+test('notifies only active organisation owners for a team budget', async () => {
   const state: FakeState = {
     orgMembers: [
       { userId: 'owner-1', role: 'owner', deactivatedAt: null },
@@ -153,12 +162,9 @@ test('notifies org owners plus team managers, dedup across roles, excludes deact
     teamPayload(),
   )
 
-  // owner-1 (owner AND team admin, deduped), admin-1 (org admin? no — team scope
-  // only includes owners at org level), team-mgr. For a team-scoped budget the
-  // org recipients are OWNERS only, so admin-1 is NOT notified.
   const notified = apnsCalls.map((c) => c.token).sort()
-  assert.deepEqual(notified, ['device-owner-1', 'device-team-mgr'])
-  assert.equal(summary.sent, 2)
+  assert.deepEqual(notified, ['device-owner-1'])
+  assert.equal(summary.sent, 1)
 })
 
 test('respects push preferences (pushEnabled=false is suppressed)', async () => {
@@ -179,10 +185,10 @@ test('respects push preferences (pushEnabled=false is suppressed)', async () => 
     teamPayload(),
   )
 
-  assert.deepEqual(apnsCalls.map((c) => c.token), ['device-team-mgr'])
+  assert.deepEqual(apnsCalls.map((c) => c.token), [])
 })
 
-test('org-scoped budget notifies owners and admins', async () => {
+test('org-scoped budget notifies owners', async () => {
   const state: FakeState = {
     orgMembers: [
       { userId: 'owner-1', role: 'owner', deactivatedAt: null },
@@ -204,5 +210,23 @@ test('org-scoped budget notifies owners and admins', async () => {
     { ...teamPayload(), scopeType: 'organization', scopeId: 'org-1', scopeLabel: 'Acme' },
   )
 
-  assert.deepEqual(apnsCalls.map((c) => c.token).sort(), ['device-admin-1', 'device-owner-1'])
+  assert.deepEqual(apnsCalls.map((c) => c.token), ['device-owner-1'])
+})
+
+test('budget alerts include the Ops usage deep link in native payloads', async () => {
+  const state: FakeState = {
+    orgMembers: [{ userId: 'owner-1', role: 'owner', deactivatedAt: null }],
+    teamMembers: [],
+    projectMembers: [],
+    users: [{ id: 'owner-1', preferences: null }],
+    tokens: [tok('owner-1')],
+  }
+  const { senders, apnsPayloads } = recordingSenders()
+
+  await handleBudgetAlertDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders, retryDelayMs: () => 0 },
+    { ...teamPayload(), scopeType: 'organization', scopeId: 'org-1', scopeLabel: 'Acme' },
+  )
+
+  assert.equal(apnsPayloads[0]?.data?.url, '/ops/usage')
 })

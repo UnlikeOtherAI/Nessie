@@ -18,6 +18,7 @@ import type {
 } from './types';
 
 type SidebarNavProps = {
+  attentionCountByProjectId: Map<string, number>;
   activeDmChannelId?: string;
   channelsCollapsed: boolean;
   currentChannelId?: string;
@@ -68,6 +69,7 @@ type SidebarNavProps = {
 
 export const SidebarNav = (props: SidebarNavProps) => {
   const {
+    attentionCountByProjectId,
     activeDmChannelId,
     channelsCollapsed,
     currentChannelId,
@@ -187,7 +189,8 @@ export const SidebarNav = (props: SidebarNavProps) => {
           unreadCountByChannelId={unreadCountByChannelId}
         />
 
-        <SidebarProjectsSection
+      <SidebarProjectsSection
+        attentionCountByProjectId={attentionCountByProjectId}
           currentChannelId={currentChannelId}
           currentProjectId={currentProjectId}
           onNavigateChannel={onNavigateChannel}

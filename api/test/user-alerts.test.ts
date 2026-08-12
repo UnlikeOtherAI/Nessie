@@ -154,7 +154,20 @@ const ALERT_FOREIGN = '00000000-0000-4000-8000-000000000104'
 // Seeded newest-first so the (ordering-agnostic) store slices pages the same
 // way the real orderBy would.
 const seedAlerts = (store: TenantStore) =>
-  store.seed('userAlert', [
+  {
+    store.seed('user', [{ id: 'user-1' }])
+    store.seed('organizationMember', [
+      { id: 'org-member-1', organizationId: 'org-1', userId: 'user-1', deactivatedAt: null },
+    ])
+    store.seed('channel', [
+      { id: 'channel-1', organizationId: 'org-1' },
+      { id: 'channel-2', organizationId: 'org-1' },
+    ])
+    store.seed('channelMember', [
+      { id: 'channel-member-1', channelId: 'channel-1', userId: 'user-1' },
+      { id: 'channel-member-2', channelId: 'channel-2', userId: 'user-1' },
+    ])
+    return store.seed('userAlert', [
     {
       id: ALERT_1,
       organizationId: 'org-1',
@@ -208,7 +221,8 @@ const seedAlerts = (store: TenantStore) =>
       readAt: null,
       createdAt: new Date('2026-07-24T13:00:00.000Z'),
     },
-  ])
+    ])
+  }
 
 test('listUserAlerts returns only the caller org+user alerts with the unread count', async () => {
   const store = new TenantStore()
@@ -317,7 +331,20 @@ const ROUTE_ALERT_1 = '00000000-0000-4000-8000-000000000205'
 const ROUTE_ALERT_2 = '00000000-0000-4000-8000-000000000206'
 
 const seedRouteAlerts = (store: TenantStore) =>
-  store.seed('userAlert', [
+  {
+    store.seed('user', [{ id: ROUTE_USER }])
+    store.seed('organizationMember', [
+      { id: 'route-org-member', organizationId: ROUTE_ORG, userId: ROUTE_USER, deactivatedAt: null },
+    ])
+    store.seed('channel', [
+      { id: ROUTE_CHANNEL_1, organizationId: ROUTE_ORG },
+      { id: ROUTE_CHANNEL_2, organizationId: ROUTE_ORG },
+    ])
+    store.seed('channelMember', [
+      { id: 'route-channel-member-1', channelId: ROUTE_CHANNEL_1, userId: ROUTE_USER },
+      { id: 'route-channel-member-2', channelId: ROUTE_CHANNEL_2, userId: ROUTE_USER },
+    ])
+    return store.seed('userAlert', [
     {
       id: ROUTE_ALERT_1,
       organizationId: ROUTE_ORG,
@@ -344,7 +371,8 @@ const seedRouteAlerts = (store: TenantStore) =>
       readAt: null,
       createdAt: new Date('2026-07-24T11:00:00.000Z'),
     },
-  ])
+    ])
+  }
 
 const makeAlertsApp = (
   store: TenantStore,

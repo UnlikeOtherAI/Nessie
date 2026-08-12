@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.km.nessie",
+      "appleTeamId": "59S95D279D",
       "buildNumber": "1",
       "infoPlist": {
         "NSAppTransportSecurity": {

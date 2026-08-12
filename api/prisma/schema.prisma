@@ -656,21 +656,21 @@ enum ProductIntegrationRunStatus {
 }
 
 model User {
-  id                  String               @id @default(uuid()) @db.Uuid
-  email               String               @unique
-  displayName         String               @map("display_name")
-  passwordHash        String?              @map("password_hash")
+  id                     String                    @id @default(uuid()) @db.Uuid
+  email                  String                    @unique
+  displayName            String                    @map("display_name")
+  passwordHash           String?                   @map("password_hash")
   // Provider-supplied avatar (e.g. the Google OIDC `picture` claim), captured at
   // provisioning. `avatarAttachmentId` is a user-uploaded custom avatar that, when
   // present, overrides this. Gravatar (derived from `email`) is the next fallback.
-  avatarUrl           String?              @map("avatar_url")
-  avatarAttachmentId  String?              @map("avatar_attachment_id") @db.Uuid
-  pronouns            String?
+  avatarUrl              String?                   @map("avatar_url")
+  avatarAttachmentId     String?                   @map("avatar_attachment_id") @db.Uuid
+  pronouns               String?
   // Platform-level super-admin flag. Sits ABOVE the per-organization `owner`
   // role: org owners administer their own tenant, but only a super-admin may
   // manage platform-global resources such as the push credentials that drive
   // the central push gateway. Defaults to false; granted out-of-band.
-  superAdmin          Boolean              @default(false) @map("super_admin")
+  superAdmin             Boolean                   @default(false) @map("super_admin")
   // Access-token generation. Minted into the session JWT as `tv` and compared on
   // every request, so bumping it revokes every outstanding access token at once.
   // Revoking the refresh family alone is not enough: an access token stays valid
@@ -684,6 +684,7 @@ model User {
   projectMembers      ProjectMember[]
   teamMembers         TeamMember[]
   channelMembers      ChannelMember[]
+  pushSurfacePresences UserPushSurfacePresence[]
   knowledgeSpaceMembers KnowledgeSpaceMember[]
   callsStarted        Call[]               @relation("CallStarter")
   callParticipants    CallParticipant[]    @relation("CallParticipation")
@@ -708,8 +709,8 @@ model User {
   productAccountLinks ProductAccountLink[]
   productTeamEnablements ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
-  cancelledRuns       Run[]                @relation("RunCancelledBy")
-  avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
+  cancelledRuns          Run[]                     @relation("RunCancelledBy")
+  avatarAttachment       Attachment?               @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
 }
@@ -731,20 +732,20 @@ model PushRegistrationGeneration {
 // token can replay that same live successor during a 60-second response-loss
 // grace period; reuse after the grace period revokes the whole family.
 model RefreshToken {
-  id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  familyId     String    @map("family_id") @db.Uuid
-  sessionId    String    @map("session_id") @db.Uuid
-  providerId   String    @map("provider_id")
-  providerType String    @map("provider_type")
-  tokenHash    String    @unique @map("token_hash")
-  expiresAt    DateTime  @map("expires_at")
-  revokedAt    DateTime? @map("revoked_at")
-  replacedById String?   @map("replaced_by_id") @db.Uuid
-  replayProtectedUntil DateTime? @map("replay_protected_until") @db.Timestamptz(6)
-  userAgent    String?   @map("user_agent")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String                @id @default(uuid()) @db.Uuid
+  userId               String                @map("user_id") @db.Uuid
+  familyId             String                @map("family_id") @db.Uuid
+  sessionId            String                @map("session_id") @db.Uuid
+  providerId           String                @map("provider_id")
+  providerType         String                @map("provider_type")
+  tokenHash            String                @unique @map("token_hash")
+  expiresAt            DateTime              @map("expires_at")
+  revokedAt            DateTime?             @map("revoked_at")
+  replacedById         String?               @map("replaced_by_id") @db.Uuid
+  replayProtectedUntil DateTime?             @map("replay_protected_until") @db.Timestamptz(6)
+  userAgent            String?               @map("user_agent")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   uoaSessionCredential UoaSessionCredential? @relation("UoaSessionLocalToken")
 
   @@index([userId])
@@ -757,26 +758,26 @@ model RefreshToken {
 /// exact compare-and-swap without persisting plaintext. `lastLocalTokenId`
 /// couples every upstream rotation to one deterministic local successor.
 model UoaSessionCredential {
-  familyId              String   @id @map("family_id") @db.Uuid
-  userId                String   @map("user_id") @db.Uuid
-  providerId            String   @map("provider_id")
-  subject                String   @map("subject")
+  familyId               String       @id @map("family_id") @db.Uuid
+  userId                 String       @map("user_id") @db.Uuid
+  providerId             String       @map("provider_id")
+  subject                String       @map("subject")
   // UOA's OWN organization/team identifiers, not local Organization/Team ids —
   // they are opaque provider strings, so no foreign key belongs here.
-  organizationId         String   @map("organization_id")
-  teamId                 String   @map("team_id")
-  tokenVersion           Int      @map("token_version")
-  configUrl              String   @map("config_url")
-  refreshTokenHash       String   @unique @map("refresh_token_hash")
-  refreshTokenCiphertext String   @map("refresh_token_ciphertext")
-  refreshTokenIv         String   @map("refresh_token_iv")
-  refreshTokenAuthTag    String   @map("refresh_token_auth_tag")
-  refreshTokenExpiresAt  DateTime @map("refresh_token_expires_at") @db.Timestamptz(6)
-  lastLocalTokenId       String   @unique @map("last_local_token_id") @db.Uuid
-  generation             Int      @default(0)
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
-  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId         String       @map("organization_id")
+  teamId                 String       @map("team_id")
+  tokenVersion           Int          @map("token_version")
+  configUrl              String       @map("config_url")
+  refreshTokenHash       String       @unique @map("refresh_token_hash")
+  refreshTokenCiphertext String       @map("refresh_token_ciphertext")
+  refreshTokenIv         String       @map("refresh_token_iv")
+  refreshTokenAuthTag    String       @map("refresh_token_auth_tag")
+  refreshTokenExpiresAt  DateTime     @map("refresh_token_expires_at") @db.Timestamptz(6)
+  lastLocalTokenId       String       @unique @map("last_local_token_id") @db.Uuid
+  generation             Int          @default(0)
+  createdAt              DateTime     @default(now()) @map("created_at")
+  updatedAt              DateTime     @updatedAt @map("updated_at")
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   lastLocalToken         RefreshToken @relation("UoaSessionLocalToken", fields: [lastLocalTokenId], references: [id], onDelete: Cascade)
 
   @@index([userId])
@@ -784,36 +785,36 @@ model UoaSessionCredential {
 }
 
 model Organization {
-  id               String               @id @default(uuid()) @db.Uuid
-  name             String
-  logoAttachmentId String?              @map("logo_attachment_id") @db.Uuid
+  id                     String                  @id @default(uuid()) @db.Uuid
+  name                   String
+  logoAttachmentId       String?                 @map("logo_attachment_id") @db.Uuid
   // Owner/admin opt-out for EXIF/GPS metadata stripping on image uploads at
   // the FileService chokepoint. Defaults to stripping (true); set false to
   // preserve original metadata.
-  stripImageMetadata Boolean             @default(true) @map("strip_image_metadata")
-  createdAt        DateTime             @default(now()) @map("created_at")
-  updatedAt        DateTime             @updatedAt @map("updated_at")
-  logoAttachment   Attachment?          @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)
-  members          OrganizationMember[]
-  projects         Project[]
-  channels         Channel[]
-  thoughts         Thought[]
-  knowledgeSpaces  KnowledgeSpace[]
-  knowledgePages   KnowledgePage[]
-  knowledgePageChunks KnowledgePageChunk[]
-  tasks            Task[]
-  budgets          Budget[]
-  plans            Plan[]
-  approvalRequests ApprovalRequest[]
-  resourceLocks    ResourceLock[]
-  userStatuses     UserStatus[]
-  userAlerts       UserAlert[]
-  feedback         Feedback[]
-  favorites        Favorite[]
-  productAccountLinks ProductAccountLink[]
+  stripImageMetadata     Boolean                 @default(true) @map("strip_image_metadata")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+  logoAttachment         Attachment?             @relation("OrganizationLogo", fields: [logoAttachmentId], references: [id], onDelete: SetNull)
+  members                OrganizationMember[]
+  projects               Project[]
+  channels               Channel[]
+  thoughts               Thought[]
+  knowledgeSpaces        KnowledgeSpace[]
+  knowledgePages         KnowledgePage[]
+  knowledgePageChunks    KnowledgePageChunk[]
+  tasks                  Task[]
+  budgets                Budget[]
+  plans                  Plan[]
+  approvalRequests       ApprovalRequest[]
+  resourceLocks          ResourceLock[]
+  userStatuses           UserStatus[]
+  userAlerts             UserAlert[]
+  feedback               Feedback[]
+  favorites              Favorite[]
+  productAccountLinks    ProductAccountLink[]
   productTeamEnablements ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
-  productWebhookSecrets ProductWebhookSecret[]
+  productWebhookSecrets  ProductWebhookSecret[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -859,42 +860,43 @@ model Organization {
   pageLabels                  PageLabel[]
   knowledgePageAnnotations    KnowledgePageAnnotation[]
   knowledgePageAnnotationReactions KnowledgePageAnnotationReaction[]
-  thoughtReasonings           ThoughtReasoning[]
-  attachments                 Attachment[]
-  deviceTokens                DeviceToken[]
-  webPushSubscriptions        WebPushSubscription[]
-  pushDeliverys               PushDelivery[]
-  commsConnections            CommsConnection[]
-  commsOAuthStates            CommsOAuthState[]
-  commsEvents                 CommsEvent[]
+  thoughtReasonings                ThoughtReasoning[]
+  attachments                      Attachment[]
+  deviceTokens                     DeviceToken[]
+  pushSurfacePresences             UserPushSurfacePresence[]
+  webPushSubscriptions             WebPushSubscription[]
+  pushDeliverys                    PushDelivery[]
+  commsConnections                 CommsConnection[]
+  commsOAuthStates                 CommsOAuthState[]
+  commsEvents                      CommsEvent[]
 
   @@map("organizations")
 }
 
 model IntegratedProduct {
-  id                  String                         @id @default(uuid()) @db.Uuid
-  slug                String                         @unique
+  id                  String                        @id @default(uuid()) @db.Uuid
+  slug                String                        @unique
   name                String
   summary             String
   category            IntegratedProductCategory
-  launchUrl           String?                        @map("launch_url")
-  apiBaseUrl          String?                        @map("api_base_url")
-  authMode            IntegratedProductAuthMode      @map("auth_mode")
-  defaultInstallState IntegratedProductInstallState  @map("default_install_state")
-  mcpCatalogEntryId   String?                        @map("mcp_catalog_entry_id") @db.Uuid
-  pluginManifestRef   String?                        @map("plugin_manifest_ref")
-  healthStatus        IntegratedProductHealthStatus  @default(unknown) @map("health_status")
-  healthDetail        String?                        @map("health_detail")
-  capabilities        String[]                       @default([])
-  setupHint           String?                        @map("setup_hint")
-  sortOrder           Int                            @default(100) @map("sort_order")
-  createdAt           DateTime                       @default(now()) @map("created_at")
-  updatedAt           DateTime                       @updatedAt @map("updated_at")
+  launchUrl           String?                       @map("launch_url")
+  apiBaseUrl          String?                       @map("api_base_url")
+  authMode            IntegratedProductAuthMode     @map("auth_mode")
+  defaultInstallState IntegratedProductInstallState @map("default_install_state")
+  mcpCatalogEntryId   String?                       @map("mcp_catalog_entry_id") @db.Uuid
+  pluginManifestRef   String?                       @map("plugin_manifest_ref")
+  healthStatus        IntegratedProductHealthStatus @default(unknown) @map("health_status")
+  healthDetail        String?                       @map("health_detail")
+  capabilities        String[]                      @default([])
+  setupHint           String?                       @map("setup_hint")
+  sortOrder           Int                           @default(100) @map("sort_order")
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @map("updated_at")
 
-  accountLinks        ProductAccountLink[]
-  teamEnablements     ProductTeamEnablement[]
-  integrationRuns     ProductIntegrationRun[]
-  mcpCatalogEntry     McpCatalogEntry?               @relation(fields: [mcpCatalogEntryId], references: [id], onDelete: SetNull)
+  accountLinks    ProductAccountLink[]
+  teamEnablements ProductTeamEnablement[]
+  integrationRuns ProductIntegrationRun[]
+  mcpCatalogEntry McpCatalogEntry?        @relation(fields: [mcpCatalogEntryId], references: [id], onDelete: SetNull)
 
   @@index([category])
   @@index([healthStatus])
@@ -917,9 +919,9 @@ model ProductAccountLink {
   createdAt         DateTime                 @default(now()) @map("created_at")
   updatedAt         DateTime                 @updatedAt @map("updated_at")
 
-  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product           IntegratedProduct        @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
-  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      IntegratedProduct @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, userId, productSlug])
   @@index([productSlug, status])
@@ -927,22 +929,22 @@ model ProductAccountLink {
 }
 
 model ProductTeamEnablement {
-  id                 String            @id @default(uuid()) @db.Uuid
-  organizationId     String            @map("organization_id") @db.Uuid
-  teamId             String            @map("team_id") @db.Uuid
-  productSlug        String            @map("product_slug")
-  enabled            Boolean           @default(false)
-  externalOrgId      String?           @map("external_org_id")
-  externalTeamId     String?           @map("external_team_id")
-  configuredByUserId String?           @map("configured_by_user_id") @db.Uuid
-  metadata           Json              @default("{}") @map("metadata_json")
-  createdAt          DateTime          @default(now()) @map("created_at")
-  updatedAt          DateTime          @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  teamId             String   @map("team_id") @db.Uuid
+  productSlug        String   @map("product_slug")
+  enabled            Boolean  @default(false)
+  externalOrgId      String?  @map("external_org_id")
+  externalTeamId     String?  @map("external_team_id")
+  configuredByUserId String?  @map("configured_by_user_id") @db.Uuid
+  metadata           Json     @default("{}") @map("metadata_json")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
-  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  team               Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  product            IntegratedProduct @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
-  configuredByUser   User?             @relation(fields: [configuredByUserId], references: [id], onDelete: SetNull)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team             Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  product          IntegratedProduct @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  configuredByUser User?             @relation(fields: [configuredByUserId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, teamId, productSlug])
   @@index([productSlug, enabled])
@@ -972,15 +974,15 @@ model ProductIntegrationRun {
   createdAt         DateTime                    @default(now()) @map("created_at")
   updatedAt         DateTime                    @updatedAt @map("updated_at")
 
-  organization      Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  team              Team                        @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  product           IntegratedProduct           @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
-  requestedByUser   User?                       @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
-  connector         McpServerInstance?          @relation(fields: [connectorId], references: [id], onDelete: SetNull)
-  channel           Channel?                    @relation(fields: [channelId], references: [id], onDelete: SetNull)
-  thread            Thread?                     @relation(fields: [threadId], references: [id], onDelete: SetNull)
-  message           Message?                    @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  knowledgePage     KnowledgePage?              @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team            Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  product         IntegratedProduct  @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
+  requestedByUser User?              @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  connector       McpServerInstance? @relation(fields: [connectorId], references: [id], onDelete: SetNull)
+  channel         Channel?           @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  thread          Thread?            @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  message         Message?           @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  knowledgePage   KnowledgePage?     @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, teamId, productSlug, requestedAt(sort: Desc)], map: "product_integration_runs_scope_requested_idx")
   @@index([organizationId, productSlug, status], map: "product_integration_runs_status_idx")
@@ -1008,25 +1010,27 @@ model OrganizationMember {
 }
 
 model Project {
-  id               String            @id @default(uuid()) @db.Uuid
-  name             String
-  organizationId   String            @map("organization_id") @db.Uuid
-  boardStyle       BoardStyle        @default(kanban) @map("board_style")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  channels         Channel[]
-  members          ProjectMember[]
-  teams            Team[]
-  plans            Plan[]
-  approvalRequests ApprovalRequest[]
-  statusRules      UserStatusRule[]
-  tasks            Task[]
-  boardColumns     BoardColumn[]
-  iterations       Iteration[]
-  knowledgeSpaces   KnowledgeSpace[]
-  knowledgePages    KnowledgePage[]
-  knowledgePageChunks KnowledgePageChunk[]
+  id                       String                    @id @default(uuid()) @db.Uuid
+  name                     String
+  organizationId           String                    @map("organization_id") @db.Uuid
+  boardStyle               BoardStyle                @default(kanban) @map("board_style")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channels                 Channel[]
+  members                  ProjectMember[]
+  teams                    Team[]
+  plans                    Plan[]
+  approvalRequests         ApprovalRequest[]
+  statusRules              UserStatusRule[]
+  tasks                    Task[]
+  boardColumns             BoardColumn[]
+  iterations               Iteration[]
+  knowledgeSpaces          KnowledgeSpace[]
+  knowledgePages           KnowledgePage[]
+  knowledgePageChunks      KnowledgePageChunk[]
+  pushAttentionAlerts      UserAlert[]               @relation("PushAttentionAlertProject")
+  userPushSurfacePresences UserPushSurfacePresence[]
 
   @@map("projects")
 }
@@ -1042,7 +1046,7 @@ model BoardColumn {
   updatedAt      DateTime       @updatedAt @map("updated_at")
   project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks          Task[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([projectId, position])
   @@map("board_columns")
@@ -1064,7 +1068,7 @@ model Iteration {
   updatedAt      DateTime        @updatedAt @map("updated_at")
   project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks          Task[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([projectId, position])
   @@index([projectId, status])
@@ -1085,10 +1089,10 @@ model ProjectMember {
 }
 
 model Team {
-  id               String            @id @default(uuid()) @db.Uuid
-  name             String
-  projectId        String            @map("project_id") @db.Uuid
-  systemManaged    Boolean           @default(false) @map("system_managed")
+  id                     String                  @id @default(uuid()) @db.Uuid
+  name                   String
+  projectId              String                  @map("project_id") @db.Uuid
+  systemManaged          Boolean                 @default(false) @map("system_managed")
   // Slack-style workspace binding. When this Nessie team represents a UOA
   // workspace, `externalWorkspaceId` is that workspace's UOA team id
   // (`active.teamId`) — unique, so one Nessie team per UOA workspace — and
@@ -1096,16 +1100,16 @@ model Team {
   // teams that were not provisioned from a UOA workspace (e.g. the bootstrap
   // default team, local-mode teams). See
   // docs/plans/2026-07-10-slack-workspace-login-nessie.md.
-  externalWorkspaceId String?        @unique @map("external_workspace_id")
-  externalOrgId    String?           @map("external_org_id")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  members          TeamMember[]
-  channels         Channel[]
-  plans            Plan[]
-  approvalRequests ApprovalRequest[]
-  productEnablements ProductTeamEnablement[]
+  externalWorkspaceId    String?                 @unique @map("external_workspace_id")
+  externalOrgId          String?                 @map("external_org_id")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+  project                Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members                TeamMember[]
+  channels               Channel[]
+  plans                  Plan[]
+  approvalRequests       ApprovalRequest[]
+  productEnablements     ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
 
   @@map("teams")
@@ -1125,16 +1129,16 @@ model TeamMember {
 }
 
 model Channel {
-  id                String             @id @default(uuid()) @db.Uuid
-  label             String
-  slug              String?
-  type              ChannelType        @default(standard)
-  systemChannelType ChannelSystemType? @map("system_channel_type")
-  organizationId    String             @map("organization_id") @db.Uuid
-  projectId         String             @map("project_id") @db.Uuid
-  teamId            String             @map("team_id") @db.Uuid
-  visibility        ChannelVisibility  @default(public)
-  dmKey             String?            @unique @map("dm_key")
+  id                     String                    @id @default(uuid()) @db.Uuid
+  label                  String
+  slug                   String?
+  type                   ChannelType               @default(standard)
+  systemChannelType      ChannelSystemType?        @map("system_channel_type")
+  organizationId         String                    @map("organization_id") @db.Uuid
+  projectId              String                    @map("project_id") @db.Uuid
+  teamId                 String                    @map("team_id") @db.Uuid
+  visibility             ChannelVisibility         @default(public)
+  dmKey                  String?                   @unique @map("dm_key")
   // sp-channels: channel lifecycle metadata + soft-archive
   topic             String?
   description       String?
@@ -1155,6 +1159,7 @@ model Channel {
   statusRules       UserStatusRule[]
   userAlerts        UserAlert[]
   productIntegrationRuns ProductIntegrationRun[]
+  pushSurfacePresences   UserPushSurfacePresence[]
 
   @@index([organizationId, type])
   @@index([projectId])
@@ -1178,22 +1183,22 @@ model ChannelMember {
 }
 
 model Thread {
-  id              String                @id @default(uuid()) @db.Uuid
-  channelId       String                @map("channel_id") @db.Uuid
-  title           String?
-  metadata        Json?                 @default("{}")
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
-  channel         Channel               @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  mailboxMessages AgentMailboxMessage[]
-  messages        Message[]
-  readStates      ThreadReadState[]
-  userAlerts      UserAlert[]
-  runs            Run[]
+  id                       String                    @id @default(uuid()) @db.Uuid
+  channelId                String                    @map("channel_id") @db.Uuid
+  title                    String?
+  metadata                 Json?                     @default("{}")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  channel                  Channel                   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  mailboxMessages          AgentMailboxMessage[]
+  messages                 Message[]
+  readStates               ThreadReadState[]
+  userAlerts               UserAlert[]
+  runs                     Run[]
   runThreadPendingMessages RunThreadPendingMessage[]
-  streamEvents    ThreadStreamEvent[]
-  triggerTargets  AgentTrigger[]        @relation("TriggerTargetThread")
-  productIntegrationRuns ProductIntegrationRun[]
+  streamEvents             ThreadStreamEvent[]
+  triggerTargets           AgentTrigger[]            @relation("TriggerTargetThread")
+  productIntegrationRuns   ProductIntegrationRun[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -1216,6 +1221,8 @@ model ThreadReadState {
 
 enum UserAlertKind {
   mention
+  task_assigned
+  knowledge_published
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1225,27 +1232,38 @@ enum UserAlertKind {
 // same alerts substrate. A muted channel still gets the row — mute suppresses
 // the push, never the durable alert.
 model UserAlert {
-  id             String        @id @default(uuid()) @db.Uuid
-  organizationId String        @map("organization_id") @db.Uuid
-  userId         String        @map("user_id") @db.Uuid
-  kind           UserAlertKind
-  messageId      String?       @map("message_id") @db.Uuid
-  threadId       String?       @map("thread_id") @db.Uuid
-  channelId      String?       @map("channel_id") @db.Uuid
-  actorUserId    String?       @map("actor_user_id") @db.Uuid
-  actorAgentId   String?       @map("actor_agent_id") @db.Uuid
-  readAt         DateTime?     @map("read_at")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  message        Message?      @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  thread         Thread?       @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  channel        Channel?      @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  actorUser      User?         @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  actorAgent     Agent?        @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @map("organization_id") @db.Uuid
+  userId          String         @map("user_id") @db.Uuid
+  kind            UserAlertKind
+  messageId       String?        @map("message_id") @db.Uuid
+  threadId        String?        @map("thread_id") @db.Uuid
+  channelId       String?        @map("channel_id") @db.Uuid
+  projectId       String?        @map("project_id") @db.Uuid
+  taskId          String?        @map("task_id") @db.Uuid
+  knowledgePageId String?        @map("knowledge_page_id") @db.Uuid
+  // A source-event generation key. New attention rows must carry one; legacy
+  // mention rows predate this field and remain NULL.
+  eventKey        String?        @map("event_key")
+  actorUserId     String?        @map("actor_user_id") @db.Uuid
+  actorAgentId    String?        @map("actor_agent_id") @db.Uuid
+  readAt          DateTime?      @map("read_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message         Message?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  thread          Thread?        @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  channel         Channel?       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  project         Project?       @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
+  task            Task?          @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
+  knowledgePage   KnowledgePage? @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
+  actorUser       User?          @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorAgent      Agent?         @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, eventKey])
   @@index([userId, readAt, createdAt])
   @@index([organizationId, userId, createdAt])
+  @@index([userId, kind, projectId, readAt, createdAt])
   @@map("user_alerts")
 }
 
@@ -1262,12 +1280,12 @@ model ThreadStreamEvent {
 }
 
 model RealtimeEvent {
-  id             BigInt   @id @default(autoincrement())
-  organizationId String   @map("organization_id") @db.Uuid
-  channelId      String   @map("channel_id") @db.Uuid
-  eventType      String   @map("event_type")
-  payload        Json     @db.JsonB
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id             BigInt       @id @default(autoincrement())
+  organizationId String       @map("organization_id") @db.Uuid
+  channelId      String       @map("channel_id") @db.Uuid
+  eventType      String       @map("event_type")
+  payload        Json         @db.JsonB
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz()
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([channelId, id], map: "idx_realtime_events_replay")
@@ -1292,11 +1310,47 @@ model UserPresence {
   lastActiveAt   DateTime?                @map("last_active_at")
   manualState    UserPresenceManualState? @map("manual_state")
   updatedAt      DateTime                 @updatedAt @map("updated_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([lastSeenAt])
   @@index([organizationId])
   @@map("user_presence")
+}
+
+// Each active app/browser surface reports its structured destination every
+// 25 seconds. Delivery workers use this short-lived, per-session state to skip
+// a push only when the recipient is already looking at that exact destination.
+enum PushSurfaceKind {
+  channel
+  ops_usage
+  project_board
+  knowledge_space
+}
+
+model UserPushSurfacePresence {
+  id                String           @id @default(uuid()) @db.Uuid
+  userId            String           @map("user_id") @db.Uuid
+  organizationId    String           @map("organization_id") @db.Uuid
+  clientId          String           @map("client_id") @db.Uuid
+  surfaceKind       PushSurfaceKind? @map("surface_kind")
+  channelId         String?          @map("channel_id") @db.Uuid
+  projectId         String?          @map("project_id") @db.Uuid
+  knowledgeSpaceId  String?          @map("knowledge_space_id") @db.Uuid
+  heartbeatSequence BigInt           @map("heartbeat_sequence")
+  lastSeenAt        DateTime         @map("last_seen_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel           Channel?         @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  project           Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  knowledgeSpace    KnowledgeSpace?  @relation(fields: [knowledgeSpaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+  @@index([organizationId, userId, surfaceKind, channelId, lastSeenAt], map: "idx_push_presence_channel")
+  @@index([organizationId, userId, surfaceKind, projectId, lastSeenAt], map: "idx_push_presence_project")
+  @@index([organizationId, userId, surfaceKind, knowledgeSpaceId, lastSeenAt], map: "idx_push_presence_knowledge_space")
+  @@index([userId, lastSeenAt])
+  @@map("user_push_surface_presence")
 }
 
 model UserStatus {
@@ -1366,36 +1420,36 @@ model UserStatusRule {
 }
 
 model Message {
-  id        String            @id @default(uuid()) @db.Uuid
-  threadId  String            @map("thread_id") @db.Uuid
-  agentId   String?           @map("agent_id") @db.Uuid
-  userId    String?           @map("user_id") @db.Uuid
-  role      MessageRole
-  content   String
-  metadata  Json?             @default("{}")
+  id                       String                    @id @default(uuid()) @db.Uuid
+  threadId                 String                    @map("thread_id") @db.Uuid
+  agentId                  String?                   @map("agent_id") @db.Uuid
+  userId                   String?                   @map("user_id") @db.Uuid
+  role                     MessageRole
+  content                  String
+  metadata                 Json?                     @default("{}")
   // Message-level reply threads: null = top-level post in the container
   // thread; set = reply belonging to that root's reply thread (one level
   // deep — replies to replies attach to the same root).
-  rootMessageId String?       @map("root_message_id") @db.Uuid
+  rootMessageId            String?                   @map("root_message_id") @db.Uuid
   // Materialized per-root reply metadata, maintained transactionally on
   // reply create. replyParticipantIds holds distinct author ids (user or
   // agent) of replies, capped for cheap collapsed-bar rendering.
-  replyCount    Int           @default(0) @map("reply_count")
-  lastReplyAt   DateTime?     @map("last_reply_at")
-  replyParticipantIds String[] @map("reply_participant_ids") @db.Uuid
-  createdAt DateTime          @default(now()) @map("created_at")
-  editedAt  DateTime?         @map("edited_at")
-  deletedAt DateTime?         @map("deleted_at")
-  thread    Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  agent     Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  rootMessage  Message?       @relation("MessageReplies", fields: [rootMessageId], references: [id], onDelete: SetNull)
-  replies      Message[]      @relation("MessageReplies")
-  reactions MessageReaction[]
-  userAlerts UserAlert[]
-  threadFollows MessageThreadFollow[]
-  productIntegrationRuns ProductIntegrationRun[]
-  triggeredRuns Run[]            @relation("RunTriggerMessage")
+  replyCount               Int                       @default(0) @map("reply_count")
+  lastReplyAt              DateTime?                 @map("last_reply_at")
+  replyParticipantIds      String[]                  @map("reply_participant_ids") @db.Uuid
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  editedAt                 DateTime?                 @map("edited_at")
+  deletedAt                DateTime?                 @map("deleted_at")
+  thread                   Thread                    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  agent                    Agent?                    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user                     User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rootMessage              Message?                  @relation("MessageReplies", fields: [rootMessageId], references: [id], onDelete: SetNull)
+  replies                  Message[]                 @relation("MessageReplies")
+  reactions                MessageReaction[]
+  userAlerts               UserAlert[]
+  threadFollows            MessageThreadFollow[]
+  productIntegrationRuns   ProductIntegrationRun[]
+  triggeredRuns            Run[]                     @relation("RunTriggerMessage")
   runThreadPendingMessages RunThreadPendingMessage[]
   basisScopes MessageBasisScope[]
   disclosureGrants DisclosureGrant[]
@@ -1584,8 +1638,8 @@ model Agent {
   reactions                     MessageReaction[]
   runs                          Run[]
   triggers                      AgentTrigger[]
-  tasks                         Task[]              @relation("AgentRunTasks")
-  assignedTasks                 Task[]              @relation("AgentAssignedTasks")
+  tasks                         Task[]                         @relation("AgentRunTasks")
+  assignedTasks                 Task[]                         @relation("AgentAssignedTasks")
   approvalRequests              ApprovalRequest[]
   plans                         Plan[]
   resourceLocks                 ResourceLock[]
@@ -1596,7 +1650,7 @@ model Agent {
   knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
   userAlertActivity             UserAlert[]
   runThreadPendingMessages      RunThreadPendingMessage[]
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization                  Organization?                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -1801,27 +1855,27 @@ model Run {
 // `consumedByRunId` (set-once); see
 // docs/plans/2026-08-05-run-budgets-context-and-research-routing.md §5.
 model RunCheckpoint {
-  id              String    @id @default(uuid()) @db.Uuid
-  organizationId  String    @map("organization_id") @db.Uuid
-  runId           String    @unique @map("run_id") @db.Uuid
-  taskId          String?   @map("task_id") @db.Uuid
-  agentId         String    @map("agent_id") @db.Uuid
-  threadId        String    @map("thread_id") @db.Uuid
-  rootMessageId   String?   @map("root_message_id") @db.Uuid
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  runId           String       @unique @map("run_id") @db.Uuid
+  taskId          String?      @map("task_id") @db.Uuid
+  agentId         String       @map("agent_id") @db.Uuid
+  threadId        String       @map("thread_id") @db.Uuid
+  rootMessageId   String?      @map("root_message_id") @db.Uuid
   // 1-based continuation depth along the continuationOfRunId chain; the
   // worker's non-interactive auto-continue stops after
   // NESSIE_RUN_AUTO_CONTINUATIONS generations.
-  generation      Int       @default(1)
+  generation      Int          @default(1)
   // The RunStopReason that produced this checkpoint (string, not enum, so the
   // worker's classification can evolve without migrations).
   reason          String
   note            String
   sources         Json?
-  consumedByRunId String?   @map("consumed_by_run_id") @db.Uuid
-  consumedAt      DateTime? @map("consumed_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  run             Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  consumedByRunId String?      @map("consumed_by_run_id") @db.Uuid
+  consumedAt      DateTime?    @map("consumed_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  run             Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([threadId, rootMessageId, createdAt])
   @@map("run_checkpoints")
@@ -1857,30 +1911,30 @@ model RunThinkingChunk {
 // latest, which is intended (each is a self-contained "check for work" nudge).
 model RunThreadPendingMessage {
   // BIGSERIAL primary key doubles as the strict arrival ordering for batching.
-  seq          BigInt   @id @default(autoincrement())
-  agentId      String   @map("agent_id") @db.Uuid
-  threadId     String   @map("thread_id") @db.Uuid
-  messageId    String   @map("message_id") @db.Uuid
-  channelId    String   @map("channel_id") @db.Uuid
+  seq               BigInt                @id @default(autoincrement())
+  agentId           String                @map("agent_id") @db.Uuid
+  threadId          String                @map("thread_id") @db.Uuid
+  messageId         String                @map("message_id") @db.Uuid
+  channelId         String                @map("channel_id") @db.Uuid
   // Mirrors RunExecuteJobPayload.interactive at record time: a live human chat
   // turn stays budget-exempt when the batched follow-up run executes it.
-  interactive  Boolean  @default(false)
+  interactive       Boolean               @default(false)
   // The base AuthorizedActionContext of the triggering message (before the
   // run/task ids are injected); the drain re-injects fresh ids for the
   // follow-up run it creates.
-  actorContext Json     @map("actor_context") @db.JsonB
+  actorContext      Json                  @map("actor_context") @db.JsonB
   // Trigger provenance of a pended trigger fire (null for chat/mailbox
   // pends). When the LATEST pending row carries it, the drain copies it onto
   // the batched follow-up run so trigger delivery dedupe and audit keep their
   // run linkage.
-  triggerId         String?  @map("trigger_id") @db.Uuid
-  triggerDeliveryId String?  @map("trigger_delivery_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at")
-  agent        Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  thread       Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  message      Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  trigger         AgentTrigger?         @relation(fields: [triggerId], references: [id], onDelete: SetNull)
-  triggerDelivery AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+  triggerId         String?               @map("trigger_id") @db.Uuid
+  triggerDeliveryId String?               @map("trigger_delivery_id") @db.Uuid
+  createdAt         DateTime              @default(now()) @map("created_at")
+  agent             Agent                 @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread            Thread                @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message           Message               @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  trigger           AgentTrigger?         @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerDelivery   AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
 
   @@unique([agentId, messageId])
   @@index([threadId, seq])
@@ -1888,33 +1942,33 @@ model RunThreadPendingMessage {
 }
 
 model AgentTrigger {
-  id                     String                 @id @default(uuid()) @db.Uuid
-  agentId                String?                @map("agent_id") @db.Uuid
-  workflowInstallationId String?                @map("workflow_installation_id") @db.Uuid
-  type                   AgentTriggerType
-  status                 AgentTriggerStatus     @default(active)
-  enabled                Boolean                @default(true)
-  name                   String?
-  description            String?
-  config                 Json                   @default("{}")
-  targetChannelId        String?                @map("target_channel_id") @db.Uuid
-  targetThreadId         String?                @map("target_thread_id") @db.Uuid
-  schedulerClaimId       String?                @map("scheduler_claim_id") @db.Uuid
-  schedulerClaimedAt     DateTime?              @map("scheduler_claimed_at")
+  id                       String                    @id @default(uuid()) @db.Uuid
+  agentId                  String?                   @map("agent_id") @db.Uuid
+  workflowInstallationId   String?                   @map("workflow_installation_id") @db.Uuid
+  type                     AgentTriggerType
+  status                   AgentTriggerStatus        @default(active)
+  enabled                  Boolean                   @default(true)
+  name                     String?
+  description              String?
+  config                   Json                      @default("{}")
+  targetChannelId          String?                   @map("target_channel_id") @db.Uuid
+  targetThreadId           String?                   @map("target_thread_id") @db.Uuid
+  schedulerClaimId         String?                   @map("scheduler_claim_id") @db.Uuid
+  schedulerClaimedAt       DateTime?                 @map("scheduler_claimed_at")
   // Inbound webhook HMAC signing secret (sp-webhook). When set, the webhook
   // intake endpoint requires a valid X-Nessie-Signature instead of bearer key.
-  signingSecret          String?                @map("signing_secret")
-  lastFiredAt            DateTime?              @map("last_fired_at")
-  nextRunAt              DateTime?              @map("next_run_at")
-  createdAt              DateTime               @default(now()) @map("created_at")
-  updatedAt              DateTime               @updatedAt @map("updated_at")
-  agent                  Agent?                 @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  workflowInstallation   WorkflowInstallation?  @relation(fields: [workflowInstallationId], references: [id], onDelete: Cascade)
-  targetChannel          Channel?               @relation("TriggerTargetChannel", fields: [targetChannelId], references: [id], onDelete: SetNull)
-  targetThread           Thread?                @relation("TriggerTargetThread", fields: [targetThreadId], references: [id], onDelete: SetNull)
-  deliveries             AgentTriggerDelivery[]
-  runs                   Run[]
-  workflowRuns           WorkflowRun[]
+  signingSecret            String?                   @map("signing_secret")
+  lastFiredAt              DateTime?                 @map("last_fired_at")
+  nextRunAt                DateTime?                 @map("next_run_at")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  agent                    Agent?                    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workflowInstallation     WorkflowInstallation?     @relation(fields: [workflowInstallationId], references: [id], onDelete: Cascade)
+  targetChannel            Channel?                  @relation("TriggerTargetChannel", fields: [targetChannelId], references: [id], onDelete: SetNull)
+  targetThread             Thread?                   @relation("TriggerTargetThread", fields: [targetThreadId], references: [id], onDelete: SetNull)
+  deliveries               AgentTriggerDelivery[]
+  runs                     Run[]
+  workflowRuns             WorkflowRun[]
   runThreadPendingMessages RunThreadPendingMessage[]
 
   @@index([agentId, createdAt])
@@ -1931,22 +1985,22 @@ model AgentTrigger {
 }
 
 model AgentTriggerDelivery {
-  id           String                     @id @default(uuid()) @db.Uuid
-  triggerId    String                     @map("trigger_id") @db.Uuid
-  dedupeKey    String?                    @map("dedupe_key")
-  status       AgentTriggerDeliveryStatus @default(pending)
-  source       String?
-  payload      Json                       @default("{}")
-  errorMessage String?                    @map("error_message")
-  deliveredAt  DateTime?                  @map("delivered_at")
+  id                       String                     @id @default(uuid()) @db.Uuid
+  triggerId                String                     @map("trigger_id") @db.Uuid
+  dedupeKey                String?                    @map("dedupe_key")
+  status                   AgentTriggerDeliveryStatus @default(pending)
+  source                   String?
+  payload                  Json                       @default("{}")
+  errorMessage             String?                    @map("error_message")
+  deliveredAt              DateTime?                  @map("delivered_at")
   // Delivery retry/backoff (sp-webhook). A `failed` delivery with
   // retryCount < max and nextRetryAt <= now is retryable by the worker poller.
-  retryCount   Int                        @default(0) @map("retry_count")
-  nextRetryAt  DateTime?                  @map("next_retry_at")
-  createdAt    DateTime                   @default(now()) @map("created_at")
-  trigger      AgentTrigger               @relation(fields: [triggerId], references: [id], onDelete: Cascade)
-  run          Run?                       @relation("RunTriggerDelivery")
-  workflowRuns WorkflowRun[]
+  retryCount               Int                        @default(0) @map("retry_count")
+  nextRetryAt              DateTime?                  @map("next_retry_at")
+  createdAt                DateTime                   @default(now()) @map("created_at")
+  trigger                  AgentTrigger               @relation(fields: [triggerId], references: [id], onDelete: Cascade)
+  run                      Run?                       @relation("RunTriggerDelivery")
+  workflowRuns             WorkflowRun[]
   runThreadPendingMessages RunThreadPendingMessage[]
 
   @@unique([triggerId, dedupeKey])
@@ -2031,7 +2085,7 @@ model AgentMailboxMessage {
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")
   thread            Thread?              @relation(fields: [threadId], references: [id], onDelete: SetNull)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([toAgentId, correlationId])
   @@index([organizationId, status, visibleAt])
@@ -2063,7 +2117,7 @@ model WorkflowTemplate {
   createdAt                      DateTime               @default(now()) @map("created_at")
   updatedAt                      DateTime               @updatedAt @map("updated_at")
   installations                  WorkflowInstallation[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization                   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, name])
@@ -2090,7 +2144,7 @@ model WorkflowInstallation {
   runs                    WorkflowRun[]
   triggers                AgentTrigger[]
   stateEntries            WorkflowStateEntry[]       @relation("WorkflowInstallationStateEntries")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization            Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
@@ -2113,7 +2167,7 @@ model WorkflowStateEntry {
   workflowInstallation   WorkflowInstallation @relation("WorkflowInstallationStateEntries", fields: [workflowInstallationId], references: [id], onDelete: Cascade)
   workflowRun            WorkflowRun?         @relation("WorkflowRunStateEntries", fields: [workflowRunId], references: [id], onDelete: SetNull)
   workflowStepRun        WorkflowStepRun?     @relation("WorkflowStepRunStateEntries", fields: [workflowStepRunId], references: [id], onDelete: SetNull)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization           Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([workflowInstallationId, key])
   @@index([organizationId, updatedAt(sort: Desc)])
@@ -2154,7 +2208,7 @@ model WorkflowRun {
   stateEntries                  WorkflowStateEntry[]           @relation("WorkflowRunStateEntries")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   executionUsageEntries         ExecutionUsageLedger[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization                  Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([installationId, createdAt(sort: Desc)])
   @@index([organizationId, status, createdAt(sort: Desc)])
@@ -2216,7 +2270,7 @@ model ExecutionEnvironmentTemplate {
   updatedAt          DateTime                       @updatedAt @map("updated_at")
   instances          ExecutionEnvironmentInstance[]
   usageEntries       ExecutionUsageLedger[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization       Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, enabled, createdAt(sort: Desc)])
   @@index([organizationId, provider, mode])
@@ -2254,7 +2308,7 @@ model ExecutionEnvironmentInstance {
   agent               Agent?                             @relation(fields: [agentId], references: [id], onDelete: SetNull)
   leases              ExecutionLease[]
   usageEntries        ExecutionUsageLedger[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization        Organization                       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status, createdAt(sort: Desc)])
   @@index([templateId, createdAt(sort: Desc)])
@@ -2274,7 +2328,7 @@ model ExecutionRunner {
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
   leases         ExecutionLease[]
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization?         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([provider, label])
   @@index([organizationId, provider, status])
@@ -2325,7 +2379,7 @@ model ExecutionUsageLedger {
   template          ExecutionEnvironmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   workflowRun       WorkflowRun?                 @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
   workflowStepRun   WorkflowStepRun?             @relation(fields: [workflowStepRunId], references: [id], onDelete: SetNull)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization      Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, recordedAt(sort: Desc)])
   @@index([instanceId, recordedAt(sort: Desc)])
@@ -2395,10 +2449,10 @@ model ToolRegistryEntry {
   createdAt        DateTime                @default(now()) @map("created_at")
   updatedAt        DateTime                @updatedAt @map("updated_at")
 
-  bundle      ToolBundle?        @relation(fields: [bundleId], references: [id], onDelete: SetNull)
-  mcpInstance McpServerInstance? @relation(fields: [mcpInstanceId], references: [id], onDelete: SetNull)
-  grants      ToolGrant[]
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bundle       ToolBundle?        @relation(fields: [bundleId], references: [id], onDelete: SetNull)
+  mcpInstance  McpServerInstance? @relation(fields: [mcpInstanceId], references: [id], onDelete: SetNull)
+  grants       ToolGrant[]
+  organization Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, scopeKey, toolId], map: "tool_registry_entries_org_scope_tool_key")
   @@index([organizationId, enabled])
@@ -2447,10 +2501,10 @@ model McpCatalogEntry {
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
 
-  organization Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner        User?               @relation("McpCatalogOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  reviewer     User?               @relation("McpCatalogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  instances    McpServerInstance[]
+  organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner              User?               @relation("McpCatalogOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  reviewer           User?               @relation("McpCatalogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  instances          McpServerInstance[]
   integratedProducts IntegratedProduct[]
 
   // Uniqueness is enforced by partial indexes (see migration): public entries
@@ -2479,11 +2533,11 @@ model McpServerInstance {
   createdAt           DateTime                @default(now()) @map("created_at")
   updatedAt           DateTime                @updatedAt @map("updated_at")
 
-  catalogEntry        McpCatalogEntry               @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
-  credentialOverrides McpServerCredentialOverride[]
-  toolRegistryEntries ToolRegistryEntry[]
+  catalogEntry           McpCatalogEntry               @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
+  credentialOverrides    McpServerCredentialOverride[]
+  toolRegistryEntries    ToolRegistryEntry[]
   productIntegrationRuns ProductIntegrationRun[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization           Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([catalogEntryId, scopeType, scopeId])
   @@index([organizationId, scopeType, scopeId])
@@ -2524,8 +2578,8 @@ model ToolBundle {
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
 
-  tools ToolRegistryEntry[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tools        ToolRegistryEntry[]
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, bundleName, version])
   @@index([organizationId, status])
@@ -2555,19 +2609,19 @@ model ToolGrant {
 }
 
 model TemporaryContextSession {
-  id                 String    @id @default(uuid()) @db.Uuid
-  organizationId     String    @map("organization_id") @db.Uuid
-  agentId            String?   @map("agent_id") @db.Uuid
-  runId              String?   @map("run_id") @db.Uuid
-  threadId           String?   @map("thread_id") @db.Uuid
+  id                 String       @id @default(uuid()) @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  agentId            String?      @map("agent_id") @db.Uuid
+  runId              String?      @map("run_id") @db.Uuid
+  threadId           String?      @map("thread_id") @db.Uuid
   title              String?
-  toolIds            Json      @default("[]") @map("tool_ids")
-  createdByActorType String    @map("created_by_actor_type")
-  createdByActorId   String    @map("created_by_actor_id")
-  droppedAt          DateTime? @map("dropped_at")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  toolIds            Json         @default("[]") @map("tool_ids")
+  createdByActorType String       @map("created_by_actor_type")
+  createdByActorId   String       @map("created_by_actor_id")
+  droppedAt          DateTime?    @map("dropped_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, droppedAt, createdAt(sort: Desc)])
   @@index([agentId, droppedAt])
@@ -2577,44 +2631,45 @@ model TemporaryContextSession {
 }
 
 model Task {
-  id               String            @id @default(uuid()) @db.Uuid
-  runId            String?           @map("run_id") @db.Uuid
-  agentId          String?           @map("agent_id") @db.Uuid
-  organizationId   String            @map("organization_id") @db.Uuid
-  projectId        String?           @map("project_id") @db.Uuid
-  columnId         String?           @map("column_id") @db.Uuid
-  position         Int               @default(0)
-  iterationId      String?           @map("iteration_id") @db.Uuid
-  storyPoints      Int?              @map("story_points")
-  parentTaskId     String?           @map("parent_task_id") @db.Uuid
-  status           TaskStatus        @default(inbox)
-  priority         TaskPriority      @default(medium)
-  dueDate          DateTime?         @map("due_date")
-  archivedAt       DateTime?         @map("archived_at")
-  title            String?
-  purpose          String?
-  detail           String?
-  assigneeUserId   String?           @map("assignee_user_id") @db.Uuid
-  assigneeAgentId  String?           @map("assignee_agent_id") @db.Uuid
-  ownerUserId      String?           @map("owner_user_id") @db.Uuid
-  createdByUserId  String?           @map("created_by_user_id") @db.Uuid
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  run              Run?              @relation(fields: [runId], references: [id], onDelete: SetNull)
-  agent            Agent?            @relation("AgentRunTasks", fields: [agentId], references: [id], onDelete: Cascade)
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  column           BoardColumn?      @relation(fields: [columnId], references: [id], onDelete: SetNull)
-  iteration        Iteration?        @relation(fields: [iterationId], references: [id], onDelete: SetNull)
-  assignee         User?             @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
-  assigneeAgent    Agent?            @relation("AgentAssignedTasks", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
-  owner            User?             @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  createdBy        User?             @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  parentTask       Task?             @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
-  childTasks       Task[]            @relation("TaskHierarchy")
-  events           TaskEvent[]
-  approvalRequests ApprovalRequest[]
-  workflowStepRuns WorkflowStepRun[] @relation("WorkflowTask")
+  id                  String            @id @default(uuid()) @db.Uuid
+  runId               String?           @map("run_id") @db.Uuid
+  agentId             String?           @map("agent_id") @db.Uuid
+  organizationId      String            @map("organization_id") @db.Uuid
+  projectId           String?           @map("project_id") @db.Uuid
+  columnId            String?           @map("column_id") @db.Uuid
+  position            Int               @default(0)
+  iterationId         String?           @map("iteration_id") @db.Uuid
+  storyPoints         Int?              @map("story_points")
+  parentTaskId        String?           @map("parent_task_id") @db.Uuid
+  status              TaskStatus        @default(inbox)
+  priority            TaskPriority      @default(medium)
+  dueDate             DateTime?         @map("due_date")
+  archivedAt          DateTime?         @map("archived_at")
+  title               String?
+  purpose             String?
+  detail              String?
+  assigneeUserId      String?           @map("assignee_user_id") @db.Uuid
+  assigneeAgentId     String?           @map("assignee_agent_id") @db.Uuid
+  ownerUserId         String?           @map("owner_user_id") @db.Uuid
+  createdByUserId     String?           @map("created_by_user_id") @db.Uuid
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  run                 Run?              @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent               Agent?            @relation("AgentRunTasks", fields: [agentId], references: [id], onDelete: Cascade)
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project             Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  column              BoardColumn?      @relation(fields: [columnId], references: [id], onDelete: SetNull)
+  iteration           Iteration?        @relation(fields: [iterationId], references: [id], onDelete: SetNull)
+  assignee            User?             @relation("TaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  assigneeAgent       Agent?            @relation("AgentAssignedTasks", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
+  owner               User?             @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdBy           User?             @relation("TaskCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  parentTask          Task?             @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks          Task[]            @relation("TaskHierarchy")
+  events              TaskEvent[]
+  approvalRequests    ApprovalRequest[]
+  pushAttentionAlerts UserAlert[]       @relation("PushAttentionAlertTask")
+  workflowStepRuns    WorkflowStepRun[] @relation("WorkflowTask")
 
   @@index([agentId, status])
   @@index([organizationId, status])
@@ -2705,7 +2760,7 @@ model PolicyRule {
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   bindings       PolicyBinding[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, scope, resourceType])
   @@index([organizationId, scopeId])
@@ -2793,7 +2848,7 @@ model AuditLog {
   // @nessie/db audit-chain.ts and docs/functionality.md §Audit trail.
   prevHash       String?        @map("prev_hash")
   entryHash      String?        @map("entry_hash")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, action, createdAt(sort: Desc)])
@@ -2854,7 +2909,7 @@ model TokenLedgerEvent {
   metadata              Json?
   inferenceProvider     InferenceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   inferenceModel        InferenceModel?    @relation(fields: [modelId], references: [id], onDelete: SetNull)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization          Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, provider, model, occurredAt(sort: Desc)])
@@ -2936,7 +2991,7 @@ model BudgetAlert {
   spentUsd       Decimal?        @map("spent_usd") @db.Decimal(14, 4)
   costLimitUsd   Decimal?        @map("cost_limit_usd") @db.Decimal(14, 4)
   createdAt      DateTime        @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([scopeType, scopeId, periodStart, kind])
   @@index([organizationId, createdAt])
@@ -2960,7 +3015,7 @@ model ModelPricingProfile {
   effectiveTo            DateTime?     @map("effective_to") @db.Timestamptz(6)
   createdAt              DateTime      @default(now()) @map("created_at")
   updatedAt              DateTime      @updatedAt @map("updated_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization           Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, provider, modelPattern])
   /// At most one ACTIVE profile per (organizationId, provider, modelPattern):
@@ -2989,34 +3044,34 @@ enum ConnectorType {
 // calls + units instead of tokens. Written by recordConnectorUsage
 // (@nessie/runtime) at the runtime dispatch site.
 model ConnectorUsageEvent {
-  id             String         @id @default(uuid()) @db.Uuid
-  occurredAt     DateTime       @map("occurred_at") @db.Timestamptz(6)
-  organizationId String         @map("organization_id") @db.Uuid
-  userId         String?        @map("user_id") @db.Uuid
-  projectId      String?        @map("project_id") @db.Uuid
-  teamId         String?        @map("team_id") @db.Uuid
-  channelId      String?        @map("channel_id") @db.Uuid
-  threadId       String?        @map("thread_id") @db.Uuid
-  taskId         String?        @map("task_id") @db.Uuid
-  runId          String?        @map("run_id") @db.Uuid
-  agentId        String?        @map("agent_id") @db.Uuid
-  actorId        String         @map("actor_id")
+  id             String          @id @default(uuid()) @db.Uuid
+  occurredAt     DateTime        @map("occurred_at") @db.Timestamptz(6)
+  organizationId String          @map("organization_id") @db.Uuid
+  userId         String?         @map("user_id") @db.Uuid
+  projectId      String?         @map("project_id") @db.Uuid
+  teamId         String?         @map("team_id") @db.Uuid
+  channelId      String?         @map("channel_id") @db.Uuid
+  threadId       String?         @map("thread_id") @db.Uuid
+  taskId         String?         @map("task_id") @db.Uuid
+  runId          String?         @map("run_id") @db.Uuid
+  agentId        String?         @map("agent_id") @db.Uuid
+  actorId        String          @map("actor_id")
   actorType      AuditActorType? @map("actor_type")
-  requestId      String?        @map("request_id")
-  correlationId  String?        @map("correlation_id")
-  connectorType  ConnectorType  @map("connector_type")
-  connectorId    String?        @map("connector_id") @db.Uuid
+  requestId      String?         @map("request_id")
+  correlationId  String?         @map("correlation_id")
+  connectorType  ConnectorType   @map("connector_type")
+  connectorId    String?         @map("connector_id") @db.Uuid
   target         String?
   operation      String?
-  calls          Int            @default(1)
+  calls          Int             @default(1)
   units          Int?
-  unitType       String?        @map("unit_type")
-  costAmount     Decimal?       @map("cost_amount") @db.Decimal(20, 8)
-  costCurrency   String?        @map("cost_currency")
+  unitType       String?         @map("unit_type")
+  costAmount     Decimal?        @map("cost_amount") @db.Decimal(20, 8)
+  costCurrency   String?         @map("cost_currency")
   success        Boolean?
-  latencyMs      Int?           @map("latency_ms")
+  latencyMs      Int?            @map("latency_ms")
   metadata       Json?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, connectorType, occurredAt(sort: Desc)])
@@ -3049,7 +3104,7 @@ model StorageUsageEvent {
   requestId      String?         @map("request_id")
   correlationId  String?         @map("correlation_id")
   metadata       Json?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([organizationId, projectId])
@@ -3156,9 +3211,10 @@ model KnowledgeSpace {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  pages   KnowledgePage[]
-  members KnowledgeSpaceMember[]
-  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pages                KnowledgePage[]
+  members              KnowledgeSpaceMember[]
+  pushSurfacePresences UserPushSurfacePresence[]
+  project              Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_spaces_org_project_updated_id_idx")
   @@index([organizationId, visibility, updatedAt], map: "knowledge_spaces_org_visibility_updated_idx")
@@ -3181,10 +3237,10 @@ model KnowledgeSpaceMember {
   organizationId String   @map("organization_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at")
 
-  space KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent Agent?         @relation("KnowledgeSpaceAgentMembers", fields: [agentId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  space        KnowledgeSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user         User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent        Agent?         @relation("KnowledgeSpaceAgentMembers", fields: [agentId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([spaceId, userId])
   @@unique([spaceId, agentId])
@@ -3231,18 +3287,19 @@ model KnowledgePage {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  space            KnowledgeSpace         @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  parentPage       KnowledgePage?         @relation("KnowledgePageTree", fields: [parentPageId], references: [id], onDelete: SetNull)
-  childPages       KnowledgePage[]        @relation("KnowledgePageTree")
-  versions         KnowledgePageVersion[] @relation("KnowledgePageVersions")
-  publishedVersion KnowledgePageVersion?  @relation("KnowledgePagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
-  labels           PageLabel[]
-  annotations      KnowledgePageAnnotation[]
-  chunks           KnowledgePageChunk[]
-  outgoingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkSource")
-  incomingLinks    KnowledgePageLink[]       @relation("KnowledgePageLinkTarget")
+  space                  KnowledgeSpace            @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  parentPage             KnowledgePage?            @relation("KnowledgePageTree", fields: [parentPageId], references: [id], onDelete: SetNull)
+  childPages             KnowledgePage[]           @relation("KnowledgePageTree")
+  versions               KnowledgePageVersion[]    @relation("KnowledgePageVersions")
+  publishedVersion       KnowledgePageVersion?     @relation("KnowledgePagePublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  labels                 PageLabel[]
+  annotations            KnowledgePageAnnotation[]
+  chunks                 KnowledgePageChunk[]
+  outgoingLinks          KnowledgePageLink[]       @relation("KnowledgePageLinkSource")
+  incomingLinks          KnowledgePageLink[]       @relation("KnowledgePageLinkTarget")
   productIntegrationRuns ProductIntegrationRun[]
-  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pushAttentionAlerts    UserAlert[]               @relation("PushAttentionAlertKnowledgePage")
+  project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([taskId], map: "knowledge_pages_task_id_idx")
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_pages_org_project_updated_id_idx")
@@ -3273,8 +3330,8 @@ model KnowledgePageVersion {
   changeComment String?             @map("change_comment")
   createdAt     DateTime            @default(now()) @map("created_at")
 
-  page             KnowledgePage  @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
-  publishedForPage KnowledgePage? @relation("KnowledgePagePublishedVersion")
+  page             KnowledgePage        @relation("KnowledgePageVersions", fields: [pageId], references: [id], onDelete: Cascade)
+  publishedForPage KnowledgePage?       @relation("KnowledgePagePublishedVersion")
   chunks           KnowledgePageChunk[]
 
   @@unique([pageId, versionNumber], map: "knowledge_page_versions_page_version_key")
@@ -3318,7 +3375,7 @@ model KnowledgePageChunk {
 
   page    KnowledgePage        @relation(fields: [pageId], references: [id], onDelete: Cascade)
   version KnowledgePageVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([versionId, chunkIndex], map: "knowledge_page_chunks_version_chunk_key")
   @@index([pageId, versionId], map: "knowledge_page_chunks_page_version_idx")
@@ -3342,9 +3399,9 @@ model KnowledgePageLink {
   targetTitle    String   @map("target_title")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  sourcePage KnowledgePage  @relation("KnowledgePageLinkSource", fields: [sourcePageId], references: [id], onDelete: Cascade)
-  targetPage KnowledgePage? @relation("KnowledgePageLinkTarget", fields: [targetPageId], references: [id], onDelete: SetNull)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourcePage   KnowledgePage  @relation("KnowledgePageLinkSource", fields: [sourcePageId], references: [id], onDelete: Cascade)
+  targetPage   KnowledgePage? @relation("KnowledgePageLinkTarget", fields: [targetPageId], references: [id], onDelete: SetNull)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([sourcePageId])
   @@index([targetPageId])
@@ -3360,8 +3417,8 @@ model PageLabel {
   normalizedName String   @map("normalized_name")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  page KnowledgePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  page         KnowledgePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([pageId, normalizedName], map: "page_labels_page_normalized_key")
   @@index([organizationId, normalizedName], map: "page_labels_org_normalized_idx")
@@ -3391,8 +3448,8 @@ model KnowledgePageAnnotation {
   // Text-quote anchor (notes only); null for page-level comments. Authoritative
   // re-location happens per-render; `orphaned` is a best-effort cached hint.
   anchor          Json?
-  anchorVersionId String?  @map("anchor_version_id") @db.Uuid
-  orphaned        Boolean  @default(false)
+  anchorVersionId String? @map("anchor_version_id") @db.Uuid
+  orphaned        Boolean @default(false)
 
   resolvedAt     DateTime?            @map("resolved_at")
   resolvedByType KnowledgeAuthorType? @map("resolved_by_type")
@@ -3405,11 +3462,11 @@ model KnowledgePageAnnotation {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  page      KnowledgePage                     @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  parent    KnowledgePageAnnotation?          @relation("AnnotationReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   KnowledgePageAnnotation[]         @relation("AnnotationReplies")
-  reactions KnowledgePageAnnotationReaction[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  page         KnowledgePage                     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  parent       KnowledgePageAnnotation?          @relation("AnnotationReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      KnowledgePageAnnotation[]         @relation("AnnotationReplies")
+  reactions    KnowledgePageAnnotationReaction[]
+  organization Organization                      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([pageId, kind, parentId, createdAt(sort: Desc)], map: "kb_annotations_page_kind_parent_created_idx")
   @@index([organizationId, pageId], map: "kb_annotations_org_page_idx")
@@ -3426,8 +3483,8 @@ model KnowledgePageAnnotationReaction {
   emoji          String
   createdAt      DateTime @default(now()) @map("created_at")
 
-  annotation KnowledgePageAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  annotation   KnowledgePageAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([annotationId, userId, emoji], map: "kb_annotation_reactions_user_emoji_key")
   @@unique([annotationId, agentId, emoji], map: "kb_annotation_reactions_agent_emoji_key")
@@ -3457,9 +3514,9 @@ model ThoughtReasoning {
 
   organizationId String @map("organization_id") @db.Uuid
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([thoughtId, createdAt])
   @@index([organizationId, outcome])
@@ -3582,7 +3639,7 @@ model ProductWebhookSecret {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, productSlug])
   @@map("product_webhook_secrets")
@@ -3627,21 +3684,21 @@ model McpOAuthClient {
 // message is a nullable scalar `messageId` set after upload when the message
 // is created; integrity is enforced at the application layer.
 model Attachment {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  uploaderId     String?  @map("uploader_id") @db.Uuid
-  messageId      String?  @map("message_id") @db.Uuid
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  uploaderId         String?  @map("uploader_id") @db.Uuid
+  messageId          String?  @map("message_id") @db.Uuid
   // App-enforced link to a knowledge-base page when this attachment is one of a
   // page's drawer attachments (no FK relation, mirroring messageId).
-  knowledgePageId String? @map("knowledge_page_id") @db.Uuid
-  kind           String
-  mime           String
-  filename       String
+  knowledgePageId    String?  @map("knowledge_page_id") @db.Uuid
+  kind               String
+  mime               String
+  filename           String
   // BigInt: uploads can be up to 5 GB, which overflows a 32-bit Int.
-  sizeBytes      BigInt   @map("size_bytes")
-  storageKey     String   @map("storage_key")
-  width          Int?
-  height         Int?
+  sizeBytes          BigInt   @map("size_bytes")
+  storageKey         String   @map("storage_key")
+  width              Int?
+  height             Int?
   // Cheap inline preview derived from the stored bytes and kept next to them
   // (`<storage_key>.thumb.webp`), so a feed never transfers a multi-megabyte
   // original to paint a 320px box. Null on every attachment with no preview:
@@ -3654,13 +3711,13 @@ model Attachment {
   thumbnailWidth     Int?     @map("thumbnail_width")
   thumbnailHeight    Int?     @map("thumbnail_height")
   thumbnailStatus    String?  @map("thumbnail_status")
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt          DateTime @default(now()) @map("created_at")
 
   logoForOrganizations Organization[] @relation("OrganizationLogo")
   avatarForUsers       User[]         @relation("UserAvatar")
   avatarForAgents      Agent[]        @relation("AgentAvatar")
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([messageId])
   @@index([knowledgePageId])
@@ -3702,18 +3759,18 @@ enum DevicePlatform {
 }
 
 model DeviceToken {
-  id             String         @id @default(uuid()) @db.Uuid
-  organizationId String         @map("organization_id") @db.Uuid
-  userId         String         @map("user_id") @db.Uuid
-  platform       DevicePlatform
-  token          String
-  appVersion     String?        @map("app_version")
-  apnsEnvironment PushApnsEnvironment? @map("apns_environment")
-  registrationVersion BigInt    @default(0) @map("registration_version")
-  inactiveAt     DateTime?      @map("inactive_at")
-  lastSeenAt     DateTime       @default(now()) @map("last_seen_at")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                  String               @id @default(uuid()) @db.Uuid
+  organizationId      String               @map("organization_id") @db.Uuid
+  userId              String               @map("user_id") @db.Uuid
+  platform            DevicePlatform
+  token               String
+  appVersion          String?              @map("app_version")
+  apnsEnvironment     PushApnsEnvironment? @map("apns_environment")
+  registrationVersion BigInt               @default(0) @map("registration_version")
+  inactiveAt          DateTime?            @map("inactive_at")
+  lastSeenAt          DateTime             @default(now()) @map("last_seen_at")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([token])
   @@index([organizationId])
@@ -3730,15 +3787,15 @@ model DeviceToken {
 // `organization_id`-scoped like every child table; integrity enforced at the
 // application layer to keep the slice additive.
 model WebPushSubscription {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
   endpoint       String
   p256dh         String
   auth           String
-  userAgent      String?  @map("user_agent")
-  lastSeenAt     DateTime @default(now()) @map("last_seen_at")
-  createdAt      DateTime @default(now()) @map("created_at")
+  userAgent      String?      @map("user_agent")
+  lastSeenAt     DateTime     @default(now()) @map("last_seen_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, endpoint])
@@ -3800,7 +3857,7 @@ model PushDelivery {
   errorCode      String?            @map("error_code")
   attempts       Int                @default(1)
   createdAt      DateTime           @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
   @@index([userId])
@@ -3865,14 +3922,14 @@ model CommsConnection {
   initialSyncCompletedAt DateTime?             @map("initial_sync_completed_at")
   lastSuccessfulSyncAt   DateTime?             @map("last_successful_sync_at")
   createdAt              DateTime              @default(now()) @map("created_at")
-  updatedAt             DateTime              @updatedAt @map("updated_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
 
   credential    CommsConnectionCredential?
   resources     CommsResource[]
   syncJobs      CommsSyncJob[]
   events        CommsEvent[]
   subscriptions CommsSubscription[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, ownerUserId, provider, externalTenantId, externalUserId])
   @@index([organizationId, ownerUserId])
@@ -3915,7 +3972,7 @@ model CommsOAuthState {
   expiresAt      DateTime      @map("expires_at")
   consumedAt     DateTime?     @map("consumed_at")
   createdAt      DateTime      @default(now()) @map("created_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId, provider])
   @@index([expiresAt])
@@ -3927,16 +3984,16 @@ model CommsOAuthState {
 /// string so providers can name their own container kinds. Unique per external
 /// id within the connection.
 model CommsResource {
-  id            String          @id @default(uuid()) @db.Uuid
-  connectionId  String          @map("connection_id") @db.Uuid
-  resourceType  String          @map("resource_type")
-  externalId    String          @map("external_id")
+  id            String   @id @default(uuid()) @db.Uuid
+  connectionId  String   @map("connection_id") @db.Uuid
+  resourceType  String   @map("resource_type")
+  externalId    String   @map("external_id")
   name          String?
   visibility    String?
-  userHasAccess Boolean         @default(true) @map("user_has_access")
-  syncEnabled   Boolean         @default(true) @map("sync_enabled")
-  createdAt     DateTime        @default(now()) @map("created_at")
-  updatedAt     DateTime        @updatedAt @map("updated_at")
+  userHasAccess Boolean  @default(true) @map("user_has_access")
+  syncEnabled   Boolean  @default(true) @map("sync_enabled")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   connection    CommsConnection     @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   syncJobs      CommsSyncJob[]
@@ -4009,8 +4066,8 @@ model CommsEvent {
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  connection CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, canonicalMessageId, version])
   @@index([organizationId, connectionId, occurredAt])
@@ -4023,16 +4080,16 @@ model CommsEvent {
 /// renewal sweep queries by `status` + `expiresAt`. `clientState` is the
 /// provider-echoed validation token.
 model CommsSubscription {
-  id                    String                  @id @default(uuid()) @db.Uuid
-  connectionId          String                  @map("connection_id") @db.Uuid
-  resourceId            String?                 @map("resource_id") @db.Uuid
-  provider              CommsProvider
-  externalSubscriptionId String                 @map("external_subscription_id")
-  clientState           String?                 @map("client_state")
-  expiresAt             DateTime                @map("expires_at")
-  status                CommsSubscriptionStatus @default(active)
-  createdAt             DateTime                @default(now()) @map("created_at")
-  updatedAt             DateTime                @updatedAt @map("updated_at")
+  id                     String                  @id @default(uuid()) @db.Uuid
+  connectionId           String                  @map("connection_id") @db.Uuid
+  resourceId             String?                 @map("resource_id") @db.Uuid
+  provider               CommsProvider
+  externalSubscriptionId String                  @map("external_subscription_id")
+  clientState            String?                 @map("client_state")
+  expiresAt              DateTime                @map("expires_at")
+  status                 CommsSubscriptionStatus @default(active)
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
 
   connection CommsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   resource   CommsResource?  @relation(fields: [resourceId], references: [id], onDelete: SetNull)

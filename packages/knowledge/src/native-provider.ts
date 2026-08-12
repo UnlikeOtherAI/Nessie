@@ -28,6 +28,15 @@ export type KnowledgeVersionIndexedEvent = {
   versionId: string
 }
 
+export type KnowledgePagePublishedEvent = {
+  actorUserId: string | null
+  organizationId: string
+  pageId: string
+  projectId: string
+  spaceId: string
+  versionId: string
+}
+
 export type NativeKnowledgeProviderOptions = {
   // Invoked inside the same transaction that wrote a version's chunk rows —
   // the api wires this to enqueue the `knowledge.embed` job, so a failed
@@ -35,6 +44,13 @@ export type NativeKnowledgeProviderOptions = {
   onVersionChunksReplaced?: (
     tx: Prisma.TransactionClient,
     event: KnowledgeVersionIndexedEvent,
+  ) => Promise<void>
+  // Invoked inside the publication transaction after the page points at its
+  // newly published version. The API owns recipient resolution and the queue
+  // outbox because they are app-level attention policy, not knowledge storage.
+  onPagePublished?: (
+    tx: Prisma.TransactionClient,
+    event: KnowledgePagePublishedEvent,
   ) => Promise<void>
 }
 
@@ -157,6 +173,7 @@ const getMutablePage = async (
       visibility: true,
       sensitivityTier: true,
       privateToAgentId: true,
+      publishedVersionId: true,
       taskId: true,
     },
   })
@@ -305,10 +322,21 @@ const publishPage = async (
     })
     if (!latest) return null
     await indexVersionChunks(tx, options, page, latest)
+    const wasAlreadyPublished = page.status === 'published' && page.publishedVersionId === latest.id
     await tx.knowledgePage.update({
       where: { id: input.pageId },
       data: { publishedVersionId: latest.id, status: 'published' },
     })
+    if (!wasAlreadyPublished && options.onPagePublished) {
+      await options.onPagePublished(tx, {
+        actorUserId: input.actorUserId ?? null,
+        organizationId: input.organizationId,
+        pageId: page.id,
+        projectId: page.projectId,
+        spaceId: page.spaceId,
+        versionId: latest.id,
+      })
+    }
     return fetchPage(tx, input.organizationId, input.pageId)
   })
 

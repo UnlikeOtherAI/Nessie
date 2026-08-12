@@ -243,6 +243,8 @@ The application configuration includes Expo's `expo-notifications` plugin.
 After `npx expo prebuild --platform ios --no-install`, confirm Xcode generated
 `ios/Nessie/Nessie.entitlements` with `aps-environment`. Xcode's automatic
 signing must use the Apple team whose App ID has the capability above. The
+committed `mobile/app.json` pins Expo's `ios.appleTeamId` to that team so a
+fresh prebuild keeps the same signing owner. The
 development build reports `sandbox` with its device token; TestFlight and App
 Store builds report `production`, and Nessie records that environment per token
 so both can coexist.
@@ -254,6 +256,17 @@ The remaining prerequisites are:
 - An Expo/EAS account for remote builds (optional for a local Xcode build).
 - The `extra.eas.projectId` value in `mobile/app.json` filled by `eas init`.
 - The `owner` value in `mobile/app.json` replaced with the Expo account name.
+
+### Android FCM prerequisite
+
+Android uses the same in-house sender, but Firebase issues the raw FCM token.
+Before an Android production build can register or receive pushes for
+`com.km.nessie`, add the Firebase project's `google-services.json` to the
+mobile build configuration and upload the corresponding Firebase
+**service-account JSON** through **Settings → Push credentials**. The first is
+safe client build configuration; the second is the server credential used by
+Nessie to call FCM directly and must remain in the encrypted server-side secret
+store. Both files must belong to the same Firebase project and Android app ID.
 
 Use the global EAS CLI:
 
@@ -295,13 +308,34 @@ Install the development build on the device. Unlike Expo Go, the development bui
    “APNs accepted” response is provider acceptance, not a claim that iOS
    displayed the banner.
 4. Send a channel message. The worker sends the channel/mention framing and a
-   truncated message preview (at most 140 characters), coalesces bursts by
-   channel, and includes the channel/message deep link. Muted channels and
-   quiet-hours remain suppressed. Tokens from another organization are never
-   selected.
+   whitespace-normalized, truncated message preview (at most 140 characters),
+   coalesces bursts by channel, and includes the channel/message deep link.
+   Muted channels and quiet-hours remain suppressed. Tokens from another
+   organization are never selected.
 
 For a production check, repeat step 3 with a TestFlight build. It must reach
 the production APNs host; a sandbox development token must not be sent there.
+
+### Per-user delivery controls and open-page suppression
+
+Each person controls their own delivery at **Settings → Notifications**. All
+important categories start enabled: channel messages, direct mentions, and
+operational budget warnings/blocks for organisation owners. The account-level switch and quiet hours
+remain a higher-priority stop for every category; a muted channel continues to
+suppress its channel and mention pushes.
+
+Every visible Nessie browser tab or native WebView sends a short-lived,
+strictly ordered structured foreground surface heartbeat. Its channel target is
+accepted only for an active organization member with channel access. Under the
+same per-user lock used for session revocation, the API also verifies the
+heartbeat's exact refresh session is still live. Before delivering, the
+in-house worker checks whether any of that user's active sessions is already
+displaying the exact channel or operational-usage page the notification would
+open. If so, it does not send an APNs/FCM/browser push—the realtime stream is
+already updating that page. A later background signal wins over a delayed
+earlier foreground request, and `pagehide` sends an unconditional null target.
+Backgrounded, stale, revoked, deactivated, and unrelated pages never suppress
+delivery; the API reaps expired session records every five minutes.
 
 ## TestFlight
 

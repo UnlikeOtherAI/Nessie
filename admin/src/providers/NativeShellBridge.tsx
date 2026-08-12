@@ -148,9 +148,9 @@ export const NativeShellBridge = () => {
       return;
     }
     (window as RnWindow).ReactNativeWebView?.postMessage(
-      JSON.stringify({ type: 'nessie:route', path: location.pathname }),
+      JSON.stringify({ type: 'nessie:route', path: `${location.pathname}${location.search}` }),
     );
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   return null;
 };

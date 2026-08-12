@@ -113,6 +113,12 @@ const buildFakePrisma = (options: {
     knowledgePageVersion: {
       findFirst: async () => currentPageRow?.versions[0] ?? null,
     },
+    // Attention dispatch checks whether the page's space can still be read.
+    // These approval-effect fixtures exercise publishing/audit only, so no
+    // recipients are configured and the hook safely becomes a no-op.
+    knowledgeSpace: {
+      findFirst: async () => null,
+    },
     auditLog: {
       // emitAuditEvent now routes through @nessie/db writeAuditEntry, which reads
       // the org's chain tip (findFirst) before inserting the next hash-linked row.
