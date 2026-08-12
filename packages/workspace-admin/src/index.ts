@@ -10,6 +10,7 @@
 export * from './access-checks.js'
 export * from './agent-bindings.js'
 export * from './agent-create.js'
+export * from './agent-list.js'
 export * from './agent-model-order.js'
 export * from './agent-record.js'
 export * from './agent-tool-policy-core.js'

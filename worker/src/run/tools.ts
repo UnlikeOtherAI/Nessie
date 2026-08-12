@@ -5,6 +5,7 @@ import {
   runAttachmentUploadTool,
   runAgentBindChannelTool,
   runAgentCreateTool,
+  runAgentListTool,
   runAgentTriggerCreateTool,
   runAuthoredMessageSearchTool,
   runChannelArchiveTool,
@@ -213,6 +214,8 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () => runChannelCreateTool(context, args))
     case 'agent_create':
       return wrapTool(inputSummary, () => runAgentCreateTool(context, args))
+    case 'agent_list':
+      return wrapTool(inputSummary, () => runAgentListTool(context, args))
     case 'agent_bind_channel':
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':

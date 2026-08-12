@@ -5,6 +5,7 @@ import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import {
   runAgentBindChannelTool,
   runAgentCreateTool,
+  runAgentListTool,
   runAgentTriggerCreateTool,
   runChannelCreateTool,
 } from './provisioning.js'
@@ -142,6 +143,114 @@ test('agent_create refuses a tool policy that grants an explicit-grant tool', as
 
   assert.match(message, /Explicit-grant tools are managed only from the owner/)
   assert.equal(createCalls, 0)
+})
+
+const SECOND_AGENT_ID = '4f7d1c00-0e64-4d10-a517-0d0b69c1d012'
+
+// The columns `mapAgentRecord` reads, so the tool sees the same record the
+// Agents page renders.
+const buildAgentRow = (input: {
+  id: string
+  name: string
+  role: string
+  channelIds: string[]
+}) => ({
+  agentKind: 'shared' as const,
+  avatarAttachmentId: null,
+  bindings: input.channelIds.map((channelId) => ({ channelId })),
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  delegationMode: 'none' as const,
+  effort: 'medium' as const,
+  id: input.id,
+  messages: [],
+  model: null,
+  name: input.name,
+  parentAgentId: null,
+  provider: null,
+  role: input.role,
+  runs: [],
+  status: 'idle' as const,
+  surfacePolicy: 'shared' as const,
+  systemManaged: false,
+  systemPrompt: null,
+  updatedAt: new Date('2026-01-01T00:00:00Z'),
+})
+
+test('agent_list gives a member the agents they may see, with the ids bind and trigger need', async () => {
+  const queries: Array<Record<string, unknown>> = []
+  const context = buildContext('member', {
+    agent: {
+      findMany: async (args: Record<string, unknown>) => {
+        queries.push(args)
+        return [
+          buildAgentRow({
+            channelIds: [TARGET_CHANNEL_ID],
+            id: AGENT_ID,
+            name: 'Hardware Watch',
+            role: 'monitor',
+          }),
+        ]
+      },
+    },
+    channel: {
+      findMany: async () => [{ id: TARGET_CHANNEL_ID, label: 'ops' }],
+    },
+  })
+
+  const result = await runAgentListTool(context, {})
+
+  // A member reaches an agent only through a channel they can see it in, so the
+  // "unbound agents too" branch an owner gets must be absent.
+  const where = queries[0]?.where as { OR: Array<Record<string, unknown>> }
+  assert.equal(where.OR.length, 1)
+  assert.deepEqual(
+    (where.OR[0] as { bindings: { some: { channel: unknown } } }).bindings.some.channel,
+    {
+      organizationId: ORG_ID,
+      OR: [{ visibility: 'public' }, { members: { some: { userId: USER_ID } } }],
+    },
+  )
+
+  assert.match(result.outputPreview, /Agents \(1\)/)
+  assert.match(result.outputPreview, /"Hardware Watch" \| role=monitor/)
+  assert.match(result.outputPreview, new RegExp(`agentId=${AGENT_ID}`))
+  assert.match(result.outputPreview, new RegExp(`#ops \\(channelId=${TARGET_CHANNEL_ID}\\)`))
+})
+
+test('agent_list gives an owner unbound agents too, and narrows on a named one', async () => {
+  const queries: Array<Record<string, unknown>> = []
+  const context = buildContext('owner', {
+    agent: {
+      findMany: async (args: Record<string, unknown>) => {
+        queries.push(args)
+        return [
+          buildAgentRow({
+            channelIds: [],
+            id: AGENT_ID,
+            name: 'Hardware Watch',
+            role: 'monitor',
+          }),
+          buildAgentRow({
+            channelIds: [],
+            id: SECOND_AGENT_ID,
+            name: 'Release Reporter',
+            role: 'writer',
+          }),
+        ]
+      },
+    },
+    channel: { findMany: async () => [] },
+  })
+
+  const result = await runAgentListTool(context, { query: 'hardware' })
+
+  const where = queries[0]?.where as { OR: Array<Record<string, unknown>> }
+  assert.deepEqual(where.OR[1], { bindings: { none: {} } })
+
+  assert.match(result.outputPreview, /Agents \(1\)/)
+  assert.match(result.outputPreview, new RegExp(`agentId=${AGENT_ID}`))
+  assert.doesNotMatch(result.outputPreview, /Release Reporter/)
+  assert.match(result.outputPreview, /not in any channel yet/)
 })
 
 test('agent_bind_channel refuses a non-owner and never writes a binding', async () => {

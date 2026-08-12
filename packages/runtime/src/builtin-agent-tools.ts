@@ -2,14 +2,45 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 /**
  * Agent administration the personal assistant can do because its owner can do
- * it by clicking: create an agent, put it in a channel, give it a trigger.
+ * it by clicking: see the agents, create an agent, put it in a channel, give it
+ * a trigger.
  *
- * Each mirrors one REST route's authorization. `agent_create` is open to any
- * member (its route carries only authentication); `agent_bind_channel` and
- * `agent_trigger_create` are owner-only and say so when a member asks, rather
- * than pretending the capability does not exist.
+ * Each mirrors one REST route's authorization. `agent_list` and `agent_create`
+ * are open to any member (their routes carry only authentication);
+ * `agent_bind_channel` and `agent_trigger_create` are owner-only and say so
+ * when a member asks, rather than pretending the capability does not exist.
+ *
+ * `agent_list` is what makes the other two usable on an agent the user merely
+ * named: in the UI an owner picks the agent from a list, and without this the
+ * assistant could only act on an agent it had just created itself.
  */
 export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
+  {
+    id: 'agent_list',
+    label: 'List Agents',
+    personalAssistantOnly: true,
+    description:
+      'List the agents you can reach, with the channels each one already works '
+      + 'in. This is how an agent NAME becomes the agentId that '
+      + 'agent_bind_channel and agent_trigger_create require: call it first '
+      + 'whenever the user refers to an existing agent ("put Hardware Watch in '
+      + '#ops", "give the reporter a daily schedule") — you only already know an '
+      + 'id for an agent you created in this same conversation, so never guess '
+      + 'one. Owners see every agent, including ones sitting in no channel; '
+      + 'everybody else sees the agents working in channels they can see.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'Optional name or role fragment to narrow the list, e.g. "hardware". '
+            + 'Omit to see every agent you can reach.',
+        },
+      },
+    },
+    safe: true,
+  },
   {
     id: 'agent_create',
     label: 'Create Agent',
@@ -71,7 +102,8 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       'Put an agent to work in a channel, so it reads and answers there. '
       + 'Organisation owners only, and only in a channel the owner is a member '
       + 'of; a Personal Assistant DM cannot take another agent. Use channel_find '
-      + 'for the channelId; agent_create returns the agentId.',
+      + 'for the channelId, and agent_list for the agentId of an agent the user '
+      + 'named (agent_create returns the id of one you just made).',
     parameters: {
       type: 'object',
       properties: {
@@ -89,7 +121,8 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     description:
       'Give ANOTHER agent a trigger: a schedule, an interval, an inbound webhook, '
       + 'an event subscription, or a manual button. Organisation owners only, and '
-      + 'the agent must already be bound to the target channel. To schedule '
+      + 'the agent must already be bound to the target channel. Get the agentId '
+      + 'from agent_list when the user named the agent. To schedule '
       + 'yourself instead, use schedule_task — that needs no owner rights.',
     parameters: {
       type: 'object',

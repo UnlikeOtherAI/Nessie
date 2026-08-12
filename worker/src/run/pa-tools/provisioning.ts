@@ -17,22 +17,25 @@ import {
   getChannelIfMember,
   isAgentAccessibleToActor,
   ledgerAgentModelCatalogRequestHeaders,
+  listAgentsForUser,
 } from '@nessie/workspace-admin'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
+import { formatSection } from './tool-output.js'
 
 /**
- * Workspace provisioning from chat: create a channel, create an agent, bind an
- * agent to a channel, arm a trigger.
+ * Workspace provisioning from chat: list the agents you can see, create a
+ * channel, create an agent, bind an agent to a channel, arm a trigger.
  *
  * Each tool calls the very same service function its REST route calls and
  * reproduces that route's authorization exactly — no weaker, no stronger.
- * `POST /api/channels` and `POST /api/agents` carry only `requireActorContext`,
- * so those two are open to any active member; bindings and triggers are
- * owner-gated, and bindings additionally require channel membership, refuse the
- * Personal Assistant DM, and pass the `agent`/`bind` policy check.
+ * `GET /api/agents`, `POST /api/channels` and `POST /api/agents` carry only
+ * `requireActorContext`, so those three are open to any active member;
+ * bindings and triggers are owner-gated, and bindings additionally require
+ * channel membership, refuse the Personal Assistant DM, and pass the
+ * `agent`/`bind` policy check.
  */
 
 // Whether this deployment signs Ledger calls is read once, exactly as
@@ -162,6 +165,85 @@ export const runAgentCreateTool = async (
       'It is not in any channel yet — an owner can bind it with agent_bind_channel.',
     ].join('\n'),
     toolName: 'agent_create',
+  }
+}
+
+const AgentListInputSchema = z.object({
+  query: z
+    .string()
+    .trim()
+    .min(1, 'query cannot be blank — omit it to list every agent you can see.')
+    .optional(),
+})
+
+/**
+ * Channel labels for the bindings a listing already returned. The ids come
+ * from `listAgentsForUser`, which filtered every binding through the caller's
+ * own channel visibility, so this only puts a name on a channel the caller can
+ * already see.
+ */
+const resolveBoundChannelLabels = async (
+  context: BuiltinToolRuntimeContext,
+  channelIds: string[],
+): Promise<Map<string, string>> => {
+  if (channelIds.length === 0) return new Map()
+  const channels = await context.prisma.channel.findMany({
+    where: {
+      id: { in: [...new Set(channelIds)] },
+      organizationId: context.channel.organizationId,
+    },
+    select: { id: true, label: true },
+  })
+  return new Map(channels.map((channel) => [channel.id, channel.label]))
+}
+
+export const runAgentListTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+): Promise<ToolExecutionResult> => {
+  const args = AgentListInputSchema.parse(input)
+  const member = await resolveActingMember(context)
+
+  // The list the Agents page shows this person, scoped by entitlement: an owner
+  // reaches every non-system agent including unbound ones, anybody else reaches
+  // an agent through a channel they can see it working in.
+  const agents = await listAgentsForUser(
+    context.prisma,
+    member.userId,
+    member.organizationId,
+    member.isOwner,
+  )
+
+  // Narrowing happens here rather than in the query so the entitlement read
+  // stays the single shared one; it is a filter over an already-authorized list.
+  const needle = args.query?.toLowerCase()
+  const matches = needle
+    ? agents.filter((agent) =>
+      agent.name.toLowerCase().includes(needle)
+      || agent.role.toLowerCase().includes(needle))
+    : agents
+
+  const labels = await resolveBoundChannelLabels(
+    context,
+    matches.flatMap((agent) => agent.channelIds),
+  )
+  const lines = matches.map((agent) => {
+    const channels = agent.channelIds.length === 0
+      ? 'not in any channel yet'
+      : agent.channelIds
+        .map((channelId) => `#${labels.get(channelId) ?? 'unknown'} (channelId=${channelId})`)
+        .join(', ')
+    return `- "${agent.name}" | role=${agent.role} | agentId=${agent.id} | ${channels}`
+  })
+
+  const empty = needle
+    ? `No agent you can see matches "${args.query}".`
+    : 'No agents are visible to you.'
+
+  return {
+    inputSummary: needle ? `query="${args.query}"` : 'all',
+    outputPreview: formatSection(`Agents (${lines.length})`, lines) || empty,
+    toolName: 'agent_list',
   }
 }
 
