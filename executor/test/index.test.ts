@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
 import { parseCommand } from '../src/index.js'
+import {
+  stopSandboxWorkspace,
+  workspaceForRun,
+  writeSandboxFile,
+} from '../src/sandbox-workspace.js'
 import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
 import { listWorkspaceFiles, readWorkspaceFile } from '../src/workspace.js'
 
@@ -114,6 +119,63 @@ test('the read-only workspace backend keeps every path inside the paired root', 
     )
   } finally {
     await rm(root, { force: true, recursive: true })
+    await rm(outside, { force: true, recursive: true })
+  }
+})
+
+test('sandbox writes use a daemon-owned COW workspace and never touch the paired root', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-state-'))
+  const runId = '00000000-0000-4000-8000-000000000101'
+  try {
+    await mkdir(join(root, 'nested'))
+    await writeFile(join(root, 'nested', 'base.txt'), 'host source')
+
+    assert.deepEqual(
+      await writeSandboxFile(stateDir, root, runId, {
+        content: 'draft only',
+        path: 'nested/draft.txt',
+      }),
+      { byteCount: 10, path: 'nested/draft.txt', success: true },
+    )
+    const scratch = await workspaceForRun(stateDir, root, runId)
+    assert.deepEqual(
+      await readWorkspaceFile(scratch, { path: 'nested/draft.txt' }),
+      {
+        byteCount: 10,
+        content: 'draft only',
+        path: 'nested/draft.txt',
+        success: true,
+        truncated: false,
+      },
+    )
+    assert.equal(await readFile(join(root, 'nested', 'base.txt'), 'utf8'), 'host source')
+    await assert.rejects(readFile(join(root, 'nested', 'draft.txt'), 'utf8'), { code: 'ENOENT' })
+
+    assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
+    assert.equal(await workspaceForRun(stateDir, root, runId), await realpath(root))
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
+  }
+})
+
+test('copy-on-write sandbox setup fails closed on symbolic links in the paired root', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-state-'))
+  const outside = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-outside-'))
+  try {
+    await symlink(outside, join(root, 'outside-link'))
+    await assert.rejects(
+      writeSandboxFile(stateDir, root, '00000000-0000-4000-8000-000000000102', {
+        content: 'must not write',
+        path: 'draft.txt',
+      }),
+      /symbolic links/,
+    )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
     await rm(outside, { force: true, recursive: true })
   }
 })

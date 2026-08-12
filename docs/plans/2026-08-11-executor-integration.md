@@ -55,7 +55,13 @@ delivered. The initial read-only root is a path-constrained local backend, not
 a micro-VM or copy-on-write sandbox: it rejects traversal and every symbolic
 link, keeps a fixed canonical root in owner-only daemon state, bounds every
 listing/read result, and returns no host paths. A future write or command
-backend must use the planned isolated COW workspace and promotion protocol.
+backend must use the planned isolated COW workspace and promotion protocol. A
+daemon-owned COW substrate now exists for that work: it copies only ordinary,
+non-linked files into an owner-only per-run scratch directory, rejects links,
+special files and oversized source trees, and discards only that exact scratch
+directory on stop. It is deliberately not advertised or dispatchable; until
+the micro-VM, forced egress, and reviewed promotion protocol exist, the paired
+host root remains read-only.
 Neither does it expose the planned availability union with connectors.
 
 The availability endpoint deliberately creates a five-minute, one-use opaque

@@ -8,6 +8,7 @@ import {
   ExecutorAvailabilityResponseSchema,
   ExecutorCapabilityDescriptorSchema,
   ExecutorCommandEnvelopeSchema,
+  ExecutorFileWriteArgumentsSchema,
   ExecutorPrivateAssignmentSchema,
   ExecutorRunLaunchRequestSchema,
   ExecutorRunLaunchResponseSchema,
@@ -127,6 +128,24 @@ test('operation grants are tied to one executor and one known operation', () => 
       operationKey: 'shell.run',
       state: 'allowed',
       updatedAt: timestamp,
+    }).success,
+    false,
+  )
+})
+
+test('workspace write arguments are bounded for the COW backend', () => {
+  assert.deepEqual(
+    ExecutorFileWriteArgumentsSchema.parse({
+      content: 'draft',
+      createParents: true,
+      path: 'notes/draft.txt',
+    }),
+    { content: 'draft', createParents: true, path: 'notes/draft.txt' },
+  )
+  assert.equal(
+    ExecutorFileWriteArgumentsSchema.safeParse({
+      content: 'x'.repeat(65_537),
+      path: 'notes/draft.txt',
     }).success,
     false,
   )

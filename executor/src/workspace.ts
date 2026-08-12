@@ -1,62 +1,26 @@
 import { constants } from 'node:fs'
-import { lstat, open, readdir, realpath } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { lstat, open, readdir } from 'node:fs/promises'
+import { isAbsolute } from 'node:path'
 
 import {
   ExecutorFileListArgumentsSchema,
   ExecutorFileReadArgumentsSchema,
 } from '@nessie/schemas'
 
+import {
+  WorkspacePathError,
+  configureOrdinaryDirectory,
+  resolveExistingWorkspacePath,
+  safeRelativeWorkspacePath,
+} from './workspace-paths.js'
+
 const DEFAULT_READ_BYTES = 4_096
 const DEFAULT_LIST_ENTRIES = 100
-
-class WorkspacePathError extends Error {
-  override readonly name = 'WorkspacePathError'
-}
-
-const isInside = (root: string, candidate: string): boolean => {
-  const path = relative(root, candidate)
-  return path === '' || (!path.startsWith('..') && !isAbsolute(path))
-}
-
-const safeRelativePath = (value: string | undefined): string => {
-  const path = value?.trim() || '.'
-  if (path.includes('\0') || isAbsolute(path)) {
-    throw new WorkspacePathError('Workspace paths must be relative.')
-  }
-  return path
-}
 
 /** The pairing root is fixed and must remain a real, ordinary directory. */
 export const configureWorkspaceRoot = async (value: string): Promise<string> => {
   if (!isAbsolute(value)) throw new WorkspacePathError('The workspace root must be absolute.')
-  const declared = resolve(value)
-  const declaredInfo = await lstat(declared)
-  if (declaredInfo.isSymbolicLink() || !declaredInfo.isDirectory()) {
-    throw new WorkspacePathError('The workspace root must be an ordinary directory.')
-  }
-  const canonical = await realpath(declared)
-  const canonicalInfo = await lstat(canonical)
-  if (canonicalInfo.isSymbolicLink() || !canonicalInfo.isDirectory()) {
-    throw new WorkspacePathError('The workspace root is no longer an ordinary directory.')
-  }
-  return canonical
-}
-
-const resolveWorkspacePath = async (workspaceRoot: string, requestedPath: string): Promise<string> => {
-  const root = await configureWorkspaceRoot(workspaceRoot)
-  const unresolved = resolve(root, safeRelativePath(requestedPath))
-  if (!isInside(root, unresolved)) throw new WorkspacePathError('Workspace path escapes its root.')
-  let current = root
-  for (const segment of relative(root, unresolved).split(sep).filter(Boolean)) {
-    current = resolve(current, segment)
-    if ((await lstat(current)).isSymbolicLink()) {
-      throw new WorkspacePathError('Workspace paths may not traverse symbolic links.')
-    }
-  }
-  const canonical = await realpath(unresolved)
-  if (!isInside(root, canonical)) throw new WorkspacePathError('Workspace path resolves outside its root.')
-  return canonical
+  return configureOrdinaryDirectory(value, 'The workspace root')
 }
 
 const readAtMost = async (path: string, maxBytes: number): Promise<{ bytes: number; data: Buffer }> => {
@@ -80,7 +44,7 @@ export const listWorkspaceFiles = async (
   input: unknown,
 ): Promise<Record<string, unknown>> => {
   const args = ExecutorFileListArgumentsSchema.parse(input)
-  const path = await resolveWorkspacePath(workspaceRoot, safeRelativePath(args.path))
+  const path = await resolveExistingWorkspacePath(workspaceRoot, safeRelativeWorkspacePath(args.path))
   const info = await lstat(path)
   if (!info.isDirectory() || info.isSymbolicLink()) {
     throw new WorkspacePathError('The requested workspace path is not a directory.')
@@ -96,7 +60,7 @@ export const listWorkspaceFiles = async (
     }))
   return {
     entries: visible,
-    path: safeRelativePath(args.path),
+    path: safeRelativeWorkspacePath(args.path),
     success: true,
     truncated: entries.filter((entry) => !entry.isSymbolicLink()).length > visible.length,
   }
@@ -107,7 +71,7 @@ export const readWorkspaceFile = async (
   input: unknown,
 ): Promise<Record<string, unknown>> => {
   const args = ExecutorFileReadArgumentsSchema.parse(input)
-  const path = await resolveWorkspacePath(workspaceRoot, safeRelativePath(args.path))
+  const path = await resolveExistingWorkspacePath(workspaceRoot, safeRelativeWorkspacePath(args.path))
   const info = await lstat(path)
   if (!info.isFile() || info.isSymbolicLink()) {
     throw new WorkspacePathError('The requested workspace path is not a regular file.')
@@ -117,7 +81,7 @@ export const readWorkspaceFile = async (
   return {
     byteCount: result.data.byteLength,
     content: result.data.toString('utf8'),
-    path: safeRelativePath(args.path),
+    path: safeRelativeWorkspacePath(args.path),
     success: true,
     truncated: result.bytes > maxBytes,
   }

@@ -241,6 +241,15 @@ structured results without a host path. It is a read-only path boundary, not a
 micro-VM or a COW sandbox. No write, command, browser, or coding operation is
 advertised until its isolated backend is implemented and reviewed.
 
+The daemon's owner-only runtime directory already contains a per-run COW
+substrate for that later backend. It atomically snapshots a paired root into a
+daemon-owned scratch tree, rejecting every symbolic link, hard-linked file,
+special file, and source tree over the file/byte limits. Scratch writes can
+never touch the paired host root, and `sandbox.stop` can remove only the exact
+derived run directory. This substrate is not an advertised capability, is not
+a substitute for the required guest VM/forced egress, and has no promotion
+operation; it exists so later isolated work has a tested no-host-write base.
+
 Before the worker adds an executor logical schema to a model request, a human
 must bind one opaque candidate to the exact run. The user-facing launch endpoint
 `POST /api/threads/:threadId/executor-runs` creates the human message, pending

@@ -2,6 +2,7 @@ import { lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promi
 import { dirname, resolve } from 'node:path'
 
 const STATE_FILE = 'executor-state.json'
+const RUNTIME_DIRECTORY = 'runtime'
 const MODE_MASK_GROUP_OR_OTHER = 0o077
 
 export type ExecutorLocalState = {
@@ -78,4 +79,17 @@ export const saveExecutorState = async (
   } finally {
     await unlink(temporaryPath).catch(() => undefined)
   }
+}
+
+/**
+ * Daemon-owned scratch state lives beside the owner-only key file, never below
+ * the paired workspace. A caller may safely derive child directories from this
+ * returned canonical path without making any user-selected path writable.
+ */
+export const ensureExecutorRuntimeDirectory = async (stateDir: string): Promise<string> => {
+  await assertSecureDirectory(stateDir)
+  const runtimeDir = resolve(stateDir, RUNTIME_DIRECTORY)
+  await mkdir(runtimeDir, { mode: 0o700, recursive: true })
+  await assertOwnerOnly(runtimeDir, 'directory')
+  return runtimeDir
 }

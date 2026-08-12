@@ -118,6 +118,20 @@ export const ExecutorFileReadArgumentsSchema = z
   .strict()
 export type ExecutorFileReadArguments = z.infer<typeof ExecutorFileReadArgumentsSchema>
 
+/**
+ * Writes are confined to the daemon-owned copy-on-write workspace. They can
+ * never target the paired host root; promotion is a separate future operation.
+ */
+export const ExecutorFileWriteArgumentsSchema = z
+  .object({
+    content: z.string().max(65_536),
+    createParents: z.boolean().optional(),
+    overwrite: z.boolean().optional(),
+    path: z.string().min(1).max(1_024),
+  })
+  .strict()
+export type ExecutorFileWriteArguments = z.infer<typeof ExecutorFileWriteArgumentsSchema>
+
 export const ExecutorPrivateAssignmentSchema = z.discriminatedUnion(
   'principalKind',
   [
