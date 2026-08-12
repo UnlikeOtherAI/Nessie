@@ -65,6 +65,12 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       limit: query.limit,
       senderId: query.senderId,
       rootMessageId: query.rootMessageId,
+      // Disclosure predicate: thread visibility admits the caller to the thread,
+      // but a message drawn from sources they cannot reach is still withheld.
+      organizationId: actorContext.tenant.organizationId,
+      ...(actorContext.actor.actorType === 'user'
+        ? { viewerUserId: actorContext.actor.actorId }
+        : {}),
     })
     return createApiResponse(
       ThreadMessageRecordSchema.array().parse(page.data),

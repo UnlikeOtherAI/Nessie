@@ -343,10 +343,14 @@ test('loadConversation scopes to the reply thread when rootMessageId is set', as
     },
   } as unknown as Parameters<typeof loadConversation>[0]
 
+  const viewer = { kind: 'autonomous' } as const
+
   await loadConversation(prisma, {
+    consumedSources: createConsumedSourceSink(),
     organizationId: ORGANIZATION_ID,
     rootMessageId: ROOT_MESSAGE_ID,
     threadId: THREAD_ID,
+    viewer,
   })
   assert.deepEqual(wheres[0], {
     threadId: THREAD_ID,
@@ -354,7 +358,12 @@ test('loadConversation scopes to the reply thread when rootMessageId is set', as
     OR: [{ id: ROOT_MESSAGE_ID }, { rootMessageId: ROOT_MESSAGE_ID }],
   })
 
-  await loadConversation(prisma, { organizationId: ORGANIZATION_ID, threadId: THREAD_ID })
+  await loadConversation(prisma, {
+    consumedSources: createConsumedSourceSink(),
+    organizationId: ORGANIZATION_ID,
+    threadId: THREAD_ID,
+    viewer,
+  })
   assert.deepEqual(wheres[1], { threadId: THREAD_ID, role: { not: 'system' } })
 })
 

@@ -1,6 +1,12 @@
 import type { PrismaClient } from '@prisma/client'
 import type { FileService, ProviderImage, ProviderMessage } from '@nessie/runtime'
 import {
+  partitionByDisclosure,
+  WITHHELD_MESSAGE_PLACEHOLDER,
+  type DisclosureViewer,
+} from '@nessie/runtime'
+import type { ConsumedSourceSink } from './disclosure-basis.js'
+import {
   describeAttachments,
   loadInlineImages,
   loadMessageAttachments,
@@ -185,6 +191,17 @@ export const loadConversation = async (
     // that thread's context rather than the whole channel thread.
     rootMessageId?: string | undefined
     threadId: string
+    /**
+     * Who this window is being assembled for. Required, not optional: a new
+     * caller must decide rather than silently bypass the predicate. Autonomous
+     * runs pass `{ kind: 'autonomous' }` and see only unrestricted turns.
+     */
+    viewer: DisclosureViewer
+    /**
+     * The run's provenance sink. Admitted turns' bases are unioned into it so a
+     * reply derived from the transcript inherits their restriction.
+     */
+    consumedSources: ConsumedSourceSink
   },
 ): Promise<StoredConversationMessage[]> => {
   const messages = await prisma.message.findMany({
@@ -208,18 +225,45 @@ export const loadConversation = async (
       // rename is always reflected and no stale name is ever baked into the
       // prompt path.
       agent: { select: { name: true } },
+      basisScopes: { select: { scopeType: true, scopeId: true } },
     },
     take: 20,
   })
 
   const ordered = messages.reverse()
-  const messageIds = ordered.map((message) => message.id)
-  const attachments = await loadMessageAttachments(prisma, input.organizationId, messageIds)
+
+  // Disclosure predicate. A turn the viewer cannot satisfy becomes a fixed
+  // server-authored placeholder rather than vanishing: a silent gap makes the
+  // model invent continuity across a hole it cannot see.
+  const { visible: readable, withheld } = partitionByDisclosure(ordered, input.viewer)
+  const withheldIds = new Set(withheld.map((message) => message.id))
+
+  // Transitive inheritance. A reply built from the transcript rather than from
+  // retrieval would otherwise compute an empty basis, so "summarise that" would
+  // launder a restricted turn into an unrestricted one in a single turn. Every
+  // admitted turn's basis therefore joins the run's sink, and anything this run
+  // writes inherits it.
+  for (const message of readable) {
+    input.consumedSources.addAll(message.basisScopes)
+  }
+
+  // Attachments and inlined images are loaded only for admitted turns — a
+  // withheld turn must not leak through its images or its attachment inventory.
+  const readableIds = readable.map((message) => message.id)
+  const attachments = await loadMessageAttachments(prisma, input.organizationId, readableIds)
   const images = input.files
-    ? await loadInlineImages(input.files, input.organizationId, messageIds, attachments)
+    ? await loadInlineImages(input.files, input.organizationId, readableIds, attachments)
     : new Map<string, ProviderImage[]>()
 
   return ordered.map((message) => {
+    if (withheldIds.has(message.id)) {
+      return {
+        content: WITHHELD_MESSAGE_PLACEHOLDER,
+        role: message.role,
+        authorAgentId: null,
+        authorAgentName: null,
+      }
+    }
     const note = describeAttachments(attachments.get(message.id) ?? [])
     const inlined = images.get(message.id)
     return {

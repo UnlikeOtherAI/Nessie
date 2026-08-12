@@ -65,6 +65,15 @@ export const publishMessageCreated = async (
     // When present, the message is a reply: publish `message.reply` INSTEAD of
     // `message.new`, followed by the root's updated `message.reply.meta`.
     reply?: ReplyPlacement
+    /**
+     * True when the message carries a disclosure basis. WS scopes are channel-
+     * and organization-wide (`buildScopes`), so a content preview here reaches
+     * every connected member regardless of entitlement — a leak no read-side
+     * predicate can close, because it happens on the wire. A restricted message
+     * therefore publishes **content-free**: entitled clients refetch through the
+     * gated list endpoint, and everyone else learns only that something arrived.
+     */
+    restricted?: boolean
   },
 ): Promise<void> => {
   const scopes = buildScopes(context)
@@ -73,7 +82,9 @@ export const publishMessageCreated = async (
     data: {
       agentId: input.authoredByOwner ? undefined : parseAgentId(context.agent.id),
       channelId: parseChannelId(context.channel.id),
-      contentPreview: input.content.slice(0, 200),
+      ...(input.restricted
+        ? { restricted: true }
+        : { contentPreview: input.content.slice(0, 200) }),
       messageId: input.messageId,
       role: input.role,
       threadId: parseThreadId(context.run.threadId),

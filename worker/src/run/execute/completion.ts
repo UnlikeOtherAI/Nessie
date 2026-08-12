@@ -96,12 +96,18 @@ export const completeRunExecution = async (
     ? await applyRunReplyBookkeeping(deps.prisma, context, assistantMessage.createdAt)
     : undefined
 
+  // The thread SSE connection registers with a thread id and no viewer, so it
+  // cannot be filtered per-recipient. A restricted reply therefore closes the
+  // stream without its content; entitled readers refetch through the gated list.
+  const restricted = assistantMessage.basis.length > 0
+
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
-    content: input.responseText,
+    content: restricted ? '' : input.responseText,
     createdAt: assistantMessage.createdAt.toISOString(),
     messageId: assistantMessage.id,
     runId: parseRunId(context.run.id),
+    ...(restricted ? { restricted: true } : {}),
     ...(rootMessageId ? { rootMessageId } : {}),
   })
 
@@ -110,24 +116,32 @@ export const completeRunExecution = async (
     content: input.responseText,
     messageId: assistantMessage.id,
     role: delegatedOwnerId ? 'user' : 'assistant',
+    ...(restricted ? { restricted: true } : {}),
     ...(reply ? { reply } : {}),
   })
 
-  // Agent-authored @mentions create the same durable alerts as human ones.
-  await createMessageMentionAlerts(
-    { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
-    {
-      organizationId: context.channel.organizationId,
-      channelId: context.channel.id,
-      threadId: context.run.threadId,
-      messageId: assistantMessage.id,
-      messageCreatedAt: assistantMessage.createdAt,
-      content: input.responseText,
-      actorUserId: delegatedOwnerId,
-      actorAgentId: context.agent.id,
-      scopes: buildScopes(context),
-    },
-  )
+  // Agent-authored @mentions create the same durable alerts as human ones —
+  // except for a restricted reply. An alert is a durable row plus a push
+  // notification carrying the mention's framing, so alerting someone who cannot
+  // read the message hands them both its existence and a doorway to it. The
+  // reply still exists for anyone entitled; it simply does not go looking for
+  // readers who are not.
+  if (!restricted) {
+    await createMessageMentionAlerts(
+      { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
+      {
+        organizationId: context.channel.organizationId,
+        channelId: context.channel.id,
+        threadId: context.run.threadId,
+        messageId: assistantMessage.id,
+        messageCreatedAt: assistantMessage.createdAt,
+        content: input.responseText,
+        actorUserId: delegatedOwnerId,
+        actorAgentId: context.agent.id,
+        scopes: buildScopes(context),
+      },
+    )
+  }
 
   await updateRunStatus(deps.prisma, context.run.id, 'completed')
   await updateTaskStatus(deps.prisma, context.task.id, 'done')

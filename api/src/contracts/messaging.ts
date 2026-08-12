@@ -59,6 +59,10 @@ export const ThreadMessageRecordSchema = z.object({
   // Absent when a producer could not determine it — clients must then fetch,
   // so an attachment is never silently hidden.
   attachmentCount: z.number().int().nonnegative().optional(),
+  // Set when this message drew on sources the caller cannot reach. The row is
+  // still returned — with empty content — so the client renders a placeholder
+  // rather than an unexplained gap in the conversation. Absent means readable.
+  restricted: z.literal(true).optional(),
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
 
