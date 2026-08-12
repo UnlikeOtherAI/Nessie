@@ -373,19 +373,34 @@ durable all-or-recover journal ensures a crash finishes the validated manifest
 or restores the base before another promotion begins. Policy may require a
 visible local/human confirmation.
 
-The checked-in native foundation is deliberately a **preflight only** helper at
-`executor/native`. Its `workspace-preflight` command receives the paired root
-and COW draft exclusively as already-open directory descriptors on file
-descriptors 3 and 4; it receives neither path as JSON or an argument. It
-re-opens every manifest component relative to those descriptors with
-no-follow calls, rejects links, special files, mount crossings and malformed
-relative names, recomputes both the host base and draft hashes, and reports
-only a ready/rejected result. It cannot write, stage, rename or delete a host
-entry. This establishes the native path-authority seam without prematurely
-shipping a host-write capability. The future apply command must retain these
-descriptor-only inputs and add the approval/fence check plus the durable
-all-or-recover journal before `workspace.promote` can enter a daemon
-descriptor or worker schema.
+The checked-in native component at `executor/native` keeps both commands
+descriptor-only: it receives the paired root and COW draft exclusively as
+already-open directory descriptors on file descriptors 3 and 4; it receives
+neither path as JSON or an argument. `workspace-preflight` re-opens every
+manifest component relative to those descriptors with no-follow calls, rejects
+links, special files, mount crossings and malformed relative names, recomputes
+both the host base and draft hashes, and reports only a ready/rejected result.
+It also recomputes the canonical manifest digest rather than trusting a digest
+provided by its caller.
+
+`workspace-apply` is a daemon-internal native primitive, **not an executor
+descriptor or worker tool**. Before its first host rename it re-runs preflight,
+copies every draft file into a daemon-controlled `.nessie-executor-promotions`
+journal beneath the paired root, and persists the complete manifest plus the
+opaque approval digest and binding fence. It moves base files to that journal
+with no-replace, then moves staged drafts into the existing parent paths with
+no-replace. A later invocation rolls an uncommitted journal back before it
+does any new work; a committed journal is only cleaned up. The journal and
+every descendant must be private to the daemon user, and malformed journals
+fail closed. New nested paths must already have a safe host parent; this
+primitive does not create host directories.
+
+The companion does not invoke `workspace-apply` yet, and no descriptor or
+worker schema advertises `workspace.promote`. The user-owned confirmation,
+server-side approval/fence verification, exact review binding, and receipt
+delivery still have to be connected before it can become reachable. The native
+primitive cannot mint or independently verify those server facts; it only
+records the command-bound values after the companion has verified them.
 
 ## 10. State and error contract
 

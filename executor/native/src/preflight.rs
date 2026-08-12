@@ -11,7 +11,7 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
-fn is_sha256(value: &str) -> bool {
+pub(crate) fn is_sha256(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
         && value.as_bytes()[7..]
@@ -19,7 +19,7 @@ fn is_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
 }
 
-fn path_segments(path: &str) -> Result<Vec<&str>, NativeError> {
+pub(crate) fn path_segments(path: &str) -> Result<Vec<&str>, NativeError> {
     if path.is_empty()
         || path.len() > MAX_PATH_LENGTH
         || path.as_bytes().contains(&0)
@@ -41,11 +41,11 @@ fn path_segments(path: &str) -> Result<Vec<&str>, NativeError> {
     Ok(segments)
 }
 
-fn c_string(value: &str) -> Result<CString, NativeError> {
+pub(crate) fn c_string(value: &str) -> Result<CString, NativeError> {
     CString::new(value).map_err(|_| NativeError::new("EXECUTOR_PROMOTION_UNSAFE_PATH"))
 }
 
-fn duplicate(fd: RawFd) -> Result<OwnedFd, NativeError> {
+pub(crate) fn duplicate(fd: RawFd) -> Result<OwnedFd, NativeError> {
     let next = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3) };
     if next < 0 {
         return Err(NativeError::new("EXECUTOR_PROMOTION_IO_FAILURE"));
@@ -53,7 +53,10 @@ fn duplicate(fd: RawFd) -> Result<OwnedFd, NativeError> {
     Ok(unsafe { OwnedFd::from_raw_fd(next) })
 }
 
-fn ordinary_directory(fd: RawFd, root_device: Option<u64>) -> Result<(OwnedFd, u64), NativeError> {
+pub(crate) fn ordinary_directory(
+    fd: RawFd,
+    root_device: Option<u64>,
+) -> Result<(OwnedFd, u64), NativeError> {
     let descriptor = duplicate(fd)?;
     let mut stat = std::mem::MaybeUninit::<libc::stat>::zeroed();
     if unsafe { libc::fstat(descriptor.as_raw_fd(), stat.as_mut_ptr()) } != 0 {
@@ -70,7 +73,11 @@ fn ordinary_directory(fd: RawFd, root_device: Option<u64>) -> Result<(OwnedFd, u
     Ok((descriptor, device))
 }
 
-fn open_directory_at(parent: RawFd, name: &str, root_device: u64) -> Result<OwnedFd, NativeError> {
+pub(crate) fn open_directory_at(
+    parent: RawFd,
+    name: &str,
+    root_device: u64,
+) -> Result<OwnedFd, NativeError> {
     let name = c_string(name)?;
     let descriptor = unsafe {
         libc::openat(
@@ -90,7 +97,7 @@ fn open_directory_at(parent: RawFd, name: &str, root_device: u64) -> Result<Owne
     Ok(descriptor)
 }
 
-fn open_parent(
+pub(crate) fn open_parent(
     root: RawFd,
     segments: &[&str],
     root_device: u64,
@@ -102,7 +109,7 @@ fn open_parent(
     Ok((directory, c_string(segments[segments.len() - 1])?))
 }
 
-fn entry_stat(parent: RawFd, name: &CString) -> Result<Option<libc::stat>, NativeError> {
+pub(crate) fn entry_stat(parent: RawFd, name: &CString) -> Result<Option<libc::stat>, NativeError> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::zeroed();
     let result = unsafe {
         libc::fstatat(
@@ -121,7 +128,11 @@ fn entry_stat(parent: RawFd, name: &CString) -> Result<Option<libc::stat>, Nativ
     Err(NativeError::new("EXECUTOR_PROMOTION_IO_FAILURE"))
 }
 
-fn open_regular_file(parent: RawFd, name: &CString, root_device: u64) -> Result<File, NativeError> {
+pub(crate) fn open_regular_file(
+    parent: RawFd,
+    name: &CString,
+    root_device: u64,
+) -> Result<File, NativeError> {
     let descriptor = unsafe {
         libc::openat(
             parent,
@@ -140,7 +151,7 @@ fn open_regular_file(parent: RawFd, name: &CString, root_device: u64) -> Result<
     Ok(file)
 }
 
-fn hash_file(mut file: File) -> Result<DigestEntry, NativeError> {
+pub(crate) fn hash_file(mut file: File) -> Result<DigestEntry, NativeError> {
     let metadata = file.metadata()?;
     let mut hasher = Sha256::new();
     let mut bytes = [0_u8; 65_536];
@@ -157,11 +168,11 @@ fn hash_file(mut file: File) -> Result<DigestEntry, NativeError> {
     })
 }
 
-fn same_entry(actual: &DigestEntry, expected: &DigestEntry) -> bool {
+pub(crate) fn same_entry(actual: &DigestEntry, expected: &DigestEntry) -> bool {
     actual.byte_count == expected.byte_count && actual.digest == expected.digest
 }
 
-fn validate_change_shape(change: &Change) -> Result<(), NativeError> {
+pub(crate) fn validate_change_shape(change: &Change) -> Result<(), NativeError> {
     match change.kind {
         ChangeKind::Created if change.base.is_none() && change.draft.is_some() => Ok(()),
         ChangeKind::Modified if change.base.is_some() && change.draft.is_some() => Ok(()),
@@ -170,8 +181,65 @@ fn validate_change_shape(change: &Change) -> Result<(), NativeError> {
     }
 }
 
-fn check_expected(entry: &DigestEntry) -> Result<(), NativeError> {
+pub(crate) fn check_expected(entry: &DigestEntry) -> Result<(), NativeError> {
     if !is_sha256(&entry.digest) {
+        return Err(NativeError::new("EXECUTOR_PROMOTION_MANIFEST_INVALID"));
+    }
+    Ok(())
+}
+
+fn canonical_json(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            value.to_string()
+        }
+        serde_json::Value::String(_) => {
+            serde_json::to_string(value).expect("string is serializable")
+        }
+        serde_json::Value::Array(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(canonical_json)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        serde_json::Value::Object(values) => {
+            let mut keys = values.keys().collect::<Vec<_>>();
+            keys.sort_unstable();
+            format!(
+                "{{{}}}",
+                keys.into_iter()
+                    .map(|key| format!(
+                        "{}:{}",
+                        serde_json::to_string(key).expect("object key is serializable"),
+                        canonical_json(&values[key]),
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
+    }
+}
+
+pub(crate) fn manifest_digest(request: &PreflightRequest) -> Result<String, NativeError> {
+    let payload = serde_json::json!({
+        "changes": request.changes,
+        "protocolVersion": request.protocol_version,
+        "runId": request.run_id,
+    });
+    Ok(format!(
+        "sha256:{:x}",
+        Sha256::digest(canonical_json(&payload).as_bytes())
+    ))
+}
+
+pub(crate) fn validate_manifest_request(request: &PreflightRequest) -> Result<(), NativeError> {
+    if request.protocol_version != PROTOCOL_VERSION
+        || request.changes.len() > MAX_CHANGES
+        || !is_sha256(&request.manifest_digest)
+        || manifest_digest(request)? != request.manifest_digest
+    {
         return Err(NativeError::new("EXECUTOR_PROMOTION_MANIFEST_INVALID"));
     }
     Ok(())
@@ -182,12 +250,7 @@ pub fn preflight(
     draft_fd: RawFd,
     request: &PreflightRequest,
 ) -> Result<(), NativeError> {
-    if request.protocol_version != PROTOCOL_VERSION
-        || request.changes.len() > MAX_CHANGES
-        || !is_sha256(&request.manifest_digest)
-    {
-        return Err(NativeError::new("EXECUTOR_PROMOTION_MANIFEST_INVALID"));
-    }
+    validate_manifest_request(request)?;
     let (_, root_device) = ordinary_directory(root_fd, None)?;
     let (_, draft_device) = ordinary_directory(draft_fd, None)?;
     let mut paths = HashSet::with_capacity(request.changes.len());
@@ -316,18 +379,18 @@ mod tests {
         let draft_file = draft.path().join("file.txt");
         fs::write(&host_file, "base").expect("write host fixture");
         fs::write(&draft_file, "draft").expect("write draft fixture");
-        let request = PreflightRequest {
+        let mut request = PreflightRequest {
             changes: vec![Change {
                 base: Some(digest_path(&host_file)),
                 draft: Some(digest_path(&draft_file)),
                 kind: ChangeKind::Modified,
                 path: "file.txt".to_owned(),
             }],
-            manifest_digest:
-                "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+            manifest_digest: String::new(),
             protocol_version: PROTOCOL_VERSION,
             run_id: "00000000-0000-4000-8000-000000000001".to_owned(),
         };
+        request.manifest_digest = manifest_digest(&request).expect("manifest digest");
         let root_descriptor = File::open(root.path()).expect("open host descriptor");
         let draft_descriptor = File::open(draft.path()).expect("open draft descriptor");
         assert!(preflight(
@@ -368,5 +431,9 @@ mod tests {
         .expect("camel-case manifest parses");
         assert_eq!(request.changes[0].base.as_ref().unwrap().byte_count, 4);
         assert_eq!(request.run_id, "00000000-0000-4000-8000-000000000001");
+        assert_eq!(
+            manifest_digest(&request).expect("manifest digest"),
+            "sha256:6adbddd77405df078a33a79bdae1673e99b822fe64925033765279146e92edc5"
+        );
     }
 }

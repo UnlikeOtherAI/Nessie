@@ -73,14 +73,18 @@ human-bound run choice. Until the micro-VM,
 forced egress, and reviewed promotion protocol exist, the paired host root
 remains read-only.
 
-The new native `workspace-preflight` foundation takes this one step closer
-without widening that authority: it accepts the host root and COW draft only as
+The native promotion substrate remains unreachable from agents. Its
+`workspace-preflight` command accepts the host root and COW draft only as
 already-open descriptors, resolves each supplied relative path with native
-no-follow calls, checks each current host base and scratch digest, and returns
-a bounded ready/rejected result. It does not have an apply mode and has no
-worker schema, descriptor operation, or user-facing promotion action. That
-means a missing approval, journal, recovery implementation, or native helper
-cannot fall back to a Node path-based write.
+no-follow calls, recomputes the canonical manifest digest, checks each current
+host base and scratch digest, and returns a bounded ready/rejected result. Its
+`workspace-apply` companion stages the verified draft in a private,
+same-filesystem journal and either commits no-replace renames or restores an
+uncommitted transaction on the next invocation; it requires existing safe host
+parent directories. It still has no worker schema, descriptor operation, or
+user-facing promotion action. The remaining slice must connect user approval,
+server fencing, exact review binding, and command receipts before
+`workspace.promote` is advertised.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
