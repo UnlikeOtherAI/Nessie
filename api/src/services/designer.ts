@@ -18,6 +18,8 @@ import {
 
 type DesignerUsageContext = {
   actorContext: AuthorizedActionContext
+  /** Resolved once per request so usage records name the model actually called. */
+  designerModel: string
   modelProvider: string
   prisma: PrismaClient
 }
@@ -28,7 +30,17 @@ type DesignerUsageChunk = {
   total_tokens?: number
 }
 
-const DESIGNER_MODEL = 'gpt-5-mini'
+/**
+ * The designer's model.
+ *
+ * `NESSIE_DESIGNER_MODEL` names a cheaper one where the deployment has a
+ * choice; otherwise it uses whatever chat model the deployment is configured
+ * with. It used to be the literal `gpt-5-mini`, which is a guaranteed
+ * `403 gpt-5-mini is not allowed for deepseek` on any deployment whose
+ * provider is not OpenAI — the Design Assistant was dead on this one.
+ */
+const resolveDesignerModel = (modelClient: ModelClient): string =>
+  process.env['NESSIE_DESIGNER_MODEL']?.trim() || modelClient.chatModel
 const MAX_TOOL_ROUNDS = 5
 
 type OpenAIMessage = {
@@ -116,7 +128,7 @@ const recordDesignerLedgerUsage = async (
           correlationId:
             usageContext.actorContext.actionContext.correlationId,
           provider: usageContext.modelProvider,
-          model: DESIGNER_MODEL,
+          model: usageContext.designerModel,
           operationType: 'chat',
           usage: ledgerUsage,
           latencyMs,
@@ -141,7 +153,7 @@ const streamModelTurn = async (
   const startedAt = Date.now()
   const response = await modelClient.fetchCompletion(
     {
-      model: DESIGNER_MODEL,
+      model: resolveDesignerModel(modelClient),
       messages,
       tools: DESIGNER_TOOLS,
       max_completion_tokens: 4096,
@@ -219,7 +231,7 @@ const streamModelTurn = async (
 
           if (chunk.usage) {
             modelClient.usage.record(
-              DESIGNER_MODEL,
+              usageContext.designerModel,
               chunk.usage.prompt_tokens,
               chunk.usage.completion_tokens,
             )

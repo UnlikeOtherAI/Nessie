@@ -86,6 +86,11 @@ export interface ModelClient {
   // and used as the query-embedding cache key, so both sides of a similarity
   // comparison can prove they came from the same model.
   readonly embeddingModel: string
+  // The model chat calls default to, from deployment config. Callers that must
+  // name a model in a raw request body (the agent designer) read this instead
+  // of hardcoding one: a literal like `gpt-5-mini` is a guaranteed 403 on a
+  // deployment whose provider is DeepSeek or Kimi.
+  readonly chatModel: string
   stream(
     messages: ModelMessage[],
     options?: ModelOptions,
@@ -311,6 +316,7 @@ export const createModelClient = (
       }
     },
     embed,
+    chatModel: config.modelName ?? embedding.model,
     embeddingModel: embedding.model,
     embedMany,
     fetchCompletion: async (body, fetchOptions) => {

@@ -54,6 +54,8 @@ export const registerDesignerRoutes = (app: FastifyInstance, deps: RouteDeps): v
       sharedModelClient,
       {
         actorContext,
+        designerModel:
+          process.env['NESSIE_DESIGNER_MODEL']?.trim() || sharedModelClient.chatModel,
         modelProvider: config.model.provider,
         prisma,
       },
