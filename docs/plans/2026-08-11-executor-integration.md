@@ -105,6 +105,11 @@ Its only guest-control primitive is a fixed virtio socket on the individual VM:
 the guest initiates one connection and the host rejects a replacement while it
 is live. It is not a host network listener and carries no executable protocol
 or descriptor operation on its own.
+Its v1 future-broker framing is a 4-byte big-endian length with a 64 KiB frame
+and 32 KiB payload limit. Only the initial guest hello carries the fresh
+per-session 32-byte boot token; ordinary request/response/close frames cannot
+repeat it. This is only a bounded transport contract until the initrd builder,
+host hello verification, and typed browser/coding handlers ship together.
 
 The companion now also contains the inactive foundation for that egress broker:
 an owner-only Unix-socket HTTPS CONNECT gateway whose local policy names exact,

@@ -367,6 +367,14 @@ that future broker. It is one connection on one VM's device, rejects replacement
 while live, and is neither a host TCP listener nor a route to another VM. It
 carries no executable framing or descriptor capability until the guest broker,
 run binding, COW transport, and egress route are delivered together.
+Its checked-in v1 transport codec is a 4-byte big-endian length plus at most a
+64 KiB JSON frame, with a 32 KiB payload ceiling. The guest's first and only
+token-bearing frame is an empty-payload `hello` containing a fresh 32-byte
+base64url boot token; request, response, and close frames cannot carry that
+token. The per-session initrd builder must provision the token only to the
+matching guest and the host must reject a missing/changed hello before it
+accepts operation framing. Frames themselves remain capability-free until their
+typed browser/coding schemas and run-bound handler exist.
 The helper carries the `com.apple.security.virtualization` and
 `com.apple.security.hypervisor` entitlements. `sh
 executor/vm/scripts/build-signed-vm-helper.sh` creates an ad-hoc local validator
