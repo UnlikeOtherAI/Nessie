@@ -2,12 +2,13 @@
 set -eu
 
 usage() {
-  echo "Usage: build-guest-initrd.sh --output <absolute-path> --bootstrap-token-stdin" >&2
+  echo "Usage: build-guest-initrd.sh --output <absolute-path> --bootstrap-token-stdin [--coding-session-proof-stdin]" >&2
   exit 64
 }
 
 output=""
 read_token=0
+read_coding_proof=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output)
@@ -17,6 +18,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --bootstrap-token-stdin)
       read_token=1
+      shift
+      ;;
+    --coding-session-proof-stdin)
+      read_coding_proof=1
       shift
       ;;
     *)
@@ -45,10 +50,14 @@ parent=$(dirname "$output")
   exit 1
 }
 
-IFS= read -r token || [ -n "${token:-}" ] || {
+expected_input_length=43
+[ "$read_coding_proof" -eq 0 ] || expected_input_length=86
+input=$(dd bs=1 count=$((expected_input_length + 1)) 2>/dev/null)
+[ "${#input}" -eq "$expected_input_length" ] || {
   echo "missing bootstrap token" >&2
   exit 1
 }
+token=$(printf %s "$input" | cut -c1-43)
 [ "${#token}" -eq 43 ] || {
   echo "invalid bootstrap token" >&2
   exit 1
@@ -67,6 +76,24 @@ case "$(printf %s "$token" | cut -c43)" in
     ;;
 esac
 
+coding_proof=""
+if [ "$read_coding_proof" -eq 1 ]; then
+  coding_proof=$(printf %s "$input" | cut -c44-86)
+  case "$coding_proof" in
+    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-]*)
+      echo "invalid coding session proof" >&2
+      exit 1
+      ;;
+  esac
+  case "$(printf %s "$coding_proof" | cut -c43)" in
+    A|E|I|M|Q|U|Y|c|g|k|o|s|w|0|4|8) ;;
+    *)
+      echo "invalid coding session proof" >&2
+      exit 1
+      ;;
+  esac
+fi
+
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 guest_dir=$(CDPATH= cd -- "$script_dir/../../guest" && pwd)
 tmp_dir=$(mktemp -d "$parent/.nessie-guest-initrd.XXXXXX")
@@ -77,6 +104,10 @@ mkdir -p "$root_dir/etc/nessie"
 chmod 700 "$root_dir/etc" "$root_dir/etc/nessie"
 printf %s "$token" >"$root_dir/etc/nessie/bootstrap-token"
 chmod 400 "$root_dir/etc/nessie/bootstrap-token"
+if [ "$read_coding_proof" -eq 1 ]; then
+  printf %s "$coding_proof" >"$root_dir/etc/nessie/coding-session-proof"
+  chmod 400 "$root_dir/etc/nessie/coding-session-proof"
+fi
 
 (
   cd "$guest_dir"

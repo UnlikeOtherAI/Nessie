@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { createCodingSessionBroker } from '../src/coding-session-broker.js'
 import { createGuestWorkspaceLease, releaseGuestWorkspaceLease } from '../src/guest-workspace-lease.js'
 import { runGuestVmHandshake } from '../src/guest-vm-handshake.js'
 import {
@@ -157,15 +158,26 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     await Promise.all([chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)])
     await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
     await chmod(runtimeBundlePath, 0o700)
-    await writeFile(join(runtimeBundlePath, 'bin', 'browser'), 'browser-runtime')
-    await chmod(join(runtimeBundlePath, 'bin', 'browser'), 0o700)
+    const browserRuntime = 'browser-runtime'
+    const codexRuntime = 'codex-runtime'
+    const tmuxRuntime = 'tmux-runtime'
+    await Promise.all([
+      writeFile(join(runtimeBundlePath, 'bin', 'browser'), browserRuntime),
+      writeFile(join(runtimeBundlePath, 'bin', 'codex'), codexRuntime),
+      writeFile(join(runtimeBundlePath, 'bin', 'tmux'), tmuxRuntime),
+    ])
+    await Promise.all([
+      chmod(join(runtimeBundlePath, 'bin', 'browser'), 0o700),
+      chmod(join(runtimeBundlePath, 'bin', 'codex'), 0o700),
+      chmod(join(runtimeBundlePath, 'bin', 'tmux'), 0o700),
+    ])
     await writeFile(join(runtimeBundlePath, 'nessie-guest-runtime.json'), JSON.stringify({
-      entrypoints: { browser: 'bin/browser' },
-      files: [{
-        executable: true,
-        path: 'bin/browser',
-        sha256: createHash('sha256').update('browser-runtime').digest('hex'),
-      }],
+      entrypoints: { browser: 'bin/browser', codex: 'bin/codex', tmux: 'bin/tmux' },
+      files: [
+        { executable: true, path: 'bin/browser', sha256: createHash('sha256').update(browserRuntime).digest('hex') },
+        { executable: true, path: 'bin/codex', sha256: createHash('sha256').update(codexRuntime).digest('hex') },
+        { executable: true, path: 'bin/tmux', sha256: createHash('sha256').update(tmuxRuntime).digest('hex') },
+      ],
       version: 1,
     }))
     await chmod(join(runtimeBundlePath, 'nessie-guest-runtime.json'), 0o600)
@@ -176,7 +188,9 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     })
     const calls: Array<{ argv: string[]; input: string; path: string }> = []
     let resolveClosed: (() => void) | undefined
+    const broker = createCodingSessionBroker({ provider: 'openai', secret: 'sk-local-only' })
     const session = await startGuestVmSession({
+      codingBroker: broker,
       egressPolicy: { allowedOrigins: ['https://app.example.test'] },
       guestInitrdBuilderPath: builderPath,
       guestRuntimeBundlePath: runtimeBundlePath,
@@ -191,7 +205,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
         return {
           closed: new Promise<void>((resolvePromise) => { resolveClosed = resolvePromise }),
 	          closeCodingSession: async () => {},
-          inspectRuntime: async () => ({ browser: true, claude: false, codex: false, tmux: false }),
+          inspectRuntime: async () => ({ browser: true, claude: false, codex: true, tmux: true }),
 	          launchCodingSession: async () => {},
 	          observeCodingSession: async () => ({ agent: 'codex' as const, lifecycle: 'running' as const, output: '' }),
           observeBrowser: async () => ({ targets: [{ title: 'Guide', type: 'page' as const, url: 'https://app.example.test/guide' }] }),
@@ -204,17 +218,21 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     })
     assert.equal(calls.length, 2)
     assert.equal(calls[0].path, await realpath(builderPath))
-    assert.deepEqual(calls[0].argv.slice(-1), ['--bootstrap-token-stdin'])
+    assert.deepEqual(calls[0].argv.slice(-2), ['--bootstrap-token-stdin', '--coding-session-proof-stdin'])
+    assert.equal(calls[0].input.length, 86)
+    assert.equal(calls[0].argv.includes(calls[0].input.slice(43)), false)
     assert.equal(calls[1].path, await realpath(helperPath))
+    assert.equal(calls[1].input, calls[0].input.slice(0, 43))
     assert.equal(calls[1].argv[0], 'session')
     assert.equal(calls[1].argv.includes(lease.workspace), true)
     const runtimeBundleIndex = calls[1].argv.indexOf('--runtime-bundle')
     assert.equal(runtimeBundleIndex >= 0, true)
     const mountedRuntime = calls[1].argv[runtimeBundleIndex + 1]!
     assert.notEqual(mountedRuntime, runtimeBundlePath)
-    assert.equal(await readFile(join(mountedRuntime, 'bin', 'browser'), 'utf8'), 'browser-runtime')
+    assert.equal(await readFile(join(mountedRuntime, 'bin', 'browser'), 'utf8'), browserRuntime)
+    assert.equal(await readFile(join(mountedRuntime, 'bin', 'codex'), 'utf8'), codexRuntime)
     await writeFile(join(runtimeBundlePath, 'bin', 'browser'), 'changed-source-runtime')
-    assert.equal(await readFile(join(mountedRuntime, 'bin', 'browser'), 'utf8'), 'browser-runtime')
+    assert.equal(await readFile(join(mountedRuntime, 'bin', 'browser'), 'utf8'), browserRuntime)
     const runtimeDigestIndex = calls[1].argv.indexOf('--runtime-manifest-digest')
     assert.equal(runtimeDigestIndex >= 0, true)
     assert.match(calls[1].argv[runtimeDigestIndex + 1]!, /^sha256:[a-f0-9]{64}$/)
@@ -222,7 +240,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     const gatewayIndex = calls[1].argv.indexOf('--egress-gateway')
     assert.equal(gatewayIndex >= 0, true)
     assert.match(calls[1].argv[gatewayIndex + 1]!, /egress\.sock$/)
-    assert.deepEqual(await session.inspectRuntime(), { browser: true, claude: false, codex: false, tmux: false })
+    assert.deepEqual(await session.inspectRuntime(), { browser: true, claude: false, codex: true, tmux: true })
     await session.openBrowser('https://app.example.test/guide')
     await assert.rejects(session.openBrowser('https://blocked.example.test/'), /not allowed by local policy/)
     assert.deepEqual(await session.observeBrowser(), {
@@ -230,6 +248,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     })
     await session.stop()
     await session.closed
+    assert.equal(broker.issueClientToken(broker.sessionProof), undefined)
     await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)
     assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
   } finally {

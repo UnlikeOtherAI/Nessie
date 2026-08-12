@@ -28,11 +28,15 @@ type runtimeController struct {
 	manifest *runtimeManifest
 }
 
-func newRuntimeController(manifest *runtimeManifest) *runtimeController {
+func newRuntimeController(manifest *runtimeManifest, codingSessionProof string) *runtimeController {
 	if manifest == nil {
 		return nil
 	}
-	return &runtimeController{browser: newBrowserRuntime(manifest), coding: newCodingRuntime(manifest), manifest: manifest}
+	return &runtimeController{
+		browser:  newBrowserRuntime(manifest),
+		coding:   newCodingRuntime(manifest, codingSessionProof),
+		manifest: manifest,
+	}
 }
 
 func (controller *runtimeController) close() {
@@ -147,10 +151,10 @@ func handleRuntimeControlRequest(payload []byte, controller *runtimeController) 
 		Version    int               `json:"version"`
 	}{
 		Inspection: runtimeInspection{
-			Browser: controller.manifest.Entrypoints["browser"] != "",
-			Claude:  controller.manifest.Entrypoints["claude"] != "",
-			Codex:   controller.manifest.Entrypoints["codex"] != "",
-			Tmux:    controller.manifest.Entrypoints["tmux"] != "",
+			Browser: controller.browser != nil,
+			Claude:  controller.coding != nil && controller.manifest.Entrypoints["claude"] != "",
+			Codex:   controller.coding != nil && controller.manifest.Entrypoints["codex"] != "",
+			Tmux:    controller.coding != nil,
 		},
 		Version: guestRuntimeControlVersion,
 	})

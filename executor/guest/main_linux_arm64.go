@@ -3,18 +3,23 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 )
 
 const (
-	bootstrapTokenPath = "/etc/nessie/bootstrap-token"
-	guestControlPort   = 49_152
-	vmaddrCIDHost      = 2
+	bootstrapTokenPath     = "/etc/nessie/bootstrap-token"
+	codingSessionProofPath = "/etc/nessie/coding-session-proof"
+	guestControlPort       = 49_152
+	vmaddrCIDHost          = 2
 )
 
 type sockaddrVM struct {
@@ -81,6 +86,71 @@ func readBootstrapToken() ([]byte, error) {
 	return token, nil
 }
 
+func readCodingSessionProof() (string, error) {
+	proof, err := os.ReadFile(codingSessionProofPath)
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil || !validBootstrapToken(string(proof)) {
+		return "", errInvalidFrame
+	}
+	if err := os.Remove(codingSessionProofPath); err != nil {
+		return "", err
+	}
+	return string(proof), nil
+}
+
+func runCodingCredentialHelper() int {
+	if len(os.Args) != 2 || os.Args[1] != "--coding-credential" {
+		return 1
+	}
+	proof := os.Getenv("NESSIE_EXECUTOR_SESSION_PROOF")
+	if !validBootstrapToken(proof) {
+		return 1
+	}
+	requestContext, cancel := context.WithTimeout(context.Background(), 5_000_000_000)
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestContext, http.MethodGet, "http://127.0.0.1:8137/.nessie/coding-credential", nil)
+	if err != nil {
+		return 1
+	}
+	request.Header.Set("X-Nessie-Session-Proof", proof)
+	dialer := &net.Dialer{}
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: &http.Transport{
+			DisableCompression: true,
+			Proxy:              nil,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				if network != "tcp" || address != guestEgressProxyAddress {
+					return nil, errInvalidFrame
+				}
+				return dialer.DialContext(ctx, "tcp4", guestEgressProxyAddress)
+			},
+		},
+	}
+	response, err := client.Do(request)
+	if err != nil || response == nil {
+		return 1
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return 1
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 45))
+	if err != nil || len(body) != 44 || !strings.HasSuffix(string(body), "\n") {
+		return 1
+	}
+	token := strings.TrimSuffix(string(body), "\n")
+	if !validBootstrapToken(token) {
+		return 1
+	}
+	if _, err := os.Stdout.WriteString(token + "\n"); err != nil {
+		return 1
+	}
+	return 0
+}
+
 func mountProc() error {
 	if err := os.Mkdir("/proc", 0o555); err != nil && !os.IsExist(err) {
 		return err
@@ -134,6 +204,9 @@ func mountGuestRuntimeIfRequested() (*runtimeManifest, error) {
 }
 
 func main() {
+	if len(os.Args) > 1 {
+		os.Exit(runCodingCredentialHelper())
+	}
 	workspaceAttached, err := mountGuestWorkspaceIfRequested()
 	if err != nil {
 		os.Exit(1)
@@ -142,13 +215,18 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-	runtimeController := newRuntimeController(runtimeManifest)
-	defer runtimeController.close()
 	identity, err := guestIdentityForWorkspace(workspaceAttached)
 	if err != nil {
 		os.Exit(1)
 	}
-	if runtimeController != nil && runtimeController.coding != nil && prepareCodingRuntime(identity) != nil {
+	codingSessionProof := ""
+	codingSessionProof, err = readCodingSessionProof()
+	if err != nil {
+		os.Exit(1)
+	}
+	runtimeController := newRuntimeController(runtimeManifest, codingSessionProof)
+	defer runtimeController.close()
+	if runtimeController != nil && runtimeController.coding != nil && prepareCodingRuntime(identity, codingSessionProof) != nil {
 		os.Exit(1)
 	}
 	token, err := readBootstrapToken()
