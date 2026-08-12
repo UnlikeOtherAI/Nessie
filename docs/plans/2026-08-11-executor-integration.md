@@ -136,6 +136,13 @@ complete hello if an explicit COW mount fails. Since there is no launcher or
 descriptor path yet, this remains backend plumbing, not browser/coding
 availability.
 
+The companion COW side now records a durable, owner-only lease beside that exact
+draft before it may be mounted. The record binds `{runId, bindingFence,
+commandId, randomLeaseId}` and contains no path or secret; another guest lease
+or sandbox stop is rejected until the precise holder releases it. The VM
+launcher will receive the draft only through this lease, closing the teardown
+race without treating an arbitrary local path as a valid run workspace.
+
 The signed VM helper also has a handshake-only release-candidate command. Its
 fresh token arrives on stdin, never in an argument; the helper enables the
 single VM's virtio socket, accepts only the matching guest hello before the

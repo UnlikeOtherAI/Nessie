@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { executeExecutorCommand } from '../src/daemon.js'
+import { createGuestWorkspaceLease, releaseGuestWorkspaceLease } from '../src/guest-workspace-lease.js'
 import { parseCommand } from '../src/index.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
 import {
@@ -224,6 +225,36 @@ test('sandbox writes use a daemon-owned COW workspace and never touch the paired
 
     assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
     assert.equal(await workspaceForRun(stateDir, root, runId), await realpath(root))
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
+  }
+})
+
+test('a guest COW lease is exact-run, path-derived, and fences sandbox teardown', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-guest-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-guest-state-'))
+  const runId = '00000000-0000-4000-8000-000000000109'
+  try {
+    await writeFile(join(root, 'base.txt'), 'host source')
+    const lease = await createGuestWorkspaceLease(stateDir, root, {
+      bindingFence: '1',
+      commandId: '00000000-0000-4000-8000-000000000110',
+      runId,
+    })
+    assert.equal(lease.runId, runId)
+    assert.notEqual(lease.workspace, await realpath(root))
+    assert.equal(await readFile(join(lease.workspace, 'base.txt'), 'utf8'), 'host source')
+    await assert.rejects(
+      stopSandboxWorkspace(stateDir, runId),
+      /active guest lease/,
+    )
+    await assert.rejects(
+      releaseGuestWorkspaceLease(stateDir, { ...lease, leaseId: '00000000-0000-4000-8000-000000000000' }),
+      /does not match/,
+    )
+    await releaseGuestWorkspaceLease(stateDir, lease)
+    assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
   } finally {
     await rm(root, { force: true, recursive: true })
     await rm(stateDir, { force: true, recursive: true })

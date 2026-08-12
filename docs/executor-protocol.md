@@ -407,6 +407,13 @@ before hello if its explicitly requested COW mount cannot be made. No current
 descriptor attaches this device, so it cannot weaken the existing COW-only
 operation set.
 
+Before that launch, the companion creates an owner-only `guest-lease.json`
+beside the exact COW draft. It contains the run ID, executor binding fence, and
+server command ID plus a random local lease ID—never a host path, token, or raw
+argument. A second lease or sandbox stop fails while it exists; release requires
+all four exact values. This makes VM teardown/recovery an explicit state change
+instead of allowing a new command to erase a live guest's draft.
+
 The signed helper's `handshake` command is the release-candidate integration
 check for that exact pair. It reads the same 43-byte token from standard input,
 starts one VM with the control socket enabled, requires the matching guest hello

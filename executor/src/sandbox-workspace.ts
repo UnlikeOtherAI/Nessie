@@ -65,14 +65,20 @@ const sandboxDirectory = async (stateDir: string): Promise<string> => {
   return sandboxes
 }
 
-const sandboxPaths = async (stateDir: string, runId: string) => {
+export const sandboxPaths = async (stateDir: string, runId: string) => {
   const parsedRunId = RunIdSchema.parse(runId)
   const parent = await sandboxDirectory(stateDir)
   const root = resolve(parent, parsedRunId)
   if (!isInsideDirectory(parent, root) || basename(root) !== parsedRunId) {
     throw new WorkspacePathError('The sandbox identity is invalid.')
   }
-  return { baseManifest: resolve(root, 'base-manifest.json'), parent, root, workspace: resolve(root, 'workspace') }
+  return {
+    baseManifest: resolve(root, 'base-manifest.json'),
+    guestLease: resolve(root, 'guest-lease.json'),
+    parent,
+    root,
+    workspace: resolve(root, 'workspace'),
+  }
 }
 
 const digest = (value: Buffer | string): string =>
@@ -538,6 +544,15 @@ export const stopSandboxWorkspace = async (stateDir: string, runId: string): Pro
   } catch (error) {
     if (missing(error)) return false
     throw error
+  }
+  try {
+    const lease = await lstat(paths.guestLease)
+    if (lease.isSymbolicLink() || !lease.isFile()) {
+      throw new WorkspacePathError('The executor guest lease is unavailable.')
+    }
+    throw new WorkspacePathError('The executor sandbox has an active guest lease.')
+  } catch (error) {
+    if (!missing(error)) throw error
   }
   await rm(paths.root, { force: true, recursive: true })
   return true
