@@ -115,3 +115,52 @@ so the plan does not grow an implementation history inside itself.
 - **W28 · `agent_task` target check** moved inside the mailbox transaction and its
   failure text made org-generic, closing both the race and the cross-org
   existence leak. Required before Section G widens who may start runs.
+
+### Section D — W0, the redaction boundary
+
+The boundary lives in one shared module,
+`@nessie/workspace-admin` `workflow-secrets.ts`, consumed by both the API
+(write gate + server-side response redaction) and the worker
+(interpolation-time redaction). No second secret store: reference bindings
+hold only the `secret_*` ref shape the encrypted `@nessie/mcp-manage` store
+already mints (`createPgSecretStore` enforces the prefix), so W19+ can resolve
+them through the existing `createMcpSecretResolver` without new plumbing.
+
+- **Write gate.** `validateWorkflowSecretWrite` runs inside
+  `installWorkflowTemplate` (against the template's own `bindingSchema`) and
+  `updateWorkflowInstallation`. A plaintext value at a reference-typed key, or
+  a caller-chosen `secret_*` ref anywhere else (literal bindings, `config`,
+  nested), throws `WorkflowSecretWriteError`; the install/PATCH routes map it
+  to `400 WORKFLOW_BINDING_SECRET_INVALID` with per-path reasons. This mirrors
+  the MCP rule that public writes never accept a caller-chosen credential ref.
+- **Reference declaration.** `bindingSchema` per-key entries opt into
+  reference-ness via `{ kind|type: 'reference' }`, `{ reference: true }`, or
+  the bare string `'reference'`; everything else is a literal.
+- **Taint is value-shaped, not schema-driven.** `collectWorkflowTaintedRefs`
+  walks `resolvedBindings` for `secret_*`-shaped strings. The write gate
+  already guarantees refs can only persist at reference keys, so every
+  well-formed ref found is a capability — this covers pre-boundary rows and
+  lets the worker taint identically without loading the template.
+- **Sink 1 (read widening).** `mapWorkflowInstallation` replaces reference
+  binding values with `[redacted]` in the service mapper (install response,
+  list, PATCH); `getWorkflowRun` additionally re-reads the installation's
+  bindings and redacts tainted refs from run `input`/`output` and every step
+  run's persisted `input`/`output`. Server-side only — the admin renders what
+  it is given.
+- **Sinks 2+3 (messages, transform context).** `resolveWorkflowStepInput` in
+  `worker/src/control/workflows.ts` derives the taint set once per context
+  (`buildWorkflowBindingContext`) and redacts every value resolved from any
+  scope (`workflow.*` and `steps.*` — a persisted pre-boundary step artifact
+  must not become a bypass). A whole-ref value becomes `[redacted]`; a ref
+  embedded in a longer string is masked in place. `buildAgentTaskBody` redacts
+  step input and workflow input before the body reaches the agent prompt.
+- **Sink 4 (persisted samples).** Same `getWorkflowRun` redaction: the step
+  `input`/`output` the designer replay and §5 sample surfaces read is the
+  redacted projection.
+- **Tests.** `api/test/workflow-secrets.test.ts` (DB): plaintext write
+  rejected at a reference key, caller-chosen ref rejected in `config` and on
+  update; install/list responses never serialize the ref; run detail redacts
+  a deliberately seeded tainted `WorkflowStepRun.input` and run `output`.
+  `worker/test/workflow-redaction.test.ts`: exact-reference and mixed-template
+  interpolation redact from both `workflow.*` and `steps.*` scopes, and
+  agent-task bodies never carry a persisted ref.

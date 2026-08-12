@@ -104,7 +104,7 @@ let the rest slip together: W0, W1–W8, W15, W16, W18, W22, **W26** (exit crite
 its off-event-loop envelope (§5) — into scope even when W17's `transform` step
 and designer preview slip; `when:` needs it too.
 
-### 3.0 W0 · The redaction boundary (blocking prerequisite)
+### 3.0 W0 · The redaction boundary (blocking prerequisite) — shipped.
 
 Revision 1 put the secret-taint boundary in Stage 2 while widening read access in
 Stage 1 — a contradiction all three auditors flagged as the plan's single most
@@ -121,7 +121,8 @@ A minimal boundary therefore ships **first**, covering four sinks, not just read
 Minimum: declare in `bindingSchema` which bindings are references vs literals;
 persist only server-minted `secret_*` refs; mark tainted values; redact them from
 run JSON, prompts, messages, logs, exports, and samples. The full typed model
-lands in §4.4; the boundary itself cannot wait.
+lands in §4.4; the boundary itself cannot wait. As-built detail:
+[the delivery log](./2026-08-12-workflows-delivery-log.md).
 
 ### 3.1 Correctness fixes (blocking; error management depends on them)
 
