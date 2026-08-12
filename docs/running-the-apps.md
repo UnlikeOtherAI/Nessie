@@ -1,6 +1,6 @@
 # Running the Native Apps
 
-This guide gives copy-paste paths for running Nessie's desktop and mobile apps. The desktop path works without an Apple Developer account; the mobile WebView shell needs Apple Developer signing to run on a physical device.
+This guide gives copy-paste paths for running Nessie's desktop and mobile apps. The desktop shell works without an Apple Developer account; production executor controls require a signed macOS desktop release. The mobile WebView shell needs Apple Developer signing to run on a physical device.
 
 ## Prerequisites
 
@@ -31,10 +31,22 @@ This starts the API on port `5454` and the admin app on port `5455`.
 Terminal 2:
 
 ```sh
-pnpm --filter @nessie/desktop exec tauri dev
+pnpm --filter @nessie/desktop dev
 ```
 
 The Nessie desktop window opens and loads the local admin app.
+
+The desktop script first bundles the local `nessie-executor` CLI and the exact
+Node runtime into private app resources. It records their hashes and the Node
+license in the bundle; use the package scripts below rather than invoking the
+Tauri binary directly, so the companion cannot launch a stale or missing
+executor runtime.
+
+In dev, the companion intentionally pairs only with the local API at
+`http://127.0.0.1:5454`. It cannot pair an unsigned development app with the
+production API. Production executor pairing, local workspace selection, daemon
+lifecycle, and policy controls require an intact signed macOS 15+ release; the
+app verifies its own signature before exposing the companion IPC.
 
 Desktop SSO uses the user's default browser instead of the Tauri webview. The
 desktop bundle declares the `nessie` URL scheme; after UOA redirects to
@@ -45,8 +57,10 @@ To create a local distributable that contains the current local admin code:
 
 ```sh
 VITE_API_BASE_URL=https://api.nessie.works pnpm --filter @nessie/admin build
-pnpm --dir desktop exec tauri build --bundles app \
+NESSIE_DESKTOP_SIGNING_TEAM_ID=<APPLE_TEAM_ID> pnpm --dir desktop run tauri:build:executor --bundles app \
   --config '{"build":{"frontendDist":"../../admin/dist"}}'
+codesign --force --deep --options runtime --sign 'Developer ID Application: <LEGAL_NAME> (<APPLE_TEAM_ID>)' \
+  desktop/src-tauri/target/release/bundle/macos/Nessie.app
 ```
 
 This produces `desktop/src-tauri/target/release/bundle/macos/Nessie.app`.
@@ -58,7 +72,7 @@ The API origin in the first command is intentional:
   use it as `VITE_API_BASE_URL`; `/api/auth/providers` will return the admin
   HTML shell and the desktop login page will sit at "Loading providers...".
 
-The plain `pnpm --filter @nessie/desktop exec tauri build` command uses
+The plain `pnpm --filter @nessie/desktop run tauri:build` command uses
 `desktop/src-tauri/tauri.conf.json` as-is. That config points `frontendDist` at
 the hosted admin (`https://app.nessie.works`), so it is useful for a
 thin remote shell but does not embed un-deployed local admin changes.
@@ -68,14 +82,20 @@ To replace the locally installed app:
 ```sh
 osascript -e 'tell application id "com.unlikeotherai.nessie.desktop" to quit' 2>/dev/null || true
 ditto desktop/src-tauri/target/release/bundle/macos/Nessie.app /Applications/Nessie.app
-codesign --force --deep --sign - /Applications/Nessie.app
 open -na /Applications/Nessie.app
 ```
 
 On first open, right-click the app and choose **Open** if macOS Gatekeeper asks.
 A signed and notarized macOS release needs the operator's Apple Developer ID
 certificate; `desktop/src-tauri/tauri.conf.json` keeps `signingIdentity` set to
-`null` until that certificate is available.
+`null` until that certificate is available. An ad-hoc signature is sufficient
+for the ordinary desktop shell, but executor controls stay unavailable. Configure
+a real Developer ID signing identity and pass its team id as
+`NESSIE_DESKTOP_SIGNING_TEAM_ID` before `tauri:build:executor` to pair a production
+executor. The companion compiles that team id into the release and verifies the
+final application has a matching Developer ID signature, including the packaged
+executor runtime. Do not replace the app with an ad-hoc-signed copy after this
+step: its executor controls will intentionally remain unavailable.
 
 If the installed app gets stuck at **Loading providers...**, check the API
 origin first:

@@ -5,6 +5,7 @@ import type {
   PreparedExecutorAccessChangeResponse,
 } from '@nessie/schemas'
 import { ExecutorCreatePanel } from '../components/features/executors/ExecutorCreatePanel'
+import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
 import { ExecutorWorkspacePromotionsPanel } from '../components/features/executors/ExecutorWorkspacePromotionsPanel'
 import { useAgents } from '../facades/agents/hooks'
@@ -242,6 +243,8 @@ export const ExecutorsPage = () => {
             <code className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx)]">{pairingCommand}</code>
           </section>
         ) : null}
+
+        <ExecutorDesktopCompanionPanel created={created} executorId={selected?.id} />
 
         {reviewChange ? (
           <section className="admin-card grid gap-3 border border-[color:var(--accent)] p-4">

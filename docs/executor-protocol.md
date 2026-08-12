@@ -162,7 +162,10 @@ must consume exactly one unexpired digest and revalidate every recorded gate;
 the candidate is not an authorization cache or a caller-selectable machine.
 
 The initial `nessie-executor` CLI requires an explicit HTTPS API origin and an
-owner-only local state directory. It generates and stores the machine key
+owner-only local state directory. The sole exception is the desktop-packaged
+debug build, which injects an internal opt-in for exactly
+`http://127.0.0.1:5454`; no user-provided flag enables a non-TLS production
+origin. It generates and stores the machine key
 locally, submits the signed enrollment proof, and after the human confirms the
 fingerprint, claims a connection and sends heartbeats. Its initial companion
 profile is deliberately limited to daemon-owned COW workspace operations:
@@ -618,6 +621,37 @@ only a verified/failure status, never the token, guest output, or a local path.
 It creates no `ExecutorSession`, binding, descriptor, or executor operation;
 `EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` is a local packaging/guest failure and must
 keep browser and coding profiles unavailable.
+
+### Desktop-packaged companion
+
+Nessie Desktop packages the executor CLI as a bundled CommonJS entrypoint with
+the exact Node runtime used to build it, that runtime's license, and a
+hash-manifest. The desktop process verifies that each packaged file is ordinary
+and that both executable hashes match the manifest before it launches the
+daemon. A signed release's application signature protects the manifest and
+resources; the hash check makes a damaged or partial local bundle fail closed.
+
+The remote admin webview can ask the desktop process only to pair an existing
+server invitation, start/stop an already paired executor, or change the initial
+workspace-operation policy. It cannot name an executable, a state directory, a
+workspace path, or arbitrary command arguments. Workspace selection occurs in a
+native folder dialog, the state directory is derived privately from the server
+executor id, and every mutable action is repeated in an OS-native confirmation
+dialog. The pairing challenge is written to the packaged CLI's standard input
+through `--pair-input-stdin` together with the locally selected workspace,
+never passed in the child argument list. The desktop IPC response reports only
+executor id and daemon state; it never returns the local path, key, auth profile
+path, terminal output, browser data, or secret.
+
+The desktop policy editor currently controls only the COW workspace bundle.
+Browser/Codex configuration continues to require their separately verified CLI
+artifact inputs and cannot be upgraded into a desktop action by webview input.
+Release IPC is available only to `https://app.nessie.works` after the outer app
+has passed a pinned Developer ID team/signature check; the development build has
+a separate local-only capability and cannot target the production API. On a
+desktop exit, a private parent-liveness pipe makes the daemon stop all guest
+sessions before it drops its owner-only singleton lease, so a restarted desktop
+does not duplicate a still-tearing-down daemon.
 
 ### Managed Codex coding sessions
 

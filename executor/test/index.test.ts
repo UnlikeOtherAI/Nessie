@@ -54,6 +54,62 @@ test('pair requires an explicit API URL and owner-controlled state directory', (
   )
 })
 
+test('pair accepts a challenge from standard input without putting it in process arguments', () => {
+  assert.deepEqual(
+    parseCommand([
+      'pair',
+      '--api', 'https://api.example.test',
+      '--enrollment', '00000000-0000-4000-8000-000000000001',
+      '--challenge-stdin',
+      '--state-dir', '/private/tmp/nessie-executor',
+      '--workspace', '/private/tmp/nessie-workspace',
+    ]),
+    {
+      apiBaseUrl: 'https://api.example.test',
+      challengeFromStandardInput: true,
+      enrollmentId: '00000000-0000-4000-8000-000000000001',
+      kind: 'pair',
+      stateDir: '/private/tmp/nessie-executor',
+      workspaceRoot: '/private/tmp/nessie-workspace',
+    },
+  )
+  assert.throws(
+    () => parseCommand([
+      'pair', '--api', 'https://api.example.test', '--enrollment', 'x',
+      '--challenge', 'x', '--challenge-stdin', '--state-dir', '/private/tmp/nessie-executor',
+      '--workspace', '/private/tmp/nessie-workspace',
+    ]),
+    /Usage/,
+  )
+})
+
+test('desktop pairing keeps both the challenge and workspace path off the process list', () => {
+  assert.deepEqual(
+    parseCommand([
+      'pair',
+      '--api', 'https://api.example.test',
+      '--enrollment', '00000000-0000-4000-8000-000000000001',
+      '--pair-input-stdin',
+      '--state-dir', '/private/tmp/nessie-executor',
+    ]),
+    {
+      apiBaseUrl: 'https://api.example.test',
+      enrollmentId: '00000000-0000-4000-8000-000000000001',
+      kind: 'pair',
+      pairingInputFromStandardInput: true,
+      stateDir: '/private/tmp/nessie-executor',
+    },
+  )
+  assert.throws(
+    () => parseCommand([
+      'pair', '--api', 'https://api.example.test', '--enrollment', 'x',
+      '--pair-input-stdin', '--workspace', '/private/tmp/nessie-workspace',
+      '--state-dir', '/private/tmp/nessie-executor',
+    ]),
+    /Usage/,
+  )
+})
+
 test('the daemon rejects an insecure API origin', () => {
   assert.throws(
     () => parseCommand([
@@ -64,8 +120,41 @@ test('the daemon rejects an insecure API origin', () => {
   )
 })
 
+test('only the desktop development process may use the exact local API origin', () => {
+  const previous = process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API
+  try {
+    process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API = '1'
+    assert.equal(
+      parseCommand([
+        'pair', '--api', 'http://127.0.0.1:5454', '--enrollment', 'x',
+        '--challenge', 'x', '--state-dir', '/private/tmp/nessie-executor',
+        '--workspace', '/private/tmp/nessie-workspace',
+      ]).apiBaseUrl,
+      'http://127.0.0.1:5454',
+    )
+    assert.throws(
+      () => parseCommand([
+        'pair', '--api', 'http://localhost:5454', '--enrollment', 'x',
+        '--challenge', 'x', '--state-dir', '/private/tmp/nessie-executor',
+        '--workspace', '/private/tmp/nessie-workspace',
+      ]),
+      /HTTPS URL/,
+    )
+  } finally {
+    if (previous === undefined) delete process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API
+    else process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API = previous
+  }
+})
+
 test('the daemon refuses commands without a state directory', () => {
   assert.throws(() => parseCommand(['serve']), /state-dir/)
+})
+
+test('desktop-supervised daemon reads its parent-liveness pipe only when explicitly requested', () => {
+  assert.deepEqual(
+    parseCommand(['serve', '--parent-liveness-stdin', '--state-dir', '/private/tmp/nessie-executor']),
+    { kind: 'serve', parentLivenessFromStandardInput: true, stateDir: '/private/tmp/nessie-executor' },
+  )
 })
 
 test('Codex configuration requires only local owner-controlled sources', () => {

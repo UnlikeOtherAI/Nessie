@@ -1,4 +1,5 @@
 import { createHash, createPrivateKey, sign } from 'node:crypto'
+import type { Readable } from 'node:stream'
 
 import {
   canonicalExecutorJson,
@@ -23,6 +24,7 @@ import {
 } from './coding-session-manager.js'
 import { applyNativePromotion } from './native-helper.js'
 import { signedDescriptorForState } from './pair.js'
+import { acquireExecutorDaemonLease } from './daemon-lease.js'
 import {
   stopSandboxWorkspace,
   reviewSandboxWorkspace,
@@ -270,61 +272,87 @@ const pollAndExecuteCommand = async (
   await receipt(state, { commandId: command.commandId, result, state: 'result_acknowledged' })
 }
 
-export const serveExecutor = async (stateDir: string, state: ExecutorLocalState): Promise<void> => {
-  let live = await claimExecutor(stateDir, state)
-  const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
-  const codingSessions = createExecutorCodingSessionManager(stateDir, live)
-  let commandPollInFlight = false
-  const commandInterval = setInterval(() => {
-    if (commandPollInFlight) return
-    commandPollInFlight = true
-    void pollAndExecuteCommand(stateDir, live, browserSessions, codingSessions)
-      .catch(async (error) => {
-        // A lost or fenced control plane may mean that a human revoked an
-        // operation. Preserve fail-closed egress by ending any live browser
-        // before this daemon attempts another poll or reconnect.
-        await browserSessions.stopAll()
-        await codingSessions.stopAll()
-        console.error(
-          '[nessie-executor] command poll failed:',
-          error instanceof Error ? error.message : String(error),
-        )
-      })
-      .finally(() => {
-        commandPollInFlight = false
-      })
-  }, 1_000)
-  const interval = setInterval(() => {
-    void (async () => {
-      try {
-        await heartbeatExecutor(live)
-      } catch (error) {
-        await browserSessions.stopAll()
-        await codingSessions.stopAll()
-        try {
-          live = await claimExecutor(stateDir, live)
-        } catch (claimError) {
+export const waitForExecutorDaemonShutdown = async (
+  parentLiveness?: Readable,
+): Promise<void> => new Promise((resolve) => {
+  const stop = () => {
+    process.off('SIGINT', stop)
+    process.off('SIGTERM', stop)
+    parentLiveness?.off('close', stop)
+    parentLiveness?.off('end', stop)
+    parentLiveness?.off('error', stop)
+    resolve()
+  }
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
+  if (parentLiveness) {
+    parentLiveness.once('close', stop)
+    parentLiveness.once('end', stop)
+    parentLiveness.once('error', stop)
+    parentLiveness.resume()
+  }
+})
+
+export const serveExecutor = async (
+  stateDir: string,
+  state: ExecutorLocalState,
+  options: { parentLiveness?: Readable } = {},
+): Promise<void> => {
+  const daemonLease = await acquireExecutorDaemonLease(stateDir)
+  try {
+    let live = await claimExecutor(stateDir, state)
+    const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
+    const codingSessions = createExecutorCodingSessionManager(stateDir, live)
+    let commandPollInFlight = false
+    const commandInterval = setInterval(() => {
+      if (commandPollInFlight) return
+      commandPollInFlight = true
+      void pollAndExecuteCommand(stateDir, live, browserSessions, codingSessions)
+        .catch(async (error) => {
+          // A lost or fenced control plane may mean that a human revoked an
+          // operation. Preserve fail-closed egress by ending any live browser
+          // before this daemon attempts another poll or reconnect.
+          await browserSessions.stopAll()
+          await codingSessions.stopAll()
           console.error(
-            '[nessie-executor] reconnect failed:',
-            claimError instanceof Error ? claimError.message : String(claimError),
+            '[nessie-executor] command poll failed:',
+            error instanceof Error ? error.message : String(error),
+          )
+        })
+        .finally(() => {
+          commandPollInFlight = false
+        })
+    }, 1_000)
+    const interval = setInterval(() => {
+      void (async () => {
+        try {
+          await heartbeatExecutor(live)
+        } catch (error) {
+          await browserSessions.stopAll()
+          await codingSessions.stopAll()
+          try {
+            live = await claimExecutor(stateDir, live)
+          } catch (claimError) {
+            console.error(
+              '[nessie-executor] reconnect failed:',
+              claimError instanceof Error ? claimError.message : String(claimError),
+            )
+          }
+          console.error(
+            '[nessie-executor] heartbeat failed:',
+            error instanceof Error ? error.message : String(error),
           )
         }
-        console.error(
-          '[nessie-executor] heartbeat failed:',
-          error instanceof Error ? error.message : String(error),
-        )
-      }
-    })()
-  }, 20_000)
-  await new Promise<void>((resolve) => {
-    const stop = () => {
+      })()
+    }, 20_000)
+    try {
+      await waitForExecutorDaemonShutdown(options.parentLiveness)
+    } finally {
       clearInterval(interval)
       clearInterval(commandInterval)
-      resolve()
+      await Promise.allSettled([browserSessions.stopAll(), codingSessions.stopAll()])
     }
-    process.once('SIGINT', stop)
-    process.once('SIGTERM', stop)
-  })
-  await browserSessions.stopAll()
-  await codingSessions.stopAll()
+  } finally {
+    await daemonLease.release()
+  }
 }

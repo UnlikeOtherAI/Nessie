@@ -3,6 +3,8 @@ use std::io::{Error, ErrorKind};
 use tauri::Manager;
 use tauri::WebviewWindowBuilder;
 
+mod executor_companion;
+
 const DESKTOP_INIT_SCRIPT: &str = concat!(
     include_str!("desktop_notifications_init.js"),
     "\n",
@@ -24,8 +26,17 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .manage(executor_companion::ExecutorCompanionState::default())
+        .invoke_handler(tauri::generate_handler![
+            executor_companion::executor_companion_configure_workspace,
+            executor_companion::executor_companion_pair,
+            executor_companion::executor_companion_start,
+            executor_companion::executor_companion_status,
+            executor_companion::executor_companion_stop,
+        ])
         .setup(|app| {
             let main_window = app
                 .config()
@@ -41,6 +52,11 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building Nessie Desktop")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                executor_companion::shutdown(app.state::<executor_companion::ExecutorCompanionState>().inner());
+            }
+        });
 }

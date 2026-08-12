@@ -12,10 +12,12 @@ type ParsedCommand =
   | {
     kind: 'pair'
     apiBaseUrl: string
-    challenge: string
+    challenge?: string
+    challengeFromStandardInput?: true
     enrollmentId: string
+    pairingInputFromStandardInput?: true
     stateDir: string
-    workspaceRoot: string
+    workspaceRoot?: string
   }
   | { kind: 'configure'; nativeHelperPath?: string; operationKeys: string[]; stateDir: string }
   | {
@@ -38,12 +40,15 @@ type ParsedCommand =
   }
   | { kind: 'connect'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
-  | { kind: 'serve'; stateDir: string }
+  | { kind: 'serve'; parentLivenessFromStandardInput?: true; stateDir: string }
 
 const usage = (): never => {
   throw new Error(
     'Usage: nessie-executor pair --api <https://api.example> --enrollment <uuid> '
-    + '--challenge <token> --state-dir <owner-only-path> --workspace <absolute-read-only-root>\n'
+    + '(--challenge <token>|--challenge-stdin) --state-dir <owner-only-path> '
+    + '--workspace <absolute-read-only-root>\n'
+    + '       nessie-executor pair --api <https://api.example> --enrollment <uuid> '
+    + '--pair-input-stdin --state-dir <owner-only-path>\n'
     + '       nessie-executor configure --state-dir <owner-only-path> '
     + '--operations <file.list,file.read,file.write,browser.open,browser.observe,coding.launch,coding.observe,workspace.review,workspace.promote,sandbox.stop> '
     + '[--native-helper </absolute/owner-only/nessie-executor-native>]\n'
@@ -66,6 +71,56 @@ const option = (args: string[], name: string): string => {
   return value
 }
 
+const pairingChallenge = (args: string[]): Pick<Extract<ParsedCommand, { kind: 'pair' }>, 'challenge' | 'challengeFromStandardInput'> => {
+  const standardInput = args.includes('--challenge-stdin')
+  const commandLine = args.includes('--challenge')
+  if (standardInput === commandLine) return usage()
+  return standardInput ? { challengeFromStandardInput: true } : { challenge: option(args, '--challenge') }
+}
+
+const readPairingChallenge = async (): Promise<string> => {
+  const chunks: Buffer[] = []
+  let byteLength = 0
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    byteLength += bytes.byteLength
+    if (byteLength > 8_192) throw new Error('Pairing challenge is too large.')
+    chunks.push(bytes)
+  }
+  const challenge = Buffer.concat(chunks).toString('utf8').trim()
+  if (!challenge) throw new Error('Pairing challenge is required on standard input.')
+  return challenge
+}
+
+const readPairingInput = async (): Promise<{ challenge: string; workspaceRoot: string }> => {
+  const chunks: Buffer[] = []
+  let byteLength = 0
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    byteLength += bytes.byteLength
+    if (byteLength > 12_288) throw new Error('Pairing input is too large.')
+    chunks.push(bytes)
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch {
+    throw new Error('Pairing input on standard input is malformed.')
+  }
+  if (
+    !parsed
+    || typeof parsed !== 'object'
+    || Array.isArray(parsed)
+    || typeof (parsed as { challenge?: unknown }).challenge !== 'string'
+    || typeof (parsed as { workspaceRoot?: unknown }).workspaceRoot !== 'string'
+    || !(parsed as { challenge: string }).challenge
+    || !(parsed as { workspaceRoot: string }).workspaceRoot
+  ) {
+    throw new Error('Pairing input on standard input is malformed.')
+  }
+  return parsed as { challenge: string; workspaceRoot: string }
+}
+
 const secureApiUrl = (value: string): string => {
   let parsed: URL
   try {
@@ -73,20 +128,31 @@ const secureApiUrl = (value: string): string => {
   } catch {
     throw new Error('--api must be an HTTPS URL.')
   }
-  if (parsed.protocol !== 'https:') throw new Error('--api must be an HTTPS URL.')
+  const localDesktopDevelopmentApi = process.env.NESSIE_EXECUTOR_ALLOW_LOCAL_API === '1'
+    && parsed.protocol === 'http:'
+    && parsed.hostname === '127.0.0.1'
+    && parsed.port === '5454'
+  if (parsed.protocol !== 'https:' && !localDesktopDevelopmentApi) {
+    throw new Error('--api must be an HTTPS URL.')
+  }
   return parsed.toString().replace(/\/$/, '')
 }
 
 export const parseCommand = (args: string[]): ParsedCommand => {
   const [command] = args
   if (command === 'pair') {
+    const pairingInputFromStandardInput = args.includes('--pair-input-stdin')
+    if (pairingInputFromStandardInput && (args.includes('--challenge') || args.includes('--challenge-stdin') || args.includes('--workspace'))) {
+      return usage()
+    }
     return {
       apiBaseUrl: secureApiUrl(option(args, '--api')),
-      challenge: option(args, '--challenge'),
       enrollmentId: option(args, '--enrollment'),
       kind: 'pair',
       stateDir: option(args, '--state-dir'),
-      workspaceRoot: option(args, '--workspace'),
+      ...(pairingInputFromStandardInput
+        ? { pairingInputFromStandardInput: true }
+        : { workspaceRoot: option(args, '--workspace'), ...pairingChallenge(args) }),
     }
   }
   if (command === 'configure') {
@@ -119,8 +185,15 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       vmHelperPath: option(args, '--vm-helper'),
     }
   }
-  if (command === 'connect' || command === 'heartbeat' || command === 'serve') {
+  if (command === 'connect' || command === 'heartbeat') {
     return { kind: command, stateDir: option(args, '--state-dir') }
+  }
+  if (command === 'serve') {
+    return {
+      kind: 'serve',
+      ...(args.includes('--parent-liveness-stdin') ? { parentLivenessFromStandardInput: true } : {}),
+      stateDir: option(args, '--state-dir'),
+    }
   }
   return usage()
 }
@@ -128,7 +201,16 @@ export const parseCommand = (args: string[]): ParsedCommand => {
 export const run = async (args: string[]): Promise<void> => {
   const command = parseCommand(args)
   if (command.kind === 'pair') {
-    const paired = await pairExecutor(command)
+    const input = command.pairingInputFromStandardInput
+      ? await readPairingInput()
+      : {
+        challenge: command.challenge ?? await readPairingChallenge(),
+        workspaceRoot: command.workspaceRoot!,
+      }
+    const paired = await pairExecutor({
+      ...command,
+      ...input,
+    })
     process.stdout.write(
       `Pairing request submitted. Confirm fingerprint ${paired.fingerprint} in Nessie, then run connect.\n`,
     )
@@ -173,10 +255,16 @@ export const run = async (args: string[]): Promise<void> => {
     process.stdout.write('Executor heartbeat accepted.\n')
     return
   }
-  await serveExecutor(command.stateDir, state)
+  await serveExecutor(command.stateDir, state, {
+    ...(command.parentLivenessFromStandardInput ? { parentLiveness: process.stdin } : {}),
+  })
 }
 
-if (process.argv[1]?.endsWith('index.js') || process.argv[1]?.endsWith('index.ts')) {
+if (
+  process.argv[1]?.endsWith('index.js')
+  || process.argv[1]?.endsWith('index.ts')
+  || process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1'
+) {
   run(process.argv.slice(2)).catch((error: unknown) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

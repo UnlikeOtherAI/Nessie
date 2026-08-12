@@ -189,15 +189,14 @@ failure and cannot create a run, session, descriptor, browser, terminal, or
 coding action. This supplies the first real VM-to-guest proof without claiming
 that a safe browser/coding backend exists.
 
-The companion now also contains the inactive foundation for that egress broker:
-an owner-only Unix-socket HTTPS CONNECT gateway whose local policy names exact,
-distinct HTTPS origins. It has no TCP listener, generic HTTP forwarding, proxy
-mode, browser descriptor, or guest transport. Before it opens one raw tunnel it
+The companion's active egress gateway is an owner-only Unix-socket HTTPS
+CONNECT listener whose local policy names exact, distinct HTTPS origins. It has
+no TCP listener or generic forwarding mode. Before it opens one raw tunnel it
 uses `@nessie/runtime`'s shared `pinnedConnect` primitive, which validates the
-target then dials the vetted literal IP without another DNS lookup. The eventual
-VM bridge must pair this gateway with a guest-only interface and enforce the
-remaining download/upload and credential rules; this groundwork is not browser
-availability.
+target then dials the vetted literal IP without another DNS lookup. Browser and
+coding VMs receive only their guest bridge; download, upload, redirects,
+WebSockets, proxy bypass, and direct DNS/network paths remain denied by the
+guest and gateway policy.
 
 The host and guest now also derive a distinct egress-session token from the
 fresh 32-byte bootstrap secret as
@@ -415,9 +414,9 @@ Nessie already has useful foundations:
   expanding every agent's context.
 - `@nessie/mcp-manage` is the shared connector/projection seam, while the
   current cloud transport deliberately rejects local or stdio connectors.
-- `desktop/` is a minimal Tauri shell and can become the graphical companion;
-  it should supervise an executor daemon rather than run privileged execution
-  inside the webview.
+- `desktop/` is the graphical companion for pairing, daemon lifecycle, and the
+  initial COW workspace policy. It supervises the packaged executor daemon but
+  never runs privileged execution inside the webview.
 
 We will preserve the first foundation as the **managed-environment control
 plane**. Executors get their own lifecycle and leases: an executor may launch
@@ -893,15 +892,10 @@ then the product shows it as unsupported rather than silently degrading.
 
 ## Companion delivery
 
-Create a dedicated `nessie-executor` daemon rather than embedding privileged
-execution in the web admin or Tauri webview. It owns the key, local policy,
-outbound connection, sandbox backends, and tmux adapter. The current executable
-surface is its explicit CLI, so it can be paired and supervised by an
-owner-managed service on headless developer machines. A graphical desktop
-companion is a remaining delivery item: it must supervise that exact daemon and
-offer native folder selection and local-policy review without becoming authority
-for an executor paired by another machine. It cannot be claimed as shipped until
-the signed helper and its packaged runtime artifacts are actually embedded.
+A dedicated `nessie-executor` owns privileged execution, its key, local policy, outbound connection, sandbox backends, and tmux adapter; it remains an explicit CLI for owner-managed headless machines rather than web-admin or Tauri-webview code.
+Nessie Desktop is the graphical companion for pairing, native workspace selection, daemon start/stop, and COW policy review: it packages a pinned Node runtime, bundled CLI, hash manifest and license; verifies the package; sends pairing input through stdin; derives all paths privately; and repeats each mutation in a native confirmation.
+Browser/Codex artifacts remain separately verified CLI configuration until an equivalent native picker and review flow exists.
+Production controls require an enclosing macOS signature with its pinned Developer ID team; unsigned/ad-hoc builds cannot use the production API. Pairing stays `awaiting_confirmation` until a user confirms the fingerprint, and a parent-liveness pipe plus owner-only singleton lease prevents restart duplication during guest teardown.
 
 Suggested ownership boundaries:
 
@@ -921,9 +915,9 @@ Suggested ownership boundaries:
 - `executor/`: the daemon, local policy enforcement, sandbox/browser backends,
   and tmux/Codex/Claude adapters. This is a focused executable workspace, not
   an addition to the developer-only `cli/` package.
-- `desktop/`: planned daemon lifecycle, native folder-selection and local
-  policy UI; it never becomes the authority for an executor paired by another
-  machine.
+- `desktop/`: packaged daemon lifecycle, native folder-selection, and initial
+  COW policy UI; it never becomes the authority for an executor paired by
+  another machine.
 - `admin/src/facades/executors` and focused feature components: the one web
   management/view surface re-used by pairing, Agent Designer, workflows, and
   activity detail.

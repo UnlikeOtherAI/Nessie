@@ -267,6 +267,9 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2.11.2
         version: 2.11.2
+      esbuild:
+        specifier: ^0.27.7
+        version: 0.27.7
 
   executor:
     dependencies:

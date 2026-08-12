@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "dev": "pnpm prepare:executor-runtime && tauri dev --config src-tauri/tauri.dev.conf.json",
+    "prepare:executor-runtime": "node scripts/prepare-executor-runtime.mjs",
+    "tauri:build": "pnpm prepare:executor-runtime && tauri build",
+    "tauri:build:executor": "pnpm prepare:executor-runtime && node scripts/require-signing-team.mjs && tauri build",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -16,6 +18,7 @@
     "@tauri-apps/plugin-notification": "^2.3.3"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.2"
+    "@tauri-apps/cli": "^2.11.2",
+    "esbuild": "^0.27.7"
   }
 }
