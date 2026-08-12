@@ -178,6 +178,29 @@ reintroduced exactly the non-authoritative source both had just rejected. No
 backfill was written; the one pre-existing trigger errored once with the
 recreate message and moved to `status: error`, which is the intended path.
 
+### Agent Designer's own chat (the third build route)
+
+The Designer has a **Design Assistant** panel — "I can control anything on this
+form" — which is a distinct route from both clicking and the Personal
+Assistant DM. Tested last, and it was **dead on this deployment**: it sent a
+hardcoded `gpt-5-mini` to whatever provider is configured, so every message
+returned `403 gpt-5-mini is not allowed for deepseek`. Fixed (defect 13) by
+reading the deployment's own chat model, with `NESSIE_DESIGNER_MODEL` kept as
+an explicit cheap-model override.
+
+With that fixed it works well: from one sentence it set the name and role,
+wrote a system prompt citing the real connector tools
+(`sites_list` → `site_printers` → `printer_get` + `printer_observations`) with
+"do not cry wolf on a single blip" guidance, and selectively enabled **7 of the
+58** connector tools — the printer-relevant ones.
+
+Two gaps remain, both open:
+
+- It never sets the **model**, so Create stays disabled after the assistant
+  says it is done.
+- The disabled Create button gives **no reason**. A user is told the form is
+  configured and then finds a dead button with nothing explaining why.
+
 ### Later rounds — agent voice and watch behaviour
 
 | # | What | Status |
@@ -185,6 +208,7 @@ recreate message and moved to `status: error`, which is the intended path.
 | 9 | Agents wrote encyclopaedia-length replies. "Concise" was already in the base prompt and did not work — it names a quality, not a shape. Replaced with a default *form* (lead with the answer, one short paragraph, structure only for genuinely structured content, go long only when asked). Prompt guidance, never an output cap. | Fixed |
 | 10 | An agent could not react — 👍 as a complete response only existed as a pre-run engagement decision, described narrowly ("thanks/ok/noted"). Widened it, and added a `react` builtin so an agent uses the same emoji buttons a person does. An emoji typed into a reply is still a reply, which is why post-processing message text was rejected. | Fixed |
 | 11 | Nothing showed which message an agent had picked up. A run now paints 👀 on it, cleared at the terminal status transition so no path can forget and a crash cannot strand it. | Fixed |
+| 13 | The Agent Designer's Design Assistant sent a hardcoded `gpt-5-mini` to a DeepSeek deployment — `403`, panel unusable. Now uses the deployment's chat model (`ModelClient.chatModel`). | Fixed |
 | 12 | A recurring watch posted a new "nothing changed" every sweep. It now keeps one rolling status line, edited in place with a `checked N× · last hh:mm` counter, reset by any newer visible message. | Fixed |
 
 Verified in production on 2026-08-12: three quiet sweeps folded into one row
