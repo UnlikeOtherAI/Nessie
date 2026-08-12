@@ -9,6 +9,7 @@ import { useWorkflowCanvasInteractions } from './workflow-designer/useWorkflowCa
 import { useWorkflowDesignerState } from './workflow-designer/useWorkflowDesignerState'
 import { useWorkflowGraphIo } from './workflow-designer/useWorkflowGraphIO'
 import { useWorkflowTestRun } from './workflow-designer/useWorkflowTestRun'
+import { useWorkflowStepSamples } from '../facades/workflows/hooks'
 
 const normalizeReturnTo = (pathname: string, search: string, hash: string) =>
   `${pathname}${search}${hash}`
@@ -58,6 +59,10 @@ export const WorkflowDesignerPage = () => {
     persistWorkflow: graphIo.persistWorkflow,
     workflowTemplateId: graphIo.workflowTemplateId,
   })
+
+  // §5: the redacted samples behind the transform node's field picker and
+  // live preview. Owner-gated server-side; a 404 reads as "no samples yet".
+  const stepSamples = useWorkflowStepSamples(graphIo.workflowTemplateId)
 
   const handleMenuItemClick = (item: ToolbarMenuItem) => {
     if (item.nodeType) {
@@ -137,6 +142,7 @@ export const WorkflowDesignerPage = () => {
               ? testRun.stepRunsByNodeId.get(state.selectedNodeId)
               : undefined
           }
+          selectedNodeStepSamples={stepSamples.data}
           selectedNodeUpstreamSteps={state.selectedNodeUpstreamSteps}
           onLabelChange={state.handleSelectedNodeLabelChange}
           onSourceChange={state.handleSelectedNodeSourceChange}

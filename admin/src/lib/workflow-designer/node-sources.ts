@@ -23,6 +23,12 @@ export const getWorkflowCanvasNodeType = (stepType: string): WorkflowCanvasNodeT
     return 'tool'
   }
 
+  // W17: the deterministic converter is its own canvas node type — not a
+  // tool, so the tool allow-list mirror stays untouched.
+  if (stepType === 'transform') {
+    return 'transform'
+  }
+
   if (stepType === 'trigger') {
     return 'trigger'
   }
@@ -46,6 +52,11 @@ export const getWorkflowNodeInitialConfig = (
     case 'tool':
       return {
         toolName: typeof source.id === 'string' ? source.id : undefined,
+      }
+    case 'transform':
+      return {
+        expression: typeof source.expression === 'string' ? source.expression : undefined,
+        source: typeof source.source === 'string' ? source.source : undefined,
       }
     case 'trigger':
       if (

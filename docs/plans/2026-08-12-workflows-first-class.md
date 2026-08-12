@@ -153,7 +153,7 @@ lands in §4.4; the boundary itself cannot wait. As-built detail:
 
 - **W15 · `message_send` step — shipped.**
 - **W16 · `when:` guard — shipped.**
-- **W17 · `transform` step (JMESPath).** See §5.
+- **W17 · `transform` step (JMESPath) — shipped.**
 - **W18 · Compare-and-set on `state_put` — shipped.**
 
 ### 3.4 Reachability (Rule zero)

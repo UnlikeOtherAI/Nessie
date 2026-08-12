@@ -48,6 +48,7 @@ export type {
   WorkflowRunStatus,
   WorkflowStepRunRecord,
   WorkflowStepRunStatus,
+  WorkflowStepSamplesRecord,
   WorkflowTemplateRecord,
 } from './api-types.js'
 

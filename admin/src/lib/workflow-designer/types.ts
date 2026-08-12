@@ -1,6 +1,6 @@
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 
-export type WorkflowCanvasNodeType = 'agent' | 'tool' | 'trigger'
+export type WorkflowCanvasNodeType = 'agent' | 'tool' | 'transform' | 'trigger'
 
 export type ToolbarMenuItem = {
   icon: IconDefinition

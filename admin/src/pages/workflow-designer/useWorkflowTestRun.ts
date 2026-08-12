@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   useInstallWorkflowTemplate,
+  useRecordWorkflowStepSamples,
   useStartWorkflowRun,
   useWorkflowInstallations,
   useWorkflowRun,
@@ -48,6 +49,38 @@ export const useWorkflowTestRun = ({
   const runQuery = useWorkflowRun(runId, true, true)
   const run = runQuery.data?.run
   const steps = useMemo(() => runQuery.data?.steps ?? [], [runQuery.data?.steps])
+
+  // §5: a completed test run persists its redacted per-step outputs as the
+  // template's stepSamples, so the field picker works on reopen without
+  // re-running. The server re-checks entitlement, provenance, quota and
+  // redaction; a failure here only loses the convenience, not the run.
+  const recordSamples = useRecordWorkflowStepSamples()
+  const recordedRunIdRef = useRef<string | null>(null)
+  const templateIdForSamples = run?.installationId ? workflowTemplateId : undefined
+  const installationId = run?.installationId
+  useEffect(() => {
+    if (
+      !run ||
+      run.status !== 'completed' ||
+      !templateIdForSamples ||
+      !installationId ||
+      recordedRunIdRef.current === run.id
+    ) {
+      return
+    }
+    recordedRunIdRef.current = run.id
+    const stepOutputs = Object.fromEntries(
+      steps
+        .filter((step) => step.status === 'completed')
+        .map((step) => [step.stepKey, step.output]),
+    )
+    recordSamples.mutate({
+      stepOutputs,
+      workflowInstallationId: installationId,
+      workflowRunId: run.id,
+      workflowTemplateId: templateIdForSamples,
+    })
+  }, [installationId, recordSamples, run, steps, templateIdForSamples])
 
   const stepRunsByNodeId = useMemo(() => {
     const map = new Map<string, WorkflowStepRunRecord>()

@@ -6,7 +6,12 @@ import {
   WORKFLOW_TRIGGER_TYPE_LABELS,
 } from '../../../lib/workflow-designer/constants'
 import type { WorkflowCanvasNode } from '../../../lib/workflow-designer/types'
-import type { ChannelRecord, WorkflowStepRunRecord } from '../../../lib/api-client'
+import type {
+  ChannelRecord,
+  WorkflowStepRunRecord,
+  WorkflowStepSamplesRecord,
+} from '../../../lib/api-client'
+import { WorkflowSamplePicker } from './WorkflowSamplePicker'
 
 /**
  * Node inspector. Known node types edit through structured fields (channel
@@ -31,6 +36,7 @@ type WorkflowNodeInspectorProps = {
   selectedNodeConfigDraft: string
   selectedNodeConfigError: string | null
   selectedNodeStepRun?: WorkflowStepRunRecord
+  selectedNodeStepSamples?: WorkflowStepSamplesRecord | null
   selectedNodeUpstreamSteps: WorkflowCanvasNode[]
   onLabelChange: (value: string) => void
   onSourceChange: (sourceId: string) => void
@@ -178,6 +184,34 @@ const NodeConfigFields = ({
     )
   }
 
+  if (node.type === 'transform') {
+    // W17: expression + optional source. The sample picker below renders
+    // the upstream tree and live preview — the §5 shape awareness.
+    const missingExpression = !readString(config, 'expression')
+    return (
+      <div className="grid gap-3">
+        <TextField
+          label="Expression (JMESPath)"
+          multiline
+          onChange={(value) => onConfigPatch({ expression: value })}
+          placeholder="steps.fetch.output.result.items[].{name: title}"
+          value={readString(config, 'expression')}
+        />
+        <TextField
+          label="Source (optional — defaults to the full context)"
+          onChange={(value) => onConfigPatch({ source: value })}
+          placeholder="{{steps.<id>.output}}"
+          value={readString(config, 'source')}
+        />
+        {missingExpression ? (
+          <div className={warningClass}>
+            “Expression” is required — the save will fail without it.
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   // W13: the canvas trigger node is an entry marker only. Cron, timezone
   // and interval config typed here NEVER became a real schedule — the
   // Triggers page is the one trigger authoring surface, so the inspector
@@ -212,6 +246,7 @@ export const WorkflowNodeInspector = ({
   selectedNodeConfigDraft,
   selectedNodeConfigError,
   selectedNodeStepRun,
+  selectedNodeStepSamples,
   selectedNodeUpstreamSteps,
   onLabelChange,
   onSourceChange,
@@ -269,7 +304,9 @@ export const WorkflowNodeInspector = ({
                   ? 'Agent'
                   : selectedNode.type === 'tool'
                     ? 'Tool'
-                    : 'Trigger type'}
+                    : selectedNode.type === 'transform'
+                      ? 'Transform'
+                      : 'Trigger type'}
               </span>
               <select
                 className={inspectorInputClass}
@@ -298,6 +335,18 @@ export const WorkflowNodeInspector = ({
               node={selectedNode}
               onConfigPatch={onConfigPatch}
             />
+
+            {selectedNode.type === 'transform' ? (
+              <WorkflowSamplePicker
+                expression={readString(config, 'expression')}
+                onInsert={(inserted) => onConfigPatch({ expression: inserted })}
+                samples={selectedNodeStepSamples}
+                upstreamStepIds={selectedNodeUpstreamSteps.map((step) => ({
+                  id: step.id,
+                  label: step.label,
+                }))}
+              />
+            ) : null}
 
             {selectedNodeStepRun ? (
               <div className="rounded-lg border border-black/10 bg-white px-3 py-2.5">

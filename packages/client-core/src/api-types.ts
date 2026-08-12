@@ -463,6 +463,16 @@ export type WorkflowRunDetail = {
   steps: WorkflowStepRunRecord[]
 }
 
+// §5 stepSamples: provenance + redacted per-step output from the last
+// successful designer test run, served by the owner-gated samples route.
+export type WorkflowStepSamplesRecord = {
+  templateVersion: number
+  workflowInstallationId: string
+  workflowRunId: string
+  capturedAt: string
+  steps: Record<string, unknown>
+}
+
 export type AgentTriggerDeliveryRecord = {
   id: string
   triggerId: string

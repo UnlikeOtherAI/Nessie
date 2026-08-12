@@ -122,6 +122,7 @@ export type {
   WorkflowRunRecord,
   WorkflowRunStatus,
   WorkflowStepRunRecord,
+  WorkflowStepSamplesRecord,
   WorkflowStepRunStatus,
   WorkflowTemplateRecord,
 } from '@nessie/client-core'

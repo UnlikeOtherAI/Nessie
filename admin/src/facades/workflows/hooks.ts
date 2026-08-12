@@ -4,6 +4,7 @@ import type {
   WorkflowInstallationRecord,
   WorkflowRunDetail,
   WorkflowRunRecord,
+  WorkflowStepSamplesRecord,
   WorkflowTemplateRecord,
 } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -125,6 +126,57 @@ export const useWorkflowInstallationRuns = (
     queryFn: () =>
       apiClient.get(`/api/workflow-installations/${installationId}/runs`),
     enabled: enabled && Boolean(installationId),
+  })
+}
+
+// §5 stepSamples: the last successful test run's redacted per-step output,
+// served by the owner-gated route. 404 (no samples yet) reads as "nothing
+// persisted" rather than an error state in the inspector.
+export const useWorkflowStepSamples = (
+  workflowTemplateId?: string,
+  enabled = true,
+) => {
+  const apiClient = useApiClient()
+
+  return useQuery<WorkflowStepSamplesRecord | null>({
+    queryKey: ['workflow-templates', workflowTemplateId, 'step-samples'],
+    queryFn: async () => {
+      try {
+        return await apiClient.get<WorkflowStepSamplesRecord>(
+          `/api/workflows/${workflowTemplateId}/step-samples`,
+        )
+      } catch {
+        return null
+      }
+    },
+    enabled: enabled && Boolean(workflowTemplateId),
+  })
+}
+
+export const useRecordWorkflowStepSamples = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      stepOutputs: Record<string, unknown>
+      workflowInstallationId: string
+      workflowRunId: string
+      workflowTemplateId: string
+    }) =>
+      apiClient.post<{ result: string }>(
+        `/api/workflows/${input.workflowTemplateId}/step-samples`,
+        {
+          stepOutputs: input.stepOutputs,
+          workflowInstallationId: input.workflowInstallationId,
+          workflowRunId: input.workflowRunId,
+        },
+      ),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['workflow-templates', variables.workflowTemplateId, 'step-samples'],
+      })
+    },
   })
 }
 

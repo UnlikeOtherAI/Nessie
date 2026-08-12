@@ -193,3 +193,28 @@ them through the existing `createMcpSecretResolver` without new plumbing.
   `skip` records the delivery as `skipped_overlap` so silent skips stay
   diagnosable; `queue` is depth-bounded. CAS detects the collision, this prevents
   it — both were needed.
+
+### Section F — the deterministic converter (merged)
+
+- **W17 · `transform` step.** `worker/src/control/workflow-transform.ts` reshapes
+  data with JMESPath and no LLM in the loop, reusing Section E's evaluator and
+  envelope rather than adding a second one. `source` defaults to the full binding
+  context so one expression can join across steps, and the inline
+  `"jmespath:<expr>"` form works in **any** step input alongside `{{…}}`.
+  Expressions compile at save time through W9's grammar seam, so a bad expression
+  is a save error; the step type is registered in the one allow-list, which per
+  the plan only accepts types that have an executor — the rule that prevents
+  another `delegate`-class bug.
+- **The transform context is a W0 sink.** Tainted bindings are redacted before an
+  expression can see them and never reach the persisted output — tested for both
+  the default context and an explicit `source`.
+- **`stepSamples`.** The last successful designer test run's per-step output is
+  persisted on the template, carrying provenance, redaction, quota, retention and
+  an entitlement check on read — treated as the sensitive-data store the plan
+  says it is, not as a convenience cache.
+- **Designer.** A Transform node with a JMESPath expression editor, optional
+  source, sample field-picker and client-side live preview
+  (`WorkflowSamplePicker.tsx`, `jmespath-preview.ts`). Verified in-browser.
+- **Agent authoring.** A `workflow_transform_preview` PA tool runs the same
+  evaluator, so an agent authors and checks the identical mapping a human does,
+  against the same compiler — the owner's explicit requirement.
