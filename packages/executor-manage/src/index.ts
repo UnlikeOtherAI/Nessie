@@ -28,3 +28,17 @@ export {
   type ExecutorPairingInvitation,
   type ExecutorRecord,
 } from './executor-records.js'
+export {
+  removePrivateAssignment,
+  setExecutorAgentOperationGrant,
+  setPrivateAssignment,
+  type AgentOperationGrantMutation,
+  type PrivateAssignmentMutation,
+  type PrivateAssignmentRemoval,
+} from './executor-access-mutations.js'
+export {
+  nextExecutorLifecycleStatus,
+  reviewExecutorDescriptor,
+  transitionExecutorLifecycle,
+  type ExecutorLifecycleAction,
+} from './executor-lifecycle.js'

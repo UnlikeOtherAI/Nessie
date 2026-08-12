@@ -1,5 +1,6 @@
 import {
   ExecutorEnrollmentRequestSchema,
+  ExecutorOperationKeySchema,
   ExecutorPrivateAssignmentSchema,
   ExecutorScopeSchema,
   ExecutorStatusSchema,
@@ -76,3 +77,36 @@ export type ConfirmExecutorEnrollmentBody = z.infer<
 
 export const SubmitExecutorEnrollmentBodySchema = ExecutorEnrollmentRequestSchema
 export type SubmitExecutorEnrollmentBody = z.infer<typeof SubmitExecutorEnrollmentBodySchema>
+
+export const SetPrivateAssignmentBodySchema = z.object({
+  assignment: ExecutorPrivateAssignmentSchema,
+}).strict()
+export type SetPrivateAssignmentBody = z.infer<typeof SetPrivateAssignmentBodySchema>
+
+export const RemovePrivateAssignmentParamsSchema = z.discriminatedUnion('principalKind', [
+  z.object({ executorId: z.string().uuid(), principalKind: z.literal('user'), principalId: z.string().uuid() }).strict(),
+  z.object({ executorId: z.string().uuid(), principalKind: z.literal('agent'), principalId: z.string().uuid() }).strict(),
+])
+export type RemovePrivateAssignmentParams = z.infer<typeof RemovePrivateAssignmentParamsSchema>
+
+export const SetExecutorAgentOperationGrantBodySchema = z.object({
+  agentId: z.string().uuid(),
+  operationKey: ExecutorOperationKeySchema,
+  state: z.enum(['allowed', 'denied']),
+}).strict()
+export type SetExecutorAgentOperationGrantBody = z.infer<
+  typeof SetExecutorAgentOperationGrantBodySchema
+>
+
+export const ExecutorLifecycleActionSchema = z.enum(['pause', 'resume', 'drain', 'revoke'])
+
+export const ExecutorLifecycleBodySchema = z.object({
+  action: ExecutorLifecycleActionSchema,
+}).strict()
+export type ExecutorLifecycleBody = z.infer<typeof ExecutorLifecycleBodySchema>
+
+export const ReviewExecutorDescriptorBodySchema = z.object({
+  revision: z.number().int().positive(),
+  status: z.enum(['active', 'disabled']),
+}).strict()
+export type ReviewExecutorDescriptorBody = z.infer<typeof ReviewExecutorDescriptorBodySchema>
