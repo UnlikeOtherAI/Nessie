@@ -166,11 +166,9 @@ export const handlePushDispatch = async (
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
     .map((user) => user.id)
 
-  // New jobs always carry the reply root. Keep the previous channel/message
-  // route for already-queued jobs, whose reply root was not persisted yet.
-  const deepLinkUrl = payload.rootMessageId
-    ? buildChannelMessagePath(payload)
-    : `/channels/${payload.channelId}?messageId=${payload.messageId}`
+  // A reply panel is the actionable destination for both a top-level message
+  // and a reply. Older queued jobs simply use their message as the root.
+  const deepLinkUrl = buildChannelMessagePath(payload)
 
   const buildPayload = (title: string): PushPayload => ({
     title,
@@ -184,7 +182,9 @@ export const handlePushDispatch = async (
       ...(payload.rootMessageId ? { rootMessageId: payload.rootMessageId } : {}),
       url: deepLinkUrl,
     },
-    collapseId: payload.channelId,
+    // Keep distinct reply conversations visible independently while retaining
+    // familiar per-channel coalescing for the main feed.
+    collapseId: payload.rootMessageId ?? payload.threadId,
   })
 
   // 4. Deliver over native + Web Push through the shared core, once per
@@ -205,6 +205,7 @@ export const handlePushDispatch = async (
       surface: {
         channelId: payload.channelId,
         kind: 'channel',
+        rootMessageId: payload.rootMessageId ?? null,
         threadId: payload.threadId,
       },
       now: deps.now ?? (() => new Date()),

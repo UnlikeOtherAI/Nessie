@@ -9,6 +9,11 @@ export const parseThreadIdFromPath = (pathname: string): string | undefined => {
   return match?.[1]
 }
 
+export const parseReplyRootMessageIdFromPath = (pathname: string): string | undefined => {
+  const match = pathname.match(/^\/channels\/[^/]+\/threads\/[^/]+\/replies\/([^/]+)\/?$/)
+  return match?.[1]
+}
+
 export const parseChannelProjectIdFromPath = (pathname: string): string | undefined => {
   const match = pathname.match(/^\/channels\/projects\/([^/]+)$/)
   return match?.[1]

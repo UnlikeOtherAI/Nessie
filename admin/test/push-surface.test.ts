@@ -32,6 +32,7 @@ test('maps only exact push-targetable destinations to a structured surface', () 
     {
       kind: 'channel',
       channelId: '00000000-0000-4000-8000-000000000001',
+      rootMessageId: '00000000-0000-4000-8000-000000000003',
       threadId: '00000000-0000-4000-8000-000000000002',
     },
   )

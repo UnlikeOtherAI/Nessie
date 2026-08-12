@@ -9,6 +9,7 @@ const CHANNEL_ID = '00000000-0000-4000-8000-000000000002'
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000003'
 const THREAD_ID = '00000000-0000-4000-8000-000000000004'
 const MESSAGE_ID = '00000000-0000-4000-8000-000000000005'
+const ROOT_MESSAGE_ID = '00000000-0000-4000-8000-000000000006'
 
 const context = {
   channel: { id: CHANNEL_ID, organizationId: ORGANIZATION_ID },
@@ -61,7 +62,26 @@ test('queues an interactive reply only for the requesting user', async () => {
   assert.equal(queued.channelId, CHANNEL_ID)
   assert.equal(queued.threadId, THREAD_ID)
   assert.equal(queued.messageId, MESSAGE_ID)
-  assert.equal(queued.rootMessageId, MESSAGE_ID)
+  assert.equal('rootMessageId' in queued, false)
+})
+
+test('keeps the parent reply conversation as the notification target', async () => {
+  const calls: unknown[] = []
+  const deps = {
+    prisma: { $executeRaw: async (query: unknown) => {
+      calls.push(query)
+      return 1
+    } },
+  } as unknown as Pick<ExecutionDependencies, 'prisma'>
+
+  await enqueueInteractiveReplyPush(
+    deps,
+    payload({ interactive: true }),
+    { ...context, replyRootMessageId: ROOT_MESSAGE_ID },
+    { content: 'Reply answer.', id: MESSAGE_ID },
+  )
+
+  assert.equal(queuedPayload(calls).rootMessageId, ROOT_MESSAGE_ID)
 })
 
 test('uses the acting effective user for an interactive delegated turn', async () => {

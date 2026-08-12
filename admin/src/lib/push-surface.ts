@@ -21,7 +21,7 @@ export const reportPushSurface = (surface: PushSurface | null): void => {
 
 const UUID_PATH_SEGMENT = '[0-9a-f-]{36}'
 const THREAD_PATH = new RegExp(
-  `^/channels/(${UUID_PATH_SEGMENT})/threads/(${UUID_PATH_SEGMENT})/replies/${UUID_PATH_SEGMENT}/?$`,
+  `^/channels/(${UUID_PATH_SEGMENT})/threads/(${UUID_PATH_SEGMENT})/replies/(${UUID_PATH_SEGMENT})/?$`,
   'i',
 )
 const PROJECT_BOARD_PATH = new RegExp(
@@ -34,8 +34,14 @@ export const resolvePushSurface = (pathname: string, search = ''): PushSurface |
   const threadRoute = pathname.match(THREAD_PATH)
   const channelId = ChannelIdSchema.safeParse(threadRoute?.[1])
   const threadId = ThreadIdSchema.safeParse(threadRoute?.[2])
-  if (channelId.success && threadId.success) {
-    return { channelId: channelId.data, kind: 'channel', threadId: threadId.data }
+  const rootMessageId = z.string().uuid().safeParse(threadRoute?.[3])
+  if (channelId.success && threadId.success && rootMessageId.success) {
+    return {
+      channelId: channelId.data,
+      kind: 'channel',
+      rootMessageId: rootMessageId.data,
+      threadId: threadId.data,
+    }
   }
   const project = pathname.match(PROJECT_BOARD_PATH)
   const projectId = ProjectIdSchema.safeParse(project?.[1])

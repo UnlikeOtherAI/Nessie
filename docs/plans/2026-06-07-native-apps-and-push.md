@@ -185,10 +185,11 @@ device token**, not an Expo push token:
 
 - Notify on: new message in a channel/DM the user is in, `@mention`, DM, approval
   request assigned to the user, agent run finished for the user.
-- **Coalesce** by channel (`apns-collapse-id` / FCM collapse key) so a busy
-  channel doesn't spam.
-- Carry a **deep link** (`nessie://channels/:id?msg=:id`) so a tap opens the
-  exact thread.
+- **Coalesce** by channel feed or message-level reply conversation
+  (`apns-collapse-id` / FCM collapse key) so a busy conversation doesn't spam
+  without replacing a different reply conversation.
+- Carry a **deep link** to the message's reply conversation so a tap opens the
+  exact channel feed item or reply thread.
 - **Badge** = unread count; server is source of truth, pushed in the payload.
 - Respect **mute/quiet-hours** (per channel + per user) — evaluated in the
   worker before dispatch.
@@ -375,10 +376,11 @@ stream directly:
   (`admin/src/providers/NotificationsProvider.tsx`), deep-linking to
   `/channels/:channelId` on click. Wired into `AdminShellLayout`.
 - Suppression rules: never notify for the recipient's **own** message
-  (`authorUserId === me`) and never for the **exact thread currently being
-  viewed** (`threadId === active thread` while the window is focused and
-  visible). A foreground client elsewhere in Nessie still receives its in-app
-  banner; only the exact active thread suppresses it. Backlog replay events
+  (`authorUserId === me`) and never for the **exact channel feed or reply
+  conversation currently being viewed** (container `threadId` plus a matching
+  nullable reply-root id while the window is focused and visible). A foreground
+  client elsewhere in Nessie still receives its in-app banner; only that exact
+  conversation suppresses it. Backlog replay events
   (ts < connect time) are ignored; notified message ids are de-duplicated.
 - To make those rules reliable the `message.new` realtime event now carries
   `channelId` + `authorUserId` (optional fields on `MessageNewEventSchema` in

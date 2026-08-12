@@ -4,7 +4,11 @@ import { useLocation } from 'react-router-dom'
 import { useChannels } from '../channels/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
 import { getBaseUrl } from '../../lib/api-client'
-import { parseChannelIdFromPath, parseThreadIdFromPath } from '../../lib/channel-route'
+import {
+  parseChannelIdFromPath,
+  parseReplyRootMessageIdFromPath,
+  parseThreadIdFromPath,
+} from '../../lib/channel-route'
 import { readSseStream } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -47,6 +51,7 @@ type RealtimeEventFrame = {
 }
 
 type LatestNotificationState = {
+  activeRootMessageId?: string
   activeThreadId?: string
   channelLookup: ChannelLookup
   currentUserId: string
@@ -167,21 +172,31 @@ const isInitialBacklogEvent = (
 }
 
 export const shouldSuppressMessageBanner = (input: {
+  activeRootMessageId?: string
   activeThreadId?: string
   foreground: boolean
+  rootMessageId?: string
   threadId?: string
 }): boolean =>
   input.foreground
   && Boolean(input.threadId)
   && input.threadId === input.activeThreadId
+  && (input.rootMessageId ?? null) === (input.activeRootMessageId ?? null)
 
 export const isMessageCreatedEvent = (event: string): boolean =>
   event === 'message.new' || event === 'message.reply'
 
-const isActivelyViewingThread = (threadId: string | undefined, activeThreadId?: string): boolean =>
+const isActivelyViewingConversation = (
+  threadId: string | undefined,
+  rootMessageId: string | undefined,
+  activeThreadId?: string,
+  activeRootMessageId?: string,
+): boolean =>
   shouldSuppressMessageBanner({
+    activeRootMessageId,
     activeThreadId,
     foreground: document.visibilityState === 'visible' && document.hasFocus(),
+    rootMessageId,
     threadId,
   })
 
@@ -242,7 +257,7 @@ const showNativeNotification = (
   try {
     const notification = new notificationApi(input.title, {
       body: input.body,
-      tag: input.threadId ?? input.channelId,
+      tag: input.rootMessageId ?? input.threadId ?? input.channelId,
     })
     notification.addEventListener('click', () => {
       input.openChannel(input.channelId, input.threadId, input.rootMessageId)
@@ -272,6 +287,10 @@ export const useMessageNotifications = (input: {
     if (replyThread) return replyThread
     return activeChannelId ? channelLookup.byId.get(activeChannelId)?.defaultThreadId : undefined
   }, [activeChannelId, channelLookup, location.pathname])
+  const activeRootMessageId = useMemo(
+    () => parseReplyRootMessageIdFromPath(location.pathname),
+    [location.pathname],
+  )
   const currentUserId = me?.user.id
   const notificationsEnabled = Boolean(me) && me?.user.preferences?.pushEnabled !== false
   const latestRef = useRef<LatestNotificationState>({
@@ -284,13 +303,14 @@ export const useMessageNotifications = (input: {
 
   useEffect(() => {
     latestRef.current = {
+      activeRootMessageId,
       activeThreadId,
       channelLookup,
       currentUserId: currentUserId ?? '',
       onToast: input.onToast,
       openChannel: input.openChannel,
     }
-  }, [activeThreadId, channelLookup, currentUserId, input.onToast, input.openChannel])
+  }, [activeRootMessageId, activeThreadId, channelLookup, currentUserId, input.onToast, input.openChannel])
 
   useEffect(() => {
     if (!currentUserId || !notificationsEnabled || !token) {
@@ -328,9 +348,14 @@ export const useMessageNotifications = (input: {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
 
       // A foreground banner is suppressed only while this exact conversation is
-      // visible and focused. A different thread in the same channel is still
-      // work that needs attention, just like a different channel.
-      if (!channelId || isActivelyViewingThread(payload.threadId, latest.activeThreadId)) {
+      // visible and focused. A different reply root in the same channel thread
+      // is still work that needs attention, just like a different channel.
+      if (!channelId || isActivelyViewingConversation(
+        payload.threadId,
+        payload.rootMessageId,
+        latest.activeThreadId,
+        latest.activeRootMessageId,
+      )) {
         return
       }
 

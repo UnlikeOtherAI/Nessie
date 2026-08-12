@@ -47,7 +47,7 @@ export const enqueueInteractiveReplyPush = async (
         messageId: message.id,
         organizationId: context.channel.organizationId,
         recipientUserIds: [recipientUserId],
-        rootMessageId: context.replyRootMessageId ?? message.id,
+        ...(context.replyRootMessageId ? { rootMessageId: context.replyRootMessageId } : {}),
         threadId: context.run.threadId,
       },
       topic: 'push.dispatch',

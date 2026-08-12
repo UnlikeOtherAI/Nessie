@@ -8,7 +8,7 @@ type PushSurfacePresencePrisma = Pick<PrismaClient, 'userPushSurfacePresence'>
 // unbranded so unit fakes can use their existing concise identifiers; the HTTP
 // heartbeat boundary remains UUID-validated by @nessie/schemas.
 export type PushSurfaceTarget =
-  | { kind: 'channel'; channelId: string; threadId: string }
+  | { kind: 'channel'; channelId: string; rootMessageId: string | null; threadId: string }
   | { kind: 'ops_usage' }
   | { kind: 'project_board'; projectId: string }
   | { kind: 'knowledge_space'; spaceId: string }
@@ -42,13 +42,26 @@ export const findRecipientsViewingPushSurface = async (
           channelId: input.surface.channelId,
           knowledgeSpaceId: null,
           projectId: null,
+          rootMessageId: input.surface.rootMessageId,
           threadId: input.surface.threadId,
         }
         : input.surface.kind === 'project_board'
-          ? { channelId: null, projectId: input.surface.projectId, knowledgeSpaceId: null, threadId: null }
+          ? {
+            channelId: null,
+            projectId: input.surface.projectId,
+            knowledgeSpaceId: null,
+            rootMessageId: null,
+            threadId: null,
+          }
           : input.surface.kind === 'knowledge_space'
-            ? { channelId: null, projectId: null, knowledgeSpaceId: input.surface.spaceId, threadId: null }
-            : { channelId: null, projectId: null, knowledgeSpaceId: null, threadId: null }),
+            ? {
+              channelId: null,
+              projectId: null,
+              knowledgeSpaceId: input.surface.spaceId,
+              rootMessageId: null,
+              threadId: null,
+            }
+            : { channelId: null, projectId: null, knowledgeSpaceId: null, rootMessageId: null, threadId: null }),
       lastSeenAt: { gte: new Date(input.now.getTime() - ACTIVE_SURFACE_WINDOW_MS) },
     },
     select: { userId: true },

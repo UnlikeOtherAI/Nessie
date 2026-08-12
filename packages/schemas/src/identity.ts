@@ -50,6 +50,11 @@ export const PushSurfaceSchema = z.discriminatedUnion('kind', [
     // identify the exact thread so one open conversation never hides a banner
     // or a native push for another.
     threadId: ThreadIdSchema,
+    // `null` is the channel's top-level feed; a UUID is one message-level
+    // reply conversation within that thread container.
+    // Defaulting absent values keeps already-installed clients safe during the
+    // server-first rollout: old feed heartbeats mean the main channel feed.
+    rootMessageId: z.string().uuid().nullable().default(null),
   }),
   z.object({ kind: z.literal('ops_usage') }),
   z.object({ kind: z.literal('project_board'), projectId: ProjectIdSchema }),

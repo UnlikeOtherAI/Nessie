@@ -18,6 +18,7 @@ type PushSurfacePresenceTransaction = Pick<
   | 'channelMember'
   | 'organizationMember'
   | 'knowledgeSpace'
+  | 'message'
   | 'projectMember'
   | 'refreshToken'
   | 'thread'
@@ -122,7 +123,26 @@ const resolveRecordableSurface = async (
     },
     select: { id: true },
   })
-  return thread ? input.surface : null
+  if (!thread) {
+    return null
+  }
+
+  // The channel feed has no reply root. A reply-panel heartbeat must name a
+  // top-level message in this exact container thread, never a reply or a root
+  // from another conversation.
+  if (input.surface.rootMessageId === null) {
+    return input.surface
+  }
+
+  const rootMessage = await prisma.message.findFirst({
+    where: {
+      id: input.surface.rootMessageId,
+      rootMessageId: null,
+      threadId: input.surface.threadId,
+    },
+    select: { id: true },
+  })
+  return rootMessage ? input.surface : null
 }
 
 /**
@@ -161,6 +181,7 @@ export const recordPushSurfacePresence = async (
     const surfaceKind = surface?.kind ?? null
     const channelId = surface?.kind === 'channel' ? surface.channelId : null
     const threadId = surface?.kind === 'channel' ? surface.threadId : null
+    const rootMessageId = surface?.kind === 'channel' ? surface.rootMessageId : null
     const projectId = surface?.kind === 'project_board'
       ? surface.projectId
       : null
@@ -173,6 +194,7 @@ export const recordPushSurfacePresence = async (
     const writeData = {
       channelId,
       threadId,
+      rootMessageId,
       projectId,
       knowledgeSpaceId,
       heartbeatSequence: input.sequence,

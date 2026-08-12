@@ -9,7 +9,9 @@ import {
 test('suppresses an in-app banner only for the exact focused conversation', () => {
   assert.equal(shouldSuppressMessageBanner({
     activeThreadId: 'thread-a',
+    activeRootMessageId: 'root-a',
     foreground: true,
+    rootMessageId: 'root-a',
     threadId: 'thread-a',
   }), true)
 })
@@ -17,12 +19,22 @@ test('suppresses an in-app banner only for the exact focused conversation', () =
 test('keeps an in-app banner for another thread or an unfocused window', () => {
   assert.equal(shouldSuppressMessageBanner({
     activeThreadId: 'thread-a',
+    activeRootMessageId: 'root-a',
+    foreground: true,
+    rootMessageId: 'root-b',
+    threadId: 'thread-a',
+  }), false)
+  assert.equal(shouldSuppressMessageBanner({
+    activeThreadId: 'thread-a',
+    activeRootMessageId: 'root-a',
     foreground: true,
     threadId: 'thread-b',
   }), false)
   assert.equal(shouldSuppressMessageBanner({
     activeThreadId: 'thread-a',
+    activeRootMessageId: 'root-a',
     foreground: false,
+    rootMessageId: 'root-a',
     threadId: 'thread-a',
   }), false)
 })

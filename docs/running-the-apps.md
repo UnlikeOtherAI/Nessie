@@ -350,12 +350,14 @@ suppress its channel and mention pushes.
 
 Every visible Nessie browser tab or native WebView sends a short-lived,
 strictly ordered structured foreground surface heartbeat. Its channel target
-contains both channel and thread IDs, and is accepted only for an active
+contains the channel, its container thread, and either a null main-feed target
+or the reply conversation's root message, and is accepted only for an active
 organization member with channel access. Browser heartbeats additionally require
 the window to have focus. Under the same per-user lock used for session
 revocation, the API also verifies the heartbeat's exact refresh session is
 still live. Before delivering, the in-house worker checks whether any of that
-user's active sessions is already displaying the exact thread or
+user's active sessions is already displaying the exact channel feed, reply
+conversation, or
 operational-usage page the notification would open. If so, it does not send an
 APNs/FCM/browser push—the realtime stream is already updating that destination.
 A foreground client elsewhere in Nessie is not suppressed: it receives its

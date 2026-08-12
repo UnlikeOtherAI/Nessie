@@ -135,9 +135,9 @@ export const ChannelsPage = () => {
   // follow mutation, and the persisted drag-resizable width.
   const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
 
-  // Presence is exact-thread, not merely exact-channel. The Files, Info, and
-  // Runs tabs deliberately clear it: a reply there still needs an in-app and
-  // native banner because the user is not reading the conversation.
+  // Presence is the channel feed or one exact reply conversation. The Files,
+  // Info, and Runs tabs deliberately clear it: a reply there still needs an
+  // in-app and native banner because the user is not reading the conversation.
   useEffect(() => {
     if (visibleActiveTab !== 'messages' || !activeChannel || !replyThread.activeThreadId) {
       reportPushSurface(null)
@@ -146,10 +146,11 @@ export const ChannelsPage = () => {
     reportPushSurface({
       channelId: parseChannelId(activeChannel.id),
       kind: 'channel',
+      rootMessageId: replyThread.openRootMessageId,
       threadId: parseThreadId(replyThread.activeThreadId),
     })
     return () => reportPushSurface(null)
-  }, [activeChannel, replyThread.activeThreadId, visibleActiveTab])
+  }, [activeChannel, replyThread.activeThreadId, replyThread.openRootMessageId, visibleActiveTab])
 
   const {
     message,

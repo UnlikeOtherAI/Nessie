@@ -47,6 +47,7 @@ type DeliveryRow = {
 type SurfaceViewer = {
   channelId: string | null
   kind: 'channel' | 'ops_usage'
+  rootMessageId: string | null
   threadId: string | null
   userId: string
 }
@@ -146,6 +147,7 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findMany: async ({ where }: {
         where: {
           channelId: string | null
+          rootMessageId: string | null
           surfaceKind: string
           threadId: string | null
           userId: { in: string[] }
@@ -156,6 +158,7 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
             where.userId.in.includes(viewer.userId)
             && viewer.kind === where.surfaceKind
             && viewer.channelId === where.channelId
+            && viewer.rootMessageId === where.rootMessageId
             && viewer.threadId === where.threadId,
           )
           .map((viewer) => ({ userId: viewer.userId })),
@@ -222,7 +225,6 @@ const payload = (over: Record<string, unknown> = {}) => ({
   messageId: 'message-1',
   authorUserId: 'author-1',
   channelId: 'channel-1',
-  rootMessageId: 'message-1',
   threadId: 'thread-1',
   organizationId: 'org-1',
   contentSnippet: 'hello world',
@@ -256,7 +258,7 @@ test('skips a push when the recipient is actively viewing its exact thread', asy
     deleted: [],
     members: [member('u2')],
     secrets: [apnsSecret()],
-    surfaceViewers: [{ userId: 'u2', kind: 'channel', channelId: 'channel-1', threadId: 'thread-1' }],
+    surfaceViewers: [{ userId: 'u2', kind: 'channel', channelId: 'channel-1', rootMessageId: null, threadId: 'thread-1' }],
     tokens: [{ id: 't2', userId: 'u2', token: 'tok-u2', platform: 'ios' }],
   }
   const { senders, apnsCalls } = recordingSenders()
@@ -277,14 +279,14 @@ test('delivers to every device when a foreground window is in a different thread
     deleted: [],
     members: [member('u2')],
     secrets: [apnsSecret(), fcmSecret()],
-    surfaceViewers: [{ userId: 'u2', kind: 'channel', channelId: 'channel-1', threadId: 'thread-2' }],
+    surfaceViewers: [{ userId: 'u2', kind: 'channel', channelId: 'channel-1', rootMessageId: null, threadId: 'thread-2' }],
     tokens: [
       { id: 'iphone', userId: 'u2', token: 'tok-iphone', platform: 'ios' },
       { id: 'ipad', userId: 'u2', token: 'tok-ipad', platform: 'ios' },
       { id: 'android', userId: 'u2', token: 'tok-android', platform: 'android' },
     ],
   }
-  const { apnsCalls, fcmCalls, senders } = recordingSenders()
+  const { apnsCalls, apnsPayloads, fcmCalls, senders } = recordingSenders()
 
   const summary = await handlePushDispatch(
     { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
@@ -298,6 +300,33 @@ test('delivers to every device when a foreground window is in a different thread
     apnsPayloads[0]?.data?.url,
     '/channels/channel-1/threads/thread-1/replies/message-1',
   )
+})
+
+test('delivers when another reply conversation is open in the same thread container', async () => {
+  const state: FakeState = {
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('u2')],
+    secrets: [apnsSecret()],
+    surfaceViewers: [{
+      userId: 'u2',
+      kind: 'channel',
+      channelId: 'channel-1',
+      rootMessageId: 'root-a',
+      threadId: 'thread-1',
+    }],
+    tokens: [{ id: 'iphone', userId: 'u2', token: 'tok-iphone', platform: 'ios' }],
+  }
+  const { apnsCalls, senders } = recordingSenders()
+
+  const summary = await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({ rootMessageId: 'root-b' }),
+  )
+
+  assert.deepEqual(summary, { sent: 1, failed: 0, pruned: 0 })
+  assert.deepEqual(apnsCalls.map((target) => target.token), ['tok-iphone'])
 })
 
 test('sends an interactive agent reply to its explicit requester', async () => {
@@ -736,11 +765,11 @@ test('mentioned recipients get mention framing; unmentioned keep channel framing
   assert.equal(apnsPayloads[mentionedIdx]?.title, 'Ada Author mentioned you in General')
   assert.equal(apnsPayloads[unmentionedIdx]?.title, 'General')
   // Both groups carry the same deep-link data and coalescing key.
-  assert.equal(apnsPayloads[mentionedIdx]?.collapseId, 'channel-1')
+  assert.equal(apnsPayloads[mentionedIdx]?.collapseId, 'thread-1')
   assert.deepEqual(apnsPayloads[mentionedIdx]?.data, apnsPayloads[unmentionedIdx]?.data)
   assert.equal(
     apnsPayloads[mentionedIdx]?.data?.url,
-    `/channels/channel-1?messageId=${dispatchPayload.messageId}`,
+    '/channels/channel-1/threads/thread-1/replies/message-1',
   )
 })
 
