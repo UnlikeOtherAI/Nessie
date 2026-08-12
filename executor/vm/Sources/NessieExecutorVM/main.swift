@@ -9,7 +9,7 @@ private func json(_ value: [String: Any]) {
 }
 
 private func usage() -> Never {
-  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
+  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
   exit(64)
 }
 
@@ -84,6 +84,20 @@ private func waitForMainRunLoop(
   return condition()
 }
 
+@available(macOS 15.0, *)
+private func stopMachine(_ machine: VZVirtualMachine) throws {
+  guard machine.state != .stopped else { return }
+  var didStop = false
+  var stopError: Error?
+  machine.stop { error in
+    stopError = error
+    didStop = true
+  }
+  guard waitForMainRunLoop({ didStop }, timeoutSeconds: 10), stopError == nil else {
+    throw stopError ?? VMError.invalidArgument
+  }
+}
+
 private func smoke(_ arguments: [String]) throws {
   let input = try parseInput(arguments)
   let consoleURL = try safeConsoleFile(try requiredOption(arguments, "--console"))
@@ -102,19 +116,96 @@ private func smoke(_ arguments: [String]) throws {
       throw startError ?? VMError.invalidArgument
     }
     _ = waitForMainRunLoop({ machine.state == .stopped }, timeoutSeconds: timeout)
-    if machine.state != .stopped {
-      var didStop = false
-      var stopError: Error?
-      machine.stop { error in
-        stopError = error
-        didStop = true
-      }
-      guard waitForMainRunLoop({ didStop }, timeoutSeconds: 10), stopError == nil else {
-        throw stopError ?? VMError.invalidArgument
-      }
-    }
+    try stopMachine(machine)
     json(["console": consoleURL.path, "smoke": "stopped"])
     return
+  }
+  throw VMError.unsupportedHost
+}
+
+private final class GuestHandshakeResult {
+  private var authenticated = false
+  private let lock = NSLock()
+  private var termination: GuestControlSessionError?
+
+  func recordAuthentication() {
+    lock.lock()
+    authenticated = true
+    lock.unlock()
+  }
+
+  func recordTermination(_ reason: GuestControlSessionError) {
+    lock.lock()
+    termination = reason
+    lock.unlock()
+  }
+
+  func isComplete() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return authenticated || termination != nil
+  }
+
+  func succeeded() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return authenticated
+  }
+}
+
+private func bootstrapTokenFromStandardInput(_ arguments: [String]) throws -> String {
+  guard arguments.filter({ $0 == "--bootstrap-token-stdin" }).count == 1 else {
+    throw VMError.invalidArgument
+  }
+  let tokenData = FileHandle.standardInput.readDataToEndOfFile()
+  guard tokenData.count == 43, let token = String(data: tokenData, encoding: .utf8) else {
+    throw VMError.invalidArgument
+  }
+  return token
+}
+
+private func handshake(_ arguments: [String]) throws {
+  let input = try parseInput(arguments)
+  let consoleURL = try safeConsoleFile(try requiredOption(arguments, "--console"))
+  let timeout = Int(try option(arguments, "--timeout-seconds") ?? "10") ?? 0
+  guard (1...30).contains(timeout), input.initrdURL != nil else { throw VMError.invalidArgument }
+  let bootstrapToken = try bootstrapTokenFromStandardInput(arguments)
+  if #available(macOS 15.0, *) {
+    do {
+      let outcome = GuestHandshakeResult()
+      let machine = VZVirtualMachine(configuration: try configuration(
+        for: input,
+        consoleURL: consoleURL,
+        enableGuestControl: true,
+      ))
+      let control = try GuestControlListener(
+        expectedBootstrapToken: bootstrapToken,
+        onAuthenticated: { outcome.recordAuthentication() },
+        onResponse: { _ in },
+        onTerminated: { reason in outcome.recordTermination(reason) },
+      )
+      try control.attach(to: machine)
+      var didStart = false
+      var startError: Error?
+      machine.start { result in
+        if case let .failure(error) = result { startError = error }
+        didStart = true
+      }
+      guard waitForMainRunLoop({ didStart }, timeoutSeconds: 10), startError == nil else {
+        control.invalidate()
+        throw VMError.guestHandshake
+      }
+      let completed = waitForMainRunLoop({ outcome.isComplete() }, timeoutSeconds: timeout)
+      control.invalidate()
+      try stopMachine(machine)
+      guard completed, outcome.succeeded() else { throw VMError.guestHandshake }
+      json(["handshake": "verified", "valid": true])
+      return
+    } catch let error as VMError {
+      throw error
+    } catch {
+      throw VMError.guestHandshake
+    }
   }
   throw VMError.unsupportedHost
 }
@@ -132,6 +223,8 @@ private func run() -> Int32 {
       try validate(Array(arguments.dropFirst()))
     case "smoke":
       try smoke(Array(arguments.dropFirst()))
+    case "handshake":
+      try handshake(Array(arguments.dropFirst()))
     default:
       usage()
     }
@@ -141,6 +234,9 @@ private func run() -> Int32 {
     return 1
   } catch VMError.unsafeImage {
     json(["code": "EXECUTOR_VM_UNSAFE_IMAGE", "valid": false])
+    return 1
+  } catch VMError.guestHandshake {
+    json(["code": "EXECUTOR_VM_GUEST_HANDSHAKE_FAILED", "valid": false])
     return 1
   } catch {
     fputs("nessie-executor-vm local failure: \((error as NSError).localizedDescription)\n", stderr)

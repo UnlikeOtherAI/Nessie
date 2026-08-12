@@ -3,6 +3,7 @@ import Foundation
 import Virtualization
 
 public enum VMError: Error {
+  case guestHandshake
   case invalidArgument
   case unsupportedHost
   case unsafeImage

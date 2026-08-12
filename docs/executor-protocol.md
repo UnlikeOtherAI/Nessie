@@ -395,6 +395,15 @@ token file before it connects to host CID 2 on the fixed virtio port, sends the
 hello, and clears its mutable token buffer. It implements no browser, command,
 workspace, or coding action: until typed handlers are installed, a valid host
 request receives only `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE`.
+
+The signed helper's `handshake` command is the release-candidate integration
+check for that exact pair. It reads the same 43-byte token from standard input,
+starts one VM with the control socket enabled, requires the matching guest hello
+within its bounded timeout, invalidates the socket, and stops the VM. It prints
+only a verified/failure status, never the token, guest output, or a local path.
+It creates no `ExecutorSession`, binding, descriptor, or executor operation;
+`EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` is a local packaging/guest failure and must
+keep browser and coding profiles unavailable.
 The helper carries the `com.apple.security.virtualization` and
 `com.apple.security.hypervisor` entitlements. `sh
 executor/vm/scripts/build-signed-vm-helper.sh` creates an ad-hoc local validator
@@ -519,6 +528,7 @@ EXECUTOR_COMMAND_UNKNOWN_OUTCOME EXECUTOR_APPROVAL_STALE
 EXECUTOR_CANDIDATE_INVALID       EXECUTOR_PROMOTION_CONFLICT
 EXECUTOR_PROMOTION_UNSAFE_PATH   EXECUTOR_EGRESS_DENIED
 EXECUTOR_CREDENTIAL_REVOKED
+EXECUTOR_VM_GUEST_HANDSHAKE_FAILED
 ```
 
 Errors are safe for the caller's access level and never disclose a private

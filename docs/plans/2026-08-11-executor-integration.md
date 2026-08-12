@@ -125,6 +125,15 @@ mount, browser, tmux, or operation handler. Until the next reviewed slice, any
 otherwise valid control request returns the fixed
 `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE` result.
 
+The signed VM helper also has a handshake-only release-candidate command. Its
+fresh token arrives on stdin, never in an argument; the helper enables the
+single VM's virtio socket, accepts only the matching guest hello before the
+bounded deadline, then invalidates the channel and stops the VM. It reports a
+sanitized `EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` result on any guest/package
+failure and cannot create a run, session, descriptor, browser, terminal, or
+coding action. This supplies the first real VM-to-guest proof without claiming
+that a safe browser/coding backend exists.
+
 The companion now also contains the inactive foundation for that egress broker:
 an owner-only Unix-socket HTTPS CONNECT gateway whose local policy names exact,
 distinct HTTPS origins. It has no TCP listener, generic HTTP forwarding, proxy
