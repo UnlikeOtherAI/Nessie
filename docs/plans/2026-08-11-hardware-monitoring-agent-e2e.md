@@ -1,7 +1,7 @@
 # E2E verification: a hardware-diagnostics monitoring agent, built by a user
 
 **Date:** 2026-08-11
-**Status:** 6 defects fixed and deployed, 1 reverted pending rework, 1 blocked on a Ledger token grant, 1 designed and not yet built
+**Status:** 9 defects fixed, deployed and verified in production; 1 blocked on a Ledger token grant; 1 (PA provisioning parity) designed and not yet built
 **Target:** production `https://app.nessie.works` (pre-release; database will be wiped before launch)
 
 ## Why this exists
@@ -177,6 +177,19 @@ seeding the tuple from the link's `active*` fields, which would have
 reintroduced exactly the non-authoritative source both had just rejected. No
 backfill was written; the one pre-existing trigger errored once with the
 recreate message and moved to `status: error`, which is the intended path.
+
+### Later rounds — agent voice and watch behaviour
+
+| # | What | Status |
+|---|------|--------|
+| 9 | Agents wrote encyclopaedia-length replies. "Concise" was already in the base prompt and did not work — it names a quality, not a shape. Replaced with a default *form* (lead with the answer, one short paragraph, structure only for genuinely structured content, go long only when asked). Prompt guidance, never an output cap. | Fixed |
+| 10 | An agent could not react — 👍 as a complete response only existed as a pre-run engagement decision, described narrowly ("thanks/ok/noted"). Widened it, and added a `react` builtin so an agent uses the same emoji buttons a person does. An emoji typed into a reply is still a reply, which is why post-processing message text was rejected. | Fixed |
+| 11 | Nothing showed which message an agent had picked up. A run now paints 👀 on it, cleared at the terminal status transition so no path can forget and a crash cannot strand it. | Fixed |
+| 12 | A recurring watch posted a new "nothing changed" every sweep. It now keeps one rolling status line, edited in place with a `checked N× · last hh:mm` counter, reset by any newer visible message. | Fixed |
+
+Verified in production on 2026-08-12: three quiet sweeps folded into one row
+(`runCount: 3`, edited in place, rendered as "checked 3× · last 12:55 AM");
+after a human message the next sweep started a fresh row at 1.
 
 ## Notes
 
