@@ -2,6 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  ExecutorDaemonChallengeResponseSchema,
+  ExecutorDaemonClaimRequestSchema,
+} from '@nessie/schemas'
+
+import {
   issueExecutorDaemonChallenge,
   verifyExecutorDaemonChallenge,
 } from '../src/services/executor-daemon-auth.js'
@@ -12,6 +17,15 @@ const NOW = new Date('2026-08-12T12:00:00.000Z')
 
 test('daemon challenge is bound to one executor and expires', () => {
   const issued = issueExecutorDaemonChallenge(EXECUTOR_ID, SECRET, NOW)
+  assert.equal(ExecutorDaemonChallengeResponseSchema.safeParse(issued).success, true)
+  assert.equal(
+    ExecutorDaemonClaimRequestSchema.safeParse({
+      challenge: issued.challenge,
+      executorId: EXECUTOR_ID,
+      signature: 'a'.repeat(64),
+    }).success,
+    true,
+  )
   assert.equal(verifyExecutorDaemonChallenge(issued.challenge, EXECUTOR_ID, SECRET, NOW), true)
   assert.equal(verifyExecutorDaemonChallenge(
     issued.challenge,

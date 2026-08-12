@@ -118,7 +118,9 @@ Enrollment fails closed with `ENROLLMENT_EXPIRED`, `ENROLLMENT_USED`,
 ### 4.3 Phase 1 daemon presence
 
 The daemon obtains a rate-limited, one-minute, HMAC-authenticated server
-challenge for its executor ID, then signs that opaque value using
+challenge for its executor ID. The opaque challenge is a compact signed token
+of two base64url segments separated by one literal `.`; the daemon then signs
+that exact value using
 `nessie.executor.daemon.claim.v1`. The server persists only the challenge's
 SHA-256 digest and atomically consumes it with the successful claim, so a
 captured challenge cannot reconnect or advance a fence twice. A successful
