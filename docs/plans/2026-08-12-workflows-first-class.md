@@ -1,27 +1,36 @@
 # Workflows, made first-class
 
-> Status: approved plan, in delivery
+> Status: approved plan, in delivery — **revision 2**
 > Supersedes the target-state sections of
 > [2026-04-15-n8n-inspired-workflow-tools-and-triggers.md](./2026-04-15-n8n-inspired-workflow-tools-and-triggers.md)
 > and completes the founding decision of
 > [2026-04-07-workflow-builder.md](./2026-04-07-workflow-builder.md) ("Workflows Are Tools").
-> Derived from three independent code reviews (2026-08-12) whose findings are
-> tracked to completion in §10.
+> Derived from three independent code reviews (2026-08-12), then audited by the
+> same three reviewers against this document. Findings are tracked to completion
+> in §12. Revision 2 incorporates that audit; §11 records what changed and why.
 
 ## 0. The one-paragraph version
 
-Nessie's workflow engine is sound and its surface is a lie. The runner, the
-run/step state machine, the mailbox suspend/resume choreography, and the trigger
-scheduler are real and worth keeping. Everything above them is not: the graph
+Nessie's workflow *persistence and choreography* are worth keeping; the runtime
+built on them is not yet dependable, and the surface above it is a lie. The
+run/step model, the mailbox suspend/resume choreography, and the trigger
+scheduler are real foundations — but terminal writes are unguarded, children
+outlive cancellation, async terminal events never fire, execution definitions
+mutate mid-flight, and stuck steps are never reclaimed. Above that: the graph
 contract is a flat list, the canvas draws edges the runtime discards, installed
 "versions" are decorative, and the whole surface is owner-only and invisible from
 chat. The deterministic layer cannot deliver its own output — the only way a
 workflow result reaches a human is by paying for an agent hop, which inverts the
-entire economic argument for having workflows. This plan fixes the lies first,
-adds the five primitives that unlock every real use case, and wires workflows
-into channels, agents, approvals, budgets, and the audit trail. It deliberately
-never builds a general DAG, a code node, a connector catalogue, or a second
-scheduler.
+entire economic argument for having workflows. This plan fixes the correctness
+defects first, adds the primitives that unlock every real use case, and wires
+workflows into channels, agents, approvals, budgets, and the audit trail. It
+deliberately never builds a general DAG, a code node, a connector catalogue, or a
+second scheduler.
+
+**Scope honesty:** what Stages 1–2 deliver is a *guarded sequence runner* —
+Playbooks. It does not model parallel independent work or per-item batch actions.
+Where this document says "workflow" it means that, and product copy must not
+claim multi-system orchestration the engine cannot execute (§2, DAG row).
 
 ## 1. What a workflow is for
 
@@ -55,23 +64,61 @@ does not relitigate them.
 
 | Question | Decision | Why |
 |---|---|---|
-| General DAG with free-form edges? | **No.** Guarded sequence with forward-only `next`/`goto`, modelled on Amazon States Language, not n8n. | Every valuable use case is a sequence with conditions and error paths. A DAG engine is a second product. |
-| Conditions as branch nodes? | **No.** Step-level `when:` guard. | Keeps the executor a single forward pass; kills demand for routers. |
+| General DAG with free-form edges? | **No** — and the product is therefore named **Playbooks**, not workflows, in user-facing copy. Guarded sequence with forward-only `next`/`goto`, modelled on Amazon States Language, not n8n. | Every valuable use case reviewed is a sequence with conditions and error paths. A DAG engine is a second product. The naming constraint is binding: a guarded sequence cannot model parallel independent work or a real join, so we must not market those. |
+| Conditions as branch nodes? | **No.** Step-level `when:` guard. Requires: forward references validator-proven, skipped steps materialised as `skipped` rows, and agent verdicts schema-validated before a guard reads them. | Keeps the executor a single forward pass; kills demand for routers. |
 | Error routing? | **Yes**, `onError: fail \| continue \| { goto }`, forward-only. | Reviewers split; error routing is genuinely needed, cycles are not. |
-| Loops / foreach? | **Deferred, not never.** A bounded `map` (N ≤ k, implicit join) only if real usage proves it. | No current use case needs it. |
-| MCP connector steps? | **Yes, late (Stage 3)**, and only through the existing `@nessie/mcp-manage` `resolveInstanceMcpTransport`/`callInstanceTool` seam with tool-registry policy. | The objection was forking the credential/policy model. Reusing the one seam is the opposite of forking. |
+| Loops / foreach? | **Deferred with a named decision point, not "never".** A bounded `map` (N ≤ k, implicit join) is revisited at the end of Stage 3. §10's "never" applies to *unbounded* loop nodes only. | Two reviewers noted real collection-shaped cases (release notes over N PRs, connector results). Claiming no use case exists was wrong; deferring is defensible. |
+| MCP connector steps? | **Yes, Stage 3**, only through the existing `@nessie/mcp-manage` `resolveInstanceMcpTransport`/`callInstanceTool` seam, and **hard-gated on two prerequisites: the per-installation tool allow-list (§4.4) and the secret-taint boundary (W0).** | The objection was forking the credential/policy model. Reusing the one seam answers the transport half; the allow-list answers the policy half. Without both, Stage 3 ships a second, weaker-governed path to the same tools. |
 | Sandboxed JS / code node? | **Never.** | Sandbox escape is RCE in the worker. JMESPath covers ~95% projection work. `environment_launch` is the governed escape hatch. |
 | Collapse `WorkflowTemplate` + `WorkflowInstallation`? | **Not now — explicit Stage 4 decision point.** | The correctness bug it is often paired with (version pinning) is fixed independently by run-level snapshots. Collapsing is irreversible if a shared template library is ever wanted. |
-| Immutable `WorkflowVersion` table? | **Stage 4, paired with the collapse decision.** Stages 1–3 use run-level and installation-level graph snapshots. | Snapshots fix the live correctness bug now without prejudging the table design. |
+| Immutable `WorkflowVersion` table? | **Stage 3, moved earlier — and it is a hard prerequisite for `invoke_workflow`, `approval`, and `connector_call`.** Stages 1–2 use run-level and installation-level snapshots. | Snapshots fix the live correctness bug now. But a callable contract, an approval, and a governed side effect must each refer to an exact published definition; building those against mutable-template APIs first means rewriting every one of them. This reverses revision 1, which had deferred it to Stage 4. |
 | Canvas as primary authoring? | **No.** Conversational (PA-authored) primary; step-list editor secondary; canvas becomes truthful viewer/run-replay. | A designer that renders semantics the runtime cannot execute is worse than no designer. |
 | Second scheduler for workflows? | **Never.** `AgentTrigger` already carries `workflowInstallationId`. | One claim protocol, one cron library, one delivery/dedupe model. |
+| Ship unconditionally? | **No.** Stage 1 ends at an adoption gate (§9). | The original recommendation was conditional investment. If seeded playbooks see no repeat use, we stop and keep Agent Triggers. |
 
 ## 3. Stage 1 — Stop lying, become reachable (target: 2 weeks)
 
-Stage 1 ships no new graph model. It makes the existing thing truthful, correct,
-and visible. Every item is independently mergeable.
+Stage 1 makes the existing thing truthful, correct, and visible. It introduces no
+graph *topology* — but it does extend the step contract additively (`when:`,
+`transform`), so §4.1's shared contract seam is defined here and filled in
+Stage 2, rather than being invented twice.
 
-### 1.1 Correctness fixes (blocking; error management depends on them)
+**Items are not independently mergeable.** The ordering constraints are binding:
+
+- **W0 gates W15, W17, W19, W20, W21** — every member-visible surface and every
+  new data sink. Nothing that widens visibility or adds a rendering path merges
+  before the redaction boundary.
+- **W1 gates W2** — cancel propagation makes the unguarded terminal write fire on
+  *every* cancel, so merging W2 first turns a latent race into a certainty.
+- **W3 gates W21 and W23** — run cards and failure push consume terminal events
+  that today are never emitted when the last step is async, i.e. the common case.
+  Merged earlier, they are dead UI.
+- **W1, W3, W6 gate the `onOverlap: 'queue'` release path** (§6): a missed
+  terminal transition becomes a silent permanent queue stall.
+
+**Minimum viable subset**, if the two weeks are short — ship these as a block and
+let the rest slip together: W0, W1–W8, W15, W16, W22.
+
+### 3.0 W0 · The redaction boundary (blocking prerequisite)
+
+Revision 1 put the secret-taint boundary in Stage 2 while widening read access in
+Stage 1 — a contradiction all three auditors flagged as the single most important
+error in the plan. `resolvedBindings` and `config` are arbitrary JSON today,
+interpolated into step inputs, persisted, and rendered in the run inspector.
+
+A minimal boundary therefore ships **first**, covering four sinks, not just reads:
+
+1. **Read widening** (W19) — member-visible responses.
+2. **Message rendering** (W15) — a channel sink for interpolated values.
+3. **Transform context** (W17) — full-context expressions.
+4. **Persisted samples** (§5) — `stepSamples`.
+
+Minimum: declare in `bindingSchema` which bindings are references vs literals;
+persist only server-minted `secret_*` refs; mark tainted values; redact them from
+run JSON, prompts, messages, logs, exports, and samples. The full typed model
+lands in §4.4; the boundary itself cannot wait.
+
+### 3.1 Correctness fixes (blocking; error management depends on them)
 
 - **W1 · Guard terminal transitions.** `markWorkflowStepRunFinished`
   (`worker/src/run/workflows.ts`) selects only `output`/`workflowRunId` and writes
@@ -102,10 +149,13 @@ and visible. Every item is independently mergeable.
   `WORKFLOW_TOOL_IDS` makes save-time validation accept it, but the executor has
   no case and always fails. Remove it (do not implement it — sub-agent fan-out
   from a deterministic step is out of scope).
-- **W6 · Reap stuck steps.** A crash inside `executeWorkflowBuiltinTool` leaves a
-  step `running` forever with nothing to reclaim it. Add a worker sweep (sibling
-  of the trigger scheduler) that fails steps `running` past a threshold through
-  the same guarded transition.
+- **W6 · Reap stuck steps — by lease, not by age.** A crash inside
+  `executeWorkflowBuiltinTool` leaves a step `running` forever with nothing to
+  reclaim it. Add a worker sweep (sibling of the trigger scheduler), but reclaim
+  on an **expired lease**, not an age threshold: an age threshold declares
+  legitimately long-running steps dead. Each claim writes
+  `leaseOwnerId`/`leaseExpiresAt` and heartbeats while working; the sweep fails
+  only steps whose lease has expired, through the same guarded transition.
 - **W7 · Mark unreached steps `skipped` on failure.** A failed run leaves later
   steps `pending` forever, which reads in the UI as "still coming".
 - **W8 · Fix `paused` enforcement.** Dispatch checks only `active` and `disabled`
@@ -115,7 +165,7 @@ and visible. Every item is independently mergeable.
   endpoint: there is currently **no way to pause an installation after install** —
   status is write-once at install time.
 
-### 1.2 Validation and designer honesty
+### 3.2 Validation and designer honesty
 
 - **W9 · `{{` must not disable validation.** `hasBindingToken`
   (`api/src/services/workflows.ts`) short-circuits both `toolName` and `agentId`
@@ -136,18 +186,23 @@ and visible. Every item is independently mergeable.
 - **W12 · One tool allow-list.** `builtin-tools.ts`, the designer's
   `constants.ts`, and `services/workflows.ts` each maintain the list by hand and
   agree only by coincidence. Export one list and derive all three.
-- **W13 · Demote the trigger node.** Three layers hold three different beliefs
+- **W13 · Demote the trigger node — binding decision: remove the config, keep the
+  node as a labelled entry marker.** Three layers hold three different beliefs
   about what a `trigger` step is: validation accepts it, the runtime no-ops it
   ("visual-only at runtime"), and the designer strips it on save. Worse, the cron
   and timezone a user types into the canvas trigger node **never become an
   `AgentTrigger`** — real scheduling requires a separate "Add trigger" action on
-  the installation. Either make the node create the trigger, or remove the config
-  fields and link to the Triggers page. Do not ship a form that does nothing.
+  the installation. Delete the cron/timezone/interval fields from the canvas
+  inspector and link to the Triggers page, which stays the one trigger authoring
+  surface; drop `trigger` from the executable step-type set so validation, runtime
+  and designer finally agree. (Revision 1 left this as "either/or"; an unresolved
+  choice is not a fix.) Also collapse the install-time `triggersJson`
+  materialisation, which duplicates trigger-creation logic — one code path.
 - **W14 · Scope the designer draft.** `localStorage` drafts
   (`draft-storage.ts`) are keyed globally, not per template, so editing template A
   then opening "new workflow" hydrates A's nodes.
 
-### 1.3 The primitives that make workflows worth having
+### 3.3 The primitives that make workflows worth having
 
 - **W15 · `message_send` step.** A deterministic channel write through the
   existing message-create service, under the workflow's durable actor, targeting
@@ -158,12 +213,24 @@ and visible. Every item is independently mergeable.
   continues. Turns the flagship watcher from "pay for an agent every sweep" into
   "pay only when something changed".
 - **W17 · `transform` step (JMESPath).** See §5.
-- **W18 · Compare-and-set on `state_put`.** Today a blind `upsert` with a blind
-  version increment. Two overlapping runs both read the same previous value and
-  both act — which corrupts exactly the watcher pattern the tools exist for. Add
-  an `expectedVersion` argument and fail the write on mismatch.
+- **W18 · Compare-and-set on `state_put`, as a complete read→write contract.**
+  Today a blind `upsert` with a blind version increment. Two overlapping runs both
+  read the same previous value and both act — corrupting exactly the watcher
+  pattern the tools exist for. CAS alone is not enough; the contract is:
+  1. `state_get`/`change_detect` **return the exact version compared**, so a
+     caller has something to pass back.
+  2. `state_put(expectedVersion)` fails the write on mismatch.
+  3. **The guarded write happens before the notification side effect**, so a lost
+     CAS race cannot produce a duplicate alert.
+  4. **The write is attempt-scoped and idempotent.** A crash after a successful
+     `state_put` but before the step is marked finished would otherwise make the
+     retry's `expectedVersion` mismatch permanently, killing a healthy watcher.
+     Record the writer's `(stepRunId, attempt)` on the entry and treat a repeat
+     write from the same writer as a no-op success rather than a conflict.
+  Note that CAS *detects* the collision; §6's `onOverlap: 'skip'` default is what
+  prevents it. Both ship in Stage 1.
 
-### 1.4 Reachability (Rule zero)
+### 3.4 Reachability (Rule zero)
 
 - **W19 · Entitlement-scoped access.** All 19 workflow route handlers are
   `requireOwner`, and `WorkflowsPage` renders "Owner access required" to everyone
@@ -174,8 +241,26 @@ and visible. Every item is independently mergeable.
   `channelId` is this channel, with last-run status and run-now/pause.
 - **W21 · Run cards in the channel.** Start/finish/fail messages carrying
   `metadata.workflowRun = { workflowRunId, installationId, status }`, exactly as
-  budget-stop notices carry `metadata.runStop`. The failed card gets a one-tap
-  **Resume** mirroring `RunStopContinue.tsx`.
+  budget-stop notices carry `metadata.runStop`. In Stage 1 the failed card offers
+  **Retry** (full re-run, which exists) and a link to the run — **not Resume**,
+  which depends on §4.2.7's partial-resume API and arrives in Stage 2.
+- **W25 · Persist run origin.** Add `originChannelId`, `originThreadId`,
+  `originMessageId`, `replyRootMessageId` to `WorkflowRun`. Without them a result
+  cannot return to the thread that asked for it, `invoke_workflow` (§4.3) has
+  nowhere to reply, and §8's shared run component has no origin to render a
+  reciprocal doorway from. Cheap now, expensive to retrofit once three surfaces
+  consume run records.
+- **W26 · Overlap policy, default `skip`.** See §6. Enforced at **every**
+  entrypoint — scheduled, manual, webhook, event, and `invoke_workflow` — not only
+  inside `queueWorkflowTriggerRun`.
+- **W27 · Retry must not rewrite history.** `retryWorkflowRun` overwrites
+  `startedByActorId` with the retrying owner, erasing the original actor. Preserve
+  the original; record the retrying actor separately and in the audit entry.
+- **W28 · Fix the `agent_task` target check.** The channel/binding validation runs
+  outside the mailbox transaction (a race) and its error strings confirm or deny
+  the existence of channel and binding IDs across the org boundary. Move the check
+  inside the transaction and make the failure text org-generic. This must land
+  before W19 widens who can start runs.
 - **W22 · Audit every mutation.** No workflow route writes an audit entry today.
   Template create/update (it mutates executable org behaviour), install, manual
   run, cancel, retry, skip, block/unblock, and pause are all audit-worthy.
@@ -184,7 +269,31 @@ and visible. Every item is independently mergeable.
   budget-alert precedent) to the installation creator and channel managers,
   deep-linking the run.
 - **W24 · Paginate the lists.** `WORKFLOW_LIST_LIMIT` truncates at 200 with no
-  cursor; the admin silently stops showing rows past the cap.
+  cursor; the admin silently stops showing rows past the cap. Separately, correct
+  the list endpoint's leading comment, which claims it omits `graphJson` while the
+  select fetches it — the comment contradicts the code and the code contradicts
+  itself.
+- **W29 · A failed-runs triage surface.** Push (W23) is alerting, not triage. Add a
+  cross-installation "what failed" filter on the Workflows page plus a count on the
+  nav item, so a person can answer "what broke last night" in one place.
+
+### 3.5 Stage 1 exit criteria
+
+Stage 1 is done when all of the following are demonstrably true, not when the
+items are merged:
+
+1. **The zero-agent-hop watcher runs.** A scheduled playbook fetches a page,
+   detects no change, and completes **without invoking a single agent run and
+   without posting a message** — then, on a real change, posts a deterministic
+   message naming what changed. This is the flagship demo and the proof that the
+   cost argument in §1 holds.
+2. A non-owner member of the installation's channel can see the playbook, its last
+   run, and its failure — and no binding or config value is visible to them that
+   W0 marked tainted.
+3. Cancelling a run stops its child agent and the run stays cancelled.
+4. Editing a template does not change any run already in flight.
+5. Every mutation appears in the audit log with the correct actor.
+6. Two overlapping scheduled fires produce one run, and the skip is visible.
 
 ## 4. Stage 2 — Graph v2 and error management (target: 2 months)
 
@@ -211,16 +320,54 @@ type WorkflowStepV2 = {
 
 `next`/`goto` are **forward-only**, validator-enforced, so execution stays
 loop-free and the executor stays a single pass with a cursor instead of "first
-pending". `WorkflowStepRun` gains `attempt Int @default(1)` and
-`nextAttemptAt DateTime?`; attempts are recorded in place via an `attemptHistory`
-JSON column rather than new rows, preserving `@@unique([workflowRunId, sequence])`.
+pending".
+
+**Attempts are rows, not a JSON blob.** Revision 1 proposed an `attemptHistory`
+JSON column on `WorkflowStepRun`; two auditors independently rejected it and they
+are right. Retry, timeout, cancellation, and late-result arrival all mutate that
+one document, with no unique attempt identity, no compare-and-set rule, no
+queryability, and a direct conflict with §4.2.7 resetting `attempt`. Instead add
+**`WorkflowStepAttempt`** rows (attempt number, status, lease, timestamps,
+sanitized input/output refs, error class, provider correlation). This gives
+atomic late-result rejection and a real audit object.
+`WorkflowStepRun` keeps `@@unique([workflowRunId, sequence])` and gains
+`currentAttempt` and `nextAttemptAt`.
+
+**Reachability is computed by traversal, not by `sequence` comparison.** Once
+`next`/`goto` exist, "mark unreached steps skipped" (W7) and the run timeline must
+both walk the graph. Steps **bypassed by a successful branch or an error route
+must be atomically marked `skipped`**, or they linger as `pending` in a completed
+run and can be re-selected by any residual "first pending" logic.
 
 Move the shared contract into a package consumed by API, worker, and admin. The
 worker currently redefines a weaker local `WorkflowGraph` type
-(`worker/src/run/workflows.ts`), which is how contract drift starts.
+(`worker/src/run/workflows.ts`), which is how contract drift starts. **Define this
+seam in Stage 1**, so `when:`/`transform` are not added ad hoc to v1 and then
+migrated.
 
-The designer serializer emits v2 and **derives `next` from its edges instead of
-discarding them** — the canvas finally means what it shows.
+**Validation accepts only step types that have a registered executor.** The v2
+union above names types that do not exist yet; shipping the union without this
+rule recreates exactly the `delegate` bug (D1) that W5 removes — a template that
+validates cleanly and is guaranteed to fail at runtime.
+
+The designer serializer emits v2, **derives `next` from its edges instead of
+discarding them** — the canvas finally means what it shows — and **moves designer
+metadata out of step `input`**. Canvas coordinates currently ride inside the
+runtime payload and have to be laundered back out by `stripWorkflowDesignerConfig`
+before use; once edges are semantically load-bearing, presentation data must stop
+living inside execution data.
+
+**V1 migration rules.** "Additive" is not a migration plan:
+1. Convert each v1 `steps[]` into v2 nodes with sequence edges `0→1→…`.
+   **Do not infer semantics from `workflowDesigner.outgoingNodeIds`** — those
+   edges never controlled runtime and inferring them would change behaviour.
+2. Snapshot each template's current graph as one immutable legacy version and
+   repoint installations at it.
+3. Installations whose recorded version differs from the current template cannot
+   be reconstructed. Label them `legacy-current-snapshot` and say so in the UI
+   rather than displaying a version number that means nothing.
+4. Keep the v1 reader for already-queued runs only; remove it once the queue and
+   in-flight runs drain.
 
 ### 4.2 Error management (the addendum, in full)
 
@@ -232,12 +379,20 @@ discarding them** — the canvas finally means what it shows.
    else — binding not found, validation, `UrlSafetyError`, 4xx — is permanent;
    retrying a deterministic failure is noise. The executor's step selection gains
    `nextAttemptAt <= now`.
-2. **Idempotency on retry.** The mailbox correlation id is
-   `workflow-step:${stepRunId}`, so a retried `agent_task` would dedupe against
-   the *failed* attempt's mailbox row and never re-dispatch. It must become
-   `workflow-step:${stepRunId}:${attempt}`. Same for `connector_call`: carry
-   `Idempotency-Key: <stepRunId>:<attempt>` where supported, and default
-   non-idempotent connector steps to no retry.
+2. **Idempotency — two different keys, and conflating them is a correctness bug.**
+   Revision 1 used one key for both purposes; that is wrong in the dangerous
+   direction.
+   - **Dispatch identity** (mailbox, internal re-dispatch): must *change* per
+     attempt, because a fresh attempt genuinely intends a fresh dispatch. The
+     mailbox correlation id is `workflow-step:${stepRunId}` today, so a retried
+     `agent_task` dedupes against the *failed* attempt's row and never
+     re-dispatches. It must become `workflow-step:${stepRunId}:${attempt}`.
+   - **Provider logical idempotency** (external side effects): must *stay stable*
+     across attempts — `runId:stepId[:itemIndex]`. Sending
+     `Idempotency-Key: <stepRunId>:<attempt>` would tell the provider each retry is
+     a brand-new operation, permitting duplicate charges, messages, or writes after
+     an ambiguous response. That is the exact failure the key exists to prevent.
+   Non-idempotent connector steps default to no retry regardless.
 3. **Catch / error branches.** `onError: { goto }` routes to a later step; the
    failed step records `failed` and the run continues at the target with
    `steps.<failed>.status` visible to `when:` guards. `onError: 'continue'` is the
@@ -249,10 +404,19 @@ discarding them** — the canvas finally means what it shows.
 5. **Non-idempotent side effects.** A step declaring a non-idempotent side effect
    that times out ambiguously must not auto-retry; it routes to a human decision.
    Borrowed from the DeepWater recovery discipline.
-6. **Dead letter and alerting.** No new table: the DLQ is the failed-runs view
-   (list API already returns status), the channel failure card (W21), and push
-   (W23). Poison-message caps: a hard ceiling per step (5) and per run (25 total
-   attempts) so a mis-configured retry block cannot spin.
+6. **Dead letter and alerting.** The failed-runs view (W29) covers failed *runs*,
+   and for those no new table is needed. But it cannot represent a **trigger
+   delivery that never produced a run** — a poison webhook payload that fails
+   before run creation has no row to appear in a run list. Add
+   `WorkflowDeadLetter` for exactly that case: delivery identity, failure reason,
+   resolution state, and an explicit entitlement-checked replay action. Poison
+   caps: a hard ceiling per step (5) and per run (25 total attempts) so a
+   mis-configured retry block cannot spin.
+8. **Compensation is explicitly out of scope for Stage 2.** `onError: { goto }`
+   can approximate a cleanup step, but the plan does not record compensation
+   intent or status, prevent double compensation, or relate a compensating action
+   to the original side effect. Saying so plainly is the point: error routing is
+   not rollback, and governed side effects must not be sold as transactional.
 7. **Partial resume from the failed step.**
    `POST /api/workflow-runs/:id/resume` flips the failed step — and only it —
    back to `pending`, resets `attempt`, re-enqueues execute. Completed steps stay
@@ -274,29 +438,67 @@ discarding them** — the canvas finally means what it shows.
 - **`approval` step.** A real Approval row that resumes on resolution — not the
   current operator `blocked` toggle, which is an operator race, not a decision.
   Human input and approval stay distinct: approval authorizes, human input
-  collects data.
+  collects data. Requires: **re-check entitlement at resolution time** (not at
+  creation), eligible-approver rules, expiry with a timeout branch, and a
+  mandatory audit entry on resolution.
 - **`human_input` step.** Suspends on the same mailbox mechanism, resumes with a
-  reply payload, surfaced as a channel card.
-- **`wait` step.** Durable timer.
+  **schema-validated** reply payload, surfaced as a channel card.
+- **`wait` step**, and the state model all three wait forms need.
+
+**Waiting is a first-class state, and waiting must not hold a concurrency slot.**
+`approval`, `human_input`, and `wait` all suspend indefinitely. Without explicit
+modelling: a forgotten approval on a `limit: 1` installation blocks every
+subsequent run forever, because §6 admits new work only on *terminal* transition,
+and the run looks `running` to every surface. So Stage 2 adds:
+
+- A **`WorkflowWait`** record — durable, single-use, with wake-up and cancellation
+  semantics — rather than inferring waiting from step status.
+- Run states that distinguish `waiting` / `needs_action` from `running`.
+- **Concurrency admission releases the slot while a run is waiting on a human or
+  a timer**, and reclaims it on wake. A run holds a slot only while it owns active
+  external work.
 
 ### 4.4 Governance
 
 - **Budget gate.** `executeWorkflowRun` never consults the org `Budget`. Apply
-  `evaluateBudget`/`applyBudgetGate` at run start and between steps, and roll
-  child agent-run spend up to the `WorkflowRun`. Add a workflow dimension to
-  `/ops/usage` (owner-only telemetry — never beside customer credits).
-- **Secret taint boundary.** `resolvedBindings` and `config` are arbitrary JSON,
-  interpolated into step inputs, persisted, and rendered in the run inspector.
-  There is no secret-reference type and no redaction. Declare which bindings are
-  refs vs literals in `bindingSchema`, keep credentials server-side as
-  `secret_*` refs, and mark tainted values so they cannot enter run JSON, prompts,
-  messages, logs, or exports. **This gates W19's read-access widening** — do not
-  broaden visibility before it lands.
+  `evaluateBudget`/`applyBudgetGate` at run start and between steps; roll child
+  agent-run spend **and connector/tool charges** up to the `WorkflowRun`; snapshot
+  the resolved limits onto the run so a mid-run limit change cannot retroactively
+  alter a verdict; and show consumed/remaining in the run header. Add a workflow
+  dimension to `/ops/usage` (owner-only telemetry — never beside customer credits).
+- **The full secret-taint model.** W0 ships the minimum boundary in Stage 1;
+  Stage 2 completes it: a typed secret-reference in `bindingSchema`, taint
+  propagation through transforms and step outputs, and redaction proven by test at
+  every sink.
+- **Per-installation tool allow-list.** An installation declares which tools it
+  may call; effective permission is the **intersection** of installation scope,
+  tool scope, triggering actor, connector lifecycle/review status, and the
+  workflow grant, re-checked **at dispatch time**, not only at save time. Each
+  installation runs as a server-minted workflow principal. A user-scoped OAuth
+  connector must never become an unattended organization credential because an
+  owner could see its registry row. **This is a hard prerequisite for Stage 3's
+  `connector_call`** — without it, "tool-registry policy" is asserted, not
+  designed.
 - **Install scope must be explicit.** Install copies `projectId`/`teamId` from the
   session while accepting any channel in the org, never proving they agree.
-  Accept them explicitly and validate the whole hierarchy.
+  Accept them explicitly and validate the whole hierarchy. Also eliminate the
+  contradictory `active`/`status` combinations that API, worker, and UI currently
+  interpret differently (D13) — one validated lifecycle, not two independent flags.
+- **Dynamic identity fields are not authorization.** W9 makes binding syntax
+  valid; it does not make a target legitimate. `agentId`, `toolName`, `channelId`
+  and similar resolved-at-runtime identity fields must be validated against exact
+  scope **at dispatch**, or prohibited from being binding-derived at all.
+- **Audit coverage is broader than routes.** W22 covers route mutations. Stage 2
+  adds: automatic trigger starts, publish/upgrade, wait creation and resolution,
+  dispatch-time authorization decisions, and reciprocal audit↔run links.
 - **Data minimisation.** An agent step receives selected fields, never a whole
   webhook or connector response.
+- **Typed alerts, not just push.** W23 sends failure push. Stage 2 adds typed
+  workflow alert kinds — `failed`, `waiting_for_human`, `budget_blocked`, and
+  opt-in completion — as actionable Alerts/Threads items with subscriber
+  preferences. Recipients are resolved by **current entitlement at delivery time**,
+  not by a role label captured earlier, and push payloads carry no raw error or
+  input data.
 
 ## 5. The deterministic converter (addendum 1, in full)
 
@@ -331,11 +533,25 @@ across steps. Any step input may also use the inline prefix form
 compatible, one added branch in `resolveWorkflowStepInput`.
 
 **Security envelope.** Expression length cap (4 KiB); input document cap (1 MiB —
-tool outputs are already truncated middle-out upstream); evaluation wall-clock
-cap (100 ms watchdog — JMESPath has no loops, but pathological wildcard
-projections over adversarial documents deserve a fuse); output cap (256 KiB); and
-the important one — **the binding context never contains secrets** (see §4.4).
-No network, no filesystem, no ambient env by construction.
+tool outputs are already truncated middle-out upstream); output cap (256 KiB); and
+**the binding context never contains secrets** (W0, §4.4). No network, no
+filesystem, no ambient env by construction.
+
+On the time fuse, revision 1 was technically wrong: a 100 ms "watchdog" cannot
+pre-empt a synchronous evaluation on the worker's event loop — the timer only
+fires once the evaluation has already finished. Either evaluate in a
+`worker_thread` that can actually be terminated on deadline, or rely on a proven
+structural bound. We do both: the 1 MiB input cap is the real fuse (JMESPath has
+no loops or recursion, so cost is bounded by document size × expression size), and
+evaluation runs off the main event loop so a pathological wildcard projection
+cannot block the worker.
+
+**`stepSamples` is a new sensitive-data store, and must be treated as one.**
+Successful tool outputs routinely contain customer data even when they contain no
+credential. Samples therefore inherit W0's redaction, carry installation
+provenance, have a per-template size quota and a retention limit, are deleted with
+their template, and are entitlement-checked before being sent to the client-side
+evaluator. A convenience feature must not become an unaudited data lake.
 
 **Shape awareness in the designer.** Half-built already: test runs map step
 results onto canvas nodes (`useWorkflowTestRun.ts`) and the inspector lists
@@ -369,27 +585,96 @@ delivery/dedupe model, and the Triggers page already renders workflow targets.
 A second scheduler would be a Rule-zero-grade fork. What is missing is policy,
 not machinery:
 
+**Staging.** Overlap policy (`W26`) is **Stage 1** — it is what actually prevents
+the watcher race, and W18's CAS only detects it. Catch-up policy and the rate
+ceiling are **Stage 2**.
+
 - **Overlap/concurrency: there is none today.** Every due fire creates a fresh
   run regardless of one still `running`; the only dedupe is the per-slot key. Add
   `WorkflowInstallation.concurrency Json` →
   `{ limit: 1, onOverlap: 'skip' | 'queue' | 'parallel' }`, defaulting to
-  `{ limit: 1, onOverlap: 'skip' }`. Enforce inside the `queueWorkflowTriggerRun`
-  transaction under `pg_advisory_xact_lock(hashtext(installationId), …)`:
+  `{ limit: 1, onOverlap: 'skip' }`, under
+  `pg_advisory_xact_lock(hashtext(installationId), …)`.
   `skip` records the delivery with a `skipped_overlap` status so silent skips stay
   diagnosable; `queue` withholds the execute job until the active run's terminal
-  transition releases the next one; `parallel` is opt-in for stateless workflows.
+  transition releases the next one, **with a bounded queue depth** (beyond it,
+  skip and record) so a stalled installation cannot accumulate unbounded pending
+  work; `parallel` is opt-in for stateless workflows.
+  **Enforced at every entrypoint** — scheduled, manual (W20), webhook, event, and
+  `invoke_workflow` — not only in `queueWorkflowTriggerRun`, or the policy is
+  trivially bypassed by the surfaces this plan is adding. And per §4.3, a run
+  waiting on a human or a timer **releases its slot**.
 - **Catch-up after downtime is two accidents, not a policy.** Cron computes the
   next fire from the *missed* slot, so an outage of N slots replays N fires
   uncapped; interval uses `max(from, now)` and silently drops them. Add per-trigger
   `catchUp: 'skip' | 'once' | 'all'` (default `'once'`: one make-up run, then
-  compute from now) in the shared library so agent and workflow triggers get the
-  same semantics.
-- **Rate ceiling.** `NESSIE_WORKFLOW_MAX_RUNS_PER_HOUR` as a deployment backstop
-  so a mis-authored 1-minute interval plus catch-up cannot flood the queue — the
-  same "safety envelope, not user budget" philosophy as `NESSIE_RUN_BACKSTOP_*`.
+  compute from now) in the shared library. `'all'` takes a per-trigger
+  `maxCatchUpRuns` cap and persists a discard summary — a deployment-wide hourly
+  ceiling is not a substitute, since one trigger would consume the global
+  allowance.
+  **This changes existing agent-trigger behaviour**, because the library is shared:
+  cron agent triggers replay missed slots uncapped today. That is a behaviour
+  change to a shipped feature arriving as a side effect of a workflow plan, so it
+  needs a migration note, a docs update, and a deliberate default — not a silent
+  flip.
+- **Rate ceiling.** `NESSIE_WORKFLOW_MAX_RUNS_PER_HOUR` as a deployment backstop —
+  the same "safety envelope, not user budget" philosophy as `NESSIE_RUN_BACKSTOP_*`.
 - **Cron and timezones are already correct** (`cron-parser` with a validated
   `timezone`, `until` end-dates, one-off mode). Expose the timezone field in the
   designer's trigger inspector — it is advanced-JSON-only today.
+
+## 6a. Stage 3 — Published versions, connectors, product actions
+
+Revision 1 referenced "Stage 3" and "Stage 4" without defining them; all three
+auditors flagged rows that could therefore never be scheduled or closed. Both
+stages are defined here.
+
+**S3.1 · Immutable published versions — first, and blocking.** Moved forward from
+Stage 4 because `invoke_workflow`, `approval`, and `connector_call` each need a
+stable definition to refer to. `WorkflowVersion { id, templateId, version,
+definitionJson, inputSchema, outputSchema, checksum, createdBy, createdAt }`,
+immutable once published. Editing creates a draft; publishing is explicit;
+upgrading an installation shows a diff and is explicit. `WorkflowRun` records the
+version id and checksum it executed. This subsumes the Stage 1/2 snapshots — they
+were the emergency fix; this is the contract.
+
+**S3.2 · Per-installation tool allow-list** (§4.4) — the policy half of the
+connector decision. Ships before S3.3, not alongside it.
+
+**S3.3 · `connector_call`** over `resolveInstanceMcpTransport`/`callInstanceTool`,
+validated at save time against the org's active `ToolRegistryEntry` projections,
+executed with the workflow principal's signed context, honouring instance scope,
+with stable provider idempotency keys (§4.2.2) and non-idempotent steps defaulting
+to no retry.
+
+**S3.4 · First-class product actions.** Task, Plan, and Knowledge steps — the
+capability behind C14/C15. "Wire or drop the columns" was not an answer: either
+`WorkflowRun.planId`/`planStepId` and `WorkflowStepRun.taskId` become real actions
+with real doorways, or the columns go. Decide by building the actions; they are
+the highest-value non-connector steps for a knowledge-worker product.
+
+**S3.5 · Bounded `map` decision point.** With connector steps live, re-examine
+whether collection-shaped cases (release notes over N PRs, connector result sets)
+justify a bounded `map` with implicit join. Decide with usage data, then record
+the decision here either way.
+
+## 6b. Stage 4 — Consolidation
+
+**S4.1 · The template/installation collapse decision.** Revisit with usage data
+from Stages 1–3. Two of three reviewers argued the indirection buys nothing today;
+the third argued for keeping it. Deferred this long because W4 and S3.1 remove the
+correctness argument for rushing it, and collapsing is expensive to reverse if a
+shared template library is ever wanted.
+
+**S4.2 · Promote-a-run-to-a-playbook**, properly: extract the audited tool calls,
+parameterise concrete values into typed bindings, classify deterministic vs
+agent-owned steps, and re-run schema and policy checks. §7 calls this "a PA prompt
+over the same tools", which understates it — the PA needs a trustworthy trace and
+a defined validation pass. Not before S3.1 gives it a version to write into.
+
+**S4.3 · Seeded playbook templates** — the three that prove the system: changed-page
+alert, weekly project-risk review, and webhook → approval → governed action. These
+feed the adoption gate (§9).
 
 ## 7. Authoring UX
 
@@ -425,7 +710,21 @@ started this, what version ran, where is it waiting, what side effects happened,
 what did it cost. Render one shared run component in Workflows, chat, and audit —
 never a second implementation.
 
-## 9. Never build
+## 9. The adoption gate
+
+This plan is conditional investment, not an unconditional build. The original
+recommendation was explicit: if nobody uses it, stop and keep Agent Triggers.
+
+At the end of Stage 2, with S4.3's seeded playbooks available, instrument starts,
+completions, failures, **repeat** runs, and whether anyone opens or acts on a run
+card. **If there is no repeat use beyond the seeded templates, stop.** Do not
+build Stage 3. Keep what exists — it will be correct, truthful, and reachable by
+then, which is worth having on its own — and let Agent Triggers own the use case.
+
+Deciding this in advance is the point. A half-built automation product that nobody
+asked for twice is the failure mode this whole document exists to avoid.
+
+## 10. Never build
 
 - A general DAG editor, free-form fan-out/join, or loop nodes.
 - Sandboxed JS or code nodes in the API/worker process.
@@ -441,43 +740,99 @@ never a second implementation.
   has a surface. Keep the code path; stop the designer destroying it (W10).
 - Message-pattern/regex triggers — they violate the model-judged-intent standard.
 
-## 10. Traceability — every review finding, and where it is handled
+## 11. What revision 2 changed, and why
 
-Findings from three independent reviews (Fable, Kimix, Codex Sol, 2026-08-12).
-Every row must be closed or explicitly waived before this plan is considered
-delivered.
+The three reviewers audited revision 1 against their own reviews. Their findings,
+and the resulting changes:
+
+**Unanimous — the plan contradicted itself.** W19 widened read access in Stage 1
+while §4.4's secret-taint boundary, declared to gate it, sat in Stage 2. All three
+called this the most important error. Fixed by W0, which pulls a minimal redaction
+boundary into Stage 1 and extends it to four sinks — reads, message rendering,
+transform context, and persisted samples — since W15 and W17 were equally unsafe
+before it.
+
+**Two of three rejected a schema choice.** `attemptHistory` as a JSON column was
+independently judged a concurrency and audit trap. Replaced with
+`WorkflowStepAttempt` rows.
+
+**One caught a correctness bug in my design.** Using `stepRunId:attempt` as the
+provider `Idempotency-Key` reverses the guarantee: it tells the provider every
+retry is a new operation, permitting duplicate side effects after an ambiguous
+response. Split into dispatch identity (changes per attempt) and provider logical
+key (stable across attempts).
+
+**One caught a technical error.** A 100 ms timer cannot pre-empt a synchronous
+JMESPath evaluation on the event loop. Replaced with a real structural bound plus
+off-event-loop evaluation.
+
+**Referenced stages did not exist.** §2, C7, C14, and C15 pointed at Stage 3 and
+Stage 4, which were never written; rows citing them could not be scheduled. Both
+stages are now defined (§6a, §6b), and immutable versioning moved from Stage 4 to
+Stage 3 because callable workflows, approvals, and connector side effects each
+need a stable published definition to refer to.
+
+**Scheduling belonged to no stage.** §6 was cited by three defect rows but never
+assigned. Overlap policy is now Stage 1 (W26); catch-up and the rate ceiling are
+Stage 2.
+
+**Also fixed:** a per-installation tool allow-list is now a hard prerequisite for
+connector steps rather than an asserted one; concurrency is enforced at every
+entrypoint, not only the scheduled path, and waiting runs release their slot;
+`catchUp: 'all'` gained a per-trigger cap; the reaper reclaims by lease rather
+than by age; `state_put` CAS gained an attempt-scoped writer identity so a crash
+between write and step-finish cannot permanently wedge a watcher; W13 became a
+binding decision instead of an either/or; D17, D18, D25 got real fixes rather than
+adjacent ones; run origin fields were added; V1 migration rules were restored;
+acceptance criteria and an adoption gate were added; and §0 stopped claiming the
+engine is already sound.
+
+**Objections recorded, not adopted.** One reviewer maintains that a guarded
+sequence cannot honestly claim multi-system orchestration — accepted, and handled
+by naming the product Playbooks in §2 rather than by widening the engine. One
+maintains that deterministic steps needing connectors is a design smell that blurs
+the authority boundary — noted; the allow-list prerequisite is the mitigation, and
+S3.5 revisits it with usage data.
+
+## 12. Traceability — every review finding, and where it is handled
+
+Findings from three independent reviews (Fable, Kimix, Codex Sol, 2026-08-12),
+re-checked by those reviewers against revision 1 and updated here. Every row must
+be closed or explicitly waived before this plan is considered delivered.
 
 ### Defects
 
 | # | Finding | Handled by |
 |---|---|---|
 | D1 | `delegate` advertised, save-valid, always fails at runtime | W5 |
-| D2 | Cancelled runs resurrected by orphaned children (unguarded terminal writes) | W1, W2 |
-| D3 | Designer silently linearizes drawn branches; disconnected nodes still execute | W11, §4.1 |
-| D4 | Version pinning decorative; template edits mutate installed **and in-flight** runs | W4 |
-| D5 | No overlap control; `state_put` blind upsert loses updates | W18, §6 |
-| D6 | Cron catch-up uncapped replay; interval silently skips | §6 |
-| D7 | No budget gate anywhere | §4.4 |
-| D8 | No audit entries anywhere | W22 |
-| D9 | Mailbox correlation id lacks attempt suffix (breaks retries) | §4.2.2 |
+| D2 | Cancelled runs resurrected by orphaned children (unguarded terminal writes) | W1, W2 — W2 must also cancel `environment_launch` and in-flight connector/tool work, not only the child agent flag |
+| D3 | Designer silently linearizes drawn branches; disconnected nodes still execute | W11 (v1: require exactly one connected chain — reject merges, multiple *incoming* edges, and disconnected components, not just multiple outgoing), §4.1 (v2: bypassed steps atomically `skipped`) |
+| D4 | Version pinning decorative; template edits mutate installed **and in-flight** runs | W4 for the live defect; **S3.1** for the versioning contract. W4 alone does not close immutable publish history |
+| D5 | No overlap control; `state_put` blind upsert loses updates | W18 (full CAS contract), W26 (`onOverlap` default `skip`, all entrypoints) |
+| D6 | Cron catch-up uncapped replay; interval silently skips | §6 Stage 2, with per-trigger `maxCatchUpRuns` |
+| D7 | No budget gate anywhere | §4.4 — incl. run-limit snapshot, connector charges, consumed/remaining display |
+| D8 | No audit entries anywhere | W22 (routes) + §4.4 (trigger starts, publish/upgrade, wait resolution, dispatch authorization, reciprocal links) |
+| D9 | Mailbox correlation id lacks attempt suffix (breaks retries) | §4.2.2 — **and** the separate stable provider key |
 | D10 | Terminal events never emitted when last step is async | W3 |
 | D11 | Install scope ambient (project/team from session, channel unvalidated against them) | §4.4 |
-| D12 | Secrets/bindings persisted cleartext into run artifacts; no taint boundary | §4.4 |
-| D13 | `paused` installations still fire; no way to pause after install | W8 |
-| D14 | `{{` bypasses all save-time validation | W9 |
+| D12 | Secrets/bindings persisted cleartext into run artifacts; no taint boundary | **W0** (Stage 1 boundary, four sinks) + §4.4 (full model) |
+| D13 | `paused` installations still fire; no way to pause after install | W8 + §4.4 (eliminate contradictory `active`/`status` combinations) |
+| D14 | `{{` bypasses all save-time validation | W9 (syntax + reference order) + §4.4 (dispatch-time validation of identity fields — syntactic validity is not authorization) |
 | D15 | `environment_launch` steps silently deleted by designer round-trip | W10 |
-| D16 | `trigger` step type: three layers, three beliefs; canvas cron never creates a trigger | W13 |
-| D17 | `agent_task` target validation races and leaks existence across org boundary | W19 (gate before widening reads) |
-| D18 | Retry rewrites `startedByActorId`, losing original actor | W22 (annotate, don't rewrite) |
+| D16 | `trigger` step type: three layers, three beliefs; canvas cron never creates a trigger | W13 — now a binding decision (remove config, drop from executable types, one trigger path) |
+| D17 | `agent_task` target validation races and leaks existence across org boundary | **W28** (transactional check + org-generic error text). Revision 1 cited W19, which reduces exposure but fixes nothing |
+| D18 | Retry rewrites `startedByActorId`, losing original actor | **W27** (preserve original, record retryer separately). Revision 1 cited W22, which only audits the wrong origin |
 | D19 | List endpoints truncate at 200 with no cursor | W24 |
 | D20 | Designer draft in `localStorage` leaks across templates | W14 |
-| D21 | Steps stuck `running` forever after a crash; no reaper | W6 |
-| D22 | Failed runs leave later steps `pending` forever | W7 |
+| D21 | Steps stuck `running` forever after a crash; no reaper | W6 — **lease/heartbeat**, not an age threshold |
+| D22 | Failed runs leave later steps `pending` forever | W7, extended by §4.1 traversal semantics |
 | D23 | Run detail polls instead of using realtime events | §8 |
-| D24 | Three hand-maintained tool allow-lists agree only by coincidence | W12 |
-| D25 | List endpoint comment contradicts the code it documents | W24 |
-| D26 | `change_detect` → `state_put` not atomic across overlapping runs | W18, §6 |
-| D27 | Worker redefines a weaker local `WorkflowGraph` type (contract drift) | §4.1 |
+| D24 | Three hand-maintained tool allow-lists agree only by coincidence | W12 + §4.1 (validation accepts only step types with a registered executor) |
+| D25 | List endpoint comment contradicts the code it documents | **W24 (comment correction)** — revision 1 cited pagination, which is a different bug |
+| D26 | `change_detect` → `state_put` not atomic across overlapping runs | W18, W26 |
+| D27 | Worker redefines a weaker local `WorkflowGraph` type (contract drift) | §4.1, seam defined in Stage 1 |
+| D28 | Designer metadata stored inside execution input; laundered out at runtime | §4.1 serializer rewrite |
+| D29 | No durable record for trigger deliveries that fail before a run exists | §4.2.6 `WorkflowDeadLetter` |
 
 ### Capabilities
 
@@ -486,28 +841,40 @@ delivered.
 | C1 | No `message_send` — deterministic layer cannot deliver its own output | W15 |
 | C2 | No condition — watcher pays for an agent on every sweep | W16 |
 | C3 | No `transform`/mapper — cannot reshape between steps | W17, §5 |
-| C4 | No `invoke_workflow` — the founding design decision, unbuilt | §4.3 |
-| C5 | No approval step (operator `blocked` toggle is not an approval) | §4.3 |
-| C6 | No human-input step | §4.3 |
-| C7 | No MCP connector step | §2 (Stage 3), §4.1 |
-| C8 | No wait/timer step | §4.3 |
-| C9 | No per-step retry, backoff, catch, or timeout | §4.2 |
-| C10 | Retry is re-run-from-zero; no partial resume | §4.2.7 |
-| C11 | Owner-only: unreachable by members | W19 |
-| C12 | No channel doorway; no run cards | W20, W21 |
-| C13 | Failure alerts nobody | W23 |
-| C14 | Tasks/plans linkage is schema-only, half-wired | Stage 4 — wire or drop the columns |
-| C15 | No KB steps | Stage 4 |
+| C4 | No `invoke_workflow` — the founding design decision, unbuilt | §4.3 + **S3.1** (published version to call), W25 (origin thread to reply into), typed input/output validation, and a `get_workflow_run` contract |
+| C5 | No approval step (operator `blocked` toggle is not an approval) | §4.3 — durable single-use wait, entitlement re-checked at resolution, eligible approvers, expiry branch, mandatory audit |
+| C6 | No human-input step | §4.3 — schema-validated reply payload |
+| C7 | No MCP connector step | **S3.3**, gated on S3.2 (per-installation allow-list) and W0 |
+| C8 | No wait/timer step | §4.3 — `WorkflowWait` with persisted status, wake-up, and cancellation |
+| C9 | No per-step retry, backoff, catch, or timeout | §4.2 + `WorkflowStepAttempt` rows for attempt identity and late-completion rejection |
+| C10 | Retry is re-run-from-zero; no partial resume | §4.2.7 — plus the rule that changed inputs or definition fork a new run while an unchanged retry keeps the original logical key and version |
+| C11 | Owner-only: unreachable by members | W19 (reads, after W0) + W20 must state which role may run/pause — reads alone do not grant invocation |
+| C12 | No channel doorway; no run cards | W20, W21, **W25** (persisted origin/reply linkage), composer/PA invocation doorway |
+| C13 | Failure alerts nobody | W23 (push) + §4.4 (typed alert kinds, preferences, entitlement-checked recipients) |
+| C14 | Tasks/plans linkage is schema-only, half-wired | **S3.4** — build the actions or drop the columns |
+| C15 | No KB steps | **S3.4** |
 | C16 | No spend roll-up or per-installation usage | §4.4 |
 | C17 | Canvas is the wrong primary authoring surface | §7 |
-| C18 | No shape awareness / sample data / preview when authoring bindings | §5 |
+| C18 | No shape awareness / sample data / preview when authoring bindings | §5 — subject to `stepSamples` data handling |
+| C19 | No adoption/stop decision; investment framed as unconditional | **§9** |
+| C20 | No acceptance criteria; no flagship demo to prove the cost argument | **§3.5** |
+| C21 | Mapper is an opaque string language, not typed/schema-checked/taint-aware | §5 + W0 taint propagation. **Partially waived:** JMESPath is deliberately untyped; assignability checking against connector output schemas is revisited in S3.3 when real schemas exist |
+| C22 | Compensation for governed side effects | **Explicitly out of scope** (§4.2.8) — error routing is not rollback |
 
-### Open decision, deliberately deferred
+### Open decisions, deliberately deferred
 
-**Stage 4 · Collapse `WorkflowTemplate` into `WorkflowInstallation`?** Two of
-three reviewers argued the indirection buys nothing today — no marketplace, no
-cross-org sharing, `resolvedBindings` largely unused. The third argued for
-keeping it with immutable `WorkflowVersion` rows. Deferred because W4's snapshots
-fix the live correctness bug either way, and collapsing is expensive to reverse
-if a shared template library is ever wanted. Revisit with usage data after
-Stage 2.
+**S4.1 · Collapse `WorkflowTemplate` into `WorkflowInstallation`?** Two of three
+reviewers argued the indirection buys nothing today — no marketplace, no cross-org
+sharing, `resolvedBindings` largely unused. The third argued for keeping it with
+immutable `WorkflowVersion` rows and, on audit, conceded the deferral. Deferred
+because W4 and S3.1 remove the correctness argument for rushing it, and collapsing
+is expensive to reverse if a shared template library is ever wanted.
+
+**S3.5 · Bounded `map`.** Deferred with a named decision point, not refused.
+Revision 1's claim that no use case needs it was wrong — release notes over N PRs
+and connector result sets are genuinely collection-shaped. Decide with usage data
+once connector steps exist.
+
+**C21 · A typed mapper.** JMESPath is chosen for authorability and determinism at
+the cost of static typing. If connector output schemas prove reliable in S3.3,
+revisit assignability checking then.
