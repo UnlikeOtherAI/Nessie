@@ -19,6 +19,17 @@ export type ToolExecutionResult = {
   toolName: string
 }
 
+// What the agentic loop receives back from a tool call: a settled result, never
+// a throw. Lives here rather than in `tools.ts` so the per-domain dispatchers
+// can type themselves without importing the main dispatcher.
+export type AgenticToolResult = {
+  acknowledgeDelivery?: () => void
+  connectorUsage?: ToolExecutionUsage
+  inputSummary: string
+  output: string
+  success: boolean
+}
+
 export type BuiltinToolRuntimeContext = {
   agentId: string
   agentKind: 'personal_assistant' | 'shared'

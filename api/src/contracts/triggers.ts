@@ -1,5 +1,5 @@
 import {
-  AgentIdSchema,
+  AgentTriggerStatusSchema,
   AgentTriggerTypeSchema,
   ChannelIdSchema,
   RunIdSchema,
@@ -9,10 +9,17 @@ import { z } from 'zod'
 
 import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 
-export type AgentTriggerType = z.infer<typeof AgentTriggerTypeSchema>
-
-export const AgentTriggerStatusSchema = z.enum(['active', 'paused', 'error'])
-export type AgentTriggerStatus = z.infer<typeof AgentTriggerStatusSchema>
+// Trigger records are produced by `@nessie/workspace-admin`, which the worker
+// also uses (the assistant's `agent_trigger_create` tool parses the very same
+// create body), so these live in `@nessie/schemas`.
+export {
+  AgentTriggerRecordSchema,
+  AgentTriggerStatusSchema,
+  CreateAgentTriggerBodySchema,
+  type AgentTriggerRecord,
+  type AgentTriggerStatus,
+  type AgentTriggerType,
+} from '@nessie/schemas'
 
 export const AgentTriggerDeliveryStatusSchema = z.enum([
   'pending',
@@ -21,37 +28,6 @@ export const AgentTriggerDeliveryStatusSchema = z.enum([
   'skipped',
 ])
 export type AgentTriggerDeliveryStatus = z.infer<typeof AgentTriggerDeliveryStatusSchema>
-
-export const AgentTriggerRecordSchema = z.object({
-  id: z.string().uuid(),
-  agentId: AgentIdSchema.optional(),
-  workflowInstallationId: z.string().uuid().optional(),
-  type: AgentTriggerTypeSchema,
-  status: AgentTriggerStatusSchema,
-  enabled: z.boolean(),
-  name: z.string().optional(),
-  description: z.string().optional(),
-  config: z.record(z.unknown()),
-  webhookApiKey: z.string().optional(),
-  targetChannelId: ChannelIdSchema.optional(),
-  targetThreadId: ThreadIdSchema.optional(),
-  lastFiredAt: TimestampSchema.optional(),
-  nextRunAt: TimestampSchema.optional(),
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema,
-})
-export type AgentTriggerRecord = z.infer<typeof AgentTriggerRecordSchema>
-
-export const CreateAgentTriggerBodySchema = z.object({
-  type: AgentTriggerTypeSchema,
-  name: z.string().min(1).optional(),
-  description: z.string().min(1).optional(),
-  enabled: z.boolean().optional(),
-  config: z.record(z.unknown()).optional(),
-  nextRunAt: TimestampSchema.optional(),
-  targetChannelId: ChannelIdSchema.optional(),
-  targetThreadId: ThreadIdSchema.optional(),
-})
 
 export const CreateWorkflowTriggerBodySchema = z.object({
   type: AgentTriggerTypeSchema,

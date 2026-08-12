@@ -32,6 +32,7 @@
     "@nessie/push": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
+    "@nessie/workspace-admin": "workspace:*",
     "@prisma/client": "^6.17.1",
     "cron-parser": "^5.5.0",
     "mammoth": "^1.12.0",

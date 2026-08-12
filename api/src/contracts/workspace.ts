@@ -3,46 +3,16 @@ import {
   ChannelIdSchema,
   OrganizationIdSchema,
   ProjectIdSchema,
-  SystemChannelTypeSchema,
   TeamIdSchema,
-  ThreadIdSchema,
   UserIdSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
 import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 
-export const ChannelRecordSchema = z.object({
-  id: ChannelIdSchema,
-  label: NonEmptyStringSchema,
-  slug: z.string().nullish(),
-  type: z.enum(['standard', 'dm']),
-  systemChannelType: SystemChannelTypeSchema.optional(),
-  dmUserId: UserIdSchema.nullish(),
-  visibility: z.enum(['public', 'protected', 'private']),
-  organizationId: OrganizationIdSchema,
-  projectId: ProjectIdSchema,
-  projectName: NonEmptyStringSchema,
-  teamId: TeamIdSchema,
-  teamName: NonEmptyStringSchema,
-  defaultThreadId: ThreadIdSchema,
-  unreadCount: z.number().int().nonnegative(),
-  // When the channel's default thread last received a message; null when it has
-  // none. Populated on every channel-record emission (list, single read, and
-  // post-mutation responses) so a cached list patched from a mutation response
-  // never loses a row's recency.
-  lastMessageAt: TimestampSchema.nullable(),
-  // sp-channels: channel lifecycle fields
-  topic: z.string().nullish(),
-  description: z.string().nullish(),
-  archivedAt: TimestampSchema.nullish(),
-  memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
-  // Whether the caller has muted notifications for this channel (per-member).
-  muted: z.boolean().optional(),
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema,
-})
-export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
+// The channel record is produced by `@nessie/workspace-admin`, which the worker
+// also uses, so its schema lives in `@nessie/schemas`.
+export { ChannelRecordSchema, type ChannelRecord } from '@nessie/schemas'
 
 // sp-channels: body for PATCH /api/channels/:channelId
 export const UpdateChannelBodySchema = z

@@ -3,7 +3,7 @@ import {
   AGENT_MANAGEMENT_ERROR_CODES,
   AgentManagementError,
 } from '../services/agents.js'
-import { LedgerAgentModelCatalogError } from '../services/ledger-agent-model-catalog.js'
+import { LedgerAgentModelCatalogError } from '@nessie/workspace-admin'
 import {
   AGENT_TOOL_POLICY_ERROR_CODES,
   AgentToolPolicyError,

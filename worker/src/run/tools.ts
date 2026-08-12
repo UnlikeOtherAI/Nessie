@@ -3,8 +3,12 @@ import {
   runAttachmentListTool,
   runAttachmentReadTool,
   runAttachmentUploadTool,
+  runAgentBindChannelTool,
+  runAgentCreateTool,
+  runAgentTriggerCreateTool,
   runAuthoredMessageSearchTool,
   runChannelArchiveTool,
+  runChannelCreateTool,
   runChannelFindTool,
   runChannelJoinTool,
   runChannelListTool,
@@ -19,17 +23,6 @@ import {
   runConnectorTestTool,
   runConnectorUninstallTool,
   runDeepWaterRunUpdateTool,
-  runKbCommentAddTool,
-  runKbCommentReplyTool,
-  runKbCommentResolveTool,
-  runKbCommentsListTool,
-  runKbDraftWriteTool,
-  runKbFileTool,
-  runKbListTool,
-  runKbNoteAddTool,
-  runKbPageReadTool,
-  runKbPublishRequestTool,
-  runKbSearchTool,
   runMessageDeleteTool,
   runReactTool,
   runMessageEditTool,
@@ -60,8 +53,9 @@ import {
   runWebSearchTool,
 } from './content-tools.js'
 import { runSpawnSubtaskTool } from './subtask-tools.js'
-import { summarizeToolInput, truncateToolResult } from './tool-util.js'
-import type { BuiltinToolRuntimeContext, ToolExecutionUsage } from './tool-types.js'
+import { summarizeToolInput, truncateToolResult, wrapTool } from './tool-util.js'
+import { dispatchKbTool } from './kb-tool-dispatch.js'
+import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.js'
 
 // Re-exported so existing importers keep using the './tools.js' entry point.
 export {
@@ -77,34 +71,7 @@ export {
   type WorkflowBuiltinToolRuntimeContext,
 } from './workflow-builtin-tools.js'
 
-export type AgenticToolResult = {
-  acknowledgeDelivery?: () => void
-  connectorUsage?: ToolExecutionUsage
-  inputSummary: string
-  output: string
-  success: boolean
-}
-
-const wrapTool = async (
-  inputSummary: string,
-  fn: () => Promise<{ connectorUsage?: ToolExecutionUsage; outputPreview: string }>,
-): Promise<AgenticToolResult> => {
-  try {
-    const result = await fn()
-    return {
-      connectorUsage: result.connectorUsage,
-      inputSummary,
-      output: truncateToolResult(result.outputPreview),
-      success: true,
-    }
-  } catch (error) {
-    return {
-      inputSummary,
-      output: 'Tool error: ' + (error instanceof Error ? error.message : String(error)),
-      success: false,
-    }
-  }
-}
+export type { AgenticToolResult } from './tool-types.js'
 
 const BUILTIN_REGISTRY_SCOPE_KEY = 'builtin'
 
@@ -163,6 +130,10 @@ export const executeBuiltinTool = async (
   context: BuiltinToolRuntimeContext,
 ): Promise<AgenticToolResult> => {
   const inputSummary = summarizeToolInput(args)
+  const knowledgeBaseResult = dispatchKbTool(toolName, args, context, inputSummary)
+  if (knowledgeBaseResult) {
+    return knowledgeBaseResult
+  }
   switch (toolName) {
     case 'workspace_search':
       return wrapTool(inputSummary, () =>
@@ -236,6 +207,16 @@ export const executeBuiltinTool = async (
           channelId: String(args.channelId ?? ''),
         }),
       )
+    // Workspace provisioning. These validate their own arguments with zod
+    // (the same create-trigger body the route parses), so they take `args` whole.
+    case 'channel_create':
+      return wrapTool(inputSummary, () => runChannelCreateTool(context, args))
+    case 'agent_create':
+      return wrapTool(inputSummary, () => runAgentCreateTool(context, args))
+    case 'agent_bind_channel':
+      return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
+    case 'agent_trigger_create':
+      return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
     case 'web_search':
       return wrapTool(inputSummary, () =>
         runWebSearchTool(context, String(args.query ?? ''), coercePage(args.page)),
@@ -348,93 +329,6 @@ export const executeBuiltinTool = async (
         )
         return runFileGlob(args, transportConfig)
       })
-    case 'kb_comments_list':
-      return wrapTool(inputSummary, () =>
-        runKbCommentsListTool(context, {
-          pageId: String(args.pageId ?? ''),
-          kind:
-            args.kind === 'comment' || args.kind === 'note' ? args.kind : undefined,
-        }),
-      )
-    case 'kb_comment_add':
-      return wrapTool(inputSummary, () =>
-        runKbCommentAddTool(context, {
-          pageId: String(args.pageId ?? ''),
-          body: String(args.body ?? ''),
-        }),
-      )
-    case 'kb_comment_reply':
-      return wrapTool(inputSummary, () =>
-        runKbCommentReplyTool(context, {
-          annotationId: String(args.annotationId ?? ''),
-          body: String(args.body ?? ''),
-        }),
-      )
-    case 'kb_comment_resolve':
-      return wrapTool(inputSummary, () =>
-        runKbCommentResolveTool(context, {
-          annotationId: String(args.annotationId ?? ''),
-          state: args.state === 'open' ? 'open' : 'resolved',
-        }),
-      )
-    case 'kb_note_add':
-      return wrapTool(inputSummary, () =>
-        runKbNoteAddTool(context, {
-          pageId: String(args.pageId ?? ''),
-          quote: String(args.quote ?? ''),
-          body: String(args.body ?? ''),
-        }),
-      )
-    case 'kb_search':
-      return wrapTool(inputSummary, () =>
-        runKbSearchTool(context, {
-          query: String(args.query ?? ''),
-          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
-          projectId: typeof args.projectId === 'string' ? args.projectId : undefined,
-          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
-          limit: args.limit,
-        }),
-      )
-    case 'kb_page_read':
-      return wrapTool(inputSummary, () =>
-        runKbPageReadTool(context, { pageId: String(args.pageId ?? '') }),
-      )
-    case 'kb_list':
-      return wrapTool(inputSummary, () =>
-        runKbListTool(context, {
-          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
-          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
-        }),
-      )
-    case 'kb_draft_write':
-      return wrapTool(inputSummary, () =>
-        runKbDraftWriteTool(context, {
-          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
-          pageId: typeof args.pageId === 'string' ? args.pageId : undefined,
-          title: typeof args.title === 'string' ? args.title : undefined,
-          body: String(args.body ?? ''),
-          summary: typeof args.summary === 'string' ? args.summary : undefined,
-          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
-          parentPageId: typeof args.parentPageId === 'string' ? args.parentPageId : undefined,
-          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
-          changeComment: typeof args.changeComment === 'string' ? args.changeComment : undefined,
-        }),
-      )
-    case 'kb_file':
-      return wrapTool(inputSummary, () =>
-        runKbFileTool(context, {
-          pageId: String(args.pageId ?? ''),
-          // Distinguish "omitted" (no move) from "explicit null" (move to the
-          // space root) — both would otherwise collapse to undefined.
-          parentPageId:
-            'parentPageId' in args
-              ? (typeof args.parentPageId === 'string' ? args.parentPageId : null)
-              : undefined,
-          position: typeof args.position === 'number' ? args.position : undefined,
-          title: typeof args.title === 'string' ? args.title : undefined,
-          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
-        }),
-      )
     case 'connector_list':
       return wrapTool(inputSummary, () => runConnectorListTool(context))
     case 'connector_library_search':
@@ -494,13 +388,6 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
     case 'comms_connect_card':
       return wrapTool(inputSummary, () => runCommsConnectCardTool(context, args))
-    case 'kb_publish_request':
-      return wrapTool(inputSummary, () =>
-        runKbPublishRequestTool(context, {
-          pageId: String(args.pageId ?? ''),
-          reason: typeof args.reason === 'string' ? args.reason : undefined,
-        }),
-      )
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }

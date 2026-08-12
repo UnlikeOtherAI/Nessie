@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client'
-import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
+import type { AgentEffort, AgentRecord, AgentRunLimits } from '@nessie/schemas'
 import {
   AgentRunLimitsSchema,
   parseAgentId,
@@ -7,8 +7,6 @@ import {
   parseRunId,
 } from '@nessie/schemas'
 import { redactExplicitToolPolicyProvenance } from '@nessie/runtime'
-
-import type { AgentRecord } from '../contracts.js'
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 

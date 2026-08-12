@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import type { AgenticToolResult, ToolExecutionUsage } from './tool-types.js'
+
 // --- Tool result size budget -------------------------------------------------
 //
 // Every tool result the model sees is re-billed on each later iteration, so an
@@ -54,6 +56,32 @@ export const truncateToolResult = (
   const head = output.slice(0, headChars)
   const tail = tailChars > 0 ? output.slice(output.length - tailChars) : ''
   return `${head}\n\n[... truncated ${removed} chars ...]\n\n${tail}`
+}
+
+/**
+ * Run one builtin tool and settle it into an `AgenticToolResult`. A thrown
+ * `Error` becomes a failed result carrying its message, which is how every
+ * builtin reports a refusal or a bad argument to the model.
+ */
+export const wrapTool = async (
+  inputSummary: string,
+  fn: () => Promise<{ connectorUsage?: ToolExecutionUsage; outputPreview: string }>,
+): Promise<AgenticToolResult> => {
+  try {
+    const result = await fn()
+    return {
+      connectorUsage: result.connectorUsage,
+      inputSummary,
+      output: truncateToolResult(result.outputPreview),
+      success: true,
+    }
+  } catch (error) {
+    return {
+      inputSummary,
+      output: 'Tool error: ' + (error instanceof Error ? error.message : String(error)),
+      success: false,
+    }
+  }
 }
 
 const SECRET_KEY_PATTERN =

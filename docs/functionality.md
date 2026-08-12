@@ -161,6 +161,38 @@ Root app layout:
   or duplicate markers retain the normal Channels landing behavior and cause
   no billing action.
 
+### 2.0c Live personal-assistant workspace provisioning boundary
+
+- Four PA-only builtins let the assistant set a workspace up the way its owner
+  can by clicking: `channel_create`, `agent_create`, `agent_bind_channel`, and
+  `agent_trigger_create` (`worker/src/run/pa-tools/provisioning.ts`). Each calls
+  the same service function as its REST route and reproduces that route's
+  authorization exactly — no weaker, no stronger.
+- `channel_create` (`POST /api/channels`) and `agent_create` (`POST /api/agents`)
+  are open to any active member, because those routes carry only
+  `requireActorContext`. `agent_bind_channel`
+  (`POST /api/agents/:agentId/bindings`) requires channel membership, refuses a
+  `personal_assistant` system channel, requires owner, and then passes
+  `checkPolicy(…, 'agent', 'bind', …)`. `agent_trigger_create`
+  (`POST /api/agents/:agentId/triggers`) requires owner plus an accessible
+  agent, parses the route's own `CreateAgentTriggerBodySchema`, and stamps
+  `launchOrigin` (creator + UOA workspace) on scheduled and interval triggers;
+  a signing deployment refuses a schedule with no UOA identity.
+- `agent_create` cannot escalate: its schema exposes no
+  `agentKind`/`systemManaged`/`surfacePolicy`/`delegationMode`/`parentAgentId`,
+  and `assertGenericAgentToolPolicyInput` refuses every `requiresExplicitGrant`
+  key and DeepWater provenance marker, so an agent authored from chat can never
+  arrive with research already granted. There is no assistant tool for agent
+  update, agent delete, or tool-policy targets; those stay owner UI actions.
+- The acting user's role is re-read from the live `OrganizationMember` row on
+  every call, and a deactivated membership is refused — the run's
+  `actorContext` is an enqueue-time snapshot, while the API re-resolves the role
+  per request. Owner-gated tools remain visible to non-owners and refuse in
+  words, naming who can perform the action.
+- The shared implementations live in `@nessie/workspace-admin`, consumed by both
+  the API routes and the worker; `api/src/services/*` re-exports them so route
+  code is unchanged.
+
 ### 2.1 Server bootstrap (`src/index.ts`)
 
 > **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5454) + `worker/` + `admin/` (port 5455), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.
