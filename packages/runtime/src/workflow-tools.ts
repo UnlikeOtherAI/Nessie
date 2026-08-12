@@ -41,8 +41,38 @@ export const buildWorkflowToolDefinitions = (
         value: {
           description: 'The value to store for the checkpoint',
         },
+        expectedVersion: {
+          type: 'number',
+          description:
+            'Compare-and-set: the version returned by state_get/change_detect. The write fails when the stored version has moved on.',
+        },
       },
       required: ['key', 'value'],
+    },
+    safe: true,
+  },
+  {
+    id: 'message_send',
+    label: 'Message Send',
+    description:
+      'Post a deterministic message to a channel — no agent run involved. Defaults to the workflow installation channel.',
+    parameters: {
+      type: 'object',
+      properties: {
+        body: {
+          type: 'string',
+          description: 'The message body to post (may contain {{…}} bindings)',
+        },
+        channelId: {
+          type: 'string',
+          description: 'Optional target channel; defaults to the installation channel',
+        },
+        threadId: {
+          type: 'string',
+          description: 'Optional target thread inside the channel',
+        },
+      },
+      required: ['body'],
     },
     safe: true,
   },

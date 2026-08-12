@@ -35,6 +35,9 @@ export const WorkflowStepDefinitionSchema = z.object({
   input: z.record(z.unknown()).optional(),
   title: z.string().optional(),
   type: NonEmptyStringSchema,
+  // W16: step-level predicate. Falsy marks the step `skipped`; the run
+  // continues. Compiled at save time, evaluated off the event loop at run time.
+  when: z.string().optional(),
 })
 export type WorkflowStepDefinition = z.infer<typeof WorkflowStepDefinitionSchema>
 
@@ -73,6 +76,15 @@ export const CreateWorkflowTemplateBodySchema = z.object({
 
 export const UpdateWorkflowTemplateBodySchema = CreateWorkflowTemplateBodySchema
 
+// W26: { limit, onOverlap } — parseWorkflowConcurrency in workspace-admin
+// supplies the defaults at enforcement time, so an empty object is valid.
+export const WorkflowConcurrencySchema = z
+  .object({
+    limit: z.number().int().min(1).max(100).optional(),
+    onOverlap: z.enum(['skip', 'queue', 'parallel']).optional(),
+  })
+  .default({})
+
 export const WorkflowInstallationRecordSchema = z.object({
   id: z.string().uuid(),
   workflowTemplateId: z.string().uuid(),
@@ -85,6 +97,8 @@ export const WorkflowInstallationRecordSchema = z.object({
   active: z.boolean(),
   resolvedBindings: z.record(z.unknown()).default({}),
   config: z.record(z.unknown()).default({}),
+  // W26: overlap policy, defaulting to { limit: 1, onOverlap: 'skip' }.
+  concurrency: WorkflowConcurrencySchema,
   createdByActorType: NonEmptyStringSchema,
   createdByActorId: NonEmptyStringSchema,
   createdAt: TimestampSchema,
@@ -98,6 +112,7 @@ export const InstallWorkflowTemplateBodySchema = z.object({
   status: WorkflowInstallationStatusSchema.optional(),
   resolvedBindings: z.record(z.unknown()).optional(),
   config: z.record(z.unknown()).optional(),
+  concurrency: WorkflowConcurrencySchema.optional(),
 })
 
 // W8: the pause/resume/disable path. Same lifecycle fields as install;
@@ -108,6 +123,7 @@ export const UpdateWorkflowInstallationBodySchema = z.object({
   status: WorkflowInstallationStatusSchema.optional(),
   resolvedBindings: z.record(z.unknown()).optional(),
   config: z.record(z.unknown()).optional(),
+  concurrency: WorkflowConcurrencySchema.optional(),
 })
 
 // W24: cursor pagination for the workflow list endpoints.

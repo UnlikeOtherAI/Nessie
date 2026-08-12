@@ -164,3 +164,32 @@ them through the existing `createMcpSecretResolver` without new plumbing.
   `worker/test/workflow-redaction.test.ts`: exact-reference and mixed-template
   interpolation redact from both `workflow.*` and `steps.*` scopes, and
   agent-task bodies never carry a persisted ref.
+
+### Section E — the primitives (merged)
+
+- **W15 · `message_send`.** A deterministic channel write
+  (`worker/src/control/workflow-message-send.ts`) through the existing
+  message-create service, under the run's durable actor, defaulting to the
+  installation's channel and validating any other target inside the same
+  transaction. Bodies pass through W0's redaction, so a tainted binding cannot
+  reach a channel. **This is the item that repays the whole subsystem:** a test
+  asserts a workflow delivers a message with *zero* agent runs created, so
+  deterministic output no longer costs an inference hop.
+- **W16 · `when:` guard.** A step-level predicate; falsy marks the step `skipped`
+  and the run continues. Carries the shared JMESPath evaluator
+  (`packages/workspace-admin/src/workflow-jmespath.ts`) with the §5 envelope —
+  4 KiB expression, 1 MiB input, 256 KiB output, evaluated off the worker event
+  loop — which Section F's `transform` reuses. Compiled at save time through W9's
+  grammar seam, so a bad predicate is a save error.
+- **W18 · `state_put` compare-and-set, complete contract.** `state_get` and
+  `change_detect` return the exact version compared; `state_put(expectedVersion)`
+  fails on mismatch; the guarded write precedes the notification side effect; and
+  the write is attempt-scoped — a same-`(stepRunId, attempt)` repeat with a
+  matching value hash is an idempotent no-op, so a crash between a successful
+  write and the step being marked finished cannot wedge a watcher permanently.
+- **W26 · Overlap policy.** `WorkflowInstallation.concurrency`
+  (`{ limit, onOverlap }`, default `{ 1, 'skip' }`) enforced under
+  `pg_advisory_xact_lock` at every entrypoint, not only the scheduled path.
+  `skip` records the delivery as `skipped_overlap` so silent skips stay
+  diagnosable; `queue` is depth-bounded. CAS detects the collision, this prevents
+  it — both were needed.

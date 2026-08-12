@@ -19,9 +19,11 @@
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1",
+    "jmespath": "^0.16.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/jmespath": "^0.15.2",
     "@types/node": "^20.19.24"
   }
 }

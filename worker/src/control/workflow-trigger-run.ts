@@ -9,7 +9,13 @@ import {
   type AuthorizedActionContext,
   type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
-import { resolveInstallationPinnedGraph } from '@nessie/workspace-admin'
+import {
+  WORKFLOW_OVERLAP_SKIP_REASON,
+  admitWorkflowRunUnderOverlap,
+  parseWorkflowConcurrency,
+  resolveInstallationPinnedGraph,
+  withWorkflowOverlapLock,
+} from '@nessie/workspace-admin'
 import { enqueueQueueJob } from '../queue.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
 import {
@@ -93,7 +99,9 @@ export const queueWorkflowTriggerRun = async (
 
   const normalizedPayload = normalizePayload(input.payload)
   try {
-    await prisma.$transaction(async (tx) => {
+    // W26: the overlap decision runs under the per-installation advisory
+    // lock, so two fires landing together serialize on the active-run count.
+    await withWorkflowOverlapLock(prisma, installation.id, async (tx) => {
       const delivery = await upsertDelivery(tx, {
         dedupeKey: input.dedupeKey,
         payload: normalizedPayload,
@@ -101,6 +109,33 @@ export const queueWorkflowTriggerRun = async (
         source: input.source,
         triggerId: input.trigger.id,
       })
+
+      const installationRow = await tx.workflowInstallation.findUnique({
+        where: { id: installation.id },
+        select: { concurrency: true },
+      })
+      const admission = await admitWorkflowRunUnderOverlap(tx, {
+        concurrency: parseWorkflowConcurrency(installationRow?.concurrency),
+        installationId: installation.id,
+      })
+
+      if (admission.kind === 'skip') {
+        // A silent skip is undiagnosable; the delivery records why nothing ran.
+        await tx.agentTriggerDelivery.update({
+          where: { id: delivery.id },
+          data: {
+            errorMessage: WORKFLOW_OVERLAP_SKIP_REASON,
+            status: 'skipped_overlap',
+          },
+        })
+        await tx.agentTrigger.update({
+          where: { id: input.trigger.id },
+          data: {
+            lastFiredAt: new Date(),
+          },
+        })
+        return
+      }
 
       const pinnedGraph = await resolveInstallationPinnedGraph(tx, installation.id)
 
@@ -115,21 +150,28 @@ export const queueWorkflowTriggerRun = async (
           input: (input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
             ? (input.payload as Record<string, unknown>)
             : { payload: input.payload ?? null }) as Prisma.InputJsonValue,
+          // W26 `queue`: the run is recorded but withheld — no execute job —
+          // until the active run's terminal transition releases the slot.
+          ...(admission.kind === 'withhold'
+            ? { summary: `${WORKFLOW_OVERLAP_SKIP_REASON}:queued` }
+            : {}),
           startedByActorType: actorContext.actor.actorType,
           startedByActorId: actorContext.actor.actorId,
         },
         select: { id: true },
       })
 
-      const jobPayload: WorkflowRunExecuteJobPayload = {
-        actorContext,
-        workflowRunId: workflowRun.id,
+      if (admission.kind === 'admit') {
+        const jobPayload: WorkflowRunExecuteJobPayload = {
+          actorContext,
+          workflowRunId: workflowRun.id,
+        }
+        await enqueueQueueJob(tx, {
+          idempotencyKey: `workflow-run:start:${workflowRun.id}`,
+          payload: jobPayload,
+          topic: 'workflow.run.execute',
+        })
       }
-      await enqueueQueueJob(tx, {
-        idempotencyKey: `workflow-run:start:${workflowRun.id}`,
-        payload: jobPayload,
-        topic: 'workflow.run.execute',
-      })
 
       await tx.agentTriggerDelivery.update({
         where: { id: delivery.id },

@@ -25,3 +25,5 @@ export * from './trigger-create.js'
 export * from './workflow-binding-grammar.js'
 export * from './workflow-graph-pin.js'
 export * from './workflow-secrets.js'
+export * from './workflow-jmespath.js'
+export * from "./workflow-concurrency.js"

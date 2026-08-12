@@ -75,6 +75,7 @@ export const WORKFLOW_TRIGGER_TYPE_LABELS = {
 // two drift apart, so they are not "agreeing by coincidence".
 export const WORKFLOW_TOOL_NODE_IDS = new Set([
   'change_detect',
+  'message_send',
   'state_get',
   'state_put',
   'web_fetch',

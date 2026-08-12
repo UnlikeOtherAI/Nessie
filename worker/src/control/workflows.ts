@@ -1,8 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   collectWorkflowTaintedRefs,
+  evaluateWorkflowJmespath,
+  isWorkflowJmespathTruthy,
   parseWorkflowBindingTemplate,
   redactWorkflowSecretValues,
+  releaseNextQueuedWorkflowRun,
+  withWorkflowOverlapLock,
   type WorkflowBindingScope,
 } from '@nessie/workspace-admin'
 import type { LedgerIdentityService } from '@nessie/runtime'
@@ -17,6 +21,7 @@ import { randomUUID } from 'node:crypto'
 import { enqueueQueueJob } from '../queue.js'
 import {
   WORKFLOW_STEP_LEASE_HEARTBEAT_MS,
+  bumpWorkflowRunAttempt,
   ensureWorkflowStepRuns,
   heartbeatWorkflowStepLease,
   listWorkflowStepRuns,
@@ -25,6 +30,7 @@ import {
   markWorkflowRunStarted,
   markWorkflowStepRunFinished as markWorkflowStepRunFinishedRaw,
   markWorkflowStepRunQueued,
+  markWorkflowStepRunSkipped,
   markWorkflowStepRunStarted,
   reconcileWorkflowRunGraphSnapshot,
 } from '../run/workflows.js'
@@ -491,6 +497,13 @@ const markWorkflowStepRunFinished = async (
     return result
   }
 
+  // W26: a `queue`-policy installation withholds follow-on runs while one is
+  // active; the transition that just freed the slot releases the next one
+  // (bounded depth at admission, FIFO here).
+  if (!result.continueWorkflow) {
+    await releaseWorkflowOverlapSlot(prisma, workflow.installation.id, workflow.run.id)
+  }
+
   if (!input.success) {
     await emitWorkflowRunTerminalEvent(
       prisma,
@@ -514,6 +527,7 @@ const markWorkflowRunFinished = async (
   if (!result.applied) {
     return result
   }
+  await releaseWorkflowOverlapSlot(prisma, workflow.installation.id, workflow.run.id)
   await emitWorkflowRunTerminalEvent(
     prisma,
     buildWorkflowRunEventContext(workflow),
@@ -522,6 +536,58 @@ const markWorkflowRunFinished = async (
   )
   return result
 }
+
+
+// W26: release one withheld pending run and enqueue its execution under the
+// overlap lock, so the release cannot race a fresh admission for the same
+// slot.
+const releaseWorkflowOverlapSlot = async (
+  prisma: PrismaClient,
+  installationId: string,
+  workflowRunId: string,
+): Promise<void> => {
+  try {
+    const released = await withWorkflowOverlapLock(prisma, installationId, async (tx) => {
+      const next = await releaseNextQueuedWorkflowRun(tx, installationId)
+      if (next) {
+        await enqueueQueueJob(tx, {
+          idempotencyKey: `workflow-run:start:${next.id}`,
+          payload: { workflowRunId: next.id },
+          topic: 'workflow.run.execute',
+        })
+      }
+      return next
+    })
+    if (released) {
+      console.info(
+        `[worker.workflow-overlap] released queued run ${released.id} after run ${workflowRunId} (installation ${installationId})`,
+      )
+    }
+  } catch (error) {
+    // A failed release must not fail the transition that already landed; the
+    // withheld run is released by the next terminal transition (or stays
+    // pending, diagnosable by its summary).
+    console.error('[worker.workflow-overlap] release failed', error)
+  }
+}
+
+// W16: the `when:` document is the same redacted scope the binding resolver
+// uses — bindings/config/input plus the previous steps' snapshots.
+const buildWorkflowWhenDocument = (
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
+): Record<string, unknown> => ({
+  steps: Object.fromEntries(
+    Object.entries(context.stepSnapshots).map(([stepId, snapshot]) => [
+      stepId,
+      { input: snapshot.input, output: snapshot.output, status: snapshot.status },
+    ]),
+  ),
+  workflow: {
+    bindings: context.workflowBindings,
+    config: context.workflowConfig,
+    input: context.workflowInput,
+  },
+})
 
 export const executeWorkflowRun = async (
   execution: {
@@ -643,6 +709,10 @@ export const executeWorkflowRun = async (
   if (workflow.run.status === 'pending') {
     await markWorkflowRunStarted(prisma, workflowRunId)
   }
+  // W18: every dispatch is a new attempt — a retried step writes state under
+  // a different writer identity than the crashed attempt it repeats.
+  await bumpWorkflowRunAttempt(prisma, workflowRunId)
+  workflow.run.attempt += 1
 
   while (true) {
     const stepRuns = await listWorkflowStepRuns(prisma, workflowRunId)
@@ -672,16 +742,47 @@ export const executeWorkflowRun = async (
       return
     }
 
+    const bindingContext = buildWorkflowBindingContext({
+      stepSnapshots: buildWorkflowStepSnapshots(stepRuns),
+      workflowBindings: workflow.installation.resolvedBindings,
+      workflowConfig: workflow.installation.config,
+      workflowInput: workflow.run.input,
+    })
+
+    // W16: a falsy `when:` guard marks the step skipped — never a failure —
+    // and the run continues to the next step. The predicate evaluates off the
+    // event loop (plan §5 envelope) against the same redacted document the
+    // binding resolver sees.
+    if (typeof stepDefinition.when === 'string' && stepDefinition.when.trim()) {
+      const evaluated = await evaluateWorkflowJmespath(
+        stepDefinition.when,
+        buildWorkflowWhenDocument(
+          bindingContext as WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
+        ),
+      )
+      if (!evaluated.ok) {
+        await markWorkflowStepRunFinished(prisma, workflow, {
+          workflowRunId,
+          stepRunId: nextStep.id,
+          success: false,
+          summary: `Workflow step guard could not be evaluated: ${evaluated.error}`,
+        })
+        return
+      }
+      if (!isWorkflowJmespathTruthy(evaluated.value)) {
+        await markWorkflowStepRunSkipped(prisma, {
+          stepRunId: nextStep.id,
+          summary: 'Skipped: when guard evaluated falsy.',
+        })
+        continue
+      }
+    }
+
     let resolvedStepInput: unknown
     try {
       resolvedStepInput = resolveWorkflowStepInput(
         stepDefinition.input ?? {},
-        buildWorkflowBindingContext({
-          stepSnapshots: buildWorkflowStepSnapshots(stepRuns),
-          workflowBindings: workflow.installation.resolvedBindings,
-          workflowConfig: workflow.installation.config,
-          workflowInput: workflow.run.input,
-        }),
+        bindingContext,
       )
     } catch (error) {
       await markWorkflowStepRunFinished(prisma, workflow, {
@@ -769,6 +870,8 @@ export const executeWorkflowRun = async (
           workflowInstallationId: workflow.installation.id,
           workflowRunId,
           workflowStepRunId: nextStep.id,
+          installationChannelId: workflow.installation.channelId,
+          workflowRunAttempt: workflow.run.attempt,
         }
         const toolResult = await executeWorkflowBuiltinTool(toolName, toolArgs, toolContext)
 

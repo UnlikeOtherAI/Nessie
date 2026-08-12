@@ -104,6 +104,7 @@ enum AgentTriggerDeliveryStatus {
   delivered
   failed
   skipped
+  skipped_overlap
 }
 
 enum PlanStatus {
@@ -730,68 +731,68 @@ enum ProductIntegrationRunStatus {
 }
 
 model User {
-  id                     String                    @id @default(uuid()) @db.Uuid
-  email                  String                    @unique
-  displayName            String                    @map("display_name")
-  passwordHash           String?                   @map("password_hash")
+  id                                  String                          @id @default(uuid()) @db.Uuid
+  email                               String                          @unique
+  displayName                         String                          @map("display_name")
+  passwordHash                        String?                         @map("password_hash")
   // Provider-supplied avatar (e.g. the Google OIDC `picture` claim), captured at
   // provisioning. `avatarAttachmentId` is a user-uploaded custom avatar that, when
   // present, overrides this. Gravatar (derived from `email`) is the next fallback.
-  avatarUrl              String?                   @map("avatar_url")
-  avatarAttachmentId     String?                   @map("avatar_attachment_id") @db.Uuid
-  pronouns               String?
+  avatarUrl                           String?                         @map("avatar_url")
+  avatarAttachmentId                  String?                         @map("avatar_attachment_id") @db.Uuid
+  pronouns                            String?
   // Platform-level super-admin flag. Sits ABOVE the per-organization `owner`
   // role: org owners administer their own tenant, but only a super-admin may
   // manage platform-global resources such as the push credentials that drive
   // the central push gateway. Defaults to false; granted out-of-band.
-  superAdmin             Boolean                   @default(false) @map("super_admin")
+  superAdmin                          Boolean                         @default(false) @map("super_admin")
   // Access-token generation. Minted into the session JWT as `tv` and compared on
   // every request, so bumping it revokes every outstanding access token at once.
   // Revoking the refresh family alone is not enough: an access token stays valid
   // for its whole TTL, leaving a window after logout or a forced sign-out.
   // Unrelated to `UoaProductLink.uoaTokenVersion`, which is UOA's own epoch.
-  tokenVersion        Int                  @default(0) @map("token_version")
-  preferences         Json?
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
-  organizationMembers OrganizationMember[]
-  projectMembers      ProjectMember[]
-  teamMembers         TeamMember[]
-  channelMembers      ChannelMember[]
-  pushSurfacePresences UserPushSurfacePresence[]
-  knowledgeSpaceMembers KnowledgeSpaceMember[]
-  callsStarted        Call[]               @relation("CallStarter")
-  callParticipants    CallParticipant[]    @relation("CallParticipation")
-  messages            Message[]
-  reactions           MessageReaction[]
-  threadReadStates    ThreadReadState[]
-  userAlerts          UserAlert[]
-  disclosureGrants    DisclosureGrant[]
-  scopeDisclosureGrants ScopeDisclosureGrant[]
-  userAlertActivity   UserAlert[]          @relation("UserAlertActor")
-  messageThreadFollows MessageThreadFollow[]
-  favorites           Favorite[]
-  assignedTasks       Task[]               @relation("TaskAssignee")
-  ownedTasks          Task[]               @relation("TaskOwner")
-  createdTasks        Task[]               @relation("TaskCreatedBy")
-  mcpCatalogOwned     McpCatalogEntry[]    @relation("McpCatalogOwner")
-  mcpCatalogReviewed  McpCatalogEntry[]    @relation("McpCatalogReviewer")
-  statuses            UserStatus[]
-  feedback            Feedback[]
-  refreshTokens       RefreshToken[]
-  uoaSessionCredentials UoaSessionCredential[]
-  productAccountLinks ProductAccountLink[]
-  productTeamEnablements ProductTeamEnablement[]
-  productIntegrationRuns ProductIntegrationRun[]
-  cancelledRuns       Run[]                @relation("RunCancelledBy")
-  pairedExecutors     Executor[]           @relation("ExecutorPairingOwner")
-  executorPrivateAssignments ExecutorPrivateAssignment[] @relation("ExecutorPrivateAssignmentUser")
-  reviewedExecutorCapabilityRevisions ExecutorCapabilityRevision[] @relation("ExecutorCapabilityReviewer")
-  executorOperationGrantUpdates ExecutorAgentOperationGrant[] @relation("ExecutorAgentOperationGrantUpdater")
-  executorSessionControlLeases ExecutorSession[] @relation("ExecutorSessionControlLease")
-  executorContinuations ExecutorContinuation[] @relation("ExecutorContinuationActor")
-  executorAvailabilityCandidates ExecutorAvailabilityCandidate[] @relation("ExecutorAvailabilityCandidateActor")
-  avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
+  tokenVersion                        Int                             @default(0) @map("token_version")
+  preferences                         Json?
+  createdAt                           DateTime                        @default(now()) @map("created_at")
+  updatedAt                           DateTime                        @updatedAt @map("updated_at")
+  organizationMembers                 OrganizationMember[]
+  projectMembers                      ProjectMember[]
+  teamMembers                         TeamMember[]
+  channelMembers                      ChannelMember[]
+  pushSurfacePresences                UserPushSurfacePresence[]
+  knowledgeSpaceMembers               KnowledgeSpaceMember[]
+  callsStarted                        Call[]                          @relation("CallStarter")
+  callParticipants                    CallParticipant[]               @relation("CallParticipation")
+  messages                            Message[]
+  reactions                           MessageReaction[]
+  threadReadStates                    ThreadReadState[]
+  userAlerts                          UserAlert[]
+  disclosureGrants                    DisclosureGrant[]
+  scopeDisclosureGrants               ScopeDisclosureGrant[]
+  userAlertActivity                   UserAlert[]                     @relation("UserAlertActor")
+  messageThreadFollows                MessageThreadFollow[]
+  favorites                           Favorite[]
+  assignedTasks                       Task[]                          @relation("TaskAssignee")
+  ownedTasks                          Task[]                          @relation("TaskOwner")
+  createdTasks                        Task[]                          @relation("TaskCreatedBy")
+  mcpCatalogOwned                     McpCatalogEntry[]               @relation("McpCatalogOwner")
+  mcpCatalogReviewed                  McpCatalogEntry[]               @relation("McpCatalogReviewer")
+  statuses                            UserStatus[]
+  feedback                            Feedback[]
+  refreshTokens                       RefreshToken[]
+  uoaSessionCredentials               UoaSessionCredential[]
+  productAccountLinks                 ProductAccountLink[]
+  productTeamEnablements              ProductTeamEnablement[]
+  productIntegrationRuns              ProductIntegrationRun[]
+  cancelledRuns                       Run[]                           @relation("RunCancelledBy")
+  pairedExecutors                     Executor[]                      @relation("ExecutorPairingOwner")
+  executorPrivateAssignments          ExecutorPrivateAssignment[]     @relation("ExecutorPrivateAssignmentUser")
+  reviewedExecutorCapabilityRevisions ExecutorCapabilityRevision[]    @relation("ExecutorCapabilityReviewer")
+  executorOperationGrantUpdates       ExecutorAgentOperationGrant[]   @relation("ExecutorAgentOperationGrantUpdater")
+  executorSessionControlLeases        ExecutorSession[]               @relation("ExecutorSessionControlLease")
+  executorContinuations               ExecutorContinuation[]          @relation("ExecutorContinuationActor")
+  executorAvailabilityCandidates      ExecutorAvailabilityCandidate[] @relation("ExecutorAvailabilityCandidateActor")
+  avatarAttachment                    Attachment?                     @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
 }
@@ -900,46 +901,46 @@ model Organization {
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
   // by 20260530170100_reinstate_inference_org_fkeys.
-  inferenceProviders          InferenceProvider[]
-  inferenceModels             InferenceModel[]
-  inferenceCredentialBindings InferenceCredentialBinding[]
-  inferenceRoutingProfiles    InferenceRoutingProfile[]
-  mcpCatalogEntries           McpCatalogEntry[]
-  mcpOAuthClients             McpOAuthClient[]
-  boardColumns                BoardColumn[]
-  iterations                  Iteration[]
-  realtimeEvents              RealtimeEvent[]
-  userPresences               UserPresence[]
-  agents                      Agent[]
-  runCheckpoints              RunCheckpoint[]
-  runBasisScopes              RunBasisScope[]
-  messageBasisScopes          MessageBasisScope[]
-  disclosureGrants            DisclosureGrant[]
-  scopeDisclosureGrants       ScopeDisclosureGrant[]
-  agentMailboxMessages        AgentMailboxMessage[]
-  workflowTemplates           WorkflowTemplate[]
-  workflowInstallations       WorkflowInstallation[]
-  workflowStateEntrys         WorkflowStateEntry[]
-  workflowRuns                WorkflowRun[]
-  executionEnvironmentTemplates ExecutionEnvironmentTemplate[]
-  executionEnvironmentInstances ExecutionEnvironmentInstance[]
-  executionRunners            ExecutionRunner[]
-  executionUsageLedgers       ExecutionUsageLedger[]
-  toolRegistryEntrys          ToolRegistryEntry[]
-  mcpServerInstances          McpServerInstance[]
-  toolBundles                 ToolBundle[]
-  temporaryContextSessions    TemporaryContextSession[]
-  policyRules                 PolicyRule[]
-  auditLogs                   AuditLog[]
-  tokenLedgerEvents           TokenLedgerEvent[]
-  budgetAlerts                BudgetAlert[]
-  modelPricingProfiles        ModelPricingProfile[]
-  connectorUsageEvents        ConnectorUsageEvent[]
-  storageUsageEvents          StorageUsageEvent[]
-  knowledgeSpaceMembers       KnowledgeSpaceMember[]
-  knowledgePageLinks          KnowledgePageLink[]
-  pageLabels                  PageLabel[]
-  knowledgePageAnnotations    KnowledgePageAnnotation[]
+  inferenceProviders               InferenceProvider[]
+  inferenceModels                  InferenceModel[]
+  inferenceCredentialBindings      InferenceCredentialBinding[]
+  inferenceRoutingProfiles         InferenceRoutingProfile[]
+  mcpCatalogEntries                McpCatalogEntry[]
+  mcpOAuthClients                  McpOAuthClient[]
+  boardColumns                     BoardColumn[]
+  iterations                       Iteration[]
+  realtimeEvents                   RealtimeEvent[]
+  userPresences                    UserPresence[]
+  agents                           Agent[]
+  runCheckpoints                   RunCheckpoint[]
+  runBasisScopes                   RunBasisScope[]
+  messageBasisScopes               MessageBasisScope[]
+  disclosureGrants                 DisclosureGrant[]
+  scopeDisclosureGrants            ScopeDisclosureGrant[]
+  agentMailboxMessages             AgentMailboxMessage[]
+  workflowTemplates                WorkflowTemplate[]
+  workflowInstallations            WorkflowInstallation[]
+  workflowStateEntrys              WorkflowStateEntry[]
+  workflowRuns                     WorkflowRun[]
+  executionEnvironmentTemplates    ExecutionEnvironmentTemplate[]
+  executionEnvironmentInstances    ExecutionEnvironmentInstance[]
+  executionRunners                 ExecutionRunner[]
+  executionUsageLedgers            ExecutionUsageLedger[]
+  toolRegistryEntrys               ToolRegistryEntry[]
+  mcpServerInstances               McpServerInstance[]
+  toolBundles                      ToolBundle[]
+  temporaryContextSessions         TemporaryContextSession[]
+  policyRules                      PolicyRule[]
+  auditLogs                        AuditLog[]
+  tokenLedgerEvents                TokenLedgerEvent[]
+  budgetAlerts                     BudgetAlert[]
+  modelPricingProfiles             ModelPricingProfile[]
+  connectorUsageEvents             ConnectorUsageEvent[]
+  storageUsageEvents               StorageUsageEvent[]
+  knowledgeSpaceMembers            KnowledgeSpaceMember[]
+  knowledgePageLinks               KnowledgePageLink[]
+  pageLabels                       PageLabel[]
+  knowledgePageAnnotations         KnowledgePageAnnotation[]
   knowledgePageAnnotationReactions KnowledgePageAnnotationReaction[]
   thoughtReasonings                ThoughtReasoning[]
   attachments                      Attachment[]
@@ -950,7 +951,7 @@ model Organization {
   commsConnections                 CommsConnection[]
   commsOAuthStates                 CommsOAuthState[]
   commsEvents                      CommsEvent[]
-  executors                   Executor[]
+  executors                        Executor[]
 
   @@map("organizations")
 }
@@ -1113,7 +1114,7 @@ model Project {
   knowledgePageChunks      KnowledgePageChunk[]
   pushAttentionAlerts      UserAlert[]               @relation("PushAttentionAlertProject")
   userPushSurfacePresences UserPushSurfacePresence[]
-  executors         Executor[]
+  executors                Executor[]
 
   @@unique([id, organizationId])
   @@map("projects")
@@ -1224,24 +1225,24 @@ model Channel {
   visibility             ChannelVisibility         @default(public)
   dmKey                  String?                   @unique @map("dm_key")
   // sp-channels: channel lifecycle metadata + soft-archive
-  topic             String?
-  description       String?
-  archivedAt        DateTime?          @map("archived_at")
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
-  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  team              Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  members           ChannelMember[]
-  calls             Call[]
-  agentBindings     AgentBinding[]
-  scopeDisclosureGrants ScopeDisclosureGrant[]
-  triggerTargets    AgentTrigger[]     @relation("TriggerTargetChannel")
-  threads           Thread[]
-  plans             Plan[]
-  approvalRequests  ApprovalRequest[]
-  statusRules       UserStatusRule[]
-  userAlerts        UserAlert[]
+  topic                  String?
+  description            String?
+  archivedAt             DateTime?                 @map("archived_at")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+  organization           Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team                   Team                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  members                ChannelMember[]
+  calls                  Call[]
+  agentBindings          AgentBinding[]
+  scopeDisclosureGrants  ScopeDisclosureGrant[]
+  triggerTargets         AgentTrigger[]            @relation("TriggerTargetChannel")
+  threads                Thread[]
+  plans                  Plan[]
+  approvalRequests       ApprovalRequest[]
+  statusRules            UserStatusRule[]
+  userAlerts             UserAlert[]
   productIntegrationRuns ProductIntegrationRun[]
   pushSurfacePresences   UserPushSurfacePresence[]
 
@@ -1535,8 +1536,8 @@ model Message {
   productIntegrationRuns   ProductIntegrationRun[]
   triggeredRuns            Run[]                     @relation("RunTriggerMessage")
   runThreadPendingMessages RunThreadPendingMessage[]
-  basisScopes MessageBasisScope[]
-  disclosureGrants DisclosureGrant[]
+  basisScopes              MessageBasisScope[]
+  disclosureGrants         DisclosureGrant[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
@@ -1549,13 +1550,13 @@ model Message {
 /// anti-join instead of joining back through runs. Zero rows = unrestricted,
 /// which is the overwhelming majority. Source of truth is `RunBasisScope`.
 model MessageBasisScope {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  messageId      String   @map("message_id") @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId      String       @map("message_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
   /// ThoughtAudienceType literal: user | channel | team | project | organization
-  scopeType      String   @map("scope_type")
-  scopeId        String   @map("scope_id") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at")
+  scopeType      String       @map("scope_type")
+  scopeId        String       @map("scope_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
   message        Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1569,16 +1570,16 @@ model MessageBasisScope {
 /// Evaluated at read time against the granter's live membership, so a grant goes
 /// inert when its granter loses access and revocation needs no propagation.
 model DisclosureGrant {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId  String    @map("organization_id") @db.Uuid
-  messageId       String    @map("message_id") @db.Uuid
-  grantedByUserId String    @map("granted_by_user_id") @db.Uuid
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  messageId       String       @map("message_id") @db.Uuid
+  grantedByUserId String       @map("granted_by_user_id") @db.Uuid
   /// 'user' | 'channel'
-  audienceKind    String    @map("audience_kind")
-  audienceId      String    @map("audience_id") @db.Uuid
-  expiresAt       DateTime? @map("expires_at")
-  revokedAt       DateTime? @map("revoked_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  audienceKind    String       @map("audience_kind")
+  audienceId      String       @map("audience_id") @db.Uuid
+  expiresAt       DateTime?    @map("expires_at")
+  revokedAt       DateTime?    @map("revoked_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
   message         Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   grantedBy       User         @relation(fields: [grantedByUserId], references: [id], onDelete: Cascade)
@@ -1595,16 +1596,16 @@ model DisclosureGrant {
 /// into D. `expiresAt` is chosen by the granter from a tier-capped duration
 /// menu; null means "until revoked", which the most private tiers cannot select.
 model ScopeDisclosureGrant {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId       String    @map("organization_id") @db.Uuid
-  sourceScopeType      String    @map("source_scope_type")
-  sourceScopeId        String    @map("source_scope_id") @db.Uuid
-  destinationChannelId String    @map("destination_channel_id") @db.Uuid
-  agentId              String    @map("agent_id") @db.Uuid
-  grantedByUserId      String    @map("granted_by_user_id") @db.Uuid
-  expiresAt            DateTime? @map("expires_at")
-  revokedAt            DateTime? @map("revoked_at")
-  createdAt            DateTime  @default(now()) @map("created_at")
+  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String       @map("organization_id") @db.Uuid
+  sourceScopeType      String       @map("source_scope_type")
+  sourceScopeId        String       @map("source_scope_id") @db.Uuid
+  destinationChannelId String       @map("destination_channel_id") @db.Uuid
+  agentId              String       @map("agent_id") @db.Uuid
+  grantedByUserId      String       @map("granted_by_user_id") @db.Uuid
+  expiresAt            DateTime?    @map("expires_at")
+  revokedAt            DateTime?    @map("revoked_at")
+  createdAt            DateTime     @default(now()) @map("created_at")
   organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   destinationChannel   Channel      @relation(fields: [destinationChannelId], references: [id], onDelete: Cascade)
   agent                Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
@@ -1623,12 +1624,12 @@ model ScopeDisclosureGrant {
 /// `RunCheckpoint.runId` is unique, so checkpoints inherit it without a table of
 /// their own.
 model RunBasisScope {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  runId          String   @map("run_id") @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  scopeType      String   @map("scope_type")
-  scopeId        String   @map("scope_id") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at")
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId          String       @map("run_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  scopeType      String       @map("scope_type")
+  scopeId        String       @map("scope_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
   run            Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1683,61 +1684,61 @@ model Favorite {
 }
 
 model Agent {
-  id                            String                         @id @default(uuid()) @db.Uuid
-  name                          String
-  role                          String                         @default("assistant")
-  status                        AgentStatus                    @default(idle)
-  agentKind                     AgentKind                      @default(shared) @map("agent_kind")
-  systemManaged                 Boolean                        @default(false) @map("system_managed")
-  surfacePolicy                 AgentSurfacePolicy             @default(shared) @map("surface_policy")
-  delegationMode                AgentDelegationMode            @default(none) @map("delegation_mode")
-  executionMode                 AgentExecutionMode             @default(inference) @map("execution_mode")
-  effort                        AgentEffort                    @default(medium)
-  systemPrompt                  String?                        @map("system_prompt")
-  toolPolicy                    Json?                          @map("tool_policy")
+  id                             String                          @id @default(uuid()) @db.Uuid
+  name                           String
+  role                           String                          @default("assistant")
+  status                         AgentStatus                     @default(idle)
+  agentKind                      AgentKind                       @default(shared) @map("agent_kind")
+  systemManaged                  Boolean                         @default(false) @map("system_managed")
+  surfacePolicy                  AgentSurfacePolicy              @default(shared) @map("surface_policy")
+  delegationMode                 AgentDelegationMode             @default(none) @map("delegation_mode")
+  executionMode                  AgentExecutionMode              @default(inference) @map("execution_mode")
+  effort                         AgentEffort                     @default(medium)
+  systemPrompt                   String?                         @map("system_prompt")
+  toolPolicy                     Json?                           @map("tool_policy")
   // Optional explicit per-run caps ({ maxTokens?, maxToolCalls?, maxIterations?,
   // maxWallclockMs?, maxCostCents? }). Absent key = that dimension is governed
   // only by the deployment backstop. `effort` no longer implies spend caps —
   // see docs/plans/2026-08-05-run-budgets-context-and-research-routing.md.
-  runLimits                     Json?                          @map("run_limits")
-  provider                      String?                        @map("provider")
-  model                         String?                        @map("model")
-  routingProfileId              String?                        @map("routing_profile_id") @db.Uuid
-  avatarAttachmentId            String?                        @map("avatar_attachment_id") @db.Uuid
-  parentAgentId                 String?                        @map("parent_agent_id") @db.Uuid
+  runLimits                      Json?                           @map("run_limits")
+  provider                       String?                         @map("provider")
+  model                          String?                         @map("model")
+  routingProfileId               String?                         @map("routing_profile_id") @db.Uuid
+  avatarAttachmentId             String?                         @map("avatar_attachment_id") @db.Uuid
+  parentAgentId                  String?                         @map("parent_agent_id") @db.Uuid
   /// Intentionally nullable and without an Organization FK: system / personal-
   /// assistant agents may be global (no owning org). Do not "fix" to required.
-  organizationId                String?                        @map("organization_id") @db.Uuid
-  projectId                     String?                        @map("project_id") @db.Uuid
-  teamId                        String?                        @map("team_id") @db.Uuid
-  createdAt                     DateTime                       @default(now()) @map("created_at")
-  updatedAt                     DateTime                       @updatedAt @map("updated_at")
-  parentAgent                   Agent?                         @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
-  childAgents                   Agent[]                        @relation("AgentHierarchy")
-  avatarAttachment              Attachment?                    @relation("AgentAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
-  bindings                      AgentBinding[]
-  scopeDisclosureGrants         ScopeDisclosureGrant[]
-  routingProfile                InferenceRoutingProfile?       @relation(fields: [routingProfileId], references: [id], onDelete: SetNull)
-  messages                      Message[]
-  reactions                     MessageReaction[]
-  runs                          Run[]
-  triggers                      AgentTrigger[]
-  tasks                         Task[]                         @relation("AgentRunTasks")
-  assignedTasks                 Task[]                         @relation("AgentAssignedTasks")
-  approvalRequests              ApprovalRequest[]
-  plans                         Plan[]
-  resourceLocks                 ResourceLock[]
-  toolGrants                    ToolGrant[]
-  statusRules                   UserStatusRule[]
-  workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowStepAssignedAgent")
-  executionEnvironmentInstances ExecutionEnvironmentInstance[]
-  executorPrivateAssignments     ExecutorPrivateAssignment[] @relation("ExecutorPrivateAssignmentAgent")
+  organizationId                 String?                         @map("organization_id") @db.Uuid
+  projectId                      String?                         @map("project_id") @db.Uuid
+  teamId                         String?                         @map("team_id") @db.Uuid
+  createdAt                      DateTime                        @default(now()) @map("created_at")
+  updatedAt                      DateTime                        @updatedAt @map("updated_at")
+  parentAgent                    Agent?                          @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
+  childAgents                    Agent[]                         @relation("AgentHierarchy")
+  avatarAttachment               Attachment?                     @relation("AgentAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
+  bindings                       AgentBinding[]
+  scopeDisclosureGrants          ScopeDisclosureGrant[]
+  routingProfile                 InferenceRoutingProfile?        @relation(fields: [routingProfileId], references: [id], onDelete: SetNull)
+  messages                       Message[]
+  reactions                      MessageReaction[]
+  runs                           Run[]
+  triggers                       AgentTrigger[]
+  tasks                          Task[]                          @relation("AgentRunTasks")
+  assignedTasks                  Task[]                          @relation("AgentAssignedTasks")
+  approvalRequests               ApprovalRequest[]
+  plans                          Plan[]
+  resourceLocks                  ResourceLock[]
+  toolGrants                     ToolGrant[]
+  statusRules                    UserStatusRule[]
+  workflowStepRuns               WorkflowStepRun[]               @relation("WorkflowStepAssignedAgent")
+  executionEnvironmentInstances  ExecutionEnvironmentInstance[]
+  executorPrivateAssignments     ExecutorPrivateAssignment[]     @relation("ExecutorPrivateAssignmentAgent")
   executorOperationGrants        ExecutorAgentOperationGrant[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
-  knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
-  userAlertActivity             UserAlert[]
-  runThreadPendingMessages      RunThreadPendingMessage[]
-  organization                  Organization?                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
+  userAlertActivity              UserAlert[]
+  runThreadPendingMessages       RunThreadPendingMessage[]
+  organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([organizationId, projectId])
@@ -1864,69 +1865,69 @@ model AgentBinding {
 }
 
 model Run {
-  id                            String                         @id @default(uuid()) @db.Uuid
-  agentId                       String                         @map("agent_id") @db.Uuid
-  threadId                      String                         @map("thread_id") @db.Uuid
-  triggerId                     String?                        @map("trigger_id") @db.Uuid
-  triggerDeliveryId             String?                        @unique @map("trigger_delivery_id") @db.Uuid
-  status                        RunStatus                      @default(pending)
-  startedAt                     DateTime?                      @map("started_at")
-  finishedAt                    DateTime?                      @map("finished_at")
-  createdAt                     DateTime                       @default(now()) @map("created_at")
+  id                             String                          @id @default(uuid()) @db.Uuid
+  agentId                        String                          @map("agent_id") @db.Uuid
+  threadId                       String                          @map("thread_id") @db.Uuid
+  triggerId                      String?                         @map("trigger_id") @db.Uuid
+  triggerDeliveryId              String?                         @unique @map("trigger_delivery_id") @db.Uuid
+  status                         RunStatus                       @default(pending)
+  startedAt                      DateTime?                       @map("started_at")
+  finishedAt                     DateTime?                       @map("finished_at")
+  createdAt                      DateTime                        @default(now()) @map("created_at")
   // Cooperative-cancel signal. Set by POST /api/runs/:id/cancel; the agentic
   // loop polls it between iterations and between tool-call batches and exits via
   // the classified-stop machinery with reason `cancelled`. Also recorded on a
   // queued run so its (never-executed) job is skipped by the idempotency guard.
-  cancelRequestedAt             DateTime?                      @map("cancel_requested_at")
+  cancelRequestedAt              DateTime?                       @map("cancel_requested_at")
   // Who asked for the cancellation. The worker reads this to attribute the
   // terminal `run.cancelled` TaskEvent; the queued-cancel path records it in the
   // same statement that flips the run to `cancelled`.
-  cancelRequestedByUserId       String?                        @map("cancel_requested_by_user_id") @db.Uuid
+  cancelRequestedByUserId        String?                         @map("cancel_requested_by_user_id") @db.Uuid
   // The user message that started this run. Populated by the chat orchestrator
   // and integration handoffs. Enables the cancel handoff-guard (reads the
   // message's `integrationLaunch` metadata) and restart (replays the same input).
-  triggerMessageId              String?                        @map("trigger_message_id") @db.Uuid
+  triggerMessageId               String?                         @map("trigger_message_id") @db.Uuid
   // Set on a run created by POST /api/runs/:id/restart, pointing at the original
   // terminal run it re-runs.
-  restartOfRunId                String?                        @map("restart_of_run_id") @db.Uuid
+  restartOfRunId                 String?                         @map("restart_of_run_id") @db.Uuid
   // Set on a run created by continue (user tap, natural-language resume, or the
   // worker's non-interactive auto-continue), pointing at the run whose
   // RunCheckpoint seeded it.
-  continuationOfRunId           String?                        @map("continuation_of_run_id") @db.Uuid
+  continuationOfRunId            String?                         @map("continuation_of_run_id") @db.Uuid
   // Pre-run reply-placement judgement (the orchestrator's model decision, or a
   // structural 'thread' for @mentions and PA DMs). Null ≡ historical default.
   // This is the *input* to placement resolution, not its outcome.
-  replyPlacement                RunReplyPlacement?             @map("reply_placement")
+  replyPlacement                 RunReplyPlacement?              @map("reply_placement")
   // The *resolved* reply anchor, persisted by the worker right after
   // `resolveReplyRootMessageId` runs (so the structural carve-outs — DeepWater
   // handoff, external agents — are already applied). Plain uuid with no
   // relation, mirroring `Message.replyParticipantIds`: readers (the thinking
   // bootstrap endpoint) never re-derive placement.
-  replyRootMessageId            String?                        @map("reply_root_message_id") @db.Uuid
-  agent                         Agent                          @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  thread                        Thread                         @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  trigger                       AgentTrigger?                  @relation(fields: [triggerId], references: [id], onDelete: SetNull)
-  triggerDelivery               AgentTriggerDelivery?          @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
-  cancelRequestedBy             User?                          @relation("RunCancelledBy", fields: [cancelRequestedByUserId], references: [id], onDelete: SetNull)
-  triggerMessage                Message?                       @relation("RunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: SetNull)
-  restartOfRun                  Run?                           @relation("RunRestart", fields: [restartOfRunId], references: [id], onDelete: SetNull)
-  restarts                      Run[]                          @relation("RunRestart")
-  continuationOfRun             Run?                           @relation("RunContinuation", fields: [continuationOfRunId], references: [id], onDelete: SetNull)
-  continuations                 Run[]                          @relation("RunContinuation")
-  checkpoint                    RunCheckpoint?
-  tasks                         Task[]
-  toolCalls                     ToolCall[]
-  plans                         Plan[]
-  approvalRequests              ApprovalRequest[]
-  resourceLocks                 ResourceLock[]
-  workflowRuns                  WorkflowRun[]                  @relation("WorkflowParentRun")
-  workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowAgentRun")
-  executionEnvironmentInstances ExecutionEnvironmentInstance[]
+  replyRootMessageId             String?                         @map("reply_root_message_id") @db.Uuid
+  agent                          Agent                           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread                         Thread                          @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  trigger                        AgentTrigger?                   @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  triggerDelivery                AgentTriggerDelivery?           @relation("RunTriggerDelivery", fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+  cancelRequestedBy              User?                           @relation("RunCancelledBy", fields: [cancelRequestedByUserId], references: [id], onDelete: SetNull)
+  triggerMessage                 Message?                        @relation("RunTriggerMessage", fields: [triggerMessageId], references: [id], onDelete: SetNull)
+  restartOfRun                   Run?                            @relation("RunRestart", fields: [restartOfRunId], references: [id], onDelete: SetNull)
+  restarts                       Run[]                           @relation("RunRestart")
+  continuationOfRun              Run?                            @relation("RunContinuation", fields: [continuationOfRunId], references: [id], onDelete: SetNull)
+  continuations                  Run[]                           @relation("RunContinuation")
+  checkpoint                     RunCheckpoint?
+  tasks                          Task[]
+  toolCalls                      ToolCall[]
+  plans                          Plan[]
+  approvalRequests               ApprovalRequest[]
+  resourceLocks                  ResourceLock[]
+  workflowRuns                   WorkflowRun[]                   @relation("WorkflowParentRun")
+  workflowStepRuns               WorkflowStepRun[]               @relation("WorkflowAgentRun")
+  executionEnvironmentInstances  ExecutionEnvironmentInstance[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
-  thinkingChunks                RunThinkingChunk[]
-  basisScopes                   RunBasisScope[]
-  executorSessions              ExecutorSession[]
-  executorBindings              ExecutorBinding[]
+  thinkingChunks                 RunThinkingChunk[]
+  basisScopes                    RunBasisScope[]
+  executorSessions               ExecutorSession[]
+  executorBindings               ExecutorBinding[]
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -2227,6 +2228,8 @@ model WorkflowInstallation {
   active                  Boolean                    @default(true)
   resolvedBindings        Json                       @default("{}") @map("resolved_bindings")
   config                  Json                       @default("{}")
+  // W26: overlap policy — { limit, onOverlap: skip|queue|parallel }.
+  concurrency             Json                       @default("{}")
   createdByActorType      String                     @map("created_by_actor_type")
   createdByActorId        String                     @map("created_by_actor_id")
   createdAt               DateTime                   @default(now()) @map("created_at")
@@ -2253,6 +2256,11 @@ model WorkflowStateEntry {
   value                  Json
   valueHash              String               @map("value_hash")
   version                Int                  @default(1)
+  // W18: the writer of the current version. A repeat write from the same
+  // (stepRun, attempt) with the same value hash is a no-op success, so a
+  // crash after a successful write cannot wedge the retry on a stale
+  // expectedVersion.
+  writerAttempt          Int?                 @map("writer_attempt")
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
   workflowInstallation   WorkflowInstallation @relation("WorkflowInstallationStateEntries", fields: [workflowInstallationId], references: [id], onDelete: Cascade)
@@ -2287,6 +2295,9 @@ model WorkflowRun {
   errorMessage                  String?                        @map("error_message")
   startedByActorType            String                         @map("started_by_actor_type")
   startedByActorId              String                         @map("started_by_actor_id")
+  // W18: executor dispatch counter, so a retried step's state_put attempt is
+  // distinguishable from the crashed one it repeats.
+  attempt                       Int                            @default(1)
   startedAt                     DateTime?                      @map("started_at")
   finishedAt                    DateTime?                      @map("finished_at")
   createdAt                     DateTime                       @default(now()) @map("created_at")
@@ -2797,20 +2808,20 @@ model TaskEvent {
 }
 
 model ToolCall {
-  id            String    @id @default(uuid()) @db.Uuid
-  runId         String    @map("run_id") @db.Uuid
-  agentId       String    @map("agent_id") @db.Uuid
-  toolName      String    @map("tool_name")
-  inputSummary  String    @map("input_summary")
-  outputPreview String?   @map("output_preview")
-  success       Boolean?
-  startedAt     DateTime  @map("started_at")
-  endedAt       DateTime? @map("ended_at")
-  durationMs    Int?      @map("duration_ms")
-  executorBindingId String? @map("executor_binding_id") @db.Uuid
-  run           Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
-  executorBinding ExecutorBinding? @relation(fields: [executorBindingId], references: [id], onDelete: SetNull)
-  executorCommand ExecutorCommand?
+  id                String           @id @default(uuid()) @db.Uuid
+  runId             String           @map("run_id") @db.Uuid
+  agentId           String           @map("agent_id") @db.Uuid
+  toolName          String           @map("tool_name")
+  inputSummary      String           @map("input_summary")
+  outputPreview     String?          @map("output_preview")
+  success           Boolean?
+  startedAt         DateTime         @map("started_at")
+  endedAt           DateTime?        @map("ended_at")
+  durationMs        Int?             @map("duration_ms")
+  executorBindingId String?          @map("executor_binding_id") @db.Uuid
+  run               Run              @relation(fields: [runId], references: [id], onDelete: Cascade)
+  executorBinding   ExecutorBinding? @relation(fields: [executorBindingId], references: [id], onDelete: SetNull)
+  executorCommand   ExecutorCommand?
 
   // The only reader (agents.ts buildToolCallTimeline) always filters by runId
   // (plus agentId) and orders by startedAt — served by [runId, startedAt]. The
@@ -2824,18 +2835,18 @@ model ToolCall {
 /// This model documents the raw-SQL queue table so Prisma Migrate stays in sync
 /// with the development database. Queue polling and dequeue remain SQL-backed.
 model QueueJob {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  topic          String
-  payload        Json
-  status         String    @default("pending")
-  idempotencyKey String?   @map("idempotency_key")
-  attempt        Int       @default(0)
-  maxAttempts    Int       @default(3) @map("max_attempts")
-  lockedUntil    DateTime? @map("locked_until") @db.Timestamptz(6)
-  enqueuedAt     DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz(6)
-  startedAt      DateTime? @map("started_at") @db.Timestamptz(6)
-  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
-  errorMessage   String?   @map("error_message")
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  topic           String
+  payload         Json
+  status          String           @default("pending")
+  idempotencyKey  String?          @map("idempotency_key")
+  attempt         Int              @default(0)
+  maxAttempts     Int              @default(3) @map("max_attempts")
+  lockedUntil     DateTime?        @map("locked_until") @db.Timestamptz(6)
+  enqueuedAt      DateTime         @default(now()) @map("enqueued_at") @db.Timestamptz(6)
+  startedAt       DateTime?        @map("started_at") @db.Timestamptz(6)
+  completedAt     DateTime?        @map("completed_at") @db.Timestamptz(6)
+  errorMessage    String?          @map("error_message")
   executorCommand ExecutorCommand?
 
   @@unique([idempotencyKey])
@@ -2852,36 +2863,36 @@ model QueueJob {
 /// A paired user-controlled execution endpoint. It is intentionally separate
 /// from `McpServerInstance` and hosted `ExecutionEnvironment*` resources.
 model Executor {
-  id                          String                         @id @default(uuid()) @db.Uuid
-  organizationId              String                         @map("organization_id") @db.Uuid
-  projectId                   String?                        @map("project_id") @db.Uuid
-  scopeKind                   ExecutorScopeKind              @map("scope_kind")
-  pairingOwnerUserId          String                         @map("pairing_owner_user_id") @db.Uuid
-  label                       String
-  profiles                    ExecutorProfile[]              @default([])
-  platformFacts               Json                           @default("{}") @map("platform_facts")
-  machinePublicKey            String?                        @map("machine_public_key")
-  machineKeyFingerprint       String?                        @unique @map("machine_key_fingerprint")
-  status                      ExecutorStatus                 @default(pending_pairing)
-  authorizationRevision       Int                            @default(1) @map("authorization_revision")
-  activeConnectionEpoch       BigInt                         @default(0) @map("active_connection_epoch")
-  nextBindingFence            BigInt                         @default(0) @map("next_binding_fence")
-  lastSeenAt                  DateTime?                      @map("last_seen_at")
-  statusDetail                String?                        @map("status_detail")
-  createdAt                   DateTime                       @default(now()) @map("created_at")
-  updatedAt                   DateTime                       @updatedAt @map("updated_at")
-  organization                Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project                     Project?                       @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  pairingOwner                User                           @relation("ExecutorPairingOwner", fields: [pairingOwnerUserId], references: [id], onDelete: Restrict)
-  enrollments                 ExecutorEnrollment[]
-  capabilityRevisions         ExecutorCapabilityRevision[]
-  privateAssignments          ExecutorPrivateAssignment[]
-  operationGrants             ExecutorAgentOperationGrant[]
-  sessions                    ExecutorSession[]
-  bindings                    ExecutorBinding[]
-  continuations               ExecutorContinuation[]
-  daemonChallenges            ExecutorDaemonChallenge[]
-  availabilityCandidates      ExecutorAvailabilityCandidate[]
+  id                     String                          @id @default(uuid()) @db.Uuid
+  organizationId         String                          @map("organization_id") @db.Uuid
+  projectId              String?                         @map("project_id") @db.Uuid
+  scopeKind              ExecutorScopeKind               @map("scope_kind")
+  pairingOwnerUserId     String                          @map("pairing_owner_user_id") @db.Uuid
+  label                  String
+  profiles               ExecutorProfile[]               @default([])
+  platformFacts          Json                            @default("{}") @map("platform_facts")
+  machinePublicKey       String?                         @map("machine_public_key")
+  machineKeyFingerprint  String?                         @unique @map("machine_key_fingerprint")
+  status                 ExecutorStatus                  @default(pending_pairing)
+  authorizationRevision  Int                             @default(1) @map("authorization_revision")
+  activeConnectionEpoch  BigInt                          @default(0) @map("active_connection_epoch")
+  nextBindingFence       BigInt                          @default(0) @map("next_binding_fence")
+  lastSeenAt             DateTime?                       @map("last_seen_at")
+  statusDetail           String?                         @map("status_detail")
+  createdAt              DateTime                        @default(now()) @map("created_at")
+  updatedAt              DateTime                        @updatedAt @map("updated_at")
+  organization           Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                Project?                        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  pairingOwner           User                            @relation("ExecutorPairingOwner", fields: [pairingOwnerUserId], references: [id], onDelete: Restrict)
+  enrollments            ExecutorEnrollment[]
+  capabilityRevisions    ExecutorCapabilityRevision[]
+  privateAssignments     ExecutorPrivateAssignment[]
+  operationGrants        ExecutorAgentOperationGrant[]
+  sessions               ExecutorSession[]
+  bindings               ExecutorBinding[]
+  continuations          ExecutorContinuation[]
+  daemonChallenges       ExecutorDaemonChallenge[]
+  availabilityCandidates ExecutorAvailabilityCandidate[]
 
   @@index([organizationId, scopeKind, status])
   @@index([projectId])
@@ -2890,35 +2901,35 @@ model Executor {
 }
 
 model ExecutorEnrollment {
-  id                    String   @id @default(uuid()) @db.Uuid
-  executorId            String   @map("executor_id") @db.Uuid
-  challengeVerifier     String   @unique @map("challenge_verifier")
-  pendingPublicKey      String?  @map("pending_public_key")
-  pendingFingerprint    String?  @map("pending_fingerprint")
-  descriptorDigest      String?  @map("descriptor_digest")
-  expiresAt             DateTime @map("expires_at")
-  consumedAt            DateTime? @map("consumed_at")
-  createdAt             DateTime @default(now()) @map("created_at")
-  executor              Executor @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  id                 String    @id @default(uuid()) @db.Uuid
+  executorId         String    @map("executor_id") @db.Uuid
+  challengeVerifier  String    @unique @map("challenge_verifier")
+  pendingPublicKey   String?   @map("pending_public_key")
+  pendingFingerprint String?   @map("pending_fingerprint")
+  descriptorDigest   String?   @map("descriptor_digest")
+  expiresAt          DateTime  @map("expires_at")
+  consumedAt         DateTime? @map("consumed_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  executor           Executor  @relation(fields: [executorId], references: [id], onDelete: Cascade)
 
   @@index([executorId, expiresAt])
   @@map("executor_enrollments")
 }
 
 model ExecutorCapabilityRevision {
-  id                String                         @id @default(uuid()) @db.Uuid
-  executorId        String                         @map("executor_id") @db.Uuid
-  revision          Int
-  descriptor        Json
-  localPolicyDigest String                         @map("local_policy_digest")
-  signature         String
-  reviewStatus      ExecutorCapabilityReviewStatus @default(pending_review) @map("review_status")
-  reviewedByUserId  String?                        @map("reviewed_by_user_id") @db.Uuid
-  reviewedAt        DateTime?                      @map("reviewed_at")
-  createdAt         DateTime                       @default(now()) @map("created_at")
-  executor          Executor                       @relation(fields: [executorId], references: [id], onDelete: Cascade)
-  reviewedBy        User?                          @relation("ExecutorCapabilityReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  bindings          ExecutorBinding[]
+  id                     String                          @id @default(uuid()) @db.Uuid
+  executorId             String                          @map("executor_id") @db.Uuid
+  revision               Int
+  descriptor             Json
+  localPolicyDigest      String                          @map("local_policy_digest")
+  signature              String
+  reviewStatus           ExecutorCapabilityReviewStatus  @default(pending_review) @map("review_status")
+  reviewedByUserId       String?                         @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt             DateTime?                       @map("reviewed_at")
+  createdAt              DateTime                        @default(now()) @map("created_at")
+  executor               Executor                        @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  reviewedBy             User?                           @relation("ExecutorCapabilityReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  bindings               ExecutorBinding[]
   availabilityCandidates ExecutorAvailabilityCandidate[]
 
   @@unique([executorId, revision])
@@ -2927,17 +2938,17 @@ model ExecutorCapabilityRevision {
 }
 
 model ExecutorPrivateAssignment {
-  id            String                                      @id @default(uuid()) @db.Uuid
-  executorId    String                                      @map("executor_id") @db.Uuid
-  principalKind ExecutorPrivateAssignmentPrincipalKind      @map("principal_kind")
-  userId        String?                                     @map("user_id") @db.Uuid
-  agentId       String?                                     @map("agent_id") @db.Uuid
+  id            String                                 @id @default(uuid()) @db.Uuid
+  executorId    String                                 @map("executor_id") @db.Uuid
+  principalKind ExecutorPrivateAssignmentPrincipalKind @map("principal_kind")
+  userId        String?                                @map("user_id") @db.Uuid
+  agentId       String?                                @map("agent_id") @db.Uuid
   role          ExecutorPrivateAssignmentRole
-  createdAt     DateTime                                    @default(now()) @map("created_at")
-  updatedAt     DateTime                                    @updatedAt @map("updated_at")
-  executor      Executor                                    @relation(fields: [executorId], references: [id], onDelete: Cascade)
-  user          User?                                       @relation("ExecutorPrivateAssignmentUser", fields: [userId], references: [id], onDelete: Restrict)
-  agent         Agent?                                      @relation("ExecutorPrivateAssignmentAgent", fields: [agentId], references: [id], onDelete: Restrict)
+  createdAt     DateTime                               @default(now()) @map("created_at")
+  updatedAt     DateTime                               @updatedAt @map("updated_at")
+  executor      Executor                               @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  user          User?                                  @relation("ExecutorPrivateAssignmentUser", fields: [userId], references: [id], onDelete: Restrict)
+  agent         Agent?                                 @relation("ExecutorPrivateAssignmentAgent", fields: [agentId], references: [id], onDelete: Restrict)
 
   @@unique([executorId, userId])
   @@unique([executorId, agentId])
@@ -2947,18 +2958,18 @@ model ExecutorPrivateAssignment {
 }
 
 model ExecutorAgentOperationGrant {
-  id                    String                            @id @default(uuid()) @db.Uuid
-  executorId            String                            @map("executor_id") @db.Uuid
-  agentId               String                            @map("agent_id") @db.Uuid
-  operationKey          String                            @map("operation_key")
+  id                    String                           @id @default(uuid()) @db.Uuid
+  executorId            String                           @map("executor_id") @db.Uuid
+  agentId               String                           @map("agent_id") @db.Uuid
+  operationKey          String                           @map("operation_key")
   state                 ExecutorAgentOperationGrantState
-  authorizationRevision Int                               @map("authorization_revision")
-  updatedByUserId       String                            @map("updated_by_user_id") @db.Uuid
-  createdAt             DateTime                          @default(now()) @map("created_at")
-  updatedAt             DateTime                          @updatedAt @map("updated_at")
-  executor              Executor                          @relation(fields: [executorId], references: [id], onDelete: Cascade)
-  agent                 Agent                             @relation(fields: [agentId], references: [id], onDelete: Restrict)
-  updatedBy             User                              @relation("ExecutorAgentOperationGrantUpdater", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+  authorizationRevision Int                              @map("authorization_revision")
+  updatedByUserId       String                           @map("updated_by_user_id") @db.Uuid
+  createdAt             DateTime                         @default(now()) @map("created_at")
+  updatedAt             DateTime                         @updatedAt @map("updated_at")
+  executor              Executor                         @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  agent                 Agent                            @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  updatedBy             User                             @relation("ExecutorAgentOperationGrantUpdater", fields: [updatedByUserId], references: [id], onDelete: Restrict)
 
   @@unique([executorId, agentId, operationKey])
   @@index([agentId, state])
@@ -2966,20 +2977,20 @@ model ExecutorAgentOperationGrant {
 }
 
 model ExecutorSession {
-  id                      String                @id @default(uuid()) @db.Uuid
-  executorId              String                @map("executor_id") @db.Uuid
-  runId                   String?               @map("run_id") @db.Uuid
-  profile                 ExecutorProfile
-  status                  ExecutorSessionStatus @default(pending)
-  controlLeaseUserId      String?               @map("control_lease_user_id") @db.Uuid
-  controlLeaseExpiresAt   DateTime?             @map("control_lease_expires_at")
-  terminalReceipt         Json?                 @map("terminal_receipt")
-  createdAt               DateTime              @default(now()) @map("created_at")
-  updatedAt               DateTime              @updatedAt @map("updated_at")
-  executor                Executor              @relation(fields: [executorId], references: [id], onDelete: Cascade)
-  run                     Run?                  @relation(fields: [runId], references: [id], onDelete: SetNull)
-  controlLeaseUser        User?                 @relation("ExecutorSessionControlLease", fields: [controlLeaseUserId], references: [id], onDelete: SetNull)
-  bindings                ExecutorBinding[]
+  id                    String                @id @default(uuid()) @db.Uuid
+  executorId            String                @map("executor_id") @db.Uuid
+  runId                 String?               @map("run_id") @db.Uuid
+  profile               ExecutorProfile
+  status                ExecutorSessionStatus @default(pending)
+  controlLeaseUserId    String?               @map("control_lease_user_id") @db.Uuid
+  controlLeaseExpiresAt DateTime?             @map("control_lease_expires_at")
+  terminalReceipt       Json?                 @map("terminal_receipt")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  executor              Executor              @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  run                   Run?                  @relation(fields: [runId], references: [id], onDelete: SetNull)
+  controlLeaseUser      User?                 @relation("ExecutorSessionControlLease", fields: [controlLeaseUserId], references: [id], onDelete: SetNull)
+  bindings              ExecutorBinding[]
 
   @@index([executorId, status])
   @@index([runId])
@@ -3041,47 +3052,47 @@ model ExecutorAvailabilityCandidate {
 }
 
 model ExecutorCommand {
-  id                       String                      @id @default(uuid()) @db.Uuid
-  bindingId                String                      @map("binding_id") @db.Uuid
-  queueJobId               String                      @unique @map("queue_job_id") @db.Uuid
-  toolCallId               String                      @unique @map("tool_call_id") @db.Uuid
-  state                    ExecutorCommandReceiptState @default(leased)
-  argumentDigest           String                      @map("argument_digest")
-  deliveryPayloadCiphertext String?                    @map("delivery_payload_ciphertext")
-  payloadExpiresAt         DateTime?                   @map("payload_expires_at")
-  resultDigest             String?                     @map("result_digest")
-  resultCiphertext         String?                     @map("result_ciphertext")
-  acceptedAt               DateTime?                   @map("accepted_at")
-  startedAt                DateTime?                   @map("started_at")
-  acknowledgedAt           DateTime?                   @map("acknowledged_at")
-  createdAt                DateTime                    @default(now()) @map("created_at")
-  updatedAt                DateTime                    @updatedAt @map("updated_at")
-  binding                  ExecutorBinding             @relation(fields: [bindingId], references: [id], onDelete: Restrict)
-  queueJob                 QueueJob                    @relation(fields: [queueJobId], references: [id], onDelete: Restrict)
-  toolCall                 ToolCall                    @relation(fields: [toolCallId], references: [id], onDelete: Restrict)
+  id                        String                      @id @default(uuid()) @db.Uuid
+  bindingId                 String                      @map("binding_id") @db.Uuid
+  queueJobId                String                      @unique @map("queue_job_id") @db.Uuid
+  toolCallId                String                      @unique @map("tool_call_id") @db.Uuid
+  state                     ExecutorCommandReceiptState @default(leased)
+  argumentDigest            String                      @map("argument_digest")
+  deliveryPayloadCiphertext String?                     @map("delivery_payload_ciphertext")
+  payloadExpiresAt          DateTime?                   @map("payload_expires_at")
+  resultDigest              String?                     @map("result_digest")
+  resultCiphertext          String?                     @map("result_ciphertext")
+  acceptedAt                DateTime?                   @map("accepted_at")
+  startedAt                 DateTime?                   @map("started_at")
+  acknowledgedAt            DateTime?                   @map("acknowledged_at")
+  createdAt                 DateTime                    @default(now()) @map("created_at")
+  updatedAt                 DateTime                    @updatedAt @map("updated_at")
+  binding                   ExecutorBinding             @relation(fields: [bindingId], references: [id], onDelete: Restrict)
+  queueJob                  QueueJob                    @relation(fields: [queueJobId], references: [id], onDelete: Restrict)
+  toolCall                  ToolCall                    @relation(fields: [toolCallId], references: [id], onDelete: Restrict)
 
   @@index([bindingId, state])
   @@map("executor_commands")
 }
 
 model ExecutorContinuation {
-  id                  String                      @id @default(uuid()) @db.Uuid
-  executorId          String                      @map("executor_id") @db.Uuid
-  bindingId           String?                     @map("binding_id") @db.Uuid
-  subject             ExecutorContinuationSubject
-  status              ExecutorContinuationStatus  @default(pending)
-  actorUserId         String                      @map("actor_user_id") @db.Uuid
-  subjectDigest       String                      @map("subject_digest")
-  revisions           Json                        @default("{}")
-  confirmationTokenHash String?                   @unique @map("confirmation_token_hash")
-  verificationChallengeId String?                 @map("verification_challenge_id") @db.Uuid
-  expiresAt           DateTime                    @map("expires_at")
-  consumedAt          DateTime?                   @map("consumed_at")
-  createdAt           DateTime                    @default(now()) @map("created_at")
-  updatedAt           DateTime                    @updatedAt @map("updated_at")
-  executor            Executor                    @relation(fields: [executorId], references: [id], onDelete: Cascade)
-  binding             ExecutorBinding?            @relation(fields: [bindingId], references: [id], onDelete: SetNull)
-  actor               User                        @relation("ExecutorContinuationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  id                      String                      @id @default(uuid()) @db.Uuid
+  executorId              String                      @map("executor_id") @db.Uuid
+  bindingId               String?                     @map("binding_id") @db.Uuid
+  subject                 ExecutorContinuationSubject
+  status                  ExecutorContinuationStatus  @default(pending)
+  actorUserId             String                      @map("actor_user_id") @db.Uuid
+  subjectDigest           String                      @map("subject_digest")
+  revisions               Json                        @default("{}")
+  confirmationTokenHash   String?                     @unique @map("confirmation_token_hash")
+  verificationChallengeId String?                     @map("verification_challenge_id") @db.Uuid
+  expiresAt               DateTime                    @map("expires_at")
+  consumedAt              DateTime?                   @map("consumed_at")
+  createdAt               DateTime                    @default(now()) @map("created_at")
+  updatedAt               DateTime                    @updatedAt @map("updated_at")
+  executor                Executor                    @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  binding                 ExecutorBinding?            @relation(fields: [bindingId], references: [id], onDelete: SetNull)
+  actor                   User                        @relation("ExecutorContinuationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
 
   @@index([executorId, status, expiresAt])
   @@index([actorUserId, status])
