@@ -8,6 +8,7 @@ import { CatalogList } from '../components/features/mcp-app-store/CatalogList'
 import { CredentialsDialog } from '../components/features/mcp-app-store/CredentialsDialog'
 import { InstallScopeDialog } from '../components/features/mcp-app-store/InstallScopeDialog'
 import { InstanceList } from '../components/features/mcp-app-store/InstanceList'
+import { installedScopesEmptyMessage } from '../components/features/mcp-app-store/installed-scopes-empty'
 import { LibraryDetailPanel } from '../components/features/mcp-app-store/LibraryDetailPanel'
 import { LibraryInstallDialog } from '../components/features/mcp-app-store/LibraryInstallDialog'
 import { LibraryPanel } from '../components/features/mcp-app-store/LibraryPanel'
@@ -68,7 +69,13 @@ export const McpAppStorePage = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const isElevated = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const currentUserId = me?.user.id ?? ''
+  const currentUserLabel = me?.user.displayName ?? 'You'
   const organizationId = me?.context.organizationId ?? ''
+  // The install dialog names scope targets instead of asking for UUIDs; the
+  // session already carries the org's name, so no extra fetch for the one row.
+  const organizationName =
+    me?.memberships?.find((entry) => entry.organizationId === organizationId)
+      ?.organizationName ?? 'This organisation'
 
   const [view, setView] = useState<PageView>('store')
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>(
@@ -310,6 +317,12 @@ export const McpAppStorePage = () => {
       </ColumnBrowserColumn>,
       <ColumnBrowserColumn key={`instances-${selectedCatalog.id}`} title="Installed scopes">
         <InstanceList
+          emptyMessage={installedScopesEmptyMessage({
+            status: selectedCatalog.status,
+            managedByIntegration: selectedCatalogManaged,
+            locked: selectedCatalog.locked,
+            isElevated,
+          })}
           instances={instancesForSelected}
           onCredentials={
             selectedCatalogManaged
@@ -392,9 +405,11 @@ export const McpAppStorePage = () => {
           canChooseScope={isOwner}
           catalogEntry={installCandidate}
           currentUserId={currentUserId}
+          currentUserLabel={currentUserLabel}
           onCancel={() => setInstallTarget(null)}
           onConfirm={handleInstall}
           organizationId={organizationId}
+          organizationName={organizationName}
           pending={createInstance.isPending}
         />
       ) : null}

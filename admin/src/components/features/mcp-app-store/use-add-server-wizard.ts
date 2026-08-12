@@ -1,9 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
-import type {
-  McpCatalogAuthMethod,
-  McpCatalogProtocol,
-} from '@nessie/schemas'
+import type { McpCatalogAuthMethod } from '@nessie/schemas'
 import type { CreateCatalogEntryInput } from '../../../facades/mcp-catalog/hooks'
+import type { OfferableTransport } from './connector-transports'
 import {
   clearStepError,
   firstWizardStepError,
@@ -31,15 +29,13 @@ type FieldChange = (
  */
 export const useAddServerWizard = (onSubmit: SubmitFn) => {
   const [step, setStep] = useState<WizardStep>('transport')
-  const [protocol, setProtocol] = useState<McpCatalogProtocol>('http')
+  const [protocol, setProtocol] = useState<OfferableTransport>('http')
   const [authMethod, setAuthMethod] = useState<McpCatalogAuthMethod>('api_key')
   const [name, setName] = useState('')
   const [label, setLabel] = useState('')
   const [description, setDescription] = useState('')
   const [vendor, setVendor] = useState('')
   const [url, setUrl] = useState('')
-  const [command, setCommand] = useState('')
-  const [args, setArgs] = useState('')
   const [headerName, setHeaderName] = useState('Authorization')
   const [valuePrefix, setValuePrefix] = useState('Bearer ')
   const [authorizationUrl, setAuthorizationUrl] = useState('')
@@ -63,7 +59,7 @@ export const useAddServerWizard = (onSubmit: SubmitFn) => {
     event.preventDefault()
     setError(null)
     const failure = firstWizardStepError({
-      protocol, authMethod, url, command, name, label,
+      authMethod, url, name, label,
       headerName, authorizationUrl, tokenUrl, clientId, clientSecret,
     })
     if (failure) {
@@ -89,11 +85,7 @@ export const useAddServerWizard = (onSubmit: SubmitFn) => {
           clientSecret,
           scopes,
         }),
-        defaultTransportConfig: buildTransportConfig(protocol, {
-          url,
-          command,
-          args,
-        }),
+        defaultTransportConfig: buildTransportConfig(protocol, { url }),
       }, { submitForReview })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Failed to create')
@@ -101,7 +93,7 @@ export const useAddServerWizard = (onSubmit: SubmitFn) => {
   }
 
   const advanceFromTransport = () => {
-    const errors = validateTransportStep(protocol, { url, command })
+    const errors = validateTransportStep({ url })
     if (Object.keys(errors).length > 0) {
       setStepErrors(errors)
       return
@@ -137,8 +129,6 @@ export const useAddServerWizard = (onSubmit: SubmitFn) => {
       description,
       vendor,
       url,
-      command,
-      args,
       headerName,
       valuePrefix,
       authorizationUrl,
@@ -155,8 +145,6 @@ export const useAddServerWizard = (onSubmit: SubmitFn) => {
     setDescription,
     setVendor,
     setUrl,
-    setCommand,
-    setArgs,
     setHeaderName,
     setValuePrefix,
     setAuthorizationUrl,

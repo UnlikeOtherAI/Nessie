@@ -1,15 +1,13 @@
-import type {
-  McpCatalogAuthMethod,
-  McpCatalogProtocol,
-  McpServerAuthConfig,
-} from '@nessie/schemas'
+import type { McpCatalogAuthMethod, McpServerAuthConfig } from '@nessie/schemas'
+import type { OfferableTransport } from './connector-transports'
 
 /**
  * Pure config builders + option lists for the "Add MCP server" wizard. These
  * shape raw form fields into the typed transport/auth payloads the API expects.
+ * The transport options themselves live in `./connector-transports`, which
+ * explains why the wizard offers only what a user-authored connector can run.
  */
 
-export const PROTOCOLS: McpCatalogProtocol[] = ['stdio', 'http', 'sse', 'ws']
 export const AUTH_METHODS: McpCatalogAuthMethod[] = [
   'api_key',
   'bearer',
@@ -59,23 +57,6 @@ export const buildAuthConfig = (
 }
 
 export const buildTransportConfig = (
-  protocol: McpCatalogProtocol,
-  raw: { url: string; command: string; args: string },
-): Record<string, unknown> => {
-  switch (protocol) {
-    case 'http':
-    case 'sse':
-      return { transport: protocol, url: raw.url.trim() }
-    case 'stdio':
-      return {
-        transport: 'stdio',
-        command: raw.command.trim(),
-        args: raw.args
-          .split(/\s+/)
-          .map((token) => token.trim())
-          .filter(Boolean),
-      }
-    case 'ws':
-      return { transport: 'ws', url: raw.url.trim() }
-  }
-}
+  protocol: OfferableTransport,
+  raw: { url: string },
+): Record<string, unknown> => ({ transport: protocol, url: raw.url.trim() })
