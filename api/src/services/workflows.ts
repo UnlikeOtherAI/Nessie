@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
+import { resolveInstallationPinnedGraph } from '@nessie/workspace-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   type AgentTriggerType,
@@ -721,6 +722,7 @@ export const installWorkflowTemplate = async (
       },
       select: {
         id: true,
+        graphJson: true,
         triggersJson: true,
         version: true,
       },
@@ -733,6 +735,9 @@ export const installWorkflowTemplate = async (
       data: {
         workflowTemplateId: template.id,
         workflowTemplateVersion: template.version,
+        // W4: pin the installed graph so a NEW run is reproducible from what
+        // was installed, not from whatever the template says later.
+        pinnedGraphJson: template.graphJson as Prisma.InputJsonValue,
         organizationId: actorContext.tenant.organizationId,
         projectId: actorContext.tenant.projectId,
         teamId: actorContext.tenant.teamId,
@@ -810,6 +815,8 @@ export const createWorkflowRun = async (
       data: {
         installationId: installation.id,
         organizationId: installation.organizationId,
+        // W4: freeze the graph this run executes from.
+        graphSnapshot: await resolveInstallationPinnedGraph(tx, installation.id),
         triggerId: input.triggerId,
         triggerDeliveryId: input.triggerDeliveryId,
         parentRunId: input.parentRunId,
@@ -1131,6 +1138,7 @@ export const retryWorkflowRun = async (
         triggerId: existing.triggerId,
         triggerDeliveryId: existing.triggerDeliveryId,
         retriedFromWorkflowRunId: existing.id,
+        graphSnapshot: await resolveInstallationPinnedGraph(tx, installation.id),
         input: (existing.input ?? {}) as Prisma.InputJsonValue,
         summary,
         startedByActorType: actorContext.actor.actorType,

@@ -2218,6 +2218,7 @@ model WorkflowInstallation {
   id                      String                     @id @default(uuid()) @db.Uuid
   workflowTemplateId      String                     @map("workflow_template_id") @db.Uuid
   workflowTemplateVersion Int                        @map("workflow_template_version")
+  pinnedGraphJson         Json?                      @map("pinned_graph_json")
   organizationId          String                     @map("organization_id") @db.Uuid
   projectId               String?                    @map("project_id") @db.Uuid
   teamId                  String?                    @map("team_id") @db.Uuid
@@ -2277,6 +2278,7 @@ model WorkflowRun {
   planStepId                    String?                        @map("plan_step_id") @db.Uuid
   status                        WorkflowRunStatus              @default(pending)
   input                         Json                           @default("{}")
+  graphSnapshot                 Json?                          @map("graph_snapshot")
   output                        Json?                          @default("{}")
   summary                       String?
   errorMessage                  String?                        @map("error_message")
@@ -2324,6 +2326,9 @@ model WorkflowStepRun {
   taskId                String?                       @map("task_id") @db.Uuid
   startedAt             DateTime?                     @map("started_at")
   finishedAt            DateTime?                     @map("finished_at")
+  leaseOwnerId          String?                       @map("lease_owner_id")
+  leaseExpiresAt        DateTime?                     @map("lease_expires_at")
+  deadlineAt            DateTime?                     @map("deadline_at")
   createdAt             DateTime                      @default(now()) @map("created_at")
   updatedAt             DateTime                      @updatedAt @map("updated_at")
   workflowRun           WorkflowRun                   @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
@@ -2337,6 +2342,8 @@ model WorkflowStepRun {
   @@unique([workflowRunId, sequence])
   @@index([workflowRunId, status])
   @@index([assignedAgentId, status])
+  @@index([status, leaseExpiresAt])
+  @@index([status, deadlineAt])
   @@map("workflow_step_runs")
 }
 

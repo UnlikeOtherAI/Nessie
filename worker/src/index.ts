@@ -60,6 +60,7 @@ import {
   sweepDueScheduledTriggers,
 } from './control/triggers.js'
 import { executeWorkflowRun } from './control/workflows.js'
+import { reapStuckWorkflowSteps } from './control/workflow-step-reaper.js'
 import { executeRunJob } from './run/execute.js'
 import {
   executeRunMemoryConsolidationJob,
@@ -473,6 +474,26 @@ export const startWorker = async (
     }
   }, 15_000)
 
+  // W6: reclaim stuck workflow steps — an expired lease (actively-worked step
+  // whose worker died) or an expired deadline (suspended step waiting on an
+  // external continuation). Both conditions; a lease-only sweep never reclaims
+  // the likeliest hangs.
+  let workflowStepReapInFlight = false
+  const workflowStepReapInterval = setInterval(async () => {
+    if (workflowStepReapInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    workflowStepReapInFlight = true
+    try {
+      await reapStuckWorkflowSteps(prisma, { limit: 20 })
+    } catch (error) {
+      console.error('[worker.workflow-step-reaper] failed', error)
+    } finally {
+      workflowStepReapInFlight = false
+    }
+  }, 15_000)
+
   // sp-webhook: re-attempt failed trigger deliveries that are due for retry.
   let deliveryRetryInFlight = false
   const deliveryRetryInterval = setInterval(async () => {
@@ -601,6 +622,7 @@ export const startWorker = async (
   const stop = async () => {
     abortController.abort()
     clearInterval(triggerSweepInterval)
+    clearInterval(workflowStepReapInterval)
     clearInterval(deliveryRetryInterval)
     clearInterval(mailboxSweepInterval)
     clearInterval(runnerHeartbeatInterval)

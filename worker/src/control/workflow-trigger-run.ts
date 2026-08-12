@@ -9,6 +9,7 @@ import {
   type AuthorizedActionContext,
   type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
+import { resolveInstallationPinnedGraph } from '@nessie/workspace-admin'
 import { enqueueQueueJob } from '../queue.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
 import {
@@ -99,10 +100,14 @@ export const queueWorkflowTriggerRun = async (
         triggerId: input.trigger.id,
       })
 
+      const pinnedGraph = await resolveInstallationPinnedGraph(tx, installation.id)
+
       const workflowRun = await tx.workflowRun.create({
         data: {
           installationId: installation.id,
           organizationId: installation.organizationId,
+          // W4: freeze the installed graph this run executes from.
+          graphSnapshot: pinnedGraph,
           triggerId: input.trigger.id,
           triggerDeliveryId: delivery.id,
           input: (input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)

@@ -8,6 +8,7 @@ import {
   type AuthorizedActionContext,
   type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
+import { resolveInstallationPinnedGraph } from '@nessie/workspace-admin'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import {
   type DispatchTriggerResult,
@@ -110,10 +111,14 @@ export const dispatchWorkflowTrigger = async (
         },
       })
 
+      const pinnedGraph = await resolveInstallationPinnedGraph(tx, installation.id)
+
       const workflowRun = await tx.workflowRun.create({
         data: {
           installationId: installation.id,
           organizationId: installation.organizationId,
+          // W4: freeze the installed graph this run executes from.
+          graphSnapshot: pinnedGraph,
           triggerId: input.trigger.id,
           triggerDeliveryId: delivery.id,
           input: (input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)

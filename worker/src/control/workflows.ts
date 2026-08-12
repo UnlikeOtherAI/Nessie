@@ -7,9 +7,12 @@ import {
   parseTeamId,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
+import { randomUUID } from 'node:crypto'
 import { enqueueQueueJob } from '../queue.js'
 import {
+  WORKFLOW_STEP_LEASE_HEARTBEAT_MS,
   ensureWorkflowStepRuns,
+  heartbeatWorkflowStepLease,
   listWorkflowStepRuns,
   loadWorkflowGraph,
   markWorkflowRunFinished as markWorkflowRunFinishedRaw,
@@ -17,6 +20,7 @@ import {
   markWorkflowStepRunFinished as markWorkflowStepRunFinishedRaw,
   markWorkflowStepRunQueued,
   markWorkflowStepRunStarted,
+  reconcileWorkflowRunGraphSnapshot,
 } from '../run/workflows.js'
 import {
   executeWorkflowBuiltinTool,
@@ -561,10 +565,43 @@ export const executeWorkflowRun = async (
     },
   }
 
-  await ensureWorkflowStepRuns(prisma, {
+  const materialization = await ensureWorkflowStepRuns(prisma, {
     workflowRunId,
     steps: workflow.graph.steps,
   })
+
+  // Step rows already materialized but their identities disagree with the
+  // snapshot: only possible when the backfill migration froze the CURRENT
+  // template onto a run suspended mid-flight (its rows came from the OLD
+  // template). Treat the template the rows came from as the run's graph and
+  // re-pin it, so the continuation does not interleave old and new steps.
+  // Pre-snapshot rows executing from the live template (graph_snapshot NULL)
+  // take loadWorkflowGraph's fallback and never reach this branch.
+  if (materialization.alreadyMaterialized && workflow.installation.pinnedGraphJson == null) {
+    const stepRuns = await listWorkflowStepRuns(prisma, workflowRunId)
+    const snapshotKeys = workflow.graph.steps.map((step) => step.id)
+    const drifted =
+      snapshotKeys.length !== stepRuns.length ||
+      stepRuns.some((stepRun, index) => stepRun.stepKey !== snapshotKeys[index])
+    if (drifted) {
+      const materializedGraph = {
+        steps: stepRuns.map((stepRun) => ({
+          id: stepRun.stepKey,
+          input:
+            stepRun.input && typeof stepRun.input === 'object' && !Array.isArray(stepRun.input)
+              ? (stepRun.input as Record<string, unknown>)
+              : {},
+          title: stepRun.title,
+          type: stepRun.stepType,
+        })),
+      }
+      await reconcileWorkflowRunGraphSnapshot(prisma, {
+        graph: materializedGraph,
+        workflowRunId,
+      })
+      workflow.graph = materializedGraph
+    }
+  }
 
   if (workflow.run.status === 'pending') {
     await markWorkflowRunStarted(prisma, workflowRunId)
@@ -672,14 +709,29 @@ export const executeWorkflowRun = async (
         ),
       )
 
+      const leaseOwnerId = randomUUID()
       await markWorkflowStepRunStarted(prisma, {
         input: stepInput,
+        leaseOwnerId,
         output: {
           input: toolArgs,
           toolName,
         },
         stepRunId: nextStep.id,
       })
+
+      // Heartbeat while the tool runs so a legitimately long call is never
+      // reclaimed; a crashed worker stops heartbeating and the reaper takes
+      // the step by its expired lease.
+      const leaseHeartbeat = setInterval(() => {
+        void heartbeatWorkflowStepLease(prisma, {
+          ownerId: leaseOwnerId,
+          stepRunId: nextStep.id,
+        }).catch((error) => {
+          console.error('[worker.workflow-step-lease] heartbeat failed', error)
+        })
+      }, WORKFLOW_STEP_LEASE_HEARTBEAT_MS)
+      leaseHeartbeat.unref()
 
       try {
         const toolContext: WorkflowBuiltinToolRuntimeContext = {
@@ -718,6 +770,8 @@ export const executeWorkflowRun = async (
               : `Workflow tool call failed: ${toolName}`,
         })
         return
+      } finally {
+        clearInterval(leaseHeartbeat)
       }
 
       continue
