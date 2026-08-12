@@ -355,6 +355,20 @@ durable all-or-recover journal ensures a crash finishes the validated manifest
 or restores the base before another promotion begins. Policy may require a
 visible local/human confirmation.
 
+The checked-in native foundation is deliberately a **preflight only** helper at
+`executor/native`. Its `workspace-preflight` command receives the paired root
+and COW draft exclusively as already-open directory descriptors on file
+descriptors 3 and 4; it receives neither path as JSON or an argument. It
+re-opens every manifest component relative to those descriptors with
+no-follow calls, rejects links, special files, mount crossings and malformed
+relative names, recomputes both the host base and draft hashes, and reports
+only a ready/rejected result. It cannot write, stage, rename or delete a host
+entry. This establishes the native path-authority seam without prematurely
+shipping a host-write capability. The future apply command must retain these
+descriptor-only inputs and add the approval/fence check plus the durable
+all-or-recover journal before `workspace.promote` can enter a daemon
+descriptor or worker schema.
+
 ## 10. State and error contract
 
 Executor state is:

@@ -19,3 +19,4 @@ simulation/state/
 
 # Git worktrees (per project convention, never committed)
 .worktrees/
+executor/native/target/

@@ -72,6 +72,15 @@ review, the exact executor-operation grant, logical-tool grant, and a
 human-bound run choice. Until the micro-VM,
 forced egress, and reviewed promotion protocol exist, the paired host root
 remains read-only.
+
+The new native `workspace-preflight` foundation takes this one step closer
+without widening that authority: it accepts the host root and COW draft only as
+already-open descriptors, resolves each supplied relative path with native
+no-follow calls, checks each current host base and scratch digest, and returns
+a bounded ready/rejected result. It does not have an apply mode and has no
+worker schema, descriptor operation, or user-facing promotion action. That
+means a missing approval, journal, recovery implementation, or native helper
+cannot fall back to a Node path-based write.
 Neither does it expose the planned availability union with connectors.
 
 The availability endpoint deliberately creates a five-minute, one-use opaque
@@ -767,6 +776,12 @@ approval-gated `workspace.promote` operation, performed only by the daemon
 from a validated, conflict-checked manifest.
 This slice is blocked until the Attention surface has passed its run-detail,
 activity-row, and companion doorway tests.
+
+The native preflight helper may land before that promotion slice because it is
+strictly non-mutating: it verifies the exact root/draft descriptor-relative
+manifest and current conflict state, but cannot expose `workspace.promote` or
+modify a host entry. The apply helper, approval continuation, journal/recovery,
+and all UI doorways remain one delivery unit.
 
 ### 5. Coding-session executor
 
