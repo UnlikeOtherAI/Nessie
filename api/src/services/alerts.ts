@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { visibleUserAlertWhere } from '@nessie/db'
 
@@ -115,12 +116,34 @@ export type MarkUserAlertsReadResult = {
   readAlerts: { id: string; channelId: string | null }[]
 }
 
+type AttentionSummarySection = {
+  projects: Record<string, number>
+  total: number
+  versions: Record<string, string>
+}
+
+type AttentionSummaryAccumulator = AttentionSummarySection & {
+  alertIds: Record<string, string[]>
+}
+
+const attentionVersion = (alertIds: string[]): string =>
+  createHash('sha256').update(alertIds.sort().join(',')).digest('base64url')
+
+const finalizeAttentionSummary = (
+  section: AttentionSummaryAccumulator,
+): AttentionSummarySection => {
+  for (const [projectId, alertIds] of Object.entries(section.alertIds)) {
+    section.versions[projectId] = attentionVersion(alertIds)
+  }
+  return { projects: section.projects, total: section.total, versions: section.versions }
+}
+
 export const getAttentionSummary = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string },
 ): Promise<{
-  assignedWork: { projects: Record<string, number>; total: number }
-  knowledge: { projects: Record<string, number>; total: number }
+  assignedWork: AttentionSummarySection
+  knowledge: AttentionSummarySection
   unreadCount: number
 }> => {
   const rows = await prisma.userAlert.findMany({
@@ -129,16 +152,28 @@ export const getAttentionSummary = async (
       readAt: null,
       kind: { in: ['task_assigned', 'knowledge_published'] },
     },
-    select: { kind: true, projectId: true },
+    select: { id: true, kind: true, projectId: true },
   })
-  const assignedWork = { projects: {} as Record<string, number>, total: 0 }
-  const knowledge = { projects: {} as Record<string, number>, total: 0 }
+  const assignedWork: AttentionSummaryAccumulator = {
+    projects: {}, total: 0, versions: {}, alertIds: {},
+  }
+  const knowledge: AttentionSummaryAccumulator = {
+    projects: {}, total: 0, versions: {}, alertIds: {},
+  }
   for (const row of rows) {
     const category = row.kind === 'task_assigned' ? assignedWork : knowledge
     category.total += 1
-    if (row.projectId) category.projects[row.projectId] = (category.projects[row.projectId] ?? 0) + 1
+    if (!row.projectId) continue
+    category.projects[row.projectId] = (category.projects[row.projectId] ?? 0) + 1
+    const alertIds = category.alertIds[row.projectId] ?? []
+    alertIds.push(row.id)
+    category.alertIds[row.projectId] = alertIds
   }
-  return { assignedWork, knowledge, unreadCount: await unreadCount(prisma, input) }
+  return {
+    assignedWork: finalizeAttentionSummary(assignedWork),
+    knowledge: finalizeAttentionSummary(knowledge),
+    unreadCount: await unreadCount(prisma, input),
+  }
 }
 
 export const markUserAlertsRead = async (
@@ -148,18 +183,30 @@ export const markUserAlertsRead = async (
     userId: string
     ids?: string[]
     all?: boolean
+    surface?: {
+      kind: 'task_assigned' | 'knowledge_published'
+      projectId: string
+    }
   },
 ): Promise<MarkUserAlertsReadResult> => {
+  const surfaceWhere: Prisma.UserAlertWhereInput | null = input.surface
+    ? {
+        kind: input.surface.kind,
+        projectId: input.surface.projectId,
+      }
+    : null
   const where: Prisma.UserAlertWhereInput = {
     AND: [
       visibleUserAlertWhere(input),
       { readAt: null },
-      ...(input.all ? [] : [{ id: { in: input.ids ?? [] } }]),
+      ...(surfaceWhere ? [surfaceWhere] : input.all ? [] : [{ id: { in: input.ids ?? [] } }]),
     ],
   }
 
   // Read the affected rows first so the route can publish per-channel
-  // `alert.read` realtime events; updateMany returns only a count.
+  // `alert.read` realtime events; updateMany returns only a count. For a
+  // project surface this is also the server-side snapshot: the exact IDs are
+  // repeated below, so an alert committed after this select cannot be cleared.
   const readAlerts = await prisma.userAlert.findMany({
     where,
     select: { id: true, channelId: true },

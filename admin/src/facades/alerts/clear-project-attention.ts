@@ -1,27 +1,59 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { useAlerts, useMarkAlertsRead } from './hooks'
+import { useAttentionSummary, useMarkAlertsRead } from './hooks'
 
-/** Marks only alert IDs already rendered for one loaded project surface. */
+/**
+ * Marks the durable attention that existed when a Board or Docs surface finished
+ * loading. The API snapshots the matching alert IDs before it writes, so an
+ * alert committed while that request is in flight remains unread. A server
+ * version makes the clear run again for new attention while this surface stays open.
+ */
 export const useClearProjectAttention = (
   projectId: string,
   kind: 'task_assigned' | 'knowledge_published',
   surfaceLoaded: boolean,
 ): void => {
-  const alerts = useAlerts({ limit: 200, unreadOnly: true })
-  const markRead = useMarkAlertsRead()
-  const clearedKey = useRef<string | null>(null)
+  const attention = useAttentionSummary()
+  const { mutateAsync } = useMarkAlertsRead()
+  const [clearing, setClearing] = useState(false)
+  const [lastClearedVersion, setLastClearedVersion] = useState<string | null>(null)
+  const retryDelayMs = useRef(1_000)
+  const retryScheduled = useRef(false)
+  const retryTimer = useRef<number | null>(null)
+  const [retryGeneration, setRetryGeneration] = useState(0)
+
+  const section = kind === 'task_assigned' ? attention.data?.assignedWork : attention.data?.knowledge
+  const version = section?.versions?.[projectId]
+
+  useEffect(() => () => {
+    if (retryTimer.current !== null) window.clearTimeout(retryTimer.current)
+  }, [])
 
   useEffect(() => {
-    if (!surfaceLoaded || !alerts.data || markRead.isPending) return
-    const ids = alerts.data.alerts
-      .filter((alert) => alert.kind === kind && alert.projectId === projectId)
-      .map((alert) => alert.id)
-    const key = ids.join(',')
-    if (ids.length === 0 || clearedKey.current === key) return
-    clearedKey.current = key
-    void markRead.mutateAsync({ ids }).catch(() => {
-      clearedKey.current = null
-    })
-  }, [alerts.data, kind, markRead, projectId, surfaceLoaded])
+    if (
+      !surfaceLoaded
+      || !version
+      || clearing
+      || retryScheduled.current
+      || lastClearedVersion === version
+    ) return
+    setClearing(true)
+
+    void mutateAsync({ surface: { kind, projectId } })
+      .then(() => {
+        retryDelayMs.current = 1_000
+        setLastClearedVersion(version)
+      })
+      .catch(() => {
+        const delay = retryDelayMs.current
+        retryDelayMs.current = Math.min(delay * 2, 30_000)
+        retryScheduled.current = true
+        retryTimer.current = window.setTimeout(() => {
+          retryScheduled.current = false
+          retryTimer.current = null
+          setRetryGeneration((generation) => generation + 1)
+        }, delay)
+      })
+      .finally(() => setClearing(false))
+  }, [clearing, kind, lastClearedVersion, mutateAsync, projectId, retryGeneration, surfaceLoaded, version])
 }

@@ -78,9 +78,13 @@ revoked channel member never retains an alert title or unread count.
   Knowledge doorway and its count; project rows and Docs tabs render only where
   the recipient can reach that project.
 - Reading a Board or Docs route performs one scoped, recipient-owned `mark
-  read` after that surface has loaded. The operation is constrained to IDs (or
-  a server summary watermark) visible to the client, never an unbounded
-  category `updateMany`, so a concurrent new event is not accidentally cleared.
+  read` after that surface has loaded. The API selects the exact matching alert
+  IDs and then writes only that server-side snapshot, never an unbounded
+  category `updateMany`, so an alert committed while the request is in flight
+  is not accidentally cleared even when a surface has more than one page of
+  alerts. The summary also exposes a server-derived opaque version per project;
+  it makes the client repeat that safe clear when new attention arrives while
+  the Board or Docs surface remains open.
   It never marks another project or category read. Opening an individual alert
   uses the same endpoint for that one row. The legacy global "mark all" remains
   a deliberate user action only, never automatic routing behavior.
@@ -129,7 +133,7 @@ server state into web and native presentation.
 
 - Unit/API tests: all named assignment/publication producers, transaction and
   outbox atomicity, idempotent generations, no self-notification; revoked
-  access and inactive membership stay invisible; exact ID/watermark-scoped
+  access and inactive membership stay invisible; exact server-snapshot scoped
   clearing; no private shared-channel invalidation; correct deep links and
   preference/quiet-hour filtering.
 - Worker tests: APNs/FCM/Web Push fan-out, exact-surface suppression, retry,
