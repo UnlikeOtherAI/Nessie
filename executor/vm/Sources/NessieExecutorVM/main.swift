@@ -9,7 +9,7 @@ private func json(_ value: [String: Any]) {
 }
 
 private func usage() -> Never {
-  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
+  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
   exit(64)
 }
 
@@ -170,6 +170,7 @@ private func handshake(_ arguments: [String]) throws {
   let timeout = Int(try option(arguments, "--timeout-seconds") ?? "10") ?? 0
   guard (1...30).contains(timeout), input.initrdURL != nil else { throw VMError.invalidArgument }
   let bootstrapToken = try bootstrapTokenFromStandardInput(arguments)
+  let guestWorkspaceURL = try option(arguments, "--workspace-cow").map(safeGuestWorkspaceDirectory)
   if #available(macOS 15.0, *) {
     do {
       let outcome = GuestHandshakeResult()
@@ -177,6 +178,7 @@ private func handshake(_ arguments: [String]) throws {
         for: input,
         consoleURL: consoleURL,
         enableGuestControl: true,
+        guestWorkspaceURL: guestWorkspaceURL,
       ))
       let control = try GuestControlListener(
         expectedBootstrapToken: bootstrapToken,
@@ -199,7 +201,7 @@ private func handshake(_ arguments: [String]) throws {
       control.invalidate()
       try stopMachine(machine)
       guard completed, outcome.succeeded() else { throw VMError.guestHandshake }
-      json(["handshake": "verified", "valid": true])
+      json(["handshake": "verified", "valid": true, "workspaceAttached": guestWorkspaceURL != nil])
       return
     } catch let error as VMError {
       throw error

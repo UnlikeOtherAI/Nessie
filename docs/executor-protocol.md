@@ -422,6 +422,12 @@ only a verified/failure status, never the token, guest output, or a local path.
 It creates no `ExecutorSession`, binding, descriptor, or executor operation;
 `EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` is a local packaging/guest failure and must
 keep browser and coding profiles unavailable.
+
+Its optional `--workspace-cow` argument exists only for the companion's
+lease-derived release probe. It passes that one COW directory into the fixed VM
+configuration, so the guest must mount it before hello can succeed. It is never
+populated from a server command, model tool argument, browser request, or UI
+field; the daemon's lease object is the only supported source.
 The helper carries the `com.apple.security.virtualization` and
 `com.apple.security.hypervisor` entitlements. `sh
 executor/vm/scripts/build-signed-vm-helper.sh` creates an ad-hoc local validator
