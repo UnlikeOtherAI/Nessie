@@ -26,7 +26,17 @@ export const resolveDisclosureViewer = async (
 ): Promise<DisclosureViewer> => {
   if (!userId) return { kind: 'autonomous' }
 
-  const [channels, teams, projects, orgMembership] = await Promise.all([
+  // Membership rows are intentionally retained after deactivation for audit
+  // history. Resolve the live organization membership first so those retained
+  // channel/project/team rows cannot keep a deactivated viewer or grantor
+  // entitled to a restricted reply.
+  const orgMembership = await prisma.organizationMember.findFirst({
+    where: { deactivatedAt: null, organizationId, userId },
+    select: { id: true },
+  })
+  if (!orgMembership) return { kind: 'autonomous' }
+
+  const [channels, teams, projects] = await Promise.all([
     prisma.channelMember.findMany({
       where: { userId, channel: { organizationId } },
       select: { channelId: true },
@@ -39,10 +49,6 @@ export const resolveDisclosureViewer = async (
       where: { userId, project: { organizationId } },
       select: { projectId: true },
     }),
-    prisma.organizationMember.findFirst({
-      where: { userId, organizationId },
-      select: { id: true },
-    }),
   ])
 
   return {
@@ -52,7 +58,7 @@ export const resolveDisclosureViewer = async (
       ...channels.map((row) => ({ scopeId: row.channelId, scopeType: 'channel' })),
       ...teams.map((row) => ({ scopeId: row.teamId, scopeType: 'team' })),
       ...projects.map((row) => ({ scopeId: row.projectId, scopeType: 'project' })),
-      ...(orgMembership ? [{ scopeId: organizationId, scopeType: 'organization' }] : []),
+      { scopeId: organizationId, scopeType: 'organization' },
     ],
     userId,
   }

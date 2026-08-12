@@ -276,6 +276,10 @@ const finalizeTurn = async (
   // not write a second fallback message. The run-scoped push idempotency key
   // is a second guard against duplicate delivery during that repair.
   onMessageCreated?.()
+  // Queue as soon as the reply is durable. Realtime and lifecycle effects may
+  // still fail afterwards; a notification must not be lost because the outer
+  // repair deliberately avoids writing a duplicate fallback message.
+  await enqueueInteractiveReplyPush(deps, payload, context, message)
 
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
@@ -289,8 +293,6 @@ const finalizeTurn = async (
     messageId: message.id,
     role: 'assistant',
   })
-  await enqueueInteractiveReplyPush(deps, payload, context, message)
-
   await updateRunStatus(deps.prisma, context.run.id, outcome.runStatus)
   await updateTaskStatus(deps.prisma, context.task.id, outcome.runStatus === 'completed' ? 'done' : 'failed')
   await setAgentStatus(deps.prisma, context.agent.id, outcome.agentStatus)

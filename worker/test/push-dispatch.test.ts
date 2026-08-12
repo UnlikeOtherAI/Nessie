@@ -61,6 +61,8 @@ type FakeState = {
   secrets: SecretRow[]
   channel: { label: string } | null
   message?: { agentId: string | null; basisScopes: { scopeId: string; scopeType: string }[] } | null
+  disclosureGrants?: { grantedByUserId: string }[]
+  activeOrganizationMemberIds?: string[]
   deleted: string[]
   deliveries?: DeliveryRow[]
   surfaceViewers?: SurfaceViewer[]
@@ -110,8 +112,14 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     },
     teamMember: { findMany: async () => [] },
     projectMember: { findMany: async () => [] },
-    organizationMember: { findFirst: async () => ({ id: 'active-membership' }) },
-    disclosureGrant: { findMany: async () => [] },
+    organizationMember: {
+      findFirst: async ({ where }: { where: { userId: string } }) =>
+        state.activeOrganizationMemberIds === undefined
+        || state.activeOrganizationMemberIds.includes(where.userId)
+          ? { id: 'active-membership' }
+          : null,
+    },
+    disclosureGrant: { findMany: async () => state.disclosureGrants ?? [] },
     scopeDisclosureGrant: { findMany: async () => [] },
     mcpOAuthSecret: {
       findUnique: async ({ where }: { where: { ref: string } }) =>
@@ -313,6 +321,36 @@ test('withholds a generic protected reply after its source access is revoked', a
     message: {
       agentId: 'agent-1',
       basisScopes: [{ scopeId: 'project-that-was-revoked', scopeType: 'project' }],
+    },
+    secrets: [apnsSecret()],
+    tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({
+      authorUserId: undefined,
+      contentVisibility: 'generic',
+      mentionUserIds: [],
+      recipientUserIds: ['asking-user'],
+    }),
+  )
+
+  assert.deepEqual(apnsCalls, [])
+})
+
+test('withholds a generic protected reply when its grantor has been deactivated', async () => {
+  const state: FakeState = {
+    activeOrganizationMemberIds: ['asking-user'],
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    disclosureGrants: [{ grantedByUserId: 'deactivated-grantor' }],
+    members: [member('asking-user')],
+    message: {
+      agentId: 'agent-1',
+      basisScopes: [{ scopeId: 'deactivated-grantor', scopeType: 'user' }],
     },
     secrets: [apnsSecret()],
     tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],

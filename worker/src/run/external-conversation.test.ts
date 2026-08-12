@@ -32,6 +32,7 @@ type Captured = {
   agentStatus: string[]
   threadMetadata: unknown[]
   connectorUsage: Array<{ success: boolean | null | undefined }>
+  queueJobs: unknown[]
   sse: Array<{ event: string; data: unknown }>
   inboundUpdates: Array<{ id: string; metadata: unknown }>
   identities: Array<{
@@ -57,6 +58,7 @@ const makeHarness = (opts: HarnessOptions = {}) => {
     agentStatus: [],
     threadMetadata: [],
     connectorUsage: [],
+    queueJobs: [],
     sse: [],
     inboundUpdates: [],
     identities: [],
@@ -68,6 +70,10 @@ const makeHarness = (opts: HarnessOptions = {}) => {
   ])
 
   const prisma = {
+    $executeRaw: async (query: unknown) => {
+      captured.queueJobs.push(query)
+      return 1
+    },
     run: {
       updateMany: async () => ({ count: 1 }),
       update: async ({ data }: { data: { status: string } }) => {
@@ -467,7 +473,7 @@ test('a post-message realtime failure repairs status without writing a duplicate
 
   await runExternalConversation(
     deps,
-    payload,
+    { ...payload, interactive: true },
     context,
     'hi',
     optionsFor(async () => ({
@@ -480,6 +486,11 @@ test('a post-message realtime failure repairs status without writing a duplicate
   assert.equal(captured.messages.length, 1)
   assert.equal(lastMessage(captured).content, 'The one durable answer.')
   assert.ok(captured.runStatus.includes('failed'))
+  assert.ok(captured.queueJobs.some((job) =>
+    ((job as { values?: unknown[] }).values ?? []).some(
+      (value) => typeof value === 'string' && value.includes('recipientUserIds'),
+    ),
+  ))
 })
 
 test('app-key auth failure is an admin repair, never a user reconnect prompt', async () => {
