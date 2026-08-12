@@ -69,6 +69,10 @@ export const WORKFLOW_TRIGGER_TYPE_LABELS = {
   webhook: 'Webhook trigger',
 } as const
 
+// W12: the one executable tool list is `WORKFLOW_TOOL_IDS` in
+// @nessie/runtime; this mirrors it for the canvas, which cannot import that
+// package. `admin/test/workflow-tool-allowlist.test.ts` fails the moment the
+// two drift apart, so they are not "agreeing by coincidence".
 export const WORKFLOW_TOOL_NODE_IDS = new Set([
   'change_detect',
   'state_get',

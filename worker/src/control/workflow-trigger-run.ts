@@ -45,7 +45,9 @@ export const queueWorkflowTriggerRun = async (
   },
 ): Promise<void> => {
   const installation = input.trigger.workflowInstallation
-  if (!installation.active || installation.status === 'disabled') {
+  // W8: `paused` must actually pause. Only an unambiguous active
+  // installation fires — one lifecycle read, shared with the API.
+  if (installation.status !== 'active' || !installation.active) {
     return
   }
 

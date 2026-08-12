@@ -1,9 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
-import { resolveInstallationPinnedGraph } from '@nessie/workspace-admin'
+import {
+  collectWorkflowStepReferences,
+  parseWorkflowBindingTemplate,
+  resolveInstallationPinnedGraph,
+} from '@nessie/workspace-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
-  type AgentTriggerType,
   type ExecutionEnvironmentTerminateJobPayload,
   parseAgentId,
   parseChannelId,
@@ -21,7 +24,6 @@ import type {
 import { WorkflowGraphSchema } from '../contracts.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import { parseOptional, toJsonRecord } from './contract-helpers.js'
-import { createWorkflowTrigger } from './triggers.js'
 
 type WorkflowTemplateWithGraph = {
   bindingSchema: unknown
@@ -102,23 +104,6 @@ type WorkflowStepRunRow = {
   workflowRunId: string
 }
 
-type WorkflowTemplateTriggerDefinition = {
-  config: Record<string, unknown>
-  description?: string
-  enabled?: boolean
-  name?: string
-  nextRunAt?: string
-  type: AgentTriggerType
-}
-
-const WORKFLOW_TEMPLATE_TRIGGER_TYPES: AgentTriggerType[] = [
-  'manual',
-  'scheduled',
-  'interval',
-  'webhook',
-  'event',
-]
-
 const parseWorkflowGraph = (value: unknown): WorkflowGraph =>
   WorkflowGraphSchema.parse(value && typeof value === 'object' && !Array.isArray(value) ? value : {})
 
@@ -127,66 +112,16 @@ const parseUuidArray = (value: unknown): string[] =>
     ? value.filter((entry): entry is string => typeof entry === 'string')
     : []
 
-const isWorkflowTemplateTriggerType = (
-  value: unknown,
-): value is AgentTriggerType =>
-  typeof value === 'string' &&
-  (WORKFLOW_TEMPLATE_TRIGGER_TYPES as string[]).includes(value)
-
-const parseWorkflowTemplateTriggers = (
-  value: unknown,
-): WorkflowTemplateTriggerDefinition[] =>
-  Array.isArray(value)
-    ? value.flatMap((entry) => {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-          return []
-        }
-
-        const record = entry as Record<string, unknown>
-        const config =
-          record.config && typeof record.config === 'object' && !Array.isArray(record.config)
-            ? (record.config as Record<string, unknown>)
-            : {}
-        const type = isWorkflowTemplateTriggerType(record.type)
-          ? record.type
-          : isWorkflowTemplateTriggerType(record.sourceId)
-            ? record.sourceId
-            : isWorkflowTemplateTriggerType(config.type)
-              ? config.type
-              : undefined
-
-        if (!type) {
-          return []
-        }
-
-        return [
-          {
-            config,
-            description:
-              typeof record.description === 'string' ? record.description : undefined,
-            enabled:
-              typeof record.enabled === 'boolean' ? record.enabled : undefined,
-            name:
-              typeof record.name === 'string'
-                ? record.name
-                : typeof record.title === 'string'
-                  ? record.title
-                  : undefined,
-            nextRunAt:
-              typeof record.nextRunAt === 'string' ? record.nextRunAt : undefined,
-            type,
-          } satisfies WorkflowTemplateTriggerDefinition,
-        ]
-      })
-    : []
-
 /**
  * Save-time validation of workflow graph steps against what the worker
  * runtime actually executes (`worker/src/control/workflows.ts`). Anything
- * rejected here would otherwise fail the run at execution time. Values that
- * contain `{{ … }}` binding tokens are resolved at run time, so literal
- * checks are skipped for them; `channelId` is never required because the
- * runtime falls back to the installation's channel.
+ * rejected here would otherwise fail the run at execution time. `{{ … }}`
+ * binding tokens are resolved at run time, so literal checks apply only when
+ * the value is not an exact single-token binding — but every binding is
+ * parsed (syntax must be valid) and every `steps.<id>` reference must name a
+ * step that exists AND precedes the referencing step in execution order
+ * (W9): a typo is a save error, not a failed run. `channelId` is never
+ * required because the runtime falls back to the installation's channel.
  */
 export class WorkflowTemplateValidationError extends Error {
   readonly issues: string[]
@@ -197,17 +132,52 @@ export class WorkflowTemplateValidationError extends Error {
   }
 }
 
+// W13: `trigger` is not an executable step type. Trigger nodes on the canvas
+// are authoring markers only; real scheduling is an `AgentTrigger` created
+// from the installation's Triggers surface, and the runtime never sees one.
 const WORKFLOW_STEP_TYPES = new Set([
   'agent',
   'agent_task',
   'environment_launch',
   'tool',
   'tool_call',
-  'trigger',
 ])
 
-const hasBindingToken = (value: unknown): boolean =>
-  typeof value === 'string' && value.includes('{{')
+const collectStepBindingTemplates = (
+  input: Record<string, unknown> | undefined,
+): Array<{ key: string; template: ReturnType<typeof parseWorkflowBindingTemplate> }> => {
+  const templates: Array<{ key: string; template: ReturnType<typeof parseWorkflowBindingTemplate> }> = []
+
+  const visit = (value: unknown, path: string): void => {
+    if (typeof value === 'string') {
+      const template = parseWorkflowBindingTemplate(value)
+      if (template.kind !== 'literal') {
+        templates.push({ key: path, template })
+      }
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => visit(entry, `${path}[${index}]`))
+      return
+    }
+    if (value && typeof value === 'object') {
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        visit(entry, path ? `${path}.${key}` : key)
+      }
+    }
+  }
+
+  if (input) {
+    for (const [key, entry] of Object.entries(input)) {
+      if (key === 'workflowDesigner') {
+        continue
+      }
+      visit(entry, key)
+    }
+  }
+
+  return templates
+}
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -227,10 +197,35 @@ export const validateWorkflowGraphSteps = async (
 ): Promise<void> => {
   const issues: string[] = []
   const seenStepIds = new Set<string>()
+  const allStepIds = new Set(graph.steps.map((step) => step.id))
   const literalAgentIds = new Set<string>()
 
   for (const step of graph.steps) {
     const label = step.title?.trim() || step.id
+
+    // W9: binding syntax is validated on EVERY step, and every `steps.<id>`
+    // reference must name a step that exists and precedes this one — a typo
+    // is a save error here, not a WORKFLOW_BINDING_NOT_FOUND mid-run.
+    const priorStepIds = new Set(seenStepIds)
+    for (const { key, template } of collectStepBindingTemplates(step.input)) {
+      if (template.kind === 'invalid') {
+        issues.push(`Step "${label}" has an invalid binding in "${key}": ${template.error}.`)
+        continue
+      }
+      for (const token of collectWorkflowStepReferences(template)) {
+        const reference = token.reference
+        if (reference.kind !== 'steps') {
+          continue
+        }
+        if (!priorStepIds.has(reference.stepId)) {
+          issues.push(
+            allStepIds.has(reference.stepId)
+              ? `Step "${label}" references "${reference.stepId}" before it has run — steps can only bind earlier steps' output.`
+              : `Step "${label}" references unknown step "${reference.stepId}" in "${key}".`,
+          )
+        }
+      }
+    }
 
     if (seenStepIds.has(step.id)) {
       issues.push(`Duplicate step id "${step.id}" — step outputs would collide.`)
@@ -239,7 +234,9 @@ export const validateWorkflowGraphSteps = async (
 
     if (!WORKFLOW_STEP_TYPES.has(step.type)) {
       issues.push(
-        `Step "${label}" has unsupported type "${step.type}". Supported: trigger, tool, agent, environment_launch.`,
+        step.type === 'trigger'
+          ? `Step "${label}" has type "trigger", which is not executable — scheduling is authored on the installation's Triggers page, not in the graph.`
+          : `Step "${label}" has unsupported type "${step.type}". Supported: tool, agent, environment_launch.`,
       )
       continue
     }
@@ -248,10 +245,16 @@ export const validateWorkflowGraphSteps = async (
       const toolName = readStepInputString(step.input, 'toolName')
       if (!toolName) {
         issues.push(`Tool step "${label}" is missing toolName.`)
-      } else if (!hasBindingToken(toolName) && !WORKFLOW_TOOL_IDS.has(toolName)) {
-        issues.push(
-          `Tool step "${label}" uses unknown tool "${toolName}". Available: ${[...WORKFLOW_TOOL_IDS].sort().join(', ')}.`,
-        )
+      } else {
+        const template = parseWorkflowBindingTemplate(toolName)
+        // An exact single-token binding resolves to whatever the referenced
+        // value holds — only a literal or inline-interpolated name can be
+        // checked against the allow-list at save time.
+        if (template.kind !== 'exact' && !WORKFLOW_TOOL_IDS.has(toolName)) {
+          issues.push(
+            `Tool step "${label}" uses unknown tool "${toolName}". Available: ${[...WORKFLOW_TOOL_IDS].sort().join(', ')}.`,
+          )
+        }
       }
     }
 
@@ -259,7 +262,7 @@ export const validateWorkflowGraphSteps = async (
       const agentId = readStepInputString(step.input, 'agentId')
       if (!agentId) {
         issues.push(`Agent step "${label}" is missing agentId.`)
-      } else if (!hasBindingToken(agentId)) {
+      } else if (parseWorkflowBindingTemplate(agentId).kind !== 'exact') {
         if (UUID_PATTERN.test(agentId)) {
           literalAgentIds.add(agentId)
         } else {
@@ -539,19 +542,39 @@ const mapWorkflowStepRun = (
   updatedAt: stepRun.updatedAt.toISOString(),
 })
 
-const WORKFLOW_LIST_LIMIT = 200
+export const WORKFLOW_LIST_PAGE_SIZE = 200
+
+export type WorkflowListPage<T> = {
+  items: T[]
+  /** Id to pass back as `cursor`; null when this was the last page. */
+  nextCursor: string | null
+}
+
+type WorkflowListInput = {
+  cursor?: string
+  limit?: number
+}
+
+const resolveWorkflowListLimit = (limit: number | undefined): number =>
+  typeof limit === 'number' && Number.isInteger(limit) && limit > 0
+    ? Math.min(limit, WORKFLOW_LIST_PAGE_SIZE)
+    : WORKFLOW_LIST_PAGE_SIZE
 
 export const listWorkflowTemplates = async (
   prisma: PrismaClient,
   organizationId: string,
-): Promise<WorkflowTemplateRecord[]> => {
-  // List view omits the large `graphJson` blob; the full graph is only fetched
-  // by the single-item GET. The contract still requires `graph`, so the list
-  // mapper substitutes an empty graph.
+  input: WorkflowListInput = {},
+): Promise<WorkflowListPage<WorkflowTemplateRecord>> => {
+  // The select includes `graphJson` deliberately: WorkflowGraphSchema
+  // requires at least one step, so substituting an empty graph made this
+  // endpoint 500 as soon as any template existed — and the admin list
+  // renders step counts.
+  const limit = resolveWorkflowListLimit(input.limit)
   const templates = await prisma.workflowTemplate.findMany({
     where: { organizationId },
-    orderBy: [{ createdAt: 'desc' }],
-    take: WORKFLOW_LIST_LIMIT,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+    take: limit + 1,
     select: {
       id: true,
       organizationId: true,
@@ -570,10 +593,11 @@ export const listWorkflowTemplates = async (
     },
   })
 
-  // The real graph must be returned: WorkflowGraphSchema requires at least
-  // one step, so substituting an empty graph made this endpoint 500 as soon
-  // as any template existed — and the admin list renders step counts.
-  return templates.map(mapWorkflowTemplate)
+  const page = templates.slice(0, limit)
+  return {
+    items: page.map(mapWorkflowTemplate),
+    nextCursor: templates.length > limit ? (page[page.length - 1]?.id ?? null) : null,
+  }
 }
 
 export const createWorkflowTemplate = async (
@@ -696,6 +720,45 @@ export const updateWorkflowTemplate = async (
   return mapWorkflowTemplate(template)
 }
 
+// W8: one installation lifecycle. The schema carries the legacy pair
+// (`status`, `active`) and API, worker and UI used to read them differently,
+// so a paused installation still fired. Every write goes through this
+// derivation; every dispatch/read gate goes through the two helpers below,
+// so a contradictory row can neither be written nor acted on.
+const resolveWorkflowInstallationLifecycle = (input: {
+  active?: boolean
+  status?: WorkflowInstallationRecord['status']
+}): { active: boolean; status: WorkflowInstallationRecord['status'] } | null => {
+  const status = input.status ?? (input.active === false ? 'paused' : 'active')
+  const active = status === 'disabled' ? false : (input.active ?? status !== 'paused')
+
+  if (status === 'active' && !active) {
+    return null // active-but-off: nothing may read that as runnable
+  }
+  if (status !== 'active' && active) {
+    return null // paused/draft/disabled but flagged on: dispatch must not fire
+  }
+  return { active, status }
+}
+
+export class WorkflowInstallationLifecycleError extends Error {
+  constructor() {
+    super('WORKFLOW_INSTALLATION_STATUS_CONFLICT')
+    this.name = 'WorkflowInstallationLifecycleError'
+  }
+}
+
+export const isWorkflowInstallationRunnable = (installation: {
+  active: boolean
+  status: WorkflowInstallationRecord['status']
+}): boolean => installation.status === 'active' && installation.active
+
+export const isWorkflowInstallationStartable = (installation: {
+  active: boolean
+  status: WorkflowInstallationRecord['status']
+}): boolean =>
+  installation.active && (installation.status === 'active' || installation.status === 'draft')
+
 export const installWorkflowTemplate = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
@@ -708,6 +771,14 @@ export const installWorkflowTemplate = async (
     status?: WorkflowInstallationRecord['status']
   },
 ): Promise<WorkflowInstallationRecord | null> => {
+  const lifecycle = resolveWorkflowInstallationLifecycle({
+    active: input.active,
+    status: input.status,
+  })
+  if (!lifecycle) {
+    throw new WorkflowInstallationLifecycleError()
+  }
+
   await validateWorkflowInstallationChannel(
     prisma,
     actorContext.tenant.organizationId,
@@ -723,7 +794,6 @@ export const installWorkflowTemplate = async (
       select: {
         id: true,
         graphJson: true,
-        triggersJson: true,
         version: true,
       },
     })
@@ -731,6 +801,10 @@ export const installWorkflowTemplate = async (
       return null
     }
 
+    // W13: no trigger materialisation from triggersJson. Template
+    // `triggersJson` is canvas position/authoring metadata only; a real
+    // schedule is an AgentTrigger created through `createWorkflowTrigger`
+    // from the installation's Triggers surface — one code path.
     const installation = await tx.workflowInstallation.create({
       data: {
         workflowTemplateId: template.id,
@@ -742,8 +816,8 @@ export const installWorkflowTemplate = async (
         projectId: actorContext.tenant.projectId,
         teamId: actorContext.tenant.teamId,
         channelId: input.channelId,
-        status: input.status ?? (input.active === false ? 'paused' : 'active'),
-        active: input.active ?? true,
+        status: lifecycle.status,
+        active: lifecycle.active,
         resolvedBindings: (input.resolvedBindings ?? {}) as Prisma.InputJsonValue,
         config: (input.config ?? {}) as Prisma.InputJsonValue,
         createdByActorType: actorContext.actor.actorType,
@@ -751,30 +825,89 @@ export const installWorkflowTemplate = async (
       },
     })
 
-    for (const triggerDefinition of parseWorkflowTemplateTriggers(template.triggersJson)) {
-      const createdTrigger = await createWorkflowTrigger(tx, installation.id, triggerDefinition)
-      if (!createdTrigger) {
-        throw new Error('WORKFLOW_TEMPLATE_TRIGGER_INVALID')
-      }
-    }
-
     return installation
   })
 
   return result ? mapWorkflowInstallation(result) : null
 }
 
+// W8: there was no update-installation endpoint at all — status was
+// write-once at install, so "paused" was unreachable. This is the pause /
+// resume / disable / re-target path; the same lifecycle derivation as
+// install applies, so contradictory active/status pairs are 409s here too.
+export const updateWorkflowInstallation = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  installationId: string,
+  input: {
+    active?: boolean
+    channelId?: string
+    config?: Record<string, unknown>
+    resolvedBindings?: Record<string, unknown>
+    status?: WorkflowInstallationRecord['status']
+  },
+): Promise<WorkflowInstallationRecord | null> => {
+  const lifecycle = resolveWorkflowInstallationLifecycle({
+    active: input.active,
+    status: input.status,
+  })
+  if (!lifecycle) {
+    throw new WorkflowInstallationLifecycleError()
+  }
+
+  await validateWorkflowInstallationChannel(
+    prisma,
+    actorContext.tenant.organizationId,
+    input.channelId,
+  )
+
+  const existing = await prisma.workflowInstallation.findFirst({
+    where: {
+      id: installationId,
+      organizationId: actorContext.tenant.organizationId,
+    },
+    select: { id: true },
+  })
+  if (!existing) {
+    return null
+  }
+
+  const updated = await prisma.workflowInstallation.update({
+    where: { id: existing.id },
+    data: {
+      status: lifecycle.status,
+      active: lifecycle.active,
+      ...(input.channelId !== undefined ? { channelId: input.channelId } : {}),
+      ...(input.config !== undefined
+        ? { config: input.config as Prisma.InputJsonValue }
+        : {}),
+      ...(input.resolvedBindings !== undefined
+        ? { resolvedBindings: input.resolvedBindings as Prisma.InputJsonValue }
+        : {}),
+    },
+  })
+
+  return mapWorkflowInstallation(updated)
+}
+
 export const listWorkflowInstallations = async (
   prisma: PrismaClient,
   organizationId: string,
-): Promise<WorkflowInstallationRecord[]> => {
+  input: WorkflowListInput = {},
+): Promise<WorkflowListPage<WorkflowInstallationRecord>> => {
+  const limit = resolveWorkflowListLimit(input.limit)
   const installations = await prisma.workflowInstallation.findMany({
     where: { organizationId },
-    orderBy: [{ createdAt: 'desc' }],
-    take: WORKFLOW_LIST_LIMIT,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+    take: limit + 1,
   })
 
-  return installations.map(mapWorkflowInstallation)
+  const page = installations.slice(0, limit)
+  return {
+    items: page.map(mapWorkflowInstallation),
+    nextCursor: installations.length > limit ? (page[page.length - 1]?.id ?? null) : null,
+  }
 }
 
 export const createWorkflowRun = async (
@@ -801,10 +934,17 @@ export const createWorkflowRun = async (
         },
       },
       select: {
+        active: true,
         id: true,
         organizationId: true,
+        status: true,
       },
     })
+    if (installation && !isWorkflowInstallationStartable(installation)) {
+      // A contradictory legacy row (paused-but-active, disabled-but-active)
+      // fails closed rather than starting a run.
+      return null
+    }
     if (!installation) {
       return null
     }
@@ -848,19 +988,23 @@ export const listWorkflowRuns = async (
   prisma: PrismaClient,
   organizationId: string,
   input: {
+    cursor?: string
     installationId?: string
+    limit?: number
   },
-): Promise<WorkflowRunRecord[]> => {
+): Promise<WorkflowListPage<WorkflowRunRecord>> => {
   // List view omits the large `input`/`output` Json blobs; they are only
   // fetched by the single-run GET. The contract still requires them, so the
   // list mapper substitutes empty objects.
+  const limit = resolveWorkflowListLimit(input.limit)
   const runs = await prisma.workflowRun.findMany({
     where: {
       organizationId,
       ...(input.installationId ? { installationId: input.installationId } : {}),
     },
-    orderBy: [{ createdAt: 'desc' }],
-    take: WORKFLOW_LIST_LIMIT,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+    take: limit + 1,
     select: {
       id: true,
       installationId: true,
@@ -883,7 +1027,11 @@ export const listWorkflowRuns = async (
     },
   })
 
-  return runs.map((run) => mapWorkflowRun({ ...run, input: {}, output: {} }))
+  const page = runs.slice(0, limit)
+  return {
+    items: page.map((run) => mapWorkflowRun({ ...run, input: {}, output: {} })),
+    nextCursor: runs.length > limit ? (page[page.length - 1]?.id ?? null) : null,
+  }
 }
 
 const TOOL_STEP_CANCEL_NOTICE =
@@ -1099,6 +1247,8 @@ export const retryWorkflowRun = async (
         status: true,
         input: true,
         installationId: true,
+        startedByActorId: true,
+        startedByActorType: true,
         triggerDeliveryId: true,
         triggerId: true,
       },
@@ -1141,8 +1291,13 @@ export const retryWorkflowRun = async (
         graphSnapshot: await resolveInstallationPinnedGraph(tx, installation.id),
         input: (existing.input ?? {}) as Prisma.InputJsonValue,
         summary,
-        startedByActorType: actorContext.actor.actorType,
-        startedByActorId: actorContext.actor.actorId,
+        // W27: the retry must not rewrite history — the run keeps its
+        // original starter; the retrying actor is recorded alongside.
+        startedByActorType: existing.startedByActorType,
+        startedByActorId: existing.startedByActorId,
+        retriedByActorType: actorContext.actor.actorType,
+        retriedByActorId: actorContext.actor.actorId,
+        retriedAt: new Date(),
       },
     })
 

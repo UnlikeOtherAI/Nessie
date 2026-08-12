@@ -1,4 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import {
+  parseWorkflowBindingTemplate,
+  type WorkflowBindingScope,
+} from '@nessie/workspace-admin'
 import type { LedgerIdentityService } from '@nessie/runtime'
 import {
   parseChannelId,
@@ -57,8 +61,6 @@ type WorkflowBindingContext = {
   stepSnapshots: Record<string, WorkflowStepSnapshot>
 }
 
-const TOKEN_PATTERN = /\{\{\s*([^}]+?)\s*\}\}/g
-
 const getPathValue = (value: unknown, path: string[]): unknown => {
   let current: unknown = value
   for (const segment of path) {
@@ -85,54 +87,34 @@ const getPathValue = (value: unknown, path: string[]): unknown => {
   return current
 }
 
-const resolveWorkflowBindingReference = (
-  expression: string,
+const resolveWorkflowBindingScope = (
+  reference: WorkflowBindingScope,
   context: WorkflowBindingContext,
 ): unknown => {
-  const parts = expression.split('.').filter((part) => part.length > 0)
-  if (parts.length === 0) {
+  if (reference.kind === 'workflow') {
+    const source =
+      reference.scope === 'config'
+        ? context.workflowConfig
+        : reference.scope === 'bindings'
+          ? context.workflowBindings
+          : context.workflowInput
+    return getPathValue(source, reference.path)
+  }
+
+  const stepSnapshot = context.stepSnapshots[reference.stepId]
+  if (!stepSnapshot) {
     return undefined
   }
-
-  const root = parts[0]
-  if (root === 'workflow') {
-    const scope = parts[1]
-    if (scope === 'run' && parts[2] === 'input') {
-      return getPathValue(context.workflowInput, parts.slice(3))
-    }
-    if (scope === 'input') {
-      return getPathValue(context.workflowInput, parts.slice(2))
-    }
-    if (scope === 'config') {
-      return getPathValue(context.workflowConfig, parts.slice(2))
-    }
-    if (scope === 'bindings') {
-      return getPathValue(context.workflowBindings, parts.slice(2))
-    }
-    return undefined
+  if (reference.scope === 'input') {
+    return getPathValue(stepSnapshot.input, reference.path)
   }
-
-  if (root === 'steps') {
-    const stepKey = parts[1]
-    const stepSnapshot = stepKey ? context.stepSnapshots[stepKey] : undefined
-    if (!stepSnapshot) {
-      return undefined
-    }
-
-    const scope = parts[2]
-    if (scope === 'input') {
-      return getPathValue(stepSnapshot.input, parts.slice(3))
-    }
-    if (scope === 'output') {
-      return getPathValue(stepSnapshot.output, parts.slice(3))
-    }
-    if (scope === 'status') {
-      return stepSnapshot.status
-    }
+  if (reference.scope === 'output') {
+    return getPathValue(stepSnapshot.output, reference.path)
   }
-
-  return undefined
+  return stepSnapshot.status
 }
+
+
 
 const stringifyWorkflowBindingValue = (value: unknown): string => {
   if (value === null || value === undefined) {
@@ -154,26 +136,43 @@ const stripWorkflowDesignerConfig = (
     Object.entries(value).filter(([key]) => key !== 'workflowDesigner'),
   )
 
+const formatBindingExpression = (segments: string[]): string => segments.join('.')
+
 const resolveWorkflowTemplateString = (
   value: string,
   context: WorkflowBindingContext,
 ): unknown => {
-  const exactMatch = value.match(/^\s*\{\{\s*([^}]+?)\s*\}\}\s*$/)
-  if (exactMatch?.[1]) {
-    const resolved = resolveWorkflowBindingReference(exactMatch[1], context)
+  // Same grammar as save-time validation (W9): invalid syntax here means the
+  // template was authored before the validator existed or bypassed it.
+  const template = parseWorkflowBindingTemplate(value)
+  if (template.kind === 'literal') {
+    return value
+  }
+  if (template.kind === 'invalid') {
+    throw new Error(`WORKFLOW_BINDING_INVALID:${template.error}`)
+  }
+
+  if (template.kind === 'exact') {
+    const resolved = resolveWorkflowBindingScope(template.token.reference, context)
     if (resolved === undefined) {
-      throw new Error(`WORKFLOW_BINDING_NOT_FOUND:${exactMatch[1]}`)
+      throw new Error(
+        `WORKFLOW_BINDING_NOT_FOUND:${formatBindingExpression(template.token.segments)}`,
+      )
     }
     return resolved
   }
 
-  return value.replace(TOKEN_PATTERN, (_match, expression: string) => {
-    const resolved = resolveWorkflowBindingReference(expression, context)
+  let resolved_value = value
+  for (const token of template.tokens) {
+    const resolved = resolveWorkflowBindingScope(token.reference, context)
     if (resolved === undefined) {
-      throw new Error(`WORKFLOW_BINDING_NOT_FOUND:${expression}`)
+      throw new Error(
+        `WORKFLOW_BINDING_NOT_FOUND:${formatBindingExpression(token.segments)}`,
+      )
     }
-    return stringifyWorkflowBindingValue(resolved)
-  })
+    resolved_value = resolved_value.replace(token.raw, stringifyWorkflowBindingValue(resolved))
+  }
+  return resolved_value
 }
 
 export const resolveWorkflowStepInput = (
@@ -271,7 +270,7 @@ const buildWorkflowExecutionActorContext = (input: {
 })
 
 const createWorkflowMailboxMessage = async (
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   input: {
     actorId: string
     actorType: 'agent' | 'service' | 'user'
@@ -327,62 +326,60 @@ const createWorkflowMailboxMessage = async (
   }
 }
 
-const validateWorkflowAgentTaskTarget = async (
-  prisma: PrismaClient,
+// W28: the agent_task target check runs INSIDE the mailbox transaction (a
+// channel or binding deleted between a pre-check and the insert was a race)
+// and fails with one org-generic message — the old per-check error strings
+// confirmed or denied the existence of channel, thread and binding ids
+// across the org boundary. Locked (FOR UPDATE) inside the tx so a
+// concurrent unbind/delete cannot slip between the read and the insert.
+const assertWorkflowAgentTaskTargetInTransaction = async (
+  tx: Prisma.TransactionClient,
   input: {
     channelId: string
     organizationId: string
     threadId?: string
     toAgentId: string
   },
-): Promise<{ threadId?: string }> => {
-  const channel = await prisma.channel.findFirst({
-    where: {
-      id: input.channelId,
-      organizationId: input.organizationId,
-      systemChannelType: null,
-    },
-    select: { id: true },
-  })
-  if (!channel) {
-    throw new Error('WORKFLOW_AGENT_TASK_CHANNEL_NOT_FOUND')
-  }
+): Promise<void> => {
+  // Sequential, in a fixed lock order (channel → binding → thread) so two
+  // concurrent runs cannot deadlock against each other.
+  const channels = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM channels
+    WHERE id = ${input.channelId}::uuid
+      AND organization_id = ${input.organizationId}::uuid
+      AND system_channel_type IS NULL
+    FOR UPDATE
+  `
+  const bindings =
+    channels.length > 0
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT ab.id FROM agent_bindings ab
+          JOIN agents a ON a.id = ab.agent_id AND a.agent_kind = 'shared'
+          WHERE ab.agent_id = ${input.toAgentId}::uuid
+            AND ab.channel_id = ${input.channelId}::uuid
+          FOR UPDATE OF ab
+        `
+      : []
+  const threads =
+    channels.length > 0 && input.threadId
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT t.id FROM threads t
+          WHERE t.id = ${input.threadId}::uuid
+            AND t.channel_id = ${input.channelId}::uuid
+          FOR UPDATE OF t
+        `
+      : input.threadId
+        ? []
+        : [{ id: '' }]
 
-  if (input.threadId) {
-    const thread = await prisma.thread.findFirst({
-      where: {
-        id: input.threadId,
-        channelId: input.channelId,
-        channel: {
-          organizationId: input.organizationId,
-        },
-      },
-      select: { id: true },
-    })
-    if (!thread) {
-      throw new Error('WORKFLOW_AGENT_TASK_THREAD_NOT_FOUND')
-    }
-  }
-
-  const binding = await prisma.agentBinding.findFirst({
-    where: {
-      agentId: input.toAgentId,
-      channelId: input.channelId,
-      agent: {
-        agentKind: 'shared',
-      },
-      channel: {
-        organizationId: input.organizationId,
-      },
-    },
-    select: { id: true },
-  })
-  if (!binding) {
-    throw new Error('WORKFLOW_AGENT_TASK_BINDING_NOT_FOUND')
-  }
-
-  return {
-    threadId: input.threadId,
+  if (
+    channels.length === 0 ||
+    bindings.length === 0 ||
+    threads.length === 0
+  ) {
+    // Org-generic on purpose: which leg failed must not leak whether the
+    // referenced channel/thread/binding exists in another organization.
+    throw new Error('Agent task target is unavailable for this workflow run.')
   }
 }
 
@@ -678,19 +675,6 @@ export const executeWorkflowRun = async (
           ? 'agent_task'
           : stepDefinition.type
 
-    if (runtimeStepType === 'trigger') {
-      await markWorkflowStepRunFinished(prisma, workflow, {
-        output: {
-          skipped: true,
-        },
-        workflowRunId,
-        stepRunId: nextStep.id,
-        success: true,
-        summary: 'Trigger node is visual-only at runtime.',
-      })
-      continue
-    }
-
     if (runtimeStepType === 'tool_call') {
       const toolName = typeof stepInput['toolName'] === 'string' ? stepInput['toolName'] : ''
       if (!toolName) {
@@ -795,12 +779,32 @@ export const executeWorkflowRun = async (
         return
       }
 
+      // W28: validation + mailbox insert in one transaction. A throw rolls
+      // both back; the step is then finished below (outside the tx) with the
+      // org-generic message.
+      let mailboxMessage: { id: string }
       try {
-        await validateWorkflowAgentTaskTarget(prisma, {
-          organizationId: workflow.run.organizationId,
-          toAgentId,
-          channelId,
-          threadId,
+        mailboxMessage = await prisma.$transaction(async (tx) => {
+          await assertWorkflowAgentTaskTargetInTransaction(tx, {
+            organizationId: workflow.run.organizationId,
+            toAgentId,
+            channelId,
+            threadId,
+          })
+          return createWorkflowMailboxMessage(tx, {
+            actorId: workflow.run.startedByActorId,
+            actorType: parseWorkflowStartedByActorType(workflow.run.startedByActorType),
+            organizationId: workflow.run.organizationId,
+            workflowRunId,
+            workflowStepRunId: nextStep.id,
+            fromAgentId:
+              workflow.run.startedByActorType === 'agent' ? workflow.run.startedByActorId : null,
+            toAgentId,
+            channelId,
+            threadId,
+            subject: typeof stepInput['subject'] === 'string' ? stepInput['subject'] : undefined,
+            body: buildAgentTaskBody(stepInput, workflow.run.input),
+          })
         })
       } catch (error) {
         await markWorkflowStepRunFinished(prisma, workflow, {
@@ -811,21 +815,6 @@ export const executeWorkflowRun = async (
         })
         return
       }
-
-      const mailboxMessage = await createWorkflowMailboxMessage(prisma, {
-        actorId: workflow.run.startedByActorId,
-        actorType: parseWorkflowStartedByActorType(workflow.run.startedByActorType),
-        organizationId: workflow.run.organizationId,
-        workflowRunId,
-        workflowStepRunId: nextStep.id,
-        fromAgentId:
-          workflow.run.startedByActorType === 'agent' ? workflow.run.startedByActorId : null,
-        toAgentId,
-        channelId,
-        threadId,
-        subject: typeof stepInput['subject'] === 'string' ? stepInput['subject'] : undefined,
-        body: buildAgentTaskBody(stepInput, workflow.run.input),
-      })
 
       await markWorkflowStepRunQueued(prisma, {
         input: stepInput,

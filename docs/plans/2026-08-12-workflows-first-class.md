@@ -137,49 +137,16 @@ lands in §4.4; the boundary itself cannot wait.
 > [the delivery log](./2026-08-12-workflows-delivery-log.md). Record new
 > completions there, not here, so this document stays a plan.
 
-- **W8 · Fix `paused` enforcement.** Dispatch checks only `active` and `disabled`
-  (`api/src/services/trigger-dispatch-workflow.ts`,
-  `worker/src/control/workflow-trigger-run.ts`), so a `paused` installation still
-  fires while the UI states it will not. Also add the missing update-installation
-  endpoint: there is **no way to pause an installation after install** — status is
-  write-once at install time.
+- **W8 · Fix `paused` enforcement — shipped.**
 
 ### 3.2 Validation and designer honesty
 
-- **W9 · `{{` must not disable validation.** `hasBindingToken`
-  (`api/src/services/workflows.ts`) short-circuits both `toolName` and `agentId`
-  checks, so any string containing `{{` skips validation entirely. Parse binding
-  expressions properly: validate syntax, verify every `steps.<id>` reference names
-  an existing step that *precedes* the referencing step. A typo must be a save
-  error, not a failed run.
-- **W10 · Stop the designer eating steps.** `getWorkflowCanvasNodeType`
-  (`admin/src/lib/workflow-designer/node-sources.ts`) returns `null` for
-  `environment_launch` and the loader `flatMap`s it away; re-saving writes the
-  template back *without that step*. Preserve unknown/unrenderable steps through a
-  load→save cycle. This is silent data loss.
-- **W11 · The canvas must stop drawing fiction.** Until graph v2 lands (Stage 2),
-  forbid multiple outgoing connections and cycles in
-  `useWorkflowCanvasInteractions`/`geometry.ts` rather than silently linearizing
-  them in `serialization.ts`. Disconnected nodes must not be silently appended to
-  the end of the sequence and executed.
-- **W12 · One tool allow-list.** `builtin-tools.ts`, the designer's `constants.ts`,
-  and `services/workflows.ts` each maintain the list by hand and agree only by
-  coincidence. Export one list and derive all three.
-- **W13 · Demote the trigger node — binding decision: remove the config, keep the
-  node as a labelled entry marker.** Three layers hold three different beliefs
-  about what a `trigger` step is: validation accepts it, the runtime no-ops it
-  ("visual-only at runtime"), and the designer strips it on save. Worse, the cron
-  and timezone a user types into the canvas trigger node **never become an
-  `AgentTrigger`** — real scheduling requires a separate "Add trigger" action on
-  the installation. Delete the cron/timezone/interval fields from the canvas
-  inspector and link to the Triggers page, which stays the one trigger authoring
-  surface; drop `trigger` from the executable step-type set so validation, runtime
-  and designer finally agree (revision 1 left this "either/or"; an unresolved
-  choice is not a fix). Also collapse the install-time `triggersJson`
-  materialisation, which duplicates trigger-creation logic — one code path.
-- **W14 · Scope the designer draft.** `localStorage` drafts
-  (`draft-storage.ts`) are keyed globally, not per template, so editing template A
-  then opening "new workflow" hydrates A's nodes.
+- **W9 · `{{` must not disable validation — shipped.**
+- **W10 · Stop the designer eating steps — shipped.**
+- **W11 · The canvas must stop drawing fiction — shipped.**
+- **W12 · One tool allow-list — shipped.**
+- **W13 · Demote the trigger node — shipped.**
+- **W14 · Scope the designer draft — shipped.**
 
 ### 3.3 The primitives that make workflows worth having
 
@@ -242,24 +209,15 @@ lands in §4.4; the boundary itself cannot wait.
 - **W26 · Overlap policy, default `skip`.** See §6. Enforced at **every** entrypoint —
   scheduled, manual, webhook, event, and `invoke_workflow` — not only inside
   `queueWorkflowTriggerRun`.
-- **W27 · Retry must not rewrite history.** `retryWorkflowRun` overwrites
-  `startedByActorId` with the retrying owner, erasing the original actor. Preserve
-  the original; record the retrying actor separately and in the audit entry.
-- **W28 · Fix the `agent_task` target check.** The channel/binding validation runs
-  outside the mailbox transaction (a race) and its error strings confirm or deny
-  the existence of channel and binding IDs across the org boundary. Move the check
-  inside the transaction and make the failure text org-generic. This must land before
-  W19 widens who can start runs.
+- **W27 · Retry must not rewrite history — shipped.**
+- **W28 · Fix the `agent_task` target check — shipped.**
 - **W22 · Audit every mutation.** No workflow route writes an audit entry today.
   Template create/update (it mutates executable org behaviour), install, manual
   run, cancel, retry, skip, block/unblock, and pause are all audit-worthy.
 - **W23 · Failure reaches a human.** Route `workflow.run.failed` through the shared
   push pipeline (`worker/src/control/push-delivery-core.ts`, the budget-alert
   precedent) to the installation creator and channel managers, deep-linking the run.
-- **W24 · Paginate the lists.** `WORKFLOW_LIST_LIMIT` truncates at 200 with no
-  cursor; the admin silently stops showing rows past the cap. Separately, correct
-  the list endpoint's leading comment, which claims it omits `graphJson` while the
-  select fetches it — comment and code contradict each other and the code itself.
+- **W24 · Paginate the lists — shipped.**
 - **W29 · A failed-runs triage surface.** Push (W23) is alerting, not triage. Add a
   cross-installation "what failed" filter on the Workflows page plus a count on the
   nav item, so a person can answer "what broke last night" in one place.

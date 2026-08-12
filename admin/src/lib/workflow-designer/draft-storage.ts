@@ -10,9 +10,37 @@ import type {
   WorkflowDesignerDraft,
 } from './types'
 
-export const loadWorkflowDraft = (): WorkflowDesignerDraft | null => {
+// W14: drafts are keyed per template — editing template A then opening
+// "new workflow" (or template B) must not hydrate A's nodes. The legacy
+// global key is imported once into the new-workflow slot and then removed,
+// so in-flight drafts from before the scoping are not destroyed.
+export const workflowDraftStorageKey = (workflowTemplateId?: string) =>
+  `${WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY}.${workflowTemplateId ?? 'new'}`
+
+export const loadWorkflowDraft = (
+  workflowTemplateId?: string,
+): WorkflowDesignerDraft | null => {
   try {
-    const rawDraft = window.localStorage.getItem(WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY)
+    const storageKey = workflowDraftStorageKey(workflowTemplateId)
+    let rawDraft = window.localStorage.getItem(storageKey)
+
+    if (!rawDraft) {
+      // The legacy global draft belonged to the new-workflow flow (template
+      // drafts were not stored at all), so it migrates into the 'new' slot
+      // whichever load runs first — never into a template's slot.
+      const legacyDraft = window.localStorage.getItem(WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY)
+      if (legacyDraft) {
+        window.localStorage.setItem(
+          workflowDraftStorageKey(undefined),
+          legacyDraft,
+        )
+        window.localStorage.removeItem(WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY)
+        if (!workflowTemplateId) {
+          rawDraft = legacyDraft
+        }
+      }
+    }
+
     if (!rawDraft) {
       return null
     }
@@ -95,13 +123,16 @@ export const loadWorkflowDraft = (): WorkflowDesignerDraft | null => {
   }
 }
 
-export const storeWorkflowDraft = (draft: WorkflowDesignerDraft) => {
+export const storeWorkflowDraft = (
+  draft: WorkflowDesignerDraft,
+  workflowTemplateId?: string,
+) => {
   window.localStorage.setItem(
-    WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY,
+    workflowDraftStorageKey(workflowTemplateId),
     JSON.stringify(draft),
   )
 }
 
-export const clearWorkflowDraft = () => {
-  window.localStorage.removeItem(WORKFLOW_DESIGNER_DRAFT_STORAGE_KEY)
+export const clearWorkflowDraft = (workflowTemplateId?: string) => {
+  window.localStorage.removeItem(workflowDraftStorageKey(workflowTemplateId))
 }

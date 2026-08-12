@@ -5,7 +5,9 @@ import {
   CreateWorkflowRunBodySchema,
   CreateWorkflowTriggerBodySchema,
   InstallWorkflowTemplateBodySchema,
+  UpdateWorkflowInstallationBodySchema,
   WorkflowInstallationRecordSchema,
+  WorkflowListQuerySchema,
   WorkflowRunRecordSchema,
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
@@ -15,6 +17,8 @@ import {
   installWorkflowTemplate,
   listWorkflowInstallations,
   listWorkflowRuns,
+  updateWorkflowInstallation,
+  WorkflowInstallationLifecycleError,
 } from '../../services/workflows.js'
 import type { RouteDeps } from '../types.js'
 
@@ -50,6 +54,15 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         body,
       )
     } catch (error) {
+      if (error instanceof WorkflowInstallationLifecycleError) {
+        sendApiError(
+          reply,
+          409,
+          'WORKFLOW_INSTALLATION_STATUS_CONFLICT',
+          'active and status describe different states; send one consistent lifecycle',
+        )
+        return reply
+      }
       if (error instanceof Error && error.message === 'WORKFLOW_INSTALLATION_CHANNEL_NOT_FOUND') {
         sendApiError(
           reply,
@@ -81,11 +94,75 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       return reply
     }
 
-    const installations = await listWorkflowInstallations(
+    const query = parseInput(WorkflowListQuerySchema, request.query ?? {}, reply)
+    if (!query) {
+      return reply
+    }
+
+    const page = await listWorkflowInstallations(
       prisma,
       actorContext.tenant.organizationId,
+      query,
     )
-    return createApiResponse(WorkflowInstallationRecordSchema.array().parse(installations))
+    return createApiResponse(
+      WorkflowInstallationRecordSchema.array().parse(page.items),
+      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
+    )
+  })
+
+  // W8: pause / resume / disable / re-target. Status was write-once at
+  // install; this is the update endpoint that makes `paused` reachable.
+  app.patch('/api/workflow-installations/:installationId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(UpdateWorkflowInstallationBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { installationId } = request.params as { installationId: string }
+    let installation
+    try {
+      installation = await updateWorkflowInstallation(
+        prisma,
+        actorContext,
+        installationId,
+        body,
+      )
+    } catch (error) {
+      if (error instanceof WorkflowInstallationLifecycleError) {
+        sendApiError(
+          reply,
+          409,
+          'WORKFLOW_INSTALLATION_STATUS_CONFLICT',
+          'active and status describe different states; send one consistent lifecycle',
+        )
+        return reply
+      }
+      if (error instanceof Error && error.message === 'WORKFLOW_INSTALLATION_CHANNEL_NOT_FOUND') {
+        sendApiError(
+          reply,
+          404,
+          'WORKFLOW_INSTALLATION_CHANNEL_NOT_FOUND',
+          'Workflow installation channel not found',
+        )
+        return reply
+      }
+      throw error
+    }
+
+    if (!installation) {
+      sendApiError(reply, 404, 'WORKFLOW_INSTALLATION_NOT_FOUND', 'Workflow installation not found')
+      return reply
+    }
+
+    return createApiResponse(WorkflowInstallationRecordSchema.parse(installation))
   })
 
   app.post('/api/workflow-installations/:installationId/run', async (request, reply) => {
@@ -169,11 +246,20 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       return reply
     }
 
+    const query = parseInput(WorkflowListQuerySchema, request.query ?? {}, reply)
+    if (!query) {
+      return reply
+    }
+
     const { installationId } = request.params as { installationId: string }
-    const runs = await listWorkflowRuns(prisma, actorContext.tenant.organizationId, {
+    const page = await listWorkflowRuns(prisma, actorContext.tenant.organizationId, {
+      ...query,
       installationId,
     })
-    return createApiResponse(WorkflowRunRecordSchema.array().parse(runs))
+    return createApiResponse(
+      WorkflowRunRecordSchema.array().parse(page.items),
+      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
+    )
   })
 
   app.get('/api/workflow-installations/:installationId/triggers', async (request, reply) => {
