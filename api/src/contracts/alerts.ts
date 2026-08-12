@@ -35,22 +35,37 @@ export const AttentionSummarySchema = z.object({
   assignedWork: z.object({
     projects: z.record(z.string().uuid(), z.number().int().nonnegative()),
     total: z.number().int().nonnegative(),
+    versions: z.record(z.string().uuid(), z.string().min(1)),
   }),
   knowledge: z.object({
     projects: z.record(z.string().uuid(), z.number().int().nonnegative()),
     total: z.number().int().nonnegative(),
+    versions: z.record(z.string().uuid(), z.string().min(1)),
   }),
   unreadCount: z.number().int().nonnegative(),
 })
 export type AttentionSummary = z.infer<typeof AttentionSummarySchema>
 
+const AttentionSurfaceReadSchema = z.object({
+  kind: z.enum(['task_assigned', 'knowledge_published']),
+  projectId: z.string().uuid(),
+})
+
 export const MarkAlertsReadBodySchema = z
   .object({
     ids: z.array(z.string().uuid()).max(200).optional(),
     all: z.boolean().optional(),
+    surface: AttentionSurfaceReadSchema.optional(),
   })
-  .refine((value) => value.all === true || (value.ids !== undefined && value.ids.length > 0), {
-    message: 'Provide alert ids or all: true',
+  .refine((value) => {
+    const targets = [
+      value.all === true,
+      value.ids !== undefined && value.ids.length > 0,
+      value.surface !== undefined,
+    ].filter(Boolean)
+    return targets.length === 1
+  }, {
+    message: 'Provide alert ids, all: true, or a project surface',
   })
 export type MarkAlertsReadBody = z.infer<typeof MarkAlertsReadBodySchema>
 

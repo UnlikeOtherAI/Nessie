@@ -23,9 +23,15 @@ export type UserAlertRecord = {
 }
 
 export type AttentionSummary = {
-  assignedWork: { projects: Record<string, number>; total: number }
-  knowledge: { projects: Record<string, number>; total: number }
+  assignedWork: AttentionSummarySection
+  knowledge: AttentionSummarySection
   unreadCount: number
+}
+
+type AttentionSummarySection = {
+  projects: Record<string, number>
+  total: number
+  versions?: Record<string, string>
 }
 
 export type AlertsListResponse = {
@@ -98,10 +104,17 @@ export const useMarkAlertsRead = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { ids?: string[]; all?: boolean }) =>
+    mutationFn: (input: {
+      ids?: string[]
+      all?: boolean
+      surface?: {
+        kind: 'task_assigned' | 'knowledge_published'
+        projectId: string
+      }
+    }) =>
       apiClient.post<MarkAlertsReadResponse>(
         '/api/alerts/read',
-        input.all ? { all: true } : { ids: input.ids ?? [] },
+        input.all ? { all: true } : input.surface ? { surface: input.surface } : { ids: input.ids ?? [] },
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['alerts'] })

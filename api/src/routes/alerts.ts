@@ -73,6 +73,12 @@ export const registerAlertRoutes = (app: FastifyInstance, deps: RouteDeps): void
       userId,
       ids: body.ids,
       all: body.all,
+      surface: body.surface
+        ? {
+            kind: body.surface.kind,
+            projectId: body.surface.projectId,
+          }
+        : undefined,
     })
 
     // Cross-device read-state sync: one alert.read event per affected channel,
