@@ -58,6 +58,10 @@ func decodeRuntimeControlRequest(payload []byte) (runtimeControlRequest, error) 
 		if !validBrowserURL(request.URL) {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
+	case "browser.observe":
+		if request.URL != "" {
+			return runtimeControlRequest{}, errInvalidFrame
+		}
 	default:
 		return runtimeControlRequest{}, errInvalidFrame
 	}
@@ -78,6 +82,23 @@ func handleRuntimeControlRequest(payload []byte, controller *runtimeController) 
 			return runtimeControlUnavailable()
 		}
 		return []byte(`{"status":"started","version":1}`)
+	}
+	if request.Operation == "browser.observe" {
+		if controller.browser == nil {
+			return runtimeControlUnavailable()
+		}
+		observation, err := controller.browser.observation()
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		result, err := json.Marshal(struct {
+			Observation browserObservation `json:"observation"`
+			Version     int                `json:"version"`
+		}{Observation: observation, Version: guestRuntimeControlVersion})
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		return result
 	}
 	result, err := json.Marshal(struct {
 		Inspection runtimeInspection `json:"inspection"`

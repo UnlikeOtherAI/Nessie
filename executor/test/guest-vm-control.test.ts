@@ -51,5 +51,23 @@ test('the VM control client accepts only the ready line then one matching framed
     version: 1,
   }))
   await opening
+
+  const observeFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
+  const observing = client.observeBrowser()
+  const rawObserveRequest = await observeFrame
+  const observeRequest = JSON.parse(rawObserveRequest.subarray(4).toString('utf8')) as Record<string, unknown>
+  assert.equal(Buffer.from(String(observeRequest.payload), 'base64').toString('utf8'), '{"operation":"browser.observe","version":1}')
+  output.write(frameFor({
+    kind: 'response',
+    payload: Buffer.from(JSON.stringify({
+      observation: { targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }] },
+      version: 1,
+    })).toString('base64'),
+    requestId: observeRequest.requestId,
+    version: 1,
+  }))
+  assert.deepEqual(await observing, {
+    targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],
+  })
   client.close()
 })

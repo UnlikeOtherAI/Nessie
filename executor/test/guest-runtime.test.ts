@@ -191,6 +191,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
         return {
           closed: new Promise<void>((resolvePromise) => { resolveClosed = resolvePromise }),
           inspectRuntime: async () => ({ browser: true, claude: false, codex: false, tmux: false }),
+          observeBrowser: async () => ({ targets: [{ title: 'Guide', type: 'page' as const, url: 'https://app.example.test/guide' }] }),
           openBrowser: async (url) => {
             assert.equal(url, 'https://app.example.test/guide')
           },
@@ -221,6 +222,9 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     assert.deepEqual(await session.inspectRuntime(), { browser: true, claude: false, codex: false, tmux: false })
     await session.openBrowser('https://app.example.test/guide')
     await assert.rejects(session.openBrowser('https://blocked.example.test/'), /not allowed by local policy/)
+    assert.deepEqual(await session.observeBrowser(), {
+      targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],
+    })
     await session.stop()
     await session.closed
     await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)

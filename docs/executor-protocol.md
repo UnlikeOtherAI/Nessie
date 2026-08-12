@@ -488,8 +488,13 @@ be owner-private under `/work` and rejects pre-existing links or shared
 directories. The browser can reach only the guest loopback proxy, whose
 authenticated egress bridge still enforces the local origin policy. This is a
 launch substrate—not `browser.open` product availability: it has no descriptor
-operation, observer/DevTools bridge, workflow binding, UI doorway, or agent
-path, and it is stopped with its VM session.
+operation, remote debugging listener, workflow binding, UI doorway, or agent
+path, and it is stopped with its VM session. Its internal `browser.observe`
+request can query only the browser's fixed guest-loopback DevTools `/json/list`
+endpoint through a dialer pinned to `127.0.0.1:9222`; it returns at most 32 page
+titles/types and HTTPS URLs with query and fragment removed. It cannot follow a
+redirect, select a target, connect to any other address, return page content,
+or expose a DevTools WebSocket.
 
 Browser and coding runtimes may enter a future session only as a complete
 owner-private `nessie-guest-runtime.json` bundle. Its versioned manifest names

@@ -18,7 +18,11 @@ import {
   type GuestVmProcessRunner,
   verifyPrivateGuestVmFile,
 } from './guest-vm-artifacts.js'
-import { GuestVmControlClient, type GuestRuntimeInspection } from './guest-vm-control.js'
+import {
+  GuestVmControlClient,
+  type GuestBrowserObservation,
+  type GuestRuntimeInspection,
+} from './guest-vm-control.js'
 import {
   materializeGuestRuntimeBundle,
   removeGuestRuntimeBundleSnapshot,
@@ -36,6 +40,7 @@ const SESSION_STOP_TIMEOUT_MS = 10_000
 type ActiveGuestVmSessionProcess = {
   closed: Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
+  observeBrowser: () => Promise<GuestBrowserObservation>
   openBrowser: (url: string) => Promise<void>
   stop: () => Promise<void>
 }
@@ -55,6 +60,7 @@ export type GuestVmSessionInput = GuestVmHandshakeInput & {
 export type GuestVmSession = {
   closed: Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
+  observeBrowser: () => Promise<GuestBrowserObservation>
   openBrowser: (url: string) => Promise<void>
   stop: () => Promise<void>
 }
@@ -97,6 +103,7 @@ const launchGuestVmSession: GuestVmSessionLauncher = async ({ argv, input, path,
   return {
     closed,
     inspectRuntime: () => control.inspectRuntime(),
+    observeBrowser: () => control.observeBrowser(),
     openBrowser: (url) => control.openBrowser(url),
     stop: () => stopChild(child),
   }
@@ -172,6 +179,7 @@ export const startGuestVmSession = async (
     return {
       closed,
       inspectRuntime: () => process!.inspectRuntime(),
+      observeBrowser: () => process!.observeBrowser(),
       openBrowser: async (url: string) => {
         assertExecutorEgressOrigin(url, egressSettings)
         await process!.openBrowser(url)

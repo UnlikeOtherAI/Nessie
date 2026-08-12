@@ -28,6 +28,14 @@ export type GuestRuntimeInspection = {
   tmux: boolean
 }
 
+export type GuestBrowserObservation = {
+  targets: Array<{
+    title: string
+    type: 'page'
+    url: string
+  }>
+}
+
 const unavailable = (message: string): WorkspacePathError => new WorkspacePathError(message)
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
@@ -116,6 +124,41 @@ const parseBrowserOpen = (payload: Buffer): void => {
   }
 }
 
+const parseBrowserObservation = (payload: Buffer): GuestBrowserObservation => {
+  let value: unknown
+  try {
+    value = JSON.parse(payload.toString('utf8'))
+  } catch {
+    throw unavailable('The executor guest rejected the browser observation request.')
+  }
+  if (
+    !isRecord(value)
+    || Object.keys(value).some((key) => !['observation', 'version'].includes(key))
+    || value.version !== 1
+    || !isRecord(value.observation)
+    || Object.keys(value.observation).some((key) => key !== 'targets')
+    || !Array.isArray(value.observation.targets)
+    || value.observation.targets.length > 32
+  ) {
+    throw unavailable('The executor guest rejected the browser observation request.')
+  }
+  const targets = value.observation.targets.map((target): GuestBrowserObservation['targets'][number] => {
+    if (
+      !isRecord(target)
+      || Object.keys(target).some((key) => !['title', 'type', 'url'].includes(key))
+      || typeof target.title !== 'string'
+      || target.title.length > 512
+      || target.type !== 'page'
+      || typeof target.url !== 'string'
+      || target.url.length > 4_096
+    ) {
+      throw unavailable('The executor guest rejected the browser observation request.')
+    }
+    return { title: target.title, type: target.type, url: target.url }
+  })
+  return { targets }
+}
+
 /** Owns the helper's private stdin/stdout framing after its one-use bootstrap. */
 export class GuestVmControlClient {
   private output = Buffer.alloc(0)
@@ -152,6 +195,11 @@ export class GuestVmControlClient {
   async openBrowser(url: string): Promise<void> {
     const payload = await this.request(Buffer.from(JSON.stringify({ operation: 'browser.open', url, version: 1 })))
     parseBrowserOpen(payload)
+  }
+
+  async observeBrowser(): Promise<GuestBrowserObservation> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ operation: 'browser.observe', version: 1 })))
+    return parseBrowserObservation(payload)
   }
 
   close(error: Error = unavailable('The executor VM helper closed its control pipe.')): void {

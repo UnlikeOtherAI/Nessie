@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -182,6 +183,11 @@ func TestGuestBrowserUsesOnlyTheDeclaredRuntimeEntrypointAndForcedProxy(t *testi
 			actualEnvironment = append([]string{}, environment...)
 			return process, nil
 		},
+		observe: func() (browserObservation, error) {
+			return browserObservation{Targets: []browserTarget{{
+				Title: "Guide", Type: "page", URL: "https://app.example.test/guide?secret=redacted",
+			}}}, nil
+		},
 	}
 	controller := &runtimeController{
 		browser:  browser,
@@ -200,6 +206,15 @@ func TestGuestBrowserUsesOnlyTheDeclaredRuntimeEntrypointAndForcedProxy(t *testi
 	if !bytes.Contains(handleRuntimeControlRequest([]byte(`{"operation":"browser.open","url":"https://user@app.example.test/","version":1}`), controller), []byte("CAPABILITY_UNAVAILABLE")) {
 		t.Fatal("accepted a credential-bearing browser URL")
 	}
+	observed := handleRuntimeControlRequest([]byte(`{"operation":"browser.observe","version":1}`), controller)
+	var decoded struct {
+		Observation browserObservation `json:"observation"`
+	}
+	if err := json.Unmarshal(observed, &decoded); err != nil || !reflect.DeepEqual(decoded.Observation, browserObservation{Targets: []browserTarget{{
+		Title: "Guide", Type: "page", URL: "https://app.example.test/guide?secret=redacted",
+	}}}) {
+		t.Fatalf("unexpected browser observation %s", observed)
+	}
 	controller.close()
 }
 
@@ -211,6 +226,16 @@ func TestGuestBrowserProfileRejectsASymlinkedCOWPath(t *testing.T) {
 	}
 	if err := secureBrowserProfile(root, filepath.Join(root, ".nessie-executor", "browser")); err == nil {
 		t.Fatal("accepted a symlinked browser profile path")
+	}
+}
+
+func TestGuestBrowserObservationDropsQueryAndCannotDialAnotherAddress(t *testing.T) {
+	observed, ok := safeObservedBrowserURL("https://app.example.test/guide?secret=value#fragment")
+	if !ok || observed != "https://app.example.test/guide" {
+		t.Fatalf("unexpected sanitized browser URL %q", observed)
+	}
+	if _, err := dialBrowserDevTools(context.Background(), "tcp", "example.test:443"); err == nil {
+		t.Fatal("browser observer accepted a non-loopback destination")
 	}
 }
 

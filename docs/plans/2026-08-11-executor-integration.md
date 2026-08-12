@@ -271,8 +271,12 @@ browser-launch substrate: only a host-validated, no-credentials/no-port HTTPS
 URL can reach the guest; it starts the manifest-declared `/runtime` browser
 with fixed forced-proxy/no-QUIC argv, no shell or `PATH` environment, and a
 symlink-free owner-private COW profile. The guest still has no direct network
-route. This is not product `browser.open`: there is no descriptor projection,
-agent/UI doorway, DevTools/observe/act bridge, or workflow binding. Coding
+route. Its internal `browser.observe` is pinned to the guest browser's
+loopback-only DevTools list endpoint and returns at most 32 page title/type and
+query/fragment-stripped HTTPS URL records; it cannot fetch page content, choose
+a DevTools target, or connect anywhere else. This is not product
+`browser.open`/`browser.observe`: there is no descriptor projection, agent/UI
+doorway, remote DevTools listener, act bridge, or workflow binding. Coding
 lifecycle/control remains unavailable.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
