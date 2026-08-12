@@ -2866,6 +2866,7 @@ model Executor {
   sessions                    ExecutorSession[]
   bindings                    ExecutorBinding[]
   continuations               ExecutorContinuation[]
+  daemonChallenges            ExecutorDaemonChallenge[]
 
   @@index([organizationId, scopeKind, status])
   @@index([projectId])
@@ -3039,6 +3040,23 @@ model ExecutorContinuation {
   @@index([executorId, status, expiresAt])
   @@index([actorUserId, status])
   @@map("executor_continuations")
+}
+
+// A server-issued daemon challenge is stored only as a digest and consumed in
+// the same transaction that advances the daemon connection fence. This keeps
+// an intercepted, still-valid challenge from opening a second connection.
+model ExecutorDaemonChallenge {
+  id            String    @id @default(uuid()) @db.Uuid
+  executorId    String    @map("executor_id") @db.Uuid
+  challengeHash String    @unique @map("challenge_hash")
+  expiresAt     DateTime  @map("expires_at")
+  consumedAt    DateTime? @map("consumed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  executor      Executor  @relation(fields: [executorId], references: [id], onDelete: Cascade)
+
+  @@index([executorId, expiresAt])
+  @@index([expiresAt])
+  @@map("executor_daemon_challenges")
 }
 
 // ─── Phase 2 Models ─────────────────────────────────────────────────────────

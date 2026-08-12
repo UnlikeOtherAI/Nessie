@@ -9,6 +9,13 @@ export {
   type ScopeAvailability,
 } from './availability.js'
 export {
+  claimExecutorConnection,
+  recordExecutorDaemonChallenge,
+  reportExecutorHeartbeat,
+  verifyExecutorDaemonSignature,
+} from './executor-daemon.js'
+export { canonicalExecutorPayload } from './executor-canonical-json.js'
+export {
   EXECUTOR_ERROR_CODES,
   ExecutorError,
 } from './executor-errors.js'

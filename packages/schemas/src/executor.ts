@@ -11,6 +11,7 @@ import { createUuidBrandSchema, TimestampSchema } from './schema-primitives.js'
 
 const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
 const Base64UrlSchema = z.string().regex(/^[A-Za-z0-9_-]+$/)
+const ExecutorDaemonSignatureSchema = Base64UrlSchema.min(64).max(256)
 const NonEmptyRecordSchema = z.record(z.string(), z.unknown())
 
 export const ExecutorIdSchema = createUuidBrandSchema<'ExecutorId'>()
@@ -187,6 +188,33 @@ export const ExecutorEnrollmentRequestSchema = z
 export type ExecutorEnrollmentRequest = z.infer<
   typeof ExecutorEnrollmentRequestSchema
 >
+
+export const ExecutorDaemonClaimRequestSchema = z.object({
+  challenge: Base64UrlSchema.min(64).max(2048),
+  executorId: ExecutorIdSchema,
+  signature: ExecutorDaemonSignatureSchema,
+}).strict()
+export type ExecutorDaemonClaimRequest = z.infer<typeof ExecutorDaemonClaimRequestSchema>
+
+export const ExecutorDaemonHeartbeatRequestSchema = z.object({
+  connectionEpoch: z.string().regex(/^\d+$/),
+  executorId: ExecutorIdSchema,
+  observedAt: TimestampSchema,
+  signature: ExecutorDaemonSignatureSchema,
+}).strict()
+export type ExecutorDaemonHeartbeatRequest = z.infer<typeof ExecutorDaemonHeartbeatRequestSchema>
+
+export const ExecutorDaemonChallengeResponseSchema = z.object({
+  challenge: Base64UrlSchema.min(64).max(2048),
+  expiresAt: TimestampSchema,
+}).strict()
+export type ExecutorDaemonChallengeResponse = z.infer<typeof ExecutorDaemonChallengeResponseSchema>
+
+export const ExecutorDaemonConnectionResponseSchema = z.object({
+  connectionEpoch: z.string().regex(/^\d+$/),
+  status: ExecutorStatusSchema,
+}).strict()
+export type ExecutorDaemonConnectionResponse = z.infer<typeof ExecutorDaemonConnectionResponseSchema>
 
 export const ExecutorAvailabilityReasonSchema = z.enum([
   'ready',

@@ -2,6 +2,10 @@ import {
   ExecutorAccessChangeRequestSchema,
   ExecutorAccessChangeResponseSchema,
   ExecutorCreateResponseSchema,
+  ExecutorDaemonChallengeResponseSchema,
+  ExecutorDaemonClaimRequestSchema,
+  ExecutorDaemonConnectionResponseSchema,
+  ExecutorDaemonHeartbeatRequestSchema,
   ExecutorEnrollmentRequestSchema,
   ExecutorPrivateAssignmentSchema,
   ExecutorAccessViewResponseSchema,
@@ -58,6 +62,20 @@ export type ConfirmExecutorEnrollmentBody = z.infer<
 
 export const SubmitExecutorEnrollmentBodySchema = ExecutorEnrollmentRequestSchema
 export type SubmitExecutorEnrollmentBody = z.infer<typeof SubmitExecutorEnrollmentBodySchema>
+
+export const ExecutorDaemonChallengeBodySchema = z.object({
+  executorId: z.string().uuid(),
+}).strict()
+export type ExecutorDaemonChallengeBody = z.infer<typeof ExecutorDaemonChallengeBodySchema>
+
+export const ExecutorDaemonClaimBodySchema = ExecutorDaemonClaimRequestSchema
+export type ExecutorDaemonClaimBody = z.infer<typeof ExecutorDaemonClaimBodySchema>
+
+export const ExecutorDaemonHeartbeatBodySchema = ExecutorDaemonHeartbeatRequestSchema
+export type ExecutorDaemonHeartbeatBody = z.infer<typeof ExecutorDaemonHeartbeatBodySchema>
+
+export const ExecutorDaemonChallengeSchema = ExecutorDaemonChallengeResponseSchema
+export const ExecutorDaemonConnectionSchema = ExecutorDaemonConnectionResponseSchema
 
 export const ExecutorAccessChangeSchema = ExecutorAccessChangeRequestSchema
 export type ExecutorAccessChange = z.infer<typeof ExecutorAccessChangeSchema>

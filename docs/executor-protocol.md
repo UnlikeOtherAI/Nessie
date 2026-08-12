@@ -88,10 +88,11 @@ executor ID. Consuming a handle creates the binding transactionally.
   `nessie.executor.descriptor.v1\n`.
 - The server holds only the public key, fingerprint, enrollment verifier, and
   short-lived certificate metadata. It never stores the private machine key.
-- All transport uses TLS 1.3. After enrollment, the daemon authenticates with a
-  short-lived, executor-bound client certificate and proof of possession of the
-  Ed25519 key. The server certificate is validated through the normal public
-  PKI chain; a client must not accept a self-signed Nessie endpoint.
+- All transport uses TLS 1.3. Phase 1 claim and heartbeat requests prove
+  possession of the Ed25519 key over a short-lived server challenge or exact
+  connection epoch. The server certificate is validated through the normal
+  public PKI chain; a client must not accept a self-signed Nessie endpoint.
+  Client certificates are required before command dispatch is enabled.
 
 ### 4.2 Enrollment
 
@@ -106,15 +107,30 @@ executor ID. Consuming a handle creates the binding transactionally.
    with `nessie.executor.enrollment.v1` domain separation.
 4. The server consumes the verifier once, records the pending key/fingerprint,
    and presents the exact fingerprint and data boundary to the human.
-5. The human confirms in web or companion UI. Only then does the server issue a
-   short-lived client certificate and activate the executor. Pairing may never
+5. The human confirms in web or companion UI. The executor remains offline
+   until its daemon proves possession of the paired key; pairing may never
    complete from chat text or a terminal transcript.
 
 Enrollment fails closed with `ENROLLMENT_EXPIRED`, `ENROLLMENT_USED`,
 `ENROLLMENT_PROOF_INVALID`, `FINGERPRINT_NOT_CONFIRMED`, or
 `SCOPE_ENTITLEMENT_DENIED`.
 
-### 4.3 Rotation and recovery
+### 4.3 Phase 1 daemon presence
+
+The daemon obtains a rate-limited, one-minute, HMAC-authenticated server
+challenge for its executor ID, then signs that opaque value using
+`nessie.executor.daemon.claim.v1`. The server persists only the challenge's
+SHA-256 digest and atomically consumes it with the successful claim, so a
+captured challenge cannot reconnect or advance a fence twice. A successful
+claim advances the durable connection epoch under the executor advisory lock
+and fences prior daemons.
+Every heartbeat signs its executor ID, epoch, and timestamp under
+`nessie.executor.daemon.heartbeat.v1`; timestamps outside one minute are
+rejected and a stale epoch cannot update liveness. Replaying an old heartbeat
+therefore cannot extend its last-seen time. This channel reports availability
+only: it cannot lease or execute a command.
+
+### 4.4 Rotation and recovery
 
 A key rotation is a two-proof transaction: the old key signs a canonical
 rotation request containing the new key and a fresh connection epoch; the new

@@ -111,6 +111,7 @@ Every rule is `{max, windowMs}` under `api.rateLimit` in
 | MCP OAuth per IP | `NESSIE_RATE_LIMIT_MCP_OAUTH_IP_*` | 20 / 10 min |
 | MCP secret write per IP | `NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_IP_*` | 20 / 10 min |
 | MCP secret write per account | `NESSIE_RATE_LIMIT_MCP_SECRET_WRITE_ACCOUNT_*` | 10 / 10 min |
+| Executor daemon challenge per IP | `NESSIE_RATE_LIMIT_EXECUTOR_DAEMON_IP_*` | 60 / 10 min |
 | Step-up per IP | `NESSIE_RATE_LIMIT_STEP_UP_IP_*` | 10 / 10 min |
 | Step-up per account | `NESSIE_RATE_LIMIT_STEP_UP_ACCOUNT_*` | 5 / 10 min |
 

@@ -1,6 +1,7 @@
 import {
   confirmExecutorAccessChange,
   confirmExecutorEnrollment,
+  claimExecutorConnection,
   createExecutor,
   ExecutorError,
   getExecutorAccessChangeForUser,
@@ -10,6 +11,8 @@ import {
   listVisibleExecutors,
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
+  reportExecutorHeartbeat,
+  recordExecutorDaemonChallenge,
   submitExecutorEnrollment,
   reviewExecutorDescriptor,
 } from '@nessie/executor-manage'
@@ -20,6 +23,11 @@ import {
   ConfirmExecutorEnrollmentBodySchema,
   CreateExecutorBodySchema,
   CreateExecutorResponseSchema,
+  ExecutorDaemonChallengeBodySchema,
+  ExecutorDaemonChallengeSchema,
+  ExecutorDaemonClaimBodySchema,
+  ExecutorDaemonConnectionSchema,
+  ExecutorDaemonHeartbeatBodySchema,
   ExecutorAccessChangeRecordSchema,
   ExecutorAccessViewSchema,
   ExecutorRecordSchema,
@@ -32,6 +40,10 @@ import {
 import { verifyPassword } from '../auth/password.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import {
+  issueExecutorDaemonChallenge,
+  verifyExecutorDaemonChallenge,
+} from '../services/executor-daemon-auth.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import type { RouteDeps } from './types.js'
 
@@ -42,12 +54,17 @@ const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
     ? 404
     : error.code === 'SCOPE_ENTITLEMENT_DENIED'
       ? 403
+      : error.code === 'EXECUTOR_DAEMON_PROOF_INVALID'
+          || error.code === 'EXECUTOR_DAEMON_CHALLENGE_INVALID'
+        ? 401
       : error.code === 'EXECUTOR_FRESH_VERIFICATION_REQUIRED'
         ? 401
       : error.code === 'EXECUTOR_STATE_TRANSITION_INVALID'
           || error.code === 'EXECUTOR_PRIVATE_FINAL_ADMIN_REQUIRED'
           || error.code === 'EXECUTOR_ACCESS_CHANGE_STALE'
           || error.code === 'EXECUTOR_ACCESS_CHANGE_EXPIRED'
+          || error.code === 'EXECUTOR_CONNECTION_FENCED'
+          || error.code === 'EXECUTOR_HEARTBEAT_STALE'
         ? 409
         : 400
   sendApiError(reply, status, error.code, error.message)
@@ -297,6 +314,64 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       throw error
     }
   })
+
+  app.post(
+    '/api/executor-daemon/challenge',
+    { config: { public: true } },
+    async (request, reply) => {
+      const body = parseInput(ExecutorDaemonChallengeBodySchema, request.body, reply)
+      if (!body) return reply
+      if (!(await guardAuthRequest(
+        rateLimiter,
+        { bucket: RATE_LIMIT_BUCKETS.executorDaemonIp, rule: config.api.rateLimit.executorDaemonIp },
+        request,
+        reply,
+      ))) return reply
+      const challenge = issueExecutorDaemonChallenge(body.executorId, deps.authSecret)
+      await recordExecutorDaemonChallenge(prisma, {
+        challenge: challenge.challenge,
+        executorId: body.executorId,
+        expiresAt: new Date(challenge.expiresAt),
+      })
+      return createApiResponse(ExecutorDaemonChallengeSchema.parse(challenge))
+    },
+  )
+
+  app.post(
+    '/api/executor-daemon/claim',
+    { config: { public: true } },
+    async (request, reply) => {
+      const body = parseInput(ExecutorDaemonClaimBodySchema, request.body, reply)
+      if (!body) return reply
+      if (!verifyExecutorDaemonChallenge(body.challenge, body.executorId, deps.authSecret)) {
+        sendApiError(reply, 401, 'EXECUTOR_DAEMON_CHALLENGE_INVALID', 'Executor challenge is invalid.')
+        return reply
+      }
+      try {
+        const connection = await claimExecutorConnection(prisma, body)
+        return createApiResponse(ExecutorDaemonConnectionSchema.parse(connection))
+      } catch (error) {
+        if (sendExecutorError(reply, error)) return reply
+        throw error
+      }
+    },
+  )
+
+  app.post(
+    '/api/executor-daemon/heartbeat',
+    { config: { public: true } },
+    async (request, reply) => {
+      const body = parseInput(ExecutorDaemonHeartbeatBodySchema, request.body, reply)
+      if (!body) return reply
+      try {
+        const connection = await reportExecutorHeartbeat(prisma, body)
+        return createApiResponse(ExecutorDaemonConnectionSchema.parse(connection))
+      } catch (error) {
+        if (sendExecutorError(reply, error)) return reply
+        throw error
+      }
+    },
+  )
 
   app.post(
     '/api/executor-enrollments/submit',
