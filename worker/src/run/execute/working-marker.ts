@@ -144,3 +144,23 @@ export const clearWorking = async (
     console.warn('[worker] could not clear working reaction', error)
   }
 }
+
+/**
+ * Did this run already say everything it had to say with a reaction?
+ *
+ * The `react` tool is meant to be used *instead of* replying, but a model that
+ * reacts often also emits a token or two of final text — and the terminal path
+ * posts whatever it emits, so a 👍 chip arrived alongside a message whose
+ * entire content was "👍". Two ways of saying the same thing, one of them the
+ * exact emoji-rendered-as-text this was built to avoid.
+ *
+ * The primary signal is structural: the run called `react`. The text check is
+ * only a guard on top of that — it asks whether the words carry any
+ * information at all, not what they mean. Anything with a letter or a digit in
+ * it is a real message and gets posted; a bare emoji, or punctuation, does not.
+ * Deliberately not a judgement about intent, which stays the model's.
+ */
+export const isContentlessAfterReacting = (
+  reacted: boolean,
+  responseText: string,
+): boolean => reacted && !/[\p{L}\p{N}]/u.test(responseText)

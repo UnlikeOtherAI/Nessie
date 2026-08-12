@@ -31,9 +31,11 @@ export type SseEventMap = {
   // One tool invocation line of the thought process (`toolName: inputSummary`).
   'stream.thinking.tool': { runId: RunId; content: string; chunkId?: string }
   'stream.delta': { runId: RunId; content: string }
+  // `messageId` is absent when the run answered with a reaction: the
+  // terminator still fires (clearing the bubble) but there is no message.
   'stream.done': {
     runId: RunId
-    messageId: string
+    messageId?: string
     agentId?: AgentId
     content?: string
     createdAt?: string
@@ -74,7 +76,11 @@ export const StreamDoneEventSchema = z.object({
   createdAt: TimestampSchema.optional(),
   rootMessageId: z.string().uuid().optional(),
   runId: RunIdSchema,
-  messageId: NonEmptyStringSchema,
+  // Absent when the run answered with a reaction rather than a message.
+  // `stream.done` is the run terminator either way: clients must always clear
+  // the pending thinking bubble on it, and append a message row only when
+  // `messageId` and `content` are both present.
+  messageId: NonEmptyStringSchema.optional(),
 })
 export type StreamDoneEvent = z.infer<typeof StreamDoneEventSchema>
 export const MessageReactionEventSchema = z.object({

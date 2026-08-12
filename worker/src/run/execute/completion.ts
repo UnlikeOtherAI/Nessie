@@ -44,6 +44,11 @@ export const completeRunExecution = async (
      * Decided by the model (`watch-status.ts`), never by reading the prose.
      */
     rollingWatch?: { triggerId: string }
+    /**
+     * The run already answered with a reaction and its leftover text carries
+     * no information, so there is nothing left to post.
+     */
+    reactionWasTheAnswer?: boolean
     toolCallsUsed: number
   },
 ): Promise<void> => {
@@ -59,7 +64,14 @@ export const completeRunExecution = async (
     await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
   }
 
-  if (input.rollingWatch) {
+  if (input.reactionWasTheAnswer) {
+    // Nothing to write: the reaction is on the message the run answered. Still
+    // terminate the stream so the thinking bubble clears.
+    await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
+      agentId: parseAgentId(context.agent.id),
+      runId: parseRunId(context.run.id),
+    })
+  } else if (input.rollingWatch) {
     const fold = await foldWatchStatus(deps.prisma, {
       agentId: context.agent.id,
       content: input.responseText,
