@@ -196,7 +196,11 @@ const parseManifest = (value: unknown): {
   }
   const entrypointRecord = rawEntrypoints as Record<string, unknown>
   const entrypoints: VerifiedGuestRuntimeBundle['entrypoints'] = {}
-  for (const name of ['browser', 'tmux', 'codex', 'claude'] as const) {
+  const entrypointNames = ['browser', 'tmux', 'codex', 'claude'] as const
+  if (Object.keys(entrypointRecord).some((name) => !entrypointNames.includes(name as typeof entrypointNames[number]))) {
+    invalid('manifest is malformed')
+  }
+  for (const name of entrypointNames) {
     const candidate = entrypointRecord[name]
     if (candidate === undefined) continue
     entrypoints[name] = relativeFilePath(candidate)
