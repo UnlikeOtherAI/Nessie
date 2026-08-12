@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"io"
+	"net"
 	"testing"
+	"time"
 )
 
 const testBootstrapToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -58,6 +61,15 @@ func TestWorkspaceMustBeExplicitlyRequestedByTheHostBootCommand(t *testing.T) {
 	}
 }
 
+func TestEgressMustBeExplicitlyRequestedByTheHostBootCommand(t *testing.T) {
+	if !egressRequested("console=hvc0 rdinit=/init nessie.egress=1") {
+		t.Fatal("expected explicit egress command-line flag")
+	}
+	if egressRequested("console=hvc0 rdinit=/init nessie.egress=10") {
+		t.Fatal("accepted a lookalike egress command-line flag")
+	}
+}
+
 func TestEgressTokenIsDistinctAndStableForOneKnownBootstrapToken(t *testing.T) {
 	egress, err := deriveEgressToken(testBootstrapToken)
 	if err != nil {
@@ -87,4 +99,83 @@ func TestEgressPreludeHasNoBootstrapCredentialOrControlFields(t *testing.T) {
 	if bytes.Contains(wire.Bytes(), []byte(testBootstrapToken)) {
 		t.Fatal("egress prelude leaked the bootstrap token")
 	}
+}
+
+func TestGuestEgressProxyForwardsOnlyThroughAnAuthenticatedTunnel(t *testing.T) {
+	egress, err := deriveEgressToken(testBootstrapToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upstream.Close()
+	received := make(chan []byte, 1)
+	request := []byte("CONNECT app.example:443 HTTP/1.1\r\n\r\n")
+	response := []byte("HTTP/1.1 200 Connection Established\r\n\r\n")
+	go func() {
+		connection, acceptErr := upstream.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer connection.Close()
+		prelude := make([]byte, guestEgressPreludeN)
+		if _, readErr := io.ReadFull(connection, prelude); readErr != nil {
+			return
+		}
+		actualRequest := make([]byte, len(request))
+		if _, readErr := io.ReadFull(connection, actualRequest); readErr != nil {
+			return
+		}
+		received <- append(prelude, actualRequest...)
+		_, _ = connection.Write(response)
+	}()
+
+	proxy, err := startGuestEgressProxy("127.0.0.1:0", egress, func() (net.Conn, error) {
+		return net.Dial("tcp4", upstream.Addr().String())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proxy.Close()
+	client, err := net.Dial("tcp4", proxy.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Write(request); err != nil {
+		client.Close()
+		t.Fatal(err)
+	}
+	actualResponse := make([]byte, len(response))
+	if _, err := io.ReadFull(client, actualResponse); err != nil {
+		client.Close()
+		t.Fatal(err)
+	}
+	if !bytes.Equal(actualResponse, response) {
+		client.Close()
+		t.Fatalf("unexpected proxy response %q", actualResponse)
+	}
+	_ = client.Close()
+
+	select {
+	case actual := <-received:
+		expectedPrelude, preludeErr := preludeForTest(egress)
+		if preludeErr != nil {
+			t.Fatal(preludeErr)
+		}
+		if !bytes.Equal(actual, append(expectedPrelude, request...)) {
+			t.Fatalf("proxy did not forward the authenticated tunnel stream: %q", actual)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("proxy did not reach the authenticated tunnel")
+	}
+}
+
+func preludeForTest(sessionToken string) ([]byte, error) {
+	var prelude bytes.Buffer
+	if err := writeGuestEgressPrelude(&prelude, sessionToken); err != nil {
+		return nil, err
+	}
+	return prelude.Bytes(), nil
 }

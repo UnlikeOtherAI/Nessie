@@ -196,6 +196,14 @@ It remains deliberately unconnected while the guest-local proxy and its
 single-purpose bridge to the Unix CONNECT gateway are still absent, so this is
 not browser/coding availability.
 
+The guest also has the complementary loopback-only proxy, guarded by the exact
+`nessie.egress=1` boot flag. A VM configuration may add that flag only when its
+control socket is enabled. The proxy listens at guest `127.0.0.1:8137`, limits
+itself to 16 streams, sends the egress prelude before every host-CID virtio
+tunnel, and forwards nothing directly to a network address. The current helper
+does not set the flag or attach the listener/bridge, so the compiled proxy is
+not an advertised or reachable browser/coding backend.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

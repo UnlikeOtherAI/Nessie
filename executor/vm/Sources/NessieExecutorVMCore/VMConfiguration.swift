@@ -106,16 +106,24 @@ public func configuration(
   for input: VMInput,
   consoleURL: URL? = nil,
   enableGuestControl: Bool = false,
+  enableGuestEgress: Bool = false,
   guestWorkspaceURL: URL? = nil,
 ) throws -> VZVirtualMachineConfiguration {
   guard (1...4).contains(input.cpuCount), (2048...8192).contains(input.memoryMiB) else {
     throw VMError.invalidArgument
   }
+  guard !enableGuestEgress || enableGuestControl else {
+    throw VMError.invalidArgument
+  }
   let loader = VZLinuxBootLoader(kernelURL: input.kernelURL)
-  let bootCommand = input.diskURL == nil
+  let baseBootCommand = input.diskURL == nil
     ? "console=hvc0 rdinit=/init panic=-1"
     : "console=hvc0 root=/dev/vda ro panic=-1"
-  loader.commandLine = guestWorkspaceURL == nil ? bootCommand : "\(bootCommand) nessie.workspace=1"
+  let bootArguments = [
+    guestWorkspaceURL == nil ? nil : "nessie.workspace=1",
+    enableGuestEgress ? "nessie.egress=1" : nil,
+  ].compactMap { $0 }
+  loader.commandLine = ([baseBootCommand] + bootArguments).joined(separator: " ")
   loader.initialRamdiskURL = input.initrdURL
 
   let configuration = VZVirtualMachineConfiguration()

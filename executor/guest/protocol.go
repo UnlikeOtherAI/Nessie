@@ -47,6 +47,10 @@ func workspaceRequested(commandLine string) bool {
 	return strings.Contains(" "+commandLine+" ", " nessie.workspace=1 ")
 }
 
+func egressRequested(commandLine string) bool {
+	return strings.Contains(" "+commandLine+" ", " nessie.egress=1 ")
+}
+
 func validateEnvelope(envelope controlEnvelope) error {
 	if envelope.Version != guestControlVersion || envelope.RequestID == "" || len(envelope.Payload) > guestControlPayloadMaxBytes {
 		return errInvalidFrame

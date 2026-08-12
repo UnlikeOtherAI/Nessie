@@ -431,6 +431,15 @@ before hello if its explicitly requested COW mount cannot be made. No current
 descriptor attaches this device, so it cannot weaken the existing COW-only
 operation set.
 
+The same configuration has a separate `nessie.egress=1` guest boot flag, but
+it refuses to set that flag unless the matching control socket is enabled. The
+guest then binds its proxy only to `127.0.0.1:8137`, caps itself at 16 streams,
+and opens each only through host-CID virtio port `49153` after writing the
+derived-tunnel prelude. It has no TCP listener outside loopback and no direct
+guest network interface. No current helper command sets this flag, attaches the
+host egress listener, or bridges the tunnel to the Unix gateway, so it remains
+unreachable from browser/coding operations.
+
 Before that launch, the companion creates an owner-only `guest-lease.json`
 beside the exact COW draft. It contains the run ID, executor binding fence, and
 server command ID plus a random local lease ID—never a host path, token, or raw

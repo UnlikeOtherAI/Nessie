@@ -31,3 +31,20 @@ func workspaceShareIsExplicitAndWritableOnlyInsideTheGuest() throws {
     #expect(!share.directory.isReadOnly)
   }
 }
+
+@Test("guest egress cannot be configured without the paired control socket")
+func egressRequiresGuestControl() throws {
+  let sourceFile = URL(fileURLWithPath: #filePath).standardizedFileURL
+  let input = VMInput(
+    cpuCount: 2,
+    diskURL: nil,
+    initrdURL: sourceFile,
+    kernelURL: sourceFile,
+    memoryMiB: 2048,
+  )
+  if #available(macOS 15.0, *) {
+    #expect(throws: VMError.self) {
+      try configuration(for: input, enableGuestEgress: true)
+    }
+  }
+}

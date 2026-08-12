@@ -5,6 +5,7 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
+	"net"
 	"os"
 	"syscall"
 	"unsafe"
@@ -12,8 +13,8 @@ import (
 
 const (
 	bootstrapTokenPath = "/etc/nessie/bootstrap-token"
-	guestControlPort  = 49_152
-	vmaddrCIDHost     = 2
+	guestControlPort   = 49_152
+	vmaddrCIDHost      = 2
 )
 
 type sockaddrVM struct {
@@ -26,11 +27,19 @@ type sockaddrVM struct {
 }
 
 func connectGuestControl() (*os.File, error) {
+	return connectGuestVirtioPort(guestControlPort, "nessie-guest-control")
+}
+
+func connectGuestEgress() (*os.File, error) {
+	return connectGuestVirtioPort(guestEgressPort, "nessie-guest-egress")
+}
+
+func connectGuestVirtioPort(port uint32, name string) (*os.File, error) {
 	descriptor, err := syscall.Socket(syscall.AF_VSOCK, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		return nil, err
 	}
-	address := sockaddrVM{Family: syscall.AF_VSOCK, Port: guestControlPort, CID: vmaddrCIDHost}
+	address := sockaddrVM{Family: syscall.AF_VSOCK, Port: port, CID: vmaddrCIDHost}
 	_, _, errno := syscall.Syscall(
 		syscall.SYS_CONNECT,
 		uintptr(descriptor),
@@ -41,7 +50,24 @@ func connectGuestControl() (*os.File, error) {
 		_ = syscall.Close(descriptor)
 		return nil, errno
 	}
-	return os.NewFile(uintptr(descriptor), "nessie-guest-control"), nil
+	return os.NewFile(uintptr(descriptor), name), nil
+}
+
+func dialGuestEgress() (net.Conn, error) {
+	file, err := connectGuestEgress()
+	if err != nil {
+		return nil, err
+	}
+	connection, err := net.FileConn(file)
+	closeErr := file.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		_ = connection.Close()
+		return nil, closeErr
+	}
+	return connection, nil
 }
 
 func readBootstrapToken() ([]byte, error) {
@@ -110,6 +136,17 @@ func main() {
 	}); err != nil {
 		clearBytes(token)
 		os.Exit(1)
+	}
+	if egressRequestedFromProc() {
+		egressToken, err := deriveEgressToken(string(token))
+		if err != nil {
+			clearBytes(token)
+			os.Exit(1)
+		}
+		if _, err := startGuestEgressProxy(guestEgressProxyAddress, egressToken, dialGuestEgress); err != nil {
+			clearBytes(token)
+			os.Exit(1)
+		}
 	}
 	clearBytes(token)
 
