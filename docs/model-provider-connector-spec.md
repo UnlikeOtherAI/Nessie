@@ -45,7 +45,7 @@ This system must:
   still expose all underlying invocation records.
 - advanced orchestration profiles are admin-only by default.
 - do not interleave multiple provider token streams into one visible
-  transcript. That produces incoherent output.
+  transcript. That produces incoherent output. Creating an agent preselects the leading catalogue entry, and the save action states its blocker in-page ("Add a name", "Pick a model") rather than leaving a disabled button unexplained.
 
 ## 3) Terms
 

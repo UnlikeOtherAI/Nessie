@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   useLocation,
   useNavigate,
@@ -17,6 +17,7 @@ import {
   readAgentRunLimits,
   runLimitsToForm,
 } from '../components/features/agents/designer/run-limits'
+import { saveBlockedReason } from '../components/features/agents/designer/save-readiness'
 import { useAgentDesigner } from '../components/features/agents/designer/useAgentDesigner'
 import type { AgentFormState } from '../components/features/agents/designer/useAgentDesigner'
 import {
@@ -91,6 +92,20 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
   }, [editingAgent])
 
   const { actions, state } = useAgentDesigner(initialState)
+
+  // A new agent cannot be saved without a model, and nothing else fills that
+  // field in: the Design Assistant has no model tool, so a user who let it
+  // configure the form met a permanently disabled Create button. Lead with the
+  // catalogue's first entry — Ledger returns it provider-ordered, newest model
+  // of each provider first — and never touch a selection that already exists,
+  // which is also why edit mode (always seeded from the stored agent) is out.
+  const { setModelSelection } = actions
+  const leadingModelOption = modelOptions[0]
+  useEffect(() => {
+    if (isEditMode || state.model || state.provider || !leadingModelOption) return
+    setModelSelection(leadingModelOption)
+  }, [isEditMode, leadingModelOption, setModelSelection, state.model, state.provider])
+
   const chat = useDesignerChat(state, actions, toolCatalog.options)
   const createAgent = useCreateAgent()
   const updateAgent = useUpdateAgent()
@@ -100,6 +115,11 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
     (option) => option.model === state.model && option.provider === state.provider,
   )
   const canSave = Boolean(state.name.trim() && selectedModel && !isSaving)
+  const saveBlocker = saveBlockedReason({
+    action: isEditMode ? 'save' : 'create',
+    hasModel: Boolean(selectedModel),
+    hasName: Boolean(state.name.trim()),
+  })
   const modelOptionsError = modelOptionsQuery.error instanceof Error
     ? modelOptionsQuery.error.message
     : modelOptionsQuery.isError
@@ -189,6 +209,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
       onSelect: () => void handleSave(),
       primary: true,
       priority: 100,
+      ...(saveBlocker ? { title: saveBlocker } : {}),
     },
   ]
 
@@ -199,6 +220,19 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
         onBack={handleBack}
         title={isEditMode ? 'Edit Agent' : 'Agent Designer'}
       />
+
+      {/* The disabled save button is in the header, so its reason sits directly
+          under it — a tooltip would leave the dead button unexplained. */}
+      {saveBlocker && !isSaving ? (
+        <div
+          className={[
+            'flex-shrink-0 border-b border-[color:var(--sep)] bg-[color:var(--overlay-weak)]',
+            'px-5 py-2 text-xs text-[color:var(--tx2)]',
+          ].join(' ')}
+        >
+          {saveBlocker}
+        </div>
+      ) : null}
 
       {/* Two-column layout: 70% form, 30% chat */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
