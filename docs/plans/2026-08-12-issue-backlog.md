@@ -16,7 +16,8 @@ Status: `todo` · `design` (proposal round out) · `doing` · `blocked` · `done
 | 6 | Starred section: self-DM star state, agent DM shown as `#`, two rows active | todo | Three defects, one sidebar surface |
 | 7 | Channel tabs: drop Runs, drop Info, composer only on Messages | doing | Delegated |
 | 8 | Deep Water launcher: Light/Standard/Heavy/Custom + language multi-select | blocked | Blocked on task 9 (Ledger parity) for the language set |
-| 9 | **Ledger**: bring MCP `research_start` to parity with DeepWater's REST config | todo | Cross-repo, `/Volumes/External/Projects/ledger` |
+| 9 | **Ledger**: bring MCP `research_start` to parity with DeepWater's REST config | done (unmerged) | `claude/deepwater-mcp-parity` @ `1f6d8f6`, pushed, NOT merged |
+| 10 | Nessie consumes Ledger parity: languages, real tiers, recency, report title | todo | Blocked until task 9 merges + deploys |
 
 ---
 
@@ -384,3 +385,67 @@ be universal or gated to entitled product keys. That reasoning is Ledger's, and
 must be read before changing its contract — the docs state MCP starts are
 excluded deliberately, so this is a contract decision, not an oversight to
 patch.
+
+
+## 9 — Ledger parity: shipped on a branch, NOT merged
+
+`claude/deepwater-mcp-parity` @ `1f6d8f6`, pushed; local and remote SHAs verified
+identical. 1067 tests / 140 files green, lint and typecheck clean.
+
+The framing changed once the real gate was found: `assertDeepwaterApplicationLaunch`
+(`ledger/api/src/services/research-start-provenance.ts:104`) rejects any caller
+whose `applicationProduct !== "deepwater"` on **both** transports, so the MCP
+`omit()` was cosmetic — Nessie would have been refused on REST too. It was a
+product-identity gate, not a transport gate, born in the same commit as the
+feature (`21e9d5a`) as a bridge for Water's own admin UI.
+
+Shipped: one `researchOptionShape` spread into both the flat start contract and
+Water's envelope so they cannot drift; Tier A **and** Tier B reachable flat with
+no capability flag; `recency` widened as a strict superset (`any`/`recent`
+byte-identical on the wire, four dated windows forward structurally); `thesis`
+and `dissertation` as **real priced tiers** with catalogue rows, output-token
+bounds and price-discovery entries, proven by an integration test booking a
+`thesis` run at its own price rather than `heavy`'s; DeepWater's report title
+persisted and surfaced on status, report and the job list.
+
+Held closed deliberately: `visibility` (maps to Water's root `public` flag — a
+paired Nessie run must not be publishable on Water's public site), plus
+`application_navigation` and `project_id` as Water-local UI state. Flat options
+and the versioned envelope are mutually exclusive, so Water's path is untouched.
+
+**Outstanding before this is safe in production:**
+
+- **Prices for the two new tiers are provisional** — `thesis` 25,
+  `dissertation` 40, extrapolated from `heavy`'s curve because the live
+  `price-refresh` needs credentials that were not available. Ledger's AGENTS.md
+  makes that refresh the release gate. Customers would be billed these numbers.
+  Confirm before production traffic buys either tier. Same caveat on their
+  output-token bounds.
+- **The injected `deepwater_research` tool was deliberately left narrow** — four
+  original depths, no options — so a model cannot self-select `dissertation`
+  mid-completion. Explicit constant (`injectedResearchDepths`), not drift.
+  Widen only on a deliberate decision.
+- **Per-job compute ceiling still does not exist** for any caller. A run with
+  `searches_per_pillar: 20` and premium search books the same single
+  `researches` unit as a default one. Everything is metered and attributed, so
+  nothing is free or hidden — it is a spend-shape question. Standing
+  recommendation as its own ticket, explicitly out of scope here.
+
+## 10 — Nessie consumes the Ledger parity
+
+Blocked until task 9 merges and deploys. Then, on the Nessie side:
+
+- Delete the thesis/dissertation → `heavy` collapse
+  (`api/src/routes/integrations/handoff-builders.ts:9-12`) — Ledger prices them
+  for real now.
+- Build the language multi-select into Custom, at the seam left in
+  `DeepWaterResearchCustomControls.tsx`, modelled on water's
+  `LanguageReachDropdown` + `LanguageSelect` (derived active option, region
+  groups, pinned `en`, empty = auto-detect).
+- Send the run-shaping options as **typed parameters** and stop writing them as
+  prose lines into `context`.
+- Forward the real recency window instead of collapsing to `recent`.
+- Inherit the report title from Ledger's new typed field, with the same
+  server-only provenance discipline as `reportUrl`/`sourceCount` so an
+  agent-authored `deep_water_run_update` cannot forge it.
+- Cut the output-language list from 184 codes to the 12 DeepWater supports.
