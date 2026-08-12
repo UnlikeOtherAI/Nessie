@@ -68,6 +68,29 @@ test('the daemon refuses commands without a state directory', () => {
   assert.throws(() => parseCommand(['serve']), /state-dir/)
 })
 
+test('Codex configuration requires only local owner-controlled sources', () => {
+  assert.deepEqual(
+    parseCommand([
+      'configure-codex',
+      '--state-dir', '/private/tmp/nessie-executor',
+      '--auth-profile', '/private/tmp/codex-auth.json',
+      '--guest-initrd-builder', '/private/tmp/build-initrd',
+      '--kernel', '/private/tmp/kernel',
+      '--vm-helper', '/private/tmp/vm-helper',
+      '--runtime-bundle', '/private/tmp/runtime',
+    ]),
+    {
+      codexAuthProfilePath: '/private/tmp/codex-auth.json',
+      guestInitrdBuilderPath: '/private/tmp/build-initrd',
+      guestRuntimeBundlePath: '/private/tmp/runtime',
+      kernelPath: '/private/tmp/kernel',
+      kind: 'configure-codex',
+      stateDir: '/private/tmp/nessie-executor',
+      vmHelperPath: '/private/tmp/vm-helper',
+    },
+  )
+})
+
 test('local policy configuration proposes only implemented COW operations', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-configure-'))
   const state = {

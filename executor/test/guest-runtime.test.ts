@@ -147,14 +147,21 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
   const helperPath = join(stateDir, 'helper')
   const kernelPath = join(stateDir, 'kernel')
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
+  const codexAuthProfilePath = join(stateDir, 'codex-auth.json')
   try {
     await writeFile(join(root, 'base.txt'), 'host source')
     await Promise.all([
       writeFile(builderPath, 'builder'),
       writeFile(helperPath, 'helper'),
       writeFile(kernelPath, 'kernel'),
+      writeFile(codexAuthProfilePath, '{"auth_mode":"chatgpt"}'),
     ])
-    await Promise.all([chmod(builderPath, 0o700), chmod(helperPath, 0o700), chmod(kernelPath, 0o600)])
+    await Promise.all([
+      chmod(builderPath, 0o700),
+      chmod(helperPath, 0o700),
+      chmod(kernelPath, 0o600),
+      chmod(codexAuthProfilePath, 0o600),
+    ])
     await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
     await chmod(runtimeBundlePath, 0o700)
     const browserRuntime = 'browser-runtime'
@@ -174,6 +181,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     const calls: Array<{ argv: string[]; input: string; path: string }> = []
     let resolveClosed: (() => void) | undefined
     const session = await startGuestVmSession({
+      codexAuthProfilePath,
       egressPolicy: { allowedOrigins: ['https://app.example.test'] },
       guestInitrdBuilderPath: builderPath,
       guestRuntimeBundlePath: runtimeBundlePath,
@@ -202,6 +210,10 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     assert.equal(calls.length, 2)
     assert.equal(calls[0].path, await realpath(builderPath))
     assert.deepEqual(calls[0].argv.slice(-1), ['--bootstrap-token-stdin'])
+    const authProfileIndex = calls[0].argv.indexOf('--codex-auth')
+    assert.equal(authProfileIndex >= 0, true)
+    assert.equal(calls[0].argv[authProfileIndex + 1], await realpath(codexAuthProfilePath))
+    assert.equal(calls[0].argv.includes('{"auth_mode":"chatgpt"}'), false)
     assert.equal(calls[1].path, await realpath(helperPath))
     assert.equal(calls[1].input, calls[0].input)
     assert.equal(calls[1].argv[0], 'session')

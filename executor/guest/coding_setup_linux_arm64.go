@@ -3,11 +3,20 @@
 package main
 
 import (
+	"io"
 	"os"
 	"syscall"
 )
 
-const codingRuntimeDirectory = "/run/nessie-executor"
+const (
+	codingRuntimeDirectory    = "/run/nessie-executor"
+	maxCodingAuthProfileBytes = 1_048_576
+)
+
+var (
+	codingAuthProfileSource      = "/etc/nessie/codex-auth.json"
+	codingAuthProfileDestination = codingCredentialHome + "/auth.json"
+)
 
 // prepareCodingRuntime creates the immutable tmux configuration before the
 // guest drops privileges. The socket directory is private to the one guest
@@ -163,5 +172,60 @@ func prepareCodexCredentialHome(identity guestIdentity) error {
 	if !ok || metadata.Uid != identity.userID || metadata.Gid != identity.groupID {
 		return errInvalidFrame
 	}
-	return nil
+	return materializeCodexAuthProfile(identity)
+}
+
+// materializeCodexAuthProfile moves the owner-selected profile out of the
+// root-only initrd area before privilege drop. A model process cannot mount an
+// initrd or access its root-only source; the destination is separately denied
+// to Codex's workspace-write children by the launch conformance gate.
+func materializeCodexAuthProfile(identity guestIdentity) error {
+	sourceInfo, err := os.Lstat(codingAuthProfileSource)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil || !sourceInfo.Mode().IsRegular() || sourceInfo.Mode()&os.ModeSymlink != 0 || sourceInfo.Mode().Perm() != 0o400 || sourceInfo.Size() <= 0 || sourceInfo.Size() > maxCodingAuthProfileBytes {
+		return errInvalidFrame
+	}
+	sourceMetadata, ok := sourceInfo.Sys().(*syscall.Stat_t)
+	if !ok || sourceMetadata.Uid != 0 || sourceMetadata.Gid != 0 || sourceMetadata.Nlink != 1 {
+		return errInvalidFrame
+	}
+	sourceDescriptor, err := syscall.Open(codingAuthProfileSource, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	source := os.NewFile(uintptr(sourceDescriptor), codingAuthProfileSource)
+	defer source.Close()
+	openedInfo, err := source.Stat()
+	if err != nil || !os.SameFile(sourceInfo, openedInfo) {
+		return errInvalidFrame
+	}
+	destination, err := os.OpenFile(codingAuthProfileDestination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	written, copyErr := io.Copy(destination, io.LimitReader(source, maxCodingAuthProfileBytes+1))
+	if copyErr == nil {
+		copyErr = destination.Sync()
+	}
+	closeErr := destination.Close()
+	if copyErr != nil || closeErr != nil || written != sourceInfo.Size() {
+		return errInvalidFrame
+	}
+	if err := os.Chown(codingAuthProfileDestination, int(identity.userID), int(identity.groupID)); err != nil {
+		return err
+	}
+	if err := os.Chmod(codingAuthProfileDestination, 0o600); err != nil {
+		return err
+	}
+	destinationInfo, err := os.Lstat(codingAuthProfileDestination)
+	if err != nil || !destinationInfo.Mode().IsRegular() || destinationInfo.Mode()&os.ModeSymlink != 0 || destinationInfo.Mode().Perm() != 0o600 || destinationInfo.Size() != written {
+		return errInvalidFrame
+	}
+	destinationMetadata, ok := destinationInfo.Sys().(*syscall.Stat_t)
+	if !ok || destinationMetadata.Uid != identity.userID || destinationMetadata.Gid != identity.groupID || destinationMetadata.Nlink != 1 {
+		return errInvalidFrame
+	}
+	return os.Remove(codingAuthProfileSource)
 }

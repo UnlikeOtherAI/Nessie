@@ -15,6 +15,7 @@ import {
   runGuestVmProcess,
   secureGuestVmGatewayDirectory,
   secureGuestVmSessionDirectory,
+  verifyPrivateCodexAuthProfile,
   type GuestVmProcessRunner,
   verifyPrivateGuestVmFile,
 } from './guest-vm-artifacts.js'
@@ -58,6 +59,7 @@ type GuestVmSessionLauncher = (input: {
 }) => Promise<ActiveGuestVmSessionProcess>
 
 export type GuestVmSessionInput = GuestVmHandshakeInput & {
+  codexAuthProfilePath?: string
   egressPolicy: ExecutorEgressPolicy
   guestRuntimeBundlePath: string
 }
@@ -134,10 +136,13 @@ export const startGuestVmSession = async (
 ): Promise<GuestVmSession> => {
   const egressSettings = compileExecutorEgressPolicy(input.egressPolicy)
   await assertGuestWorkspaceLeaseCurrent(input.stateDir, input.lease)
-  const [builderPath, kernelPath, helperPath] = await Promise.all([
+  const [builderPath, kernelPath, helperPath, codexAuthProfilePath] = await Promise.all([
     verifyPrivateGuestVmFile(input.guestInitrdBuilderPath, true),
     verifyPrivateGuestVmFile(input.kernelPath, false),
     verifyPrivateGuestVmFile(input.vmHelperPath, true),
+    input.codexAuthProfilePath
+      ? verifyPrivateCodexAuthProfile(input.codexAuthProfilePath)
+      : Promise.resolve(undefined),
   ])
   const runtimeBundle = await verifyGuestRuntimeBundle(input.guestRuntimeBundlePath)
   const sessionDirectory = await secureGuestVmSessionDirectory(input.stateDir, input.lease)
@@ -164,7 +169,11 @@ export const startGuestVmSession = async (
     const runtimeSnapshot = await materializeGuestRuntimeBundle(runtimeBundle, join(sessionDirectory, 'runtime'))
     gateway = await startExecutorEgressGateway({ policy: input.egressPolicy, socketPath: gatewayPath })
     await runProcess({
-      argv: ['--output', initrdPath, '--bootstrap-token-stdin'],
+      argv: [
+        '--output', initrdPath,
+        ...(codexAuthProfilePath ? ['--codex-auth', codexAuthProfilePath] : []),
+        '--bootstrap-token-stdin',
+      ],
       input: bootstrapToken,
       path: builderPath,
       timeoutMs: GUEST_VM_BUILD_TIMEOUT_MS,

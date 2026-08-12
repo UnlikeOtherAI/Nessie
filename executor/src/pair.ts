@@ -9,12 +9,13 @@ import {
 import { executorApi } from './api-client.js'
 import { buildSignedDescriptor } from './descriptor.js'
 import { compileExecutorEgressPolicy } from './egress-policy.js'
-import { verifyPrivateGuestVmFile } from './guest-vm-artifacts.js'
+import { verifyPrivateCodexAuthProfile, verifyPrivateGuestVmFile } from './guest-vm-artifacts.js'
 import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
 import { verifyNativeHelperPath } from './native-helper.js'
 import {
   saveExecutorState,
   type ExecutorBrowserSandboxConfig,
+  type ExecutorCodexSandboxConfig,
   type ExecutorLocalState,
 } from './state-store.js'
 import { configureWorkspaceRoot } from './workspace.js'
@@ -40,6 +41,35 @@ export const COW_WORKSPACE_OPERATION_KEYS = [
 
 const PROMOTION_OPERATION_KEY = 'workspace.promote' as const
 export const BROWSER_OPERATION_KEYS = ['browser.open', 'browser.observe'] as const
+
+type GuestVmArtifactInput = {
+  guestInitrdBuilderPath: string
+  guestRuntimeBundlePath: string
+  kernelPath: string
+  vmHelperPath: string
+}
+
+type VerifiedGuestVmArtifacts = GuestVmArtifactInput & {
+  runtime: Awaited<ReturnType<typeof verifyGuestRuntimeBundle>>
+}
+
+const verifyGuestVmArtifacts = async (
+  input: GuestVmArtifactInput,
+): Promise<VerifiedGuestVmArtifacts> => {
+  const [guestInitrdBuilderPath, kernelPath, vmHelperPath, runtime] = await Promise.all([
+    verifyPrivateGuestVmFile(input.guestInitrdBuilderPath, true),
+    verifyPrivateGuestVmFile(input.kernelPath, false),
+    verifyPrivateGuestVmFile(input.vmHelperPath, true),
+    verifyGuestRuntimeBundle(input.guestRuntimeBundlePath),
+  ])
+  return {
+    guestInitrdBuilderPath,
+    guestRuntimeBundlePath: runtime.root,
+    kernelPath,
+    runtime,
+    vmHelperPath,
+  }
+}
 
 const initialLocalPolicy = {
   limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
@@ -127,19 +157,15 @@ export const configureExecutorBrowserSandbox = async (
   },
 ): Promise<ExecutorLocalState> => {
   const egress = compileExecutorEgressPolicy({ allowedOrigins: input.allowedOrigins })
-  const [guestInitrdBuilderPath, kernelPath, vmHelperPath, runtime] = await Promise.all([
-    verifyPrivateGuestVmFile(input.guestInitrdBuilderPath, true),
-    verifyPrivateGuestVmFile(input.kernelPath, false),
-    verifyPrivateGuestVmFile(input.vmHelperPath, true),
-    verifyGuestRuntimeBundle(input.guestRuntimeBundlePath),
-  ])
+  const artifacts = await verifyGuestVmArtifacts(input)
+  const { guestInitrdBuilderPath, kernelPath, vmHelperPath, runtime } = artifacts
   if (!runtime.entrypoints.browser) {
     throw new Error('The guest runtime bundle does not declare a browser entrypoint.')
   }
   const browserSandbox: ExecutorBrowserSandboxConfig = {
     allowedOrigins: [...egress.allowedOrigins].sort(),
     guestInitrdBuilderPath,
-    guestRuntimeBundlePath: runtime.root,
+    guestRuntimeBundlePath: artifacts.guestRuntimeBundlePath,
     kernelPath,
     vmHelperPath,
   }
@@ -163,6 +189,35 @@ export const configureExecutorBrowserSandbox = async (
       revision: state.descriptor.revision + 1,
     },
   }
+  await saveExecutorState(stateDir, next)
+  return next
+}
+
+/**
+ * Stores one local Codex login source after verifying its file and the whole
+ * guest runtime. It deliberately makes no descriptor claim: until the coding
+ * command/session lifecycle exists, Nessie cannot dispatch or advertise it.
+ */
+export const configureExecutorCodexSandbox = async (
+  stateDir: string,
+  state: ExecutorLocalState,
+  input: GuestVmArtifactInput & { codexAuthProfilePath: string },
+): Promise<ExecutorLocalState> => {
+  const [artifacts, codexAuthProfilePath] = await Promise.all([
+    verifyGuestVmArtifacts(input),
+    verifyPrivateCodexAuthProfile(input.codexAuthProfilePath),
+  ])
+  if (!artifacts.runtime.entrypoints.codex || !artifacts.runtime.entrypoints.tmux) {
+    throw new Error('The guest runtime bundle must declare owner-pinned Codex and tmux entrypoints.')
+  }
+  const codexSandbox: ExecutorCodexSandboxConfig = {
+    codexAuthProfilePath,
+    guestInitrdBuilderPath: artifacts.guestInitrdBuilderPath,
+    guestRuntimeBundlePath: artifacts.guestRuntimeBundlePath,
+    kernelPath: artifacts.kernelPath,
+    vmHelperPath: artifacts.vmHelperPath,
+  }
+  const next: ExecutorLocalState = { ...state, codexSandbox }
   await saveExecutorState(stateDir, next)
   return next
 }

@@ -2,11 +2,12 @@
 set -eu
 
 usage() {
-  echo "Usage: build-guest-initrd.sh --output <absolute-path> --bootstrap-token-stdin" >&2
+  echo "Usage: build-guest-initrd.sh --output <absolute-path> [--codex-auth <owner-private-auth.json>] --bootstrap-token-stdin" >&2
   exit 64
 }
 
 output=""
+codex_auth=""
 read_token=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -19,6 +20,11 @@ while [ "$#" -gt 0 ]; do
       read_token=1
       shift
       ;;
+    --codex-auth)
+      [ "$#" -gt 1 ] || usage
+      codex_auth="$2"
+      shift 2
+      ;;
     *)
       usage
       ;;
@@ -30,6 +36,27 @@ case "$output" in
   /*) ;;
   *) usage ;;
 esac
+
+if [ -n "$codex_auth" ]; then
+  case "$codex_auth" in
+    /*) ;;
+    *) usage ;;
+  esac
+  [ -f "$codex_auth" ] && [ ! -L "$codex_auth" ] || {
+    echo "Codex auth profile must be an ordinary file" >&2
+    exit 1
+  }
+  auth_mode=$(stat -f %Lp "$codex_auth")
+  [ "$(stat -f %u "$codex_auth")" = "$(id -u)" ] && { [ "$auth_mode" = "400" ] || [ "$auth_mode" = "600" ]; } && [ "$(stat -f %l "$codex_auth")" = "1" ] || {
+    echo "Codex auth profile must be owner-only and unlinked" >&2
+    exit 1
+  }
+  auth_size=$(stat -f %z "$codex_auth")
+  [ "$auth_size" -gt 0 ] && [ "$auth_size" -le 1048576 ] || {
+    echo "Codex auth profile size is invalid" >&2
+    exit 1
+  }
+fi
 [ ! -e "$output" ] && [ ! -L "$output" ] || {
   echo "initrd output already exists" >&2
   exit 1
@@ -77,6 +104,10 @@ mkdir -p "$root_dir/etc/nessie"
 chmod 700 "$root_dir/etc" "$root_dir/etc/nessie"
 printf %s "$token" >"$root_dir/etc/nessie/bootstrap-token"
 chmod 400 "$root_dir/etc/nessie/bootstrap-token"
+if [ -n "$codex_auth" ]; then
+  cp "$codex_auth" "$root_dir/etc/nessie/codex-auth.json"
+  chmod 400 "$root_dir/etc/nessie/codex-auth.json"
+fi
 
 (
   cd "$guest_dir"

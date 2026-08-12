@@ -621,7 +621,12 @@ targets. An existing dedicated socket makes launch fail closed.
 The credential-free Claude profile is created inside the guest COW workspace.
 Codex instead receives a fresh, private guest home below
 `/run/nessie-executor`, never below `/work`. It contains a non-secret canary
-and no host profile today. The entire guest executor-control directory is also
+and no host profile by default. An owner may configure an owner-private Codex
+auth-file *path* in the companion. Its contents are not read by Nessie or
+stored in companion state: only an owner-controlled initrd builder reads it,
+copies it to a root-only initrd leaf for one VM, and the guest transfers it to
+that private home before dropping privileges, then removes the root-only leaf.
+The VM teardown removes the whole initrd. The entire guest executor-control directory is also
 denied to model-generated children, so they cannot reach the same-UID tmux
 control socket. Before the guest will launch Codex, its exact
 manifest-pinned binary must run a conformance probe in the same
@@ -646,14 +651,15 @@ supplies lifecycle truth. Close kills only the exact dedicated session.
 This is intentionally **not** `coding.launch`, `coding.observe`, or
 `coding.close` product availability: no executor descriptor, daemon command,
 agent tool, UI route, remote terminal attach, credential broker, approval,
-control lease, or task/session record reaches it. The guest has no coding CLI
-credential or direct network path, so its internal control messages cannot be
-used as a working Codex/Claude product session. A subsequent slice must add a
-locally selected Codex auth profile, provider-only forced gateway, and durable
-control plane before any of these mechanics are projected. The conformance
-gate is the prerequisite for that local profile; a proof or token inherited by
-a coding CLI is insufficient because child workspace processes can read it and
-must never receive delegated provider capability.
+control lease, or task/session record reaches it. The local `configure-codex`
+command prepares the constrained source for a future session only; it does not
+change the descriptor or make a coding tool reachable. No product session has
+a coding CLI credential or a provider egress policy yet. A subsequent slice
+must add the fixed provider-only forced gateway and durable control plane
+before any of these mechanics are projected. The conformance gate is the
+prerequisite for that local profile; a proof or token inherited by a coding CLI
+is insufficient because child workspace processes can read it and must never
+receive delegated provider capability.
 
 Its optional `--workspace-cow` argument exists only for the companion's
 lease-derived release probe. It passes that one COW directory into the fixed VM
@@ -803,7 +809,7 @@ executor, other users, local paths, credentials, or raw output.
 | Guest writes host workspace | COW only; daemon-owned `workspace.promote` with no-follow manifest validation, approval, fencing, journaled recovery. |
 | Lost command acknowledgement | Durable receipts and `unknown_outcome` mapped to existing `needs_setup`, never presumed success. |
 | PA prompt injection mutates access | Prepare/structural-confirm/step-up flow in PA DM only; actor user rechecked at commit. |
-| Host credential exfiltration | No host CLI home/keychain mount; no current coding credential path; future broker requires a distinct credential principal; raw-data retention bans. |
+| Host credential exfiltration | No host CLI home/keychain mount; an owner-private Codex source is copied only through a transient root-only initrd leaf into the conformance-gated guest home; no broker/server copy or raw-data retention. |
 | Terminal spoofing | Typed lifecycle events are authoritative; terminal/ANSI output is display-only. |
 
 Contract tests must cover enrollment replay and race, descriptor rollback, dual

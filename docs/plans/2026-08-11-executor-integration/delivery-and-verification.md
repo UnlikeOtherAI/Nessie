@@ -52,11 +52,16 @@ executor-control directory, connect to tmux's Unix control socket, or reach the
 known-live guest-local egress proxy.
 This is the required credential-principal
 boundary; same-UID modes and an inherited proof are not. It exposes no
-`coding.*` executor operation yet. The next coding slice can materialize a
-locally selected Codex auth profile only after coupling that launch gate to a
-provider-only egress route and durable session/control records. Only then may
-this guest substrate be wired through a descriptor, the daemon, agent grants,
-the Executors surface, and Personal Assistant user confirmation.
+`coding.*` executor operation yet. A local `configure-codex` command now
+validates an owner-private Codex auth source and the pinned guest artifacts;
+the source path alone is stored in owner-only companion state. A session can
+copy it only into a root-only transient initrd, transfer it to the guest's
+private auth home before privilege drop, and remove the initrd leaf. It does
+not change the descriptor or make a coding capability reachable. The next
+coding slice must couple that launch gate to a provider-only egress route and
+durable session/control records. Only then may this guest substrate be wired
+through a descriptor, the daemon, agent grants, the Executors surface, and
+Personal Assistant user confirmation.
 
 ### 6. Expansion and hardening
 

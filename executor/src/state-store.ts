@@ -13,6 +13,19 @@ export type ExecutorBrowserSandboxConfig = {
   vmHelperPath: string
 }
 
+/**
+ * Local-only Codex configuration. `codexAuthProfilePath` is an owner-private
+ * source file, never its contents; a session copies it into a transient guest
+ * initrd and removes that copy when the VM stops.
+ */
+export type ExecutorCodexSandboxConfig = {
+  codexAuthProfilePath: string
+  guestInitrdBuilderPath: string
+  guestRuntimeBundlePath: string
+  kernelPath: string
+  vmHelperPath: string
+}
+
 export type ExecutorLocalState = {
   apiBaseUrl: string
   connectionEpoch?: string
@@ -29,6 +42,8 @@ export type ExecutorLocalState = {
   nativeHelperPath?: string
   /** Local-only browser VM configuration; it is never supplied by Nessie. */
   browserSandbox?: ExecutorBrowserSandboxConfig
+  /** Local-only Codex VM configuration; it is never supplied by Nessie. */
+  codexSandbox?: ExecutorCodexSandboxConfig
   /** Canonical, single read-only host directory selected during pairing. */
   workspaceRoot: string
 }
@@ -47,6 +62,17 @@ const validBrowserSandbox = (value: unknown): value is ExecutorBrowserSandboxCon
   && typeof (value as ExecutorBrowserSandboxConfig).guestRuntimeBundlePath === 'string'
   && typeof (value as ExecutorBrowserSandboxConfig).kernelPath === 'string'
   && typeof (value as ExecutorBrowserSandboxConfig).vmHelperPath === 'string'
+)
+
+const validCodexSandbox = (value: unknown): value is ExecutorCodexSandboxConfig => (
+  Boolean(value)
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && typeof (value as ExecutorCodexSandboxConfig).codexAuthProfilePath === 'string'
+  && typeof (value as ExecutorCodexSandboxConfig).guestInitrdBuilderPath === 'string'
+  && typeof (value as ExecutorCodexSandboxConfig).guestRuntimeBundlePath === 'string'
+  && typeof (value as ExecutorCodexSandboxConfig).kernelPath === 'string'
+  && typeof (value as ExecutorCodexSandboxConfig).vmHelperPath === 'string'
 )
 
 const assertOwnerOnly = async (
@@ -84,6 +110,7 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
     || typeof parsed.workspaceRoot !== 'string'
     || (parsed.nativeHelperPath !== undefined && typeof parsed.nativeHelperPath !== 'string')
     || (parsed.browserSandbox !== undefined && !validBrowserSandbox(parsed.browserSandbox))
+    || (parsed.codexSandbox !== undefined && !validCodexSandbox(parsed.codexSandbox))
     || !parsed.descriptor
   ) {
     throw new Error('Executor state is malformed.')

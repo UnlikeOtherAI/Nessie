@@ -2,6 +2,7 @@
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
 import {
   configureExecutorBrowserSandbox,
+  configureExecutorCodexSandbox,
   configureExecutorLocalPolicy,
   pairExecutor,
 } from './pair.js'
@@ -26,6 +27,15 @@ type ParsedCommand =
     stateDir: string
     vmHelperPath: string
   }
+  | {
+    codexAuthProfilePath: string
+    guestInitrdBuilderPath: string
+    guestRuntimeBundlePath: string
+    kernelPath: string
+    kind: 'configure-codex'
+    stateDir: string
+    vmHelperPath: string
+  }
   | { kind: 'connect'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
   | { kind: 'serve'; stateDir: string }
@@ -39,6 +49,10 @@ const usage = (): never => {
     + '[--native-helper </absolute/owner-only/nessie-executor-native>]\n'
     + '       nessie-executor configure-browser --state-dir <owner-only-path> '
     + '--allowed-origins <https://origin.example,...> --guest-initrd-builder <absolute-owner-only-file> '
+    + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
+    + '--runtime-bundle <absolute-owner-only-directory>\n'
+    + '       nessie-executor configure-codex --state-dir <owner-only-path> '
+    + '--auth-profile <absolute-owner-only-auth.json> --guest-initrd-builder <absolute-owner-only-file> '
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>',
@@ -94,6 +108,17 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       vmHelperPath: option(args, '--vm-helper'),
     }
   }
+  if (command === 'configure-codex') {
+    return {
+      codexAuthProfilePath: option(args, '--auth-profile'),
+      guestInitrdBuilderPath: option(args, '--guest-initrd-builder'),
+      guestRuntimeBundlePath: option(args, '--runtime-bundle'),
+      kernelPath: option(args, '--kernel'),
+      kind: 'configure-codex',
+      stateDir: option(args, '--state-dir'),
+      vmHelperPath: option(args, '--vm-helper'),
+    }
+  }
   if (command === 'connect' || command === 'heartbeat' || command === 'serve') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
@@ -128,6 +153,13 @@ export const run = async (args: string[]): Promise<void> => {
     process.stdout.write(
       `Browser sandbox proposal saved as revision ${updated.descriptor.revision}. `
       + 'Run connect (or restart serve), then have a person review it in Nessie.\n',
+    )
+    return
+  }
+  if (command.kind === 'configure-codex') {
+    await configureExecutorCodexSandbox(command.stateDir, state, command)
+    process.stdout.write(
+      'Private Codex guest configuration saved. It remains unadvertised until the coding session control plane is available.\n',
     )
     return
   }

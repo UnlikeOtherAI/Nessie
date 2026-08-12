@@ -10,6 +10,7 @@ import { WorkspacePathError } from './workspace-paths.js'
 
 export const GUEST_VM_BUILD_TIMEOUT_MS = 90_000
 export const GUEST_VM_HANDSHAKE_TIMEOUT_MS = 45_000
+const MAX_CODEX_AUTH_PROFILE_BYTES = 1_048_576
 
 export type GuestVmProcessRunner = (input: {
   argv: string[]
@@ -20,12 +21,22 @@ export type GuestVmProcessRunner = (input: {
 
 const ownerId = (): number | undefined => process.getuid?.()
 
-export const verifyPrivateGuestVmFile = async (value: string, executable: boolean): Promise<string> => {
-  if (!isAbsolute(value)) throw new WorkspacePathError('The executor VM artifact path must be absolute.')
+const verifyOwnerPrivateFile = async (
+  value: string,
+  options: {
+    executable: boolean
+    expectedModes?: number[]
+    label: string
+    maxBytes?: number
+    requireNonEmpty?: boolean
+    singleLink?: boolean
+  },
+): Promise<string> => {
+  if (!isAbsolute(value)) throw new WorkspacePathError(`The executor ${options.label} path must be absolute.`)
   const declared = resolve(value)
   const initial = await lstat(declared)
   if (initial.isSymbolicLink() || !initial.isFile()) {
-    throw new WorkspacePathError('The executor VM artifact must be an ordinary file.')
+    throw new WorkspacePathError(`The executor ${options.label} must be an ordinary file.`)
   }
   const canonical = await realpath(declared)
   const info = await lstat(canonical)
@@ -34,12 +45,30 @@ export const verifyPrivateGuestVmFile = async (value: string, executable: boolea
     || !info.isFile()
     || (ownerId() !== undefined && info.uid !== ownerId())
     || (info.mode & 0o077) !== 0
-    || (executable && (info.mode & constants.S_IXUSR) === 0)
+    || (options.executable && (info.mode & constants.S_IXUSR) === 0)
+    || (options.expectedModes !== undefined && !options.expectedModes.includes(info.mode & 0o777))
+    || (options.maxBytes !== undefined && info.size > options.maxBytes)
+    || (options.requireNonEmpty && info.size === 0)
+    || (options.singleLink && info.nlink !== 1)
   ) {
-    throw new WorkspacePathError('The executor VM artifact must be owner-private and immutable.')
+    throw new WorkspacePathError(`The executor ${options.label} must be owner-private and non-symbolic.`)
   }
   return canonical
 }
+
+export const verifyPrivateGuestVmFile = async (value: string, executable: boolean): Promise<string> =>
+  verifyOwnerPrivateFile(value, { executable, label: 'VM artifact' })
+
+/** A login profile is copied by the owner-controlled initrd builder, never read by Nessie. */
+export const verifyPrivateCodexAuthProfile = async (value: string): Promise<string> =>
+  verifyOwnerPrivateFile(value, {
+    executable: false,
+    expectedModes: [0o400, 0o600],
+    label: 'Codex auth profile',
+    maxBytes: MAX_CODEX_AUTH_PROFILE_BYTES,
+    requireNonEmpty: true,
+    singleLink: true,
+  })
 
 export const runGuestVmProcess: GuestVmProcessRunner = async ({ argv, input, path, timeoutMs }) => {
   await new Promise<void>((resolvePromise, reject) => {
