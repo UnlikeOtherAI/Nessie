@@ -271,7 +271,7 @@ export const submitExecutorDescriptor = async (
       'nessie.executor.descriptor.v1',
       input.descriptor.descriptor,
     )
-    if (!current.equals(proposed)) {
+    if (current !== proposed) {
       throw new ExecutorError(
         EXECUTOR_ERROR_CODES.DESCRIPTOR_REVISION_CONFLICT,
         'A descriptor revision cannot describe two different policies.',

@@ -18,6 +18,7 @@ import {
 } from '../facades/executors/hooks'
 import { useProjects } from '../facades/projects/hooks'
 import { useUsers } from '../facades/users/hooks'
+import { getBaseUrl } from '../lib/api-client'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 const statusClass = (status: string): string => status === 'online'
@@ -130,7 +131,7 @@ export const ExecutorsPage = () => {
   }
 
   const pairingCommand = useMemo(() => created
-    ? `nessie-executor pair --enrollment ${created.invitation.enrollmentId} --challenge ${created.invitation.challenge}`
+    ? `nessie-executor pair --api ${getBaseUrl() || 'https://api.nessie.works'} --state-dir "$HOME/.nessie-executor" --enrollment ${created.invitation.enrollmentId} --challenge ${created.invitation.challenge}`
     : null, [created])
 
   return (
@@ -168,7 +169,7 @@ export const ExecutorsPage = () => {
         {pairingCommand && created ? (
           <section className="admin-card grid gap-2 border border-[color:var(--accent)] p-4">
             <h2 className="text-sm font-semibold text-[color:var(--tx)]">Finish pairing on the companion</h2>
-            <p className="text-xs text-[color:var(--tx3)]">Run this one-time command on the machine that will host the executor. It expires at {created.invitation.expiresAt}.</p>
+            <p className="text-xs text-[color:var(--tx3)]">Run this one-time command on the supported macOS machine. It stores the machine key in an owner-only state directory and expires at {created.invitation.expiresAt}.</p>
             <code className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx)]">{pairingCommand}</code>
           </section>
         ) : null}

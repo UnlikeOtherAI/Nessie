@@ -401,8 +401,8 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       const body = parseInput(SubmitExecutorEnrollmentBodySchema, request.body, reply)
       if (!body) return reply
       try {
-        await submitExecutorEnrollment(prisma, body)
-        return createApiResponse({ accepted: true })
+        const pending = await submitExecutorEnrollment(prisma, body)
+        return createApiResponse(PendingExecutorEnrollmentSchema.parse(pending))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
         throw error

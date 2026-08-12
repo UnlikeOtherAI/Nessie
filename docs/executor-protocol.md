@@ -153,6 +153,13 @@ proof from the current key and may not bypass revocation.
 The daemon makes outbound HTTPS/WSS connections only. Nessie never calls into a
 laptop or uses a catalog endpoint as a machine transport.
 
+The initial `nessie-executor` CLI requires an explicit HTTPS API origin and an
+owner-only local state directory. It generates and stores the machine key
+locally, submits the signed enrollment proof, and after the human confirms the
+fingerprint, claims a connection and sends heartbeats. Its presence-only
+profile advertises `sandbox.stop` but deliberately refuses every file, command,
+browser, and coding operation until a concrete sandbox backend is installed.
+
 On connection, the daemon sends a `hello` frame:
 
 ```json

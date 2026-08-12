@@ -55,18 +55,18 @@ export const assertValidExecutorEnrollmentProof = (input: ExecutorEnrollmentRequ
   const publicKey = executorPublicKey(input.machinePublicKey)
   const descriptorValid = verify(
     null,
-    canonicalExecutorPayload('nessie.executor.descriptor.v1', input.descriptor.descriptor),
+    Buffer.from(canonicalExecutorPayload('nessie.executor.descriptor.v1', input.descriptor.descriptor)),
     publicKey,
     decodeBase64Url(input.descriptor.signature),
   )
   const enrollmentValid = verify(
     null,
-    canonicalExecutorPayload('nessie.executor.enrollment.v1', {
+    Buffer.from(canonicalExecutorPayload('nessie.executor.enrollment.v1', {
       challenge: input.challenge,
       descriptorDigest,
       enrollmentId: input.enrollmentId,
       machinePublicKey: input.machinePublicKey,
-    }),
+    })),
     publicKey,
     decodeBase64Url(input.proof),
   )

@@ -6,10 +6,14 @@
 
 The current Phase 1 slice provides the durable executor record, scoped pairing,
 private human/agent roster, exact operation grants, user-confirmed access
-changes, the Executors home with a project doorway, and Personal Assistant
-prepare-only management.
+changes, the Executors home with a project doorway, Personal Assistant
+prepare-only management, a signed daemon-presence handshake, and the
+`nessie-executor` companion's secure key/state, enrollment, descriptor, and
+heartbeat workflow.
 It does **not** dispatch files, browser work, commands, or coding sessions
-yet; neither does it expose the planned availability union with connectors.
+yet; the companion advertises only its harmless stop capability until a
+concrete isolated backend is delivered. Neither does it expose the planned
+availability union with connectors.
 Those operations remain unavailable until their resolver, binding, command
 transport, and companion enforcement are delivered together.
 
