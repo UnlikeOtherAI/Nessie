@@ -41,7 +41,7 @@ public enum GuestControlFrameError: Error, Equatable {
 
 private let sessionTokenCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
-func isValidGuestControlBootstrapToken(_ value: String) -> Bool {
+func isValidExecutorSessionToken(_ value: String) -> Bool {
   guard value.count == 43, value.unicodeScalars.allSatisfy(sessionTokenCharacters.contains) else {
     return false
   }
@@ -51,6 +51,14 @@ func isValidGuestControlBootstrapToken(_ value: String) -> Bool {
     .replacingOccurrences(of: "+", with: "-")
     .replacingOccurrences(of: "/", with: "_")
     .dropLast() == value
+}
+
+func isValidGuestControlBootstrapToken(_ value: String) -> Bool {
+  isValidExecutorSessionToken(value)
+}
+
+func isValidGuestEgressSessionToken(_ value: String) -> Bool {
+  isValidExecutorSessionToken(value)
 }
 
 /** A per-session egress credential distinct from the one-use control hello. */

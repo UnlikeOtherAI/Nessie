@@ -181,6 +181,12 @@ the host joins it to the owner-only CONNECT gateway. The shared derivation is
 covered by Swift and Linux guest tests; it does not itself create a listener,
 route, proxy, or browser/coding capability.
 
+The tunnel's cross-language admission frame is exactly 48 bytes: `NEXG`,
+version byte `1`, and the 43-byte derived token. It has no control-frame JSON,
+request ID, command, bootstrap credential, or policy field. The host must
+reject a malformed, non-canonical, short, long, or unrecognized-version frame
+before it forwards a byte to the Unix-socket CONNECT gateway.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

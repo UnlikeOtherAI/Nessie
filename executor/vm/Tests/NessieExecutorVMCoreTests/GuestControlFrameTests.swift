@@ -49,6 +49,21 @@ func guestEgressToken() throws {
   #expect(try guestEgressToken(fromBootstrapToken: bootstrap) == "AN43IKRZz4QAd6L6iE-D9mklr0Pm6SEq9jiiB9PAVPo")
 }
 
+@Test("guest egress tunnel has one fixed distinct-session prelude")
+func guestEgressTunnelPrelude() throws {
+  let token = "AN43IKRZz4QAd6L6iE-D9mklr0Pm6SEq9jiiB9PAVPo"
+  let prelude = try GuestEgressTunnelCodec.encodePrelude(sessionToken: token)
+  #expect(prelude.count == guestEgressPreludeBytes)
+  #expect(prelude == Data([0x4e, 0x45, 0x58, 0x47, 1]) + Data(token.utf8))
+  #expect(try GuestEgressTunnelCodec.decodePrelude(prelude) == token)
+  #expect(throws: GuestEgressTunnelError.self) {
+    try GuestEgressTunnelCodec.decodePrelude(Data([0x4e, 0x45, 0x58, 0x47, 1]))
+  }
+  #expect(throws: GuestEgressTunnelError.self) {
+    try GuestEgressTunnelCodec.decodePrelude(Data([0x4e, 0x45, 0x58, 0x47, 2]) + Data(token.utf8))
+  }
+}
+
 @Test("guest control rejects malformed or oversized length-delimited input")
 func guestControlFrameBounds() throws {
   #expect(throws: GuestControlFrameError.self) {

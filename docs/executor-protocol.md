@@ -395,6 +395,13 @@ to the owner-only local CONNECT gateway. This derivation is checked in on both
 the Swift host and Linux guest, but no egress listener or browser descriptor
 exists yet.
 
+That future tunnel begins with exactly 48 bytes: ASCII `NEXG`, byte version
+`1`, then the 43-byte derived base64url token. It is a one-way authentication
+prelude, not a control envelope: it has no request ID, payload, operation,
+policy, or bootstrap credential. Any short, long, unknown-version, malformed,
+or non-canonical prelude is rejected before its remaining bytes could reach the
+daemon's CONNECT gateway.
+
 `executor/guest` is the first guest image component: a statically linked Linux
 arm64 `/init`, with no shell, package manager, host mount, or network client.
 `build-guest-initrd.sh` accepts the canonical bootstrap token only on standard

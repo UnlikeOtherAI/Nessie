@@ -70,3 +70,21 @@ func TestEgressTokenIsDistinctAndStableForOneKnownBootstrapToken(t *testing.T) {
 		t.Fatal("egress token reused the bootstrap token")
 	}
 }
+
+func TestEgressPreludeHasNoBootstrapCredentialOrControlFields(t *testing.T) {
+	egress, err := deriveEgressToken(testBootstrapToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire bytes.Buffer
+	if err := writeGuestEgressPrelude(&wire, egress); err != nil {
+		t.Fatal(err)
+	}
+	expected := append([]byte{'N', 'E', 'X', 'G', 1}, []byte(egress)...)
+	if !bytes.Equal(wire.Bytes(), expected) || wire.Len() != guestEgressPreludeN {
+		t.Fatalf("unexpected egress prelude %q", wire.Bytes())
+	}
+	if bytes.Contains(wire.Bytes(), []byte(testBootstrapToken)) {
+		t.Fatal("egress prelude leaked the bootstrap token")
+	}
+}
