@@ -1,0 +1,50 @@
+package main
+
+import (
+	"bytes"
+	"testing"
+)
+
+const testBootstrapToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+func TestBootstrapTokenIsCanonical32ByteBase64URL(t *testing.T) {
+	if !validBootstrapToken(testBootstrapToken) {
+		t.Fatal("expected canonical token to validate")
+	}
+	if validBootstrapToken("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+		t.Fatal("accepted a non-canonical base64url token")
+	}
+}
+
+func TestControlFramesRoundTripWithoutUnknownFields(t *testing.T) {
+	original := controlEnvelope{
+		Kind:      "request",
+		Payload:   []byte(`{"operation":"bootstrap"}`),
+		RequestID: "ab7ae325-8420-4b2a-9cee-20b07066a77d",
+		Version:   guestControlVersion,
+	}
+	var wire bytes.Buffer
+	if err := writeControlFrame(&wire, original); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := readControlFrame(&wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual.Kind != original.Kind || actual.RequestID != original.RequestID || !bytes.Equal(actual.Payload, original.Payload) {
+		t.Fatal("frame round trip changed control data")
+	}
+}
+
+func TestControlFrameRejectsGuestTokenReuse(t *testing.T) {
+	var wire bytes.Buffer
+	if err := writeControlFrame(&wire, controlEnvelope{
+		Kind:         "request",
+		Payload:      []byte{},
+		RequestID:    "ab7ae325-8420-4b2a-9cee-20b07066a77d",
+		SessionToken: testBootstrapToken,
+		Version:      guestControlVersion,
+	}); err == nil {
+		t.Fatal("accepted a bootstrap token on a normal request")
+	}
+}

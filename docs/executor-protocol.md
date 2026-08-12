@@ -383,6 +383,18 @@ deadline, or a bounded request deadline (30 seconds by default, never over five
 minutes). The per-session initrd builder remains responsible for provisioning
 the token only to the matching guest. Frames themselves remain capability-free
 until typed browser/coding schemas and a run-bound handler exist.
+
+`executor/guest` is the first guest image component: a statically linked Linux
+arm64 `/init`, with no shell, package manager, host mount, or network client.
+`build-guest-initrd.sh` accepts the canonical bootstrap token only on standard
+input (never an argument or log), rejects a non-canonical value, and writes a
+one-use uncompressed initrd only into a new file in an owner-only `0700` parent.
+The archive and its private parent are session material and must be removed by
+the VM owner after the VM stops. On boot the guest validates and removes its
+token file before it connects to host CID 2 on the fixed virtio port, sends the
+hello, and clears its mutable token buffer. It implements no browser, command,
+workspace, or coding action: until typed handlers are installed, a valid host
+request receives only `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE`.
 The helper carries the `com.apple.security.virtualization` and
 `com.apple.security.hypervisor` entitlements. `sh
 executor/vm/scripts/build-signed-vm-helper.sh` creates an ad-hoc local validator

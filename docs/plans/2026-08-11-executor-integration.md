@@ -114,6 +114,17 @@ owner, preventing a terminal file descriptor from being reused by another VM.
 This is still only a capability-free transport until the initrd builder and
 typed browser/coding handlers ship together.
 
+The matching initrd builder is now checked in. It cross-compiles the small,
+static Linux arm64 guest `/init`, takes the canonical boot token only on stdin,
+and creates an uncompressed CPIO archive only in a new file under an owner-only
+`0700` session directory. The archive is private, one-session material and its
+owner must remove it after VM teardown. The guest reads and removes its token
+file before guest-initiated host-CID virtio connect, sends only the hello, clears
+its mutable staging bytes, and contains no shell, network client, workspace
+mount, browser, tmux, or operation handler. Until the next reviewed slice, any
+otherwise valid control request returns the fixed
+`EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE` result.
+
 The companion now also contains the inactive foundation for that egress broker:
 an owner-only Unix-socket HTTPS CONNECT gateway whose local policy names exact,
 distinct HTTPS origins. It has no TCP listener, generic HTTP forwarding, proxy
