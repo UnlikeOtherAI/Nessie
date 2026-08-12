@@ -31,8 +31,8 @@ const taintedContext = () =>
     workflowInput: { prompt: 'summarise' },
   })
 
-test('W0 sink 2/3: exact-reference interpolation redacts the tainted ref', () => {
-  const resolved = resolveWorkflowStepInput(
+test('W0 sink 2/3: exact-reference interpolation redacts the tainted ref', async () => {
+  const resolved = await resolveWorkflowStepInput(
     {
       key: '{{ workflow.bindings.apiKey }}',
       literal: '{{ workflow.bindings.channel }}',
@@ -45,8 +45,8 @@ test('W0 sink 2/3: exact-reference interpolation redacts the tainted ref', () =>
   assert.equal(JSON.stringify(resolved).includes(SECRET_REF), false)
 })
 
-test('W0 sink 2: mixed message templates never embed the tainted ref', () => {
-  const resolved = resolveWorkflowStepInput(
+test('W0 sink 2: mixed message templates never embed the tainted ref', async () => {
+  const resolved = await resolveWorkflowStepInput(
     { body: 'Posting {{ workflow.bindings.apiKey }} to {{ workflow.bindings.channel }}' },
     taintedContext(),
   ) as Record<string, unknown>
@@ -58,12 +58,12 @@ test('W0 sink 2: mixed message templates never embed the tainted ref', () => {
   assert.equal(JSON.stringify(resolved).includes(SECRET_REF), false)
 })
 
-test('W0 sink 2: whole-ref values redact; embedded refs resolve to the marker', () => {
+test('W0 sink 2: whole-ref values redact; embedded refs resolve to the marker', async () => {
   const context = taintedContext()
 
   // A whole-ref value reached through workflow.* never leaves the sink —
   // from any scope, including steps.*.
-  const viaSteps = resolveWorkflowStepInput(
+  const viaSteps = await resolveWorkflowStepInput(
     { key: '{{ steps.fetch.input.apiKey }}' },
     context,
   ) as Record<string, unknown>

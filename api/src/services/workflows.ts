@@ -163,6 +163,13 @@ export class WorkflowTemplateValidationError extends Error {
 // W13: `trigger` is not an executable step type. Trigger nodes on the canvas
 // are authoring markers only; real scheduling is an `AgentTrigger` created
 // from the installation's Triggers surface, and the runtime never sees one.
+//
+// W17's rule: this list accepts ONLY types with a registered executor branch
+// in the worker (`executeWorkflowRun`'s runtimeStepType dispatch) — the rule
+// that prevents another `delegate`-class bug, where validation passed a
+// capability that could only fail mid-run. The designer mirrors this list
+// (`admin/src/lib/workflow-designer/constants.ts` nodeThemes), and
+// `admin/test/workflow-tool-allowlist.test.ts` fails on drift.
 const WORKFLOW_STEP_TYPES = new Set([
   'agent',
   'agent_task',
@@ -173,6 +180,9 @@ const WORKFLOW_STEP_TYPES = new Set([
   'message_send',
   'tool',
   'tool_call',
+  // W17: the deterministic converter (§5). Executor: the `transform` branch
+  // of executeWorkflowRun → worker/src/control/workflow-transform.ts.
+  'transform',
 ])
 
 const collectStepBindingTemplates = (
@@ -209,6 +219,47 @@ const collectStepBindingTemplates = (
   }
 
   return templates
+}
+
+// W17: every literal string in a step's input that carries the `jmespath:`
+// prefix, with its key path for the validation issue. Bindings embedded in
+// the tail are expanded at run time; the save-time compiler sees the raw
+// expression (its parser tolerates `{{…}}` only where JMESPath grammar does —
+// a binding-shaped tail that does not parse is a save error, matching W9's
+// "typo is a save error" rule).
+const collectStepJmespathStrings = (
+  input: Record<string, unknown> | undefined,
+): Array<{ key: string; value: string }> => {
+  const found: Array<{ key: string; value: string }> = []
+
+  const visit = (value: unknown, path: string): void => {
+    if (typeof value === 'string') {
+      if (value.startsWith('jmespath:')) {
+        found.push({ key: path, value })
+      }
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => visit(entry, `${path}[${index}]`))
+      return
+    }
+    if (value && typeof value === 'object') {
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        visit(entry, path ? `${path}.${key}` : key)
+      }
+    }
+  }
+
+  if (input) {
+    for (const [key, entry] of Object.entries(input)) {
+      if (key === 'workflowDesigner') {
+        continue
+      }
+      visit(entry, key)
+    }
+  }
+
+  return found
 }
 
 const UUID_PATTERN =
@@ -259,6 +310,22 @@ export const validateWorkflowGraphSteps = async (
       }
     }
 
+    // W17: compile every inline `jmespath:` string at save time, through the
+    // same evaluator seam as the `when:` guard — a bad expression is a save
+    // error, never a mid-run surprise. The prefix form is checked on the
+    // literal string; `jmespath:` mixed with a binding token expands at run
+    // time, but a literal prefix with a compile error is caught here.
+    for (const { key, value } of collectStepJmespathStrings(step.input)) {
+      const expression = value.slice('jmespath:'.length)
+      // Bindings may still expand the tail; only the static prefix is
+      // compile-checkable, so compile the whole post-prefix string — W9's
+      // binding syntax check above already rejects an unparseable tail.
+      const expressionError = compileWorkflowJmespath(expression)
+      if (expressionError) {
+        issues.push(`Step "${label}" has an invalid jmespath expression in "${key}": ${expressionError}.`)
+      }
+    }
+
     // W16: compile the `when:` guard at save time through the one evaluator
     // module — a bad predicate is a save error, never a mid-run surprise.
     if (typeof step.when === 'string' && step.when.trim()) {
@@ -277,7 +344,7 @@ export const validateWorkflowGraphSteps = async (
       issues.push(
         step.type === 'trigger'
           ? `Step "${label}" has type "trigger", which is not executable — scheduling is authored on the installation's Triggers page, not in the graph.`
-          : `Step "${label}" has unsupported type "${step.type}". Supported: tool, agent, environment_launch, message_send.`,
+          : `Step "${label}" has unsupported type "${step.type}". Supported: tool, agent, environment_launch, message_send, transform.`,
       )
       continue
     }
@@ -319,6 +386,24 @@ export const validateWorkflowGraphSteps = async (
         issues.push(
           `Environment step "${label}" needs templateId or templateBindingKey.`,
         )
+      }
+    }
+
+    if (step.type === 'transform') {
+      // §5: `expression` is required and compiled; `source` is optional and
+      // may be a binding (checked by the W9 pass above).
+      const expression = readStepInputString(step.input, 'expression')
+      if (!expression) {
+        issues.push(`Transform step "${label}" is missing expression.`)
+      }
+      // Compilation of the expression is covered by the jmespath pass only
+      // for the `jmespath:` prefix form; the transform step's expression
+      // field is compiled explicitly here.
+      if (expression) {
+        const expressionError = compileWorkflowJmespath(expression)
+        if (expressionError) {
+          issues.push(`Transform step "${label}" has an invalid expression: ${expressionError}.`)
+        }
       }
     }
 

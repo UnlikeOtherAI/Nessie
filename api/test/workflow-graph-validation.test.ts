@@ -154,3 +154,79 @@ runDatabaseTest('W16: a when: expression that does not compile is rejected at sa
     `expected an invalid when guard issue, got: ${result.join('; ')}`,
   )
 })
+
+runDatabaseTest('W17: transform validation', async (t) => {
+  const prisma = new PrismaClient()
+  const org = await prisma.organization.create({
+    data: { name: `wf-transform-validate ${randomUUID()}` },
+  })
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { id: org.id } })
+    await prisma.$disconnect()
+  })
+
+  await t.test('a valid transform step passes', async () => {
+    const result = await issues(prisma, org.id, graphWithSteps([
+      { id: 'fetch', input: { url: 'https://example.com', toolName: 'web_fetch' }, type: 'tool' },
+      {
+        id: 'shape',
+        input: {
+          expression: 'body.releases[0].{tag: tag_name, url: html_url}',
+          source: '{{ steps.fetch.output }}',
+        },
+        type: 'transform',
+      },
+    ]))
+    assert.deepEqual(result, [])
+  })
+
+  await t.test('a transform without expression is a save error', async () => {
+    const result = await issues(prisma, org.id, graphWithSteps([
+      { id: 'shape', input: { source: '{{ workflow.input }}' }, type: 'transform' },
+    ]))
+    assert.ok(result.some((issue) => issue.includes('missing expression')))
+  })
+
+  await t.test('a bad transform expression is a save error', async () => {
+    const result = await issues(prisma, org.id, graphWithSteps([
+      { id: 'shape', input: { expression: 'foo.[' }, type: 'transform' },
+    ]))
+    assert.ok(
+      result.some((issue) => issue.includes('invalid expression')),
+      `expected an invalid expression issue, got: ${result.join('; ')}`,
+    )
+  })
+
+  await t.test('an inline jmespath: string that does not compile is a save error', async () => {
+    const result = await issues(prisma, org.id, graphWithSteps([
+      {
+        id: 'announce',
+        input: { body: 'jmespath:workflow.input.[', toolName: 'message_send' },
+        type: 'tool',
+      },
+    ]))
+    assert.ok(
+      result.some((issue) => issue.includes('invalid jmespath expression')),
+      `expected an invalid jmespath expression issue, got: ${result.join('; ')}`,
+    )
+  })
+
+  await t.test('a valid inline jmespath: string passes', async () => {
+    const result = await issues(prisma, org.id, graphWithSteps([
+      { id: 'fetch', input: { url: 'https://example.com', toolName: 'web_fetch' }, type: 'tool' },
+      {
+        id: 'announce',
+        input: { body: 'jmespath:steps.fetch.output.result.title', toolName: 'message_send' },
+        type: 'tool',
+      },
+    ]))
+    assert.deepEqual(result, [])
+  })
+
+  await t.test('W17 rule: an unregistered step type is still rejected', async () => {
+    const result = await issues(prisma, org.id, graphWithSteps([
+      { id: 'ghost', input: {}, type: 'delegate' },
+    ]))
+    assert.ok(result.some((issue) => issue.includes('unsupported type "delegate"')))
+  })
+})

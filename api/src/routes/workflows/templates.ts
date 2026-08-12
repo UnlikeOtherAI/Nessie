@@ -2,11 +2,19 @@ import type { FastifyInstance } from 'fastify'
 
 import {
   CreateWorkflowTemplateBodySchema,
+  RecordWorkflowStepSamplesBodySchema,
+  RecordWorkflowStepSamplesResultSchema,
   UpdateWorkflowTemplateBodySchema,
   WorkflowListQuerySchema,
+  WorkflowStepSamplesRecordSchema,
   WorkflowTemplateRecordSchema,
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
+import {
+  getWorkflowTemplateStepSamples,
+  recordWorkflowStepSamples,
+  WorkflowStepSamplesError,
+} from '../../services/workflow-step-samples.js'
 import {
   createWorkflowTemplate,
   getWorkflowTemplate,
@@ -154,4 +162,66 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
 
     return createApiResponse(WorkflowTemplateRecordSchema.parse(workflow))
   })
+  // §5 stepSamples — owner-gated on both sides: the store is served only to
+  // the role that can already read the template's bindings, and written only
+  // by that same role after a designer test run completes.
+  app.get('/api/workflows/:workflowTemplateId/step-samples', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    const samples = await getWorkflowTemplateStepSamples(
+      prisma,
+      actorContext.tenant.organizationId,
+      workflowTemplateId,
+    )
+    if (!samples) {
+      sendApiError(reply, 404, 'WORKFLOW_STEP_SAMPLES_NOT_FOUND', 'No step samples for this template')
+      return reply
+    }
+
+    return createApiResponse(WorkflowStepSamplesRecordSchema.parse(samples))
+  })
+
+  app.post('/api/workflows/:workflowTemplateId/step-samples', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    const body = parseInput(RecordWorkflowStepSamplesBodySchema, request.body, reply)
+    if (!body) {
+      return reply
+    }
+
+    const { workflowTemplateId } = request.params as { workflowTemplateId: string }
+    try {
+      const result = await recordWorkflowStepSamples(
+        prisma,
+        actorContext.tenant.organizationId,
+        {
+          stepOutputs: body.stepOutputs,
+          workflowInstallationId: body.workflowInstallationId,
+          workflowRunId: body.workflowRunId,
+          workflowTemplateId,
+        },
+      )
+      return createApiResponse(RecordWorkflowStepSamplesResultSchema.parse({ result }))
+    } catch (error) {
+      if (error instanceof WorkflowStepSamplesError) {
+        sendApiError(reply, 404, error.message, 'Workflow template or installation not found')
+        return reply
+      }
+      throw error
+    }
+  })
+
 }

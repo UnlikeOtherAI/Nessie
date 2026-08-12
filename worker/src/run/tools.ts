@@ -23,6 +23,7 @@ import {
   runPeopleSearchTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
+  runWorkflowTransformPreviewTool,
   runWorkspaceSearchTool,
 } from './pa-tools.js'
 import { connectorManagementTool } from './pa-tools/connector-dispatch.js'
@@ -155,6 +156,14 @@ export const executeBuiltinTool = async (
           threadId:
             typeof args.threadId === 'string' ? args.threadId : undefined,
         }),
+      )
+    case 'workflow_transform_preview':
+      return wrapTool(inputSummary, () =>
+        runWorkflowTransformPreviewTool(
+          context,
+          String(args.expression ?? ''),
+          args.sampleJson,
+        ),
       )
     case 'update_preferences':
       return wrapTool(inputSummary, () =>

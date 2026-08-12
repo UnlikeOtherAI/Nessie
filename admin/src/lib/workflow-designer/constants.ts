@@ -53,6 +53,12 @@ export const nodeThemes: Record<
     fill: '#f8fcff',
     label: 'Tool',
   },
+  transform: {
+    badgeBackground: '#e9f7ef',
+    border: '#1d8a52',
+    fill: '#f6fcf9',
+    label: 'Transform',
+  },
   trigger: {
     badgeBackground: '#fff1df',
     border: '#d97706',
@@ -60,6 +66,21 @@ export const nodeThemes: Record<
     label: 'Trigger',
   },
 }
+
+// W17: executable STEP TYPES with a registered worker executor — mirrors
+// `WORKFLOW_STEP_TYPES` in api/src/services/workflows.ts, which carries the
+// same executor-registration rule. Drift fails the same way W12's tool list
+// drift does: an authoring surface advertising a capability that can only
+// fail at run time.
+export const WORKFLOW_EXECUTABLE_STEP_TYPES = new Set([
+  'agent',
+  'agent_task',
+  'environment_launch',
+  'message_send',
+  'tool',
+  'tool_call',
+  'transform',
+])
 
 export const WORKFLOW_TRIGGER_TYPE_LABELS = {
   event: 'Event trigger',

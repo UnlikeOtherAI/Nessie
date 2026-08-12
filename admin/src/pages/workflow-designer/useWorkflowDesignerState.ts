@@ -5,6 +5,7 @@ import {
   faPlus,
   faRobot,
   faScrewdriverWrench,
+  faShuffle,
 } from '@fortawesome/free-solid-svg-icons'
 import { useAgents } from '../../facades/agents/hooks'
 import { useChannels } from '../../facades/channels/hooks'
@@ -102,6 +103,21 @@ export const useWorkflowDesignerState = ({
     [tools],
   )
 
+  // W17: one transform source — the step type itself, like the trigger
+  // types. The inspector's expression field is where the mapping lives.
+  const transformNodeSources = useMemo(
+    () => [
+      {
+        config: {},
+        label: 'Transform',
+        meta: 'Reshape an earlier step output (JMESPath)',
+        nodeType: 'transform' as const,
+        sourceId: 'transform',
+      },
+    ],
+    [],
+  )
+
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId),
     [nodes, selectedNodeId],
@@ -134,10 +150,12 @@ export const useWorkflowDesignerState = ({
         ? topLevelAgentSources
         : selectedNode.type === 'tool'
           ? toolNodeSources
-          : triggerNodeSources
+          : selectedNode.type === 'transform'
+            ? transformNodeSources
+            : triggerNodeSources
 
     return sources.find((source) => source.sourceId === selectedNode.sourceId)
-  }, [selectedNode, topLevelAgentSources, toolNodeSources, triggerNodeSources])
+  }, [selectedNode, topLevelAgentSources, toolNodeSources, transformNodeSources, triggerNodeSources])
 
   const selectedNodeSourceOptions = useMemo(() => {
     if (!selectedNode) {
@@ -148,8 +166,10 @@ export const useWorkflowDesignerState = ({
       ? topLevelAgentSources
       : selectedNode.type === 'tool'
         ? toolNodeSources
-        : triggerNodeSources
-  }, [selectedNode, topLevelAgentSources, toolNodeSources, triggerNodeSources])
+        : selectedNode.type === 'transform'
+          ? transformNodeSources
+          : triggerNodeSources
+  }, [selectedNode, topLevelAgentSources, toolNodeSources, transformNodeSources, triggerNodeSources])
 
   const toolbarActions = useMemo<ToolbarAction[]>(() => {
     return [
@@ -180,8 +200,10 @@ export const useWorkflowDesignerState = ({
         },
         emptyLabel: 'No tools yet',
         icon: faScrewdriverWrench,
+  faShuffle,
         items: toolNodeSources.map((source) => ({
           icon: faScrewdriverWrench,
+  faShuffle,
           key: source.sourceId,
           label: source.label,
           meta: source.meta,
@@ -190,6 +212,20 @@ export const useWorkflowDesignerState = ({
         key: 'tools',
         label: 'Tools',
         sectionLabel: 'All tools',
+      },
+      {
+        emptyLabel: '',
+        icon: faShuffle,
+        items: transformNodeSources.map((source) => ({
+          icon: faShuffle,
+          key: source.sourceId,
+          label: source.label,
+          meta: source.meta,
+          nodeType: source.nodeType,
+        })),
+        key: 'transform',
+        label: 'Transform',
+        sectionLabel: 'Deterministic converter',
       },
       {
         createItem: {
@@ -213,7 +249,7 @@ export const useWorkflowDesignerState = ({
         sectionLabel: 'Top-level agents',
       },
     ]
-  }, [returnTo, topLevelAgentSources, toolNodeSources, triggerNodeSources])
+  }, [returnTo, topLevelAgentSources, toolNodeSources, transformNodeSources, triggerNodeSources])
 
   const addNodeFromItem = (item: ToolbarMenuItem) => {
     if (!item.nodeType) {
@@ -226,7 +262,9 @@ export const useWorkflowDesignerState = ({
         ? topLevelAgentSources.find((entry) => entry.sourceId === item.key)
         : nodeType === 'tool'
           ? toolNodeSources.find((entry) => entry.sourceId === item.key)
-          : triggerNodeSources.find((entry) => entry.sourceId === item.key)
+          : nodeType === 'transform'
+            ? transformNodeSources.find((entry) => entry.sourceId === item.key)
+            : triggerNodeSources.find((entry) => entry.sourceId === item.key)
     const offset = nextInsertOffsetRef.current
     nextInsertOffsetRef.current =
       (nextInsertOffsetRef.current + CANVAS_NODE_INSERT_OFFSET) %

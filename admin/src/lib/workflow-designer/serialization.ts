@@ -500,7 +500,9 @@ export const parseWorkflowTemplate = (
             ? String(readWorkflowStepConfig(step).agentId ?? step.id)
             : stepType === 'tool'
               ? String(readWorkflowStepConfig(step).toolName ?? step.id)
-              : step.id),
+              : stepType === 'transform'
+                ? 'transform'
+                : step.id),
         type: stepType,
         x:
           typeof serializedNode.position?.x === 'number'

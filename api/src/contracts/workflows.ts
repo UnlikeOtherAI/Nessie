@@ -64,6 +64,28 @@ export const WorkflowTemplateRecordSchema = z.object({
 })
 export type WorkflowTemplateRecord = z.infer<typeof WorkflowTemplateRecordSchema>
 
+// §5 stepSamples: provenance + redacted per-step output from the last
+// successful designer test run. Served only behind the owner-gated samples
+// route; never embedded in the generic template record.
+export const WorkflowStepSamplesRecordSchema = z.object({
+  templateVersion: z.number().int().positive(),
+  workflowInstallationId: z.string().uuid(),
+  workflowRunId: z.string().uuid(),
+  capturedAt: TimestampSchema,
+  steps: z.record(z.unknown()),
+})
+export type WorkflowStepSamplesRecord = z.infer<typeof WorkflowStepSamplesRecordSchema>
+
+export const RecordWorkflowStepSamplesBodySchema = z.object({
+  workflowInstallationId: z.string().uuid(),
+  workflowRunId: z.string().uuid(),
+  stepOutputs: z.record(z.unknown()),
+})
+
+export const RecordWorkflowStepSamplesResultSchema = z.object({
+  result: z.enum(['recorded', 'quota_exceeded']),
+})
+
 export const CreateWorkflowTemplateBodySchema = z.object({
   name: NonEmptyStringSchema,
   description: z.string().optional(),
