@@ -16,6 +16,7 @@ import { configureWorkspaceRoot } from './workspace.js'
 
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024
 const MAX_SOURCE_FILES = 10_000
+const MAX_SCRATCH_BYTES = 128 * 1024 * 1024
 const COPY_BUFFER_BYTES = 64 * 1024
 
 type CopyBudget = { bytes: number; files: number }
@@ -111,6 +112,31 @@ const copyTreeWithoutLinks = async (
     return
   }
   throw new WorkspacePathError('Sandbox sources may not contain special files.')
+}
+
+const scratchUsage = async (root: string): Promise<CopyBudget> => {
+  const budget: CopyBudget = { bytes: 0, files: 0 }
+  const walk = async (path: string): Promise<void> => {
+    const info = await lstat(path)
+    if (info.isSymbolicLink()) {
+      throw new WorkspacePathError('Sandbox workspaces may not contain symbolic links.')
+    }
+    if (info.isDirectory()) {
+      const entries = await readdir(path, { withFileTypes: true })
+      for (const entry of entries) await walk(resolve(path, entry.name))
+      return
+    }
+    if (!info.isFile() || info.nlink > 1) {
+      throw new WorkspacePathError('Sandbox workspaces may contain only non-linked regular files.')
+    }
+    budget.files += 1
+    budget.bytes += info.size
+    if (budget.files > MAX_SOURCE_FILES || budget.bytes > MAX_SCRATCH_BYTES) {
+      throw new WorkspacePathError('The sandbox workspace exceeds its storage limit.')
+    }
+  }
+  await walk(root)
+  return budget
 }
 
 /**
@@ -222,6 +248,8 @@ export const writeSandboxFile = async (
   const workspace = await ensureSandboxWorkspace(stateDir, workspaceRoot, runId)
   const destination = await resolveWorkspaceWritePath(workspace, args.path)
   await ensureWriteParents(workspace, destination.path, args.createParents === true)
+  let existingBytes = 0
+  let isNewFile = true
   try {
     const existing = await lstat(destination.path)
     if (existing.isSymbolicLink() || !existing.isFile()) {
@@ -230,8 +258,16 @@ export const writeSandboxFile = async (
     if (args.overwrite !== true) {
       throw new WorkspacePathError('The sandbox destination already exists.')
     }
+    existingBytes = existing.size
+    isNewFile = false
   } catch (error) {
     if (!missing(error)) throw error
+  }
+  const usage = await scratchUsage(workspace)
+  const nextBytes = usage.bytes - existingBytes + Buffer.byteLength(args.content, 'utf8')
+  const nextFiles = usage.files + (isNewFile ? 1 : 0)
+  if (nextBytes > MAX_SCRATCH_BYTES || nextFiles > MAX_SOURCE_FILES) {
+    throw new WorkspacePathError('The sandbox workspace exceeds its storage limit.')
   }
   const temporary = resolve(dirname(destination.path), `.${basename(destination.path)}.${randomUUID()}.new`)
   await writeAll(temporary, args.content)

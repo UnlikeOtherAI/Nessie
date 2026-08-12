@@ -24,9 +24,9 @@ export type PairExecutorInput = {
 
 const initialLocalPolicy = {
   limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
-  // The first concrete backend is a single, user-selected read-only root.
-  // It has no shell, write, browser, or host-promotion capability.
-  operationKeys: ['file.list', 'file.read', 'sandbox.stop'],
+  // File writes land in the daemon-owned COW scratch workspace. The paired
+  // root stays read-only: there is still no shell, browser, or host promotion.
+  operationKeys: ['file.list', 'file.read', 'file.write', 'sandbox.stop'],
   profiles: ['workspace_sandbox'],
   revision: 1,
 }

@@ -232,23 +232,27 @@ at rest; the database retains only bounded ciphertext and canonical digests.
 The daemon sends each receipt under a distinct signed `receipt` domain, and the
 server recomputes the supplied terminal result digest before accepting it.
 
-The initial local backend has only `file.list`, `file.read`, and `sandbox.stop`.
-Pairing requires one existing absolute workspace directory; the daemon stores
-only its canonical path in owner-only local state. File requests accept only
-relative paths, reject traversal and every symbolic-link component, re-check
-that the configured root is still an ordinary directory, and return bounded
-structured results without a host path. It is a read-only path boundary, not a
-micro-VM or a COW sandbox. No write, command, browser, or coding operation is
-advertised until its isolated backend is implemented and reviewed.
+The initial local backend has `file.list`, `file.read`, `file.write`, and
+`sandbox.stop`. Pairing requires one existing absolute workspace directory; the
+daemon stores only its canonical path in owner-only local state. File requests
+accept only relative paths, reject traversal and every symbolic-link component,
+re-check that the configured root is still an ordinary directory, and return
+bounded structured results without a host path. `file.write` first creates a
+bounded daemon-owned COW tree under the secure state directory using the
+server-provenanced run ID; it never opens the paired root for write, and later
+file reads/lists for that run use the draft tree. It is not yet a micro-VM or
+network isolation boundary. No host promotion, command, browser, or coding
+operation is advertised until its isolated backend is implemented and reviewed.
 
 The daemon's owner-only runtime directory already contains a per-run COW
 substrate for that later backend. It atomically snapshots a paired root into a
 daemon-owned scratch tree, rejecting every symbolic link, hard-linked file,
 special file, and source tree over the file/byte limits. Scratch writes can
 never touch the paired host root, and `sandbox.stop` can remove only the exact
-derived run directory. This substrate is not an advertised capability, is not
-a substitute for the required guest VM/forced egress, and has no promotion
-operation; it exists so later isolated work has a tested no-host-write base.
+derived run directory. `file.write` is the only advertised consumer of this
+substrate after normal descriptor and grant review. It is not a substitute for
+the required guest VM/forced egress and has no promotion operation; it gives
+draft work a tested no-host-write base.
 
 Before the worker adds an executor logical schema to a model request, a human
 must bind one opaque candidate to the exact run. The user-facing launch endpoint

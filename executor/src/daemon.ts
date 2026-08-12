@@ -3,11 +3,17 @@ import { createHash, createPrivateKey, sign } from 'node:crypto'
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
+  RunIdSchema,
   type ExecutorCommandEnvelope,
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
 import { signedDescriptorForState } from './pair.js'
+import {
+  stopSandboxWorkspace,
+  workspaceForRun,
+  writeSandboxFile,
+} from './sandbox-workspace.js'
 import { saveExecutorState, type ExecutorLocalState } from './state-store.js'
 import { listWorkspaceFiles, readWorkspaceFile, workspaceFailure } from './workspace.js'
 
@@ -100,7 +106,8 @@ const receipt = async (
   })
 }
 
-const executeLocalCommand = async (
+export const executeExecutorCommand = async (
+  stateDir: string,
   state: ExecutorLocalState,
   command: ExecutorCommandEnvelope,
 ): Promise<Record<string, unknown>> => {
@@ -116,29 +123,52 @@ const executeLocalCommand = async (
   if (digest(command.payload) !== command.argumentDigest) {
     return { code: 'EXECUTOR_COMMAND_DIGEST_INVALID', success: false }
   }
+  const runId = RunIdSchema.safeParse(command.payload.runId)
+  if (!runId.success) {
+    return { code: 'EXECUTOR_COMMAND_RUN_INVALID', success: false }
+  }
+  const workspace = await workspaceForRun(stateDir, state.workspaceRoot, runId.data)
   if (command.operationKey === 'file.list') {
     try {
-      return await listWorkspaceFiles(state.workspaceRoot, command.payload.args)
+      return await listWorkspaceFiles(workspace, command.payload.args)
     } catch (error) {
       return workspaceFailure(error)
     }
   }
   if (command.operationKey === 'file.read') {
     try {
-      return await readWorkspaceFile(state.workspaceRoot, command.payload.args)
+      return await readWorkspaceFile(workspace, command.payload.args)
     } catch (error) {
       return workspaceFailure(error)
     }
   }
-  // The presence-only stop operation is harmless. Shell, write, browser, and
-  // coding operations remain absent from the descriptor and are denied here.
-  if (command.operationKey === 'sandbox.stop') {
-    return { status: 'no_active_sandbox', success: true }
+  if (command.operationKey === 'file.write') {
+    try {
+      return await writeSandboxFile(stateDir, state.workspaceRoot, runId.data, command.payload.args)
+    } catch (error) {
+      return workspaceFailure(error)
+    }
   }
+  // Stop can discard only its exact server-provenanced run scratch directory.
+  if (command.operationKey === 'sandbox.stop') {
+    try {
+      return {
+        status: await stopSandboxWorkspace(stateDir, runId.data) ? 'stopped' : 'no_active_sandbox',
+        success: true,
+      }
+    } catch (error) {
+      return workspaceFailure(error)
+    }
+  }
+  // Shell, browser, promotion, and coding operations remain absent from the
+  // descriptor and are denied here until their isolated backends are ready.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
 }
 
-const pollAndExecuteCommand = async (state: ExecutorLocalState): Promise<void> => {
+const pollAndExecuteCommand = async (
+  stateDir: string,
+  state: ExecutorLocalState,
+): Promise<void> => {
   if (!state.connectionEpoch) return
   const observedAt = new Date().toISOString()
   const payload = { connectionEpoch: state.connectionEpoch, executorId: state.executorId, observedAt }
@@ -150,7 +180,7 @@ const pollAndExecuteCommand = async (state: ExecutorLocalState): Promise<void> =
   if (!command) return
   await receipt(state, { commandId: command.commandId, state: 'accepted' })
   await receipt(state, { commandId: command.commandId, state: 'started' })
-  const result = await executeLocalCommand(state, command)
+  const result = await executeExecutorCommand(stateDir, state, command)
   await receipt(state, { commandId: command.commandId, result, state: 'result_acknowledged' })
 }
 
@@ -160,7 +190,7 @@ export const serveExecutor = async (stateDir: string, state: ExecutorLocalState)
   const commandInterval = setInterval(() => {
     if (commandPollInFlight) return
     commandPollInFlight = true
-    void pollAndExecuteCommand(live)
+    void pollAndExecuteCommand(stateDir, live)
       .catch((error) => {
         console.error(
           '[nessie-executor] command poll failed:',

@@ -28,8 +28,10 @@ structured terminal results are AES-256-GCM encrypted at rest, bounded to 64
 KiB, and linked to the existing queue job and `ToolCall`. The daemon receives a
 short-lived envelope only after the linked job is processing and must emit
 monotonic `accepted → started → result_acknowledged` receipts. The current
-companion executes `sandbox.stop` plus bounded `file.list` and `file.read`
-against one canonical, explicitly paired workspace root.
+companion executes `sandbox.stop` plus bounded `file.list`, `file.read`, and
+`file.write`. Reads start at one canonical, explicitly paired workspace root;
+writes create a bounded daemon-owned COW tree keyed to the server-provenanced
+run ID, and subsequent file reads/lists for that run use that same draft tree.
 
 The worker dispatch adapter is now enabled for a run only after a human has
 submitted an opaque availability handle. The normal launch path is
@@ -47,21 +49,21 @@ descriptor, operation and logical grants, lifecycle, and revision under the
 executor fence. An absent terminal receipt becomes `unknown_outcome` and is
 fatal/retry-safe, never a model-visible success; a late receipt for that exact
 already-delivered command can resolve it without issuing new work. The model
-schemas permit only bounded read-only file operations and `sandbox.stop`.
+schemas permit only bounded file operations and `sandbox.stop`; no host
+promotion schema is present.
 
-It does **not** dispatch writes, commands, browser work, or coding sessions;
-those operations remain unavailable until their concrete isolated backends are
-delivered. The initial read-only root is a path-constrained local backend, not
-a micro-VM or copy-on-write sandbox: it rejects traversal and every symbolic
-link, keeps a fixed canonical root in owner-only daemon state, bounds every
-listing/read result, and returns no host paths. A future write or command
-backend must use the planned isolated COW workspace and promotion protocol. A
-daemon-owned COW substrate now exists for that work: it copies only ordinary,
-non-linked files into an owner-only per-run scratch directory, rejects links,
-special files and oversized source trees, and discards only that exact scratch
-directory on stop. It is deliberately not advertised or dispatchable; until
-the micro-VM, forced egress, and reviewed promotion protocol exist, the paired
-host root remains read-only.
+It does **not** dispatch host promotion, commands, browser work, or coding
+sessions; those operations remain unavailable until their concrete isolated
+backends are delivered. The paired root is a path-constrained local read
+boundary: it rejects traversal and every symbolic link, keeps a fixed canonical
+root in owner-only daemon state, bounds every listing/read result, and returns
+no host paths. `file.write` is narrower: it creates a COW draft in an
+owner-only per-run scratch directory, rejects links, special files and
+oversized source trees, and discards only that exact scratch directory on stop.
+It is dispatched only after descriptor review, the exact executor-operation
+grant, logical-tool grant, and a human-bound run choice. Until the micro-VM,
+forced egress, and reviewed promotion protocol exist, the paired host root
+remains read-only.
 Neither does it expose the planned availability union with connectors.
 
 The availability endpoint deliberately creates a five-minute, one-use opaque

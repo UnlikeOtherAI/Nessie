@@ -43,6 +43,11 @@ const operationOptions: OperationOption[] = [
     label: 'Read a workspace file',
     value: 'file.read',
   },
+  {
+    description: 'Let the selected agent create a draft in a copy-on-write workspace; it cannot alter the paired root.',
+    label: 'Write a sandbox draft',
+    value: 'file.write',
+  },
 ]
 
 const scopeLabel = (scopeKind: ExecutorAvailabilityCandidate['scopeKind']): string => {

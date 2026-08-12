@@ -59,6 +59,18 @@ const descriptorFor = (operationKey: string): ToolSchemaDescriptor | null => {
           required: ['path'],
           type: 'object',
         }
+      case 'file.write':
+        return {
+          additionalProperties: false,
+          properties: {
+            content: { maxLength: 65_536, type: 'string' },
+            createParents: { type: 'boolean' },
+            overwrite: { type: 'boolean' },
+            path: { maxLength: 1_024, minLength: 1, type: 'string' },
+          },
+          required: ['content', 'path'],
+          type: 'object',
+        }
       case 'sandbox.stop':
         return { additionalProperties: false, properties: {}, type: 'object' }
       default:
@@ -145,7 +157,7 @@ export const buildExecutorToolset = async (
           commandId,
           encryptionSecret,
           expiresAt,
-          payload: { args },
+          payload: { args, runId: input.runId },
           queueJobId: queueJob.id,
           toolCallId: toolCall.id,
         })

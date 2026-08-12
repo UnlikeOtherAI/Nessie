@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { executeExecutorCommand } from '../src/daemon.js'
 import { parseCommand } from '../src/index.js'
 import {
   stopSandboxWorkspace,
@@ -12,6 +14,22 @@ import {
 } from '../src/sandbox-workspace.js'
 import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
 import { listWorkspaceFiles, readWorkspaceFile } from '../src/workspace.js'
+import { canonicalExecutorJson, type ExecutorCommandEnvelope } from '@nessie/schemas'
+
+const commandFor = (
+  operationKey: ExecutorCommandEnvelope['operationKey'],
+  payload: Record<string, unknown>,
+): ExecutorCommandEnvelope => ({
+  argumentDigest: `sha256:${createHash('sha256').update(canonicalExecutorJson(payload)).digest('hex')}` as never,
+  bindingFence: '1',
+  bindingId: '00000000-0000-4000-8000-000000000201' as never,
+  capabilityRevision: 1,
+  commandId: '00000000-0000-4000-8000-000000000202' as never,
+  expiresAt: '2099-08-12T12:00:00.000Z',
+  idempotencyKey: 'executor-command-test',
+  operationKey,
+  payload,
+})
 
 test('pair requires an explicit API URL and owner-controlled state directory', () => {
   assert.deepEqual(
@@ -177,5 +195,87 @@ test('copy-on-write sandbox setup fails closed on symbolic links in the paired r
     await rm(root, { force: true, recursive: true })
     await rm(stateDir, { force: true, recursive: true })
     await rm(outside, { force: true, recursive: true })
+  }
+})
+
+test('daemon commands bind COW drafts to one run and never write the paired root', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-daemon-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-daemon-state-'))
+  const runId = '00000000-0000-4000-8000-000000000203'
+  const state = {
+    apiBaseUrl: 'https://api.example.test',
+    descriptor: {
+      limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
+      operationKeys: ['file.list', 'file.read', 'file.write', 'sandbox.stop'],
+      profiles: ['workspace_sandbox'],
+      revision: 1,
+    },
+    executorId: '00000000-0000-4000-8000-000000000204',
+    machinePrivateKey: 'private',
+    machinePublicKey: 'public',
+    workspaceRoot: root,
+  }
+  try {
+    await writeFile(join(root, 'original.txt'), 'host root')
+    assert.deepEqual(
+      await executeExecutorCommand(stateDir, state, commandFor('file.write', {
+        args: { content: 'draft', path: 'draft.txt' },
+        runId,
+      })),
+      { byteCount: 5, path: 'draft.txt', success: true },
+    )
+    assert.deepEqual(
+      await executeExecutorCommand(stateDir, state, commandFor('file.read', {
+        args: { path: 'draft.txt' },
+        runId,
+      })),
+      { byteCount: 5, content: 'draft', path: 'draft.txt', success: true, truncated: false },
+    )
+    await assert.rejects(readFile(join(root, 'draft.txt'), 'utf8'), { code: 'ENOENT' })
+    assert.deepEqual(
+      await executeExecutorCommand(stateDir, state, commandFor('sandbox.stop', { args: {}, runId })),
+      { status: 'stopped', success: true },
+    )
+    assert.deepEqual(
+      await executeExecutorCommand(stateDir, state, commandFor('file.list', { args: {}, runId })),
+      {
+        entries: [{ kind: 'file', name: 'original.txt' }],
+        path: '.',
+        success: true,
+        truncated: false,
+      },
+    )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
+  }
+})
+
+test('daemon commands reject a missing server-provenanced run identity', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-daemon-invalid-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-daemon-invalid-state-'))
+  const state = {
+    apiBaseUrl: 'https://api.example.test',
+    descriptor: {
+      limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
+      operationKeys: ['file.write'],
+      profiles: ['workspace_sandbox'],
+      revision: 1,
+    },
+    executorId: '00000000-0000-4000-8000-000000000205',
+    machinePrivateKey: 'private',
+    machinePublicKey: 'public',
+    workspaceRoot: root,
+  }
+  try {
+    assert.deepEqual(
+      await executeExecutorCommand(stateDir, state, commandFor('file.write', {
+        args: { content: 'draft', path: 'draft.txt' },
+      })),
+      { code: 'EXECUTOR_COMMAND_RUN_INVALID', success: false },
+    )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
   }
 })
