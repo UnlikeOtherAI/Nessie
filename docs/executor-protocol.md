@@ -28,7 +28,7 @@ arbitrary local-network proxy.
 | Human user | Pair an executor and manage it when entitled; confirm access or invocation changes. | Expand a locally denied policy or act without current entitlement. |
 | Agent, including Personal Assistant | Invoke an already available operation; prepare a proposed access change for its requesting user. | Administer access, approve itself, select a free-form executor, alter local policy, or apply a prepared change. |
 | Nessie control plane | Resolve availability, bind a run, lease commands, retain redacted audit facts, and send policy narrowing. | Dial a machine, widen local policy, access host credentials, or treat terminal text as an authorization/outcome. |
-| Executor daemon | Enforce local policy, pair outward, run the VM/gateway/broker, and acknowledge commands. | Expand scope, accept stale/replayed work, expose host workspace/credentials directly, or send raw local data to audit. |
+| Executor daemon | Enforce local policy, pair outward, run the VM/gateway, and acknowledge commands. | Expand scope, accept stale/replayed work, expose host workspace/credentials directly, or send raw local data to audit. |
 | Guest VM / coding CLI | Work in a COW sandbox through the gateway. | Reach host files/credentials, direct network/DNS, or promote a host change. |
 
 A descriptor signed by an executor key proves that paired key made the claim;
@@ -616,10 +616,13 @@ remain required before browser operations are enabled.
 
 Codex/Claude runs inside the same guest in a dedicated tmux server. The host
 `~/.codex`, `~/.claude`, keychain, and global CLI tokens are never mounted.
-A root-owned daemon credential broker keeps any renewable credential outside
-the guest workspace identity and provides only short-lived executor/session
-authorization through the forced gateway. Guest processes cannot read a
-reusable bearer; broker or executor revocation closes the route immediately.
+No credential broker exists in the current guest. A future broker must keep
+renewable credentials outside the guest workspace identity **and** use a
+distinct credential principal that child workspace processes cannot read or
+invoke. A CLI-inherited proof, environment variable, or same-UID helper is not
+that boundary; it would grant arbitrary workspace code a delegated provider
+capability. Broker or executor revocation must close the resulting route
+immediately.
 
 Raw local data can reach a model provider only within the explicit bounded run
 consent. Nessie persists only redacted manifests, argument/policy digests,
@@ -729,11 +732,11 @@ executor, other users, local paths, credentials, or raw output.
 | Guest writes host workspace | COW only; daemon-owned `workspace.promote` with no-follow manifest validation, approval, fencing, journaled recovery. |
 | Lost command acknowledgement | Durable receipts and `unknown_outcome` mapped to existing `needs_setup`, never presumed success. |
 | PA prompt injection mutates access | Prepare/structural-confirm/step-up flow in PA DM only; actor user rechecked at commit. |
-| Host credential exfiltration | No host CLI home/keychain mount; brokered short-lived gateway authorization; raw-data retention bans. |
+| Host credential exfiltration | No host CLI home/keychain mount; no current coding credential path; future broker requires a distinct credential principal; raw-data retention bans. |
 | Terminal spoofing | Typed lifecycle events are authoritative; terminal/ANSI output is display-only. |
 
 Contract tests must cover enrollment replay and race, descriptor rollback, dual
 connection fencing, availability and roster non-leakage, final-admin
 offboarding, grant/revoke during binding, stale candidate handles, receipt-loss
-recovery, forced egress bypasses, broker revocation, hostile promotion
+recovery, forced egress bypasses, future broker revocation, hostile promotion
 manifests, interrupted promotion, and PA confirmation/step-up replay.
