@@ -665,7 +665,7 @@ test('notifies users outside quiet hours', async () => {
   assert.deepEqual(apnsCalls.map((c) => c.token), ['tok-u2'])
 })
 
-test('mentioned recipients get mention framing; unmentioned keep channel framing', async () => {
+test('message recipients receive sender-first framing with channel context', async () => {
   const state: FakeState = {
     creds: [apnsCred()],
     members: [member('u2'), member('u3')],
@@ -693,8 +693,10 @@ test('mentioned recipients get mention framing; unmentioned keep channel framing
   const mentionedIdx = apnsCalls.findIndex((call) => call.token === 'tok-u2')
   const unmentionedIdx = apnsCalls.findIndex((call) => call.token === 'tok-u3')
   assert.ok(mentionedIdx >= 0 && unmentionedIdx >= 0)
-  assert.equal(apnsPayloads[mentionedIdx]?.title, 'Ada Author mentioned you in General')
-  assert.equal(apnsPayloads[unmentionedIdx]?.title, 'General')
+  assert.equal(apnsPayloads[mentionedIdx]?.title, 'Ada Author')
+  assert.equal(apnsPayloads[unmentionedIdx]?.title, 'Ada Author')
+  assert.equal(apnsPayloads[mentionedIdx]?.subtitle, 'mentioned you in # General')
+  assert.equal(apnsPayloads[unmentionedIdx]?.subtitle, '# General')
   // Both groups carry the same deep-link data and coalescing key.
   assert.equal(apnsPayloads[mentionedIdx]?.collapseId, 'channel-1')
   assert.deepEqual(apnsPayloads[mentionedIdx]?.data, apnsPayloads[unmentionedIdx]?.data)
@@ -731,5 +733,6 @@ test('a muted member receives no push even when mentioned', async () => {
   // still created API-side (covered by the api alert tests).
   assert.equal(summary.sent, 1)
   assert.deepEqual(apnsCalls.map((call) => call.token), ['tok-u3'])
-  assert.equal(apnsPayloads[0]?.title, 'General')
+  assert.equal(apnsPayloads[0]?.title, 'Ada Author')
+  assert.equal(apnsPayloads[0]?.subtitle, '# General')
 })

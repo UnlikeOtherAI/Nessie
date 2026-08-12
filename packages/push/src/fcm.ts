@@ -76,9 +76,12 @@ export const parseServiceAccount = (json: string): ServiceAccount => {
 
 /** Build the FCM v1 message body for a payload + token. */
 export const buildFcmBody = (token: string, payload: PushPayload): string => {
+  const title = payload.subtitle
+    ? `${payload.title} · ${payload.subtitle}`
+    : payload.title
   const message: Record<string, unknown> = {
     token,
-    notification: { title: payload.title, body: payload.body },
+    notification: { title, body: payload.body },
   }
   if (payload.data !== undefined) message.data = payload.data
   const android: Record<string, unknown> = {}

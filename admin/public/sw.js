@@ -26,9 +26,12 @@ self.addEventListener('push', (event) => {
   // level of the payload and channelId inside data — prefer those over a global
   // tag, which would make every notification overwrite the last.
   const tag = data.tag || data.channelId || payload.collapseId || 'nessie'
+  const title = payload.subtitle
+    ? `${payload.title || 'Nessie'} · ${payload.subtitle}`
+    : (payload.title || 'Nessie')
 
   event.waitUntil(
-    self.registration.showNotification(payload.title || 'Nessie', {
+    self.registration.showNotification(title, {
       body: payload.body,
       icon: '/icon-1024.png',
       badge: '/icon-1024.png',

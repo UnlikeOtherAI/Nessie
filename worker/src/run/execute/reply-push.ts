@@ -40,6 +40,7 @@ export const enqueueInteractiveReplyPush = async (
     await enqueueQueueJob(deps.prisma, {
       idempotencyKey: `push:reply:${context.run.id}`,
       payload: {
+        authorName: context.agent.name,
         channelId: context.channel.id,
         contentSnippet: message.content.slice(0, 140),
         ...(message.contentVisibility ? { contentVisibility: message.contentVisibility } : {}),

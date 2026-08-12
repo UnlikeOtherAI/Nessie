@@ -69,6 +69,8 @@ export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPay
  */
 export const PushDispatchJobPayloadSchema = z.object({
   messageId: z.string().uuid(),
+  /** Sender name for agent/system messages, which have no user author id. */
+  authorName: z.string().min(1).optional(),
   authorUserId: z.string().uuid().optional(),
   /** Explicit recipient set for a private agent-reply completion notification. */
   recipientUserIds: z.array(z.string().uuid()).min(1).optional(),

@@ -327,9 +327,12 @@ Install the development build on the device. Unlike Expo Go, the development bui
    (`sandbox` or `production`), and sends a real alert directly to APNs. An
    “APNs accepted” response is provider acceptance, not a claim that iOS
    displayed the banner.
-4. Send a channel message. The worker sends the channel/mention framing and a
-   whitespace-normalized, truncated message preview (at most 140 characters),
-   coalesces bursts by channel, and includes the channel/message deep link.
+4. Send a channel message. The worker sends the sender as the notification
+   title and the destination as a `# channel` context (an APNs subtitle, composed
+   into the Android/browser title); a direct mention keeps its explicit
+   “mentioned you in # channel” subtitle. This is followed by a whitespace-normalized,
+   truncated message preview (at most 140 characters). It coalesces bursts by
+   channel and includes the channel/message deep link.
    Muted channels and quiet-hours remain suppressed. Tokens from another
    organization are never selected. For a live agent turn, leave that exact
    channel before its terminal reply: the requester receives one completion
