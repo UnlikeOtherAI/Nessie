@@ -102,7 +102,7 @@ const input = (state: FakeState, sender: WebPushSender) => ({
   payload: basePayload,
   organizationId: 'org-1',
   messageId: 'msg-1',
-  deepLinkUrl: '/channels/channel-1',
+  deepLinkUrl: '/channels/channel-1/threads/thread-1/replies/msg-1',
   sender,
   urlGuard: allowAll,
 })
@@ -119,7 +119,7 @@ test('delivers to a recipient subscription with a deep-link url', async () => {
     p256dh: 'p256dh-s1',
     auth: 'auth-s1',
   })
-  assert.equal(calls[0]!.payload.data?.url, '/channels/channel-1')
+  assert.equal(calls[0]!.payload.data?.url, '/channels/channel-1/threads/thread-1/replies/msg-1')
   assert.equal(calls[0]!.payload.data?.channelId, 'channel-1')
   assert.equal(calls[0]!.payload.title, 'General')
   assert.deepEqual(state.deliveries, [{

@@ -1,10 +1,21 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useChannels } from '../channels/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
 import { getBaseUrl } from '../../lib/api-client'
-import { parseChannelIdFromPath } from '../../lib/channel-route'
+import {
+  parseChannelIdFromPath,
+  parseReplyRootMessageIdFromPath,
+  parseThreadIdFromPath,
+} from '../../lib/channel-route'
+import {
+  getLatestPushSurfaceReport,
+  parsePushSurfaceReport,
+  PUSH_SURFACE_CHANGE_EVENT,
+  resolveReportedPushSurface,
+  type PushSurfaceReport,
+} from '../../lib/push-surface'
 import { readSseStream } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -18,6 +29,9 @@ const baseUrl = getBaseUrl()
 export type NotificationToastInput = {
   body: string
   channelId: string
+  messageId?: string
+  rootMessageId?: string
+  threadId?: string
   title: string
 }
 
@@ -26,12 +40,13 @@ type ChannelLookup = {
   byThreadId: Map<string, ChannelRecord>
 }
 
-type MessageNewPayload = {
+type MessageCreatedPayload = {
   authorName?: string
   channelId?: string
   contentPreview: string
   messageId?: string
   raw: Record<string, unknown>
+  rootMessageId?: string
   role?: string
   threadId?: string
 }
@@ -43,11 +58,12 @@ type RealtimeEventFrame = {
 }
 
 type LatestNotificationState = {
-  activeChannelId?: string
+  activeRootMessageId?: string
+  activeThreadId?: string
   channelLookup: ChannelLookup
   currentUserId: string
   onToast: (toast: NotificationToastInput) => void
-  openChannel: (channelId: string) => void
+  openChannel: (channelId: string, threadId?: string, rootMessageId?: string) => void
 }
 
 const emptyChannelLookup: ChannelLookup = {
@@ -127,7 +143,7 @@ const parseRealtimeEvent = (data: string): RealtimeEventFrame | null => {
   }
 }
 
-const parseMessageNewPayload = (data: unknown): MessageNewPayload | null => {
+const parseMessageCreatedPayload = (data: unknown): MessageCreatedPayload | null => {
   if (!isRecord(data)) {
     return null
   }
@@ -144,6 +160,7 @@ const parseMessageNewPayload = (data: unknown): MessageNewPayload | null => {
     contentPreview: readString(data, 'contentPreview') ?? readString(data, 'content') ?? '',
     messageId: readString(data, 'messageId'),
     raw: data,
+    rootMessageId: readString(data, 'rootMessageId'),
     role: readString(data, 'role'),
     threadId,
   }
@@ -161,20 +178,44 @@ const isInitialBacklogEvent = (
   return Number.isFinite(eventTime) && eventTime < connectedAt
 }
 
-const isActivelyViewingChannel = (channelId: string, activeChannelId?: string): boolean =>
-  channelId === activeChannelId
-  && document.visibilityState === 'visible'
-  && document.hasFocus()
+export const shouldSuppressMessageBanner = (input: {
+  activeRootMessageId?: string
+  activeThreadId?: string
+  foreground: boolean
+  rootMessageId?: string
+  threadId?: string
+}): boolean =>
+  input.foreground
+  && Boolean(input.threadId)
+  && input.threadId === input.activeThreadId
+  && (input.rootMessageId ?? null) === (input.activeRootMessageId ?? null)
+
+export const isMessageCreatedEvent = (event: string): boolean =>
+  event === 'message.new' || event === 'message.reply'
+
+const isActivelyViewingConversation = (
+  threadId: string | undefined,
+  rootMessageId: string | undefined,
+  activeThreadId?: string,
+  activeRootMessageId?: string,
+): boolean =>
+  shouldSuppressMessageBanner({
+    activeRootMessageId,
+    activeThreadId,
+    foreground: document.visibilityState === 'visible' && document.hasFocus(),
+    rootMessageId,
+    threadId,
+  })
 
 const resolveChannel = (
-  payload: MessageNewPayload,
+  payload: MessageCreatedPayload,
   lookup: ChannelLookup,
 ): ChannelRecord | undefined =>
   (payload.channelId ? lookup.byId.get(payload.channelId) : undefined)
   ?? (payload.threadId ? lookup.byThreadId.get(payload.threadId) : undefined)
 
 const isCurrentUserMessage = async (
-  payload: MessageNewPayload,
+  payload: MessageCreatedPayload,
   currentUserId: string,
   getThreadMessages: (threadId: string) => Promise<ThreadMessageRecord[]>,
 ): Promise<boolean> => {
@@ -211,7 +252,9 @@ const trimNotifiedMessageIds = (ids: Set<string>): void => {
 }
 
 const showNativeNotification = (
-  input: NotificationToastInput & { openChannel: (channelId: string) => void },
+  input: NotificationToastInput & {
+    openChannel: (channelId: string, threadId?: string, rootMessageId?: string) => void
+  },
 ): void => {
   const notificationApi = getNotificationApi()
   if (!notificationApi || notificationApi.permission !== 'granted') {
@@ -221,10 +264,10 @@ const showNativeNotification = (
   try {
     const notification = new notificationApi(input.title, {
       body: input.body,
-      tag: input.channelId,
+      tag: input.rootMessageId ?? input.threadId ?? input.channelId,
     })
     notification.addEventListener('click', () => {
-      input.openChannel(input.channelId)
+      input.openChannel(input.channelId, input.threadId, input.rootMessageId)
       notification.close()
     })
   } catch {
@@ -234,18 +277,53 @@ const showNativeNotification = (
 
 export const useMessageNotifications = (input: {
   onToast: (toast: NotificationToastInput) => void
-  openChannel: (channelId: string) => void
+  openChannel: (channelId: string, threadId?: string, rootMessageId?: string) => void
 }): void => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   const { me, token } = useAuthSession()
   const { data: channels = [] } = useChannels()
   const location = useLocation()
+  const route = useMemo(
+    () => ({ pathname: location.pathname, search: location.search }),
+    [location.pathname, location.search],
+  )
+  const [reportedSurface, setReportedSurface] = useState<PushSurfaceReport | null>(
+    getLatestPushSurfaceReport,
+  )
+  const reportedSurfaceForRoute = resolveReportedPushSurface(reportedSurface, route)
+  useEffect(() => {
+    const receiveSelectedSurface = (event: Event) => {
+      const report = parsePushSurfaceReport((event as CustomEvent<unknown>).detail)
+      if (report) setReportedSurface(report)
+    }
+    window.addEventListener(PUSH_SURFACE_CHANGE_EVENT, receiveSelectedSurface)
+    return () => window.removeEventListener(PUSH_SURFACE_CHANGE_EVENT, receiveSelectedSurface)
+  }, [])
   const activeChannelId = useMemo(
-    () => parseChannelIdFromPath(location.pathname),
-    [location.pathname],
+    () => reportedSurfaceForRoute?.kind === 'channel'
+      ? reportedSurfaceForRoute.channelId
+      : reportedSurfaceForRoute === null
+        ? undefined
+        : parseChannelIdFromPath(location.pathname),
+    [location.pathname, reportedSurfaceForRoute],
   )
   const channelLookup = useMemo(() => buildChannelLookup(channels), [channels])
+  const activeThreadId = useMemo(() => {
+    if (reportedSurfaceForRoute === null) return undefined
+    if (reportedSurfaceForRoute?.kind === 'channel') return reportedSurfaceForRoute.threadId
+    const replyThread = parseThreadIdFromPath(location.pathname)
+    if (replyThread) return replyThread
+    return activeChannelId ? channelLookup.byId.get(activeChannelId)?.defaultThreadId : undefined
+  }, [activeChannelId, channelLookup, location.pathname, reportedSurfaceForRoute])
+  const activeRootMessageId = useMemo(
+    () => reportedSurfaceForRoute?.kind === 'channel'
+      ? reportedSurfaceForRoute.rootMessageId ?? undefined
+      : reportedSurfaceForRoute === null
+        ? undefined
+        : parseReplyRootMessageIdFromPath(location.pathname),
+    [location.pathname, reportedSurfaceForRoute],
+  )
   const currentUserId = me?.user.id
   const notificationsEnabled = Boolean(me) && me?.user.preferences?.pushEnabled !== false
   const latestRef = useRef<LatestNotificationState>({
@@ -258,13 +336,14 @@ export const useMessageNotifications = (input: {
 
   useEffect(() => {
     latestRef.current = {
-      activeChannelId,
+      activeRootMessageId,
+      activeThreadId,
       channelLookup,
       currentUserId: currentUserId ?? '',
       onToast: input.onToast,
       openChannel: input.openChannel,
     }
-  }, [activeChannelId, channelLookup, currentUserId, input.onToast, input.openChannel])
+  }, [activeRootMessageId, activeThreadId, channelLookup, currentUserId, input.onToast, input.openChannel])
 
   useEffect(() => {
     if (!currentUserId || !notificationsEnabled || !token) {
@@ -276,7 +355,7 @@ export const useMessageNotifications = (input: {
     let lastEventId = ''
     let activeController: AbortController | null = null
 
-    const handleMessageNew = async (payload: MessageNewPayload): Promise<void> => {
+    const handleMessageCreated = async (payload: MessageCreatedPayload): Promise<void> => {
       const latest = latestRef.current
       let channel = resolveChannel(payload, latest.channelLookup)
 
@@ -301,7 +380,15 @@ export const useMessageNotifications = (input: {
       }
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
 
-      if (!channelId || isActivelyViewingChannel(channelId, latest.activeChannelId)) {
+      // A foreground banner is suppressed only while this exact conversation is
+      // visible and focused. A different reply root in the same channel thread
+      // is still work that needs attention, just like a different channel.
+      if (!channelId || isActivelyViewingConversation(
+        payload.threadId,
+        payload.rootMessageId,
+        latest.activeThreadId,
+        latest.activeRootMessageId,
+      )) {
         return
       }
 
@@ -325,7 +412,15 @@ export const useMessageNotifications = (input: {
 
       const title = channel?.label ?? payload.authorName ?? 'New message'
       const body = payload.contentPreview.trim() || 'New message'
-      const notificationInput = { body, channelId, title }
+      const rootMessageId = payload.rootMessageId ?? payload.messageId
+      const notificationInput = {
+        body,
+        channelId,
+        messageId: payload.messageId,
+        rootMessageId,
+        threadId: payload.threadId,
+        title,
+      }
 
       showNativeNotification({
         ...notificationInput,
@@ -338,15 +433,15 @@ export const useMessageNotifications = (input: {
       const event = parseRealtimeEvent(frameData)
       if (
         !event
-        || event.event !== 'message.new'
+        || !isMessageCreatedEvent(event.event)
         || isInitialBacklogEvent(event, suppressEventsBefore)
       ) {
         return
       }
 
-      const payload = parseMessageNewPayload(event.data)
+      const payload = parseMessageCreatedPayload(event.data)
       if (payload) {
-        await handleMessageNew(payload)
+        await handleMessageCreated(payload)
       }
     }
 
@@ -379,7 +474,7 @@ export const useMessageNotifications = (input: {
                 lastEventId = frame.id
               }
 
-              if (frame.event === 'message.new' && frame.data) {
+              if (frame.data && frame.event && isMessageCreatedEvent(frame.event)) {
                 await handleFrame(frame.data, suppressEventsBefore)
               }
             } catch {

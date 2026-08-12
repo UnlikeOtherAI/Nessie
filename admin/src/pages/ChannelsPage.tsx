@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
 import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
@@ -16,6 +17,7 @@ import { useFileDrop } from '../hooks/useFileDrop'
 import { useStickToBottom } from '../hooks/useStickToBottom'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { reportPushSurface } from '../lib/push-surface'
 import { CallBanner } from '../components/shared/CallBanner'
 import { DropZoneOverlay } from '../components/shared/DropZoneOverlay'
 import { ChannelComposer } from '../components/features/channels/ChannelComposer'
@@ -41,6 +43,7 @@ import { useReplyThread } from './channels/useReplyThread'
 import { useThreadReadMarker } from './channels/useThreadReadMarker'
 
 export const ChannelsPage = () => {
+  const location = useLocation()
   const navigate = useNavigate()
   const { channelId } = useParams()
   const { me, token } = useAuthSession()
@@ -73,7 +76,6 @@ export const ChannelsPage = () => {
     useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
-  useThreadReadMarker(activeChannel?.defaultThreadId, threadMessages)
 
   const channelUsers = useMemo(
     () =>
@@ -93,6 +95,13 @@ export const ChannelsPage = () => {
     activeChannel?.type === 'dm' || isPersonalAssistantConversation
   const visibleActiveTab =
     isConversationSurface && isOperationsTab(activeTab) ? 'messages' : activeTab
+  // Loading a channel's Files, Info, or Runs data must not acknowledge its
+  // messages. Only the actual conversation surface is a read.
+  useThreadReadMarker(
+    activeChannel?.defaultThreadId,
+    threadMessages,
+    visibleActiveTab === 'messages',
+  )
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
@@ -132,6 +141,23 @@ export const ChannelsPage = () => {
   // Reply-thread panel (#233): URL-driven open state, replies/root queries,
   // follow mutation, and the persisted drag-resizable width.
   const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
+
+  // Presence is the channel feed or one exact reply conversation. The Files,
+  // Info, and Runs tabs deliberately clear it: a reply there still needs an
+  // in-app and native banner because the user is not reading the conversation.
+  useEffect(() => {
+    if (visibleActiveTab !== 'messages' || !activeChannel || !replyThread.activeThreadId) {
+      reportPushSurface(null, location)
+      return undefined
+    }
+    reportPushSurface({
+      channelId: parseChannelId(activeChannel.id),
+      kind: 'channel',
+      rootMessageId: replyThread.openRootMessageId,
+      threadId: parseThreadId(replyThread.activeThreadId),
+    }, location)
+    return () => reportPushSurface(null, location)
+  }, [activeChannel, location, replyThread.activeThreadId, replyThread.openRootMessageId, visibleActiveTab])
 
   const {
     message,

@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { reportPushSurface } from '../../../lib/push-surface'
 import {
@@ -121,6 +122,7 @@ export const KnowledgeProvider = ({
   children: ReactNode
   projectId?: string
 }) => {
+  const location = useLocation()
   const { me } = useAuthSession()
   const spacesQuery = useKnowledgeSpaces(projectId)
   const myDocsQuery = useEnsureMyDocsSpace(!projectId)
@@ -221,9 +223,10 @@ export const KnowledgeProvider = ({
       activeProductView || !selectedSpaceId
         ? null
         : { kind: 'knowledge_space', spaceId: selectedSpaceId },
+      location,
     )
-    return () => reportPushSurface(null)
-  }, [activeProductView, selectedSpaceId])
+    return () => reportPushSurface(null, location)
+  }, [activeProductView, location, selectedSpaceId])
 
   const selectSpace = (spaceId: string) => {
     setSelectedSpaceId(spaceId)

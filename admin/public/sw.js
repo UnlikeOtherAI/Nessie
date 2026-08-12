@@ -21,11 +21,9 @@ self.addEventListener('push', (event) => {
   }
 
   const data = payload.data || {}
-  // Coalesce per channel so a new message replaces the prior one for the same
-  // channel (not all notifications). The worker sends collapseId at the top
-  // level of the payload and channelId inside data — prefer those over a global
-  // tag, which would make every notification overwrite the last.
-  const tag = data.tag || data.channelId || payload.collapseId || 'nessie'
+  // Coalesce at the conversation chosen by the server: the main channel feed
+  // stays compact, while independent reply conversations remain visible.
+  const tag = data.tag || payload.collapseId || data.rootMessageId || data.channelId || 'nessie'
   const title = payload.subtitle
     ? `${payload.title || 'Nessie'} · ${payload.subtitle}`
     : (payload.title || 'Nessie')

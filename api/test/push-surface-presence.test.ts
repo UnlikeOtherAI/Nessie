@@ -16,6 +16,8 @@ const tabletClientId = '00000000-0000-4000-8000-000000000004'
 const channelId = '00000000-0000-4000-8000-000000000005'
 const projectId = '00000000-0000-4000-8000-000000000007'
 const sessionId = '00000000-0000-4000-8000-000000000006'
+const threadId = '00000000-0000-4000-8000-000000000008'
+const rootMessageId = '00000000-0000-4000-8000-000000000010'
 
 const pushSurfaceStore = (rows: Map<string, Record<string, unknown>>) => ({
   updateMany: async ({ data, where }: {
@@ -58,7 +60,12 @@ const withSession = <T extends object>(transaction: T, active = true) => ({
   }),
 })
 
-test('records each app session separately so either open destination can suppress its push', async () => {
+const exactThread = {
+  findFirst: async ({ where }: { where: { channelId: string; id: string } }) =>
+    where.channelId === channelId && where.id === threadId ? { id: threadId } : null,
+}
+
+test('records each app session separately so only an exact open thread can suppress its push', async () => {
   const rows = new Map<string, Record<string, unknown>>()
   const prisma = withSession({
     channelMember: {
@@ -66,9 +73,10 @@ test('records each app session separately so either open destination can suppres
         where.channelId === channelId && where.userId === userId ? { id: 'member-1' } : null,
     },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
+    thread: exactThread,
     userPushSurfacePresence: pushSurfaceStore(rows),
   })
-  const channel = PushSurfaceSchema.parse({ kind: 'channel', channelId })
+  const channel = PushSurfaceSchema.parse({ kind: 'channel', channelId, rootMessageId: null, threadId })
 
   await recordPushSurfacePresence(prisma as never, {
     clientId: phoneClientId,
@@ -89,7 +97,16 @@ test('records each app session separately so either open destination can suppres
 
   assert.equal(rows.size, 2)
   assert.equal(rows.get(`${userId}:${phoneClientId}`)?.channelId, channelId)
+  assert.equal(rows.get(`${userId}:${phoneClientId}`)?.threadId, threadId)
+  assert.equal(rows.get(`${userId}:${phoneClientId}`)?.rootMessageId, null)
   assert.equal(rows.get(`${userId}:${tabletClientId}`)?.surfaceKind, 'ops_usage')
+})
+
+test('treats an older channel heartbeat without a reply root as the main feed', () => {
+  assert.equal(
+    PushSurfaceSchema.parse({ kind: 'channel', channelId, threadId }).rootMessageId,
+    null,
+  )
 })
 
 test('clears an unentitled channel target instead of persisting a cross-organization surface', async () => {
@@ -97,6 +114,7 @@ test('clears an unentitled channel target instead of persisting a cross-organiza
   const prisma = withSession({
     channelMember: { findFirst: async () => null },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
+    thread: exactThread,
     userPushSurfacePresence: pushSurfaceStore(rows),
   })
 
@@ -108,6 +126,8 @@ test('clears an unentitled channel target instead of persisting a cross-organiza
     surface: PushSurfaceSchema.parse({
       kind: 'channel',
       channelId: '00000000-0000-4000-8000-000000000006',
+      rootMessageId: null,
+      threadId,
     }),
     userId,
   })
@@ -117,12 +137,68 @@ test('clears an unentitled channel target instead of persisting a cross-organiza
   assert.equal(created?.channelId, null)
 })
 
+test('clears a thread that does not belong to the reported channel', async () => {
+  const rows = new Map<string, Record<string, unknown>>()
+  const prisma = withSession({
+    channelMember: { findFirst: async () => ({ id: 'member-1' }) },
+    organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
+    thread: exactThread,
+    userPushSurfacePresence: pushSurfaceStore(rows),
+  })
+
+  await recordPushSurfacePresence(prisma as never, {
+    clientId: phoneClientId,
+    organizationId,
+    sequence: 1n,
+    sessionId,
+    surface: PushSurfaceSchema.parse({
+      channelId,
+      kind: 'channel',
+      rootMessageId: null,
+      threadId: '00000000-0000-4000-8000-000000000009',
+    }),
+    userId,
+  })
+
+  const created = rows.get(`${userId}:${phoneClientId}`)
+  assert.equal(created?.surfaceKind, null)
+  assert.equal(created?.threadId, null)
+})
+
+test('records a reply conversation only when its root belongs to the reported thread', async () => {
+  const rows = new Map<string, Record<string, unknown>>()
+  const prisma = withSession({
+    channelMember: { findFirst: async () => ({ id: 'member-1' }) },
+    message: {
+      findFirst: async ({ where }: { where: { id: string; rootMessageId: null; threadId: string } }) =>
+        where.id === rootMessageId && where.rootMessageId === null && where.threadId === threadId
+          ? { id: rootMessageId }
+          : null,
+    },
+    organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
+    thread: exactThread,
+    userPushSurfacePresence: pushSurfaceStore(rows),
+  })
+
+  await recordPushSurfacePresence(prisma as never, {
+    clientId: phoneClientId,
+    organizationId,
+    sequence: 1n,
+    sessionId,
+    surface: PushSurfaceSchema.parse({ kind: 'channel', channelId, rootMessageId, threadId }),
+    userId,
+  })
+
+  assert.equal(rows.get(`${userId}:${phoneClientId}`)?.rootMessageId, rootMessageId)
+})
+
 test('records a project Board only after checking the recipient can reach that project', async () => {
   const rows = new Map<string, Record<string, unknown>>()
   const prisma = withSession({
     channelMember: { findFirst: async () => null },
     projectMember: { findFirst: async () => ({ id: 'project-member-1' }) },
     organizationMember: { findFirst: async () => ({ id: 'member-1' }) },
+    thread: exactThread,
     userPushSurfacePresence: pushSurfaceStore(rows),
   })
   await recordPushSurfacePresence(prisma as never, {
@@ -144,6 +220,7 @@ test('clears the Ops usage surface for a non-owner', async () => {
   const prisma = withSession({
     channelMember: { findFirst: async () => null },
     organizationMember: { findFirst: async () => null },
+    thread: exactThread,
     userPushSurfacePresence: pushSurfaceStore(rows),
   })
 
@@ -166,6 +243,7 @@ test('does not let a delayed foreground heartbeat overwrite a newer background s
   const prisma = withSession({
     channelMember: { findFirst: async () => ({ id: 'member-1' }) },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
+    thread: exactThread,
     userPushSurfacePresence: pushSurfaceStore(rows),
   })
 
@@ -182,7 +260,7 @@ test('does not let a delayed foreground heartbeat overwrite a newer background s
     organizationId,
     sequence: 1n,
     sessionId,
-    surface: PushSurfaceSchema.parse({ kind: 'channel', channelId }),
+    surface: PushSurfaceSchema.parse({ kind: 'channel', channelId, rootMessageId: null, threadId }),
     userId,
   })
 
@@ -197,6 +275,7 @@ test('does not recreate a surface for a revoked session access token', async () 
   const prisma = withSession({
     channelMember: { findFirst: async () => ({ id: 'member-1' }) },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
+    thread: exactThread,
     userPushSurfacePresence: pushSurfaceStore(rows),
   }, false)
 
@@ -205,7 +284,7 @@ test('does not recreate a surface for a revoked session access token', async () 
     organizationId,
     sequence: 1n,
     sessionId,
-    surface: PushSurfaceSchema.parse({ kind: 'channel', channelId }),
+    surface: PushSurfaceSchema.parse({ kind: 'channel', channelId, rootMessageId: null, threadId }),
     userId,
   })
 

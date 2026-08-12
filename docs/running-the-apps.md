@@ -332,10 +332,11 @@ Install the development build on the device. Unlike Expo Go, the development bui
    into the Android/browser title); a direct mention keeps its explicit
    “mentioned you in # channel” subtitle. This is followed by a whitespace-normalized,
    truncated message preview (at most 140 characters). It coalesces bursts by
-   channel and includes the channel/message deep link.
+   the main channel feed or the individual reply conversation and carries that
+   exact `/channels/:channelId/threads/:threadId/replies/:rootMessageId` link.
    Muted channels and quiet-hours remain suppressed. Tokens from another
    organization are never selected. For a live agent turn, leave that exact
-   channel before its terminal reply: the requester receives one completion
+   thread before its terminal reply: the requester receives one completion
    notification per run. A reply based on restricted sources is rechecked
    against live membership and disclosure grants immediately before delivery
    and uses only the generic body “An agent reply is ready.”
@@ -352,17 +353,25 @@ remain a higher-priority stop for every category; a muted channel continues to
 suppress its channel and mention pushes.
 
 Every visible Nessie browser tab or native WebView sends a short-lived,
-strictly ordered structured foreground surface heartbeat. Its channel target is
-accepted only for an active organization member with channel access. Under the
-same per-user lock used for session revocation, the API also verifies the
-heartbeat's exact refresh session is still live. Before delivering, the
-in-house worker checks whether any of that user's active sessions is already
-displaying the exact channel or operational-usage page the notification would
-open. If so, it does not send an APNs/FCM/browser push—the realtime stream is
-already updating that page. A later background signal wins over a delayed
-earlier foreground request, and `pagehide` sends an unconditional null target.
-Backgrounded, stale, revoked, deactivated, and unrelated pages never suppress
-delivery; the API reaps expired session records every five minutes.
+strictly ordered structured foreground surface heartbeat. Its channel target
+contains the channel, its container thread, and either a null main-feed target
+or the reply conversation's root message, and is accepted only for an active
+organization member with channel access. Browser heartbeats additionally require
+the window to have focus. Under the same per-user lock used for session
+revocation, the API also verifies the heartbeat's exact refresh session is
+still live. Before delivering, the in-house worker checks whether any of that
+user's active sessions is already displaying the exact channel feed, reply
+conversation, or
+operational-usage page the notification would open. If so, it does not send an
+APNs/FCM/browser push—the realtime stream is already updating that destination.
+A foreground client elsewhere in Nessie is not suppressed: it receives its
+in-app banner and registered devices receive the native delivery. A later
+background signal wins over a delayed earlier foreground request, and `pagehide`
+sends an unconditional null target. Backgrounded, unfocused, stale, revoked,
+deactivated, and unrelated pages never suppress delivery; the API reaps expired
+session records every five minutes. The selected-surface signal is shared with
+the in-app banner: viewing Files, Info, or Runs in the same channel clears both
+server delivery suppression and local-banner suppression.
 
 ## TestFlight
 
