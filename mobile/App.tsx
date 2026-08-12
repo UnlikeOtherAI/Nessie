@@ -14,7 +14,9 @@ import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
 import {
+  dismissNativeNotificationCards,
   getNativePushRegistration,
+  reconcileNativeAttentionPresentation,
   subscribeToPushTokenChanges,
   subscribeToPushNavigation,
   type NativePushRegistration,
@@ -115,6 +117,7 @@ const Shell = (): React.JSX.Element => {
   const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
   const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
+  const [attentionBadges, setAttentionBadges] = useState({ channels: 0, assignedWork: 0, knowledge: 0 })
   // Bumping this remounts the WebView — used to recover Android after its render
   // process is killed (the instance is unusable until recreated).
   const [webviewKey, setWebviewKey] = useState(0)
@@ -237,6 +240,9 @@ const Shell = (): React.JSX.Element => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       nativeAppForeground.current = nextState === 'active'
       runScript(nativeAppForegroundScript(nativeAppForeground.current))
+      if (nativeAppForeground.current) {
+        void dismissNativeNotificationCards().catch(() => undefined)
+      }
     })
     return () => subscription.remove()
   }, [runScript])
@@ -278,6 +284,10 @@ const Shell = (): React.JSX.Element => {
       canBack?: boolean
       canForward?: boolean
       recentOpen?: boolean
+      channels?: number
+      assignedWork?: number
+      knowledge?: number
+      total?: number
     }
     try {
       msg = JSON.parse(event.nativeEvent.data)
@@ -305,6 +315,18 @@ const Shell = (): React.JSX.Element => {
       }
       return
     }
+    if (msg.type === 'nessie:attention') {
+      const channels = typeof msg.channels === 'number' && msg.channels > 0 ? Math.floor(msg.channels) : 0
+      const assignedWork = typeof msg.assignedWork === 'number' && msg.assignedWork > 0
+        ? Math.floor(msg.assignedWork)
+        : 0
+      const knowledge = typeof msg.knowledge === 'number' && msg.knowledge > 0 ? Math.floor(msg.knowledge) : 0
+      setAttentionBadges({ channels, assignedWork, knowledge })
+      void reconcileNativeAttentionPresentation(
+        typeof msg.total === 'number' && msg.total >= 0 ? msg.total : channels + assignedWork + knowledge,
+      ).catch(() => undefined)
+      return
+    }
     if (msg.type === 'nessie:search-overlay') {
       if (msg.active) {
         const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
@@ -329,6 +351,7 @@ const Shell = (): React.JSX.Element => {
       bootRetries.current = 0
       clearBootTimer()
       currentPathRef.current = msg.path
+      void dismissNativeNotificationCards().catch(() => undefined)
       setCurrentPath(msg.path)
       const next = tabIndexForPath(msg.path)
       setIndex((current) => (current === next ? current : next))
@@ -373,7 +396,21 @@ const Shell = (): React.JSX.Element => {
 
   const navigationState = {
     index,
-    routes: TABS.map((tab) => ({ key: tab.key, title: tab.title, role: tab.role })),
+    routes: TABS.map((tab) => ({
+      key: tab.key,
+      title: tab.title,
+      role: tab.role,
+      badge: (() => {
+        const value = tab.key === 'channels'
+          ? attentionBadges.channels
+          : tab.key === 'projects'
+            ? attentionBadges.assignedWork
+            : tab.key === 'knowledge'
+              ? attentionBadges.knowledge
+              : 0
+        return value > 0 ? String(value) : undefined
+      })(),
+    })),
   }
 
   return (
@@ -401,6 +438,7 @@ const Shell = (): React.JSX.Element => {
       {showBar && IS_ANDROID ? (
         <AndroidTabletTabBar
           activeIndex={index}
+          badgeCounts={attentionBadges}
           activeIndicatorColor={withOpacity(accent, 0.14)}
           activeTintColor={accent}
           bottom={insets.bottom + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP}
@@ -448,6 +486,7 @@ const Shell = (): React.JSX.Element => {
       {showBar && IS_IPAD ? (
         <IpadNativeTabBar
           activeIndex={index}
+          badgeCounts={attentionBadges}
           activeTintColor={accent}
           dark={isDark(bg)}
           inactiveTintColor={inactive}

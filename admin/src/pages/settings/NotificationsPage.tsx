@@ -63,16 +63,20 @@ const getTimeZoneOptions = (selectedTimeZone: string, browserTimeZone: string): 
 const buildPreferencesPayload = (
   input: {
     pushBudgetAlerts: boolean
+    pushAssignedWork: boolean
     pushEnabled: boolean
     pushMentions: boolean
     pushMessages: boolean
+    pushPublishedKnowledge: boolean
     quietHours: PushQuietHours | null
   },
 ): UserPreferences => ({
   pushBudgetAlerts: input.pushBudgetAlerts,
+  pushAssignedWork: input.pushAssignedWork,
   pushEnabled: input.pushEnabled,
   pushMentions: input.pushMentions,
   pushMessages: input.pushMessages,
+  pushPublishedKnowledge: input.pushPublishedKnowledge,
   pushQuietHours: input.quietHours,
 })
 
@@ -193,6 +197,8 @@ export const NotificationsPage = () => {
   const [pushMessages, setPushMessages] = useState(true)
   const [pushMentions, setPushMentions] = useState(true)
   const [pushBudgetAlerts, setPushBudgetAlerts] = useState(true)
+  const [pushAssignedWork, setPushAssignedWork] = useState(true)
+  const [pushPublishedKnowledge, setPushPublishedKnowledge] = useState(true)
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false)
   const [quietStart, setQuietStart] = useState(DEFAULT_QUIET_START)
   const [quietEnd, setQuietEnd] = useState(DEFAULT_QUIET_END)
@@ -217,6 +223,8 @@ export const NotificationsPage = () => {
     setPushMessages(preferences?.pushMessages ?? true)
     setPushMentions(preferences?.pushMentions ?? true)
     setPushBudgetAlerts(preferences?.pushBudgetAlerts ?? true)
+    setPushAssignedWork(preferences?.pushAssignedWork ?? true)
+    setPushPublishedKnowledge(preferences?.pushPublishedKnowledge ?? true)
     setQuietHoursEnabled(Boolean(quietHours))
     setQuietStart(quietHours?.start ?? DEFAULT_QUIET_START)
     setQuietEnd(quietHours?.end ?? DEFAULT_QUIET_END)
@@ -258,9 +266,11 @@ export const NotificationsPage = () => {
     try {
       await updatePreferences.mutateAsync(buildPreferencesPayload({
         pushBudgetAlerts,
+        pushAssignedWork,
         pushEnabled,
         pushMentions,
         pushMessages,
+        pushPublishedKnowledge,
         quietHours,
       }))
       setPreferenceFeedback({ kind: 'success', message: 'Notification preferences saved.' })
@@ -322,10 +332,13 @@ export const NotificationsPage = () => {
         >
           <PushPreferenceCard
             disabled={!preferencesHydrated || updatePreferences.isPending}
+            pushAssignedWork={pushAssignedWork}
             pushBudgetAlerts={pushBudgetAlerts}
             pushEnabled={pushEnabled}
             pushMentions={pushMentions}
             pushMessages={pushMessages}
+            pushPublishedKnowledge={pushPublishedKnowledge}
+            setPushAssignedWork={setPushAssignedWork}
             setPushBudgetAlerts={setPushBudgetAlerts}
             setPushEnabled={(next) => {
               setPushEnabled(next)
@@ -335,6 +348,7 @@ export const NotificationsPage = () => {
             }}
             setPushMentions={setPushMentions}
             setPushMessages={setPushMessages}
+            setPushPublishedKnowledge={setPushPublishedKnowledge}
           />
 
           <section className="admin-card p-4">

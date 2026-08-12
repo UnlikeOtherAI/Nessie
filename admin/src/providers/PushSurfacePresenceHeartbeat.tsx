@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { resolvePushSurface } from '../lib/push-surface'
+import { PushSurfaceSchema, type PushSurface } from '@nessie/schemas'
+import { PUSH_SURFACE_CHANGE_EVENT, resolvePushSurface } from '../lib/push-surface'
 import { getBaseUrl } from '../lib/api-client'
 import { useAuthSession } from './AuthSessionProvider'
 
@@ -60,9 +61,11 @@ export const PushSurfacePresenceHeartbeat = () => {
   // its server-side entitlement check later.
   const heartbeatSequence = useRef(Date.now() * 1_000)
   const surface = useMemo(
-    () => resolvePushSurface(location.pathname),
-    [location.pathname],
+    () => resolvePushSurface(location.pathname, location.search),
+    [location.pathname, location.search],
   )
+  const [reportedSurface, setReportedSurface] = useState<PushSurface | null>(null)
+  const effectiveSurface = reportedSurface ?? surface
 
   const heartbeat = useCallback((nextSurface: ReturnType<typeof resolvePushSurface>) => {
     if (!token) return Promise.resolve()
@@ -85,6 +88,18 @@ export const PushSurfacePresenceHeartbeat = () => {
       method: 'POST',
     }).catch(() => undefined)
   }, [clientId, token])
+
+  useEffect(() => {
+    const reportSelectedKnowledgeSurface = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail
+      if (detail !== null && !PushSurfaceSchema.safeParse(detail).success) return
+      const nextSurface = detail as PushSurface | null
+      setReportedSurface(nextSurface)
+      if (isForeground()) void heartbeat(nextSurface)
+    }
+    window.addEventListener(PUSH_SURFACE_CHANGE_EVENT, reportSelectedKnowledgeSurface)
+    return () => window.removeEventListener(PUSH_SURFACE_CHANGE_EVENT, reportSelectedKnowledgeSurface)
+  }, [heartbeat])
 
   useEffect(() => {
     const refreshVisibility = () => {
@@ -114,12 +129,12 @@ export const PushSurfacePresenceHeartbeat = () => {
 
   useEffect(() => {
     if (!me || !token) return undefined
-    const reportCurrentSurface = () => heartbeat(foreground ? surface : null)
+    const reportCurrentSurface = () => heartbeat(foreground ? effectiveSurface : null)
 
     void reportCurrentSurface()
     const interval = window.setInterval(() => void reportCurrentSurface(), HEARTBEAT_MS)
     return () => window.clearInterval(interval)
-  }, [foreground, heartbeat, me, surface, token])
+  }, [effectiveSurface, foreground, heartbeat, me, token])
 
   return null
 }

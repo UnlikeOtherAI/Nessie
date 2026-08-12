@@ -7,14 +7,18 @@ type NotificationToggleProps = {
 
 type PushPreferenceCardProps = {
   disabled: boolean
+  pushAssignedWork: boolean
   pushBudgetAlerts: boolean
   pushEnabled: boolean
   pushMentions: boolean
   pushMessages: boolean
+  pushPublishedKnowledge: boolean
+  setPushAssignedWork: (next: boolean) => void
   setPushBudgetAlerts: (next: boolean) => void
   setPushEnabled: (next: boolean) => void
   setPushMentions: (next: boolean) => void
   setPushMessages: (next: boolean) => void
+  setPushPublishedKnowledge: (next: boolean) => void
 }
 
 export const NotificationToggle = ({
@@ -49,14 +53,18 @@ export const NotificationToggle = ({
 
 export const PushPreferenceCard = ({
   disabled,
+  pushAssignedWork,
   pushBudgetAlerts,
   pushEnabled,
   pushMentions,
   pushMessages,
+  pushPublishedKnowledge,
+  setPushAssignedWork,
   setPushBudgetAlerts,
   setPushEnabled,
   setPushMentions,
   setPushMessages,
+  setPushPublishedKnowledge,
 }: PushPreferenceCardProps) => (
   <section className="admin-card p-4">
     <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
@@ -101,6 +109,18 @@ export const PushPreferenceCard = ({
             description: 'Operational budget warnings and blocks for organisation owners.',
             label: 'Budget alerts',
             onChange: setPushBudgetAlerts,
+          },
+          {
+            checked: pushAssignedWork,
+            description: 'Project work assigned to you by another person.',
+            label: 'Assigned work',
+            onChange: setPushAssignedWork,
+          },
+          {
+            checked: pushPublishedKnowledge,
+            description: 'Knowledge pages newly published where you have access.',
+            label: 'Published knowledge',
+            onChange: setPushPublishedKnowledge,
           },
         ].map((preference) => (
           <div className="flex items-center justify-between gap-4" key={preference.label}>

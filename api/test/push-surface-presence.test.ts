@@ -14,6 +14,7 @@ const userId = '00000000-0000-4000-8000-000000000002'
 const phoneClientId = '00000000-0000-4000-8000-000000000003'
 const tabletClientId = '00000000-0000-4000-8000-000000000004'
 const channelId = '00000000-0000-4000-8000-000000000005'
+const projectId = '00000000-0000-4000-8000-000000000007'
 const sessionId = '00000000-0000-4000-8000-000000000006'
 
 const pushSurfaceStore = (rows: Map<string, Record<string, unknown>>) => ({
@@ -113,6 +114,28 @@ test('clears an unentitled channel target instead of persisting a cross-organiza
 
   const created = rows.get(`${userId}:${phoneClientId}`)
   assert.equal(created?.surfaceKind, null)
+  assert.equal(created?.channelId, null)
+})
+
+test('records a project Board only after checking the recipient can reach that project', async () => {
+  const rows = new Map<string, Record<string, unknown>>()
+  const prisma = withSession({
+    channelMember: { findFirst: async () => null },
+    projectMember: { findFirst: async () => ({ id: 'project-member-1' }) },
+    organizationMember: { findFirst: async () => ({ id: 'member-1' }) },
+    userPushSurfacePresence: pushSurfaceStore(rows),
+  })
+  await recordPushSurfacePresence(prisma as never, {
+    clientId: phoneClientId,
+    organizationId,
+    sequence: 1n,
+    sessionId,
+    surface: PushSurfaceSchema.parse({ kind: 'project_board', projectId }),
+    userId,
+  })
+  const created = rows.get(`${userId}:${phoneClientId}`)
+  assert.equal(created?.surfaceKind, 'project_board')
+  assert.equal(created?.projectId, projectId)
   assert.equal(created?.channelId, null)
 })
 

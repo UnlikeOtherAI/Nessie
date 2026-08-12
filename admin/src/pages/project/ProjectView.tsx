@@ -6,6 +6,7 @@ import type { PageHeaderAction } from '../../components/shared/ResponsivePageHea
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
 import { useProjects } from '../../facades/projects/hooks'
+import { useAttentionSummary } from '../../facades/alerts/hooks'
 import { useState } from 'react'
 import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
@@ -19,6 +20,7 @@ export const ProjectView = () => {
   const navigate = useNavigate()
   const { data: projects = [] } = useProjects()
   const { data: board } = useProjectBoard(projectId)
+  const { data: attention } = useAttentionSummary()
 
   if (!projectId) return null
 
@@ -39,16 +41,19 @@ export const ProjectView = () => {
             ? 'board'
             : 'overview'
 
+  const assignedWorkCount = attention?.assignedWork.projects[projectId] ?? 0
+  const knowledgeCount = attention?.knowledge.projects[projectId] ?? 0
+  const withCount = (label: string, count: number): string => count > 0 ? `${label} (${count})` : label
   const tabs = [
     { id: 'overview', label: 'Overview', to: `/projects/${projectId}` },
-    { id: 'board', label: 'Board', to: `/projects/${projectId}/board` },
+    { id: 'board', label: withCount('Board', assignedWorkCount), to: `/projects/${projectId}/board` },
     ...(isScrum
       ? [
           { id: 'backlog', label: 'Backlog', to: `/projects/${projectId}/backlog` },
           { id: 'insights', label: 'Insights', to: `/projects/${projectId}/insights` },
         ]
       : []),
-    { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs` },
+    { id: 'docs', label: withCount('Docs', knowledgeCount), to: `/projects/${projectId}/docs` },
     { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
   ]
   const activeTab = tabs.find((item) => item.id === tab)

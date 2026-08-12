@@ -5,6 +5,7 @@ import { TABS } from '../lib/tabs'
 
 type IpadNativeTabBarProps = {
   activeIndex: number
+  badgeCounts: { assignedWork: number; channels: number; knowledge: number }
   activeTintColor: string
   dark: boolean
   inactiveTintColor: string
@@ -14,6 +15,7 @@ type IpadNativeTabBarProps = {
 
 export const IpadNativeTabBar = ({
   activeIndex,
+  badgeCounts,
   activeTintColor,
   dark,
   inactiveTintColor,
@@ -25,6 +27,13 @@ export const IpadNativeTabBar = ({
       {TABS.map((tab, index) => {
         const active = index === activeIndex
         const color = active ? activeTintColor : inactiveTintColor
+        const badge = tab.key === 'channels'
+          ? badgeCounts.channels
+          : tab.key === 'projects'
+            ? badgeCounts.assignedWork
+            : tab.key === 'knowledge'
+              ? badgeCounts.knowledge
+              : 0
 
         return (
           <Pressable
@@ -51,6 +60,7 @@ export const IpadNativeTabBar = ({
                 {tab.title}
               </Text>
             )}
+            {badge > 0 ? <Text style={styles.badge}>{badge > 99 ? '99+' : badge}</Text> : null}
           </Pressable>
         )
       })}
@@ -59,6 +69,19 @@ export const IpadNativeTabBar = ({
 )
 
 const styles = StyleSheet.create({
+  badge: {
+    minWidth: 15,
+    height: 15,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+    color: '#fff',
+    backgroundColor: '#7c3aed',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 15,
+    textAlign: 'center',
+  },
   bar: {
     height: 42,
     flexDirection: 'row',

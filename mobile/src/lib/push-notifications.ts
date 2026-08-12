@@ -119,6 +119,18 @@ export const subscribeToPushTokenChanges = (
   return () => subscription.remove()
 }
 
+/** Native presentation only; the API remains the authoritative attention state. */
+export const reconcileNativeAttentionPresentation = async (total: number): Promise<void> => {
+  if (Platform.OS === 'ios') {
+    await Notifications.setBadgeCountAsync(Math.max(0, Math.floor(total)))
+  }
+}
+
+/** Clear cards once the user is actively looking at Nessie, never durable state. */
+export const dismissNativeNotificationCards = async (): Promise<void> => {
+  await Notifications.dismissAllNotificationsAsync()
+}
+
 /**
  * Delivers cold-start and foreground notification taps to the WebView shell as
  * internal SPA paths. The native app never sees an authenticated Nessie token.

@@ -136,7 +136,7 @@ export class TenantStore {
         const hasRelationOperator = conditionKeys.some((k) => RELATION_OPERATORS.has(k))
         const allScalarOperators = conditionKeys.every((k) => SCALAR_OPERATORS.has(k))
         if (hasRelationOperator) {
-          if (!this.matchRelation(row, key, condition)) return false
+          if (!this.matchRelation(model, row, key, condition)) return false
           continue
         }
         if (allScalarOperators && !(key in row && isPlainObject(row[key]))) {
@@ -163,7 +163,7 @@ export class TenantStore {
    * test; if one appears we conservatively treat it as unsatisfied so a query
    * cannot silently widen.
    */
-  private matchRelation(row: Row, key: string, condition: Row): boolean {
+  private matchRelation(model: string, row: Row, key: string, condition: Row): boolean {
     if ('is' in condition || 'isNot' in condition) {
       const fk = row[`${key}Id`]
       const related = this.table(key).find((r) => r['id'] === fk) ?? null
@@ -175,10 +175,42 @@ export class TenantStore {
       const matched = related !== null && this.matchWhere(key, related, spec)
       return isMatch ? matched : !matched
     }
-    // to-many filters (some/none/every) are never the deciding factor in a
-    // cross-tenant gate under test; treat as unsatisfied so a query can only
-    // ever narrow, never silently widen.
+    const collection = this.collectionRelation(model, key)
+    if (!collection) return false
+    const related = this.table(collection.model).filter((candidate) =>
+      candidate[collection.foreignKey] === row['id'],
+    )
+    if ('some' in condition) {
+      return related.some((candidate) => this.matchWhere(collection.model, candidate, condition['some']))
+    }
+    if ('none' in condition) {
+      return !related.some((candidate) => this.matchWhere(collection.model, candidate, condition['none']))
+    }
+    if ('every' in condition) {
+      return related.every((candidate) => this.matchWhere(collection.model, candidate, condition['every']))
+    }
     return false
+  }
+
+  private collectionRelation(
+    model: string,
+    key: string,
+  ): { model: string; foreignKey: string } | null {
+    const relations: Record<string, Record<string, { model: string; foreignKey: string }>> = {
+      user: {
+        organizationMembers: { model: 'organizationMember', foreignKey: 'userId' },
+      },
+      channel: {
+        members: { model: 'channelMember', foreignKey: 'channelId' },
+      },
+      project: {
+        members: { model: 'projectMember', foreignKey: 'projectId' },
+      },
+      knowledgeSpace: {
+        members: { model: 'knowledgeSpaceMember', foreignKey: 'spaceId' },
+      },
+    }
+    return relations[model]?.[key] ?? null
   }
 
   private matchDirectRelation(row: Row, key: string, spec: Row): boolean {

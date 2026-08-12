@@ -17,6 +17,8 @@ type PushSurfacePresenceTransaction = Pick<
   | '$queryRaw'
   | 'channelMember'
   | 'organizationMember'
+  | 'knowledgeSpace'
+  | 'projectMember'
   | 'refreshToken'
   | 'userPushSurfacePresence'
 >
@@ -48,6 +50,44 @@ const resolveRecordableSurface = async (
       select: { id: true },
     })
     return membership ? input.surface : null
+  }
+
+  if (input.surface.kind === 'project_board') {
+    const membership = await prisma.projectMember.findFirst({
+      where: {
+        projectId: input.surface.projectId,
+        userId: input.userId,
+        project: { organizationId: input.organizationId },
+        user: {
+          organizationMembers: {
+            some: { deactivatedAt: null, organizationId: input.organizationId },
+          },
+        },
+      },
+      select: { id: true },
+    })
+    return membership ? input.surface : null
+  }
+
+  if (input.surface.kind === 'knowledge_space') {
+    const space = await prisma.knowledgeSpace.findFirst({
+      where: {
+        id: input.surface.spaceId,
+        organizationId: input.organizationId,
+        deletedAt: null,
+        OR: [
+          { createdBy: input.userId },
+          { members: { some: { userId: input.userId } } },
+          { visibility: 'organization' },
+          {
+            visibility: 'project',
+            project: { members: { some: { userId: input.userId } } },
+          },
+        ],
+      },
+      select: { id: true },
+    })
+    return space ? input.surface : null
   }
 
   if (input.surface.kind !== 'channel') {
@@ -105,6 +145,10 @@ export const recordPushSurfacePresence = async (
     const now = new Date()
     const surfaceKind = surface?.kind ?? null
     const channelId = surface?.kind === 'channel' ? surface.channelId : null
+    const projectId = surface?.kind === 'project_board'
+      ? surface.projectId
+      : null
+    const knowledgeSpaceId = surface?.kind === 'knowledge_space' ? surface.spaceId : null
     const uniqueWhere = { clientId: input.clientId, userId: input.userId }
     const writeWhere = {
       ...uniqueWhere,
@@ -112,6 +156,8 @@ export const recordPushSurfacePresence = async (
     }
     const writeData = {
       channelId,
+      projectId,
+      knowledgeSpaceId,
       heartbeatSequence: input.sequence,
       lastSeenAt: now,
       organizationId: input.organizationId,

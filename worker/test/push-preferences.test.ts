@@ -33,8 +33,15 @@ test('per-event preferences are enabled by default and suppress only their own e
   assert.equal(shouldSuppressPushForPreferences({}, now, 'messages'), false)
   assert.equal(shouldSuppressPushForPreferences({}, now, 'mentions'), false)
   assert.equal(shouldSuppressPushForPreferences({}, now, 'budgetAlerts'), false)
+  assert.equal(shouldSuppressPushForPreferences({}, now, 'assignedWork'), false)
+  assert.equal(shouldSuppressPushForPreferences({}, now, 'publishedKnowledge'), false)
   assert.equal(shouldSuppressPushForPreferences({ pushMessages: false }, now, 'messages'), true)
   assert.equal(shouldSuppressPushForPreferences({ pushMessages: false }, now, 'mentions'), false)
   assert.equal(shouldSuppressPushForPreferences({ pushMentions: false }, now, 'mentions'), true)
   assert.equal(shouldSuppressPushForPreferences({ pushBudgetAlerts: false }, now, 'budgetAlerts'), true)
+  assert.equal(shouldSuppressPushForPreferences({ pushAssignedWork: false }, now, 'assignedWork'), true)
+  assert.equal(
+    shouldSuppressPushForPreferences({ pushPublishedKnowledge: false }, now, 'publishedKnowledge'),
+    true,
+  )
 })

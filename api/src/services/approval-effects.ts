@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createNativeKnowledgeProvider } from '@nessie/knowledge'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { emitAuditEvent } from './audit.js'
+import { createKnowledgePublicationAttention } from './push-attention.js'
 
 // The minimal shape runApprovalEffect needs from an approval row — matches
 // the return of approvals.ts's mapApproval structurally, so callers can pass
@@ -40,7 +41,9 @@ const runKnowledgePagePublishEffect = async (
   }
   const { pageId, versionId } = parsed.data
 
-  const provider = createNativeKnowledgeProvider(prisma)
+  const provider = createNativeKnowledgeProvider(prisma, {
+    onPagePublished: async (tx, event) => createKnowledgePublicationAttention(tx, event),
+  })
   const page = await provider.getPage(actorContext.tenant.organizationId, pageId)
   if (!page) {
     return { note: 'page no longer exists' }
@@ -50,6 +53,7 @@ const runKnowledgePagePublishEffect = async (
   }
 
   const published = await provider.publishPage({
+    actorUserId: actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null,
     organizationId: actorContext.tenant.organizationId,
     pageId,
   })

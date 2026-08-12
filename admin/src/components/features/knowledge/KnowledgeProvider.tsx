@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { reportPushSurface } from '../../../lib/push-surface'
 import {
   useCreateKnowledgePage,
   useCreateKnowledgeSpace,
@@ -41,6 +42,9 @@ type KnowledgeContextValue = {
   // a single project.
   scopeProjectId?: string
   spaces: KnowledgeSpaceRecord[]
+  // A document-attention read is only safe after the scoped space list has
+  // resolved; loading an empty placeholder must not clear unseen documents.
+  spacesLoaded: boolean
   // The caller's personal "My Docs" space, provisioned once per session via
   // the idempotent ensure endpoint. Undefined until that call resolves.
   myDocsSpaceId?: string
@@ -212,6 +216,15 @@ export const KnowledgeProvider = ({
   const rootPages = pagesByParent.get(null) ?? []
   const validOpenPageId = openPageId && validPath.at(-1) === openPageId ? openPageId : undefined
 
+  useEffect(() => {
+    reportPushSurface(
+      activeProductView || !selectedSpaceId
+        ? null
+        : { kind: 'knowledge_space', spaceId: selectedSpaceId },
+    )
+    return () => reportPushSurface(null)
+  }, [activeProductView, selectedSpaceId])
+
   const selectSpace = (spaceId: string) => {
     setSelectedSpaceId(spaceId)
     setPagePath([])
@@ -360,6 +373,7 @@ export const KnowledgeProvider = ({
   const value: KnowledgeContextValue = {
     scopeProjectId: projectId,
     spaces,
+    spacesLoaded: spacesQuery.isSuccess,
     myDocsSpaceId: myDocsQuery.data?.spaceId,
     selectedSpaceId,
     selectedSpace,

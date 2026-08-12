@@ -44,6 +44,8 @@ export type PushQuietHours = z.infer<typeof PushQuietHoursSchema>
 export const PushSurfaceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('channel'), channelId: ChannelIdSchema }),
   z.object({ kind: z.literal('ops_usage') }),
+  z.object({ kind: z.literal('project_board'), projectId: ProjectIdSchema }),
+  z.object({ kind: z.literal('knowledge_space'), spaceId: z.string().uuid() }),
 ])
 export type PushSurface = z.infer<typeof PushSurfaceSchema>
 
@@ -58,6 +60,8 @@ export const UserPreferencesSchema = z.object({
   pushMessages: z.boolean().optional(),
   pushMentions: z.boolean().optional(),
   pushBudgetAlerts: z.boolean().optional(),
+  pushAssignedWork: z.boolean().optional(),
+  pushPublishedKnowledge: z.boolean().optional(),
   // `null` clears quiet hours via the partial-merge PATCH; absent leaves them unchanged.
   pushQuietHours: PushQuietHoursSchema.nullish(),
   theme: z.enum([

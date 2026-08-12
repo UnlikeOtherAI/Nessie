@@ -120,10 +120,10 @@ export type WsEventMap = {
     runId: string
   }
   // User alerts (#246): per-recipient events ride the channel scope of the
-  // originating message; clients filter on `userId`.
+  // recipient's accessible channel; clients filter on `userId`.
   'alert.created': {
     userId: UserId
-    kind: 'mention'
+    kind: 'mention' | 'task_assigned' | 'knowledge_published'
     messageId?: string
     threadId?: ThreadId
     channelId?: ChannelId
@@ -244,7 +244,7 @@ export type ApprovalResolvedEvent = z.infer<typeof ApprovalResolvedEventSchema>
 // User alerts (#246): additive kinds per the #225 realtime registry.
 export const AlertCreatedEventSchema = z.object({
   userId: UserIdSchema,
-  kind: z.enum(['mention']),
+  kind: z.enum(['mention', 'task_assigned', 'knowledge_published']),
   messageId: z.string().uuid().optional(),
   threadId: ThreadIdSchema.optional(),
   channelId: ChannelIdSchema.optional(),

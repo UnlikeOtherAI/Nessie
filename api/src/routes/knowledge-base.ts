@@ -423,6 +423,7 @@ export const registerKnowledgeBaseRoutes = (
     let page: KnowledgePageRecord | null
     try {
       page = await provider.publishPage({
+        actorUserId: actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null,
         organizationId: actorContext.tenant.organizationId,
         pageId,
       })

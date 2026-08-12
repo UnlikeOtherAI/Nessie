@@ -18,6 +18,7 @@ import {
   COMMS_SYNC_INITIAL_TOPIC,
   COMMS_WEBHOOK_PROCESS_TOPIC,
   AttachmentThumbnailJobPayloadSchema,
+  AttentionDispatchJobPayloadSchema,
   ATTACHMENT_THUMBNAIL_TOPIC,
   CommsSubscriptionsRenewJobPayloadSchema,
   CommsSyncIncrementalJobPayloadSchema,
@@ -51,6 +52,7 @@ import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './con
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
+import { handleAttentionDispatch } from './control/attention-dispatch.js'
 import {
   dispatchEventTriggers,
   reattemptTriggerDelivery,
@@ -239,6 +241,22 @@ export const startWorker = async (
       webPushCreds = undefined
     }
   }
+
+  queueProvider.subscribe(
+    'attention.dispatch',
+    async (job) => {
+      const payload = AttentionDispatchJobPayloadSchema.parse(job.payload)
+      await handleAttentionDispatch(
+        {
+          prisma,
+          authSecret: config.auth.secret ?? '',
+          ...(webPushCreds ? { webPush: webPushCreds } : {}),
+        },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
 
   queueProvider.subscribe(
     'push.dispatch',

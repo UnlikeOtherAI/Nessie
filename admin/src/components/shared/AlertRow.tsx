@@ -30,6 +30,12 @@ const formatRelativeTime = (value: string): string => {
 // uses .admin-topbar-menu-item, the /alerts page an admin-card row.
 export const AlertRow = ({ alert }: { alert: UserAlertRecord }) => {
   const unread = alert.readAt === null
+  const actor = alert.actorDisplayName ?? 'Someone'
+  const description = alert.kind === 'task_assigned'
+    ? `${actor} assigned work to you`
+    : alert.kind === 'knowledge_published'
+      ? `${actor} published knowledge for you`
+      : `${actor} mentioned you${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
 
   return (
     <>
@@ -46,8 +52,7 @@ export const AlertRow = ({ alert }: { alert: UserAlertRecord }) => {
           unread ? 'font-semibold text-[color:var(--tx)]' : 'text-[color:var(--tx2)]',
         ].join(' ')}
       >
-        {alert.actorDisplayName ?? 'Someone'} mentioned you
-        {alert.channelLabel ? ` in ${alert.channelLabel}` : ''}
+        {description}
       </span>
       <span className="shrink-0 text-xs font-normal text-[color:var(--tx3)]">
         {formatRelativeTime(alert.createdAt)}

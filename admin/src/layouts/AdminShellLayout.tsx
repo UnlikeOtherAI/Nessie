@@ -10,6 +10,7 @@ import {
 import { NotificationsProvider } from '../providers/NotificationsProvider';
 import { PresenceProvider } from '../providers/PresenceProvider';
 import { PushSurfacePresenceHeartbeat } from '../providers/PushSurfacePresenceHeartbeat';
+import { AttentionDisplayManager } from '../providers/AttentionDisplayManager';
 import { ToastProvider } from '../providers/ToastProvider';
 import { useAuthSession } from '../providers/AuthSessionProvider';
 import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
@@ -26,6 +27,7 @@ import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
 import { TopBar } from './admin-shell/TopBar';
 import { useAdminShell } from './admin-shell/useAdminShell';
+import { useAttentionSummary } from '../facades/alerts/hooks';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
 
@@ -61,6 +63,14 @@ export const AdminShellLayout = () => {
 // token is being restored can create competing refresh-token rotations.
 const AuthenticatedAdminShellLayout = () => {
   const shell = useAdminShell();
+  const attention = useAttentionSummary();
+  const attentionCountByProjectId = new Map<string, number>();
+  for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
+    attentionCountByProjectId.set(projectId, count);
+  }
+  for (const [projectId, count] of Object.entries(attention.data?.knowledge.projects ?? {})) {
+    attentionCountByProjectId.set(projectId, (attentionCountByProjectId.get(projectId) ?? 0) + count);
+  }
   const mobileLayout = useMobileLayout();
   // Phones get the hamburger drawer; tablets (iPad) keep the secondary sidebar
   // pinned even though they are "mobile" (their native tab bar replaces the rail).
@@ -91,6 +101,7 @@ const AuthenticatedAdminShellLayout = () => {
 
   const sidebarNavElement = (
     <SidebarNav
+      attentionCountByProjectId={attentionCountByProjectId}
       activeDmChannelId={shell.activeDmChannelId}
       channelsCollapsed={shell.channelsCollapsed}
       currentChannelId={shell.currentChannelId}
@@ -182,6 +193,7 @@ const AuthenticatedAdminShellLayout = () => {
 
   return (
     <PresenceProvider>
+      <AttentionDisplayManager />
       <PushSurfacePresenceHeartbeat />
       <ToastProvider>
         <NotificationsProvider>

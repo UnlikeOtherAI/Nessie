@@ -23,8 +23,9 @@ const Bell = () => (
   </svg>
 )
 
-// Mention-alerts bell: badge with the unread count plus a dropdown of recent
-// alerts. useAlertEvents keeps the badge fresh over the realtime stream.
+// Durable-attention bell: badge with the unread count plus a dropdown of
+// recent alerts. Channel-derived alert frames invalidate immediately while the
+// private categories use the shared short refresh interval.
 export const AlertsBell = () => {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)

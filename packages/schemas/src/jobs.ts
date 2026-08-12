@@ -74,6 +74,16 @@ export const PushDispatchJobPayloadSchema = z.object({
 export type PushDispatchJobPayload = z.infer<typeof PushDispatchJobPayloadSchema>
 
 /**
+ * A recipient-private durable-attention delivery. The API creates this queue
+ * row in the same transaction as its UserAlert, so a source event cannot commit
+ * without a recoverable push attempt.
+ */
+export const AttentionDispatchJobPayloadSchema = z.object({
+  alertId: z.string().uuid(),
+})
+export type AttentionDispatchJobPayload = z.infer<typeof AttentionDispatchJobPayloadSchema>
+
+/**
  * `budget.alert-dispatch` queue job — emitted by the worker's budget gate when a
  * scope Budget first crosses its warn threshold ('threshold') or first blocks a
  * run ('blocked') in a period. Consumed by the worker to notify org owners and

@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import type {
+  AttentionDispatchJobPayload,
   OrchestrateDecideJobPayload,
   PushDispatchJobPayload,
 } from '@nessie/schemas'
@@ -31,5 +32,16 @@ export const enqueuePushDispatch = async (
     idempotencyKey,
     payload,
     topic: 'push.dispatch',
+  })
+}
+
+export const enqueueAttentionDispatch = async (
+  prisma: Pick<PrismaClient, '$executeRaw'>,
+  payload: AttentionDispatchJobPayload,
+): Promise<boolean> => {
+  return enqueueQueueJob(prisma, {
+    idempotencyKey: `attention:${payload.alertId}`,
+    payload,
+    topic: 'attention.dispatch',
   })
 }

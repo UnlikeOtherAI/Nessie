@@ -8,6 +8,7 @@ import { TABS } from '../lib/tabs'
 
 type AndroidTabletTabBarProps = {
   activeIndex: number
+  badgeCounts: { assignedWork: number; channels: number; knowledge: number }
   activeIndicatorColor: string
   activeTintColor: string
   bottom: number
@@ -19,6 +20,7 @@ type AndroidTabletTabBarProps = {
 
 export const AndroidTabletTabBar = ({
   activeIndex,
+  badgeCounts,
   activeIndicatorColor,
   activeTintColor,
   bottom,
@@ -32,6 +34,13 @@ export const AndroidTabletTabBar = ({
       {TABS.map((tab, index) => {
         const active = index === activeIndex
         const color = active ? activeTintColor : inactiveTintColor
+        const badge = tab.key === 'channels'
+          ? badgeCounts.channels
+          : tab.key === 'projects'
+            ? badgeCounts.assignedWork
+            : tab.key === 'knowledge'
+              ? badgeCounts.knowledge
+              : 0
 
         return (
           <Pressable
@@ -59,6 +68,7 @@ export const AndroidTabletTabBar = ({
             <Text numberOfLines={1} style={[styles.label, { color }]}>
               {tab.title}
             </Text>
+            {badge > 0 ? <Text style={styles.badge}>{badge > 99 ? '99+' : badge}</Text> : null}
           </Pressable>
         )
       })}
@@ -67,6 +77,19 @@ export const AndroidTabletTabBar = ({
 )
 
 const styles = StyleSheet.create({
+  badge: {
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+    color: '#fff',
+    backgroundColor: '#7c3aed',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 16,
+    textAlign: 'center',
+  },
   bar: {
     width: '88%',
     maxWidth: 700,

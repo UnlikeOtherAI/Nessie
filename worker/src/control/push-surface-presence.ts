@@ -10,6 +10,8 @@ type PushSurfacePresencePrisma = Pick<PrismaClient, 'userPushSurfacePresence'>
 export type PushSurfaceTarget =
   | { kind: 'channel'; channelId: string }
   | { kind: 'ops_usage' }
+  | { kind: 'project_board'; projectId: string }
+  | { kind: 'knowledge_space'; spaceId: string }
 
 /**
  * Returns the recipient ids that are already viewing the exact destination of
@@ -36,8 +38,12 @@ export const findRecipientsViewingPushSurface = async (
       userId: { in: input.recipientIds },
       surfaceKind: input.surface.kind,
       ...(input.surface.kind === 'channel'
-        ? { channelId: input.surface.channelId }
-        : { channelId: null }),
+        ? { channelId: input.surface.channelId, projectId: null, knowledgeSpaceId: null }
+        : input.surface.kind === 'project_board'
+          ? { channelId: null, projectId: input.surface.projectId, knowledgeSpaceId: null }
+          : input.surface.kind === 'knowledge_space'
+            ? { channelId: null, projectId: null, knowledgeSpaceId: input.surface.spaceId }
+            : { channelId: null, projectId: null, knowledgeSpaceId: null }),
       lastSeenAt: { gte: new Date(input.now.getTime() - ACTIVE_SURFACE_WINDOW_MS) },
     },
     select: { userId: true },

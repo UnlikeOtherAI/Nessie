@@ -87,8 +87,8 @@ export const localOwner = (): AuthorizedActionContext =>
  */
 export const seedTenants = (store: TenantStore): void => {
   store.seed('organizationMember', [
-    { id: `${IDS.userA}-om`, organizationId: IDS.orgA, userId: IDS.userA, role: 'owner' },
-    { id: `${IDS.userB}-om`, organizationId: IDS.orgB, userId: IDS.userB, role: 'owner' },
+    { id: `${IDS.userA}-om`, organizationId: IDS.orgA, userId: IDS.userA, role: 'owner', deactivatedAt: null },
+    { id: `${IDS.userB}-om`, organizationId: IDS.orgB, userId: IDS.userB, role: 'owner', deactivatedAt: null },
   ])
   store.seed('teamMember', [
     { id: `${IDS.userA}-tm`, teamId: IDS.teamA, userId: IDS.userA, role: 'owner' },
