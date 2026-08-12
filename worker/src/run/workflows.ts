@@ -333,6 +333,18 @@ export const attachWorkflowStepRunArtifacts = async (
   })
 }
 
+export type WorkflowStepFinishResult = {
+  applied: boolean
+  continueWorkflow: boolean
+  workflowRunCompleted: boolean
+}
+
+const NO_OP_STEP_FINISH: WorkflowStepFinishResult = {
+  applied: false,
+  continueWorkflow: false,
+  workflowRunCompleted: false,
+}
+
 export const markWorkflowStepRunFinished = async (
   prisma: PrismaLike,
   input: {
@@ -342,12 +354,9 @@ export const markWorkflowStepRunFinished = async (
     summary?: string
     workflowRunId?: string | null
   },
-): Promise<{ continueWorkflow: boolean; workflowRunCompleted: boolean }> => {
+): Promise<WorkflowStepFinishResult> => {
   if (!input.workflowRunId || !input.stepRunId) {
-    return {
-      continueWorkflow: false,
-      workflowRunCompleted: false,
-    }
+    return NO_OP_STEP_FINISH
   }
   const workflowRunId = input.workflowRunId
   const stepRunId = input.stepRunId
@@ -361,10 +370,7 @@ export const markWorkflowStepRunFinished = async (
       },
     })
     if (!existing || existing.workflowRunId !== workflowRunId) {
-      return {
-        continueWorkflow: false,
-        workflowRunCompleted: false,
-      }
+      return NO_OP_STEP_FINISH
     }
 
     const mergedOutput = mergeStepRunOutput(existing.output, input.output)
@@ -384,6 +390,27 @@ export const markWorkflowStepRunFinished = async (
       success: input.success,
     })
 
+    // Guarded on a non-terminal run status: a cancelled run (or one already
+    // terminalized by a sibling step failure) is not resurrected by a late
+    // child completion. The step row is left untouched in that case — it was
+    // already moved to its final state by whichever transition won.
+    const runUpdate = await tx.workflowRun.updateMany({
+      where: {
+        id: workflowRunId,
+        status: { in: ['pending', 'running'] },
+      },
+      data: {
+        status: transition.nextRunStatus,
+        summary: input.summary,
+        ...(transition.nextRunStatus === 'completed' || transition.nextRunStatus === 'failed'
+          ? { finishedAt: new Date() }
+          : {}),
+      },
+    })
+    if (runUpdate.count === 0) {
+      return NO_OP_STEP_FINISH
+    }
+
     await tx.workflowStepRun.update({
       where: { id: stepRunId },
       data: {
@@ -394,18 +421,24 @@ export const markWorkflowStepRunFinished = async (
       },
     })
 
-    await tx.workflowRun.update({
-      where: { id: workflowRunId },
-      data: {
-        status: transition.nextRunStatus,
-        summary: input.summary,
-        ...(transition.nextRunStatus === 'completed' || transition.nextRunStatus === 'failed'
-          ? { finishedAt: new Date() }
-          : {}),
-      },
-    })
+    // A failed step terminalizes the run: anything still pending or blocked
+    // is never going to execute, so mark it skipped rather than leaving it
+    // reading as "still coming".
+    if (transition.nextRunStatus === 'failed') {
+      await tx.workflowStepRun.updateMany({
+        where: {
+          workflowRunId,
+          status: { in: ['pending', 'blocked'] },
+        },
+        data: {
+          status: 'skipped',
+          finishedAt: new Date(),
+        },
+      })
+    }
 
     return {
+      applied: true,
       continueWorkflow: transition.continueWorkflow,
       workflowRunCompleted: transition.workflowRunCompleted,
     }
@@ -420,9 +453,14 @@ export const markWorkflowRunFinished = async (
     summary?: string
     workflowRunId: string
   },
-): Promise<void> => {
-  await prisma.workflowRun.update({
-    where: { id: input.workflowRunId },
+): Promise<{ applied: boolean }> => {
+  // Same non-terminal guard as the step finish: a concurrent cancel wins and
+  // the loser reports `applied: false` so its caller emits no terminal event.
+  const result = await prisma.workflowRun.updateMany({
+    where: {
+      id: input.workflowRunId,
+      status: { in: ['pending', 'running'] },
+    },
     data: {
       status: input.success ? 'completed' : 'failed',
       output: (input.output ?? {}) as Prisma.InputJsonValue,
@@ -431,4 +469,5 @@ export const markWorkflowRunFinished = async (
       finishedAt: new Date(),
     },
   })
+  return { applied: result.count > 0 }
 }

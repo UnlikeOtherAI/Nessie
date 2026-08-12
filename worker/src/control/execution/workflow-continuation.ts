@@ -1,6 +1,7 @@
 import { type PrismaClient } from '@prisma/client'
 import { enqueueQueueJob } from '../../queue.js'
-import { markWorkflowStepRunFinished } from '../../run/workflows.js'
+import { loadWorkflowGraph } from '../../run/workflows.js'
+import { finishWorkflowStepRun } from '../../run/workflow-step-finish.js'
 import { asObject } from './stored-json.js'
 import type { WorkflowInstanceState, WorkflowLinkedInstance } from './types.js'
 
@@ -37,7 +38,16 @@ export const maybeContinueWorkflowForInstance = async (
     return
   }
 
-  const result = await markWorkflowStepRunFinished(prisma, {
+  const workflow = await loadWorkflowGraph(prisma, input.instance.workflowRunId)
+  if (!workflow) {
+    return
+  }
+
+  // Finish through the emitting seam so an asynchronous environment step
+  // that terminalizes the run fires workflow.run.completed / .failed.
+  // `applied: false` (concurrent terminalization) also reports
+  // continueWorkflow: false, so the continuation enqueue stays skipped.
+  const result = await finishWorkflowStepRun(prisma, workflow, {
     output: input.output,
     stepRunId: input.instance.workflowStepRunId,
     success: input.success,

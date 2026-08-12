@@ -3,6 +3,7 @@ import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   type AgentTriggerType,
+  type ExecutionEnvironmentTerminateJobPayload,
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -878,6 +879,14 @@ export const listWorkflowRuns = async (
   return runs.map((run) => mapWorkflowRun({ ...run, input: {}, output: {} }))
 }
 
+const TOOL_STEP_CANCEL_NOTICE =
+  'may still execute: the tool call was already dispatched and its side effect cannot be recalled.'
+
+// Cancelling a workflow run must propagate to the work it suspended, not just
+// flip rows: a running agent step keeps a suspended child run alive, a running
+// environment_launch step holds a live instance, and a running tool step may
+// still land a side effect. Each running step records what was abandoned on
+// its output so the surface is honest about what cancel did and did not stop.
 export const cancelWorkflowRun = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
@@ -902,25 +911,12 @@ export const cancelWorkflowRun = async (
     const now = new Date()
     const summary = input.reason?.trim() || 'Workflow run cancelled.'
 
-    await tx.workflowStepRun.updateMany({
-      where: {
-        workflowRunId,
-        status: {
-          in: ['pending', 'running', 'blocked'],
-        },
-      },
-      data: {
-        status: 'skipped',
-        finishedAt: now,
-        errorMessage: summary,
-      },
-    })
-
     // Atomic transition guarded on a non-terminal status: a concurrent cancel
     // or a run that completed between the check above and here writes nothing
     // (count === 0); either way we return the current row rather than
-    // clobbering a terminal state.
-    await tx.workflowRun.updateMany({
+    // clobbering a terminal state — and skip the propagation, which the
+    // winning transition already owns.
+    const runTransition = await tx.workflowRun.updateMany({
       where: {
         id: workflowRunId,
         status: { in: ['pending', 'running'] },
@@ -932,6 +928,95 @@ export const cancelWorkflowRun = async (
         finishedAt: now,
       },
     })
+
+    if (runTransition.count > 0) {
+      // Pending and blocked steps never started: plain skip.
+      await tx.workflowStepRun.updateMany({
+        where: {
+          workflowRunId,
+          status: { in: ['pending', 'blocked'] },
+        },
+        data: {
+          status: 'skipped',
+          finishedAt: now,
+          errorMessage: summary,
+        },
+      })
+
+      // Running steps are skipped individually: each records on its output
+      // exactly what was abandoned, and each child kind gets its propagation.
+      const runningSteps = await tx.workflowStepRun.findMany({
+        where: { workflowRunId, status: 'running' },
+        select: {
+          agentRunId: true,
+          environmentInstance: { select: { id: true } },
+          id: true,
+          output: true,
+          stepType: true,
+        },
+      })
+
+      for (const step of runningSteps) {
+        const abandoned: Record<string, unknown> = {}
+        let errorMessage = summary
+
+        if (step.stepType === 'agent' && step.agentRunId) {
+          // Cooperative cancellation (the runs.ts mechanism): the child
+          // agentic loop observes cancelRequestedAt and terminalizes itself.
+          await tx.run.updateMany({
+            where: { id: step.agentRunId, status: 'running' },
+            data: {
+              cancelRequestedAt: now,
+              cancelRequestedByUserId:
+                actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null,
+            },
+          })
+          // Name the queued mailbox message whose delivery this cancel
+          // abandoned: the dispatch poller would otherwise keep claiming it
+          // for a step that no longer exists.
+          const abandonedMessage = await tx.agentMailboxMessage.findFirst({
+            where: { workflowStepRunId: step.id, status: 'queued' },
+            orderBy: [{ visibleAt: 'asc' }, { createdAt: 'asc' }],
+            select: { id: true },
+          })
+          if (abandonedMessage) {
+            abandoned['cancelAbandonedMessageId'] = abandonedMessage.id
+          }
+        }
+
+        if (step.stepType === 'environment_launch' && step.environmentInstance) {
+          const payload: ExecutionEnvironmentTerminateJobPayload = {
+            actorContext,
+            instanceId: step.environmentInstance.id,
+          }
+          await enqueueQueueJob(tx, {
+            idempotencyKey: `execution-environment:terminate:${step.environmentInstance.id}`,
+            payload,
+            topic: 'execution.environment.terminate',
+          })
+        }
+
+        if (step.stepType === 'tool' || step.stepType === 'tool_call') {
+          abandoned['cancelAbandonedAt'] = now.toISOString()
+          errorMessage = `${summary} ${TOOL_STEP_CANCEL_NOTICE}`
+        }
+
+        const existingOutput =
+          step.output && typeof step.output === 'object' && !Array.isArray(step.output)
+            ? (step.output as Record<string, unknown>)
+            : {}
+
+        await tx.workflowStepRun.update({
+          where: { id: step.id },
+          data: {
+            status: 'skipped',
+            finishedAt: now,
+            errorMessage,
+            output: { ...existingOutput, ...abandoned } as Prisma.InputJsonValue,
+          },
+        })
+      }
+    }
 
     return tx.workflowRun.findUnique({ where: { id: workflowRunId } })
   })

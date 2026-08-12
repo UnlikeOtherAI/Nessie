@@ -87,30 +87,28 @@ Stage 2, rather than being invented twice.
 
 **Items are not independently mergeable.** The ordering constraints are binding:
 
-- **W0 gates W15, W17, W19, W20, W21** — every member-visible surface and every
-  new data sink. Nothing that widens visibility or adds a rendering path merges
-  before the redaction boundary.
-- **W1 gates W2** — cancel propagation makes the unguarded terminal write fire on
-  *every* cancel, so merging W2 first turns a latent race into a certainty.
-- **W3 gates W21 and W23** — run cards and failure push consume terminal events
-  that today are never emitted when the last step is async, i.e. the common case.
-  Merged earlier, they are dead UI.
-- **W1, W3, W6 gate the `onOverlap: 'queue'` release path** (§6): a missed
-  terminal transition becomes a silent permanent queue stall.
+- **W0 gates W15, W17, W19, W20, W21** — every member-visible surface and every new
+  data sink. Nothing that widens visibility or adds a rendering path merges before
+  the redaction boundary.
+- **W1 gates W2** — cancel propagation makes the unguarded write fire on *every*
+  cancel; merging W2 first turns a latent race into a certainty.
+- **W3 gates W21 and W23** — run cards and failure push consume terminal events never
+  emitted when the last step is async, i.e. the common case.
+- **W1, W3, W6 gate the `onOverlap: 'queue'` release path** (§6): a missed terminal transition
+  becomes a silent permanent queue stall.
 
 **Minimum viable subset**, if the two weeks are short — ship these as a block and
-let the rest slip together: W0, W1–W8, W15, W16, W18, W22, **W26**. W26 is in the
-subset because exit criterion 6 (overlapping fires produce one run) cannot be met
-without it, and W18's CAS only *detects* the collision it prevents. W16 carries
-the JMESPath evaluator module — including its off-event-loop envelope (§5) — into
-scope even when W17's `transform` step and designer preview slip, since `when:`
-needs the same evaluator.
+let the rest slip together: W0, W1–W8, W15, W16, W18, W22, **W26** (exit criterion
+6, overlapping fires produce one run, cannot be met without it; W18's CAS only
+*detects* the collision). W16 carries the JMESPath evaluator module — including
+its off-event-loop envelope (§5) — into scope even when W17's `transform` step
+and designer preview slip; `when:` needs it too.
 
 ### 3.0 W0 · The redaction boundary (blocking prerequisite)
 
 Revision 1 put the secret-taint boundary in Stage 2 while widening read access in
-Stage 1 — a contradiction all three auditors flagged as the single most important
-error in the plan. `resolvedBindings` and `config` are arbitrary JSON today,
+Stage 1 — a contradiction all three auditors flagged as the plan's single most
+important error. `resolvedBindings` and `config` are arbitrary JSON today,
 interpolated into step inputs, persisted, and rendered in the run inspector.
 
 A minimal boundary therefore ships **first**, covering four sinks, not just reads:
@@ -118,7 +116,7 @@ A minimal boundary therefore ships **first**, covering four sinks, not just read
 1. **Read widening** (W19) — member-visible responses.
 2. **Message rendering** (W15) — a channel sink for interpolated values.
 3. **Transform context** (W17) — full-context expressions.
-4. **Persisted samples** (§5) — `stepSamples`.
+4. **Persisted samples** (§5).
 
 Minimum: declare in `bindingSchema` which bindings are references vs literals;
 persist only server-minted `secret_*` refs; mark tainted values; redact them from
@@ -127,61 +125,61 @@ lands in §4.4; the boundary itself cannot wait.
 
 ### 3.1 Correctness fixes (blocking; error management depends on them)
 
-- **W1 · Guard terminal transitions.** `markWorkflowStepRunFinished`
-  (`worker/src/run/workflows.ts`) selects only `output`/`workflowRunId` and writes
-  `workflowRun.status` unconditionally. Convert both the step write and the run
-  write to guarded `updateMany` on non-terminal current status — the pattern
-  `cancelWorkflowRun`/`skipWorkflowStepRun` already use. Without this a cancelled
-  run is resurrected to `completed` by its orphaned child.
-- **W2 · Cancel must propagate to every kind of child, not just agents.**
-  `cancelWorkflowRun` (`api/src/services/workflows.ts`) marks steps `skipped` but
-  never cancels the suspended child agent run. Propagate via the existing
-  cooperative `cancelRequestedAt` flag — and define the contract for the other
-  child kinds too, or orphaned side effects simply move elsewhere:
-  `environment_launch` instances must be released, and in-flight tool work must be
-  either cancelled where the transport supports it or explicitly recorded as
-  *abandoned-but-possibly-executing* on the step. Silence about a side effect that
-  may still land is what W1 was fixing in the first place.
-- **W3 · Emit terminal events from async continuations.**
+- **W1 · Guard terminal transitions — done.** Both writes in
+  `markWorkflowStepRunFinished` / `markWorkflowRunFinished`
+  (`worker/src/run/workflows.ts`) are guarded `updateMany` on non-terminal status
+  (the `cancelWorkflowRun`/`skipWorkflowStepRun` pattern) and report `applied`, so
+  callers skip continuation and the terminal event when the write lost the race; a
+  cancelled run can no longer be resurrected by its orphaned child.
+- **W2 · Cancel propagates to every kind of child, not just agents — done.**
+  `cancelWorkflowRun` (`api/src/services/workflows.ts`) skips pending/blocked
+  steps outright and propagates per running-step kind: agent children get the
+  cooperative `cancelRequestedAt` flag (the step output names the abandoned
+  queued mailbox message), `environment_launch` instances get an
+  `execution.environment.terminate` job, in-flight tool steps are recorded
+  *abandoned-but-possibly-executing* (`cancelAbandonedAt` on the output, reason
+  extended with "may still execute"). Propagation is gated on the guarded run
+  transition winning, so a concurrent terminalization owns it.
+- **W3 · Emit terminal events from async continuations — done.**
   `worker/src/run/execute/parent-workflow.ts` and
-  `worker/src/control/execution/workflow-continuation.ts` import the *raw*
-  `markWorkflowStepRunFinished`, bypassing the wrapper in
-  `worker/src/control/workflows.ts` that emits `workflow.run.completed/failed`.
-  When the last step is asynchronous — the common case, since `agent_task` is
-  usually last — no terminal event is ever emitted. Route both through the
-  emitting wrapper.
+  `worker/src/control/execution/workflow-continuation.ts` now finish through
+  `finishWorkflowStepRun` (`worker/src/run/workflow-step-finish.ts`), the
+  emitting seam shared with `worker/src/control/workflows.ts` (placed in `run/`
+  so `run/` needs no `control/` dependency): a final asynchronous step
+  (`agent_task`, the common last step) fires `workflow.run.completed/failed`,
+  and only when the guarded transition applied.
 - **W4 · Snapshot the graph onto the run.** Add `WorkflowRun.graphSnapshot Json`,
   written at run start; execute from the snapshot. Today `loadWorkflowGraph`
   (`worker/src/run/workflows.ts`) reads the template's *current* `graphJson` on
   every continuation, so a template edit rewrites installed workflows and mutates
-  runs already in flight. Also pin an installation-level snapshot at
-  install/upgrade so a new run is reproducible from what was installed.
-- **W5 · Remove `delegate` from the workflow tool set.**
-  `packages/runtime/src/workflow-tools.ts` advertises it and
-  `WORKFLOW_TOOL_IDS` makes save-time validation accept it, but the executor has
-  no case and always fails. Remove it (do not implement it — sub-agent fan-out
-  from a deterministic step is out of scope).
+  runs already in flight. Also pin an install/upgrade snapshot so a new run is
+  reproducible from what was installed.
+- **W5 · Remove `delegate` from the workflow tool set — done.**
+  `packages/runtime/src/workflow-tools.ts` no longer advertises it, so
+  `WORKFLOW_TOOL_IDS` rejects it at save time. Not implemented — sub-agent fan-out
+  from a deterministic step stays out of scope.
 - **W6 · Reap stuck steps — by lease, not by age.** A crash inside
   `executeWorkflowBuiltinTool` leaves a step `running` forever with nothing to
-  reclaim it. Add a worker sweep (sibling of the trigger scheduler), but reclaim
-  on an **expired lease**, not an age threshold: an age threshold declares
-  legitimately long-running steps dead. Each claim writes
-  `leaseOwnerId`/`leaseExpiresAt` and heartbeats while working; the sweep fails
-  only steps whose lease has expired, through the same guarded transition.
+  reclaim it. Add a worker sweep (sibling of the trigger scheduler), reclaiming on
+  an **expired lease**, not an age threshold: an age threshold declares legitimate
+  long-running steps dead. Each claim writes `leaseOwnerId`/`leaseExpiresAt` and
+  heartbeats while working; the sweep fails only steps whose lease has expired,
+  through the same guarded transition.
   **Two reclaim conditions, not one.** Suspended steps (`agent_task`, and later
   approval/human-input/wait) hold no lease and run no heartbeat, yet §4.2.4 routes
-  their timeouts here. So the sweep reclaims on *either* an expired lease (leased,
+  their timeouts here. The sweep reclaims on *either* an expired lease (leased,
   actively-worked steps) *or* an expired deadline (suspended steps waiting on
-  something external). A lease-only sweep would never reclaim the very steps most
-  likely to hang.
-- **W7 · Mark unreached steps `skipped` on failure.** A failed run leaves later
-  steps `pending` forever, which reads in the UI as "still coming".
+  something external); a lease-only sweep never reclaims the likeliest hangs.
+- **W7 · Mark unreached steps `skipped` on failure — done.** The guarded
+  failure transition in `markWorkflowStepRunFinished` flips still-`pending`/
+  `blocked` steps to `skipped`, so a failed run no longer leaves later steps
+  reading as "still coming".
 - **W8 · Fix `paused` enforcement.** Dispatch checks only `active` and `disabled`
   (`api/src/services/trigger-dispatch-workflow.ts`,
   `worker/src/control/workflow-trigger-run.ts`), so a `paused` installation still
   fires while the UI states it will not. Also add the missing update-installation
-  endpoint: there is currently **no way to pause an installation after install** —
-  status is write-once at install time.
+  endpoint: there is **no way to pause an installation after install** — status is
+  write-once at install time.
 
 ### 3.2 Validation and designer honesty
 
@@ -189,21 +187,21 @@ lands in §4.4; the boundary itself cannot wait.
   (`api/src/services/workflows.ts`) short-circuits both `toolName` and `agentId`
   checks, so any string containing `{{` skips validation entirely. Parse binding
   expressions properly: validate syntax, verify every `steps.<id>` reference names
-  a step that exists *and precedes* the referencing step. A typo must be a save
+  an existing step that *precedes* the referencing step. A typo must be a save
   error, not a failed run.
 - **W10 · Stop the designer eating steps.** `getWorkflowCanvasNodeType`
   (`admin/src/lib/workflow-designer/node-sources.ts`) returns `null` for
-  `environment_launch` and the loader `flatMap`s it away; re-saving then writes
-  the template back *without that step*. Preserve unknown/unrenderable steps
-  through a load→save cycle. This is silent data loss.
+  `environment_launch` and the loader `flatMap`s it away; re-saving writes the
+  template back *without that step*. Preserve unknown/unrenderable steps through a
+  load→save cycle. This is silent data loss.
 - **W11 · The canvas must stop drawing fiction.** Until graph v2 lands (Stage 2),
   forbid multiple outgoing connections and cycles in
   `useWorkflowCanvasInteractions`/`geometry.ts` rather than silently linearizing
   them in `serialization.ts`. Disconnected nodes must not be silently appended to
   the end of the sequence and executed.
-- **W12 · One tool allow-list.** `builtin-tools.ts`, the designer's
-  `constants.ts`, and `services/workflows.ts` each maintain the list by hand and
-  agree only by coincidence. Export one list and derive all three.
+- **W12 · One tool allow-list.** `builtin-tools.ts`, the designer's `constants.ts`,
+  and `services/workflows.ts` each maintain the list by hand and agree only by
+  coincidence. Export one list and derive all three.
 - **W13 · Demote the trigger node — binding decision: remove the config, keep the
   node as a labelled entry marker.** Three layers hold three different beliefs
   about what a `trigger` step is: validation accepts it, the runtime no-ops it
@@ -213,8 +211,8 @@ lands in §4.4; the boundary itself cannot wait.
   the installation. Delete the cron/timezone/interval fields from the canvas
   inspector and link to the Triggers page, which stays the one trigger authoring
   surface; drop `trigger` from the executable step-type set so validation, runtime
-  and designer finally agree. (Revision 1 left this as "either/or"; an unresolved
-  choice is not a fix.) Also collapse the install-time `triggersJson`
+  and designer finally agree (revision 1 left this "either/or"; an unresolved
+  choice is not a fix). Also collapse the install-time `triggersJson`
   materialisation, which duplicates trigger-creation logic — one code path.
 - **W14 · Scope the designer draft.** `localStorage` drafts
   (`draft-storage.ts`) are keyed globally, not per template, so editing template A
@@ -224,12 +222,12 @@ lands in §4.4; the boundary itself cannot wait.
 
 - **W15 · `message_send` step.** A deterministic channel write through the
   existing message-create service, under the workflow's durable actor, targeting
-  the installation's channel or a bound thread, body rendered from bindings. This
-  is the single highest-leverage missing node: without it the platform's cheapest
+  the installation's channel or a bound thread, body rendered from bindings. The
+  single highest-leverage missing node: without it the platform's cheapest
   capability is the one thing its deterministic engine cannot do.
 - **W16 · `when:` guard.** A step-level predicate; falsy ⇒ step `skipped`, run
-  continues. Turns the flagship watcher from "pay for an agent every sweep" into
-  "pay only when something changed".
+  continues. Turns the flagship watcher from "pay for an agent every sweep" into "pay
+  only when something changed".
 - **W17 · `transform` step (JMESPath).** See §5.
 - **W18 · Compare-and-set on `state_put`, as a complete read→write contract.**
   Today a blind `upsert` with a blind version increment. Two overlapping runs both
@@ -276,31 +274,29 @@ lands in §4.4; the boundary itself cannot wait.
   `originMessageId`, `replyRootMessageId` to `WorkflowRun`. Without them a result
   cannot return to the thread that asked for it, `invoke_workflow` (§4.3) has
   nowhere to reply, and §8's shared run component has no origin to render a
-  reciprocal doorway from. Cheap now, expensive to retrofit once three surfaces
-  consume run records.
-- **W26 · Overlap policy, default `skip`.** See §6. Enforced at **every**
-  entrypoint — scheduled, manual, webhook, event, and `invoke_workflow` — not only
-  inside `queueWorkflowTriggerRun`.
+  reciprocal doorway from. Cheap now, expensive to retrofit once three surfaces consume
+  run records.
+- **W26 · Overlap policy, default `skip`.** See §6. Enforced at **every** entrypoint —
+  scheduled, manual, webhook, event, and `invoke_workflow` — not only inside
+  `queueWorkflowTriggerRun`.
 - **W27 · Retry must not rewrite history.** `retryWorkflowRun` overwrites
   `startedByActorId` with the retrying owner, erasing the original actor. Preserve
   the original; record the retrying actor separately and in the audit entry.
 - **W28 · Fix the `agent_task` target check.** The channel/binding validation runs
   outside the mailbox transaction (a race) and its error strings confirm or deny
   the existence of channel and binding IDs across the org boundary. Move the check
-  inside the transaction and make the failure text org-generic. This must land
-  before W19 widens who can start runs.
+  inside the transaction and make the failure text org-generic. This must land before
+  W19 widens who can start runs.
 - **W22 · Audit every mutation.** No workflow route writes an audit entry today.
   Template create/update (it mutates executable org behaviour), install, manual
   run, cancel, retry, skip, block/unblock, and pause are all audit-worthy.
-- **W23 · Failure reaches a human.** Route `workflow.run.failed` through the
-  shared push pipeline (`worker/src/control/push-delivery-core.ts`, the
-  budget-alert precedent) to the installation creator and channel managers,
-  deep-linking the run.
+- **W23 · Failure reaches a human.** Route `workflow.run.failed` through the shared
+  push pipeline (`worker/src/control/push-delivery-core.ts`, the budget-alert
+  precedent) to the installation creator and channel managers, deep-linking the run.
 - **W24 · Paginate the lists.** `WORKFLOW_LIST_LIMIT` truncates at 200 with no
   cursor; the admin silently stops showing rows past the cap. Separately, correct
   the list endpoint's leading comment, which claims it omits `graphJson` while the
-  select fetches it — the comment contradicts the code and the code contradicts
-  itself.
+  select fetches it — comment and code contradict each other and the code itself.
 - **W29 · A failed-runs triage surface.** Push (W23) is alerting, not triage. Add a
   cross-installation "what failed" filter on the Workflows page plus a count on the
   nav item, so a person can answer "what broke last night" in one place.
@@ -494,20 +490,19 @@ therefore runs here rather than at the start of Stage 2.
   and resumes the agent run when the workflow terminates — the exact inverse of
   `agent_task`, on the same continuation machinery. Gated per-agent through
   `toolPolicy` with the DeepWater explicit-grant pattern; installation scope is
-  enforced as **tenancy**, not policy. `WorkflowRun.output` already exists to carry
-  the result.
+  enforced as **tenancy**, not policy. `WorkflowRun.output` already carries the result.
 - **`approval` step.** A real Approval row that resumes on resolution — not the
   current operator `blocked` toggle, which is an operator race, not a decision.
   Human input and approval stay distinct: approval authorizes, human input
   collects data. Requires: **re-check entitlement at resolution time** (not at
-  creation), eligible-approver rules, expiry with a timeout branch, and a
-  mandatory audit entry on resolution.
+  creation), eligible-approver rules, expiry with a timeout branch, and a mandatory
+  audit entry on resolution.
 - **`human_input` step.** Suspends on the same mailbox mechanism, resumes with a
   **schema-validated** reply payload, surfaced as a channel card. Same governance
   as `approval`, and for the same reason: eligible-responder rules, entitlement
-  re-checked **at reply time** rather than at creation, and an expiry with a
-  timeout branch. A question that anyone can answer, or that hangs forever, is not
-  a workflow step.
+  re-checked **at reply time** rather than at creation, and an expiry with a timeout
+  branch. A question anyone can answer, or that hangs forever, is not a workflow
+  step.
 - **`wait` step**, and the state model all three wait forms need.
 
 **Waiting is a first-class state, and waiting must not hold a concurrency slot.**
@@ -539,10 +534,9 @@ and the run looks `running` to every surface. So Stage 2 adds:
   the resolved limits onto the run so a mid-run limit change cannot retroactively
   alter a verdict; and show consumed/remaining in the run header. Add a workflow
   dimension to `/ops/usage` (owner-only telemetry — never beside customer credits).
-- **The full secret-taint model.** W0 ships the minimum boundary in Stage 1;
-  Stage 2 completes it: a typed secret-reference in `bindingSchema`, taint
-  propagation through transforms and step outputs, and redaction proven by test at
-  every sink.
+- **The full secret-taint model.** W0 ships the minimum boundary in Stage 1; Stage 2
+  completes it: a typed secret-reference in `bindingSchema`, taint propagation
+  through transforms and step outputs, and redaction proven by test at every sink.
 - **Per-installation tool allow-list.** An installation declares which tools it
   may call; effective permission is the **intersection** of installation scope,
   tool scope, triggering actor, connector lifecycle/review status, and the
@@ -550,8 +544,7 @@ and the run looks `running` to every surface. So Stage 2 adds:
   installation runs as a server-minted workflow principal. A user-scoped OAuth
   connector must never become an unattended organization credential because an
   owner could see its registry row. **This is a hard prerequisite for Stage 3's
-  `connector_call`** — without it, "tool-registry policy" is asserted, not
-  designed.
+  `connector_call`** — without it, "tool-registry policy" is asserted, not designed.
 - **Install scope must be explicit.** Install copies `projectId`/`teamId` from the
   session while accepting any channel in the org, never proving they agree.
   Accept them explicitly and validate the whole hierarchy. Also eliminate the
@@ -567,11 +560,10 @@ and the run looks `running` to every surface. So Stage 2 adds:
 - **Data minimisation.** An agent step receives selected fields, never a whole
   webhook or connector response.
 - **Typed alerts, not just push.** W23 sends failure push. Stage 2 adds typed
-  workflow alert kinds — `failed`, `waiting_for_human`, `budget_blocked`, and
-  opt-in completion — as actionable Alerts/Threads items with subscriber
-  preferences. Recipients are resolved by **current entitlement at delivery time**,
-  not by a role label captured earlier, and push payloads carry no raw error or
-  input data.
+  workflow alert kinds — `failed`, `waiting_for_human`, `budget_blocked`, and opt-in
+  completion — as actionable Alerts/Threads items with subscriber preferences.
+  Recipients are resolved by **current entitlement at delivery time**, not by a role
+  label captured earlier, and push payloads carry no raw error or input data.
 
 ## 5. The deterministic converter (addendum 1, in full)
 
@@ -695,10 +687,9 @@ ceiling are **Stage 2**.
   ceiling is not a substitute, since one trigger would consume the global
   allowance.
   **This changes existing agent-trigger behaviour**, because the library is shared:
-  cron agent triggers replay missed slots uncapped today. That is a behaviour
-  change to a shipped feature arriving as a side effect of a workflow plan, so it
-  needs a migration note, a docs update, and a deliberate default — not a silent
-  flip.
+  cron agent triggers replay missed slots uncapped today. That is a behaviour change
+  to a shipped feature arriving as a side effect of a workflow plan, so it needs a
+  migration note, a docs update, and a deliberate default — not a silent flip.
 - **Rate ceiling.** `NESSIE_WORKFLOW_MAX_RUNS_PER_HOUR` as a deployment backstop —
   the same "safety envelope, not user budget" philosophy as `NESSIE_RUN_BACKSTOP_*`.
 - **Cron and timezones are already correct** (`cron-parser` with a validated
@@ -774,8 +765,7 @@ execution order.
 
 **The canvas becomes a truthful viewer and run-replay view.** A picture of what
 executed is genuinely valuable; a picture you edit that lies about branches is
-not. Once graph v2 lands its edges mean `next`/`goto` and it can be an editor
-again.
+not. Once graph v2 lands its edges mean `next`/`goto` and it can be an editor again.
 
 **JSON stays the source of truth**; the existing import/export serves power users
 at zero extra cost. **Defer record-and-promote** — once `invoke_workflow` and PA
@@ -906,14 +896,14 @@ findings came back closed, but the round caught several contradictions **revisio
   generation so an exhausted step can still be resumed by a human.
 - **The adoption gate was described in three incompatible places** and depended on
   seeded playbooks filed two stages later. One gate, end of Stage 2; the seeded
-  playbooks move to Stage 2 with it; and the gate now records that it tests the
+  playbooks move to Stage 2 with it; and the gate records that it tests the
   playbook-without-connectors proposition only.
 - **The lease-based reaper could not reach suspended steps** — they hold no lease
   and run no heartbeat, yet timeouts were routed to it. Two reclaim conditions now.
 - **Releasing a concurrency slot while waiting re-opened the overlap hole** that
-  `onOverlap: 'skip'` exists to close, on exactly the stateful watcher the plan
-  leads with. Slot release is now per-installation, defaulting off where state is
-  written, and `onOverlap` wins ties.
+  `onOverlap: 'skip'` exists to close, on exactly the stateful watcher the plan leads
+  with. Slot release is now per-installation, defaulting off where state is written,
+  and `onOverlap` wins ties.
 - **W26 was missing from the minimum-viable subset** while exit criterion 6
   required it. Added, along with W18 and the JMESPath evaluator's scope note.
 - Also: W2 gained a cancellation contract for environment and connector children,
