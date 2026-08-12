@@ -145,6 +145,8 @@ export {
 export {
   createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
+  getAccessTokenExpiresAtMs,
+  getAccessTokenRenewalDelayMs,
   type AccessTokenRefreshCoordinator,
   type AuthSessionApi,
   type AuthSessionState,

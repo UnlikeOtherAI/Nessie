@@ -243,7 +243,7 @@ Claims:
 - the access JWT is **short-lived**: default 30 minutes, configurable via `NESSIE_AUTH_TOKEN_TTL`
 - issued by `POST /api/auth/session` (login), `POST /api/auth/bootstrap` (first user), `GET /api/auth/dev-login`, `POST /api/auth/switch-context`, and `POST /api/auth/refresh`
 - sent by the client as `Authorization: Bearer <token>` header on every request
-- alongside the access token, every minting route sets a **rotating refresh token** in an httpOnly cookie (`nessie_refresh`, scoped to `/api/auth`); the client silently renews via `POST /api/auth/refresh` when the access token 401s or on app start
+- alongside the access token, every minting route sets a **rotating refresh token** in an httpOnly cookie (`nessie_refresh`, scoped to `/api/auth`); the client silently renews via `POST /api/auth/refresh` on app start, before the access JWT expires, when a request receives a 401, and when a resumed app is already within its renewal window
 - app startup and API 401 recovery use one in-process single-flight coordinator,
   because a rotating refresh cookie may be consumed only once. Authenticated
   data queries mount only after session restoration completes
