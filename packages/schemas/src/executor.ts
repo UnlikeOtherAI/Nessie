@@ -204,6 +204,14 @@ export const ExecutorDaemonHeartbeatRequestSchema = z.object({
 }).strict()
 export type ExecutorDaemonHeartbeatRequest = z.infer<typeof ExecutorDaemonHeartbeatRequestSchema>
 
+/** A connected daemon may advertise a newer signed local-policy descriptor. */
+export const ExecutorDaemonDescriptorRequestSchema = z.object({
+  connectionEpoch: z.string().regex(/^\d+$/),
+  descriptor: ExecutorSignedDescriptorSchema,
+  executorId: ExecutorIdSchema,
+}).strict()
+export type ExecutorDaemonDescriptorRequest = z.infer<typeof ExecutorDaemonDescriptorRequestSchema>
+
 export const ExecutorDaemonChallengeResponseSchema = z.object({
   challenge: Base64UrlSchema.min(64).max(2048),
   expiresAt: TimestampSchema,
@@ -215,6 +223,14 @@ export const ExecutorDaemonConnectionResponseSchema = z.object({
   status: ExecutorStatusSchema,
 }).strict()
 export type ExecutorDaemonConnectionResponse = z.infer<typeof ExecutorDaemonConnectionResponseSchema>
+
+export const ExecutorDaemonDescriptorResponseSchema = z.object({
+  reviewStatus: z.enum(['pending_review', 'active', 'disabled']),
+  revision: z.number().int().positive(),
+}).strict()
+export type ExecutorDaemonDescriptorResponse = z.infer<
+  typeof ExecutorDaemonDescriptorResponseSchema
+>
 
 export const ExecutorAvailabilityReasonSchema = z.enum([
   'ready',

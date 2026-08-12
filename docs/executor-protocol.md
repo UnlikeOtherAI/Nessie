@@ -130,6 +130,14 @@ rejected and a stale epoch cannot update liveness. Replaying an old heartbeat
 therefore cannot extend its last-seen time. This channel reports availability
 only: it cannot lease or execute a command.
 
+While it owns the current connection epoch, a daemon may submit a higher
+descriptor revision. The descriptor's own `nessie.executor.descriptor.v1`
+signature is verified against the paired raw Ed25519 key. Reusing a revision
+with different policy facts or sending an older revision fails closed; a newer
+revision is stored as `pending_review`, never immediately activated. This lets
+a human see and approve a narrowed or expanded local policy before it affects
+availability.
+
 ### 4.4 Rotation and recovery
 
 A key rotation is a two-proof transaction: the old key signs a canonical

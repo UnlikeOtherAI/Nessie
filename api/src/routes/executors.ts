@@ -11,8 +11,9 @@ import {
   listVisibleExecutors,
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
-  reportExecutorHeartbeat,
   recordExecutorDaemonChallenge,
+  reportExecutorHeartbeat,
+  submitExecutorDescriptor,
   submitExecutorEnrollment,
   reviewExecutorDescriptor,
 } from '@nessie/executor-manage'
@@ -27,6 +28,8 @@ import {
   ExecutorDaemonChallengeSchema,
   ExecutorDaemonClaimBodySchema,
   ExecutorDaemonConnectionSchema,
+  ExecutorDaemonDescriptorBodySchema,
+  ExecutorDaemonDescriptorSchema,
   ExecutorDaemonHeartbeatBodySchema,
   ExecutorAccessChangeRecordSchema,
   ExecutorAccessViewSchema,
@@ -65,6 +68,8 @@ const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
           || error.code === 'EXECUTOR_ACCESS_CHANGE_EXPIRED'
           || error.code === 'EXECUTOR_CONNECTION_FENCED'
           || error.code === 'EXECUTOR_HEARTBEAT_STALE'
+          || error.code === 'EXECUTOR_DESCRIPTOR_REVISION_CONFLICT'
+          || error.code === 'EXECUTOR_DESCRIPTOR_ROLLBACK'
         ? 409
         : 400
   sendApiError(reply, status, error.code, error.message)
@@ -366,6 +371,22 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       try {
         const connection = await reportExecutorHeartbeat(prisma, body)
         return createApiResponse(ExecutorDaemonConnectionSchema.parse(connection))
+      } catch (error) {
+        if (sendExecutorError(reply, error)) return reply
+        throw error
+      }
+    },
+  )
+
+  app.post(
+    '/api/executor-daemon/descriptor',
+    { config: { public: true } },
+    async (request, reply) => {
+      const body = parseInput(ExecutorDaemonDescriptorBodySchema, request.body, reply)
+      if (!body) return reply
+      try {
+        const result = await submitExecutorDescriptor(prisma, body)
+        return createApiResponse(ExecutorDaemonDescriptorSchema.parse(result))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
         throw error

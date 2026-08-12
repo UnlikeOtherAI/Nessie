@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, verify } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
+import type { ExecutorSignedDescriptor } from '@nessie/schemas'
 
 import { canonicalExecutorPayload } from './executor-canonical-json.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
@@ -44,6 +45,23 @@ export const verifyExecutorDaemonSignature = (
       Buffer.from(canonicalExecutorPayload(`nessie.executor.daemon.${domain}.v1`, payload)),
       machineKey(machinePublicKey),
       Buffer.from(signature, 'base64url'),
+    )
+  } catch {
+    return false
+  }
+}
+
+/** The capability descriptor is signed directly by the paired machine key. */
+export const verifyExecutorDescriptorSignature = (
+  machinePublicKey: string,
+  descriptor: ExecutorSignedDescriptor,
+): boolean => {
+  try {
+    return verify(
+      null,
+      Buffer.from(canonicalExecutorPayload('nessie.executor.descriptor.v1', descriptor.descriptor)),
+      machineKey(machinePublicKey),
+      Buffer.from(descriptor.signature, 'base64url'),
     )
   } catch {
     return false
@@ -214,3 +232,73 @@ export const reportExecutorHeartbeat = async (
     return { connectionEpoch: updated.activeConnectionEpoch.toString(), status: updated.status }
   })
 }
+
+/**
+ * Descriptor revisions only ever advance. A new revision becomes pending
+ * review, so a daemon cannot expand its own cloud-authorized capability set.
+ */
+export const submitExecutorDescriptor = async (
+  prisma: PrismaClient,
+  input: {
+    connectionEpoch: string
+    descriptor: ExecutorSignedDescriptor
+    executorId: string
+  },
+): Promise<{ reviewStatus: string; revision: number }> => prisma.$transaction(async (tx) => {
+  await lockExecutorConnection(tx, input.executorId)
+  const executor = await requireDaemonExecutor(tx, input.executorId)
+  if (executor.activeConnectionEpoch.toString() !== input.connectionEpoch) {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.CONNECTION_FENCED, 'Executor connection is fenced.')
+  }
+  if (!verifyExecutorDescriptorSignature(executor.machinePublicKey, input.descriptor)) {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.DAEMON_PROOF_INVALID, 'Executor descriptor proof is invalid.')
+  }
+  const latest = await tx.executorCapabilityRevision.findFirst({
+    where: { executorId: executor.id },
+    orderBy: { revision: 'desc' },
+    select: { descriptor: true, revision: true, reviewStatus: true },
+  })
+  const revision = input.descriptor.descriptor.revision
+  if (latest && revision < latest.revision) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.DESCRIPTOR_ROLLBACK,
+      'Executor descriptor revisions cannot move backwards.',
+    )
+  }
+  if (latest && revision === latest.revision) {
+    const current = canonicalExecutorPayload('nessie.executor.descriptor.v1', latest.descriptor)
+    const proposed = canonicalExecutorPayload(
+      'nessie.executor.descriptor.v1',
+      input.descriptor.descriptor,
+    )
+    if (!current.equals(proposed)) {
+      throw new ExecutorError(
+        EXECUTOR_ERROR_CODES.DESCRIPTOR_REVISION_CONFLICT,
+        'A descriptor revision cannot describe two different policies.',
+      )
+    }
+    return { reviewStatus: latest.reviewStatus, revision: latest.revision }
+  }
+  const created = await tx.executorCapabilityRevision.create({
+    data: {
+      executorId: executor.id,
+      revision,
+      descriptor: input.descriptor.descriptor as Prisma.InputJsonValue,
+      localPolicyDigest: input.descriptor.descriptor.localPolicyDigest,
+      signature: input.descriptor.signature,
+    },
+    select: { reviewStatus: true, revision: true },
+  })
+  await tx.executor.update({
+    where: { id: executor.id },
+    data: {
+      platformFacts: {
+        architecture: input.descriptor.descriptor.platform.architecture,
+        os: input.descriptor.descriptor.platform.os,
+        osMajorVersion: input.descriptor.descriptor.platform.osMajorVersion,
+      },
+      profiles: input.descriptor.descriptor.profiles,
+    },
+  })
+  return created
+})

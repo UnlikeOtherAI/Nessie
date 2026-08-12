@@ -12,6 +12,8 @@ export {
   claimExecutorConnection,
   recordExecutorDaemonChallenge,
   reportExecutorHeartbeat,
+  submitExecutorDescriptor,
+  verifyExecutorDescriptorSignature,
   verifyExecutorDaemonSignature,
 } from './executor-daemon.js'
 export { canonicalExecutorPayload } from './executor-canonical-json.js'

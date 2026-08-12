@@ -5,6 +5,8 @@ import {
   ExecutorDaemonChallengeResponseSchema,
   ExecutorDaemonClaimRequestSchema,
   ExecutorDaemonConnectionResponseSchema,
+  ExecutorDaemonDescriptorRequestSchema,
+  ExecutorDaemonDescriptorResponseSchema,
   ExecutorDaemonHeartbeatRequestSchema,
   ExecutorEnrollmentRequestSchema,
   ExecutorPrivateAssignmentSchema,
@@ -74,8 +76,12 @@ export type ExecutorDaemonClaimBody = z.infer<typeof ExecutorDaemonClaimBodySche
 export const ExecutorDaemonHeartbeatBodySchema = ExecutorDaemonHeartbeatRequestSchema
 export type ExecutorDaemonHeartbeatBody = z.infer<typeof ExecutorDaemonHeartbeatBodySchema>
 
+export const ExecutorDaemonDescriptorBodySchema = ExecutorDaemonDescriptorRequestSchema
+export type ExecutorDaemonDescriptorBody = z.infer<typeof ExecutorDaemonDescriptorBodySchema>
+
 export const ExecutorDaemonChallengeSchema = ExecutorDaemonChallengeResponseSchema
 export const ExecutorDaemonConnectionSchema = ExecutorDaemonConnectionResponseSchema
+export const ExecutorDaemonDescriptorSchema = ExecutorDaemonDescriptorResponseSchema
 
 export const ExecutorAccessChangeSchema = ExecutorAccessChangeRequestSchema
 export type ExecutorAccessChange = z.infer<typeof ExecutorAccessChangeSchema>

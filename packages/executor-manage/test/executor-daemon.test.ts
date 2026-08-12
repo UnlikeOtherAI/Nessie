@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
+import { ExecutorSignedDescriptorSchema } from '@nessie/schemas'
 
 import {
   canonicalExecutorPayload,
   claimExecutorConnection,
   ExecutorError,
+  verifyExecutorDescriptorSignature,
   verifyExecutorDaemonSignature,
 } from '../src/index.js'
 
@@ -48,6 +50,32 @@ test('daemon signatures accept the raw key representation stored at enrollment',
     keys.privateKey,
   ).toString('base64url')
   assert.equal(verifyExecutorDaemonSignature(keys.rawPublicKey, 'claim', payload, signature), true)
+})
+
+test('descriptor signatures bind the complete advertised local policy', () => {
+  const keys = keyPair()
+  const descriptorFacts = {
+    limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1_024, maxSessions: 1 },
+    localPolicyDigest: `sha256:${'1'.repeat(64)}`,
+    operationKeys: ['file.read'],
+    platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
+    profiles: ['workspace_sandbox'],
+    protocolVersion: 1,
+    revision: 2,
+  }
+  const descriptor = ExecutorSignedDescriptorSchema.parse({
+    descriptor: descriptorFacts,
+    signature: sign(
+    null,
+    Buffer.from(canonicalExecutorPayload('nessie.executor.descriptor.v1', descriptorFacts)),
+    keys.privateKey,
+    ).toString('base64url'),
+  })
+  assert.equal(verifyExecutorDescriptorSignature(keys.rawPublicKey, descriptor), true)
+  assert.equal(verifyExecutorDescriptorSignature(keys.rawPublicKey, {
+    ...descriptor,
+    descriptor: { ...descriptor.descriptor, revision: 3 },
+  }), false)
 })
 
 const claimPrisma = (machinePublicKey: string, challengeMatches: number) => {
