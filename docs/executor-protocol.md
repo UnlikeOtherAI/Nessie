@@ -396,6 +396,17 @@ hello, and clears its mutable token buffer. It implements no browser, command,
 workspace, or coding action: until typed handlers are installed, a valid host
 request receives only `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE`.
 
+The VM configuration can now add exactly one `nessie-cow` virtiofs device. It
+is writable only from inside the guest and mounts at `/work` with `nodev`,
+`nosuid`, and `noexec`; the host directory must be an absolute, non-link,
+owner-private ordinary directory. This primitive is intentionally not a generic
+share or a command-line feature. Its eventual launcher must derive that URL
+only from `ensureSandboxWorkspace` for the exact server-bound run, never from a
+paired root, user request, model value, or descriptor field. The guest exits
+before hello if its explicitly requested COW mount cannot be made. No current
+descriptor attaches this device, so it cannot weaken the existing COW-only
+operation set.
+
 The signed helper's `handshake` command is the release-candidate integration
 check for that exact pair. It reads the same 43-byte token from standard input,
 starts one VM with the control socket enabled, requires the matching guest hello

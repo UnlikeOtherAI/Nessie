@@ -125,6 +125,17 @@ mount, browser, tmux, or operation handler. Until the next reviewed slice, any
 otherwise valid control request returns the fixed
 `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE` result.
 
+The VM core now has the narrow COW transport primitive for that future launcher:
+one fixed-tag `nessie-cow` virtiofs share, writable only to the guest and mounted
+there at `/work` with `nodev,nosuid,noexec`. It accepts only an owner-private,
+non-link directory, but that local validation is deliberately not treated as a
+run authorization proof. The daemon launcher still must obtain the path solely
+from `ensureSandboxWorkspace` for its exact bound run; the paired root, a model
+argument, and a user-selected path remain forbidden. The guest refuses to
+complete hello if an explicit COW mount fails. Since there is no launcher or
+descriptor path yet, this remains backend plumbing, not browser/coding
+availability.
+
 The signed VM helper also has a handshake-only release-candidate command. Its
 fresh token arrives on stdin, never in an argument; the helper enables the
 single VM's virtio socket, accepts only the matching guest hello before the

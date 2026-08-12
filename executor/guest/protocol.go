@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 )
 
 const (
@@ -28,6 +29,10 @@ type controlEnvelope struct {
 func validBootstrapToken(value string) bool {
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	return err == nil && len(decoded) == 32 && base64.RawURLEncoding.EncodeToString(decoded) == value
+}
+
+func workspaceRequested(commandLine string) bool {
+	return strings.Contains(" "+commandLine+" ", " nessie.workspace=1 ")
 }
 
 func validateEnvelope(envelope controlEnvelope) error {

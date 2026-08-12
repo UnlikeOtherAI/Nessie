@@ -55,7 +55,37 @@ func readBootstrapToken() ([]byte, error) {
 	return token, nil
 }
 
+func mountProc() error {
+	if err := os.Mkdir("/proc", 0o555); err != nil && !os.IsExist(err) {
+		return err
+	}
+	if err := syscall.Mount("proc", "/proc", "proc", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, ""); err != nil && err != syscall.EBUSY {
+		return err
+	}
+	return nil
+}
+
+func mountGuestWorkspaceIfRequested() (bool, error) {
+	if err := mountProc(); err != nil {
+		return false, err
+	}
+	commandLine, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return false, err
+	}
+	if !workspaceRequested(string(commandLine)) {
+		return false, nil
+	}
+	if err := os.Mkdir("/work", 0o700); err != nil && !os.IsExist(err) {
+		return true, err
+	}
+	return true, syscall.Mount("nessie-cow", "/work", "virtiofs", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "")
+}
+
 func main() {
+	if _, err := mountGuestWorkspaceIfRequested(); err != nil {
+		os.Exit(1)
+	}
 	token, err := readBootstrapToken()
 	if err != nil {
 		os.Exit(1)

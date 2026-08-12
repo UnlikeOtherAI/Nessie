@@ -7,6 +7,7 @@ public enum VMError: Error {
   case invalidArgument
   case unsupportedHost
   case unsafeImage
+  case unsafeWorkspace
 }
 
 public struct VMInput {
@@ -51,6 +52,27 @@ public func safeRegularFile(_ rawPath: String) throws -> URL {
   return resolved
 }
 
+/**
+ * The only host directory a guest VM may receive is a daemon-created COW
+ * draft. Callers must not pass the paired workspace root here. The helper
+ * nevertheless enforces an absolute, non-link, owner-private directory so a
+ * changed local path cannot become an ambient share while the VM starts.
+ */
+public func safeGuestWorkspaceDirectory(_ rawPath: String) throws -> URL {
+  guard rawPath.hasPrefix("/") else { throw VMError.unsafeWorkspace }
+  let url = URL(fileURLWithPath: rawPath).standardizedFileURL
+  var metadata = stat()
+  guard lstat(url.path, &metadata) == 0, (metadata.st_mode & S_IFMT) == S_IFDIR else {
+    throw VMError.unsafeWorkspace
+  }
+  guard metadata.st_uid == getuid(), metadata.st_mode & (S_IWGRP | S_IWOTH) == 0 else {
+    throw VMError.unsafeWorkspace
+  }
+  let resolved = url.resolvingSymlinksInPath()
+  guard resolved.path == url.path else { throw VMError.unsafeWorkspace }
+  return resolved
+}
+
 public func hostProbe() -> VMHostProbe {
   #if arch(arm64)
   let architecture = "arm64"
@@ -71,18 +93,29 @@ public func requireSupportedHost() throws {
 }
 
 @available(macOS 15.0, *)
+func guestWorkspaceShareConfiguration(_ workspaceURL: URL) -> VZVirtioFileSystemDeviceConfiguration {
+  let sharedDirectory = VZSharedDirectory(url: workspaceURL, readOnly: false)
+  let share = VZSingleDirectoryShare(directory: sharedDirectory)
+  let device = VZVirtioFileSystemDeviceConfiguration(tag: "nessie-cow")
+  device.share = share
+  return device
+}
+
+@available(macOS 15.0, *)
 public func configuration(
   for input: VMInput,
   consoleURL: URL? = nil,
   enableGuestControl: Bool = false,
+  guestWorkspaceURL: URL? = nil,
 ) throws -> VZVirtualMachineConfiguration {
   guard (1...4).contains(input.cpuCount), (2048...8192).contains(input.memoryMiB) else {
     throw VMError.invalidArgument
   }
   let loader = VZLinuxBootLoader(kernelURL: input.kernelURL)
-  loader.commandLine = input.diskURL == nil
+  let bootCommand = input.diskURL == nil
     ? "console=hvc0 rdinit=/init panic=-1"
     : "console=hvc0 root=/dev/vda ro panic=-1"
+  loader.commandLine = guestWorkspaceURL == nil ? bootCommand : "\(bootCommand) nessie.workspace=1"
   loader.initialRamdiskURL = input.initrdURL
 
   let configuration = VZVirtualMachineConfiguration()
@@ -107,10 +140,15 @@ public func configuration(
   if enableGuestControl {
     configuration.socketDevices = [VZVirtioSocketDeviceConfiguration()]
   }
+  if let guestWorkspaceURL {
+    configuration.directorySharingDevices = [guestWorkspaceShareConfiguration(guestWorkspaceURL)]
+  }
 
-  // Guest control is a per-VM virtio socket, never a network adapter or host
-  // filesystem bridge. The broker must still add COW and forced egress before
-  // executable browser or coding descriptors can be advertised.
+  // Guest control is a per-VM virtio socket, never a network adapter. The only
+  // filesystem bridge is the exact daemon-owned COW workspace above; a paired
+  // root, home directory, or generic host share is never configured here. The
+  // broker must still add forced egress before browser/coding descriptors can
+  // be advertised.
   try configuration.validate()
   return configuration
 }

@@ -48,3 +48,12 @@ func TestControlFrameRejectsGuestTokenReuse(t *testing.T) {
 		t.Fatal("accepted a bootstrap token on a normal request")
 	}
 }
+
+func TestWorkspaceMustBeExplicitlyRequestedByTheHostBootCommand(t *testing.T) {
+	if !workspaceRequested("console=hvc0 rdinit=/init nessie.workspace=1") {
+		t.Fatal("expected explicit workspace command-line flag")
+	}
+	if workspaceRequested("console=hvc0 rdinit=/init nessie.workspace=10") {
+		t.Fatal("accepted a lookalike workspace command-line flag")
+	}
+}

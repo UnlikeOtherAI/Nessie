@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import Virtualization
 @testable import NessieExecutorVMCore
 
 @Test("the VM bootstrap reports a concrete architecture and support decision")
@@ -17,4 +18,16 @@ func guestImagesRejectUnsafePaths() throws {
   let sourceFile = URL(fileURLWithPath: #filePath).standardizedFileURL.path
   let resolved = try safeRegularFile(sourceFile)
   #expect(resolved.path == sourceFile)
+}
+
+@Test("a VM can receive only one owner-private COW workspace share")
+func workspaceShareIsExplicitAndWritableOnlyInsideTheGuest() throws {
+  let workspace = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+  let safeWorkspace = try safeGuestWorkspaceDirectory(workspace.path)
+  if #available(macOS 15.0, *) {
+    let device = guestWorkspaceShareConfiguration(safeWorkspace)
+    #expect(device.tag == "nessie-cow")
+    let share = try #require(device.share as? VZSingleDirectoryShare)
+    #expect(!share.directory.isReadOnly)
+  }
 }
