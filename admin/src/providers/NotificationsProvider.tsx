@@ -1,5 +1,6 @@
 import { useCallback, type PropsWithChildren } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { buildChannelMessagePath } from '@nessie/schemas'
 import {
   useMessageNotifications,
   type NotificationToastInput,
@@ -15,15 +16,19 @@ export const NotificationsProvider = ({ children }: PropsWithChildren) => {
   const navigate = useNavigate()
   const { pushToast } = useToasts()
 
-  const openChannel = useCallback((channelId: string) => {
+  const openChannel = useCallback((channelId: string, threadId?: string, rootMessageId?: string) => {
     window.focus()
-    void navigate(`/channels/${channelId}`)
+    void navigate(
+      threadId && rootMessageId
+        ? buildChannelMessagePath({ channelId, messageId: rootMessageId, rootMessageId, threadId })
+        : `/channels/${channelId}`,
+    )
   }, [navigate])
 
   const addToast = useCallback((toast: NotificationToastInput) => {
     pushToast({
       body: toast.body,
-      onOpen: () => openChannel(toast.channelId),
+      onOpen: () => openChannel(toast.channelId, toast.threadId, toast.rootMessageId),
       title: toast.title,
     })
   }, [openChannel, pushToast])

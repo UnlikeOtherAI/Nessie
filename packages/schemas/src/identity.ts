@@ -5,6 +5,7 @@ import {
   OrganizationIdSchema,
   ProjectIdSchema,
   TeamIdSchema,
+  ThreadIdSchema,
   UserIdSchema,
 } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
@@ -42,7 +43,19 @@ export type PushQuietHours = z.infer<typeof PushQuietHoursSchema>
 // URL: delivery can only suppress a notification for a concrete surface it
 // already understands how to target.
 export const PushSurfaceSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('channel'), channelId: ChannelIdSchema }),
+  z.object({
+    kind: z.literal('channel'),
+    channelId: ChannelIdSchema,
+    // A channel can host more than one independent conversation. Presence must
+    // identify the exact thread so one open conversation never hides a banner
+    // or a native push for another.
+    threadId: ThreadIdSchema,
+    // `null` is the channel's top-level feed; a UUID is one message-level
+    // reply conversation within that thread container.
+    // Defaulting absent values keeps already-installed clients safe during the
+    // server-first rollout: old feed heartbeats mean the main channel feed.
+    rootMessageId: z.string().uuid().nullable().default(null),
+  }),
   z.object({ kind: z.literal('ops_usage') }),
   z.object({ kind: z.literal('project_board'), projectId: ProjectIdSchema }),
   z.object({ kind: z.literal('knowledge_space'), spaceId: z.string().uuid() }),

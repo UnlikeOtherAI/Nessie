@@ -103,6 +103,14 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     channel: {
       findUnique: async () => ({ label: 'General' }),
     },
+    message: {
+      findUnique: async () => ({
+        agent: null,
+        agentId: null,
+        basisScopes: [],
+        user: { displayName: 'Author' },
+      }),
+    },
     mcpOAuthSecret: {
       findUnique: async ({ where }: { where: { ref: string } }) =>
         state.secrets.find((secret) => secret.ref === where.ref) ?? null,

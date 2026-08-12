@@ -14,13 +14,18 @@ This change covers three user-facing attention sections:
 
 | Section | Durable source | New attention event | Clears when the user views |
 | --- | --- | --- | --- |
-| Channels | `ThreadReadState` | New message or direct mention | The exact channel/thread (existing read path) |
+| Channels | `ThreadReadState` | New message or direct mention | The exact channel/thread while its Messages surface is visible |
 | Assigned work | `UserAlert(kind=task_assigned)` | A reachable project task is assigned or reassigned to a different person | That project's Board |
 | Project knowledge | `UserAlert(kind=knowledge_published)` | A page is published for people who can currently read its space | Its reachable Knowledge space/page |
 
 Channel message counts remain the source for channel badges. A mention is a
 channel message, so it is never added again to the app-icon total. The two new
 alert kinds are the source for the Projects and Knowledge counts.
+
+Channel read acknowledgement is deliberately narrower than route loading:
+Files, Info, and Runs may fetch channel data, but they do not clear a channel's
+badge or mark its message thread read. The user must be on the Messages
+surface that actually displays the conversation.
 
 ## Delivery contract
 
@@ -48,7 +53,9 @@ alert kinds are the source for the Projects and Knowledge counts.
    extended together. The shared Knowledge workspace reports its selected space
    directly rather than treating every Docs tab as one destination. A visible
    session suppresses only that exact destination.
-5. Pushes contain only the necessary title/body and a deep link:
+5. Message pushes present the sender as the title and the destination as a
+   native subtitle (for example, **Smith** / **# General**), followed by the
+   message preview. Pushes contain only the necessary title/body and a deep link:
    `/projects/:projectId/board` for an assignment, or
    `/projects/:projectId/docs?spaceId=…&pageId=…` for a publication. They are
    coalesced by alert target and category.
@@ -58,7 +65,14 @@ alert kinds are the source for the Projects and Knowledge counts.
    the shared preferences schema, merge request contract, worker preference
    kind map, and Settings UI together.
 7. A live interactive agent turn notifies only its originating user when the
-   reply becomes durable and they are no longer viewing that exact channel.
+   reply becomes durable and they are no longer viewing that exact channel feed
+   or reply conversation in a
+   focused foreground client. Presence is user-wide: one focused client on the
+   exact feed or reply conversation suppresses delivery to all of that user's
+   devices, while a different channel, a different reply conversation, an
+   unfocused window, or a background
+   client does not. A foreground client elsewhere in Nessie receives the
+   in-app banner as well as the native delivery to registered devices.
    Every terminal route (normal reply, reaction-only answer, cancellation,
    budget stop, error, and external-agent reply) shares one run-scoped queue
    idempotency key. A reply carrying a disclosure basis never exposes its text:

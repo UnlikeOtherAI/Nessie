@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { canUserReadDisclosureBasis, type BasisScopeRow } from '@nessie/runtime'
-import type { PushDispatchJobPayload } from '@nessie/schemas'
+import { buildChannelMessagePath, type PushDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
 import { defaultPushRetryDelayMs } from './push-retry.js'
@@ -57,9 +57,11 @@ export type PushDispatchDeps = {
   retryDelayMs?: (completedAttempt: number) => number
 }
 
-type GenericReplyMessage = {
+type PushMessage = {
   agentId: string | null
+  agent: { name: string } | null
   basisScopes: BasisScopeRow[]
+  user: { displayName: string } | null
 }
 
 const genericReplyBody = 'An agent reply is ready.'
@@ -116,15 +118,18 @@ export const handlePushDispatch = async (
   // That makes membership and grant revocation effective before a queued push
   // can reach a lock screen.
   const protectedReply = payload.contentVisibility === 'generic'
-  const replyMessage: GenericReplyMessage | null = protectedReply
-    ? await deps.prisma.message.findUnique({
-      where: { id: payload.messageId },
-      select: {
-        agentId: true,
-        basisScopes: { select: { scopeId: true, scopeType: true } },
-      },
-    })
-    : null
+  // Resolve the durable author, not an enqueue-time label. Agent replies do
+  // not have a user author, while ordinary messages may have either source.
+  // This gives every platform the familiar sender + destination presentation.
+  const replyMessage: PushMessage | null = await deps.prisma.message.findUnique({
+    where: { id: payload.messageId },
+    select: {
+      agentId: true,
+      agent: { select: { name: true } },
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      user: { select: { displayName: true } },
+    },
+  })
   if (protectedReply && !replyMessage) {
     return summary
   }
@@ -156,15 +161,10 @@ export const handlePushDispatch = async (
     select: { label: true },
   })
   const channelLabel = channel?.label ?? 'New message'
-  const author = payload.authorName
-    ? null
-    : payload.authorUserId
-      ? await deps.prisma.user.findUnique({
-        where: { id: payload.authorUserId },
-        select: { displayName: true },
-      })
-      : null
-  const authorName = payload.authorName ?? author?.displayName ?? 'Nessie'
+  const authorName = payload.authorName
+    ?? replyMessage?.agent?.name
+    ?? replyMessage?.user?.displayName
+    ?? 'Nessie'
   const mentionUserIds = new Set(protectedReply ? [] : payload.mentionUserIds)
   const mentionedRecipientIds = entitledUsers
     .filter((user) => mentionUserIds.has(user.id))
@@ -174,6 +174,10 @@ export const handlePushDispatch = async (
     .filter((user) => !mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
     .map((user) => user.id)
+
+  // A reply panel is the actionable destination for both a top-level message
+  // and a reply. Older queued jobs simply use their message as the root.
+  const deepLinkUrl = buildChannelMessagePath(payload)
 
   const buildPayload = (subtitle: string): PushPayload => ({
     title: authorName,
@@ -185,9 +189,12 @@ export const handlePushDispatch = async (
       channelId: payload.channelId,
       threadId: payload.threadId,
       messageId: payload.messageId,
-      url: `/channels/${payload.channelId}?messageId=${payload.messageId}`,
+      ...(payload.rootMessageId ? { rootMessageId: payload.rootMessageId } : {}),
+      url: deepLinkUrl,
     },
-    collapseId: payload.channelId,
+    // Keep distinct reply conversations visible independently while retaining
+    // familiar per-channel coalescing for the main feed.
+    collapseId: payload.rootMessageId ?? payload.threadId,
   })
 
   // 4. Deliver over native + Web Push through the shared core, once per
@@ -203,9 +210,14 @@ export const handlePushDispatch = async (
       payload: buildPayload(subtitle),
       recipientIds: ids,
       organizationId: payload.organizationId,
-      deepLinkUrl: `/channels/${payload.channelId}`,
+      deepLinkUrl,
       messageId: payload.messageId,
-      surface: { kind: 'channel', channelId: payload.channelId },
+      surface: {
+        channelId: payload.channelId,
+        kind: 'channel',
+        rootMessageId: payload.rootMessageId ?? null,
+        threadId: payload.threadId,
+      },
       now: deps.now ?? (() => new Date()),
     })
 

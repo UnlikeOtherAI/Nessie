@@ -2,12 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { getAlertLink } from '../src/facades/alerts/hooks.js'
-import { resolvePushSurface } from '../src/lib/push-surface.js'
+import {
+  resolvePushSurface,
+  resolveReportedPushSurface,
+} from '../src/lib/push-surface.js'
 
 test('maps only exact push-targetable destinations to a structured surface', () => {
-  assert.deepEqual(
+  assert.equal(
     resolvePushSurface('/channels/00000000-0000-4000-8000-000000000001'),
-    { kind: 'channel', channelId: '00000000-0000-4000-8000-000000000001' },
+    null,
   )
   assert.deepEqual(resolvePushSurface('/ops/usage'), { kind: 'ops_usage' })
   assert.deepEqual(
@@ -29,11 +32,29 @@ test('maps only exact push-targetable destinations to a structured surface', () 
     resolvePushSurface(
       '/channels/00000000-0000-4000-8000-000000000001/threads/00000000-0000-4000-8000-000000000002/replies/00000000-0000-4000-8000-000000000003',
     ),
-    { kind: 'channel', channelId: '00000000-0000-4000-8000-000000000001' },
+    {
+      kind: 'channel',
+      channelId: '00000000-0000-4000-8000-000000000001',
+      rootMessageId: '00000000-0000-4000-8000-000000000003',
+      threadId: '00000000-0000-4000-8000-000000000002',
+    },
   )
   assert.equal(resolvePushSurface('/channels'), null)
   assert.equal(resolvePushSurface('/projects/00000000-0000-4000-8000-000000000004/docs'), null)
   assert.equal(resolvePushSurface('/settings/notifications'), null)
+})
+
+test('keeps the selected Files, Info, or Runs tab from suppressing its reply URL', () => {
+  const route = {
+    pathname: '/channels/00000000-0000-4000-8000-000000000001/threads/00000000-0000-4000-8000-000000000002/replies/00000000-0000-4000-8000-000000000003',
+    search: '',
+  }
+
+  assert.equal(resolveReportedPushSurface({ ...route, surface: null }, route), null)
+  assert.equal(resolveReportedPushSurface({ ...route, surface: null }, {
+    pathname: '/settings/notifications',
+    search: '',
+  }), undefined)
 })
 
 test('routes each durable attention kind to its owning surface', () => {

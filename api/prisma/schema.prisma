@@ -1286,6 +1286,7 @@ model Thread {
   streamEvents             ThreadStreamEvent[]
   triggerTargets           AgentTrigger[]            @relation("TriggerTargetThread")
   productIntegrationRuns   ProductIntegrationRun[]
+  pushSurfacePresences     UserPushSurfacePresence[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -1421,6 +1422,8 @@ model UserPushSurfacePresence {
   clientId          String           @map("client_id") @db.Uuid
   surfaceKind       PushSurfaceKind? @map("surface_kind")
   channelId         String?          @map("channel_id") @db.Uuid
+  threadId          String?          @map("thread_id") @db.Uuid
+  rootMessageId     String?          @map("root_message_id") @db.Uuid
   projectId         String?          @map("project_id") @db.Uuid
   knowledgeSpaceId  String?          @map("knowledge_space_id") @db.Uuid
   heartbeatSequence BigInt           @map("heartbeat_sequence")
@@ -1429,11 +1432,15 @@ model UserPushSurfacePresence {
   organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel           Channel?         @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  thread            Thread?          @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  rootMessage       Message?         @relation("PushSurfaceReplyRoot", fields: [rootMessageId], references: [id], onDelete: Cascade)
   project           Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   knowledgeSpace    KnowledgeSpace?  @relation(fields: [knowledgeSpaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, clientId])
   @@index([organizationId, userId, surfaceKind, channelId, lastSeenAt], map: "idx_push_presence_channel")
+  @@index([organizationId, userId, surfaceKind, channelId, threadId, lastSeenAt], map: "idx_push_presence_thread")
+  @@index([organizationId, userId, surfaceKind, channelId, threadId, rootMessageId, lastSeenAt], map: "idx_push_presence_reply_root")
   @@index([organizationId, userId, surfaceKind, projectId, lastSeenAt], map: "idx_push_presence_project")
   @@index([organizationId, userId, surfaceKind, knowledgeSpaceId, lastSeenAt], map: "idx_push_presence_knowledge_space")
   @@index([userId, lastSeenAt])
@@ -1542,6 +1549,7 @@ model Message {
   runThreadPendingMessages RunThreadPendingMessage[]
   basisScopes              MessageBasisScope[]
   disclosureGrants         DisclosureGrant[]
+  pushSurfacePresences     UserPushSurfacePresence[] @relation("PushSurfaceReplyRoot")
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])

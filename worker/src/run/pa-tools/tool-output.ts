@@ -1,3 +1,5 @@
+import { buildChannelMessagePath } from '@nessie/schemas'
+
 export const MAX_SEARCH_RESULTS = 5
 
 export const truncate = (value: string, maxLength = 220): string =>
@@ -49,7 +51,7 @@ export const buildMessageLink = (input: {
   rootMessageId: string | null
   threadId: string
 }): string =>
-  `/channels/${input.channelId}/threads/${input.threadId}/replies/${input.rootMessageId ?? input.messageId}`
+  buildChannelMessagePath(input)
 
 export const buildSnippet = (
   content: string,
