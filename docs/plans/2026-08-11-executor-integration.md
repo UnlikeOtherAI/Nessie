@@ -387,6 +387,7 @@ It can offer these tools:
 | `executor_pause`, `executor_drain`, `executor_revoke` | Creates a reviewed lifecycle-change draft only; the user confirms it in the Executors surface. Revoke always requires fresh verification. |
 | `executor_agent_access_prepare` | Produces an exact grant/revoke diff for a selected agent and logical operations. |
 | `executor_private_assignment_prepare` | Produces an exact add/remove/change diff for named users and agents, only when the requesting user is a private administrator. |
+| `executor_workspace_promotion_prepare` | Prepares only the requesting user's acknowledged COW review for the separate password-confirmed host-promotion control. |
 
 `*_prepare` mutations create an `ExecutorAccessChange` draft containing the
 canonical diff digest, actor user, executor/policy revisions, expiry, and a

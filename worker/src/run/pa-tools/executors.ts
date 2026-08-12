@@ -3,6 +3,7 @@ import {
   getExecutorForUser,
   listVisibleExecutors,
   prepareExecutorAccessChange,
+  prepareExecutorWorkspacePromotion,
   type ExecutorAccessChange,
 } from '@nessie/executor-manage'
 import { writeAuditEntry } from '@nessie/db'
@@ -64,6 +65,9 @@ const formatExecutor = (executor: {
 
 const reviewLink = (prepared: { accessChangeId: string; confirmationToken: string }): string =>
   `/agents/executors?accessChange=${prepared.accessChangeId}#confirmationToken=${prepared.confirmationToken}`
+
+const promotionReviewLink = (prepared: { confirmationToken: string; promotionId: string }): string =>
+  `/agents/executors?promotion=${prepared.promotionId}#confirmationToken=${prepared.confirmationToken}`
 
 const auditPreparedAccessChange = async (
   context: BuiltinToolRuntimeContext,
@@ -261,4 +265,54 @@ export const runExecutorPrivateAssignmentPrepareTool = async (
     })
   }
   throw new Error('User roles must be use or admin; agent assignments always use role use.')
+}
+
+/** The PA can prepare the originating user’s exact draft, but never promote it. */
+export const runExecutorWorkspacePromotionPrepareTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { reviewCommandId: unknown },
+): Promise<ToolExecutionResult> => {
+  const actorContext = requireExecutorPersonalAssistant(context)
+  const encryptionSecret = context.executorCommandEncryptionSecret
+  if (!encryptionSecret) {
+    throw new Error('Executor promotion review is unavailable because encrypted executor receipt access is not configured.')
+  }
+  const reviewCommandId = requireId(input.reviewCommandId, 'reviewCommandId')
+  const prepared = await prepareExecutorWorkspacePromotion(
+    context.prisma,
+    encryptionSecret,
+    actorContext,
+    { reviewCommandId },
+  )
+  try {
+    await writeAuditEntry(context.prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      projectId: actorContext.tenant.projectId,
+      teamId: actorContext.tenant.teamId,
+      channelId: context.channel.id,
+      actorType: 'user',
+      actorId: actorContext.actor.actorId,
+      action: 'executor.workspace_promotion.prepared',
+      resourceType: 'executor_workspace_promotion',
+      resourceId: prepared.promotionId,
+      outcome: 'success',
+      metadata: {
+        delegatedByAgentId: context.agentId,
+        executorId: prepared.executorId,
+        manifestDigest: prepared.manifestDigest,
+        reviewCommandId,
+        runId: context.run.id,
+      },
+      requestId: actorContext.actionContext.requestId,
+    })
+  } catch {
+    console.error('[executor] Failed to emit workspace-promotion audit event')
+  }
+  return {
+    inputSummary: `reviewCommandId=${reviewCommandId}`,
+    outputPreview:
+      `Prepared workspace promotion ${prepared.promotionId}. It expires at ${prepared.expiresAt.toISOString()}. `
+      + `The requesting user must inspect and password-confirm it here: ${promotionReviewLink(prepared)}`,
+    toolName: 'executor_workspace_promotion_prepare',
+  }
 }

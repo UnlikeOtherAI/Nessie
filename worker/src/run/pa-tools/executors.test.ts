@@ -5,6 +5,7 @@ import { parseOrganizationId, parseUserId } from '@nessie/schemas'
 import {
   runExecutorDescriptorReviewPrepareTool,
   runExecutorPairTool,
+  runExecutorWorkspacePromotionPrepareTool,
 } from './executors.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
@@ -77,5 +78,18 @@ test('descriptor review preparation rejects an invalid activation request before
       status: 'pending_review',
     }),
     /active or disabled/,
+  )
+})
+
+test('workspace-promotion preparation is limited to an exact reviewed command and never falls back without receipt access', async () => {
+  await assert.rejects(
+    () => runExecutorWorkspacePromotionPrepareTool(makeContext(), { reviewCommandId: 'not-a-uuid' }),
+    /encrypted executor receipt access is not configured/,
+  )
+  await assert.rejects(
+    () => runExecutorWorkspacePromotionPrepareTool(makeContext({
+      executorCommandEncryptionSecret: 'test-secret',
+    }), { reviewCommandId: 'not-a-uuid' }),
+    /reviewCommandId must be a UUID/,
   )
 })

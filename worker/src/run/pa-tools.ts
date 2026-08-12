@@ -36,6 +36,7 @@ export {
   runExecutorListTool,
   runExecutorPairTool,
   runExecutorPrivateAssignmentPrepareTool,
+  runExecutorWorkspacePromotionPrepareTool,
 } from './pa-tools/executors.js'
 export {
   runAuthoredMessageSearchTool,

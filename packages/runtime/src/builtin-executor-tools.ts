@@ -108,7 +108,7 @@ export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinitio
         type: 'string',
         enum: [
           'file.list', 'file.read', 'file.write', 'command.run', 'browser.open',
-          'browser.observe', 'browser.act', 'workspace.promote', 'sandbox.stop',
+          'browser.observe', 'browser.act', 'workspace.review', 'workspace.promote', 'sandbox.stop',
           'coding.launch', 'coding.attach', 'coding.observe', 'coding.prompt',
           'coding.interrupt', 'coding.close',
         ],
@@ -142,6 +142,21 @@ export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDef
   personalAssistantOnly: true,
 }
 
+export const EXECUTOR_WORKSPACE_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'executor_workspace_promotion_prepare',
+  label: 'Prepare Reviewed Workspace Promotion',
+  description:
+    'Prepare the requesting user’s own reviewed executor draft for a host-workspace promotion. '
+    + 'The user must inspect and password-confirm the exact manifest in Executors; this assistant cannot write the host workspace.',
+  parameters: {
+    type: 'object',
+    properties: { reviewCommandId: UUID },
+    required: ['reviewCommandId'],
+  },
+  safe: false,
+  personalAssistantOnly: true,
+}
+
 export const EXECUTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   EXECUTOR_LIST_TOOL_DEFINITION,
   EXECUTOR_INSPECT_TOOL_DEFINITION,
@@ -152,4 +167,5 @@ export const EXECUTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION,
   EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION,
   EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION,
+  EXECUTOR_WORKSPACE_PROMOTION_PREPARE_TOOL_DEFINITION,
 ]

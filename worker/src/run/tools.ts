@@ -15,22 +15,7 @@ import {
   runChannelListTool,
   runChannelUpdateTool,
   runCommsConnectCardTool,
-  runConnectorAuthorizeTool,
-  runConnectorDiscoverTool,
-  runConnectorInstallTool,
-  runConnectorLibrarySearchTool,
-  runConnectorListTool,
-  runConnectorSetSecretTool,
-  runConnectorTestTool,
-  runConnectorUninstallTool,
   runDeepWaterRunUpdateTool,
-  runExecutorAgentAccessPrepareTool,
-  runExecutorDescriptorReviewPrepareTool,
-  runExecutorInspectTool,
-  runExecutorLifecyclePrepareTool,
-  runExecutorListTool,
-  runExecutorPairTool,
-  runExecutorPrivateAssignmentPrepareTool,
   runMessageDeleteTool,
   runReactTool,
   runMessageEditTool,
@@ -40,6 +25,8 @@ import {
   runUpdatePreferencesTool,
   runWorkspaceSearchTool,
 } from './pa-tools.js'
+import { connectorManagementTool } from './pa-tools/connector-dispatch.js'
+import { executorManagementTool } from './pa-tools/executor-dispatch.js'
 import {
   runCancelScheduledTaskTool,
   runListScheduledTasksTool,
@@ -138,10 +125,12 @@ export const executeBuiltinTool = async (
   context: BuiltinToolRuntimeContext,
 ): Promise<AgenticToolResult> => {
   const inputSummary = summarizeToolInput(args)
+  const executorTool = executorManagementTool(toolName, args, context)
+  if (executorTool) return wrapTool(inputSummary, executorTool)
+  const connectorTool = connectorManagementTool(toolName, args, context)
+  if (connectorTool) return wrapTool(inputSummary, connectorTool)
   const knowledgeBaseResult = dispatchKbTool(toolName, args, context, inputSummary)
-  if (knowledgeBaseResult) {
-    return knowledgeBaseResult
-  }
+  if (knowledgeBaseResult) return knowledgeBaseResult
   switch (toolName) {
     case 'workspace_search':
       return wrapTool(inputSummary, () =>
@@ -339,105 +328,6 @@ export const executeBuiltinTool = async (
         )
         return runFileGlob(args, transportConfig)
       })
-    case 'connector_list':
-      return wrapTool(inputSummary, () => runConnectorListTool(context))
-    case 'connector_library_search':
-      return wrapTool(inputSummary, () =>
-        runConnectorLibrarySearchTool(context, {
-          query: String(args.query ?? ''),
-        }),
-      )
-    case 'connector_discover':
-      return wrapTool(inputSummary, () =>
-        runConnectorDiscoverTool(context, { url: String(args.url ?? '') }),
-      )
-    case 'connector_install':
-      return wrapTool(inputSummary, () =>
-        runConnectorInstallTool(context, {
-          catalogEntryId:
-            typeof args.catalogEntryId === 'string' ? args.catalogEntryId : undefined,
-          name: typeof args.name === 'string' ? args.name : undefined,
-          label: typeof args.label === 'string' ? args.label : undefined,
-          description:
-            typeof args.description === 'string' ? args.description : undefined,
-          url: typeof args.url === 'string' ? args.url : undefined,
-          transport: typeof args.transport === 'string' ? args.transport : undefined,
-          authMethod:
-            typeof args.authMethod === 'string' ? args.authMethod : undefined,
-          scope: typeof args.scope === 'string' ? args.scope : undefined,
-          scopeId: typeof args.scopeId === 'string' ? args.scopeId : undefined,
-        }),
-      )
-    case 'connector_authorize':
-      return wrapTool(inputSummary, () =>
-        runConnectorAuthorizeTool(context, {
-          instanceId: String(args.instanceId ?? ''),
-        }),
-      )
-    case 'connector_test':
-      return wrapTool(inputSummary, () =>
-        runConnectorTestTool(context, {
-          instanceId: String(args.instanceId ?? ''),
-        }),
-      )
-    case 'connector_set_secret':
-      return wrapTool(inputSummary, () =>
-        runConnectorSetSecretTool(context, {
-          instanceId: String(args.instanceId ?? ''),
-          secret: String(args.secret ?? ''),
-          shared: typeof args.shared === 'boolean' ? args.shared : undefined,
-        }),
-      )
-    case 'connector_uninstall':
-      return wrapTool(inputSummary, () =>
-        runConnectorUninstallTool(context, {
-          instanceId: String(args.instanceId ?? ''),
-        }),
-      )
-    case 'executor_list':
-      return wrapTool(inputSummary, () => runExecutorListTool(context))
-    case 'executor_inspect':
-      return wrapTool(inputSummary, () => runExecutorInspectTool(context, {
-        executorId: args.executorId,
-      }))
-    case 'executor_pair':
-      return wrapTool(inputSummary, () => runExecutorPairTool(context))
-    case 'executor_pause':
-      return wrapTool(inputSummary, () => runExecutorLifecyclePrepareTool(context, {
-        action: 'pause',
-        executorId: args.executorId,
-      }))
-    case 'executor_drain':
-      return wrapTool(inputSummary, () => runExecutorLifecyclePrepareTool(context, {
-        action: 'drain',
-        executorId: args.executorId,
-      }))
-    case 'executor_revoke':
-      return wrapTool(inputSummary, () => runExecutorLifecyclePrepareTool(context, {
-        action: 'revoke',
-        executorId: args.executorId,
-      }))
-    case 'executor_descriptor_review_prepare':
-      return wrapTool(inputSummary, () => runExecutorDescriptorReviewPrepareTool(context, {
-        executorId: args.executorId,
-        revision: args.revision,
-        status: args.status,
-      }))
-    case 'executor_agent_access_prepare':
-      return wrapTool(inputSummary, () => runExecutorAgentAccessPrepareTool(context, {
-        agentId: args.agentId,
-        executorId: args.executorId,
-        operationKey: args.operationKey,
-        state: args.state,
-      }))
-    case 'executor_private_assignment_prepare':
-      return wrapTool(inputSummary, () => runExecutorPrivateAssignmentPrepareTool(context, {
-        action: args.action,
-        executorId: args.executorId,
-        principalId: args.principalId,
-        principalKind: args.principalKind,
-        role: args.role,
-      }))
     case 'deep_water_run_update':
       return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
     case 'comms_connect_card':

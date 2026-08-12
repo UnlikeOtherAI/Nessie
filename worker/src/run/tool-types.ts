@@ -49,6 +49,9 @@ export type BuiltinToolRuntimeContext = {
    * "nothing consumed", which is the pre-existing behaviour.
    */
   consumedSources?: ConsumedSourceSink
+  /** Deployment secret used only to decrypt an acknowledged executor receipt
+   * while preparing a user-owned continuation. It is never model-visible. */
+  executorCommandEncryptionSecret?: string
   ledgerIdentity: LedgerIdentityService | null
   // MCP credential plumbing for the connector management tools: the store
   // encrypts user-provided secrets into Postgres, the resolver resolves any

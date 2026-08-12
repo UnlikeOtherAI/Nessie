@@ -339,6 +339,10 @@ PA preparation is valid only in the requesting user's personal-assistant DM,
 never a shared channel, scheduled job, child run, or arbitrary agent run. The
 PA has no confirmation tool: confirmation is a user-owned web or desktop
 control. Audit records the acting user and PA delegation provenance separately.
+For a reviewed COW draft, it can similarly prepare only the current user's
+acknowledged `workspace.review` receipt. That step decrypts the receipt inside
+the worker, returns the same short-lived web control, and never exposes draft
+content, a host path, or the deployment encryption secret to the model.
 
 ## 8. Sandbox, forced egress, and credentials
 
