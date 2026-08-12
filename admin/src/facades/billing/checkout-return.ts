@@ -33,10 +33,16 @@ export const readUoaBillingCheckoutReturn = (
     : null
 }
 
-export const resolveRootLandingPath = (search: string): string =>
-  readUoaBillingCheckoutReturn(search)
-    ? `/tokens${normaliseSearch(search)}`
-    : '/channels'
+// A notification destination is an explicit user action and must win over the
+// ordinary root landing redirect (including a billing-return hint).
+export const resolveRootLandingPath = (
+  search: string,
+  pendingPushPath: string | null = null,
+): string =>
+  pendingPushPath
+    ?? (readUoaBillingCheckoutReturn(search)
+      ? `/tokens${normaliseSearch(search)}`
+      : '/channels')
 
 export const getUoaBillingCheckoutReturnNotice = (
   checkoutReturn: UoaBillingCheckoutReturn,
