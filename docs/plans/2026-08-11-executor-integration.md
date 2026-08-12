@@ -93,6 +93,15 @@ command, queue job and ToolCall. The native receipt is delivered through the
 existing command protocol; a changed local manifest or host conflict fails
 closed rather than applying a draft.
 
+The next backend substrate is checked in at `executor/vm`: an Apple Silicon
+macOS 15+ `Virtualization.framework` bootstrap validator. It accepts only
+owner-owned, non-link, single-link kernel/initrd/disk files, validates a
+bounded CPU/memory allocation and a read-only disk, and intentionally configures
+neither a NIC, host filesystem share, graphics device, nor host process bridge.
+It is not command-reachable and advertises no new descriptor operation. The
+browser/coding slice must add guest COW transport and a forced-egress broker as
+one reviewed unit; it may not turn this validator into a host-browser fallback.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

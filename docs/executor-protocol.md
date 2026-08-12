@@ -346,6 +346,17 @@ The initial backend is a per-session Linux micro-VM. The selected workspace is
 read-only through virtiofs. It has no host shell, home, Docker socket, SSH
 agent, host mount beyond that root, inherited environment, or direct network.
 
+`executor/vm` is the macOS-native bootstrap boundary for that backend. Its
+checked-in Swift package can probe support and validate a proposed Linux boot
+configuration on Apple Silicon/macOS 15+: owner-owned, non-link, single-link
+kernel/initrd/disk files; a bounded CPU/memory allocation; a read-only guest
+disk; and entropy only. Its configuration deliberately contains no virtual
+NIC, host filesystem share, graphics attachment, or host process bridge. It
+does **not** start a guest or advertise any executor operation yet. A later
+guest broker must add the COW share and forced-egress endpoint as one reviewed
+unit; a browser or coding descriptor is forbidden until that unit is live.
+The macOS-native verification command is `swift test --package-path executor/vm`.
+
 The guest's only virtual NIC terminates at the daemon's authenticated egress
 gateway. There is no NAT bridge or direct DNS resolver; firewall rules deny
 direct TCP, UDP/QUIC, proxy bypass, and alternate DNS. Chromium must use this
