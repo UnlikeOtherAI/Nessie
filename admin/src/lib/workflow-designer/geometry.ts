@@ -94,6 +94,40 @@ export const getDraftConnectionCandidate = (
   }
 }
 
+// W11: until graph v2 (Stage 2) the runtime executes exactly one connected
+// linear chain, so the canvas must refuse to draw what it cannot execute —
+// cycles, forks (multiple outgoing), and merges (multiple incoming) are
+// rejected here rather than silently linearized away in serialization.ts.
+const connectionWouldCreateCycle = (
+  candidateConnection: WorkflowConnectionCandidate,
+  connections: WorkflowConnection[],
+): boolean => {
+  const outgoingByNodeId = new Map<string, string[]>()
+  for (const connection of connections) {
+    const list = outgoingByNodeId.get(connection.fromNodeId) ?? []
+    list.push(connection.toNodeId)
+    outgoingByNodeId.set(connection.fromNodeId, list)
+  }
+
+  // Reachable(from candidate.toNodeId) must not contain candidate.fromNodeId.
+  const visited = new Set<string>()
+  const stack = [candidateConnection.toNodeId]
+  while (stack.length > 0) {
+    const nodeId = stack.pop()!
+    if (nodeId === candidateConnection.fromNodeId) {
+      return true
+    }
+    if (visited.has(nodeId)) {
+      continue
+    }
+    visited.add(nodeId)
+    for (const next of outgoingByNodeId.get(nodeId) ?? []) {
+      stack.push(next)
+    }
+  }
+  return false
+}
+
 export const isInvalidWorkflowConnection = (
   candidateConnection: WorkflowConnectionCandidate,
   connections: WorkflowConnection[],
@@ -103,7 +137,14 @@ export const isInvalidWorkflowConnection = (
     (connection) =>
       connection.fromNodeId === candidateConnection.fromNodeId &&
       connection.toNodeId === candidateConnection.toNodeId,
-  )
+  ) ||
+  connections.some(
+    (connection) => connection.fromNodeId === candidateConnection.fromNodeId,
+  ) ||
+  connections.some(
+    (connection) => connection.toNodeId === candidateConnection.toNodeId,
+  ) ||
+  connectionWouldCreateCycle(candidateConnection, connections)
 
 export const getCanvasInsertionPoint = (canvasElement: HTMLDivElement | null, offset: number) => {
   if (!canvasElement) {

@@ -100,6 +100,22 @@ export const InstallWorkflowTemplateBodySchema = z.object({
   config: z.record(z.unknown()).optional(),
 })
 
+// W8: the pause/resume/disable path. Same lifecycle fields as install;
+// contradictory active/status combinations are rejected by the service.
+export const UpdateWorkflowInstallationBodySchema = z.object({
+  channelId: ChannelIdSchema.optional(),
+  active: z.boolean().optional(),
+  status: WorkflowInstallationStatusSchema.optional(),
+  resolvedBindings: z.record(z.unknown()).optional(),
+  config: z.record(z.unknown()).optional(),
+})
+
+// W24: cursor pagination for the workflow list endpoints.
+export const WorkflowListQuerySchema = z.object({
+  cursor: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+})
+
 export const WorkflowRunRecordSchema = z.object({
   id: z.string().uuid(),
   installationId: z.string().uuid(),

@@ -27,6 +27,10 @@ export type WorkflowCanvasNode = {
   label: string
   config: Record<string, unknown>
   meta?: string
+  // W10: verbatim step input as loaded; the canvas `config` is the stripped
+  // editing view, and saving starts from this so keys the inspector doesn't
+  // edit survive the round trip.
+  rawStepInput?: Record<string, unknown>
   sourceId: string
   type: WorkflowCanvasNodeType
   x: number

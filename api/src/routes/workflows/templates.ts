@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   CreateWorkflowTemplateBodySchema,
   UpdateWorkflowTemplateBodySchema,
+  WorkflowListQuerySchema,
   WorkflowTemplateRecordSchema,
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
@@ -54,8 +55,16 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
       return reply
     }
 
-    const workflows = await listWorkflowTemplates(prisma, actorContext.tenant.organizationId)
-    return createApiResponse(WorkflowTemplateRecordSchema.array().parse(workflows))
+    const query = parseInput(WorkflowListQuerySchema, request.query ?? {}, reply)
+    if (!query) {
+      return reply
+    }
+
+    const page = await listWorkflowTemplates(prisma, actorContext.tenant.organizationId, query)
+    return createApiResponse(
+      WorkflowTemplateRecordSchema.array().parse(page.items),
+      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
+    )
   })
 
   app.post('/api/workflows', async (request, reply) => {

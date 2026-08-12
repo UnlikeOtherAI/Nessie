@@ -2274,6 +2274,9 @@ model WorkflowRun {
   triggerDeliveryId             String?                        @map("trigger_delivery_id") @db.Uuid
   parentRunId                   String?                        @map("parent_run_id") @db.Uuid
   retriedFromWorkflowRunId      String?                        @map("retried_from_workflow_run_id") @db.Uuid
+  retriedByActorType            String?                        @map("retried_by_actor_type")
+  retriedByActorId              String?                        @map("retried_by_actor_id")
+  retriedAt                     DateTime?                      @map("retried_at")
   planId                        String?                        @map("plan_id") @db.Uuid
   planStepId                    String?                        @map("plan_step_id") @db.Uuid
   status                        WorkflowRunStatus              @default(pending)
