@@ -4,6 +4,7 @@ import Virtualization
 
 public enum VMError: Error {
   case guestHandshake
+  case guestSession
   case invalidArgument
   case unsupportedHost
   case unsafeImage

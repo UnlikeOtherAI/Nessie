@@ -201,14 +201,23 @@ The guest also has the complementary loopback-only proxy, guarded by the exact
 control socket is enabled. The proxy listens at guest `127.0.0.1:8137`, limits
 itself to 16 streams, sends the egress prelude before every host-CID virtio
 tunnel, and forwards nothing directly to a network address. The current helper
-does not set the flag or attach the listener/bridge, so the compiled proxy is
-not an advertised or reachable browser/coding backend. The native bridge
+does not set the flag from any daemon command or descriptor, so the compiled
+proxy is not an advertised or reachable browser/coding backend. The native bridge
 accepts only an authenticated VM-owned descriptor plus an absolute,
 non-link, current-user socket located in an owner-only directory; it moves
 bounded bytes bidirectionally and closes the exact tunnel on EOF, I/O failure,
 or overflow. It cannot parse HTTP, resolve DNS, select an origin, acquire a
 credential, or open any remote socket. Those operations stay exclusively in
 the existing owner-only CONNECT gateway.
+
+The signed helper now has the companion-internal long-lived `session` command.
+It requires a lease-derived COW directory, an existing owner-private gateway
+socket, and bootstrap on stdin; it boots guest egress with admission closed and
+opens it only after the exact control hello. Every authenticated tunnel gets its
+own bounded bridge and all bridges close on VM/control shutdown. This is still
+not an executor capability: the daemon has no session launcher, descriptors
+still omit browser/shell/coding operations, and there is no UI or model path to
+invoke it.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for

@@ -1,4 +1,5 @@
 import Darwin
+import Dispatch
 import Foundation
 import NessieExecutorVMCore
 import Virtualization
@@ -9,7 +10,7 @@ private func json(_ value: [String: Any]) {
 }
 
 private func usage() -> Never {
-  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
+  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm session --console <owner-only-path> --kernel <path> --initrd <path> --workspace-cow <owner-only-draft> --egress-gateway <owner-only-socket> --bootstrap-token-stdin [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
   exit(64)
 }
 
@@ -151,6 +152,73 @@ private final class GuestHandshakeResult {
     defer { lock.unlock() }
     return authenticated
   }
+
+  func isTerminated() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return termination != nil
+  }
+}
+
+@available(macOS 15.0, *)
+private final class GuestEgressBridgeRegistry {
+  private var bridges = [UUID: GuestEgressGatewayBridge]()
+  private let gatewaySocketPath: String
+  private let lock = NSLock()
+
+  init(gatewaySocketPath: String) {
+    self.gatewaySocketPath = gatewaySocketPath
+  }
+
+  func attach(_ tunnel: GuestEgressTunnel) {
+    let id = UUID()
+    let bridge = GuestEgressGatewayBridge(
+      tunnel: tunnel,
+      gatewaySocketPath: gatewaySocketPath,
+      onTerminated: { [weak self] in self?.remove(id) },
+    )
+    lock.lock()
+    bridges[id] = bridge
+    lock.unlock()
+    do {
+      try bridge.start()
+    } catch {
+      bridge.stop()
+    }
+  }
+
+  func stop() {
+    lock.lock()
+    let active = bridges.values
+    bridges.removeAll()
+    lock.unlock()
+    for bridge in active {
+      bridge.stop()
+    }
+  }
+
+  private func remove(_ id: UUID) {
+    lock.lock()
+    bridges.removeValue(forKey: id)
+    lock.unlock()
+  }
+}
+
+private final class SessionStopSignal {
+  private let lock = NSLock()
+  private var requested = false
+
+  func request() {
+    lock.lock()
+    requested = true
+    lock.unlock()
+  }
+
+  func isRequested() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return requested
+  }
 }
 
 private func bootstrapTokenFromStandardInput(_ arguments: [String]) throws -> String {
@@ -212,6 +280,97 @@ private func handshake(_ arguments: [String]) throws {
   throw VMError.unsupportedHost
 }
 
+private func session(_ arguments: [String]) throws {
+  let input = try parseInput(arguments)
+  let consoleURL = try safeConsoleFile(try requiredOption(arguments, "--console"))
+  let guestWorkspaceURL = try safeGuestWorkspaceDirectory(try requiredOption(arguments, "--workspace-cow"))
+  let gatewaySocketPath = try requiredOption(arguments, "--egress-gateway")
+  guard input.initrdURL != nil else { throw VMError.invalidArgument }
+  let bootstrapToken = try bootstrapTokenFromStandardInput(arguments)
+  let egressToken = try guestEgressToken(fromBootstrapToken: bootstrapToken)
+  if #available(macOS 15.0, *) {
+    do {
+      let outcome = GuestHandshakeResult()
+      let bridges = GuestEgressBridgeRegistry(gatewaySocketPath: gatewaySocketPath)
+      let machine = VZVirtualMachine(configuration: try configuration(
+        for: input,
+        consoleURL: consoleURL,
+        enableGuestControl: true,
+        enableGuestEgress: true,
+        guestWorkspaceURL: guestWorkspaceURL,
+      ))
+      let egress = try GuestEgressTunnelListener(
+        expectedSessionToken: egressToken,
+        onAuthenticated: { tunnel in bridges.attach(tunnel) },
+        onTerminated: { _ in },
+      )
+      let control = try GuestControlListener(
+        expectedBootstrapToken: bootstrapToken,
+        onAuthenticated: {
+          do {
+            try egress.activate()
+            outcome.recordAuthentication()
+          } catch {
+            outcome.recordTermination(.unavailable)
+          }
+        },
+        onResponse: { _ in },
+        onTerminated: { reason in outcome.recordTermination(reason) },
+      )
+      try control.attach(to: machine)
+      try egress.attach(to: machine)
+      var didStart = false
+      var startError: Error?
+      machine.start { result in
+        if case let .failure(error) = result { startError = error }
+        didStart = true
+      }
+      guard waitForMainRunLoop({ didStart }, timeoutSeconds: 10), startError == nil else {
+        control.invalidate()
+        egress.invalidate()
+        bridges.stop()
+        throw VMError.guestSession
+      }
+      let completed = waitForMainRunLoop({ outcome.isComplete() }, timeoutSeconds: 10)
+      guard completed, outcome.succeeded() else {
+        control.invalidate()
+        egress.invalidate()
+        bridges.stop()
+        try stopMachine(machine)
+        throw VMError.guestSession
+      }
+      json(["session": "ready", "valid": true, "workspaceAttached": true])
+
+      signal(SIGINT, SIG_IGN)
+      signal(SIGTERM, SIG_IGN)
+      let stop = SessionStopSignal()
+      let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+      let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+      interrupt.setEventHandler { stop.request() }
+      terminate.setEventHandler { stop.request() }
+      interrupt.resume()
+      terminate.resume()
+      while !stop.isRequested(), !outcome.isTerminated() {
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+      }
+      interrupt.cancel()
+      terminate.cancel()
+      let failed = outcome.isTerminated() && !stop.isRequested()
+      control.invalidate()
+      egress.invalidate()
+      bridges.stop()
+      try stopMachine(machine)
+      if failed { throw VMError.guestSession }
+      return
+    } catch let error as VMError {
+      throw error
+    } catch {
+      throw VMError.guestSession
+    }
+  }
+  throw VMError.unsupportedHost
+}
+
 private func run() -> Int32 {
   let arguments = Array(CommandLine.arguments.dropFirst())
   guard let command = arguments.first else { usage() }
@@ -227,6 +386,8 @@ private func run() -> Int32 {
       try smoke(Array(arguments.dropFirst()))
     case "handshake":
       try handshake(Array(arguments.dropFirst()))
+    case "session":
+      try session(Array(arguments.dropFirst()))
     default:
       usage()
     }
@@ -239,6 +400,9 @@ private func run() -> Int32 {
     return 1
   } catch VMError.guestHandshake {
     json(["code": "EXECUTOR_VM_GUEST_HANDSHAKE_FAILED", "valid": false])
+    return 1
+  } catch VMError.guestSession {
+    json(["code": "EXECUTOR_VM_GUEST_SESSION_FAILED", "valid": false])
     return 1
   } catch {
     fputs("nessie-executor-vm local failure: \((error as NSError).localizedDescription)\n", stderr)

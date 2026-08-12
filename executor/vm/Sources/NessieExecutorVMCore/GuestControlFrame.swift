@@ -62,7 +62,7 @@ func isValidGuestEgressSessionToken(_ value: String) -> Bool {
 }
 
 /** A per-session egress credential distinct from the one-use control hello. */
-func guestEgressToken(fromBootstrapToken value: String) throws -> String {
+public func guestEgressToken(fromBootstrapToken value: String) throws -> String {
   guard isValidGuestControlBootstrapToken(value) else { throw GuestControlFrameError.invalidEnvelope }
   let base64 = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
   guard let decoded = Data(base64Encoded: base64 + "=") else { throw GuestControlFrameError.invalidEnvelope }

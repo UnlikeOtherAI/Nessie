@@ -63,6 +63,7 @@ public final class GuestEgressTunnelListener: NSObject, VZVirtioSocketListenerDe
   private let onAuthenticated: (GuestEgressTunnel) -> Void
   private let onTerminated: (GuestEgressTunnelSessionError) -> Void
   private weak var socketDevice: VZVirtioSocketDevice?
+  private var accepting = false
   private var pending = [UUID: (VZVirtioSocketConnection, GuestEgressTunnelSession)]()
   private var active = [UUID: GuestEgressTunnel]()
 
@@ -94,10 +95,19 @@ public final class GuestEgressTunnelListener: NSObject, VZVirtioSocketListenerDe
     socketDevice = device
   }
 
+  /** Control authentication must explicitly open egress admission for this VM. */
+  public func activate() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    guard socketDevice != nil, !accepting else { throw GuestEgressTunnelListenerError.unavailable }
+    accepting = true
+  }
+
   public func invalidate() {
     lock.lock()
     socketDevice?.removeSocketListener(forPort: nessieGuestEgressPort)
     socketDevice = nil
+    accepting = false
     let pending = self.pending
     self.pending.removeAll()
     let active = self.active
@@ -118,7 +128,8 @@ public final class GuestEgressTunnelListener: NSObject, VZVirtioSocketListenerDe
     from socketDevice: VZVirtioSocketDevice,
   ) -> Bool {
     lock.lock()
-    let allowed = socketDevice === self.socketDevice
+    let allowed = accepting
+      && socketDevice === self.socketDevice
       && connection.destinationPort == nessieGuestEgressPort
       && pending.count + active.count < maxConcurrentTunnels
     lock.unlock()
