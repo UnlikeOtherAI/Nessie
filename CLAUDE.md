@@ -656,6 +656,67 @@ public internet.
 
 See [docs/functionality.md](docs/functionality.md) for the authoritative API surface description. Section §7 describes the removed legacy MCP server for historical reference.
 
+## Personal assistant — workspace provisioning
+
+The assistant can set a workspace up the way its owner can by clicking: five
+PA-only builtins (`personalAssistantOnly: true`) in
+`worker/src/run/pa-tools/provisioning.ts`, each **mirroring one REST route's
+authorization — no weaker, no stronger** — and each calling the very same
+service function the route calls.
+
+- `agent_list` → `listAgentsForUser` (`safe: true`, read-only). Any active
+  member, matching `GET /api/agents`, and scoped by the same entitlement the
+  Agents page uses: an owner reaches every non-system agent including unbound
+  ones, everybody else reaches an agent through a channel they can see it
+  working in — never narrowed by the session's project/team. It exists because
+  `agent_bind_channel` and `agent_trigger_create` take an `agentId` and an
+  owner picks that from a list when clicking; without it the assistant could
+  only act on an agent created in the same conversation. Output is the acting
+  shape only — name, role, `agentId`, and the channels it is bound to — with an
+  optional `query` narrowing the already-authorized list by name or role.
+- `channel_create` → `createChannelForUser`. Any active member, matching
+  `POST /api/channels` (only `requireActorContext`). The team defaults from the
+  run context: explicit `teamId`, else the session tenant/action team, else the
+  team of the channel the conversation is in — never an invented default.
+- `agent_create` → `assertLedgerAgentModelSelection` + `createAgentRecord`. Any
+  active member, matching `POST /api/agents` (**not** owner-gated). Its schema
+  deliberately exposes no `agentKind`/`systemManaged`/`surfacePolicy`/
+  `delegationMode`/`parentAgentId`, and `assertGenericAgentToolPolicyInput`
+  still refuses every `requiresExplicitGrant` key and DeepWater provenance
+  marker, so chat cannot grant itself research.
+- `agent_bind_channel` → `bindAgentToChannel`. Reproduces all four gates of
+  `POST /api/agents/:agentId/bindings`: channel membership
+  (`getChannelIfMember`), the `personal_assistant` system-channel refusal,
+  owner, and `checkPolicy(…, 'agent', 'bind', …)`.
+- `agent_trigger_create` → `createAgentTrigger`, parsing the route's own
+  `CreateAgentTriggerBodySchema`. Owner + agent accessible; scheduled/interval
+  triggers build `launchOrigin` from the acting user and carry
+  `actionContext.uoaIdentity`, and a signing deployment refuses to create a
+  schedule without it — the same refusal `api/src/routes/triggers.ts` makes,
+  for the same reason (it would fail at every sweep forever).
+
+Owner-gated tools stay **visible** to non-owners and refuse in words (the
+`connector_*` precedent): the assistant says who can do it, instead of claiming
+it has no such capability. Role is re-read from the live `OrganizationMember`
+row at call time (`resolveActingMember`), because a run's `actorContext` is a
+snapshot from enqueue time while the API re-resolves the role per request; a
+deactivated membership is refused. Deliberately **not** included: agent update,
+agent delete, policy-target mutation, or anything touching the DeepWater bundle.
+`schedule_task` remains the un-gated "schedule *me*" tool; `agent_trigger_create`
+is the owner action on *another* agent.
+
+**Reuse, never fork.** `api/src/services/*` cannot be imported by the worker, so
+the shared functions live in **`@nessie/workspace-admin`** (mirroring how
+`@nessie/mcp-manage` is shared) and the api services re-export them, leaving the
+routes untouched: channel create/records/slugs, agent create/list/record/
+bindings and the tool-policy protected-key gate, trigger
+create/core/config-identity, the
+Ledger agent-model catalogue, `checkPolicy`, and the `getChannelIfMember` /
+`isAgentAccessibleToActor` predicates. The records those functions return
+(`ChannelRecord`, `AgentRecord`, `AgentTriggerRecord`, `CreateAgentTriggerBody`)
+moved to `@nessie/schemas` for the same reason; `api/src/contracts` re-exports
+them.
+
 ## Individual Communications Connector
 
 - Per-user OAuth connections to external communications providers (Slack + Gmail

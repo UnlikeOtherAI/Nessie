@@ -262,6 +262,7 @@ export const planToolDispatch = async (
     case 'direct':
     case 'stdio':
     case 'pty':
+    case 'executor':
       throw new ToolDispatchError(
         TOOL_DISPATCH_ERROR_CODES.TRANSPORT_UNSUPPORTED,
         `Transport "${transportConfig.transport}" is not handled by the universal `

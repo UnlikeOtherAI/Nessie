@@ -4,12 +4,30 @@ import test from 'node:test'
 import {
   createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
+  getAccessTokenExpiresAtMs,
+  getAccessTokenRenewalDelayMs,
   type SessionPayload,
 } from '../src/auth-session.js'
 
 const sessionPayload = (token: string): SessionPayload => ({
   me: {} as SessionPayload['me'],
   token,
+})
+
+const unsignedJwt = (payload: Record<string, unknown>): string =>
+  `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`
+
+test('access-token renewal timing uses only a valid numeric expiry claim', () => {
+  const token = unsignedJwt({ exp: 1_000 })
+  assert.equal(getAccessTokenExpiresAtMs(token), 1_000_000)
+  assert.equal(getAccessTokenRenewalDelayMs(token, 800_000, 120_000), 80_000)
+  assert.equal(getAccessTokenRenewalDelayMs(token, 880_000, 120_000), 0)
+  assert.equal(getAccessTokenRenewalDelayMs(token, 900_000, 120_000), 0)
+
+  assert.equal(getAccessTokenExpiresAtMs(unsignedJwt({ exp: 'soon' })), null)
+  assert.equal(getAccessTokenExpiresAtMs(unsignedJwt({ exp: Number.MAX_SAFE_INTEGER })), null)
+  assert.equal(getAccessTokenRenewalDelayMs(unsignedJwt({}), 0), null)
+  assert.equal(getAccessTokenRenewalDelayMs('not-a-jwt', 0), null)
 })
 
 const withMockFetch = async (

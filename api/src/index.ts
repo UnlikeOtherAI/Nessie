@@ -65,6 +65,7 @@ import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import { registerEventRoutes } from './routes/events.js'
 import { registerExecutionEnvironmentRoutes } from './routes/execution-environments.js'
+import { registerExecutorRoutes } from './routes/executors.js'
 import { registerFavoriteRoutes } from './routes/favorites.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
@@ -382,6 +383,7 @@ export const buildApp = async () => {
   registerWorkflowRoutes(app, deps)
   registerExecutionEnvironmentRoutes(app, deps)
   registerDisclosureGrantRoutes(app, deps)
+  registerExecutorRoutes(app, deps)
   registerMailboxRoutes(app, deps)
   registerResourceLockRoutes(app, deps)
   registerRunRoutes(app, deps)

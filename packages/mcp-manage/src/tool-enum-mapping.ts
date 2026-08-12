@@ -20,6 +20,7 @@ const TO_PRISMA_TOOL_REGISTRY_SOURCE: Record<ToolRegistrySource, string> = {
   custom: 'custom',
   'mcp-remote': 'mcp_remote',
   'interactive-session': 'interactive_session',
+  executor: 'executor',
 }
 
 const FROM_PRISMA_TOOL_REGISTRY_SOURCE: Record<string, ToolRegistrySource> = {
@@ -27,6 +28,7 @@ const FROM_PRISMA_TOOL_REGISTRY_SOURCE: Record<string, ToolRegistrySource> = {
   custom: 'custom',
   mcp_remote: 'mcp-remote',
   interactive_session: 'interactive-session',
+  executor: 'executor',
 }
 
 const TO_PRISMA_TOOL_GRANT_SOURCE: Record<ToolGrantSource, string> = {

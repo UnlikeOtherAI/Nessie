@@ -48,6 +48,7 @@ export type LoopCallbacks = {
     inputSummary: string,
     startedAt: Date,
     connectorUsage?: ConnectorUsage,
+    toolCallRecordId?: string,
   ) => Promise<void>
   onTextDelta: (delta: string) => Promise<void>
   onBudgetExhausted: (reason: BudgetExhaustionReason) => Promise<void>
@@ -98,6 +99,7 @@ type ExecuteToolFn = (
   output: string
   success: boolean
   inputSummary: string
+  toolCallRecordId?: string
 }>
 
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000
@@ -378,6 +380,7 @@ export const runAgenticLoop = async (input: {
             toolResult.inputSummary,
             startedAt,
             toolResult.connectorUsage,
+            toolResult.toolCallRecordId,
           )
           return { ...toolResult, toolCallId: tc.toolCallId, toolName: tc.toolName }
         } catch (error) {
@@ -396,6 +399,11 @@ export const runAgenticLoop = async (input: {
               false,
               summarizeToolInput(tc.arguments),
               startedAt,
+              undefined,
+              error instanceof Error
+                && typeof (error as Error & { toolCallRecordId?: unknown }).toolCallRecordId === 'string'
+                ? (error as Error & { toolCallRecordId: string }).toolCallRecordId
+                : undefined,
             )
           } catch (callbackError) {
             if (!fatal) throw callbackError

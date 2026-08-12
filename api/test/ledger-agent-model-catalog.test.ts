@@ -6,7 +6,7 @@ import {
   ledgerAgentModelCatalogRequestHeaders,
   LedgerAgentModelCatalogError,
   listLedgerAgentModels,
-} from '../src/services/ledger-agent-model-catalog.js'
+} from '@nessie/workspace-admin'
 
 const catalogConfig = {
   apiKey: 'lk_nessie_test',

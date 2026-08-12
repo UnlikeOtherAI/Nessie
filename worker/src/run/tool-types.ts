@@ -19,6 +19,19 @@ export type ToolExecutionResult = {
   toolName: string
 }
 
+// What the agentic loop receives back from a tool call: a settled result, never
+// a throw. Lives here rather than in `tools.ts` so the per-domain dispatchers
+// can type themselves without importing the main dispatcher.
+export type AgenticToolResult = {
+  acknowledgeDelivery?: () => void
+  connectorUsage?: ToolExecutionUsage
+  inputSummary: string
+  output: string
+  success: boolean
+  /** A pre-created durable ToolCall used by an executor command. */
+  toolCallRecordId?: string
+}
+
 export type BuiltinToolRuntimeContext = {
   agentId: string
   agentKind: 'personal_assistant' | 'shared'
@@ -36,6 +49,9 @@ export type BuiltinToolRuntimeContext = {
    * "nothing consumed", which is the pre-existing behaviour.
    */
   consumedSources?: ConsumedSourceSink
+  /** Deployment secret used only to decrypt an acknowledged executor receipt
+   * while preparing a user-owned continuation. It is never model-visible. */
+  executorCommandEncryptionSecret?: string
   ledgerIdentity: LedgerIdentityService | null
   // MCP credential plumbing for the connector management tools: the store
   // encrypts user-provided secrets into Postgres, the resolver resolves any

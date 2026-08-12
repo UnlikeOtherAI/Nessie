@@ -29,6 +29,16 @@ export {
   runConnectorUninstallTool,
 } from './pa-tools/connectors.js'
 export {
+  runExecutorAgentAccessPrepareTool,
+  runExecutorDescriptorReviewPrepareTool,
+  runExecutorInspectTool,
+  runExecutorLifecyclePrepareTool,
+  runExecutorListTool,
+  runExecutorPairTool,
+  runExecutorPrivateAssignmentPrepareTool,
+  runExecutorWorkspacePromotionPrepareTool,
+} from './pa-tools/executors.js'
+export {
   runAuthoredMessageSearchTool,
   runWorkspaceSearchTool,
 } from './pa-tools/conversation-search.js'
@@ -51,6 +61,13 @@ export {
   runKbPublishRequestTool,
 } from './pa-tools/knowledge-write.js'
 export { runSendMessageTool } from './pa-tools/message-delivery.js'
+export {
+  runAgentBindChannelTool,
+  runAgentCreateTool,
+  runAgentListTool,
+  runAgentTriggerCreateTool,
+  runChannelCreateTool,
+} from './pa-tools/provisioning.js'
 export {
   runPeopleSearchTool,
   runUpdatePreferencesTool,

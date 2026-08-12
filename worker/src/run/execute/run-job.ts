@@ -302,6 +302,7 @@ export const executeRunJob = async (
       checkBudgetBlocked: createBudgetBlockedProbe(deps, context, payload),
       inference,
       initialMessages: setup.initialMessages,
+      executorToolset: setup.executorToolset,
       invocationSink: invocations,
       deepWaterHandoffGuard,
       mcpToolset: setup.mcpToolset,

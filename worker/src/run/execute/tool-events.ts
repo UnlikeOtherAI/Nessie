@@ -31,23 +31,44 @@ export const recordToolEnd = async (
     success: boolean
     toolName: string
     connectorUsage?: ConnectorUsage
+    toolCallRecordId?: string
   },
 ): Promise<void> => {
   const endedAt = new Date()
 
-  await deps.prisma.toolCall.create({
-    data: {
-      agentId: context.agent.id,
-      durationMs: input.durationMs,
-      endedAt,
-      inputSummary: input.inputSummary,
-      outputPreview: input.outputPreview,
-      runId: context.run.id,
-      startedAt: input.startedAt,
-      success: input.success,
-      toolName: input.toolName,
-    },
-  })
+  if (input.toolCallRecordId) {
+    const updated = await deps.prisma.toolCall.updateMany({
+      where: {
+        agentId: context.agent.id,
+        id: input.toolCallRecordId,
+        runId: context.run.id,
+      },
+      data: {
+        durationMs: input.durationMs,
+        endedAt,
+        inputSummary: input.inputSummary,
+        outputPreview: input.outputPreview,
+        success: input.success,
+      },
+    })
+    if (updated.count !== 1) {
+      throw new Error('Executor ToolCall record is unavailable.')
+    }
+  } else {
+    await deps.prisma.toolCall.create({
+      data: {
+        agentId: context.agent.id,
+        durationMs: input.durationMs,
+        endedAt,
+        inputSummary: input.inputSummary,
+        outputPreview: input.outputPreview,
+        runId: context.run.id,
+        startedAt: input.startedAt,
+        success: input.success,
+        toolName: input.toolName,
+      },
+    })
+  }
 
   const connectorType =
     input.connectorUsage?.connectorType ?? CONNECTOR_TYPE_BY_TOOL[input.toolName]

@@ -203,6 +203,10 @@ export const AgentDesignerForm = ({
             'An organization owner manages them in Tools or Integrations.'
           )}
         </p>
+        <p className="text-xs text-[color:var(--tx3)]">
+          Executor operations require a separate exact executor-agent-operation grant.{' '}
+          <Link className="underline" to="/agents/executors">Manage executors and access</Link>.
+        </p>
         <ToolPicker
           groups={toolGroups}
           isLoading={toolsLoading}

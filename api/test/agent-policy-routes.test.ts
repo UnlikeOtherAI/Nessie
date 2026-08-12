@@ -6,7 +6,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { registerAgentRoutes } from '../src/routes/agents.js'
-import { bindAgentToChannel } from '../src/services/agent-bindings.js'
+import { bindAgentToChannel } from '@nessie/workspace-admin'
 import {
   AGENT_MANAGEMENT_ERROR_CODES,
   AgentManagementError,

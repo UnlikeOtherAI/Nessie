@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   McpServerInstanceIdSchema,
 } from './mcp.js'
+import { ExecutorOperationKeySchema } from './executor.js'
 import { AgentIdSchema } from './ids.js'
 
 /**
@@ -51,6 +52,7 @@ export const ToolRegistrySourceSchema = z.enum([
   'custom',
   'mcp-remote',
   'interactive-session',
+  'executor',
 ])
 export type ToolRegistrySource = z.infer<typeof ToolRegistrySourceSchema>
 
@@ -60,6 +62,7 @@ export const ToolRegistryTransportSchema = z.enum([
   'http',
   'stdio',
   'pty',
+  'executor',
 ])
 export type ToolRegistryTransport = z.infer<typeof ToolRegistryTransportSchema>
 
@@ -201,12 +204,25 @@ export type PtyTransportRegistryConfig = z.infer<
   typeof PtyTransportRegistryConfigSchema
 >
 
+/**
+ * The registry records a logical executor operation only. The server resolves
+ * and fences the actual executor for the run; callers never supply a machine.
+ */
+export const ExecutorTransportRegistryConfigSchema = z.object({
+  transport: z.literal('executor'),
+  operationKey: ExecutorOperationKeySchema,
+}).strict()
+export type ExecutorTransportRegistryConfig = z.infer<
+  typeof ExecutorTransportRegistryConfigSchema
+>
+
 export const ToolTransportConfigSchema = z.discriminatedUnion('transport', [
   DirectTransportConfigSchema,
   McpTransportRegistryConfigSchema,
   HttpTransportRegistryConfigSchema,
   StdioTransportRegistryConfigSchema,
   PtyTransportRegistryConfigSchema,
+  ExecutorTransportRegistryConfigSchema,
 ])
 export type ToolTransportConfig = z.infer<typeof ToolTransportConfigSchema>
 

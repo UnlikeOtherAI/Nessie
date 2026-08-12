@@ -101,8 +101,15 @@ export const DesignerChat = ({
             ].join(' ')}
           >
             <div className="whitespace-pre-wrap">
+              {/*
+                Names the fields the assistant actually has tools for. It
+                used to promise "anything on this form … and more" while
+                having no way to set the model, so it announced a finished
+                agent that could not be created.
+              */}
               {[
-                "Hi! I can control anything on this form — name, role, system prompt, tools, and more.",
+                'Hi! I can fill in this form for you — name, role, model,'
+                + ' system prompt and tools.',
                 "Tell me what you want to build and I'll configure the agent for you.",
               ].join('\n\n')}
             </div>

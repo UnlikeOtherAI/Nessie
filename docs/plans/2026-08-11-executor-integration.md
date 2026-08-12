@@ -1,6 +1,328 @@
 # Executor Integration Plan
 
-**Status:** proposed — ready for architecture review
+**Status:** approved — Phase 1 pairing control plane in progress
+
+## Current implementation boundary
+
+The current Phase 1 slice provides the durable executor record, scoped pairing,
+private human/agent roster, exact operation grants, user-confirmed access
+changes, the Executors home with a project doorway, Personal Assistant
+prepare-only management, a signed daemon-presence handshake, and the
+`nessie-executor` companion's secure key/state, enrollment, descriptor, and
+heartbeat workflow. It now also projects stable logical executor operations
+into the existing tool registry and resolves durable, opaque availability
+candidates only when the human scope, exact executor-operation grant, explicit
+logical policy, approved descriptor, local capability, and online state all
+agree.
+It now consumes an opaque candidate into a durable `ExecutorBinding` under an
+exact `(run, operation)` lock. Binding re-reads the initiator, agent, scope,
+membership, approved current descriptor, exact operation grant, logical grant,
+online state, and authorization revision. It then consumes the candidate and
+advances a binding-specific monotonic fence; daemon connection epochs and
+binding fences remain separate. A retry must reuse the same candidate and
+binding or fails closed.
+
+The paired daemon now has a signed outbound command poll and a domain-separated
+receipt channel. Queue payloads hold only a command id; operation arguments and
+structured terminal results are AES-256-GCM encrypted at rest, bounded to 64
+KiB, and linked to the existing queue job and `ToolCall`. The daemon receives a
+short-lived envelope only after the linked job is processing and must emit
+monotonic `accepted → started → result_acknowledged` receipts. The current
+companion executes `sandbox.stop` plus bounded `file.list`, `file.read`,
+`file.write`, and `workspace.review`. Reads start at one canonical, explicitly
+paired workspace root; writes create a bounded daemon-owned COW tree keyed to
+the server-provenanced run ID, and subsequent file reads/lists for that run use
+that same draft tree. Review returns a bounded hash-backed change manifest from
+the COW base, never a host-write command.
+
+The worker dispatch adapter is now enabled for a run only after a human has
+submitted an opaque availability handle. The normal launch path is
+`POST /api/threads/:threadId/executor-runs`: it atomically creates the human
+message, pending run, task, bindings, and existing `run.execute` queue job for
+one bound channel agent. The launch accepts a small exact operation bundle;
+each member is independently revalidated against the same opaque candidate in
+one transaction. `POST /api/runs/:runId/executor-bind` remains the narrow
+internal/continuation binding seam for an already-created non-browser single
+operation. Browser work is available only through its human-directed exact
+bundle.
+Neither endpoint accepts an executor id; the model receives only the bound,
+explicitly granted logical operations and never a selection parameter. Command creation
+reserves the normal `ToolCall`, creates an existing `executor.command` queue
+job, and blocks on the encrypted receipt.
+The queue handler retains its lease while the paired daemon works. Before
+dispatch, the server rechecks the bound human, agent, scope/membership,
+descriptor, operation and logical grants, lifecycle, and revision under the
+executor fence. An absent terminal receipt becomes `unknown_outcome` and is
+fatal/retry-safe, never a model-visible success; a late receipt for that exact
+already-delivered command can resolve it without issuing new work. The model
+schemas permit bounded file operations, `workspace.review`, `sandbox.stop`,
+and the exact `{browser.open, browser.observe, sandbox.stop}` browser bundle;
+no host-promotion schema is present.
+
+It does **not** dispatch host promotion, commands, browser actions, or coding
+sessions; those operations remain unavailable until their concrete isolated
+backends are delivered. The paired root is a path-constrained local read
+boundary: it rejects traversal and every symbolic link, keeps a fixed canonical
+root in owner-only daemon state, bounds every listing/read result, and returns
+no host paths. `file.write` is narrower: it creates a COW draft in an
+owner-only per-run scratch directory, records a hash-only base manifest, rejects
+links, special files and oversized source trees, and discards only that exact
+scratch directory on stop. `workspace.review` can disclose at most 100 changed
+relative paths, kinds, byte counts, and a digest after the same exact grants,
+but fails closed if JSON encoding would exceed the command-receipt cap; it
+cannot mutate the host. These operations are dispatched only after descriptor
+review, the exact executor-operation grant, logical-tool grant, and a
+human-bound run choice. Until the micro-VM,
+forced egress, and reviewed promotion protocol exist, the paired host root
+remains read-only. Browser is the first isolated backend: only an owner-local
+`configure-browser` command can verify the VM artifacts and runtime bundle,
+compile exact HTTPS origins, and propose both browser operations. After human
+descriptor review, one bound `browser.open` creates a lease-bound COW micro-VM;
+`browser.observe` returns at most 32 sanitized target records from that same
+run. A durable `ExecutorSession` consumes the launch once before VM startup;
+the bundle cannot share a run with file tools, and its legacy single-bind route
+rejects browser operations. No DOM, DevTools endpoint, browser action, direct network, or persistent
+browser credential is exposed; stop, VM exit, daemon shutdown, or a ten-minute
+session limit tears the browser down. Any human-confirmed access change,
+descriptor review, or lifecycle transition fences the daemon connection; the
+next control poll stops every live browser before the daemon may reconnect.
+The daemon enforces the descriptor `maxSessions` ceiling across run IDs and
+the durable session consumes the run's one browser-open attempt before VM
+startup, so a stopped, failed, or daemon-restarted VM cannot be reused as a
+general launcher. Its manager-visible session record is read-only. It provides
+an origin-channel doorway only when the manager already has channel
+entitlement, explains the current browser decision, and offers only separately
+confirmed executor revocation to end activity; it never exposes browser content
+or a hidden cross-channel run.
+
+The native promotion substrate remains unreachable from agents. Its
+`workspace-preflight` command accepts the host root and COW draft only as
+already-open descriptors, resolves each supplied relative path with native
+no-follow calls, recomputes the canonical manifest digest, checks each current
+host base and scratch digest, and returns a bounded ready/rejected result. Its
+`workspace-apply` companion stages the verified draft in a private,
+same-filesystem journal and either commits no-replace renames or restores an
+uncommitted transaction on the next invocation; it requires existing safe host
+parent directories. The owner-only companion can execute its
+`workspace-apply` primitive only for a server-authored `workspace.promote`
+command after a separately reviewed local policy names a verified native
+helper. There is no worker schema for a model: only the originating user sees a
+reviewed draft, prepares a short-lived continuation, and confirms it with a
+fresh password. Confirmation rechecks the exact review/result digest, user,
+run, agent, executor authorization, operation/logical/local-policy grants and
+server-derived executor identity before atomically creating one bound encrypted
+command, queue job and ToolCall. The native receipt is delivered through the
+existing command protocol; a changed local manifest or host conflict fails
+closed rather than applying a draft.
+
+The next backend substrate is checked in at `executor/vm`: an Apple Silicon
+macOS 15+ `Virtualization.framework` bootstrap validator. It accepts only
+owner-owned, non-link, single-link kernel/initrd/disk files, validates a
+bounded CPU/memory allocation and a read-only disk, and intentionally configures
+neither a NIC, host filesystem share, graphics device, nor host process bridge.
+It is not command-reachable and advertises no new descriptor operation. The
+browser/coding slice must add guest COW transport and a forced-egress broker as
+one reviewed unit; it may not turn this validator into a host-browser fallback.
+Its only guest-control primitive is a fixed virtio socket on the individual VM:
+the guest initiates one connection and the host rejects a replacement while it
+is live. It is not a host network listener and carries no executable descriptor
+operation on its own. Its v1 host broker now verifies the guest's empty-payload
+hello against the fresh per-session 32-byte boot token before accepting any
+frame, parses only bounded 4-byte-length JSON frames (64 KiB frame/32 KiB
+payload), permits no guest-initiated request and only one matching host
+request/response at a time, and fails closed for malformed input, I/O, timeout,
+or response mismatch. It returns descriptor closure to the same VM socket
+owner, preventing a terminal file descriptor from being reused by another VM.
+This is still only a capability-free transport until the initrd builder and
+typed browser/coding handlers ship together.
+
+The matching initrd builder is now checked in. It cross-compiles the small,
+static Linux arm64 guest `/init`, takes the canonical boot token only on stdin,
+and creates an uncompressed CPIO archive only in a new file under an owner-only
+`0700` session directory. The archive is private, one-session material and its
+owner must remove it after VM teardown. The guest reads and removes its token
+file before guest-initiated host-CID virtio connect, sends only the hello, clears
+its mutable staging bytes, and contains no shell, network client, workspace
+mount, browser, tmux, or operation handler. Until the next reviewed slice, any
+otherwise valid control request returns the fixed
+`EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE` result.
+
+The guest's root phase is now limited to boot mounts and one-time bootstrap-file
+removal. It then drops supplementary groups, GID, and UID before opening either
+control or egress transport, using the mounted COW directory's non-root visible
+owner or `65534:65534` without a workspace; a root-owned share fails closed.
+Future browser, tmux, and CLI processes therefore start unprivileged, with no
+setuid route back to a guest root identity.
+
+The VM core now has the narrow COW transport primitive for that future launcher:
+one fixed-tag `nessie-cow` virtiofs share, writable only to the guest and mounted
+there at `/work` with `nodev,nosuid,noexec`. It accepts only an owner-private,
+non-link directory, but that local validation is deliberately not treated as a
+run authorization proof. The daemon launcher still must obtain the path solely
+from `ensureSandboxWorkspace` for its exact bound run; the paired root, a model
+argument, and a user-selected path remain forbidden. The guest refuses to
+complete hello if an explicit COW mount fails. Since there is no launcher or
+descriptor path yet, this remains backend plumbing, not browser/coding
+availability.
+
+The companion COW side now records a durable, owner-only lease beside that exact
+draft before it may be mounted. The record binds `{runId, bindingFence,
+commandId, randomLeaseId}` and contains no path or secret; another guest lease
+or sandbox stop is rejected until the precise holder releases it. The VM
+launcher will receive the draft only through this lease, closing the teardown
+race without treating an arbitrary local path as a valid run workspace.
+
+The companion's VM handshake runner now consumes that lease. It verifies the
+owner-private guest image builder, kernel, and signed helper; creates an
+ephemeral owner-only VM directory; uses no shell; passes the token only on
+stdin; rechecks the lease before helper launch; and removes token-bearing VM
+material before releasing it. The runner is intentionally not wired to a model
+tool, descriptor, or durable `ExecutorSession` yet: it is the executable
+release probe needed before the long-lived session lifecycle is introduced.
+
+The signed VM helper also has a handshake-only release-candidate command. Its
+fresh token arrives on stdin, never in an argument; the helper enables the
+single VM's virtio socket, accepts only the matching guest hello before the
+bounded deadline, then invalidates the channel and stops the VM. It reports a
+sanitized `EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` result on any guest/package
+failure and cannot create a run, session, descriptor, browser, terminal, or
+coding action. This supplies the first real VM-to-guest proof without claiming
+that a safe browser/coding backend exists.
+
+The companion now also contains the inactive foundation for that egress broker:
+an owner-only Unix-socket HTTPS CONNECT gateway whose local policy names exact,
+distinct HTTPS origins. It has no TCP listener, generic HTTP forwarding, proxy
+mode, browser descriptor, or guest transport. Before it opens one raw tunnel it
+uses `@nessie/runtime`'s shared `pinnedConnect` primitive, which validates the
+target then dials the vetted literal IP without another DNS lookup. The eventual
+VM bridge must pair this gateway with a guest-only interface and enforce the
+remaining download/upload and credential rules; this groundwork is not browser
+availability.
+
+The host and guest now also derive a distinct egress-session token from the
+fresh 32-byte bootstrap secret as
+`HMAC-SHA-256(bootstrapToken, "nessie-executor-egress-v1")`, base64url without
+padding. This is deliberately not another use of the one-shot control `hello`
+credential: bootstrap remains control-only and is neither persisted nor sent
+on the future egress channel. A guest-local proxy and the per-VM host broker
+will use only the derived proof to authenticate their dedicated tunnel before
+the host joins it to the owner-only CONNECT gateway. The shared derivation is
+covered by Swift and Linux guest tests; it does not itself create a listener,
+route, proxy, or browser/coding capability.
+
+The tunnel's cross-language admission frame is exactly 48 bytes: `NEXG`,
+version byte `1`, and the 43-byte derived token. It has no control-frame JSON,
+request ID, command, bootstrap credential, or policy field. The host must
+reject a malformed, non-canonical, short, long, or unrecognized-version frame
+before it forwards a byte to the Unix-socket CONNECT gateway.
+
+The native core now has the complementary per-VM egress listener on the
+separate virtio port. It permits only 1–16 concurrent admitting/active tunnels,
+constant-time checks the supplied derived proof, and hands the resulting
+descriptor to a VM-bound callback which owns closure. It never interprets the
+tunnel as control traffic, resolves an origin, or opens a host/network socket.
+It remains deliberately unconnected while the guest-local proxy and its
+single-purpose bridge to the Unix CONNECT gateway are still absent, so this is
+not browser/coding availability.
+
+The guest also has the complementary loopback-only proxy, guarded by the exact
+`nessie.egress=1` boot flag. A VM configuration may add that flag only when its
+control socket is enabled. The proxy listens at guest `127.0.0.1:8137`, limits
+itself to 16 streams, sends the egress prelude before every host-CID virtio
+tunnel, and forwards nothing directly to a network address. The current helper
+does not set the flag from any daemon command or descriptor, so the compiled
+proxy is not an advertised or reachable browser/coding backend. The native bridge
+accepts only an authenticated VM-owned descriptor plus an absolute,
+non-link, current-user socket located in an owner-only directory; it moves
+bounded bytes bidirectionally and closes the exact tunnel on EOF, I/O failure,
+or overflow. It cannot parse HTTP, resolve DNS, select an origin, acquire a
+credential, or open any remote socket. Those operations stay exclusively in
+the existing owner-only CONNECT gateway.
+
+The signed helper now has the companion-internal long-lived `session` command.
+It requires a lease-derived COW directory, an existing owner-private gateway
+socket, and bootstrap on stdin; it boots guest egress with admission closed and
+opens it only after the exact control hello. Every authenticated tunnel gets its
+own bounded bridge and all bridges close on VM/control shutdown. The companion
+places that socket in a separately-created short owner-private temporary
+directory, then removes it with the session; a deep COW path never causes the
+Unix-socket bound to be widened. The daemon's browser manager is now the sole
+reviewed consumer: it derives a lease from the exact command/run fence, verifies
+`runtime.inspect.browser`, and retains the live VM only under that run ID. It
+has no general launcher, proxy, shell, coding operation, or browser attach
+endpoint.
+
+The companion now has the matching runtime-admission contract. A future guest
+browser/tmux/CLI image must be a complete owner-private bundle with a versioned
+manifest that enumerates all regular files, SHA-256 digests, executable bits,
+and declared browser/tmux/Codex/Claude entrypoints. It rejects links, shared
+permissions, undeclared/missing files, path traversal, file-digest drift, and
+entrypoints not declared executable. This is an artifact verifier only: it
+never executes a host file, searches `PATH`, or changes descriptor availability
+until a guest mount and in-guest digest recheck are delivered.
+
+Each session now materializes that verified source into a fresh lease-owned,
+owner-private `runtime` snapshot before the helper starts. The copy must retain
+the exact authorized manifest digest and every declared file hash, then its
+files and directories become non-writable; teardown reopens only the private
+directories needed to delete the snapshot. The helper receives that snapshot,
+never the mutable source path, in a distinct read-only `nessie-runtime` virtiofs
+share. Runtime file digests are streamed in bounded buffers rather than loading
+browser or CLI artifacts into companion memory.
+
+The guest mounts it at `/runtime` with `nosuid,nodev` (not `noexec`, because the
+verified browser/tmux/CLI must run there), while the separate writable COW
+share remains `nodev,nosuid,noexec`. A missing explicit runtime mount fails
+before control hello. Operations remain unavailable until an in-guest manifest
+check and typed process backend are added. The helper supplies the host-verified
+manifest digest only as a VM boot value. Before privilege drop or control hello,
+the guest independently hashes the mounted manifest and every declared file,
+then rejects changed, missing, duplicate, undeclared, non-executable, or
+misdeclared runtime artifacts. This closes the mutable-host-bundle interval;
+it still does not advertise a browser/coding operation.
+
+The live session now has a bounded, inherited-pipe control seam after its
+one-use 43-byte bootstrap: the companion writes only length-framed normal
+requests to the helper stdin and receives matching framed responses after its
+single ready line. The helper opens no new control listener, forwards at most
+one request to the authenticated guest channel, and ends the session on a
+malformed frame, pipe closure, response mismatch, overflow, or timeout. The
+first allowed request is `runtime.inspect`; it returns only booleans for
+manifest-declared browser/tmux/Codex/Claude entrypoints. This validates the
+end-to-end control path without launching an executable or advertising an
+executor operation. The private session seam now additionally implements a
+browser-launch substrate: only a host-validated, no-credentials/no-port HTTPS
+URL can reach the guest; it starts the manifest-declared `/runtime` browser
+with fixed forced-proxy/no-QUIC argv, no shell or `PATH` environment, and a
+symlink-free owner-private COW profile. The guest still has no direct network
+route. Its internal `browser.observe` is pinned to the guest browser's
+loopback-only DevTools list endpoint and returns at most 32 page title/type and
+query/fragment-stripped HTTPS URL records; it cannot fetch page content, choose
+a DevTools target, or connect anywhere else. It is now projected only after
+local browser configuration, descriptor review, exact operation grants, a
+server-bound run, and the human-only **Run on executor → Browse an approved
+site** doorway. Coding lifecycle/control remains unavailable.
+
+Executor managers can now inspect the latest bounded COW review receipts on the
+executor's Overview tab. That surface decrypts only the server-held result for
+the exact `workspace.review` command and renders its manifest digest plus the
+relative path, change kind, and byte count—never draft contents or a host path.
+It is deliberately manager-only: a management screen must not become a way for
+an organization/project member to browse another person's executor run data.
+The originating user also has a **Your reviewed drafts** doorway on the
+Executors page. That same bounded summary lets them prepare and then explicitly
+password-confirm a promotion; managers cannot use the overview review list to
+promote another person's draft. Neither surface exposes the planned availability
+union with connectors.
+
+The availability endpoint deliberately creates a five-minute, one-use opaque
+candidate and returns no machine identifier. The next binding slice consumes
+that record under the run/operation lock and rechecks its recorded capability
+and authorization revisions; it will not accept an executor selected by a
+model, browser, or API caller. Confirming an executor-operation access change
+updates the corresponding explicit logical-tool policy first, then the exact
+executor grant. If confirmation becomes stale, that ordering can only leave a
+logical policy without an executor grant, which remains deny-by-default.
 
 ## Decision
 
@@ -220,11 +542,15 @@ three exact actions:
    Nessie does not duplicate connector installation, OAuth, secret, or
    lifecycle controls in Agents.
 
-The channel composer displays **Run on executor** only when the invoked agent
-has at least one compatible executor operation and the initiating user can
-invoke at least one eligible executor. It shows the resolved data boundary and
-binding choice before queueing. It never exposes a private executor merely
-because an agent has an operation grant. Tools shows executor entries as
+The channel composer has a **Run on executor** doorway for bound channel
+agents. It asks the server for the initiating human's safe, short-lived
+availability choices only after the person chooses an agent and read-only
+capability, then creates the message, task, run, binding, and queue job in one
+transaction. It shows only a scope label and capability—not an executor ID,
+label, or private roster—and never exposes a private executor merely because
+an agent has an operation grant. It currently offers the companion's concrete
+`file.list` and `file.read` backends; write, browser, and coding choices remain
+absent until their isolated implementations are reviewed. Tools shows executor entries as
 managed `transport: 'executor'` rows that link back to the resource detail; its
 generic lifecycle, credential, and registry-mutation paths reject them.
 
@@ -256,13 +582,13 @@ It can offer these tools:
 
 | PA operation | Result |
 | --- | --- |
-| `availability_list`, `availability_explain` | Returns only executor and connector capabilities visible to the requesting user, optionally for one agent and immutable context, plus safe readiness reasons. |
+| `availability_list`, `availability_explain` *(next)* | Will return only executor and connector capabilities visible to the requesting user, optionally for one agent and immutable context, plus safe readiness reasons. |
 | `executor_list`, `executor_inspect` | Entitlement-scoped status, capability, scope, and data-boundary summary. |
-| `executor_pair` | Starts enrollment and returns pairing/fingerprint instructions; the companion completes the cryptographic pairing. |
-| `executor_pause`, `executor_drain`, `executor_revoke` | Performs the lifecycle operation only when the requesting user has the equivalent human web permission; revoke requires an explicit irreversible-action confirmation. |
+| `executor_pair` | Opens the user-owned setup surface; the user selects the immutable scope and assignments, and the companion completes the cryptographic pairing. |
+| `executor_pause`, `executor_drain`, `executor_revoke` | Creates a reviewed lifecycle-change draft only; the user confirms it in the Executors surface. Revoke always requires fresh verification. |
 | `executor_agent_access_prepare` | Produces an exact grant/revoke diff for a selected agent and logical operations. |
 | `executor_private_assignment_prepare` | Produces an exact add/remove/change diff for named users and agents, only when the requesting user is a private administrator. |
-| `executor_access_confirm` | Applies one unexpired prepared diff after a structural user confirmation control (and required step-up), then returns its audit receipt. |
+| `executor_workspace_promotion_prepare` | Prepares only the requesting user's acknowledged COW review for the separate password-confirmed host-promotion control. |
 
 `*_prepare` mutations create an `ExecutorAccessChange` draft containing the
 canonical diff digest, actor user, executor/policy revisions, expiry, and a
@@ -271,17 +597,16 @@ desktop client renders an explicit confirmation control bound to that token;
 the confirmation endpoint re-checks the current human user's entitlement,
 revisions, and the exact digest before applying it. When policy requires
 step-up—or always for a private-assignment change, access elevation, or
-revocation—the confirmation attaches a fresh, single-use
-`VerificationChallenge` bound to the user, action, executor/access-change ID,
-and expiry under `docs/step-up-verification-spec.md`. It uses the configured
-factor policy (for example email OTP/link, TOTP, or recovery code); no factor
-code or proof is ever placed in chat or a model prompt. This preserves the rule
+revocation—the confirmation requires a fresh, server-side password re-proof in
+the first control-plane slice. An account without a password fails closed until
+the platform's SSO/WebAuthn verifier is connected to this continuation contract;
+the opaque verification binding remains on the continuation for that upgrade.
+No factor code or proof is ever placed in chat or a model prompt. This preserves the rule
 that only a user—not the Personal Assistant, an arbitrary shared agent, or
 terminal text—may manage user or agent access, while allowing the PA to carry
-out a confirmed user request. The same confirmation mechanism governs
-project/organization agent grants. Every prepared, expired, rejected, and
-applied change is audit logged; affected private users receive an access-change
-notice without leaking executor data to unassigned people.
+prepare a confirmed user request. The same confirmation mechanism governs
+project/organization agent grants. Every prepared, expired-on-confirmation,
+rejected, and applied change is audit logged.
 
 Existing PA `connector_*` operations continue to manage connector lifecycle
 through `@nessie/mcp-manage`. Add a safe availability view to `connector_list`
@@ -399,8 +724,8 @@ Initial operation families are deliberately narrow and schema-first:
 
 | Profile | Operations | Notes |
 | --- | --- | --- |
-| Workspace sandbox | `file.list`, `file.read`, `file.write`, `command.run`, `browser.open`, `browser.observe`, `browser.act`, `workspace.promote`, `sandbox.stop` | Paths and command argv are validated locally for every call. Browser actions run in the executor's isolated profile; promotion is a separate host-write operation. |
-| Coding session | `coding.launch`, `coding.attach`, `coding.observe`, `coding.prompt`, `coding.interrupt`, `coding.close` | `prompt` and `interrupt` are control operations; they are never implicit in observation. |
+| Workspace sandbox | `file.list`, `file.read`, `file.write`, `workspace.review`, `browser.open`, `browser.observe`, `sandbox.stop` | Paths are validated locally for every call. `workspace.review` is a bounded COW delta only. Browser work is an exact three-operation, one-session bundle. |
+| Coding session | `coding.launch`, `coding.observe`, `workspace.review`, `sandbox.stop` | An exact four-operation, one-session Codex bundle. The launch prompt is positional after `--`; observation returns lifecycle only; terminal output and terminal control are never exposed. |
 
 Each approved **logical operation** becomes one stable, scoped
 `ToolRegistryEntry` with a new `transport: 'executor'`; it is not duplicated
@@ -514,8 +839,8 @@ Coding sessions add these non-negotiable rules from Coder's model:
   `PATH` or interpolate a session name into a shell command.
 - The initial release launches and observes only sessions created in that
   dedicated server. Attaching a pre-existing/default-server tmux session is
-  deferred to a separately consented broker design; it is not smuggled through
-  the dedicated-server guarantee.
+  deferred to a separately consented local-attachment design; it is not
+  smuggled through the dedicated-server guarantee.
 - Observe, create, input, interrupt, and close are separately advertised and
   granted. Control is off by default; enabling automated input requires an
   owner-approved, time-bounded control lease and follows the configured
@@ -528,12 +853,14 @@ Coding sessions add these non-negotiable rules from Coder's model:
   checks before launch, a single-writer control lease, and an explicit trust
   profile for the CLI home and its credentials. The coding profile is not the
   credential-free workspace-sandbox profile. It never mounts the host
-  `~/.codex`, `~/.claude`, keychain, or a global CLI token into the guest.
-  Instead a root-owned daemon credential broker holds any renewable credential
-  outside the guest workspace identity and the forced egress gateway injects
-  only short-lived, executor/session-bound upstream authorization. The CLI and
-  workspace processes receive neither a reusable bearer nor a host credential;
-  revocation closes the broker session and gateway route immediately.
+  `~/.codex`, `~/.claude`, keychain, or a global CLI token into the guest. The
+  supported Codex path verifies an owner-private auth-file path locally, then
+  has only the owner-controlled initrd builder read it. The guest moves that
+  one file into a fresh root-only runtime home and removes the initrd copy
+  before it drops privilege. Neither the daemon, the control plane, state,
+  command arguments, nor logs receive its contents. Revocation and stop tear
+  down the VM, route, private runtime home, and initrd together; there is no
+  credential broker or injected renewable authorization in this release.
 - A coding session works in its own copy-on-write guest workspace. It may edit
   that scratch copy, but it cannot write the selected host workspace directly;
   the same explicit, reviewed `workspace.promote` operation used by mutating
@@ -568,9 +895,13 @@ then the product shows it as unsupported rather than silently degrading.
 
 Create a dedicated `nessie-executor` daemon rather than embedding privileged
 execution in the web admin or Tauri webview. It owns the key, local policy,
-outbound connection, sandbox backends, and tmux adapter. The existing `desktop`
-Tauri app is the first graphical companion and supervises that daemon; the same
-daemon also has CLI/service installation for headless developer machines.
+outbound connection, sandbox backends, and tmux adapter. The current executable
+surface is its explicit CLI, so it can be paired and supervised by an
+owner-managed service on headless developer machines. A graphical desktop
+companion is a remaining delivery item: it must supervise that exact daemon and
+offer native folder selection and local-policy review without becoming authority
+for an executor paired by another machine. It cannot be claimed as shipped until
+the signed helper and its packaged runtime artifacts are actually embedded.
 
 Suggested ownership boundaries:
 
@@ -590,8 +921,9 @@ Suggested ownership boundaries:
 - `executor/`: the daemon, local policy enforcement, sandbox/browser backends,
   and tmux/Codex/Claude adapters. This is a focused executable workspace, not
   an addition to the developer-only `cli/` package.
-- `desktop/`: daemon lifecycle, native folder-selection and local policy UI;
-  it never becomes the authority for an executor paired by another machine.
+- `desktop/`: planned daemon lifecycle, native folder-selection and local
+  policy UI; it never becomes the authority for an executor paired by another
+  machine.
 - `admin/src/facades/executors` and focused feature components: the one web
   management/view surface re-used by pairing, Agent Designer, workflows, and
   activity detail.
@@ -615,7 +947,7 @@ and how an uncertain command maps into the existing queue/tool-call/run
 recovery states. Define the availability resolver, exact
 `ExecutorAgentOperationGrant` semantics, private-admin succession/offboarding,
 candidate-handle consumption, required `ToolRegistrySource`/transport enum
-updates, the forced egress topology, guest credential-broker boundary,
+updates, the forced egress topology, guest-private auth-file boundary,
 `workspace.promote` manifest/commit protocol, and the step-up action policy.
 Add contract tests before an executor schema migration, companion pairing, or
 UI implementation can land.
@@ -630,10 +962,13 @@ Deliver a reachable, no-execution slice:
    an explicit choice and is never inferred from the active session.
 2. The desktop companion (or headless daemon) consumes the pairing challenge;
    the owner confirms the machine fingerprint and selects a strict initial
-   policy locally.
+   policy locally. Local configuration produces a signed revision proposal
+   only; it cannot activate a new operation.
 3. The daemon reports a signed descriptor and heartbeats. The owner can inspect
    its policy, pause/drain/revoke it, and see its data boundary from the web
-   home and companion.
+   home and companion. A local policy revision remains pending until an
+   entitled person prepares and confirms descriptor activation; activation
+   requires fresh verification.
 4. Pairing replay, descriptor rollback, competing active connections, offline,
    drain, and revoke all
    produce deterministic status and audit receipts.
@@ -655,127 +990,17 @@ API or daemon without either is not a completed slice.
 ### 2. Read-only workspace sandbox
 
 Ship one concrete supported backend, or advertise no workspace operations on
-that platform. The companion grants one workspace; file list/read run within a
-real fail-closed sandbox. Add the channel task/composer doorway, binding
+that platform. The initial companion grants one explicit, canonical read-only
+workspace root; file list/read reject traversal and symbolic links, use only
+relative paths, and have bounded output. It is deliberately not described as a
+micro-VM: the isolated COW sandbox is a prerequisite for any write, command,
+browser, or coding operation. Add the channel task/composer doorway, binding
 selection/pinning, registry projection, bounded result handling, and an
-inspect-safe activity receipt. No writes, command execution, or browser actions
-are enabled in this slice. Agent Designer's exact executor-operation grants
+inspect-safe activity receipt. Agent Designer's exact executor-operation grants
 and their PA prepare/confirmed-apply counterpart must be live before the
 composer can present a candidate.
 
-### 3. Browser observe and workflow binding
+## Delivery and verification
 
-Add browser open/observe only through the enforced egress proxy. Add project or
-worktree selection and executor requirements to workflow test/run detail. A
-workflow resolves and pins an eligible executor once at launch and records that
-choice on its run rather than re-selecting after a retry. Keep the existing
-Docker/GCloud environment flow intact.
-
-### 4. Mutating sandbox operations
-
-Add file write, argv-command, and browser-act only after `ExecutorApproval`,
-fencing, acknowledgement/recovery, and revocation-mid-call semantics pass.
-Use a copy-on-write/scratch workspace for the first mutating profile so a
-successful sandbox command cannot silently alter the selected host workspace.
-Promoting an explicit change back to the host is the separate,
-approval-gated `workspace.promote` operation, performed only by the daemon
-from a validated, conflict-checked manifest.
-This slice is blocked until the Attention surface has passed its run-detail,
-activity-row, and companion doorway tests.
-
-### 5. Coding-session executor
-
-Add the dedicated tmux backend, Codex and Claude launch adapters, observe-only
-sessions launched by the executor, and session-local authenticated hooks. Ship
-the session list/detail through the same Executors surface with read-only/control
-state, a visible control-lease timer, terminal attention states, stop/detach
-actions, and links back to the originating Nessie task.
-
-Only after observe/control, replay, reconnect, and revocation tests pass may
-an agent receive `coding.prompt`. The implementation must not modify a user's
-global Codex or Claude configuration; injected hooks/settings are session-local
-and fail open to observation only.
-
-### 6. Expansion and hardening
-
-Add platform-specific sandbox backends, local MCP proxy capability, service
-installers for macOS/Linux/Windows, encrypted local transcript cache with a
-user-configured retention policy, policy previews, and capacity/budget
-scheduling. Consider hosted ephemeral executors only as a separate profile
-with its own isolation and commercial review.
-
-## Verification gates
-
-Each slice must prove all of the following:
-
-- a user without entitlement cannot discover, select, or inspect an executor;
-  a private run requires both the exact assigned user and exact assigned agent,
-  and cannot leak to other users or agents; project scope cannot run outside
-  its exact project; organization scope cannot cross organizations; and an
-  explicit scope filter never grants access;
-- every executor operation requires both its exact
-  `ExecutorAgentOperationGrant` and its logical tool grant; a new descriptor
-  operation is ungranted, a resource grant cannot spill to another executor,
-  and candidate handles cannot be forged, reused, or widened by model input;
-- private use assignees cannot read a roster, the final active human private
-  administrator cannot be removed, offboarding drains/revokes instead of
-  transferring private access, and break-glass revocation cannot inspect data;
-- cloud grants cannot bypass a locally denied path, command, browser origin,
-  read-only root, interactive-control setting, or resource ceiling;
-- pairing, command replay, policy revision mismatch, network loss, reconnect,
-  draining, revocation, and cancellation have deterministic, idempotent
-  outcomes;
-- executor dispatch has exactly one queue-job and one `ToolCall` lifecycle per
-  operation; an `ExecutorCommand` cannot create a second lease, retry loop, or
-  terminal state, and uncertain acknowledgement follows the existing
-  `needs_setup`/recovery path;
-- pairing replay/cross-organization races, descriptor rollback, dual active
-  connections, daemon/server restarts, disconnect before and after command
-  acknowledgement, and revocation mid-call fail closed or enter explicit
-  operator recovery;
-- sandbox tests cover symlink, hardlink, mount, child-process, DNS, private
-  network, redirect, download/upload, WebSocket, and file-to-web exfiltration
-  attempts; guest DNS, direct TCP, UDP/QUIC, CONNECT, and proxy-bypass attempts
-  cannot evade the forced egress gateway; unsupported platforms advertise no
-  stronger operation than they enforce;
-- no workspace or coding process can read a host CLI home, keychain, global
-  token, or reusable bearer; broker/gateway credential revocation cuts off a
-  live session without exposing credential material in guest, model, audit, or
-  log data;
-- `workspace.promote` alone can modify a host workspace and requires its own
-  grants, approval, local policy, binding, and receipts; hostile COW manifests,
-  base-snapshot conflicts, symlink/hardlink/special-file paths, interrupted
-  commits, and revocation during promotion cannot produce an unreviewed host
-  write or leave an unrecoverable partial change;
-- approval replay with changed arguments or policy fails, and a retained
-  redacted approval manifest proves what was approved without storing raw data;
-- every pending approval and coding attention state is actionable from its
-  Executors Attention home and reachable from run detail, activity, and the
-  companion; an agent cannot approve, reject, or alter private assignments;
-- PA access changes require a current user-bound structural confirmation and
-  the configured step-up challenge where required; an expired/replayed/stale
-  diff, a shared-channel PA run, or a scheduled/child agent cannot apply it;
-- a coding action cannot target a prefix-matched/wrong tmux session, and
-  terminal text, hostile ANSI, or binary output cannot manufacture a success,
-  failure, or approval;
-- commands and tool calls retain stable provenance without retaining raw local
-  files, terminal output, browser DOM, or credentials; raw content is absent
-  from database records, audit, logs, realtime telemetry, and error reports;
-- the web management page, Agent Designer doorway, run/workflow selector, and
-  companion each work in a real Playwright browser/desktop verification flow;
-- Codex and Claude launch paths are tested against declared supported versions
-  and the source-adoption/licence matrix is complete before any external code is
-  reused;
-- existing Docker/GCloud environment provisioning and current MCP HTTP/SSE
-  security tests continue to pass unchanged.
-
-## Explicit non-goals for the first release
-
-- turning every connected laptop into a generic remote shell or SSH proxy;
-- connecting to arbitrary pre-existing tmux sessions; a separately consented
-  broker is a later design, not an initial-release shortcut;
-- cloud-side stdio execution, private-network URL probing, or user-authored
-  connector process spawning;
-- silently transmitting a developer's source tree, terminal history, browser
-  profile, home directory, Docker socket, or local credentials;
-- replacing the current execution-environment provider/runner system.
+The remaining delivery phases, hardening gates, and explicit non-goals are in
+[delivery and verification](2026-08-11-executor-integration/delivery-and-verification.md).

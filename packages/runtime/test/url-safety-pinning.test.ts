@@ -6,6 +6,7 @@ import { after, describe, it } from 'node:test'
 import {
   assertSafeUrlPinned,
   createPinnedFetchAgent,
+  pinnedConnect,
   safeFetch,
   UrlSafetyError,
 } from '../src/url-safety.js'
@@ -98,6 +99,52 @@ describe('createPinnedFetchAgent', () => {
       } as RequestInit & { dispatcher: unknown }),
     )
     await agent.close()
+  })
+})
+
+describe('pinnedConnect', () => {
+  it('passes only the vetted literal address to the raw socket connector', async () => {
+    let attempted: { address: string; port: number } | undefined
+    const socket = { destroy: () => undefined } as unknown as import('node:net').Socket
+    const connected = await pinnedConnect('https://public.test/path', {
+      connectImpl: async (input) => {
+        attempted = input
+        return socket
+      },
+      resolveHost: async () => ['93.184.216.34'],
+    })
+    assert.equal(connected.socket, socket)
+    assert.deepEqual(attempted, { address: '93.184.216.34', port: 443 })
+  })
+
+  it('rejects a private target before the raw connector runs', async () => {
+    let attempts = 0
+    await assert.rejects(
+      pinnedConnect('https://rebind.test/path', {
+        connectImpl: async () => {
+          attempts += 1
+          throw new Error('must not connect')
+        },
+        resolveHost: async () => ['127.0.0.1'],
+      }),
+      UrlSafetyError,
+    )
+    assert.equal(attempts, 0)
+  })
+
+  it('rejects HTTP before the raw connector runs', async () => {
+    let attempts = 0
+    await assert.rejects(
+      pinnedConnect('http://public.test/path', {
+        connectImpl: async () => {
+          attempts += 1
+          throw new Error('must not connect')
+        },
+        resolveHost: async () => ['93.184.216.34'],
+      }),
+      UrlSafetyError,
+    )
+    assert.equal(attempts, 0)
   })
 })
 

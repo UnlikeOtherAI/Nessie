@@ -78,7 +78,7 @@ control.
 | 1 | Tools / Connectors | MCP tools discovered at a **shared** install scope project as `pending_review`; the worker only exposes `active`; **no route or UI anywhere transitions them**. Every org/project/team/channel-scoped connector was permanently inert. | **Blocker** | Fixed — `POST /api/mcp/tools/status` + review controls on `/agents/tools` + "N tools awaiting review" chip on Connectors |
 | 2 | Triggers / channels | A trigger fire posted its kickoff prompt as a visible channel message **attributed to the human owner** (raw JSON payload, "A interval trigger…"), and the agent's finding threaded *under* it — so a monitoring channel showed only plumbing. | **High** | Fixed — kickoff is `role: 'system'`; trigger runs stamp `replyPlacement: 'channel'`; grammar + payload leak fixed |
 | 3 | `message_search` builtin | `t."channel_id" IN (${Prisma.join(channelIds)})` sent text params against a `uuid` column → every call failed with Postgres 42883 `operator does not exist: uuid = text`. A default-on builtin, broken for every agent in production. | **High** | Fixed — cast each id, matching the working sibling in `conversation-search.ts` |
-| 4 | Personal Assistant | The PA cannot reach parity with the click path: no `channel_create`, no agent creation, no agent→channel binding, no trigger creation. It said so honestly rather than faking it, but a user who does not want to click cannot get there. | **High** | Designed (Fable + Kimix agreed); not yet built |
+| 4 | Personal Assistant | The PA cannot reach parity with the click path: no `channel_create`, no agent creation, no agent→channel binding, no trigger creation. It said so honestly rather than faking it, but a user who does not want to click cannot get there. | **High** | Fixed — `channel_create`, `agent_create`, `agent_bind_channel`, `agent_trigger_create` shipped in `worker/src/run/pa-tools/provisioning.ts`, plus `agent_list` so an agent the user names (not just one created in the same conversation) can be bound or scheduled |
 | 5 | Runs / scheduling | A run **always** posts a message, so a monitoring agent cannot stay quiet; a 15-minute sweep reports "nothing changed" forever. | **High** | Built, then **reverted** — the `conclude_silently` descriptor made the provider return empty completions and failed every trigger run. Design stands; mechanism needs rework |
 | 6 | Ledger / embeddings | Production had no `NESSIE_EMBEDDING_*`, so embeddings fell back to the chat provider and 403'd. Fixed the routing — but the Ledger key is then rejected with `token not allowed for jina`, so memory recall and `kb_search` still run without vectors. | **High** | Routing fixed + deployed; **blocked on the Ledger token being granted the jina service** |
 | 7 | Triggers / Ledger | Every **scheduler-fired** run fails with `Ledger requires a linked UnlikeOtherAI SSO identity for the originating user`. Manual "Run now" and @mentions work, because they carry the caller's linked identity. The unattended schedule has therefore never delivered on its own. | **Blocker** | **Fixed** — the trigger persists the creator's UOA tuple in `launchOrigin` and re-verifies it against the live link at each fire. Verified: an unattended scheduler run completed in production for the first time |
@@ -149,6 +149,12 @@ refuses `agentKind`/`systemManaged`/`delegationMode`, bindings refuse the PA DM,
 and a member-created agent is inert until an owner binds/triggers it. Both
 explicitly withheld `agent_update`, `agent_delete`, and any DeepWater
 grant machinery.
+
+Shipping it surfaced a fifth tool neither brief named: `agent_bind_channel` and
+`agent_trigger_create` both take an `agentId`, and nothing could produce one for
+an agent the user merely *named*. In the UI that id comes from a list, so
+`agent_list` (the same `listAgentsForUser` read `GET /api/agents` performs)
+shipped beside them.
 
 They disagreed on one point: Kimix wanted `agent_create` owner-only; Fable said
 member-level for route parity. **Checked in code — Fable is right:**

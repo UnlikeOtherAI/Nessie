@@ -1,12 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
-import { ensureDefaultThread } from './channel-records.js'
-import { loadChannelTeamProject } from './channel-slugs.js'
 import {
   acquireAgentToolPolicyLock,
   assertGenericAgentToolPolicyInput,
+  ensureDefaultThread,
+  loadChannelTeamProject,
   mergeGenericAgentToolPolicy,
-} from './agent-tool-policy.js'
+} from '@nessie/workspace-admin'
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_CHANNEL_TYPE = 'personal_assistant' as const

@@ -12,6 +12,7 @@ import { ProjectBacklogTab } from './ProjectBacklogTab'
 import { ProjectBoardTab } from './ProjectBoardTab'
 import { ProjectDocsTab } from './ProjectDocsTab'
 import { ProjectInsightsTab } from './ProjectInsightsTab'
+import { ProjectExecutorsTab } from './ProjectExecutorsTab'
 import { ProjectSettingsPage } from './ProjectSettingsPage'
 
 export const ProjectView = () => {
@@ -35,8 +36,10 @@ export const ProjectView = () => {
       ? 'docs'
       : location.pathname.endsWith('/backlog')
         ? 'backlog'
-        : location.pathname.endsWith('/insights')
-          ? 'insights'
+    : location.pathname.endsWith('/insights')
+      ? 'insights'
+      : location.pathname.endsWith('/executors')
+        ? 'executors'
           : location.pathname.endsWith('/board')
             ? 'board'
             : 'overview'
@@ -54,6 +57,7 @@ export const ProjectView = () => {
         ]
       : []),
     { id: 'docs', label: withCount('Docs', knowledgeCount), to: `/projects/${projectId}/docs` },
+    { id: 'executors', label: 'Executors', to: `/projects/${projectId}/executors` },
     { id: 'settings', label: 'Settings', to: `/projects/${projectId}/settings` },
   ]
   const activeTab = tabs.find((item) => item.id === tab)
@@ -95,6 +99,8 @@ export const ProjectView = () => {
           <ProjectBacklogTab projectId={projectId} />
         ) : tab === 'insights' ? (
           <ProjectInsightsTab projectId={projectId} />
+        ) : tab === 'executors' ? (
+          <ProjectExecutorsTab projectId={projectId} />
         ) : tab === 'overview' ? (
           <ProjectDashboard projectId={projectId} />
         ) : (

@@ -3,7 +3,7 @@ import type { ToolRegistrySource } from '@nessie/schemas'
 /**
  * `ToolBadge` is the canonical pill used wherever a tool surface is presented
  * to the user. It distinguishes the source family (builtin vs custom vs
- * MCP-remote vs interactive-session) using a stable colour ramp so users can
+ * MCP-remote vs executor vs interactive-session) using a stable colour ramp so users can
  * scan a long mixed list without reading every word.
  *
  * Mandated by `docs/provider-system-and-frontend-architecture.md` §8 (Tool*
@@ -19,6 +19,7 @@ const SOURCE_STYLES: Record<ToolRegistrySource, string> = {
     'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
   ].join(' '),
   'custom': 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
+  'executor': 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
   'mcp-remote': 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
   'interactive-session': 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
 }

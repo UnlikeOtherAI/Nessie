@@ -20,6 +20,7 @@ export const RATE_LIMIT_BUCKETS = {
   mcpOauthIp: 'mcp.oauth.ip',
   mcpSecretWriteIp: 'mcp.secret_write.ip',
   mcpSecretWriteAccount: 'mcp.secret_write.account',
+  executorDaemonIp: 'executor.daemon.ip',
   stepUpIp: 'auth.step_up.ip',
   stepUpAccount: 'auth.step_up.account',
 } as const

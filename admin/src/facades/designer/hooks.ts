@@ -3,7 +3,7 @@ import type {
   AgentDesignerActions,
   AgentFormState,
 } from '../../components/features/agents/designer/useAgentDesigner'
-import { getBaseUrl } from '../../lib/api-client'
+import { getBaseUrl, type AgentModelOption } from '../../lib/api-client'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import type { DesignerToolOption } from './tool-catalog'
 
@@ -81,6 +81,7 @@ export const useDesignerChat = (
   formState: AgentFormState,
   actions: AgentDesignerActions,
   availableTools: DesignerToolOption[] = [],
+  availableModels: AgentModelOption[] = [],
 ) => {
   const { token } = useAuthSession()
   const [state, setState] = useState<DesignerChatState>({
@@ -143,6 +144,9 @@ export const useDesignerChat = (
               description: tool.description,
               kind: tool.kind,
             })),
+            // Sent in picker order, so the prompt's "leading model" and the
+            // form's preselection are the same entry.
+            availableModels,
           }),
           signal: controller.signal,
         })
@@ -214,7 +218,15 @@ export const useDesignerChat = (
         abortRef.current = null
       }
     },
-    [state.messages, state.streaming, formState, actions, token, availableTools],
+    [
+      state.messages,
+      state.streaming,
+      formState,
+      actions,
+      token,
+      availableTools,
+      availableModels,
+    ],
   )
 
   const stop = useCallback(() => {
