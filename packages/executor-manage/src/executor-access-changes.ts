@@ -1,9 +1,4 @@
-import {
-  createHash,
-  randomBytes,
-  randomUUID,
-  timingSafeEqual,
-} from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
@@ -14,15 +9,18 @@ import {
   setExecutorAgentOperationGrantInTransaction,
   setPrivateAssignmentInTransaction,
 } from './executor-access-mutations.js'
-import { canonicalExecutorJson } from './executor-canonical-json.js'
+import {
+  EXECUTOR_CONTINUATION_TTL_MS,
+  executorContinuationSubjectDigest,
+  executorContinuationValuesMatch,
+  hashExecutorContinuationValue,
+} from './executor-continuation-security.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import {
   reviewExecutorDescriptorInTransaction,
   transitionExecutorLifecycleInTransaction,
   type ExecutorLifecycleAction,
 } from './executor-lifecycle.js'
-
-const ACCESS_CHANGE_TTL_MS = 10 * 60 * 1000
 
 export type ExecutorAccessChange =
   | {
@@ -67,22 +65,6 @@ type StoredAccessChange = {
   authorizationRevision: number
   change: ExecutorAccessChange
   requiresFreshVerification: boolean
-}
-
-const hash = (value: string): string =>
-  `sha256:${createHash('sha256').update(value).digest('hex')}`
-
-const tokenMatches = (token: string, expectedHash: string | null): boolean => {
-  if (!expectedHash) return false
-  const actual = Buffer.from(hash(token))
-  const expected = Buffer.from(expectedHash)
-  return actual.length === expected.length && timingSafeEqual(actual, expected)
-}
-
-const digestMatches = (value: string, expected: string): boolean => {
-  const actual = Buffer.from(value)
-  const target = Buffer.from(expected)
-  return actual.length === target.length && timingSafeEqual(actual, target)
 }
 
 export const requiresFreshExecutorVerification = (change: ExecutorAccessChange): boolean =>
@@ -205,17 +187,17 @@ export const prepareExecutorAccessChange = async (
   const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
   const confirmationToken = randomBytes(32).toString('base64url')
   const verificationRequired = requiresFreshExecutorVerification(input.change)
-  const expiresAt = new Date(Date.now() + ACCESS_CHANGE_TTL_MS)
+  const expiresAt = new Date(Date.now() + EXECUTOR_CONTINUATION_TTL_MS)
   const revisions: StoredAccessChange = {
     authorizationRevision: executor.authorizationRevision,
     change: input.change,
     requiresFreshVerification: verificationRequired,
   }
-  const subjectDigest = hash(canonicalExecutorJson({
+  const subjectDigest = executorContinuationSubjectDigest({
     actorUserId: actorContext.actor.actorId,
     executorId: executor.id,
     revisions,
-  }))
+  })
   const continuation = await tx.executorContinuation.create({
     data: {
       executorId: executor.id,
@@ -223,7 +205,7 @@ export const prepareExecutorAccessChange = async (
       actorUserId: actorContext.actor.actorId,
       subjectDigest,
       revisions: revisions as unknown as Prisma.InputJsonValue,
-      confirmationTokenHash: hash(confirmationToken),
+      confirmationTokenHash: hashExecutorContinuationValue(confirmationToken),
       verificationChallengeId: verificationRequired ? randomUUID() : null,
       expiresAt,
     },
@@ -297,7 +279,10 @@ export const confirmExecutorAccessChange = async (
     if (
       !continuation
       || continuation.actorUserId !== actorContext.actor.actorId
-      || !tokenMatches(input.confirmationToken, continuation.confirmationTokenHash)
+      || !executorContinuationValuesMatch(
+        hashExecutorContinuationValue(input.confirmationToken),
+        continuation.confirmationTokenHash,
+      )
     ) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_NOT_FOUND, 'Access change not found.')
     }
@@ -316,12 +301,12 @@ export const confirmExecutorAccessChange = async (
     if (!stored) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is invalid.')
     }
-    const expectedDigest = hash(canonicalExecutorJson({
+    const expectedDigest = executorContinuationSubjectDigest({
       actorUserId: continuation.actorUserId,
       executorId: continuation.executorId,
       revisions: stored,
-    }))
-    if (!digestMatches(continuation.subjectDigest, expectedDigest)) {
+    })
+    if (!executorContinuationValuesMatch(expectedDigest, continuation.subjectDigest)) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is invalid.')
     }
     if (
@@ -374,7 +359,10 @@ export const rejectExecutorAccessChange = async (
   if (
     !continuation
     || continuation.actorUserId !== actorContext.actor.actorId
-    || !tokenMatches(input.confirmationToken, continuation.confirmationTokenHash)
+    || !executorContinuationValuesMatch(
+      hashExecutorContinuationValue(input.confirmationToken),
+      continuation.confirmationTokenHash,
+    )
   ) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_NOT_FOUND, 'Access change not found.')
   }

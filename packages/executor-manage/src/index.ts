@@ -93,4 +93,16 @@ export {
   type ExecutorAccessChange,
   type PreparedExecutorAccessChange,
 } from './executor-access-changes.js'
-export { listExecutorWorkspaceReviews } from './executor-workspace-reviews.js'
+export {
+  listExecutorWorkspaceReviews,
+  listOriginatingExecutorWorkspaceReviews,
+  type OriginatingWorkspaceReview,
+} from './executor-workspace-reviews.js'
+export {
+  confirmExecutorWorkspacePromotion,
+  getExecutorWorkspacePromotionForUser,
+  prepareExecutorWorkspacePromotion,
+  rejectExecutorWorkspacePromotion,
+  type PreparedWorkspacePromotion,
+  type WorkspacePromotionForUser,
+} from './executor-workspace-promotions.js'

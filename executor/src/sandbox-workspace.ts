@@ -12,6 +12,7 @@ import {
 import { ensureExecutorRuntimeDirectory } from './state-store.js'
 import {
   WorkspacePathError,
+  EXECUTOR_PROMOTION_JOURNAL_DIRECTORY,
   configureOrdinaryDirectory,
   isInsideDirectory,
   resolveWorkspaceWritePath,
@@ -140,7 +141,9 @@ const copyTreeWithoutLinks = async (
   if (info.isDirectory()) {
     await mkdir(destination, { mode: 0o700 })
     const entries = await readdir(source, { withFileTypes: true })
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    for (const entry of entries
+      .filter((entry) => source !== sourceRoot || entry.name !== EXECUTOR_PROMOTION_JOURNAL_DIRECTORY)
+      .sort((left, right) => left.name.localeCompare(right.name))) {
       await copyTreeWithoutLinks(
         resolve(source, entry.name),
         resolve(destination, entry.name),

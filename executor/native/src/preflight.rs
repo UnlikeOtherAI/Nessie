@@ -11,6 +11,8 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
+const JOURNAL_DIRECTORY: &str = ".nessie-executor-promotions";
+
 pub(crate) fn is_sha256(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
@@ -35,6 +37,7 @@ pub(crate) fn path_segments(path: &str) -> Result<Vec<&str>, NativeError> {
                 || *segment == ".."
                 || segment.as_bytes().contains(&0)
         })
+        || segments[0] == JOURNAL_DIRECTORY
     {
         return Err(NativeError::new("EXECUTOR_PROMOTION_UNSAFE_PATH"));
     }
@@ -335,6 +338,7 @@ mod tests {
             "nested/../host",
             "/host",
             "nested//file",
+            ".nessie-executor-promotions/transaction",
         ] {
             assert_eq!(
                 path_segments(path).unwrap_err().code,

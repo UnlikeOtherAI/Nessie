@@ -5,7 +5,10 @@ import type { PrismaClient } from '@prisma/client'
 import { deriveSecretKey, encryptWithKey } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import { listExecutorWorkspaceReviews } from '../src/index.js'
+import {
+  listExecutorWorkspaceReviews,
+  listOriginatingExecutorWorkspaceReviews,
+} from '../src/index.js'
 
 const executorId = '00000000-0000-4000-8000-000000000101'
 const organizationId = '00000000-0000-4000-8000-000000000102'
@@ -54,7 +57,10 @@ test('executor managers can inspect bounded review receipts without draft conten
     executorCommand: {
       findMany: async () => [{
         acknowledgedAt: new Date('2026-08-12T12:01:00.000Z'),
-        binding: { runId: '00000000-0000-4000-8000-000000000105' },
+        binding: {
+          executorId,
+          runId: '00000000-0000-4000-8000-000000000105',
+        },
         id: commandId,
       }],
       findUnique: async () => ({ resultCiphertext: encrypted, state: 'result_acknowledged' }),
@@ -77,4 +83,54 @@ test('executor managers can inspect bounded review receipts without draft conten
     runId: '00000000-0000-4000-8000-000000000105',
   }])
   assert.equal(JSON.stringify(reviews).includes('draft content'), false)
+})
+
+test('a user can list only their own acknowledged review receipts for promotion', async () => {
+  let query: unknown
+  const prisma = {
+    executorCommand: {
+      findMany: async (input: unknown) => {
+        query = input
+        return [{
+          acknowledgedAt: new Date('2026-08-12T12:01:00.000Z'),
+          binding: {
+            executorId,
+            runId: '00000000-0000-4000-8000-000000000105',
+          },
+          id: commandId,
+        }]
+      },
+      findUnique: async () => ({ resultCiphertext: encrypted, state: 'result_acknowledged' }),
+    },
+  } as unknown as PrismaClient
+
+  const reviews = await listOriginatingExecutorWorkspaceReviews(prisma, secret, actorContext)
+
+  assert.deepEqual(reviews, [{
+    acknowledgedAt: '2026-08-12T12:01:00.000Z',
+    changes: reviewResult.changes,
+    commandId,
+    executorId,
+    manifestDigest: reviewResult.manifestDigest,
+    runId: '00000000-0000-4000-8000-000000000105',
+  }])
+  assert.deepEqual(query, {
+    orderBy: { acknowledgedAt: 'desc' },
+    select: {
+      acknowledgedAt: true,
+      binding: { select: { executorId: true, runId: true } },
+      id: true,
+    },
+    take: 20,
+    where: {
+      binding: {
+        operationKey: 'workspace.review',
+        run: {
+          thread: { channel: { organizationId } },
+          triggerMessage: { userId },
+        },
+      },
+      state: 'result_acknowledged',
+    },
+  })
 })

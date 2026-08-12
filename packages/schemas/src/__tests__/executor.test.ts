@@ -11,6 +11,9 @@ import {
   ExecutorCapabilityDescriptorSchema,
   ExecutorCommandEnvelopeSchema,
   ExecutorFileWriteArgumentsSchema,
+  ExecutorWorkspacePromoteArgumentsSchema,
+  ExecutorWorkspacePromotionPrepareRequestSchema,
+  ExecutorWorkspacePromotionRecordResponseSchema,
   ExecutorPrivateAssignmentSchema,
   ExecutorRunLaunchRequestSchema,
   ExecutorRunLaunchResponseSchema,
@@ -291,4 +294,31 @@ test('workspace review records allow only bounded, content-free changes', () => 
     manifestDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     runId: '00000000-0000-4000-8000-000000000002',
   }).success, false)
+})
+
+test('workspace promotion is bound to a reviewed digest and never accepts raw draft content', () => {
+  assert.equal(ExecutorWorkspacePromoteArgumentsSchema.safeParse({
+    approvalDigest: digest,
+    manifestDigest: digest,
+    promotionId: ids.change,
+  }).success, true)
+  assert.equal(ExecutorWorkspacePromoteArgumentsSchema.safeParse({
+    approvalDigest: digest,
+    manifestDigest: digest,
+    promotionId: ids.change,
+    rawDraft: 'secret',
+  }).success, false)
+  assert.equal(ExecutorWorkspacePromotionPrepareRequestSchema.safeParse({
+    reviewCommandId: ids.executor,
+  }).success, true)
+  assert.equal(ExecutorWorkspacePromotionRecordResponseSchema.safeParse({
+    changeCount: 1,
+    executorId: ids.executor,
+    expiresAt: timestamp,
+    manifestDigest: digest,
+    promotionId: ids.change,
+    requiresFreshVerification: true,
+    runId: ids.run,
+    status: 'pending',
+  }).success, true)
 })

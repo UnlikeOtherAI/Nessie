@@ -9,6 +9,7 @@ import {
 
 import {
   WorkspacePathError,
+  EXECUTOR_PROMOTION_JOURNAL_DIRECTORY,
   configureOrdinaryDirectory,
   resolveExistingWorkspacePath,
   safeRelativeWorkspacePath,
@@ -53,6 +54,7 @@ export const listWorkspaceFiles = async (
   const entries = await readdir(path, { withFileTypes: true })
   const visible = entries
     .filter((entry) => !entry.isSymbolicLink())
+    .filter((entry) => entry.name !== EXECUTOR_PROMOTION_JOURNAL_DIRECTORY)
     .slice(0, requestedEntries)
     .map((entry) => ({
       kind: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other',
@@ -62,7 +64,9 @@ export const listWorkspaceFiles = async (
     entries: visible,
     path: safeRelativeWorkspacePath(args.path),
     success: true,
-    truncated: entries.filter((entry) => !entry.isSymbolicLink()).length > visible.length,
+    truncated: entries.filter((entry) => (
+      !entry.isSymbolicLink() && entry.name !== EXECUTOR_PROMOTION_JOURNAL_DIRECTORY
+    )).length > visible.length,
   }
 }
 

@@ -252,7 +252,8 @@ The initial local backend has `file.list`, `file.read`, `file.write`,
 `workspace.review`, and `sandbox.stop`. It can execute a server-authored
 `workspace.promote` command only after its local policy has the separate
 owner-verified native-helper configuration described above; that command is
-not model-facing and cannot currently be created through the Nessie UI or API.
+not model-facing. Nessie can create it only from the originating user's
+reviewed-draft confirmation flow; there is no general-purpose promotion API.
 Pairing requires one existing absolute
 workspace directory; the daemon stores only its canonical path in owner-only
 local state. File requests accept only relative paths, reject traversal and
@@ -267,7 +268,7 @@ the command receipt cap; otherwise it fails closed. It never reads the paired
 root for write or applies a change. It is not yet a micro-VM or network isolation
 boundary. No command, browser, or coding operation is advertised until its
 isolated backend is implemented and reviewed. Host promotion remains unavailable
-until the user-confirmation and server-binding flow can create its exact command.
+unless that user-confirmation and server-binding flow creates its exact command.
 
 The receipt remains content-free, but its manifest digest binds the complete
 local manifest: every changed path's base and draft SHA-256 values are included
@@ -401,15 +402,28 @@ with no-replace, then moves staged drafts into the existing parent paths with
 no-replace. A later invocation rolls an uncommitted journal back before it
 does any new work; a committed journal is only cleaned up. The journal and
 every descendant must be private to the daemon user, and malformed journals
-fail closed. New nested paths must already have a safe host parent; this
-primitive does not create host directories.
+fail closed. `.nessie-executor-promotions` is a reserved root path: it is
+excluded from sandbox snapshots and listings, and all sandbox/native manifest
+operations reject it. New nested paths must already have a safe host parent;
+this primitive does not create host directories.
 
-The companion does not invoke `workspace-apply` yet, and no descriptor or
-worker schema advertises `workspace.promote`. The user-owned confirmation,
-server-side approval/fence verification, exact review binding, and receipt
-delivery still have to be connected before it can become reachable. The native
-primitive cannot mint or independently verify those server facts; it only
-records the command-bound values after the companion has verified them.
+`workspace.promote` has no model-facing worker schema. Instead, **Your
+reviewed drafts** shows only reviews from runs the current user originated.
+That person prepares a single-use continuation, then supplies a fresh password
+before confirmation. The server rechecks the exact acknowledged review result
+digest, manifest digest, originating run/user/agent, executor authorization
+revision, operation grant, logical grant, active local policy, and server-held
+executor identity. It atomically binds `workspace.promote`, derives an approval
+digest over the review and binding fence, creates the encrypted command plus
+its normal queue/ToolCall records, and consumes the continuation. The daemon
+rebuilds its local manifest and refuses a changed digest before it invokes the
+native helper. Thus no agent, PA, browser, or caller-provided host path can
+turn a draft write into a host write.
+
+The native primitive cannot mint or independently verify server facts; it only
+records the command-bound approval digest and fence after the companion has
+verified the signed command. A promotion remains unavailable whenever the
+daemon has not proposed and had a human activate its native-helper policy.
 
 ## 10. State and error contract
 

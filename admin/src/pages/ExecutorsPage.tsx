@@ -6,16 +6,22 @@ import type {
 } from '@nessie/schemas'
 import { ExecutorCreatePanel } from '../components/features/executors/ExecutorCreatePanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
+import { ExecutorWorkspacePromotionsPanel } from '../components/features/executors/ExecutorWorkspacePromotionsPanel'
 import { useAgents } from '../facades/agents/hooks'
 import {
   useConfirmExecutorAccessChange,
   useConfirmExecutorEnrollment,
+  useConfirmExecutorWorkspacePromotion,
   useExecutorAccess,
   useExecutorAccessChange,
+  useExecutorWorkspacePromotion,
   useExecutorWorkspaceReviews,
   useExecutors,
+  useMyExecutorWorkspaceReviews,
   usePendingExecutorEnrollment,
+  usePrepareExecutorWorkspacePromotion,
   useRejectExecutorAccessChange,
+  useRejectExecutorWorkspacePromotion,
 } from '../facades/executors/hooks'
 import { useProjects } from '../facades/projects/hooks'
 import { useUsers } from '../facades/users/hooks'
@@ -55,12 +61,18 @@ export const ExecutorsPage = () => {
   const selected = executors.find((executor) => executor.id === selectedId) ?? created?.executor
   const accessQuery = useExecutorAccess(selected?.id)
   const reviewsQuery = useExecutorWorkspaceReviews(selected?.id)
+  const myReviewsQuery = useMyExecutorWorkspaceReviews()
   const changeId = searchParams.get('accessChange') ?? undefined
   const changeQuery = useExecutorAccessChange(changeId)
+  const promotionId = searchParams.get('promotion') ?? undefined
+  const promotionQuery = useExecutorWorkspacePromotion(promotionId)
   const pendingPairing = usePendingExecutorEnrollment(selected?.id)
   const confirmPairing = useConfirmExecutorEnrollment()
   const confirmChange = useConfirmExecutorAccessChange()
   const rejectChange = useRejectExecutorAccessChange()
+  const preparePromotion = usePrepareExecutorWorkspacePromotion()
+  const confirmPromotion = useConfirmExecutorWorkspacePromotion()
+  const rejectPromotion = useRejectExecutorWorkspacePromotion()
 
   useEffect(() => {
     const updateToken = () => setConfirmationToken(getConfirmationToken())
@@ -69,10 +81,12 @@ export const ExecutorsPage = () => {
   }, [])
 
   const reviewChange = changeQuery.data
+  const promotionChange = promotionQuery.data
   const setSelection = (executorId: string) => {
     const next = new URLSearchParams(searchParams)
     next.set('executorId', executorId)
     next.delete('accessChange')
+    next.delete('promotion')
     setSearchParams(next)
     if (typeof window !== 'undefined') window.history.replaceState(null, '', `${window.location.pathname}?${next}`)
     setConfirmationToken(null)
@@ -81,6 +95,7 @@ export const ExecutorsPage = () => {
     const next = new URLSearchParams(searchParams)
     next.set('accessChange', prepared.accessChangeId)
     next.set('executorId', prepared.executorId)
+    next.delete('promotion')
     setSearchParams(next)
     setConfirmationToken(prepared.confirmationToken)
     if (typeof window !== 'undefined') {
@@ -94,10 +109,30 @@ export const ExecutorsPage = () => {
   const clearReview = () => {
     const next = new URLSearchParams(searchParams)
     next.delete('accessChange')
+    next.delete('promotion')
     setSearchParams(next)
     setConfirmationToken(null)
     setCurrentPassword('')
     if (typeof window !== 'undefined') window.history.replaceState(null, '', `${window.location.pathname}?${next}`)
+  }
+  const openPromotion = (prepared: {
+    confirmationToken: string
+    executorId: string
+    promotionId: string
+  }) => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('accessChange')
+    next.set('executorId', prepared.executorId)
+    next.set('promotion', prepared.promotionId)
+    setSearchParams(next)
+    setConfirmationToken(prepared.confirmationToken)
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}?${next}#confirmationToken=${prepared.confirmationToken}`,
+      )
+    }
   }
   const handleCreated = (result: ExecutorCreateResponse) => {
     setCreated(result)
@@ -129,6 +164,38 @@ export const ExecutorsPage = () => {
       clearReview()
     } catch (cause) {
       setReviewError(cause instanceof Error ? cause.message : 'Unable to reject access change.')
+    }
+  }
+  const handlePreparePromotion = async (reviewCommandId: string) => {
+    setReviewError(null)
+    try {
+      openPromotion(await preparePromotion.mutateAsync({ reviewCommandId }))
+    } catch (cause) {
+      setReviewError(cause instanceof Error ? cause.message : 'Unable to prepare workspace promotion.')
+    }
+  }
+  const handleConfirmPromotion = async () => {
+    if (!promotionChange || !confirmationToken) return
+    setReviewError(null)
+    try {
+      await confirmPromotion.mutateAsync({
+        confirmationToken,
+        currentPassword,
+        promotionId: promotionChange.promotionId,
+      })
+      clearReview()
+    } catch (cause) {
+      setReviewError(cause instanceof Error ? cause.message : 'Unable to promote workspace draft.')
+    }
+  }
+  const handleRejectPromotion = async () => {
+    if (!promotionChange || !confirmationToken) return
+    setReviewError(null)
+    try {
+      await rejectPromotion.mutateAsync({ confirmationToken, promotionId: promotionChange.promotionId })
+      clearReview()
+    } catch (cause) {
+      setReviewError(cause instanceof Error ? cause.message : 'Unable to reject workspace promotion.')
     }
   }
 
@@ -197,6 +264,39 @@ export const ExecutorsPage = () => {
             </div>
           </section>
         ) : null}
+
+        {promotionChange ? (
+          <section className="admin-card grid gap-3 border border-[color:var(--accent)] p-4">
+            <div>
+              <h2 className="text-sm font-semibold text-[color:var(--tx)]">Confirm workspace promotion</h2>
+              <p className="mt-1 text-xs text-[color:var(--tx3)]">
+                This promotes {promotionChange.changeCount} reviewed change{promotionChange.changeCount === 1 ? '' : 's'}
+                {' '}only if the daemon reconstructs the same manifest digest and the host root is unchanged.
+                It expires at {promotionChange.expiresAt}.
+              </p>
+              <code className="mt-2 block overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{promotionChange.manifestDigest}</code>
+            </div>
+            {!confirmationToken ? <p className="text-xs text-[color:var(--danger-text)]">The confirmation token is missing. Prepare the promotion again from your reviewed drafts.</p> : null}
+            <label className="grid max-w-sm gap-1 text-xs font-medium text-[color:var(--tx2)]">
+              Confirm with current password
+              <input className="admin-input" onChange={(event) => setCurrentPassword(event.target.value)} type="password" value={currentPassword} />
+            </label>
+            {reviewError ? <p className="text-xs text-[color:var(--danger-text)]">{reviewError}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <button className="admin-button admin-button-primary" disabled={!confirmationToken || confirmPromotion.isPending} onClick={() => void handleConfirmPromotion()} type="button">Confirm promotion</button>
+              <button className="admin-button admin-button-secondary" disabled={!confirmationToken || rejectPromotion.isPending} onClick={() => void handleRejectPromotion()} type="button">Reject</button>
+            </div>
+          </section>
+        ) : null}
+
+        <ExecutorWorkspacePromotionsPanel
+          executors={executors}
+          isError={myReviewsQuery.isError}
+          isLoading={myReviewsQuery.isLoading}
+          onPrepare={(reviewCommandId) => void handlePreparePromotion(reviewCommandId)}
+          preparingReviewId={preparePromotion.isPending ? preparePromotion.variables?.reviewCommandId : undefined}
+          reviews={myReviewsQuery.data ?? []}
+        />
 
         <div className="grid min-h-[460px] gap-4 lg:grid-cols-[minmax(230px,0.33fr)_minmax(0,0.67fr)]">
           <aside className="admin-card min-h-0 p-3">

@@ -10,7 +10,7 @@ import { getExecutorForManagement } from './executor-records.js'
 
 const MAX_REVIEWS = 20
 
-type WorkspaceReview = {
+export type WorkspaceReview = {
   acknowledgedAt: string
   changes: Array<{ byteCount: number; kind: 'created' | 'modified' | 'deleted'; path: string }>
   commandId: string
@@ -18,7 +18,9 @@ type WorkspaceReview = {
   runId: string
 }
 
-const parseReviewResult = (result: Record<string, unknown>): {
+export type OriginatingWorkspaceReview = WorkspaceReview & { executorId: string }
+
+export const parseExecutorWorkspaceReviewResult = (result: Record<string, unknown>): {
   changes: WorkspaceReview['changes']
   manifestDigest: string
 } | null => {
@@ -64,7 +66,7 @@ export const listExecutorWorkspaceReviews = async (
   })
   const reviews = await Promise.all(commands.map(async (command) => {
     const result = await readExecutorCommandResult(prisma, encryptionSecret, command.id)
-    const parsed = result ? parseReviewResult(result) : null
+    const parsed = result ? parseExecutorWorkspaceReviewResult(result) : null
     if (!parsed || !command.acknowledgedAt) return null
     return {
       acknowledgedAt: command.acknowledgedAt.toISOString(),
@@ -75,4 +77,46 @@ export const listExecutorWorkspaceReviews = async (
     } satisfies WorkspaceReview
   }))
   return reviews.filter((review): review is WorkspaceReview => review !== null)
+}
+
+/** A user sees only reviews from runs they themselves started, across their entitled executors. */
+export const listOriginatingExecutorWorkspaceReviews = async (
+  prisma: PrismaClient,
+  encryptionSecret: string,
+  actorContext: AuthorizedActionContext,
+): Promise<OriginatingWorkspaceReview[]> => {
+  if (actorContext.actor.actorType !== 'user') return []
+  const commands = await prisma.executorCommand.findMany({
+    where: {
+      binding: {
+        operationKey: 'workspace.review',
+        run: {
+          triggerMessage: { userId: actorContext.actor.actorId },
+          thread: { channel: { organizationId: actorContext.tenant.organizationId } },
+        },
+      },
+      state: 'result_acknowledged',
+    },
+    orderBy: { acknowledgedAt: 'desc' },
+    select: {
+      acknowledgedAt: true,
+      binding: { select: { executorId: true, runId: true } },
+      id: true,
+    },
+    take: MAX_REVIEWS,
+  })
+  const reviews = await Promise.all(commands.map(async (command) => {
+    const result = await readExecutorCommandResult(prisma, encryptionSecret, command.id)
+    const parsed = result ? parseExecutorWorkspaceReviewResult(result) : null
+    if (!parsed || !command.acknowledgedAt) return null
+    return {
+      acknowledgedAt: command.acknowledgedAt.toISOString(),
+      changes: parsed.changes,
+      commandId: command.id,
+      executorId: command.binding.executorId,
+      manifestDigest: parsed.manifestDigest,
+      runId: command.binding.runId,
+    } satisfies OriginatingWorkspaceReview
+  }))
+  return reviews.filter((review): review is OriginatingWorkspaceReview => review !== null)
 }

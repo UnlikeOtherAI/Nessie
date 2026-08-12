@@ -29,6 +29,10 @@ type AvailabilityContext = {
 
 type AvailabilityRequest = {
   agentId: string
+  /** Internal callers may pin a server-derived executor identity. Public API
+   * contracts never accept this field, so browsers and models still receive
+   * only opaque candidates. */
+  executorId?: string
   operationKeys: ExecutorOperationKey[]
   projectId?: string
   runId?: string
@@ -141,6 +145,7 @@ export const resolveExecutorAvailabilityCandidates = async (
   const executors = await prisma.executor.findMany({
     where: {
       organizationId,
+      ...(input.executorId ? { id: input.executorId } : {}),
       OR: [
         { scopeKind: 'organization' },
         ...(context.projectId ? [{ projectId: context.projectId, scopeKind: 'project' as const }] : []),

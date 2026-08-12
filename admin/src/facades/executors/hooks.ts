@@ -8,7 +8,10 @@ import {
   ExecutorRecordResponseSchema,
   ExecutorRunLaunchResponseSchema,
   ExecutorWorkspaceReviewRecordResponseSchema,
+  ExecutorWorkspacePromotionRecordResponseSchema,
+  OriginatingExecutorWorkspaceReviewRecordResponseSchema,
   PendingExecutorEnrollmentResponseSchema,
+  PreparedExecutorWorkspacePromotionResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
   type ExecutorOperationKey,
   type ExecutorPrivateAssignment,
@@ -50,6 +53,30 @@ export const useExecutorWorkspaceReviews = (executorId?: string) => {
       await apiClient.get(`/api/executors/${executorId}/workspace-reviews`),
     ),
     enabled: Boolean(executorId),
+  })
+}
+
+export const useMyExecutorWorkspaceReviews = () => {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: [...executorKeyPrefix, 'workspace-reviews', 'mine'],
+    queryFn: async () => OriginatingExecutorWorkspaceReviewRecordResponseSchema.array().parse(
+      await apiClient.get('/api/executor-workspace-reviews/mine'),
+    ),
+  })
+}
+
+export const useExecutorWorkspacePromotion = (promotionId?: string) => {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: promotionId
+      ? [...executorKeyPrefix, 'workspace-promotion', promotionId]
+      : [...executorKeyPrefix, 'workspace-promotion', 'none'],
+    queryFn: async () => ExecutorWorkspacePromotionRecordResponseSchema.parse(
+      await apiClient.get(`/api/executor-workspace-promotions/${promotionId}`),
+    ),
+    enabled: Boolean(promotionId),
+    retry: false,
   })
 }
 
@@ -131,6 +158,45 @@ export const useLaunchExecutorRun = () => {
     ),
     onSuccess: (_result, input) => {
       void queryClient.invalidateQueries({ queryKey: ['threads', input.threadId, 'messages'] })
+    },
+  })
+}
+
+export const usePrepareExecutorWorkspacePromotion = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: async (input: { reviewCommandId: string }) =>
+      PreparedExecutorWorkspacePromotionResponseSchema.parse(
+        await apiClient.post('/api/executor-workspace-promotions', input),
+      ),
+  })
+}
+
+export const useConfirmExecutorWorkspacePromotion = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { confirmationToken: string; currentPassword: string; promotionId: string }) =>
+      apiClient.post(`/api/executor-workspace-promotions/${input.promotionId}/confirm`, {
+        confirmationToken: input.confirmationToken,
+        currentPassword: input.currentPassword,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: executorKeyPrefix })
+    },
+  })
+}
+
+export const useRejectExecutorWorkspacePromotion = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { confirmationToken: string; promotionId: string }) =>
+      apiClient.post(`/api/executor-workspace-promotions/${input.promotionId}/reject`, {
+        confirmationToken: input.confirmationToken,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: executorKeyPrefix })
     },
   })
 }

@@ -230,6 +230,28 @@ test('sandbox writes use a daemon-owned COW workspace and never touch the paired
   }
 })
 
+test('sandbox workspace paths exclude the native promotion journal', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-journal-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-journal-state-'))
+  try {
+    await mkdir(join(root, '.nessie-executor-promotions'))
+    await assert.rejects(
+      writeSandboxFile(stateDir, root, '00000000-0000-4000-8000-000000000105', {
+        content: 'forbidden',
+        path: '.nessie-executor-promotions/forbidden.txt',
+      }),
+      /journal state/,
+    )
+    assert.deepEqual(
+      await listWorkspaceFiles(root, { path: '.' }),
+      { entries: [], path: '.', success: true, truncated: false },
+    )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
+  }
+})
+
 test('copy-on-write sandbox setup fails closed on symbolic links in the paired root', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-state-'))

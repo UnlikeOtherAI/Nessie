@@ -36,6 +36,10 @@ export const ExecutorAccessChangeIdSchema =
   createUuidBrandSchema<'ExecutorAccessChangeId'>()
 export type ExecutorAccessChangeId = z.infer<typeof ExecutorAccessChangeIdSchema>
 
+export const ExecutorWorkspacePromotionIdSchema =
+  createUuidBrandSchema<'ExecutorWorkspacePromotionId'>()
+export type ExecutorWorkspacePromotionId = z.infer<typeof ExecutorWorkspacePromotionIdSchema>
+
 export const ExecutorScopeKindSchema = z.enum([
   'private',
   'project',
@@ -635,6 +639,49 @@ export const ExecutorWorkspaceReviewRecordResponseSchema = z.object({
 }).strict()
 export type ExecutorWorkspaceReviewRecordResponse = z.infer<
   typeof ExecutorWorkspaceReviewRecordResponseSchema
+>
+
+/** A review may be promoted only by the user whose run produced it. */
+export const OriginatingExecutorWorkspaceReviewRecordResponseSchema =
+  ExecutorWorkspaceReviewRecordResponseSchema.extend({
+    executorId: ExecutorIdSchema,
+  }).strict()
+export type OriginatingExecutorWorkspaceReviewRecordResponse = z.infer<
+  typeof OriginatingExecutorWorkspaceReviewRecordResponseSchema
+>
+
+export const ExecutorWorkspacePromotionPrepareRequestSchema = z.object({
+  reviewCommandId: ExecutorCommandIdSchema,
+}).strict()
+export type ExecutorWorkspacePromotionPrepareRequest = z.infer<
+  typeof ExecutorWorkspacePromotionPrepareRequestSchema
+>
+
+export const PreparedExecutorWorkspacePromotionResponseSchema = z.object({
+  changeCount: z.number().int().nonnegative().max(100),
+  confirmationToken: Base64UrlSchema.min(32),
+  executorId: ExecutorIdSchema,
+  expiresAt: TimestampSchema,
+  manifestDigest: Sha256DigestSchema,
+  promotionId: ExecutorWorkspacePromotionIdSchema,
+  runId: RunIdSchema,
+}).strict()
+export type PreparedExecutorWorkspacePromotionResponse = z.infer<
+  typeof PreparedExecutorWorkspacePromotionResponseSchema
+>
+
+export const ExecutorWorkspacePromotionRecordResponseSchema = z.object({
+  changeCount: z.number().int().nonnegative().max(100),
+  executorId: ExecutorIdSchema,
+  expiresAt: TimestampSchema,
+  manifestDigest: Sha256DigestSchema,
+  promotionId: ExecutorWorkspacePromotionIdSchema,
+  requiresFreshVerification: z.literal(true),
+  runId: RunIdSchema,
+  status: z.enum(['pending', 'confirmed', 'consumed', 'rejected', 'expired']),
+}).strict()
+export type ExecutorWorkspacePromotionRecordResponse = z.infer<
+  typeof ExecutorWorkspacePromotionRecordResponseSchema
 >
 
 export const ExecutorAccessChangeResponseSchema = z.object({

@@ -23,7 +23,7 @@ import {
   submitExecutorDescriptor,
   submitExecutorEnrollment,
 } from '@nessie/executor-manage'
-import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { FastifyInstance } from 'fastify'
 import { ExecutorOperationKeySchema, parseChannelId, parseUserId } from '@nessie/schemas'
 
 import {
@@ -56,9 +56,9 @@ import {
   PreparedExecutorAccessChangeSchema,
   SubmitExecutorEnrollmentBodySchema,
 } from '../contracts.js'
-import { verifyPassword } from '../auth/password.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { requireFreshExecutorPasswordVerification } from '../services/executor-fresh-verification.js'
 import { launchExecutorRun } from '../services/executor-run-launch.js'
 import { setAgentToolPolicyForRegistryEntry } from '../services/agent-tool-policy-registry.js'
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
@@ -67,34 +67,9 @@ import {
   verifyExecutorDaemonChallenge,
 } from '../services/executor-daemon-auth.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { sendExecutorError } from './executor-route-errors.js'
+import { registerExecutorWorkspacePromotionRoutes } from './executor-workspace-promotions.js'
 import type { RouteDeps } from './types.js'
-
-const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
-  if (!(error instanceof ExecutorError)) return false
-  const status = error.code === 'EXECUTOR_NOT_FOUND'
-    || error.code === 'EXECUTOR_ACCESS_CHANGE_NOT_FOUND'
-    ? 404
-    : error.code === 'SCOPE_ENTITLEMENT_DENIED'
-      ? 403
-      : error.code === 'EXECUTOR_DAEMON_PROOF_INVALID'
-          || error.code === 'EXECUTOR_DAEMON_CHALLENGE_INVALID'
-        ? 401
-      : error.code === 'EXECUTOR_FRESH_VERIFICATION_REQUIRED'
-        ? 401
-      : error.code === 'EXECUTOR_STATE_TRANSITION_INVALID'
-          || error.code === 'EXECUTOR_PRIVATE_FINAL_ADMIN_REQUIRED'
-          || error.code === 'EXECUTOR_ACCESS_CHANGE_STALE'
-          || error.code === 'EXECUTOR_ACCESS_CHANGE_EXPIRED'
-          || error.code === 'EXECUTOR_CONNECTION_FENCED'
-          || error.code === 'EXECUTOR_HEARTBEAT_STALE'
-          || error.code === 'EXECUTOR_DESCRIPTOR_REVISION_CONFLICT'
-          || error.code === 'EXECUTOR_DESCRIPTOR_ROLLBACK'
-          || error.code === 'EXECUTOR_COMMAND_REPLAY'
-        ? 409
-        : 400
-  sendApiError(reply, status, error.code, error.message)
-  return true
-}
 
 /**
  * Human executor management and the deliberately narrow public enrollment
@@ -102,6 +77,7 @@ const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
  * of the one-time pairing challenge plus its Ed25519 machine key.
  */
 export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  registerExecutorWorkspacePromotionRoutes(app, deps)
   const {
     buildChannelRealtimeScopes,
     config,
@@ -397,42 +373,18 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     }
     let freshVerificationSatisfied = false
     if (accessChange.requiresFreshVerification) {
-      if (
-        !(await guardAuthRequest(
-          rateLimiter,
-          { bucket: RATE_LIMIT_BUCKETS.stepUpIp, rule: config.api.rateLimit.stepUpIp },
-          request,
-          reply,
-          {
-            account: {
-              bucket: RATE_LIMIT_BUCKETS.stepUpAccount,
-              rule: config.api.rateLimit.stepUpAccount,
-            },
-            accountIdentity: actorContext.actor.actorId,
-            auditContext: actorContext,
-          },
-        ))
-      ) {
-        return reply
-      }
-      const user = await prisma.user.findUnique({
-        where: { id: actorContext.actor.actorId },
-        select: { passwordHash: true },
+      freshVerificationSatisfied = await requireFreshExecutorPasswordVerification({
+        actorContext,
+        currentPassword: body.currentPassword,
+        prisma,
+        rateLimit: config.api.rateLimit,
+        rateLimiter,
+        reply,
+        request,
       })
-      if (!user?.passwordHash) {
-        sendApiError(
-          reply,
-          409,
-          'EXECUTOR_FRESH_VERIFICATION_UNAVAILABLE',
-          'This account needs an SSO or WebAuthn verification factor before it can confirm this change.',
-        )
+      if (!freshVerificationSatisfied) {
         return reply
       }
-      if (!body.currentPassword || !(await verifyPassword(body.currentPassword, user.passwordHash))) {
-        sendApiError(reply, 401, 'EXECUTOR_FRESH_VERIFICATION_REQUIRED', 'Current password verification failed')
-        return reply
-      }
-      freshVerificationSatisfied = true
     }
     try {
       if (accessChange.change.kind === 'agent_operation_grant') {

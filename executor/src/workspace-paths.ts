@@ -1,6 +1,8 @@
 import { lstat, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 
+export const EXECUTOR_PROMOTION_JOURNAL_DIRECTORY = '.nessie-executor-promotions'
+
 export class WorkspacePathError extends Error {
   override readonly name = 'WorkspacePathError'
 }
@@ -14,6 +16,12 @@ export const safeRelativeWorkspacePath = (value: string | undefined): string => 
   const path = value?.trim() || '.'
   if (path.includes('\0') || isAbsolute(path)) {
     throw new WorkspacePathError('Workspace paths must be relative.')
+  }
+  if (
+    path === EXECUTOR_PROMOTION_JOURNAL_DIRECTORY
+    || path.startsWith(`${EXECUTOR_PROMOTION_JOURNAL_DIRECTORY}/`)
+  ) {
+    throw new WorkspacePathError('Workspace paths may not access executor journal state.')
   }
   return path
 }

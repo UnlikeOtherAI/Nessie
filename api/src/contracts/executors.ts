@@ -24,7 +24,11 @@ import {
   ExecutorRunLaunchResponseSchema,
   ExecutorScopeSchema,
   ExecutorWorkspaceReviewRecordResponseSchema,
+  OriginatingExecutorWorkspaceReviewRecordResponseSchema,
+  ExecutorWorkspacePromotionPrepareRequestSchema,
+  ExecutorWorkspacePromotionRecordResponseSchema,
   PendingExecutorEnrollmentResponseSchema,
+  PreparedExecutorWorkspacePromotionResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
@@ -146,3 +150,24 @@ export type ExecutorAccessView = z.infer<typeof ExecutorAccessViewSchema>
 
 export const ExecutorWorkspaceReviewRecordSchema = ExecutorWorkspaceReviewRecordResponseSchema
 export type ExecutorWorkspaceReviewRecord = z.infer<typeof ExecutorWorkspaceReviewRecordSchema>
+
+export const OriginatingExecutorWorkspaceReviewRecordSchema =
+  OriginatingExecutorWorkspaceReviewRecordResponseSchema
+export type OriginatingExecutorWorkspaceReviewRecord = z.infer<
+  typeof OriginatingExecutorWorkspaceReviewRecordSchema
+>
+
+export const ExecutorWorkspacePromotionPrepareBodySchema = ExecutorWorkspacePromotionPrepareRequestSchema
+export type ExecutorWorkspacePromotionPrepareBody = z.infer<
+  typeof ExecutorWorkspacePromotionPrepareBodySchema
+>
+
+export const PreparedExecutorWorkspacePromotionSchema = PreparedExecutorWorkspacePromotionResponseSchema
+export type PreparedExecutorWorkspacePromotion = z.infer<
+  typeof PreparedExecutorWorkspacePromotionSchema
+>
+
+export const ExecutorWorkspacePromotionRecordSchema = ExecutorWorkspacePromotionRecordResponseSchema
+export type ExecutorWorkspacePromotionRecord = z.infer<
+  typeof ExecutorWorkspacePromotionRecordSchema
+>

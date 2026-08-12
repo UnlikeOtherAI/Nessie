@@ -84,9 +84,14 @@ uncommitted transaction on the next invocation; it requires existing safe host
 parent directories. The owner-only companion can execute its
 `workspace-apply` primitive only for a server-authored `workspace.promote`
 command after a separately reviewed local policy names a verified native
-helper, but there is still no worker schema or user-facing promotion action.
-The remaining slice must connect user approval, server fencing, exact review binding, and command receipts before
-`workspace.promote` is advertised.
+helper. There is no worker schema for a model: only the originating user sees a
+reviewed draft, prepares a short-lived continuation, and confirms it with a
+fresh password. Confirmation rechecks the exact review/result digest, user,
+run, agent, executor authorization, operation/logical/local-policy grants and
+server-derived executor identity before atomically creating one bound encrypted
+command, queue job and ToolCall. The native receipt is delivered through the
+existing command protocol; a changed local manifest or host conflict fails
+closed rather than applying a draft.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
@@ -94,10 +99,11 @@ the exact `workspace.review` command and renders its manifest digest plus the
 relative path, change kind, and byte count—never draft contents or a host path.
 It is deliberately manager-only: a management screen must not become a way for
 an organization/project member to browse another person's executor run data.
-The originating user still receives the review through the task that invoked
-it. Reviewing a receipt cannot approve or promote it; promotion remains
-unavailable until its complete approval/apply/recovery delivery unit exists.
-Neither does it expose the planned availability union with connectors.
+The originating user also has a **Your reviewed drafts** doorway on the
+Executors page. That same bounded summary lets them prepare and then explicitly
+password-confirm a promotion; managers cannot use the overview review list to
+promote another person's draft. Neither surface exposes the planned availability
+union with connectors.
 
 The availability endpoint deliberately creates a five-minute, one-use opaque
 candidate and returns no machine identifier. The next binding slice consumes
