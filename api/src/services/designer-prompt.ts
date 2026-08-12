@@ -46,6 +46,33 @@ export const DESIGNER_TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'set_model',
+      description:
+        'Set the model this agent runs on. Both fields come from one entry of'
+        + ' the "Available models" list in the system prompt and must be'
+        + ' copied verbatim — a pair outside that list cannot be saved.'
+        + ' Pick one yourself: the list leads with the deployment\'s strongest'
+        + ' model, so choose it unless the task calls for something cheaper or'
+        + ' the user named a model. Never ask the user which model to use.',
+      parameters: {
+        type: 'object',
+        properties: {
+          model: {
+            type: 'string',
+            description: 'The exact model id, e.g. gpt-5-mini',
+          },
+          provider: {
+            type: 'string',
+            description: 'The provider id listed beside that model id',
+          },
+        },
+        required: ['model', 'provider'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'toggle_tool',
       description: 'Enable or disable a tool for this agent',
       parameters: {
@@ -125,13 +152,40 @@ const buildAvailableToolLines = (
   return knownIds.length > 0 ? knownIds.map((id) => `- ${id}`) : ['(none registered)']
 }
 
+/**
+ * `set_model` only lands if the pair it names is one the form can resolve
+ * against the same catalogue, so the pair is what each line leads with; the
+ * human-readable part follows for choosing between them. Order is the
+ * catalogue's own — provider ascending, newest model of each provider first.
+ */
+export const buildAvailableModelLines = (
+  availableModels: DesignerChatInput['availableModels'],
+): string[] => {
+  if (!availableModels || availableModels.length === 0) {
+    return ['(catalogue unavailable — leave the model alone)']
+  }
+
+  return availableModels.map((option) => {
+    const description = option.description
+      ? ` — ${option.description.slice(0, 120)}`
+      : ''
+    return `- model=${option.model} provider=${option.provider}`
+      + ` — ${option.displayName} (${option.providerDisplayName})${description}`
+  })
+}
+
 export const buildDesignerSystemPrompt = (
   formState: DesignerChatInput['formState'],
   availableTools: DesignerChatInput['availableTools'],
+  availableModels: DesignerChatInput['availableModels'],
 ): string => {
   const enabledTools = Object.entries(formState.tools)
     .filter(([, value]) => value)
     .map(([key]) => key)
+
+  const currentModel = formState.model
+    ? `${formState.model} (provider ${formState.provider || 'unset'})`
+    : '(none selected — the agent cannot be saved without one)'
 
   const summarizedSystemPrompt = formState.systemPrompt
     ? `"${formState.systemPrompt.slice(0, 200)}`
@@ -146,10 +200,14 @@ export const buildDesignerSystemPrompt = (
     `- Name: ${formState.name || '(empty)'}`,
     `- Role: ${formState.role || '(empty)'}`,
     `- System prompt: ${summarizedSystemPrompt}`,
+    `- Model: ${currentModel}`,
     `- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}`,
     '',
     'Available tools (use the exact id with toggle_tool / batch_toggle_tools):',
     ...buildAvailableToolLines(availableTools, formState.tools),
+    '',
+    'Available models (use the exact model + provider pair with set_model):',
+    ...buildAvailableModelLines(availableModels),
     '',
     '# Your principles',
     '',
@@ -183,6 +241,9 @@ export const buildDesignerSystemPrompt = (
     '# Output rules',
     '',
     '- Use multiple tool calls in one response when setting several fields.',
+    '- A model is part of a working agent: if none is selected, call set_model',
+    '  yourself. Leave an existing selection alone unless the user asks for a',
+    '  different one.',
     '- ALWAYS include a short text reply explaining what you did.',
     '  Never respond with only tool calls.',
     '- System prompts should be direct instructions to the agent.',

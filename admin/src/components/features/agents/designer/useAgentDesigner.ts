@@ -1,5 +1,6 @@
 import { useCallback, useReducer } from 'react'
 import type { AgentModelOption } from '../../../../lib/api-client'
+import { findModelOption } from './model-options'
 import {
   emptyRunLimitsForm,
   type RunLimitsField,
@@ -27,11 +28,11 @@ export type AgentDesignerAction =
   | { field: string; type: 'clear_streaming' }
   | { field: string; type: 'set_streaming' }
   | { effort: AgentEffortValue; type: 'set_effort' }
-  | { model: string; type: 'set_model' }
+  // Model and provider are one decision: the form resolves its selection by
+  // matching both, so a half-applied pair reads as no model at all.
   | { option: AgentModelOption; type: 'set_model_selection' }
   | { name: string; type: 'set_name' }
   | { prompt: string; type: 'set_system_prompt' }
-  | { provider: string; type: 'set_provider' }
   | { role: string; type: 'set_role' }
   | { field: RunLimitsField; type: 'set_run_limit'; value: string }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
@@ -61,10 +62,6 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       return { ...state, systemPrompt: action.prompt }
     case 'append_system_prompt':
       return { ...state, systemPrompt: state.systemPrompt + action.chunk }
-    case 'set_provider':
-      return { ...state, provider: action.provider }
-    case 'set_model':
-      return { ...state, model: action.model }
     case 'set_model_selection':
       return {
         ...state,
@@ -93,17 +90,20 @@ export type AgentDesignerActions = {
   applyToolCall: (name: string, args: Record<string, unknown>) => void
   dispatch: React.Dispatch<AgentDesignerAction>
   setEffort: (effort: AgentEffortValue) => void
-  setModel: (model: string) => void
   setModelSelection: (option: AgentModelOption) => void
   setName: (name: string) => void
-  setProvider: (provider: string) => void
   setRole: (role: string) => void
   setRunLimit: (field: RunLimitsField, value: string) => void
   setSystemPrompt: (prompt: string) => void
   toggleTool: (toolId: string, enabled: boolean) => void
 }
 
-export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
+export const useAgentDesigner = (
+  initialState?: Partial<AgentFormState>,
+  // The catalogue the Design Assistant was shown, so a model it names can be
+  // resolved back to the entry the picker renders.
+  modelOptions: AgentModelOption[] = [],
+) => {
   const [state, dispatch] = useReducer(reducer, {
     ...DEFAULT_STATE,
     ...initialState,
@@ -115,11 +115,6 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
     (prompt: string) => dispatch({ type: 'set_system_prompt', prompt }),
     [],
   )
-  const setProvider = useCallback(
-    (provider: string) => dispatch({ type: 'set_provider', provider }),
-    [],
-  )
-  const setModel = useCallback((model: string) => dispatch({ type: 'set_model', model }), [])
   const setModelSelection = useCallback(
     (option: AgentModelOption) => dispatch({ option, type: 'set_model_selection' }),
     [],
@@ -140,6 +135,18 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
 
   const applyToolCall = useCallback((name: string, args: Record<string, unknown>) => {
     switch (name) {
+      case 'set_model': {
+        const option = findModelOption(
+          modelOptions,
+          String(args.model ?? ''),
+          String(args.provider ?? ''),
+        )
+        // A pair outside the catalogue could never be saved, so the selection
+        // already on the form — the preselected leader, or the user's own
+        // choice — is the better answer than clearing it.
+        if (option) dispatch({ option, type: 'set_model_selection' })
+        break
+      }
       case 'set_name':
         dispatch({ type: 'set_name', name: String(args.name ?? '') })
         break
@@ -148,12 +155,6 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
         break
       case 'set_system_prompt':
         dispatch({ type: 'set_system_prompt', prompt: String(args.content ?? '') })
-        break
-      case 'set_provider':
-        dispatch({ type: 'set_provider', provider: String(args.provider ?? '') })
-        break
-      case 'set_model':
-        dispatch({ type: 'set_model', model: String(args.model ?? '') })
         break
       case 'toggle_tool':
         dispatch({
@@ -177,16 +178,14 @@ export const useAgentDesigner = (initialState?: Partial<AgentFormState>) => {
         }
         break
     }
-  }, [])
+  }, [modelOptions])
 
   const actions: AgentDesignerActions = {
     applyToolCall,
     dispatch,
     setEffort,
-    setModel,
     setModelSelection,
     setName,
-    setProvider,
     setRole,
     setRunLimit,
     setSystemPrompt,
