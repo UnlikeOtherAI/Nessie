@@ -371,12 +371,12 @@ Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` fo
 
 ## Status And Caveats
 
-The current `com.km.nessie` build is installed and launch-verified on paired
-physical iPhone, iPad, and Android devices. The iOS launches registered active
-sandbox APNs tokens, and the in-house APNs test action has been accepted by
-Apple for the configured production credential. This proves registration and
-provider acceptance; it does not substitute for a TestFlight/App Store
-production-token test.
+The current `com.km.nessie` release is `0.1.1 (2)`, freshly compiled and
+installed on paired physical iPhone, iPad, and Android devices. The iOS
+launches registered active sandbox APNs tokens, and the in-house APNs test
+action has been accepted by Apple for the configured production credential.
+This proves registration and provider acceptance; it does not substitute for a
+TestFlight/App Store production-token test.
 
 The Android app loads its authenticated workspace successfully, but it has no
 active FCM registration until the matching Firebase `google-services.json` and
