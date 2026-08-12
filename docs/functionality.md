@@ -163,12 +163,23 @@ Root app layout:
 
 ### 2.0c Live personal-assistant workspace provisioning boundary
 
-- Four PA-only builtins let the assistant set a workspace up the way its owner
-  can by clicking: `channel_create`, `agent_create`, `agent_bind_channel`, and
+- Five PA-only builtins let the assistant set a workspace up the way its owner
+  can by clicking: `agent_list`, `channel_create`, `agent_create`,
+  `agent_bind_channel`, and
   `agent_trigger_create` (`worker/src/run/pa-tools/provisioning.ts`). Each calls
   the same service function as its REST route and reproduces that route's
   authorization exactly — no weaker, no stronger.
-- `channel_create` (`POST /api/channels`) and `agent_create` (`POST /api/agents`)
+- `agent_list` (`GET /api/agents` → `listAgentsForUser`) is the read the two
+  id-taking tools depend on: an owner clicking picks the agent from a list, so
+  without it the assistant could only bind or schedule an agent it had created
+  in the same conversation. It is `safe: true`, scoped by entitlement (owner:
+  every non-system agent including unbound ones; anybody else: agents bound to
+  channels they can see — never narrowed by the session's project/team), and
+  returns only what the caller needs to act: name, role, `agentId`, and the
+  channels the agent is bound to. An optional `query` narrows that
+  already-authorized list by name or role.
+- `agent_list`, `channel_create` (`POST /api/channels`) and `agent_create`
+  (`POST /api/agents`)
   are open to any active member, because those routes carry only
   `requireActorContext`. `agent_bind_channel`
   (`POST /api/agents/:agentId/bindings`) requires channel membership, refuses a

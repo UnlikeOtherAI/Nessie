@@ -54,6 +54,7 @@ export { runSendMessageTool } from './pa-tools/message-delivery.js'
 export {
   runAgentBindChannelTool,
   runAgentCreateTool,
+  runAgentListTool,
   runAgentTriggerCreateTool,
   runChannelCreateTool,
 } from './pa-tools/provisioning.js'
