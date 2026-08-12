@@ -44,6 +44,7 @@ export {
 } from './search.js'
 export {
   constrainScopesToDestination,
+  loadThoughtAudiences,
   resolveAccessibleScopes,
   type AccessibleScopes,
   type DestinationScopeChain,

@@ -6,6 +6,7 @@ import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkee
 import { publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
+import { createAgentMessage } from './agent-message.js'
 
 type BudgetBlockOptions = {
   beforeBlockedRunTerminalization?: () => Promise<void>
@@ -19,16 +20,17 @@ export const terminalizeBudgetBlockedRun = async (
 ): Promise<void> => {
   await options.beforeBlockedRunTerminalization?.()
   const notice = `⚠️ ${reason} — this request was not run.`
-  const blockMessage = await deps.prisma.message.create({
-    data: {
-      agentId: context.agent.id,
-      content: notice,
-      role: 'assistant',
-      threadId: context.run.threadId,
-      ...(context.replyRootMessageId
-        ? { rootMessageId: context.replyRootMessageId }
-        : {}),
-    },
+  // Fixed server-authored text that predates retrieval, so its basis is always
+  // empty — routed through the chokepoint for uniformity, so no post path can
+  // drift out of stamping later.
+  const blockMessage = await createAgentMessage(deps.prisma, context, {
+    agentId: context.agent.id,
+    content: notice,
+    role: 'assistant',
+    threadId: context.run.threadId,
+    ...(context.replyRootMessageId
+      ? { rootMessageId: context.replyRootMessageId }
+      : {}),
   })
   const reply = await applyRunReplyBookkeeping(
     deps.prisma,

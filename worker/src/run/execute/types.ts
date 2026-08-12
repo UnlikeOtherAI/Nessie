@@ -2,6 +2,7 @@ import type { ChannelSystemType, PrismaClient, RunReplyPlacement } from '@prisma
 import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
+import type { ConsumedSourceSink } from './disclosure-basis.js'
 import type {
   DeepSignalMcpIdentityService,
   LedgerIdentityService,
@@ -63,6 +64,13 @@ export type RunContext = {
     teamId: string
     systemChannelType: ChannelSystemType | null
   }
+  /**
+   * Scoped sources this run has consumed, accumulated as they arrive (memories
+   * at setup, knowledge-base pages from tool handlers, transcript turns as the
+   * window is admitted). Everything the run materialises is stamped from this.
+   * Additive only — see `disclosure-basis.ts`.
+   */
+  consumedSources: ConsumedSourceSink
   run: {
     id: string
     threadId: string

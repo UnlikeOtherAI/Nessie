@@ -6,6 +6,7 @@ import { persistInvocationLedgerEvents } from '../inference.js'
 import { enqueueRunMemoryConsolidation } from '../memory-consolidation.js'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { createMessageMentionAlerts } from '../mention-alerts.js'
+import { createAgentMessage } from './agent-message.js'
 import { buildScopes } from './scopes.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
 import { detectReferencedRecallIds } from './memory.js'
@@ -64,30 +65,32 @@ export const completeRunExecution = async (
   const rootMessageId = delegatedOwnerId ? undefined : context.replyRootMessageId
 
   const extraMetadata = input.messageMetadata ?? {}
-  const assistantMessage = await deps.prisma.message.create({
-    data: delegatedOwnerId
-      ? {
-          content: input.responseText,
-          metadata: {
-            ...extraMetadata,
-            delegatedByAgentId: context.agent.id,
-            delegatedFromRunId: context.run.id,
-          } as Prisma.InputJsonValue,
-          role: 'user',
-          threadId: context.run.threadId,
-          userId: delegatedOwnerId,
-        }
-      : {
-          agentId: context.agent.id,
-          content: input.responseText,
-          role: 'assistant',
-          threadId: context.run.threadId,
-          ...(input.messageMetadata
-            ? { metadata: extraMetadata as Prisma.InputJsonValue }
-            : {}),
-          ...(rootMessageId ? { rootMessageId } : {}),
-        },
-  })
+  // Both branches go through the one stamping chokepoint. The delegated-PA
+  // branch matters especially: it authors agent-generated content as
+  // `role: 'user'`, so a predicate keyed on agent authorship alone would miss
+  // it — `delegatedByAgentId` in metadata is what marks it structurally.
+  const assistantMessage = await createAgentMessage(deps.prisma, context, delegatedOwnerId
+    ? {
+        content: input.responseText,
+        metadata: {
+          ...extraMetadata,
+          delegatedByAgentId: context.agent.id,
+          delegatedFromRunId: context.run.id,
+        } as Prisma.InputJsonValue,
+        role: 'user',
+        threadId: context.run.threadId,
+        userId: delegatedOwnerId,
+      }
+    : {
+        agentId: context.agent.id,
+        content: input.responseText,
+        role: 'assistant',
+        threadId: context.run.threadId,
+        ...(input.messageMetadata
+          ? { metadata: extraMetadata as Prisma.InputJsonValue }
+          : {}),
+        ...(rootMessageId ? { rootMessageId } : {}),
+      })
 
   const reply = rootMessageId
     ? await applyRunReplyBookkeeping(deps.prisma, context, assistantMessage.createdAt)

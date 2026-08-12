@@ -13,6 +13,7 @@ import {
   resolveReplyRootMessageId,
 } from './reply-placement.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
+import { createConsumedSourceSink } from './disclosure-basis.js'
 
 const AGENT_ID = '00000000-0000-0000-0000-0000000000a1'
 const CHANNEL_ID = '00000000-0000-0000-0000-0000000000b1'
@@ -50,6 +51,7 @@ const makeContext = (replyRootMessageId?: string): RunContext => ({
     teamId: TEAM_ID,
     systemChannelType: null,
   },
+  consumedSources: createConsumedSourceSink(),
   run: {
     id: RUN_ID,
     threadId: THREAD_ID,

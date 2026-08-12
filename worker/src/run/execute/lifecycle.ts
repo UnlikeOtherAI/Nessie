@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import { applyReplyBookkeeping } from '@nessie/runtime'
 import type { RunExecuteJobPayload, RunStatus, TaskStatus } from '@nessie/schemas'
 import { parseAgentRunLimits } from '../run-budget.js'
+import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 
 export const updateTaskStatus = async (
@@ -132,6 +133,7 @@ export const loadRunContext = async (
   return {
     agent: { ...run.agent, runLimits: parseAgentRunLimits(run.agent.runLimits) },
     channel: run.thread.channel,
+    consumedSources: createConsumedSourceSink(),
     run: {
       id: run.id,
       threadId: run.thread.id,

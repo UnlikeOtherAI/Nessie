@@ -4,6 +4,7 @@ import test from 'node:test'
 import type { ProviderMessage } from '@nessie/runtime'
 import { buildModelPrompt } from './prompt.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
+import { createConsumedSourceSink } from './disclosure-basis.js'
 
 const ACTING_AGENT_ID = '00000000-0000-0000-0000-00000000000a'
 const OTHER_AGENT_ID = '00000000-0000-0000-0000-00000000000b'
@@ -27,6 +28,7 @@ const makeContext = (name: string, id: string = ACTING_AGENT_ID): RunContext => 
     teamId: 't',
     systemChannelType: null,
   },
+  consumedSources: createConsumedSourceSink(),
   run: {
     id: 'r',
     threadId: 't',

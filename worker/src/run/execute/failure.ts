@@ -8,6 +8,7 @@ import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTa
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import { classifyError, userMessageForFailureReason } from '../error-classification.js'
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
+import { createAgentMessage } from './agent-message.js'
 
 export const handleRunExecutionFailure = async (
   deps: ExecutionDependencies,
@@ -38,23 +39,20 @@ export const handleRunExecutionFailure = async (
   // model credential or loading a tool). Persist a regular assistant message
   // in every terminal path so a user is never left waiting without an outcome.
   try {
-    const errorMessage = await deps.prisma.message.create({
-      data: {
-        agentId: context.agent.id,
-        content: terminalContent,
-        role: 'assistant',
-        threadId: context.run.threadId,
-        ...(input.terminalMessageMetadata
-          ? { metadata: input.terminalMessageMetadata as Prisma.InputJsonValue }
-          : {}),
-        ...(context.replyRootMessageId
-          ? { rootMessageId: context.replyRootMessageId }
-          : {}),
-      },
+    const errorMessage = await createAgentMessage(deps.prisma, context, {
+      agentId: context.agent.id,
+      content: terminalContent,
+      role: 'assistant',
+      threadId: context.run.threadId,
+      ...(input.terminalMessageMetadata
+        ? { metadata: input.terminalMessageMetadata as Prisma.InputJsonValue }
+        : {}),
+      ...(context.replyRootMessageId
+        ? { rootMessageId: context.replyRootMessageId }
+        : {}),
     })
 
     terminalMessageId = errorMessage.id
-    terminalContent = errorMessage.content
     terminalCreatedAt = errorMessage.createdAt.toISOString()
 
     const reply = await applyRunReplyBookkeeping(

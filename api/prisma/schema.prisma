@@ -818,6 +818,8 @@ model Organization {
   userPresences               UserPresence[]
   agents                      Agent[]
   runCheckpoints              RunCheckpoint[]
+  runBasisScopes              RunBasisScope[]
+  messageBasisScopes          MessageBasisScope[]
   agentMailboxMessages        AgentMailboxMessage[]
   workflowTemplates           WorkflowTemplate[]
   workflowInstallations       WorkflowInstallation[]
@@ -1380,11 +1382,53 @@ model Message {
   productIntegrationRuns ProductIntegrationRun[]
   triggeredRuns Run[]            @relation("RunTriggerMessage")
   runThreadPendingMessages RunThreadPendingMessage[]
+  basisScopes MessageBasisScope[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
   @@index([rootMessageId, createdAt])
   @@map("messages")
+}
+
+/// Denormalised copy of the producing run's disclosure basis, carried on the
+/// message so the read predicate filters a conversation window with one
+/// anti-join instead of joining back through runs. Zero rows = unrestricted,
+/// which is the overwhelming majority. Source of truth is `RunBasisScope`.
+model MessageBasisScope {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId      String   @map("message_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  /// ThoughtAudienceType literal: user | channel | team | project | organization
+  scopeType      String   @map("scope_type")
+  scopeId        String   @map("scope_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  message        Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, scopeType, scopeId], map: "message_basis_scopes_message_scope_key")
+  @@index([organizationId], map: "message_basis_scopes_org_idx")
+  @@map("message_basis_scopes")
+}
+
+/// The primary disclosure-provenance record: scoped sources a run consumed that
+/// the destination's own scope chain does NOT imply. Everything a run
+/// materialises — messages, thinking chunks, tool calls, checkpoints, plan
+/// artifacts, workflow output — is governed by this one ledger.
+/// `RunCheckpoint.runId` is unique, so checkpoints inherit it without a table of
+/// their own.
+model RunBasisScope {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId          String   @map("run_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  scopeType      String   @map("scope_type")
+  scopeId        String   @map("scope_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  run            Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, scopeType, scopeId], map: "run_basis_scopes_run_scope_key")
+  @@index([organizationId], map: "run_basis_scopes_org_idx")
+  @@map("run_basis_scopes")
 }
 
 model MessageThreadFollow {
@@ -1669,6 +1713,7 @@ model Run {
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowAgentRun")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   thinkingChunks                RunThinkingChunk[]
+  basisScopes                   RunBasisScope[]
 
   @@index([agentId, status])
   @@index([threadId, createdAt])

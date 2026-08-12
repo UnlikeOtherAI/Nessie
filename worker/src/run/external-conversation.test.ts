@@ -10,6 +10,7 @@ import type {
 
 import { runExternalConversation, type ExternalChatCaller } from './external-conversation.js'
 import type { ExecutionDependencies, RunContext } from './execute/types.js'
+import { createConsumedSourceSink } from './execute/disclosure-basis.js'
 
 const ORG = '00000000-0000-4000-8000-000000000001'
 const CHANNEL = '00000000-0000-4000-8000-000000000002'
@@ -218,6 +219,7 @@ const makeHarness = (opts: HarnessOptions = {}) => {
       teamId: TEAM,
       systemChannelType: 'external_agent',
     },
+    consumedSources: createConsumedSourceSink(),
     run: { id: RUN, threadId: THREAD, createdAt: new Date(), replyPlacement: null },
     task: { id: TASK },
   }

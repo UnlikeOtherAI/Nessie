@@ -1,5 +1,6 @@
 import {
   constrainScopesToDestination,
+  loadThoughtAudiences,
   resolveAccessibleScopes,
   searchAndLogThoughtsInScopes,
   type ScopeResolutionMode,
@@ -207,7 +208,20 @@ export const retrieveRelevantMemories = async (
       deps.searchConfig,
     )
 
-    return results.filter((result) => !isSuppressedMemory(result.metadata))
+    const retained = results.filter((result) => !isSuppressedMemory(result.metadata))
+
+    // Record what this run actually consumed. The basis of anything the run
+    // later materialises is computed from this sink, so a memory that reached
+    // the model is provenance even if the model never quotes it.
+    if (retained.length > 0) {
+      const audiences = await loadThoughtAudiences(
+        deps.searchConfig.pool,
+        retained.map((result) => result.id),
+      )
+      context.consumedSources.addAll(audiences)
+    }
+
+    return retained
   } catch (error) {
     console.warn(
       '[worker] Memory search failed, continuing without memories:',
