@@ -38,6 +38,59 @@ export type SessionPayload = {
 
 export type AccessTokenRefreshCoordinator = () => Promise<string | null>
 
+const MAX_SAFE_JWT_EXPIRY_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1_000)
+
+const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
+  const payload = token.split('.')[1]
+  if (!payload) return null
+
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padding = '='.repeat((4 - (base64.length % 4)) % 4)
+    const binary = atob(`${base64}${padding}`)
+    const bytes = Uint8Array.from(binary, (character) => character.codePointAt(0) ?? 0)
+    const decoded = JSON.parse(new TextDecoder().decode(bytes)) as unknown
+    return decoded !== null && typeof decoded === 'object'
+      ? decoded as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Read an access token's expiry solely to schedule a renewal. Authentication
+ * still happens on the server when the token is used or refreshed.
+ */
+export const getAccessTokenExpiresAtMs = (token: string): number | null => {
+  const exp = decodeJwtPayload(token)?.exp
+  if (
+    typeof exp !== 'number'
+    || !Number.isSafeInteger(exp)
+    || exp <= 0
+    || exp > MAX_SAFE_JWT_EXPIRY_SECONDS
+  ) {
+    return null
+  }
+
+  return exp * 1_000
+}
+
+/**
+ * Return the delay before an access token should be renewed. `null` means the
+ * token cannot be scheduled and normal startup/401 recovery remains in charge.
+ */
+export const getAccessTokenRenewalDelayMs = (
+  token: string,
+  nowMs = Date.now(),
+  renewalLeewayMs = 120_000,
+): number | null => {
+  const expiresAtMs = getAccessTokenExpiresAtMs(token)
+  if (expiresAtMs === null) return null
+
+  return Math.max(0, expiresAtMs - nowMs - Math.max(0, renewalLeewayMs))
+}
+
 /**
  * Coordinate every access-token renewal in one process. Refresh-token rotation
  * is single-use, so startup restoration and concurrent API 401s must share the
