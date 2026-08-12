@@ -14,12 +14,16 @@ import (
 )
 
 const (
-	codingConfigPath    = "/run/nessie-executor/tmux.conf"
-	codingProfileRoot   = "/work"
-	codingSessionName   = "nessie"
-	codingSocketPath    = "/run/nessie-executor/tmux/session.sock"
-	codingSessionTarget = "=nessie"
-	codingTarget        = "=nessie:0.0"
+	codingConfigPath               = "/run/nessie-executor/tmux.conf"
+	codingCredentialHome           = "/run/nessie-executor/codex-home"
+	codingCredentialCanary         = codingCredentialHome + "/auth-canary"
+	codingProfileRoot              = "/work"
+	codingSessionName              = "nessie"
+	codingSocketPath               = "/run/nessie-executor/tmux/session.sock"
+	codingSessionTarget            = "=nessie"
+	codingTarget                   = "=nessie:0.0"
+	codingSandboxProfile           = "nessie-executor"
+	codingConformanceProbeArgument = "nessie-codex-conformance-probe"
 	// Eight KiB keeps the worst-case JSON representation below the 64 KiB
 	// authenticated guest-control frame cap, even when JSON must escape every
 	// returned character.
@@ -53,6 +57,14 @@ type codingRuntime struct {
 	socket           string
 	tmux             string
 	profileRoot      string
+}
+
+func codexSandboxConfiguration() []string {
+	return []string{
+		"-c", "permissions." + codingSandboxProfile + ".extends=\":workspace\"",
+		"-c", "permissions." + codingSandboxProfile + ".filesystem={\"" + codingCredentialHome + "\"=\"deny\"}",
+		"-c", "permissions." + codingSandboxProfile + ".network.enabled=false",
+	}
 }
 
 func newCodingRuntime(manifest *runtimeManifest) *codingRuntime {
@@ -91,17 +103,26 @@ func (runtime *codingRuntime) launch(agent codingAgent) error {
 	if runtime.launched || runtime.agentExecutables[agent] == "" || runtime.socketExists() {
 		return errInvalidFrame
 	}
+	if agent == codingAgentCodex && runtime.conformCodexSandbox() != nil {
+		return errInvalidFrame
+	}
 	profile := filepath.Join(runtime.profileRoot, ".nessie-executor", "coding", string(agent))
-	if err := secureBrowserProfile(runtime.profileRoot, profile); err != nil {
-		return err
+	if agent != codingAgentCodex {
+		if err := secureBrowserProfile(runtime.profileRoot, profile); err != nil {
+			return err
+		}
 	}
 	environment := codingEnvironment(agent, profile)
-	if _, err := runtime.invoke([]string{
+	argv := []string{
 		"-f", codingConfigPath,
 		"-S", runtime.socket,
 		"new-session", "-d", "-s", codingSessionName, "--",
 		runtime.agentExecutables[agent],
-	}, environment); err != nil {
+	}
+	if agent == codingAgentCodex {
+		argv = append(argv, codexLaunchArguments()...)
+	}
+	if _, err := runtime.invoke(argv, environment); err != nil {
 		return err
 	}
 	runtime.launched = true
@@ -211,12 +232,47 @@ func (runtime *codingRuntime) invoke(args, environment []string) ([]byte, error)
 	return runtime.run(runtime.tmux, args, environment)
 }
 
-func codingEnvironment(agent codingAgent, profile string) []string {
-	environment := []string{"HOME=" + profile, "TMPDIR=" + profile}
-	if agent == codingAgentCodex {
-		return append(environment, "CODEX_HOME="+filepath.Join(profile, "state"))
+// A coding process is an authenticated parent and its model-generated shell
+// commands are untrusted children. The exact pinned Codex binary must prove
+// that a workspace-write child cannot read the auth home or use the guest's
+// loopback egress proxy, even by nesting a Codex sandbox with full access.
+// This is deliberately a launch gate rather than an advisory self-check.
+func (runtime *codingRuntime) conformCodexSandbox() error {
+	codex := runtime.agentExecutables[codingAgentCodex]
+	if codex == "" || runtime.run == nil {
+		return errInvalidFrame
 	}
-	return append(environment, "CLAUDE_CONFIG_DIR="+filepath.Join(profile, "state"))
+	args := []string{"sandbox", "-P", codingSandboxProfile}
+	args = append(args, codexSandboxConfiguration()...)
+	args = append(args, "/init", codingConformanceProbeArgument, codex)
+	_, err := runtime.run(codex, args, codingConformanceEnvironment())
+	return err
+}
+
+func codingEnvironment(agent codingAgent, profile string) []string {
+	if agent == codingAgentCodex {
+		return append(codingConformanceEnvironment(),
+			"CODEX_HOME="+codingCredentialHome,
+		)
+	}
+	return []string{"HOME=" + profile, "TMPDIR=" + profile, "CLAUDE_CONFIG_DIR=" + filepath.Join(profile, "state")}
+}
+
+func codingConformanceEnvironment() []string {
+	return []string{
+		"HOME=" + codingCredentialHome,
+		"TMPDIR=" + codingCredentialHome + "/tmp",
+	}
+}
+
+func codexLaunchArguments() []string {
+	args := append([]string{}, codexSandboxConfiguration()...)
+	return append(args,
+		"-c", "default_permissions=\""+codingSandboxProfile+"\"",
+		"--ignore-rules",
+		"--ignore-user-config",
+		"--skip-git-repo-check",
+	)
 }
 
 func runCodingCommand(path string, args, environment []string) ([]byte, error) {

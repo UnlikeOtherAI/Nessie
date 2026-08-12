@@ -134,6 +134,9 @@ func mountGuestRuntimeIfRequested() (*runtimeManifest, error) {
 }
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == codingConformanceProbeArgument {
+		os.Exit(runCodingConformanceProbe(os.Args[2:]))
+	}
 	workspaceAttached, err := mountGuestWorkspaceIfRequested()
 	if err != nil {
 		os.Exit(1)

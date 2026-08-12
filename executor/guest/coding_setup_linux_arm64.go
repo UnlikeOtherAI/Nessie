@@ -27,6 +27,9 @@ func prepareCodingRuntime(identity guestIdentity) error {
 	if err := os.Chmod(codingRuntimeDirectory, 0o755); err != nil {
 		return err
 	}
+	if err := prepareCodexCredentialHome(identity); err != nil {
+		return err
+	}
 	configFile, err := os.OpenFile(codingConfigPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o444)
 	if err != nil {
 		return err
@@ -64,6 +67,67 @@ func prepareCodingRuntime(identity guestIdentity) error {
 	}
 	socketMetadata, ok := socketDirectory.Sys().(*syscall.Stat_t)
 	if !ok || socketMetadata.Uid != identity.userID || socketMetadata.Gid != identity.groupID {
+		return errInvalidFrame
+	}
+	return nil
+}
+
+// The home is deliberately outside `/work`: the only principal allowed to
+// read it is the outer Codex process. Its own pinned workspace-write sandbox
+// receives an explicit deny for this path and is conformance-tested before
+// launch. The canary is non-secret, but proves that policy is effective before
+// an auth profile is ever materialized here.
+func prepareCodexCredentialHome(identity guestIdentity) error {
+	if err := os.Mkdir(codingCredentialHome, 0o700); err != nil && !os.IsExist(err) {
+		return err
+	}
+	info, err := os.Lstat(codingCredentialHome)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errInvalidFrame
+	}
+	if err := os.Chown(codingCredentialHome, int(identity.userID), int(identity.groupID)); err != nil {
+		return err
+	}
+	if err := os.Chmod(codingCredentialHome, 0o700); err != nil {
+		return err
+	}
+	if err := os.Mkdir(codingCredentialHome+"/tmp", 0o700); err != nil && !os.IsExist(err) {
+		return err
+	}
+	if err := os.Chown(codingCredentialHome+"/tmp", int(identity.userID), int(identity.groupID)); err != nil {
+		return err
+	}
+	if err := os.Chmod(codingCredentialHome+"/tmp", 0o700); err != nil {
+		return err
+	}
+	tmpInfo, err := os.Lstat(codingCredentialHome + "/tmp")
+	if err != nil || !tmpInfo.IsDir() || tmpInfo.Mode()&os.ModeSymlink != 0 || tmpInfo.Mode().Perm() != 0o700 {
+		return errInvalidFrame
+	}
+	tmpMetadata, ok := tmpInfo.Sys().(*syscall.Stat_t)
+	if !ok || tmpMetadata.Uid != identity.userID || tmpMetadata.Gid != identity.groupID {
+		return errInvalidFrame
+	}
+	canary, err := os.OpenFile(codingCredentialCanary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o400)
+	if err != nil {
+		return err
+	}
+	if _, err := canary.WriteString("nessie-codex-auth-canary\n"); err != nil {
+		_ = canary.Close()
+		return err
+	}
+	if err := canary.Close(); err != nil {
+		return err
+	}
+	if err := os.Chown(codingCredentialCanary, int(identity.userID), int(identity.groupID)); err != nil {
+		return err
+	}
+	canaryInfo, err := os.Lstat(codingCredentialCanary)
+	if err != nil || !canaryInfo.Mode().IsRegular() || canaryInfo.Mode()&os.ModeSymlink != 0 || canaryInfo.Mode().Perm() != 0o400 {
+		return errInvalidFrame
+	}
+	metadata, ok := canaryInfo.Sys().(*syscall.Stat_t)
+	if !ok || metadata.Uid != identity.userID || metadata.Gid != identity.groupID {
 		return errInvalidFrame
 	}
 	return nil

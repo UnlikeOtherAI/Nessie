@@ -618,13 +618,27 @@ targets are the fixed exact session `=nessie` and pane `=nessie:0.0`; display
 names, caller input, and a default/pre-existing tmux server never become
 targets. An existing dedicated socket makes launch fail closed.
 
-The isolated CLI home is created inside the guest COW workspace, with a fresh
-environment that names only that home, its temporary directory, and the
-tool-specific state location. It does not inherit a host home, `PATH`,
-keychain, global Codex/Claude configuration, or API token. Observation uses
-the authoritative tmux dead-pane fields plus an 8 KiB, UTF-8, non-binary,
-non-ANSI `capture-pane` snapshot; terminal prose never supplies lifecycle
-truth. Close kills only the exact dedicated session.
+The credential-free Claude profile is created inside the guest COW workspace.
+Codex instead receives a fresh, private guest home below
+`/run/nessie-executor`, never below `/work`. It contains a non-secret canary
+and no host profile today. Before the guest will launch Codex, its exact
+manifest-pinned binary must run a conformance probe in the same
+workspace-write mode that it assigns to model-generated commands. The probe
+must be unable to read that home or connect to the guest-local forced-egress
+proxy; it then starts a nested Codex sandbox explicitly requesting
+danger-full-access, and that nested probe must be unable to do either as well.
+A failure is a launch failure. This makes the outer authenticated Codex process
+and its model-controlled children distinct security principals by enforced
+policy, rather than relying on same-UID filesystem modes or an environment
+variable.
+
+The parent process receives no raw bearer in its environment; when credentials
+are added, only its private home and the fixed provider-only forced gateway
+will be available. Its workspace children receive neither. It does not inherit
+a host home, `PATH`, keychain, global Codex/Claude configuration, or API token.
+Observation uses the authoritative tmux dead-pane fields plus an 8 KiB,
+UTF-8, non-binary, non-ANSI `capture-pane` snapshot; terminal prose never
+supplies lifecycle truth. Close kills only the exact dedicated session.
 
 This is intentionally **not** `coding.launch`, `coding.observe`, or
 `coding.close` product availability: no executor descriptor, daemon command,
@@ -632,10 +646,11 @@ agent tool, UI route, remote terminal attach, credential broker, approval,
 control lease, or task/session record reaches it. The guest has no coding CLI
 credential or direct network path, so its internal control messages cannot be
 used as a working Codex/Claude product session. A subsequent slice must add a
-credential-principal boundary, session-bound credential/egress broker, and
-durable control plane before any of these mechanics are projected. A proof or
-token inherited by a coding CLI is insufficient: child workspace processes can
-read it and must never receive delegated provider capability.
+locally selected Codex auth profile, provider-only forced gateway, and durable
+control plane before any of these mechanics are projected. The conformance
+gate is the prerequisite for that local profile; a proof or token inherited by
+a coding CLI is insufficient because child workspace processes can read it and
+must never receive delegated provider capability.
 
 Its optional `--workspace-cow` argument exists only for the companion's
 lease-derived release probe. It passes that one COW directory into the fixed VM

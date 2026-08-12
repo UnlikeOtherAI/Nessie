@@ -45,13 +45,16 @@ Progress: the guest now proves the dedicated-server mechanics privately: it
 creates a root-configured, guest-owned socket directory before privilege drop;
 uses the manifest-pinned tmux and Codex/Claude argv directly; accepts only a
 fixed session/pane target; retains exited panes; and bounds/sanitizes
-observation. It exposes no `coding.*` executor operation yet. The next coding
-slice requires a credential-principal boundary before a session-bound
-credential/egress broker and durable session/control records: a proof inherited
-by the coding CLI can be read by its workspace children and is therefore not a
-safe credential boundary. Only then may this guest substrate be wired through a
-descriptor, the daemon, agent grants, the Executors surface, and Personal
-Assistant user confirmation.
+observation. Codex has an additional launch-time conformance gate: a
+workspace-write child and a nested Codex sandbox that asks for
+danger-full-access must both fail to read the private future auth home or reach
+the guest-local egress proxy. This is the required credential-principal
+boundary; same-UID modes and an inherited proof are not. It exposes no
+`coding.*` executor operation yet. The next coding slice can materialize a
+locally selected Codex auth profile only after coupling that launch gate to a
+provider-only egress route and durable session/control records. Only then may
+this guest substrate be wired through a descriptor, the daemon, agent grants,
+the Executors surface, and Personal Assistant user confirmation.
 
 ### 6. Expansion and hardening
 

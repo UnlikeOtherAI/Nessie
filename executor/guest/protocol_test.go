@@ -253,14 +253,13 @@ func TestGuestBrowserObservationDropsQueryAndCannotDialAnotherAddress(t *testing
 func TestGuestCodingUsesOneDedicatedTmuxServerAndExactTarget(t *testing.T) {
 	root := t.TempDir()
 	socket := filepath.Join(root, "tmux.sock")
-	profile := filepath.Join(root, ".nessie-executor", "coding", "codex")
 	var calls [][]string
 	var environments [][]string
 	runtime := &codingRuntime{
 		agentExecutables: map[codingAgent]string{codingAgentCodex: "/runtime/bin/codex"},
 		profileRoot:      root,
 		run: func(path string, args, environment []string) ([]byte, error) {
-			if path != "/runtime/bin/tmux" {
+			if path != "/runtime/bin/tmux" && path != "/runtime/bin/codex" {
 				t.Fatalf("unexpected executable %q", path)
 			}
 			calls = append(calls, append([]string{}, args...))
@@ -286,10 +285,15 @@ func TestGuestCodingUsesOneDedicatedTmuxServerAndExactTarget(t *testing.T) {
 		"-S", socket,
 		"new-session", "-d", "-s", codingSessionName, "--", "/runtime/bin/codex",
 	}
-	if len(calls) != 1 || !reflect.DeepEqual(calls[0], expectedLaunch) {
+	expectedLaunch = append(expectedLaunch, codexLaunchArguments()...)
+	expectedConformance := append(
+		[]string{"sandbox", "-P", codingSandboxProfile},
+		append(codexSandboxConfiguration(), "/init", codingConformanceProbeArgument, "/runtime/bin/codex")...,
+	)
+	if len(calls) != 2 || !reflect.DeepEqual(calls[0], expectedConformance) || !reflect.DeepEqual(calls[1], expectedLaunch) {
 		t.Fatalf("unexpected tmux launch %#v", calls)
 	}
-	if !reflect.DeepEqual(environments[0], codingEnvironment(codingAgentCodex, profile)) || strings.Contains(strings.Join(environments[0], "\x00"), "PATH=") || strings.Contains(strings.Join(environments[0], "\x00"), "NESSIE_EXECUTOR_SESSION_PROOF=") {
+	if !reflect.DeepEqual(environments[0], codingConformanceEnvironment()) || !reflect.DeepEqual(environments[1], codingEnvironment(codingAgentCodex, "")) || strings.Contains(strings.Join(environments[1], "\x00"), "PATH=") || strings.Contains(strings.Join(environments[1], "\x00"), "HTTP_PROXY=") || strings.Contains(strings.Join(environments[1], "\x00"), "NESSIE_EXECUTOR_SESSION_PROOF=") {
 		t.Fatalf("coding launch inherited an ambient environment %#v", environments[0])
 	}
 	observed, err := runtime.observation()
@@ -299,23 +303,41 @@ func TestGuestCodingUsesOneDedicatedTmuxServerAndExactTarget(t *testing.T) {
 	if !reflect.DeepEqual(observed, codingObservation{Agent: codingAgentCodex, Lifecycle: "running", Output: "Working"}) {
 		t.Fatalf("unexpected coding observation %#v", observed)
 	}
-	if len(calls) != 3 || !reflect.DeepEqual(calls[1], []string{"-S", socket, "display-message", "-p", "-t", codingTarget, "#{pane_dead}\t#{pane_dead_status}"}) || !reflect.DeepEqual(calls[2], []string{"-S", socket, "capture-pane", "-p", "-t", codingTarget, "-S", "-200"}) {
+	if len(calls) != 4 || !reflect.DeepEqual(calls[2], []string{"-S", socket, "display-message", "-p", "-t", codingTarget, "#{pane_dead}\t#{pane_dead_status}"}) || !reflect.DeepEqual(calls[3], []string{"-S", socket, "capture-pane", "-p", "-t", codingTarget, "-S", "-200"}) {
 		t.Fatalf("coding observation lost the dedicated exact target %#v", calls)
 	}
-	if !reflect.DeepEqual(environments[1], environments[0]) || !reflect.DeepEqual(environments[2], environments[0]) {
+	if !reflect.DeepEqual(environments[2], environments[1]) || !reflect.DeepEqual(environments[3], environments[1]) {
 		t.Fatal("coding observation inherited a different environment")
 	}
 	if err := runtime.close(); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(calls[3], []string{"-S", socket, "kill-session", "-t", codingSessionTarget}) {
-		t.Fatalf("coding close lost the exact target %#v", calls[3])
+	if !reflect.DeepEqual(calls[4], []string{"-S", socket, "kill-session", "-t", codingSessionTarget}) {
+		t.Fatalf("coding close lost the exact target %#v", calls[4])
 	}
 	if _, ok := sanitizeCodingOutput([]byte("\x1b[2J")); ok {
 		t.Fatal("accepted ANSI terminal output")
 	}
 	if _, ok := sanitizeCodingOutput([]byte{0}); ok {
 		t.Fatal("accepted binary terminal output")
+	}
+}
+
+func TestGuestCodexFailsClosedWhenItsSandboxConformanceFails(t *testing.T) {
+	runtime := &codingRuntime{
+		agentExecutables: map[codingAgent]string{codingAgentCodex: "/runtime/bin/codex"},
+		profileRoot:      t.TempDir(),
+		run: func(path string, _ []string, _ []string) ([]byte, error) {
+			if path == "/runtime/bin/tmux" {
+				t.Fatal("started tmux after Codex sandbox conformance failed")
+			}
+			return nil, errInvalidFrame
+		},
+		socket: filepath.Join(t.TempDir(), "tmux.sock"),
+		tmux:   "/runtime/bin/tmux",
+	}
+	if err := runtime.launch(codingAgentCodex); err == nil {
+		t.Fatal("launched Codex without a passing sandbox conformance probe")
 	}
 }
 
