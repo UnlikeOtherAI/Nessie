@@ -35,7 +35,11 @@ interface CachedJwt {
 /** Build the standard APNs JSON body for a payload. */
 export const buildApnsBody = (payload: PushPayload): string => {
   const aps: Record<string, unknown> = {
-    alert: { title: payload.title, body: payload.body },
+    alert: {
+      title: payload.title,
+      ...(payload.subtitle ? { subtitle: payload.subtitle } : {}),
+      body: payload.body,
+    },
   }
   if (payload.badge !== undefined) aps.badge = payload.badge
   if (payload.collapseId !== undefined) aps['thread-id'] = payload.collapseId

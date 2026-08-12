@@ -145,17 +145,26 @@ export const handlePushDispatch = async (
     return summary
   }
   const now = deps.now?.() ?? new Date()
-  // 3. Build the notification payloads (deep-link data + per-channel
-  // coalescing). Mentioned recipients get distinct mention framing; the rest
-  // keep the standard channel-label title. Muted members were filtered out
-  // above for everyone — a muted channel suppresses even mention pushes, but
-  // the durable UserAlert row + bell badge are still created API-side, so a
-  // mention is never lost, just quiet.
+  // 3. Build sender-first notification payloads (deep-link data + per-channel
+  // coalescing). APNs shows the channel as its subtitle; FCM/Web Push preserve
+  // it by composing that subtitle into their one available title line. Muted
+  // members were filtered out above for everyone — a muted channel suppresses
+  // even mention pushes, but the durable UserAlert row + bell badge are still
+  // created API-side, so a mention is never lost, just quiet.
   const channel = await deps.prisma.channel.findUnique({
     where: { id: payload.channelId },
     select: { label: true },
   })
   const channelLabel = channel?.label ?? 'New message'
+  const author = payload.authorName
+    ? null
+    : payload.authorUserId
+      ? await deps.prisma.user.findUnique({
+        where: { id: payload.authorUserId },
+        select: { displayName: true },
+      })
+      : null
+  const authorName = payload.authorName ?? author?.displayName ?? 'Nessie'
   const mentionUserIds = new Set(protectedReply ? [] : payload.mentionUserIds)
   const mentionedRecipientIds = entitledUsers
     .filter((user) => mentionUserIds.has(user.id))
@@ -166,8 +175,9 @@ export const handlePushDispatch = async (
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
     .map((user) => user.id)
 
-  const buildPayload = (title: string): PushPayload => ({
-    title,
+  const buildPayload = (subtitle: string): PushPayload => ({
+    title: authorName,
+    subtitle,
     body: protectedReply
       ? genericReplyBody
       : payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
@@ -182,7 +192,7 @@ export const handlePushDispatch = async (
 
   // 4. Deliver over native + Web Push through the shared core, once per
   // framing group.
-  const deliver = (title: string, ids: string[]) =>
+  const deliver = (ids: string[], subtitle: string) =>
     deliverToRecipients({
       prisma: deps.prisma,
       apnsCreds,
@@ -190,7 +200,7 @@ export const handlePushDispatch = async (
       ...(deps.webPush ? { webPush: deps.webPush } : {}),
       ...(deps.senders ? { senders: deps.senders } : {}),
       retryDelayMs,
-      payload: buildPayload(title),
+      payload: buildPayload(subtitle),
       recipientIds: ids,
       organizationId: payload.organizationId,
       deepLinkUrl: `/channels/${payload.channelId}`,
@@ -200,24 +210,14 @@ export const handlePushDispatch = async (
     })
 
   if (otherRecipientIds.length > 0) {
-    const delivered = await deliver(channelLabel, otherRecipientIds)
+    const delivered = await deliver(otherRecipientIds, `# ${channelLabel}`)
     summary.sent += delivered.sent
     summary.failed += delivered.failed
     summary.pruned += delivered.pruned
   }
 
   if (mentionedRecipientIds.length > 0) {
-    const author = payload.authorUserId
-      ? await deps.prisma.user.findUnique({
-          where: { id: payload.authorUserId },
-          select: { displayName: true },
-        })
-      : null
-    const authorName = author?.displayName ?? 'Someone'
-    const mentionTitle = channel?.label
-      ? `${authorName} mentioned you in ${channel.label}`
-      : `${authorName} mentioned you`
-    const delivered = await deliver(mentionTitle, mentionedRecipientIds)
+    const delivered = await deliver(mentionedRecipientIds, `mentioned you in # ${channelLabel}`)
     summary.sent += delivered.sent
     summary.failed += delivered.failed
     summary.pruned += delivered.pruned

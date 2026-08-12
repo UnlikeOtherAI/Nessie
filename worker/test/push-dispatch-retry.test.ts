@@ -110,6 +110,7 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     user: {
       findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
         where.id.in.map((id) => ({ id, preferences: null })),
+      findUnique: async () => ({ displayName: 'Author' }),
     },
     pushDelivery: {
       create: async ({ data }: { data: DeliveryRow }) => {

@@ -70,10 +70,11 @@ test('parseServiceAccount throws on invalid JSON', () => {
   assert.throws(() => parseServiceAccount('{nope'), /could not be parsed/)
 })
 
-test('buildFcmBody includes token, notification, data, and collapse keys', () => {
+test('buildFcmBody combines the subtitle into Android notification title', () => {
   const body = JSON.parse(
     buildFcmBody('dev-token', {
       title: 'Hi',
+      subtitle: '# General',
       body: 'There',
       data: { url: 'nessie://x' },
       badge: 7,
@@ -83,7 +84,7 @@ test('buildFcmBody includes token, notification, data, and collapse keys', () =>
   assert.deepEqual(body, {
     message: {
       token: 'dev-token',
-      notification: { title: 'Hi', body: 'There' },
+      notification: { title: 'Hi · # General', body: 'There' },
       data: { url: 'nessie://x' },
       android: { collapse_key: 'chan-1', notification: { notification_count: 7 } },
       apns: { headers: { 'apns-collapse-id': 'chan-1' }, payload: { aps: { badge: 7 } } },

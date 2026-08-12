@@ -11,6 +11,7 @@ const THREAD_ID = '00000000-0000-4000-8000-000000000004'
 const MESSAGE_ID = '00000000-0000-4000-8000-000000000005'
 
 const context = {
+  agent: { name: 'Hardware Watch' },
   channel: { id: CHANNEL_ID, organizationId: ORGANIZATION_ID },
   run: { id: 'run-1', threadId: THREAD_ID },
 } as RunContext
@@ -58,6 +59,7 @@ test('queues an interactive reply only for the requesting user', async () => {
 
   const queued = queuedPayload(calls)
   assert.deepEqual(queued.recipientUserIds, [USER_ID])
+  assert.equal(queued.authorName, 'Hardware Watch')
   assert.equal(queued.channelId, CHANNEL_ID)
   assert.equal(queued.threadId, THREAD_ID)
   assert.equal(queued.messageId, MESSAGE_ID)

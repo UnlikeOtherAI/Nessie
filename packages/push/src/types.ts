@@ -32,7 +32,13 @@ export interface FcmCredentials {
 
 /** The notification content to deliver, platform-agnostic. */
 export interface PushPayload {
+  /** Person or agent that produced the notification. */
   title: string
+  /**
+   * Context for platforms that support a second alert line (APNs). Other
+   * platforms compose it into the title so the destination is never lost.
+   */
+  subtitle?: string
   body: string
   /** Optional badge count (source of truth is the caller). */
   badge?: number
