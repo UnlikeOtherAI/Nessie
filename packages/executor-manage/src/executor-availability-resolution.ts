@@ -225,7 +225,11 @@ export const resolveExecutorAvailabilityCandidates = async (
     where: {
       actorUserId,
       agentId: agent.id,
-      OR: [{ consumedAt: { not: null } }, { expiresAt: { lte: now } }],
+      // A consumed choice is the durable provenance for an ExecutorBinding.
+      // Do not sweep it while an existing run can still dispatch against that
+      // binding; expiry only makes an *unconsumed* choice unusable.
+      consumedAt: null,
+      expiresAt: { lte: now },
     },
   })
   const candidates = await Promise.all(prepared.map(async (entry) => {

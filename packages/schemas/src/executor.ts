@@ -309,6 +309,21 @@ export type ExecutorAvailabilityResponse = z.infer<
   typeof ExecutorAvailabilityResponseSchema
 >
 
+export const ExecutorRunBindRequestSchema = z.object({
+  candidateHandle: ExecutorCandidateHandleSchema,
+  operationKey: ExecutorOperationKeySchema,
+}).strict()
+export type ExecutorRunBindRequest = z.infer<typeof ExecutorRunBindRequestSchema>
+
+export const ExecutorRunBindResponseSchema = z.object({
+  bindingId: ExecutorBindingIdSchema,
+  capabilityRevision: z.number().int().positive(),
+  fence: z.string().regex(/^\d+$/),
+  operationKey: ExecutorOperationKeySchema,
+  runId: RunIdSchema,
+}).strict()
+export type ExecutorRunBindResponse = z.infer<typeof ExecutorRunBindResponseSchema>
+
 export const ExecutorCommandReceiptStateSchema = z.enum([
   'accepted',
   'started',

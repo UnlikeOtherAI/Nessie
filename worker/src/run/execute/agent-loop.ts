@@ -16,6 +16,7 @@ import { buildContextPlan } from '../context-window.js'
 import { runContextCompaction } from '../context-compaction.js'
 import { estimateToolSchemaTokens } from '../context-management.js'
 import { runDelegate } from '../delegate.js'
+import type { ExecutorToolset } from '../executor-toolset.js'
 import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
@@ -50,6 +51,7 @@ export const runExecutionAgentLoop = async (
     // Mid-run org-`Budget` probe (throttled by its factory in budget-gate.ts).
     checkBudgetBlocked: () => Promise<boolean>
     deepWaterHandoffGuard: DeepWaterHandoffGuard
+    executorToolset: ExecutorToolset
     initialMessages: ProviderMessage[]
     inference: RunInference
     // Caller-owned accumulator: every main-loop, sub-agent AND compaction
@@ -71,7 +73,9 @@ export const runExecutionAgentLoop = async (
     windDownInstruction: string | null
   },
 ): Promise<LoopResult> => {
-  const subAgentBuiltinDescriptors = input.toolDefs.filter((d) => d.toolName !== 'delegate')
+  const subAgentBuiltinDescriptors = input.toolDefs.filter(
+    (descriptor) => descriptor.toolName !== 'delegate' && input.resolvedToolIds.has(descriptor.toolName),
+  )
   const subAgentBuiltinIds = new Set(
     [...input.resolvedToolIds].filter((id) => id !== 'delegate'),
   )
@@ -225,6 +229,7 @@ export const runExecutionAgentLoop = async (
         inputSummary,
         startedAt,
         connectorUsage,
+        toolCallRecordId,
       ) => {
         await recordToolEnd(deps, context, payload.actorContext, {
           durationMs,
@@ -234,6 +239,7 @@ export const runExecutionAgentLoop = async (
           success,
           toolName,
           connectorUsage,
+          toolCallRecordId,
         })
         await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
         await publishAgentStatus(deps.realtimeTransport, context, {
@@ -291,6 +297,9 @@ export const runExecutionAgentLoop = async (
       }
       if (mcpExposedNames.has(toolName)) {
         return mcpView.dispatch(toolName, args, toolCallId)
+      }
+      if (input.executorToolset.handledNames.has(toolName)) {
+        return input.executorToolset.dispatch(toolName, args, toolCallId)
       }
       const registryDecision = authorizeToolCall(
         toolName,

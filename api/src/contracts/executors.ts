@@ -18,6 +18,8 @@ import {
   ExecutorAvailabilityResponseSchema as ExecutorAvailabilityResponseContractSchema,
   ExecutorPairingInvitationResponseSchema,
   ExecutorRecordResponseSchema,
+  ExecutorRunBindRequestSchema,
+  ExecutorRunBindResponseSchema,
   ExecutorScopeSchema,
   PendingExecutorEnrollmentResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
@@ -34,6 +36,10 @@ export type ExecutorAvailabilityRequestBody = z.infer<typeof ExecutorAvailabilit
 
 export const ExecutorAvailabilityResponseSchema = ExecutorAvailabilityResponseContractSchema
 export type ExecutorAvailabilityResponse = z.infer<typeof ExecutorAvailabilityResponseSchema>
+
+export const ExecutorRunBindBodySchema = ExecutorRunBindRequestSchema
+export type ExecutorRunBindBody = z.infer<typeof ExecutorRunBindBodySchema>
+export const ExecutorRunBindSchema = ExecutorRunBindResponseSchema
 
 export const CreateExecutorBodySchema = z.object({
   label: NonEmptyStringSchema.max(120),

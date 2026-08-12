@@ -28,6 +28,8 @@ export type AgenticToolResult = {
   inputSummary: string
   output: string
   success: boolean
+  /** A pre-created durable ToolCall used by an executor command. */
+  toolCallRecordId?: string
 }
 
 export type BuiltinToolRuntimeContext = {

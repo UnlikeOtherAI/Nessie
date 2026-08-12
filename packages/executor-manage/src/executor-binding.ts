@@ -13,6 +13,7 @@ import { ensureExecutorLogicalTools } from './executor-logical-tools.js'
 import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
 
 export type ExecutorBindingInput = {
+  actorUserId: string
   candidateHandle: string
   operationKey: ExecutorOperationKey
   runId: string
@@ -121,7 +122,11 @@ export const bindExecutorCandidate = async (
     if (candidate.consumedAt || candidate.expiresAt <= now) {
       return candidateError('CANDIDATE_EXPIRED', 'The executor choice has expired.')
     }
-    if (candidate.runId !== input.runId || !candidate.operationKeys.includes(operationKey)) {
+    if (
+      candidate.actorUserId !== input.actorUserId
+      || (candidate.runId !== null && candidate.runId !== input.runId)
+      || !candidate.operationKeys.includes(operationKey)
+    ) {
       return candidateError('CANDIDATE_INVALID', 'The executor choice does not match this run operation.')
     }
 
@@ -168,7 +173,7 @@ export const bindExecutorCandidate = async (
     if (
       !run
       || run.agentId !== candidate.agentId
-      || run.triggerMessage?.userId !== candidate.actorUserId
+      || run.triggerMessage?.userId !== input.actorUserId
       || run.thread.channel.organizationId !== candidate.executor.organizationId
       || !membership
       || membership.deactivatedAt

@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import type { PrismaClient } from '@prisma/client'
+
+import { buildExecutorToolset } from './executor-toolset.js'
+
+const organizationId = '00000000-0000-4000-8000-000000000001'
+const agentId = '00000000-0000-4000-8000-000000000002'
+const runId = '00000000-0000-4000-8000-000000000003'
+
+test('only operations already bound to this run and explicitly granted to its agent reach the model', async () => {
+  const prisma = {
+    executorBinding: {
+      findMany: async () => [
+        { id: '00000000-0000-4000-8000-000000000004', operationKey: 'sandbox.stop' },
+        { id: '00000000-0000-4000-8000-000000000005', operationKey: 'file.read' },
+      ],
+    },
+    toolRegistryEntry: {
+      upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+        id: where.organizationId_scopeKey_toolId.toolId,
+      }),
+    },
+  } as unknown as PrismaClient
+
+  const toolset = await buildExecutorToolset(prisma, {
+    agentId,
+    agentToolPolicy: { 'executor.sandbox.stop': true },
+    encryptionSecret: 'test-secret',
+    organizationId,
+    runId,
+  })
+
+  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), ['executor.sandbox.stop'])
+  assert.deepEqual([...toolset.handledNames], ['executor.sandbox.stop'])
+})

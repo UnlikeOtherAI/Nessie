@@ -28,16 +28,25 @@ structured terminal results are AES-256-GCM encrypted at rest, bounded to 64
 KiB, and linked to the existing queue job and `ToolCall`. The daemon receives a
 short-lived envelope only after the linked job is processing and must emit
 monotonic `accepted → started → result_acknowledged` receipts. The current
-companion executes only the harmless `sandbox.stop` presence operation; the
-worker dispatch adapter is intentionally not enabled until its queue lifecycle
-and concrete sandbox backend arrive together.
+companion executes only the harmless `sandbox.stop` presence operation.
 
-It does **not** dispatch files, browser work, commands, or coding sessions
-yet; the companion advertises only its harmless stop capability until a
-concrete isolated backend is delivered. Neither does it expose the planned
-availability union with connectors.
-Those operations remain unavailable until their resolver, binding, command
-transport, and companion enforcement are delivered together.
+The worker dispatch adapter is now enabled for a run only after a human has
+submitted an opaque availability handle to `POST /api/runs/:runId/executor-bind`.
+That endpoint consumes the handle into a binding; the model receives only the
+bound, explicitly granted logical operation and never an executor id or a
+selection parameter. Command creation reserves the normal `ToolCall`, creates
+an existing `executor.command` queue job, and blocks on the encrypted receipt.
+The queue handler retains its lease while the paired daemon works. Before
+dispatch, the server rechecks the bound human, agent, scope/membership,
+descriptor, operation and logical grants, lifecycle, and revision under the
+executor fence. An absent terminal receipt becomes `unknown_outcome` and is
+fatal/retry-safe, never a model-visible success; a late receipt for that exact
+already-delivered command can resolve it without issuing new work. The current
+live operation remains `sandbox.stop` only.
+
+It does **not** dispatch files, browser work, or coding sessions yet; those
+operations remain unavailable until a concrete isolated backend is delivered.
+Neither does it expose the planned availability union with connectors.
 
 The availability endpoint deliberately creates a five-minute, one-use opaque
 candidate and returns no machine identifier. The next binding slice consumes

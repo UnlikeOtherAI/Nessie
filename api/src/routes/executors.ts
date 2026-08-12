@@ -3,6 +3,7 @@ import {
   confirmExecutorEnrollment,
   claimExecutorConnection,
   authorizeExecutorDaemonControlCall,
+  bindExecutorCandidate,
   createExecutor,
   ensureExecutorLogicalTools,
   ExecutorError,
@@ -45,6 +46,8 @@ import {
   ExecutorAvailabilityRequestBodySchema,
   ExecutorAvailabilityResponseSchema,
   ExecutorRecordSchema,
+  ExecutorRunBindBodySchema,
+  ExecutorRunBindSchema,
   PendingExecutorEnrollmentSchema,
   PrepareExecutorAccessChangeBodySchema,
   PreparedExecutorAccessChangeSchema,
@@ -127,6 +130,36 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     try {
       const availability = await resolveExecutorAvailabilityCandidates(prisma, actorContext, body)
       return createApiResponse(ExecutorAvailabilityResponseSchema.parse(availability))
+    } catch (error) {
+      if (sendExecutorError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.post('/api/runs/:runId/executor-bind', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (actorContext.actor.actorType !== 'user') {
+      sendApiError(reply, 403, 'SCOPE_ENTITLEMENT_DENIED', 'Executor selection requires a human requester.')
+      return reply
+    }
+    const body = parseInput(ExecutorRunBindBodySchema, request.body, reply)
+    if (!body) return reply
+    const { runId } = request.params as { runId: string }
+    try {
+      const binding = await bindExecutorCandidate(prisma, {
+        actorUserId: actorContext.actor.actorId,
+        candidateHandle: body.candidateHandle,
+        operationKey: body.operationKey,
+        runId,
+      })
+      return createApiResponse(ExecutorRunBindSchema.parse({
+        bindingId: binding.bindingId,
+        capabilityRevision: binding.capabilityRevision,
+        fence: binding.fence,
+        operationKey: binding.operationKey,
+        runId: binding.runId,
+      }))
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply
       throw error

@@ -206,9 +206,11 @@ scope/project membership, approved current descriptor, exact operation grant,
 logical policy grant, online status, and authorization revision. Only then does
 it consume the candidate and advance the executor's separate monotonic binding
 fence. It stores executor, descriptor revision, that fence, and the consumed
-candidate digest. A retry reuses that binding. Dispatch rechecks the fencing
-token while advancing the existing queue lease; it cannot select another
-executor after retry, policy change, or revocation.
+candidate digest. A retry reuses that binding. Before each command dispatch,
+Nessie repeats the same user, agent, scope, membership, descriptor, operation,
+logical-policy, lifecycle, and revision checks under the executor lock. Dispatch
+then advances the existing queue lease; it cannot select another executor after
+retry, policy change, or revocation.
 
 The only command transition receipts are:
 
@@ -230,12 +232,23 @@ at rest; the database retains only bounded ciphertext and canonical digests.
 The daemon sends each receipt under a distinct signed `receipt` domain, and the
 server recomputes the supplied terminal result digest before accepting it.
 
+Before the worker adds an executor logical schema to a model request, a human
+must bind one opaque candidate to the exact run through the executor-bind
+endpoint. The schema carries no executor id; it dispatches only to that binding.
+The worker creates the regular `ToolCall` before command dispatch and completes
+that same row when the terminal receipt returns. It also creates the existing
+`executor.command` queue job; its worker subscription holds the ordinary queue
+lease while the daemon executes. Loss of the terminal receipt marks the command
+`unknown_outcome` and fails the run retry-safely rather than returning a result
+to the model.
+
 If any acknowledgement is lost, Nessie does not invent at-most-once success.
 It records `unknown_outcome` on the command metadata and follows the existing
-queue/run `needs_setup` recovery path. A retry asks for the exact persisted
-receipt; it never creates a new logical side effect. Cancellation and
-revocation fence future work immediately, signal the daemon, and retain the
-same ambiguous-outcome rule until a terminal receipt is known.
+queue/run `needs_setup` recovery path. The already-delivered command can still
+provide its exact terminal receipt, which durably resolves that ambiguity; no
+new logical side effect is created. Cancellation and revocation fence future
+work immediately, signal the daemon, and retain the same ambiguous-outcome rule
+until a terminal receipt is known.
 
 ## 7. Approval and access-change continuations
 

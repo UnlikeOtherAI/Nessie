@@ -77,6 +77,8 @@ import {
 import { processCommsWebhookJob } from './control/comms-webhook.js'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import { enqueueCommsSubscriptionsRenew } from './queue.js'
+import { executeExecutorCommandJob } from './control/executor-commands.js'
+import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
 
 const config = loadConfig()
 if (!process.env.DATABASE_URL) {
@@ -186,6 +188,7 @@ export const startWorker = async (
       await executeRunJob(
         {
           deepSignalMcpIdentity,
+          executorCommandEncryptionSecret: config.auth.secret ?? undefined,
           ledgerIdentity,
           mcpSecrets,
           modelClient,
@@ -204,6 +207,14 @@ export const startWorker = async (
     {
       signal: abortController.signal,
     },
+  )
+
+  queueProvider.subscribe(
+    EXECUTOR_COMMAND_TOPIC,
+    async (job) => {
+      await executeExecutorCommandJob(prisma, config.auth.secret ?? '', job.payload)
+    },
+    { signal: abortController.signal },
   )
 
   queueProvider.subscribe(

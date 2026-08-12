@@ -7,6 +7,7 @@ import {
 } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
+import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { resolveAgentTools } from '../tool-policy.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
@@ -59,6 +60,7 @@ export type RunExecutionSetup = {
   allowedToolIds: Set<string>
   /** The checkpoint this run claimed, if any — its generation seeds the next. */
   checkpoint: LoadedRunCheckpoint | null
+  executorToolset: ExecutorToolset
   initialMessages: ProviderMessage[]
   mcpToolset: McpToolset
   memories: RetrievedMemory[]
@@ -97,27 +99,36 @@ export const prepareRunExecution = async (
     input.isHandoffTurn,
   )
 
-  const mcpToolset = await buildMcpToolset(
-    deps.prisma,
-    context.channel.organizationId,
-    toolPolicy,
-    payload.actorContext,
-    {
+  const [mcpToolset, executorToolset] = await Promise.all([
+    buildMcpToolset(
+      deps.prisma,
+      context.channel.organizationId,
+      toolPolicy,
+      payload.actorContext,
+      {
+        agentId: context.agent.id,
+        agentKind: context.agent.agentKind,
+        channelId: context.channel.id,
+      },
+      attributionFromActorContext(payload.actorContext, {
+        agentId: context.agent.id,
+        agentKind: context.agent.agentKind,
+        runId: context.run.id,
+      }),
+      {
+        deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+        ledgerIdentity: deps.ledgerIdentity,
+        secretResolver: deps.mcpSecrets?.resolver,
+      },
+    ),
+    buildExecutorToolset(deps.prisma, {
       agentId: context.agent.id,
-      agentKind: context.agent.agentKind,
-      channelId: context.channel.id,
-    },
-    attributionFromActorContext(payload.actorContext, {
-      agentId: context.agent.id,
-      agentKind: context.agent.agentKind,
+      agentToolPolicy: toolPolicy,
+      encryptionSecret: deps.executorCommandEncryptionSecret,
+      organizationId: context.channel.organizationId,
       runId: context.run.id,
     }),
-    {
-      deepWaterHandoffGuard: input.deepWaterHandoffGuard,
-      ledgerIdentity: deps.ledgerIdentity,
-      secretResolver: deps.mcpSecrets?.resolver,
-    },
-  )
+  ])
 
   const viewer = await resolveDisclosureViewer(
     deps.prisma,
@@ -157,6 +168,7 @@ export const prepareRunExecution = async (
   return {
     allowedToolIds,
     checkpoint,
+    executorToolset,
     initialMessages: buildModelPrompt(conversation, context, input.prompt, memoryContext, {
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
       routing: {
@@ -169,7 +181,7 @@ export const prepareRunExecution = async (
     mcpToolset,
     memories,
     resolvedToolIds,
-    toolDefs,
+    toolDefs: [...toolDefs, ...executorToolset.descriptors],
     toolPolicy,
   }
 }

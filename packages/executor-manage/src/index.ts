@@ -18,10 +18,13 @@ export {
   type ExecutorBindingRecord,
 } from './executor-binding.js'
 export {
+  assertExecutorCommandBindingCurrent,
   createExecutorCommand,
+  markExecutorCommandUnknownOutcome,
   pollExecutorCommand,
   readExecutorCommandResult,
   recordExecutorCommandReceipt,
+  waitForExecutorCommandResult,
   type ExecutorCommandCreateInput,
 } from './executor-commands.js'
 export {

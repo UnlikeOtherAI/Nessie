@@ -119,7 +119,7 @@ test('candidate binding pins a run operation and advances a distinct fence', asy
   const state: { consumed?: number } = {}
   const result = await bindExecutorCandidate(
     bindingPrisma(state),
-    { candidateHandle: handle, operationKey: 'sandbox.stop', runId },
+    { actorUserId, candidateHandle: handle, operationKey: 'sandbox.stop', runId },
     new Date('2026-08-12T12:00:00.000Z'),
   )
 
@@ -132,7 +132,7 @@ test('binding rejects a candidate after its authorization revision changes', asy
   await assert.rejects(
     bindExecutorCandidate(
       bindingPrisma({ authorizationRevision: 8 }),
-      { candidateHandle: handle, operationKey: 'sandbox.stop', runId },
+      { actorUserId, candidateHandle: handle, operationKey: 'sandbox.stop', runId },
       new Date('2026-08-12T12:00:00.000Z'),
     ),
     { code: 'EXECUTOR_CANDIDATE_INVALID' },

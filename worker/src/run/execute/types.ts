@@ -15,6 +15,8 @@ import type {
 
 export type ExecutionDependencies = {
   deepSignalMcpIdentity?: DeepSignalMcpIdentityService | null
+  /** Deployment secret used solely to encrypt executor payloads at rest. */
+  executorCommandEncryptionSecret?: string
   ledgerIdentity?: LedgerIdentityService | null
   /**
    * MCP credential plumbing: `store` encrypts assistant-collected secrets into

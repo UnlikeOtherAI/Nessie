@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   canonicalExecutorJson,
+  ExecutorCapabilityDescriptorSchema,
   ExecutorCommandEnvelopeSchema,
   ExecutorCommandReceiptSchema,
   type ExecutorCommandEnvelope,
@@ -11,6 +13,9 @@ import {
 import { decryptWithKey, deriveSecretKey, encryptWithKey } from '@nessie/runtime'
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { resolveExecutorAvailability } from './availability.js'
+import { ensureExecutorLogicalTools } from './executor-logical-tools.js'
+import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
 
 const MAX_RESULT_BYTES = 65_536
 
@@ -38,6 +43,15 @@ const decryptJson = (encryptionSecret: string, ciphertext: string): Record<strin
   }
 }
 
+const booleanRecord = (value: unknown): Record<string, boolean> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).filter(
+          (entry): entry is [string, boolean] => typeof entry[1] === 'boolean',
+        ),
+      )
+    : {}
+
 export type ExecutorCommandCreateInput = {
   bindingId: string
   commandId: string
@@ -48,13 +62,161 @@ export type ExecutorCommandCreateInput = {
   payload: Record<string, unknown>
 }
 
+/** New work is fenced immediately when policy, revision, or lifecycle changes. */
+export const assertExecutorCommandBindingCurrent = async (
+  tx: Prisma.TransactionClient,
+  bindingId: string,
+): Promise<{ executorId: string; runId: string }> => {
+  const binding = await tx.executorBinding.findUnique({
+    where: { id: bindingId },
+    select: {
+      authorizationRevision: true,
+      candidateHandleDigest: true,
+      capabilityRevisionId: true,
+      executorId: true,
+      operationKey: true,
+      runId: true,
+    },
+  })
+  if (!binding) {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor binding is unavailable.')
+  }
+  await tx.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(${`executor:${binding.executorId}`}, 0))
+  `)
+  const candidate = await tx.executorAvailabilityCandidate.findUnique({
+    where: { handleDigest: binding.candidateHandleDigest },
+    select: {
+      actorUserId: true,
+      agentId: true,
+      authorizationRevision: true,
+      executorId: true,
+      runId: true,
+    },
+  })
+  if (
+    !candidate
+    || candidate.executorId !== binding.executorId
+    || candidate.authorizationRevision !== binding.authorizationRevision
+    || (candidate.runId !== null && candidate.runId !== binding.runId)
+  ) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'Executor binding provenance is no longer available.',
+    )
+  }
+  const executor = await tx.executor.findUnique({
+    where: { id: binding.executorId },
+    select: {
+      authorizationRevision: true,
+      id: true,
+      organizationId: true,
+      projectId: true,
+      scopeKind: true,
+      status: true,
+      capabilityRevisions: { orderBy: { revision: 'desc' }, select: { id: true }, take: 1 },
+      operationGrants: {
+        where: { agentId: candidate.agentId, operationKey: binding.operationKey },
+        select: { state: true },
+      },
+      privateAssignments: {
+        select: { agentId: true, principalKind: true, role: true, userId: true },
+      },
+    },
+  })
+  if (!executor) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'Executor binding is no longer authorized for new work.',
+    )
+  }
+  const [capabilityRevision, run, membership, agent, logicalTools] = await Promise.all([
+    tx.executorCapabilityRevision.findUnique({
+      where: { id: binding.capabilityRevisionId },
+      select: { descriptor: true, reviewStatus: true },
+    }),
+    tx.run.findUnique({
+      where: { id: binding.runId },
+      select: {
+        agentId: true,
+        triggerMessage: { select: { userId: true } },
+        thread: { select: { channel: { select: { organizationId: true, projectId: true } } } },
+      },
+    }),
+    tx.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: executor.organizationId,
+          userId: candidate.actorUserId,
+        },
+      },
+      select: { deactivatedAt: true },
+    }),
+    tx.agent.findFirst({
+      where: { id: candidate.agentId, organizationId: executor.organizationId },
+      select: { toolPolicy: true },
+    }),
+    ensureExecutorLogicalTools(tx, executor.organizationId),
+  ])
+  const projectId = run?.thread.channel.projectId ?? null
+  const projectMembership = projectId
+    ? await tx.projectMember.findFirst({
+        where: {
+          projectId,
+          project: { organizationId: executor.organizationId },
+          userId: candidate.actorUserId,
+        },
+        select: { id: true },
+      })
+    : null
+  const descriptor = capabilityRevision
+    ? ExecutorCapabilityDescriptorSchema.safeParse(capabilityRevision.descriptor)
+    : null
+  const decision = resolveExecutorAvailability({
+    descriptorApproved:
+      capabilityRevision?.reviewStatus === 'active'
+      && executor.capabilityRevisions[0]?.id === binding.capabilityRevisionId
+      && descriptor?.success === true,
+    executorStatus: executor.status,
+    localPolicyAllows: Boolean(
+      descriptor?.success && descriptor.data.operationKeys.includes(binding.operationKey as never),
+    ),
+    logicalToolAllowed: Boolean(
+      agent && booleanRecord(agent.toolPolicy)[logicalTools.get(binding.operationKey as never) ?? ''] === true,
+    ),
+    operationGrantState: executor.operationGrants[0]?.state ?? null,
+    scope: resolveExecutorScopeFacts(
+      executor,
+      candidate.actorUserId,
+      candidate.agentId,
+      { projectId, projectMember: Boolean(projectMembership) },
+    ),
+  })
+  if (
+    executor.authorizationRevision !== binding.authorizationRevision
+    || !run
+    || run.agentId !== candidate.agentId
+    || run.triggerMessage?.userId !== candidate.actorUserId
+    || run.thread.channel.organizationId !== executor.organizationId
+    || !membership
+    || membership.deactivatedAt !== null
+    || !decision.available
+  ) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'Executor binding is no longer authorized for new work.',
+    )
+  }
+  return { executorId: executor.id, runId: binding.runId }
+}
+
 /**
  * The worker creates the queue job and ToolCall in its own transaction, then
  * persists this protocol record. Queue JSON contains only `commandId`; raw
  * operation arguments live exclusively in this encrypted column.
  */
 export const createExecutorCommand = async (
-  prisma: PrismaClient,
+  prisma: Pick<PrismaClient, 'executorCommand'>,
   input: ExecutorCommandCreateInput,
 ): Promise<void> => {
   await prisma.executorCommand.create({
@@ -146,6 +308,7 @@ const validTransition = (
   (current === 'leased' && next === 'accepted')
   || (current === 'accepted' && next === 'started')
   || (current === 'started' && next === 'result_acknowledged')
+  || (current === 'unknown_outcome' && next === 'result_acknowledged')
 )
 
 /** Receipts are monotonic and idempotent only when their terminal digest agrees. */
@@ -217,4 +380,41 @@ export const readExecutorCommandResult = async (
   })
   if (command?.state !== 'result_acknowledged' || !command.resultCiphertext) return null
   return decryptJson(encryptionSecret, command.resultCiphertext)
+}
+
+/**
+ * A waiting worker never converts silence into success. The state is durable so
+ * a later operator can distinguish "not known" from a rejected command.
+ */
+export const markExecutorCommandUnknownOutcome = async (
+  prisma: PrismaClient,
+  commandId: string,
+): Promise<void> => {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(Prisma.sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${`executor-command:${commandId}`}, 0))
+    `)
+    await tx.executorCommand.updateMany({
+      where: {
+        id: commandId,
+        state: { in: ['leased', 'accepted', 'started'] },
+      },
+      data: { state: 'unknown_outcome' },
+    })
+  })
+}
+
+export const waitForExecutorCommandResult = async (
+  prisma: PrismaClient,
+  encryptionSecret: string,
+  commandId: string,
+  expiresAt: Date,
+): Promise<Record<string, unknown> | null> => {
+  while (new Date() < expiresAt) {
+    const result = await readExecutorCommandResult(prisma, encryptionSecret, commandId)
+    if (result) return result
+    await delay(250)
+  }
+  await markExecutorCommandUnknownOutcome(prisma, commandId)
+  return null
 }
