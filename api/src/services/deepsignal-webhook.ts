@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { DeepSignalSignalKind } from '@nessie/schemas'
 
-import { ensureDefaultThread } from './channel-records.js'
+import { ensureDefaultThread } from '@nessie/workspace-admin'
 import {
   deliverInsightToDigest,
   type DigestDeliveryMode,

@@ -8,7 +8,7 @@ import {
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
-import type { ChannelRecord } from '../contracts.js'
+import type { ChannelRecord } from '@nessie/schemas'
 
 type ChannelWithProject = Channel & {
   team?: {

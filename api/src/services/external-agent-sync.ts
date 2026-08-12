@@ -11,7 +11,7 @@ import {
 } from '@nessie/runtime'
 import type { IntegrationUiCard, McpTransportConfig } from '@nessie/schemas'
 
-import { ensureDefaultThread } from './channel-records.js'
+import { ensureDefaultThread } from '@nessie/workspace-admin'
 import { callDeepSignalMcpTool } from './deepsignal-mcp-call.js'
 import { getExternalAgentProduct } from './external-agent.js'
 import { resolveUserScopedProductTransport } from './external-agent-instance.js'

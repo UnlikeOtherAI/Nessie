@@ -18,7 +18,7 @@ import {
   buildAccessibleThreadWhere,
   isSystemManagedAgent,
   type AgentVisibilityScope,
-} from './agent-record.js'
+} from '@nessie/workspace-admin'
 
 const buildAccessibleRunWhere = (
   visibility?: AgentVisibilityScope,

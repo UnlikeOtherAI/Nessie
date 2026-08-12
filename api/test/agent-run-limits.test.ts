@@ -12,7 +12,7 @@ import {
   createAgentRecord,
   updateAgentRecord,
 } from '../src/services/agent-management.js'
-import { readAgentRunLimits } from '../src/services/agent-record.js'
+import { readAgentRunLimits } from '@nessie/workspace-admin'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 

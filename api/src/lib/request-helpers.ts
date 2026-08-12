@@ -15,11 +15,13 @@ import {
   PersonalAssistantStateResponseSchema,
   ThreadRecordSchema,
 } from '../contracts.js'
-import { buildAccessibleChannelWhere } from '../services/agents.js'
 import {
   ensureDefaultThread,
+  getChannelIfMember as getChannelIfMemberShared,
+  isAgentAccessibleToActor as isAgentAccessibleToActorShared,
+  isAgentVisibleToUser as isAgentVisibleToUserShared,
   loadLastMessageAtByThread,
-} from '../services/channel-records.js'
+} from '@nessie/workspace-admin'
 
 /**
  * Request-scoped authorization + visibility helpers. These all close over the
@@ -261,51 +263,18 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     })
   }
 
-  const isAgentVisibleToUser = async (
+  const isAgentVisibleToUser = (
     userId: string,
     organizationId: string,
     agentId: string,
   ): Promise<boolean> =>
-    (await prisma.agent.count({
-      where: {
-        id: agentId,
-        organizationId,
-        systemManaged: false,
-        bindings: {
-          some: {
-            channel: {
-              ...buildAccessibleChannelWhere({
-                organizationId,
-                userId,
-              }),
-            },
-          },
-        },
-      },
-    })) > 0
+    isAgentVisibleToUserShared(prisma, userId, organizationId, agentId)
 
-  const isAgentAccessibleToActor = async (
+  const isAgentAccessibleToActor = (
     actorContext: AuthorizedActionContext,
     agentId: string,
-  ): Promise<boolean> => {
-    if (actorContext.actor.roles?.includes('owner')) {
-      return (
-        await prisma.agent.count({
-          where: {
-            id: agentId,
-            organizationId: actorContext.tenant.organizationId,
-            systemManaged: false,
-          },
-        })
-      ) > 0
-    }
-
-    return isAgentVisibleToUser(
-      actorContext.actor.actorId,
-      actorContext.tenant.organizationId,
-      agentId,
-    )
-  }
+  ): Promise<boolean> =>
+    isAgentAccessibleToActorShared(prisma, actorContext, agentId)
 
   const getVisibleChannel = async (
     userId: string,
@@ -350,34 +319,11 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
   const isChannelMember = async (userId: string, channelId: string): Promise<boolean> =>
     (await prisma.channelMember.count({ where: { userId, channelId } })) > 0
 
-  const getChannelIfMember = async (
+  const getChannelIfMember = (
     userId: string,
     organizationId: string,
     channelId: string,
-  ): Promise<{
-    systemChannelType?: ChannelSystemType
-    type: string
-    visibility: string
-  } | null> => {
-    const channel = await prisma.channel.findUnique({
-      where: { id: channelId },
-      select: {
-        systemChannelType: true,
-        type: true,
-        organizationId: true,
-        visibility: true,
-        members: { where: { userId }, select: { id: true }, take: 1 },
-      },
-    })
-    if (!channel) return null
-    if (channel.organizationId !== organizationId) return null
-    if (channel.members.length === 0) return null
-    return {
-      systemChannelType: channel.systemChannelType ?? undefined,
-      type: channel.type,
-      visibility: channel.visibility,
-    }
-  }
+  ) => getChannelIfMemberShared(prisma, userId, organizationId, channelId)
 
   const isWorkflowInstallationAccessibleToActor = async (
     actorContext: AuthorizedActionContext,

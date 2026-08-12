@@ -28,7 +28,7 @@ import {
   assertLedgerAgentModelSelection,
   ledgerAgentModelCatalogRequestHeaders,
   listLedgerAgentModels,
-} from '../services/ledger-agent-model-catalog.js'
+} from '@nessie/workspace-admin'
 import { checkPolicy } from '../services/policy.js'
 import {
   sendAgentManagementError,

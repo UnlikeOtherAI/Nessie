@@ -187,6 +187,9 @@ importers:
       '@nessie/worker':
         specifier: workspace:*
         version: link:../worker
+      '@nessie/workspace-admin':
+        specifier: workspace:*
+        version: link:../packages/workspace-admin
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
@@ -587,6 +590,28 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
+  packages/workspace-admin:
+    dependencies:
+      '@nessie/config':
+        specifier: workspace:*
+        version: link:../config
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@nessie/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      '@prisma/client':
+        specifier: ^6.17.1
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.24
+        version: 20.19.39
+
   web:
     dependencies:
       '@nessie/config':
@@ -650,6 +675,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
+      '@nessie/workspace-admin':
+        specifier: workspace:*
+        version: link:../packages/workspace-admin
       '@prisma/client':
         specifier: ^6.17.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)

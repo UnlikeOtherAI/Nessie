@@ -1,13 +1,14 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { ChannelRecord } from '../contracts.js'
-import { channelTeamInclude, mapChannelRecord } from './channel-records.js'
 import {
+  channelTeamInclude,
   ensureChannelSlugAvailable,
   loadChannelTeamProject,
+  mapChannelRecord,
   throwIfChannelSlugConflict,
   toChannelSlug,
   validateChannelLabel,
-} from './channel-slugs.js'
+} from '@nessie/workspace-admin'
 
 const uniqueParticipantIds = (currentUserId: string, targetUserId: string): string[] =>
   Array.from(new Set([currentUserId, targetUserId]))

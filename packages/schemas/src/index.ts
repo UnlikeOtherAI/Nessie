@@ -1,6 +1,7 @@
 export * from './ids.js'
 export * from './api.js'
 export * from './lifecycle.js'
+export * from './workspace-records.js'
 export * from './messaging.js'
 export * from './realtime.js'
 export * from './identity.js'

@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 
-import type { AgentRecord } from '../contracts.js'
+import type { AgentRecord } from '@nessie/schemas'
 import {
   isSystemManagedAgent,
   mapAgentRecord,
