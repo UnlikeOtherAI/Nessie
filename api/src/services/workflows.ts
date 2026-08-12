@@ -84,8 +84,12 @@ type WorkflowRunRow = {
   input: unknown
   installationId: string
   organizationId: string
+  originChannelId: string | null
+  originMessageId: string | null
+  originThreadId: string | null
   output: unknown
   parentRunId: string | null
+  replyRootMessageId: string | null
   retriedFromWorkflowRunId: string | null
   planId: string | null
   planStepId: string | null
@@ -489,13 +493,64 @@ const validateWorkflowRunReferences = async (
   prisma: Prisma.TransactionClient,
   organizationId: string,
   input: {
+    originChannelId?: string
+    originMessageId?: string
+    originThreadId?: string
     parentRunId?: string
     planId?: string
     planStepId?: string
+    replyRootMessageId?: string
     triggerDeliveryId?: string
     triggerId?: string
   },
 ): Promise<void> => {
+  // W25 origin references: the caller may point a run at where it was asked
+  // for, but never across an organization boundary.
+  if (input.originChannelId) {
+    const channel = await prisma.channel.findFirst({
+      where: { id: input.originChannelId, organizationId },
+      select: { id: true },
+    })
+    if (!channel) {
+      throw new Error('WORKFLOW_RUN_ORIGIN_CHANNEL_NOT_FOUND')
+    }
+  }
+
+  if (input.originThreadId) {
+    const thread = await prisma.thread.findFirst({
+      where: {
+        id: input.originThreadId,
+        channel: { organizationId },
+      },
+      select: { channelId: true },
+    })
+    if (!thread) {
+      throw new Error('WORKFLOW_RUN_ORIGIN_THREAD_NOT_FOUND')
+    }
+    if (input.originChannelId && thread.channelId !== input.originChannelId) {
+      throw new Error('WORKFLOW_RUN_ORIGIN_THREAD_MISMATCH')
+    }
+  }
+
+  if (input.originMessageId ?? input.replyRootMessageId) {
+    for (const messageId of [input.originMessageId, input.replyRootMessageId]) {
+      if (!messageId) continue
+      const message = await prisma.message.findFirst({
+        where: {
+          id: messageId,
+          thread: { channel: { organizationId } },
+        },
+        select: { threadId: true },
+      })
+      if (!message) {
+        throw new Error('WORKFLOW_RUN_ORIGIN_MESSAGE_NOT_FOUND')
+      }
+      if (input.originThreadId && message.threadId !== input.originThreadId) {
+        throw new Error('WORKFLOW_RUN_ORIGIN_MESSAGE_MISMATCH')
+      }
+    }
+  }
+
   if (input.triggerId) {
     const trigger = await prisma.agentTrigger.findFirst({
       where: {
@@ -645,6 +700,10 @@ const mapWorkflowRun = (run: WorkflowRunRow): WorkflowRunRecord => ({
   organizationId: parseOrganizationId(run.organizationId),
   triggerId: run.triggerId ?? undefined,
   triggerDeliveryId: run.triggerDeliveryId ?? undefined,
+  originChannelId: run.originChannelId ?? undefined,
+  originMessageId: run.originMessageId ?? undefined,
+  originThreadId: run.originThreadId ?? undefined,
+  replyRootMessageId: run.replyRootMessageId ?? undefined,
   parentRunId: parseOptional(run.parentRunId, parseRunId),
   retriedFromWorkflowRunId: run.retriedFromWorkflowRunId ?? undefined,
   planId: run.planId ?? undefined,
@@ -1096,11 +1155,20 @@ export const updateWorkflowInstallation = async (
 export const listWorkflowInstallations = async (
   prisma: PrismaClient,
   organizationId: string,
-  input: WorkflowListInput = {},
+  input: WorkflowListInput & {
+    channelId?: string
+    // W19: entitlement fragment from workflow-entitlement.ts; undefined means
+    // "no additional filter" (owners/admins).
+    entitlementWhere?: Prisma.WorkflowInstallationWhereInput
+  } = {},
 ): Promise<WorkflowListPage<WorkflowInstallationRecord>> => {
   const limit = resolveWorkflowListLimit(input.limit)
   const installations = await prisma.workflowInstallation.findMany({
-    where: { organizationId },
+    where: {
+      organizationId,
+      ...(input.channelId ? { channelId: input.channelId } : {}),
+      ...(input.entitlementWhere ?? {}),
+    },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
     take: limit + 1,
@@ -1125,9 +1193,13 @@ export const createWorkflowRun = async (
   installationId: string,
   input: {
     input?: Record<string, unknown>
+    originChannelId?: string
+    originMessageId?: string
+    originThreadId?: string
     parentRunId?: string
     planId?: string
     planStepId?: string
+    replyRootMessageId?: string
     triggerDeliveryId?: string
     triggerId?: string
   },
@@ -1188,6 +1260,12 @@ export const createWorkflowRun = async (
         parentRunId: input.parentRunId,
         planId: input.planId,
         planStepId: input.planStepId,
+        // W25: the origin is validated against the run's organization by
+        // validateWorkflowRunReferences, exactly like every other reference.
+        originChannelId: input.originChannelId,
+        originThreadId: input.originThreadId,
+        originMessageId: input.originMessageId,
+        replyRootMessageId: input.replyRootMessageId,
         input: (input.input ?? {}) as Prisma.InputJsonValue,
         ...(admission.kind === 'withhold'
           ? { summary: `${WORKFLOW_OVERLAP_SKIP_REASON}:queued` }
@@ -1221,7 +1299,11 @@ export const listWorkflowRuns = async (
   input: {
     cursor?: string
     installationId?: string
+    // W19: entitlement fragment over the run's installation; undefined means
+    // "no additional filter" (owners/admins).
+    installationWhere?: Prisma.WorkflowInstallationWhereInput
     limit?: number
+    status?: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
   },
 ): Promise<WorkflowListPage<WorkflowRunRecord>> => {
   // List view omits the large `input`/`output` Json blobs; they are only
@@ -1232,6 +1314,8 @@ export const listWorkflowRuns = async (
     where: {
       organizationId,
       ...(input.installationId ? { installationId: input.installationId } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.installationWhere ? { installation: input.installationWhere } : {}),
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
@@ -1244,6 +1328,10 @@ export const listWorkflowRuns = async (
       triggerDeliveryId: true,
       parentRunId: true,
       retriedFromWorkflowRunId: true,
+      originChannelId: true,
+      originMessageId: true,
+      originThreadId: true,
+      replyRootMessageId: true,
       planId: true,
       planStepId: true,
       status: true,
@@ -1516,6 +1604,10 @@ export const retryWorkflowRun = async (
         status: true,
         input: true,
         installationId: true,
+        originChannelId: true,
+        originMessageId: true,
+        originThreadId: true,
+        replyRootMessageId: true,
         startedByActorId: true,
         startedByActorType: true,
         triggerDeliveryId: true,
@@ -1570,6 +1662,11 @@ export const retryWorkflowRun = async (
         triggerId: existing.triggerId,
         triggerDeliveryId: existing.triggerDeliveryId,
         retriedFromWorkflowRunId: existing.id,
+        // W25: a retry answers the same origin as the run it replaces.
+        originChannelId: existing.originChannelId,
+        originThreadId: existing.originThreadId,
+        originMessageId: existing.originMessageId,
+        replyRootMessageId: existing.replyRootMessageId,
         graphSnapshot: await resolveInstallationPinnedGraph(tx, installation.id),
         input: (existing.input ?? {}) as Prisma.InputJsonValue,
         summary: admission.kind === 'withhold'

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
+import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
 
 type AdminSidebarNavProps = {
@@ -15,6 +16,8 @@ type AdminNavItem = {
   icon: ReactNode;
   ownerOnly?: boolean;
   exact?: boolean;
+  /** W29: live count badge rendered beside the label (failed-runs triage). */
+  badgeCount?: number;
 };
 
 type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'platform';
@@ -403,6 +406,14 @@ const AdminNavSection = ({
             >
               {item.icon}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.badgeCount ? (
+                <span
+                  className="rounded-full bg-[color:var(--danger-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--danger-text)]"
+                  data-testid="nav-workflows-failed-count"
+                >
+                  {item.badgeCount}
+                </span>
+              ) : null}
             </Link>
           );
         })}
@@ -426,6 +437,21 @@ export const AdminSidebarNav = ({
     ADMIN_NAV.map((group) => group.id),
     adminNavCookieName,
   );
+  // W29: the nav itself answers "did anything break?" — the count is the
+  // entitlement-scoped failed-runs feed the triage column reads.
+  const { data: failedWorkflowRuns = [] } = useFailedWorkflowRuns();
+  const groupsWithBadges = useMemo(
+    () =>
+      visibleGroups.map((group) => ({
+        ...group,
+        items: group.items.map((item) =>
+          item.path === '/agents/workflows'
+            ? { ...item, badgeCount: failedWorkflowRuns.length }
+            : item,
+        ),
+      })),
+    [failedWorkflowRuns.length, visibleGroups],
+  );
 
   return (
     <aside
@@ -438,7 +464,7 @@ export const AdminSidebarNav = ({
         <span className="text-[15px] font-bold text-[color:var(--tx)]">Admin</span>
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto py-1">
-        {visibleGroups.map((group) => (
+        {groupsWithBadges.map((group) => (
           <AdminNavSection
             group={group}
             isCollapsed={collapsedSections[group.id] ?? false}

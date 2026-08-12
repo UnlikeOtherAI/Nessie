@@ -218,3 +218,38 @@ them through the existing `createMcpSecretResolver` without new plumbing.
 - **Agent authoring.** A `workflow_transform_preview` PA tool runs the same
   evaluator, so an agent authors and checks the identical mapping a human does,
   against the same compiler — the owner's explicit requirement.
+
+### Section G — reachability (merged)
+
+This is the section that closes the Rule-zero failure the plan was written for:
+every workflow route was `requireOwner` and the page told everyone else "Owner
+access required", so the capability was invisible to the people it is for.
+
+- **W19 · Entitlement-scoped access.** The decided matrix, enforced server-side:
+  any member entitled to the installation's scope may **read** (through W0's
+  redaction); any member entitled to the installation's **channel** may **start a
+  run**; pause/resume/uninstall and authoring stay admin/owner. Scoped by
+  entitlement, never by the session claim. Member-level start is deliberate — a
+  playbook someone can already trigger by talking to an agent in that channel
+  gains nothing from an owner gate. W28 had to land first so the target check
+  could not leak cross-org existence to those new callers.
+- **W25 · Run origin.** `originChannelId`, `originThreadId`, `originMessageId`,
+  `replyRootMessageId` on `WorkflowRun`, populated at every creation site, so a
+  result can return to the thread that asked for it and Stage 2's
+  `invoke_workflow` has somewhere to reply.
+- **W20 · Channel Automations tab.** The doorway: installations bound to this
+  channel, their last run, and run-now for entitled members.
+- **W21 · Run cards.** Finish/fail cards carrying
+  `metadata.workflowRun`, offering **Retry** and a link to the run — not Resume,
+  which is Stage 2's API and does not exist yet. Cards post only for a run with
+  an explicit conversational `originChannelId`: a channel-bound installation's
+  own `message_send` already speaks there, so an automatic card would double-post
+  and the flagship watcher would stop being silent.
+- **W22 · Audit.** Every workflow mutation now writes an audit row with the
+  acting caller, and retry records the retrying actor separately from the
+  preserved original (W27).
+- **W23 · Failure reaches a human** through the shared push pipeline, with
+  recipients resolved by current entitlement at delivery time and no raw error or
+  input data in the payload.
+- **W29 · Failed-runs triage** on the Workflows page with a nav count, because
+  push is alerting and triage is a different question.

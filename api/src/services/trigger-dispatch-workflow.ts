@@ -128,6 +128,8 @@ export const dispatchWorkflowTrigger = async (
           graphSnapshot: pinnedGraph,
           triggerId: input.trigger.id,
           triggerDeliveryId: delivery.id,
+          // W25: trigger fires originate in the installation's channel.
+          originChannelId: installation.channelId,
           input: (input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
             ? (input.payload as Record<string, unknown>)
             : { payload: input.payload ?? null }) as Prisma.InputJsonValue,

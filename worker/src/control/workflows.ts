@@ -42,6 +42,7 @@ import {
 import {
   buildWorkflowRunEventContext,
   emitWorkflowRunTerminalEvent,
+  postWorkflowRunCard,
 } from './workflow-run-events.js'
 import {
   evaluateWorkflowJmespathAtSink,
@@ -567,8 +568,11 @@ const markWorkflowStepRunFinished = async (
       'failed',
       input.summary,
     )
+    // W21: the failure card in the origin channel.
+    await postWorkflowRunCard(prisma, workflow, 'failed')
   } else if (result.workflowRunCompleted) {
     await emitWorkflowRunTerminalEvent(prisma, buildWorkflowRunEventContext(workflow), 'completed')
+    await postWorkflowRunCard(prisma, workflow, 'completed')
   }
 
   return result
@@ -590,6 +594,7 @@ const markWorkflowRunFinished = async (
     input.success ? 'completed' : 'failed',
     input.summary,
   )
+  await postWorkflowRunCard(prisma, workflow, input.success ? 'completed' : 'failed')
   return result
 }
 

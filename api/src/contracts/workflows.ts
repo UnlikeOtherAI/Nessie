@@ -148,10 +148,14 @@ export const UpdateWorkflowInstallationBodySchema = z.object({
   concurrency: WorkflowConcurrencySchema.optional(),
 })
 
-// W24: cursor pagination for the workflow list endpoints.
+// W24: cursor pagination for the workflow list endpoints. `channelId` is the
+// channel Automations tab's explicit filter (W20); `status` is the failed-runs
+// triage filter (W29).
 export const WorkflowListQuerySchema = z.object({
+  channelId: z.string().uuid().optional(),
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().positive().optional(),
+  status: WorkflowRunStatusSchema.optional(),
 })
 
 export const WorkflowRunRecordSchema = z.object({
@@ -160,6 +164,11 @@ export const WorkflowRunRecordSchema = z.object({
   organizationId: OrganizationIdSchema,
   triggerId: z.string().uuid().nullish(),
   triggerDeliveryId: z.string().uuid().nullish(),
+  // W25: where the run was asked for (conversation origin + reply target).
+  originChannelId: z.string().uuid().nullish(),
+  originMessageId: z.string().uuid().nullish(),
+  originThreadId: z.string().uuid().nullish(),
+  replyRootMessageId: z.string().uuid().nullish(),
   parentRunId: RunIdSchema.nullish(),
   retriedFromWorkflowRunId: z.string().uuid().nullish(),
   planId: z.string().uuid().nullish(),
@@ -217,6 +226,10 @@ export type WorkflowStateEntryRecord = z.infer<typeof WorkflowStateEntryRecordSc
 
 export const CreateWorkflowRunBodySchema = z.object({
   input: z.record(z.unknown()).optional(),
+  originChannelId: z.string().uuid().optional(),
+  originMessageId: z.string().uuid().optional(),
+  originThreadId: z.string().uuid().optional(),
+  replyRootMessageId: z.string().uuid().optional(),
   triggerId: z.string().uuid().optional(),
   triggerDeliveryId: z.string().uuid().optional(),
   parentRunId: RunIdSchema.optional(),

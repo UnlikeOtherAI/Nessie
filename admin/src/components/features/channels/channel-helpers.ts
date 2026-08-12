@@ -16,7 +16,7 @@ export type MessageUserIdentity = {
   id: string
 }
 
-export type ChannelTab = 'agents' | 'files' | 'info' | 'messages' | 'runs'
+export type ChannelTab = 'agents' | 'automations' | 'files' | 'info' | 'messages' | 'runs'
 
 export type FeedItem =
   | { kind: 'date'; key: string; label: string }
@@ -33,7 +33,7 @@ export const runsCardClass = [
 ].join(' ')
 
 export const isOperationsTab = (tab: ChannelTab): boolean =>
-  tab === 'agents' || tab === 'runs'
+  tab === 'agents' || tab === 'automations' || tab === 'runs'
 
 const formatDayLabel = (value: string): string => {
   const date = new Date(value)

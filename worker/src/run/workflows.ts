@@ -178,6 +178,7 @@ export const loadWorkflowGraph = async (
     teamId: string | null
     workflowTemplateId: string
     workflowTemplateVersion: number
+    workflowTemplate: { name?: string | null } | null
   }
   run: {
     attempt: number
@@ -185,6 +186,10 @@ export const loadWorkflowGraph = async (
     installationId: string
     input: unknown
     organizationId: string
+    originChannelId: string | null
+    originMessageId: string | null
+    originThreadId: string | null
+    replyRootMessageId: string | null
     startedByActorId: string
     startedByActorType: string
     status: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
@@ -199,6 +204,10 @@ export const loadWorkflowGraph = async (
       installationId: true,
       input: true,
       organizationId: true,
+      originChannelId: true,
+      originMessageId: true,
+      originThreadId: true,
+      replyRootMessageId: true,
       startedByActorId: true,
       startedByActorType: true,
       status: true,
@@ -217,6 +226,7 @@ export const loadWorkflowGraph = async (
           workflowTemplate: {
             select: {
               graphJson: true,
+              name: true,
             },
           },
         },
@@ -279,6 +289,7 @@ export const loadWorkflowGraph = async (
       teamId: workflowRun.installation.teamId,
       workflowTemplateId: workflowRun.installation.workflowTemplateId,
       workflowTemplateVersion: workflowRun.installation.workflowTemplateVersion,
+      workflowTemplate: { name: workflowRun.installation.workflowTemplate.name },
     },
     run: {
       attempt: workflowRun.attempt,
@@ -286,6 +297,10 @@ export const loadWorkflowGraph = async (
       installationId: workflowRun.installationId,
       input: workflowRun.input,
       organizationId: workflowRun.organizationId,
+      originChannelId: workflowRun.originChannelId,
+      originMessageId: workflowRun.originMessageId,
+      originThreadId: workflowRun.originThreadId,
+      replyRootMessageId: workflowRun.replyRootMessageId,
       startedByActorId: workflowRun.startedByActorId,
       startedByActorType: workflowRun.startedByActorType,
       status: workflowRun.status,

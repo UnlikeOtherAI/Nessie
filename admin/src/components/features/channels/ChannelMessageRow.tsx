@@ -15,6 +15,7 @@ import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
 import { RunStopContinue } from './RunStopContinue'
+import { WorkflowRunCard } from './WorkflowRunCard'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
 import {
   getReplyBroadcastRootId,
@@ -384,6 +385,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <RunStopContinue metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <WorkflowRunCard metadata={message.metadata} />
           ) : null}
           {/* Mount only when the message actually has files. The count comes
               from the message contract; when it is absent (an optimistic or

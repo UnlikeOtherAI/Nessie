@@ -22,8 +22,24 @@ import {
   updateWorkflowTemplate,
   WorkflowTemplateValidationError,
 } from '../../services/workflows.js'
+import { auditWorkflowMutation } from '../../services/workflow-audit.js'
+import { isWorkflowAdmin } from '../../services/workflow-entitlement.js'
 import type { FastifyReply } from 'fastify'
 import type { RouteDeps } from '../types.js'
+
+/** W19: authoring/editing/publishing a template is org admin-or-owner; the
+ *  step-samples store follows the template gate exactly (it is served only to
+ *  the role that can already read the template's bindings). */
+const requireWorkflowAdmin = (
+  actorContext: Parameters<typeof isWorkflowAdmin>[0],
+  reply: Parameters<typeof sendApiError>[0],
+): boolean => {
+  if (isWorkflowAdmin(actorContext)) {
+    return true
+  }
+  sendApiError(reply, 403, 'FORBIDDEN', 'Workflow admin access required')
+  return false
+}
 
 /**
  * Shared 4xx mapping for template create/update: step-validation problems are
@@ -52,14 +68,14 @@ const sendTemplateSaveError = (reply: FastifyReply, error: unknown): boolean => 
 }
 
 export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner } = deps
+  const { prisma, requireActorContext } = deps
 
   app.get('/api/workflows', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -80,7 +96,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -99,6 +115,13 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
       throw error
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.template.created',
+      metadata: { name: workflow.name },
+      resourceId: workflow.id,
+      resourceType: 'workflow_template',
+    })
+
     return reply.code(201).send(createApiResponse(WorkflowTemplateRecordSchema.parse(workflow)))
   })
 
@@ -107,7 +130,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -122,6 +145,13 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
       return reply
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.template.updated',
+      metadata: { name: workflow.name, version: workflow.version },
+      resourceId: workflow.id,
+      resourceType: 'workflow_template',
+    })
+
     return createApiResponse(WorkflowTemplateRecordSchema.parse(workflow))
   })
 
@@ -130,7 +160,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -160,6 +190,13 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
       return reply
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.template.updated',
+      metadata: { name: workflow.name, version: workflow.version },
+      resourceId: workflow.id,
+      resourceType: 'workflow_template',
+    })
+
     return createApiResponse(WorkflowTemplateRecordSchema.parse(workflow))
   })
   // §5 stepSamples — owner-gated on both sides: the store is served only to
@@ -170,7 +207,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -193,7 +230,7 @@ export const registerWorkflowTemplateRoutes = (app: FastifyInstance, deps: Route
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 

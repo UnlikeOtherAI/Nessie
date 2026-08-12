@@ -158,45 +158,17 @@ lands in §4.4; the boundary itself cannot wait. As-built detail:
 
 ### 3.4 Reachability (Rule zero)
 
-- **W19 · Entitlement-scoped access, with the roles stated.** All 19 workflow
-  route handlers are `requireOwner`, and `WorkflowsPage` renders "Owner access
-  required" to everyone else. Scope by entitlement, not by the session claim. The
-  exact matrix, decided here rather than left to implementation:
-  | Action | Who |
-  |---|---|
-  | Read installation, runs, run detail | Any member entitled to the installation's scope (after W0 redaction) |
-  | Start a run manually | Any member entitled to the installation's **channel** — the same entitlement that lets them trigger an agent there |
-  | Pause / resume / uninstall an installation | Org admin or owner |
-  | Author, edit, publish a template | Org admin or owner |
-  Manual start is deliberately member-level: a playbook a member can already
-  trigger by talking to an agent in that channel gains nothing from an owner gate,
-  and W28 must land first so the target check cannot leak cross-org existence.
-- **W20 · Channel Automations tab.** The doorway. Lists installations whose
-  `channelId` is this channel, with last-run status and run-now/pause.
-- **W21 · Run cards in the channel.** Start/finish/fail messages carrying
-  `metadata.workflowRun = { workflowRunId, installationId, status }`, exactly as
-  budget-stop notices carry `metadata.runStop`. In Stage 1 the failed card offers
-  **Retry** (full re-run, which exists) and a link to the run — **not Resume**,
-  which depends on §4.2.7's partial-resume API and arrives in Stage 2.
-- **W25 · Persist run origin.** Add `originChannelId`, `originThreadId`,
-  `originMessageId`, `replyRootMessageId` to `WorkflowRun`. Without them a result
-  cannot return to the thread that asked for it, `invoke_workflow` (§4.3) has
-  nowhere to reply, and §8's shared run component has no origin to render a
-  reciprocal doorway from. Cheap now, expensive to retrofit once three surfaces consume
-  run records.
+- **W19 · Entitlement-scoped access, with the roles stated — shipped.**
+- **W20 · Channel Automations tab — shipped.**
+- **W21 · Run cards in the channel — shipped.**
+- **W25 · Persist run origin — shipped.**
 - **W26 · Overlap policy, default `skip` — shipped.**
 - **W27 · Retry must not rewrite history — shipped.**
 - **W28 · Fix the `agent_task` target check — shipped.**
-- **W22 · Audit every mutation.** No workflow route writes an audit entry today.
-  Template create/update (it mutates executable org behaviour), install, manual
-  run, cancel, retry, skip, block/unblock, and pause are all audit-worthy.
-- **W23 · Failure reaches a human.** Route `workflow.run.failed` through the shared
-  push pipeline (`worker/src/control/push-delivery-core.ts`, the budget-alert
-  precedent) to the installation creator and channel managers, deep-linking the run.
+- **W22 · Audit every mutation — shipped.**
+- **W23 · Failure reaches a human — shipped.**
 - **W24 · Paginate the lists — shipped.**
-- **W29 · A failed-runs triage surface.** Push (W23) is alerting, not triage. Add a
-  cross-installation "what failed" filter on the Workflows page plus a count on the
-  nav item, so a person can answer "what broke last night" in one place.
+- **W29 · A failed-runs triage surface — shipped.**
 
 ### 3.5 Stage 1 exit criteria
 

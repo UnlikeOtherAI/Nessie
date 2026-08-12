@@ -22,7 +22,26 @@ import {
   WorkflowInstallationLifecycleError,
   WorkflowSecretWriteError,
 } from '../../services/workflows.js'
+import { auditWorkflowMutation } from '../../services/workflow-audit.js'
+import {
+  canActorReadWorkflowInstallation,
+  canActorStartWorkflowRun,
+  isWorkflowAdmin,
+  workflowInstallationEntitlementFilter,
+} from '../../services/workflow-entitlement.js'
 import type { RouteDeps } from '../types.js'
+
+/** W19: pause/resume/uninstall and install are org admin-or-owner actions. */
+const requireWorkflowAdmin = (
+  actorContext: Parameters<typeof isWorkflowAdmin>[0],
+  reply: Parameters<typeof sendApiError>[0],
+): boolean => {
+  if (isWorkflowAdmin(actorContext)) {
+    return true
+  }
+  sendApiError(reply, 403, 'FORBIDDEN', 'Workflow admin access required')
+  return false
+}
 
 const sendWorkflowSecretWriteError = (
   reply: Parameters<typeof sendApiError>[0],
@@ -39,20 +58,18 @@ const sendWorkflowSecretWriteError = (
   )
 }
 
+const installationIdFrom = (request: { params: unknown }): string =>
+  (request.params as { installationId: string }).installationId
+
 export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const {
-    prisma,
-    requireActorContext,
-    requireOwner,
-    isWorkflowInstallationAccessibleToActor,
-  } = deps
+  const { prisma, requireActorContext, isWorkflowInstallationAccessibleToActor } = deps
 
   app.post('/api/workflows/:workflowTemplateId/install', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -105,6 +122,14 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       return reply
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.installation.installed',
+      metadata: { workflowTemplateId },
+      resourceId: installation.id,
+      resourceType: 'workflow_installation',
+      status: installation.status,
+    })
+
     return reply
       .code(201)
       .send(createApiResponse(WorkflowInstallationRecordSchema.parse(installation)))
@@ -115,19 +140,23 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
 
     const query = parseInput(WorkflowListQuerySchema, request.query ?? {}, reply)
     if (!query) {
       return reply
     }
 
+    // W19: members read the installations their entitlement covers — never
+    // narrowed by the session claim, only by the explicit channelId filter.
+    const entitlementWhere =
+      (await workflowInstallationEntitlementFilter(prisma, actorContext)) ?? undefined
     const page = await listWorkflowInstallations(
       prisma,
       actorContext.tenant.organizationId,
-      query,
+      {
+        ...query,
+        ...(entitlementWhere ? { entitlementWhere } : {}),
+      },
     )
     return createApiResponse(
       WorkflowInstallationRecordSchema.array().parse(page.items),
@@ -142,7 +171,7 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 
@@ -195,6 +224,17 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       return reply
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.installation.updated',
+      metadata: {
+        ...(body.active !== undefined ? { active: body.active } : {}),
+        ...(body.status ? { requestedStatus: body.status } : {}),
+      },
+      resourceId: installation.id,
+      resourceType: 'workflow_installation',
+      status: installation.status,
+    })
+
     return createApiResponse(WorkflowInstallationRecordSchema.parse(installation))
   })
 
@@ -203,7 +243,11 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    // W19: manual start is member-level — the same channel entitlement that
+    // lets a member trigger an agent there. 404 (not 403) when the actor has
+    // no entitlement at all, so existence does not leak.
+    if (!(await canActorStartWorkflowRun(prisma, actorContext, installationIdFrom(request)))) {
+      sendApiError(reply, 404, 'WORKFLOW_INSTALLATION_NOT_FOUND', 'Workflow installation not found')
       return reply
     }
 
@@ -252,6 +296,26 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
             code: 'WORKFLOW_RUN_TRIGGER_NOT_FOUND',
             message: 'Trigger not found',
           },
+          WORKFLOW_RUN_ORIGIN_CHANNEL_NOT_FOUND: {
+            code: 'WORKFLOW_RUN_ORIGIN_CHANNEL_NOT_FOUND',
+            message: 'Origin channel not found',
+          },
+          WORKFLOW_RUN_ORIGIN_THREAD_NOT_FOUND: {
+            code: 'WORKFLOW_RUN_ORIGIN_THREAD_NOT_FOUND',
+            message: 'Origin thread not found',
+          },
+          WORKFLOW_RUN_ORIGIN_THREAD_MISMATCH: {
+            code: 'WORKFLOW_RUN_ORIGIN_THREAD_MISMATCH',
+            message: 'Origin thread does not belong to the origin channel',
+          },
+          WORKFLOW_RUN_ORIGIN_MESSAGE_NOT_FOUND: {
+            code: 'WORKFLOW_RUN_ORIGIN_MESSAGE_NOT_FOUND',
+            message: 'Origin message not found',
+          },
+          WORKFLOW_RUN_ORIGIN_MESSAGE_MISMATCH: {
+            code: 'WORKFLOW_RUN_ORIGIN_MESSAGE_MISMATCH',
+            message: 'Origin message does not belong to the origin thread',
+          },
         }
         const mapped = workflowRunErrorMap[error.message]
         if (mapped) {
@@ -272,6 +336,14 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       return reply
     }
 
+    await auditWorkflowMutation(prisma, actorContext, {
+      action: 'workflow.run.started',
+      metadata: { installationId },
+      resourceId: workflowRun.id,
+      resourceType: 'workflow_run',
+      status: workflowRun.status,
+    })
+
     return reply.code(202).send(createApiResponse(WorkflowRunRecordSchema.parse(workflowRun)))
   })
 
@@ -280,7 +352,8 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!(await canActorReadWorkflowInstallation(prisma, actorContext, installationIdFrom(request)))) {
+      sendApiError(reply, 404, 'WORKFLOW_INSTALLATION_NOT_FOUND', 'Workflow installation not found')
       return reply
     }
 
@@ -305,12 +378,9 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
 
     const { installationId } = request.params as { installationId: string }
-    if (!(await isWorkflowInstallationAccessibleToActor(actorContext, installationId))) {
+    if (!(await canActorReadWorkflowInstallation(prisma, actorContext, installationId))) {
       sendApiError(reply, 404, 'WORKFLOW_INSTALLATION_NOT_FOUND', 'Workflow installation not found')
       return reply
     }
@@ -324,7 +394,7 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
     if (!actorContext) {
       return reply
     }
-    if (!requireOwner(actorContext, reply)) {
+    if (!requireWorkflowAdmin(actorContext, reply)) {
       return reply
     }
 

@@ -1234,6 +1234,7 @@ model Channel {
   project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   team                   Team                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
   members                ChannelMember[]
+  workflowRunOrigins     WorkflowRun[]            @relation("WorkflowRunOriginChannel")
   calls                  Call[]
   agentBindings          AgentBinding[]
   scopeDisclosureGrants  ScopeDisclosureGrant[]
@@ -1277,6 +1278,7 @@ model Thread {
   channel                  Channel                   @relation(fields: [channelId], references: [id], onDelete: Cascade)
   mailboxMessages          AgentMailboxMessage[]
   messages                 Message[]
+  workflowRunOrigins       WorkflowRun[]            @relation("WorkflowRunOriginThread")
   readStates               ThreadReadState[]
   userAlerts               UserAlert[]
   runs                     Run[]
@@ -1535,6 +1537,8 @@ model Message {
   threadFollows            MessageThreadFollow[]
   productIntegrationRuns   ProductIntegrationRun[]
   triggeredRuns            Run[]                     @relation("RunTriggerMessage")
+  workflowRunOrigins       WorkflowRun[]             @relation("WorkflowRunOriginMessage")
+  workflowRunReplyRoots    WorkflowRun[]             @relation("WorkflowRunReplyRootMessage")
   runThreadPendingMessages RunThreadPendingMessage[]
   basisScopes              MessageBasisScope[]
   disclosureGrants         DisclosureGrant[]
@@ -2287,6 +2291,13 @@ model WorkflowRun {
   parentRunId                   String?                        @map("parent_run_id") @db.Uuid
   retriedFromWorkflowRunId      String?                        @map("retried_from_workflow_run_id") @db.Uuid
   retriedByActorType            String?                        @map("retried_by_actor_type")
+  // W25: run origin — where the run was asked for. `originMessageId` is the
+  // message that triggered the run (when invoked from a conversation) and
+  // `replyRootMessageId` the reply-thread root a result should attach to.
+  originChannelId               String?                        @map("origin_channel_id") @db.Uuid
+  originThreadId                String?                        @map("origin_thread_id") @db.Uuid
+  originMessageId               String?                        @map("origin_message_id") @db.Uuid
+  replyRootMessageId            String?                        @map("reply_root_message_id") @db.Uuid
   retriedByActorId              String?                        @map("retried_by_actor_id")
   retriedAt                     DateTime?                      @map("retried_at")
   planId                        String?                        @map("plan_id") @db.Uuid
@@ -2314,6 +2325,10 @@ model WorkflowRun {
   retries                       WorkflowRun[]                  @relation("WorkflowRunRetry")
   plan                          Plan?                          @relation(fields: [planId], references: [id], onDelete: SetNull)
   planStep                      PlanStep?                      @relation(fields: [planStepId], references: [id], onDelete: SetNull)
+  originChannel                 Channel?                       @relation("WorkflowRunOriginChannel", fields: [originChannelId], references: [id], onDelete: SetNull)
+  originThread                  Thread?                        @relation("WorkflowRunOriginThread", fields: [originThreadId], references: [id], onDelete: SetNull)
+  originMessage                 Message?                       @relation("WorkflowRunOriginMessage", fields: [originMessageId], references: [id], onDelete: SetNull)
+  replyRootMessage              Message?                       @relation("WorkflowRunReplyRootMessage", fields: [replyRootMessageId], references: [id], onDelete: SetNull)
   stepRuns                      WorkflowStepRun[]
   stateEntries                  WorkflowStateEntry[]           @relation("WorkflowRunStateEntries")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
@@ -2325,6 +2340,7 @@ model WorkflowRun {
   @@index([triggerId, createdAt(sort: Desc)])
   @@index([parentRunId, createdAt(sort: Desc)])
   @@index([retriedFromWorkflowRunId, createdAt(sort: Desc)])
+  @@index([originChannelId, createdAt(sort: Desc)])
   @@map("workflow_runs")
 }
 

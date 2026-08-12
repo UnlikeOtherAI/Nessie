@@ -31,6 +31,7 @@ import {
   KnowledgeEmbedJobPayloadSchema,
   KnowledgeExtractJobPayloadSchema,
   BudgetAlertDispatchJobPayloadSchema,
+  WorkflowRunFailureDispatchJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
@@ -52,6 +53,7 @@ import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './con
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
+import { handleWorkflowRunFailureDispatch } from './control/workflow-failure-dispatch.js'
 import { handleAttentionDispatch } from './control/attention-dispatch.js'
 import {
   dispatchEventTriggers,
@@ -291,6 +293,22 @@ export const startWorker = async (
     async (job) => {
       const payload = BudgetAlertDispatchJobPayloadSchema.parse(job.payload)
       await handleBudgetAlertDispatch(
+        {
+          prisma,
+          authSecret: config.auth.secret ?? '',
+          ...(webPushCreds ? { webPush: webPushCreds } : {}),
+        },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    'workflow.run.failure-dispatch',
+    async (job) => {
+      const payload = WorkflowRunFailureDispatchJobPayloadSchema.parse(job.payload)
+      await handleWorkflowRunFailureDispatch(
         {
           prisma,
           authSecret: config.auth.secret ?? '',
