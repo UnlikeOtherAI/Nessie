@@ -18,6 +18,7 @@ const graphWithSteps = (steps: Array<{
   id: string
   input?: Record<string, unknown>
   type: string
+  when?: string
 }>) => ({
   steps: steps.map((step) => ({ title: step.id, ...step })),
 })
@@ -126,4 +127,30 @@ runDatabaseTest('binding validation', async (t) => {
     ]))
     assert.ok(result.some((issue) => issue.includes('not executable')))
   })
+})
+
+runDatabaseTest('W16: a when: expression that does not compile is rejected at save time', async (t) => {
+  const prisma = new PrismaClient()
+  const org = await prisma.organization.create({
+    data: { name: `wf-when-validate ${randomUUID()}` },
+  })
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { id: org.id } })
+    await prisma.$disconnect()
+  })
+
+  const result = await issues(prisma, org.id, graphWithSteps([
+    {
+      id: 'guarded',
+      input: { body: 'never runs', toolName: 'message_send' },
+      type: 'tool',
+      when: 'workflow.input.[',
+    },
+  ]))
+
+  // A save error — never a failed run.
+  assert.ok(
+    result.some((issue) => issue.includes('invalid when guard')),
+    `expected an invalid when guard issue, got: ${result.join('; ')}`,
+  )
 })

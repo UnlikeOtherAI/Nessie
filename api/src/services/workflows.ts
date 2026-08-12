@@ -1,14 +1,21 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
 import {
+  WORKFLOW_OVERLAP_SKIP_REASON,
   WORKFLOW_SECRET_WRITE_ERROR,
+  admitWorkflowRunUnderOverlap,
   collectWorkflowStepReferences,
   collectWorkflowTaintedRefs,
+  compileWorkflowJmespath,
+  isWorkflowConcurrencyConfig,
   parseWorkflowBindingTemplate,
+  parseWorkflowConcurrency,
   redactWorkflowInstallationSecrets,
   redactWorkflowSecretValues,
+  releaseNextQueuedWorkflowRun,
   resolveInstallationPinnedGraph,
   validateWorkflowSecretWrite,
+  withWorkflowOverlapLock,
   type WorkflowBindingSecretError,
 } from '@nessie/workspace-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
@@ -53,6 +60,7 @@ type WorkflowInstallationRow = {
   /** W0: per-binding literal/reference declaration from the owning template. */
   bindingSchema?: unknown
   channelId: string | null
+  concurrency?: unknown
   config: unknown
   createdAt: Date
   createdByActorId: string
@@ -159,6 +167,10 @@ const WORKFLOW_STEP_TYPES = new Set([
   'agent',
   'agent_task',
   'environment_launch',
+  // W15: a deterministic channel write. Also reachable as a tool step with
+  // toolName `message_send` (W12's WORKFLOW_TOOL_IDS is the tool allow-list);
+  // this is the explicit step-type form.
+  'message_send',
   'tool',
   'tool_call',
 ])
@@ -247,6 +259,15 @@ export const validateWorkflowGraphSteps = async (
       }
     }
 
+    // W16: compile the `when:` guard at save time through the one evaluator
+    // module — a bad predicate is a save error, never a mid-run surprise.
+    if (typeof step.when === 'string' && step.when.trim()) {
+      const whenError = compileWorkflowJmespath(step.when)
+      if (whenError) {
+        issues.push(`Step "${label}" has an invalid when guard: ${whenError}.`)
+      }
+    }
+
     if (seenStepIds.has(step.id)) {
       issues.push(`Duplicate step id "${step.id}" — step outputs would collide.`)
     }
@@ -256,7 +277,7 @@ export const validateWorkflowGraphSteps = async (
       issues.push(
         step.type === 'trigger'
           ? `Step "${label}" has type "trigger", which is not executable — scheduling is authored on the installation's Triggers page, not in the graph.`
-          : `Step "${label}" has unsupported type "${step.type}". Supported: tool, agent, environment_launch.`,
+          : `Step "${label}" has unsupported type "${step.type}". Supported: tool, agent, environment_launch, message_send.`,
       )
       continue
     }
@@ -298,6 +319,16 @@ export const validateWorkflowGraphSteps = async (
         issues.push(
           `Environment step "${label}" needs templateId or templateBindingKey.`,
         )
+      }
+    }
+
+    if (step.type === 'message_send') {
+      const body = readStepInputString(step.input, 'body')
+      // An exact single-token binding is checked at run time; everything else
+      // (missing, empty literal) is a save error. channelId/threadId are
+      // optional — the runtime falls back to the installation channel.
+      if (!body) {
+        issues.push(`Message step "${label}" is missing body.`)
       }
     }
   }
@@ -516,6 +547,7 @@ const mapWorkflowInstallation = (
   config: toJsonRecord(
     redactWorkflowInstallationSecrets(installation.config, installation.bindingSchema),
   ),
+  concurrency: parseWorkflowConcurrency(installation.concurrency),
   createdByActorType: installation.createdByActorType,
   createdByActorId: installation.createdByActorId,
   createdAt: installation.createdAt.toISOString(),
@@ -805,6 +837,7 @@ export const installWorkflowTemplate = async (
   input: {
     active?: boolean
     channelId?: string
+    concurrency?: Record<string, unknown>
     config?: Record<string, unknown>
     resolvedBindings?: Record<string, unknown>
     status?: WorkflowInstallationRecord['status']
@@ -816,6 +849,12 @@ export const installWorkflowTemplate = async (
   })
   if (!lifecycle) {
     throw new WorkflowInstallationLifecycleError()
+  }
+  if (input.concurrency !== undefined && !isWorkflowConcurrencyConfig(input.concurrency)) {
+    throw new WorkflowActionError(
+      'WORKFLOW_CONCURRENCY_INVALID',
+      'concurrency must be { limit?: integer >= 1, onOverlap?: skip | queue | parallel }',
+    )
   }
 
   await validateWorkflowInstallationChannel(
@@ -869,6 +908,9 @@ export const installWorkflowTemplate = async (
         active: lifecycle.active,
         resolvedBindings: (input.resolvedBindings ?? {}) as Prisma.InputJsonValue,
         config: (input.config ?? {}) as Prisma.InputJsonValue,
+        ...(input.concurrency !== undefined
+          ? { concurrency: input.concurrency as Prisma.InputJsonValue }
+          : {}),
         createdByActorType: actorContext.actor.actorType,
         createdByActorId: actorContext.actor.actorId,
       },
@@ -896,6 +938,7 @@ export const updateWorkflowInstallation = async (
   input: {
     active?: boolean
     channelId?: string
+    concurrency?: Record<string, unknown>
     config?: Record<string, unknown>
     resolvedBindings?: Record<string, unknown>
     status?: WorkflowInstallationRecord['status']
@@ -907,6 +950,12 @@ export const updateWorkflowInstallation = async (
   })
   if (!lifecycle) {
     throw new WorkflowInstallationLifecycleError()
+  }
+  if (input.concurrency !== undefined && !isWorkflowConcurrencyConfig(input.concurrency)) {
+    throw new WorkflowActionError(
+      'WORKFLOW_CONCURRENCY_INVALID',
+      'concurrency must be { limit?: integer >= 1, onOverlap?: skip | queue | parallel }',
+    )
   }
 
   await validateWorkflowInstallationChannel(
@@ -946,6 +995,9 @@ export const updateWorkflowInstallation = async (
         : {}),
       ...(input.resolvedBindings !== undefined
         ? { resolvedBindings: input.resolvedBindings as Prisma.InputJsonValue }
+        : {}),
+      ...(input.concurrency !== undefined
+        ? { concurrency: input.concurrency as Prisma.InputJsonValue }
         : {}),
     },
   })
@@ -995,7 +1047,7 @@ export const createWorkflowRun = async (
     triggerId?: string
   },
 ): Promise<WorkflowRunRecord | null> => {
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await withWorkflowOverlapLock(prisma, installationId, async (tx) => {
     const installation = await tx.workflowInstallation.findFirst({
       where: {
         id: installationId,
@@ -1007,6 +1059,7 @@ export const createWorkflowRun = async (
       },
       select: {
         active: true,
+        concurrency: true,
         id: true,
         organizationId: true,
         status: true,
@@ -1023,6 +1076,22 @@ export const createWorkflowRun = async (
 
     await validateWorkflowRunReferences(tx, installation.organizationId, input)
 
+    // W26: manual runs respect the same overlap policy as trigger fires —
+    // enforcing only in the trigger path would be a trivial bypass. A skipped
+    // admission throws so the route can answer 409 with the recorded reason;
+    // a withheld one returns its pending run and is released by the active
+    // run's terminal transition.
+    const admission = await admitWorkflowRunUnderOverlap(tx, {
+      concurrency: parseWorkflowConcurrency(installation.concurrency),
+      installationId: installation.id,
+    })
+    if (admission.kind === 'skip') {
+      throw new WorkflowActionError(
+        'WORKFLOW_RUN_OVERLAP_SKIPPED',
+        `Workflow run skipped: the installation's overlap policy is at capacity (${WORKFLOW_OVERLAP_SKIP_REASON})`,
+      )
+    }
+
     const run = await tx.workflowRun.create({
       data: {
         installationId: installation.id,
@@ -1035,20 +1104,25 @@ export const createWorkflowRun = async (
         planId: input.planId,
         planStepId: input.planStepId,
         input: (input.input ?? {}) as Prisma.InputJsonValue,
+        ...(admission.kind === 'withhold'
+          ? { summary: `${WORKFLOW_OVERLAP_SKIP_REASON}:queued` }
+          : {}),
         startedByActorType: actorContext.actor.actorType,
         startedByActorId: actorContext.actor.actorId,
       },
     })
 
-    const payload: WorkflowRunExecuteJobPayload = {
-      actorContext,
-      workflowRunId: run.id,
+    if (admission.kind === 'admit') {
+      const payload: WorkflowRunExecuteJobPayload = {
+        actorContext,
+        workflowRunId: run.id,
+      }
+      await enqueueQueueJob(tx, {
+        idempotencyKey: `workflow-run:start:${run.id}`,
+        payload,
+        topic: 'workflow.run.execute',
+      })
     }
-    await enqueueQueueJob(tx, {
-      idempotencyKey: `workflow-run:start:${run.id}`,
-      payload,
-      topic: 'workflow.run.execute',
-    })
 
     return run
   })
@@ -1120,7 +1194,20 @@ export const cancelWorkflowRun = async (
   workflowRunId: string,
   input: { reason?: string } = {},
 ): Promise<WorkflowRunRecord | null> => {
-  const result = await prisma.$transaction(async (tx) => {
+  // The overlap lock keys on the installation; resolve it first (the
+  // authoritative re-read happens inside the transaction).
+  const cancelTarget = await prisma.workflowRun.findFirst({
+    where: {
+      id: workflowRunId,
+      organizationId: actorContext.tenant.organizationId,
+    },
+    select: { installationId: true },
+  })
+  if (!cancelTarget) {
+    return null
+  }
+
+  const result = await withWorkflowOverlapLock(prisma, cancelTarget.installationId, async (tx) => {
     const existing = await tx.workflowRun.findFirst({
       where: {
         id: workflowRunId,
@@ -1243,6 +1330,16 @@ export const cancelWorkflowRun = async (
           },
         })
       }
+      // W26: the cancelled run freed the installation's slot; release one
+      // withheld pending run and enqueue it inside the same lock.
+      const released = await releaseNextQueuedWorkflowRun(tx, cancelTarget.installationId)
+      if (released) {
+        await enqueueQueueJob(tx, {
+          idempotencyKey: `workflow-run:start:${released.id}`,
+          payload: { workflowRunId: released.id },
+          topic: 'workflow.run.execute',
+        })
+      }
     }
 
     return tx.workflowRun.findUnique({ where: { id: workflowRunId } })
@@ -1294,7 +1391,9 @@ export class WorkflowActionError extends Error {
       | 'WORKFLOW_RUN_NOT_ACTIVE'
       | 'WORKFLOW_STEP_RUN_NOT_SKIPPABLE'
       | 'WORKFLOW_STEP_RUN_NOT_BLOCKABLE'
-      | 'WORKFLOW_STEP_RUN_NOT_UNBLOCKABLE',
+      | 'WORKFLOW_STEP_RUN_NOT_UNBLOCKABLE'
+      | 'WORKFLOW_CONCURRENCY_INVALID'
+      | 'WORKFLOW_RUN_OVERLAP_SKIPPED',
     message: string,
   ) {
     super(message)
@@ -1308,7 +1407,20 @@ export const retryWorkflowRun = async (
   workflowRunId: string,
   input: { reason?: string } = {},
 ): Promise<WorkflowRunRecord | null> => {
-  const result = await prisma.$transaction(async (tx) => {
+  // The overlap lock keys on the installation, so resolve it first (the
+  // authoritative re-read happens inside the transaction below).
+  const runInstallation = await prisma.workflowRun.findFirst({
+    where: {
+      id: workflowRunId,
+      organizationId: actorContext.tenant.organizationId,
+    },
+    select: { installationId: true },
+  })
+  if (!runInstallation) {
+    return null
+  }
+
+  const result = await withWorkflowOverlapLock(prisma, runInstallation.installationId, async (tx) => {
     const existing = await tx.workflowRun.findFirst({
       where: {
         id: workflowRunId,
@@ -1342,12 +1454,25 @@ export const retryWorkflowRun = async (
         active: true,
         status: { in: ['active', 'draft'] },
       },
-      select: { id: true, organizationId: true },
+      select: { concurrency: true, id: true, organizationId: true },
     })
     if (!installation) {
       throw new WorkflowActionError(
         'WORKFLOW_INSTALLATION_INACTIVE',
         'Workflow installation is inactive and cannot accept retries',
+      )
+    }
+
+    // W26: a retry is a new run and takes the same overlap admission as any
+    // other entrypoint.
+    const admission = await admitWorkflowRunUnderOverlap(tx, {
+      concurrency: parseWorkflowConcurrency(installation.concurrency),
+      installationId: installation.id,
+    })
+    if (admission.kind === 'skip') {
+      throw new WorkflowActionError(
+        'WORKFLOW_RUN_OVERLAP_SKIPPED',
+        `Workflow run retry skipped: the installation's overlap policy is at capacity (${WORKFLOW_OVERLAP_SKIP_REASON})`,
       )
     }
 
@@ -1362,7 +1487,9 @@ export const retryWorkflowRun = async (
         retriedFromWorkflowRunId: existing.id,
         graphSnapshot: await resolveInstallationPinnedGraph(tx, installation.id),
         input: (existing.input ?? {}) as Prisma.InputJsonValue,
-        summary,
+        summary: admission.kind === 'withhold'
+          ? `${WORKFLOW_OVERLAP_SKIP_REASON}:queued`
+          : summary,
         // W27: the retry must not rewrite history — the run keeps its
         // original starter; the retrying actor is recorded alongside.
         startedByActorType: existing.startedByActorType,
@@ -1373,15 +1500,17 @@ export const retryWorkflowRun = async (
       },
     })
 
-    const payload: WorkflowRunExecuteJobPayload = {
-      actorContext,
-      workflowRunId: run.id,
+    if (admission.kind === 'admit') {
+      const payload: WorkflowRunExecuteJobPayload = {
+        actorContext,
+        workflowRunId: run.id,
+      }
+      await enqueueQueueJob(tx, {
+        idempotencyKey: `workflow-run:start:${run.id}`,
+        payload,
+        topic: 'workflow.run.execute',
+      })
     }
-    await enqueueQueueJob(tx, {
-      idempotencyKey: `workflow-run:start:${run.id}`,
-      payload,
-      topic: 'workflow.run.execute',
-    })
 
     return run
   })

@@ -26,6 +26,9 @@ export const AgentTriggerDeliveryStatusSchema = z.enum([
   'delivered',
   'failed',
   'skipped',
+  // W26: the fire was recorded but the installation's overlap policy was at
+  // capacity, so no run was started.
+  'skipped_overlap',
 ])
 export type AgentTriggerDeliveryStatus = z.infer<typeof AgentTriggerDeliveryStatusSchema>
 

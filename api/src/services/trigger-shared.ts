@@ -39,7 +39,7 @@ export const mapTriggerDeliveryRecord = (delivery: {
   // list); dispatch-time callers create the run as `pending` and omit it.
   run: { id: string; status?: string } | null
   source: string | null
-  status: 'pending' | 'delivered' | 'failed' | 'skipped'
+  status: 'pending' | 'delivered' | 'failed' | 'skipped' | 'skipped_overlap'
   triggerId: string
 }): AgentTriggerDeliveryRecord => ({
   id: delivery.id,

@@ -5,6 +5,8 @@ type WorkflowStepDefinition = {
   input?: Record<string, unknown>
   title?: string
   type: string
+  // W16: step-level predicate.
+  when?: string
 }
 
 type WorkflowGraph = {
@@ -167,6 +169,7 @@ export const loadWorkflowGraph = async (
   graph: WorkflowGraph
   installation: {
     channelId: string | null
+    concurrency: unknown
     config: unknown
     id: string
     pinnedGraphJson: unknown
@@ -177,6 +180,7 @@ export const loadWorkflowGraph = async (
     workflowTemplateVersion: number
   }
   run: {
+    attempt: number
     id: string
     installationId: string
     input: unknown
@@ -189,6 +193,7 @@ export const loadWorkflowGraph = async (
   const workflowRun = await prisma.workflowRun.findUnique({
     where: { id: workflowRunId },
     select: {
+      attempt: true,
       id: true,
       graphSnapshot: true,
       installationId: true,
@@ -200,6 +205,7 @@ export const loadWorkflowGraph = async (
       installation: {
         select: {
           channelId: true,
+          concurrency: true,
           config: true,
           id: true,
           pinnedGraphJson: true,
@@ -250,6 +256,7 @@ export const loadWorkflowGraph = async (
           id: record['id'],
           type: record['type'],
           title: typeof record['title'] === 'string' ? record['title'] : undefined,
+          when: typeof record['when'] === 'string' ? record['when'] : undefined,
           input:
             record['input'] && typeof record['input'] === 'object' && !Array.isArray(record['input'])
               ? (record['input'] as Record<string, unknown>)
@@ -263,6 +270,7 @@ export const loadWorkflowGraph = async (
     graph,
     installation: {
       channelId: workflowRun.installation.channelId,
+      concurrency: workflowRun.installation.concurrency,
       config: workflowRun.installation.config,
       id: workflowRun.installation.id,
       pinnedGraphJson: workflowRun.installation.pinnedGraphJson,
@@ -273,6 +281,7 @@ export const loadWorkflowGraph = async (
       workflowTemplateVersion: workflowRun.installation.workflowTemplateVersion,
     },
     run: {
+      attempt: workflowRun.attempt,
       id: workflowRun.id,
       installationId: workflowRun.installationId,
       input: workflowRun.input,
@@ -604,4 +613,46 @@ export const markWorkflowRunFinished = async (
     },
   })
   return { applied: result.count > 0 }
+}
+
+// W16: a falsy `when:` guard skips the step without touching the run. The
+// transition is guarded on a still-pending step so a concurrent
+// terminalization (cancel, sibling failure) never has its outcome rewritten.
+export const markWorkflowStepRunSkipped = async (
+  prisma: PrismaLike,
+  input: {
+    stepRunId: string
+    summary?: string
+  },
+): Promise<void> => {
+  await prisma.workflowStepRun.updateMany({
+    where: {
+      id: input.stepRunId,
+      status: 'pending',
+    },
+    data: {
+      errorMessage: input.summary,
+      finishedAt: new Date(),
+      status: 'skipped',
+    },
+  })
+}
+
+// W18: every executor dispatch after the first bumps the run's attempt
+// counter, so a retried step's state_put writer identity differs from the
+// crashed attempt it repeats. Guarded on a non-terminal run so a bump never
+// resurrects or follows a terminalized one.
+export const bumpWorkflowRunAttempt = async (
+  prisma: PrismaLike,
+  workflowRunId: string,
+): Promise<void> => {
+  await prisma.workflowRun.updateMany({
+    where: {
+      id: workflowRunId,
+      status: { in: ['pending', 'running'] },
+    },
+    data: {
+      attempt: { increment: 1 },
+    },
+  })
 }

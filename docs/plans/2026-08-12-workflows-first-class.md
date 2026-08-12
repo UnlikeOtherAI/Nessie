@@ -151,33 +151,10 @@ lands in §4.4; the boundary itself cannot wait. As-built detail:
 
 ### 3.3 The primitives that make workflows worth having
 
-- **W15 · `message_send` step.** A deterministic channel write through the
-  existing message-create service, under the workflow's durable actor, targeting
-  the installation's channel or a bound thread, body rendered from bindings. The
-  single highest-leverage missing node: without it the platform's cheapest
-  capability is the one thing its deterministic engine cannot do.
-- **W16 · `when:` guard.** A step-level predicate; falsy ⇒ step `skipped`, run
-  continues. Turns the flagship watcher from "pay for an agent every sweep" into "pay
-  only when something changed".
+- **W15 · `message_send` step — shipped.**
+- **W16 · `when:` guard — shipped.**
 - **W17 · `transform` step (JMESPath).** See §5.
-- **W18 · Compare-and-set on `state_put`, as a complete read→write contract.**
-  Today a blind `upsert` with a blind version increment. Two overlapping runs both
-  read the same previous value and both act — corrupting exactly the watcher
-  pattern the tools exist for. CAS alone is not enough; the contract is:
-  1. `state_get`/`change_detect` **return the exact version compared**, so a
-     caller has something to pass back.
-  2. `state_put(expectedVersion)` fails the write on mismatch.
-  3. **The guarded write happens before the notification side effect**, so a lost
-     CAS race cannot produce a duplicate alert.
-  4. **The write is attempt-scoped and idempotent.** A crash after a successful
-     `state_put` but before the step is marked finished would otherwise make the
-     retry's `expectedVersion` mismatch permanently, killing a healthy watcher.
-     Record the writer's `(stepRunId, attempt)` on the entry and treat a repeat
-     write from the same writer **whose value hash matches** as a no-op success
-     rather than a conflict. The hash condition is one line and prevents a
-     same-writer retry carrying *different* data from being silently swallowed.
-  Note that CAS *detects* the collision; §6's `onOverlap: 'skip'` default is what
-  prevents it. Both ship in Stage 1.
+- **W18 · Compare-and-set on `state_put` — shipped.**
 
 ### 3.4 Reachability (Rule zero)
 
@@ -207,9 +184,7 @@ lands in §4.4; the boundary itself cannot wait. As-built detail:
   nowhere to reply, and §8's shared run component has no origin to render a
   reciprocal doorway from. Cheap now, expensive to retrofit once three surfaces consume
   run records.
-- **W26 · Overlap policy, default `skip`.** See §6. Enforced at **every** entrypoint —
-  scheduled, manual, webhook, event, and `invoke_workflow` — not only inside
-  `queueWorkflowTriggerRun`.
+- **W26 · Overlap policy, default `skip` — shipped.**
 - **W27 · Retry must not rewrite history — shipped.**
 - **W28 · Fix the `agent_task` target check — shipped.**
 - **W22 · Audit every mutation.** No workflow route writes an audit entry today.

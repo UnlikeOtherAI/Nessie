@@ -13,6 +13,7 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { createWorkflowTrigger, listWorkflowInstallationTriggers } from '../../services/triggers.js'
 import {
+  WorkflowActionError,
   createWorkflowRun,
   installWorkflowTemplate,
   listWorkflowInstallations,
@@ -70,6 +71,10 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         body,
       )
     } catch (error) {
+      if (error instanceof WorkflowActionError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
       if (error instanceof WorkflowSecretWriteError) {
         sendWorkflowSecretWriteError(reply, error)
         return reply
@@ -156,6 +161,10 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         body,
       )
     } catch (error) {
+      if (error instanceof WorkflowActionError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
       if (error instanceof WorkflowSecretWriteError) {
         sendWorkflowSecretWriteError(reply, error)
         return reply
@@ -208,6 +217,11 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
     try {
       workflowRun = await createWorkflowRun(prisma, actorContext, installationId, body)
     } catch (error) {
+      // W26: an overlap-policy skip is a conflict, not a not-found.
+      if (error instanceof WorkflowActionError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
       if (error instanceof Error) {
         const workflowRunErrorMap: Record<string, { code: string; message: string }> = {
           WORKFLOW_RUN_PARENT_RUN_NOT_FOUND: {
