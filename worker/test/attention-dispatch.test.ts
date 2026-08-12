@@ -7,16 +7,21 @@ const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 const USER_ID = '00000000-0000-4000-8000-000000000002'
 const ACTOR_ID = '00000000-0000-4000-8000-000000000003'
 const PROJECT_ID = '00000000-0000-4000-8000-000000000004'
+const STALE_PROJECT_ID = '00000000-0000-4000-8000-000000000044'
 const TASK_ID = '00000000-0000-4000-8000-000000000005'
 const ALERT_ID = '00000000-0000-4000-8000-000000000006'
 
 test('assigned-work attention stays private when no push provider is configured', async () => {
+  let membershipProjectId: string | null = null
   const prisma = {
     organizationMember: {
       findFirst: async () => ({ id: 'member-1' }),
     },
     projectMember: {
-      findFirst: async () => ({ id: 'project-member-1' }),
+      findFirst: async ({ where }: { where: { projectId: string } }) => {
+        membershipProjectId = where.projectId
+        return where.projectId === PROJECT_ID ? { id: 'project-member-1' } : null
+      },
     },
     pushCredential: {
       findMany: async () => [],
@@ -30,7 +35,9 @@ test('assigned-work attention stays private when no push provider is configured'
         kind: 'task_assigned',
         knowledgePageId: null,
         organizationId: ORGANIZATION_ID,
-        projectId: PROJECT_ID,
+        // The durable alert remembers the project at assignment time. A task
+        // can later move, so delivery must use task.projectId instead.
+        projectId: STALE_PROJECT_ID,
         taskId: TASK_ID,
         user: { preferences: {} },
         userId: USER_ID,
@@ -38,6 +45,7 @@ test('assigned-work attention stays private when no push provider is configured'
           archivedAt: null,
           assigneeUserId: USER_ID,
           id: TASK_ID,
+          projectId: PROJECT_ID,
           status: 'assigned',
           title: 'Review the release',
         },
@@ -51,6 +59,7 @@ test('assigned-work attention stays private when no push provider is configured'
   }, { alertId: ALERT_ID })
 
   assert.deepEqual(result, { failed: 0, pruned: 0, sent: 0 })
+  assert.equal(membershipProjectId, PROJECT_ID)
 })
 
 test('assigned-work attention with no current project membership is not delivered', async () => {
@@ -71,7 +80,14 @@ test('assigned-work attention with no current project membership is not delivere
         taskId: TASK_ID,
         user: { preferences: {} },
         userId: USER_ID,
-        task: { archivedAt: null, assigneeUserId: USER_ID, id: TASK_ID, status: 'assigned', title: 'Private task' },
+        task: {
+          archivedAt: null,
+          assigneeUserId: USER_ID,
+          id: TASK_ID,
+          projectId: PROJECT_ID,
+          status: 'assigned',
+          title: 'Private task',
+        },
       }),
     },
   }

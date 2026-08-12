@@ -42,6 +42,9 @@ export const visibleUserAlertWhere = (input: {
     },
     {
       kind: 'knowledge_published',
+      // This mirrors the human-reader access rules in @nessie/knowledge's
+      // canReadSpace. Keep changes to that access policy synchronized here:
+      // Prisma must express the relation predicate for list/count queries.
       knowledgePage: {
         is: {
           deletedAt: null,

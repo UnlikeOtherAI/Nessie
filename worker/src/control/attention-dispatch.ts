@@ -65,17 +65,19 @@ const resolveAttention = async (
           },
         },
       },
-      task: { select: { archivedAt: true, assigneeUserId: true, id: true, status: true, title: true } },
+      task: {
+        select: { archivedAt: true, assigneeUserId: true, id: true, projectId: true, status: true, title: true },
+      },
       user: { select: { preferences: true } },
     },
   })
   if (!alert || !await isActiveMember(prisma, alert.organizationId, alert.userId)) return null
 
   if (alert.kind === 'task_assigned') {
-    if (!alert.task || !alert.projectId || alert.task.assigneeUserId !== alert.userId
+    if (!alert.task || !alert.task.projectId || alert.task.assigneeUserId !== alert.userId
       || alert.task.archivedAt || TERMINAL_TASK_STATUSES.has(alert.task.status)) return null
     const projectMembership = await prisma.projectMember.findFirst({
-      where: { projectId: alert.projectId, userId: alert.userId },
+      where: { projectId: alert.task.projectId, userId: alert.userId },
       select: { id: true },
     })
     if (!projectMembership) return null
@@ -86,9 +88,9 @@ const resolveAttention = async (
       collapseId: `task:${alert.task.id}`,
       preferences: alert.user.preferences,
       preferenceKind: 'assignedWork',
-      surface: { kind: 'project_board', projectId: alert.projectId },
+      surface: { kind: 'project_board', projectId: alert.task.projectId },
       title: 'Work assigned to you',
-      url: `/projects/${alert.projectId}/board`,
+      url: `/projects/${alert.task.projectId}/board`,
     }
   }
 
