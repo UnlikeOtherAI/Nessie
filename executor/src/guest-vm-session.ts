@@ -14,6 +14,7 @@ import {
   type GuestVmProcessRunner,
   verifyPrivateGuestVmFile,
 } from './guest-vm-artifacts.js'
+import { GuestVmControlClient, type GuestRuntimeInspection } from './guest-vm-control.js'
 import {
   materializeGuestRuntimeBundle,
   removeGuestRuntimeBundleSnapshot,
@@ -30,6 +31,7 @@ const SESSION_STOP_TIMEOUT_MS = 10_000
 
 type ActiveGuestVmSessionProcess = {
   closed: Promise<void>
+  inspectRuntime: () => Promise<GuestRuntimeInspection>
   stop: () => Promise<void>
 }
 
@@ -47,6 +49,7 @@ export type GuestVmSessionInput = GuestVmHandshakeInput & {
 
 export type GuestVmSession = {
   closed: Promise<void>
+  inspectRuntime: () => Promise<GuestRuntimeInspection>
   stop: () => Promise<void>
 }
 
@@ -73,72 +76,19 @@ const stopChild = async (child: ChildProcess): Promise<void> => {
   }
 }
 
-const waitForSessionReady = (
-  child: ChildProcess,
-  timeoutMs: number,
-): Promise<void> => new Promise((resolvePromise, reject) => {
-  let settled = false
-  let output = ''
-  const finish = (error?: Error): void => {
-    if (settled) return
-    settled = true
-    clearTimeout(timeout)
-    child.stdout?.off('data', receive)
-    child.off('error', unavailable)
-    child.off('exit', exited)
-    if (error) reject(error)
-    else resolvePromise()
-  }
-  const unavailable = (): void => finish(new WorkspacePathError('The executor VM helper is unavailable.'))
-  const exited = (): void => finish(new WorkspacePathError('The executor VM helper rejected the guest session.'))
-  const receive = (chunk: Buffer): void => {
-    output += chunk.toString('utf8')
-    if (output.length > 4_096) {
-      finish(new WorkspacePathError('The executor VM helper emitted invalid session output.'))
-      return
-    }
-    const lineEnd = output.indexOf('\n')
-    if (lineEnd < 0) return
-    const line = output.slice(0, lineEnd)
-    if (output.slice(lineEnd + 1).trim().length > 0) {
-      finish(new WorkspacePathError('The executor VM helper emitted invalid session output.'))
-      return
-    }
-    try {
-      const value: unknown = JSON.parse(line)
-      if (
-        !value
-        || typeof value !== 'object'
-        || (value as Record<string, unknown>).session !== 'ready'
-        || (value as Record<string, unknown>).valid !== true
-        || (value as Record<string, unknown>).workspaceAttached !== true
-      ) {
-        throw new Error('invalid result')
-      }
-      finish()
-    } catch {
-      finish(new WorkspacePathError('The executor VM helper emitted invalid session output.'))
-    }
-  }
-  const timeout = setTimeout(() => {
-    finish(new WorkspacePathError('The executor VM helper timed out.'))
-  }, timeoutMs)
-  child.once('error', unavailable)
-  child.once('exit', exited)
-  child.stdout?.on('data', receive)
-})
-
 const launchGuestVmSession: GuestVmSessionLauncher = async ({ argv, input, path, readyTimeoutMs }) => {
   const child = spawn(path, argv, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
-  const closed = waitForExit(child)
+  if (!child.stdin || !child.stdout) throw new WorkspacePathError('The executor VM helper is unavailable.')
+  const control = new GuestVmControlClient(child.stdin, child.stdout)
+  const closed = waitForExit(child).finally(() => control.close())
   try {
-    child.stdin?.end(input)
-    await waitForSessionReady(child, readyTimeoutMs)
+    child.stdin.write(input)
+    await control.waitForReady(readyTimeoutMs)
   } catch (error) {
     await stopChild(child)
     throw error
   }
-  return { closed, stop: () => stopChild(child) }
+  return { closed, inspectRuntime: () => control.inspectRuntime(), stop: () => stopChild(child) }
 }
 
 /**
@@ -209,6 +159,7 @@ export const startGuestVmSession = async (
     const closed = process.closed.finally(cleanup)
     return {
       closed,
+      inspectRuntime: () => process!.inspectRuntime(),
       stop: async () => {
         await process?.stop()
         await closed

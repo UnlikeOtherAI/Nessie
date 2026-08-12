@@ -466,6 +466,18 @@ termination. This is transport activation, not product availability: no daemon
 command starts it yet, no descriptor contains a browser/shell/coding operation,
 and it has no user-facing doorway.
 
+After that ready line, the already private helper stdin/stdout pipes become the
+only companion-to-helper control transport. The helper reads exactly the 43-byte
+bootstrap first (without treating EOF as part of the token), then accepts only
+bounded length-delimited normal request frames and returns only the matching
+response frames. It has no TCP or Unix control listener. A wrong frame, wrong
+response ID, response overflow, pipe close, or request timeout terminates the
+VM session; at most one guest request is outstanding. The first typed request,
+`runtime.inspect`, returns only booleans for declared browser/tmux/Codex/Claude
+entrypoints. It proves the authenticated companion → helper → guest path but
+does not launch a process, expose a descriptor operation, or make a browser or
+coding session available.
+
 Browser and coding runtimes may enter a future session only as a complete
 owner-private `nessie-guest-runtime.json` bundle. Its versioned manifest names
 every regular file, its SHA-256 digest, and whether it is executable; it also

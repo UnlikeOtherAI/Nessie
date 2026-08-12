@@ -108,25 +108,29 @@ func mountGuestWorkspaceIfRequested() (bool, error) {
 	return true, syscall.Mount("nessie-cow", "/work", "virtiofs", syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC, "")
 }
 
-func mountGuestRuntimeIfRequested() (bool, error) {
+func mountGuestRuntimeIfRequested() (*runtimeManifest, error) {
 	commandLine, err := os.ReadFile("/proc/cmdline")
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if !runtimeRequested(string(commandLine)) {
-		return false, nil
+		return nil, nil
 	}
 	manifestDigest, ok := runtimeManifestDigest(string(commandLine))
 	if !ok {
-		return true, errInvalidFrame
+		return nil, errInvalidFrame
 	}
 	if err := os.Mkdir("/runtime", 0o755); err != nil && !os.IsExist(err) {
-		return true, err
+		return nil, err
 	}
 	if err := syscall.Mount("nessie-runtime", "/runtime", "virtiofs", syscall.MS_RDONLY|syscall.MS_NOSUID|syscall.MS_NODEV, ""); err != nil {
-		return true, err
+		return nil, err
 	}
-	return true, verifyMountedGuestRuntime(manifestDigest)
+	manifest, err := verifyMountedGuestRuntime(manifestDigest)
+	if err != nil {
+		return nil, err
+	}
+	return &manifest, nil
 }
 
 func main() {
@@ -134,7 +138,8 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-	if _, err := mountGuestRuntimeIfRequested(); err != nil {
+	runtimeManifest, err := mountGuestRuntimeIfRequested()
+	if err != nil {
 		os.Exit(1)
 	}
 	token, err := readBootstrapToken()
@@ -189,7 +194,7 @@ func main() {
 		}
 		if err := writeControlFrame(connection, controlEnvelope{
 			Kind:      "response",
-			Payload:   []byte(`{"code":"EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE"}`),
+			Payload:   handleRuntimeControlRequest(request.Payload, runtimeManifest),
 			RequestID: request.RequestID,
 			Version:   guestControlVersion,
 		}); err != nil {

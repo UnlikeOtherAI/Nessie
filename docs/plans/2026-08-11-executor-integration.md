@@ -257,6 +257,17 @@ then rejects changed, missing, duplicate, undeclared, non-executable, or
 misdeclared runtime artifacts. This closes the mutable-host-bundle interval;
 it still does not advertise a browser/coding operation.
 
+The live session now has a bounded, inherited-pipe control seam after its
+one-use 43-byte bootstrap: the companion writes only length-framed normal
+requests to the helper stdin and receives matching framed responses after its
+single ready line. The helper opens no new control listener, forwards at most
+one request to the authenticated guest channel, and ends the session on a
+malformed frame, pipe closure, response mismatch, overflow, or timeout. The
+first allowed request is `runtime.inspect`; it returns only booleans for
+manifest-declared browser/tmux/Codex/Claude entrypoints. This validates the
+end-to-end control path without launching an executable or advertising an
+executor operation. Browser and coding lifecycle/control remain unavailable.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

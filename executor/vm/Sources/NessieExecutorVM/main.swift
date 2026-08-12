@@ -10,7 +10,7 @@ private func json(_ value: [String: Any]) {
 }
 
 private func usage() -> Never {
-  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm session --console <owner-only-path> --kernel <path> --initrd <path> --workspace-cow <owner-only-draft> --runtime-bundle <owner-only-runtime> --egress-gateway <owner-only-socket> --bootstrap-token-stdin [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
+  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm session --console <owner-only-path> --kernel <path> --initrd <path> --workspace-cow <owner-only-draft> --runtime-bundle <owner-only-runtime> --runtime-manifest-digest <sha256:...> --egress-gateway <owner-only-socket> --bootstrap-token-stdin [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
   exit(64)
 }
 
@@ -221,11 +221,34 @@ private final class SessionStopSignal {
   }
 }
 
+private final class GuestControlResponseRelay {
+  private let lock = NSLock()
+  private var pipe: GuestControlPipe?
+
+  func attach(_ pipe: GuestControlPipe) {
+    lock.lock()
+    self.pipe = pipe
+    lock.unlock()
+  }
+
+  func send(_ response: GuestControlEnvelope) {
+    lock.lock()
+    let activePipe = pipe
+    lock.unlock()
+    activePipe?.sendResponse(response)
+  }
+}
+
 private func bootstrapTokenFromStandardInput(_ arguments: [String]) throws -> String {
   guard arguments.filter({ $0 == "--bootstrap-token-stdin" }).count == 1 else {
     throw VMError.invalidArgument
   }
-  let tokenData = FileHandle.standardInput.readDataToEndOfFile()
+  var tokenData = Data()
+  while tokenData.count < 43 {
+    let chunk = FileHandle.standardInput.readData(ofLength: 43 - tokenData.count)
+    guard !chunk.isEmpty else { throw VMError.invalidArgument }
+    tokenData.append(chunk)
+  }
   guard tokenData.count == 43, let token = String(data: tokenData, encoding: .utf8) else {
     throw VMError.invalidArgument
   }
@@ -294,6 +317,7 @@ private func session(_ arguments: [String]) throws {
     do {
       let outcome = GuestHandshakeResult()
       let bridges = GuestEgressBridgeRegistry(gatewaySocketPath: gatewaySocketPath)
+      let relay = GuestControlResponseRelay()
       let machine = VZVirtualMachine(configuration: try configuration(
         for: input,
         consoleURL: consoleURL,
@@ -318,7 +342,7 @@ private func session(_ arguments: [String]) throws {
             outcome.recordTermination(.unavailable)
           }
         },
-        onResponse: { _ in },
+        onResponse: { response in relay.send(response) },
         onTerminated: { reason in outcome.recordTermination(reason) },
       )
       try control.attach(to: machine)
@@ -344,6 +368,16 @@ private func session(_ arguments: [String]) throws {
         throw VMError.guestSession
       }
       json(["session": "ready", "valid": true, "workspaceAttached": true])
+      let pipe = try GuestControlPipe(
+        inputDescriptor: STDIN_FILENO,
+        outputDescriptor: STDOUT_FILENO,
+        forwardRequest: { payload, requestId in
+          _ = try control.sendRequest(payload: payload, requestId: requestId)
+        },
+        onTerminated: { outcome.recordTermination(.unavailable) },
+      )
+      relay.attach(pipe)
+      try pipe.start()
 
       signal(SIGINT, SIG_IGN)
       signal(SIGTERM, SIG_IGN)
@@ -359,6 +393,7 @@ private func session(_ arguments: [String]) throws {
       }
       interrupt.cancel()
       terminate.cancel()
+      pipe.stop()
       let failed = outcome.isTerminated() && !stop.isRequested()
       control.invalidate()
       egress.invalidate()

@@ -127,6 +127,11 @@ test('guest runtime bundles pin every browser and coding artifact without host f
       materializeGuestRuntimeBundle(verified, join(snapshotParent, 'changed-runtime')),
       /integrity check failed/,
     )
+    await writeFile(join(bundle, 'nessie-guest-runtime.json'), JSON.stringify({
+      ...manifest,
+      entrypoints: { ...manifest.entrypoints, hidden: 'bin/codex' },
+    }))
+    await assert.rejects(verifyGuestRuntimeBundle(bundle), /manifest is malformed/)
     await removeGuestRuntimeBundleSnapshot(snapshot.root)
   } finally {
     await rm(bundle, { force: true, recursive: true })
@@ -185,6 +190,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
         calls.push(call)
         return {
           closed: new Promise<void>((resolvePromise) => { resolveClosed = resolvePromise }),
+          inspectRuntime: async () => ({ browser: true, claude: false, codex: false, tmux: false }),
           stop: async () => { resolveClosed?.() },
         }
       },
@@ -209,6 +215,7 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
     const gatewayIndex = calls[1].argv.indexOf('--egress-gateway')
     assert.equal(gatewayIndex >= 0, true)
     assert.match(calls[1].argv[gatewayIndex + 1]!, /egress\.sock$/)
+    assert.deepEqual(await session.inspectRuntime(), { browser: true, claude: false, codex: false, tmux: false })
     await session.stop()
     await session.closed
     await assert.rejects(releaseGuestWorkspaceLease(stateDir, lease), /unavailable/)

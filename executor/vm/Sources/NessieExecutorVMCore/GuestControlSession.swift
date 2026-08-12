@@ -73,12 +73,12 @@ final class GuestControlConversation {
 }
 
 /** Buffers only one partially received bounded frame at a time. */
-final class GuestControlFrameStreamDecoder {
+public final class GuestControlFrameStreamDecoder {
   private var buffered = Data()
 
-  init() {}
+  public init() {}
 
-  func append(_ bytes: Data) throws -> [GuestControlEnvelope] {
+  public func append(_ bytes: Data) throws -> [GuestControlEnvelope] {
     guard buffered.count + bytes.count <= guestControlFrameMaxBytes + 8_192 else {
       throw GuestControlFrameError.oversized
     }

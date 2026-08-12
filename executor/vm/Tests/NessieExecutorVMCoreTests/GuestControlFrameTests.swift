@@ -241,6 +241,59 @@ func guestControlFrameStreamParser() throws {
   #expect(try parser.append(remaining).count == 2)
 }
 
+@available(macOS 15.0, *)
+@Test("companion pipe forwards only framed requests and returns guest responses")
+func guestControlPipeRelaysFramedRequests() throws {
+  var inputDescriptors = [Int32](repeating: -1, count: 2)
+  var outputDescriptors = [Int32](repeating: -1, count: 2)
+  guard socketpair(AF_UNIX, SOCK_STREAM, 0, &inputDescriptors) == 0,
+    socketpair(AF_UNIX, SOCK_STREAM, 0, &outputDescriptors) == 0
+  else {
+    throw NSError(domain: "GuestControlPipeTest", code: 0)
+  }
+  let pipeInput = inputDescriptors[0]
+  let companionInput = inputDescriptors[1]
+  let pipeOutput = outputDescriptors[0]
+  let companionOutput = outputDescriptors[1]
+  defer {
+    close(pipeInput)
+    close(companionInput)
+    close(pipeOutput)
+    close(companionOutput)
+  }
+
+  let forwarded = DispatchSemaphore(value: 0)
+  let expectedPayload = Data("runtime.inspect".utf8)
+  let expectedRequestId = UUID()
+  let pipe = try GuestControlPipe(
+    inputDescriptor: pipeInput,
+    outputDescriptor: pipeOutput,
+    forwardRequest: { payload, requestId in
+      #expect(payload == expectedPayload)
+      #expect(requestId == expectedRequestId)
+      forwarded.signal()
+    },
+    onTerminated: {},
+  )
+  defer { pipe.stop() }
+  try pipe.start()
+  try writeGuestFrame(GuestControlEnvelope(
+    kind: .request,
+    payload: expectedPayload,
+    requestId: expectedRequestId,
+  ), to: companionInput)
+  #expect(forwarded.wait(timeout: .now() + 1) == .success)
+  pipe.sendResponse(GuestControlEnvelope(
+    kind: .response,
+    payload: Data("available".utf8),
+    requestId: expectedRequestId,
+  ))
+  let response = try GuestControlFrameCodec.decode(readGuestFrame(from: companionOutput))
+  #expect(response.kind == .response)
+  #expect(response.requestId == expectedRequestId)
+  #expect(response.payload == Data("available".utf8))
+}
+
 @Test("guest control host session verifies hello before issuing one request")
 func guestControlHostSession() throws {
   var descriptors = [Int32](repeating: -1, count: 2)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net"
 	"os"
@@ -107,6 +108,40 @@ func TestGuestRuntimeRechecksTheMountedManifestAndEveryFile(t *testing.T) {
 	}
 	if err := verifyGuestRuntime(root, digest); err == nil {
 		t.Fatal("accepted a changed mounted runtime file")
+	}
+	if err := os.WriteFile(filepath.Join(root, "bin", "browser"), browser, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	unknownEntrypoint := []byte(`{"entrypoints":{"browser":"bin/browser","hidden":"bin/browser"},"files":[{"executable":true,"path":"bin/browser","sha256":"` + hex.EncodeToString(fileHash[:]) + `"}],"version":1}`)
+	if err := os.WriteFile(filepath.Join(root, "nessie-guest-runtime.json"), unknownEntrypoint, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unknownHash := sha256.Sum256(unknownEntrypoint)
+	if err := verifyGuestRuntime(root, "sha256:"+hex.EncodeToString(unknownHash[:])); err == nil {
+		t.Fatal("accepted an unknown runtime entrypoint")
+	}
+}
+
+func TestGuestRuntimeInspectionExposesOnlyDeclaredCapabilityNames(t *testing.T) {
+	manifest := runtimeManifest{Entrypoints: map[string]string{
+		"browser": "bin/browser",
+		"codex":   "bin/codex",
+		"tmux":    "bin/tmux",
+	}}
+	payload := []byte(`{"operation":"runtime.inspect","version":1}`)
+	response := handleRuntimeControlRequest(payload, &manifest)
+	var decoded struct {
+		Inspection runtimeInspection `json:"inspection"`
+		Version    int               `json:"version"`
+	}
+	if err := json.Unmarshal(response, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Version != guestRuntimeControlVersion || !decoded.Inspection.Browser || !decoded.Inspection.Codex || !decoded.Inspection.Tmux || decoded.Inspection.Claude {
+		t.Fatalf("unexpected runtime inspection %#v", decoded)
+	}
+	if !bytes.Contains(handleRuntimeControlRequest([]byte(`{"operation":"browser.open","version":1}`), &manifest), []byte("CAPABILITY_UNAVAILABLE")) {
+		t.Fatal("accepted an unimplemented runtime operation")
 	}
 }
 

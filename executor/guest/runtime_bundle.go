@@ -104,48 +104,56 @@ func runtimeFiles(root string) ([]string, error) {
 	return files, nil
 }
 
-func verifyMountedGuestRuntime(expectedDigest string) error {
-	return verifyGuestRuntime("/runtime", expectedDigest)
+func verifyMountedGuestRuntime(expectedDigest string) (runtimeManifest, error) {
+	return loadVerifiedGuestRuntime("/runtime", expectedDigest)
 }
 
 func verifyGuestRuntime(root, expectedDigest string) error {
+	_, err := loadVerifiedGuestRuntime(root, expectedDigest)
+	return err
+}
+
+func loadVerifiedGuestRuntime(root, expectedDigest string) (runtimeManifest, error) {
 	manifestBytes, err := os.ReadFile(filepath.Join(root, "nessie-guest-runtime.json"))
 	if err != nil {
-		return errInvalidFrame
+		return runtimeManifest{}, errInvalidFrame
 	}
 	manifestHash := sha256.Sum256(manifestBytes)
 	if "sha256:"+hex.EncodeToString(manifestHash[:]) != expectedDigest {
-		return errInvalidFrame
+		return runtimeManifest{}, errInvalidFrame
 	}
 	var manifest runtimeManifest
 	if json.Unmarshal(manifestBytes, &manifest) != nil || manifest.Version != 1 || len(manifest.Files) == 0 || len(manifest.Files) > maxRuntimeFiles {
-		return errInvalidFrame
+		return runtimeManifest{}, errInvalidFrame
 	}
 	declared := map[string]runtimeManifestFile{}
 	for _, file := range manifest.Files {
 		if !safeRuntimePath(file.Path) || len(file.SHA256) != 64 || !strings.EqualFold(file.SHA256, strings.ToLower(file.SHA256)) {
-			return errInvalidFrame
+			return runtimeManifest{}, errInvalidFrame
 		}
 		if _, err := hex.DecodeString(file.SHA256); err != nil {
-			return errInvalidFrame
+			return runtimeManifest{}, errInvalidFrame
 		}
 		if _, exists := declared[file.Path]; exists {
-			return errInvalidFrame
+			return runtimeManifest{}, errInvalidFrame
 		}
 		declared[file.Path] = file
 	}
 	if len(manifest.Entrypoints) == 0 || (manifest.Entrypoints["browser"] == "" && manifest.Entrypoints["tmux"] == "") {
-		return errInvalidFrame
+		return runtimeManifest{}, errInvalidFrame
 	}
-	for _, entrypoint := range manifest.Entrypoints {
+	for name, entrypoint := range manifest.Entrypoints {
+		if name != "browser" && name != "tmux" && name != "codex" && name != "claude" {
+			return runtimeManifest{}, errInvalidFrame
+		}
 		file, exists := declared[entrypoint]
 		if !exists || !file.Executable {
-			return errInvalidFrame
+			return runtimeManifest{}, errInvalidFrame
 		}
 	}
 	actual, err := runtimeFiles(root)
 	if err != nil {
-		return err
+		return runtimeManifest{}, err
 	}
 	filtered := make([]string, 0, len(actual))
 	for _, path := range actual {
@@ -154,25 +162,25 @@ func verifyGuestRuntime(root, expectedDigest string) error {
 		}
 	}
 	if len(filtered) != len(declared) {
-		return errInvalidFrame
+		return runtimeManifest{}, errInvalidFrame
 	}
 	sort.Strings(filtered)
 	for _, path := range filtered {
 		file, exists := declared[path]
 		if !exists {
-			return errInvalidFrame
+			return runtimeManifest{}, errInvalidFrame
 		}
 		info, err := os.Lstat(filepath.Join(root, path))
 		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-			return errInvalidFrame
+			return runtimeManifest{}, errInvalidFrame
 		}
 		if file.Executable != (info.Mode().Perm()&0o100 != 0) {
-			return errInvalidFrame
+			return runtimeManifest{}, errInvalidFrame
 		}
 		digest, err := runtimeFileDigest(filepath.Join(root, path))
 		if err != nil || digest != file.SHA256 {
-			return errInvalidFrame
+			return runtimeManifest{}, errInvalidFrame
 		}
 	}
-	return nil
+	return manifest, nil
 }
