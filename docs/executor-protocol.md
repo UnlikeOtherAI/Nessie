@@ -360,6 +360,14 @@ does **not** start a guest or advertise any executor operation yet. A later
 guest broker must add the COW share and forced-egress endpoint as one reviewed
 unit; a browser or coding descriptor is forbidden until that unit is live.
 The macOS-native verification command is `swift test --package-path executor/vm`.
+The helper carries the `com.apple.security.virtualization` and
+`com.apple.security.hypervisor` entitlements. `sh
+executor/vm/scripts/build-signed-vm-helper.sh` creates an ad-hoc local validator
+only; a runnable release helper must be embedded in the signed companion app
+with its release provisioning profile. An unsigned or improperly signed helper
+fails closed in `Virtualization.framework` before a guest can start. Its `smoke`
+command is therefore a release-candidate integration check, not a host fallback
+or a development-mode substitute for that packaging boundary.
 
 The guest's only virtual NIC terminates at the daemon's authenticated egress
 gateway. There is no NAT bridge or direct DNS resolver; firewall rules deny

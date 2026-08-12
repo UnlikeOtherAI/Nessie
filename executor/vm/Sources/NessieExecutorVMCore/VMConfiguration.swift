@@ -10,14 +10,14 @@ public enum VMError: Error {
 
 public struct VMInput {
   public let cpuCount: Int
-  public let diskURL: URL
+  public let diskURL: URL?
   public let initrdURL: URL?
   public let kernelURL: URL
   public let memoryMiB: Int
 
   public init(
     cpuCount: Int,
-    diskURL: URL,
+    diskURL: URL?,
     initrdURL: URL?,
     kernelURL: URL,
     memoryMiB: Int,
@@ -70,21 +70,38 @@ public func requireSupportedHost() throws {
 }
 
 @available(macOS 15.0, *)
-public func configuration(for input: VMInput) throws -> VZVirtualMachineConfiguration {
+public func configuration(
+  for input: VMInput,
+  consoleURL: URL? = nil,
+) throws -> VZVirtualMachineConfiguration {
   guard (1...4).contains(input.cpuCount), (2048...8192).contains(input.memoryMiB) else {
     throw VMError.invalidArgument
   }
   let loader = VZLinuxBootLoader(kernelURL: input.kernelURL)
-  loader.commandLine = "console=hvc0 root=/dev/vda ro panic=-1"
+  loader.commandLine = input.diskURL == nil
+    ? "console=hvc0 rdinit=/init panic=-1"
+    : "console=hvc0 root=/dev/vda ro panic=-1"
   loader.initialRamdiskURL = input.initrdURL
 
-  let disk = try VZDiskImageStorageDeviceAttachment(url: input.diskURL, readOnly: true)
   let configuration = VZVirtualMachineConfiguration()
   configuration.bootLoader = loader
   configuration.cpuCount = input.cpuCount
   configuration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
   configuration.memorySize = UInt64(input.memoryMiB) * 1_024 * 1_024
-  configuration.storageDevices = [VZVirtioBlockDeviceConfiguration(attachment: disk)]
+  if let diskURL = input.diskURL {
+    let disk = try VZDiskImageStorageDeviceAttachment(url: diskURL, readOnly: true)
+    configuration.storageDevices = [VZVirtioBlockDeviceConfiguration(attachment: disk)]
+  }
+  if let consoleURL {
+    let consoleOutput = try FileHandle(forWritingTo: consoleURL)
+    try consoleOutput.truncate(atOffset: 0)
+    let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
+    serialPort.attachment = VZFileHandleSerialPortAttachment(
+      fileHandleForReading: try FileHandle(forReadingFrom: URL(fileURLWithPath: "/dev/null")),
+      fileHandleForWriting: consoleOutput,
+    )
+    configuration.serialPorts = [serialPort]
+  }
 
   // A guest broker must explicitly add its COW and forced-egress transports.
   // This substrate therefore has no NIC, filesystem share, graphics device,
