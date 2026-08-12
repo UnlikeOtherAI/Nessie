@@ -211,7 +211,11 @@ export const ThreadReplyPanel = ({
         aria-label="Thread"
         className={[
           'admin-chat-surface z-50 flex w-full flex-col border-l border-[color:var(--sep)] bg-[color:var(--main)]',
-          'max-[899px]:fixed max-[899px]:inset-0',
+          // The regular admin columns receive the status-bar inset from the
+          // WebView bridge. This fixed overlay sits outside those columns, so
+          // it owns the inset itself and keeps its header controls out from
+          // under an iOS notch in both phone and tablet overlay modes.
+          'max-[899px]:fixed max-[899px]:inset-0 max-[1279px]:pt-[env(safe-area-inset-top,0px)]',
           'min-[900px]:w-[var(--thread-panel-width)]',
           'min-[900px]:max-[1279px]:fixed min-[900px]:max-[1279px]:inset-y-0 min-[900px]:max-[1279px]:right-0',
           'min-[900px]:max-[1279px]:shadow-[0_32px_80px_var(--scrim-strong)]',
