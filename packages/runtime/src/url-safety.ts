@@ -1,5 +1,5 @@
 import { lookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { connect, isIP, type Socket } from 'node:net'
 import { Agent, type Dispatcher } from 'undici'
 
 export class UrlSafetyError extends Error {
@@ -234,6 +234,51 @@ export const pinnedFetch = async (
     redirect: 'manual',
     dispatcher: cachedPinnedAgent(addresses),
   })
+}
+
+export type PinnedSocketConnector = (input: {
+  address: string
+  port: number
+}) => Promise<Socket>
+
+export type PinnedConnectOptions = AssertSafeUrlOptions & {
+  connectImpl?: PinnedSocketConnector
+}
+
+const connectToVettedAddress: PinnedSocketConnector = ({ address, port }) =>
+  new Promise((resolvePromise, reject) => {
+    // `address` is a literal address returned by resolveAndValidate, never the
+    // original hostname, so net.connect cannot open a DNS-rebinding window.
+    const socket = connect({ host: address, family: isIP(address), port })
+    const onError = (error: Error): void => reject(error)
+    socket.once('connect', () => {
+      socket.off('error', onError)
+      resolvePromise(socket)
+    })
+    socket.once('error', onError)
+  })
+
+/**
+ * Open one raw TCP connection to a URL only after URL validation and IP
+ * pinning. This is the narrow escape hatch for HTTPS CONNECT-style transports;
+ * ordinary HTTP callers must use safeFetch or pinnedFetch instead.
+ */
+export const pinnedConnect = async (
+  rawUrl: string | URL,
+  options?: PinnedConnectOptions,
+): Promise<{ socket: Socket; url: URL }> => {
+  const { addresses, url } = await resolveAndValidate(rawUrl, options)
+  if (url.protocol !== 'https:') {
+    throw new UrlSafetyError('Pinned raw connections require HTTPS.')
+  }
+  const address = addresses[0]
+  if (!address) throw new UrlSafetyError('Unable to resolve outbound URL host.')
+  const port = url.port ? Number(url.port) : 443
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new UrlSafetyError('Outbound URL port is invalid.')
+  }
+  const connectImpl = options?.connectImpl ?? connectToVettedAddress
+  return { socket: await connectImpl({ address, port }), url }
 }
 
 // SSRF-safe fetch: validates the URL, pins the connection to the validated IPs,

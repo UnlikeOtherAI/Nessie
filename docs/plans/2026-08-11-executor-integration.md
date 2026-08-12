@@ -102,6 +102,16 @@ It is not command-reachable and advertises no new descriptor operation. The
 browser/coding slice must add guest COW transport and a forced-egress broker as
 one reviewed unit; it may not turn this validator into a host-browser fallback.
 
+The companion now also contains the inactive foundation for that egress broker:
+an owner-only Unix-socket HTTPS CONNECT gateway whose local policy names exact,
+distinct HTTPS origins. It has no TCP listener, generic HTTP forwarding, proxy
+mode, browser descriptor, or guest transport. Before it opens one raw tunnel it
+uses `@nessie/runtime`'s shared `pinnedConnect` primitive, which validates the
+target then dials the vetted literal IP without another DNS lookup. The eventual
+VM bridge must pair this gateway with a guest-only interface and enforce the
+remaining download/upload and credential rules; this groundwork is not browser
+availability.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

@@ -11,6 +11,10 @@
     "./model": {
       "types": "./src/model.ts",
       "default": "./dist/model.js"
+    },
+    "./url-safety": {
+      "types": "./src/url-safety.ts",
+      "default": "./dist/url-safety.js"
     }
   },
   "scripts": {

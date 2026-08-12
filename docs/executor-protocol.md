@@ -356,7 +356,9 @@ configuration on Apple Silicon/macOS 15+: owner-owned, non-link, single-link
 kernel/initrd/disk files; a bounded CPU/memory allocation; a read-only guest
 disk; and entropy only. Its configuration deliberately contains no virtual
 NIC, host filesystem share, graphics attachment, or host process bridge. It
-does **not** start a guest or advertise any executor operation yet. A later
+does not advertise any executor operation. Normal configuration validation does
+not start a guest; its separate release-candidate smoke command may start and
+stop one signed helper process only to prove the packaging boundary. A later
 guest broker must add the COW share and forced-egress endpoint as one reviewed
 unit; a browser or coding descriptor is forbidden until that unit is live.
 The macOS-native verification command is `swift test --package-path executor/vm`.
@@ -374,8 +376,16 @@ gateway. There is no NAT bridge or direct DNS resolver; firewall rules deny
 direct TCP, UDP/QUIC, proxy bypass, and alternate DNS. Chromium must use this
 gateway. The gateway enforces HTTP(S), CONNECT, WebSocket, redirect, origin,
 download, and upload policy. It uses `@nessie/runtime` `safeFetch` or
-`pinnedFetch` for validated, IP-pinned connection and redirect handling, rather
-than implementing a second SSRF policy.
+`pinnedFetch` for HTTP handling and constrained `pinnedConnect` for the raw
+CONNECT transport, rather than implementing a second SSRF policy.
+
+The checked-in companion foundation is not connected to a guest and cannot be
+advertised: it is an owner-only Unix-socket HTTPS CONNECT listener with exact
+local-origin policy and no TCP listener or generic forwarding mode. Its one raw
+socket path uses runtime `pinnedConnect`, so URL validation and literal-IP dial
+occur as a single operation rather than validating then re-resolving a hostname.
+The VM bridge, Chromium profile, credential broker, and download/upload controls
+remain required before browser operations are enabled.
 
 Codex/Claude runs inside the same guest in a dedicated tmux server. The host
 `~/.codex`, `~/.claude`, keychain, and global CLI tokens are never mounted.

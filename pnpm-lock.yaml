@@ -270,6 +270,9 @@ importers:
 
   executor:
     dependencies:
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../packages/runtime
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
