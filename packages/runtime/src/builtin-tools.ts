@@ -226,6 +226,28 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: false,
   },
   {
+    id: 'workflow_transform_preview',
+    label: 'Workflow Transform Preview',
+    description:
+      'Evaluate a workflow JMESPath expression against a sample JSON document and return the result. ' +
+      'Use it to author and check a `transform` step mapping (or an inline `jmespath:` value) before saving ' +
+      'the graph — the same compiler and security envelope the designer and the worker use.',
+    parameters: {
+      type: 'object',
+      properties: {
+        expression: {
+          type: 'string',
+          description: 'The JMESPath expression to evaluate',
+        },
+        sampleJson: {
+          description: 'The sample document to evaluate against (JSON value or JSON string)',
+        },
+      },
+      required: ['expression', 'sampleJson'],
+    },
+    safe: true,
+  },
+  {
     id: 'document_read',
     label: 'Document Read',
     description: 'Read a project-local document by path or topic. Returns markdown content.',

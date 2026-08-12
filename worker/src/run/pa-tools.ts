@@ -72,3 +72,4 @@ export {
   runPeopleSearchTool,
   runUpdatePreferencesTool,
 } from './pa-tools/people.js'
+export { runWorkflowTransformPreviewTool } from './pa-tools/workflow-transform.js'

@@ -8,6 +8,7 @@ import {
   releaseNextQueuedWorkflowRun,
   withWorkflowOverlapLock,
   type WorkflowBindingScope,
+  type WorkflowBindingTemplate,
 } from '@nessie/workspace-admin'
 import type { LedgerIdentityService } from '@nessie/runtime'
 import {
@@ -42,6 +43,10 @@ import {
   buildWorkflowRunEventContext,
   emitWorkflowRunTerminalEvent,
 } from './workflow-run-events.js'
+import {
+  evaluateWorkflowJmespathAtSink,
+  executeWorkflowTransformStep,
+} from './workflow-transform.js'
 
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -166,21 +171,54 @@ const stripWorkflowDesignerConfig = (
 
 const formatBindingExpression = (segments: string[]): string => segments.join('.')
 
-const resolveWorkflowTemplateString = (
+// W16: the `when:` document is the same redacted scope the binding resolver
+// uses — bindings/config/input plus the previous steps' snapshots. W17's
+// inline `jmespath:` form evaluates against the same document, so an inline
+// expression and a `when:` guard see identical data.
+const buildWorkflowWhenDocument = (
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
+): Record<string, unknown> => ({
+  steps: Object.fromEntries(
+    Object.entries(context.stepSnapshots).map(([stepId, snapshot]) => [
+      stepId,
+      { input: snapshot.input, output: snapshot.output, status: snapshot.status },
+    ]),
+  ),
+  workflow: {
+    bindings: context.workflowBindings,
+    config: context.workflowConfig,
+    input: context.workflowInput,
+  },
+})
+
+// W17: the one added branch in input resolution — `jmespath:<expr>` runs
+// through the same evaluator as the transform step, at sink scope (redacted
+// in, redacted out). The prefix check happens after binding-token expansion
+// too: `jmespath:{{ … }}` would slip past a literal startsWith. Compiled at
+// save time, so a failure here is a data-dependent run-time error.
+const isJmespathPrefixed = (value: string): boolean => value.startsWith('jmespath:')
+
+const resolveWorkflowTemplateString = async (
   value: string,
   context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
-): unknown => {
+): Promise<unknown> => {
   // Same grammar as save-time validation (W9): invalid syntax here means the
   // template was authored before the validator existed or bypassed it.
-  const template = parseWorkflowBindingTemplate(value)
-  if (template.kind === 'literal') {
+  // A `jmespath:` string is JMESPath source, not binding syntax, so the
+  // binding grammar does not apply to it — its own compiler runs at save
+  // time. (The prefix check runs again after token expansion, covering the
+  // `jmespath:{{ … }}` shape.)
+  const prefixed = isJmespathPrefixed(value)
+  const template: WorkflowBindingTemplate = parseWorkflowBindingTemplate(value)
+  if (prefixed) {
+    // JMESPath source: no binding expansion; the loop below is skipped.
+  } else if (template.kind === 'literal') {
     return value
-  }
-  if (template.kind === 'invalid') {
+  } else if (template.kind === 'invalid') {
     throw new Error(`WORKFLOW_BINDING_INVALID:${template.error}`)
   }
 
-  if (template.kind === 'exact') {
+  if (!prefixed && template.kind === 'exact') {
     const resolved = resolveWorkflowBindingScope(template.token.reference, context)
     if (resolved === undefined) {
       throw new Error(
@@ -191,7 +229,7 @@ const resolveWorkflowTemplateString = (
   }
 
   let resolved_value = value
-  for (const token of template.tokens) {
+  for (const token of template.kind === 'mixed' ? template.tokens : []) {
     const resolved = resolveWorkflowBindingScope(token.reference, context)
     if (resolved === undefined) {
       throw new Error(
@@ -200,13 +238,29 @@ const resolveWorkflowTemplateString = (
     }
     resolved_value = resolved_value.replace(token.raw, stringifyWorkflowBindingValue(resolved))
   }
+
+  if (prefixed || isJmespathPrefixed(resolved_value)) {
+    const expression = resolved_value.slice('jmespath:'.length)
+    // The document is the same redacted scope the `when:` guard and the
+    // transform default-source form see.
+    const evaluated = await evaluateWorkflowJmespathAtSink(
+      expression,
+      buildWorkflowWhenDocument(context),
+      context.taintedRefs,
+    )
+    if (!evaluated.ok) {
+      throw new Error(`WORKFLOW_JMESPATH_INVALID:${evaluated.error}`)
+    }
+    return evaluated.value
+  }
+
   return resolved_value
 }
 
 export const resolveWorkflowStepInput = (
   value: unknown,
   context: WorkflowBindingContext,
-): unknown => {
+): Promise<unknown> => {
   // Taint is derived lazily so unit callers can pass the pre-W0 context shape;
   // production builds the context through buildWorkflowBindingContext, which
   // always supplies the set.
@@ -216,22 +270,24 @@ export const resolveWorkflowStepInput = (
   return resolveWorkflowStepInputInner(value, derived)
 }
 
-const resolveWorkflowStepInputInner = (
+const resolveWorkflowStepInputInner = async (
   value: unknown,
   context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
-): unknown => {
+): Promise<unknown> => {
   if (typeof value === 'string') {
     return resolveWorkflowTemplateString(value, context)
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => resolveWorkflowStepInputInner(entry, context))
+    return Promise.all(value.map((entry) => resolveWorkflowStepInputInner(entry, context)))
   }
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-        key,
-        resolveWorkflowStepInputInner(entry, context),
-      ]),
+      await Promise.all(
+        Object.entries(value as Record<string, unknown>).map(async ([key, entry]) => [
+          key,
+          await resolveWorkflowStepInputInner(entry, context),
+        ] as const),
+      ),
     )
   }
   return value
@@ -571,24 +627,6 @@ const releaseWorkflowOverlapSlot = async (
   }
 }
 
-// W16: the `when:` document is the same redacted scope the binding resolver
-// uses — bindings/config/input plus the previous steps' snapshots.
-const buildWorkflowWhenDocument = (
-  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
-): Record<string, unknown> => ({
-  steps: Object.fromEntries(
-    Object.entries(context.stepSnapshots).map(([stepId, snapshot]) => [
-      stepId,
-      { input: snapshot.input, output: snapshot.output, status: snapshot.status },
-    ]),
-  ),
-  workflow: {
-    bindings: context.workflowBindings,
-    config: context.workflowConfig,
-    input: context.workflowInput,
-  },
-})
-
 export const executeWorkflowRun = async (
   execution: {
     actorContext: AuthorizedActionContext
@@ -780,7 +818,7 @@ export const executeWorkflowRun = async (
 
     let resolvedStepInput: unknown
     try {
-      resolvedStepInput = resolveWorkflowStepInput(
+      resolvedStepInput = await resolveWorkflowStepInput(
         stepDefinition.input ?? {},
         bindingContext,
       )
@@ -976,6 +1014,57 @@ export const executeWorkflowRun = async (
         },
       })
       return
+    }
+
+    if (runtimeStepType === 'transform') {
+      // W17: deterministic reshape, no LLM. The module decides the document
+      // (explicit `source`, else the full binding context); the envelope and
+      // the W0 redaction live behind the shared evaluator seam.
+      const expression =
+        typeof stepInput['expression'] === 'string' ? stepInput['expression'] : ''
+      if (!expression.trim()) {
+        await markWorkflowStepRunFinished(prisma, workflow, {
+          workflowRunId,
+          stepRunId: nextStep.id,
+          success: false,
+          summary: 'Transform step requires a non-empty expression.',
+        })
+        return
+      }
+
+      await markWorkflowStepRunStarted(prisma, {
+        input: stepInput,
+        stepRunId: nextStep.id,
+      })
+
+      const transform = await executeWorkflowTransformStep({
+        expression,
+        source: stepInput['source'],
+        sourceProvided: 'source' in stepInput && stepInput['source'] !== undefined,
+        stepInput,
+        stepSnapshots: bindingContext.stepSnapshots,
+        taintedRefs:
+          bindingContext.taintedRefs ??
+          collectWorkflowTaintedRefs(workflow.installation.resolvedBindings),
+        workflowBindings: workflow.installation.resolvedBindings,
+        workflowConfig: workflow.installation.config,
+        workflowInput: workflow.run.input,
+      })
+
+      const finishResult = await markWorkflowStepRunFinished(prisma, workflow, {
+        output: transform.ok ? { result: transform.value } : undefined,
+        workflowRunId,
+        stepRunId: nextStep.id,
+        success: transform.ok,
+        summary: transform.ok
+          ? 'Transform step completed.'
+          : `Workflow transform could not be evaluated: ${transform.error}`,
+      })
+
+      if (!transform.ok || !finishResult.continueWorkflow) {
+        return
+      }
+      continue
     }
 
     if (runtimeStepType === 'environment_launch') {

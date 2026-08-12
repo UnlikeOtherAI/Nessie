@@ -2203,6 +2203,10 @@ model WorkflowTemplate {
   variableSchema                 Json                   @default("{}") @map("variable_schema")
   bindingSchema                  Json                   @default("{}") @map("binding_schema")
   requiredEnvironmentTemplateIds Json                   @default("[]") @map("required_environment_template_ids")
+  // W17 (§5): last successful designer test run's per-step output, keyed by
+  // step id — a sensitive-data store (W0-redacted on write, provenance in
+  // the payload, size-quota and retention enforced in the service).
+  stepSamples                    Json                   @default("{}") @map("step_samples")
   createdByActorType             String                 @map("created_by_actor_type")
   createdByActorId               String                 @map("created_by_actor_id")
   createdAt                      DateTime               @default(now()) @map("created_at")
