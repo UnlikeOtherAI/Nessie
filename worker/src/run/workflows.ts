@@ -72,7 +72,7 @@ export const ensureWorkflowStepRuns = async (
     steps: WorkflowGraph['steps']
     workflowRunId: string
   },
-): Promise<void> =>
+): Promise<{ alreadyMaterialized: boolean }> =>
   withTransaction(prisma, async (tx) => {
     await tx.$executeRaw`
       SELECT pg_advisory_xact_lock(
@@ -105,6 +105,59 @@ export const ensureWorkflowStepRuns = async (
         },
       })
     }
+
+    return { alreadyMaterialized: existing.length > 0 }
+  })
+
+// Repairs a drifted run snapshot in place, under the same advisory lock
+// ensureWorkflowStepRuns takes, so a repair cannot interleave with step-row
+// creation. Used when a run's frozen graph no longer matches its materialized
+// step rows — possible only for runs snapshotted while suspended by the
+// backfill migration (pre-snapshot rows executing from the live template have
+// graph_snapshot NULL and take the fallback path, never this one).
+export const reconcileWorkflowRunGraphSnapshot = async (
+  prisma: PrismaLike,
+  input: {
+    graph: WorkflowGraph
+    workflowRunId: string
+  },
+): Promise<void> =>
+  withTransaction(prisma, async (tx) => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext(${input.workflowRunId}),
+        hashtext('workflow_steps')
+      )
+    `
+
+    const stepRuns = await tx.workflowStepRun.findMany({
+      where: { workflowRunId: input.workflowRunId },
+      orderBy: { sequence: 'asc' },
+      select: { id: true, sequence: true },
+    })
+
+    await tx.workflowRun.update({
+      where: { id: input.workflowRunId },
+      data: { graphSnapshot: input.graph as unknown as Prisma.InputJsonValue },
+    })
+
+    // Step rows keep their sequence slots so execution order is untouched;
+    // only identity (key/type/title) is re-derived from the drifted template
+    // they were actually materialized from.
+    for (const stepRun of stepRuns) {
+      const step = input.graph.steps[stepRun.sequence]
+      if (!step) {
+        continue
+      }
+      await tx.workflowStepRun.update({
+        where: { id: stepRun.id },
+        data: {
+          stepKey: step.id,
+          stepType: step.type,
+          title: (step.title?.trim() || step.id).slice(0, 120),
+        },
+      })
+    }
   })
 
 export const loadWorkflowGraph = async (
@@ -116,6 +169,7 @@ export const loadWorkflowGraph = async (
     channelId: string | null
     config: unknown
     id: string
+    pinnedGraphJson: unknown
     projectId: string | null
     resolvedBindings: unknown
     teamId: string | null
@@ -136,6 +190,7 @@ export const loadWorkflowGraph = async (
     where: { id: workflowRunId },
     select: {
       id: true,
+      graphSnapshot: true,
       installationId: true,
       input: true,
       organizationId: true,
@@ -147,6 +202,7 @@ export const loadWorkflowGraph = async (
           channelId: true,
           config: true,
           id: true,
+          pinnedGraphJson: true,
           projectId: true,
           resolvedBindings: true,
           teamId: true,
@@ -166,11 +222,16 @@ export const loadWorkflowGraph = async (
     return null
   }
 
+  // A run executes the graph snapshot frozen at its creation, so a template
+  // edit mid-flight cannot rewrite what it runs. Rows created before snapshots
+  // existed (graph_snapshot NULL) fall back to the template's current graph —
+  // that is the graph they have been executing against all along.
+  const snapshotCandidate = workflowRun.graphSnapshot ?? workflowRun.installation.workflowTemplate.graphJson
   const graphJson =
-    workflowRun.installation.workflowTemplate.graphJson &&
-    typeof workflowRun.installation.workflowTemplate.graphJson === 'object' &&
-    !Array.isArray(workflowRun.installation.workflowTemplate.graphJson)
-      ? workflowRun.installation.workflowTemplate.graphJson
+    snapshotCandidate &&
+    typeof snapshotCandidate === 'object' &&
+    !Array.isArray(snapshotCandidate)
+      ? snapshotCandidate
       : {}
 
   const rawSteps = (graphJson as Record<string, unknown>)['steps']
@@ -204,6 +265,7 @@ export const loadWorkflowGraph = async (
       channelId: workflowRun.installation.channelId,
       config: workflowRun.installation.config,
       id: workflowRun.installation.id,
+      pinnedGraphJson: workflowRun.installation.pinnedGraphJson,
       projectId: workflowRun.installation.projectId,
       resolvedBindings: workflowRun.installation.resolvedBindings,
       teamId: workflowRun.installation.teamId,
@@ -244,19 +306,81 @@ export const markWorkflowRunStarted = async (
   })
 }
 
+// W6 lease discipline: an actively-worked step (tool_call, the only kind the
+// executor runs in-process today) is claimed with a lease and heartbeated while
+// it works; a crash leaves an expired lease the reaper can reclaim. Suspended
+// steps (agent_task, environment_launch) hold NO lease — they are waiting on an
+// external continuation — and carry a deadline instead. The reaper sweeps
+// either condition; a lease-only sweep would never reclaim the likeliest hangs.
+export const WORKFLOW_STEP_LEASE_MS = 120_000
+export const WORKFLOW_STEP_LEASE_HEARTBEAT_MS = 30_000
+export const WORKFLOW_STEP_SUSPEND_DEADLINE_MS = 24 * 60 * 60 * 1000
+
+const normalizeTimeoutMs = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : null
+
+export const claimWorkflowStepLease = async (
+  prisma: PrismaLike,
+  input: {
+    leaseMs?: number
+    ownerId: string
+    stepRunId: string
+  },
+): Promise<void> => {
+  const leaseMs = input.leaseMs ?? WORKFLOW_STEP_LEASE_MS
+  await prisma.workflowStepRun.updateMany({
+    where: { id: input.stepRunId, status: 'running' },
+    data: {
+      leaseOwnerId: input.ownerId,
+      leaseExpiresAt: new Date(Date.now() + leaseMs),
+    },
+  })
+}
+
+// Renews the lease while the step is actively worked; guarded on the owner so a
+// reclaimed step's heartbeat cannot steal the lease back from the reaper.
+export const heartbeatWorkflowStepLease = async (
+  prisma: PrismaLike,
+  input: {
+    leaseMs?: number
+    ownerId: string
+    stepRunId: string
+  },
+): Promise<void> => {
+  const leaseMs = input.leaseMs ?? WORKFLOW_STEP_LEASE_MS
+  await prisma.workflowStepRun.updateMany({
+    where: {
+      id: input.stepRunId,
+      leaseOwnerId: input.ownerId,
+      status: 'running',
+    },
+    data: { leaseExpiresAt: new Date(Date.now() + leaseMs) },
+  })
+}
+
 export const markWorkflowStepRunStarted = async (
   prisma: PrismaLike,
   input: {
     input?: Record<string, unknown>
+    leaseOwnerId?: string | null
     output?: Record<string, unknown>
     stepRunId: string
   },
 ): Promise<void> => {
+  const now = new Date()
+  const timeoutMs = normalizeTimeoutMs(input.input?.['timeoutMs'])
   await prisma.workflowStepRun.update({
     where: { id: input.stepRunId },
     data: {
       status: 'running',
-      startedAt: new Date(),
+      startedAt: now,
+      ...(input.leaseOwnerId
+        ? {
+            leaseOwnerId: input.leaseOwnerId,
+            leaseExpiresAt: new Date(now.getTime() + WORKFLOW_STEP_LEASE_MS),
+          }
+        : {}),
+      ...(timeoutMs !== null ? { deadlineAt: new Date(now.getTime() + timeoutMs) } : {}),
       ...(input.input ? { input: input.input as Prisma.InputJsonValue } : {}),
       ...(input.output ? { output: input.output as Prisma.InputJsonValue } : {}),
     },
@@ -286,11 +410,18 @@ export const markWorkflowStepRunQueued = async (
       select: { startedAt: true },
     })
 
+    const timeoutMs = normalizeTimeoutMs(input.input?.['timeoutMs'])
     await tx.workflowStepRun.update({
       where: { id: workflowStepRunId },
       data: {
         status: 'running',
         startedAt: now,
+        // Suspended step: no worker is working it, so any lease is cleared and
+        // the reaper watches its deadline instead (default 24h; a step-level
+        // timeoutMs overrides).
+        leaseOwnerId: null,
+        leaseExpiresAt: null,
+        deadlineAt: new Date(now.getTime() + (timeoutMs ?? WORKFLOW_STEP_SUSPEND_DEADLINE_MS)),
         ...(input.input ? { input: input.input as Prisma.InputJsonValue } : {}),
         ...(input.output ? { output: input.output as Prisma.InputJsonValue } : {}),
       },
@@ -418,6 +549,9 @@ export const markWorkflowStepRunFinished = async (
         output: mergedOutput as Prisma.InputJsonValue,
         errorMessage: input.success ? null : input.summary,
         finishedAt: new Date(),
+        leaseOwnerId: null,
+        leaseExpiresAt: null,
+        deadlineAt: null,
       },
     })
 

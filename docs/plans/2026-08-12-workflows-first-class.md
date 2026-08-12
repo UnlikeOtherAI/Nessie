@@ -125,55 +125,18 @@ lands in §4.4; the boundary itself cannot wait.
 
 ### 3.1 Correctness fixes (blocking; error management depends on them)
 
-- **W1 · Guard terminal transitions — done.** Both writes in
-  `markWorkflowStepRunFinished` / `markWorkflowRunFinished`
-  (`worker/src/run/workflows.ts`) are guarded `updateMany` on non-terminal status
-  (the `cancelWorkflowRun`/`skipWorkflowStepRun` pattern) and report `applied`, so
-  callers skip continuation and the terminal event when the write lost the race; a
-  cancelled run can no longer be resurrected by its orphaned child.
-- **W2 · Cancel propagates to every kind of child, not just agents — done.**
-  `cancelWorkflowRun` (`api/src/services/workflows.ts`) skips pending/blocked
-  steps outright and propagates per running-step kind: agent children get the
-  cooperative `cancelRequestedAt` flag (the step output names the abandoned
-  queued mailbox message), `environment_launch` instances get an
-  `execution.environment.terminate` job, in-flight tool steps are recorded
-  *abandoned-but-possibly-executing* (`cancelAbandonedAt` on the output, reason
-  extended with "may still execute"). Propagation is gated on the guarded run
-  transition winning, so a concurrent terminalization owns it.
-- **W3 · Emit terminal events from async continuations — done.**
-  `worker/src/run/execute/parent-workflow.ts` and
-  `worker/src/control/execution/workflow-continuation.ts` now finish through
-  `finishWorkflowStepRun` (`worker/src/run/workflow-step-finish.ts`), the
-  emitting seam shared with `worker/src/control/workflows.ts` (placed in `run/`
-  so `run/` needs no `control/` dependency): a final asynchronous step
-  (`agent_task`, the common last step) fires `workflow.run.completed/failed`,
-  and only when the guarded transition applied.
-- **W4 · Snapshot the graph onto the run.** Add `WorkflowRun.graphSnapshot Json`,
-  written at run start; execute from the snapshot. Today `loadWorkflowGraph`
-  (`worker/src/run/workflows.ts`) reads the template's *current* `graphJson` on
-  every continuation, so a template edit rewrites installed workflows and mutates
-  runs already in flight. Also pin an install/upgrade snapshot so a new run is
-  reproducible from what was installed.
-- **W5 · Remove `delegate` from the workflow tool set — done.**
-  `packages/runtime/src/workflow-tools.ts` no longer advertises it, so
-  `WORKFLOW_TOOL_IDS` rejects it at save time. Not implemented — sub-agent fan-out
-  from a deterministic step stays out of scope.
-- **W6 · Reap stuck steps — by lease, not by age.** A crash inside
-  `executeWorkflowBuiltinTool` leaves a step `running` forever with nothing to
-  reclaim it. Add a worker sweep (sibling of the trigger scheduler), reclaiming on
-  an **expired lease**, not an age threshold: an age threshold declares legitimate
-  long-running steps dead. Each claim writes `leaseOwnerId`/`leaseExpiresAt` and
-  heartbeats while working; the sweep fails only steps whose lease has expired,
-  through the same guarded transition.
-  **Two reclaim conditions, not one.** Suspended steps (`agent_task`, and later
-  approval/human-input/wait) hold no lease and run no heartbeat, yet §4.2.4 routes
-  their timeouts here. The sweep reclaims on *either* an expired lease (leased,
-  actively-worked steps) *or* an expired deadline (suspended steps waiting on
-  something external); a lease-only sweep never reclaims the likeliest hangs.
-- **W7 · Mark unreached steps `skipped` on failure — done.** The guarded
-  failure transition in `markWorkflowStepRunFinished` flips still-`pending`/
-  `blocked` steps to `skipped`, so a failed run no longer leaves later steps
-  reading as "still coming".
+- **W1 · Guard terminal transitions — shipped.**
+- **W2 · Cancel propagates to every kind of child, not just agents — shipped.**
+- **W3 · Emit terminal events from async continuations — shipped.**
+- **W4 · Snapshot the graph onto the run — shipped.**
+- **W5 · Remove `delegate` from the workflow tool set — shipped.**
+- **W6 · Reap stuck steps — by lease, not by age — shipped.**
+- **W7 · Mark unreached steps `skipped` on failure — shipped.**
+
+> Shipped items keep their original intent above and their as-built detail in
+> [the delivery log](./2026-08-12-workflows-delivery-log.md). Record new
+> completions there, not here, so this document stays a plan.
+
 - **W8 · Fix `paused` enforcement.** Dispatch checks only `active` and `disabled`
   (`api/src/services/trigger-dispatch-workflow.ts`,
   `worker/src/control/workflow-trigger-run.ts`), so a `paused` installation still
