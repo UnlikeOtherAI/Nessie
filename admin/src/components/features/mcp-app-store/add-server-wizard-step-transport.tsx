@@ -1,6 +1,9 @@
-import type { McpCatalogProtocol } from '@nessie/schemas'
 import { ariaFor, renderFieldError } from './add-server-wizard-field'
-import { PROTOCOLS } from './add-server-wizard-config'
+import {
+  describeTransport,
+  OFFERABLE_TRANSPORTS,
+  type OfferableTransport,
+} from './connector-transports'
 import {
   buttonGhost,
   buttonPrimary,
@@ -16,9 +19,7 @@ type StepTransportProps = {
 
 /** Step 1: choose the transport protocol and its connection details. */
 export const StepTransport = ({ controller, onCancel }: StepTransportProps) => {
-  const { values, stepErrors, setProtocol, setUrl, setCommand, setArgs } =
-    controller
-  const { protocol } = values
+  const { values, stepErrors, setProtocol, setUrl } = controller
   return (
     <div className="grid gap-3">
       <label className={labelClass}>
@@ -26,65 +27,36 @@ export const StepTransport = ({ controller, onCancel }: StepTransportProps) => {
         <select
           className={inputClass}
           onChange={(event) =>
-            setProtocol(event.target.value as McpCatalogProtocol)
+            setProtocol(event.target.value as OfferableTransport)
           }
-          value={protocol}
+          value={values.protocol}
         >
-          {PROTOCOLS.map((value) => (
+          {OFFERABLE_TRANSPORTS.map((value) => (
             <option key={value} value={value}>
-              {value}
+              {describeTransport(value)}
             </option>
           ))}
         </select>
       </label>
-      {(protocol === 'http' || protocol === 'sse' || protocol === 'ws') && (
-        <div>
-          <label className={labelClass}>
-            URL
-            <input
-              className={inputClass}
-              data-testid="wizard-url"
-              onChange={controller.onField(setUrl, 'url')}
-              placeholder={
-                protocol === 'ws'
-                  ? 'wss://example.com/mcp'
-                  : 'https://example.com/mcp'
-              }
-              type={protocol === 'ws' ? 'text' : 'url'}
-              value={values.url}
-              {...ariaFor('url', stepErrors)}
-            />
-          </label>
-          {renderFieldError('url', stepErrors.url, 'wizard-url-error')}
-        </div>
-      )}
-      {protocol === 'stdio' && (
-        <>
-          <div>
-            <label className={labelClass}>
-              Command
-              <input
-                className={inputClass}
-                data-testid="wizard-command"
-                onChange={controller.onField(setCommand, 'command')}
-                placeholder="/usr/local/bin/my-mcp-server"
-                value={values.command}
-                {...ariaFor('command', stepErrors)}
-              />
-            </label>
-            {renderFieldError('command', stepErrors.command)}
-          </div>
-          <label className={labelClass}>
-            Args (space separated)
-            <input
-              className={inputClass}
-              onChange={(event) => setArgs(event.target.value)}
-              placeholder="--port 4000"
-              value={values.args}
-            />
-          </label>
-        </>
-      )}
+      <div>
+        <label className={labelClass}>
+          URL
+          <input
+            className={inputClass}
+            data-testid="wizard-url"
+            onChange={controller.onField(setUrl, 'url')}
+            placeholder="https://example.com/mcp"
+            type="url"
+            value={values.url}
+            {...ariaFor('url', stepErrors)}
+          />
+        </label>
+        {renderFieldError('url', stepErrors.url, 'wizard-url-error')}
+      </div>
+      <p className="text-xs text-[color:var(--tx3)]">
+        Connectors you add here are remote HTTP or SSE endpoints. A server that
+        runs as a local process needs a remote MCP runner in front of it.
+      </p>
       <div className="flex justify-end gap-2">
         <button className={buttonGhost} onClick={onCancel} type="button">
           Cancel
