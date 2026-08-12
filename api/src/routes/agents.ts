@@ -24,6 +24,7 @@ import {
   unbindAgentFromChannel,
   updateAgentRecord,
 } from '../services/agents.js'
+import { enqueueInvitedAgentMentionReplay } from '../services/agent-invite-reply.js'
 import {
   assertLedgerAgentModelSelection,
   ledgerAgentModelCatalogRequestHeaders,
@@ -311,6 +312,16 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
+    }
+
+    if (body.triggerMessageId) {
+      await enqueueInvitedAgentMentionReplay(prisma, {
+        actorContext,
+        agent,
+        channelId: body.channelId,
+        messageId: body.triggerMessageId,
+        organizationId: actorContext.tenant.organizationId,
+      })
     }
 
     return createApiResponse(AgentRecordSchema.parse(agent))

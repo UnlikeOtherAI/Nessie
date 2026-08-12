@@ -71,12 +71,12 @@ export const ChannelComposer = ({
         <div className="admin-card mb-2 flex flex-col gap-2 p-3">
           {pendingAgentInvites.map((agent) => (
             <div className="flex flex-col gap-1" key={agent.id}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-[color:var(--tx)]">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <span className="min-w-0 text-sm text-[color:var(--tx)]">
                   <span className="font-semibold text-[color:var(--accent)]">
                     @{agent.name}
                   </span>{' '}
-                  isn’t in this channel yet, so it didn’t respond.
+                  isn’t in this channel yet. Invite it to answer this message.
                 </span>
                 <span className="flex flex-shrink-0 items-center gap-2">
                   <button
@@ -87,7 +87,7 @@ export const ChannelComposer = ({
                   >
                     {invitingAgentId === agent.id
                       ? 'Inviting…'
-                      : 'Invite to channel'}
+                      : 'Invite & reply'}
                   </button>
                   <button
                     className="admin-button-secondary"
