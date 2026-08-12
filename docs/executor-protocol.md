@@ -474,8 +474,16 @@ The companion rejects symbolic links, hard links, shared permissions, extra or
 missing files, invalid relative paths, non-owner files, a changed digest, and
 a bundle with neither browser nor tmux. Verification produces an artifact
 reference only: it does not execute a host file, search `PATH`, or make the
-bundle an advertised descriptor capability. A later guest-image mount must
-still carry the verified bundle into the VM and re-check its exact digest.
+bundle an advertised descriptor capability. It hashes runtime artifacts in
+bounded streams rather than loading an executable payload into companion
+memory. Before a session starts, the companion copies the already verified,
+manifest-digest-bound source into a new lease-owned `runtime` directory, hashes
+the copied files again, and makes its files and directories non-writable. The
+VM mounts that session snapshot—not the source bundle—so later source-bundle
+edits cannot change a running guest. Teardown restores only the private
+snapshot directories long enough for the companion to delete them. A later
+guest-image mount must still carry that snapshot into the VM and re-check its
+exact digest.
 
 The VM now mounts that verified bundle on its own `nessie-runtime` virtiofs tag
 at `/runtime`, read-only with `nosuid,nodev`. Unlike the COW workspace it is

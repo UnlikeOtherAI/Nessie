@@ -14,7 +14,11 @@ import {
   type GuestVmProcessRunner,
   verifyPrivateGuestVmFile,
 } from './guest-vm-artifacts.js'
-import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
+import {
+  materializeGuestRuntimeBundle,
+  removeGuestRuntimeBundleSnapshot,
+  verifyGuestRuntimeBundle,
+} from './guest-runtime-bundle.js'
 import type { GuestVmHandshakeInput } from './guest-vm-handshake.js'
 import {
   assertGuestWorkspaceLeaseCurrent,
@@ -170,12 +174,14 @@ export const startGuestVmSession = async (
     if (cleaned) return
     cleaned = true
     await gateway?.close().catch(() => undefined)
+    await removeGuestRuntimeBundleSnapshot(join(sessionDirectory, 'runtime')).catch(() => undefined)
     await rm(sessionDirectory, { force: true, recursive: true })
     await rm(gatewayDirectory, { force: true, recursive: true })
     await releaseGuestWorkspaceLease(input.stateDir, input.lease).catch(() => undefined)
   }
   let gateway: Awaited<ReturnType<typeof startExecutorEgressGateway>> | undefined
   try {
+    const runtimeSnapshot = await materializeGuestRuntimeBundle(runtimeBundle, join(sessionDirectory, 'runtime'))
     gateway = await startExecutorEgressGateway({ policy: input.egressPolicy, socketPath: gatewayPath })
     await runProcess({
       argv: ['--output', initrdPath, '--bootstrap-token-stdin'],
@@ -191,8 +197,8 @@ export const startGuestVmSession = async (
         '--kernel', kernelPath,
         '--initrd', initrdPath,
         '--workspace-cow', input.lease.workspace,
-        '--runtime-bundle', runtimeBundle.root,
-        '--runtime-manifest-digest', runtimeBundle.manifestDigest,
+        '--runtime-bundle', runtimeSnapshot.root,
+        '--runtime-manifest-digest', runtimeSnapshot.manifestDigest,
         '--egress-gateway', gateway.socketPath,
         '--bootstrap-token-stdin',
       ],

@@ -237,8 +237,15 @@ entrypoints not declared executable. This is an artifact verifier only: it
 never executes a host file, searches `PATH`, or changes descriptor availability
 until a guest mount and in-guest digest recheck are delivered.
 
-The session helper now requires that verified bundle and passes only its
-owner-private root into a distinct read-only `nessie-runtime` virtiofs share.
+Each session now materializes that verified source into a fresh lease-owned,
+owner-private `runtime` snapshot before the helper starts. The copy must retain
+the exact authorized manifest digest and every declared file hash, then its
+files and directories become non-writable; teardown reopens only the private
+directories needed to delete the snapshot. The helper receives that snapshot,
+never the mutable source path, in a distinct read-only `nessie-runtime` virtiofs
+share. Runtime file digests are streamed in bounded buffers rather than loading
+browser or CLI artifacts into companion memory.
+
 The guest mounts it at `/runtime` with `nosuid,nodev` (not `noexec`, because the
 verified browser/tmux/CLI must run there), while the separate writable COW
 share remains `nodev,nosuid,noexec`. A missing explicit runtime mount fails
