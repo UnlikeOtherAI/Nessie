@@ -3,10 +3,13 @@ import {
   ExecutorAccessChangeRequestSchema,
   ExecutorAccessChangeResponseSchema,
   ExecutorAccessViewResponseSchema,
+  ExecutorAvailabilityResponseSchema,
   ExecutorCreateResponseSchema,
   ExecutorRecordResponseSchema,
+  ExecutorRunLaunchResponseSchema,
   PendingExecutorEnrollmentResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
+  type ExecutorOperationKey,
   type ExecutorPrivateAssignment,
   type ExecutorScope,
 } from '@nessie/schemas'
@@ -75,6 +78,47 @@ export const useCreateExecutor = () => {
     }) => ExecutorCreateResponseSchema.parse(await apiClient.post('/api/executors', input)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: executorKeyPrefix })
+    },
+  })
+}
+
+/**
+ * Availability returns opaque, short-lived choices. The UI intentionally never
+ * receives executor identities or another private scope's membership roster.
+ */
+export const useExecutorAvailability = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: async (input: {
+      agentId: string
+      operationKeys: ExecutorOperationKey[]
+      projectId?: string
+    }) => ExecutorAvailabilityResponseSchema.parse(
+      await apiClient.post('/api/executor-availability', input),
+    ),
+  })
+}
+
+export const useLaunchExecutorRun = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      agentId: string
+      candidateHandle: string
+      content: string
+      operationKey: ExecutorOperationKey
+      threadId: string
+    }) => ExecutorRunLaunchResponseSchema.parse(
+      await apiClient.post(`/api/threads/${input.threadId}/executor-runs`, {
+        agentId: input.agentId,
+        candidateHandle: input.candidateHandle,
+        content: input.content,
+        operationKey: input.operationKey,
+      }),
+    ),
+    onSuccess: (_result, input) => {
+      void queryClient.invalidateQueries({ queryKey: ['threads', input.threadId, 'messages'] })
     },
   })
 }

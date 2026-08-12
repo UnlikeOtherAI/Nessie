@@ -228,6 +228,7 @@ export const AuditActionSchema = z.enum([
   'executor.access_change.confirmed',
   'executor.access_change.rejected',
   'executor.access_change.expired',
+  'executor.run.launched',
   'approval.created',
   'approval.approved',
   'approval.rejected',

@@ -33,6 +33,7 @@ import { useShareRestrictedMessage } from '../facades/messages/hooks'
 import { ChannelOverlays } from './channels/ChannelOverlays'
 import { useChannelCall } from './channels/useChannelCall'
 import { useDeepWaterResearchLauncher } from './channels/useDeepWaterResearchLauncher'
+import { useExecutorRunLauncher } from './channels/useExecutorRunLauncher'
 import { useChannelMentions } from './channels/useChannelMentions'
 import { useAlertMessageHighlight, useChannelMessageSearch } from './channels/useChannelMessageSearch'
 import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
@@ -261,6 +262,17 @@ export const ChannelsPage = () => {
     surfaceKey: activeChannel?.defaultThreadId,
   })
   const markChannelSent = channelLiveness.markSent
+  const executorLauncher = useExecutorRunLauncher({
+    agents: !isPersonalAssistantConversation && !isExternalAgentActiveChannel ? boundAgents : [],
+    message,
+    onLaunched: () => {
+      setMessage('')
+      feedScroll.pinToBottom()
+      markChannelSent()
+    },
+    projectId: activeChannel?.projectId,
+    threadId: activeChannel?.defaultThreadId,
+  })
 
   const feedItems = useMemo(() => buildFeedItems(threadMessages), [threadMessages])
   // Runs replying into the open reply thread render their bubble (and streaming
@@ -431,6 +443,7 @@ export const ChannelsPage = () => {
         onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
         onDismissPendingAgent={dismissPendingAgent}
         onOpenDeepWaterResearch={deepWaterLauncher.open}
+        onOpenExecutorRun={executorLauncher.open}
       />
 
       <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />
@@ -484,6 +497,7 @@ export const ChannelsPage = () => {
         onSelectAgent={onSelectAgent}
         onSendAsFile={sendAsFile}
       />
+      {executorLauncher.dialog}
     </section>
   )
 }

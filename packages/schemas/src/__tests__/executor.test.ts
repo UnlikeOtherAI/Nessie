@@ -9,6 +9,8 @@ import {
   ExecutorCapabilityDescriptorSchema,
   ExecutorCommandEnvelopeSchema,
   ExecutorPrivateAssignmentSchema,
+  ExecutorRunLaunchRequestSchema,
+  ExecutorRunLaunchResponseSchema,
   ExecutorScopeSchema,
 } from '../executor.js'
 
@@ -21,6 +23,7 @@ const ids = {
   organization: '2c85024e-a05b-4c89-8adc-36448a51d126',
   project: '2c85024e-a05b-4c89-8adc-36448a51d127',
   run: '2c85024e-a05b-4c89-8adc-36448a51d128',
+  task: '2c85024e-a05b-4c89-8adc-36448a51d130',
   user: '2c85024e-a05b-4c89-8adc-36448a51d129',
 }
 
@@ -149,6 +152,29 @@ test('availability responses separate opaque candidates from safe explanations',
   })
   assert.deepEqual(response.candidates, [])
   assert.equal(response.explanations[0]?.reason, 'logical_tool_ungranted')
+})
+
+test('a direct executor run always names an agent, opaque choice, and one operation', () => {
+  const request = ExecutorRunLaunchRequestSchema.parse({
+    agentId: ids.agent,
+    candidateHandle: 'candidate_handle_which_is_deliberately_opaque',
+    content: 'Read nested/notes.txt and summarize the first paragraph.',
+    operationKey: 'file.read',
+  })
+  const response = ExecutorRunLaunchResponseSchema.parse({
+    binding: {
+      bindingId: ids.binding,
+      capabilityRevision: 1,
+      fence: '1',
+      operationKey: request.operationKey,
+      runId: ids.run,
+    },
+    messageId: ids.user,
+    runId: ids.run,
+    taskId: ids.task,
+  })
+  assert.equal(response.binding.operationKey, 'file.read')
+  assert.equal('executorId' in response.binding, false)
 })
 
 test('command envelopes carry fences and digests rather than raw result data', () => {

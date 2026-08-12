@@ -24,7 +24,7 @@ import {
   reviewExecutorDescriptor,
 } from '@nessie/executor-manage'
 import type { FastifyInstance, FastifyReply } from 'fastify'
-import { ExecutorOperationKeySchema } from '@nessie/schemas'
+import { ExecutorOperationKeySchema, parseChannelId, parseUserId } from '@nessie/schemas'
 
 import {
   ConfirmExecutorAccessChangeBodySchema,
@@ -48,6 +48,8 @@ import {
   ExecutorRecordSchema,
   ExecutorRunBindBodySchema,
   ExecutorRunBindSchema,
+  ExecutorRunLaunchBodySchema,
+  ExecutorRunLaunchSchema,
   PendingExecutorEnrollmentSchema,
   PrepareExecutorAccessChangeBodySchema,
   PreparedExecutorAccessChangeSchema,
@@ -57,6 +59,7 @@ import {
 import { verifyPassword } from '../auth/password.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { launchExecutorRun } from '../services/executor-run-launch.js'
 import { setAgentToolPolicyForRegistryEntry } from '../services/agent-tool-policy-registry.js'
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import {
@@ -99,7 +102,15 @@ const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
  * of the one-time pairing challenge plus its Ed25519 machine key.
  */
 export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { config, prisma, rateLimiter, requireActorContext } = deps
+  const {
+    buildChannelRealtimeScopes,
+    config,
+    prisma,
+    rateLimiter,
+    realtimeHub,
+    requireActorContext,
+    requireUserActor,
+  } = deps
 
   app.get('/api/executors', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -160,6 +171,75 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         operationKey: binding.operationKey,
         runId: binding.runId,
       }))
+    } catch (error) {
+      if (sendExecutorError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  /**
+   * Human-directed launch: select an opaque availability choice before a run
+   * exists, then create and bind the exact run in one transaction. This is
+   * deliberately distinct from asynchronous ordinary-message orchestration.
+   */
+  app.post('/api/threads/:threadId/executor-runs', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+    const body = parseInput(ExecutorRunLaunchBodySchema, request.body, reply)
+    if (!body) return reply
+    const { threadId } = request.params as { threadId: string }
+    try {
+      const launched = await launchExecutorRun(prisma, actorContext, { ...body, threadId })
+      if (launched.kind === 'thread_not_found') {
+        sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
+        return reply
+      }
+      if (launched.kind === 'agent_unavailable') {
+        sendApiError(reply, 404, 'EXECUTOR_AGENT_UNAVAILABLE', 'The selected agent is unavailable in this channel')
+        return reply
+      }
+      if (launched.kind === 'thread_busy') {
+        sendApiError(reply, 409, 'RUN_THREAD_BUSY', 'That agent already has active work in this thread')
+        return reply
+      }
+      await realtimeHub.publishWs(
+        buildChannelRealtimeScopes({
+          channelId: launched.channelId,
+          organizationId: actorContext.tenant.organizationId,
+        }),
+        {
+          data: {
+            agentId: undefined,
+            authorUserId: parseUserId(actorContext.actor.actorId),
+            channelId: parseChannelId(launched.channelId),
+            contentPreview: launched.message.content.slice(0, 200),
+            messageId: launched.message.id,
+            role: launched.message.role,
+            threadId: launched.message.threadId,
+          },
+          event: 'message.new',
+        },
+      )
+      await emitAuditEvent(prisma, {
+        action: 'executor.run.launched',
+        actorContext,
+        metadata: {
+          agentId: launched.agentId,
+          bindingId: launched.binding.bindingId,
+          operationKey: launched.binding.operationKey,
+          runId: launched.runId,
+        },
+        outcome: 'success',
+        resourceId: launched.runId,
+        resourceType: 'executor_run',
+      })
+      return reply.code(201).send(createApiResponse(ExecutorRunLaunchSchema.parse({
+        binding: launched.binding,
+        messageId: launched.message.id,
+        runId: launched.runId,
+        taskId: launched.taskId,
+      })))
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply
       throw error

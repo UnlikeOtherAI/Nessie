@@ -33,6 +33,7 @@ interface ChannelComposerProps {
   onInvitePendingAgent: (agentId: string) => void
   onDismissPendingAgent: (agentId: string) => void
   onOpenDeepWaterResearch?: () => void
+  onOpenExecutorRun?: () => void
 }
 
 export const ChannelComposer = ({
@@ -55,6 +56,7 @@ export const ChannelComposer = ({
   onInvitePendingAgent,
   onDismissPendingAgent,
   onOpenDeepWaterResearch,
+  onOpenExecutorRun,
 }: ChannelComposerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Text or at least one finished upload, and never mid-upload.
@@ -154,6 +156,26 @@ export const ChannelComposer = ({
                 >
                   <circle cx="11" cy="11" r="6" />
                   <path d="m16 16 4 4M11 8v6M8 11h6" strokeLinecap="round" />
+                </svg>
+              </button>
+            ) : null}
+            {onOpenExecutorRun ? (
+              <button
+                aria-label="Run on executor"
+                className={toolbarButtonClass}
+                onClick={onOpenExecutorRun}
+                title="Run on executor"
+                type="button"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M4 17V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" />
+                  <path d="m8 8 3 3-3 3M13 14h3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
             ) : null}

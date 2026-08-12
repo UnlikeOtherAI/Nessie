@@ -242,8 +242,14 @@ micro-VM or a COW sandbox. No write, command, browser, or coding operation is
 advertised until its isolated backend is implemented and reviewed.
 
 Before the worker adds an executor logical schema to a model request, a human
-must bind one opaque candidate to the exact run through the executor-bind
-endpoint. The schema carries no executor id; it dispatches only to that binding.
+must bind one opaque candidate to the exact run. The user-facing launch endpoint
+`POST /api/threads/:threadId/executor-runs` creates the human message, pending
+run, task, binding, and `run.execute` job in one transaction for one selected
+bound channel agent. It accepts an agent id, one opaque candidate handle,
+content, and one operation key—but never an executor id. The older
+`POST /api/runs/:runId/executor-bind` route is limited to binding an
+already-created run. Both paths use the same fenced binding helper and the
+schema carries no executor id; dispatch only sees that binding.
 The worker creates the regular `ToolCall` before command dispatch and completes
 that same row when the terminal receipt returns. It also creates the existing
 `executor.command` queue job; its worker subscription holds the ordinary queue

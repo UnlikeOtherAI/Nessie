@@ -32,11 +32,15 @@ companion executes `sandbox.stop` plus bounded `file.list` and `file.read`
 against one canonical, explicitly paired workspace root.
 
 The worker dispatch adapter is now enabled for a run only after a human has
-submitted an opaque availability handle to `POST /api/runs/:runId/executor-bind`.
-That endpoint consumes the handle into a binding; the model receives only the
-bound, explicitly granted logical operation and never an executor id or a
-selection parameter. Command creation reserves the normal `ToolCall`, creates
-an existing `executor.command` queue job, and blocks on the encrypted receipt.
+submitted an opaque availability handle. The normal launch path is
+`POST /api/threads/:threadId/executor-runs`: it atomically creates the human
+message, pending run, task, binding, and existing `run.execute` queue job for
+one bound channel agent. `POST /api/runs/:runId/executor-bind` remains the
+narrow internal/continuation binding seam for an already-created run. Neither
+endpoint accepts an executor id; the model receives only the bound, explicitly
+granted logical operation and never a selection parameter. Command creation
+reserves the normal `ToolCall`, creates an existing `executor.command` queue
+job, and blocks on the encrypted receipt.
 The queue handler retains its lease while the paired daemon works. Before
 dispatch, the server rechecks the bound human, agent, scope/membership,
 descriptor, operation and logical grants, lifecycle, and revision under the
@@ -281,11 +285,15 @@ three exact actions:
    Nessie does not duplicate connector installation, OAuth, secret, or
    lifecycle controls in Agents.
 
-The channel composer displays **Run on executor** only when the invoked agent
-has at least one compatible executor operation and the initiating user can
-invoke at least one eligible executor. It shows the resolved data boundary and
-binding choice before queueing. It never exposes a private executor merely
-because an agent has an operation grant. Tools shows executor entries as
+The channel composer has a **Run on executor** doorway for bound channel
+agents. It asks the server for the initiating human's safe, short-lived
+availability choices only after the person chooses an agent and read-only
+capability, then creates the message, task, run, binding, and queue job in one
+transaction. It shows only a scope label and capability—not an executor ID,
+label, or private roster—and never exposes a private executor merely because
+an agent has an operation grant. It currently offers the companion's concrete
+`file.list` and `file.read` backends; write, browser, and coding choices remain
+absent until their isolated implementations are reviewed. Tools shows executor entries as
 managed `transport: 'executor'` rows that link back to the resource detail; its
 generic lifecycle, credential, and registry-mutation paths reject them.
 

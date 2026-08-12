@@ -5,8 +5,10 @@ import {
   OrganizationIdSchema,
   ProjectIdSchema,
   RunIdSchema,
+  TaskIdSchema,
   UserIdSchema,
 } from './ids.js'
+import { CHAT_MESSAGE_MAX_CHARS } from './messaging.js'
 import { createUuidBrandSchema, TimestampSchema } from './schema-primitives.js'
 
 const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
@@ -342,6 +344,23 @@ export const ExecutorRunBindResponseSchema = z.object({
   runId: RunIdSchema,
 }).strict()
 export type ExecutorRunBindResponse = z.infer<typeof ExecutorRunBindResponseSchema>
+
+/** A user-directed run whose executor selection is bound before queueing. */
+export const ExecutorRunLaunchRequestSchema = z.object({
+  agentId: AgentIdSchema,
+  candidateHandle: ExecutorCandidateHandleSchema,
+  content: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_CHARS),
+  operationKey: ExecutorOperationKeySchema,
+}).strict()
+export type ExecutorRunLaunchRequest = z.infer<typeof ExecutorRunLaunchRequestSchema>
+
+export const ExecutorRunLaunchResponseSchema = z.object({
+  binding: ExecutorRunBindResponseSchema,
+  messageId: z.string().uuid(),
+  runId: RunIdSchema,
+  taskId: TaskIdSchema,
+}).strict()
+export type ExecutorRunLaunchResponse = z.infer<typeof ExecutorRunLaunchResponseSchema>
 
 export const ExecutorCommandReceiptStateSchema = z.enum([
   'accepted',
