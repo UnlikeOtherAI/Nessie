@@ -12,7 +12,7 @@ type ParsedCommand =
     stateDir: string
     workspaceRoot: string
   }
-  | { kind: 'configure'; operationKeys: string[]; stateDir: string }
+  | { kind: 'configure'; nativeHelperPath?: string; operationKeys: string[]; stateDir: string }
   | { kind: 'connect'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
   | { kind: 'serve'; stateDir: string }
@@ -22,7 +22,8 @@ const usage = (): never => {
     'Usage: nessie-executor pair --api <https://api.example> --enrollment <uuid> '
     + '--challenge <token> --state-dir <owner-only-path> --workspace <absolute-read-only-root>\n'
     + '       nessie-executor configure --state-dir <owner-only-path> '
-    + '--operations <file.list,file.read,file.write,workspace.review,sandbox.stop>\n'
+    + '--operations <file.list,file.read,file.write,workspace.review,workspace.promote,sandbox.stop> '
+    + '[--native-helper </absolute/owner-only/nessie-executor-native>]\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>',
   )
 }
@@ -60,6 +61,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
   if (command === 'configure') {
     return {
       kind: 'configure',
+      ...(args.includes('--native-helper') ? { nativeHelperPath: option(args, '--native-helper') } : {}),
       operationKeys: option(args, '--operations').split(',').map((value) => value.trim()),
       stateDir: option(args, '--state-dir'),
     }
@@ -81,7 +83,12 @@ export const run = async (args: string[]): Promise<void> => {
   }
   const state = await loadExecutorState(command.stateDir)
   if (command.kind === 'configure') {
-    const updated = await configureExecutorLocalPolicy(command.stateDir, state, command.operationKeys)
+    const updated = await configureExecutorLocalPolicy(
+      command.stateDir,
+      state,
+      command.operationKeys,
+      command.nativeHelperPath,
+    )
     process.stdout.write(
       `Local policy proposal saved as revision ${updated.descriptor.revision}. `
       + 'Run connect (or restart serve), then have a person review it in Nessie.\n',

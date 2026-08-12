@@ -81,9 +81,11 @@ host base and scratch digest, and returns a bounded ready/rejected result. Its
 `workspace-apply` companion stages the verified draft in a private,
 same-filesystem journal and either commits no-replace renames or restores an
 uncommitted transaction on the next invocation; it requires existing safe host
-parent directories. It still has no worker schema, descriptor operation, or
-user-facing promotion action. The remaining slice must connect user approval,
-server fencing, exact review binding, and command receipts before
+parent directories. The owner-only companion can execute its
+`workspace-apply` primitive only for a server-authored `workspace.promote`
+command after a separately reviewed local policy names a verified native
+helper, but there is still no worker schema or user-facing promotion action.
+The remaining slice must connect user approval, server fencing, exact review binding, and command receipts before
 `workspace.promote` is advertised.
 
 Executor managers can now inspect the latest bounded COW review receipts on the

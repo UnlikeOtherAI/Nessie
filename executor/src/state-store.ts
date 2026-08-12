@@ -17,6 +17,8 @@ export type ExecutorLocalState = {
   executorId: string
   machinePrivateKey: string
   machinePublicKey: string
+  /** Verified owner-only path to the separately packaged native helper. */
+  nativeHelperPath?: string
   /** Canonical, single read-only host directory selected during pairing. */
   workspaceRoot: string
 }
@@ -58,6 +60,7 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
     || typeof parsed.machinePrivateKey !== 'string'
     || typeof parsed.machinePublicKey !== 'string'
     || typeof parsed.workspaceRoot !== 'string'
+    || (parsed.nativeHelperPath !== undefined && typeof parsed.nativeHelperPath !== 'string')
     || !parsed.descriptor
   ) {
     throw new Error('Executor state is malformed.')

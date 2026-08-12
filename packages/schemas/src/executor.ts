@@ -133,6 +133,22 @@ export const ExecutorFileWriteArgumentsSchema = z
   .strict()
 export type ExecutorFileWriteArguments = z.infer<typeof ExecutorFileWriteArgumentsSchema>
 
+/**
+ * Server-authored data for a human-confirmed COW promotion. This schema is
+ * intentionally not included in the model-facing executor toolset: an agent
+ * can prepare a draft and review it, but only a person can issue promotion.
+ */
+export const ExecutorWorkspacePromoteArgumentsSchema = z
+  .object({
+    approvalDigest: Sha256DigestSchema,
+    manifestDigest: Sha256DigestSchema,
+    promotionId: z.string().uuid(),
+  })
+  .strict()
+export type ExecutorWorkspacePromoteArguments = z.infer<
+  typeof ExecutorWorkspacePromoteArgumentsSchema
+>
+
 export const ExecutorPrivateAssignmentSchema = z.discriminatedUnion(
   'principalKind',
   [

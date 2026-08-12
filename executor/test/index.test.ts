@@ -109,6 +109,10 @@ test('local policy configuration proposes only implemented COW operations', asyn
       configureExecutorLocalPolicy(stateDir, configured, ['browser.open']),
       /Only implemented COW workspace operations/,
     )
+    await assert.rejects(
+      configureExecutorLocalPolicy(stateDir, configured, ['workspace.promote']),
+      /native helper path/,
+    )
   } finally {
     await rm(stateDir, { force: true, recursive: true })
   }
@@ -304,6 +308,48 @@ test('daemon commands bind COW drafts to one run and never write the paired root
         truncated: false,
       },
     )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
+  }
+})
+
+test('promotion remains unavailable without an owner-verified native helper', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-promotion-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-promotion-state-'))
+  const runId = '00000000-0000-4000-8000-000000000207'
+  const state = {
+    apiBaseUrl: 'https://api.example.test',
+    descriptor: {
+      limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
+      operationKeys: ['file.write', 'workspace.promote'],
+      profiles: ['workspace_sandbox'],
+      revision: 1,
+    },
+    executorId: '00000000-0000-4000-8000-000000000208',
+    machinePrivateKey: 'private',
+    machinePublicKey: 'public',
+    workspaceRoot: root,
+  }
+  try {
+    await writeFile(join(root, 'original.txt'), 'base')
+    await executeExecutorCommand(stateDir, state, commandFor('file.write', {
+      args: { content: 'draft', overwrite: true, path: 'original.txt' },
+      runId,
+    }))
+    const manifest = await promotionManifestForSandbox(stateDir, runId)
+    assert.deepEqual(
+      await executeExecutorCommand(stateDir, state, commandFor('workspace.promote', {
+        args: {
+          approvalDigest: `sha256:${'0'.repeat(64)}`,
+          manifestDigest: manifest.manifestDigest,
+          promotionId: '00000000-0000-4000-8000-000000000209',
+        },
+        runId,
+      })),
+      { code: 'EXECUTOR_NATIVE_HELPER_UNAVAILABLE', success: false },
+    )
+    assert.equal(await readFile(join(root, 'original.txt'), 'utf8'), 'base')
   } finally {
     await rm(root, { force: true, recursive: true })
     await rm(stateDir, { force: true, recursive: true })

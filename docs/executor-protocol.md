@@ -170,16 +170,19 @@ profile is deliberately limited to daemon-owned COW workspace operations:
 `sandbox.stop`. It refuses shell, browser, coding, host-promotion, and every
 unimplemented operation.
 
-`nessie-executor configure --operations ...` can narrow or restore only that
-fixed COW subset in the local owner-only state. It increments the local
-descriptor revision but does not submit or activate it. The daemon must next
-claim/connect and sign the proposal; its **Overview → Local policy proposals**
-row then lets an entitled person prepare and explicitly confirm the review.
-Activating a revision requires fresh human verification. Neither an agent nor
-the Personal Assistant can activate a proposal, and no direct descriptor-review
-endpoint bypasses this confirmation path. The Personal Assistant can inspect
-the same signature-free proposal summary for a manager and prepare a review
-link, but it cannot submit the confirmation on the person's behalf.
+`nessie-executor configure --operations ...` can narrow or restore that fixed
+COW subset in local owner-only state. A proposal that adds `workspace.promote`
+also requires `--native-helper` to name an absolute, owner-only, non-link,
+owner-executable native binary; the daemon rechecks that binary before every
+apply. It increments the local descriptor revision but does not submit or
+activate it. The daemon must next claim/connect and sign the proposal; its
+**Overview → Local policy proposals** row then lets an entitled person prepare
+and explicitly confirm the review. Activating a revision requires fresh human
+verification. Neither an agent nor the Personal Assistant can activate a
+proposal, and no direct descriptor-review endpoint bypasses this confirmation
+path. The Personal Assistant can inspect the same signature-free proposal
+summary for a manager and prepare a review link, but it cannot submit the
+confirmation on the person's behalf.
 
 On connection, the daemon sends a `hello` frame:
 
@@ -246,7 +249,11 @@ The daemon sends each receipt under a distinct signed `receipt` domain, and the
 server recomputes the supplied terminal result digest before accepting it.
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
-`workspace.review`, and `sandbox.stop`. Pairing requires one existing absolute
+`workspace.review`, and `sandbox.stop`. It can execute a server-authored
+`workspace.promote` command only after its local policy has the separate
+owner-verified native-helper configuration described above; that command is
+not model-facing and cannot currently be created through the Nessie UI or API.
+Pairing requires one existing absolute
 workspace directory; the daemon stores only its canonical path in owner-only
 local state. File requests accept only relative paths, reject traversal and
 every symbolic-link component, re-check that the configured root is still an
@@ -258,8 +265,9 @@ root for write, and later file reads/lists for that run use the draft tree.
 count plus a canonical manifest digest only when the fully encoded result fits
 the command receipt cap; otherwise it fails closed. It never reads the paired
 root for write or applies a change. It is not yet a micro-VM or network isolation
-boundary. No host promotion, command, browser, or coding operation is
-advertised until its isolated backend is implemented and reviewed.
+boundary. No command, browser, or coding operation is advertised until its
+isolated backend is implemented and reviewed. Host promotion remains unavailable
+until the user-confirmation and server-binding flow can create its exact command.
 
 The receipt remains content-free, but its manifest digest binds the complete
 local manifest: every changed path's base and draft SHA-256 values are included
@@ -275,8 +283,9 @@ derived run directory. `file.write` and the read-only `workspace.review` are
 the only advertised consumers of this substrate after normal descriptor and
 grant review. The daemon records a hash-only base manifest alongside the draft,
 so review can report its exact COW delta without trusting a mutable host tree.
-It is not a substitute for the required guest VM/forced egress and has no
-promotion operation; it gives draft work a tested no-host-write base.
+It is not a substitute for the required guest VM/forced egress. Its native
+promotion primitive remains unavailable until the separate user-confirmation
+and server-command flow can bind it to the exact review.
 
 Before the worker adds an executor logical schema to a model request, a human
 must bind one opaque candidate to the exact run. The user-facing launch endpoint

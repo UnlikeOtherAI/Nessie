@@ -8,6 +8,7 @@ import {
 
 import { executorApi } from './api-client.js'
 import { buildSignedDescriptor } from './descriptor.js'
+import { verifyNativeHelperPath } from './native-helper.js'
 import { saveExecutorState, type ExecutorLocalState } from './state-store.js'
 import { configureWorkspaceRoot } from './workspace.js'
 
@@ -30,42 +31,57 @@ export const COW_WORKSPACE_OPERATION_KEYS = [
   'sandbox.stop',
 ] as const
 
+const PROMOTION_OPERATION_KEY = 'workspace.promote' as const
+
 const initialLocalPolicy = {
   limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
-  // File writes land in the daemon-owned COW scratch workspace. The paired
-  // root stays read-only: there is still no shell, browser, or host promotion.
+  // File writes land in daemon-owned COW scratch. No host promotion is present
+  // until a person explicitly enables its separately verified helper policy.
   operationKeys: [...COW_WORKSPACE_OPERATION_KEYS],
   profiles: ['workspace_sandbox'],
   revision: 1,
 }
 
 /**
- * Update only the companion's locally enforced COW policy. This deliberately
- * does not submit a descriptor: `connect` signs and proposes the new revision,
- * then an entitled human must confirm its review in Nessie before it is usable.
+ * Update the companion's locally enforced policy. Promotion additionally needs
+ * an owner-verified native helper. This deliberately does not submit a
+ * descriptor: `connect` signs and proposes the new revision, then an entitled
+ * human must confirm its review in Nessie before it is usable.
  */
 export const configureExecutorLocalPolicy = async (
   stateDir: string,
   state: ExecutorLocalState,
   requestedOperationKeys: string[],
+  nativeHelperPath?: string,
 ): Promise<ExecutorLocalState> => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
-    throw new Error('Specify one or more distinct COW workspace operations.')
+    throw new Error('Specify one or more distinct implemented workspace operations.')
   }
-  if ([...requested].some((operationKey) => !COW_WORKSPACE_OPERATION_KEYS.includes(
-    operationKey as typeof COW_WORKSPACE_OPERATION_KEYS[number],
+  if ([...requested].some((operationKey) => (
+    !COW_WORKSPACE_OPERATION_KEYS.includes(operationKey as typeof COW_WORKSPACE_OPERATION_KEYS[number])
+    && operationKey !== PROMOTION_OPERATION_KEY
   ))) {
     throw new Error('Only implemented COW workspace operations may be configured.')
+  }
+  const helper = nativeHelperPath
+    ? await verifyNativeHelperPath(nativeHelperPath)
+    : state.nativeHelperPath
+  if (requested.has(PROMOTION_OPERATION_KEY) && !helper) {
+    throw new Error('workspace.promote requires an owner-only native helper path.')
   }
   const next: ExecutorLocalState = {
     ...state,
     descriptor: {
       ...state.descriptor,
-      operationKeys: COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
+      operationKeys: [
+        ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
+        ...(requested.has(PROMOTION_OPERATION_KEY) ? [PROMOTION_OPERATION_KEY] : []),
+      ],
       profiles: ['workspace_sandbox'],
       revision: state.descriptor.revision + 1,
     },
+    ...(helper ? { nativeHelperPath: helper } : {}),
   }
   await saveExecutorState(stateDir, next)
   return next

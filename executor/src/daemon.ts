@@ -3,15 +3,18 @@ import { createHash, createPrivateKey, sign } from 'node:crypto'
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
+  ExecutorWorkspacePromoteArgumentsSchema,
   RunIdSchema,
   type ExecutorCommandEnvelope,
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
+import { applyNativePromotion } from './native-helper.js'
 import { signedDescriptorForState } from './pair.js'
 import {
   stopSandboxWorkspace,
   reviewSandboxWorkspace,
+  promotionManifestForSandbox,
   workspaceForRun,
   writeSandboxFile,
 } from './sandbox-workspace.js'
@@ -157,6 +160,29 @@ export const executeExecutorCommand = async (
       return workspaceFailure(error)
     }
   }
+  if (command.operationKey === 'workspace.promote') {
+    try {
+      const args = ExecutorWorkspacePromoteArgumentsSchema.parse(command.payload.args)
+      const manifest = await promotionManifestForSandbox(stateDir, runId.data)
+      if (manifest.manifestDigest !== args.manifestDigest) {
+        return { code: 'EXECUTOR_PROMOTION_REVIEW_STALE', success: false }
+      }
+      const draftWorkspace = await workspaceForRun(stateDir, state.workspaceRoot, runId.data)
+      return await applyNativePromotion({
+        draftWorkspace,
+        helperPath: state.nativeHelperPath,
+        request: {
+          ...manifest,
+          approvalDigest: args.approvalDigest,
+          bindingFence: command.bindingFence,
+          promotionId: args.promotionId,
+        },
+        workspaceRoot: state.workspaceRoot,
+      })
+    } catch (error) {
+      return workspaceFailure(error)
+    }
+  }
   // Stop can discard only its exact server-provenanced run scratch directory.
   if (command.operationKey === 'sandbox.stop') {
     try {
@@ -168,8 +194,8 @@ export const executeExecutorCommand = async (
       return workspaceFailure(error)
     }
   }
-  // Shell, browser, promotion, and coding operations remain absent from the
-  // descriptor and are denied here until their isolated backends are ready.
+  // Shell, browser, and coding operations remain absent from the descriptor
+  // until their isolated backends are ready.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
 }
 
