@@ -365,7 +365,9 @@ in-app banner and registered devices receive the native delivery. A later
 background signal wins over a delayed earlier foreground request, and `pagehide`
 sends an unconditional null target. Backgrounded, unfocused, stale, revoked,
 deactivated, and unrelated pages never suppress delivery; the API reaps expired
-session records every five minutes.
+session records every five minutes. The selected-surface signal is shared with
+the in-app banner: viewing Files, Info, or Runs in the same channel clears both
+server delivery suppression and local-banner suppression.
 
 ## TestFlight
 

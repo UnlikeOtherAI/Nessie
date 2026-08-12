@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
@@ -43,6 +43,7 @@ import { useReplyThread } from './channels/useReplyThread'
 import { useThreadReadMarker } from './channels/useThreadReadMarker'
 
 export const ChannelsPage = () => {
+  const location = useLocation()
   const navigate = useNavigate()
   const { channelId } = useParams()
   const { me, token } = useAuthSession()
@@ -140,7 +141,7 @@ export const ChannelsPage = () => {
   // in-app and native banner because the user is not reading the conversation.
   useEffect(() => {
     if (visibleActiveTab !== 'messages' || !activeChannel || !replyThread.activeThreadId) {
-      reportPushSurface(null)
+      reportPushSurface(null, location)
       return undefined
     }
     reportPushSurface({
@@ -148,9 +149,9 @@ export const ChannelsPage = () => {
       kind: 'channel',
       rootMessageId: replyThread.openRootMessageId,
       threadId: parseThreadId(replyThread.activeThreadId),
-    })
-    return () => reportPushSurface(null)
-  }, [activeChannel, replyThread.activeThreadId, replyThread.openRootMessageId, visibleActiveTab])
+    }, location)
+    return () => reportPushSurface(null, location)
+  }, [activeChannel, location, replyThread.activeThreadId, replyThread.openRootMessageId, visibleActiveTab])
 
   const {
     message,

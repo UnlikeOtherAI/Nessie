@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useChannels } from '../channels/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
@@ -9,6 +9,13 @@ import {
   parseReplyRootMessageIdFromPath,
   parseThreadIdFromPath,
 } from '../../lib/channel-route'
+import {
+  getLatestPushSurfaceReport,
+  parsePushSurfaceReport,
+  PUSH_SURFACE_CHANGE_EVENT,
+  resolveReportedPushSurface,
+  type PushSurfaceReport,
+} from '../../lib/push-surface'
 import { readSseStream } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -277,19 +284,45 @@ export const useMessageNotifications = (input: {
   const { me, token } = useAuthSession()
   const { data: channels = [] } = useChannels()
   const location = useLocation()
+  const route = useMemo(
+    () => ({ pathname: location.pathname, search: location.search }),
+    [location.pathname, location.search],
+  )
+  const [reportedSurface, setReportedSurface] = useState<PushSurfaceReport | null>(
+    getLatestPushSurfaceReport,
+  )
+  const reportedSurfaceForRoute = resolveReportedPushSurface(reportedSurface, route)
+  useEffect(() => {
+    const receiveSelectedSurface = (event: Event) => {
+      const report = parsePushSurfaceReport((event as CustomEvent<unknown>).detail)
+      if (report) setReportedSurface(report)
+    }
+    window.addEventListener(PUSH_SURFACE_CHANGE_EVENT, receiveSelectedSurface)
+    return () => window.removeEventListener(PUSH_SURFACE_CHANGE_EVENT, receiveSelectedSurface)
+  }, [])
   const activeChannelId = useMemo(
-    () => parseChannelIdFromPath(location.pathname),
-    [location.pathname],
+    () => reportedSurfaceForRoute?.kind === 'channel'
+      ? reportedSurfaceForRoute.channelId
+      : reportedSurfaceForRoute === null
+        ? undefined
+        : parseChannelIdFromPath(location.pathname),
+    [location.pathname, reportedSurfaceForRoute],
   )
   const channelLookup = useMemo(() => buildChannelLookup(channels), [channels])
   const activeThreadId = useMemo(() => {
+    if (reportedSurfaceForRoute === null) return undefined
+    if (reportedSurfaceForRoute?.kind === 'channel') return reportedSurfaceForRoute.threadId
     const replyThread = parseThreadIdFromPath(location.pathname)
     if (replyThread) return replyThread
     return activeChannelId ? channelLookup.byId.get(activeChannelId)?.defaultThreadId : undefined
-  }, [activeChannelId, channelLookup, location.pathname])
+  }, [activeChannelId, channelLookup, location.pathname, reportedSurfaceForRoute])
   const activeRootMessageId = useMemo(
-    () => parseReplyRootMessageIdFromPath(location.pathname),
-    [location.pathname],
+    () => reportedSurfaceForRoute?.kind === 'channel'
+      ? reportedSurfaceForRoute.rootMessageId ?? undefined
+      : reportedSurfaceForRoute === null
+        ? undefined
+        : parseReplyRootMessageIdFromPath(location.pathname),
+    [location.pathname, reportedSurfaceForRoute],
   )
   const currentUserId = me?.user.id
   const notificationsEnabled = Boolean(me) && me?.user.preferences?.pushEnabled !== false

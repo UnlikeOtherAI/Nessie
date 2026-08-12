@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { PushSurfaceSchema, type PushSurface } from '@nessie/schemas'
-import { PUSH_SURFACE_CHANGE_EVENT, resolvePushSurface } from '../lib/push-surface'
+import {
+  getPushSurfaceRouteKey,
+  getLatestPushSurfaceReport,
+  parsePushSurfaceReport,
+  PUSH_SURFACE_CHANGE_EVENT,
+  resolvePushSurface,
+  resolveReportedPushSurface,
+  type PushSurfaceReport,
+} from '../lib/push-surface'
 import { getBaseUrl } from '../lib/api-client'
 import { useAuthSession } from './AuthSessionProvider'
 
@@ -72,8 +79,18 @@ export const PushSurfacePresenceHeartbeat = () => {
     () => resolvePushSurface(location.pathname, location.search),
     [location.pathname, location.search],
   )
-  const [reportedSurface, setReportedSurface] = useState<PushSurface | null>(null)
-  const effectiveSurface = reportedSurface ?? surface
+  const route = useMemo(
+    () => ({ pathname: location.pathname, search: location.search }),
+    [location.pathname, location.search],
+  )
+  const routeKey = useMemo(() => getPushSurfaceRouteKey(route), [route])
+  const [reportedSurface, setReportedSurface] = useState<PushSurfaceReport | null>(
+    getLatestPushSurfaceReport,
+  )
+  const reportedSurfaceForRoute = resolveReportedPushSurface(reportedSurface, route)
+  const effectiveSurface = reportedSurfaceForRoute === undefined
+    ? surface
+    : reportedSurfaceForRoute
 
   const heartbeat = useCallback((nextSurface: ReturnType<typeof resolvePushSurface>) => {
     if (!token) return Promise.resolve()
@@ -98,16 +115,17 @@ export const PushSurfacePresenceHeartbeat = () => {
   }, [clientId, token])
 
   useEffect(() => {
-    const reportSelectedKnowledgeSurface = (event: Event) => {
-      const detail = (event as CustomEvent<unknown>).detail
-      if (detail !== null && !PushSurfaceSchema.safeParse(detail).success) return
-      const nextSurface = detail as PushSurface | null
-      setReportedSurface(nextSurface)
-      if (isForeground()) void heartbeat(nextSurface)
+    const reportSelectedSurface = (event: Event) => {
+      const report = parsePushSurfaceReport((event as CustomEvent<unknown>).detail)
+      if (!report) return
+      setReportedSurface(report)
+      if (isForeground() && getPushSurfaceRouteKey(report) === routeKey) {
+        void heartbeat(report.surface)
+      }
     }
-    window.addEventListener(PUSH_SURFACE_CHANGE_EVENT, reportSelectedKnowledgeSurface)
-    return () => window.removeEventListener(PUSH_SURFACE_CHANGE_EVENT, reportSelectedKnowledgeSurface)
-  }, [heartbeat])
+    window.addEventListener(PUSH_SURFACE_CHANGE_EVENT, reportSelectedSurface)
+    return () => window.removeEventListener(PUSH_SURFACE_CHANGE_EVENT, reportSelectedSurface)
+  }, [heartbeat, routeKey])
 
   useEffect(() => {
     const refreshVisibility = () => {
