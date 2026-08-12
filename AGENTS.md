@@ -121,6 +121,25 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Follow the architecture guardrails and anti-pattern list in `docs/architecture.md` before creating files, reorganizing code, or reusing logic.
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.
 - Follow the implementation phases in `docs/implementation-phases.md`.
+- **A personal-assistant tool that does what a person does by clicking calls
+  the same function that person's button calls, and mirrors that route's
+  authorization exactly — no weaker, no stronger.** The four provisioning
+  builtins (`channel_create`, `agent_create`, `agent_bind_channel`,
+  `agent_trigger_create`, in `worker/src/run/pa-tools/provisioning.ts`) are the
+  pattern: `channel_create`/`agent_create` are member-level because their routes
+  carry only `requireActorContext`; binding reproduces all four gates of
+  `POST /api/agents/:agentId/bindings` (channel membership, the
+  `personal_assistant` refusal, owner, `checkPolicy('agent','bind')`); trigger
+  creation parses the route's own `CreateAgentTriggerBodySchema` and refuses a
+  schedule with no UOA identity on a signing deployment. Because
+  `api/src/services/*` is unreachable from the worker, the shared functions live
+  in **`@nessie/workspace-admin`** and the api services re-export them — never a
+  second copy in `pa-tools` (the old "mirrored from api/src/services" comment in
+  `pa-tools/channels.ts` is the anti-pattern, not a precedent). An owner-gated
+  tool stays visible to non-owners and refuses in words, following
+  `pa-tools/connectors.ts`. Role comes from the live `OrganizationMember` row at
+  call time, not from the run's enqueue-time `actorContext`. Details:
+  `CLAUDE.md` → "Personal assistant — workspace provisioning".
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and

@@ -10,7 +10,7 @@ import {
 import {
   mergeTriggerConfigPreservingIdentity,
   stripServerOwnedTriggerConfig,
-} from '../src/services/trigger-config-identity.js'
+} from '@nessie/workspace-admin'
 
 const launchOrigin = {
   organizationId: '00000000-0000-4000-8000-000000000001',

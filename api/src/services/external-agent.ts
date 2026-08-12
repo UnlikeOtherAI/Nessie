@@ -1,7 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
-import { ensureDefaultThread } from './channel-records.js'
-import { loadChannelTeamProject } from './channel-slugs.js'
+import { ensureDefaultThread, loadChannelTeamProject } from '@nessie/workspace-admin'
 
 /**
  * External-agent conversation surface bootstrap.

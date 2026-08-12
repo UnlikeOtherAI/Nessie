@@ -5,7 +5,7 @@ import type { PrismaClient } from '@prisma/client'
 import type { WsScope } from '@nessie/schemas'
 
 import { createRequestHelpers } from '../src/lib/request-helpers.js'
-import { bindAgentToChannel } from '../src/services/agent-bindings.js'
+import { bindAgentToChannel } from '@nessie/workspace-admin'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const otherOrganizationId = '00000000-0000-4000-8000-000000000002'

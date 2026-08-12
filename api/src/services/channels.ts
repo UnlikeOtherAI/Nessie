@@ -10,22 +10,26 @@ import {
 import type { ChannelRecord } from '../contracts.js'
 import {
   channelTeamInclude,
+  ChannelSlugConflictError,
+  ChannelValidationError,
+  createChannelForUser,
+  ensureChannelSlugAvailable,
   ensureDefaultThread,
   loadLastMessageAtByThread,
   loadUnreadCountsByThread,
   mapChannelRecord,
   resolveDmUserId,
-} from './channel-records.js'
-import {
-  ChannelSlugConflictError,
-  ChannelValidationError,
-  ensureChannelSlugAvailable,
-  loadChannelTeamProject,
   throwIfChannelSlugConflict,
   validateChannelLabel,
-} from './channel-slugs.js'
+} from '@nessie/workspace-admin'
 
-export { ChannelSlugConflictError, ChannelValidationError }
+// Channel creation is shared with the worker (the assistant's `channel_create`
+// tool); the route keeps importing it from here.
+export {
+  ChannelSlugConflictError,
+  ChannelValidationError,
+  createChannelForUser,
+}
 
 export const listChannelsForUser = async (
   prisma: PrismaClient,
@@ -127,55 +131,6 @@ export const listChannelsForUser = async (
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
   }))
-}
-
-export const createChannelForUser = async (
-  prisma: PrismaClient,
-  input: {
-    label: string
-    organizationId: string
-    teamId: string
-    userId: string
-    visibility: 'public' | 'protected' | 'private'
-  },
-): Promise<ChannelRecord | null> => {
-  const label = validateChannelLabel(input.label)
-  const teamProject = await loadChannelTeamProject(prisma, {
-    organizationId: input.organizationId,
-    teamId: input.teamId,
-  })
-  if (!teamProject) {
-    return null
-  }
-
-  await ensureChannelSlugAvailable(prisma, {
-    projectId: teamProject.projectId,
-    slug: label.slug,
-  })
-
-  try {
-    const channel = await prisma.channel.create({
-      data: {
-        label: label.label,
-        slug: label.slug,
-        organizationId: input.organizationId,
-        projectId: teamProject.projectId,
-        teamId: input.teamId,
-        visibility: input.visibility,
-        members: {
-          create: {
-            userId: input.userId,
-            role: 'owner',
-          },
-        },
-      },
-      include: channelTeamInclude,
-    })
-    return mapChannelRecord(prisma, channel, input.userId)
-  } catch (error) {
-    throwIfChannelSlugConflict(error, label.slug)
-    throw error
-  }
 }
 
 export const canManageChannel = async (

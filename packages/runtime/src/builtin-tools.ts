@@ -1,8 +1,10 @@
+import { AGENT_ADMIN_TOOL_DEFINITIONS } from './builtin-agent-tools.js'
 import {
   ATTACHMENT_LIST_TOOL_DEFINITION,
   ATTACHMENT_READ_TOOL_DEFINITION,
   ATTACHMENT_UPLOAD_TOOL_DEFINITION,
 } from './builtin-attachment-tools.js'
+import { CHANNEL_TOOL_DEFINITIONS } from './builtin-channel-tools.js'
 import { COMMS_TOOL_DEFINITIONS } from './builtin-comms-tools.js'
 import { CONNECTOR_TOOL_DEFINITIONS } from './builtin-connector-tools.js'
 import { INTEGRATION_TOOL_DEFINITIONS } from './builtin-integration-tools.js'
@@ -372,127 +374,8 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ATTACHMENT_UPLOAD_TOOL_DEFINITION,
   ATTACHMENT_LIST_TOOL_DEFINITION,
   ATTACHMENT_READ_TOOL_DEFINITION,
-  // ─── sp-channels: channel lifecycle tools ─────────────────────────────────
-  {
-    id: 'channel_find',
-    label: 'Find Channel',
-    description:
-      'Resolve a channel by name or scoped slug (e.g. "general", "#product", or "project/general") to its id. ' +
-      'Use this to get a channelId before posting or acting on a channel — ' +
-      'do not ask the user for an id. Returns matching channels with id, ' +
-      'label, project/team scope, scoped slug, and visibility; use scope or channelId to distinguish duplicate labels.',
-    parameters: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'The channel name (or part of it) to look up.',
-        },
-        limit: {
-          type: 'integer',
-          description: 'Maximum number of matches to return (default 10).',
-        },
-      },
-      required: ['query'],
-    },
-    safe: true,
-  },
-  {
-    id: 'channel_list',
-    label: 'List Channels',
-    description:
-      'List channels visible in the current organization. Returns each ' +
-      'channel id, label, project/team scope, scoped slug, visibility, topic, and whether it is archived.',
-    parameters: {
-      type: 'object',
-      properties: {
-        includeArchived: {
-          type: 'boolean',
-          description: 'Include archived channels in the result (default false).',
-        },
-        limit: {
-          type: 'integer',
-          description: 'Maximum number of channels to return.',
-        },
-      },
-    },
-    safe: true,
-  },
-  {
-    id: 'channel_update',
-    label: 'Update Channel',
-    personalAssistantOnly: true,
-    description:
-      'Update a channel label, topic, and/or description. Requires the acting ' +
-      'principal to be able to manage the channel (channel owner/admin, or an ' +
-      'org/team owner/admin).',
-    parameters: {
-      type: 'object',
-      properties: {
-        channelId: {
-          type: 'string',
-          description: 'The channel ID to update.',
-        },
-        label: {
-          type: 'string',
-          description: 'New channel name.',
-        },
-        topic: {
-          type: 'string',
-          description: 'New short topic for the channel.',
-        },
-        description: {
-          type: 'string',
-          description: 'New longer description for the channel.',
-        },
-      },
-      required: ['channelId'],
-    },
-    safe: false,
-  },
-  {
-    id: 'channel_archive',
-    label: 'Archive Channel',
-    personalAssistantOnly: true,
-    description:
-      'Archive or unarchive a channel. Archiving hides it from default ' +
-      'listings without deleting its history. Requires channel-manage rights.',
-    parameters: {
-      type: 'object',
-      properties: {
-        channelId: {
-          type: 'string',
-          description: 'The channel ID to archive or unarchive.',
-        },
-        archived: {
-          type: 'boolean',
-          description:
-            'true to archive (default), false to unarchive.',
-        },
-      },
-      required: ['channelId'],
-    },
-    safe: false,
-  },
-  {
-    id: 'channel_join',
-    label: 'Join Channel',
-    personalAssistantOnly: true,
-    description:
-      'Join a public channel in the current organization. Private and ' +
-      'protected channels require an explicit invite and cannot be joined.',
-    parameters: {
-      type: 'object',
-      properties: {
-        channelId: {
-          type: 'string',
-          description: 'The public channel ID to join.',
-        },
-      },
-      required: ['channelId'],
-    },
-    safe: false,
-  },
+  ...CHANNEL_TOOL_DEFINITIONS,
+  ...AGENT_ADMIN_TOOL_DEFINITIONS,
   ...KB_COMMENT_TOOL_DEFINITIONS,
   ...KB_TOOL_DEFINITIONS,
   ...CONNECTOR_TOOL_DEFINITIONS,

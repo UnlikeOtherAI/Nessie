@@ -52,6 +52,12 @@ export {
 } from './pa-tools/knowledge-write.js'
 export { runSendMessageTool } from './pa-tools/message-delivery.js'
 export {
+  runAgentBindChannelTool,
+  runAgentCreateTool,
+  runAgentTriggerCreateTool,
+  runChannelCreateTool,
+} from './pa-tools/provisioning.js'
+export {
   runPeopleSearchTool,
   runUpdatePreferencesTool,
 } from './pa-tools/people.js'
