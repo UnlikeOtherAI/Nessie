@@ -3041,6 +3041,7 @@ model ExecutorCommand {
   deliveryPayloadCiphertext String?                    @map("delivery_payload_ciphertext")
   payloadExpiresAt         DateTime?                   @map("payload_expires_at")
   resultDigest             String?                     @map("result_digest")
+  resultCiphertext         String?                     @map("result_ciphertext")
   acceptedAt               DateTime?                   @map("accepted_at")
   startedAt                DateTime?                   @map("started_at")
   acknowledgedAt           DateTime?                   @map("acknowledged_at")

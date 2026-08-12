@@ -212,6 +212,16 @@ export const ExecutorDaemonDescriptorRequestSchema = z.object({
 }).strict()
 export type ExecutorDaemonDescriptorRequest = z.infer<typeof ExecutorDaemonDescriptorRequestSchema>
 
+export const ExecutorDaemonCommandPollRequestSchema = z.object({
+  connectionEpoch: z.string().regex(/^\d+$/),
+  executorId: ExecutorIdSchema,
+  observedAt: TimestampSchema,
+  signature: ExecutorDaemonSignatureSchema,
+}).strict()
+export type ExecutorDaemonCommandPollRequest = z.infer<
+  typeof ExecutorDaemonCommandPollRequestSchema
+>
+
 export const ExecutorDaemonChallengeResponseSchema = z.object({
   challenge: Base64UrlSchema.min(64).max(2048),
   expiresAt: TimestampSchema,
@@ -313,7 +323,7 @@ export const ExecutorCommandEnvelopeSchema = z
   .object({
     commandId: ExecutorCommandIdSchema,
     bindingId: ExecutorBindingIdSchema,
-    bindingFence: z.number().int().positive(),
+    bindingFence: z.string().regex(/^\d+$/),
     capabilityRevision: z.number().int().positive(),
     operationKey: ExecutorOperationKeySchema,
     expiresAt: TimestampSchema,
@@ -327,12 +337,46 @@ export type ExecutorCommandEnvelope = z.infer<typeof ExecutorCommandEnvelopeSche
 export const ExecutorCommandReceiptSchema = z
   .object({
     commandId: ExecutorCommandIdSchema,
-    state: ExecutorCommandReceiptStateSchema,
+    // `unknown_outcome` is server-owned recovery state, never a daemon claim.
+    state: z.enum(['accepted', 'started', 'result_acknowledged']),
     resultDigest: Sha256DigestSchema.optional(),
     occurredAt: TimestampSchema,
   })
   .strict()
 export type ExecutorCommandReceipt = z.infer<typeof ExecutorCommandReceiptSchema>
+
+export const ExecutorDaemonCommandPollResponseSchema = z.object({
+  command: ExecutorCommandEnvelopeSchema.nullable(),
+}).strict()
+export type ExecutorDaemonCommandPollResponse = z.infer<
+  typeof ExecutorDaemonCommandPollResponseSchema
+>
+
+export const ExecutorDaemonCommandReceiptRequestSchema = z.object({
+  connectionEpoch: z.string().regex(/^\d+$/),
+  executorId: ExecutorIdSchema,
+  receipt: ExecutorCommandReceiptSchema,
+  result: NonEmptyRecordSchema.optional(),
+  signature: ExecutorDaemonSignatureSchema,
+}).strict().superRefine((value, context) => {
+  if (value.receipt.state === 'result_acknowledged' && !value.result) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'A result acknowledgement requires a structured result.',
+      path: ['result'],
+    })
+  }
+  if (value.receipt.state !== 'result_acknowledged' && value.result !== undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Only a result acknowledgement may carry a result.',
+      path: ['result'],
+    })
+  }
+})
+export type ExecutorDaemonCommandReceiptRequest = z.infer<
+  typeof ExecutorDaemonCommandReceiptRequestSchema
+>
 
 export const ExecutorLifecycleActionSchema = z.enum(['pause', 'resume', 'drain', 'revoke'])
 export type ExecutorLifecycleAction = z.infer<typeof ExecutorLifecycleActionSchema>

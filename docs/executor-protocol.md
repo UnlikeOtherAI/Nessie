@@ -221,6 +221,15 @@ capability revision, expiry, idempotency key, canonical argument digest, and
 payload digest. The daemon rejects mismatches, stale policy, replay, and a
 completed command with another digest. It emits structured results only.
 
+The daemon polls `/api/executor-daemon/commands/poll` with a fresh signed
+`poll` payload; this signature domain is separate from claim, heartbeat, and
+receipt. A command is released only while its existing queue job is processing.
+The queue payload contains only the command id. Raw arguments and terminal
+structured results are AES-256-GCM encrypted under the deployment secret while
+at rest; the database retains only bounded ciphertext and canonical digests.
+The daemon sends each receipt under a distinct signed `receipt` domain, and the
+server recomputes the supplied terminal result digest before accepting it.
+
 If any acknowledgement is lost, Nessie does not invent at-most-once success.
 It records `unknown_outcome` on the command metadata and follows the existing
 queue/run `needs_setup` recovery path. A retry asks for the exact persisted

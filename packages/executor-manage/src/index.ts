@@ -18,12 +18,20 @@ export {
   type ExecutorBindingRecord,
 } from './executor-binding.js'
 export {
+  createExecutorCommand,
+  pollExecutorCommand,
+  readExecutorCommandResult,
+  recordExecutorCommandReceipt,
+  type ExecutorCommandCreateInput,
+} from './executor-commands.js'
+export {
   ensureExecutorLogicalTools,
   executorLogicalToolDefinitions,
   executorLogicalToolId,
 } from './executor-logical-tools.js'
 export {
   claimExecutorConnection,
+  authorizeExecutorDaemonControlCall,
   recordExecutorDaemonChallenge,
   reportExecutorHeartbeat,
   submitExecutorDescriptor,

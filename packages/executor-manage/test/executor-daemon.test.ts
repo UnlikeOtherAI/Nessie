@@ -52,6 +52,22 @@ test('daemon signatures accept the raw key representation stored at enrollment',
   assert.equal(verifyExecutorDaemonSignature(keys.rawPublicKey, 'claim', payload, signature), true)
 })
 
+test('control receipts have their own signature domain', () => {
+  const keys = keyPair()
+  const payload = {
+    connectionEpoch: '7',
+    executorId: 'executor-1',
+    receipt: { commandId: 'command-1', occurredAt: '2026-08-12T12:00:00.000Z', state: 'accepted' },
+  }
+  const signature = sign(
+    null,
+    Buffer.from(canonicalExecutorPayload('nessie.executor.daemon.receipt.v1', payload)),
+    keys.privateKey,
+  ).toString('base64url')
+  assert.equal(verifyExecutorDaemonSignature(keys.rawPublicKey, 'receipt', payload, signature), true)
+  assert.equal(verifyExecutorDaemonSignature(keys.rawPublicKey, 'poll', payload, signature), false)
+})
+
 test('descriptor signatures bind the complete advertised local policy', () => {
   const keys = keyPair()
   const descriptorFacts = {

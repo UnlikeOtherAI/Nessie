@@ -2,6 +2,7 @@ import {
   confirmExecutorAccessChange,
   confirmExecutorEnrollment,
   claimExecutorConnection,
+  authorizeExecutorDaemonControlCall,
   createExecutor,
   ensureExecutorLogicalTools,
   ExecutorError,
@@ -13,6 +14,8 @@ import {
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
   recordExecutorDaemonChallenge,
+  pollExecutorCommand,
+  recordExecutorCommandReceipt,
   resolveExecutorAvailabilityCandidates,
   reportExecutorHeartbeat,
   submitExecutorDescriptor,
@@ -33,6 +36,9 @@ import {
   ExecutorDaemonConnectionSchema,
   ExecutorDaemonDescriptorBodySchema,
   ExecutorDaemonDescriptorSchema,
+  ExecutorDaemonCommandPollBodySchema,
+  ExecutorDaemonCommandPollSchema,
+  ExecutorDaemonCommandReceiptBodySchema,
   ExecutorDaemonHeartbeatBodySchema,
   ExecutorAccessChangeRecordSchema,
   ExecutorAccessViewSchema,
@@ -77,6 +83,7 @@ const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
           || error.code === 'EXECUTOR_HEARTBEAT_STALE'
           || error.code === 'EXECUTOR_DESCRIPTOR_REVISION_CONFLICT'
           || error.code === 'EXECUTOR_DESCRIPTOR_ROLLBACK'
+          || error.code === 'EXECUTOR_COMMAND_REPLAY'
         ? 409
         : 400
   sendApiError(reply, status, error.code, error.message)
@@ -431,6 +438,72 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       try {
         const result = await submitExecutorDescriptor(prisma, body)
         return createApiResponse(ExecutorDaemonDescriptorSchema.parse(result))
+      } catch (error) {
+        if (sendExecutorError(reply, error)) return reply
+        throw error
+      }
+    },
+  )
+
+  app.post(
+    '/api/executor-daemon/commands/poll',
+    { config: { public: true } },
+    async (request, reply) => {
+      const body = parseInput(ExecutorDaemonCommandPollBodySchema, request.body, reply)
+      if (!body) return reply
+      try {
+        await authorizeExecutorDaemonControlCall(prisma, {
+          connectionEpoch: body.connectionEpoch,
+          executorId: body.executorId,
+          observedAt: body.observedAt,
+          payload: {
+            connectionEpoch: body.connectionEpoch,
+            executorId: body.executorId,
+            observedAt: body.observedAt,
+          },
+          signature: body.signature,
+          type: 'poll',
+        })
+        const command = await pollExecutorCommand(
+          prisma,
+          deps.authSecret,
+          body.executorId,
+        )
+        return createApiResponse(ExecutorDaemonCommandPollSchema.parse({ command }))
+      } catch (error) {
+        if (sendExecutorError(reply, error)) return reply
+        throw error
+      }
+    },
+  )
+
+  app.post(
+    '/api/executor-daemon/commands/receipt',
+    { config: { public: true } },
+    async (request, reply) => {
+      const body = parseInput(ExecutorDaemonCommandReceiptBodySchema, request.body, reply)
+      if (!body) return reply
+      try {
+        await authorizeExecutorDaemonControlCall(prisma, {
+          connectionEpoch: body.connectionEpoch,
+          executorId: body.executorId,
+          observedAt: body.receipt.occurredAt,
+          payload: {
+            connectionEpoch: body.connectionEpoch,
+            executorId: body.executorId,
+            receipt: body.receipt,
+          },
+          signature: body.signature,
+          type: 'receipt',
+        })
+        await recordExecutorCommandReceipt(
+          prisma,
+          deps.authSecret,
+          body.executorId,
+          body.receipt,
+          body.result,
+        )
+        return createApiResponse({ recorded: true })
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
         throw error

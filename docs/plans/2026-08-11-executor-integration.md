@@ -22,6 +22,16 @@ advances a binding-specific monotonic fence; daemon connection epochs and
 binding fences remain separate. A retry must reuse the same candidate and
 binding or fails closed.
 
+The paired daemon now has a signed outbound command poll and a domain-separated
+receipt channel. Queue payloads hold only a command id; operation arguments and
+structured terminal results are AES-256-GCM encrypted at rest, bounded to 64
+KiB, and linked to the existing queue job and `ToolCall`. The daemon receives a
+short-lived envelope only after the linked job is processing and must emit
+monotonic `accepted → started → result_acknowledged` receipts. The current
+companion executes only the harmless `sandbox.stop` presence operation; the
+worker dispatch adapter is intentionally not enabled until its queue lifecycle
+and concrete sandbox backend arrive together.
+
 It does **not** dispatch files, browser work, commands, or coding sessions
 yet; the companion advertises only its harmless stop capability until a
 concrete isolated backend is delivered. Neither does it expose the planned

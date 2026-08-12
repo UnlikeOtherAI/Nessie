@@ -35,7 +35,7 @@ const machineKey = (encoded: string) => {
 
 export const verifyExecutorDaemonSignature = (
   machinePublicKey: string,
-  domain: 'claim' | 'heartbeat',
+  domain: 'claim' | 'heartbeat' | 'poll' | 'receipt',
   payload: Record<string, unknown>,
   signature: string,
 ): boolean => {
@@ -302,3 +302,44 @@ export const submitExecutorDescriptor = async (
   })
   return created
 })
+
+/**
+ * Validate an authenticated daemon control call. This deliberately uses its
+ * own signed domain so a heartbeat cannot be replayed as a poll or receipt.
+ */
+export const authorizeExecutorDaemonControlCall = async (
+  prisma: PrismaClient,
+  input: {
+    connectionEpoch: string
+    executorId: string
+    observedAt: string
+    payload: Record<string, unknown>
+    signature: string
+    type: 'poll' | 'receipt'
+  },
+  now = new Date(),
+): Promise<void> => {
+  const observedAt = new Date(input.observedAt)
+  if (Number.isNaN(observedAt.getTime()) || Math.abs(now.getTime() - observedAt.getTime()) > HEARTBEAT_SKEW_MS) {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.HEARTBEAT_STALE, 'Executor control call is stale.')
+  }
+  await prisma.$transaction(async (tx) => {
+    await lockExecutorConnection(tx, input.executorId)
+    const executor = await requireDaemonExecutor(tx, input.executorId)
+    if (executor.status !== 'online' || executor.activeConnectionEpoch.toString() !== input.connectionEpoch) {
+      throw new ExecutorError(EXECUTOR_ERROR_CODES.CONNECTION_FENCED, 'Executor connection is fenced.')
+    }
+    if (!verifyExecutorDaemonSignature(
+      executor.machinePublicKey,
+      input.type,
+      input.payload,
+      input.signature,
+    )) {
+      throw new ExecutorError(EXECUTOR_ERROR_CODES.DAEMON_PROOF_INVALID, 'Executor proof is invalid.')
+    }
+    await tx.executor.update({
+      where: { id: executor.id },
+      data: { lastSeenAt: !executor.lastSeenAt || observedAt > executor.lastSeenAt ? observedAt : executor.lastSeenAt },
+    })
+  })
+}

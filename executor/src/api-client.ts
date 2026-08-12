@@ -1,3 +1,5 @@
+import type { ExecutorCommandEnvelope, ExecutorCommandReceipt } from '@nessie/schemas'
+
 type ApiError = { error?: { code?: string; message?: string } }
 
 const normalizeUrl = (baseUrl: string, path: string): string =>
@@ -23,6 +25,20 @@ export const executorApi = {
     baseUrl: string,
     input: { connectionEpoch: string; executorId: string; observedAt: string; signature: string },
   ) => post<{ connectionEpoch: string; status: string }>(baseUrl, '/api/executor-daemon/heartbeat', input),
+  pollCommand: (
+    baseUrl: string,
+    input: { connectionEpoch: string; executorId: string; observedAt: string; signature: string },
+  ) => post<{ command: ExecutorCommandEnvelope | null }>(baseUrl, '/api/executor-daemon/commands/poll', input),
+  recordCommandReceipt: (
+    baseUrl: string,
+    input: {
+      connectionEpoch: string
+      executorId: string
+      receipt: ExecutorCommandReceipt
+      result?: Record<string, unknown>
+      signature: string
+    },
+  ) => post<{ recorded: boolean }>(baseUrl, '/api/executor-daemon/commands/receipt', input),
   issueChallenge: (baseUrl: string, executorId: string) =>
     post<{ challenge: string; expiresAt: string }>(baseUrl, '/api/executor-daemon/challenge', { executorId }),
   submitDescriptor: (
