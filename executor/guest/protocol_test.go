@@ -57,3 +57,16 @@ func TestWorkspaceMustBeExplicitlyRequestedByTheHostBootCommand(t *testing.T) {
 		t.Fatal("accepted a lookalike workspace command-line flag")
 	}
 }
+
+func TestEgressTokenIsDistinctAndStableForOneKnownBootstrapToken(t *testing.T) {
+	egress, err := deriveEgressToken(testBootstrapToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if egress != "AN43IKRZz4QAd6L6iE-D9mklr0Pm6SEq9jiiB9PAVPo" {
+		t.Fatalf("unexpected egress token %q", egress)
+	}
+	if egress == testBootstrapToken {
+		t.Fatal("egress token reused the bootstrap token")
+	}
+}

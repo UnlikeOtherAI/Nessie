@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -29,6 +31,16 @@ type controlEnvelope struct {
 func validBootstrapToken(value string) bool {
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	return err == nil && len(decoded) == 32 && base64.RawURLEncoding.EncodeToString(decoded) == value
+}
+
+func deriveEgressToken(bootstrapToken string) (string, error) {
+	bootstrap, err := base64.RawURLEncoding.DecodeString(bootstrapToken)
+	if err != nil || len(bootstrap) != 32 || !validBootstrapToken(bootstrapToken) {
+		return "", errInvalidFrame
+	}
+	mac := hmac.New(sha256.New, bootstrap)
+	_, _ = mac.Write([]byte("nessie-executor-egress-v1"))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
 func workspaceRequested(commandLine string) bool {

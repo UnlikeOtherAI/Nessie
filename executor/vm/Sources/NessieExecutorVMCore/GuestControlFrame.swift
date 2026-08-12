@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public let guestControlFrameMaxBytes = 65_536
@@ -50,6 +51,19 @@ func isValidGuestControlBootstrapToken(_ value: String) -> Bool {
     .replacingOccurrences(of: "+", with: "-")
     .replacingOccurrences(of: "/", with: "_")
     .dropLast() == value
+}
+
+/** A per-session egress credential distinct from the one-use control hello. */
+func guestEgressToken(fromBootstrapToken value: String) throws -> String {
+  guard isValidGuestControlBootstrapToken(value) else { throw GuestControlFrameError.invalidEnvelope }
+  let base64 = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+  guard let decoded = Data(base64Encoded: base64 + "=") else { throw GuestControlFrameError.invalidEnvelope }
+  let key = SymmetricKey(data: decoded)
+  let mac = HMAC<SHA256>.authenticationCode(for: Data("nessie-executor-egress-v1".utf8), using: key)
+  return String(Data(mac).base64EncodedString()
+    .replacingOccurrences(of: "+", with: "-")
+    .replacingOccurrences(of: "/", with: "_")
+    .dropLast())
 }
 
 private func validate(_ envelope: GuestControlEnvelope) throws {

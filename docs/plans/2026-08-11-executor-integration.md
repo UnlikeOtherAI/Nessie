@@ -170,6 +170,17 @@ VM bridge must pair this gateway with a guest-only interface and enforce the
 remaining download/upload and credential rules; this groundwork is not browser
 availability.
 
+The host and guest now also derive a distinct egress-session token from the
+fresh 32-byte bootstrap secret as
+`HMAC-SHA-256(bootstrapToken, "nessie-executor-egress-v1")`, base64url without
+padding. This is deliberately not another use of the one-shot control `hello`
+credential: bootstrap remains control-only and is neither persisted nor sent
+on the future egress channel. A guest-local proxy and the per-VM host broker
+will use only the derived proof to authenticate their dedicated tunnel before
+the host joins it to the owner-only CONNECT gateway. The shared derivation is
+covered by Swift and Linux guest tests; it does not itself create a listener,
+route, proxy, or browser/coding capability.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

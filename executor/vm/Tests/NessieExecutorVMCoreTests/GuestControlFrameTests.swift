@@ -43,6 +43,12 @@ func guestControlHelloToken() throws {
   }
 }
 
+@Test("guest egress token is distinct from the bootstrap hello token")
+func guestEgressToken() throws {
+  let bootstrap = String(repeating: "A", count: 43)
+  #expect(try guestEgressToken(fromBootstrapToken: bootstrap) == "AN43IKRZz4QAd6L6iE-D9mklr0Pm6SEq9jiiB9PAVPo")
+}
+
 @Test("guest control rejects malformed or oversized length-delimited input")
 func guestControlFrameBounds() throws {
   #expect(throws: GuestControlFrameError.self) {

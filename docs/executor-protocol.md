@@ -384,6 +384,17 @@ minutes). The per-session initrd builder remains responsible for provisioning
 the token only to the matching guest. Frames themselves remain capability-free
 until typed browser/coding schemas and a run-bound handler exist.
 
+The later egress channel has a separate session proof, never a replay of the
+control hello. Both ends derive its 43-byte base64url value as
+`HMAC-SHA-256(bootstrapToken, "nessie-executor-egress-v1")`. The control token
+is still accepted only in the first control `hello`; it is not persisted,
+placed in an egress frame, or retained after that hello. The derived value is
+kept only by the guest proxy and the matching host VM broker, which use it to
+authenticate a dedicated guest-initiated tunnel before the broker can connect
+to the owner-only local CONNECT gateway. This derivation is checked in on both
+the Swift host and Linux guest, but no egress listener or browser descriptor
+exists yet.
+
 `executor/guest` is the first guest image component: a statically linked Linux
 arm64 `/init`, with no shell, package manager, host mount, or network client.
 `build-guest-initrd.sh` accepts the canonical bootstrap token only on standard
