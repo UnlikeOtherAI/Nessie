@@ -839,8 +839,8 @@ Coding sessions add these non-negotiable rules from Coder's model:
   `PATH` or interpolate a session name into a shell command.
 - The initial release launches and observes only sessions created in that
   dedicated server. Attaching a pre-existing/default-server tmux session is
-  deferred to a separately consented broker design; it is not smuggled through
-  the dedicated-server guarantee.
+  deferred to a separately consented local-attachment design; it is not
+  smuggled through the dedicated-server guarantee.
 - Observe, create, input, interrupt, and close are separately advertised and
   granted. Control is off by default; enabling automated input requires an
   owner-approved, time-bounded control lease and follows the configured
@@ -853,12 +853,14 @@ Coding sessions add these non-negotiable rules from Coder's model:
   checks before launch, a single-writer control lease, and an explicit trust
   profile for the CLI home and its credentials. The coding profile is not the
   credential-free workspace-sandbox profile. It never mounts the host
-  `~/.codex`, `~/.claude`, keychain, or a global CLI token into the guest.
-  Instead a root-owned daemon credential broker holds any renewable credential
-  outside the guest workspace identity and the forced egress gateway injects
-  only short-lived, executor/session-bound upstream authorization. The CLI and
-  workspace processes receive neither a reusable bearer nor a host credential;
-  revocation closes the broker session and gateway route immediately.
+  `~/.codex`, `~/.claude`, keychain, or a global CLI token into the guest. The
+  supported Codex path verifies an owner-private auth-file path locally, then
+  has only the owner-controlled initrd builder read it. The guest moves that
+  one file into a fresh root-only runtime home and removes the initrd copy
+  before it drops privilege. Neither the daemon, the control plane, state,
+  command arguments, nor logs receive its contents. Revocation and stop tear
+  down the VM, route, private runtime home, and initrd together; there is no
+  credential broker or injected renewable authorization in this release.
 - A coding session works in its own copy-on-write guest workspace. It may edit
   that scratch copy, but it cannot write the selected host workspace directly;
   the same explicit, reviewed `workspace.promote` operation used by mutating
@@ -893,9 +895,13 @@ then the product shows it as unsupported rather than silently degrading.
 
 Create a dedicated `nessie-executor` daemon rather than embedding privileged
 execution in the web admin or Tauri webview. It owns the key, local policy,
-outbound connection, sandbox backends, and tmux adapter. The existing `desktop`
-Tauri app is the first graphical companion and supervises that daemon; the same
-daemon also has CLI/service installation for headless developer machines.
+outbound connection, sandbox backends, and tmux adapter. The current executable
+surface is its explicit CLI, so it can be paired and supervised by an
+owner-managed service on headless developer machines. A graphical desktop
+companion is a remaining delivery item: it must supervise that exact daemon and
+offer native folder selection and local-policy review without becoming authority
+for an executor paired by another machine. It cannot be claimed as shipped until
+the signed helper and its packaged runtime artifacts are actually embedded.
 
 Suggested ownership boundaries:
 
@@ -915,8 +921,9 @@ Suggested ownership boundaries:
 - `executor/`: the daemon, local policy enforcement, sandbox/browser backends,
   and tmux/Codex/Claude adapters. This is a focused executable workspace, not
   an addition to the developer-only `cli/` package.
-- `desktop/`: daemon lifecycle, native folder-selection and local policy UI;
-  it never becomes the authority for an executor paired by another machine.
+- `desktop/`: planned daemon lifecycle, native folder-selection and local
+  policy UI; it never becomes the authority for an executor paired by another
+  machine.
 - `admin/src/facades/executors` and focused feature components: the one web
   management/view surface re-used by pairing, Agent Designer, workflows, and
   activity detail.
@@ -940,7 +947,7 @@ and how an uncertain command maps into the existing queue/tool-call/run
 recovery states. Define the availability resolver, exact
 `ExecutorAgentOperationGrant` semantics, private-admin succession/offboarding,
 candidate-handle consumption, required `ToolRegistrySource`/transport enum
-updates, the forced egress topology, guest credential-broker boundary,
+updates, the forced egress topology, guest-private auth-file boundary,
 `workspace.promote` manifest/commit protocol, and the step-up action policy.
 Add contract tests before an executor schema migration, companion pairing, or
 UI implementation can land.

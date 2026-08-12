@@ -30,38 +30,39 @@ and all UI doorways remain one delivery unit.
 
 ### 5. Coding-session executor
 
-Add the dedicated tmux backend, Codex and Claude launch adapters, observe-only
+Add the dedicated tmux backend, the initial Codex launch adapter, observe-only
 sessions launched by the executor, and session-local authenticated hooks. Ship
-the session list/detail through the same Executors surface with read-only/control
-state, a visible control-lease timer, terminal attention states, stop/detach
-actions, and links back to the originating Nessie task.
+the session list/detail through the same Executors surface with read-only state,
+terminal attention states, stop actions, and links back to the originating
+Nessie task. A Claude adapter and any interactive control lease are separate,
+later delivery slices.
 
 Only after observe/control, replay, reconnect, and revocation tests pass may
 an agent receive `coding.prompt`. The implementation must not modify a user's
 global Codex or Claude configuration; injected hooks/settings are session-local
 and fail open to observation only.
 
-Progress: the guest now proves the dedicated-server mechanics privately: it
+Progress: the coded slice exposes the exact
+`coding.launch`, `coding.observe`, `workspace.review`, and `sandbox.stop`
+bundle on a fresh, otherwise unbound run. The guest proves the dedicated-server
+mechanics privately: it
 creates a root-configured, guest-owned socket directory before privilege drop;
-uses the manifest-pinned tmux and Codex/Claude argv directly; accepts only a
-fixed session/pane target; retains exited panes; and bounds/sanitizes
-observation. Codex has an additional launch-time conformance gate: a
+uses the manifest-pinned tmux and Codex argv directly; accepts only a fixed
+session/pane target; retains exited panes; and bounds/sanitizes observation.
+Codex has an additional launch-time conformance gate: a
 workspace-write child and a nested Codex sandbox that asks for
 danger-full-access must both fail to read the private future auth home or the
 executor-control directory, connect to tmux's Unix control socket, or reach the
 known-live guest-local egress proxy.
 This is the required credential-principal
-boundary; same-UID modes and an inherited proof are not. It exposes no
-`coding.*` executor operation yet. A local `configure-codex` command now
-validates an owner-private Codex auth source and the pinned guest artifacts;
-the source path alone is stored in owner-only companion state. A session can
-copy it only into a root-only transient initrd, transfer it to the guest's
-private auth home before privilege drop, and remove the initrd leaf. It does
-not change the descriptor or make a coding capability reachable. The next
-coding slice must couple that launch gate to a provider-only egress route and
-durable session/control records. Only then may this guest substrate be wired
-through a descriptor, the daemon, agent grants, the Executors surface, and
-Personal Assistant user confirmation.
+boundary; same-UID modes and an inherited proof are not. A local
+`configure-codex` command validates an owner-private Codex auth source and the
+pinned guest artifacts; the source path alone is stored in owner-only companion
+state. A session copies it only into a root-only transient initrd, transfers it
+to the guest's private auth home before privilege drop, and removes the initrd
+leaf. The descriptor, daemon, agent grants, Executors surface, and Personal
+Assistant user-confirmed management are wired through that exact bundle. No
+terminal capture, interactive prompt/control, or Claude launch is exposed.
 
 ### 6. Expansion and hardening
 
@@ -106,9 +107,9 @@ Each slice must prove all of the following:
   cannot evade the forced egress gateway; unsupported platforms advertise no
   stronger operation than they enforce;
 - no workspace or coding process can read a host CLI home, keychain, global
-  token, or reusable bearer; broker/gateway credential revocation cuts off a
-  live session without exposing credential material in guest, model, audit, or
-  log data;
+  token, or reusable bearer; VM, private auth-home, initrd, and gateway teardown
+  cuts off a live session without exposing credential material in model, audit,
+  or log data;
 - `workspace.promote` alone can modify a host workspace and requires its own
   grants, approval, local policy, binding, and receipts; hostile COW manifests,
   base-snapshot conflicts, symlink/hardlink/special-file paths, interrupted
@@ -130,9 +131,9 @@ Each slice must prove all of the following:
   from database records, audit, logs, realtime telemetry, and error reports;
 - the web management page, Agent Designer doorway, run/workflow selector, and
   companion each work in a real Playwright browser/desktop verification flow;
-- Codex and Claude launch paths are tested against declared supported versions
-  and the source-adoption/licence matrix is complete before any external code is
-  reused;
+- the Codex launch path is tested against its declared supported versions, and
+  a Claude path requires its own equivalent test and source-adoption/licence
+  matrix before it is exposed;
 - existing Docker/GCloud environment provisioning and current MCP HTTP/SSE
   security tests continue to pass unchanged.
 
@@ -140,7 +141,7 @@ Each slice must prove all of the following:
 
 - turning every connected laptop into a generic remote shell or SSH proxy;
 - connecting to arbitrary pre-existing tmux sessions; a separately consented
-  broker is a later design, not an initial-release shortcut;
+  local-attachment design is a later design, not an initial-release shortcut;
 - cloud-side stdio execution, private-network URL probing, or user-authored
   connector process spawning;
 - silently transmitting a developer's source tree, terminal history, browser
