@@ -3,7 +3,7 @@
 **Status:** designed, reviewed by two independent models, not yet implemented.
 **Date:** 2026-08-11
 **Owner:** Ondrej Rafaj
-**Companion:** [2026-08-11-inter-agent-communication.md](2026-08-11-inter-agent-communication.md)
+**Companion:** [2026-08-11-inter-agent-communication](2026-08-11-inter-agent-communication/overview.md)
 
 ---
 
