@@ -12,9 +12,11 @@ import {
 
 const keyPair = () => {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const spki = publicKey.export({ format: 'der', type: 'spki' })
   return {
     privateKey,
-    publicKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64url'),
+    publicKey: spki.toString('base64url'),
+    rawPublicKey: spki.subarray(-32).toString('base64url'),
   }
 }
 
@@ -35,6 +37,17 @@ test('daemon claim signatures are domain-separated and bind the exact challenge'
     { ...payload, challenge: 'other-challenge' },
     signature,
   ), false)
+})
+
+test('daemon signatures accept the raw key representation stored at enrollment', () => {
+  const keys = keyPair()
+  const payload = { challenge: 'server-challenge', executorId: 'executor-1' }
+  const signature = sign(
+    null,
+    Buffer.from(canonicalExecutorPayload('nessie.executor.daemon.claim.v1', payload)),
+    keys.privateKey,
+  ).toString('base64url')
+  assert.equal(verifyExecutorDaemonSignature(keys.rawPublicKey, 'claim', payload, signature), true)
 })
 
 const claimPrisma = (machinePublicKey: string, challengeMatches: number) => {

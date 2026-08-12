@@ -5,15 +5,23 @@ import { canonicalExecutorPayload } from './executor-canonical-json.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 
 const HEARTBEAT_SKEW_MS = 60_000
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
 
 const challengeHash = (challenge: string): string =>
   `sha256:${createHash('sha256').update(challenge).digest('hex')}`
 
 const machineKey = (encoded: string) => {
   try {
+    const decoded = Buffer.from(encoded, 'base64url')
     return createPublicKey({
       format: 'der',
-      key: Buffer.from(encoded, 'base64url'),
+      // Enrollment stores the compact raw Ed25519 public key. Accepting an
+      // SPKI wrapper as well keeps this verifier compatible with the earlier
+      // internal test fixture, but the paired database representation is the
+      // 32-byte form and is always wrapped before Node parses it.
+      key: decoded.length === 32
+        ? Buffer.concat([ED25519_SPKI_PREFIX, decoded])
+        : decoded,
       type: 'spki',
     })
   } catch {
