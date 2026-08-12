@@ -385,10 +385,12 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...COMMS_TOOL_DEFINITIONS,
 ]
 
+// `delegate` is deliberately absent: the workflow builtin-tool executor has no
+// case for it, so save-time validation must not accept a tool that can only
+// fail at runtime (workflows-first-class plan, W5).
 export const WORKFLOW_TOOL_DEFINITIONS: BuiltinToolDefinition[] = buildWorkflowToolDefinitions(
   WEB_SEARCH_TOOL_DEFINITION,
   WEB_FETCH_TOOL_DEFINITION,
-  DELEGATE_TOOL_DEFINITION,
 )
 
 export const BUILTIN_TOOL_IDS = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id))

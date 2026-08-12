@@ -1,6 +1,7 @@
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { enqueueQueueJob } from '../../queue.js'
-import { markWorkflowStepRunFinished } from '../workflows.js'
+import { loadWorkflowGraph } from '../workflows.js'
+import { finishWorkflowStepRun } from '../workflow-step-finish.js'
 import type { ExecutionDependencies } from './types.js'
 
 export const maybeContinueParentWorkflow = async (
@@ -12,7 +13,20 @@ export const maybeContinueParentWorkflow = async (
     summary?: string
   },
 ): Promise<void> => {
-  const result = await markWorkflowStepRunFinished(deps.prisma, {
+  if (!payload.parentWorkflowRunId) {
+    return
+  }
+
+  const workflow = await loadWorkflowGraph(deps.prisma, payload.parentWorkflowRunId)
+  if (!workflow) {
+    return
+  }
+
+  // Finish through the emitting seam so a final asynchronous step fires the
+  // workflow.run.completed / workflow.run.failed event. `applied: false` (a
+  // concurrent cancel or sibling failure won) reports continueWorkflow:
+  // false, so the continuation enqueue below is skipped automatically.
+  const result = await finishWorkflowStepRun(deps.prisma, workflow, {
     output: input.output,
     stepRunId: payload.parentWorkflowStepRunId,
     success: input.success,
@@ -20,7 +34,7 @@ export const maybeContinueParentWorkflow = async (
     workflowRunId: payload.parentWorkflowRunId,
   })
 
-  if (!result.continueWorkflow || !payload.parentWorkflowRunId) {
+  if (!result.continueWorkflow) {
     return
   }
 

@@ -3,11 +3,9 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const buildWorkflowToolDefinitions = (
   webSearchToolDefinition: BuiltinToolDefinition,
   webFetchToolDefinition: BuiltinToolDefinition,
-  delegateToolDefinition: BuiltinToolDefinition,
 ): BuiltinToolDefinition[] => [
   webSearchToolDefinition,
   webFetchToolDefinition,
-  delegateToolDefinition,
   {
     id: 'state_get',
     label: 'State Get',

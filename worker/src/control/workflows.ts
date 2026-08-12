@@ -443,6 +443,13 @@ const markWorkflowStepRunFinished = async (
 ): ReturnType<typeof markWorkflowStepRunFinishedRaw> => {
   const result = await markWorkflowStepRunFinishedRaw(prisma, input)
 
+  // The guarded transition lost to a concurrent terminalization (cancel or a
+  // sibling step failure): that transition owns the terminal event, so emit
+  // nothing for a write that never landed.
+  if (!result.applied) {
+    return result
+  }
+
   if (!input.success) {
     await emitWorkflowRunTerminalEvent(
       prisma,
@@ -462,13 +469,17 @@ const markWorkflowRunFinished = async (
   workflow: LoadedWorkflowGraph,
   input: Parameters<typeof markWorkflowRunFinishedRaw>[1],
 ): ReturnType<typeof markWorkflowRunFinishedRaw> => {
-  await markWorkflowRunFinishedRaw(prisma, input)
+  const result = await markWorkflowRunFinishedRaw(prisma, input)
+  if (!result.applied) {
+    return result
+  }
   await emitWorkflowRunTerminalEvent(
     prisma,
     buildWorkflowRunEventContext(workflow),
     input.success ? 'completed' : 'failed',
     input.summary,
   )
+  return result
 }
 
 export const executeWorkflowRun = async (
