@@ -16,7 +16,7 @@ const MAX_PATH_LENGTH: usize = 1024;
 const MAX_REQUEST_BYTES: u64 = 128 * 1024;
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DigestEntry {
     byte_count: u64,
     digest: String,
@@ -31,7 +31,7 @@ enum ChangeKind {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Change {
     base: Option<DigestEntry>,
     draft: Option<DigestEntry>,
@@ -40,7 +40,7 @@ struct Change {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PreflightRequest {
     changes: Vec<Change>,
     manifest_digest: String,
@@ -56,7 +56,7 @@ enum PreflightStatus {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PreflightResponse {
     code: Option<String>,
     manifest_digest: String,
@@ -450,5 +450,25 @@ mod tests {
             .code,
             "EXECUTOR_PROMOTION_CONFLICT"
         );
+    }
+
+    #[test]
+    fn accepts_the_camel_case_manifest_contract() {
+        let request = serde_json::from_str::<PreflightRequest>(
+            r#"{
+              "changes": [{
+                "base": {"byteCount": 4, "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+                "draft": {"byteCount": 5, "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+                "kind": "modified",
+                "path": "file.txt"
+              }],
+              "manifestDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+              "protocolVersion": 1,
+              "runId": "00000000-0000-4000-8000-000000000001"
+            }"#,
+        )
+        .expect("camel-case manifest parses");
+        assert_eq!(request.changes[0].base.as_ref().unwrap().byte_count, 4);
+        assert_eq!(request.run_id, "00000000-0000-4000-8000-000000000001");
     }
 }

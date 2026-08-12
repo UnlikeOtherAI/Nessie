@@ -9,6 +9,7 @@ import { executeExecutorCommand } from '../src/daemon.js'
 import { parseCommand } from '../src/index.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
 import {
+  promotionManifestForSandbox,
   stopSandboxWorkspace,
   workspaceForRun,
   writeSandboxFile,
@@ -303,6 +304,33 @@ test('daemon commands bind COW drafts to one run and never write the paired root
         truncated: false,
       },
     )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+    await rm(stateDir, { force: true, recursive: true })
+  }
+})
+
+test('a draft review digest binds file hashes even when byte counts do not change', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nessie-executor-manifest-source-'))
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-manifest-state-'))
+  const runId = '00000000-0000-4000-8000-000000000206'
+  try {
+    await writeFile(join(root, 'original.txt'), 'base')
+    await writeSandboxFile(stateDir, root, runId, {
+      content: 'draft',
+      overwrite: true,
+      path: 'original.txt',
+    })
+    const first = await promotionManifestForSandbox(stateDir, runId)
+    await writeSandboxFile(stateDir, root, runId, {
+      content: 'other',
+      overwrite: true,
+      path: 'original.txt',
+    })
+    const second = await promotionManifestForSandbox(stateDir, runId)
+    assert.equal(first.changes[0]?.draft?.byteCount, second.changes[0]?.draft?.byteCount)
+    assert.notEqual(first.manifestDigest, second.manifestDigest)
+    assert.equal('draft' in first.changes[0]!, true)
   } finally {
     await rm(root, { force: true, recursive: true })
     await rm(stateDir, { force: true, recursive: true })

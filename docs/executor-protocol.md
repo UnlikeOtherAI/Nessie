@@ -261,6 +261,11 @@ root for write or applies a change. It is not yet a micro-VM or network isolatio
 boundary. No host promotion, command, browser, or coding operation is
 advertised until its isolated backend is implemented and reviewed.
 
+The receipt remains content-free, but its manifest digest binds the complete
+local manifest: every changed path's base and draft SHA-256 values are included
+in the digest calculation. A later promotion must reconstruct the exact same
+manifest locally, so a same-length post-review edit cannot reuse a review.
+
 The daemon's owner-only runtime directory already contains a per-run COW
 substrate for that later backend. It atomically snapshots a paired root into a
 daemon-owned scratch tree, rejecting every symbolic link, hard-linked file,

@@ -35,7 +35,18 @@ const COPY_BUFFER_BYTES = 64 * 1024
 type CopyBudget = { bytes: number; files: number }
 type ManifestEntry = { byteCount: number; digest: string }
 type BaseManifest = { files: Record<string, ManifestEntry>; version: 1 }
-type WorkspaceChange = ManifestEntry & { kind: 'created' | 'deleted' | 'modified'; path: string }
+type WorkspaceChange = {
+  base?: ManifestEntry
+  draft?: ManifestEntry
+  kind: 'created' | 'deleted' | 'modified'
+  path: string
+}
+export type SandboxPromotionManifest = {
+  changes: WorkspaceChange[]
+  manifestDigest: string
+  protocolVersion: 1
+  runId: string
+}
 
 const missing = (error: unknown): boolean =>
   Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
@@ -261,10 +272,10 @@ const changesFrom = (base: BaseManifest, current: Record<string, ManifestEntry>)
   for (const path of paths) {
     const before = base.files[path]
     const after = current[path]
-    if (!before && after) changes.push({ ...after, kind: 'created', path })
-    else if (before && !after) changes.push({ ...before, kind: 'deleted', path })
+    if (!before && after) changes.push({ draft: after, kind: 'created', path })
+    else if (before && !after) changes.push({ base: before, kind: 'deleted', path })
     else if (before && after && (before.digest !== after.digest || before.byteCount !== after.byteCount)) {
-      changes.push({ ...after, kind: 'modified', path })
+      changes.push({ base: before, draft: after, kind: 'modified', path })
     }
   }
   return changes
@@ -370,29 +381,16 @@ export const reviewSandboxWorkspace = async (
   stateDir: string,
   runId: string,
 ): Promise<Record<string, unknown>> => {
-  const paths = await sandboxPaths(stateDir, runId)
-  await assertOrdinaryDirectory(paths.root, 'The executor sandbox is unavailable.')
-  const workspace = await configureOrdinaryDirectory(paths.workspace, 'The executor sandbox workspace')
-  const [base, current] = await Promise.all([
-    readBaseManifest(paths.baseManifest),
-    workspaceManifest(workspace),
-  ])
-  const changes = changesFrom(base, current)
-  if (changes.length > MAX_REVIEW_CHANGES) {
-    return {
-      changeCount: changes.length,
-      code: 'EXECUTOR_REVIEW_TOO_LARGE',
-      success: false,
-    }
-  }
-  const manifest = {
-    changes: changes.map(({ byteCount, kind, path }) => ({ byteCount, kind, path })),
-    runId,
-  }
+  const manifest = await promotionManifestForSandbox(stateDir, runId)
+  const changes = manifest.changes.map(({ base, draft, kind, path }) => ({
+    byteCount: draft?.byteCount ?? base!.byteCount,
+    kind,
+    path,
+  }))
   const result = {
     changeCount: changes.length,
-    changes: manifest.changes,
-    manifestDigest: digest(canonicalExecutorJson(manifest)),
+    changes,
+    manifestDigest: manifest.manifestDigest,
     success: true,
   }
   if (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_REVIEW_RESULT_BYTES) {
@@ -403,6 +401,37 @@ export const reviewSandboxWorkspace = async (
     }
   }
   return result
+}
+
+/**
+ * Reconstructs the exact, content-hash-bound manifest that a future native
+ * promotion helper must verify. This does not open the paired host root and
+ * never leaves the daemon; only its digest is included in review receipts.
+ */
+export const promotionManifestForSandbox = async (
+  stateDir: string,
+  runId: string,
+): Promise<SandboxPromotionManifest> => {
+  const paths = await sandboxPaths(stateDir, runId)
+  await assertOrdinaryDirectory(paths.root, 'The executor sandbox is unavailable.')
+  const workspace = await configureOrdinaryDirectory(paths.workspace, 'The executor sandbox workspace')
+  const [base, current] = await Promise.all([
+    readBaseManifest(paths.baseManifest),
+    workspaceManifest(workspace),
+  ])
+  const changes = changesFrom(base, current)
+  if (changes.length > MAX_REVIEW_CHANGES) {
+    throw new WorkspacePathError('The executor sandbox change set exceeds the review limit.')
+  }
+  const unsigned = {
+    changes,
+    protocolVersion: 1 as const,
+    runId: RunIdSchema.parse(runId),
+  }
+  return {
+    ...unsigned,
+    manifestDigest: digest(canonicalExecutorJson(unsigned)),
+  }
 }
 
 const ensureWriteParents = async (
