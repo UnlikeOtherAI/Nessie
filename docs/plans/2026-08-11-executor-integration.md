@@ -932,75 +932,8 @@ No file should become a general "execution helper" bucket; protocol, policy,
 pairing, command delivery, sandboxing, and tmux control stay separate and
 injectable.
 
-## Delivery sequence
-
-### 0. Contract and migration design
-
-This is a hard prerequisite, not a deferred implementation note. In the same
-change, write the executor protocol and threat model **and** update
-`external-tool-integration.md` to delete/supersede its unimplemented
-`McpServerInstance(protocol=remote)` lifecycle in favour of this sole paired
-reverse-connection substrate. Define exact ownership/visibility, the action
-matrix, retention, content handling, signature/key-rotation protocol, status
-transitions, error codes, command replay, result acknowledgement, cancellation,
-and how an uncertain command maps into the existing queue/tool-call/run
-recovery states. Define the availability resolver, exact
-`ExecutorAgentOperationGrant` semantics, private-admin succession/offboarding,
-candidate-handle consumption, required `ToolRegistrySource`/transport enum
-updates, the forced egress topology, guest-private auth-file boundary,
-`workspace.promote` manifest/commit protocol, and the step-up action policy.
-Add contract tests before an executor schema migration, companion pairing, or
-UI implementation can land.
-
-### 1. Pairing and visible control plane
-
-Deliver a reachable, no-execution slice:
-
-1. An owner chooses private, project, or organization scope and creates that
-   executor from `/agents/executors`. Private scope explicitly selects its user
-   and agent assignees (and any private administrators); project selection is
-   an explicit choice and is never inferred from the active session.
-2. The desktop companion (or headless daemon) consumes the pairing challenge;
-   the owner confirms the machine fingerprint and selects a strict initial
-   policy locally. Local configuration produces a signed revision proposal
-   only; it cannot activate a new operation.
-3. The daemon reports a signed descriptor and heartbeats. The owner can inspect
-   its policy, pause/drain/revoke it, and see its data boundary from the web
-   home and companion. A local policy revision remains pending until an
-   entitled person prepares and confirms descriptor activation; activation
-   requires fresh verification.
-4. Pairing replay, descriptor rollback, competing active connections, offline,
-   drain, and revoke all
-   produce deterministic status and audit receipts.
-5. Ship the empty-state and contract-backed **Executors → Attention** surface,
-   including direct links from a synthetic suspended tool call and the
-   companion. It is a hard prerequisite for a later mutation or
-   `coding.prompt`; no approval continuation can first appear without a home
-   and doorway.
-6. Ship the read-only **Access** and **Operations** tabs plus the shared
-   availability-explain API. They show exact effective user/agent operation
-   access and safe unavailability reasons, but do not execute work yet.
-7. Ship PA `availability_*`, inspection, pairing, and prepared-access-change
-   flows with web/desktop user confirmation and required verification. The PA
-   never gains a direct assignment or operation-grant mutation.
-
-The initial UI needs both the web home and the companion controls; a working
-API or daemon without either is not a completed slice.
-
-### 2. Read-only workspace sandbox
-
-Ship one concrete supported backend, or advertise no workspace operations on
-that platform. The initial companion grants one explicit, canonical read-only
-workspace root; file list/read reject traversal and symbolic links, use only
-relative paths, and have bounded output. It is deliberately not described as a
-micro-VM: the isolated COW sandbox is a prerequisite for any write, command,
-browser, or coding operation. Add the channel task/composer doorway, binding
-selection/pinning, registry projection, bounded result handling, and an
-inspect-safe activity receipt. Agent Designer's exact executor-operation grants
-and their PA prepare/confirmed-apply counterpart must be live before the
-composer can present a candidate.
-
 ## Delivery and verification
 
-The remaining delivery phases, hardening gates, and explicit non-goals are in
-[delivery and verification](2026-08-11-executor-integration/delivery-and-verification.md).
+The delivery sequence, hardening gates, and explicit non-goals are in the
+[delivery and verification](2026-08-11-executor-integration/delivery-and-verification.md)
+companion chapter.
