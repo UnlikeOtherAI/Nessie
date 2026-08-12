@@ -15,6 +15,17 @@ test('root checkout returns preserve the complete query when routing to credits'
   assert.equal(resolveRootLandingPath(cancelled), `/tokens${cancelled}`)
 })
 
+test('a native notification target wins over the default root landing route', () => {
+  const notificationPath =
+    '/channels/7786605b-1316-4a7a-8e8b-58b4a05e19b6/threads/31e71af1-29de-4cfe-8459-430d78dff174/replies/0bb5ff10-07be-4d11-82cb-7048a8cb7fc6'
+
+  assert.equal(resolveRootLandingPath('', notificationPath), notificationPath)
+  assert.equal(
+    resolveRootLandingPath('?uoa_billing=checkout_complete', notificationPath),
+    notificationPath,
+  )
+})
+
 test('only one exact checkout-return value activates billing behavior', () => {
   const invalidSearches = [
     '',

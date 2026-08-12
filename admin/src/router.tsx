@@ -4,6 +4,7 @@ import {
   useLocation,
 } from 'react-router-dom'
 import { resolveRootLandingPath } from './facades/billing/checkout-return'
+import { readNativePendingPushPath } from './lib/mobile-shell'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { SearchPage } from './pages/SearchPage'
@@ -48,7 +49,10 @@ import { WorkflowsPage } from './pages/WorkflowsPage'
 
 const RootRouteRedirect = () => {
   const { search } = useLocation()
-  return <Navigate to={resolveRootLandingPath(search)} replace />
+  // The native shell injects a tapped notification route before this SPA
+  // starts. Resolve it here, rather than first redirecting to /channels and
+  // replacing the notification destination with the default conversation.
+  return <Navigate to={resolveRootLandingPath(search, readNativePendingPushPath())} replace />
 }
 
 export const router = createBrowserRouter([
