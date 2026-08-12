@@ -7,6 +7,7 @@ import { enqueueRunMemoryConsolidation } from '../memory-consolidation.js'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { createMessageMentionAlerts } from '../mention-alerts.js'
 import { createAgentMessage } from './agent-message.js'
+import { enqueueInteractiveReplyPush } from './reply-push.js'
 import { buildScopes } from './scopes.js'
 import { foldWatchStatus } from './watch-status.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
@@ -167,6 +168,10 @@ export const completeRunExecution = async (
     ...(restricted ? { restricted: true } : {}),
     ...(reply ? { reply } : {}),
   })
+
+  if (!restricted) {
+    await enqueueInteractiveReplyPush(deps, payload, context, assistantMessage)
+  }
 
   // Agent-authored @mentions create the same durable alerts as human ones —
   // except for a restricted reply. An alert is a durable row plus a push

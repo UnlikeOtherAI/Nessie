@@ -1,0 +1,55 @@
+import { enqueueQueueJob } from '@nessie/db'
+import type { RunExecuteJobPayload } from '@nessie/schemas'
+import type { ExecutionDependencies, RunContext } from './types.js'
+
+const replyRecipientUserId = (payload: RunExecuteJobPayload): string | null => {
+  if (payload.interactive !== true) return null
+  if (payload.actorContext.actionContext.effectiveUserId) {
+    return payload.actorContext.actionContext.effectiveUserId
+  }
+  return payload.actorContext.actor.actorType === 'user'
+    ? payload.actorContext.actor.actorId
+    : null
+}
+
+/**
+ * Queue the completion of a live conversational turn for exactly the person
+ * who asked it. This intentionally bypasses the normal "members minus author"
+ * fan-out: an agent has no user author id, and the requester must not be
+ * excluded. The dispatch worker still rechecks live membership, preferences,
+ * exact foreground surface, and registered devices before sending.
+ */
+export const enqueueInteractiveReplyPush = async (
+  deps: Pick<ExecutionDependencies, 'prisma'>,
+  payload: RunExecuteJobPayload,
+  context: RunContext,
+  message: { content: string; id: string },
+): Promise<void> => {
+  const recipientUserId = replyRecipientUserId(payload)
+  if (!recipientUserId) return
+
+  try {
+    await enqueueQueueJob(deps.prisma, {
+      idempotencyKey: `push:${message.id}`,
+      payload: {
+        channelId: context.channel.id,
+        contentSnippet: message.content.slice(0, 140),
+        mentionUserIds: [],
+        messageId: message.id,
+        organizationId: context.channel.organizationId,
+        recipientUserIds: [recipientUserId],
+        threadId: context.run.threadId,
+      },
+      topic: 'push.dispatch',
+    })
+  } catch (error) {
+    // A response is already durable and visible in realtime. Retrying the run
+    // just to enqueue a notification could duplicate the reply, so leave the
+    // queue failure observable and preserve the completed turn.
+    console.error('[push] failed to enqueue interactive agent reply', {
+      error,
+      messageId: message.id,
+      runId: context.run.id,
+    })
+  }
+}

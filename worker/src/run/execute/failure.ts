@@ -13,6 +13,7 @@ import { isInteractiveRun } from './continuation.js'
 class SkipTerminalMessage extends Error {}
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 import { createAgentMessage } from './agent-message.js'
+import { enqueueInteractiveReplyPush } from './reply-push.js'
 
 export const handleRunExecutionFailure = async (
   deps: ExecutionDependencies,
@@ -82,6 +83,7 @@ export const handleRunExecutionFailure = async (
       role: errorMessage.role,
       ...(reply ? { reply } : {}),
     })
+    await enqueueInteractiveReplyPush(deps, payload, context, errorMessage)
   } catch (streamError) {
     if (streamError instanceof SkipTerminalMessage) {
       console.warn(

@@ -45,6 +45,7 @@ import {
   publishRunUpdated,
   publishTaskUpdated,
 } from './execute/realtime.js'
+import { enqueueInteractiveReplyPush } from './execute/reply-push.js'
 import { buildScopes } from './execute/scopes.js'
 import type { ExecutionDependencies, RunContext } from './execute/types.js'
 
@@ -252,6 +253,7 @@ const dispatchTurn = async (
 
 const finalizeTurn = async (
   deps: ExecutionDependencies,
+  payload: RunExecuteJobPayload,
   context: RunContext,
   outcome: ExternalTurnOutcome,
 ): Promise<void> => {
@@ -282,6 +284,7 @@ const finalizeTurn = async (
     messageId: message.id,
     role: 'assistant',
   })
+  await enqueueInteractiveReplyPush(deps, payload, context, message)
 
   await updateRunStatus(deps.prisma, context.run.id, outcome.runStatus)
   await updateTaskStatus(deps.prisma, context.task.id, outcome.runStatus === 'completed' ? 'done' : 'failed')
@@ -355,7 +358,7 @@ export const runExternalConversation = async (
       if (!resolution) {
         // Not actually an external-agent channel — end the run cleanly rather than
         // silently doing nothing (the branch should never be taken, but be safe).
-        await finalizeTurn(deps, context, {
+        await finalizeTurn(deps, payload, context, {
           content: 'This conversation is not connected to an external agent.',
           uiCards: [],
           runStatus: 'failed',
@@ -365,7 +368,7 @@ export const runExternalConversation = async (
       }
 
       if (resolution.kind === 'needs_setup') {
-        await finalizeTurn(deps, context, {
+        await finalizeTurn(deps, payload, context, {
           content: resolution.summary,
           uiCards: [needsSetupCard(resolution.slug, resolution.label, resolution.summary)],
           runStatus: 'completed',
@@ -382,13 +385,13 @@ export const runExternalConversation = async (
         prompt,
         callChat,
       )
-      await finalizeTurn(deps, context, outcome)
+      await finalizeTurn(deps, payload, context, outcome)
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[worker] external conversation run ${context.run.id} failed`, message)
     // Terminal failure without rethrow: no retry loop, no inference fallback.
-    await finalizeTurn(deps, context, {
+    await finalizeTurn(deps, payload, context, {
       content: 'I hit an unexpected error handling this request.',
       uiCards: [],
       runStatus: 'failed',

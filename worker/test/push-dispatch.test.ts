@@ -73,7 +73,13 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findMany: async () => state.creds,
     },
     channelMember: {
-      findMany: async () => state.members,
+      findMany: async ({ where }: {
+        where: { userId: { in?: string[]; not?: string } }
+      }) => state.members.filter((member) =>
+        where.userId.in
+          ? where.userId.in.includes(member.userId)
+          : member.userId !== where.userId.not,
+      ),
     },
     deviceToken: {
       findMany: async ({
@@ -228,6 +234,28 @@ test('skips a push when the recipient is actively viewing its channel', async ()
 
   assert.deepEqual(summary, { sent: 0, failed: 0, pruned: 0 })
   assert.deepEqual(apnsCalls, [])
+})
+
+test('sends an interactive agent reply to its explicit requester', async () => {
+  const state: FakeState = {
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('asking-user'), member('other-user')],
+    secrets: [apnsSecret()],
+    tokens: [
+      { id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' },
+      { id: 'other-token', userId: 'other-user', token: 'tok-other', platform: 'ios' },
+    ],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({ authorUserId: undefined, recipientUserIds: ['asking-user'] }),
+  )
+
+  assert.deepEqual(apnsCalls.map((target) => target.token), ['tok-asking'])
 })
 
 test('excludes the author and notifies only active organization members', async () => {

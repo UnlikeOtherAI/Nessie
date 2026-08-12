@@ -56,21 +56,29 @@ export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPay
 /**
  * `push.dispatch` queue job — emitted by the api right after a message is
  * published to realtime, consumed by the worker to fan APNs/FCM push out to the
- * channel members' registered devices. Ids are plain uuids (not branded) so the
- * worker can use them directly against Prisma. `contentSnippet` is the
- * already-truncated notification body; `mentionUserIds` carries the resolved
- * @mention user ids — mentioned recipients get distinct '<author> mentioned
- * you in <channel>' framing while unmentioned members keep standard framing.
+ * channel members' registered devices. Agent replies use `recipientUserIds` to
+ * notify the person who started the interactive turn, rather than treating the
+ * agent as a user author and accidentally excluding that person. Ids are plain
+ * uuids (not branded) so the worker can use them directly against Prisma.
+ * `contentSnippet` is the already-truncated notification body; `mentionUserIds`
+ * carries the resolved @mention user ids — mentioned recipients get distinct
+ * '<author> mentioned you in <channel>' framing while unmentioned members keep
+ * standard framing.
  */
 export const PushDispatchJobPayloadSchema = z.object({
   messageId: z.string().uuid(),
-  authorUserId: z.string().uuid(),
+  authorUserId: z.string().uuid().optional(),
+  /** Explicit recipient set for a private agent-reply completion notification. */
+  recipientUserIds: z.array(z.string().uuid()).min(1).optional(),
   channelId: z.string().uuid(),
   threadId: z.string().uuid(),
   organizationId: z.string().uuid(),
   contentSnippet: z.string(),
   mentionUserIds: z.array(z.string().uuid()),
-})
+}).refine(
+  (payload) => payload.authorUserId !== undefined || payload.recipientUserIds !== undefined,
+  { message: 'A push dispatch needs an author or explicit recipients.' },
+)
 export type PushDispatchJobPayload = z.infer<typeof PushDispatchJobPayloadSchema>
 
 /**

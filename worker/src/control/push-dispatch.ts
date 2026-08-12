@@ -13,9 +13,10 @@ import {
 
 /**
  * Worker consumer for the `push.dispatch` queue topic. Resolves the recipients
- * of a freshly-posted message (channel members minus the author), then hands the
- * built payload + recipient set to the shared {@link deliverToRecipients} core,
- * which loads credentials and fans out over native APNs/FCM + browser Web Push.
+ * of a freshly-posted message (channel members minus the author, or the explicit
+ * recipient of an interactive agent reply), then hands the built payload +
+ * recipient set to the shared {@link deliverToRecipients} core, which loads
+ * credentials and fans out over native APNs/FCM + browser Web Push.
  *
  * The senders, prisma client, and auth secret are injected (see
  * {@link PushDispatchDeps}) so the handler is fully unit-testable without any
@@ -62,13 +63,17 @@ export const handlePushDispatch = async (
   }
 
   // 2. Resolve recipients: active organization members of the channel minus
-  // the author, muted members, disabled push preferences, and users currently
-  // inside quiet hours. Channel rows are retained when somebody is
+  // the author, or the structurally-selected requester of an agent reply. In
+  // both cases, muted members, disabled push preferences, and users currently
+  // inside quiet hours are excluded. Channel rows are retained when somebody is
   // deactivated, so membership alone must never be treated as current access.
+  const recipientUserIds = payload.recipientUserIds
   const members = await deps.prisma.channelMember.findMany({
     where: {
       channelId: payload.channelId,
-      userId: { not: payload.authorUserId },
+      userId: recipientUserIds
+        ? { in: recipientUserIds }
+        : { not: payload.authorUserId },
       user: {
         organizationMembers: {
           some: { deactivatedAt: null, organizationId: payload.organizationId },
@@ -149,10 +154,12 @@ export const handlePushDispatch = async (
   }
 
   if (mentionedRecipientIds.length > 0) {
-    const author = await deps.prisma.user.findUnique({
-      where: { id: payload.authorUserId },
-      select: { displayName: true },
-    })
+    const author = payload.authorUserId
+      ? await deps.prisma.user.findUnique({
+          where: { id: payload.authorUserId },
+          select: { displayName: true },
+        })
+      : null
     const authorName = author?.displayName ?? 'Someone'
     const mentionTitle = channel?.label
       ? `${authorName} mentioned you in ${channel.label}`

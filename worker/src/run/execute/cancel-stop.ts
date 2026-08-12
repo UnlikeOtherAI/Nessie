@@ -16,6 +16,7 @@ import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 import type { BudgetStopStats } from './budget-stop.js'
 import { createAgentMessage } from './agent-message.js'
+import { enqueueInteractiveReplyPush } from './reply-push.js'
 
 // A run that ends because a human requested cancellation through
 // `POST /api/runs/:id/cancel`. The cooperative flag on the Run row is polled by
@@ -122,6 +123,7 @@ export const finalizeCancelledRun = async (
     role: 'assistant',
     ...(reply ? { reply } : {}),
   })
+  await enqueueInteractiveReplyPush(deps, payload, context, message)
 
   await updateRunStatus(deps.prisma, context.run.id, 'cancelled')
   await updateTaskStatus(deps.prisma, context.task.id, 'cancelled')

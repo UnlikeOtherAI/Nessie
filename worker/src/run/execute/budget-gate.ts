@@ -7,6 +7,7 @@ import { publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
 import { createAgentMessage } from './agent-message.js'
+import { enqueueInteractiveReplyPush } from './reply-push.js'
 
 type BudgetBlockOptions = {
   beforeBlockedRunTerminalization?: () => Promise<void>
@@ -14,6 +15,7 @@ type BudgetBlockOptions = {
 
 export const terminalizeBudgetBlockedRun = async (
   deps: ExecutionDependencies,
+  payload: RunExecuteJobPayload,
   context: RunContext,
   reason: string,
   options: BudgetBlockOptions,
@@ -43,6 +45,7 @@ export const terminalizeBudgetBlockedRun = async (
     role: blockMessage.role,
     ...(reply ? { reply } : {}),
   })
+  await enqueueInteractiveReplyPush(deps, payload, context, blockMessage)
   await updateRunStatus(deps.prisma, context.run.id, 'failed')
   await updateTaskStatus(deps.prisma, context.task.id, 'failed')
   await setAgentStatus(deps.prisma, context.agent.id, 'idle')
@@ -96,7 +99,7 @@ export const applyBudgetGate = async (
     )
   }
   if (budgetDecision.action === 'block') {
-    await terminalizeBudgetBlockedRun(deps, context, budgetDecision.reason, options)
+    await terminalizeBudgetBlockedRun(deps, payload, context, budgetDecision.reason, options)
     // Alerting runs AFTER the verdict is fully applied and never throws, so the
     // blocking behaviour is byte-identical whether or not an alert fires.
     await maybeEmitBudgetAlerts(deps, context, evaluation)

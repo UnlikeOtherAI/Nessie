@@ -24,7 +24,7 @@ test('budget blocking runs the handoff failure guard before terminal writes', as
   } as unknown as RunContext
 
   await assert.rejects(
-    terminalizeBudgetBlockedRun(deps, context, 'budget exceeded', {
+    terminalizeBudgetBlockedRun(deps, {} as never, context, 'budget exceeded', {
       beforeBlockedRunTerminalization: async () => {
         calls.push('handoff.failure')
         throw guardError
