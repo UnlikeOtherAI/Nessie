@@ -336,8 +336,11 @@ The dispatch loop is live (no standalone gateway yet — the worker calls the
   realtime publish (`api/src/routes/threads.ts`, fire-and-forget; a push failure
   never breaks message posting). Payload (`PushDispatchJobPayloadSchema` in
   `@nessie/schemas`): `{ messageId, authorUserId, channelId, threadId,
-  organizationId, contentSnippet (≤140 chars), mentionUserIds[] }`. Enqueue
-  helper: `enqueuePushDispatch` in `api/src/queue/pgqueue.ts`.
+  organizationId, contentSnippet (≤140 chars), mentionUserIds[] }`. Interactive
+  agent replies use the same consumer with `recipientUserIds[]` instead of an
+  author id, so the person who asked receives the completed reply even after
+  leaving the app. Enqueue helper: `enqueuePushDispatch` in
+  `api/src/queue/pgqueue.ts`.
 - The worker consumer (`worker/src/control/push-dispatch.ts`, registered in
   `worker/src/index.ts`) loads the `push_credentials` rows (early-returns if none
   configured), resolves recipients = channel members minus the author

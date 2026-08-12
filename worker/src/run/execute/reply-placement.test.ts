@@ -287,7 +287,7 @@ test('terminalizeBudgetBlockedRun attaches rootMessageId and emits reply events'
   const { deps, messageCreates, queryRawCalls, ws } = makeDeps()
   const context = makeContext(ROOT_MESSAGE_ID)
 
-  await terminalizeBudgetBlockedRun(deps, context, 'budget exceeded', {})
+  await terminalizeBudgetBlockedRun(deps, makePayload(), context, 'budget exceeded', {})
 
   assert.equal(messageCreates.length, 1)
   assert.equal(messageCreates[0]!.data.rootMessageId, ROOT_MESSAGE_ID)

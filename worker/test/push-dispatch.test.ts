@@ -60,6 +60,9 @@ type FakeState = {
   tokens: TokenRow[]
   secrets: SecretRow[]
   channel: { label: string } | null
+  message?: { agentId: string | null; basisScopes: { scopeId: string; scopeType: string }[] } | null
+  disclosureGrants?: { grantedByUserId: string }[]
+  activeOrganizationMemberIds?: string[]
   deleted: string[]
   deliveries?: DeliveryRow[]
   surfaceViewers?: SurfaceViewer[]
@@ -73,7 +76,20 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findMany: async () => state.creds,
     },
     channelMember: {
-      findMany: async () => state.members,
+      findMany: async ({ where }: {
+        where: { userId: string | { in?: string[]; not?: string } }
+      }) => {
+        if (typeof where.userId === 'string') {
+          return state.members
+            .filter((member) => member.userId === where.userId)
+            .map((member) => ({ channelId: 'channel-1', ...member }))
+        }
+        return state.members.filter((member) =>
+          where.userId.in
+            ? where.userId.in.includes(member.userId)
+            : member.userId !== where.userId.not,
+        )
+      },
     },
     deviceToken: {
       findMany: async ({
@@ -91,6 +107,20 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     channel: {
       findUnique: async () => state.channel,
     },
+    message: {
+      findUnique: async () => state.message ?? null,
+    },
+    teamMember: { findMany: async () => [] },
+    projectMember: { findMany: async () => [] },
+    organizationMember: {
+      findFirst: async ({ where }: { where: { userId: string } }) =>
+        state.activeOrganizationMemberIds === undefined
+        || state.activeOrganizationMemberIds.includes(where.userId)
+          ? { id: 'active-membership' }
+          : null,
+    },
+    disclosureGrant: { findMany: async () => state.disclosureGrants ?? [] },
+    scopeDisclosureGrant: { findMany: async () => [] },
     mcpOAuthSecret: {
       findUnique: async ({ where }: { where: { ref: string } }) =>
         state.secrets.find((s) => s.ref === where.ref) ?? null,
@@ -227,6 +257,116 @@ test('skips a push when the recipient is actively viewing its channel', async ()
   )
 
   assert.deepEqual(summary, { sent: 0, failed: 0, pruned: 0 })
+  assert.deepEqual(apnsCalls, [])
+})
+
+test('sends an interactive agent reply to its explicit requester', async () => {
+  const state: FakeState = {
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('asking-user'), member('other-user')],
+    secrets: [apnsSecret()],
+    tokens: [
+      { id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' },
+      { id: 'other-token', userId: 'other-user', token: 'tok-other', platform: 'ios' },
+    ],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({ authorUserId: undefined, recipientUserIds: ['asking-user'] }),
+  )
+
+  assert.deepEqual(apnsCalls.map((target) => target.token), ['tok-asking'])
+})
+
+test('sends a generic protected reply only when its requester still has access', async () => {
+  const state: FakeState = {
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('asking-user')],
+    message: {
+      agentId: 'agent-1',
+      basisScopes: [{ scopeId: 'channel-1', scopeType: 'channel' }],
+    },
+    secrets: [apnsSecret()],
+    tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
+  }
+  const { senders, apnsCalls, apnsPayloads } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({
+      authorUserId: undefined,
+      contentSnippet: 'Restricted source text must not reach the lock screen.',
+      contentVisibility: 'generic',
+      mentionUserIds: [],
+      recipientUserIds: ['asking-user'],
+    }),
+  )
+
+  assert.deepEqual(apnsCalls.map((target) => target.token), ['tok-asking'])
+  assert.equal(apnsPayloads[0]?.body, 'An agent reply is ready.')
+})
+
+test('withholds a generic protected reply after its source access is revoked', async () => {
+  const state: FakeState = {
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('asking-user')],
+    message: {
+      agentId: 'agent-1',
+      basisScopes: [{ scopeId: 'project-that-was-revoked', scopeType: 'project' }],
+    },
+    secrets: [apnsSecret()],
+    tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({
+      authorUserId: undefined,
+      contentVisibility: 'generic',
+      mentionUserIds: [],
+      recipientUserIds: ['asking-user'],
+    }),
+  )
+
+  assert.deepEqual(apnsCalls, [])
+})
+
+test('withholds a generic protected reply when its grantor has been deactivated', async () => {
+  const state: FakeState = {
+    activeOrganizationMemberIds: ['asking-user'],
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    disclosureGrants: [{ grantedByUserId: 'deactivated-grantor' }],
+    members: [member('asking-user')],
+    message: {
+      agentId: 'agent-1',
+      basisScopes: [{ scopeId: 'deactivated-grantor', scopeType: 'user' }],
+    },
+    secrets: [apnsSecret()],
+    tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({
+      authorUserId: undefined,
+      contentVisibility: 'generic',
+      mentionUserIds: [],
+      recipientUserIds: ['asking-user'],
+    }),
+  )
+
   assert.deepEqual(apnsCalls, [])
 })
 

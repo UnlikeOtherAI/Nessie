@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { canUserReadDisclosureBasis, type BasisScopeRow } from '@nessie/runtime'
 import type { PushDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
@@ -13,9 +14,10 @@ import {
 
 /**
  * Worker consumer for the `push.dispatch` queue topic. Resolves the recipients
- * of a freshly-posted message (channel members minus the author), then hands the
- * built payload + recipient set to the shared {@link deliverToRecipients} core,
- * which loads credentials and fans out over native APNs/FCM + browser Web Push.
+ * of a freshly-posted message (channel members minus the author, or the explicit
+ * recipient of an interactive agent reply), then hands the built payload +
+ * recipient set to the shared {@link deliverToRecipients} core, which loads
+ * credentials and fans out over native APNs/FCM + browser Web Push.
  *
  * The senders, prisma client, and auth secret are injected (see
  * {@link PushDispatchDeps}) so the handler is fully unit-testable without any
@@ -26,7 +28,16 @@ export type { PushDispatchSummary, PushSenders } from './push-delivery-core.js'
 
 /** Minimal Prisma surface the dispatch handler touches — keeps tests light. */
 export type PushDispatchPrisma = PushDeliveryPrisma &
-  Pick<PrismaClient, 'channelMember' | 'channel' | 'user'>
+  Pick<PrismaClient,
+    | 'channelMember'
+    | 'channel'
+    | 'disclosureGrant'
+    | 'message'
+    | 'organizationMember'
+    | 'projectMember'
+    | 'scopeDisclosureGrant'
+    | 'teamMember'
+    | 'user'>
 
 export type PushDispatchDeps = {
   prisma: PushDispatchPrisma
@@ -46,6 +57,13 @@ export type PushDispatchDeps = {
   retryDelayMs?: (completedAttempt: number) => number
 }
 
+type GenericReplyMessage = {
+  agentId: string | null
+  basisScopes: BasisScopeRow[]
+}
+
+const genericReplyBody = 'An agent reply is ready.'
+
 export const handlePushDispatch = async (
   deps: PushDispatchDeps,
   payload: PushDispatchJobPayload,
@@ -62,13 +80,17 @@ export const handlePushDispatch = async (
   }
 
   // 2. Resolve recipients: active organization members of the channel minus
-  // the author, muted members, disabled push preferences, and users currently
-  // inside quiet hours. Channel rows are retained when somebody is
+  // the author, or the structurally-selected requester of an agent reply. In
+  // both cases, muted members, disabled push preferences, and users currently
+  // inside quiet hours are excluded. Channel rows are retained when somebody is
   // deactivated, so membership alone must never be treated as current access.
+  const recipientUserIds = payload.recipientUserIds
   const members = await deps.prisma.channelMember.findMany({
     where: {
       channelId: payload.channelId,
-      userId: { not: payload.authorUserId },
+      userId: recipientUserIds
+        ? { in: recipientUserIds }
+        : { not: payload.authorUserId },
       user: {
         organizationMembers: {
           some: { deactivatedAt: null, organizationId: payload.organizationId },
@@ -88,6 +110,40 @@ export const handlePushDispatch = async (
     where: { id: { in: unmutedRecipientIds } },
     select: { id: true, preferences: true },
   })
+  // A protected reply never contains content in a notification. Its requester
+  // receives a generic completion only if they still pass the exact same
+  // basis + grant predicate that gates the conversation feed at this moment.
+  // That makes membership and grant revocation effective before a queued push
+  // can reach a lock screen.
+  const protectedReply = payload.contentVisibility === 'generic'
+  const replyMessage: GenericReplyMessage | null = protectedReply
+    ? await deps.prisma.message.findUnique({
+      where: { id: payload.messageId },
+      select: {
+        agentId: true,
+        basisScopes: { select: { scopeId: true, scopeType: true } },
+      },
+    })
+    : null
+  if (protectedReply && !replyMessage) {
+    return summary
+  }
+  const entitledUsers = protectedReply && replyMessage
+    ? (await Promise.all(users.map(async (user) => ({
+      user,
+      readable: await canUserReadDisclosureBasis(deps.prisma, {
+        agentId: replyMessage.agentId,
+        basis: replyMessage.basisScopes,
+        channelId: payload.channelId,
+        messageId: payload.messageId,
+        organizationId: payload.organizationId,
+        userId: user.id,
+      }),
+    })))).filter((entry) => entry.readable).map((entry) => entry.user)
+    : users
+  if (entitledUsers.length === 0) {
+    return summary
+  }
   const now = deps.now?.() ?? new Date()
   // 3. Build the notification payloads (deep-link data + per-channel
   // coalescing). Mentioned recipients get distinct mention framing; the rest
@@ -100,19 +156,21 @@ export const handlePushDispatch = async (
     select: { label: true },
   })
   const channelLabel = channel?.label ?? 'New message'
-  const mentionUserIds = new Set(payload.mentionUserIds)
-  const mentionedRecipientIds = users
+  const mentionUserIds = new Set(protectedReply ? [] : payload.mentionUserIds)
+  const mentionedRecipientIds = entitledUsers
     .filter((user) => mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'mentions'))
     .map((user) => user.id)
-  const otherRecipientIds = users
+  const otherRecipientIds = entitledUsers
     .filter((user) => !mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
     .map((user) => user.id)
 
   const buildPayload = (title: string): PushPayload => ({
     title,
-    body: payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
+    body: protectedReply
+      ? genericReplyBody
+      : payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
     data: {
       channelId: payload.channelId,
       threadId: payload.threadId,
@@ -149,10 +207,12 @@ export const handlePushDispatch = async (
   }
 
   if (mentionedRecipientIds.length > 0) {
-    const author = await deps.prisma.user.findUnique({
-      where: { id: payload.authorUserId },
-      select: { displayName: true },
-    })
+    const author = payload.authorUserId
+      ? await deps.prisma.user.findUnique({
+          where: { id: payload.authorUserId },
+          select: { displayName: true },
+        })
+      : null
     const authorName = author?.displayName ?? 'Someone'
     const mentionTitle = channel?.label
       ? `${authorName} mentioned you in ${channel.label}`

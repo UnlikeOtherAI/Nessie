@@ -57,6 +57,13 @@ alert kinds are the source for the Projects and Knowledge counts.
    mention, quiet-hours, and channel-mute rules continue to apply. This extends
    the shared preferences schema, merge request contract, worker preference
    kind map, and Settings UI together.
+7. A live interactive agent turn notifies only its originating user when the
+   reply becomes durable and they are no longer viewing that exact channel.
+   Every terminal route (normal reply, reaction-only answer, cancellation,
+   budget stop, error, and external-agent reply) shares one run-scoped queue
+   idempotency key. A reply carrying a disclosure basis never exposes its text:
+   dispatch rechecks the requester's live membership and grants against the
+   stored basis, then sends only the generic “An agent reply is ready” body.
 
 ## Entitlement and read rules
 
@@ -138,7 +145,8 @@ server state into web and native presentation.
   preference/quiet-hour filtering.
 - Worker tests: APNs/FCM/Web Push fan-out, exact-surface suppression, retry,
   dead-token handling, privacy-preserving private alert dispatch, and
-  revoked-access suppression for both new categories.
+  revoked-access suppression for both new categories; interactive agent-reply
+  routing, generic protected-reply delivery, and run-level notification dedupe.
 - Admin tests: counters, scoped clear mutations, and project-tab badges.
 - Native tests/export: bridge message validation, server-total iOS badge
   updates, OS-notification dismissal, and iPhone/iPad/Android tab badges.
