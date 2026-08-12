@@ -280,21 +280,44 @@ export const ExecutorCommandReceiptSchema = z
   .strict()
 export type ExecutorCommandReceipt = z.infer<typeof ExecutorCommandReceiptSchema>
 
-export const ExecutorAccessChangeKindSchema = z.enum([
-  'private_assignment',
-  'agent_operation_grant',
-])
-export type ExecutorAccessChangeKind = z.infer<typeof ExecutorAccessChangeKindSchema>
+export const ExecutorLifecycleActionSchema = z.enum(['pause', 'resume', 'drain', 'revoke'])
+export type ExecutorLifecycleAction = z.infer<typeof ExecutorLifecycleActionSchema>
 
-export const ExecutorAccessChangePrepareSchema = z
-  .object({
-    executorId: ExecutorIdSchema,
-    kind: ExecutorAccessChangeKindSchema,
-    change: NonEmptyRecordSchema,
-  })
-  .strict()
-export type ExecutorAccessChangePrepare = z.infer<
-  typeof ExecutorAccessChangePrepareSchema
+export const ExecutorPrivateAssignmentPrincipalSchema = z.discriminatedUnion(
+  'principalKind',
+  [
+    z.object({ principalKind: z.literal('user'), userId: UserIdSchema }).strict(),
+    z.object({ principalKind: z.literal('agent'), agentId: AgentIdSchema }).strict(),
+  ],
+)
+export type ExecutorPrivateAssignmentPrincipal = z.infer<
+  typeof ExecutorPrivateAssignmentPrincipalSchema
+>
+
+export const ExecutorAccessChangeRequestSchema = z.union([
+  z.object({
+    kind: z.literal('private_assignment'),
+    action: z.literal('set'),
+    assignment: ExecutorPrivateAssignmentSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal('private_assignment'),
+    action: z.literal('remove'),
+    principal: ExecutorPrivateAssignmentPrincipalSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal('agent_operation_grant'),
+    agentId: AgentIdSchema,
+    operationKey: ExecutorOperationKeySchema,
+    state: ExecutorAgentOperationGrantStateSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal('lifecycle'),
+    action: ExecutorLifecycleActionSchema,
+  }).strict(),
+])
+export type ExecutorAccessChangeRequest = z.infer<
+  typeof ExecutorAccessChangeRequestSchema
 >
 
 export const ExecutorAccessChangeConfirmationSchema = z
@@ -306,4 +329,107 @@ export const ExecutorAccessChangeConfirmationSchema = z
   .strict()
 export type ExecutorAccessChangeConfirmation = z.infer<
   typeof ExecutorAccessChangeConfirmationSchema
+>
+
+export const ExecutorRecordResponseSchema = z.object({
+  id: ExecutorIdSchema,
+  scope: ExecutorScopeSchema,
+  label: z.string().min(1),
+  profiles: z.array(ExecutorProfileSchema),
+  platformFacts: z.record(z.string(), z.unknown()),
+  machineKeyFingerprint: z.string().optional(),
+  status: ExecutorStatusSchema,
+  authorizationRevision: z.number().int().positive(),
+  lastSeenAt: TimestampSchema.optional(),
+  statusDetail: z.string().optional(),
+  createdAt: TimestampSchema,
+  updatedAt: TimestampSchema,
+})
+export type ExecutorRecordResponse = z.infer<typeof ExecutorRecordResponseSchema>
+
+export const ExecutorPairingInvitationResponseSchema = z.object({
+  enrollmentId: ExecutorEnrollmentIdSchema,
+  challenge: z.string().min(32),
+  expiresAt: TimestampSchema,
+})
+export type ExecutorPairingInvitationResponse = z.infer<
+  typeof ExecutorPairingInvitationResponseSchema
+>
+
+export const ExecutorCreateResponseSchema = z.object({
+  executor: ExecutorRecordResponseSchema,
+  invitation: ExecutorPairingInvitationResponseSchema,
+})
+export type ExecutorCreateResponse = z.infer<typeof ExecutorCreateResponseSchema>
+
+export const PendingExecutorEnrollmentResponseSchema = z.object({
+  executorId: ExecutorIdSchema,
+  fingerprint: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  descriptorDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  expiresAt: TimestampSchema,
+})
+export type PendingExecutorEnrollmentResponse = z.infer<
+  typeof PendingExecutorEnrollmentResponseSchema
+>
+
+export const ExecutorPrivateAssignmentResponseSchema = z.discriminatedUnion(
+  'principalKind',
+  [
+    z.object({
+      principalKind: z.literal('user'),
+      role: z.enum(['use', 'admin']),
+      userId: UserIdSchema,
+    }).strict(),
+    z.object({
+      agentId: AgentIdSchema,
+      principalKind: z.literal('agent'),
+      role: z.literal('use'),
+    }).strict(),
+  ],
+)
+export type ExecutorPrivateAssignmentResponse = z.infer<
+  typeof ExecutorPrivateAssignmentResponseSchema
+>
+
+export const ExecutorAccessViewResponseSchema = z.object({
+  canManage: z.boolean(),
+  executorId: ExecutorIdSchema,
+  effectiveAccess: z.object({
+    organizationRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullable(),
+    privateAssignment: z.enum(['none', 'use', 'admin']),
+    projectRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullable(),
+  }).strict(),
+  operationGrants: z.array(z.object({
+    agentId: AgentIdSchema,
+    operationKey: ExecutorOperationKeySchema,
+    state: ExecutorAgentOperationGrantStateSchema,
+    updatedAt: TimestampSchema,
+  }).strict()).optional(),
+  privateAssignments: z.array(ExecutorPrivateAssignmentResponseSchema).optional(),
+})
+export type ExecutorAccessViewResponse = z.infer<
+  typeof ExecutorAccessViewResponseSchema
+>
+
+export const ExecutorAccessChangeResponseSchema = z.object({
+  accessChangeId: ExecutorAccessChangeIdSchema,
+  executorId: ExecutorIdSchema,
+  change: z.record(z.string(), z.unknown()),
+  expiresAt: TimestampSchema,
+  requiresFreshVerification: z.boolean(),
+  status: z.enum(['pending', 'confirmed', 'rejected', 'expired', 'consumed']),
+})
+export type ExecutorAccessChangeResponse = z.infer<
+  typeof ExecutorAccessChangeResponseSchema
+>
+
+export const PreparedExecutorAccessChangeResponseSchema = z.object({
+  accessChangeId: ExecutorAccessChangeIdSchema,
+  confirmationToken: Base64UrlSchema.min(32),
+  executorId: ExecutorIdSchema,
+  expiresAt: TimestampSchema,
+  requiresFreshVerification: z.boolean(),
+})
+export type PreparedExecutorAccessChangeResponse = z.infer<
+  typeof PreparedExecutorAccessChangeResponseSchema
 >

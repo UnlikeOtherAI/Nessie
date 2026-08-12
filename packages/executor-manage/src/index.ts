@@ -21,17 +21,22 @@ export {
 } from './executor-pairing.js'
 export {
   createExecutor,
+  getExecutorAccessView,
   getExecutorForManagement,
   getExecutorForUser,
   listVisibleExecutors,
   type CreateExecutorInput,
   type ExecutorPairingInvitation,
   type ExecutorRecord,
+  type ExecutorAccessView,
 } from './executor-records.js'
 export {
   removePrivateAssignment,
+  removePrivateAssignmentInTransaction,
   setExecutorAgentOperationGrant,
+  setExecutorAgentOperationGrantInTransaction,
   setPrivateAssignment,
+  setPrivateAssignmentInTransaction,
   type AgentOperationGrantMutation,
   type PrivateAssignmentMutation,
   type PrivateAssignmentRemoval,
@@ -40,5 +45,15 @@ export {
   nextExecutorLifecycleStatus,
   reviewExecutorDescriptor,
   transitionExecutorLifecycle,
+  transitionExecutorLifecycleInTransaction,
   type ExecutorLifecycleAction,
 } from './executor-lifecycle.js'
+export {
+  confirmExecutorAccessChange,
+  getExecutorAccessChangeForUser,
+  prepareExecutorAccessChange,
+  rejectExecutorAccessChange,
+  requiresFreshExecutorVerification,
+  type ExecutorAccessChange,
+  type PreparedExecutorAccessChange,
+} from './executor-access-changes.js'

@@ -1,43 +1,53 @@
 import {
+  confirmExecutorAccessChange,
   confirmExecutorEnrollment,
   createExecutor,
   ExecutorError,
+  getExecutorAccessChangeForUser,
+  getExecutorAccessView,
   getExecutorForUser,
   getPendingExecutorEnrollment,
   listVisibleExecutors,
-  removePrivateAssignment,
-  setExecutorAgentOperationGrant,
-  setPrivateAssignment,
+  prepareExecutorAccessChange,
+  rejectExecutorAccessChange,
   submitExecutorEnrollment,
   reviewExecutorDescriptor,
-  transitionExecutorLifecycle,
 } from '@nessie/executor-manage'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import {
+  ConfirmExecutorAccessChangeBodySchema,
   ConfirmExecutorEnrollmentBodySchema,
   CreateExecutorBodySchema,
   CreateExecutorResponseSchema,
+  ExecutorAccessChangeRecordSchema,
+  ExecutorAccessViewSchema,
   ExecutorRecordSchema,
   PendingExecutorEnrollmentSchema,
-  ExecutorLifecycleBodySchema,
-  RemovePrivateAssignmentParamsSchema,
+  PrepareExecutorAccessChangeBodySchema,
+  PreparedExecutorAccessChangeSchema,
   ReviewExecutorDescriptorBodySchema,
-  SetExecutorAgentOperationGrantBodySchema,
-  SetPrivateAssignmentBodySchema,
   SubmitExecutorEnrollmentBodySchema,
 } from '../contracts.js'
+import { verifyPassword } from '../auth/password.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
+import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import type { RouteDeps } from './types.js'
 
 const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
   if (!(error instanceof ExecutorError)) return false
   const status = error.code === 'EXECUTOR_NOT_FOUND'
+    || error.code === 'EXECUTOR_ACCESS_CHANGE_NOT_FOUND'
     ? 404
     : error.code === 'SCOPE_ENTITLEMENT_DENIED'
       ? 403
+      : error.code === 'EXECUTOR_FRESH_VERIFICATION_REQUIRED'
+        ? 401
       : error.code === 'EXECUTOR_STATE_TRANSITION_INVALID'
           || error.code === 'EXECUTOR_PRIVATE_FINAL_ADMIN_REQUIRED'
+          || error.code === 'EXECUTOR_ACCESS_CHANGE_STALE'
+          || error.code === 'EXECUTOR_ACCESS_CHANGE_EXPIRED'
         ? 409
         : 400
   sendApiError(reply, status, error.code, error.message)
@@ -50,7 +60,7 @@ const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
  * of the one-time pairing challenge plus its Ed25519 machine key.
  */
 export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext } = deps
+  const { config, prisma, rateLimiter, requireActorContext } = deps
 
   app.get('/api/executors', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -73,6 +83,32 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     }
   })
 
+  app.post('/api/executor-access-changes/:accessChangeId/reject', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(ConfirmExecutorAccessChangeBodySchema, request.body, reply)
+    if (!body) return reply
+    const { accessChangeId } = request.params as { accessChangeId: string }
+    try {
+      const result = await rejectExecutorAccessChange(prisma, actorContext, {
+        accessChangeId,
+        confirmationToken: body.confirmationToken,
+      })
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'executor.access_change.rejected',
+        resourceType: 'executor_access_change',
+        resourceId: accessChangeId,
+        outcome: 'success',
+        metadata: { executorId: result.executorId },
+      })
+      return createApiResponse({ rejected: true })
+    } catch (error) {
+      if (sendExecutorError(reply, error)) return reply
+      throw error
+    }
+  })
+
   app.get('/api/executors/:executorId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -83,6 +119,18 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       return reply
     }
     return createApiResponse(ExecutorRecordSchema.parse(found.executor))
+  })
+
+  app.get('/api/executors/:executorId/access', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const { executorId } = request.params as { executorId: string }
+    const access = await getExecutorAccessView(prisma, actorContext, executorId)
+    if (!access) {
+      sendApiError(reply, 404, 'EXECUTOR_NOT_FOUND', 'Executor not found')
+      return reply
+    }
+    return createApiResponse(ExecutorAccessViewSchema.parse(access))
   })
 
   app.get('/api/executors/:executorId/pairing-pending', async (request, reply) => {
@@ -112,77 +160,124 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     }
   })
 
-  app.put('/api/executors/:executorId/private-assignments', async (request, reply) => {
+  app.post('/api/executor-access-changes', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    const { executorId } = request.params as { executorId: string }
-    const body = parseInput(SetPrivateAssignmentBodySchema, request.body, reply)
+    const body = parseInput(PrepareExecutorAccessChangeBodySchema, request.body, reply)
     if (!body) return reply
     try {
-      const authorizationRevision = await setPrivateAssignment(prisma, actorContext, {
-        executorId,
-        assignment: body.assignment,
+      const prepared = await prepareExecutorAccessChange(prisma, actorContext, body)
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'executor.access_change.prepared',
+        resourceType: 'executor_access_change',
+        resourceId: prepared.accessChangeId,
+        outcome: 'success',
+        metadata: {
+          executorId: prepared.executorId,
+          requiresFreshVerification: prepared.requiresFreshVerification,
+        },
       })
-      return createApiResponse({ authorizationRevision })
+      return createApiResponse(PreparedExecutorAccessChangeSchema.parse({
+        ...prepared,
+        expiresAt: prepared.expiresAt.toISOString(),
+      }))
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply
       throw error
     }
   })
 
-  app.delete(
-    '/api/executors/:executorId/private-assignments/:principalKind/:principalId',
-    async (request, reply) => {
-      const actorContext = requireActorContext(request, reply)
-      if (!actorContext) return reply
-      const params = parseInput(RemovePrivateAssignmentParamsSchema, request.params, reply)
-      if (!params) return reply
-      try {
-        const authorizationRevision = await removePrivateAssignment(prisma, actorContext, {
-          executorId: params.executorId,
-          principal: params.principalKind === 'user'
-            ? { principalKind: 'user', userId: params.principalId }
-            : { principalKind: 'agent', agentId: params.principalId },
-        })
-        return createApiResponse({ authorizationRevision })
-      } catch (error) {
-        if (sendExecutorError(reply, error)) return reply
-        throw error
+  app.get('/api/executor-access-changes/:accessChangeId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const { accessChangeId } = request.params as { accessChangeId: string }
+    const found = await getExecutorAccessChangeForUser(prisma, actorContext, accessChangeId)
+    if (!found) {
+      sendApiError(reply, 404, 'EXECUTOR_ACCESS_CHANGE_NOT_FOUND', 'Access change not found')
+      return reply
+    }
+    return createApiResponse(ExecutorAccessChangeRecordSchema.parse({
+      ...found,
+      expiresAt: found.expiresAt.toISOString(),
+    }))
+  })
+
+  app.post('/api/executor-access-changes/:accessChangeId/confirm', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(ConfirmExecutorAccessChangeBodySchema, request.body, reply)
+    if (!body) return reply
+    const { accessChangeId } = request.params as { accessChangeId: string }
+    const accessChange = await getExecutorAccessChangeForUser(prisma, actorContext, accessChangeId)
+    if (!accessChange) {
+      sendApiError(reply, 404, 'EXECUTOR_ACCESS_CHANGE_NOT_FOUND', 'Access change not found')
+      return reply
+    }
+    let freshVerificationSatisfied = false
+    if (accessChange.requiresFreshVerification) {
+      if (
+        !(await guardAuthRequest(
+          rateLimiter,
+          { bucket: RATE_LIMIT_BUCKETS.stepUpIp, rule: config.api.rateLimit.stepUpIp },
+          request,
+          reply,
+          {
+            account: {
+              bucket: RATE_LIMIT_BUCKETS.stepUpAccount,
+              rule: config.api.rateLimit.stepUpAccount,
+            },
+            accountIdentity: actorContext.actor.actorId,
+            auditContext: actorContext,
+          },
+        ))
+      ) {
+        return reply
       }
-    },
-  )
-
-  app.put('/api/executors/:executorId/agent-operation-grants', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    const { executorId } = request.params as { executorId: string }
-    const body = parseInput(SetExecutorAgentOperationGrantBodySchema, request.body, reply)
-    if (!body) return reply
-    try {
-      const authorizationRevision = await setExecutorAgentOperationGrant(prisma, actorContext, {
-        executorId,
-        ...body,
+      const user = await prisma.user.findUnique({
+        where: { id: actorContext.actor.actorId },
+        select: { passwordHash: true },
       })
-      return createApiResponse({ authorizationRevision })
-    } catch (error) {
-      if (sendExecutorError(reply, error)) return reply
-      throw error
+      if (!user?.passwordHash) {
+        sendApiError(
+          reply,
+          409,
+          'EXECUTOR_FRESH_VERIFICATION_UNAVAILABLE',
+          'This account needs an SSO or WebAuthn verification factor before it can confirm this change.',
+        )
+        return reply
+      }
+      if (!body.currentPassword || !(await verifyPassword(body.currentPassword, user.passwordHash))) {
+        sendApiError(reply, 401, 'EXECUTOR_FRESH_VERIFICATION_REQUIRED', 'Current password verification failed')
+        return reply
+      }
+      freshVerificationSatisfied = true
     }
-  })
-
-  app.post('/api/executors/:executorId/lifecycle', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    const { executorId } = request.params as { executorId: string }
-    const body = parseInput(ExecutorLifecycleBodySchema, request.body, reply)
-    if (!body) return reply
     try {
-      const result = await transitionExecutorLifecycle(prisma, actorContext, {
-        executorId,
-        action: body.action,
+      const result = await confirmExecutorAccessChange(prisma, actorContext, {
+        accessChangeId,
+        confirmationToken: body.confirmationToken,
+        freshVerificationSatisfied,
+      })
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'executor.access_change.confirmed',
+        resourceType: 'executor_access_change',
+        resourceId: accessChangeId,
+        outcome: 'success',
+        metadata: { executorId: result.executorId },
       })
       return createApiResponse(result)
     } catch (error) {
+      if (error instanceof ExecutorError && error.code === 'EXECUTOR_ACCESS_CHANGE_EXPIRED') {
+        await emitAuditEvent(prisma, {
+          actorContext,
+          action: 'executor.access_change.expired',
+          resourceType: 'executor_access_change',
+          resourceId: accessChangeId,
+          outcome: 'denied',
+        })
+      }
       if (sendExecutorError(reply, error)) return reply
       throw error
     }

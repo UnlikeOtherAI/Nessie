@@ -25,6 +25,7 @@
     "@nessie/comms-providers": "workspace:*",
     "@nessie/config": "workspace:*",
     "@nessie/db": "workspace:*",
+    "@nessie/executor-manage": "workspace:*",
     "@nessie/knowledge": "workspace:*",
     "@nessie/mcp-client": "workspace:*",
     "@nessie/mcp-manage": "workspace:*",

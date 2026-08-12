@@ -1,28 +1,21 @@
 import {
+  ExecutorAccessChangeRequestSchema,
+  ExecutorAccessChangeResponseSchema,
+  ExecutorCreateResponseSchema,
   ExecutorEnrollmentRequestSchema,
-  ExecutorOperationKeySchema,
   ExecutorPrivateAssignmentSchema,
+  ExecutorAccessViewResponseSchema,
+  ExecutorPairingInvitationResponseSchema,
+  ExecutorRecordResponseSchema,
   ExecutorScopeSchema,
-  ExecutorStatusSchema,
+  PendingExecutorEnrollmentResponseSchema,
+  PreparedExecutorAccessChangeResponseSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
-import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
+import { NonEmptyStringSchema } from './shared.js'
 
-export const ExecutorRecordSchema = z.object({
-  id: z.string().uuid(),
-  scope: ExecutorScopeSchema,
-  label: NonEmptyStringSchema,
-  profiles: z.array(z.enum(['workspace_sandbox', 'coding_session'])),
-  platformFacts: z.record(z.string(), z.unknown()),
-  machineKeyFingerprint: z.string().optional(),
-  status: ExecutorStatusSchema,
-  authorizationRevision: z.number().int().positive(),
-  lastSeenAt: TimestampSchema.optional(),
-  statusDetail: z.string().optional(),
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema,
-})
+export const ExecutorRecordSchema = ExecutorRecordResponseSchema
 export type ExecutorRecord = z.infer<typeof ExecutorRecordSchema>
 
 export const CreateExecutorBodySchema = z.object({
@@ -47,25 +40,13 @@ export const CreateExecutorBodySchema = z.object({
 })
 export type CreateExecutorBody = z.infer<typeof CreateExecutorBodySchema>
 
-export const ExecutorPairingInvitationSchema = z.object({
-  enrollmentId: z.string().uuid(),
-  challenge: z.string().min(32),
-  expiresAt: TimestampSchema,
-})
+export const ExecutorPairingInvitationSchema = ExecutorPairingInvitationResponseSchema
 export type ExecutorPairingInvitation = z.infer<typeof ExecutorPairingInvitationSchema>
 
-export const CreateExecutorResponseSchema = z.object({
-  executor: ExecutorRecordSchema,
-  invitation: ExecutorPairingInvitationSchema,
-})
+export const CreateExecutorResponseSchema = ExecutorCreateResponseSchema
 export type CreateExecutorResponse = z.infer<typeof CreateExecutorResponseSchema>
 
-export const PendingExecutorEnrollmentSchema = z.object({
-  executorId: z.string().uuid(),
-  fingerprint: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  descriptorDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  expiresAt: TimestampSchema,
-})
+export const PendingExecutorEnrollmentSchema = PendingExecutorEnrollmentResponseSchema
 export type PendingExecutorEnrollment = z.infer<typeof PendingExecutorEnrollmentSchema>
 
 export const ConfirmExecutorEnrollmentBodySchema = z.object({
@@ -78,32 +59,35 @@ export type ConfirmExecutorEnrollmentBody = z.infer<
 export const SubmitExecutorEnrollmentBodySchema = ExecutorEnrollmentRequestSchema
 export type SubmitExecutorEnrollmentBody = z.infer<typeof SubmitExecutorEnrollmentBodySchema>
 
-export const SetPrivateAssignmentBodySchema = z.object({
-  assignment: ExecutorPrivateAssignmentSchema,
-}).strict()
-export type SetPrivateAssignmentBody = z.infer<typeof SetPrivateAssignmentBodySchema>
+export const ExecutorAccessChangeSchema = ExecutorAccessChangeRequestSchema
+export type ExecutorAccessChange = z.infer<typeof ExecutorAccessChangeSchema>
 
-export const RemovePrivateAssignmentParamsSchema = z.discriminatedUnion('principalKind', [
-  z.object({ executorId: z.string().uuid(), principalKind: z.literal('user'), principalId: z.string().uuid() }).strict(),
-  z.object({ executorId: z.string().uuid(), principalKind: z.literal('agent'), principalId: z.string().uuid() }).strict(),
-])
-export type RemovePrivateAssignmentParams = z.infer<typeof RemovePrivateAssignmentParamsSchema>
-
-export const SetExecutorAgentOperationGrantBodySchema = z.object({
-  agentId: z.string().uuid(),
-  operationKey: ExecutorOperationKeySchema,
-  state: z.enum(['allowed', 'denied']),
+export const PrepareExecutorAccessChangeBodySchema = z.object({
+  executorId: z.string().uuid(),
+  change: ExecutorAccessChangeSchema,
 }).strict()
-export type SetExecutorAgentOperationGrantBody = z.infer<
-  typeof SetExecutorAgentOperationGrantBodySchema
+export type PrepareExecutorAccessChangeBody = z.infer<
+  typeof PrepareExecutorAccessChangeBodySchema
 >
 
-export const ExecutorLifecycleActionSchema = z.enum(['pause', 'resume', 'drain', 'revoke'])
-
-export const ExecutorLifecycleBodySchema = z.object({
-  action: ExecutorLifecycleActionSchema,
+export const ConfirmExecutorAccessChangeBodySchema = z.object({
+  confirmationToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  currentPassword: z.string().min(1).max(1024).optional(),
 }).strict()
-export type ExecutorLifecycleBody = z.infer<typeof ExecutorLifecycleBodySchema>
+export type ConfirmExecutorAccessChangeBody = z.infer<
+  typeof ConfirmExecutorAccessChangeBodySchema
+>
+
+export const ExecutorAccessChangeRecordSchema = ExecutorAccessChangeResponseSchema
+export type ExecutorAccessChangeRecord = z.infer<typeof ExecutorAccessChangeRecordSchema>
+
+export const PreparedExecutorAccessChangeSchema = PreparedExecutorAccessChangeResponseSchema
+export type PreparedExecutorAccessChange = z.infer<
+  typeof PreparedExecutorAccessChangeSchema
+>
+
+export const ExecutorAccessViewSchema = ExecutorAccessViewResponseSchema
+export type ExecutorAccessView = z.infer<typeof ExecutorAccessViewSchema>
 
 export const ReviewExecutorDescriptorBodySchema = z.object({
   revision: z.number().int().positive(),

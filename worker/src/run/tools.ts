@@ -24,6 +24,12 @@ import {
   runConnectorTestTool,
   runConnectorUninstallTool,
   runDeepWaterRunUpdateTool,
+  runExecutorAgentAccessPrepareTool,
+  runExecutorInspectTool,
+  runExecutorLifecyclePrepareTool,
+  runExecutorListTool,
+  runExecutorPairTool,
+  runExecutorPrivateAssignmentPrepareTool,
   runMessageDeleteTool,
   runReactTool,
   runMessageEditTool,
@@ -387,6 +393,44 @@ export const executeBuiltinTool = async (
           instanceId: String(args.instanceId ?? ''),
         }),
       )
+    case 'executor_list':
+      return wrapTool(inputSummary, () => runExecutorListTool(context))
+    case 'executor_inspect':
+      return wrapTool(inputSummary, () => runExecutorInspectTool(context, {
+        executorId: args.executorId,
+      }))
+    case 'executor_pair':
+      return wrapTool(inputSummary, () => runExecutorPairTool(context))
+    case 'executor_pause':
+      return wrapTool(inputSummary, () => runExecutorLifecyclePrepareTool(context, {
+        action: 'pause',
+        executorId: args.executorId,
+      }))
+    case 'executor_drain':
+      return wrapTool(inputSummary, () => runExecutorLifecyclePrepareTool(context, {
+        action: 'drain',
+        executorId: args.executorId,
+      }))
+    case 'executor_revoke':
+      return wrapTool(inputSummary, () => runExecutorLifecyclePrepareTool(context, {
+        action: 'revoke',
+        executorId: args.executorId,
+      }))
+    case 'executor_agent_access_prepare':
+      return wrapTool(inputSummary, () => runExecutorAgentAccessPrepareTool(context, {
+        agentId: args.agentId,
+        executorId: args.executorId,
+        operationKey: args.operationKey,
+        state: args.state,
+      }))
+    case 'executor_private_assignment_prepare':
+      return wrapTool(inputSummary, () => runExecutorPrivateAssignmentPrepareTool(context, {
+        action: args.action,
+        executorId: args.executorId,
+        principalId: args.principalId,
+        principalKind: args.principalKind,
+        role: args.role,
+      }))
     case 'deep_water_run_update':
       return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
     case 'comms_connect_card':

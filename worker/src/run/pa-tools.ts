@@ -29,6 +29,14 @@ export {
   runConnectorUninstallTool,
 } from './pa-tools/connectors.js'
 export {
+  runExecutorAgentAccessPrepareTool,
+  runExecutorInspectTool,
+  runExecutorLifecyclePrepareTool,
+  runExecutorListTool,
+  runExecutorPairTool,
+  runExecutorPrivateAssignmentPrepareTool,
+} from './pa-tools/executors.js'
+export {
   runAuthoredMessageSearchTool,
   runWorkspaceSearchTool,
 } from './pa-tools/conversation-search.js'

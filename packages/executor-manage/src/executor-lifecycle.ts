@@ -1,4 +1,4 @@
-import { type PrismaClient } from '@prisma/client'
+import { type Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import {
@@ -15,7 +15,7 @@ import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 export type ExecutorLifecycleAction = 'pause' | 'resume' | 'drain' | 'revoke'
 
 const canBreakGlassRevoke = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
   executorId: string,
 ): Promise<boolean> => {
@@ -70,74 +70,82 @@ export const transitionExecutorLifecycle = async (
   actorContext: AuthorizedActionContext,
   input: { executorId: string; action: ExecutorLifecycleAction },
 ): Promise<{ status: string; authorizationRevision: number }> => {
+  return prisma.$transaction(async (tx) => {
+    await lockExecutorMutation(tx, input.executorId)
+    return transitionExecutorLifecycleInTransaction(tx, actorContext, input)
+  })
+}
+
+export const transitionExecutorLifecycleInTransaction = async (
+  tx: Prisma.TransactionClient,
+  actorContext: AuthorizedActionContext,
+  input: { executorId: string; action: ExecutorLifecycleAction },
+): Promise<{ status: string; authorizationRevision: number }> => {
   const breakGlassRevoke = input.action === 'revoke'
-    && await canBreakGlassRevoke(prisma, actorContext, input.executorId)
+    && await canBreakGlassRevoke(tx, actorContext, input.executorId)
   if (!breakGlassRevoke) {
-    const managed = await requireManagedExecutor(prisma, actorContext, input.executorId)
+    const managed = await requireManagedExecutor(tx, actorContext, input.executorId)
     if (!managed) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor not found.')
     }
   }
-  return prisma.$transaction(async (tx) => {
-    await lockExecutorMutation(tx, input.executorId)
-    const actorUserId = requireHumanActor(actorContext)
-    const executor = actorUserId
-      ? await tx.executor.findFirst({
-          where: { id: input.executorId, organizationId: actorContext.tenant.organizationId },
-        })
-      : null
-    if (!executor || !actorUserId) {
-      throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor not found.')
-    }
-    if (breakGlassRevoke) {
-      const membership = await tx.organizationMember.findUnique({
-        where: {
-          organizationId_userId: {
-            organizationId: executor.organizationId,
-            userId: actorUserId,
-          },
-        },
-        select: { deactivatedAt: true, role: true },
+  const actorUserId = requireHumanActor(actorContext)
+  const executor = actorUserId
+    ? await tx.executor.findFirst({
+        where: { id: input.executorId, organizationId: actorContext.tenant.organizationId },
       })
-      if (!membership || membership.deactivatedAt || membership.role !== 'owner') {
-        throw new ExecutorError(
-          EXECUTOR_ERROR_CODES.SCOPE_ENTITLEMENT_DENIED,
-          'Only an active organization owner may break-glass revoke an executor.',
-        )
-      }
-    } else {
-      const access = await resolveExecutorHumanAccess(
-        tx,
-        executor.organizationId,
-        actorUserId,
-        executor,
-      )
-      if (!canManageExecutor(executor, access)) {
-        throw new ExecutorError(
-          EXECUTOR_ERROR_CODES.SCOPE_ENTITLEMENT_DENIED,
-          'You cannot manage this executor.',
-        )
-      }
-    }
-    const status = nextExecutorLifecycleStatus(executor.status, input.action)
-    const updated = await tx.executor.update({
-      where: { id: executor.id },
-      data: {
-        status,
-        statusDetail: input.action === 'revoke'
-          ? 'Executor access was revoked.'
-          : input.action === 'drain'
-            ? 'Executor is draining active work.'
-            : input.action === 'pause'
-              ? 'Executor is paused.'
-              : 'Awaiting authenticated executor connection.',
-        authorizationRevision: { increment: 1 },
-        ...(input.action === 'revoke' ? { activeConnectionEpoch: { increment: 1 } } : {}),
+    : null
+  if (!executor || !actorUserId) {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor not found.')
+  }
+  if (breakGlassRevoke) {
+    const membership = await tx.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: executor.organizationId,
+          userId: actorUserId,
+        },
       },
-      select: { authorizationRevision: true, status: true },
+      select: { deactivatedAt: true, role: true },
     })
-    return updated
+    if (!membership || membership.deactivatedAt || membership.role !== 'owner') {
+      throw new ExecutorError(
+        EXECUTOR_ERROR_CODES.SCOPE_ENTITLEMENT_DENIED,
+        'Only an active organization owner may break-glass revoke an executor.',
+      )
+    }
+  } else {
+    const access = await resolveExecutorHumanAccess(
+      tx,
+      executor.organizationId,
+      actorUserId,
+      executor,
+    )
+    if (!canManageExecutor(executor, access)) {
+      throw new ExecutorError(
+        EXECUTOR_ERROR_CODES.SCOPE_ENTITLEMENT_DENIED,
+        'You cannot manage this executor.',
+      )
+    }
+  }
+  const status = nextExecutorLifecycleStatus(executor.status, input.action)
+  const updated = await tx.executor.update({
+    where: { id: executor.id },
+    data: {
+      status,
+      statusDetail: input.action === 'revoke'
+        ? 'Executor access was revoked.'
+        : input.action === 'drain'
+          ? 'Executor is draining active work.'
+          : input.action === 'pause'
+            ? 'Executor is paused.'
+            : 'Awaiting authenticated executor connection.',
+      authorizationRevision: { increment: 1 },
+      ...(input.action === 'revoke' ? { activeConnectionEpoch: { increment: 1 } } : {}),
+    },
+    select: { authorizationRevision: true, status: true },
   })
+  return updated
 }
 
 export const reviewExecutorDescriptor = async (

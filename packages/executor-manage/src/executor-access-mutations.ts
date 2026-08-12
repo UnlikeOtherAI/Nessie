@@ -82,12 +82,11 @@ export type PrivateAssignmentMutation = {
     | { principalKind: 'agent'; agentId: string; role: 'use' }
 }
 
-export const setPrivateAssignment = async (
-  prisma: PrismaClient,
+export const setPrivateAssignmentInTransaction = async (
+  tx: Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
   input: PrivateAssignmentMutation,
-): Promise<number> => prisma.$transaction(async (tx) => {
-  await lockExecutorMutation(tx, input.executorId)
+): Promise<number> => {
   const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
   if (executor.scopeKind !== 'private') {
     throw new ExecutorError(
@@ -155,6 +154,15 @@ export const setPrivateAssignment = async (
     })
   }
   return nextAuthorizationRevision(tx, executor.id)
+}
+
+export const setPrivateAssignment = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: PrivateAssignmentMutation,
+): Promise<number> => prisma.$transaction(async (tx) => {
+  await lockExecutorMutation(tx, input.executorId)
+  return setPrivateAssignmentInTransaction(tx, actorContext, input)
 })
 
 export type PrivateAssignmentRemoval = {
@@ -162,12 +170,11 @@ export type PrivateAssignmentRemoval = {
   principal: { principalKind: 'user'; userId: string } | { principalKind: 'agent'; agentId: string }
 }
 
-export const removePrivateAssignment = async (
-  prisma: PrismaClient,
+export const removePrivateAssignmentInTransaction = async (
+  tx: Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
   input: PrivateAssignmentRemoval,
-): Promise<number> => prisma.$transaction(async (tx) => {
-  await lockExecutorMutation(tx, input.executorId)
+): Promise<number> => {
   const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
   if (executor.scopeKind !== 'private') {
     throw new ExecutorError(
@@ -204,6 +211,15 @@ export const removePrivateAssignment = async (
   }
   await tx.executorPrivateAssignment.delete({ where: { id: existing.id } })
   return nextAuthorizationRevision(tx, executor.id)
+}
+
+export const removePrivateAssignment = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: PrivateAssignmentRemoval,
+): Promise<number> => prisma.$transaction(async (tx) => {
+  await lockExecutorMutation(tx, input.executorId)
+  return removePrivateAssignmentInTransaction(tx, actorContext, input)
 })
 
 export type AgentOperationGrantMutation = {
@@ -213,12 +229,11 @@ export type AgentOperationGrantMutation = {
   state: 'allowed' | 'denied'
 }
 
-export const setExecutorAgentOperationGrant = async (
-  prisma: PrismaClient,
+export const setExecutorAgentOperationGrantInTransaction = async (
+  tx: Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
   input: AgentOperationGrantMutation,
-): Promise<number> => prisma.$transaction(async (tx) => {
-  await lockExecutorMutation(tx, input.executorId)
+): Promise<number> => {
   const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
   const actorUserId = requireHumanActor(actorContext)
   if (!actorUserId) {
@@ -265,4 +280,13 @@ export const setExecutorAgentOperationGrant = async (
     },
   })
   return authorizationRevision
+}
+
+export const setExecutorAgentOperationGrant = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: AgentOperationGrantMutation,
+): Promise<number> => prisma.$transaction(async (tx) => {
+  await lockExecutorMutation(tx, input.executorId)
+  return setExecutorAgentOperationGrantInTransaction(tx, actorContext, input)
 })

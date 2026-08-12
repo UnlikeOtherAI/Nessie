@@ -2,6 +2,16 @@
 
 **Status:** approved — Phase 1 pairing control plane in progress
 
+## Current implementation boundary
+
+The current Phase 1 slice provides the durable executor record, scoped pairing,
+private human/agent roster, exact operation grants, user-confirmed access
+changes, the Executors home, and Personal Assistant prepare-only management.
+It does **not** dispatch files, browser work, commands, or coding sessions
+yet; neither does it expose the planned availability union with connectors.
+Those operations remain unavailable until their resolver, binding, command
+transport, and companion enforcement are delivered together.
+
 ## Decision
 
 Introduce an **executor** as a first-class, paired, capability-bearing endpoint
@@ -256,13 +266,12 @@ It can offer these tools:
 
 | PA operation | Result |
 | --- | --- |
-| `availability_list`, `availability_explain` | Returns only executor and connector capabilities visible to the requesting user, optionally for one agent and immutable context, plus safe readiness reasons. |
+| `availability_list`, `availability_explain` *(next)* | Will return only executor and connector capabilities visible to the requesting user, optionally for one agent and immutable context, plus safe readiness reasons. |
 | `executor_list`, `executor_inspect` | Entitlement-scoped status, capability, scope, and data-boundary summary. |
-| `executor_pair` | Starts enrollment and returns pairing/fingerprint instructions; the companion completes the cryptographic pairing. |
-| `executor_pause`, `executor_drain`, `executor_revoke` | Performs the lifecycle operation only when the requesting user has the equivalent human web permission; revoke requires an explicit irreversible-action confirmation. |
+| `executor_pair` | Opens the user-owned setup surface; the user selects the immutable scope and assignments, and the companion completes the cryptographic pairing. |
+| `executor_pause`, `executor_drain`, `executor_revoke` | Creates a reviewed lifecycle-change draft only; the user confirms it in the Executors surface. Revoke always requires fresh verification. |
 | `executor_agent_access_prepare` | Produces an exact grant/revoke diff for a selected agent and logical operations. |
 | `executor_private_assignment_prepare` | Produces an exact add/remove/change diff for named users and agents, only when the requesting user is a private administrator. |
-| `executor_access_confirm` | Applies one unexpired prepared diff after a structural user confirmation control (and required step-up), then returns its audit receipt. |
 
 `*_prepare` mutations create an `ExecutorAccessChange` draft containing the
 canonical diff digest, actor user, executor/policy revisions, expiry, and a
@@ -271,17 +280,16 @@ desktop client renders an explicit confirmation control bound to that token;
 the confirmation endpoint re-checks the current human user's entitlement,
 revisions, and the exact digest before applying it. When policy requires
 step-up—or always for a private-assignment change, access elevation, or
-revocation—the confirmation attaches a fresh, single-use
-`VerificationChallenge` bound to the user, action, executor/access-change ID,
-and expiry under `docs/step-up-verification-spec.md`. It uses the configured
-factor policy (for example email OTP/link, TOTP, or recovery code); no factor
-code or proof is ever placed in chat or a model prompt. This preserves the rule
+revocation—the confirmation requires a fresh, server-side password re-proof in
+the first control-plane slice. An account without a password fails closed until
+the platform's SSO/WebAuthn verifier is connected to this continuation contract;
+the opaque verification binding remains on the continuation for that upgrade.
+No factor code or proof is ever placed in chat or a model prompt. This preserves the rule
 that only a user—not the Personal Assistant, an arbitrary shared agent, or
 terminal text—may manage user or agent access, while allowing the PA to carry
-out a confirmed user request. The same confirmation mechanism governs
-project/organization agent grants. Every prepared, expired, rejected, and
-applied change is audit logged; affected private users receive an access-change
-notice without leaking executor data to unassigned people.
+prepare a confirmed user request. The same confirmation mechanism governs
+project/organization agent grants. Every prepared, expired-on-confirmation,
+rejected, and applied change is audit logged.
 
 Existing PA `connector_*` operations continue to manage connector lifecycle
 through `@nessie/mcp-manage`. Add a safe availability view to `connector_list`

@@ -110,6 +110,16 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/agents/executors',
+        label: 'Executors',
+        icon: icon(
+          <>
+            <rect height="12" rx="2" width="16" x="4" y="6" />
+            <path d="M8 10h.01M12 10h4M8 14h8" strokeLinecap="round" />
+          </>,
+        ),
+      },
+      {
         path: '/mcp-app-store',
         label: 'Connectors',
         icon: icon(

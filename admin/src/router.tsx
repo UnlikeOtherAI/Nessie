@@ -11,6 +11,7 @@ import { AgentActivityPage } from './pages/AgentActivityPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentsPage } from './pages/AgentsPage'
+import { ExecutorsPage } from './pages/ExecutorsPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
 import { AuditLogPage } from './pages/AuditLogPage'
 import { BootstrapPage } from './pages/BootstrapPage'
@@ -199,6 +200,10 @@ export const router = createBrowserRouter([
       {
         path: '/agents/tools',
         element: <ToolsPage />,
+      },
+      {
+        path: '/agents/executors',
+        element: <ExecutorsPage />,
       },
       {
         path: '/mcp-app-store',

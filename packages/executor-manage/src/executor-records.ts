@@ -58,6 +58,26 @@ export type ExecutorPairingInvitation = {
   expiresAt: string
 }
 
+export type ExecutorAccessView = {
+  canManage: boolean
+  executorId: string
+  effectiveAccess: {
+    organizationRole: ExecutorHumanAccess['organizationRole']
+    privateAssignment: ExecutorHumanAccess['privateAssignment']
+    projectRole: ExecutorHumanAccess['projectRole']
+  }
+  operationGrants?: Array<{
+    agentId: string
+    operationKey: string
+    state: 'allowed' | 'denied'
+    updatedAt: string
+  }>
+  privateAssignments?: Array<
+    | { principalKind: 'user'; role: 'use' | 'admin'; userId: string }
+    | { agentId: string; principalKind: 'agent'; role: 'use' }
+  >
+}
+
 export type CreateExecutorInput = {
   label: string
   scope:
@@ -331,4 +351,72 @@ export const getExecutorForManagement = async (
   )
     ? found
     : null
+}
+
+export const getExecutorAccessView = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  executorId: string,
+): Promise<ExecutorAccessView | null> => {
+  const found = await getExecutorForUser(prisma, actorContext, executorId)
+  if (!found) return null
+  const canManage = canManageExecutor(
+    {
+      id: found.executor.id,
+      projectId: found.executor.scope.kind === 'project'
+        ? found.executor.scope.projectId
+        : null,
+      scopeKind: found.executor.scope.kind,
+    },
+    found.access,
+  )
+  if (!canManage) {
+    return {
+      canManage: false,
+      executorId: found.executor.id,
+      effectiveAccess: found.access,
+    }
+  }
+  const [privateAssignments, operationGrants] = await Promise.all([
+    found.executor.scope.kind === 'private'
+      ? prisma.executorPrivateAssignment.findMany({
+          where: { executorId: found.executor.id },
+          orderBy: [{ principalKind: 'asc' }, { createdAt: 'asc' }],
+          select: { agentId: true, principalKind: true, role: true, userId: true },
+        })
+      : [],
+    prisma.executorAgentOperationGrant.findMany({
+      where: { executorId: found.executor.id },
+      orderBy: [{ agentId: 'asc' }, { operationKey: 'asc' }],
+      select: { agentId: true, operationKey: true, state: true, updatedAt: true },
+    }),
+  ])
+  return {
+    canManage: true,
+    executorId: found.executor.id,
+    effectiveAccess: found.access,
+    ...(found.executor.scope.kind === 'private'
+      ? {
+          privateAssignments: privateAssignments.map((assignment) => (
+            assignment.principalKind === 'user'
+              ? {
+                  principalKind: 'user' as const,
+                  role: assignment.role as 'use' | 'admin',
+                  userId: assignment.userId!,
+                }
+              : {
+                  agentId: assignment.agentId!,
+                  principalKind: 'agent' as const,
+                  role: 'use' as const,
+                }
+          )),
+        }
+      : {}),
+    operationGrants: operationGrants.map((grant) => ({
+      agentId: grant.agentId,
+      operationKey: grant.operationKey,
+      state: grant.state,
+      updatedAt: grant.updatedAt.toISOString(),
+    })),
+  }
 }

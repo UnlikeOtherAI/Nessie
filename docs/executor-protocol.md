@@ -199,15 +199,17 @@ The PA can prepare an access diff, but only a human can apply one:
 2. Web or companion renders a structural confirmation control bound to that
    token; chat text is never confirmation.
 3. Private assignment, elevation, and revocation always require a fresh
-   `VerificationChallenge` under `step-up-verification-spec.md`; other actions
-   follow their configured verification policy. The challenge is bound to user,
-   action, target continuation, and expiry. Codes/proofs never enter a prompt,
-   transcript, or log.
+   server-side password re-proof in the Phase 1 control plane; accounts without
+   a password fail closed pending the shared SSO/WebAuthn verifier. The opaque
+   verification binding is retained on the continuation for that upgrade.
+   Other actions still require the structural user confirmation. Factor
+   material never enters a prompt, transcript, database record, or log.
 4. Confirmation rechecks every entitlement, revision, and digest before commit.
 
-PA access confirmation is valid only in the requesting user's personal-assistant
-DM, never a shared channel, scheduled job, child run, or arbitrary agent run.
-Audit records `actor=user` and delegation provenance separately.
+PA preparation is valid only in the requesting user's personal-assistant DM,
+never a shared channel, scheduled job, child run, or arbitrary agent run. The
+PA has no confirmation tool: confirmation is a user-owned web or desktop
+control. Audit records the acting user and PA delegation provenance separately.
 
 ## 8. Sandbox, forced egress, and credentials
 
