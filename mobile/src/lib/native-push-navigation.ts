@@ -5,44 +5,58 @@ import {
 } from './push-notifications'
 
 type Input = {
-  canNavigate: () => boolean
-  navigate: (path: string) => void
+  cachePushPath: (path: string) => void
 }
 
 export type NativePushNavigation = {
-  initialPushPath: string | null | undefined
-  takePendingPushPath: () => string | null
+  initialPushPathResolved: boolean
+  pendingPushPath: string | null
+  acknowledgePushPath: (path: string) => boolean
+  replayPendingPushPath: () => string | null
 }
 
 /**
- * Resolves a cold-start notification before the WebView is created, while also
- * retaining a notification that arrives as the authenticated page is loading.
+ * Caches a notification route until the WebView's React router reports that it
+ * has reached that exact path. Direct injection during a cold start is racy:
+ * the router can initialise its default Personal Assistant route afterward.
  */
-export const useNativePushNavigation = ({ canNavigate, navigate }: Input): NativePushNavigation => {
-  const [initialPushPath, setInitialPushPath] = useState<string | null | undefined>(undefined)
-  const initialPushPathResolved = useRef(false)
-  const pendingPushPath = useRef<string | null>(null)
+export const useNativePushNavigation = ({ cachePushPath }: Input): NativePushNavigation => {
+  const [initialPushPathResolved, setInitialPushPathResolved] = useState(false)
+  const [pendingPushPath, setPendingPushPath] = useState<string | null>(null)
+  const initialPushPathResolvedRef = useRef(false)
+  const pendingPushPathRef = useRef<string | null>(null)
 
-  const takePendingPushPath = useCallback((): string | null => {
-    const path = pendingPushPath.current
-    pendingPushPath.current = null
+  const replayPendingPushPath = useCallback((): string | null => {
+    const path = pendingPushPathRef.current
+    if (path) cachePushPath(path)
     return path
+  }, [cachePushPath])
+
+  const acknowledgePushPath = useCallback((path: string): boolean => {
+    if (pendingPushPathRef.current !== path) return false
+    pendingPushPathRef.current = null
+    setPendingPushPath(null)
+    return true
   }, [])
 
   useEffect(() => {
     let active = true
     const resolveInitialPushPath = (path: string | null): void => {
-      if (initialPushPathResolved.current) return
-      initialPushPathResolved.current = true
-      setInitialPushPath(path)
+      if (initialPushPathResolvedRef.current) return
+      initialPushPathResolvedRef.current = true
+      if (path) {
+        pendingPushPathRef.current = path
+        setPendingPushPath(path)
+      }
+      setInitialPushPathResolved(true)
     }
     const receivePushPath = (path: string): void => {
-      pendingPushPath.current = path
-      if (!initialPushPathResolved.current) {
+      pendingPushPathRef.current = path
+      setPendingPushPath(path)
+      if (!initialPushPathResolvedRef.current) {
         resolveInitialPushPath(path)
-      } else if (canNavigate()) {
-        pendingPushPath.current = null
-        navigate(path)
+      } else {
+        cachePushPath(path)
       }
     }
 
@@ -50,7 +64,6 @@ export const useNativePushNavigation = ({ canNavigate, navigate }: Input): Nativ
     void takeInitialPushNavigationPath()
       .then((path) => {
         if (!active) return
-        if (path) pendingPushPath.current = path
         resolveInitialPushPath(path)
       })
       .catch(() => {
@@ -61,7 +74,12 @@ export const useNativePushNavigation = ({ canNavigate, navigate }: Input): Nativ
       active = false
       unsubscribe()
     }
-  }, [canNavigate, navigate])
+  }, [cachePushPath])
 
-  return { initialPushPath, takePendingPushPath }
+  return {
+    acknowledgePushPath,
+    initialPushPathResolved,
+    pendingPushPath,
+    replayPendingPushPath,
+  }
 }

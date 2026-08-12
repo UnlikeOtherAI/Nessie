@@ -5,7 +5,7 @@ import {
   NATIVE_PUSH_UNREGISTER_EVENT,
   readNativePushRegistration,
 } from '../lib/native-push-registration';
-import { isReactNativeWebView } from '../lib/mobile-shell';
+import { isReactNativeWebView, readNativePendingPushPath } from '../lib/mobile-shell';
 import { useApiClient } from './ApiClientProvider';
 import { useShakeFeedback } from './ShakeFeedbackContext';
 
@@ -16,6 +16,8 @@ type RnWindow = Window & {
   __nessieCloseSearchOverlay?: () => void;
   __nessieShakeScreenshot?: (dataUri: string) => void;
 };
+
+const NATIVE_PUSH_PATH_EVENT = 'nessie:native-push-path';
 
 // Decode a `data:image/...;base64,...` URI (sent by the native shell after a
 // screen capture) into a File the feedback composer can upload like any other
@@ -52,6 +54,21 @@ export const NativeShellBridge = () => {
   const registeredApiClient = useRef<typeof apiClient | null>(null);
   const pendingToken = useRef<string | null>(null);
   const pendingRegistrations = useRef(new Set<Promise<void>>());
+
+  useEffect(() => {
+    if (!isReactNativeWebView()) {
+      return undefined;
+    }
+    const navigateToCachedPushPath = (): void => {
+      const path = readNativePendingPushPath();
+      if (path) navigate(path);
+    };
+    // The native side preserves the path on window before emitting this event.
+    // Calling it once here handles a cold-start event that predated React.
+    window.addEventListener(NATIVE_PUSH_PATH_EVENT, navigateToCachedPushPath);
+    navigateToCachedPushPath();
+    return () => window.removeEventListener(NATIVE_PUSH_PATH_EVENT, navigateToCachedPushPath);
+  }, [navigate]);
 
   useEffect(() => {
     if (!isReactNativeWebView()) {

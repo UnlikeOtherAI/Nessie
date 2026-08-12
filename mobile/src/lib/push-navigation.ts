@@ -17,13 +17,3 @@ export const pathFromPushData = (data: PushData): string | null => {
     ? `${path}?messageId=${encodeURIComponent(data.messageId)}`
     : path
 }
-
-export const launchUrlForPushPath = (
-  adminUrl: string,
-  pushPath: string | null,
-  reloadNonce = 0,
-): string => {
-  const url = new URL(pushPath ?? adminUrl, adminUrl)
-  if (reloadNonce > 0) url.searchParams.set('__boot', String(reloadNonce))
-  return url.toString()
-}

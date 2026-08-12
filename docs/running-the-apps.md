@@ -245,11 +245,12 @@ Nessie sends iOS notifications **directly from its own worker/API to APNs**. It
 does not use Expo Push. The iOS app registers its raw APNs token after an
 authenticated WebView route loads; the authenticated admin then stores that
 token with the current organization. A notification tap returns to the exact
-channel message when its deep-link target is still available.
-On a cold launch, the native shell claims that tap before creating the WebView,
-so the shell's default Personal Assistant route cannot replace the notified
-conversation. The launch response is consumed once, preventing it from
-reopening an old message on a later app launch.
+channel message when its deep-link target is still available. On a cold launch,
+the native shell caches that target before creating the WebView and the React
+navigation bridge reads it only after the router has mounted. It keeps the
+target until the SPA reports that exact route back, so the shell's default
+Personal Assistant route cannot replace the notified conversation. The cached
+target is then cleared, preventing it from reopening an old message later.
 
 Before a real-device build can receive pushes, an Apple Developer Account
 Holder or Admin must do the one-time Apple portal setup for

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { launchUrlForPushPath, pathFromPushData } from './push-navigation'
+import { pathFromPushData } from './push-navigation'
 
 test('uses the server supplied exact conversation path for a notification', () => {
   const path = pathFromPushData({
@@ -13,10 +13,6 @@ test('uses the server supplied exact conversation path for a notification', () =
   })
 
   assert.equal(path, '/channels/channel-a/threads/thread-a/replies/root-a')
-  assert.equal(
-    launchUrlForPushPath('https://app.nessie.works', path),
-    'https://app.nessie.works/channels/channel-a/threads/thread-a/replies/root-a',
-  )
 })
 
 test('falls back to a channel path only for legacy notification data', () => {

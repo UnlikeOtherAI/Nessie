@@ -8,6 +8,7 @@ type NativeShellInfo = {
 
 type NativeShellWindow = Window & {
   __nessieNativeShell?: NativeShellInfo
+  __nessiePendingPushPath?: unknown
 }
 
 const NATIVE_SHELL_INFO_EVENT = 'nessie:native-shell-info'
@@ -17,6 +18,15 @@ const NATIVE_SHELL_INFO_EVENT = 'nessie:native-shell-info'
 // desktop `isDesktopApp()` check in ./desktop.ts.
 export const isReactNativeWebView = (): boolean =>
   typeof window !== 'undefined' && 'ReactNativeWebView' in window
+
+// The native shell writes a tapped notification target before the SPA exists,
+// then emits an event. Reading the retained path closes the startup race where
+// the event arrives before React has subscribed.
+export const readNativePendingPushPath = (): string | null => {
+  if (typeof window === 'undefined') return null
+  const path = (window as NativeShellWindow).__nessiePendingPushPath
+  return typeof path === 'string' && path.startsWith('/') ? path : null
+}
 
 const readNativeShellInfo = (): NativeShellInfo | null => {
   if (typeof window === 'undefined') return null
