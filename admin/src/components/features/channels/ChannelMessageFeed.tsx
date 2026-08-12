@@ -8,6 +8,7 @@ import { usePresenceLookup } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageRow, StatusBadge } from './ChannelMessageRow'
+import type { DisclosureDuration } from './RestrictedMessageCard'
 import { MessageMarkdown } from './MessageMarkdown'
 import type { ResolveReactorName } from './ReactionPills'
 import { ThinkingBubble } from './ThinkingBubble'
@@ -58,6 +59,15 @@ interface ChannelMessageFeedProps {
   editingContent: string
   updatePending: boolean
   onStartEdit: (messageId: string, content: string) => void
+  /**
+   * Answer the acknowledgement card on a reply that used restricted sources.
+   * Optional: the info drawers render read-only message lists where sharing is
+   * not the surface, so they omit it and the card shows without its controls.
+   */
+  shareRestrictedMessage?: (
+    messageId: string,
+    input: { kind: 'message' | 'scope'; duration: DisclosureDuration },
+  ) => Promise<void>
   onChangeEditingContent: (value: string) => void
   onSubmitEdit: (messageId: string) => void
   onCancelEdit: () => void
@@ -104,6 +114,7 @@ export const ChannelMessageFeed = ({
   editingContent,
   updatePending,
   onStartEdit,
+  shareRestrictedMessage,
   onChangeEditingContent,
   onSubmitEdit,
   onCancelEdit,
@@ -339,6 +350,7 @@ export const ChannelMessageFeed = ({
               onSelectAgent={onSelectAgent}
               onSelectUser={onSelectUser}
               onStartEdit={onStartEdit}
+              shareRestrictedMessage={shareRestrictedMessage}
               onSubmitEdit={onSubmitEdit}
               resolveThreadParticipant={resolveThreadParticipant}
             />

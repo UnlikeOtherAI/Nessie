@@ -691,6 +691,8 @@ model User {
   reactions           MessageReaction[]
   threadReadStates    ThreadReadState[]
   userAlerts          UserAlert[]
+  disclosureGrants    DisclosureGrant[]
+  scopeDisclosureGrants ScopeDisclosureGrant[]
   userAlertActivity   UserAlert[]          @relation("UserAlertActor")
   messageThreadFollows MessageThreadFollow[]
   favorites           Favorite[]
@@ -820,6 +822,8 @@ model Organization {
   runCheckpoints              RunCheckpoint[]
   runBasisScopes              RunBasisScope[]
   messageBasisScopes          MessageBasisScope[]
+  disclosureGrants            DisclosureGrant[]
+  scopeDisclosureGrants       ScopeDisclosureGrant[]
   agentMailboxMessages        AgentMailboxMessage[]
   workflowTemplates           WorkflowTemplate[]
   workflowInstallations       WorkflowInstallation[]
@@ -1133,6 +1137,7 @@ model Channel {
   members           ChannelMember[]
   calls             Call[]
   agentBindings     AgentBinding[]
+  scopeDisclosureGrants ScopeDisclosureGrant[]
   triggerTargets    AgentTrigger[]     @relation("TriggerTargetChannel")
   threads           Thread[]
   plans             Plan[]
@@ -1383,6 +1388,7 @@ model Message {
   triggeredRuns Run[]            @relation("RunTriggerMessage")
   runThreadPendingMessages RunThreadPendingMessage[]
   basisScopes MessageBasisScope[]
+  disclosureGrants DisclosureGrant[]
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])
@@ -1408,6 +1414,58 @@ model MessageBasisScope {
   @@unique([messageId, scopeType, scopeId], map: "message_basis_scopes_message_scope_key")
   @@index([organizationId], map: "message_basis_scopes_org_idx")
   @@map("message_basis_scopes")
+}
+
+/// The acknowledgement card's "share this reply": one message, one audience,
+/// granted by a human who currently satisfies that message's full basis.
+/// Evaluated at read time against the granter's live membership, so a grant goes
+/// inert when its granter loses access and revocation needs no propagation.
+model DisclosureGrant {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  messageId       String    @map("message_id") @db.Uuid
+  grantedByUserId String    @map("granted_by_user_id") @db.Uuid
+  /// 'user' | 'channel'
+  audienceKind    String    @map("audience_kind")
+  audienceId      String    @map("audience_id") @db.Uuid
+  expiresAt       DateTime? @map("expires_at")
+  revokedAt       DateTime? @map("revoked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  message         Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grantedBy       User         @relation(fields: [grantedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, audienceKind, audienceId], map: "disclosure_grants_message_audience_key")
+  @@index([organizationId], map: "disclosure_grants_org_idx")
+  @@map("disclosure_grants")
+}
+
+/// "Allow always": a standing permission for ONE source scope into ONE
+/// destination channel for ONE agent. Non-widening is structural rather than a
+/// rule — evaluation is a single exact-key lookup with no wildcard, inheritance,
+/// or fallback, so a grant for P into C implies nothing about Q into C or P
+/// into D. `expiresAt` is chosen by the granter from a tier-capped duration
+/// menu; null means "until revoked", which the most private tiers cannot select.
+model ScopeDisclosureGrant {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  sourceScopeType      String    @map("source_scope_type")
+  sourceScopeId        String    @map("source_scope_id") @db.Uuid
+  destinationChannelId String    @map("destination_channel_id") @db.Uuid
+  agentId              String    @map("agent_id") @db.Uuid
+  grantedByUserId      String    @map("granted_by_user_id") @db.Uuid
+  expiresAt            DateTime? @map("expires_at")
+  revokedAt            DateTime? @map("revoked_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  destinationChannel   Channel      @relation(fields: [destinationChannelId], references: [id], onDelete: Cascade)
+  agent                Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  grantedBy            User         @relation(fields: [grantedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceScopeType, sourceScopeId, destinationChannelId, agentId], map: "scope_disclosure_grants_key")
+  @@index([organizationId], map: "scope_disclosure_grants_org_idx")
+  @@index([destinationChannelId], map: "scope_disclosure_grants_destination_idx")
+  @@map("scope_disclosure_grants")
 }
 
 /// The primary disclosure-provenance record: scoped sources a run consumed that
@@ -1510,6 +1568,7 @@ model Agent {
   childAgents                   Agent[]                        @relation("AgentHierarchy")
   avatarAttachment              Attachment?                    @relation("AgentAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
   bindings                      AgentBinding[]
+  scopeDisclosureGrants         ScopeDisclosureGrant[]
   routingProfile                InferenceRoutingProfile?       @relation(fields: [routingProfileId], references: [id], onDelete: SetNull)
   messages                      Message[]
   reactions                     MessageReaction[]

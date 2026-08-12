@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client'
 import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
-import { buildPrefixTsQuery, partitionByDisclosure } from '@nessie/runtime'
+import { buildPrefixTsQuery, partitionByDisclosure, viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveMessageViewer } from './disclosure-viewer.js'
+import { resolveGrantedScopeKeys } from './disclosure-grants.js'
 import {
   parseAgentId,
   parseChannelId,
@@ -78,7 +79,16 @@ const mapThreadMessageRecord = (
   withheld = false,
 ): ThreadMessageRecord => ({
   attachmentCount: withheld ? 0 : attachmentCount,
-  ...(withheld ? { restricted: true as const } : {}),
+  ...(withheld
+    ? { restricted: true as const }
+    : message.basisScopes.length > 0
+      // Readable, but drew on restricted sources — this reader is the one who
+      // can share it. Private material offers no standing rule.
+      ? {
+          restrictedSources: true as const,
+          canShareStanding: !message.basisScopes.some((s) => s.scopeType === 'user'),
+        }
+      : {}),
   id: message.id,
   threadId: parseThreadId(message.threadId),
   agentId: message.agentId ? parseAgentId(message.agentId) : undefined,
@@ -263,9 +273,35 @@ export const listThreadMessages = async (
   const viewer = options.organizationId
     ? await resolveMessageViewer(prisma, options.organizationId, options.viewerUserId)
     : ({ kind: 'autonomous' } as const)
-  const withheldIds = new Set(
-    partitionByDisclosure(page, viewer).withheld.map((row) => row.id),
-  )
+
+  // Grants are consulted only for the messages the predicate would otherwise
+  // withhold, so an unrestricted page costs no extra queries at all.
+  const provisional = partitionByDisclosure(page, viewer)
+  const grantChannelId = provisional.withheld.length > 0
+    ? (await prisma.thread.findUnique({
+      where: { id: threadId },
+      select: { channelId: true },
+    }))?.channelId ?? null
+    : null
+  const withheldIds = new Set<string>()
+  for (const row of provisional.withheld) {
+    const granted = options.organizationId && viewer.kind === 'user' && grantChannelId
+      ? await resolveGrantedScopeKeys(prisma, {
+        agentId: row.agentId,
+        basis: row.basisScopes,
+        channelId: grantChannelId,
+        messageId: row.id,
+        organizationId: options.organizationId,
+        viewerChannelIds: viewer.scopes
+          .filter((scope) => scope.scopeType === 'channel')
+          .map((scope) => scope.scopeId),
+        viewerUserId: viewer.userId,
+      })
+      : new Set<string>()
+    if (!viewerSatisfiesBasis(row.basisScopes, viewer, granted)) {
+      withheldIds.add(row.id)
+    }
+  }
 
   return {
     data: page

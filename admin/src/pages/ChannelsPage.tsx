@@ -35,6 +35,7 @@ import { buildFeedItems, isOperationsTab, type ChannelTab, type MessageUserIdent
 import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
+import { useShareRestrictedMessage } from '../facades/messages/hooks'
 import { ChannelInfoDrawers } from './channels/ChannelInfoDrawers'
 import { useChannelCall } from './channels/useChannelCall'
 import { useDeepWaterResearchLauncher } from './channels/useDeepWaterResearchLauncher'
@@ -178,6 +179,8 @@ export const ChannelsPage = () => {
     submitEdit,
     updatePending,
   } = useChannelMessageActions(activeChannel?.defaultThreadId)
+  // Answering the acknowledgement card on a reply that used restricted sources.
+  const shareRestricted = useShareRestrictedMessage(activeChannel?.defaultThreadId)
   const {
     closeSearch,
     jumpToMessage,
@@ -367,6 +370,9 @@ export const ChannelsPage = () => {
               editingContent={editingContent}
               updatePending={updatePending}
               onStartEdit={startEdit}
+              shareRestrictedMessage={async (messageId, input) => {
+                await shareRestricted.mutateAsync({ messageId, ...input })
+              }}
               onChangeEditingContent={changeEditingContent}
               onSubmitEdit={(messageId) => void submitEdit(messageId)}
               onCancelEdit={cancelEdit}

@@ -246,6 +246,14 @@ export type ThreadMessageRecord = {
   // producer could not determine it — fetch, rather than hide an attachment.
   attachmentCount?: number
   author?: MessageAuthor | null
+  // Disclosure boundary. `restricted` — this reply used sources the reader
+  // cannot reach, so `content` is empty and the row renders a placeholder.
+  // `restrictedSources` — the reader CAN reach them, reads it normally, and is
+  // the person who can share it. Mutually exclusive by construction.
+  restricted?: true
+  restrictedSources?: true
+  /** Whether a standing rule may be offered; false for private material. */
+  canShareStanding?: boolean
   content: string
   createdAt: string
   editedAt?: string | null
