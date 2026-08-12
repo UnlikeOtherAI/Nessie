@@ -86,14 +86,21 @@ export const buildFcmBody = (token: string, payload: PushPayload): string => {
   if (payload.data !== undefined) message.data = payload.data
   const android: Record<string, unknown> = {}
   const apns: Record<string, unknown> = {}
+  const apnsPayload: Record<string, unknown> = {}
+  const aps: Record<string, unknown> = {}
   if (payload.collapseId !== undefined) {
     android.collapse_key = payload.collapseId
     apns.headers = { 'apns-collapse-id': payload.collapseId }
   }
   if (payload.badge !== undefined) {
     android.notification = { notification_count: payload.badge }
-    apns.payload = { aps: { badge: payload.badge } }
+    aps.badge = payload.badge
   }
+  if (Object.keys(aps).length > 0) apnsPayload.aps = aps
+  // FCM forwards this as APNs userInfo. Expo on iOS reads remote `body` into
+  // NotificationContent.data, while Android consumes message.data above.
+  if (payload.data !== undefined) apnsPayload.body = payload.data
+  if (Object.keys(apnsPayload).length > 0) apns.payload = apnsPayload
   if (Object.keys(android).length > 0) message.android = android
   if (Object.keys(apns).length > 0) message.apns = apns
   return JSON.stringify({ message })

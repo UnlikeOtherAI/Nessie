@@ -38,6 +38,14 @@ true;
 export const nativePushPathScript = (path: string | null): string => path
   ? `
 window.__nessiePendingPushPath = ${JSON.stringify(path)};
+// A warm notification tap can arrive while React is replacing an effect. Drive
+// the installed navigator synchronously when it exists; the retained value and
+// event below remain the cold-start and remount fallback.
+try {
+  if (typeof window.__nessieNavigate === 'function') {
+    window.__nessieNavigate(${JSON.stringify(path)});
+  }
+} catch (e) {}
 try {
   window.dispatchEvent(new CustomEvent('nessie:native-push-path', {
     detail: ${JSON.stringify(path)},

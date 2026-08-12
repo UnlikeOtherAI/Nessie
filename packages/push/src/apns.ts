@@ -43,7 +43,11 @@ export const buildApnsBody = (payload: PushPayload): string => {
   }
   if (payload.badge !== undefined) aps.badge = payload.badge
   if (payload.collapseId !== undefined) aps['thread-id'] = payload.collapseId
-  return JSON.stringify({ aps, ...(payload.data ?? {}) })
+  // expo-notifications serializes an APNs remote notification's `userInfo.body`
+  // as `content.data`. Keep all routing metadata under that one key so a direct
+  // APNs payload reaches the native deep-link bridge instead of just showing an
+  // alert with no actionable destination.
+  return JSON.stringify({ aps, ...(payload.data ? { body: payload.data } : {}) })
 }
 
 const parseReason = (body: string): string | undefined => {

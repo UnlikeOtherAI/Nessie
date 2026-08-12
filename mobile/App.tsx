@@ -431,7 +431,7 @@ const Shell = (): React.JSX.Element => {
             formFactor: IS_IPAD ? 'ipad' : 'phone',
             pendingPushPath,
             platform: Platform.OS,
-          })}\n${INJECTED}`}
+          })}\n${INJECTED}\ntrue;`}
           key={webviewKey}
           mediaPlaybackRequiresUserAction={false}
           onContentProcessDidTerminate={() => webRef.current?.reload()}

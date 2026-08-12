@@ -252,7 +252,29 @@ redirect also selects that cached target before its ordinary `/channels`
 landing route runs, so the default Personal Assistant conversation cannot
 replace the notified conversation. The target remains cached until the SPA
 reports that exact route back, then is cleared to prevent reopening an old
-message later.
+message later. Direct APNs routing metadata is carried in the top-level
+`body` object: Expo serializes that remote `userInfo.body` as
+`NotificationContent.data`, which is the native bridge's actionable payload.
+
+### Simulator deep-link replay
+
+Use the maintained APNs fixture and WebView route harness to prove both a cold
+notification tap and a warm tap without waiting for a live agent reply. Start
+the harness and Metro with its URL, then use `simctl push` with
+`mobile/test/fixtures/cold-deeplink.apns`; the harness renders the exact path it
+acknowledges back to the native shell. This exercises the same APNs custom data
+shape and native notification-response bridge as production:
+
+```sh
+pnpm --filter @nessie/mobile test:deeplink-simulator
+EXPO_PUBLIC_ADMIN_URL=http://YOUR_MAC_LAN_IP:5462 pnpm --filter @nessie/mobile start -- --dev-client
+xcrun simctl push <simulator-udid> com.km.nessie mobile/test/fixtures/cold-deeplink.apns
+```
+
+For the cold case, terminate Nessie before sending and tap the system banner.
+For the warm case, leave Nessie running on another path, send the same fixture,
+and tap its banner. Both must render the fixture's full reply-thread URL; a
+Personal Assistant route or an in-app banner destination is a failure.
 
 Before a real-device build can receive pushes, an Apple Developer Account
 Holder or Admin must do the one-time Apple portal setup for
