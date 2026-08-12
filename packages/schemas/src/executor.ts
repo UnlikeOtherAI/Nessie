@@ -15,6 +15,14 @@ import { createUuidBrandSchema, TimestampSchema } from './schema-primitives.js'
 const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
 const Base64UrlSchema = z.string().regex(/^[A-Za-z0-9_-]+$/)
 const ExecutorDaemonSignatureSchema = Base64UrlSchema.min(64).max(256)
+// The daemon challenge is a compact signed token: two base64url segments with
+// one literal separator. It is intentionally distinct from a single
+// base64url field so the API can return and accept the value it issues.
+const ExecutorDaemonChallengeTokenSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+  .min(64)
+  .max(2048)
 const NonEmptyRecordSchema = z.record(z.string(), z.unknown())
 
 export const ExecutorIdSchema = createUuidBrandSchema<'ExecutorId'>()
@@ -275,7 +283,7 @@ export type ExecutorEnrollmentRequest = z.infer<
 >
 
 export const ExecutorDaemonClaimRequestSchema = z.object({
-  challenge: Base64UrlSchema.min(64).max(2048),
+  challenge: ExecutorDaemonChallengeTokenSchema,
   executorId: ExecutorIdSchema,
   signature: ExecutorDaemonSignatureSchema,
 }).strict()
@@ -308,7 +316,7 @@ export type ExecutorDaemonCommandPollRequest = z.infer<
 >
 
 export const ExecutorDaemonChallengeResponseSchema = z.object({
-  challenge: Base64UrlSchema.min(64).max(2048),
+  challenge: ExecutorDaemonChallengeTokenSchema,
   expiresAt: TimestampSchema,
 }).strict()
 export type ExecutorDaemonChallengeResponse = z.infer<typeof ExecutorDaemonChallengeResponseSchema>

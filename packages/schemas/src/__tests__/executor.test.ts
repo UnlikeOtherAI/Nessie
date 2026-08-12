@@ -10,6 +10,8 @@ import {
   ExecutorAvailabilityResponseSchema,
   ExecutorCapabilityDescriptorSchema,
   ExecutorCommandEnvelopeSchema,
+  ExecutorDaemonChallengeResponseSchema,
+  ExecutorDaemonClaimRequestSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
   ExecutorFileWriteArgumentsSchema,
@@ -111,6 +113,37 @@ test('capability descriptors enforce the initial supported platform and known op
     ExecutorCapabilityDescriptorSchema.safeParse({
       ...descriptor,
       platform: { architecture: 'x64', os: 'linux', osMajorVersion: 6 },
+    }).success,
+    false,
+  )
+})
+
+test('daemon challenge contracts accept exactly two base64url segments', () => {
+  const challenge = `${'a'.repeat(80)}.${'b'.repeat(64)}`
+  const response = ExecutorDaemonChallengeResponseSchema.parse({
+    challenge,
+    expiresAt: timestamp,
+  })
+  assert.equal(response.challenge, challenge)
+  assert.equal(
+    ExecutorDaemonClaimRequestSchema.safeParse({
+      challenge,
+      executorId: ids.executor,
+      signature: 'c'.repeat(64),
+    }).success,
+    true,
+  )
+  assert.equal(
+    ExecutorDaemonChallengeResponseSchema.safeParse({
+      challenge: challenge.replace('.', ''),
+      expiresAt: timestamp,
+    }).success,
+    false,
+  )
+  assert.equal(
+    ExecutorDaemonChallengeResponseSchema.safeParse({
+      challenge: `${challenge}.extra`,
+      expiresAt: timestamp,
     }).success,
     false,
   )
