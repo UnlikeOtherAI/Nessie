@@ -102,6 +102,7 @@ const bindingPrisma = (state: { authorizationRevision?: number; consumed?: numbe
         fence: BigInt(41),
         id: '00000000-0000-4000-8000-000000000007',
       } : null,
+      findFirst: async () => null,
     },
     executorCapabilityRevision: {
       findUnique: async () => ({ descriptor, id: capabilityRevisionId, reviewStatus: 'active' }),

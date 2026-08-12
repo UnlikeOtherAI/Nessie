@@ -51,6 +51,68 @@ test('command payload and terminal result are encrypted at rest and receipt tran
         return state
       },
     },
+    executorBinding: {
+      findUnique: async () => ({
+        authorizationRevision: 3,
+        candidateHandleDigest: 'sha256:binding-provenance',
+        capabilityRevisionId,
+        executorId,
+        operationKey: 'sandbox.stop',
+        runId: '00000000-0000-4000-8000-000000000008',
+        sessionId: null,
+        session: null,
+      }),
+    },
+    executorAvailabilityCandidate: {
+      findUnique: async () => ({
+        actorUserId: '00000000-0000-4000-8000-000000000006',
+        agentId: '00000000-0000-4000-8000-000000000007',
+        authorizationRevision: 3,
+        executorId,
+        runId: null,
+      }),
+    },
+    executor: {
+      findUnique: async () => ({
+        authorizationRevision: 3,
+        capabilityRevisions: [{ id: capabilityRevisionId }],
+        id: executorId,
+        operationGrants: [{ state: 'allowed' }],
+        organizationId,
+        privateAssignments: [
+          { agentId: null, principalKind: 'user', role: 'admin', userId: '00000000-0000-4000-8000-000000000006' },
+          { agentId: '00000000-0000-4000-8000-000000000007', principalKind: 'agent', role: 'use', userId: null },
+        ],
+        projectId: null,
+        scopeKind: 'private',
+        status: 'online',
+      }),
+    },
+    executorCapabilityRevision: {
+      findUnique: async () => ({ descriptor: {
+        limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
+        localPolicyDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        operationKeys: ['sandbox.stop'],
+        platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
+        profiles: ['workspace_sandbox'],
+        protocolVersion: 1,
+        revision: 1,
+      }, reviewStatus: 'active' }),
+    },
+    organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
+    agent: { findFirst: async () => ({ toolPolicy: { 'executor.sandbox.stop': true } }) },
+    run: {
+      findUnique: async () => ({
+        agentId: '00000000-0000-4000-8000-000000000007',
+        thread: { channel: { organizationId, projectId: null } },
+        triggerMessage: { userId: '00000000-0000-4000-8000-000000000006' },
+      }),
+    },
+    toolRegistryEntry: {
+      upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+        id: where.organizationId_scopeKey_toolId.toolId,
+      }),
+    },
   } as unknown as PrismaClient
   const payload = { requestedBy: 'agent', stopReason: 'user_cancelled' }
   await createExecutorCommand(prisma, {
@@ -147,7 +209,13 @@ test('a late terminal receipt can resolve an unknown outcome without changing it
   assert.equal(state.resultDigest, digest(result))
 })
 
-const currentBindingPrisma = (agentAssigned: boolean): PrismaClient => {
+const currentBindingPrisma = (
+  agentAssigned: boolean,
+  operationKey: 'browser.open' | 'sandbox.stop' = 'sandbox.stop',
+): PrismaClient => {
+  const browserSessionId = operationKey === 'browser.open'
+    ? '00000000-0000-4000-8000-000000000009'
+    : null
   const candidate = {
     actorUserId: '00000000-0000-4000-8000-000000000006',
     agentId: '00000000-0000-4000-8000-000000000007',
@@ -158,7 +226,7 @@ const currentBindingPrisma = (agentAssigned: boolean): PrismaClient => {
   const client = {
     $executeRaw: async () => 1,
     agent: {
-      findFirst: async () => ({ toolPolicy: { 'executor.sandbox.stop': true } }),
+      findFirst: async () => ({ toolPolicy: { [`executor.${operationKey}`]: true } }),
     },
     executor: {
       findUnique: async () => ({
@@ -185,15 +253,23 @@ const currentBindingPrisma = (agentAssigned: boolean): PrismaClient => {
         candidateHandleDigest: 'sha256:binding-provenance',
         capabilityRevisionId,
         executorId,
-        operationKey: 'sandbox.stop',
+        operationKey,
         runId: '00000000-0000-4000-8000-000000000008',
+        sessionId: browserSessionId,
+        session: browserSessionId
+          ? {
+              executorId,
+              runId: '00000000-0000-4000-8000-000000000008',
+              status: 'active',
+            }
+          : null,
       }),
     },
     executorCapabilityRevision: {
       findUnique: async () => ({ descriptor: {
         limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
         localPolicyDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        operationKeys: ['sandbox.stop'],
+        operationKeys: [operationKey],
         platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
         profiles: ['workspace_sandbox'],
         protocolVersion: 1,
@@ -231,4 +307,25 @@ test('dispatch rechecks the private user and agent assignments held by a binding
     ),
     { code: 'EXECUTOR_BINDING_FENCED' },
   )
+})
+
+test('delivery fences a browser command after its session is stopped', async () => {
+  const client = currentBindingPrisma(true, 'browser.open') as unknown as {
+    executorBinding: { findUnique: () => Promise<Record<string, unknown>> }
+  }
+  const original = client.executorBinding.findUnique
+  let reads = 0
+  client.executorBinding.findUnique = async () => ({
+    ...(await original()),
+    session: {
+      executorId,
+      runId: '00000000-0000-4000-8000-000000000008',
+      status: ++reads === 1 ? 'active' : 'stopped',
+    },
+  })
+  await assert.rejects(
+    assertExecutorCommandBindingCurrent(client as unknown as never, bindingId),
+    { code: 'EXECUTOR_BINDING_FENCED' },
+  )
+  assert.equal(reads, 2)
 })

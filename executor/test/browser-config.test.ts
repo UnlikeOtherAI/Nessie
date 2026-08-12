@@ -1,0 +1,103 @@
+import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import test from 'node:test'
+
+import {
+  configureExecutorBrowserSandbox,
+  configureExecutorLocalPolicy,
+} from '../src/pair.js'
+import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
+
+const initialState = (workspaceRoot: string) => ({
+  apiBaseUrl: 'https://api.example.test',
+  descriptor: {
+    limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
+    operationKeys: ['file.list', 'file.read', 'file.write', 'workspace.review', 'sandbox.stop'],
+    profiles: ['workspace_sandbox'],
+    revision: 1,
+  },
+  executorId: '00000000-0000-4000-8000-000000000221',
+  machinePrivateKey: 'private',
+  machinePublicKey: 'public',
+  workspaceRoot,
+})
+
+test('browser configuration verifies owner-controlled guest artifacts before enabling both browser operations', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-config-'))
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-workspace-'))
+  const runtimeBundlePath = join(stateDir, 'guest-runtime')
+  const builderPath = join(stateDir, 'build-initrd')
+  const helperPath = join(stateDir, 'vm-helper')
+  const kernelPath = join(stateDir, 'kernel')
+  try {
+    await mkdir(join(runtimeBundlePath, 'bin'), { mode: 0o700, recursive: true })
+    await chmod(runtimeBundlePath, 0o700)
+    const browserRuntime = 'browser-runtime'
+    await Promise.all([
+      writeFile(builderPath, 'builder'),
+      writeFile(helperPath, 'helper'),
+      writeFile(kernelPath, 'kernel'),
+      writeFile(join(runtimeBundlePath, 'bin', 'browser'), browserRuntime),
+    ])
+    await Promise.all([
+      chmod(builderPath, 0o700),
+      chmod(helperPath, 0o700),
+      chmod(kernelPath, 0o600),
+      chmod(join(runtimeBundlePath, 'bin', 'browser'), 0o700),
+    ])
+    await writeFile(join(runtimeBundlePath, 'nessie-guest-runtime.json'), JSON.stringify({
+      entrypoints: { browser: 'bin/browser' },
+      files: [{
+        executable: true,
+        path: 'bin/browser',
+        sha256: createHash('sha256').update(browserRuntime).digest('hex'),
+      }],
+      version: 1,
+    }))
+    await chmod(join(runtimeBundlePath, 'nessie-guest-runtime.json'), 0o600)
+
+    const state = initialState(workspaceRoot)
+    await saveExecutorState(stateDir, state)
+    await assert.rejects(
+      configureExecutorLocalPolicy(stateDir, state, ['browser.open']),
+      /browser\.open and browser\.observe must be enabled together/,
+    )
+    await assert.rejects(
+      configureExecutorLocalPolicy(stateDir, state, ['browser.open', 'browser.observe']),
+      /Configure the owner-only browser VM and allowed origins/,
+    )
+
+    const configured = await configureExecutorBrowserSandbox(stateDir, state, {
+      allowedOrigins: ['https://console.example.test', 'https://app.example.test'],
+      guestInitrdBuilderPath: builderPath,
+      guestRuntimeBundlePath: runtimeBundlePath,
+      kernelPath,
+      vmHelperPath: helperPath,
+    })
+    assert.deepEqual(configured.browserSandbox?.allowedOrigins, [
+      'https://app.example.test',
+      'https://console.example.test',
+    ])
+    assert.deepEqual(configured.descriptor.operationKeys, [
+      'file.list',
+      'file.read',
+      'file.write',
+      'workspace.review',
+      'sandbox.stop',
+      'browser.open',
+      'browser.observe',
+    ])
+    assert.equal(configured.descriptor.revision, 2)
+    assert.deepEqual(await loadExecutorState(stateDir), configured)
+    await assert.rejects(
+      configureExecutorLocalPolicy(stateDir, configured, ['browser.open', 'browser.observe']),
+      /require sandbox\.stop/,
+    )
+  } finally {
+    await rm(stateDir, { force: true, recursive: true })
+    await rm(workspaceRoot, { force: true, recursive: true })
+  }
+})

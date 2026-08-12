@@ -3,12 +3,18 @@ import { createHash, createPrivateKey, sign } from 'node:crypto'
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
+  ExecutorBrowserObserveArgumentsSchema,
+  ExecutorBrowserOpenArgumentsSchema,
   ExecutorWorkspacePromoteArgumentsSchema,
   RunIdSchema,
   type ExecutorCommandEnvelope,
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
+import {
+  createExecutorBrowserSessionManager,
+  type ExecutorBrowserSessionManager,
+} from './browser-session-manager.js'
 import { applyNativePromotion } from './native-helper.js'
 import { signedDescriptorForState } from './pair.js'
 import {
@@ -114,6 +120,7 @@ export const executeExecutorCommand = async (
   stateDir: string,
   state: ExecutorLocalState,
   command: ExecutorCommandEnvelope,
+  dependencies: { browserSessions?: ExecutorBrowserSessionManager } = {},
 ): Promise<Record<string, unknown>> => {
   if (new Date(command.expiresAt) <= new Date()) {
     return { code: 'EXECUTOR_COMMAND_EXPIRED', success: false }
@@ -131,9 +138,9 @@ export const executeExecutorCommand = async (
   if (!runId.success) {
     return { code: 'EXECUTOR_COMMAND_RUN_INVALID', success: false }
   }
-  const workspace = await workspaceForRun(stateDir, state.workspaceRoot, runId.data)
   if (command.operationKey === 'file.list') {
     try {
+      const workspace = await workspaceForRun(stateDir, state.workspaceRoot, runId.data)
       return await listWorkspaceFiles(workspace, command.payload.args)
     } catch (error) {
       return workspaceFailure(error)
@@ -141,6 +148,7 @@ export const executeExecutorCommand = async (
   }
   if (command.operationKey === 'file.read') {
     try {
+      const workspace = await workspaceForRun(stateDir, state.workspaceRoot, runId.data)
       return await readWorkspaceFile(workspace, command.payload.args)
     } catch (error) {
       return workspaceFailure(error)
@@ -183,9 +191,26 @@ export const executeExecutorCommand = async (
       return workspaceFailure(error)
     }
   }
+  if (command.operationKey === 'browser.open') {
+    if (!ExecutorBrowserOpenArgumentsSchema.safeParse(command.payload.args).success) {
+      return { code: 'EXECUTOR_BROWSER_DENIED', success: false }
+    }
+    return dependencies.browserSessions
+      ? dependencies.browserSessions.open(command, runId.data)
+      : { code: 'EXECUTOR_BROWSER_UNAVAILABLE', success: false }
+  }
+  if (command.operationKey === 'browser.observe') {
+    if (!ExecutorBrowserObserveArgumentsSchema.safeParse(command.payload.args).success) {
+      return { code: 'EXECUTOR_BROWSER_DENIED', success: false }
+    }
+    return dependencies.browserSessions
+      ? dependencies.browserSessions.observe(command, runId.data)
+      : { code: 'EXECUTOR_BROWSER_UNAVAILABLE', success: false }
+  }
   // Stop can discard only its exact server-provenanced run scratch directory.
   if (command.operationKey === 'sandbox.stop') {
     try {
+      await dependencies.browserSessions?.stop(runId.data)
       return {
         status: await stopSandboxWorkspace(stateDir, runId.data) ? 'stopped' : 'no_active_sandbox',
         success: true,
@@ -194,14 +219,15 @@ export const executeExecutorCommand = async (
       return workspaceFailure(error)
     }
   }
-  // Shell, browser, and coding operations remain absent from the descriptor
-  // until their isolated backends are ready.
+  // Shell and coding operations remain absent until their isolated backends
+  // and credential boundary are ready.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
 }
 
 const pollAndExecuteCommand = async (
   stateDir: string,
   state: ExecutorLocalState,
+  browserSessions: ExecutorBrowserSessionManager,
 ): Promise<void> => {
   if (!state.connectionEpoch) return
   const observedAt = new Date().toISOString()
@@ -214,18 +240,23 @@ const pollAndExecuteCommand = async (
   if (!command) return
   await receipt(state, { commandId: command.commandId, state: 'accepted' })
   await receipt(state, { commandId: command.commandId, state: 'started' })
-  const result = await executeExecutorCommand(stateDir, state, command)
+  const result = await executeExecutorCommand(stateDir, state, command, { browserSessions })
   await receipt(state, { commandId: command.commandId, result, state: 'result_acknowledged' })
 }
 
 export const serveExecutor = async (stateDir: string, state: ExecutorLocalState): Promise<void> => {
   let live = await claimExecutor(stateDir, state)
+  const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
   let commandPollInFlight = false
   const commandInterval = setInterval(() => {
     if (commandPollInFlight) return
     commandPollInFlight = true
-    void pollAndExecuteCommand(stateDir, live)
-      .catch((error) => {
+    void pollAndExecuteCommand(stateDir, live, browserSessions)
+      .catch(async (error) => {
+        // A lost or fenced control plane may mean that a human revoked an
+        // operation. Preserve fail-closed egress by ending any live browser
+        // before this daemon attempts another poll or reconnect.
+        await browserSessions.stopAll()
         console.error(
           '[nessie-executor] command poll failed:',
           error instanceof Error ? error.message : String(error),
@@ -240,6 +271,7 @@ export const serveExecutor = async (stateDir: string, state: ExecutorLocalState)
       try {
         await heartbeatExecutor(live)
       } catch (error) {
+        await browserSessions.stopAll()
         try {
           live = await claimExecutor(stateDir, live)
         } catch (claimError) {
@@ -264,4 +296,5 @@ export const serveExecutor = async (stateDir: string, state: ExecutorLocalState)
     process.once('SIGINT', stop)
     process.once('SIGTERM', stop)
   })
+  await browserSessions.stopAll()
 }

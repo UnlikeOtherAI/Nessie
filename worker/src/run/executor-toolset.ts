@@ -16,10 +16,14 @@ import type { AgenticToolResult } from './tools.js'
 
 const EXECUTOR_COMMAND_TOPIC = 'executor.command'
 const COMMAND_TTL_MS = 25_000
+// Guest startup includes a bounded initrd build and VM handshake before the
+// browser request itself; the ordinary file-operation timeout is too short.
+const BROWSER_COMMAND_TTL_MS = 3 * 60 * 1_000
 
 type ExecutorEntry = {
   bindingId: string
   operationKey: string
+  sessionId: string | null
   toolName: string
 }
 
@@ -71,6 +75,15 @@ const descriptorFor = (operationKey: string): ToolSchemaDescriptor | null => {
           required: ['content', 'path'],
           type: 'object',
         }
+      case 'browser.open':
+        return {
+          additionalProperties: false,
+          properties: { url: { format: 'uri', maxLength: 4_096, type: 'string' } },
+          required: ['url'],
+          type: 'object',
+        }
+      case 'browser.observe':
+        return { additionalProperties: false, properties: {}, type: 'object' }
       case 'workspace.review':
         return { additionalProperties: false, properties: {}, type: 'object' }
       case 'sandbox.stop':
@@ -107,14 +120,34 @@ export const buildExecutorToolset = async (
     ensureExecutorLogicalTools(prisma, input.organizationId),
     prisma.executorBinding.findMany({
       where: { runId: input.runId },
-      select: { id: true, operationKey: true },
+      select: { id: true, operationKey: true, session: { select: { id: true, status: true } } },
     }),
   ])
+  const browserOperationKeys = new Set(['browser.open', 'browser.observe', 'sandbox.stop'])
+  const browserBindings = bindings.filter((binding) => browserOperationKeys.has(binding.operationKey))
+  const browserSessionId = browserBindings[0]?.session?.id
+  const hasExactBrowserBundle = Boolean(
+    browserSessionId
+    && bindings.length === 3
+    && browserBindings.length === 3
+    && browserBindings.every((binding) => binding.session?.id === browserSessionId)
+    && browserBindings.some((binding) => binding.operationKey === 'browser.open')
+    && browserBindings.some((binding) => binding.operationKey === 'browser.observe')
+    && browserBindings.some((binding) => binding.operationKey === 'sandbox.stop'),
+  )
   const entries = bindings.flatMap((binding): ExecutorEntry[] => {
+    if ((binding.operationKey === 'browser.open' || binding.operationKey === 'browser.observe') && !hasExactBrowserBundle) {
+      return []
+    }
     const registryId = logicalTools.get(binding.operationKey as never)
     const descriptor = descriptorFor(binding.operationKey)
     if (!registryId || input.agentToolPolicy?.[registryId] !== true || !descriptor) return []
-    return [{ bindingId: binding.id, operationKey: binding.operationKey, toolName: descriptor.toolName }]
+    return [{
+      bindingId: binding.id,
+      operationKey: binding.operationKey,
+      sessionId: binding.session?.id ?? null,
+      toolName: descriptor.toolName,
+    }]
   })
   const entryByName = new Map(entries.map((entry) => [entry.toolName, entry]))
 
@@ -133,6 +166,44 @@ export const buildExecutorToolset = async (
       const created = await prisma.$transaction(async (tx) => {
         const binding = await assertExecutorCommandBindingCurrent(tx, entry.bindingId)
         if (binding.runId !== input.runId) throw new Error('Executor binding run mismatch.')
+        if (binding.sessionId !== entry.sessionId) throw new Error('Executor binding session mismatch.')
+        if (entry.operationKey === 'browser.open') {
+          if (!binding.sessionId) return { browserSessionUnavailable: true as const }
+          const activated = await tx.executorSession.updateMany({
+            where: {
+              executorId: binding.executorId,
+              id: binding.sessionId,
+              runId: input.runId,
+              status: 'pending',
+            },
+            data: { status: 'active' },
+          })
+          if (activated.count !== 1) return { browserSessionUnavailable: true as const }
+        }
+        if (entry.operationKey === 'browser.observe') {
+          if (!binding.sessionId) return { browserSessionUnavailable: true as const }
+          const active = await tx.executorSession.findFirst({
+            where: {
+              executorId: binding.executorId,
+              id: binding.sessionId,
+              runId: input.runId,
+              status: 'active',
+            },
+            select: { id: true },
+          })
+          if (!active) return { browserSessionUnavailable: true as const }
+        }
+        if (entry.operationKey === 'sandbox.stop' && binding.sessionId) {
+          await tx.executorSession.updateMany({
+            where: {
+              executorId: binding.executorId,
+              id: binding.sessionId,
+              runId: input.runId,
+              status: { in: ['pending', 'active', 'attention', 'detached'] },
+            },
+            data: { status: 'stopped' },
+          })
+        }
         const toolCall = await tx.toolCall.create({
           data: {
             agentId: input.agentId,
@@ -153,7 +224,11 @@ export const buildExecutorToolset = async (
           },
           select: { id: true },
         })
-        const expiresAt = new Date(startedAt.getTime() + COMMAND_TTL_MS)
+        const expiresAt = new Date(startedAt.getTime() + (
+          entry.operationKey === 'browser.open' || entry.operationKey === 'browser.observe'
+            ? BROWSER_COMMAND_TTL_MS
+            : COMMAND_TTL_MS
+        ))
         await createExecutorCommand(tx, {
           bindingId: entry.bindingId,
           commandId,
@@ -165,6 +240,13 @@ export const buildExecutorToolset = async (
         })
         return { expiresAt, toolCallId: toolCall.id }
       })
+      if ('browserSessionUnavailable' in created) {
+        return {
+          inputSummary: summarizeToolInput(args),
+          output: 'The browser session is no longer available for this run.',
+          success: false,
+        }
+      }
       const result = await waitForExecutorCommandResult(
         prisma,
         encryptionSecret,

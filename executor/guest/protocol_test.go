@@ -229,6 +229,17 @@ func TestGuestBrowserProfileRejectsASymlinkedCOWPath(t *testing.T) {
 	}
 }
 
+func TestGuestBrowserProfileRejectsAPreseededCOWProfile(t *testing.T) {
+	root := t.TempDir()
+	profile := filepath.Join(root, ".nessie-executor", "browser")
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureBrowserProfile(root, profile); err == nil {
+		t.Fatal("accepted a preseeded browser profile")
+	}
+}
+
 func TestGuestBrowserObservationDropsQueryAndCannotDialAnotherAddress(t *testing.T) {
 	observed, ok := safeObservedBrowserURL("https://app.example.test/guide?secret=value#fragment")
 	if !ok || observed != "https://app.example.test/guide" {

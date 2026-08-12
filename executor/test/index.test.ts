@@ -107,7 +107,7 @@ test('local policy configuration proposes only implemented COW operations', asyn
     assert.deepEqual((await loadExecutorState(stateDir)).descriptor, configured.descriptor)
     await assert.rejects(
       configureExecutorLocalPolicy(stateDir, configured, ['browser.open']),
-      /Only implemented COW workspace operations/,
+      /browser\.open and browser\.observe must be enabled together/,
     )
     await assert.rejects(
       configureExecutorLocalPolicy(stateDir, configured, ['workspace.promote']),

@@ -69,7 +69,13 @@ const nextAuthorizationRevision = async (
 ): Promise<number> => {
   const executor = await tx.executor.update({
     where: { id: executorId },
-    data: { authorizationRevision: { increment: 1 } },
+    // An access mutation must fence an already live browser as well as future
+    // command creation. The daemon's next signed poll observes the changed
+    // connection epoch and stops all local guest sessions before reconnecting.
+    data: {
+      activeConnectionEpoch: { increment: 1 },
+      authorizationRevision: { increment: 1 },
+    },
     select: { authorizationRevision: true },
   })
   return executor.authorizationRevision

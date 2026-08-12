@@ -137,6 +137,18 @@ export const ExecutorFileWriteArgumentsSchema = z
   .strict()
 export type ExecutorFileWriteArguments = z.infer<typeof ExecutorFileWriteArgumentsSchema>
 
+/** Browser navigation is limited to one locally approved HTTPS URL. */
+export const ExecutorBrowserOpenArgumentsSchema = z
+  .object({
+    url: z.string().url().max(4_096),
+  })
+  .strict()
+export type ExecutorBrowserOpenArguments = z.infer<typeof ExecutorBrowserOpenArgumentsSchema>
+
+/** Browser observation takes no model-supplied selector, script, or action. */
+export const ExecutorBrowserObserveArgumentsSchema = z.object({}).strict()
+export type ExecutorBrowserObserveArguments = z.infer<typeof ExecutorBrowserObserveArgumentsSchema>
+
 /**
  * Server-authored data for a human-confirmed COW promotion. This schema is
  * intentionally not included in the model-facing executor toolset: an agent
@@ -392,6 +404,21 @@ export const ExecutorRunLaunchRequestSchema = z.object({
     if (new Set(value).size !== value.length) {
       context.addIssue({ code: z.ZodIssueCode.custom, message: 'Operation keys must be unique.' })
     }
+    const browserBundle: ExecutorOperationKey[] = [
+      'browser.open',
+      'browser.observe',
+      'sandbox.stop',
+    ]
+    const browserRequested = value.includes('browser.open') || value.includes('browser.observe')
+    if (browserRequested && (
+      value.length !== browserBundle.length
+      || browserBundle.some((operationKey) => !value.includes(operationKey))
+    )) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Browser runs are exactly browser.open, browser.observe, and sandbox.stop.',
+      })
+    }
   }),
 }).strict()
 export type ExecutorRunLaunchRequest = z.infer<typeof ExecutorRunLaunchRequestSchema>
@@ -601,6 +628,26 @@ export type ExecutorDescriptorReviewResponse = z.infer<
   typeof ExecutorDescriptorReviewResponseSchema
 >
 
+export const ExecutorSessionStatusSchema = z.enum([
+  'pending',
+  'active',
+  'attention',
+  'detached',
+  'stopped',
+  'failed',
+])
+export type ExecutorSessionStatus = z.infer<typeof ExecutorSessionStatusSchema>
+
+export const ExecutorSessionSummaryResponseSchema = z.object({
+  createdAt: TimestampSchema,
+  id: ExecutorSessionIdSchema,
+  profile: ExecutorProfileSchema,
+  runId: RunIdSchema.optional(),
+  status: ExecutorSessionStatusSchema,
+  updatedAt: TimestampSchema,
+}).strict()
+export type ExecutorSessionSummaryResponse = z.infer<typeof ExecutorSessionSummaryResponseSchema>
+
 export const ExecutorAccessViewResponseSchema = z.object({
   canManage: z.boolean(),
   executorId: ExecutorIdSchema,
@@ -617,6 +664,7 @@ export const ExecutorAccessViewResponseSchema = z.object({
     updatedAt: TimestampSchema,
   }).strict()).optional(),
   privateAssignments: z.array(ExecutorPrivateAssignmentResponseSchema).optional(),
+  sessions: z.array(ExecutorSessionSummaryResponseSchema).max(20).optional(),
 })
 export type ExecutorAccessViewResponse = z.infer<
   typeof ExecutorAccessViewResponseSchema

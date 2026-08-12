@@ -167,8 +167,9 @@ locally, submits the signed enrollment proof, and after the human confirms the
 fingerprint, claims a connection and sends heartbeats. Its initial companion
 profile is deliberately limited to daemon-owned COW workspace operations:
 `file.list`, `file.read`, `file.write`, `workspace.review`, and
-`sandbox.stop`. It refuses shell, browser, coding, host-promotion, and every
-unimplemented operation.
+`sandbox.stop`. Browser work remains disabled until its owner configures the
+separate guest VM policy; shell, coding, host-promotion, and every other
+unimplemented operation remain refused.
 
 `nessie-executor configure --operations ...` can narrow or restore that fixed
 COW subset in local owner-only state. A proposal that adds `workspace.promote`
@@ -183,6 +184,31 @@ proposal, and no direct descriptor-review endpoint bypasses this confirmation
 path. The Personal Assistant can inspect the same signature-free proposal
 summary for a manager and prepare a review link, but it cannot submit the
 confirmation on the person's behalf.
+
+`nessie-executor configure-browser` is the only local path that can add the
+paired `browser.open` and `browser.observe` operations. It requires exact,
+owner-private initrd-builder, kernel, signed VM-helper, and runtime-bundle
+paths plus one or more exact HTTPS origins. The companion re-verifies the
+artifacts and every runtime digest, canonicalizes the local origin ceiling,
+and enables the two browser operations together with `sandbox.stop` in a new
+descriptor revision. It rejects any browser configuration without that stop
+operation.
+It never uploads a local path or the origin list. The owner must reconnect and
+an entitled human must separately review the proposed descriptor before an
+agent can receive either operation. `browser.open` starts one lease-bound VM;
+`browser.observe` can inspect only that same run's browser; `sandbox.stop`, VM
+exit, daemon shutdown, a fenced control poll, or the ten-minute local session
+limit tears it down. Every user-confirmed access change, descriptor review, and
+lifecycle transition advances the daemon connection epoch; its next one-second
+control poll fails closed and stops every live guest before it can reconnect.
+The local descriptor's `maxSessions` limit is enforced across all run IDs; a
+durable browser-session row consumes a run's one browser-open attempt before
+VM startup, so neither a daemon restart, stopped VM, nor failed start turns the
+browser into a retryable general launcher. The executor manager's read-only
+**Sessions** tab shows that pending, active, or stopped record without browser
+content or controls. The guest creates a fresh private browser-profile leaf for
+each VM and rejects one preseeded by the COW workspace, so the browser starts
+without workspace-provided cookies, extensions, or other ambient state.
 
 On connection, the daemon sends a `hello` frame:
 
@@ -227,6 +253,18 @@ Nessie repeats the same user, agent, scope, membership, descriptor, operation,
 logical-policy, lifecycle, and revision checks under the executor lock. Dispatch
 then advances the existing queue lease; it cannot select another executor after
 retry, policy change, or revocation.
+
+Browser work is an exception to ordinary small bundles: it is exactly
+`browser.open`, `browser.observe`, and `sandbox.stop` on a fresh run, all bound
+to one durable `ExecutorSession`. The legacy single-bind endpoint refuses both
+browser operations, and no later binding can be added to a browser run. The
+worker withholds the browser schemas unless all three bindings reference that
+same session, so a file operation cannot share the browser's COW workspace.
+`browser.open` atomically changes the session from `pending` to `active` before
+creating its command; `sandbox.stop` changes it to `stopped`. Poll delivery
+re-reads the binding and exact session *after* acquiring the executor lock, and
+will terminalize a stale browser command rather than deliver it after stop or
+revocation.
 
 The only command transition receipts are:
 
@@ -297,7 +335,7 @@ content, and a small exact operation bundle—but never an executor id. Every
 operation is independently rechecked and bound before the candidate is
 consumed, so a failed member rolls back the complete bundle. The older
 `POST /api/runs/:runId/executor-bind` route is limited to binding one
-already-created run operation. Both paths use the same fenced binding helper
+already-created non-browser run operation. Both paths use the same fenced binding helper
 and the schema carries no executor id; dispatch only sees that binding.
 The worker creates the regular `ToolCall` before command dispatch and completes
 that same row when the terminal receipt returns. It also creates the existing
@@ -450,8 +488,9 @@ in an owner-only directory (maximum 96 path bytes). It copies bounded buffered
 bytes in each direction to that socket, then closes both ends on EOF, I/O
 failure, or overflow. It has no origin, HTTP, DNS, credential, TCP, or remote
 socket code; those decisions remain inside the already owner-private CONNECT
-gateway. No daemon command starts the helper session, attaches the host egress
-listener and bridge, or exposes either to browser/coding operations.
+gateway. The daemon uses this route only for a reviewed, locally configured,
+exact-run browser session; it still exposes neither a general proxy nor any
+coding operation.
 
 The signed helper now has an internal long-lived `session` command for the
 companion launcher. It requires the lease-derived COW directory, an existing
@@ -462,9 +501,10 @@ tunnel. The companion allocates that socket in a distinct short owner-private
 temporary directory—rather than relaxing the 96-byte Unix-socket bound for a
 possibly deep COW path—and deletes it with the session. It emits a sanitized
 ready result and stops every bridge, socket, and VM on signal or control-channel
-termination. This is transport activation, not product availability: no daemon
-command starts it yet, no descriptor contains a browser/shell/coding operation,
-and it has no user-facing doorway.
+termination. A reviewed `browser.open` daemon command can now start this
+session only from a server-bound run and an owner-configured local browser
+policy; the channel composer is its human-only doorway. It is not a general
+browser, proxy, shell, or coding-session facility.
 
 After that ready line, the already private helper stdin/stdout pipes become the
 only companion-to-helper control transport. The helper reads exactly the 43-byte
@@ -478,8 +518,9 @@ entrypoints. It proves the authenticated companion → helper → guest path but
 does not launch a process, expose a descriptor operation, or make a browser or
 coding session available.
 
-The same private seam now also has an internal-only `browser.open` request. Its
-caller must pass the local exact HTTPS-origin policy before forwarding; the
+The same private seam implements `browser.open` for the exact server-bound run
+whose reviewed local policy contains both browser operations. Its caller must
+pass the local exact HTTPS-origin policy before forwarding; the
 guest independently accepts only a bounded HTTPS URL without credentials or a
 port. It executes only the manifest-declared browser under `/runtime`, never a
 shell or `PATH` lookup, with a fixed no-first-run/no-QUIC proxy argv and an
@@ -487,14 +528,16 @@ environment containing only a COW-local `HOME` and `TMPDIR`. Its profile must
 be owner-private under `/work` and rejects pre-existing links or shared
 directories. The browser can reach only the guest loopback proxy, whose
 authenticated egress bridge still enforces the local origin policy. This is a
-launch substrate—not `browser.open` product availability: it has no descriptor
-operation, remote debugging listener, workflow binding, UI doorway, or agent
-path, and it is stopped with its VM session. Its internal `browser.observe`
+bounded product operation: it has no remote debugging listener, general
+workflow-selection parameter, or agent path outside the exact bound tool, and
+it is stopped with its VM session. Its `browser.observe`
 request can query only the browser's fixed guest-loopback DevTools `/json/list`
 endpoint through a dialer pinned to `127.0.0.1:9222`; it returns at most 32 page
 titles/types and HTTPS URLs with query and fragment removed. It cannot follow a
 redirect, select a target, connect to any other address, return page content,
-or expose a DevTools WebSocket.
+or expose a DevTools WebSocket. The daemon keeps the live VM only under the
+server-provenanced run ID, rejects a second browser launch for that run, and
+does not let a browser command select a different VM or executor.
 
 Browser and coding runtimes may enter a future session only as a complete
 owner-private `nessie-guest-runtime.json` bundle. Its versioned manifest names

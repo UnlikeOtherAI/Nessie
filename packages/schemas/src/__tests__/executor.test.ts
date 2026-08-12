@@ -10,6 +10,8 @@ import {
   ExecutorAvailabilityResponseSchema,
   ExecutorCapabilityDescriptorSchema,
   ExecutorCommandEnvelopeSchema,
+  ExecutorBrowserObserveArgumentsSchema,
+  ExecutorBrowserOpenArgumentsSchema,
   ExecutorFileWriteArgumentsSchema,
   ExecutorWorkspacePromoteArgumentsSchema,
   ExecutorWorkspacePromotionPrepareRequestSchema,
@@ -157,6 +159,22 @@ test('workspace write arguments are bounded for the COW backend', () => {
   )
 })
 
+test('browser arguments cannot smuggle a selector, script, or action', () => {
+  assert.deepEqual(
+    ExecutorBrowserOpenArgumentsSchema.parse({ url: 'https://app.example.test/guide' }),
+    { url: 'https://app.example.test/guide' },
+  )
+  assert.equal(
+    ExecutorBrowserOpenArgumentsSchema.safeParse({
+      selector: 'button',
+      url: 'https://app.example.test/guide',
+    }).success,
+    false,
+  )
+  assert.equal(ExecutorBrowserObserveArgumentsSchema.safeParse({}).success, true)
+  assert.equal(ExecutorBrowserObserveArgumentsSchema.safeParse({ script: 'document.body' }).success, false)
+})
+
 test('availability candidates expose opaque handles rather than executor IDs', () => {
   const candidate = ExecutorAvailabilityCandidateSchema.parse({
     expiresAt: timestamp,
@@ -207,6 +225,20 @@ test('a direct executor run names an agent, opaque choice, and an exact operatio
   assert.deepEqual(response.bindings.map((binding) => binding.operationKey), ['file.read', 'workspace.review'])
   assert.equal('executorId' in response.bindings[0]!, false)
   assert.equal(ExecutorRunLaunchRequestSchema.safeParse({ ...request, operationKeys: ['file.read', 'file.read'] }).success, false)
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['browser.open', 'browser.observe'],
+    }).success,
+    false,
+  )
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
+    }).success,
+    true,
+  )
 })
 
 test('command envelopes carry fences and digests rather than raw result data', () => {

@@ -42,7 +42,9 @@ message, pending run, task, bindings, and existing `run.execute` queue job for
 one bound channel agent. The launch accepts a small exact operation bundle;
 each member is independently revalidated against the same opaque candidate in
 one transaction. `POST /api/runs/:runId/executor-bind` remains the narrow
-internal/continuation binding seam for an already-created single operation.
+internal/continuation binding seam for an already-created non-browser single
+operation. Browser work is available only through its human-directed exact
+bundle.
 Neither endpoint accepts an executor id; the model receives only the bound,
 explicitly granted logical operations and never a selection parameter. Command creation
 reserves the normal `ToolCall`, creates an existing `executor.command` queue
@@ -53,10 +55,11 @@ descriptor, operation and logical grants, lifecycle, and revision under the
 executor fence. An absent terminal receipt becomes `unknown_outcome` and is
 fatal/retry-safe, never a model-visible success; a late receipt for that exact
 already-delivered command can resolve it without issuing new work. The model
-schemas permit only bounded file operations, `workspace.review`, and
-`sandbox.stop`; no host-promotion schema is present.
+schemas permit bounded file operations, `workspace.review`, `sandbox.stop`,
+and the exact `{browser.open, browser.observe, sandbox.stop}` browser bundle;
+no host-promotion schema is present.
 
-It does **not** dispatch host promotion, commands, browser work, or coding
+It does **not** dispatch host promotion, commands, browser actions, or coding
 sessions; those operations remain unavailable until their concrete isolated
 backends are delivered. The paired root is a path-constrained local read
 boundary: it rejects traversal and every symbolic link, keeps a fixed canonical
@@ -71,7 +74,22 @@ cannot mutate the host. These operations are dispatched only after descriptor
 review, the exact executor-operation grant, logical-tool grant, and a
 human-bound run choice. Until the micro-VM,
 forced egress, and reviewed promotion protocol exist, the paired host root
-remains read-only.
+remains read-only. Browser is the first isolated backend: only an owner-local
+`configure-browser` command can verify the VM artifacts and runtime bundle,
+compile exact HTTPS origins, and propose both browser operations. After human
+descriptor review, one bound `browser.open` creates a lease-bound COW micro-VM;
+`browser.observe` returns at most 32 sanitized target records from that same
+run. A durable `ExecutorSession` consumes the launch once before VM startup;
+the bundle cannot share a run with file tools, and its legacy single-bind route
+rejects browser operations. No DOM, DevTools endpoint, browser action, direct network, or persistent
+browser credential is exposed; stop, VM exit, daemon shutdown, or a ten-minute
+session limit tears the browser down. Any human-confirmed access change,
+descriptor review, or lifecycle transition fences the daemon connection; the
+next control poll stops every live browser before the daemon may reconnect.
+The daemon enforces the descriptor `maxSessions` ceiling across run IDs and
+the durable session consumes the run's one browser-open attempt before VM
+startup, so a stopped, failed, or daemon-restarted VM cannot be reused as a
+general launcher. Its manager-visible session record is read-only.
 
 The native promotion substrate remains unreachable from agents. Its
 `workspace-preflight` command accepts the host root and COW draft only as
@@ -224,9 +242,11 @@ opens it only after the exact control hello. Every authenticated tunnel gets its
 own bounded bridge and all bridges close on VM/control shutdown. The companion
 places that socket in a separately-created short owner-private temporary
 directory, then removes it with the session; a deep COW path never causes the
-Unix-socket bound to be widened. This is still not an executor capability: the
-daemon has no session launcher, descriptors still omit browser/shell/coding
-operations, and there is no UI or model path to invoke it.
+Unix-socket bound to be widened. The daemon's browser manager is now the sole
+reviewed consumer: it derives a lease from the exact command/run fence, verifies
+`runtime.inspect.browser`, and retains the live VM only under that run ID. It
+has no general launcher, proxy, shell, coding operation, or browser attach
+endpoint.
 
 The companion now has the matching runtime-admission contract. A future guest
 browser/tmux/CLI image must be a complete owner-private bundle with a versioned
@@ -274,10 +294,10 @@ symlink-free owner-private COW profile. The guest still has no direct network
 route. Its internal `browser.observe` is pinned to the guest browser's
 loopback-only DevTools list endpoint and returns at most 32 page title/type and
 query/fragment-stripped HTTPS URL records; it cannot fetch page content, choose
-a DevTools target, or connect anywhere else. This is not product
-`browser.open`/`browser.observe`: there is no descriptor projection, agent/UI
-doorway, remote DevTools listener, act bridge, or workflow binding. Coding
-lifecycle/control remains unavailable.
+a DevTools target, or connect anywhere else. It is now projected only after
+local browser configuration, descriptor review, exact operation grants, a
+server-bound run, and the human-only **Run on executor → Browse an approved
+site** doorway. Coding lifecycle/control remains unavailable.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
@@ -969,137 +989,7 @@ inspect-safe activity receipt. Agent Designer's exact executor-operation grants
 and their PA prepare/confirmed-apply counterpart must be live before the
 composer can present a candidate.
 
-### 3. Browser observe and workflow binding
+## Delivery and verification
 
-Add browser open/observe only through the enforced egress proxy. Add project or
-worktree selection and executor requirements to workflow test/run detail. A
-workflow resolves and pins an eligible executor once at launch and records that
-choice on its run rather than re-selecting after a retry. Keep the existing
-Docker/GCloud environment flow intact.
-
-### 4. Mutating sandbox operations
-
-Add file write, argv-command, and browser-act only after `ExecutorApproval`,
-fencing, acknowledgement/recovery, and revocation-mid-call semantics pass.
-Use a copy-on-write/scratch workspace for the first mutating profile so a
-successful sandbox command cannot silently alter the selected host workspace.
-Promoting an explicit change back to the host is the separate,
-approval-gated `workspace.promote` operation, performed only by the daemon
-from a validated, conflict-checked manifest.
-This slice is blocked until the Attention surface has passed its run-detail,
-activity-row, and companion doorway tests.
-
-The native preflight helper may land before that promotion slice because it is
-strictly non-mutating: it verifies the exact root/draft descriptor-relative
-manifest and current conflict state, but cannot expose `workspace.promote` or
-modify a host entry. The apply helper, approval continuation, journal/recovery,
-and all UI doorways remain one delivery unit.
-
-### 5. Coding-session executor
-
-Add the dedicated tmux backend, Codex and Claude launch adapters, observe-only
-sessions launched by the executor, and session-local authenticated hooks. Ship
-the session list/detail through the same Executors surface with read-only/control
-state, a visible control-lease timer, terminal attention states, stop/detach
-actions, and links back to the originating Nessie task.
-
-Only after observe/control, replay, reconnect, and revocation tests pass may
-an agent receive `coding.prompt`. The implementation must not modify a user's
-global Codex or Claude configuration; injected hooks/settings are session-local
-and fail open to observation only.
-
-Progress: the guest now proves the dedicated-server mechanics privately: it
-creates a root-configured, guest-owned socket directory before privilege drop;
-uses the manifest-pinned tmux and Codex/Claude argv directly; accepts only a
-fixed session/pane target; retains exited panes; and bounds/sanitizes
-observation. It exposes no `coding.*` executor operation yet. The next coding
-slice requires a credential-principal boundary before a session-bound
-credential/egress broker and durable session/control records: a proof inherited
-by the coding CLI can be read by its workspace children and is therefore not a
-safe credential boundary. Only then may this guest substrate be wired through a
-descriptor, the daemon, agent grants, the Executors surface, and Personal
-Assistant user confirmation.
-
-### 6. Expansion and hardening
-
-Add platform-specific sandbox backends, local MCP proxy capability, service
-installers for macOS/Linux/Windows, encrypted local transcript cache with a
-user-configured retention policy, policy previews, and capacity/budget
-scheduling. Consider hosted ephemeral executors only as a separate profile
-with its own isolation and commercial review.
-
-## Verification gates
-
-Each slice must prove all of the following:
-
-- a user without entitlement cannot discover, select, or inspect an executor;
-  a private run requires both the exact assigned user and exact assigned agent,
-  and cannot leak to other users or agents; project scope cannot run outside
-  its exact project; organization scope cannot cross organizations; and an
-  explicit scope filter never grants access;
-- every executor operation requires both its exact
-  `ExecutorAgentOperationGrant` and its logical tool grant; a new descriptor
-  operation is ungranted, a resource grant cannot spill to another executor,
-  and candidate handles cannot be forged, reused, or widened by model input;
-- private use assignees cannot read a roster, the final active human private
-  administrator cannot be removed, offboarding drains/revokes instead of
-  transferring private access, and break-glass revocation cannot inspect data;
-- cloud grants cannot bypass a locally denied path, command, browser origin,
-  read-only root, interactive-control setting, or resource ceiling;
-- pairing, command replay, policy revision mismatch, network loss, reconnect,
-  draining, revocation, and cancellation have deterministic, idempotent
-  outcomes;
-- executor dispatch has exactly one queue-job and one `ToolCall` lifecycle per
-  operation; an `ExecutorCommand` cannot create a second lease, retry loop, or
-  terminal state, and uncertain acknowledgement follows the existing
-  `needs_setup`/recovery path;
-- pairing replay/cross-organization races, descriptor rollback, dual active
-  connections, daemon/server restarts, disconnect before and after command
-  acknowledgement, and revocation mid-call fail closed or enter explicit
-  operator recovery;
-- sandbox tests cover symlink, hardlink, mount, child-process, DNS, private
-  network, redirect, download/upload, WebSocket, and file-to-web exfiltration
-  attempts; guest DNS, direct TCP, UDP/QUIC, CONNECT, and proxy-bypass attempts
-  cannot evade the forced egress gateway; unsupported platforms advertise no
-  stronger operation than they enforce;
-- no workspace or coding process can read a host CLI home, keychain, global
-  token, or reusable bearer; broker/gateway credential revocation cuts off a
-  live session without exposing credential material in guest, model, audit, or
-  log data;
-- `workspace.promote` alone can modify a host workspace and requires its own
-  grants, approval, local policy, binding, and receipts; hostile COW manifests,
-  base-snapshot conflicts, symlink/hardlink/special-file paths, interrupted
-  commits, and revocation during promotion cannot produce an unreviewed host
-  write or leave an unrecoverable partial change;
-- approval replay with changed arguments or policy fails, and a retained
-  redacted approval manifest proves what was approved without storing raw data;
-- every pending approval and coding attention state is actionable from its
-  Executors Attention home and reachable from run detail, activity, and the
-  companion; an agent cannot approve, reject, or alter private assignments;
-- PA access changes require a current user-bound structural confirmation and
-  the configured step-up challenge where required; an expired/replayed/stale
-  diff, a shared-channel PA run, or a scheduled/child agent cannot apply it;
-- a coding action cannot target a prefix-matched/wrong tmux session, and
-  terminal text, hostile ANSI, or binary output cannot manufacture a success,
-  failure, or approval;
-- commands and tool calls retain stable provenance without retaining raw local
-  files, terminal output, browser DOM, or credentials; raw content is absent
-  from database records, audit, logs, realtime telemetry, and error reports;
-- the web management page, Agent Designer doorway, run/workflow selector, and
-  companion each work in a real Playwright browser/desktop verification flow;
-- Codex and Claude launch paths are tested against declared supported versions
-  and the source-adoption/licence matrix is complete before any external code is
-  reused;
-- existing Docker/GCloud environment provisioning and current MCP HTTP/SSE
-  security tests continue to pass unchanged.
-
-## Explicit non-goals for the first release
-
-- turning every connected laptop into a generic remote shell or SSH proxy;
-- connecting to arbitrary pre-existing tmux sessions; a separately consented
-  broker is a later design, not an initial-release shortcut;
-- cloud-side stdio execution, private-network URL probing, or user-authored
-  connector process spawning;
-- silently transmitting a developer's source tree, terminal history, browser
-  profile, home directory, Docker socket, or local credentials;
-- replacing the current execution-environment provider/runner system.
+The remaining delivery phases, hardening gates, and explicit non-goals are in
+[delivery and verification](2026-08-11-executor-integration/delivery-and-verification.md).

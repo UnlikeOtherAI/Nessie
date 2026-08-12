@@ -251,7 +251,21 @@ export const ExecutorDetailPanels = ({
           ) : null}
         </div>
       ) : null}
-      {tab === 'sessions' ? <p className="mt-4 text-sm text-[color:var(--tx3)]">No executor session is attached. Session launch and control remain unavailable until an approved operation is bound to a run.</p> : null}
+      {tab === 'sessions' ? (
+        <div className="mt-4 grid gap-2 text-sm text-[color:var(--tx2)]">
+          <p className="text-xs text-[color:var(--tx3)]">Browser records show whether a run’s one-time browser capability is pending, consumed, or stopped. They never expose browser content or controls.</p>
+          {(access?.sessions ?? []).length === 0
+            ? <p>No executor session has been created.</p>
+            : (access?.sessions ?? []).map((session) => (
+              <div className="rounded-md border border-[color:var(--sep)] px-3 py-2" key={session.id}>
+                <p className="font-medium text-[color:var(--tx)]">{session.profile} · {session.status}</p>
+                <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
+                  Created {new Date(session.createdAt).toLocaleString()}
+                </p>
+              </div>
+            ))}
+        </div>
+      ) : null}
       {tab === 'attention' ? (
         <div className="mt-4 grid gap-3">
           <p className="text-sm text-[color:var(--tx2)]">Status: {executor.status}. {executor.statusDetail ?? 'No active attention item.'}</p>

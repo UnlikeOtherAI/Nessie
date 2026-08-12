@@ -8,8 +8,15 @@ import {
 
 import { executorApi } from './api-client.js'
 import { buildSignedDescriptor } from './descriptor.js'
+import { compileExecutorEgressPolicy } from './egress-policy.js'
+import { verifyPrivateGuestVmFile } from './guest-vm-artifacts.js'
+import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
 import { verifyNativeHelperPath } from './native-helper.js'
-import { saveExecutorState, type ExecutorLocalState } from './state-store.js'
+import {
+  saveExecutorState,
+  type ExecutorBrowserSandboxConfig,
+  type ExecutorLocalState,
+} from './state-store.js'
 import { configureWorkspaceRoot } from './workspace.js'
 
 const rawEd25519PublicKey = (publicKey: KeyObject): string =>
@@ -32,6 +39,7 @@ export const COW_WORKSPACE_OPERATION_KEYS = [
 ] as const
 
 const PROMOTION_OPERATION_KEY = 'workspace.promote' as const
+export const BROWSER_OPERATION_KEYS = ['browser.open', 'browser.observe'] as const
 
 const initialLocalPolicy = {
   limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
@@ -40,6 +48,38 @@ const initialLocalPolicy = {
   operationKeys: [...COW_WORKSPACE_OPERATION_KEYS],
   profiles: ['workspace_sandbox'],
   revision: 1,
+}
+
+const configuredOperationKeys = (
+  requestedOperationKeys: string[],
+  browserConfigured: boolean,
+): string[] => {
+  const requested = new Set(requestedOperationKeys)
+  if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
+    throw new Error('Specify one or more distinct implemented executor operations.')
+  }
+  if ([...requested].some((operationKey) => (
+    !COW_WORKSPACE_OPERATION_KEYS.includes(operationKey as typeof COW_WORKSPACE_OPERATION_KEYS[number])
+    && operationKey !== PROMOTION_OPERATION_KEY
+    && !BROWSER_OPERATION_KEYS.includes(operationKey as typeof BROWSER_OPERATION_KEYS[number])
+  ))) {
+    throw new Error('Only implemented workspace and browser operations may be configured.')
+  }
+  const requestedBrowserOperations = BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
+  if (requestedBrowserOperations.length > 0 && requestedBrowserOperations.length !== BROWSER_OPERATION_KEYS.length) {
+    throw new Error('browser.open and browser.observe must be enabled together.')
+  }
+  if (requestedBrowserOperations.length > 0 && !browserConfigured) {
+    throw new Error('Configure the owner-only browser VM and allowed origins before enabling browser operations.')
+  }
+  if (requestedBrowserOperations.length > 0 && !requested.has('sandbox.stop')) {
+    throw new Error('browser.open and browser.observe require sandbox.stop.')
+  }
+  return [
+    ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
+    ...BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
+    ...(requested.has(PROMOTION_OPERATION_KEY) ? [PROMOTION_OPERATION_KEY] : []),
+  ]
 }
 
 /**
@@ -54,34 +94,74 @@ export const configureExecutorLocalPolicy = async (
   requestedOperationKeys: string[],
   nativeHelperPath?: string,
 ): Promise<ExecutorLocalState> => {
-  const requested = new Set(requestedOperationKeys)
-  if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
-    throw new Error('Specify one or more distinct implemented workspace operations.')
-  }
-  if ([...requested].some((operationKey) => (
-    !COW_WORKSPACE_OPERATION_KEYS.includes(operationKey as typeof COW_WORKSPACE_OPERATION_KEYS[number])
-    && operationKey !== PROMOTION_OPERATION_KEY
-  ))) {
-    throw new Error('Only implemented COW workspace operations may be configured.')
-  }
+  const operationKeys = configuredOperationKeys(requestedOperationKeys, Boolean(state.browserSandbox))
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
     : state.nativeHelperPath
-  if (requested.has(PROMOTION_OPERATION_KEY) && !helper) {
+  if (operationKeys.includes(PROMOTION_OPERATION_KEY) && !helper) {
     throw new Error('workspace.promote requires an owner-only native helper path.')
   }
   const next: ExecutorLocalState = {
     ...state,
     descriptor: {
       ...state.descriptor,
-      operationKeys: [
-        ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
-        ...(requested.has(PROMOTION_OPERATION_KEY) ? [PROMOTION_OPERATION_KEY] : []),
-      ],
+      operationKeys,
       profiles: ['workspace_sandbox'],
       revision: state.descriptor.revision + 1,
     },
     ...(helper ? { nativeHelperPath: helper } : {}),
+  }
+  await saveExecutorState(stateDir, next)
+  return next
+}
+
+export const configureExecutorBrowserSandbox = async (
+  stateDir: string,
+  state: ExecutorLocalState,
+  input: {
+    allowedOrigins: string[]
+    guestInitrdBuilderPath: string
+    guestRuntimeBundlePath: string
+    kernelPath: string
+    vmHelperPath: string
+  },
+): Promise<ExecutorLocalState> => {
+  const egress = compileExecutorEgressPolicy({ allowedOrigins: input.allowedOrigins })
+  const [guestInitrdBuilderPath, kernelPath, vmHelperPath, runtime] = await Promise.all([
+    verifyPrivateGuestVmFile(input.guestInitrdBuilderPath, true),
+    verifyPrivateGuestVmFile(input.kernelPath, false),
+    verifyPrivateGuestVmFile(input.vmHelperPath, true),
+    verifyGuestRuntimeBundle(input.guestRuntimeBundlePath),
+  ])
+  if (!runtime.entrypoints.browser) {
+    throw new Error('The guest runtime bundle does not declare a browser entrypoint.')
+  }
+  const browserSandbox: ExecutorBrowserSandboxConfig = {
+    allowedOrigins: [...egress.allowedOrigins].sort(),
+    guestInitrdBuilderPath,
+    guestRuntimeBundlePath: runtime.root,
+    kernelPath,
+    vmHelperPath,
+  }
+  const currentNonBrowserOperations = state.descriptor.operationKeys.filter(
+    (operationKey) => !BROWSER_OPERATION_KEYS.includes(
+      operationKey as typeof BROWSER_OPERATION_KEYS[number],
+    ),
+  )
+  const operationKeys = configuredOperationKeys([...new Set([
+    ...currentNonBrowserOperations,
+    'sandbox.stop',
+    ...BROWSER_OPERATION_KEYS,
+  ])], true)
+  const next: ExecutorLocalState = {
+    ...state,
+    browserSandbox,
+    descriptor: {
+      ...state.descriptor,
+      operationKeys,
+      profiles: ['workspace_sandbox'],
+      revision: state.descriptor.revision + 1,
+    },
   }
   await saveExecutorState(stateDir, next)
   return next

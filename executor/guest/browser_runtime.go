@@ -113,12 +113,20 @@ func secureBrowserProfile(root, profile string) error {
 		return errInvalidFrame
 	}
 	current := root
-	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+	parts := strings.Split(relative, string(filepath.Separator))
+	for index, part := range parts {
 		if part == "" || part == "." || part == ".." {
 			return errInvalidFrame
 		}
 		current = filepath.Join(current, part)
-		if err := os.Mkdir(current, 0o700); err != nil && !os.IsExist(err) {
+		err := os.Mkdir(current, 0o700)
+		if index == len(parts)-1 && os.IsExist(err) {
+			// `/work` is a COW copy of the paired workspace. A pre-existing
+			// browser leaf could contain cookies, extensions, or other ambient
+			// authority, so only this fresh guest may create it.
+			return errInvalidFrame
+		}
+		if err != nil && !os.IsExist(err) {
 			return err
 		}
 		info, err := os.Lstat(current)

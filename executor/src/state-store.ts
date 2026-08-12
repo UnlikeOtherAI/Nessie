@@ -5,6 +5,14 @@ const STATE_FILE = 'executor-state.json'
 const RUNTIME_DIRECTORY = 'runtime'
 const MODE_MASK_GROUP_OR_OTHER = 0o077
 
+export type ExecutorBrowserSandboxConfig = {
+  allowedOrigins: string[]
+  guestInitrdBuilderPath: string
+  guestRuntimeBundlePath: string
+  kernelPath: string
+  vmHelperPath: string
+}
+
 export type ExecutorLocalState = {
   apiBaseUrl: string
   connectionEpoch?: string
@@ -19,6 +27,8 @@ export type ExecutorLocalState = {
   machinePublicKey: string
   /** Verified owner-only path to the separately packaged native helper. */
   nativeHelperPath?: string
+  /** Local-only browser VM configuration; it is never supplied by Nessie. */
+  browserSandbox?: ExecutorBrowserSandboxConfig
   /** Canonical, single read-only host directory selected during pairing. */
   workspaceRoot: string
 }
@@ -26,6 +36,18 @@ export type ExecutorLocalState = {
 const statePath = (stateDir: string): string => resolve(stateDir, STATE_FILE)
 
 const ownerId = (): number | undefined => process.getuid?.()
+
+const validBrowserSandbox = (value: unknown): value is ExecutorBrowserSandboxConfig => (
+  Boolean(value)
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && Array.isArray((value as ExecutorBrowserSandboxConfig).allowedOrigins)
+  && (value as ExecutorBrowserSandboxConfig).allowedOrigins.every((origin) => typeof origin === 'string')
+  && typeof (value as ExecutorBrowserSandboxConfig).guestInitrdBuilderPath === 'string'
+  && typeof (value as ExecutorBrowserSandboxConfig).guestRuntimeBundlePath === 'string'
+  && typeof (value as ExecutorBrowserSandboxConfig).kernelPath === 'string'
+  && typeof (value as ExecutorBrowserSandboxConfig).vmHelperPath === 'string'
+)
 
 const assertOwnerOnly = async (
   path: string,
@@ -61,6 +83,7 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
     || typeof parsed.machinePublicKey !== 'string'
     || typeof parsed.workspaceRoot !== 'string'
     || (parsed.nativeHelperPath !== undefined && typeof parsed.nativeHelperPath !== 'string')
+    || (parsed.browserSandbox !== undefined && !validBrowserSandbox(parsed.browserSandbox))
     || !parsed.descriptor
   ) {
     throw new Error('Executor state is malformed.')

@@ -56,6 +56,12 @@ const operationOptions: OperationOption[] = [
     operationKeys: ['file.write', 'workspace.review'],
     value: 'file.write+workspace.review',
   },
+  {
+    description: 'Let the selected agent open and inspect one site allowed by the executor owner; it cannot click, fill forms, or read page content.',
+    label: 'Browse an approved site',
+    operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
+    value: 'browser.open+browser.observe+sandbox.stop',
+  },
 ]
 
 const scopeLabel = (scopeKind: ExecutorAvailabilityCandidate['scopeKind']): string => {

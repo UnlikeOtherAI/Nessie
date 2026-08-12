@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
-import { configureExecutorLocalPolicy, pairExecutor } from './pair.js'
+import {
+  configureExecutorBrowserSandbox,
+  configureExecutorLocalPolicy,
+  pairExecutor,
+} from './pair.js'
 import { loadExecutorState } from './state-store.js'
 
 type ParsedCommand =
@@ -13,6 +17,15 @@ type ParsedCommand =
     workspaceRoot: string
   }
   | { kind: 'configure'; nativeHelperPath?: string; operationKeys: string[]; stateDir: string }
+  | {
+    allowedOrigins: string[]
+    guestInitrdBuilderPath: string
+    guestRuntimeBundlePath: string
+    kernelPath: string
+    kind: 'configure-browser'
+    stateDir: string
+    vmHelperPath: string
+  }
   | { kind: 'connect'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
   | { kind: 'serve'; stateDir: string }
@@ -22,8 +35,12 @@ const usage = (): never => {
     'Usage: nessie-executor pair --api <https://api.example> --enrollment <uuid> '
     + '--challenge <token> --state-dir <owner-only-path> --workspace <absolute-read-only-root>\n'
     + '       nessie-executor configure --state-dir <owner-only-path> '
-    + '--operations <file.list,file.read,file.write,workspace.review,workspace.promote,sandbox.stop> '
+    + '--operations <file.list,file.read,file.write,browser.open,browser.observe,workspace.review,workspace.promote,sandbox.stop> '
     + '[--native-helper </absolute/owner-only/nessie-executor-native>]\n'
+    + '       nessie-executor configure-browser --state-dir <owner-only-path> '
+    + '--allowed-origins <https://origin.example,...> --guest-initrd-builder <absolute-owner-only-file> '
+    + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
+    + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>',
   )
 }
@@ -66,6 +83,17 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       stateDir: option(args, '--state-dir'),
     }
   }
+  if (command === 'configure-browser') {
+    return {
+      allowedOrigins: option(args, '--allowed-origins').split(',').map((value) => value.trim()),
+      guestInitrdBuilderPath: option(args, '--guest-initrd-builder'),
+      guestRuntimeBundlePath: option(args, '--runtime-bundle'),
+      kernelPath: option(args, '--kernel'),
+      kind: 'configure-browser',
+      stateDir: option(args, '--state-dir'),
+      vmHelperPath: option(args, '--vm-helper'),
+    }
+  }
   if (command === 'connect' || command === 'heartbeat' || command === 'serve') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
@@ -91,6 +119,14 @@ export const run = async (args: string[]): Promise<void> => {
     )
     process.stdout.write(
       `Local policy proposal saved as revision ${updated.descriptor.revision}. `
+      + 'Run connect (or restart serve), then have a person review it in Nessie.\n',
+    )
+    return
+  }
+  if (command.kind === 'configure-browser') {
+    const updated = await configureExecutorBrowserSandbox(command.stateDir, state, command)
+    process.stdout.write(
+      `Browser sandbox proposal saved as revision ${updated.descriptor.revision}. `
       + 'Run connect (or restart serve), then have a person review it in Nessie.\n',
     )
     return

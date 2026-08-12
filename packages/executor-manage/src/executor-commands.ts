@@ -66,8 +66,8 @@ export type ExecutorCommandCreateInput = {
 export const assertExecutorCommandBindingCurrent = async (
   tx: Prisma.TransactionClient,
   bindingId: string,
-): Promise<{ executorId: string; runId: string }> => {
-  const binding = await tx.executorBinding.findUnique({
+): Promise<{ executorId: string; runId: string; sessionId: string | null }> => {
+  let binding = await tx.executorBinding.findUnique({
     where: { id: bindingId },
     select: {
       authorizationRevision: true,
@@ -76,6 +76,8 @@ export const assertExecutorCommandBindingCurrent = async (
       executorId: true,
       operationKey: true,
       runId: true,
+      sessionId: true,
+      session: { select: { executorId: true, runId: true, status: true } },
     },
   })
   if (!binding) {
@@ -84,6 +86,29 @@ export const assertExecutorCommandBindingCurrent = async (
   await tx.$executeRaw(Prisma.sql`
     SELECT pg_advisory_xact_lock(hashtextextended(${`executor:${binding.executorId}`}, 0))
   `)
+  // The first lookup yields only the executor identity used for the advisory
+  // lock. Re-read after that lock so a concurrent sandbox.stop cannot change
+  // this browser session between an earlier snapshot and delivery.
+  const lockedBinding = await tx.executorBinding.findUnique({
+    where: { id: bindingId },
+    select: {
+      authorizationRevision: true,
+      candidateHandleDigest: true,
+      capabilityRevisionId: true,
+      executorId: true,
+      operationKey: true,
+      runId: true,
+      sessionId: true,
+      session: { select: { executorId: true, runId: true, status: true } },
+    },
+  })
+  if (!lockedBinding || lockedBinding.executorId !== binding.executorId) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'Executor binding changed while command delivery was being fenced.',
+    )
+  }
+  binding = lockedBinding
   const candidate = await tx.executorAvailabilityCandidate.findUnique({
     where: { handleDigest: binding.candidateHandleDigest },
     select: {
@@ -207,7 +232,21 @@ export const assertExecutorCommandBindingCurrent = async (
       'Executor binding is no longer authorized for new work.',
     )
   }
-  return { executorId: executor.id, runId: binding.runId }
+  if (
+    (binding.operationKey === 'browser.open' || binding.operationKey === 'browser.observe')
+    && (
+      !binding.sessionId
+      || binding.session?.executorId !== executor.id
+      || binding.session.runId !== binding.runId
+      || binding.session.status !== 'active'
+    )
+  ) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'The browser session is no longer active for this executor command.',
+    )
+  }
+  return { executorId: executor.id, runId: binding.runId, sessionId: binding.sessionId }
 }
 
 /**
@@ -243,34 +282,63 @@ export const pollExecutorCommand = async (
   executorId: string,
   now = new Date(),
 ): Promise<ExecutorCommandEnvelope | null> => {
-  const command = await prisma.executorCommand.findFirst({
-    where: {
-      binding: { executorId },
-      payloadExpiresAt: { gt: now },
-      queueJob: { status: 'processing' },
-      state: 'leased',
-    },
-    include: {
-      binding: {
-        include: {
-          capabilityRevision: { select: { revision: true } },
+  return prisma.$transaction(async (tx) => {
+    const command = await tx.executorCommand.findFirst({
+      where: {
+        binding: { executorId },
+        payloadExpiresAt: { gt: now },
+        queueJob: { status: 'processing' },
+        state: 'leased',
+      },
+      include: {
+        binding: {
+          include: {
+            capabilityRevision: { select: { revision: true } },
+          },
         },
       },
-    },
-    orderBy: { createdAt: 'asc' },
-  })
-  if (!command?.deliveryPayloadCiphertext || !command.payloadExpiresAt) return null
-  const payload = decryptJson(encryptionSecret, command.deliveryPayloadCiphertext)
-  return ExecutorCommandEnvelopeSchema.parse({
-    argumentDigest: command.argumentDigest,
-    bindingFence: command.binding.fence.toString(),
-    bindingId: command.bindingId,
-    capabilityRevision: command.binding.capabilityRevision.revision,
-    commandId: command.id,
-    expiresAt: command.payloadExpiresAt.toISOString(),
-    idempotencyKey: command.toolCallId,
-    operationKey: command.binding.operationKey,
-    payload,
+      orderBy: { createdAt: 'asc' },
+    })
+    if (!command?.deliveryPayloadCiphertext || !command.payloadExpiresAt) return null
+    try {
+      const current = await assertExecutorCommandBindingCurrent(tx, command.bindingId)
+      if (current.executorId !== executorId) {
+        throw new ExecutorError(
+          EXECUTOR_ERROR_CODES.BINDING_FENCED,
+          'Executor command is no longer bound to this daemon.',
+        )
+      }
+    } catch (error) {
+      if (!(error instanceof ExecutorError) || (
+        error.code !== EXECUTOR_ERROR_CODES.BINDING_FENCED
+        && error.code !== EXECUTOR_ERROR_CODES.NOT_FOUND
+      )) {
+        throw error
+      }
+      const result = { code: EXECUTOR_ERROR_CODES.BINDING_FENCED, success: false }
+      await tx.executorCommand.updateMany({
+        where: { id: command.id, state: 'leased' },
+        data: {
+          acknowledgedAt: now,
+          resultCiphertext: encryptJson(encryptionSecret, result),
+          resultDigest: digest(result),
+          state: 'result_acknowledged',
+        },
+      })
+      return null
+    }
+    const payload = decryptJson(encryptionSecret, command.deliveryPayloadCiphertext)
+    return ExecutorCommandEnvelopeSchema.parse({
+      argumentDigest: command.argumentDigest,
+      bindingFence: command.binding.fence.toString(),
+      bindingId: command.bindingId,
+      capabilityRevision: command.binding.capabilityRevision.revision,
+      commandId: command.id,
+      expiresAt: command.payloadExpiresAt.toISOString(),
+      idempotencyKey: command.toolCallId,
+      operationKey: command.binding.operationKey,
+      payload,
+    })
   })
 }
 

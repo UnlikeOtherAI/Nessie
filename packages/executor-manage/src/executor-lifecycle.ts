@@ -141,7 +141,9 @@ export const transitionExecutorLifecycleInTransaction = async (
             ? 'Executor is paused.'
             : 'Awaiting authenticated executor connection.',
       authorizationRevision: { increment: 1 },
-      ...(input.action === 'revoke' ? { activeConnectionEpoch: { increment: 1 } } : {}),
+      // Pause, drain, revoke, and resume are all session-fencing transitions.
+      // A daemon with an existing VM must stop it before it can reconnect.
+      activeConnectionEpoch: { increment: 1 },
     },
     select: { authorizationRevision: true, status: true },
   })
@@ -184,5 +186,11 @@ export const reviewExecutorDescriptorInTransaction = async (
       reviewedAt: new Date(),
       reviewedByUserId: actorUserId,
     },
+  })
+  // A changed reviewed descriptor can narrow a live browser operation. Fence
+  // the outbound daemon connection so the next control poll ends that VM.
+  await tx.executor.update({
+    where: { id: input.executorId },
+    data: { activeConnectionEpoch: { increment: 1 } },
   })
 }

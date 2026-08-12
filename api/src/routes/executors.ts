@@ -132,6 +132,15 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     }
     const body = parseInput(ExecutorRunBindBodySchema, request.body, reply)
     if (!body) return reply
+    if (body.operationKey === 'browser.open' || body.operationKey === 'browser.observe') {
+      sendApiError(
+        reply,
+        400,
+        'EXECUTOR_BROWSER_BUNDLE_REQUIRED',
+        'Browser operations are available only through a human-directed browser run.',
+      )
+      return reply
+    }
     const { runId } = request.params as { runId: string }
     try {
       const binding = await bindExecutorCandidate(prisma, {

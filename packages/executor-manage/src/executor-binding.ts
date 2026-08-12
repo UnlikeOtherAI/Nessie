@@ -32,6 +32,11 @@ export type ExecutorBindingRecord = {
   runId: string
 }
 
+const BROWSER_RUN_OPERATION_KEYS = ['browser.open', 'browser.observe'] as const
+
+const isBrowserRunOperation = (operationKey: ExecutorOperationKey): boolean =>
+  BROWSER_RUN_OPERATION_KEYS.includes(operationKey as typeof BROWSER_RUN_OPERATION_KEYS[number])
+
 const lockBinding = async (
   tx: Prisma.TransactionClient,
   runId: string,
@@ -51,6 +56,47 @@ const lockExecutor = async (
   await tx.$executeRaw(Prisma.sql`
     SELECT pg_advisory_xact_lock(hashtextextended(${`executor:${executorId}`}, 0))
   `)
+}
+
+const lockRunBindings = async (
+  tx: Prisma.TransactionClient,
+  runId: string,
+): Promise<void> => {
+  await tx.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(${`executor-binding-run:${runId}`}, 0))
+  `)
+}
+
+const assertRunHasNoBrowserBinding = async (
+  tx: Prisma.TransactionClient,
+  runId: string,
+): Promise<void> => {
+  const existing = await tx.executorBinding.findFirst({
+    where: { runId, operationKey: { in: [...BROWSER_RUN_OPERATION_KEYS] } },
+    select: { id: true },
+  })
+  if (existing) {
+    candidateError(
+      'CANDIDATE_INVALID',
+      'A browser run cannot receive additional executor bindings.',
+    )
+  }
+}
+
+const assertRunHasNoExecutorBinding = async (
+  tx: Prisma.TransactionClient,
+  runId: string,
+): Promise<void> => {
+  const existing = await tx.executorBinding.findFirst({
+    where: { runId },
+    select: { id: true },
+  })
+  if (existing) {
+    candidateError(
+      'CANDIDATE_INVALID',
+      'A browser run cannot share its copy-on-write workspace with another executor binding.',
+    )
+  }
 }
 
 const booleanRecord = (value: unknown): Record<string, boolean> =>
@@ -78,11 +124,20 @@ export const bindExecutorCandidateInTransaction = async (
   input: ExecutorBindingInput,
   now = new Date(),
   consumeCandidate = true,
+  allowBrowserBundle = false,
 ): Promise<ExecutorBindingRecord> => {
   const candidateHandle = ExecutorCandidateHandleSchema.parse(input.candidateHandle)
   const operationKey = ExecutorOperationKeySchema.parse(input.operationKey)
+  if (isBrowserRunOperation(operationKey) && !allowBrowserBundle) {
+    return candidateError(
+      'CANDIDATE_INVALID',
+      'Browser operations must be bound through their exact browser run bundle.',
+    )
+  }
   const candidateHandleDigest = executorCandidateHandleDigest(candidateHandle)
 
+  await lockRunBindings(tx, input.runId)
+  if (!allowBrowserBundle) await assertRunHasNoBrowserBinding(tx, input.runId)
   await lockBinding(tx, input.runId, operationKey)
   const existing = await tx.executorBinding.findUnique({
     where: { runId_operationKey: { operationKey, runId: input.runId } },
@@ -289,7 +344,25 @@ export const bindExecutorCandidateBundleInTransaction = async (
   if (operationKeys.length === 0 || operationKeys.length > 4 || operationKeys.length !== input.operationKeys.length) {
     return candidateError('CANDIDATE_INVALID', 'The executor operation bundle is invalid.')
   }
+  const browserRequested = operationKeys.some(isBrowserRunOperation)
+  if (browserRequested && (
+    operationKeys.length !== 3
+    || !operationKeys.includes('browser.open')
+    || !operationKeys.includes('browser.observe')
+    || !operationKeys.includes('sandbox.stop')
+  )) {
+    return candidateError(
+      'CANDIDATE_INVALID',
+      'Browser operations require their exact non-extensible run bundle.',
+    )
+  }
   const candidateHandleDigest = executorCandidateHandleDigest(candidateHandle)
+  await lockRunBindings(tx, input.runId)
+  if (browserRequested) {
+    await assertRunHasNoExecutorBinding(tx, input.runId)
+  } else {
+    await assertRunHasNoBrowserBinding(tx, input.runId)
+  }
   await tx.$executeRaw(Prisma.sql`
     SELECT pg_advisory_xact_lock(
       hashtextextended(${`executor-binding-bundle:${input.runId}:${candidateHandleDigest}`}, 0)
@@ -302,6 +375,7 @@ export const bindExecutorCandidateBundleInTransaction = async (
       { ...input, candidateHandle, operationKey },
       now,
       false,
+      browserRequested,
     ))
   }
   const consumed = await tx.executorAvailabilityCandidate.updateMany({
