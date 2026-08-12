@@ -9,6 +9,7 @@ import { executeExecutorCommand } from '../src/daemon.js'
 import { createGuestWorkspaceLease, releaseGuestWorkspaceLease } from '../src/guest-workspace-lease.js'
 import { runGuestVmHandshake } from '../src/guest-vm-handshake.js'
 import { startGuestVmSession } from '../src/guest-vm-session.js'
+import { verifyGuestRuntimeBundle } from '../src/guest-runtime-bundle.js'
 import { parseCommand } from '../src/index.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
 import {
@@ -305,6 +306,42 @@ test('the VM handshake receives only a current COW lease and passes its token th
   } finally {
     await rm(root, { force: true, recursive: true })
     await rm(stateDir, { force: true, recursive: true })
+  }
+})
+
+test('guest runtime bundles pin every browser and coding artifact without host fallback', async () => {
+  const bundle = await mkdtemp(join(tmpdir(), 'nessie-guest-runtime-'))
+  const browserPath = join(bundle, 'bin', 'browser')
+  const tmuxPath = join(bundle, 'bin', 'tmux')
+  const codexPath = join(bundle, 'bin', 'codex')
+  try {
+    await mkdir(join(bundle, 'bin'), { mode: 0o700 })
+    await chmod(join(bundle, 'bin'), 0o700)
+    await Promise.all([
+      writeFile(browserPath, 'browser-runtime'),
+      writeFile(tmuxPath, 'managed-tmux'),
+      writeFile(codexPath, 'managed-codex'),
+    ])
+    await Promise.all([chmod(browserPath, 0o700), chmod(tmuxPath, 0o700), chmod(codexPath, 0o700)])
+    const manifest = {
+      entrypoints: { browser: 'bin/browser', codex: 'bin/codex', tmux: 'bin/tmux' },
+      files: [
+        { executable: true, path: 'bin/browser', sha256: createHash('sha256').update('browser-runtime').digest('hex') },
+        { executable: true, path: 'bin/codex', sha256: createHash('sha256').update('managed-codex').digest('hex') },
+        { executable: true, path: 'bin/tmux', sha256: createHash('sha256').update('managed-tmux').digest('hex') },
+      ],
+      version: 1,
+    }
+    await writeFile(join(bundle, 'nessie-guest-runtime.json'), JSON.stringify(manifest))
+    await chmod(join(bundle, 'nessie-guest-runtime.json'), 0o600)
+    const verified = await verifyGuestRuntimeBundle(bundle)
+    assert.equal(verified.root, bundle)
+    assert.equal(verified.entrypoints.browser, 'bin/browser')
+    assert.equal(verified.entrypoints.tmux, 'bin/tmux')
+    await writeFile(codexPath, 'tampered')
+    await assert.rejects(verifyGuestRuntimeBundle(bundle), /integrity check failed/)
+  } finally {
+    await rm(bundle, { force: true, recursive: true })
   }
 })
 

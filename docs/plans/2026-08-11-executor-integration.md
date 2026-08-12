@@ -228,6 +228,15 @@ Unix-socket bound to be widened. This is still not an executor capability: the
 daemon has no session launcher, descriptors still omit browser/shell/coding
 operations, and there is no UI or model path to invoke it.
 
+The companion now has the matching runtime-admission contract. A future guest
+browser/tmux/CLI image must be a complete owner-private bundle with a versioned
+manifest that enumerates all regular files, SHA-256 digests, executable bits,
+and declared browser/tmux/Codex/Claude entrypoints. It rejects links, shared
+permissions, undeclared/missing files, path traversal, file-digest drift, and
+entrypoints not declared executable. This is an artifact verifier only: it
+never executes a host file, searches `PATH`, or changes descriptor availability
+until a guest mount and in-guest digest recheck are delivered.
+
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
 the exact `workspace.review` command and renders its manifest digest plus the

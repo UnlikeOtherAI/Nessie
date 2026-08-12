@@ -466,6 +466,17 @@ termination. This is transport activation, not product availability: no daemon
 command starts it yet, no descriptor contains a browser/shell/coding operation,
 and it has no user-facing doorway.
 
+Browser and coding runtimes may enter a future session only as a complete
+owner-private `nessie-guest-runtime.json` bundle. Its versioned manifest names
+every regular file, its SHA-256 digest, and whether it is executable; it also
+names only declared executable browser, tmux, Codex, and Claude entrypoints.
+The companion rejects symbolic links, hard links, shared permissions, extra or
+missing files, invalid relative paths, non-owner files, a changed digest, and
+a bundle with neither browser nor tmux. Verification produces an artifact
+reference only: it does not execute a host file, search `PATH`, or make the
+bundle an advertised descriptor capability. A later guest-image mount must
+still carry the verified bundle into the VM and re-check its exact digest.
+
 Before that launch, the companion creates an owner-only `guest-lease.json`
 beside the exact COW draft. It contains the run ID, executor binding fence, and
 server command ID plus a random local lease ID—never a host path, token, or raw
