@@ -44,6 +44,7 @@ const createHarness = (options: HarnessOptions = {}) => {
     editedAt: null,
     id: messageId,
     metadata: {},
+    basisScopes: [],
     reactions: [],
     role: 'user',
     threadId,

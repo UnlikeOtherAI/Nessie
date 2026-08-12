@@ -186,6 +186,7 @@ test('research-launch persists and enqueues the exact full created durable run i
           editedAt: null,
           id: messageId,
           metadata: input.data.metadata,
+          basisScopes: [],
           reactions: [],
           role: 'user',
           threadId,
