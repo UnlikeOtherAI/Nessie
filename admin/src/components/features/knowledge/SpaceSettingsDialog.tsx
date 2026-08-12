@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import { useModalA11y } from '../../shared/useModalA11y'
+import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
 import { AgentMemberChecklist } from './AgentMemberChecklist'
 
@@ -25,6 +26,7 @@ export const SpaceSettingsDialog = ({
 }: SpaceSettingsDialogProps) => {
   const dialogRef = useRef<HTMLDivElement | null>(null)
   useModalA11y(dialogRef, onClose)
+  const overlayDismiss = useOverlayDismiss(onClose)
   const agentsQuery = useAgents()
 
   const [name, setName] = useState(space.name)
@@ -43,10 +45,6 @@ export const SpaceSettingsDialog = ({
 
   if (!open) return null
 
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) onClose()
-  }
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmedName = name.trim()
@@ -64,8 +62,7 @@ export const SpaceSettingsDialog = ({
 
   return (
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',

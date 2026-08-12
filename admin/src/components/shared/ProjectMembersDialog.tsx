@@ -6,6 +6,7 @@ import {
 } from '../../facades/projects/hooks'
 import { useUsers } from '../../facades/users/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 type ProjectMembersDialogProps = {
   project: ProjectRecord
@@ -19,6 +20,7 @@ export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembe
   const addMember = useAddProjectMember()
   const removeMember = useRemoveProjectMember()
   const [addUserId, setAddUserId] = useState('')
+  const overlayDismiss = useOverlayDismiss(onClose)
 
   const memberIds = new Set(members.map((member) => member.userId))
   const candidates = users.filter((user) => !memberIds.has(user.id))
@@ -30,10 +32,7 @@ export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembe
 
   return (
     <div
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
 import { AgentMemberChecklist } from './AgentMemberChecklist'
+import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 
 type SpaceVisibility = KnowledgeSpaceRecord['visibility']
 
@@ -44,6 +45,8 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
     onClose()
   }
 
+  const overlayDismiss = useOverlayDismiss(handleClose)
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmedName = name.trim()
@@ -56,12 +59,7 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
 
   return (
     <div
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          handleClose()
-        }
-      }}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',

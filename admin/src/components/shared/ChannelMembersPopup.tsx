@@ -20,6 +20,7 @@ import {
   CurrentAgentRow,
 } from './channel-members/MemberAgentRow'
 import { sectionHeadingClass } from './channel-members/styles'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 type ChannelMembersPopupProps = {
   allAgents: AgentRecord[]
@@ -83,16 +84,11 @@ export const ChannelMembersPopup = ({
       },
     )
 
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose()
-    }
-  }
+  const overlayDismiss = useOverlayDismiss(onClose)
 
   return (
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         position: 'fixed',
         inset: 0,

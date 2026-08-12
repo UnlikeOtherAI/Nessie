@@ -1,3 +1,4 @@
+import { toChannelSlug } from '@nessie/schemas'
 import { Prisma, type PrismaClient } from '@prisma/client'
 
 export type ChannelLabelParts = {
@@ -18,26 +19,22 @@ export class ChannelSlugConflictError extends Error {
   }
 }
 
-// sp-channels: mirror of the admin `toSlug` rules. Channel labels are validated
-// server-side so the API never persists a name the admin UI would reject.
-export const toChannelSlug = (value: string): string =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/[\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+export { toChannelSlug }
 
+// Channel names are always the canonical slug form: lowercase, hyphen-separated,
+// no special characters. The label and the slug are deliberately the same string
+// — a channel has one name, and it is the addressable one — so whatever a caller
+// submits is normalized here rather than stored as typed. This is the single
+// chokepoint every write goes through (create, rename, DM promotion), so no path
+// can persist a name that breaks the rule.
 export const validateChannelLabel = (label: string): ChannelLabelParts => {
-  const trimmed = label.trim()
-  const slug = toChannelSlug(trimmed)
+  const slug = toChannelSlug(label)
   if (slug.length === 0) {
     throw new ChannelValidationError(
       'Channel name must contain at least one letter or number',
     )
   }
-  return { label: trimmed, slug }
+  return { label: slug, slug }
 }
 
 export const loadChannelTeamProject = async (

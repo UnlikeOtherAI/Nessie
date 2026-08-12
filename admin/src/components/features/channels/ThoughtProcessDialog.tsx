@@ -17,6 +17,7 @@ import {
 } from '../../../facades/threads/thinking'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { useModalA11y } from '../../shared/useModalA11y'
+import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 
 type ThoughtProcessDialogProps = {
   agent: AgentRecord | null
@@ -48,6 +49,7 @@ export const ThoughtProcessDialog = ({
   const [pinned, setPinned] = useState(true)
   const close = useCallback(() => onClose(), [onClose])
   useModalA11y(panelRef, close)
+  const overlayDismiss = useOverlayDismiss(close)
 
   // A bubble seeded from the bootstrap only holds a tail of the log, so the
   // full record is read from the API and merged under the live chunks.
@@ -76,6 +78,7 @@ export const ThoughtProcessDialog = ({
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
+      {...overlayDismiss}
       onKeyDown={(event) => {
         // The dialog can be opened from inside the reply panel, which closes
         // itself on a window-level Escape. Its own Escape must not close both.
@@ -83,12 +86,6 @@ export const ThoughtProcessDialog = ({
           event.stopPropagation()
         }
       }}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          close()
-        }
-      }}
-      role="presentation"
     >
       <div
         aria-labelledby="thought-process-title"

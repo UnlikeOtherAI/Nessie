@@ -27,6 +27,7 @@ import { ScheduledTriggerFields } from './ScheduledTriggerFields'
 import { TriggerMetaFields } from './TriggerMetaFields'
 import { WebhookTriggerFields } from './WebhookTriggerFields'
 import { Switch } from '../../primitives/Switch'
+import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 
 type TriggerEditorDialogProps = {
   agents: AgentRecord[]
@@ -160,11 +161,10 @@ export const TriggerEditorDialog = ({
     onClose()
   }
 
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget && !isSubmitting) {
-      handleClose()
-    }
-  }
+  const overlayDismiss = useOverlayDismiss(() => {
+    if (isSubmitting) return
+    handleClose()
+  })
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -257,8 +257,7 @@ export const TriggerEditorDialog = ({
 
   return (
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         position: 'fixed',
         inset: 0,

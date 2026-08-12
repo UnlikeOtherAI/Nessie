@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../shared/AssigneePicker'
+import { useOverlayDismiss } from '../shared/useOverlayDismiss'
 import { useAgents } from '../../facades/agents/queries'
 import { useProjects } from '../../facades/projects/hooks'
 import {
@@ -84,17 +85,20 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
     return () => window.clearTimeout(id)
   }, [open, task])
 
-  if (!open) return null
-
-  const archived = task ? ARCHIVED_STATUSES.includes(task.status) : false
   const pending =
     createTask.isPending || updateTask.isPending || assignTask.isPending || transition.isPending
-  const canSubmit = title.trim().length > 0 && !pending
 
   const handleClose = () => {
     if (pending) return
     onClose()
   }
+
+  const overlayDismiss = useOverlayDismiss(handleClose)
+
+  if (!open) return null
+
+  const archived = task ? ARCHIVED_STATUSES.includes(task.status) : false
+  const canSubmit = title.trim().length > 0 && !pending
 
   const handleSubmit = async () => {
     setError(null)
@@ -163,13 +167,10 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
 
   return (
     <div
-      onClick={(event) => {
-        if (event.target === event.currentTarget) handleClose()
-      }}
+      {...overlayDismiss}
       onKeyDown={(event) => {
         if (event.key === 'Escape') handleClose()
       }}
-      role="presentation"
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',

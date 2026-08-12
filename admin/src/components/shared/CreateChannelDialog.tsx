@@ -1,15 +1,8 @@
+import { toChannelNameInput, toChannelSlug } from '@nessie/schemas'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCreateChannel } from '../../facades/channels/hooks'
-
-const toSlug = (value: string): string =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/[\s]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 type CreateChannelDialogProps = {
   onClose: () => void
@@ -31,8 +24,6 @@ export const CreateChannelDialog = (
   >('public')
   const [formError, setFormError] = useState<string | null>(null)
 
-  const slug = toSlug(name)
-
   useEffect(() => {
     if (open) {
       nameInputRef.current?.focus()
@@ -46,23 +37,18 @@ export const CreateChannelDialog = (
     onClose()
   }
 
-  const handleOverlayClick = (
-    event: React.MouseEvent<HTMLDivElement>,
-  ) => {
-    if (event.target === event.currentTarget) {
-      handleClose()
-    }
-  }
+  const overlayDismiss = useOverlayDismiss(handleClose)
 
   const handleSubmit = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault()
-    if (!name.trim()) return
+    const label = toChannelSlug(name)
+    if (!label) return
 
     try {
       const created = await createChannel.mutateAsync({
-        label: name.trim(),
+        label,
         teamId,
         visibility,
       })
@@ -77,8 +63,7 @@ export const CreateChannelDialog = (
 
   return (
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         position: 'fixed',
         inset: 0,
@@ -140,30 +125,16 @@ export const CreateChannelDialog = (
               className="admin-input"
               id="channel-name"
               onChange={(e) => {
-                setName(e.target.value)
+                setName(toChannelNameInput(e.target.value))
                 setFormError(null)
               }}
+              onBlur={() => setName(toChannelSlug(name))}
               placeholder="e.g. design-reviews"
               value={name}
             />
-          </div>
-
-          <div className="grid gap-1.5">
-            <label
-              className={[
-                'text-xs font-semibold uppercase',
-                'tracking-[0.16em] text-[color:var(--tx3)]',
-              ].join(' ')}
-              htmlFor="channel-slug"
-            >
-              Slug
-            </label>
-            <input
-              className="admin-input opacity-60"
-              disabled
-              id="channel-slug"
-              value={slug}
-            />
+            <div className="text-xs text-[color:var(--tx3)]">
+              Lowercase letters, numbers and hyphens. Spaces become hyphens.
+            </div>
             {formError ? (
               <div className="text-xs text-[color:var(--danger-text)]">{formError}</div>
             ) : null}
@@ -203,7 +174,7 @@ export const CreateChannelDialog = (
             </button>
             <button
               className="admin-button admin-button-primary"
-              disabled={!name.trim()}
+              disabled={!toChannelSlug(name)}
               type="submit"
             >
               Create channel
