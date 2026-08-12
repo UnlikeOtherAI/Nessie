@@ -266,7 +266,14 @@ malformed frame, pipe closure, response mismatch, overflow, or timeout. The
 first allowed request is `runtime.inspect`; it returns only booleans for
 manifest-declared browser/tmux/Codex/Claude entrypoints. This validates the
 end-to-end control path without launching an executable or advertising an
-executor operation. Browser and coding lifecycle/control remain unavailable.
+executor operation. The private session seam now additionally implements a
+browser-launch substrate: only a host-validated, no-credentials/no-port HTTPS
+URL can reach the guest; it starts the manifest-declared `/runtime` browser
+with fixed forced-proxy/no-QUIC argv, no shell or `PATH` environment, and a
+symlink-free owner-private COW profile. The guest still has no direct network
+route. This is not product `browser.open`: there is no descriptor projection,
+agent/UI doorway, DevTools/observe/act bridge, or workflow binding. Coding
+lifecycle/control remains unavailable.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for

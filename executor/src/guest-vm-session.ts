@@ -3,7 +3,11 @@ import { randomBytes } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import type { ExecutorEgressPolicy } from './egress-policy.js'
+import {
+  assertExecutorEgressOrigin,
+  compileExecutorEgressPolicy,
+  type ExecutorEgressPolicy,
+} from './egress-policy.js'
 import { startExecutorEgressGateway } from './egress-gateway.js'
 import {
   GUEST_VM_BUILD_TIMEOUT_MS,
@@ -32,6 +36,7 @@ const SESSION_STOP_TIMEOUT_MS = 10_000
 type ActiveGuestVmSessionProcess = {
   closed: Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
+  openBrowser: (url: string) => Promise<void>
   stop: () => Promise<void>
 }
 
@@ -50,6 +55,7 @@ export type GuestVmSessionInput = GuestVmHandshakeInput & {
 export type GuestVmSession = {
   closed: Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
+  openBrowser: (url: string) => Promise<void>
   stop: () => Promise<void>
 }
 
@@ -88,7 +94,12 @@ const launchGuestVmSession: GuestVmSessionLauncher = async ({ argv, input, path,
     await stopChild(child)
     throw error
   }
-  return { closed, inspectRuntime: () => control.inspectRuntime(), stop: () => stopChild(child) }
+  return {
+    closed,
+    inspectRuntime: () => control.inspectRuntime(),
+    openBrowser: (url) => control.openBrowser(url),
+    stop: () => stopChild(child),
+  }
 }
 
 /**
@@ -103,6 +114,7 @@ export const startGuestVmSession = async (
     runProcess?: GuestVmProcessRunner
   } = {},
 ): Promise<GuestVmSession> => {
+  const egressSettings = compileExecutorEgressPolicy(input.egressPolicy)
   await assertGuestWorkspaceLeaseCurrent(input.stateDir, input.lease)
   const [builderPath, kernelPath, helperPath] = await Promise.all([
     verifyPrivateGuestVmFile(input.guestInitrdBuilderPath, true),
@@ -160,6 +172,10 @@ export const startGuestVmSession = async (
     return {
       closed,
       inspectRuntime: () => process!.inspectRuntime(),
+      openBrowser: async (url: string) => {
+        assertExecutorEgressOrigin(url, egressSettings)
+        await process!.openBrowser(url)
+      },
       stop: async () => {
         await process?.stop()
         await closed

@@ -478,6 +478,19 @@ entrypoints. It proves the authenticated companion → helper → guest path but
 does not launch a process, expose a descriptor operation, or make a browser or
 coding session available.
 
+The same private seam now also has an internal-only `browser.open` request. Its
+caller must pass the local exact HTTPS-origin policy before forwarding; the
+guest independently accepts only a bounded HTTPS URL without credentials or a
+port. It executes only the manifest-declared browser under `/runtime`, never a
+shell or `PATH` lookup, with a fixed no-first-run/no-QUIC proxy argv and an
+environment containing only a COW-local `HOME` and `TMPDIR`. Its profile must
+be owner-private under `/work` and rejects pre-existing links or shared
+directories. The browser can reach only the guest loopback proxy, whose
+authenticated egress bridge still enforces the local origin policy. This is a
+launch substrate—not `browser.open` product availability: it has no descriptor
+operation, observer/DevTools bridge, workflow binding, UI doorway, or agent
+path, and it is stopped with its VM session.
+
 Browser and coding runtimes may enter a future session only as a complete
 owner-private `nessie-guest-runtime.json` bundle. Its versioned manifest names
 every regular file, its SHA-256 digest, and whether it is executable; it also

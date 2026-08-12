@@ -142,6 +142,8 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
+	runtimeController := newRuntimeController(runtimeManifest)
+	defer runtimeController.close()
 	token, err := readBootstrapToken()
 	if err != nil {
 		os.Exit(1)
@@ -194,7 +196,7 @@ func main() {
 		}
 		if err := writeControlFrame(connection, controlEnvelope{
 			Kind:      "response",
-			Payload:   handleRuntimeControlRequest(request.Payload, runtimeManifest),
+			Payload:   handleRuntimeControlRequest(request.Payload, runtimeController),
 			RequestID: request.RequestID,
 			Version:   guestControlVersion,
 		}); err != nil {

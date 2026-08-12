@@ -38,5 +38,18 @@ test('the VM control client accepts only the ready line then one matching framed
     version: 1,
   }))
   assert.deepEqual(await inspection, { browser: true, claude: false, codex: true, tmux: true })
+
+  const browserFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
+  const opening = client.openBrowser('https://app.example.test/guide')
+  const rawBrowserRequest = await browserFrame
+  const browserRequest = JSON.parse(rawBrowserRequest.subarray(4).toString('utf8')) as Record<string, unknown>
+  assert.equal(Buffer.from(String(browserRequest.payload), 'base64').toString('utf8'), '{"operation":"browser.open","url":"https://app.example.test/guide","version":1}')
+  output.write(frameFor({
+    kind: 'response',
+    payload: Buffer.from('{"status":"started","version":1}').toString('base64'),
+    requestId: browserRequest.requestId,
+    version: 1,
+  }))
+  await opening
   client.close()
 })

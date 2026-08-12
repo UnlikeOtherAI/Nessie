@@ -99,6 +99,23 @@ const parseInspection = (payload: Buffer): GuestRuntimeInspection => {
   }
 }
 
+const parseBrowserOpen = (payload: Buffer): void => {
+  let value: unknown
+  try {
+    value = JSON.parse(payload.toString('utf8'))
+  } catch {
+    throw unavailable('The executor guest rejected the browser launch request.')
+  }
+  if (
+    !isRecord(value)
+    || Object.keys(value).some((key) => !['status', 'version'].includes(key))
+    || value.status !== 'started'
+    || value.version !== 1
+  ) {
+    throw unavailable('The executor guest rejected the browser launch request.')
+  }
+}
+
 /** Owns the helper's private stdin/stdout framing after its one-use bootstrap. */
 export class GuestVmControlClient {
   private output = Buffer.alloc(0)
@@ -130,6 +147,11 @@ export class GuestVmControlClient {
   async inspectRuntime(): Promise<GuestRuntimeInspection> {
     const payload = await this.request(Buffer.from(JSON.stringify({ operation: 'runtime.inspect', version: 1 })))
     return parseInspection(payload)
+  }
+
+  async openBrowser(url: string): Promise<void> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ operation: 'browser.open', url, version: 1 })))
+    parseBrowserOpen(payload)
   }
 
   close(error: Error = unavailable('The executor VM helper closed its control pipe.')): void {

@@ -9,6 +9,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,8 +130,10 @@ func TestGuestRuntimeInspectionExposesOnlyDeclaredCapabilityNames(t *testing.T) 
 		"codex":   "bin/codex",
 		"tmux":    "bin/tmux",
 	}}
+	controller := newRuntimeController(&manifest)
+	defer controller.close()
 	payload := []byte(`{"operation":"runtime.inspect","version":1}`)
-	response := handleRuntimeControlRequest(payload, &manifest)
+	response := handleRuntimeControlRequest(payload, controller)
 	var decoded struct {
 		Inspection runtimeInspection `json:"inspection"`
 		Version    int               `json:"version"`
@@ -140,8 +144,73 @@ func TestGuestRuntimeInspectionExposesOnlyDeclaredCapabilityNames(t *testing.T) 
 	if decoded.Version != guestRuntimeControlVersion || !decoded.Inspection.Browser || !decoded.Inspection.Codex || !decoded.Inspection.Tmux || decoded.Inspection.Claude {
 		t.Fatalf("unexpected runtime inspection %#v", decoded)
 	}
-	if !bytes.Contains(handleRuntimeControlRequest([]byte(`{"operation":"browser.open","version":1}`), &manifest), []byte("CAPABILITY_UNAVAILABLE")) {
+	if !bytes.Contains(handleRuntimeControlRequest([]byte(`{"operation":"browser.open","version":1}`), controller), []byte("CAPABILITY_UNAVAILABLE")) {
 		t.Fatal("accepted an unimplemented runtime operation")
+	}
+}
+
+type fakeBrowserProcess struct {
+	done chan struct{}
+}
+
+func (process *fakeBrowserProcess) Kill() error {
+	select {
+	case <-process.done:
+	default:
+		close(process.done)
+	}
+	return nil
+}
+
+func (process *fakeBrowserProcess) Wait() error {
+	<-process.done
+	return nil
+}
+
+func TestGuestBrowserUsesOnlyTheDeclaredRuntimeEntrypointAndForcedProxy(t *testing.T) {
+	profile := t.TempDir()
+	process := &fakeBrowserProcess{done: make(chan struct{})}
+	var actualPath string
+	var actualArgs, actualEnvironment []string
+	browser := &browserRuntime{
+		executable:  "/runtime/bin/browser",
+		profile:     filepath.Join(profile, "browser"),
+		profileRoot: profile,
+		launch: func(path string, args, environment []string) (browserProcess, error) {
+			actualPath = path
+			actualArgs = append([]string{}, args...)
+			actualEnvironment = append([]string{}, environment...)
+			return process, nil
+		},
+	}
+	controller := &runtimeController{
+		browser:  browser,
+		manifest: &runtimeManifest{Entrypoints: map[string]string{"browser": "bin/browser"}},
+	}
+	response := handleRuntimeControlRequest([]byte(`{"operation":"browser.open","url":"https://app.example.test/guide","version":1}`), controller)
+	if !bytes.Contains(response, []byte(`"status":"started"`)) {
+		t.Fatalf("browser launch failed: %s", response)
+	}
+	if actualPath != "/runtime/bin/browser" || !reflect.DeepEqual(actualArgs, fixedBrowserArguments("https://app.example.test/guide", browser.profile)) {
+		t.Fatalf("unexpected browser launch %q %#v", actualPath, actualArgs)
+	}
+	if !reflect.DeepEqual(actualEnvironment, browserEnvironment(browser.profile)) || strings.Contains(strings.Join(actualEnvironment, "\x00"), "PATH=") {
+		t.Fatalf("browser inherited an ambient environment: %#v", actualEnvironment)
+	}
+	if !bytes.Contains(handleRuntimeControlRequest([]byte(`{"operation":"browser.open","url":"https://user@app.example.test/","version":1}`), controller), []byte("CAPABILITY_UNAVAILABLE")) {
+		t.Fatal("accepted a credential-bearing browser URL")
+	}
+	controller.close()
+}
+
+func TestGuestBrowserProfileRejectsASymlinkedCOWPath(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, ".nessie-executor")); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureBrowserProfile(root, filepath.Join(root, ".nessie-executor", "browser")); err == nil {
+		t.Fatal("accepted a symlinked browser profile path")
 	}
 }
 
