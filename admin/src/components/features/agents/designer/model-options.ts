@@ -22,6 +22,19 @@ export const modelOptionSubtitle = (option: AgentModelOption): string =>
   || option.providerDisplayName
 
 /**
+ * The form resolves its selected model by matching model AND provider against
+ * the catalogue, so a pair that resolves to nothing — a model the Design
+ * Assistant invented, or one Ledger has since withdrawn — is not a selection
+ * at all. Callers apply the returned option, never the raw pair.
+ */
+export const findModelOption = (
+  options: AgentModelOption[],
+  model: string,
+  provider: string,
+): AgentModelOption | undefined =>
+  options.find((option) => option.model === model && option.provider === provider)
+
+/**
  * Every whitespace-separated term must match somewhere, so "openai mini" and
  * "mini openai" both land on the same model.
  */
