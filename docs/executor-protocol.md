@@ -414,6 +414,15 @@ argument. A second lease or sandbox stop fails while it exists; release requires
 all four exact values. This makes VM teardown/recovery an explicit state change
 instead of allowing a new command to erase a live guest's draft.
 
+`runGuestVmHandshake` is the companion-only bridge between that lease and the
+signed helper. It re-reads the durable lease immediately before each child
+process, verifies owner-private builder/kernel/helper artifacts, creates a
+fresh private VM directory, and sends the random boot token only to each
+child's standard input. Its helper argv contains the lease's COW workspace and
+no other host root. It discards the token-bearing initrd/console directory and
+releases the lease in `finally`; a child timeout kills the helper first. This
+is still a handshake probe, not a model tool or an `ExecutorSession` launch.
+
 The signed helper's `handshake` command is the release-candidate integration
 check for that exact pair. It reads the same 43-byte token from standard input,
 starts one VM with the control socket enabled, requires the matching guest hello

@@ -143,6 +143,14 @@ or sandbox stop is rejected until the precise holder releases it. The VM
 launcher will receive the draft only through this lease, closing the teardown
 race without treating an arbitrary local path as a valid run workspace.
 
+The companion's VM handshake runner now consumes that lease. It verifies the
+owner-private guest image builder, kernel, and signed helper; creates an
+ephemeral owner-only VM directory; uses no shell; passes the token only on
+stdin; rechecks the lease before helper launch; and removes token-bearing VM
+material before releasing it. The runner is intentionally not wired to a model
+tool, descriptor, or durable `ExecutorSession` yet: it is the executable
+release probe needed before the long-lived session lifecycle is introduced.
+
 The signed VM helper also has a handshake-only release-candidate command. Its
 fresh token arrives on stdin, never in an argument; the helper enables the
 single VM's virtio socket, accepts only the matching guest hello before the

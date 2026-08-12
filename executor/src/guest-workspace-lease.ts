@@ -145,3 +145,25 @@ export const releaseGuestWorkspaceLease = async (stateDir: string, lease: GuestW
   }
   await unlink(paths.guestLease)
 }
+
+/** Re-read durable state before a VM process receives the COW directory. */
+export const assertGuestWorkspaceLeaseCurrent = async (
+  stateDir: string,
+  lease: GuestWorkspaceLease,
+): Promise<void> => {
+  const runId = RunIdSchema.parse(lease.runId)
+  const paths = await sandboxPaths(stateDir, runId)
+  const stored = await readLease(paths.guestLease)
+  if (
+    stored.runId !== runId
+    || stored.leaseId !== lease.leaseId
+    || stored.commandId !== lease.commandId
+    || stored.bindingFence !== lease.bindingFence
+  ) {
+    throw new WorkspacePathError('The executor guest lease does not match this sandbox.')
+  }
+  const workspace = await configureOrdinaryDirectory(paths.workspace, 'The executor sandbox workspace')
+  if (workspace !== lease.workspace) {
+    throw new WorkspacePathError('The executor guest workspace has changed.')
+  }
+}
