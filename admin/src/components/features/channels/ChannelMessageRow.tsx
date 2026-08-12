@@ -13,6 +13,7 @@ import { MessageUiCards } from './MessageUiCards'
 import { CommsConnectCard } from './CommsConnectCard'
 import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
+import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
 import { RunStopContinue } from './RunStopContinue'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
 import {
@@ -70,6 +71,15 @@ interface ChannelMessageRowProps {
   editingContent: string
   updatePending: boolean
   onStartEdit: (messageId: string, content: string) => void
+  /**
+   * Answer the acknowledgement card on a reply that used restricted sources.
+   * Optional: the info drawers render read-only message lists where sharing is
+   * not the surface, so they omit it and the card shows without its controls.
+   */
+  shareRestrictedMessage?: (
+    messageId: string,
+    input: { kind: 'message' | 'scope'; duration: DisclosureDuration },
+  ) => Promise<void>
   onChangeEditingContent: (value: string) => void
   onSubmitEdit: (messageId: string) => void
   onCancelEdit: () => void
@@ -110,6 +120,7 @@ export const ChannelMessageRow = ({
   editingContent,
   updatePending,
   onStartEdit,
+  shareRestrictedMessage,
   onChangeEditingContent,
   onSubmitEdit,
   onCancelEdit,
@@ -336,10 +347,29 @@ export const ChannelMessageRow = ({
                 </button>
               </div>
             </div>
+          ) : message.restricted ? (
+            <RestrictedMessageCard
+              allowStanding={false}
+              messageId={message.id}
+              mode="withheld"
+              onShare={async () => undefined}
+            />
           ) : (
-            <MessageMarkdown renderInlineText={renderContent}>
-              {message.content}
-            </MessageMarkdown>
+            <>
+              <MessageMarkdown renderInlineText={renderContent}>
+                {message.content}
+              </MessageMarkdown>
+              {message.restrictedSources && shareRestrictedMessage ? (
+                <div className="mt-2">
+                  <RestrictedMessageCard
+                    allowStanding={message.canShareStanding ?? false}
+                    messageId={message.id}
+                    mode="shareable"
+                    onShare={(input) => shareRestrictedMessage(message.id, input)}
+                  />
+                </div>
+              ) : null}
+            </>
           )}
           {!isEditingMessage ? (
             <MessageUiCards

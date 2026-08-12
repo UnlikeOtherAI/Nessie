@@ -79,6 +79,7 @@ import { registerKnowledgeRecentPagesRoutes } from './routes/knowledge-recent-pa
 import { registerKnowledgeSummaryRoutes } from './routes/knowledge-summary.js'
 import { registerKnowledgeTaskRoutes } from './routes/knowledge-tasks.js'
 import { registerLedgerRoutes } from './routes/ledger.js'
+import { registerDisclosureGrantRoutes } from './routes/disclosure-grants.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerFeedbackRoutes } from './routes/feedback.js'
 import { registerMcpRoutes } from './routes/mcp.js'
@@ -380,6 +381,7 @@ export const buildApp = async () => {
   registerPlanRoutes(app, deps)
   registerWorkflowRoutes(app, deps)
   registerExecutionEnvironmentRoutes(app, deps)
+  registerDisclosureGrantRoutes(app, deps)
   registerMailboxRoutes(app, deps)
   registerResourceLockRoutes(app, deps)
   registerRunRoutes(app, deps)

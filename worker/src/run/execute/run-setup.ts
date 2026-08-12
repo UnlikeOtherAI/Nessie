@@ -17,6 +17,7 @@ import {
 } from './checkpoint.js'
 import { buildMemoryContext, retrieveRelevantMemories } from './memory.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
+import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 
@@ -118,11 +119,18 @@ export const prepareRunExecution = async (
     },
   )
 
+  const viewer = await resolveDisclosureViewer(
+    deps.prisma,
+    payload,
+    context.channel.organizationId,
+  )
   const conversation = await loadConversation(deps.prisma, {
+    consumedSources: context.consumedSources,
     files: fileServiceFor(deps.prisma),
     organizationId: context.channel.organizationId,
     rootMessageId: context.conversationRootMessageId,
     threadId: context.run.threadId,
+    viewer,
   })
   const memories = await retrieveRelevantMemories(deps, context, payload, input.prompt)
   const injectedRecallIds = memories.flatMap((memory) =>

@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client'
 import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
-import { buildPrefixTsQuery } from '@nessie/runtime'
+import { buildPrefixTsQuery, partitionByDisclosure, viewerSatisfiesBasis } from '@nessie/runtime'
+import { resolveMessageViewer } from './disclosure-viewer.js'
+import { resolveGrantedScopeKeys } from './disclosure-grants.js'
 import {
   parseAgentId,
   parseChannelId,
@@ -26,6 +28,10 @@ export const messageInclude = {
       avatarAttachmentId: true,
     },
   },
+  // Disclosure basis: zero rows means unrestricted, which is the common case.
+  // Loaded with the message so the list can withhold content the caller is not
+  // entitled to without a second round trip.
+  basisScopes: { select: { scopeType: true, scopeId: true } },
 } satisfies Prisma.MessageInclude
 
 export type MessageWithReactions = Prisma.MessageGetPayload<{
@@ -67,8 +73,22 @@ const mapThreadMessageRecord = (
   // Omitted when the caller genuinely cannot know: the client then falls back
   // to fetching the attachment list, so a real attachment is never hidden.
   attachmentCount?: number,
+  // True when the caller does not satisfy this message's disclosure basis. The
+  // row is still returned — the client renders a placeholder — but never its
+  // content. Withholding the row entirely would leave an unexplained gap.
+  withheld = false,
 ): ThreadMessageRecord => ({
-  attachmentCount,
+  attachmentCount: withheld ? 0 : attachmentCount,
+  ...(withheld
+    ? { restricted: true as const }
+    : message.basisScopes.length > 0
+      // Readable, but drew on restricted sources — this reader is the one who
+      // can share it. Private material offers no standing rule.
+      ? {
+          restrictedSources: true as const,
+          canShareStanding: !message.basisScopes.some((s) => s.scopeType === 'user'),
+        }
+      : {}),
   id: message.id,
   threadId: parseThreadId(message.threadId),
   agentId: message.agentId ? parseAgentId(message.agentId) : undefined,
@@ -85,7 +105,8 @@ const mapThreadMessageRecord = (
   role: message.role,
   // Soft-deleted rows are returned as tombstones — content is already blanked
   // at delete time, but never surface stale content even if that changes.
-  content: message.deletedAt ? '' : message.content,
+  // A withheld message is the same shape: the row exists, the content does not.
+  content: message.deletedAt || withheld ? '' : message.content,
   createdAt: message.createdAt.toISOString(),
   // Reply threads (#233): set on replies; the materialized reply metadata is
   // carried on root messages.
@@ -179,6 +200,12 @@ export const listThreadMessages = async (
     limit?: number
     senderId?: string
     rootMessageId?: string
+    /**
+     * Who is reading. Required for the disclosure predicate; omitting them
+     * yields an autonomous viewer, which sees unrestricted messages only.
+     */
+    organizationId?: string
+    viewerUserId?: string
   } = {},
 ): Promise<ListThreadMessagesPage> => {
   const limit = Math.min(options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, MAX_MESSAGE_PAGE_SIZE)
@@ -240,11 +267,52 @@ export const listThreadMessages = async (
   const oldest = page.at(-1)
   const attachmentCounts = await loadAttachmentCounts(prisma, page.map((row) => row.id))
 
+  // Disclosure predicate: a caller who does not satisfy a message's basis gets
+  // the row without its content, so the feed shows a placeholder rather than an
+  // unexplained hole.
+  const viewer = options.organizationId
+    ? await resolveMessageViewer(prisma, options.organizationId, options.viewerUserId)
+    : ({ kind: 'autonomous' } as const)
+
+  // Grants are consulted only for the messages the predicate would otherwise
+  // withhold, so an unrestricted page costs no extra queries at all.
+  const provisional = partitionByDisclosure(page, viewer)
+  const grantChannelId = provisional.withheld.length > 0
+    ? (await prisma.thread.findUnique({
+      where: { id: threadId },
+      select: { channelId: true },
+    }))?.channelId ?? null
+    : null
+  const withheldIds = new Set<string>()
+  for (const row of provisional.withheld) {
+    const granted = options.organizationId && viewer.kind === 'user' && grantChannelId
+      ? await resolveGrantedScopeKeys(prisma, {
+        agentId: row.agentId,
+        basis: row.basisScopes,
+        channelId: grantChannelId,
+        messageId: row.id,
+        organizationId: options.organizationId,
+        viewerChannelIds: viewer.scopes
+          .filter((scope) => scope.scopeType === 'channel')
+          .map((scope) => scope.scopeId),
+        viewerUserId: viewer.userId,
+      })
+      : new Set<string>()
+    if (!viewerSatisfiesBasis(row.basisScopes, viewer, granted)) {
+      withheldIds.add(row.id)
+    }
+  }
+
   return {
     data: page
       .slice()
       .reverse()
-      .map((row) => mapThreadMessageRecord(row, attachmentCounts.get(row.id) ?? 0)),
+      .map((row) =>
+        mapThreadMessageRecord(
+          row,
+          attachmentCounts.get(row.id) ?? 0,
+          withheldIds.has(row.id),
+        )),
     meta: {
       cursor: hasMore && oldest ? `${oldest.createdAt.toISOString()}|${oldest.id}` : null,
       hasMore,
@@ -433,6 +501,15 @@ export const searchMessages = async (
       channelIds.map((id) => Prisma.sql`${id}::uuid`),
     )})`,
     Prisma.sql`to_tsvector('english', m."content") @@ to_tsquery('english', ${prefixQuery})`,
+    // Fail closed on disclosure. Search returns content snippets scoped by
+    // channel membership alone, and unlike the thread list it has nowhere to
+    // render a withheld placeholder — so anything carrying a basis is excluded
+    // outright rather than evaluated. Every other disclosure hole needs an agent
+    // or a race; this one is a text box. Entitlement-aware search can relax this
+    // once the predicate is expressible in SQL.
+    Prisma.sql`NOT EXISTS (
+      SELECT 1 FROM "message_basis_scopes" mbs WHERE mbs."message_id" = m."id"
+    )`,
   ]
   if (input.senderId) {
     conditions.push(

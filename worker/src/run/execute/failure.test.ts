@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { handleRunExecutionFailure } from './failure.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
+import { createConsumedSourceSink } from './disclosure-basis.js'
 
 const ID = {
   agent: '00000000-0000-4000-8000-000000000001',
@@ -68,6 +69,7 @@ test('an interactive run tells the person waiting what went wrong', async () => 
       teamId: '00000000-0000-0000-0000-0000000000d2',
       systemChannelType: 'personal_assistant',
     },
+    consumedSources: createConsumedSourceSink(),
     run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },
     task: { id: ID.task },
   } satisfies RunContext
@@ -154,6 +156,7 @@ test('an unattended run fails quietly — no message into a room that did not as
       systemChannelType: null,
       teamId: ID.team,
     },
+    consumedSources: createConsumedSourceSink(),
     run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },
     task: { id: ID.task },
   } satisfies RunContext

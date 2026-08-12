@@ -12,6 +12,7 @@ import { isInteractiveRun } from './continuation.js'
 /** Control-flow marker: this run has nobody waiting, so it posts nothing. */
 class SkipTerminalMessage extends Error {}
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
+import { createAgentMessage } from './agent-message.js'
 
 export const handleRunExecutionFailure = async (
   deps: ExecutionDependencies,
@@ -53,23 +54,20 @@ export const handleRunExecutionFailure = async (
 
   try {
     if (!announceFailure) throw new SkipTerminalMessage()
-    const errorMessage = await deps.prisma.message.create({
-      data: {
-        agentId: context.agent.id,
-        content: terminalContent,
-        role: 'assistant',
-        threadId: context.run.threadId,
-        ...(input.terminalMessageMetadata
-          ? { metadata: input.terminalMessageMetadata as Prisma.InputJsonValue }
-          : {}),
-        ...(context.replyRootMessageId
-          ? { rootMessageId: context.replyRootMessageId }
-          : {}),
-      },
+    const errorMessage = await createAgentMessage(deps.prisma, context, {
+      agentId: context.agent.id,
+      content: terminalContent,
+      role: 'assistant',
+      threadId: context.run.threadId,
+      ...(input.terminalMessageMetadata
+        ? { metadata: input.terminalMessageMetadata as Prisma.InputJsonValue }
+        : {}),
+      ...(context.replyRootMessageId
+        ? { rootMessageId: context.replyRootMessageId }
+        : {}),
     })
 
     terminalMessageId = errorMessage.id
-    terminalContent = errorMessage.content
     terminalCreatedAt = errorMessage.createdAt.toISOString()
 
     const reply = await applyRunReplyBookkeeping(

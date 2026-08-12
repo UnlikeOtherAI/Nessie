@@ -59,6 +59,18 @@ export const ThreadMessageRecordSchema = z.object({
   // Absent when a producer could not determine it — clients must then fetch,
   // so an attachment is never silently hidden.
   attachmentCount: z.number().int().nonnegative().optional(),
+  // Set when this message drew on sources the caller cannot reach. The row is
+  // still returned — with empty content — so the client renders a placeholder
+  // rather than an unexplained gap in the conversation. Absent means readable.
+  restricted: z.literal(true).optional(),
+  // Set when this message drew on restricted sources AND the caller can reach
+  // them — so they read it normally, and they are the person who can share it.
+  // The two flags are mutually exclusive by construction: being withheld means
+  // failing the basis, and failing the basis means you cannot grant it.
+  restrictedSources: z.literal(true).optional(),
+  // Whether a standing rule may be offered for this message's sources. False
+  // for private material, which is shareable one reply at a time only.
+  canShareStanding: z.boolean().optional(),
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
 

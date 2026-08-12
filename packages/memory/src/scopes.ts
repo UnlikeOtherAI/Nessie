@@ -346,3 +346,45 @@ export const constrainScopesToDestination = (
     channelIds: scopes.channelIds.filter((id) => id === destination.channelId),
   }
 }
+
+type ThoughtAudienceRow = {
+  audienceType: string | null
+  audienceId: string | null
+}
+
+/**
+ * The audiences a set of recalled thoughts belong to.
+ *
+ * `SearchResult` carries `visibility` but not the audience *id*, and the id is
+ * what a disclosure basis needs — "a project memory" is not privileged, "a
+ * memory scoped to project X" is. Rather than widen the `match_thoughts_*`
+ * function contract, this resolves the audience for the handful of ids a recall
+ * actually returned (at most a page of results).
+ *
+ * Rows with a null audience are skipped: a thought with no audience cannot make
+ * a reply privileged, because there is no scope to be outside of.
+ */
+export const loadThoughtAudiences = async (
+  db: Queryable,
+  thoughtIds: readonly string[],
+): Promise<Array<{ scopeType: string; scopeId: string }>> => {
+  if (thoughtIds.length === 0) {
+    return []
+  }
+
+  const result = await db.query(
+    `SELECT audience_type AS "audienceType", audience_id AS "audienceId"
+     FROM thoughts
+     WHERE id = ANY($1::uuid[])`,
+    [[...thoughtIds]],
+  )
+
+  const scopes: Array<{ scopeType: string; scopeId: string }> = []
+  for (const row of result.rows as ThoughtAudienceRow[]) {
+    if (!row.audienceType || !row.audienceId) {
+      continue
+    }
+    scopes.push({ scopeId: row.audienceId, scopeType: row.audienceType })
+  }
+  return scopes
+}

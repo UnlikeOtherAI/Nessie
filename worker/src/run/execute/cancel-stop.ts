@@ -15,6 +15,7 @@ import {
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 import type { BudgetStopStats } from './budget-stop.js'
+import { createAgentMessage } from './agent-message.js'
 
 // A run that ends because a human requested cancellation through
 // `POST /api/runs/:id/cancel`. The cooperative flag on the Run row is polled by
@@ -94,16 +95,16 @@ export const finalizeCancelledRun = async (
     ? `${input.responseText}\n\n${input.notice}`
     : input.notice
 
-  const message = await deps.prisma.message.create({
-    data: {
-      agentId: context.agent.id,
-      content: terminalContent,
-      role: 'assistant',
-      threadId: context.run.threadId,
-      ...(context.replyRootMessageId
-        ? { rootMessageId: context.replyRootMessageId }
-        : {}),
-    },
+  // Partial text is drawn from the same context the completed reply would have
+  // used, so cancellation stamps exactly like completion.
+  const message = await createAgentMessage(deps.prisma, context, {
+    agentId: context.agent.id,
+    content: terminalContent,
+    role: 'assistant',
+    threadId: context.run.threadId,
+    ...(context.replyRootMessageId
+      ? { rootMessageId: context.replyRootMessageId }
+      : {}),
   })
 
   const reply = await applyRunReplyBookkeeping(deps.prisma, context, message.createdAt)

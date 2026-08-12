@@ -139,3 +139,33 @@ export const useDiscardAttachment = () => {
       apiClient.delete<null>(`/api/attachments/${attachmentId}`),
   })
 }
+
+/** Duration presets the acknowledgement card offers for a standing rule. */
+export type DisclosureDuration = '10m' | 'today' | '30d' | 'forever'
+
+/**
+ * Answer the acknowledgement card: share one restricted reply, or stand up a
+ * rule allowing this agent to use these sources in this channel.
+ *
+ * The server re-checks that the caller currently reaches the message's sources
+ * — this hook only asks. A refusal surfaces on the card.
+ */
+export const useShareRestrictedMessage = (threadId?: string) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      messageId: string
+      kind: 'message' | 'scope'
+      duration: DisclosureDuration
+    }) =>
+      apiClient.post<{ kind: string }>(
+        `/api/messages/${input.messageId}/disclosure-grants`,
+        { duration: input.duration, kind: input.kind },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+    },
+  })
+}

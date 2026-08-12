@@ -6,6 +6,7 @@ import { persistInvocationLedgerEvents } from '../inference.js'
 import { enqueueRunMemoryConsolidation } from '../memory-consolidation.js'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { createMessageMentionAlerts } from '../mention-alerts.js'
+import { createAgentMessage } from './agent-message.js'
 import { buildScopes } from './scopes.js'
 import { foldWatchStatus } from './watch-status.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
@@ -100,41 +101,49 @@ export const completeRunExecution = async (
   const rootMessageId = delegatedOwnerId ? undefined : context.replyRootMessageId
 
   const extraMetadata = input.messageMetadata ?? {}
-  const assistantMessage = await deps.prisma.message.create({
-    data: delegatedOwnerId
-      ? {
-          content: input.responseText,
-          metadata: {
-            ...extraMetadata,
-            delegatedByAgentId: context.agent.id,
-            delegatedFromRunId: context.run.id,
-          } as Prisma.InputJsonValue,
-          role: 'user',
-          threadId: context.run.threadId,
-          userId: delegatedOwnerId,
-        }
-      : {
-          agentId: context.agent.id,
-          content: input.responseText,
-          role: 'assistant',
-          threadId: context.run.threadId,
-          ...(input.messageMetadata
-            ? { metadata: extraMetadata as Prisma.InputJsonValue }
-            : {}),
-          ...(rootMessageId ? { rootMessageId } : {}),
-        },
-  })
+  // Both branches go through the one stamping chokepoint. The delegated-PA
+  // branch matters especially: it authors agent-generated content as
+  // `role: 'user'`, so a predicate keyed on agent authorship alone would miss
+  // it — `delegatedByAgentId` in metadata is what marks it structurally.
+  const assistantMessage = await createAgentMessage(deps.prisma, context, delegatedOwnerId
+    ? {
+        content: input.responseText,
+        metadata: {
+          ...extraMetadata,
+          delegatedByAgentId: context.agent.id,
+          delegatedFromRunId: context.run.id,
+        } as Prisma.InputJsonValue,
+        role: 'user',
+        threadId: context.run.threadId,
+        userId: delegatedOwnerId,
+      }
+    : {
+        agentId: context.agent.id,
+        content: input.responseText,
+        role: 'assistant',
+        threadId: context.run.threadId,
+        ...(input.messageMetadata
+          ? { metadata: extraMetadata as Prisma.InputJsonValue }
+          : {}),
+        ...(rootMessageId ? { rootMessageId } : {}),
+      })
 
   const reply = rootMessageId
     ? await applyRunReplyBookkeeping(deps.prisma, context, assistantMessage.createdAt)
     : undefined
 
+  // The thread SSE connection registers with a thread id and no viewer, so it
+  // cannot be filtered per-recipient. A restricted reply therefore closes the
+  // stream without its content; entitled readers refetch through the gated list.
+  const restricted = assistantMessage.basis.length > 0
+
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
-    content: input.responseText,
+    content: restricted ? '' : input.responseText,
     createdAt: assistantMessage.createdAt.toISOString(),
     messageId: assistantMessage.id,
     runId: parseRunId(context.run.id),
+    ...(restricted ? { restricted: true } : {}),
     ...(rootMessageId ? { rootMessageId } : {}),
   })
 
@@ -143,24 +152,32 @@ export const completeRunExecution = async (
     content: input.responseText,
     messageId: assistantMessage.id,
     role: delegatedOwnerId ? 'user' : 'assistant',
+    ...(restricted ? { restricted: true } : {}),
     ...(reply ? { reply } : {}),
   })
 
-  // Agent-authored @mentions create the same durable alerts as human ones.
-  await createMessageMentionAlerts(
-    { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
-    {
-      organizationId: context.channel.organizationId,
-      channelId: context.channel.id,
-      threadId: context.run.threadId,
-      messageId: assistantMessage.id,
-      messageCreatedAt: assistantMessage.createdAt,
-      content: input.responseText,
-      actorUserId: delegatedOwnerId,
-      actorAgentId: context.agent.id,
-      scopes: buildScopes(context),
-    },
-  )
+  // Agent-authored @mentions create the same durable alerts as human ones —
+  // except for a restricted reply. An alert is a durable row plus a push
+  // notification carrying the mention's framing, so alerting someone who cannot
+  // read the message hands them both its existence and a doorway to it. The
+  // reply still exists for anyone entitled; it simply does not go looking for
+  // readers who are not.
+  if (!restricted) {
+    await createMessageMentionAlerts(
+      { prisma: deps.prisma, realtimeTransport: deps.realtimeTransport },
+      {
+        organizationId: context.channel.organizationId,
+        channelId: context.channel.id,
+        threadId: context.run.threadId,
+        messageId: assistantMessage.id,
+        messageCreatedAt: assistantMessage.createdAt,
+        content: input.responseText,
+        actorUserId: delegatedOwnerId,
+        actorAgentId: context.agent.id,
+        scopes: buildScopes(context),
+      },
+    )
+  }
 
   }
 

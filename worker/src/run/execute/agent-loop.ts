@@ -94,6 +94,7 @@ export const runExecutionAgentLoop = async (
       organizationId: parseOrganizationId(context.channel.organizationId),
       systemChannelType: context.channel.systemChannelType,
     },
+    consumedSources: context.consumedSources,
     ledgerIdentity: deps.ledgerIdentity ?? null,
     mcpSecrets: deps.mcpSecrets,
     memoryCaptureConfig: {
