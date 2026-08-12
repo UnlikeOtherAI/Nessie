@@ -11,6 +11,8 @@ import {
   ExecutorEnrollmentRequestSchema,
   ExecutorPrivateAssignmentSchema,
   ExecutorAccessViewResponseSchema,
+  ExecutorAvailabilityRequestSchema,
+  ExecutorAvailabilityResponseSchema as ExecutorAvailabilityResponseContractSchema,
   ExecutorPairingInvitationResponseSchema,
   ExecutorRecordResponseSchema,
   ExecutorScopeSchema,
@@ -23,6 +25,12 @@ import { NonEmptyStringSchema } from './shared.js'
 
 export const ExecutorRecordSchema = ExecutorRecordResponseSchema
 export type ExecutorRecord = z.infer<typeof ExecutorRecordSchema>
+
+export const ExecutorAvailabilityRequestBodySchema = ExecutorAvailabilityRequestSchema
+export type ExecutorAvailabilityRequestBody = z.infer<typeof ExecutorAvailabilityRequestBodySchema>
+
+export const ExecutorAvailabilityResponseSchema = ExecutorAvailabilityResponseContractSchema
+export type ExecutorAvailabilityResponse = z.infer<typeof ExecutorAvailabilityResponseSchema>
 
 export const CreateExecutorBodySchema = z.object({
   label: NonEmptyStringSchema.max(120),

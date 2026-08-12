@@ -790,6 +790,7 @@ model User {
   executorOperationGrantUpdates ExecutorAgentOperationGrant[] @relation("ExecutorAgentOperationGrantUpdater")
   executorSessionControlLeases ExecutorSession[] @relation("ExecutorSessionControlLease")
   executorContinuations ExecutorContinuation[] @relation("ExecutorContinuationActor")
+  executorAvailabilityCandidates ExecutorAvailabilityCandidate[] @relation("ExecutorAvailabilityCandidateActor")
   avatarAttachment    Attachment?          @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -1732,6 +1733,7 @@ model Agent {
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
   executorPrivateAssignments     ExecutorPrivateAssignment[] @relation("ExecutorPrivateAssignmentAgent")
   executorOperationGrants        ExecutorAgentOperationGrant[]
+  executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   knowledgeSpaceMemberships     KnowledgeSpaceMember[]         @relation("KnowledgeSpaceAgentMembers")
   userAlertActivity             UserAlert[]
   runThreadPendingMessages      RunThreadPendingMessage[]
@@ -1920,6 +1922,7 @@ model Run {
   workflowRuns                  WorkflowRun[]                  @relation("WorkflowParentRun")
   workflowStepRuns              WorkflowStepRun[]              @relation("WorkflowAgentRun")
   executionEnvironmentInstances ExecutionEnvironmentInstance[]
+  executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   thinkingChunks                RunThinkingChunk[]
   basisScopes                   RunBasisScope[]
   executorSessions              ExecutorSession[]
@@ -2867,6 +2870,7 @@ model Executor {
   bindings                    ExecutorBinding[]
   continuations               ExecutorContinuation[]
   daemonChallenges            ExecutorDaemonChallenge[]
+  availabilityCandidates      ExecutorAvailabilityCandidate[]
 
   @@index([organizationId, scopeKind, status])
   @@index([projectId])
@@ -2904,6 +2908,7 @@ model ExecutorCapabilityRevision {
   executor          Executor                       @relation(fields: [executorId], references: [id], onDelete: Cascade)
   reviewedBy        User?                          @relation("ExecutorCapabilityReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   bindings          ExecutorBinding[]
+  availabilityCandidates ExecutorAvailabilityCandidate[]
 
   @@unique([executorId, revision])
   @@index([executorId, reviewStatus])
@@ -2993,6 +2998,36 @@ model ExecutorBinding {
   @@unique([runId, operationKey])
   @@index([executorId, createdAt])
   @@map("executor_bindings")
+}
+
+/// An opaque, short-lived choice made by the server's availability resolver.
+/// Only its digest is stored; later binding consumes it exactly once under the
+/// run/operation lock, rather than accepting a model- or browser-supplied
+/// executor identifier.
+model ExecutorAvailabilityCandidate {
+  id                    String                     @id @default(uuid()) @db.Uuid
+  executorId            String                     @map("executor_id") @db.Uuid
+  capabilityRevisionId  String                     @map("capability_revision_id") @db.Uuid
+  actorUserId           String                     @map("actor_user_id") @db.Uuid
+  agentId               String                     @map("agent_id") @db.Uuid
+  runId                 String?                    @map("run_id") @db.Uuid
+  projectId             String?                    @map("project_id") @db.Uuid
+  operationKeys         String[]                   @map("operation_keys")
+  authorizationRevision Int                        @map("authorization_revision")
+  handleDigest          String                     @unique @map("handle_digest")
+  expiresAt             DateTime                   @map("expires_at")
+  consumedAt            DateTime?                  @map("consumed_at")
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  executor              Executor                   @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  capabilityRevision    ExecutorCapabilityRevision @relation(fields: [capabilityRevisionId], references: [id], onDelete: Restrict)
+  actorUser             User                       @relation("ExecutorAvailabilityCandidateActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  agent                 Agent                      @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  run                   Run?                       @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([actorUserId, agentId, expiresAt])
+  @@index([executorId, expiresAt])
+  @@index([runId])
+  @@map("executor_availability_candidates")
 }
 
 model ExecutorCommand {

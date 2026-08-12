@@ -8,7 +8,7 @@ import {
   ToolRegistryEntryStatusSchema,
   ToolRegistrySourceSchema,
 } from '@nessie/schemas'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
@@ -24,6 +24,7 @@ import {
   fromPrismaToolGrantSource,
   setToolRegistryEntriesStatus,
 } from '@nessie/mcp-manage'
+import { ensureExecutorLogicalTools } from '@nessie/executor-manage'
 import { ensureBuiltinToolsRegistered } from '../../services/tools.js'
 import {
   listAgentToolPolicyTargets,
@@ -119,6 +120,30 @@ export const attachGrantsToRegistryEntries = async (
   }))
 }
 
+const isExecutorManagedTool = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  toolRegistryEntryId: string,
+): Promise<boolean> => Boolean(await prisma.toolRegistryEntry.findFirst({
+  where: {
+    id: toolRegistryEntryId,
+    organizationId,
+    source: 'executor',
+  },
+  select: { id: true },
+}))
+
+const rejectExecutorManagedTool = (
+  reply: FastifyReply,
+): void => {
+  sendApiError(
+    reply,
+    409,
+    'EXECUTOR_LOGICAL_TOOL_MANAGED',
+    'Executor logical tools are managed from the Executors access controls.',
+  )
+}
+
 export const registerMcpToolsRoutes = (
   app: FastifyInstance,
   ctx: McpSubRegistrarContext,
@@ -153,7 +178,10 @@ export const registerMcpToolsRoutes = (
     // Builtin tools are upserted into the registry on demand; ensure they exist
     // so the canonical /agents/tools surface always lists them (the legacy
     // /api/tools path is no longer guaranteed to run first).
-    await ensureBuiltinToolsRegistered(prisma, actorContext.tenant.organizationId)
+    await Promise.all([
+      ensureBuiltinToolsRegistered(prisma, actorContext.tenant.organizationId),
+      ensureExecutorLogicalTools(prisma, actorContext.tenant.organizationId),
+    ])
 
     const tools = await listToolRegistry(prisma, actorContext.tenant.organizationId, {
       status: statusParsed?.success ? statusParsed.data : undefined,
@@ -181,6 +209,17 @@ export const registerMcpToolsRoutes = (
 
     const body = parseInput(SetToolRegistryStatusRequestSchema, request.body, reply)
     if (!body) return reply
+
+    if ((await prisma.toolRegistryEntry.count({
+      where: {
+        id: { in: body.toolRegistryEntryIds },
+        organizationId: actorContext.tenant.organizationId,
+        source: 'executor',
+      },
+    })) > 0) {
+      rejectExecutorManagedTool(reply)
+      return reply
+    }
 
     try {
       const result = await setToolRegistryEntriesStatus(prisma, {
@@ -228,6 +267,15 @@ export const registerMcpToolsRoutes = (
       )
       if (!params) return reply
 
+      if (await isExecutorManagedTool(
+        prisma,
+        actorContext.tenant.organizationId,
+        params.toolRegistryEntryId,
+      )) {
+        rejectExecutorManagedTool(reply)
+        return reply
+      }
+
       try {
         const target = await setAgentToolPolicyForRegistryEntry(prisma, {
           agentId: params.agentId,
@@ -251,6 +299,10 @@ export const registerMcpToolsRoutes = (
     const { toolRegistryEntryId } = request.params as { toolRegistryEntryId: string }
     const body = parseInput(CreateGrantBodySchema, request.body, reply)
     if (!body) return reply
+    if (await isExecutorManagedTool(prisma, actorContext.tenant.organizationId, toolRegistryEntryId)) {
+      rejectExecutorManagedTool(reply)
+      return reply
+    }
 
     try {
       const grant = await createGrant(prisma, {
@@ -278,6 +330,10 @@ export const registerMcpToolsRoutes = (
       const { toolRegistryEntryId, grantId } = request.params as {
         toolRegistryEntryId: string
         grantId: string
+      }
+      if (await isExecutorManagedTool(prisma, actorContext.tenant.organizationId, toolRegistryEntryId)) {
+        rejectExecutorManagedTool(reply)
+        return reply
       }
       const deleted = await deleteGrant(
         prisma,

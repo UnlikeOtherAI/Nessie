@@ -153,6 +153,14 @@ proof from the current key and may not bypass revocation.
 The daemon makes outbound HTTPS/WSS connections only. Nessie never calls into a
 laptop or uses a catalog endpoint as a machine transport.
 
+Before binding a run, Nessie resolves each logical operation into an opaque,
+short-lived availability candidate. The database keeps only a SHA-256 digest of
+the handle with the selected executor, reviewed capability revision, requester,
+agent, scope context, authorization revision, expiry, and eventual consumption
+receipt. Candidate responses never contain an executor ID. A later binding
+must consume exactly one unexpired digest and revalidate every recorded gate;
+the candidate is not an authorization cache or a caller-selectable machine.
+
 The initial `nessie-executor` CLI requires an explicit HTTPS API origin and an
 owner-only local state directory. It generates and stores the machine key
 locally, submits the signed enrollment proof, and after the human confirms the

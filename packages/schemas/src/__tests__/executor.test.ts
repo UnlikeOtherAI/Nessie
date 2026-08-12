@@ -5,6 +5,7 @@ import {
   ExecutorAccessChangeConfirmationSchema,
   ExecutorAgentOperationGrantSchema,
   ExecutorAvailabilityCandidateSchema,
+  ExecutorAvailabilityResponseSchema,
   ExecutorCapabilityDescriptorSchema,
   ExecutorCommandEnvelopeSchema,
   ExecutorPrivateAssignmentSchema,
@@ -139,6 +140,15 @@ test('availability candidates expose opaque handles rather than executor IDs', (
 
   assert.equal(candidate.scopeKind, 'private')
   assert.equal('executorId' in candidate, false)
+})
+
+test('availability responses separate opaque candidates from safe explanations', () => {
+  const response = ExecutorAvailabilityResponseSchema.parse({
+    candidates: [],
+    explanations: [{ readiness: 'unavailable', reason: 'logical_tool_ungranted' }],
+  })
+  assert.deepEqual(response.candidates, [])
+  assert.equal(response.explanations[0]?.reason, 'logical_tool_ungranted')
 })
 
 test('command envelopes carry fences and digests rather than raw result data', () => {

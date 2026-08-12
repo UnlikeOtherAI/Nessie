@@ -9,13 +9,26 @@ private human/agent roster, exact operation grants, user-confirmed access
 changes, the Executors home with a project doorway, Personal Assistant
 prepare-only management, a signed daemon-presence handshake, and the
 `nessie-executor` companion's secure key/state, enrollment, descriptor, and
-heartbeat workflow.
+heartbeat workflow. It now also projects stable logical executor operations
+into the existing tool registry and resolves durable, opaque availability
+candidates only when the human scope, exact executor-operation grant, explicit
+logical policy, approved descriptor, local capability, and online state all
+agree.
 It does **not** dispatch files, browser work, commands, or coding sessions
 yet; the companion advertises only its harmless stop capability until a
 concrete isolated backend is delivered. Neither does it expose the planned
 availability union with connectors.
 Those operations remain unavailable until their resolver, binding, command
 transport, and companion enforcement are delivered together.
+
+The availability endpoint deliberately creates a five-minute, one-use opaque
+candidate and returns no machine identifier. The next binding slice consumes
+that record under the run/operation lock and rechecks its recorded capability
+and authorization revisions; it will not accept an executor selected by a
+model, browser, or API caller. Confirming an executor-operation access change
+updates the corresponding explicit logical-tool policy first, then the exact
+executor grant. If confirmation becomes stale, that ordering can only leave a
+logical policy without an executor grant, which remains deny-by-default.
 
 ## Decision
 

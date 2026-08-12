@@ -3,6 +3,7 @@ import {
   confirmExecutorEnrollment,
   claimExecutorConnection,
   createExecutor,
+  ensureExecutorLogicalTools,
   ExecutorError,
   getExecutorAccessChangeForUser,
   getExecutorAccessView,
@@ -12,12 +13,14 @@ import {
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
   recordExecutorDaemonChallenge,
+  resolveExecutorAvailabilityCandidates,
   reportExecutorHeartbeat,
   submitExecutorDescriptor,
   submitExecutorEnrollment,
   reviewExecutorDescriptor,
 } from '@nessie/executor-manage'
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import { ExecutorOperationKeySchema } from '@nessie/schemas'
 
 import {
   ConfirmExecutorAccessChangeBodySchema,
@@ -33,6 +36,8 @@ import {
   ExecutorDaemonHeartbeatBodySchema,
   ExecutorAccessChangeRecordSchema,
   ExecutorAccessViewSchema,
+  ExecutorAvailabilityRequestBodySchema,
+  ExecutorAvailabilityResponseSchema,
   ExecutorRecordSchema,
   PendingExecutorEnrollmentSchema,
   PrepareExecutorAccessChangeBodySchema,
@@ -43,6 +48,8 @@ import {
 import { verifyPassword } from '../auth/password.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { setAgentToolPolicyForRegistryEntry } from '../services/agent-tool-policy-registry.js'
+import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import {
   issueExecutorDaemonChallenge,
   verifyExecutorDaemonChallenge,
@@ -99,6 +106,20 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     try {
       const created = await createExecutor(prisma, actorContext, body)
       return reply.code(201).send(createApiResponse(CreateExecutorResponseSchema.parse(created)))
+    } catch (error) {
+      if (sendExecutorError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.post('/api/executor-availability', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const body = parseInput(ExecutorAvailabilityRequestBodySchema, request.body, reply)
+    if (!body) return reply
+    try {
+      const availability = await resolveExecutorAvailabilityCandidates(prisma, actorContext, body)
+      return createApiResponse(ExecutorAvailabilityResponseSchema.parse(availability))
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply
       throw error
@@ -276,6 +297,25 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       freshVerificationSatisfied = true
     }
     try {
+      if (accessChange.change.kind === 'agent_operation_grant') {
+        const tools = await ensureExecutorLogicalTools(prisma, actorContext.tenant.organizationId)
+        const toolRegistryEntryId = tools.get(
+          ExecutorOperationKeySchema.parse(accessChange.change.operationKey),
+        )
+        if (!toolRegistryEntryId) {
+          throw new Error('Executor logical tool registry is incomplete.')
+        }
+        // Apply the policy half first. A stale/failed confirmation can only
+        // leave a logical grant without the exact executor-operation grant,
+        // which remains fail-closed; the reverse ordering could confirm a
+        // resource grant and then strand its mandatory policy update.
+        await setAgentToolPolicyForRegistryEntry(prisma, {
+          agentId: accessChange.change.agentId,
+          enabled: accessChange.change.state === 'allowed',
+          organizationId: actorContext.tenant.organizationId,
+          toolRegistryEntryId,
+        })
+      }
       const result = await confirmExecutorAccessChange(prisma, actorContext, {
         accessChangeId,
         confirmationToken: body.confirmationToken,
@@ -291,6 +331,10 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       })
       return createApiResponse(result)
     } catch (error) {
+      if (error instanceof AgentToolPolicyError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
       if (error instanceof ExecutorError && error.code === 'EXECUTOR_ACCESS_CHANGE_EXPIRED') {
         await emitAuditEvent(prisma, {
           actorContext,

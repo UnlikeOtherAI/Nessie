@@ -153,6 +153,7 @@ export const ExecutorDetailPanels = ({
       ) : null}
       {tab === 'operations' ? (
         <div className="mt-4 grid gap-4">
+          <p className="text-sm text-[color:var(--tx2)]">An agent needs both this executor’s exact operation grant and the matching logical executor tool policy. Confirming a change updates both; an agent cannot grant either to itself or another agent.</p>
           {(access?.operationGrants ?? []).length > 0 ? (
             <div className="grid gap-1 text-xs text-[color:var(--tx2)]">
               {(access?.operationGrants ?? []).map((grant) => {
@@ -172,7 +173,7 @@ export const ExecutorDetailPanels = ({
                 state: grantState,
               })
             }}>
-              <p className="text-xs font-semibold text-[color:var(--tx)]">Prepare exact agent operation grant</p>
+              <p className="text-xs font-semibold text-[color:var(--tx)]">Prepare paired agent-operation grant</p>
               <div className="grid gap-2 sm:grid-cols-3">
                 <select className="admin-input" onChange={(event) => setGrantAgentId(event.target.value)} value={grantAgentId}>
                   <option value="">Choose agent</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}

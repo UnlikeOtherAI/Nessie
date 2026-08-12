@@ -9,6 +9,14 @@ export {
   type ScopeAvailability,
 } from './availability.js'
 export {
+  resolveExecutorAvailabilityCandidates,
+} from './executor-availability-resolution.js'
+export {
+  ensureExecutorLogicalTools,
+  executorLogicalToolDefinitions,
+  executorLogicalToolId,
+} from './executor-logical-tools.js'
+export {
   claimExecutorConnection,
   recordExecutorDaemonChallenge,
   reportExecutorHeartbeat,

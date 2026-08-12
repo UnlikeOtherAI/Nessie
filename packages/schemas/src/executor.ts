@@ -289,6 +289,16 @@ export type ExecutorAvailabilityExplanation = z.infer<
   typeof ExecutorAvailabilityExplanationSchema
 >
 
+export const ExecutorAvailabilityResponseSchema = z
+  .object({
+    candidates: z.array(ExecutorAvailabilityCandidateSchema).max(100),
+    explanations: z.array(ExecutorAvailabilityExplanationSchema).max(16),
+  })
+  .strict()
+export type ExecutorAvailabilityResponse = z.infer<
+  typeof ExecutorAvailabilityResponseSchema
+>
+
 export const ExecutorCommandReceiptStateSchema = z.enum([
   'accepted',
   'started',
