@@ -3,7 +3,7 @@ import Constants from 'expo-constants'
 import * as Notifications from 'expo-notifications'
 import type { DevicePushToken } from 'expo-notifications'
 import { Platform } from 'react-native'
-import { pathFromPushData, type PushData } from './push-navigation'
+import { pathFromNotificationResponse } from './push-response'
 
 export type NativePushRegistration = {
   platform: 'ios' | 'android'
@@ -41,14 +41,6 @@ const configureAndroidPushChannel = async (): Promise<void> => {
 const appVersion = (): string | undefined => {
   const version = Constants.expoConfig?.version
   return typeof version === 'string' && version.length > 0 ? version : undefined
-}
-
-const isPushData = (data: unknown): data is PushData =>
-  typeof data === 'object' && data !== null && !Array.isArray(data)
-
-const pathFromResponse = (response: Notifications.NotificationResponse): string | null => {
-  const data = response.notification.request.content.data
-  return isPushData(data) ? pathFromPushData(data) : null
 }
 
 const registrationFromDeviceToken = async (
@@ -125,7 +117,7 @@ export const takeInitialPushNavigationPath = async (): Promise<string | null> =>
   const response = await Notifications.getLastNotificationResponseAsync()
   if (!response) return null
 
-  const path = pathFromResponse(response)
+  const path = pathFromNotificationResponse(response)
   await Notifications.clearLastNotificationResponseAsync().catch(() => undefined)
   return path
 }
@@ -139,7 +131,7 @@ export const subscribeToPushNavigation = (
   navigate: (path: string) => void,
 ): (() => void) => {
   const handleResponse = (response: Notifications.NotificationResponse): void => {
-    const path = pathFromResponse(response)
+    const path = pathFromNotificationResponse(response)
     if (path) navigate(path)
   }
 

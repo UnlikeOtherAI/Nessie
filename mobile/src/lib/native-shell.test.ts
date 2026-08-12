@@ -22,13 +22,17 @@ class TestCustomEvent extends TestEvent {
   }
 }
 
-const runShellScript = (script: string): { events: NativeEvent[]; window: Record<string, unknown> } => {
+const runShellScript = (
+  script: string,
+  configure?: (window: Record<string, unknown>) => void,
+): { events: NativeEvent[]; window: Record<string, unknown> } => {
   const events: NativeEvent[] = []
   const window: Record<string, unknown> = {
     dispatchEvent: (event: NativeEvent): void => {
       events.push(event)
     },
   }
+  configure?.(window)
   const execute = new Function('window', 'Event', 'CustomEvent', script)
   execute(window, TestEvent, TestCustomEvent)
   return { events, window }
@@ -57,4 +61,17 @@ test('retains a new push target until the React bridge acknowledges it', () => {
   const clear = new Function('window', nativePushPathScript(null))
   clear(window)
   assert.equal('__nessiePendingPushPath' in window, false)
+})
+
+test('routes a warm notification tap through the mounted SPA navigator immediately', () => {
+  const navigated: unknown[] = []
+  const path = '/channels/channel-c/threads/thread-c/replies/root-c'
+
+  runShellScript(nativePushPathScript(path), (window) => {
+    window.__nessieNavigate = (target: unknown): void => {
+      navigated.push(target)
+    }
+  })
+
+  assert.deepEqual(navigated, [path])
 })

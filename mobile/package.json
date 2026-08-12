@@ -9,6 +9,7 @@
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
+    "test:deeplink-simulator": "node test/deeplink-simulator-harness.mjs",
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {

@@ -87,7 +87,10 @@ test('buildFcmBody combines the subtitle into Android notification title', () =>
       notification: { title: 'Hi · # General', body: 'There' },
       data: { url: 'nessie://x' },
       android: { collapse_key: 'chan-1', notification: { notification_count: 7 } },
-      apns: { headers: { 'apns-collapse-id': 'chan-1' }, payload: { aps: { badge: 7 } } },
+      apns: {
+        headers: { 'apns-collapse-id': 'chan-1' },
+        payload: { aps: { badge: 7 }, body: { url: 'nessie://x' } },
+      },
     },
   })
 })
