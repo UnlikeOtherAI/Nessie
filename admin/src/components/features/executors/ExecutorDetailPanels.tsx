@@ -21,10 +21,9 @@ type ExecutorDetailPanelsProps = {
 }
 
 const operationKeys = [
-  'file.list', 'file.read', 'file.write', 'command.run', 'browser.open',
-  'browser.observe', 'browser.act', 'workspace.promote', 'sandbox.stop',
-  'coding.launch', 'coding.attach', 'coding.observe', 'coding.prompt',
-  'coding.interrupt', 'coding.close',
+  'file.list', 'file.read', 'file.write', 'browser.open', 'browser.observe',
+  'workspace.review',
+  'sandbox.stop', 'coding.launch', 'coding.observe',
 ] as const
 
 const tabClass = (selected: boolean): string => [
@@ -41,7 +40,20 @@ const scopeSummary = (executor: ExecutorRecordResponse): string =>
       ? `Project — eligible only for runs in project ${executor.scope.projectId}.`
       : 'Organization — available only to entitled organization work.'
 
-const sessionSummary = (status: 'pending' | 'active' | 'attention' | 'detached' | 'stopped' | 'failed'): string => {
+const sessionSummary = (
+  profile: 'coding_session' | 'workspace_sandbox',
+  status: 'pending' | 'active' | 'attention' | 'detached' | 'stopped' | 'failed',
+): string => {
+  if (profile === 'coding_session') {
+    switch (status) {
+      case 'pending': return 'Awaiting this run’s one Codex launch.'
+      case 'active': return 'Codex is working in a guest COW workspace. Nessie receives no terminal output.'
+      case 'attention': return 'Codex exited. The agent can review the COW changes or stop the guest.'
+      case 'stopped': return 'Ended. The guest and its transient login material were removed.'
+      case 'failed': return 'Ended after an unavailable coding result. This run cannot retry it.'
+      case 'detached': return 'Detached from interactive control.'
+    }
+  }
   switch (status) {
     case 'pending':
       return 'Awaiting the run’s first browser navigation.'
@@ -114,6 +126,9 @@ export const ExecutorDetailPanels = ({
           <p><span className="font-medium text-[color:var(--tx)]">Data boundary:</span> paired executors run only the reviewed local policy. They do not expose host credentials, a host shell, or raw session output to Nessie.</p>
           {(access?.descriptorRevisions ?? []).some((revision) => revision.operationKeys.includes('browser.open')) ? (
             <p><span className="font-medium text-[color:var(--tx)]">Browser origin ceiling:</span> enforced only by the owner’s companion and deliberately not uploaded to Nessie. Confirm the exact site with a human executor administrator before launching a browser run.</p>
+          ) : null}
+          {(access?.descriptorRevisions ?? []).some((revision) => revision.operationKeys.includes('coding.launch')) ? (
+            <p><span className="font-medium text-[color:var(--tx)]">Coding boundary:</span> a managed Codex guest can reach only its fixed ChatGPT origin through the companion gateway. Its owner-private login, tmux control socket, and terminal output never enter Nessie.</p>
           ) : null}
           <p><span className="font-medium text-[color:var(--tx)]">Last seen:</span> {executor.lastSeenAt ?? 'Never'}</p>
           {executor.statusDetail ? <p className="text-xs text-[color:var(--tx3)]">{executor.statusDetail}</p> : null}
@@ -274,13 +289,13 @@ export const ExecutorDetailPanels = ({
       ) : null}
       {tab === 'sessions' ? (
         <div className="mt-4 grid gap-2 text-sm text-[color:var(--tx2)]">
-          <p className="text-xs text-[color:var(--tx3)]">Browser records show a run’s one-time capability state, never browser content or controls. Open the origin channel when it is available to you; revocation ends all executor activity after a separate human confirmation.</p>
+          <p className="text-xs text-[color:var(--tx3)]">Session records show capability state, never browser content, terminal output, or controls. Open the origin channel when it is available to you; revocation ends all executor activity after a separate human confirmation.</p>
           {(access?.sessions ?? []).length === 0
             ? <p>No executor session has been created.</p>
             : (access?.sessions ?? []).map((session) => (
               <div className="rounded-md border border-[color:var(--sep)] px-3 py-2" key={session.id}>
                 <p className="font-medium text-[color:var(--tx)]">{session.profile} · {session.status}</p>
-                <p className="mt-0.5 text-xs text-[color:var(--tx2)]">{sessionSummary(session.status)}</p>
+                <p className="mt-0.5 text-xs text-[color:var(--tx2)]">{sessionSummary(session.profile, session.status)}</p>
                 <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
                   Created {new Date(session.createdAt).toLocaleString()}
                 </p>

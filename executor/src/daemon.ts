@@ -5,6 +5,8 @@ import {
   canonicalExecutorPayload,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
+  ExecutorCodingLaunchArgumentsSchema,
+  ExecutorCodingObserveArgumentsSchema,
   ExecutorWorkspacePromoteArgumentsSchema,
   RunIdSchema,
   type ExecutorCommandEnvelope,
@@ -15,6 +17,10 @@ import {
   createExecutorBrowserSessionManager,
   type ExecutorBrowserSessionManager,
 } from './browser-session-manager.js'
+import {
+  createExecutorCodingSessionManager,
+  type ExecutorCodingSessionManager,
+} from './coding-session-manager.js'
 import { applyNativePromotion } from './native-helper.js'
 import { signedDescriptorForState } from './pair.js'
 import {
@@ -120,7 +126,10 @@ export const executeExecutorCommand = async (
   stateDir: string,
   state: ExecutorLocalState,
   command: ExecutorCommandEnvelope,
-  dependencies: { browserSessions?: ExecutorBrowserSessionManager } = {},
+  dependencies: {
+    browserSessions?: ExecutorBrowserSessionManager
+    codingSessions?: ExecutorCodingSessionManager
+  } = {},
 ): Promise<Record<string, unknown>> => {
   if (new Date(command.expiresAt) <= new Date()) {
     return { code: 'EXECUTOR_COMMAND_EXPIRED', success: false }
@@ -207,10 +216,27 @@ export const executeExecutorCommand = async (
       ? dependencies.browserSessions.observe(command, runId.data)
       : { code: 'EXECUTOR_BROWSER_UNAVAILABLE', success: false }
   }
+  if (command.operationKey === 'coding.launch') {
+    if (!ExecutorCodingLaunchArgumentsSchema.safeParse(command.payload.args).success) {
+      return { code: 'EXECUTOR_CODING_DENIED', success: false }
+    }
+    return dependencies.codingSessions
+      ? dependencies.codingSessions.launch(command, runId.data)
+      : { code: 'EXECUTOR_CODING_UNAVAILABLE', success: false }
+  }
+  if (command.operationKey === 'coding.observe') {
+    if (!ExecutorCodingObserveArgumentsSchema.safeParse(command.payload.args).success) {
+      return { code: 'EXECUTOR_CODING_DENIED', success: false }
+    }
+    return dependencies.codingSessions
+      ? dependencies.codingSessions.observe(command, runId.data)
+      : { code: 'EXECUTOR_CODING_UNAVAILABLE', success: false }
+  }
   // Stop can discard only its exact server-provenanced run scratch directory.
   if (command.operationKey === 'sandbox.stop') {
     try {
       await dependencies.browserSessions?.stop(runId.data)
+      await dependencies.codingSessions?.stop(runId.data)
       return {
         status: await stopSandboxWorkspace(stateDir, runId.data) ? 'stopped' : 'no_active_sandbox',
         success: true,
@@ -219,8 +245,7 @@ export const executeExecutorCommand = async (
       return workspaceFailure(error)
     }
   }
-  // Shell and coding operations remain absent until their isolated backends
-  // and credential boundary are ready.
+  // Shell and other unimplemented operations remain unavailable.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
 }
 
@@ -228,6 +253,7 @@ const pollAndExecuteCommand = async (
   stateDir: string,
   state: ExecutorLocalState,
   browserSessions: ExecutorBrowserSessionManager,
+  codingSessions: ExecutorCodingSessionManager,
 ): Promise<void> => {
   if (!state.connectionEpoch) return
   const observedAt = new Date().toISOString()
@@ -240,23 +266,25 @@ const pollAndExecuteCommand = async (
   if (!command) return
   await receipt(state, { commandId: command.commandId, state: 'accepted' })
   await receipt(state, { commandId: command.commandId, state: 'started' })
-  const result = await executeExecutorCommand(stateDir, state, command, { browserSessions })
+  const result = await executeExecutorCommand(stateDir, state, command, { browserSessions, codingSessions })
   await receipt(state, { commandId: command.commandId, result, state: 'result_acknowledged' })
 }
 
 export const serveExecutor = async (stateDir: string, state: ExecutorLocalState): Promise<void> => {
   let live = await claimExecutor(stateDir, state)
   const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
+  const codingSessions = createExecutorCodingSessionManager(stateDir, live)
   let commandPollInFlight = false
   const commandInterval = setInterval(() => {
     if (commandPollInFlight) return
     commandPollInFlight = true
-    void pollAndExecuteCommand(stateDir, live, browserSessions)
+    void pollAndExecuteCommand(stateDir, live, browserSessions, codingSessions)
       .catch(async (error) => {
         // A lost or fenced control plane may mean that a human revoked an
         // operation. Preserve fail-closed egress by ending any live browser
         // before this daemon attempts another poll or reconnect.
         await browserSessions.stopAll()
+        await codingSessions.stopAll()
         console.error(
           '[nessie-executor] command poll failed:',
           error instanceof Error ? error.message : String(error),
@@ -272,6 +300,7 @@ export const serveExecutor = async (stateDir: string, state: ExecutorLocalState)
         await heartbeatExecutor(live)
       } catch (error) {
         await browserSessions.stopAll()
+        await codingSessions.stopAll()
         try {
           live = await claimExecutor(stateDir, live)
         } catch (claimError) {
@@ -297,4 +326,5 @@ export const serveExecutor = async (stateDir: string, state: ExecutorLocalState)
     process.once('SIGTERM', stop)
   })
   await browserSessions.stopAll()
+  await codingSessions.stopAll()
 }

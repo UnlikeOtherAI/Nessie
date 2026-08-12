@@ -81,7 +81,20 @@ test('Codex configuration stores only an owner-private source path and a pinned 
       kernelPath: await realpath(kernelPath),
       vmHelperPath: await realpath(helperPath),
     })
-    assert.deepEqual(configured.descriptor, state.descriptor)
+    assert.deepEqual(configured.descriptor, {
+      ...state.descriptor,
+      operationKeys: [
+        'file.list',
+        'file.read',
+        'file.write',
+        'workspace.review',
+        'sandbox.stop',
+        'coding.launch',
+        'coding.observe',
+      ],
+      profiles: ['workspace_sandbox', 'coding_session'],
+      revision: 2,
+    })
     assert.deepEqual(await loadExecutorState(stateDir), configured)
 
     await chmod(authProfilePath, 0o644)

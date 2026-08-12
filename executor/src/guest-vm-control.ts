@@ -42,7 +42,6 @@ export type GuestCodingObservation = {
   agent: GuestCodingAgent
   exitStatus?: number
   lifecycle: 'exited' | 'running'
-  output: string
 }
 
 const unavailable = (message: string): WorkspacePathError => new WorkspacePathError(message)
@@ -201,14 +200,11 @@ const parseCodingObservation = (payload: Buffer): GuestCodingObservation => {
   const observation = value.observation
   const agent = observation.agent
   const lifecycle = observation.lifecycle
-  const output = observation.output
   const exitStatus = observation.exitStatus
   if (
-    Object.keys(observation).some((key) => !['agent', 'exitStatus', 'lifecycle', 'output'].includes(key))
+    Object.keys(observation).some((key) => !['agent', 'exitStatus', 'lifecycle'].includes(key))
     || !isCodingAgent(agent)
     || (lifecycle !== 'exited' && lifecycle !== 'running')
-    || typeof output !== 'string'
-    || Buffer.byteLength(output, 'utf8') > 8_192
     || (exitStatus !== undefined && (typeof exitStatus !== 'number' || !Number.isInteger(exitStatus) || exitStatus < 0 || exitStatus > 255))
     || (lifecycle === 'running' && exitStatus !== undefined)
     || (lifecycle === 'exited' && exitStatus === undefined)
@@ -219,7 +215,6 @@ const parseCodingObservation = (payload: Buffer): GuestCodingObservation => {
     agent,
     ...(exitStatus === undefined ? {} : { exitStatus }),
     lifecycle,
-    output,
   }
 }
 
@@ -283,8 +278,8 @@ export class GuestVmControlClient {
     return parseBrowserObservation(payload)
   }
 
-  async launchCodingSession(agent: GuestCodingAgent): Promise<void> {
-    const payload = await this.request(Buffer.from(JSON.stringify({ agent, operation: 'coding.launch', version: 1 })))
+  async launchCodingSession(agent: GuestCodingAgent, prompt: string): Promise<void> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ agent, operation: 'coding.launch', prompt, version: 1 })))
     parseCodingLaunch(payload, agent)
   }
 

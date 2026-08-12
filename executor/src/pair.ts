@@ -41,6 +41,7 @@ export const COW_WORKSPACE_OPERATION_KEYS = [
 
 const PROMOTION_OPERATION_KEY = 'workspace.promote' as const
 export const BROWSER_OPERATION_KEYS = ['browser.open', 'browser.observe'] as const
+export const CODING_OPERATION_KEYS = ['coding.launch', 'coding.observe'] as const
 
 type GuestVmArtifactInput = {
   guestInitrdBuilderPath: string
@@ -83,6 +84,7 @@ const initialLocalPolicy = {
 const configuredOperationKeys = (
   requestedOperationKeys: string[],
   browserConfigured: boolean,
+  codexConfigured: boolean,
 ): string[] => {
   const requested = new Set(requestedOperationKeys)
   if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
@@ -92,8 +94,9 @@ const configuredOperationKeys = (
     !COW_WORKSPACE_OPERATION_KEYS.includes(operationKey as typeof COW_WORKSPACE_OPERATION_KEYS[number])
     && operationKey !== PROMOTION_OPERATION_KEY
     && !BROWSER_OPERATION_KEYS.includes(operationKey as typeof BROWSER_OPERATION_KEYS[number])
+    && !CODING_OPERATION_KEYS.includes(operationKey as typeof CODING_OPERATION_KEYS[number])
   ))) {
-    throw new Error('Only implemented workspace and browser operations may be configured.')
+    throw new Error('Only implemented workspace, browser, and coding operations may be configured.')
   }
   const requestedBrowserOperations = BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
   if (requestedBrowserOperations.length > 0 && requestedBrowserOperations.length !== BROWSER_OPERATION_KEYS.length) {
@@ -105,12 +108,32 @@ const configuredOperationKeys = (
   if (requestedBrowserOperations.length > 0 && !requested.has('sandbox.stop')) {
     throw new Error('browser.open and browser.observe require sandbox.stop.')
   }
+  const requestedCodingOperations = CODING_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey))
+  if (requestedCodingOperations.length > 0 && requestedCodingOperations.length !== CODING_OPERATION_KEYS.length) {
+    throw new Error('coding.launch and coding.observe must be enabled together.')
+  }
+  if (requestedCodingOperations.length > 0 && !codexConfigured) {
+    throw new Error('Configure the owner-only Codex VM and auth profile before enabling coding operations.')
+  }
+  if (requestedCodingOperations.length > 0 && (
+    !requested.has('sandbox.stop') || !requested.has('workspace.review')
+  )) {
+    throw new Error('coding.launch and coding.observe require workspace.review and sandbox.stop.')
+  }
   return [
     ...COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...BROWSER_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
+    ...CODING_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
     ...(requested.has(PROMOTION_OPERATION_KEY) ? [PROMOTION_OPERATION_KEY] : []),
   ]
 }
+
+const profilesForOperationKeys = (operationKeys: string[]): string[] =>
+  operationKeys.some((operationKey) => CODING_OPERATION_KEYS.includes(
+    operationKey as typeof CODING_OPERATION_KEYS[number],
+  ))
+    ? ['workspace_sandbox', 'coding_session']
+    : ['workspace_sandbox']
 
 /**
  * Update the companion's locally enforced policy. Promotion additionally needs
@@ -124,7 +147,11 @@ export const configureExecutorLocalPolicy = async (
   requestedOperationKeys: string[],
   nativeHelperPath?: string,
 ): Promise<ExecutorLocalState> => {
-  const operationKeys = configuredOperationKeys(requestedOperationKeys, Boolean(state.browserSandbox))
+  const operationKeys = configuredOperationKeys(
+    requestedOperationKeys,
+    Boolean(state.browserSandbox),
+    Boolean(state.codexSandbox),
+  )
   const helper = nativeHelperPath
     ? await verifyNativeHelperPath(nativeHelperPath)
     : state.nativeHelperPath
@@ -136,7 +163,7 @@ export const configureExecutorLocalPolicy = async (
     descriptor: {
       ...state.descriptor,
       operationKeys,
-      profiles: ['workspace_sandbox'],
+      profiles: profilesForOperationKeys(operationKeys),
       revision: state.descriptor.revision + 1,
     },
     ...(helper ? { nativeHelperPath: helper } : {}),
@@ -178,14 +205,14 @@ export const configureExecutorBrowserSandbox = async (
     ...currentNonBrowserOperations,
     'sandbox.stop',
     ...BROWSER_OPERATION_KEYS,
-  ])], true)
+  ])], true, Boolean(state.codexSandbox))
   const next: ExecutorLocalState = {
     ...state,
     browserSandbox,
     descriptor: {
       ...state.descriptor,
       operationKeys,
-      profiles: ['workspace_sandbox'],
+      profiles: profilesForOperationKeys(operationKeys),
       revision: state.descriptor.revision + 1,
     },
   }
@@ -195,8 +222,8 @@ export const configureExecutorBrowserSandbox = async (
 
 /**
  * Stores one local Codex login source after verifying its file and the whole
- * guest runtime. It deliberately makes no descriptor claim: until the coding
- * command/session lifecycle exists, Nessie cannot dispatch or advertise it.
+ * guest runtime. A connect then submits the exact descriptor for normal human
+ * review; this configuration alone never bypasses that review.
  */
 export const configureExecutorCodexSandbox = async (
   stateDir: string,
@@ -217,7 +244,27 @@ export const configureExecutorCodexSandbox = async (
     kernelPath: artifacts.kernelPath,
     vmHelperPath: artifacts.vmHelperPath,
   }
-  const next: ExecutorLocalState = { ...state, codexSandbox }
+  const currentNonCodingOperations = state.descriptor.operationKeys.filter(
+    (operationKey) => !CODING_OPERATION_KEYS.includes(
+      operationKey as typeof CODING_OPERATION_KEYS[number],
+    ),
+  )
+  const operationKeys = configuredOperationKeys([...new Set([
+    ...currentNonCodingOperations,
+    'workspace.review',
+    'sandbox.stop',
+    ...CODING_OPERATION_KEYS,
+  ])], Boolean(state.browserSandbox), true)
+  const next: ExecutorLocalState = {
+    ...state,
+    codexSandbox,
+    descriptor: {
+      ...state.descriptor,
+      operationKeys,
+      profiles: profilesForOperationKeys(operationKeys),
+      revision: state.descriptor.revision + 1,
+    },
+  }
   await saveExecutorState(stateDir, next)
   return next
 }

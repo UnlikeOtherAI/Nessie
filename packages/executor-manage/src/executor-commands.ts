@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 
-import { Prisma, type PrismaClient } from '@prisma/client'
+import { Prisma, type ExecutorSessionStatus, type PrismaClient } from '@prisma/client'
 import {
   canonicalExecutorJson,
   ExecutorCapabilityDescriptorSchema,
@@ -18,6 +18,12 @@ import { ensureExecutorLogicalTools } from './executor-logical-tools.js'
 import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
 
 const MAX_RESULT_BYTES = 65_536
+const CODING_SESSION_OPERATION_KEYS = new Set([
+  'coding.launch',
+  'coding.observe',
+  'workspace.review',
+  'sandbox.stop',
+])
 
 const digest = (value: unknown): string =>
   `sha256:${createHash('sha256').update(canonicalExecutorJson(value)).digest('hex')}`
@@ -66,7 +72,7 @@ export type ExecutorCommandCreateInput = {
 export const assertExecutorCommandBindingCurrent = async (
   tx: Prisma.TransactionClient,
   bindingId: string,
-  options: { allowPendingBrowserOpen?: boolean } = {},
+  options: { allowPendingBrowserOpen?: boolean; allowPendingCodingLaunch?: boolean } = {},
 ): Promise<{ executorId: string; runId: string; sessionId: string | null }> => {
   let binding = await tx.executorBinding.findUnique({
     where: { id: bindingId },
@@ -78,7 +84,7 @@ export const assertExecutorCommandBindingCurrent = async (
       operationKey: true,
       runId: true,
       sessionId: true,
-      session: { select: { executorId: true, runId: true, status: true } },
+      session: { select: { executorId: true, profile: true, runId: true, status: true } },
     },
   })
   if (!binding) {
@@ -100,7 +106,7 @@ export const assertExecutorCommandBindingCurrent = async (
       operationKey: true,
       runId: true,
       sessionId: true,
-      session: { select: { executorId: true, runId: true, status: true } },
+      session: { select: { executorId: true, profile: true, runId: true, status: true } },
     },
   })
   if (!lockedBinding || lockedBinding.executorId !== binding.executorId) {
@@ -233,12 +239,16 @@ export const assertExecutorCommandBindingCurrent = async (
       'Executor binding is no longer authorized for new work.',
     )
   }
+  const sessionMatchesBinding = Boolean(
+    binding.sessionId
+    && binding.session?.executorId === executor.id
+    && binding.session.runId === binding.runId,
+  )
   if (
     (binding.operationKey === 'browser.open' || binding.operationKey === 'browser.observe')
     && (
-      !binding.sessionId
-      || binding.session?.executorId !== executor.id
-      || binding.session.runId !== binding.runId
+      !sessionMatchesBinding
+      || binding.session?.profile !== 'workspace_sandbox'
       || (
         binding.session.status !== 'active'
         && !(
@@ -252,6 +262,42 @@ export const assertExecutorCommandBindingCurrent = async (
     throw new ExecutorError(
       EXECUTOR_ERROR_CODES.BINDING_FENCED,
       'The browser session is no longer active for this executor command.',
+    )
+  }
+  const codingSession = binding.session?.profile === 'coding_session'
+  const codingBoundOperation = (
+    binding.operationKey === 'coding.launch'
+    || binding.operationKey === 'coding.observe'
+    || (codingSession && CODING_SESSION_OPERATION_KEYS.has(binding.operationKey))
+  )
+  if (
+    codingBoundOperation && binding.operationKey !== 'sandbox.stop'
+    && (
+      !sessionMatchesBinding
+      || !codingSession
+      || (
+        binding.session?.status !== 'active'
+        && binding.session?.status !== 'attention'
+        && !(
+          options.allowPendingCodingLaunch === true
+          && binding.operationKey === 'coding.launch'
+          && binding.session?.status === 'pending'
+        )
+      )
+    )
+  ) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'The coding session is no longer active for this executor command.',
+    )
+  }
+  if (
+    codingSession
+    && (!sessionMatchesBinding || !CODING_SESSION_OPERATION_KEYS.has(binding.operationKey))
+  ) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.BINDING_FENCED,
+      'A coding session cannot dispatch an operation outside its exact bundle.',
     )
   }
   return { executorId: executor.id, runId: binding.runId, sessionId: binding.sessionId }
@@ -405,7 +451,12 @@ export const recordExecutorCommandReceipt = async (
       where: { id: receipt.commandId },
       include: {
         binding: {
-          select: { executorId: true, operationKey: true, sessionId: true },
+          select: {
+            executorId: true,
+            operationKey: true,
+            sessionId: true,
+            session: { select: { profile: true } },
+          },
         },
       },
     })
@@ -446,26 +497,44 @@ export const recordExecutorCommandReceipt = async (
         state: receipt.state,
       },
     })
-    let terminalBrowserState: 'failed' | 'stopped' | null = null
+    let terminalSessionState: 'attention' | 'failed' | 'stopped' | null = null
     const sessionId = command.binding.sessionId
     if (receipt.state === 'result_acknowledged' && sessionId) {
       if (command.binding.operationKey === 'sandbox.stop') {
-        terminalBrowserState = 'stopped'
+        terminalSessionState = 'stopped'
       } else if (
         (command.binding.operationKey === 'browser.open' || command.binding.operationKey === 'browser.observe')
         && result?.success !== true
       ) {
-        terminalBrowserState = 'failed'
+        terminalSessionState = 'failed'
+      } else if (
+        command.binding.session?.profile === 'coding_session'
+        && command.binding.operationKey === 'coding.launch'
+        && result?.success !== true
+      ) {
+        terminalSessionState = 'failed'
+      } else if (
+        command.binding.session?.profile === 'coding_session'
+        && command.binding.operationKey === 'coding.observe'
+        && result?.success === true
+        && result.lifecycle === 'exited'
+      ) {
+        terminalSessionState = 'attention'
       }
     }
-    if (terminalBrowserState && sessionId) {
+    if (terminalSessionState && sessionId) {
+      const eligibleStatuses: ExecutorSessionStatus[] = terminalSessionState === 'stopped'
+        ? ['pending', 'active', 'attention', 'detached']
+        : terminalSessionState === 'attention'
+          ? ['active']
+          : ['pending', 'active']
       await tx.executorSession.updateMany({
         where: {
           executorId,
           id: sessionId,
-          status: { in: ['pending', 'active'] },
+          status: { in: eligibleStatuses },
         },
-        data: { status: terminalBrowserState },
+        data: { status: terminalSessionState },
       })
     }
   })

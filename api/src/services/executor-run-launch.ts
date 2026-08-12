@@ -114,15 +114,16 @@ export const launchExecutorRun = async (
       runId: run.id,
     })
     const isBrowserRun = input.operationKeys.includes('browser.open')
-    if (isBrowserRun) {
+    const isCodingRun = input.operationKeys.includes('coding.launch')
+    if (isBrowserRun || isCodingRun) {
       const executorId = bindings[0]?.executorId
       if (!executorId || bindings.some((binding) => binding.executorId !== executorId)) {
-        throw new Error('Browser executor bundle must bind one executor.')
+        throw new Error('Isolated executor bundle must bind one executor.')
       }
       const session = await tx.executorSession.create({
         data: {
           executorId,
-          profile: 'workspace_sandbox',
+          profile: isCodingRun ? 'coding_session' : 'workspace_sandbox',
           runId: run.id,
         },
         select: { id: true },

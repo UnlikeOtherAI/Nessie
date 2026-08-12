@@ -276,6 +276,18 @@ or failed. Human access, descriptor, and lifecycle fences persist `stopped`
 for live browser records in the same transaction that advances the daemon
 epoch.
 
+Managed Codex work uses the same durable-fencing shape, but its exact bundle is
+`coding.launch`, `coding.observe`, `workspace.review`, and `sandbox.stop`.
+It too requires a fresh run with no prior binding and rejects every later or
+mixed binding, including the legacy single-bind route. The worker withholds the
+entire bundle unless all four bindings reference one `coding_session`; a coding
+launch alone may consume a pending row, while observation and review require
+an active or attention row. Delivery repeats the post-lock binding/session
+read, so a concurrent stop, access change, descriptor change, or daemon epoch
+fence cannot launch a guest after it has been revoked. A failed launch marks
+only that session failed; an exited observation moves it to attention; a stop
+is deliverable solely to tear down its exact session.
+
 The only command transition receipts are:
 
 ```text
@@ -607,59 +619,44 @@ It creates no `ExecutorSession`, binding, descriptor, or executor operation;
 `EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` is a local packaging/guest failure and must
 keep browser and coding profiles unavailable.
 
-### Managed coding-session substrate (not a product operation yet)
+### Managed Codex coding sessions
 
-The guest now has the narrow mechanical boundary required for a future coding
-session: a declared Codex or Claude executable is launched only through the
-declared tmux executable, into one guest-created server at an absolute socket
-path. The server reads a root-created immutable configuration which retains an
-exited pane for authoritative lifecycle inspection. Its only valid tmux
-targets are the fixed exact session `=nessie` and pane `=nessie:0.0`; display
-names, caller input, and a default/pre-existing tmux server never become
-targets. An existing dedicated socket makes launch fail closed.
+`nessie-executor configure-codex` verifies an owner-private Codex auth-file
+*path* and the exact guest artifacts, then proposes a new descriptor revision
+containing `coding.launch`, `coding.observe`, `workspace.review`, and
+`sandbox.stop`. The source contents never reach Node, executor state, a
+descriptor, Nessie, logs, or command arguments: the owner-controlled initrd
+builder alone reads it, the guest moves it once into a fresh private home below
+`/run/nessie-executor`, and removes the root-only initrd leaf before dropping
+privileges. VM teardown removes that home and the whole initrd.
 
-The credential-free Claude profile is created inside the guest COW workspace.
-Codex instead receives a fresh, private guest home below
-`/run/nessie-executor`, never below `/work`. It contains a non-secret canary
-and no host profile by default. An owner may configure an owner-private Codex
-auth-file *path* in the companion. Its contents are not read by Nessie or
-stored in companion state: only an owner-controlled initrd builder reads it,
-copies it to a root-only initrd leaf for one VM, and the guest transfers it to
-that private home before dropping privileges, then removes the root-only leaf.
-The VM teardown removes the whole initrd. The entire guest executor-control directory is also
-denied to model-generated children, so they cannot reach the same-UID tmux
-control socket. Before the guest will launch Codex, its exact
-manifest-pinned binary must run a conformance probe in the same
-workspace-write mode that it assigns to model-generated commands. The probe
-must be unable to read either canary, connect to the tmux control socket, or
-connect to the known-live guest-local forced-egress proxy with the sandbox's
-explicit denial error; it then starts a nested Codex sandbox explicitly requesting
-danger-full-access, and that nested probe must be unable to do either as well.
-A failure is a launch failure. This makes the outer authenticated Codex process
-and its model-controlled children distinct security principals by enforced
-policy, rather than relying on same-UID filesystem modes or an environment
-variable.
+Each approved coding run is exactly that four-operation bundle on a fresh,
+otherwise unbound run. `coding.launch` consumes its durable `coding_session`
+row from `pending` to `active`, starts the manifest-pinned Codex executable in
+one dedicated tmux server, and passes the model instruction only after a `--`
+option delimiter. The server has a fixed socket and target (`=nessie:0.0`);
+caller input, display names, and a pre-existing tmux server never become
+targets. The guest can reach only `https://chatgpt.com` through the pinned
+companion gateway. There is no direct DNS, network, host home, keychain,
+global Codex configuration, or API-token environment inheritance.
 
-The parent process receives no raw bearer in its environment; when credentials
-are added, only its private home and the fixed provider-only forced gateway
-will be available. Its workspace children receive neither. It does not inherit
-a host home, `PATH`, keychain, global Codex/Claude configuration, or API token.
-Observation uses the authoritative tmux dead-pane fields plus an 8 KiB,
-UTF-8, non-binary, non-ANSI `capture-pane` snapshot; terminal prose never
-supplies lifecycle truth. Close kills only the exact dedicated session.
+The authenticated outer Codex process uses its guest-private home, but the
+model-generated child commands run in the named workspace sandbox. That policy
+denies the whole executor-control directory and network access. Before launch,
+the exact Codex binary must prove that both direct and nested
+dangerously-permissive child sandboxes receive `EACCES`/`EPERM` when attempting
+to read the control/auth canaries, connect to the tmux socket, or reach the
+known-live guest egress listener. A failed proof fails the launch. This makes
+the authenticated parent and its model-controlled children distinct enforced
+principals rather than relying on same-UID modes or an environment variable.
 
-This is intentionally **not** `coding.launch`, `coding.observe`, or
-`coding.close` product availability: no executor descriptor, daemon command,
-agent tool, UI route, remote terminal attach, credential broker, approval,
-control lease, or task/session record reaches it. The local `configure-codex`
-command prepares the constrained source for a future session only; it does not
-change the descriptor or make a coding tool reachable. No product session has
-a coding CLI credential or a provider egress policy yet. A subsequent slice
-must add the fixed provider-only forced gateway and durable control plane
-before any of these mechanics are projected. The conformance gate is the
-prerequisite for that local profile; a proof or token inherited by a coding CLI
-is insufficient because child workspace processes can read it and must never
-receive delegated provider capability.
+`coding.observe` returns only typed `{ agent, lifecycle, exitStatus? }` state.
+The companion derives that state solely from the fixed tmux dead-pane fields;
+it never captures a terminal pane. An exited session moves to `attention`, where
+the agent may use the bundle's `workspace.review` operation; `sandbox.stop`, a
+timeout, daemon fencing, VM exit, or revocation stops the guest and erases the
+transient login material. There is no remote terminal attach, prompt channel,
+or terminal-control API.
 
 Its optional `--workspace-cow` argument exists only for the companion's
 lease-derived release probe. It passes that one COW directory into the fixed VM
@@ -683,23 +680,20 @@ download, and upload policy. It uses `@nessie/runtime` `safeFetch` or
 `pinnedFetch` for HTTP handling and constrained `pinnedConnect` for the raw
 CONNECT transport, rather than implementing a second SSRF policy.
 
-The checked-in companion foundation is not connected to a guest and cannot be
-advertised: it is an owner-only Unix-socket HTTPS CONNECT listener with exact
-local-origin policy and no TCP listener or generic forwarding mode. Its one raw
-socket path uses runtime `pinnedConnect`, so URL validation and literal-IP dial
-occur as a single operation rather than validating then re-resolving a hostname.
-The VM bridge, Chromium profile, credential broker, and download/upload controls
-remain required before browser operations are enabled.
+The companion gateway is an owner-only Unix-socket HTTPS CONNECT listener with
+no TCP listener or generic forwarding mode. Its raw socket path uses runtime
+`pinnedConnect`, so URL validation and literal-IP dial occur as one operation
+rather than validating then re-resolving a hostname. Each browser or coding VM
+gets its own bridge, runtime snapshot, and guest profile; browser origins come
+only from the owner-local allowlist, while Codex has its one fixed origin.
 
-Codex/Claude runs inside the same guest in a dedicated tmux server. The host
-`~/.codex`, `~/.claude`, keychain, and global CLI tokens are never mounted.
-No credential broker exists in the current guest. A future broker must keep
-renewable credentials outside the guest workspace identity **and** use a
-distinct credential principal that child workspace processes cannot read or
-invoke. A CLI-inherited proof, environment variable, or same-UID helper is not
-that boundary; it would grant arbitrary workspace code a delegated provider
-capability. Broker or executor revocation must close the resulting route
-immediately.
+The managed runtime can contain Codex and Claude artifacts, but the product
+coding bundle launches only Codex. Neither host `~/.codex`/`~/.claude`, the
+keychain, nor global CLI tokens are mounted. The only supported login source is
+the staged owner-private Codex auth file described above; a CLI-inherited proof,
+environment variable, or same-UID helper would give arbitrary workspace code a
+delegated provider capability and is forbidden. Executor fencing and teardown
+close the guest route immediately.
 
 Raw local data can reach a model provider only within the explicit bounded run
 consent. Nessie persists only redacted manifests, argument/policy digests,

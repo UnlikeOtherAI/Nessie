@@ -24,6 +24,7 @@ type ExecutorEntry = {
   bindingId: string
   operationKey: string
   sessionId: string | null
+  sessionProfile: 'coding_session' | 'workspace_sandbox' | null
   toolName: string
 }
 
@@ -84,6 +85,15 @@ const descriptorFor = (operationKey: string): ToolSchemaDescriptor | null => {
         }
       case 'browser.observe':
         return { additionalProperties: false, properties: {}, type: 'object' }
+      case 'coding.launch':
+        return {
+          additionalProperties: false,
+          properties: { prompt: { maxLength: 4_096, minLength: 1, type: 'string' } },
+          required: ['prompt'],
+          type: 'object',
+        }
+      case 'coding.observe':
+        return { additionalProperties: false, properties: {}, type: 'object' }
       case 'workspace.review':
         return { additionalProperties: false, properties: {}, type: 'object' }
       case 'sandbox.stop':
@@ -120,11 +130,22 @@ export const buildExecutorToolset = async (
     ensureExecutorLogicalTools(prisma, input.organizationId),
     prisma.executorBinding.findMany({
       where: { runId: input.runId },
-      select: { id: true, operationKey: true, session: { select: { id: true, status: true } } },
+      select: {
+        id: true,
+        operationKey: true,
+        session: { select: { id: true, profile: true, status: true } },
+      },
     }),
   ])
-  const browserOperationKeys = new Set(['browser.open', 'browser.observe', 'sandbox.stop'])
-  const browserBindings = bindings.filter((binding) => browserOperationKeys.has(binding.operationKey))
+  const codingOperationKeys = new Set(['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'])
+  const browserBindings = bindings.filter((binding) => (
+    binding.operationKey === 'browser.open'
+    || binding.operationKey === 'browser.observe'
+    || (
+      binding.operationKey === 'sandbox.stop'
+      && binding.session?.profile === 'workspace_sandbox'
+    )
+  ))
   const browserSessionId = browserBindings[0]?.session?.id
   const browserSessionLive = browserBindings.every((binding) => (
     binding.session?.status === 'pending' || binding.session?.status === 'active'
@@ -139,13 +160,38 @@ export const buildExecutorToolset = async (
     && browserBindings.some((binding) => binding.operationKey === 'sandbox.stop')
     && browserSessionLive,
   )
+  const codingBindings = bindings.filter((binding) => binding.session?.profile === 'coding_session')
+  const codingSessionId = codingBindings[0]?.session?.id
+  const codingSessionLive = codingBindings.every((binding) => (
+    binding.session?.status === 'pending'
+    || binding.session?.status === 'active'
+    || binding.session?.status === 'attention'
+  ))
+  const hasExactCodingBundle = Boolean(
+    codingSessionId
+    && bindings.length === 4
+    && codingBindings.length === 4
+    && codingBindings.every((binding) => binding.session?.id === codingSessionId)
+    && [...codingOperationKeys].every((operationKey) => (
+      codingBindings.some((binding) => binding.operationKey === operationKey)
+    ))
+    && codingSessionLive,
+  )
   const entries = bindings.flatMap((binding): ExecutorEntry[] => {
     const browserSessionBinding = binding.operationKey === 'browser.open'
       || binding.operationKey === 'browser.observe'
-      || (binding.operationKey === 'sandbox.stop' && Boolean(binding.session?.id))
+      || (
+        binding.operationKey === 'sandbox.stop'
+        && binding.session?.profile === 'workspace_sandbox'
+      )
+    const codingSessionBinding = binding.session?.profile === 'coding_session'
     if (browserSessionBinding && !hasExactBrowserBundle) {
       return []
     }
+    if (codingSessionBinding && !hasExactCodingBundle) return []
+    if (binding.session?.profile === 'coding_session'
+      && binding.session.status === 'attention'
+      && binding.operationKey === 'coding.launch') return []
     const registryId = logicalTools.get(binding.operationKey as never)
     const descriptor = descriptorFor(binding.operationKey)
     if (!registryId || input.agentToolPolicy?.[registryId] !== true || !descriptor) return []
@@ -153,6 +199,7 @@ export const buildExecutorToolset = async (
       bindingId: binding.id,
       operationKey: binding.operationKey,
       sessionId: binding.session?.id ?? null,
+      sessionProfile: binding.session?.profile ?? null,
       toolName: descriptor.toolName,
     }]
   })
@@ -176,40 +223,55 @@ export const buildExecutorToolset = async (
           // created pending session. Delivery still requires active, so a
           // queued command cannot reopen a stopped browser.
           allowPendingBrowserOpen: entry.operationKey === 'browser.open',
+          allowPendingCodingLaunch: entry.operationKey === 'coding.launch',
         })
         if (binding.runId !== input.runId) throw new Error('Executor binding run mismatch.')
         if (binding.sessionId !== entry.sessionId) throw new Error('Executor binding session mismatch.')
-        if (entry.operationKey === 'browser.open') {
-          if (!binding.sessionId) return { browserSessionUnavailable: true as const }
+        if (entry.operationKey === 'browser.open' || entry.operationKey === 'coding.launch') {
+          if (!binding.sessionId || !entry.sessionProfile) {
+            return { sessionUnavailable: entry.sessionProfile ?? 'workspace_sandbox' as const }
+          }
           const activated = await tx.executorSession.updateMany({
             where: {
               executorId: binding.executorId,
               id: binding.sessionId,
+              profile: entry.sessionProfile,
               runId: input.runId,
               status: 'pending',
             },
             data: { status: 'active' },
           })
-          if (activated.count !== 1) return { browserSessionUnavailable: true as const }
+          if (activated.count !== 1) return { sessionUnavailable: entry.sessionProfile }
         }
-        if (entry.operationKey === 'browser.observe') {
-          if (!binding.sessionId) return { browserSessionUnavailable: true as const }
+        if (
+          entry.operationKey === 'browser.observe'
+          || (entry.sessionProfile === 'coding_session' && (
+            entry.operationKey === 'coding.observe' || entry.operationKey === 'workspace.review'
+          ))
+        ) {
+          if (!binding.sessionId || !entry.sessionProfile) {
+            return { sessionUnavailable: entry.sessionProfile ?? 'workspace_sandbox' as const }
+          }
           const active = await tx.executorSession.findFirst({
             where: {
               executorId: binding.executorId,
               id: binding.sessionId,
+              profile: entry.sessionProfile,
               runId: input.runId,
-              status: 'active',
+              status: entry.sessionProfile === 'coding_session'
+                ? { in: ['active', 'attention'] }
+                : 'active',
             },
             select: { id: true },
           })
-          if (!active) return { browserSessionUnavailable: true as const }
+          if (!active) return { sessionUnavailable: entry.sessionProfile }
         }
         if (entry.operationKey === 'sandbox.stop' && binding.sessionId) {
           await tx.executorSession.updateMany({
             where: {
               executorId: binding.executorId,
               id: binding.sessionId,
+              ...(entry.sessionProfile ? { profile: entry.sessionProfile } : {}),
               runId: input.runId,
               status: { in: ['pending', 'active', 'attention', 'detached'] },
             },
@@ -237,7 +299,9 @@ export const buildExecutorToolset = async (
           select: { id: true },
         })
         const expiresAt = new Date(startedAt.getTime() + (
-          entry.operationKey === 'browser.open' || entry.operationKey === 'browser.observe'
+          entry.operationKey === 'browser.open'
+          || entry.operationKey === 'browser.observe'
+          || entry.operationKey === 'coding.launch'
             ? BROWSER_COMMAND_TTL_MS
             : COMMAND_TTL_MS
         ))
@@ -252,10 +316,12 @@ export const buildExecutorToolset = async (
         })
         return { expiresAt, toolCallId: toolCall.id }
       })
-      if ('browserSessionUnavailable' in created) {
+      if ('sessionUnavailable' in created) {
         return {
           inputSummary: summarizeToolInput(args),
-          output: 'The browser session is no longer available for this run.',
+          output: created.sessionUnavailable === 'coding_session'
+            ? 'The coding session is no longer available for this run.'
+            : 'The browser session is no longer available for this run.',
           success: false,
         }
       }

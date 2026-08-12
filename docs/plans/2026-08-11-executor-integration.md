@@ -724,8 +724,8 @@ Initial operation families are deliberately narrow and schema-first:
 
 | Profile | Operations | Notes |
 | --- | --- | --- |
-| Workspace sandbox | `file.list`, `file.read`, `file.write`, `workspace.review`, `command.run`, `browser.open`, `browser.observe`, `browser.act`, `workspace.promote`, `sandbox.stop` | Paths and command argv are validated locally for every call. `workspace.review` is a bounded COW delta only. Browser actions run in the executor's isolated profile; promotion is a separate host-write operation. |
-| Coding session | `coding.launch`, `coding.attach`, `coding.observe`, `coding.prompt`, `coding.interrupt`, `coding.close` | `prompt` and `interrupt` are control operations; they are never implicit in observation. |
+| Workspace sandbox | `file.list`, `file.read`, `file.write`, `workspace.review`, `browser.open`, `browser.observe`, `sandbox.stop` | Paths are validated locally for every call. `workspace.review` is a bounded COW delta only. Browser work is an exact three-operation, one-session bundle. |
+| Coding session | `coding.launch`, `coding.observe`, `workspace.review`, `sandbox.stop` | An exact four-operation, one-session Codex bundle. The launch prompt is positional after `--`; observation returns lifecycle only; terminal output and terminal control are never exposed. |
 
 Each approved **logical operation** becomes one stable, scoped
 `ToolRegistryEntry` with a new `transport: 'executor'`; it is not duplicated

@@ -44,7 +44,7 @@ type ActiveGuestVmSessionProcess = {
   closed: Promise<void>
   closeCodingSession: () => Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
-  launchCodingSession: (agent: GuestCodingAgent) => Promise<void>
+  launchCodingSession: (agent: GuestCodingAgent, prompt: string) => Promise<void>
   observeCodingSession: () => Promise<GuestCodingObservation>
   observeBrowser: () => Promise<GuestBrowserObservation>
   openBrowser: (url: string) => Promise<void>
@@ -68,7 +68,7 @@ export type GuestVmSession = {
   closed: Promise<void>
   closeCodingSession: () => Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
-  launchCodingSession: (agent: GuestCodingAgent) => Promise<void>
+  launchCodingSession: (agent: GuestCodingAgent, prompt: string) => Promise<void>
   observeCodingSession: () => Promise<GuestCodingObservation>
   observeBrowser: () => Promise<GuestBrowserObservation>
   openBrowser: (url: string) => Promise<void>
@@ -114,7 +114,7 @@ const launchGuestVmSession: GuestVmSessionLauncher = async ({ argv, input, path,
     closed,
     closeCodingSession: () => control.closeCodingSession(),
     inspectRuntime: () => control.inspectRuntime(),
-    launchCodingSession: (agent) => control.launchCodingSession(agent),
+    launchCodingSession: (agent, prompt) => control.launchCodingSession(agent, prompt),
     observeCodingSession: () => control.observeCodingSession(),
     observeBrowser: () => control.observeBrowser(),
     openBrowser: (url) => control.openBrowser(url),
@@ -200,7 +200,7 @@ export const startGuestVmSession = async (
       closed,
       closeCodingSession: () => process!.closeCodingSession(),
       inspectRuntime: () => process!.inspectRuntime(),
-      launchCodingSession: (agent) => process!.launchCodingSession(agent),
+      launchCodingSession: (agent, prompt) => process!.launchCodingSession(agent, prompt),
       observeCodingSession: () => process!.observeCodingSession(),
       observeBrowser: () => process!.observeBrowser(),
       openBrowser: async (url: string) => {

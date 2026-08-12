@@ -33,9 +33,17 @@ export type ExecutorBindingRecord = {
 }
 
 const BROWSER_RUN_OPERATION_KEYS = ['browser.open', 'browser.observe'] as const
+const CODING_RUN_OPERATION_KEYS = ['coding.launch', 'coding.observe'] as const
+const CODING_RUN_BUNDLE = ['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'] as const
 
 const isBrowserRunOperation = (operationKey: ExecutorOperationKey): boolean =>
   BROWSER_RUN_OPERATION_KEYS.includes(operationKey as typeof BROWSER_RUN_OPERATION_KEYS[number])
+
+const isCodingRunOperation = (operationKey: ExecutorOperationKey): boolean =>
+  CODING_RUN_OPERATION_KEYS.includes(operationKey as typeof CODING_RUN_OPERATION_KEYS[number])
+
+const isIsolatedRunOperation = (operationKey: ExecutorOperationKey): boolean =>
+  isBrowserRunOperation(operationKey) || isCodingRunOperation(operationKey)
 
 const lockBinding = async (
   tx: Prisma.TransactionClient,
@@ -67,18 +75,18 @@ const lockRunBindings = async (
   `)
 }
 
-const assertRunHasNoBrowserBinding = async (
+const assertRunHasNoIsolatedBinding = async (
   tx: Prisma.TransactionClient,
   runId: string,
 ): Promise<void> => {
   const existing = await tx.executorBinding.findFirst({
-    where: { runId, operationKey: { in: [...BROWSER_RUN_OPERATION_KEYS] } },
+    where: { runId, operationKey: { in: [...BROWSER_RUN_OPERATION_KEYS, ...CODING_RUN_OPERATION_KEYS] } },
     select: { id: true },
   })
   if (existing) {
     candidateError(
       'CANDIDATE_INVALID',
-      'A browser run cannot receive additional executor bindings.',
+      'An isolated browser or coding run cannot receive additional executor bindings.',
     )
   }
 }
@@ -94,7 +102,7 @@ const assertRunHasNoExecutorBinding = async (
   if (existing) {
     candidateError(
       'CANDIDATE_INVALID',
-      'A browser run cannot share its copy-on-write workspace with another executor binding.',
+      'An isolated browser or coding run cannot share its copy-on-write workspace with another executor binding.',
     )
   }
 }
@@ -124,20 +132,20 @@ export const bindExecutorCandidateInTransaction = async (
   input: ExecutorBindingInput,
   now = new Date(),
   consumeCandidate = true,
-  allowBrowserBundle = false,
+  allowIsolatedBundle = false,
 ): Promise<ExecutorBindingRecord> => {
   const candidateHandle = ExecutorCandidateHandleSchema.parse(input.candidateHandle)
   const operationKey = ExecutorOperationKeySchema.parse(input.operationKey)
-  if (isBrowserRunOperation(operationKey) && !allowBrowserBundle) {
+  if (isIsolatedRunOperation(operationKey) && !allowIsolatedBundle) {
     return candidateError(
       'CANDIDATE_INVALID',
-      'Browser operations must be bound through their exact browser run bundle.',
+      'Browser and coding operations must be bound through their exact isolated run bundles.',
     )
   }
   const candidateHandleDigest = executorCandidateHandleDigest(candidateHandle)
 
   await lockRunBindings(tx, input.runId)
-  if (!allowBrowserBundle) await assertRunHasNoBrowserBinding(tx, input.runId)
+  if (!allowIsolatedBundle) await assertRunHasNoIsolatedBinding(tx, input.runId)
   await lockBinding(tx, input.runId, operationKey)
   const existing = await tx.executorBinding.findUnique({
     where: { runId_operationKey: { operationKey, runId: input.runId } },
@@ -345,6 +353,10 @@ export const bindExecutorCandidateBundleInTransaction = async (
     return candidateError('CANDIDATE_INVALID', 'The executor operation bundle is invalid.')
   }
   const browserRequested = operationKeys.some(isBrowserRunOperation)
+  const codingRequested = operationKeys.some(isCodingRunOperation)
+  if (browserRequested && codingRequested) {
+    return candidateError('CANDIDATE_INVALID', 'Browser and coding operations cannot share one executor run.')
+  }
   if (browserRequested && (
     operationKeys.length !== 3
     || !operationKeys.includes('browser.open')
@@ -356,12 +368,21 @@ export const bindExecutorCandidateBundleInTransaction = async (
       'Browser operations require their exact non-extensible run bundle.',
     )
   }
+  if (codingRequested && (
+    operationKeys.length !== CODING_RUN_BUNDLE.length
+    || CODING_RUN_BUNDLE.some((operationKey) => !operationKeys.includes(operationKey))
+  )) {
+    return candidateError(
+      'CANDIDATE_INVALID',
+      'Coding operations require their exact non-extensible run bundle.',
+    )
+  }
   const candidateHandleDigest = executorCandidateHandleDigest(candidateHandle)
   await lockRunBindings(tx, input.runId)
-  if (browserRequested) {
+  if (browserRequested || codingRequested) {
     await assertRunHasNoExecutorBinding(tx, input.runId)
   } else {
-    await assertRunHasNoBrowserBinding(tx, input.runId)
+    await assertRunHasNoIsolatedBinding(tx, input.runId)
   }
   await tx.$executeRaw(Prisma.sql`
     SELECT pg_advisory_xact_lock(
@@ -375,7 +396,7 @@ export const bindExecutorCandidateBundleInTransaction = async (
       { ...input, candidateHandle, operationKey },
       now,
       false,
-      browserRequested,
+      browserRequested || codingRequested,
     ))
   }
   const consumed = await tx.executorAvailabilityCandidate.updateMany({

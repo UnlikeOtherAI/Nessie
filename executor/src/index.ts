@@ -45,7 +45,7 @@ const usage = (): never => {
     'Usage: nessie-executor pair --api <https://api.example> --enrollment <uuid> '
     + '--challenge <token> --state-dir <owner-only-path> --workspace <absolute-read-only-root>\n'
     + '       nessie-executor configure --state-dir <owner-only-path> '
-    + '--operations <file.list,file.read,file.write,browser.open,browser.observe,workspace.review,workspace.promote,sandbox.stop> '
+    + '--operations <file.list,file.read,file.write,browser.open,browser.observe,coding.launch,coding.observe,workspace.review,workspace.promote,sandbox.stop> '
     + '[--native-helper </absolute/owner-only/nessie-executor-native>]\n'
     + '       nessie-executor configure-browser --state-dir <owner-only-path> '
     + '--allowed-origins <https://origin.example,...> --guest-initrd-builder <absolute-owner-only-file> '
@@ -157,9 +157,9 @@ export const run = async (args: string[]): Promise<void> => {
     return
   }
   if (command.kind === 'configure-codex') {
-    await configureExecutorCodexSandbox(command.stateDir, state, command)
+    const updated = await configureExecutorCodexSandbox(command.stateDir, state, command)
     process.stdout.write(
-      'Private Codex guest configuration saved. It remains unadvertised until the coding session control plane is available.\n',
+      `Codex session policy saved as revision ${updated.descriptor.revision}. Run connect (or restart serve), then have a person review it in Nessie.\n`,
     )
     return
   }

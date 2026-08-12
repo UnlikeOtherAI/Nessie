@@ -62,6 +62,12 @@ const operationOptions: OperationOption[] = [
     operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
     value: 'browser.open+browser.observe+sandbox.stop',
   },
+  {
+    description: 'Start one isolated Codex task in the paired guest. Its ChatGPT login remains inside the guest; Nessie receives lifecycle state and a read-only workspace review, never terminal output.',
+    label: 'Work in a managed Codex session',
+    operationKeys: ['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'],
+    value: 'coding.launch+coding.observe+workspace.review+sandbox.stop',
+  },
 ]
 
 const scopeLabel = (scopeKind: ExecutorAvailabilityCandidate['scopeKind']): string => {

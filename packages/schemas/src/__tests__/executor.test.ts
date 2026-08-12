@@ -239,6 +239,27 @@ test('a direct executor run names an agent, opaque choice, and an exact operatio
     }).success,
     true,
   )
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'],
+    }).success,
+    true,
+  )
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['coding.launch', 'coding.observe', 'sandbox.stop'],
+    }).success,
+    false,
+  )
+  assert.equal(
+    ExecutorRunLaunchRequestSchema.safeParse({
+      ...request,
+      operationKeys: ['browser.open', 'coding.launch', 'workspace.review', 'sandbox.stop'],
+    }).success,
+    false,
+  )
 })
 
 test('command envelopes carry fences and digests rather than raw result data', () => {

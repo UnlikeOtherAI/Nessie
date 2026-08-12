@@ -165,3 +165,21 @@ test('a candidate binds an exact operation bundle before one final consume', asy
   assert.deepEqual(result.map((binding) => binding.operationKey), ['file.read', 'workspace.review'])
   assert.equal(state.consumed, 1)
 })
+
+test('coding operations reject every partial or mixed executor bundle before candidate consumption', async () => {
+  const state: { consumed?: number } = {}
+  await assert.rejects(
+    bindExecutorCandidateBundleInTransaction(
+      bindingPrisma(state) as unknown as Prisma.TransactionClient,
+      {
+        actorUserId,
+        candidateHandle: handle,
+        operationKeys: ['coding.launch', 'coding.observe', 'sandbox.stop'],
+        runId,
+      },
+      new Date('2026-08-12T12:00:00.000Z'),
+    ),
+    { code: 'EXECUTOR_CANDIDATE_INVALID' },
+  )
+  assert.equal(state.consumed, undefined)
+})

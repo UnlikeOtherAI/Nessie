@@ -151,6 +151,22 @@ export const ExecutorBrowserObserveArgumentsSchema = z.object({}).strict()
 export type ExecutorBrowserObserveArguments = z.infer<typeof ExecutorBrowserObserveArgumentsSchema>
 
 /**
+ * A coding task becomes a positional Codex prompt after a `--` option
+ * delimiter. It is retained only in the encrypted executor command payload;
+ * terminal output never returns to the control plane.
+ */
+export const ExecutorCodingLaunchArgumentsSchema = z
+  .object({
+    prompt: z.string().trim().min(1).max(4_096),
+  })
+  .strict()
+export type ExecutorCodingLaunchArguments = z.infer<typeof ExecutorCodingLaunchArgumentsSchema>
+
+/** Coding lifecycle observation accepts no terminal selector or command. */
+export const ExecutorCodingObserveArgumentsSchema = z.object({}).strict()
+export type ExecutorCodingObserveArguments = z.infer<typeof ExecutorCodingObserveArgumentsSchema>
+
+/**
  * Server-authored data for a human-confirmed COW promotion. This schema is
  * intentionally not included in the model-facing executor toolset: an agent
  * can prepare a draft and review it, but only a person can issue promotion.
@@ -418,6 +434,28 @@ export const ExecutorRunLaunchRequestSchema = z.object({
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Browser runs are exactly browser.open, browser.observe, and sandbox.stop.',
+      })
+    }
+    const codingBundle: ExecutorOperationKey[] = [
+      'coding.launch',
+      'coding.observe',
+      'workspace.review',
+      'sandbox.stop',
+    ]
+    const codingRequested = value.includes('coding.launch') || value.includes('coding.observe')
+    if (browserRequested && codingRequested) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Browser and coding operations cannot share one executor run.',
+      })
+    }
+    if (codingRequested && (
+      value.length !== codingBundle.length
+      || codingBundle.some((operationKey) => !value.includes(operationKey))
+    )) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Coding runs are exactly coding.launch, coding.observe, workspace.review, and sandbox.stop.',
       })
     }
   }),

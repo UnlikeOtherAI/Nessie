@@ -212,7 +212,12 @@ test('a late terminal receipt can resolve an unknown outcome without changing it
 test('a failed browser receipt terminalizes only its exact active session', async () => {
   const sessionId = '00000000-0000-4000-8000-000000000009'
   const state = {
-    binding: { executorId, operationKey: 'browser.open', sessionId },
+    binding: {
+      executorId,
+      operationKey: 'browser.open',
+      session: { profile: 'workspace_sandbox' },
+      sessionId,
+    },
     id: commandId,
     state: 'started',
   }
@@ -251,12 +256,55 @@ test('a failed browser receipt terminalizes only its exact active session', asyn
   assert.equal(terminalState, 'failed')
 })
 
+test('an exited coding receipt moves only its exact session to attention', async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000010'
+  const state = {
+    binding: {
+      executorId,
+      operationKey: 'coding.observe',
+      session: { profile: 'coding_session' },
+      sessionId,
+    },
+    id: commandId,
+    state: 'started',
+  }
+  let terminalState: string | undefined
+  const prisma = {
+    $executeRaw: async () => 1,
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
+    executorCommand: {
+      findUnique: async () => state,
+      update: async () => state,
+    },
+    executorSession: {
+      updateMany: async ({ data, where }: {
+        data: { status: string }
+        where: { executorId: string; id: string; status: { in: string[] } }
+      }) => {
+        assert.deepEqual(where, { executorId, id: sessionId, status: { in: ['active'] } })
+        terminalState = data.status
+        return { count: 1 }
+      },
+    },
+  } as unknown as PrismaClient
+  const result = { agent: 'codex', lifecycle: 'exited', success: true }
+
+  await recordExecutorCommandReceipt(prisma, secret, executorId, {
+    commandId,
+    occurredAt: '2026-08-12T12:00:01.000Z',
+    resultDigest: digest(result),
+    state: 'result_acknowledged',
+  }, result)
+
+  assert.equal(terminalState, 'attention')
+})
+
 const currentBindingPrisma = (
   agentAssigned: boolean,
-  operationKey: 'browser.open' | 'sandbox.stop' = 'sandbox.stop',
-  browserSessionStatus: 'active' | 'pending' | 'stopped' = 'active',
+  operationKey: 'browser.open' | 'coding.launch' | 'sandbox.stop' | 'workspace.review' = 'sandbox.stop',
+  sessionStatus: 'active' | 'pending' | 'stopped' = 'active',
 ): PrismaClient => {
-  const browserSessionId = operationKey === 'browser.open'
+  const sessionId = operationKey === 'browser.open' || operationKey === 'coding.launch'
     ? '00000000-0000-4000-8000-000000000009'
     : null
   const candidate = {
@@ -298,12 +346,13 @@ const currentBindingPrisma = (
         executorId,
         operationKey,
         runId: '00000000-0000-4000-8000-000000000008',
-        sessionId: browserSessionId,
-        session: browserSessionId
+        sessionId,
+        session: sessionId
           ? {
-              executorId,
-              runId: '00000000-0000-4000-8000-000000000008',
-              status: browserSessionStatus,
+            executorId,
+            profile: operationKey === 'coding.launch' ? 'coding_session' : 'workspace_sandbox',
+            runId: '00000000-0000-4000-8000-000000000008',
+            status: sessionStatus,
             }
           : null,
       }),
@@ -314,7 +363,9 @@ const currentBindingPrisma = (
         localPolicyDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         operationKeys: [operationKey],
         platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
-        profiles: ['workspace_sandbox'],
+        profiles: operationKey === 'coding.launch'
+          ? ['workspace_sandbox', 'coding_session']
+          : ['workspace_sandbox'],
         protocolVersion: 1,
         revision: 1,
       }, reviewStatus: 'active' }),
@@ -352,6 +403,15 @@ test('dispatch rechecks the private user and agent assignments held by a binding
   )
 })
 
+test('an ordinary workspace review does not require a coding session', async () => {
+  await assert.doesNotReject(
+    assertExecutorCommandBindingCurrent(
+      currentBindingPrisma(true, 'workspace.review') as never,
+      bindingId,
+    ),
+  )
+})
+
 test('delivery fences a browser command after its session is stopped', async () => {
   const client = currentBindingPrisma(true, 'browser.open') as unknown as {
     executorBinding: { findUnique: () => Promise<Record<string, unknown>> }
@@ -362,6 +422,7 @@ test('delivery fences a browser command after its session is stopped', async () 
     ...(await original()),
     session: {
       executorId,
+      profile: 'workspace_sandbox',
       runId: '00000000-0000-4000-8000-000000000008',
       status: ++reads === 1 ? 'active' : 'stopped',
     },
@@ -381,5 +442,16 @@ test('only browser.open can consume its own pending browser session', async () =
   )
   await assert.doesNotReject(
     assertExecutorCommandBindingCurrent(client, bindingId, { allowPendingBrowserOpen: true }),
+  )
+})
+
+test('only coding.launch can consume its own pending coding session', async () => {
+  const client = currentBindingPrisma(true, 'coding.launch', 'pending') as never
+  await assert.rejects(
+    assertExecutorCommandBindingCurrent(client, bindingId),
+    { code: 'EXECUTOR_BINDING_FENCED' },
+  )
+  await assert.doesNotReject(
+    assertExecutorCommandBindingCurrent(client, bindingId, { allowPendingCodingLaunch: true }),
   )
 })

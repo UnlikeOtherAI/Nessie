@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
 const (
@@ -26,10 +25,10 @@ const (
 	codingTarget                   = "=nessie:0.0"
 	codingSandboxProfile           = "nessie-executor"
 	codingConformanceProbeArgument = "nessie-codex-conformance-probe"
-	// Eight KiB keeps the worst-case JSON representation below the 64 KiB
-	// authenticated guest-control frame cap, even when JSON must escape every
-	// returned character.
+	// Each fixed tmux status probe stays comfortably below the authenticated
+	// guest-control frame cap. Terminal panes are never captured or returned.
 	maxCodingObserveBytes = 8_192
+	maxCodingPromptBytes  = 16_384
 	codingCommandTimeout  = 5 * time.Second
 )
 
@@ -44,7 +43,6 @@ type codingObservation struct {
 	Agent      codingAgent `json:"agent"`
 	ExitStatus *int        `json:"exitStatus,omitempty"`
 	Lifecycle  string      `json:"lifecycle"`
-	Output     string      `json:"output"`
 }
 
 type codingCommandRunner func(path string, args, environment []string) ([]byte, error)
@@ -96,8 +94,8 @@ func validCodingAgent(value codingAgent) bool {
 	return value == codingAgentClaude || value == codingAgentCodex
 }
 
-func (runtime *codingRuntime) launch(agent codingAgent) error {
-	if !validCodingAgent(agent) {
+func (runtime *codingRuntime) launch(agent codingAgent, prompt string) error {
+	if !validCodingAgent(agent) || !validCodingPrompt(prompt) {
 		return errInvalidFrame
 	}
 	runtime.mu.Lock()
@@ -122,7 +120,7 @@ func (runtime *codingRuntime) launch(agent codingAgent) error {
 		runtime.agentExecutables[agent],
 	}
 	if agent == codingAgentCodex {
-		argv = append(argv, codexLaunchArguments()...)
+		argv = append(argv, codexLaunchArguments(prompt)...)
 	}
 	if _, err := runtime.invoke(argv, environment); err != nil {
 		return err
@@ -131,6 +129,10 @@ func (runtime *codingRuntime) launch(agent codingAgent) error {
 	runtime.agent = agent
 	runtime.environment = environment
 	return nil
+}
+
+func validCodingPrompt(value string) bool {
+	return value != "" && len([]byte(value)) <= maxCodingPromptBytes
 }
 
 func (runtime *codingRuntime) observation() (codingObservation, error) {
@@ -143,18 +145,7 @@ func (runtime *codingRuntime) observation() (codingObservation, error) {
 	if err != nil {
 		return codingObservation{}, err
 	}
-	output, err := runtime.invoke([]string{
-		"-S", runtime.socket,
-		"capture-pane", "-p", "-t", codingTarget, "-S", "-200",
-	}, runtime.environment)
-	if err != nil {
-		return codingObservation{}, err
-	}
-	clean, ok := sanitizeCodingOutput(output)
-	if !ok {
-		return codingObservation{}, errInvalidFrame
-	}
-	return codingObservation{Agent: runtime.agent, ExitStatus: exitStatus, Lifecycle: lifecycle, Output: clean}, nil
+	return codingObservation{Agent: runtime.agent, ExitStatus: exitStatus, Lifecycle: lifecycle}, nil
 }
 
 func (runtime *codingRuntime) close() error {
@@ -255,6 +246,9 @@ func codingEnvironment(agent codingAgent, profile string) []string {
 	if agent == codingAgentCodex {
 		return append(codingConformanceEnvironment(),
 			"CODEX_HOME="+codingCredentialHome,
+			"HTTP_PROXY=http://"+guestEgressProxyAddress,
+			"HTTPS_PROXY=http://"+guestEgressProxyAddress,
+			"PATH=/runtime/bin:/usr/bin:/bin",
 		)
 	}
 	return []string{"HOME=" + profile, "TMPDIR=" + profile, "CLAUDE_CONFIG_DIR=" + filepath.Join(profile, "state")}
@@ -267,13 +261,16 @@ func codingConformanceEnvironment() []string {
 	}
 }
 
-func codexLaunchArguments() []string {
+func codexLaunchArguments(prompt string) []string {
 	args := append([]string{}, codexSandboxConfiguration()...)
 	return append(args,
 		"-c", "default_permissions=\""+codingSandboxProfile+"\"",
 		"--ignore-rules",
 		"--ignore-user-config",
 		"--skip-git-repo-check",
+		"exec",
+		"--",
+		prompt,
 	)
 }
 
@@ -307,19 +304,4 @@ func (output *boundedCodingOutput) Write(value []byte) (int, error) {
 		return 0, errInvalidFrame
 	}
 	return output.Buffer.Write(value)
-}
-
-func sanitizeCodingOutput(output []byte) (string, bool) {
-	if len(output) > maxCodingObserveBytes || !utf8.Valid(output) {
-		return "", false
-	}
-	for _, character := range string(output) {
-		if character == '\n' || character == '\t' {
-			continue
-		}
-		if character < 0x20 || character == 0x7f || character == 0x1b {
-			return "", false
-		}
-	}
-	return strings.TrimSuffix(string(output), "\n"), true
 }

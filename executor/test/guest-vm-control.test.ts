@@ -71,10 +71,10 @@ test('the VM control client accepts only the ready line then one matching framed
   })
 
   const codingLaunchFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
-  const launchingCoding = client.launchCodingSession('codex')
+  const launchingCoding = client.launchCodingSession('codex', 'Update the project safely')
   const rawCodingLaunch = await codingLaunchFrame
   const codingLaunch = JSON.parse(rawCodingLaunch.subarray(4).toString('utf8')) as Record<string, unknown>
-  assert.equal(Buffer.from(String(codingLaunch.payload), 'base64').toString('utf8'), '{"agent":"codex","operation":"coding.launch","version":1}')
+  assert.equal(Buffer.from(String(codingLaunch.payload), 'base64').toString('utf8'), '{"agent":"codex","operation":"coding.launch","prompt":"Update the project safely","version":1}')
   output.write(frameFor({
     kind: 'response',
     payload: Buffer.from('{"agent":"codex","status":"started","version":1}').toString('base64'),
@@ -91,13 +91,13 @@ test('the VM control client accepts only the ready line then one matching framed
   output.write(frameFor({
     kind: 'response',
     payload: Buffer.from(JSON.stringify({
-      observation: { agent: 'codex', lifecycle: 'exited', exitStatus: 0, output: 'Done' },
+      observation: { agent: 'codex', lifecycle: 'exited', exitStatus: 0 },
       version: 1,
     })).toString('base64'),
     requestId: codingObserve.requestId,
     version: 1,
   }))
-  assert.deepEqual(await observingCoding, { agent: 'codex', lifecycle: 'exited', exitStatus: 0, output: 'Done' })
+  assert.deepEqual(await observingCoding, { agent: 'codex', lifecycle: 'exited', exitStatus: 0 })
 
   const codingCloseFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
   const closingCoding = client.closeCodingSession()
@@ -111,5 +111,28 @@ test('the VM control client accepts only the ready line then one matching framed
     version: 1,
   }))
   await closingCoding
+  client.close()
+})
+
+test('the VM control client rejects terminal text in a coding observation', async () => {
+  const input = new PassThrough()
+  const output = new PassThrough()
+  const client = new GuestVmControlClient(input, output)
+  output.write('{"session":"ready","valid":true,"workspaceAttached":true}\n')
+  await client.waitForReady(100)
+
+  const requestFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
+  const observing = client.observeCodingSession()
+  const request = JSON.parse((await requestFrame).subarray(4).toString('utf8')) as Record<string, unknown>
+  output.write(frameFor({
+    kind: 'response',
+    payload: Buffer.from(JSON.stringify({
+      observation: { agent: 'codex', lifecycle: 'running', output: 'do not transport terminal text' },
+      version: 1,
+    })).toString('base64'),
+    requestId: request.requestId,
+    version: 1,
+  }))
+  await assert.rejects(observing, /coding-session observation request/)
   client.close()
 })

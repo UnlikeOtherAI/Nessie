@@ -22,7 +22,7 @@ func TestCodingRuntimeUsesCredentialFreeCOWProfile(t *testing.T) {
 		socket: filepath.Join(root, "tmux.sock"),
 		tmux:   "/runtime/bin/tmux",
 	}
-	if err := runtime.launch(codingAgentClaude); err != nil {
+	if err := runtime.launch(codingAgentClaude, "task"); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(actualArgs, []string{

@@ -43,17 +43,17 @@ test('the bounded backend exposes only an exact session-bound browser bundle and
         {
           id: '00000000-0000-4000-8000-000000000005',
           operationKey: 'browser.open',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'pending' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'pending' },
         },
         {
           id: '00000000-0000-4000-8000-000000000006',
           operationKey: 'browser.observe',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'pending' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'pending' },
         },
         {
           id: '00000000-0000-4000-8000-000000000007',
           operationKey: 'sandbox.stop',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'pending' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'pending' },
         },
       ],
     },
@@ -104,17 +104,17 @@ test('browser operations are withheld when their session bundle is incomplete or
         {
           id: '00000000-0000-4000-8000-000000000005',
           operationKey: 'browser.open',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'pending' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'pending' },
         },
         {
           id: '00000000-0000-4000-8000-000000000006',
           operationKey: 'browser.observe',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'pending' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'pending' },
         },
         {
           id: '00000000-0000-4000-8000-000000000007',
           operationKey: 'sandbox.stop',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'pending' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'pending' },
         },
       ],
     },
@@ -148,17 +148,17 @@ test('a stopped browser session exposes no residual browser or stop tool', async
         {
           id: '00000000-0000-4000-8000-000000000005',
           operationKey: 'browser.open',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'stopped' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'stopped' },
         },
         {
           id: '00000000-0000-4000-8000-000000000006',
           operationKey: 'browser.observe',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'stopped' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'stopped' },
         },
         {
           id: '00000000-0000-4000-8000-000000000007',
           operationKey: 'sandbox.stop',
-          session: { id: '00000000-0000-4000-8000-000000000009', status: 'stopped' },
+          session: { id: '00000000-0000-4000-8000-000000000009', profile: 'workspace_sandbox', status: 'stopped' },
         },
       ],
     },
@@ -180,4 +180,134 @@ test('a stopped browser session exposes no residual browser or stop tool', async
     runId,
   })
   assert.deepEqual(toolset.descriptors, [])
+})
+
+test('the bounded backend exposes coding only through its exact session bundle', async () => {
+  const session = {
+    id: '00000000-0000-4000-8000-000000000010',
+    profile: 'coding_session' as const,
+    status: 'pending' as const,
+  }
+  const prisma = {
+    executorBinding: {
+      findMany: async () => [
+        { id: '00000000-0000-4000-8000-000000000011', operationKey: 'coding.launch', session },
+        { id: '00000000-0000-4000-8000-000000000012', operationKey: 'coding.observe', session },
+        { id: '00000000-0000-4000-8000-000000000013', operationKey: 'workspace.review', session },
+        { id: '00000000-0000-4000-8000-000000000014', operationKey: 'sandbox.stop', session },
+      ],
+    },
+    toolRegistryEntry: {
+      upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+        id: where.organizationId_scopeKey_toolId.toolId,
+      }),
+    },
+  } as unknown as PrismaClient
+
+  const toolset = await buildExecutorToolset(prisma, {
+    agentId,
+    agentToolPolicy: {
+      'executor.coding.launch': true,
+      'executor.coding.observe': true,
+      'executor.sandbox.stop': true,
+      'executor.workspace.review': true,
+    },
+    encryptionSecret: 'test-secret',
+    organizationId,
+    runId,
+  })
+
+  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
+    'executor.coding.launch',
+    'executor.coding.observe',
+    'executor.workspace.review',
+    'executor.sandbox.stop',
+  ])
+  assert.deepEqual(toolset.descriptors[0]?.inputSchema, {
+    additionalProperties: false,
+    properties: { prompt: { maxLength: 4_096, minLength: 1, type: 'string' } },
+    required: ['prompt'],
+    type: 'object',
+  })
+})
+
+test('coding operations are withheld when their session is mixed with another executor binding', async () => {
+  const session = {
+    id: '00000000-0000-4000-8000-000000000010',
+    profile: 'coding_session' as const,
+    status: 'active' as const,
+  }
+  const prisma = {
+    executorBinding: {
+      findMany: async () => [
+        { id: '00000000-0000-4000-8000-000000000004', operationKey: 'file.read', session: null },
+        { id: '00000000-0000-4000-8000-000000000011', operationKey: 'coding.launch', session },
+        { id: '00000000-0000-4000-8000-000000000012', operationKey: 'coding.observe', session },
+        { id: '00000000-0000-4000-8000-000000000013', operationKey: 'workspace.review', session },
+        { id: '00000000-0000-4000-8000-000000000014', operationKey: 'sandbox.stop', session },
+      ],
+    },
+    toolRegistryEntry: {
+      upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+        id: where.organizationId_scopeKey_toolId.toolId,
+      }),
+    },
+  } as unknown as PrismaClient
+
+  const toolset = await buildExecutorToolset(prisma, {
+    agentId,
+    agentToolPolicy: {
+      'executor.coding.launch': true,
+      'executor.coding.observe': true,
+      'executor.file.read': true,
+      'executor.sandbox.stop': true,
+      'executor.workspace.review': true,
+    },
+    encryptionSecret: 'test-secret',
+    organizationId,
+    runId,
+  })
+
+  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), ['executor.file.read'])
+})
+
+test('an exited coding session keeps review and teardown but cannot relaunch Codex', async () => {
+  const session = {
+    id: '00000000-0000-4000-8000-000000000010',
+    profile: 'coding_session' as const,
+    status: 'attention' as const,
+  }
+  const prisma = {
+    executorBinding: {
+      findMany: async () => [
+        { id: '00000000-0000-4000-8000-000000000011', operationKey: 'coding.launch', session },
+        { id: '00000000-0000-4000-8000-000000000012', operationKey: 'coding.observe', session },
+        { id: '00000000-0000-4000-8000-000000000013', operationKey: 'workspace.review', session },
+        { id: '00000000-0000-4000-8000-000000000014', operationKey: 'sandbox.stop', session },
+      ],
+    },
+    toolRegistryEntry: {
+      upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+        id: where.organizationId_scopeKey_toolId.toolId,
+      }),
+    },
+  } as unknown as PrismaClient
+  const toolset = await buildExecutorToolset(prisma, {
+    agentId,
+    agentToolPolicy: {
+      'executor.coding.launch': true,
+      'executor.coding.observe': true,
+      'executor.sandbox.stop': true,
+      'executor.workspace.review': true,
+    },
+    encryptionSecret: 'test-secret',
+    organizationId,
+    runId,
+  })
+
+  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
+    'executor.coding.observe',
+    'executor.workspace.review',
+    'executor.sandbox.stop',
+  ])
 })

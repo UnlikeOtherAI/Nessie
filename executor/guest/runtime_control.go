@@ -11,6 +11,7 @@ const guestRuntimeControlVersion = 1
 type runtimeControlRequest struct {
 	Operation string `json:"operation"`
 	Agent     string `json:"agent,omitempty"`
+	Prompt    string `json:"prompt,omitempty"`
 	URL       string `json:"url,omitempty"`
 	Version   int    `json:"version"`
 }
@@ -56,15 +57,15 @@ func decodeRuntimeControlRequest(payload []byte) (runtimeControlRequest, error) 
 	}
 	switch request.Operation {
 	case "runtime.inspect", "browser.observe", "coding.observe", "coding.close":
-		if request.URL != "" || request.Agent != "" {
+		if request.URL != "" || request.Agent != "" || request.Prompt != "" {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
 	case "browser.open":
-		if request.Agent != "" || !validBrowserURL(request.URL) {
+		if request.Agent != "" || request.Prompt != "" || !validBrowserURL(request.URL) {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
 	case "coding.launch":
-		if request.URL != "" || !validCodingAgent(codingAgent(request.Agent)) {
+		if request.URL != "" || !validCodingAgent(codingAgent(request.Agent)) || !validCodingPrompt(request.Prompt) {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
 	default:
@@ -106,7 +107,7 @@ func handleRuntimeControlRequest(payload []byte, controller *runtimeController) 
 		return result
 	}
 	if request.Operation == "coding.launch" {
-		if controller.coding == nil || controller.coding.launch(codingAgent(request.Agent)) != nil {
+		if controller.coding == nil || controller.coding.launch(codingAgent(request.Agent), request.Prompt) != nil {
 			return runtimeControlUnavailable()
 		}
 		result, err := json.Marshal(struct {
