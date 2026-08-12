@@ -1,7 +1,7 @@
 # E2E verification: a hardware-diagnostics monitoring agent, built by a user
 
 **Date:** 2026-08-11
-**Status:** 9 defects fixed, deployed and verified in production; 1 blocked on a Ledger token grant; 1 (PA provisioning parity) designed and not yet built
+**Status:** 10 defects fixed and deployed; the remaining five (PA provisioning parity, two Designer gaps, three connector dead ends) are in flight across three parallel worktrees; 1 blocked on a Ledger token grant
 **Target:** production `https://app.nessie.works` (pre-release; database will be wiped before launch)
 
 ## Why this exists
