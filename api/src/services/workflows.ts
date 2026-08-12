@@ -1,9 +1,15 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
 import {
+  WORKFLOW_SECRET_WRITE_ERROR,
   collectWorkflowStepReferences,
+  collectWorkflowTaintedRefs,
   parseWorkflowBindingTemplate,
+  redactWorkflowInstallationSecrets,
+  redactWorkflowSecretValues,
   resolveInstallationPinnedGraph,
+  validateWorkflowSecretWrite,
+  type WorkflowBindingSecretError,
 } from '@nessie/workspace-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
@@ -44,6 +50,8 @@ type WorkflowTemplateWithGraph = {
 
 type WorkflowInstallationRow = {
   active: boolean
+  /** W0: per-binding literal/reference declaration from the owning template. */
+  bindingSchema?: unknown
   channelId: string | null
   config: unknown
   createdAt: Date
@@ -123,6 +131,18 @@ const parseUuidArray = (value: unknown): string[] =>
  * (W9): a typo is a save error, not a failed run. `channelId` is never
  * required because the runtime falls back to the installation's channel.
  */
+// W0: public writes never store caller-chosen refs or plaintext into a
+// reference binding (mirrors the MCP credential-ref rule). Thrown by the
+// install/update paths; routes map it to 400.
+export class WorkflowSecretWriteError extends Error {
+  readonly violations: WorkflowBindingSecretError[]
+
+  constructor(violations: WorkflowBindingSecretError[]) {
+    super(WORKFLOW_SECRET_WRITE_ERROR)
+    this.violations = violations
+  }
+}
+
 export class WorkflowTemplateValidationError extends Error {
   readonly issues: string[]
 
@@ -488,8 +508,14 @@ const mapWorkflowInstallation = (
   channelId: parseOptional(installation.channelId, parseChannelId),
   status: installation.status,
   active: installation.active,
-  resolvedBindings: toJsonRecord(installation.resolvedBindings),
-  config: toJsonRecord(installation.config),
+  // W0 sink 1: redaction happens server-side in the response mapper, never
+  // in the admin. Reference bindings render as the redaction marker.
+  resolvedBindings: toJsonRecord(
+    redactWorkflowInstallationSecrets(installation.resolvedBindings, installation.bindingSchema),
+  ),
+  config: toJsonRecord(
+    redactWorkflowInstallationSecrets(installation.config, installation.bindingSchema),
+  ),
   createdByActorType: installation.createdByActorType,
   createdByActorId: installation.createdByActorId,
   createdAt: installation.createdAt.toISOString(),
@@ -759,6 +785,19 @@ export const isWorkflowInstallationStartable = (installation: {
 }): boolean =>
   installation.active && (installation.status === 'active' || installation.status === 'draft')
 
+// W0: the write gate. The install and update paths both validate caller
+// JSON against the owning template's bindingSchema before persisting.
+const assertWorkflowSecretWrite = (input: {
+  bindingSchema: unknown
+  config?: Record<string, unknown>
+  resolvedBindings?: Record<string, unknown>
+}): void => {
+  const violations = validateWorkflowSecretWrite(input)
+  if (violations.length > 0) {
+    throw new WorkflowSecretWriteError(violations)
+  }
+}
+
 export const installWorkflowTemplate = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
@@ -795,6 +834,7 @@ export const installWorkflowTemplate = async (
         id: true,
         graphJson: true,
         version: true,
+        bindingSchema: true,
       },
     })
     if (!template) {
@@ -805,6 +845,15 @@ export const installWorkflowTemplate = async (
     // `triggersJson` is canvas position/authoring metadata only; a real
     // schedule is an AgentTrigger created through `createWorkflowTrigger`
     // from the installation's Triggers surface — one code path.
+    // W0: validate against the template's bindingSchema before any write —
+    // a plaintext value for a reference binding or a caller-chosen `secret_*`
+    // ref anywhere else is rejected, mirroring the MCP credential-ref rule.
+    assertWorkflowSecretWrite({
+      bindingSchema: template.bindingSchema,
+      config: input.config,
+      resolvedBindings: input.resolvedBindings,
+    })
+
     const installation = await tx.workflowInstallation.create({
       data: {
         workflowTemplateId: template.id,
@@ -825,10 +874,15 @@ export const installWorkflowTemplate = async (
       },
     })
 
-    return installation
+    return { bindingSchema: template.bindingSchema, installation }
   })
 
-  return result ? mapWorkflowInstallation(result) : null
+  return result
+    ? mapWorkflowInstallation({
+        ...result.installation,
+        bindingSchema: result.bindingSchema,
+      })
+    : null
 }
 
 // W8: there was no update-installation endpoint at all — status was
@@ -866,11 +920,20 @@ export const updateWorkflowInstallation = async (
       id: installationId,
       organizationId: actorContext.tenant.organizationId,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      workflowTemplate: { select: { bindingSchema: true } },
+    },
   })
   if (!existing) {
     return null
   }
+
+  assertWorkflowSecretWrite({
+    bindingSchema: existing.workflowTemplate.bindingSchema,
+    config: input.config,
+    resolvedBindings: input.resolvedBindings,
+  })
 
   const updated = await prisma.workflowInstallation.update({
     where: { id: existing.id },
@@ -887,7 +950,10 @@ export const updateWorkflowInstallation = async (
     },
   })
 
-  return mapWorkflowInstallation(updated)
+  return mapWorkflowInstallation({
+    ...updated,
+    bindingSchema: existing.workflowTemplate.bindingSchema,
+  })
 }
 
 export const listWorkflowInstallations = async (
@@ -901,11 +967,17 @@ export const listWorkflowInstallations = async (
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
     take: limit + 1,
+    include: { workflowTemplate: { select: { bindingSchema: true } } },
   })
 
   const page = installations.slice(0, limit)
   return {
-    items: page.map(mapWorkflowInstallation),
+    items: page.map((installation) =>
+      mapWorkflowInstallation({
+        ...installation,
+        bindingSchema: installation.workflowTemplate.bindingSchema,
+      }),
+    ),
     nextCursor: installations.length > limit ? (page[page.length - 1]?.id ?? null) : null,
   }
 }
@@ -1557,6 +1629,14 @@ export const getWorkflowRun = async (
       id: workflowRunId,
       organizationId,
     },
+    include: {
+      installation: {
+        select: {
+          resolvedBindings: true,
+          workflowTemplate: { select: { bindingSchema: true } },
+        },
+      },
+    },
   })
   if (!run) {
     return null
@@ -1574,8 +1654,25 @@ export const getWorkflowRun = async (
     orderBy: [{ sequence: 'asc' }, { createdAt: 'asc' }],
   })
 
+  // W0 sinks 1+4: run JSON and persisted step artifacts (the §5 sample the
+  // designer/replay reads) are redacted server-side. The boundary is the
+  // response mapper, not the admin, so pre-boundary rows that already hold a
+  // ref in `WorkflowStepRun.input` are covered too.
+  const taintedRefs = collectWorkflowTaintedRefs(run.installation.resolvedBindings)
+  const redactedRun: WorkflowRunRow = {
+    ...run,
+    input: redactWorkflowSecretValues(run.input, taintedRefs),
+    output: redactWorkflowSecretValues(run.output, taintedRefs),
+  }
+
   return {
-    run: mapWorkflowRun(run),
-    steps: steps.map(mapWorkflowStepRun),
+    run: mapWorkflowRun(redactedRun),
+    steps: steps.map((step) =>
+      mapWorkflowStepRun({
+        ...step,
+        input: redactWorkflowSecretValues(step.input, taintedRefs),
+        output: redactWorkflowSecretValues(step.output, taintedRefs),
+      }),
+    ),
   }
 }

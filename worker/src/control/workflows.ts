@@ -1,6 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  collectWorkflowTaintedRefs,
   parseWorkflowBindingTemplate,
+  redactWorkflowSecretValues,
   type WorkflowBindingScope,
 } from '@nessie/workspace-admin'
 import type { LedgerIdentityService } from '@nessie/runtime'
@@ -55,11 +57,23 @@ type WorkflowStepSnapshot = {
 }
 
 type WorkflowBindingContext = {
+  /** W0: refs the workflow's own bindings marked secret. Never leave a sink. */
+  taintedRefs?: ReadonlySet<string>
   workflowBindings: unknown
   workflowConfig: unknown
   workflowInput: unknown
   stepSnapshots: Record<string, WorkflowStepSnapshot>
 }
+
+export const buildWorkflowBindingContext = (input: {
+  stepSnapshots: Record<string, WorkflowStepSnapshot>
+  workflowBindings: unknown
+  workflowConfig: unknown
+  workflowInput: unknown
+}): WorkflowBindingContext => ({
+  ...input,
+  taintedRefs: collectWorkflowTaintedRefs(input.workflowBindings),
+})
 
 const getPathValue = (value: unknown, path: string[]): unknown => {
   let current: unknown = value
@@ -89,7 +103,7 @@ const getPathValue = (value: unknown, path: string[]): unknown => {
 
 const resolveWorkflowBindingScope = (
   reference: WorkflowBindingScope,
-  context: WorkflowBindingContext,
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
 ): unknown => {
   if (reference.kind === 'workflow') {
     const source =
@@ -98,7 +112,9 @@ const resolveWorkflowBindingScope = (
         : reference.scope === 'bindings'
           ? context.workflowBindings
           : context.workflowInput
-    return getPathValue(source, reference.path)
+    // W0 sink 2/3: a tainted ref reached through workflow.* never reaches the
+    // rendered message body or the transform context.
+    return redactWorkflowSecretValues(getPathValue(source, reference.path), context.taintedRefs)
   }
 
   const stepSnapshot = context.stepSnapshots[reference.stepId]
@@ -106,10 +122,16 @@ const resolveWorkflowBindingScope = (
     return undefined
   }
   if (reference.scope === 'input') {
-    return getPathValue(stepSnapshot.input, reference.path)
+    return redactWorkflowSecretValues(
+      getPathValue(stepSnapshot.input, reference.path),
+      context.taintedRefs,
+    )
   }
   if (reference.scope === 'output') {
-    return getPathValue(stepSnapshot.output, reference.path)
+    return redactWorkflowSecretValues(
+      getPathValue(stepSnapshot.output, reference.path),
+      context.taintedRefs,
+    )
   }
   return stepSnapshot.status
 }
@@ -140,7 +162,7 @@ const formatBindingExpression = (segments: string[]): string => segments.join('.
 
 const resolveWorkflowTemplateString = (
   value: string,
-  context: WorkflowBindingContext,
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
 ): unknown => {
   // Same grammar as save-time validation (W9): invalid syntax here means the
   // template was authored before the validator existed or bypassed it.
@@ -179,17 +201,30 @@ export const resolveWorkflowStepInput = (
   value: unknown,
   context: WorkflowBindingContext,
 ): unknown => {
+  // Taint is derived lazily so unit callers can pass the pre-W0 context shape;
+  // production builds the context through buildWorkflowBindingContext, which
+  // always supplies the set.
+  const taintedRefs =
+    context.taintedRefs ?? collectWorkflowTaintedRefs(context.workflowBindings)
+  const derived = { ...context, taintedRefs }
+  return resolveWorkflowStepInputInner(value, derived)
+}
+
+const resolveWorkflowStepInputInner = (
+  value: unknown,
+  context: WorkflowBindingContext & { taintedRefs: ReadonlySet<string> },
+): unknown => {
   if (typeof value === 'string') {
     return resolveWorkflowTemplateString(value, context)
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => resolveWorkflowStepInput(entry, context))
+    return value.map((entry) => resolveWorkflowStepInputInner(entry, context))
   }
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
         key,
-        resolveWorkflowStepInput(entry, context),
+        resolveWorkflowStepInputInner(entry, context),
       ]),
     )
   }
@@ -210,11 +245,16 @@ const buildWorkflowStepSnapshots = (
     ]),
   )
 
-const buildAgentTaskBody = (
+export const buildAgentTaskBody = (
   stepInput: Record<string, unknown>,
   workflowInput: unknown,
+  taintedRefs: ReadonlySet<string>,
 ): string => {
-  const publicStepInput = stripWorkflowDesignerConfig(stepInput)
+  // W0: the prompt is a sink. A pre-boundary persisted step input can still
+  // carry a ref verbatim; redact before the body reaches the agent.
+  const publicStepInput = stripWorkflowDesignerConfig(
+    redactWorkflowSecretValues(stepInput, taintedRefs) as Record<string, unknown>,
+  )
   const prompt = typeof publicStepInput['prompt'] === 'string' ? publicStepInput['prompt'].trim() : ''
   if (prompt) {
     return prompt
@@ -223,7 +263,7 @@ const buildAgentTaskBody = (
   return JSON.stringify(
     {
       step: publicStepInput,
-      workflowInput,
+      workflowInput: redactWorkflowSecretValues(workflowInput, taintedRefs),
     },
     null,
     2,
@@ -634,12 +674,15 @@ export const executeWorkflowRun = async (
 
     let resolvedStepInput: unknown
     try {
-      resolvedStepInput = resolveWorkflowStepInput(stepDefinition.input ?? {}, {
-        stepSnapshots: buildWorkflowStepSnapshots(stepRuns),
-        workflowBindings: workflow.installation.resolvedBindings,
-        workflowConfig: workflow.installation.config,
-        workflowInput: workflow.run.input,
-      })
+      resolvedStepInput = resolveWorkflowStepInput(
+        stepDefinition.input ?? {},
+        buildWorkflowBindingContext({
+          stepSnapshots: buildWorkflowStepSnapshots(stepRuns),
+          workflowBindings: workflow.installation.resolvedBindings,
+          workflowConfig: workflow.installation.config,
+          workflowInput: workflow.run.input,
+        }),
+      )
     } catch (error) {
       await markWorkflowStepRunFinished(prisma, workflow, {
         workflowRunId,
@@ -803,7 +846,11 @@ export const executeWorkflowRun = async (
             channelId,
             threadId,
             subject: typeof stepInput['subject'] === 'string' ? stepInput['subject'] : undefined,
-            body: buildAgentTaskBody(stepInput, workflow.run.input),
+            body: buildAgentTaskBody(
+              stepInput,
+              workflow.run.input,
+              collectWorkflowTaintedRefs(workflow.installation.resolvedBindings),
+            ),
           })
         })
       } catch (error) {

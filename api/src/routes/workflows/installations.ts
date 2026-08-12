@@ -19,8 +19,24 @@ import {
   listWorkflowRuns,
   updateWorkflowInstallation,
   WorkflowInstallationLifecycleError,
+  WorkflowSecretWriteError,
 } from '../../services/workflows.js'
 import type { RouteDeps } from '../types.js'
+
+const sendWorkflowSecretWriteError = (
+  reply: Parameters<typeof sendApiError>[0],
+  error: WorkflowSecretWriteError,
+): void => {
+  const detail = error.violations
+    .map((violation) => `${violation.path}: ${violation.reason}`)
+    .join('; ')
+  sendApiError(
+    reply,
+    400,
+    'WORKFLOW_BINDING_SECRET_INVALID',
+    `Workflow bindings/config cannot store caller-supplied secrets — ${detail}`,
+  )
+}
 
 export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -54,6 +70,10 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         body,
       )
     } catch (error) {
+      if (error instanceof WorkflowSecretWriteError) {
+        sendWorkflowSecretWriteError(reply, error)
+        return reply
+      }
       if (error instanceof WorkflowInstallationLifecycleError) {
         sendApiError(
           reply,
@@ -136,6 +156,10 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
         body,
       )
     } catch (error) {
+      if (error instanceof WorkflowSecretWriteError) {
+        sendWorkflowSecretWriteError(reply, error)
+        return reply
+      }
       if (error instanceof WorkflowInstallationLifecycleError) {
         sendApiError(
           reply,
