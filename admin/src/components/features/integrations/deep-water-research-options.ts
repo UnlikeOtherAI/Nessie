@@ -3,85 +3,122 @@ import type {
   DeepWaterResearchLauncherPreset,
 } from '../../../lib/api-client'
 
-export type DeepWaterResearchFormValues = Required<
-  Omit<DeepWaterResearchLaunchRequest, 'title'>
-> & {
-  title: string
+export type DeepWaterResearchFormValues = Required<DeepWaterResearchLaunchRequest>
+
+/**
+ * A launch is either one of three assumed settings or hand-tuned. The three
+ * modes are the whole control surface for most people: they carry a complete
+ * set of values, so choosing one answers every question the old fourteen-control
+ * form asked. `custom` carries no values of its own — it reveals the full set.
+ */
+export type DeepWaterResearchMode = 'light' | 'standard' | 'heavy' | 'custom'
+
+/** The settings a mode assumes. Every value is one Ledger/DeepWater accepts. */
+export type DeepWaterResearchModeValues = Omit<DeepWaterResearchFormValues, 'query'>
+
+export type DeepWaterResearchModeOption = {
+  detail: string
+  id: Exclude<DeepWaterResearchMode, 'custom'>
+  label: string
+  summary: string
+  values: DeepWaterResearchModeValues
 }
 
-export type DeepWaterResearchPreset = {
-  description: string
-  id: string
-  label: string
-  values: DeepWaterResearchLauncherPreset
+const sharedModeValues = {
+  artifactDestination: 'knowledge_draft',
+  outputLanguage: 'en',
+  recency: 'any',
+} as const
+
+const lightMode: DeepWaterResearchModeOption = {
+  detail: '3 sections · brief chapters · 2 searches per pillar · standard search',
+  id: 'light',
+  label: 'Light',
+  summary: 'A short orientation, quickly.',
+  values: {
+    ...sharedModeValues,
+    chapterDepth: 'brief',
+    depth: 'light',
+    outputTier: 'summary',
+    searchQuality: 'standard',
+    searchesPerPillar: 2,
+    sections: 3,
+  },
 }
+
+const standardMode: DeepWaterResearchModeOption = {
+  detail: '8 sections · standard chapters · 4 searches per pillar · standard search',
+  id: 'standard',
+  label: 'Standard',
+  summary: 'A full report for most decisions.',
+  values: {
+    ...sharedModeValues,
+    chapterDepth: 'standard',
+    depth: 'standard',
+    outputTier: 'full',
+    searchQuality: 'standard',
+    searchesPerPillar: 4,
+    sections: 8,
+  },
+}
+
+const heavyMode: DeepWaterResearchModeOption = {
+  detail: '16 sections · exhaustive chapters · 10 searches per pillar · premium search',
+  id: 'heavy',
+  label: 'Heavy',
+  summary: 'Long-form analysis with broad coverage.',
+  values: {
+    ...sharedModeValues,
+    chapterDepth: 'exhaustive',
+    depth: 'heavy',
+    outputTier: 'full',
+    searchQuality: 'premium',
+    searchesPerPillar: 10,
+    sections: 16,
+  },
+}
+
+export const deepWaterResearchModes: DeepWaterResearchModeOption[] = [
+  lightMode,
+  standardMode,
+  heavyMode,
+]
 
 export const defaultDeepWaterResearchValues: DeepWaterResearchFormValues = {
-  artifactDestination: 'knowledge_draft',
-  chapterDepth: 'standard',
-  depth: 'standard',
-  outputLanguage: 'en',
-  outputTier: 'full',
+  ...standardMode.values,
   query: '',
-  recency: 'any',
-  searchQuality: 'standard',
-  searchesPerPillar: 4,
-  sections: 8,
-  title: '',
 }
 
-export const deepWaterResearchPresets: DeepWaterResearchPreset[] = [
-  {
-    description: 'A concise orientation with a focused source sweep.',
-    id: 'quick-briefing',
-    label: 'Quick briefing',
-    values: {
-      chapterDepth: 'brief',
-      depth: 'light',
-      outputTier: 'summary',
-      searchesPerPillar: 2,
-      sections: 3,
-    },
-  },
-  {
-    description: 'A well-rounded report for most decisions.',
-    id: 'balanced-research',
-    label: 'Balanced research',
-    values: {
-      chapterDepth: 'standard',
-      depth: 'standard',
-      outputTier: 'full',
-      searchesPerPillar: 4,
-      sections: 8,
-    },
-  },
-  {
-    description: 'More source coverage and detail for an evidence-led decision.',
-    id: 'evidence-review',
-    label: 'Evidence review',
-    values: {
-      chapterDepth: 'detailed',
-      depth: 'deep',
-      outputTier: 'full',
-      searchQuality: 'premium',
-      searchesPerPillar: 7,
-      sections: 12,
-    },
-  },
-  {
-    description: 'A substantial long-form analysis with broad coverage.',
-    id: 'long-form-analysis',
-    label: 'Long-form analysis',
-    values: {
-      chapterDepth: 'exhaustive',
-      depth: 'heavy',
-      outputTier: 'full',
-      searchQuality: 'premium',
-      searchesPerPillar: 10,
-      sections: 16,
-    },
-  },
-]
+/**
+ * Which mode a set of values represents, derived rather than stored — the same
+ * rule the Deep Water product uses for its own reach selector. A chat card that
+ * prefills exactly one mode's settings opens on that mode; anything else opens
+ * on Custom with those settings visible and editable.
+ */
+export const resolveDeepWaterResearchMode = (
+  values: DeepWaterResearchFormValues,
+): DeepWaterResearchMode =>
+  deepWaterResearchModes.find((mode) => (
+    Object.entries(mode.values).every(([key, value]) => (
+      values[key as keyof DeepWaterResearchModeValues] === value
+    ))
+  ))?.id ?? 'custom'
+
+export const deepWaterResearchValuesFromPreset = (
+  preset?: DeepWaterResearchLauncherPreset,
+): DeepWaterResearchFormValues => ({
+  ...defaultDeepWaterResearchValues,
+  ...(preset?.artifactDestination ? { artifactDestination: preset.artifactDestination } : {}),
+  ...(preset?.chapterDepth ? { chapterDepth: preset.chapterDepth } : {}),
+  ...(preset?.depth ? { depth: preset.depth } : {}),
+  ...(preset?.outputLanguage ? { outputLanguage: preset.outputLanguage } : {}),
+  ...(preset?.outputTier ? { outputTier: preset.outputTier } : {}),
+  ...(preset?.recency ? { recency: preset.recency } : {}),
+  ...(preset?.searchQuality ? { searchQuality: preset.searchQuality } : {}),
+  ...(preset?.searchesPerPillar ? { searchesPerPillar: preset.searchesPerPillar } : {}),
+  ...(preset?.sections ? { sections: preset.sections } : {}),
+  query: preset?.query ?? '',
+})
 
 // ISO 639-1 keeps the request portable: Ledger receives an explicit language
 // code while the person launching research sees a readable, complete selector.

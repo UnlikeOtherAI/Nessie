@@ -15,7 +15,6 @@ export type DeepWaterLaunchInput = {
   searchQuality: 'standard' | 'premium'
   searchesPerPillar: number
   sections: number
-  title?: string
 }
 
 export type DeepTestReviewHandoffInput = {
@@ -42,7 +41,6 @@ export const normalizeDeepWaterLaunchInput = (
   searchQuality: input.searchQuality ?? 'standard',
   searchesPerPillar: input.searchesPerPillar ?? 4,
   sections: input.sections ?? 8,
-  title: input.title,
 })
 
 export const normalizeDeepTestReviewHandoffInput = (

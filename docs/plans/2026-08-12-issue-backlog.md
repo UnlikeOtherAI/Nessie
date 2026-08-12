@@ -15,6 +15,8 @@ Status: `todo` · `design` (proposal round out) · `doing` · `blocked` · `done
 | 5 | Dialog dismisses when a drag started inside ends on the scrim | doing | Shared hook written; applying across 18 dialogs |
 | 6 | Starred section: self-DM star state, agent DM shown as `#`, two rows active | todo | Three defects, one sidebar surface |
 | 7 | Channel tabs: drop Runs, drop Info, composer only on Messages | doing | Delegated |
+| 8 | Deep Water launcher: Light/Standard/Heavy/Custom + language multi-select | blocked | Blocked on task 9 (Ledger parity) for the language set |
+| 9 | **Ledger**: bring MCP `research_start` to parity with DeepWater's REST config | todo | Cross-repo, `/Volumes/External/Projects/ledger` |
 
 ---
 
@@ -233,3 +235,152 @@ the PA config banner with nothing to replace it. Decision: move the banner into
 the Agents panel and show the Agents tab on a conversation surface **only when
 it has something to say** — the PA banner, or at least one bound agent. A
 person-to-person DM therefore shows Messages + Files only.
+
+
+## 8 — Deep Water research launcher: presets, no title, real language selector
+
+> "For the deep water deep research, we need to have two states: Light standard
+> / Heavy / Custom. With custom, we literally just are going to have all the
+> options that are in the pop-up now. With light standard and heavy, we can
+> assume the settings. I don't think we need a title. It's like, 'What do you
+> want to research?' There's one thing missing, and that's a nice custom
+> dropdown selector, the same one that we've got in deep water. You can take a
+> look at it in a parallel folder to this one called water. There's a dropdown
+> that kind of allows you to select the search languages, so if you want to
+> search stuff in all Western languages, most common languages, or just select
+> them one by one, I want the same system in this dropdown. Obviously, you need
+> to make sure that the MCP is available for the local agents. If they are
+> personal agents as well, if they have access to the deep water research tool,
+> then they need to be able to control all of this as well."
+
+Screenshot of the current dialog supplied. Today `New Deep Water research`
+(`admin/src/components/features/integrations/DeepWaterResearchLauncherDialog.tsx`)
+shows, all at once: Research template, Title, Research prompt, a six-way Depth
+grid (Light / Standard / Deep / Heavy / Thesis / Dissertation), then Chapter
+detail, Output, Search quality, Recency, Sections, Searches per pillar, Output
+language, Destination. Fourteen controls before the question is even asked.
+
+Required:
+
+1. **Three modes, not six depths + twelve knobs.** `Light` · `Standard` ·
+   `Heavy` · `Custom`. (The owner said "two states" then listed four — read as
+   three presets plus Custom.) Each preset assumes its settings; only Custom
+   reveals the full control set that exists today, unchanged.
+2. **Drop the Title field.** The prompt is the question — "What do you want to
+   research?" is the whole ask.
+3. **A real language selector**, replacing the single-value `Output language`
+   dropdown. Multi-select with group shortcuts — "all Western languages", "most
+   common languages", or pick individually. **Reference implementation exists**:
+   the `water` repo, a sibling folder of this one. Read its dropdown and match
+   the system, not just the look.
+4. **Agents must be able to drive all of this too**, not just the dialog. Any
+   agent granted the DeepWater tool — including a *personal* agent / PA — needs
+   the same control surface through the MCP tool arguments. Verify the projected
+   `research_start` schema actually carries these parameters; if the presets and
+   the language set are UI-only, an agent can never reach them, and that is a
+   Rule zero failure in the other direction (surface without capability).
+
+Open questions to resolve before building: what exact settings each preset
+assumes (must come from Ledger's real `research_start` contract, not invented);
+whether `Research template` survives alongside the new mode selector or is
+absorbed by it; and whether the language set is a Ledger-supported parameter at
+all — check before designing a control for something the API cannot accept.
+
+
+### Task 8 — verified findings and owner decisions (2026-08-12)
+
+Phase-1 investigation, independently re-verified against both repos:
+
+- **Ledger's MCP `research_start` is strict and minimal.** `mcpStartSchema =
+  researchStartBaseSchema.omit({ callbackUrl: true, deepwater: true })`
+  (`ledger/api/src/routes/research-mcp-server.ts:29`), so exactly
+  `{ query, context?, depth: light|standard|deep|heavy, recency: any|recent }`,
+  `.strict()`. The rich `deepwater.research-config.v1` envelope — which carries
+  `languages: string[]` (83 codes), `output_language` (12 codes),
+  `chapter_depth`, `output_tier`, `search_quality`, `searches_per_pillar`,
+  `sections`, and a 5-way `recency` — exists **only** on Ledger's REST
+  `POST /v1/research`, reserved for DeepWater's own product key.
+- **Everything else in the dialog is already prose.** Chapter detail, output
+  tier, output language, search quality, sections and searches-per-pillar are
+  passed as text lines inside `context`
+  (`api/src/routes/integrations/handoff-builders.ts:45-56`), which Ledger
+  concatenates into the research question.
+- **Thesis and Dissertation are not real tiers** — both map to `heavy`
+  (`handoff-builders.ts:9-12`); Ledger disables them.
+- **Output language offers 184 ISO codes; DeepWater supports 12.**
+- **Recency offers day/week/month/year; all of it collapses to `recent`** and
+  the chosen window never reaches the request.
+- **Water's reference implementation**: `LanguageReachDropdown.tsx`
+  (English only / Top 10 / Top 20 / Custom, active option *derived* from the
+  selection rather than stored) over `LanguageSelect.tsx` (region-grouped
+  multi-select, region-header click selects all, alt-click deselects, region
+  chips, search, pinned `en`, empty = auto-detect), vocabulary in
+  `water/packages/core/src/languages.ts`.
+
+**Owner decisions:**
+
+1. **Do not ship a prose-only language control.** "If we're running stuff
+   through the Ledger, then we need to make sure that all the functionality is
+   in the Ledger as well… bring everything to parity with what is in the deep
+   water at the moment." → new task 9; task 8's language selector waits for it.
+2. **Presets drop the fake tiers, Custom keeps everything.** "Removing the
+   buttons only in the new screen. If you do custom, then we're gonna show the
+   full stuff as it is now, with the added option of languages." So
+   Light/Standard/Heavy are the preset modes; Custom renders today's complete
+   control set unchanged, plus the language selector.
+3. **Title is removed from the form entirely.** "The AI should just create its
+   own title in deep water… we're just going to inherit one once the report is
+   created." So Nessie stops asking, and takes the title from the report when
+   it lands.
+
+**Shipped (2026-08-12):** the mode selector (Light/Standard/Heavy/Custom, each
+preset carrying a complete set of real contract values; the active mode derived
+from the values, never stored), the question-first form, Custom rendering the
+complete existing control set unchanged, `title` removed from
+`DeepWaterResearchLaunchRequest` / the launcher / the run insert / the handoff
+context lines, and the launcher's context-line vocabulary documented in the
+projected `research_start` tool description so a granted agent (PA included)
+composes the same instructions by hand. The language multi-select is not built
+and `DeepWaterResearchCustomControls.tsx` is its landing site; the file's
+docblock says so.
+
+**Title inheritance is blocked, and not by choice of implementation.** Ledger
+returns no title in any authenticated payload: the start ticket is
+`{ id, job_id, status, eta_minutes, status_url, events_url, report_url }`,
+`researchStatusDto` is `{ id, status, progress?, eta_minutes? }`, and
+`researchReportDto` is
+`{ report_markdown, references[], depth, started_at, completed_at, truncated }`
+(`ledger/api/src/repositories/research-repository.ts`). `title` appears in
+Ledger's contract only as an *input* field of the REST-only config envelope and
+as a per-source reference title. The one title-shaped value available is the
+report markdown's own H1 — but Nessie has no server-side path that ever sees a
+completed report: the only server-side interception of `research_report` lives
+in the launch-turn handoff guard (`worker/src/run/deepwater-handoff-guard.ts`,
+which persists the source count), and a launch turn ends while the job is still
+running for ~20 minutes. Reading the H1 would therefore need a new server-side
+report-fetch path, and any such value would need the same trusted-provenance
+discipline as `reportUrl`/`sourceCount` so an agent-authored
+`deep_water_run_update` cannot forge it. Until then a card is named by its
+query (`researchCardTitle`, matching the run history's existing
+`title || queryPreview` fallback). Task 9's parity work should be asked to
+return a report title as a typed field — that closes this properly.
+
+## 9 — Ledger: MCP research_start parity with the DeepWater REST contract
+
+Cross-repo task in `/Volumes/External/Projects/ledger` (parallel project, own
+worktree under its `.worktrees/`).
+
+Ledger deliberately omits `deepwater` from the MCP start schema, so every
+MCP-based caller — which is all of Nessie — can only send depth and recency.
+Nessie must therefore smuggle real research parameters through prose. The owner
+wants that closed: the MCP adapter should reach parity with what DeepWater's own
+REST launch can express, so `languages`, `output_language`, `chapter_depth`,
+`output_tier`, `search_quality`, `searches_per_pillar`, `sections` and the full
+recency window become typed parameters over MCP.
+
+Open on the Ledger side before building: why the exclusion exists (billing
+product binding? per-key entitlement? cost control?), and whether parity should
+be universal or gated to entitled product keys. That reasoning is Ledger's, and
+must be read before changing its contract — the docs state MCP starts are
+excluded deliberately, so this is a contract decision, not an oversight to
+patch.

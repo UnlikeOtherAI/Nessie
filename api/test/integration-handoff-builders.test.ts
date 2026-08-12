@@ -19,7 +19,6 @@ test('DeepWater handoff maps legacy launcher controls to Ledger MCP contract', (
     searchQuality: 'premium',
     searchesPerPillar: 7,
     sections: 12,
-    title: 'Evidence review',
   }, { runId })
 
   assert.match(message, /approved Ledger MCP connector/)
@@ -115,7 +114,6 @@ test('DeepWater handoff offers a bounded reviewable chat launcher preset', () =>
     searchQuality: 'premium',
     searchesPerPillar: 6,
     sections: 10,
-    title: 'DACH heat-pump research',
   }, {
     channelId: '018f8b91-7c5a-7e6d-8f90-abcdef012345',
     connectorId: '018f8b91-7c5a-7e6d-8f90-abcdef012346',
@@ -123,7 +121,11 @@ test('DeepWater handoff offers a bounded reviewable chat launcher preset', () =>
     runId: '018f8b91-7c5a-7e6d-8f90-abcdef012347',
   })
   const cards = metadata.uiCards as Array<{
-    actions: Array<{ preset?: { outputLanguage?: string; sections?: number }; type: string }>
+    actions: Array<{
+      preset?: { outputLanguage?: string; sections?: number; title?: string }
+      type: string
+    }>
+    title: string
   }>
   const action = cards[0]?.actions.find((candidate) =>
     candidate.type === 'open_deep_water_research_launcher',
@@ -131,4 +133,8 @@ test('DeepWater handoff offers a bounded reviewable chat launcher preset', () =>
 
   assert.equal(action?.preset?.outputLanguage, 'de')
   assert.equal(action?.preset?.sections, 10)
+  // Nothing carries a person-authored title any more: the card is named by the
+  // question, and re-running prefills the settings without one.
+  assert.equal(action?.preset?.title, undefined)
+  assert.equal(cards[0]?.title, 'Compare heat-pump adoption across the DACH region.')
 })

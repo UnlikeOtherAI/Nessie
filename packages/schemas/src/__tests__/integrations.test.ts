@@ -141,6 +141,9 @@ test('DeepWaterResearchLaunchRequestSchema keeps launcher controls MCP-safe', ()
   assert.equal(parsed.outputTier, 'full')
   assert.equal(parsed.artifactDestination, 'knowledge_draft')
   assert.equal(parsed.searchQuality, 'premium')
+  // A launch carries no title: the question is the whole ask and Deep Water
+  // names its own report.
+  assert.equal('title' in parsed, false)
   const withBudget = DeepWaterResearchLaunchRequestSchema.parse({
     budgetUsd: 100,
     depth: 'deep',
@@ -181,6 +184,24 @@ test('Deep Water chat cards can prefill the reviewed research launcher only', ()
   assert.equal(card.actions?.[0]?.type, 'open_deep_water_research_launcher')
   assert.equal(card.actions?.[0]?.preset?.outputLanguage, 'fr')
   assert.equal(card.actions?.[0]?.preset?.sections, 10)
+  // Cards authored before titles were dropped still render: the preset schema
+  // is strict, so rejecting their stored `title` would blank an old message.
+  assert.equal(
+    IntegrationUiCardSchema.safeParse({
+      actions: [
+        {
+          label: 'Run again',
+          preset: { depth: 'deep', query: 'x', title: 'Legacy card title' },
+          type: 'open_deep_water_research_launcher',
+        },
+      ],
+      kind: 'deep_research',
+      productSlug: 'deep-water',
+      status: 'idle',
+      title: 'Legacy card',
+    }).success,
+    true,
+  )
   assert.equal(
     IntegrationUiCardSchema.safeParse({
       actions: [{ label: 'Open launcher', type: 'open_deep_water_research_launcher' }],

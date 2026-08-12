@@ -77,7 +77,8 @@ export const DeepWaterResearchLauncherDialog = ({
               New Deep Water research
             </h2>
             <p className="mt-1 text-sm leading-6 text-[var(--tx2)]" id="deep-water-launcher-description">
-              Review the template and controls before a research run is sent to Ledger.
+              Ask the question, choose how deep to go, and review it before the run is sent
+              to Ledger.
             </p>
           </div>
           <button

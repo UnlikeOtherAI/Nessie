@@ -47,7 +47,6 @@ export type AdminShellOutletContext = {
   onCreateAgent: () => void
   onCreateChannel: (target?: CreateChannelTarget) => void
   onSelectAgent: (agentId: string) => void
-  scopedAgents: AgentRecord[]
 }
 
 export const DEFAULT_BOOTSTRAP_PROJECT_ID = '00000000-0000-4000-8000-000000000002'

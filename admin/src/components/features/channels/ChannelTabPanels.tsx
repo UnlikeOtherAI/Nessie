@@ -1,10 +1,9 @@
 import type { AgentRecord, ChannelRecord, PersonalAssistantStateResponse } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../shared/AgentAvatar'
-import { AgentInfoCard } from '../agents/AgentInfoCard'
 import { PersonalAssistantConfigBanner } from '../personal-assistant/PersonalAssistantSurface'
 import { ChannelAutomationsPanel } from './ChannelAutomationsPanel'
-import { formatClock, runsCardClass, type ChannelTab } from './channel-helpers'
+import type { ChannelTab } from './channel-helpers'
 
 interface ChannelTabPanelsProps {
   visibleActiveTab: ChannelTab
@@ -12,9 +11,6 @@ interface ChannelTabPanelsProps {
   isPersonalAssistantConversation: boolean
   activeChannel: ChannelRecord | null
   boundAgents: AgentRecord[]
-  scopedAgents: AgentRecord[]
-  toolsCount: number
-  pendingMessagesCount: number
   personalAssistantAgent: AgentRecord | null
   personalAssistantChannel: ChannelRecord | null
   personalAssistantState: PersonalAssistantStateResponse | null | undefined
@@ -39,9 +35,6 @@ export const ChannelTabPanels = ({
   isPersonalAssistantConversation,
   activeChannel,
   boundAgents,
-  scopedAgents,
-  toolsCount,
-  pendingMessagesCount,
   personalAssistantAgent,
   personalAssistantChannel,
   personalAssistantState,
@@ -123,105 +116,18 @@ export const ChannelTabPanels = ({
       </div>
     ) : null}
 
-    {visibleActiveTab === 'info' ? (
-      <div className="p-5">
-        {isPersonalAssistantConversation ? (
-          <PersonalAssistantConfigBanner
-            agent={personalAssistantAgent}
-            channel={personalAssistantChannel}
-            configSummary={personalAssistantState?.configSummary}
-          />
-        ) : boundAgents.length > 0 ? (
-          <div className="grid gap-3">
-            {boundAgents.map((agent) => (
-              <AgentInfoCard agent={agent} key={agent.id} />
-            ))}
-          </div>
-        ) : (
-          <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
-            No agents are bound to this channel.
-          </div>
-        )}
-      </div>
-    ) : null}
-
-    {visibleActiveTab === 'runs' ? (
-      <div className="grid gap-4 p-5 lg:grid-cols-2">
-        <section className="admin-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            Active runs
-          </div>
-          <div className="mt-4 grid gap-3">
-            {scopedAgents.length > 0 ? (
-              scopedAgents.map((agent) => (
-                <button
-                  key={agent.id}
-                  className={runsCardClass}
-                  onClick={() => onSelectAgent(agent.id)}
-                  type="button"
-                >
-                  <PanelAgentAvatar agent={agent} className="mt-0.5" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-semibold text-[var(--tx)]">
-                        {agent.name}
-                      </span>
-                      <span
-                        className={[
-                          'rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px]',
-                          'uppercase tracking-[0.16em] text-[color:var(--tx3)]',
-                        ].join(' ')}
-                      >
-                        {agent.status}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-sm text-[color:var(--tx2)]">
-                      {agent.currentToolName ?? 'Idle'}
-                    </div>
-                    <div className="mt-2 text-xs text-[color:var(--tx3)]">
-                      Last activity {formatClock(agent.lastActivityAt)}
-                    </div>
-                  </div>
-                </button>
-              ))
-            ) : (
-              <div className="text-sm text-[color:var(--tx3)]">
-                No agent runs in this channel yet.
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="admin-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            Workspace signals
-          </div>
-          <div className="mt-4 grid gap-3 text-sm">
-            <div className="admin-card p-3">
-              <div className="text-[color:var(--tx3)]">Safe tools</div>
-              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
-                {toolsCount}
-              </div>
-            </div>
-            <div className="admin-card p-3">
-              <div className="text-[color:var(--tx3)]">Streaming messages</div>
-              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
-                {pendingMessagesCount}
-              </div>
-            </div>
-            <div className="admin-card p-3">
-              <div className="text-[color:var(--tx3)]">Bound agents</div>
-              <div className="mt-1 text-2xl font-semibold text-[var(--tx)]">
-                {boundAgents.length}
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    ) : null}
-
     {visibleActiveTab === 'agents' ? (
       <div className="grid gap-4 p-5 lg:grid-cols-2">
+        {isPersonalAssistantConversation ? (
+          <div className="lg:col-span-2">
+            <PersonalAssistantConfigBanner
+              agent={personalAssistantAgent}
+              channel={personalAssistantChannel}
+              configSummary={personalAssistantState?.configSummary}
+            />
+          </div>
+        ) : null}
+
         {boundAgents.length > 0 ? (
           boundAgents.map((agent) => (
             <article key={agent.id} className="admin-card p-4">

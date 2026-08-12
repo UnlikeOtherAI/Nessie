@@ -44,6 +44,7 @@ interface ChannelConversationSurfaceProps {
   activeChannel: ChannelRecord | null
   activeParticipants: CallParticipantRecord[]
   agentMap: Map<string, AgentRecord>
+  agentsTabAvailable: boolean
   boundAgents: AgentRecord[]
   callEligible: boolean
   channelLiveness: ReturnType<typeof useAgentLivenessHint>
@@ -112,13 +113,11 @@ interface ChannelConversationSurfaceProps {
   personalAssistantState: ReturnType<typeof usePersonalAssistant>['data']
   renderContent: ReturnType<typeof useChannelMentions>['renderContent']
   replyThread: ReturnType<typeof useReplyThread>
-  scopedAgents: AgentRecord[]
   search: ReturnType<typeof useChannelMessageSearch>
   shareRestricted: ReturnType<typeof useShareRestrictedMessage>
   setActiveTab: Dispatch<SetStateAction<ChannelTab>>
   titleFavorite: ChannelTitleFavorite | null
   token: string | null
-  toolsCount: number
   visibleActiveTab: ChannelTab
 }
 
@@ -132,6 +131,7 @@ export const ChannelConversationSurface = ({
   activeChannel,
   activeParticipants,
   agentMap,
+  agentsTabAvailable,
   boundAgents,
   callEligible,
   channelLiveness,
@@ -171,13 +171,11 @@ export const ChannelConversationSurface = ({
   personalAssistantState,
   renderContent,
   replyThread,
-  scopedAgents,
   search,
   shareRestricted,
   setActiveTab,
   titleFavorite,
   token,
-  toolsCount,
   visibleActiveTab,
 }: ChannelConversationSurfaceProps) => {
   const {
@@ -237,7 +235,8 @@ export const ChannelConversationSurface = ({
       ) : null}
 
       <ChannelTabBar
-        isConversationSurface={isConversationSurface}
+        showAgentsTab={agentsTabAvailable}
+        showAutomationsTab={!isConversationSurface}
         visibleActiveTab={visibleActiveTab}
         onSelectTab={setActiveTab}
       />
@@ -305,12 +304,9 @@ export const ChannelConversationSurface = ({
             boundAgents={boundAgents}
             isConversationSurface={isConversationSurface}
             isPersonalAssistantConversation={isPersonalAssistantConversation}
-            pendingMessagesCount={pendingMessages.length}
             personalAssistantAgent={personalAssistantAgent}
             personalAssistantChannel={personalAssistantChannel}
             personalAssistantState={personalAssistantState}
-            scopedAgents={scopedAgents}
-            toolsCount={toolsCount}
             visibleActiveTab={visibleActiveTab}
             onCreateAgent={onCreateAgent}
             onSelectAgent={onSelectAgent}
@@ -318,7 +314,8 @@ export const ChannelConversationSurface = ({
         </div>
       </div>
 
-      <ChannelComposer
+      {visibleActiveTab === 'messages' ? (
+        <ChannelComposer
         attachments={composer.attachments}
         inviteErrors={composer.inviteErrors}
         invitingAgentId={composer.invitingAgentId}
@@ -347,7 +344,8 @@ export const ChannelConversationSurface = ({
           channelLiveness.markSent()
           void composer.sendText(text)
         }}
-      />
+        />
+      ) : null}
 
       <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />
     </div>
