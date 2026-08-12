@@ -239,6 +239,96 @@ func TestGuestBrowserObservationDropsQueryAndCannotDialAnotherAddress(t *testing
 	}
 }
 
+func TestGuestCodingUsesOneDedicatedTmuxServerAndExactTarget(t *testing.T) {
+	root := t.TempDir()
+	socket := filepath.Join(root, "tmux.sock")
+	profile := filepath.Join(root, ".nessie-executor", "coding", "codex")
+	var calls [][]string
+	var environments [][]string
+	runtime := &codingRuntime{
+		agentExecutables: map[codingAgent]string{codingAgentCodex: "/runtime/bin/codex"},
+		profileRoot:      root,
+		run: func(path string, args, environment []string) ([]byte, error) {
+			if path != "/runtime/bin/tmux" {
+				t.Fatalf("unexpected executable %q", path)
+			}
+			calls = append(calls, append([]string{}, args...))
+			environments = append(environments, append([]string{}, environment...))
+			for _, argument := range args {
+				switch argument {
+				case "display-message":
+					return []byte("0\t\n"), nil
+				case "capture-pane":
+					return []byte("Working\n"), nil
+				}
+			}
+			return nil, nil
+		},
+		socket: socket,
+		tmux:   "/runtime/bin/tmux",
+	}
+	if err := runtime.launch(codingAgentCodex); err != nil {
+		t.Fatal(err)
+	}
+	expectedLaunch := []string{
+		"-f", codingConfigPath,
+		"-S", socket,
+		"new-session", "-d", "-s", codingSessionName, "--", "/runtime/bin/codex",
+	}
+	if len(calls) != 1 || !reflect.DeepEqual(calls[0], expectedLaunch) {
+		t.Fatalf("unexpected tmux launch %#v", calls)
+	}
+	if !reflect.DeepEqual(environments[0], codingEnvironment(codingAgentCodex, profile)) || strings.Contains(strings.Join(environments[0], "\x00"), "PATH=") {
+		t.Fatalf("coding launch inherited an ambient environment %#v", environments[0])
+	}
+	observed, err := runtime.observation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(observed, codingObservation{Agent: codingAgentCodex, Lifecycle: "running", Output: "Working"}) {
+		t.Fatalf("unexpected coding observation %#v", observed)
+	}
+	if len(calls) != 3 || !reflect.DeepEqual(calls[1], []string{"-S", socket, "display-message", "-p", "-t", codingTarget, "#{pane_dead}\t#{pane_dead_status}"}) || !reflect.DeepEqual(calls[2], []string{"-S", socket, "capture-pane", "-p", "-t", codingTarget, "-S", "-200"}) {
+		t.Fatalf("coding observation lost the dedicated exact target %#v", calls)
+	}
+	if !reflect.DeepEqual(environments[1], environments[0]) || !reflect.DeepEqual(environments[2], environments[0]) {
+		t.Fatal("coding observation inherited a different environment")
+	}
+	if err := runtime.close(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(calls[3], []string{"-S", socket, "kill-session", "-t", codingSessionTarget}) {
+		t.Fatalf("coding close lost the exact target %#v", calls[3])
+	}
+	if _, ok := sanitizeCodingOutput([]byte("\x1b[2J")); ok {
+		t.Fatal("accepted ANSI terminal output")
+	}
+	if _, ok := sanitizeCodingOutput([]byte{0}); ok {
+		t.Fatal("accepted binary terminal output")
+	}
+}
+
+func TestGuestCodingRefusesPreexistingDedicatedSocket(t *testing.T) {
+	root := t.TempDir()
+	socket := filepath.Join(root, "tmux.sock")
+	if err := os.WriteFile(socket, []byte("foreign"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &codingRuntime{
+		agentExecutables: map[codingAgent]string{codingAgentCodex: "/runtime/bin/codex"},
+		profileRoot:      root,
+		run: func(string, []string, []string) ([]byte, error) {
+			t.Fatal("attempted to use a preexisting tmux socket")
+			return nil, errInvalidFrame
+		},
+		socket: socket,
+		tmux:   "/runtime/bin/tmux",
+	}
+	if err := runtime.launch(codingAgentCodex); err == nil {
+		t.Fatal("accepted a preexisting tmux socket")
+	}
+}
+
 func TestGuestDropsToTheCOWOwnerOrAnUnprivilegedFallback(t *testing.T) {
 	withoutWorkspace, err := selectGuestIdentity(false, 0, 0)
 	if err != nil || withoutWorkspace.userID != guestFallbackID || withoutWorkspace.groupID != guestFallbackID {

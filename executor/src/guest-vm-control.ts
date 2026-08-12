@@ -36,6 +36,15 @@ export type GuestBrowserObservation = {
   }>
 }
 
+export type GuestCodingAgent = 'claude' | 'codex'
+
+export type GuestCodingObservation = {
+  agent: GuestCodingAgent
+  exitStatus?: number
+  lifecycle: 'exited' | 'running'
+  output: string
+}
+
 const unavailable = (message: string): WorkspacePathError => new WorkspacePathError(message)
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
@@ -159,6 +168,78 @@ const parseBrowserObservation = (payload: Buffer): GuestBrowserObservation => {
   return { targets }
 }
 
+const isCodingAgent = (value: unknown): value is GuestCodingAgent => value === 'claude' || value === 'codex'
+
+const parseCodingLaunch = (payload: Buffer, agent: GuestCodingAgent): void => {
+  let value: unknown
+  try {
+    value = JSON.parse(payload.toString('utf8'))
+  } catch {
+    throw unavailable('The executor guest rejected the coding-session launch request.')
+  }
+  if (
+    !isRecord(value)
+    || Object.keys(value).some((key) => !['agent', 'status', 'version'].includes(key))
+    || value.agent !== agent
+    || value.status !== 'started'
+    || value.version !== 1
+  ) {
+    throw unavailable('The executor guest rejected the coding-session launch request.')
+  }
+}
+
+const parseCodingObservation = (payload: Buffer): GuestCodingObservation => {
+  let value: unknown
+  try {
+    value = JSON.parse(payload.toString('utf8'))
+  } catch {
+    throw unavailable('The executor guest rejected the coding-session observation request.')
+  }
+  if (!isRecord(value) || Object.keys(value).some((key) => !['observation', 'version'].includes(key)) || value.version !== 1 || !isRecord(value.observation)) {
+    throw unavailable('The executor guest rejected the coding-session observation request.')
+  }
+  const observation = value.observation
+  const agent = observation.agent
+  const lifecycle = observation.lifecycle
+  const output = observation.output
+  const exitStatus = observation.exitStatus
+  if (
+    Object.keys(observation).some((key) => !['agent', 'exitStatus', 'lifecycle', 'output'].includes(key))
+    || !isCodingAgent(agent)
+    || (lifecycle !== 'exited' && lifecycle !== 'running')
+    || typeof output !== 'string'
+    || Buffer.byteLength(output, 'utf8') > 8_192
+    || (exitStatus !== undefined && (typeof exitStatus !== 'number' || !Number.isInteger(exitStatus) || exitStatus < 0 || exitStatus > 255))
+    || (lifecycle === 'running' && exitStatus !== undefined)
+    || (lifecycle === 'exited' && exitStatus === undefined)
+  ) {
+    throw unavailable('The executor guest rejected the coding-session observation request.')
+  }
+  return {
+    agent,
+    ...(exitStatus === undefined ? {} : { exitStatus }),
+    lifecycle,
+    output,
+  }
+}
+
+const parseCodingClose = (payload: Buffer): void => {
+  let value: unknown
+  try {
+    value = JSON.parse(payload.toString('utf8'))
+  } catch {
+    throw unavailable('The executor guest rejected the coding-session close request.')
+  }
+  if (
+    !isRecord(value)
+    || Object.keys(value).some((key) => !['status', 'version'].includes(key))
+    || value.status !== 'closed'
+    || value.version !== 1
+  ) {
+    throw unavailable('The executor guest rejected the coding-session close request.')
+  }
+}
+
 /** Owns the helper's private stdin/stdout framing after its one-use bootstrap. */
 export class GuestVmControlClient {
   private output = Buffer.alloc(0)
@@ -200,6 +281,21 @@ export class GuestVmControlClient {
   async observeBrowser(): Promise<GuestBrowserObservation> {
     const payload = await this.request(Buffer.from(JSON.stringify({ operation: 'browser.observe', version: 1 })))
     return parseBrowserObservation(payload)
+  }
+
+  async launchCodingSession(agent: GuestCodingAgent): Promise<void> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ agent, operation: 'coding.launch', version: 1 })))
+    parseCodingLaunch(payload, agent)
+  }
+
+  async observeCodingSession(): Promise<GuestCodingObservation> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ operation: 'coding.observe', version: 1 })))
+    return parseCodingObservation(payload)
+  }
+
+  async closeCodingSession(): Promise<void> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ operation: 'coding.close', version: 1 })))
+    parseCodingClose(payload)
   }
 
   close(error: Error = unavailable('The executor VM helper closed its control pipe.')): void {

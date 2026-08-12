@@ -10,6 +10,7 @@ const guestRuntimeControlVersion = 1
 
 type runtimeControlRequest struct {
 	Operation string `json:"operation"`
+	Agent     string `json:"agent,omitempty"`
 	URL       string `json:"url,omitempty"`
 	Version   int    `json:"version"`
 }
@@ -23,6 +24,7 @@ type runtimeInspection struct {
 
 type runtimeController struct {
 	browser  *browserRuntime
+	coding   *codingRuntime
 	manifest *runtimeManifest
 }
 
@@ -30,12 +32,15 @@ func newRuntimeController(manifest *runtimeManifest) *runtimeController {
 	if manifest == nil {
 		return nil
 	}
-	return &runtimeController{browser: newBrowserRuntime(manifest), manifest: manifest}
+	return &runtimeController{browser: newBrowserRuntime(manifest), coding: newCodingRuntime(manifest), manifest: manifest}
 }
 
 func (controller *runtimeController) close() {
 	if controller != nil && controller.browser != nil {
 		controller.browser.close()
+	}
+	if controller != nil && controller.coding != nil {
+		controller.coding.shutdown()
 	}
 }
 
@@ -50,16 +55,16 @@ func decodeRuntimeControlRequest(payload []byte) (runtimeControlRequest, error) 
 		return runtimeControlRequest{}, errInvalidFrame
 	}
 	switch request.Operation {
-	case "runtime.inspect":
-		if request.URL != "" {
+	case "runtime.inspect", "browser.observe", "coding.observe", "coding.close":
+		if request.URL != "" || request.Agent != "" {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
 	case "browser.open":
-		if !validBrowserURL(request.URL) {
+		if request.Agent != "" || !validBrowserURL(request.URL) {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
-	case "browser.observe":
-		if request.URL != "" {
+	case "coding.launch":
+		if request.URL != "" || !validCodingAgent(codingAgent(request.Agent)) {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
 	default:
@@ -99,6 +104,43 @@ func handleRuntimeControlRequest(payload []byte, controller *runtimeController) 
 			return runtimeControlUnavailable()
 		}
 		return result
+	}
+	if request.Operation == "coding.launch" {
+		if controller.coding == nil || controller.coding.launch(codingAgent(request.Agent)) != nil {
+			return runtimeControlUnavailable()
+		}
+		result, err := json.Marshal(struct {
+			Agent   codingAgent `json:"agent"`
+			Status  string      `json:"status"`
+			Version int         `json:"version"`
+		}{Agent: codingAgent(request.Agent), Status: "started", Version: guestRuntimeControlVersion})
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		return result
+	}
+	if request.Operation == "coding.observe" {
+		if controller.coding == nil {
+			return runtimeControlUnavailable()
+		}
+		observation, err := controller.coding.observation()
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		result, err := json.Marshal(struct {
+			Observation codingObservation `json:"observation"`
+			Version     int               `json:"version"`
+		}{Observation: observation, Version: guestRuntimeControlVersion})
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		return result
+	}
+	if request.Operation == "coding.close" {
+		if controller.coding == nil || controller.coding.close() != nil {
+			return runtimeControlUnavailable()
+		}
+		return []byte(`{"status":"closed","version":1}`)
 	}
 	result, err := json.Marshal(struct {
 		Inspection runtimeInspection `json:"inspection"`

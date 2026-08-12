@@ -69,5 +69,47 @@ test('the VM control client accepts only the ready line then one matching framed
   assert.deepEqual(await observing, {
     targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],
   })
+
+  const codingLaunchFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
+  const launchingCoding = client.launchCodingSession('codex')
+  const rawCodingLaunch = await codingLaunchFrame
+  const codingLaunch = JSON.parse(rawCodingLaunch.subarray(4).toString('utf8')) as Record<string, unknown>
+  assert.equal(Buffer.from(String(codingLaunch.payload), 'base64').toString('utf8'), '{"agent":"codex","operation":"coding.launch","version":1}')
+  output.write(frameFor({
+    kind: 'response',
+    payload: Buffer.from('{"agent":"codex","status":"started","version":1}').toString('base64'),
+    requestId: codingLaunch.requestId,
+    version: 1,
+  }))
+  await launchingCoding
+
+  const codingObserveFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
+  const observingCoding = client.observeCodingSession()
+  const rawCodingObserve = await codingObserveFrame
+  const codingObserve = JSON.parse(rawCodingObserve.subarray(4).toString('utf8')) as Record<string, unknown>
+  assert.equal(Buffer.from(String(codingObserve.payload), 'base64').toString('utf8'), '{"operation":"coding.observe","version":1}')
+  output.write(frameFor({
+    kind: 'response',
+    payload: Buffer.from(JSON.stringify({
+      observation: { agent: 'codex', lifecycle: 'exited', exitStatus: 0, output: 'Done' },
+      version: 1,
+    })).toString('base64'),
+    requestId: codingObserve.requestId,
+    version: 1,
+  }))
+  assert.deepEqual(await observingCoding, { agent: 'codex', lifecycle: 'exited', exitStatus: 0, output: 'Done' })
+
+  const codingCloseFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
+  const closingCoding = client.closeCodingSession()
+  const rawCodingClose = await codingCloseFrame
+  const codingClose = JSON.parse(rawCodingClose.subarray(4).toString('utf8')) as Record<string, unknown>
+  assert.equal(Buffer.from(String(codingClose.payload), 'base64').toString('utf8'), '{"operation":"coding.close","version":1}')
+  output.write(frameFor({
+    kind: 'response',
+    payload: Buffer.from('{"status":"closed","version":1}').toString('base64'),
+    requestId: codingClose.requestId,
+    version: 1,
+  }))
+  await closingCoding
   client.close()
 })

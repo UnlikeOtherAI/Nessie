@@ -190,7 +190,10 @@ test('a guest VM session mounts a private runtime snapshot and keeps its token o
         calls.push(call)
         return {
           closed: new Promise<void>((resolvePromise) => { resolveClosed = resolvePromise }),
+	          closeCodingSession: async () => {},
           inspectRuntime: async () => ({ browser: true, claude: false, codex: false, tmux: false }),
+	          launchCodingSession: async () => {},
+	          observeCodingSession: async () => ({ agent: 'codex' as const, lifecycle: 'running' as const, output: '' }),
           observeBrowser: async () => ({ targets: [{ title: 'Guide', type: 'page' as const, url: 'https://app.example.test/guide' }] }),
           openBrowser: async (url) => {
             assert.equal(url, 'https://app.example.test/guide')

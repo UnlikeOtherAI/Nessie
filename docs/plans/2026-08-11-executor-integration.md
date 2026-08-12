@@ -1008,6 +1008,16 @@ an agent receive `coding.prompt`. The implementation must not modify a user's
 global Codex or Claude configuration; injected hooks/settings are session-local
 and fail open to observation only.
 
+Progress: the guest now proves the dedicated-server mechanics privately: it
+creates a root-configured, guest-owned socket directory before privilege drop;
+uses the manifest-pinned tmux and Codex/Claude argv directly; accepts only a
+fixed session/pane target; retains exited panes; and bounds/sanitizes
+observation. It exposes no `coding.*` executor operation yet. The next coding
+slice is the session-bound credential/egress broker plus durable session and
+control-lease records; only then may this guest substrate be wired through a
+descriptor, the daemon, agent grants, the Executors surface, and Personal
+Assistant user confirmation.
+
 ### 6. Expansion and hardening
 
 Add platform-specific sandbox backends, local MCP proxy capability, service

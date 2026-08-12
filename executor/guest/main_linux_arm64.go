@@ -144,11 +144,18 @@ func main() {
 	}
 	runtimeController := newRuntimeController(runtimeManifest)
 	defer runtimeController.close()
+	identity, err := guestIdentityForWorkspace(workspaceAttached)
+	if err != nil {
+		os.Exit(1)
+	}
+	if runtimeController != nil && runtimeController.coding != nil && prepareCodingRuntime(identity) != nil {
+		os.Exit(1)
+	}
 	token, err := readBootstrapToken()
 	if err != nil {
 		os.Exit(1)
 	}
-	if err := dropGuestPrivileges(workspaceAttached); err != nil {
+	if err := dropGuestPrivilegesTo(identity); err != nil {
 		clearBytes(token)
 		os.Exit(1)
 	}

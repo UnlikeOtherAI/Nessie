@@ -554,6 +554,34 @@ It creates no `ExecutorSession`, binding, descriptor, or executor operation;
 `EXECUTOR_VM_GUEST_HANDSHAKE_FAILED` is a local packaging/guest failure and must
 keep browser and coding profiles unavailable.
 
+### Managed coding-session substrate (not a product operation yet)
+
+The guest now has the narrow mechanical boundary required for a future coding
+session: a declared Codex or Claude executable is launched only through the
+declared tmux executable, into one guest-created server at an absolute socket
+path. The server reads a root-created immutable configuration which retains an
+exited pane for authoritative lifecycle inspection. Its only valid tmux
+targets are the fixed exact session `=nessie` and pane `=nessie:0.0`; display
+names, caller input, and a default/pre-existing tmux server never become
+targets. An existing dedicated socket makes launch fail closed.
+
+The isolated CLI home is created inside the guest COW workspace, with a fresh
+environment that names only that home, its temporary directory, and the
+tool-specific state location. It does not inherit a host home, `PATH`,
+keychain, global Codex/Claude configuration, or API token. Observation uses
+the authoritative tmux dead-pane fields plus an 8 KiB, UTF-8, non-binary,
+non-ANSI `capture-pane` snapshot; terminal prose never supplies lifecycle
+truth. Close kills only the exact dedicated session.
+
+This is intentionally **not** `coding.launch`, `coding.observe`, or
+`coding.close` product availability: no executor descriptor, daemon command,
+agent tool, UI route, remote terminal attach, credential broker, approval,
+control lease, or task/session record reaches it. The guest has no coding CLI
+credential or direct network path, so its internal control messages cannot be
+used as a working Codex/Claude product session. A subsequent slice must add
+the session-bound credential/egress broker and durable control plane before
+any of these mechanics are projected.
+
 Its optional `--workspace-cow` argument exists only for the companion's
 lease-derived release probe. It passes that one COW directory into the fixed VM
 configuration, so the guest must mount it before hello can succeed. It is never

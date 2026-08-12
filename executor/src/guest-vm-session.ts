@@ -21,6 +21,8 @@ import {
 import {
   GuestVmControlClient,
   type GuestBrowserObservation,
+  type GuestCodingAgent,
+  type GuestCodingObservation,
   type GuestRuntimeInspection,
 } from './guest-vm-control.js'
 import {
@@ -39,7 +41,10 @@ const SESSION_STOP_TIMEOUT_MS = 10_000
 
 type ActiveGuestVmSessionProcess = {
   closed: Promise<void>
+  closeCodingSession: () => Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
+  launchCodingSession: (agent: GuestCodingAgent) => Promise<void>
+  observeCodingSession: () => Promise<GuestCodingObservation>
   observeBrowser: () => Promise<GuestBrowserObservation>
   openBrowser: (url: string) => Promise<void>
   stop: () => Promise<void>
@@ -59,7 +64,10 @@ export type GuestVmSessionInput = GuestVmHandshakeInput & {
 
 export type GuestVmSession = {
   closed: Promise<void>
+  closeCodingSession: () => Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
+  launchCodingSession: (agent: GuestCodingAgent) => Promise<void>
+  observeCodingSession: () => Promise<GuestCodingObservation>
   observeBrowser: () => Promise<GuestBrowserObservation>
   openBrowser: (url: string) => Promise<void>
   stop: () => Promise<void>
@@ -102,7 +110,10 @@ const launchGuestVmSession: GuestVmSessionLauncher = async ({ argv, input, path,
   }
   return {
     closed,
+    closeCodingSession: () => control.closeCodingSession(),
     inspectRuntime: () => control.inspectRuntime(),
+    launchCodingSession: (agent) => control.launchCodingSession(agent),
+    observeCodingSession: () => control.observeCodingSession(),
     observeBrowser: () => control.observeBrowser(),
     openBrowser: (url) => control.openBrowser(url),
     stop: () => stopChild(child),
@@ -178,7 +189,10 @@ export const startGuestVmSession = async (
     const closed = process.closed.finally(cleanup)
     return {
       closed,
+      closeCodingSession: () => process!.closeCodingSession(),
       inspectRuntime: () => process!.inspectRuntime(),
+      launchCodingSession: (agent) => process!.launchCodingSession(agent),
+      observeCodingSession: () => process!.observeCodingSession(),
       observeBrowser: () => process!.observeBrowser(),
       openBrowser: async (url: string) => {
         assertExecutorEgressOrigin(url, egressSettings)

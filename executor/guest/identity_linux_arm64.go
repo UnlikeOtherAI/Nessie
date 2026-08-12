@@ -7,25 +7,33 @@ import (
 	"syscall"
 )
 
-func dropGuestPrivileges(workspaceAttached bool) error {
+func guestIdentityForWorkspace(workspaceAttached bool) (guestIdentity, error) {
 	var workspaceUserID uint32
 	var workspaceGroupID uint32
 	if workspaceAttached {
 		info, err := os.Stat("/work")
 		if err != nil {
-			return err
+			return guestIdentity{}, err
 		}
 		metadata, ok := info.Sys().(*syscall.Stat_t)
 		if !ok {
-			return errInvalidFrame
+			return guestIdentity{}, errInvalidFrame
 		}
 		workspaceUserID = metadata.Uid
 		workspaceGroupID = metadata.Gid
 	}
-	identity, err := selectGuestIdentity(workspaceAttached, workspaceUserID, workspaceGroupID)
+	return selectGuestIdentity(workspaceAttached, workspaceUserID, workspaceGroupID)
+}
+
+func dropGuestPrivileges(workspaceAttached bool) error {
+	identity, err := guestIdentityForWorkspace(workspaceAttached)
 	if err != nil {
 		return err
 	}
+	return dropGuestPrivilegesTo(identity)
+}
+
+func dropGuestPrivilegesTo(identity guestIdentity) error {
 	if err := syscall.Setgroups([]int{int(identity.groupID)}); err != nil {
 		return err
 	}
