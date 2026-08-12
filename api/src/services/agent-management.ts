@@ -1,13 +1,13 @@
-import { Prisma, type PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
 import {
   acquireAgentToolPolicyLock,
   AGENT_MANAGEMENT_ERROR_CODES,
   AgentManagementError,
   agentRecordInclude,
-  buildAccessibleChannelWhere,
   createAgentRecord,
   isSystemManagedAgent,
+  listAgentsForUser,
   mapAgentRecord,
   mergeGenericAgentToolPolicy,
   readAgentRunLimits,
@@ -17,93 +17,19 @@ import {
 
 import type { AgentRecord } from '../contracts.js'
 
-// Agent creation is shared with the worker (the assistant's `agent_create`
-// tool); the route keeps importing it from here.
-export { AGENT_MANAGEMENT_ERROR_CODES, AgentManagementError, createAgentRecord }
+// Agent creation and the entitlement-scoped agent list are shared with the
+// worker (the assistant's `agent_create` and `agent_list` tools); the route
+// keeps importing them from here.
+export {
+  AGENT_MANAGEMENT_ERROR_CODES,
+  AgentManagementError,
+  createAgentRecord,
+  listAgentsForUser,
+}
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
 const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
-
-export const listAgentsForUser = async (
-  prisma: PrismaClient,
-  userId: string,
-  organizationId: string,
-  includeUnbound: boolean,
-): Promise<AgentRecord[]> => {
-  const visibleChannelWhere = buildAccessibleChannelWhere({
-    includeAllOrgChannels: includeUnbound,
-    organizationId,
-    userId,
-  })
-  const visibilityFilters: Prisma.AgentWhereInput[] = [
-    {
-      bindings: {
-        some: {
-          channel: visibleChannelWhere,
-        },
-      },
-    },
-  ]
-
-  if (includeUnbound) {
-    visibilityFilters.push({
-      bindings: {
-        none: {},
-      },
-    })
-  }
-
-  const agents = await prisma.agent.findMany({
-    where: {
-      organizationId,
-      systemManaged: false,
-      OR: visibilityFilters,
-    },
-    include: {
-      bindings: {
-        where: {
-          channel: visibleChannelWhere,
-        },
-        orderBy: { createdAt: 'asc' },
-        select: { channelId: true },
-      },
-      messages: {
-        where: {
-          thread: {
-            channel: visibleChannelWhere,
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true },
-        take: 1,
-      },
-      runs: {
-        include: {
-          toolCalls: {
-            orderBy: { startedAt: 'desc' },
-            select: {
-              endedAt: true,
-              startedAt: true,
-              toolName: true,
-            },
-            take: 1,
-          },
-        },
-        where: {
-          thread: {
-            channel: visibleChannelWhere,
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-    },
-    orderBy: { createdAt: 'asc' },
-  })
-
-  return agents.map(mapAgentRecord)
-}
 
 export const updateAgentRecord = async (
   prisma: PrismaClient,
