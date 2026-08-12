@@ -360,6 +360,7 @@ runDatabaseTest('cancelling the in-flight run still fires the batched follow-up'
       organizationId: seed.organizationId,
       systemChannelType: null,
     },
+    consumedSources: { list: () => [] },
     run: { id: run.id, threadId: seed.threadId, createdAt: run.createdAt },
     task: { id: task.id },
   } as unknown as RunContext
