@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  claimMessageNotification,
   isMessageCreatedEvent,
   shouldSuppressMessageBanner,
 } from '../src/facades/notifications/useMessageNotifications.js'
@@ -43,4 +44,12 @@ test('recognizes agent reply events as newly created messages for banners', () =
   assert.equal(isMessageCreatedEvent('message.new'), true)
   assert.equal(isMessageCreatedEvent('message.reply'), true)
   assert.equal(isMessageCreatedEvent('message.reply.meta'), false)
+})
+
+test('claims each realtime message before asynchronous notification work begins', () => {
+  const claimed = new Set<string>()
+
+  assert.equal(claimMessageNotification(claimed, 'message-a'), true)
+  assert.equal(claimMessageNotification(claimed, 'message-a'), false)
+  assert.equal(claimMessageNotification(claimed, 'message-b'), true)
 })
