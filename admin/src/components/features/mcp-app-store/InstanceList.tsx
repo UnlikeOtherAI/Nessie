@@ -11,6 +11,12 @@ import { mcpInstanceToolsPath } from '../../../facades/mcp-instance-tool-filter'
  */
 
 type InstanceListProps = {
+  /**
+   * What to say when nothing is installed. The next step depends on the
+   * connector's state (a draft has no Install button yet), so the owning page
+   * computes it with `installedScopesEmptyMessage`.
+   */
+  emptyMessage: string
   instances: McpServerInstanceRecord[]
   onCredentials?: (instance: McpServerInstanceRecord) => void
   onSelect: (instance: McpServerInstanceRecord) => void
@@ -39,6 +45,7 @@ const formatHealthAt = (value: string | null) => {
 }
 
 export const InstanceList = ({
+  emptyMessage,
   instances,
   onCredentials,
   onSelect,
@@ -48,8 +55,11 @@ export const InstanceList = ({
 }: InstanceListProps) => {
   if (instances.length === 0) {
     return (
-      <div className="py-8 text-center text-sm text-[color:var(--tx3)]">
-        Nothing installed yet. Pick a catalog entry and click "Install".
+      <div
+        className="px-2 py-8 text-center text-sm text-[color:var(--tx3)]"
+        data-testid="installed-scopes-empty"
+      >
+        {emptyMessage}
       </div>
     )
   }

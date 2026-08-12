@@ -1,4 +1,4 @@
-import type { McpCatalogAuthMethod, McpCatalogProtocol } from '@nessie/schemas'
+import type { McpCatalogAuthMethod } from '@nessie/schemas'
 
 /**
  * Pure validation module for {@link ./AddServerWizard.tsx}. Owns the per-step
@@ -9,7 +9,6 @@ import type { McpCatalogAuthMethod, McpCatalogProtocol } from '@nessie/schemas'
 
 export type StepErrors = {
   url?: string
-  command?: string
   name?: string
   label?: string
   headerName?: string
@@ -27,17 +26,16 @@ export const parseUrl = (raw: string): URL | null => {
   }
 }
 
-export const validateTransportStep = (
-  protocol: McpCatalogProtocol,
-  raw: { url: string; command: string },
-): StepErrors => {
+const isHttpScheme = (parsed: URL): boolean =>
+  parsed.protocol === 'http:' || parsed.protocol === 'https:'
+
+/**
+ * Both offerable transports (`http`, `sse`) are HTTP endpoints, so the step no
+ * longer branches on the protocol — the ws scheme branch left with the ws
+ * option, and stdio's command field with stdio (see ./connector-transports).
+ */
+export const validateTransportStep = (raw: { url: string }): StepErrors => {
   const errors: StepErrors = {}
-  if (protocol === 'stdio') {
-    if (!raw.command.trim()) {
-      errors.command = 'Command is required'
-    }
-    return errors
-  }
   const trimmed = raw.url.trim()
   if (!trimmed) {
     errors.url = 'URL is required'
@@ -48,15 +46,7 @@ export const validateTransportStep = (
     errors.url = 'Invalid URL'
     return errors
   }
-  if (protocol === 'ws' && parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-    errors.url = 'URL must use ws:// or wss:// scheme'
-    return errors
-  }
-  if (
-    (protocol === 'http' || protocol === 'sse')
-    && parsed.protocol !== 'http:'
-    && parsed.protocol !== 'https:'
-  ) {
+  if (!isHttpScheme(parsed)) {
     errors.url = 'URL must use http:// or https:// scheme'
   }
   return errors
@@ -71,9 +61,6 @@ export const validateIdentityStep = (raw: {
   if (!raw.label.trim()) errors.label = 'Label is required'
   return errors
 }
-
-const isHttpScheme = (parsed: URL): boolean =>
-  parsed.protocol === 'http:' || parsed.protocol === 'https:'
 
 export const validateAuthStep = (
   method: McpCatalogAuthMethod,
@@ -121,10 +108,8 @@ export const clearStepError = <K extends keyof StepErrors>(
 export type WizardStep = 'transport' | 'identity' | 'auth'
 
 export type WizardInputs = {
-  protocol: McpCatalogProtocol
   authMethod: McpCatalogAuthMethod
   url: string
-  command: string
   name: string
   label: string
   headerName: string
@@ -142,7 +127,7 @@ export type WizardInputs = {
 export const firstWizardStepError = (
   raw: WizardInputs,
 ): { step: WizardStep; errors: StepErrors } | null => {
-  const transport = validateTransportStep(raw.protocol, raw)
+  const transport = validateTransportStep(raw)
   if (Object.keys(transport).length > 0) return { step: 'transport', errors: transport }
   const identity = validateIdentityStep(raw)
   if (Object.keys(identity).length > 0) return { step: 'identity', errors: identity }

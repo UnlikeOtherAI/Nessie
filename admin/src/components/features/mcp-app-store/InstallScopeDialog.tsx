@@ -1,14 +1,15 @@
-import { useState, type FormEvent } from 'react'
+import { useCallback, useState, type FormEvent } from 'react'
 import type { McpServerScopeType } from '@nessie/schemas'
 import type { McpCatalogEntryRecord } from '../../../facades/mcp-catalog/hooks'
+import { InstallScopeTargetField } from './InstallScopeTargetField'
 
 /**
  * Scope picker shown after the admin clicks "Install" on a catalog entry.
  * Installs always pair a `(catalogEntryId, scopeType, scopeId)` tuple — per
- * plan D5/D6 — so the API rejects duplicates at the DB layer. The dialog is
- * intentionally schema-driven: organizationId is implicit and read from the
- * authenticated session by the API, so the user only provides the scope kind
- * and the scope target's UUID.
+ * plan D5/D6 — so the API rejects duplicates at the DB layer. The organization
+ * is implicit (the API reads it from the session); the user picks the scope kind
+ * and then names the target from their own projects/teams/channels through
+ * {@link ./InstallScopeTargetField}.
  */
 
 type InstallScopeDialogProps = {
@@ -21,7 +22,9 @@ type InstallScopeDialogProps = {
     transportConfig?: Record<string, unknown>
   }) => Promise<void>
   organizationId: string
+  organizationName: string
   currentUserId: string
+  currentUserLabel: string
   /** Superusers install at any scope; everyone else only at their own user scope. */
   canChooseScope: boolean
   pending?: boolean
@@ -57,7 +60,9 @@ export const InstallScopeDialog = ({
   onCancel,
   onConfirm,
   organizationId,
+  organizationName,
   currentUserId,
+  currentUserLabel,
   canChooseScope,
   pending = false,
 }: InstallScopeDialogProps) => {
@@ -68,6 +73,8 @@ export const InstallScopeDialog = ({
   const [scopeId, setScopeId] = useState(
     canChooseScope ? organizationId : currentUserId,
   )
+  // Stable identity: the target field reconciles its selection through this.
+  const onScopeIdChange = useCallback((next: string) => setScopeId(next), [])
   const initialEndpoint = transportUrlFrom(catalogEntry.defaultTransportConfig)
   const needsEndpoint = protocolNeedsEndpoint(catalogEntry.protocol)
   const [endpointUrl, setEndpointUrl] = useState(initialEndpoint)
@@ -78,7 +85,7 @@ export const InstallScopeDialog = ({
     event.preventDefault()
     setError(null)
     if (!scopeId.trim()) {
-      setError('Scope ID is required')
+      setError(`Choose which ${scopeType} to install into`)
       return
     }
     const trimmedEndpoint = endpointUrl.trim()
@@ -155,11 +162,15 @@ export const InstallScopeDialog = ({
               onChange={(event) => {
                 const next = event.target.value as McpServerScopeType
                 setScopeType(next)
-                if (next === 'organization') {
-                  setScopeId(organizationId)
-                } else if (next === 'user') {
-                  setScopeId(currentUserId)
-                }
+                // Clear anything carried over from the previous scope; the
+                // target field selects the first entry of the new scope's list.
+                setScopeId(
+                  next === 'organization'
+                    ? organizationId
+                    : next === 'user'
+                      ? currentUserId
+                      : '',
+                )
               }}
               value={scopeType}
             >
@@ -170,15 +181,15 @@ export const InstallScopeDialog = ({
               ))}
             </select>
           </label>
-          <label className={labelClass}>
-            Scope target ID (UUID)
-            <input
-              className={inputClass}
-              onChange={(event) => setScopeId(event.target.value)}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              value={scopeId}
-            />
-          </label>
+          <InstallScopeTargetField
+            currentUser={{ id: currentUserId, label: currentUserLabel }}
+            inputClass={inputClass}
+            labelClass={labelClass}
+            onChange={onScopeIdChange}
+            organization={{ id: organizationId, label: organizationName }}
+            scopeType={scopeType}
+            value={scopeId}
+          />
           {needsEndpoint ? (
             <label className={labelClass}>
               Endpoint URL
