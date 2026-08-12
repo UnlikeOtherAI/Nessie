@@ -123,7 +123,11 @@ export const finalizeCancelledRun = async (
     role: 'assistant',
     ...(reply ? { reply } : {}),
   })
-  await enqueueInteractiveReplyPush(deps, payload, context, message)
+  const replyPushMessage = {
+    content: message.content,
+    contentVisibility: message.basis.length > 0 ? 'generic' as const : 'full' as const,
+    id: message.id,
+  }
 
   await updateRunStatus(deps.prisma, context.run.id, 'cancelled')
   await updateTaskStatus(deps.prisma, context.task.id, 'cancelled')
@@ -174,6 +178,7 @@ export const finalizeCancelledRun = async (
     agentId: context.agent.id,
     threadId: context.run.threadId,
   })
+  await enqueueInteractiveReplyPush(deps, payload, context, replyPushMessage)
 }
 
 // The whole cancel outcome, from the loop's `cancelled` exit to a terminalized

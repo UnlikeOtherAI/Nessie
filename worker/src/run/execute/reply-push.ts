@@ -4,10 +4,11 @@ import type { ExecutionDependencies, RunContext } from './types.js'
 
 const replyRecipientUserId = (payload: RunExecuteJobPayload): string | null => {
   if (payload.interactive !== true) return null
-  if (payload.actorContext.actionContext.effectiveUserId) {
-    return payload.actorContext.actionContext.effectiveUserId
+  const actionContext = payload.actorContext?.actionContext
+  if (actionContext?.effectiveUserId) {
+    return actionContext.effectiveUserId
   }
-  return payload.actorContext.actor.actorType === 'user'
+  return payload.actorContext?.actor?.actorType === 'user'
     ? payload.actorContext.actor.actorId
     : null
 }
@@ -16,24 +17,32 @@ const replyRecipientUserId = (payload: RunExecuteJobPayload): string | null => {
  * Queue the completion of a live conversational turn for exactly the person
  * who asked it. This intentionally bypasses the normal "members minus author"
  * fan-out: an agent has no user author id, and the requester must not be
- * excluded. The dispatch worker still rechecks live membership, preferences,
- * exact foreground surface, and registered devices before sending.
+ * excluded. The run-scoped idempotency key means a terminalization retry never
+ * sends a second notification. The dispatch worker still rechecks live
+ * membership, preferences, exact foreground surface, registered devices, and
+ * (for a protected reply) disclosure entitlement before sending.
  */
 export const enqueueInteractiveReplyPush = async (
   deps: Pick<ExecutionDependencies, 'prisma'>,
   payload: RunExecuteJobPayload,
   context: RunContext,
-  message: { content: string; id: string },
+  message: {
+    content: string
+    id: string
+    /** Restricted replies never place their text in a notification. */
+    contentVisibility?: 'full' | 'generic'
+  },
 ): Promise<void> => {
   const recipientUserId = replyRecipientUserId(payload)
   if (!recipientUserId) return
 
   try {
     await enqueueQueueJob(deps.prisma, {
-      idempotencyKey: `push:${message.id}`,
+      idempotencyKey: `push:reply:${context.run.id}`,
       payload: {
         channelId: context.channel.id,
         contentSnippet: message.content.slice(0, 140),
+        ...(message.contentVisibility ? { contentVisibility: message.contentVisibility } : {}),
         mentionUserIds: [],
         messageId: message.id,
         organizationId: context.channel.organizationId,

@@ -60,7 +60,9 @@ export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPay
  * notify the person who started the interactive turn, rather than treating the
  * agent as a user author and accidentally excluding that person. Ids are plain
  * uuids (not branded) so the worker can use them directly against Prisma.
- * `contentSnippet` is the already-truncated notification body; `mentionUserIds`
+ * `contentSnippet` is the already-truncated notification body. A generic reply
+ * body intentionally replaces it at delivery time when the reply drew on
+ * restricted sources; live entitlement is rechecked then. `mentionUserIds`
  * carries the resolved @mention user ids — mentioned recipients get distinct
  * '<author> mentioned you in <channel>' framing while unmentioned members keep
  * standard framing.
@@ -74,11 +76,27 @@ export const PushDispatchJobPayloadSchema = z.object({
   threadId: z.string().uuid(),
   organizationId: z.string().uuid(),
   contentSnippet: z.string(),
+  /**
+   * A protected reply may say only that an answer is ready. The worker loads
+   * the message basis and rechecks the recipient's current entitlement before
+   * it sends even that generic notification.
+   */
+  contentVisibility: z.enum(['full', 'generic']).optional(),
   mentionUserIds: z.array(z.string().uuid()),
-}).refine(
-  (payload) => payload.authorUserId !== undefined || payload.recipientUserIds !== undefined,
-  { message: 'A push dispatch needs an author or explicit recipients.' },
-)
+}).superRefine((payload, context) => {
+  if (payload.authorUserId === undefined && payload.recipientUserIds === undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'A push dispatch needs an author or explicit recipients.',
+    })
+  }
+  if (payload.contentVisibility === 'generic' && payload.recipientUserIds === undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'A generic reply notification needs explicit recipients.',
+    })
+  }
+})
 export type PushDispatchJobPayload = z.infer<typeof PushDispatchJobPayloadSchema>
 
 /**

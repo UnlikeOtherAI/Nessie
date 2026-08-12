@@ -331,7 +331,11 @@ Install the development build on the device. Unlike Expo Go, the development bui
    whitespace-normalized, truncated message preview (at most 140 characters),
    coalesces bursts by channel, and includes the channel/message deep link.
    Muted channels and quiet-hours remain suppressed. Tokens from another
-   organization are never selected.
+   organization are never selected. For a live agent turn, leave that exact
+   channel before its terminal reply: the requester receives one completion
+   notification per run. A reply based on restricted sources is rechecked
+   against live membership and disclosure grants immediately before delivery
+   and uses only the generic body “An agent reply is ready.”
 
 For a production check, repeat step 3 with a TestFlight build. It must reach
 the production APNs host; a sandbox development token must not be sent there.

@@ -455,6 +455,33 @@ test('MCP transport error yields a failed card and marks the run failed', async 
   assert.ok(captured.agentStatus.includes('error'))
 })
 
+test('a post-message realtime failure repairs status without writing a duplicate fallback reply', async () => {
+  const { deps, payload, context, captured } = makeHarness()
+  const publishSse = deps.realtimeTransport.publishSse
+  deps.realtimeTransport.publishSse = async (threadId, event, data) => {
+    if (event === 'stream.done') {
+      throw new Error('realtime transport unavailable')
+    }
+    return publishSse(threadId, event, data)
+  }
+
+  await runExternalConversation(
+    deps,
+    payload,
+    context,
+    'hi',
+    optionsFor(async () => ({
+      success: true,
+      raw: {},
+      output: JSON.stringify({ reply: 'The one durable answer.' }),
+    })),
+  )
+
+  assert.equal(captured.messages.length, 1)
+  assert.equal(lastMessage(captured).content, 'The one durable answer.')
+  assert.ok(captured.runStatus.includes('failed'))
+})
+
 test('app-key auth failure is an admin repair, never a user reconnect prompt', async () => {
   const { deps, payload, context, captured } = makeHarness()
   const callChat: ExternalChatCaller = async () => {

@@ -60,6 +60,7 @@ type FakeState = {
   tokens: TokenRow[]
   secrets: SecretRow[]
   channel: { label: string } | null
+  message?: { agentId: string | null; basisScopes: { scopeId: string; scopeType: string }[] } | null
   deleted: string[]
   deliveries?: DeliveryRow[]
   surfaceViewers?: SurfaceViewer[]
@@ -74,12 +75,19 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     },
     channelMember: {
       findMany: async ({ where }: {
-        where: { userId: { in?: string[]; not?: string } }
-      }) => state.members.filter((member) =>
-        where.userId.in
-          ? where.userId.in.includes(member.userId)
-          : member.userId !== where.userId.not,
-      ),
+        where: { userId: string | { in?: string[]; not?: string } }
+      }) => {
+        if (typeof where.userId === 'string') {
+          return state.members
+            .filter((member) => member.userId === where.userId)
+            .map((member) => ({ channelId: 'channel-1', ...member }))
+        }
+        return state.members.filter((member) =>
+          where.userId.in
+            ? where.userId.in.includes(member.userId)
+            : member.userId !== where.userId.not,
+        )
+      },
     },
     deviceToken: {
       findMany: async ({
@@ -97,6 +105,14 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
     channel: {
       findUnique: async () => state.channel,
     },
+    message: {
+      findUnique: async () => state.message ?? null,
+    },
+    teamMember: { findMany: async () => [] },
+    projectMember: { findMany: async () => [] },
+    organizationMember: { findFirst: async () => ({ id: 'active-membership' }) },
+    disclosureGrant: { findMany: async () => [] },
+    scopeDisclosureGrant: { findMany: async () => [] },
     mcpOAuthSecret: {
       findUnique: async ({ where }: { where: { ref: string } }) =>
         state.secrets.find((s) => s.ref === where.ref) ?? null,
@@ -256,6 +272,64 @@ test('sends an interactive agent reply to its explicit requester', async () => {
   )
 
   assert.deepEqual(apnsCalls.map((target) => target.token), ['tok-asking'])
+})
+
+test('sends a generic protected reply only when its requester still has access', async () => {
+  const state: FakeState = {
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('asking-user')],
+    message: {
+      agentId: 'agent-1',
+      basisScopes: [{ scopeId: 'channel-1', scopeType: 'channel' }],
+    },
+    secrets: [apnsSecret()],
+    tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
+  }
+  const { senders, apnsCalls, apnsPayloads } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({
+      authorUserId: undefined,
+      contentSnippet: 'Restricted source text must not reach the lock screen.',
+      contentVisibility: 'generic',
+      mentionUserIds: [],
+      recipientUserIds: ['asking-user'],
+    }),
+  )
+
+  assert.deepEqual(apnsCalls.map((target) => target.token), ['tok-asking'])
+  assert.equal(apnsPayloads[0]?.body, 'An agent reply is ready.')
+})
+
+test('withholds a generic protected reply after its source access is revoked', async () => {
+  const state: FakeState = {
+    channel: { label: 'General' },
+    creds: [apnsCred()],
+    deleted: [],
+    members: [member('asking-user')],
+    message: {
+      agentId: 'agent-1',
+      basisScopes: [{ scopeId: 'project-that-was-revoked', scopeType: 'project' }],
+    },
+    secrets: [apnsSecret()],
+    tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
+  }
+  const { senders, apnsCalls } = recordingSenders()
+
+  await handlePushDispatch(
+    { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
+    payload({
+      authorUserId: undefined,
+      contentVisibility: 'generic',
+      mentionUserIds: [],
+      recipientUserIds: ['asking-user'],
+    }),
+  )
+
+  assert.deepEqual(apnsCalls, [])
 })
 
 test('excludes the author and notifies only active organization members', async () => {

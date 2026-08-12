@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { canUserReadDisclosureBasis, type BasisScopeRow } from '@nessie/runtime'
 import type { PushDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
@@ -27,7 +28,16 @@ export type { PushDispatchSummary, PushSenders } from './push-delivery-core.js'
 
 /** Minimal Prisma surface the dispatch handler touches — keeps tests light. */
 export type PushDispatchPrisma = PushDeliveryPrisma &
-  Pick<PrismaClient, 'channelMember' | 'channel' | 'user'>
+  Pick<PrismaClient,
+    | 'channelMember'
+    | 'channel'
+    | 'disclosureGrant'
+    | 'message'
+    | 'organizationMember'
+    | 'projectMember'
+    | 'scopeDisclosureGrant'
+    | 'teamMember'
+    | 'user'>
 
 export type PushDispatchDeps = {
   prisma: PushDispatchPrisma
@@ -46,6 +56,13 @@ export type PushDispatchDeps = {
   /** Retry backoff injection; tests pass zero to stay fast. */
   retryDelayMs?: (completedAttempt: number) => number
 }
+
+type GenericReplyMessage = {
+  agentId: string | null
+  basisScopes: BasisScopeRow[]
+}
+
+const genericReplyBody = 'An agent reply is ready.'
 
 export const handlePushDispatch = async (
   deps: PushDispatchDeps,
@@ -93,6 +110,40 @@ export const handlePushDispatch = async (
     where: { id: { in: unmutedRecipientIds } },
     select: { id: true, preferences: true },
   })
+  // A protected reply never contains content in a notification. Its requester
+  // receives a generic completion only if they still pass the exact same
+  // basis + grant predicate that gates the conversation feed at this moment.
+  // That makes membership and grant revocation effective before a queued push
+  // can reach a lock screen.
+  const protectedReply = payload.contentVisibility === 'generic'
+  const replyMessage: GenericReplyMessage | null = protectedReply
+    ? await deps.prisma.message.findUnique({
+      where: { id: payload.messageId },
+      select: {
+        agentId: true,
+        basisScopes: { select: { scopeId: true, scopeType: true } },
+      },
+    })
+    : null
+  if (protectedReply && !replyMessage) {
+    return summary
+  }
+  const entitledUsers = protectedReply && replyMessage
+    ? (await Promise.all(users.map(async (user) => ({
+      user,
+      readable: await canUserReadDisclosureBasis(deps.prisma, {
+        agentId: replyMessage.agentId,
+        basis: replyMessage.basisScopes,
+        channelId: payload.channelId,
+        messageId: payload.messageId,
+        organizationId: payload.organizationId,
+        userId: user.id,
+      }),
+    })))).filter((entry) => entry.readable).map((entry) => entry.user)
+    : users
+  if (entitledUsers.length === 0) {
+    return summary
+  }
   const now = deps.now?.() ?? new Date()
   // 3. Build the notification payloads (deep-link data + per-channel
   // coalescing). Mentioned recipients get distinct mention framing; the rest
@@ -105,19 +156,21 @@ export const handlePushDispatch = async (
     select: { label: true },
   })
   const channelLabel = channel?.label ?? 'New message'
-  const mentionUserIds = new Set(payload.mentionUserIds)
-  const mentionedRecipientIds = users
+  const mentionUserIds = new Set(protectedReply ? [] : payload.mentionUserIds)
+  const mentionedRecipientIds = entitledUsers
     .filter((user) => mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'mentions'))
     .map((user) => user.id)
-  const otherRecipientIds = users
+  const otherRecipientIds = entitledUsers
     .filter((user) => !mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
     .map((user) => user.id)
 
   const buildPayload = (title: string): PushPayload => ({
     title,
-    body: payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
+    body: protectedReply
+      ? genericReplyBody
+      : payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
     data: {
       channelId: payload.channelId,
       threadId: payload.threadId,

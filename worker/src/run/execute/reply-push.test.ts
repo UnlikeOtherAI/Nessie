@@ -37,6 +37,11 @@ const queuedPayload = (calls: unknown[]): Record<string, unknown> => {
   return JSON.parse(encoded) as Record<string, unknown>
 }
 
+const queuedIdempotencyKey = (call: unknown): string | undefined =>
+  ((call as { values?: unknown[] }).values ?? []).find(
+    (value): value is string => typeof value === 'string' && value.startsWith('push:reply:'),
+  )
+
 test('queues an interactive reply only for the requesting user', async () => {
   const calls: unknown[] = []
   const deps = {
@@ -76,6 +81,27 @@ test('uses the acting effective user for an interactive delegated turn', async (
   )
 
   assert.deepEqual(queuedPayload(calls).recipientUserIds, [effectiveUserId])
+})
+
+test('uses one idempotency key for every terminal message from the same run', async () => {
+  const calls: unknown[] = []
+  const deps = {
+    prisma: { $executeRaw: async (query: unknown) => {
+      calls.push(query)
+      return 1
+    } },
+  } as unknown as Pick<ExecutionDependencies, 'prisma'>
+
+  await enqueueInteractiveReplyPush(deps, payload({ interactive: true }), context, {
+    content: 'First terminal message.',
+    id: MESSAGE_ID,
+  })
+  await enqueueInteractiveReplyPush(deps, payload({ interactive: true }), context, {
+    content: 'Fallback terminal message.',
+    id: '00000000-0000-4000-8000-000000000006',
+  })
+
+  assert.deepEqual(calls.map(queuedIdempotencyKey), ['push:reply:run-1', 'push:reply:run-1'])
 })
 
 test('does not notify for background automation', async () => {

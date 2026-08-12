@@ -1,6 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
-import { viewerSatisfiesBasis, type DisclosureViewer } from '@nessie/runtime'
-import { resolveMessageViewer } from './disclosure-viewer.js'
+import {
+  resolveGrantedDisclosureScopeKeys,
+  resolveDisclosureViewer,
+  viewerSatisfiesBasis,
+  type DisclosureViewer,
+} from '@nessie/runtime'
 
 /**
  * Grants lift a restriction. Two kinds, both evaluated at read time:
@@ -19,95 +23,11 @@ import { resolveMessageViewer } from './disclosure-viewer.js'
  * a project cannot leave a standing disclosure behind them.
  */
 
-const liveGrantFilter = (now: Date) => ({
-  revokedAt: null,
-  OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-})
-
 /**
  * Scope keys (`type:id`) a viewer holds by grant rather than by membership, for
  * one message in one channel. Fed to `viewerSatisfiesBasis`.
  */
-export const resolveGrantedScopeKeys = async (
-  prisma: PrismaClient,
-  input: {
-    organizationId: string
-    messageId: string
-    channelId: string
-    agentId: string | null
-    viewerUserId: string | null
-    viewerChannelIds: readonly string[]
-    basis: readonly { scopeType: string; scopeId: string }[]
-  },
-): Promise<Set<string>> => {
-  const granted = new Set<string>()
-  if (input.basis.length === 0 || !input.viewerUserId) {
-    return granted
-  }
-  const now = new Date()
-
-  const [messageGrants, scopeGrants] = await Promise.all([
-    prisma.disclosureGrant.findMany({
-      where: {
-        messageId: input.messageId,
-        organizationId: input.organizationId,
-        ...liveGrantFilter(now),
-        OR: [
-          { audienceKind: 'user', audienceId: input.viewerUserId },
-          // A channel grant follows live membership, so someone who joins the
-          // channel later is covered without the grant being reissued.
-          { audienceKind: 'channel', audienceId: { in: [...input.viewerChannelIds] } },
-        ],
-      },
-      select: { id: true, grantedByUserId: true },
-    }),
-    input.agentId
-      ? prisma.scopeDisclosureGrant.findMany({
-        where: {
-          organizationId: input.organizationId,
-          destinationChannelId: input.channelId,
-          agentId: input.agentId,
-          ...liveGrantFilter(now),
-        },
-        select: { sourceScopeType: true, sourceScopeId: true, grantedByUserId: true },
-      })
-      : Promise.resolve([]),
-  ])
-
-  // A message grant lifts the whole basis for this viewer, but only while its
-  // granter still satisfies that basis themselves.
-  for (const grant of messageGrants) {
-    const granterViewer = await resolveMessageViewer(
-      prisma,
-      input.organizationId,
-      grant.grantedByUserId,
-    )
-    if (viewerSatisfiesBasis(input.basis, granterViewer)) {
-      for (const scope of input.basis) {
-        granted.add(`${scope.scopeType}:${scope.scopeId}`)
-      }
-    }
-  }
-
-  // A scope grant lifts exactly its own scope — never a neighbouring one.
-  for (const grant of scopeGrants) {
-    const granterViewer = await resolveMessageViewer(
-      prisma,
-      input.organizationId,
-      grant.grantedByUserId,
-    )
-    if (
-      viewerSatisfiesBasis(
-        [{ scopeId: grant.sourceScopeId, scopeType: grant.sourceScopeType }],
-        granterViewer,
-      )
-    ) {
-      granted.add(`${grant.sourceScopeType}:${grant.sourceScopeId}`)
-    }
-  }
-
-  return granted
-}
+export const resolveGrantedScopeKeys = resolveGrantedDisclosureScopeKeys
 
 /**
  * May this user grant this message's disclosure?
@@ -123,7 +43,7 @@ export const canGrantDisclosure = async (
   if (input.basis.length === 0) {
     return false
   }
-  const viewer: DisclosureViewer = await resolveMessageViewer(
+  const viewer: DisclosureViewer = await resolveDisclosureViewer(
     prisma,
     input.organizationId,
     input.userId,

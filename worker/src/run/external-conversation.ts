@@ -256,6 +256,7 @@ const finalizeTurn = async (
   payload: RunExecuteJobPayload,
   context: RunContext,
   outcome: ExternalTurnOutcome,
+  onMessageCreated?: () => void,
 ): Promise<void> => {
   const metadata: Record<string, unknown> = { uiCards: outcome.uiCards }
   if (outcome.external) {
@@ -271,6 +272,10 @@ const finalizeTurn = async (
       threadId: context.run.threadId,
     },
   })
+  // From this point onward an outer error handler must repair terminal state,
+  // not write a second fallback message. The run-scoped push idempotency key
+  // is a second guard against duplicate delivery during that repair.
+  onMessageCreated?.()
 
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
@@ -323,6 +328,11 @@ export const runExternalConversation = async (
 
   const secretResolver = options.secretResolver ?? deps.mcpSecrets?.resolver ?? defaultSecretResolver
   const callChat = options.callChat ?? defaultCallChat
+  let terminalMessageCreated = false
+  const finalize = (outcome: ExternalTurnOutcome): Promise<void> =>
+    finalizeTurn(deps, payload, context, outcome, () => {
+      terminalMessageCreated = true
+    })
 
   try {
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')
@@ -358,7 +368,7 @@ export const runExternalConversation = async (
       if (!resolution) {
         // Not actually an external-agent channel — end the run cleanly rather than
         // silently doing nothing (the branch should never be taken, but be safe).
-        await finalizeTurn(deps, payload, context, {
+        await finalize({
           content: 'This conversation is not connected to an external agent.',
           uiCards: [],
           runStatus: 'failed',
@@ -368,7 +378,7 @@ export const runExternalConversation = async (
       }
 
       if (resolution.kind === 'needs_setup') {
-        await finalizeTurn(deps, payload, context, {
+        await finalize({
           content: resolution.summary,
           uiCards: [needsSetupCard(resolution.slug, resolution.label, resolution.summary)],
           runStatus: 'completed',
@@ -385,13 +395,20 @@ export const runExternalConversation = async (
         prompt,
         callChat,
       )
-      await finalizeTurn(deps, payload, context, outcome)
+      await finalize(outcome)
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[worker] external conversation run ${context.run.id} failed`, message)
+    if (terminalMessageCreated) {
+      // `finalize` persisted the reply before a later realtime/status side
+      // effect failed. Do not turn that one reply into a second in-channel
+      // error; repair the durable terminal run state instead.
+      await updateRunStatus(deps.prisma, context.run.id, 'failed').catch(() => undefined)
+      return
+    }
     // Terminal failure without rethrow: no retry loop, no inference fallback.
-    await finalizeTurn(deps, payload, context, {
+    await finalize({
       content: 'I hit an unexpected error handling this request.',
       uiCards: [],
       runStatus: 'failed',

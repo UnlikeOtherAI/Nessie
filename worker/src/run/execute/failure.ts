@@ -39,6 +39,11 @@ export const handleRunExecutionFailure = async (
   let terminalContent =
     input.terminalMessage ?? userMessageForFailureReason(classifyError(input.error))
   let terminalCreatedAt = new Date().toISOString()
+  let replyPushMessage: {
+    content: string
+    contentVisibility: 'full' | 'generic'
+    id: string
+  } | null = null
 
   // Only tell somebody who is waiting.
   //
@@ -83,7 +88,11 @@ export const handleRunExecutionFailure = async (
       role: errorMessage.role,
       ...(reply ? { reply } : {}),
     })
-    await enqueueInteractiveReplyPush(deps, payload, context, errorMessage)
+    replyPushMessage = {
+      content: errorMessage.content,
+      contentVisibility: errorMessage.basis.length > 0 ? 'generic' : 'full',
+      id: errorMessage.id,
+    }
   } catch (streamError) {
     if (streamError instanceof SkipTerminalMessage) {
       console.warn(
@@ -173,4 +182,7 @@ export const handleRunExecutionFailure = async (
     agentId: context.agent.id,
     threadId: context.run.threadId,
   })
+  if (replyPushMessage) {
+    await enqueueInteractiveReplyPush(deps, payload, context, replyPushMessage)
+  }
 }

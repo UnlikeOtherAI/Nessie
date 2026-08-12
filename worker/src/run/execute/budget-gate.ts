@@ -45,7 +45,11 @@ export const terminalizeBudgetBlockedRun = async (
     role: blockMessage.role,
     ...(reply ? { reply } : {}),
   })
-  await enqueueInteractiveReplyPush(deps, payload, context, blockMessage)
+  const replyPushMessage = {
+    content: blockMessage.content,
+    contentVisibility: blockMessage.basis.length > 0 ? 'generic' as const : 'full' as const,
+    id: blockMessage.id,
+  }
   await updateRunStatus(deps.prisma, context.run.id, 'failed')
   await updateTaskStatus(deps.prisma, context.task.id, 'failed')
   await setAgentStatus(deps.prisma, context.agent.id, 'idle')
@@ -62,6 +66,7 @@ export const terminalizeBudgetBlockedRun = async (
     agentId: context.agent.id,
     threadId: context.run.threadId,
   })
+  await enqueueInteractiveReplyPush(deps, payload, context, replyPushMessage)
   console.warn(`[worker] run ${context.run.id} blocked by budget: ${reason}`)
 }
 

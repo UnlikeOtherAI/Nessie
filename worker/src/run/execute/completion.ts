@@ -65,6 +65,12 @@ export const completeRunExecution = async (
     await markRecallsReferenced(referencedRecallIds, deps.searchConfig.pool)
   }
 
+  let replyPushMessage: {
+    content: string
+    contentVisibility: 'full' | 'generic'
+    id: string
+  } | null = null
+
   if (input.reactionWasTheAnswer) {
     // Nothing to write: the reaction is on the message the run answered. Still
     // terminate the stream so the thinking bubble clears.
@@ -72,6 +78,14 @@ export const completeRunExecution = async (
       agentId: parseAgentId(context.agent.id),
       runId: parseRunId(context.run.id),
     })
+    // A model action can be a reaction-only answer. It still completed the
+    // request, so notify the requester without deriving any body from model
+    // prose or the message it reacted to.
+    replyPushMessage = {
+      content: 'An agent reacted to your message.',
+      contentVisibility: 'full',
+      id: payload.messageId,
+    }
   } else if (input.rollingWatch) {
     const fold = await foldWatchStatus(deps.prisma, {
       agentId: context.agent.id,
@@ -169,8 +183,10 @@ export const completeRunExecution = async (
     ...(reply ? { reply } : {}),
   })
 
-  if (!restricted) {
-    await enqueueInteractiveReplyPush(deps, payload, context, assistantMessage)
+  replyPushMessage = {
+    content: assistantMessage.content,
+    contentVisibility: restricted ? 'generic' : 'full',
+    id: assistantMessage.id,
   }
 
   // Agent-authored @mentions create the same durable alerts as human ones —
@@ -253,4 +269,7 @@ export const completeRunExecution = async (
     agentId: context.agent.id,
     threadId: context.run.threadId,
   })
+  if (replyPushMessage) {
+    await enqueueInteractiveReplyPush(deps, payload, context, replyPushMessage)
+  }
 }
