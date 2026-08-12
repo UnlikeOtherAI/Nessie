@@ -33,6 +33,8 @@ export interface FcmCredentials {
 /** The notification content to deliver, platform-agnostic. */
 export interface PushPayload {
   title: string
+  /** Optional platform-native secondary title (APNs subtitle). */
+  subtitle?: string
   body: string
   /** Optional badge count (source of truth is the caller). */
   badge?: number

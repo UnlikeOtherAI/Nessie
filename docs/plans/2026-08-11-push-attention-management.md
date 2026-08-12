@@ -53,7 +53,9 @@ surface that actually displays the conversation.
    extended together. The shared Knowledge workspace reports its selected space
    directly rather than treating every Docs tab as one destination. A visible
    session suppresses only that exact destination.
-5. Pushes contain only the necessary title/body and a deep link:
+5. Message pushes present the sender as the title and the destination as a
+   native subtitle (for example, **Smith** / **to General**), followed by the
+   message preview. Pushes contain only the necessary title/body and a deep link:
    `/projects/:projectId/board` for an assignment, or
    `/projects/:projectId/docs?spaceId=…&pageId=…` for a publication. They are
    coalesced by alert target and category.

@@ -78,7 +78,12 @@ export const parseServiceAccount = (json: string): ServiceAccount => {
 export const buildFcmBody = (token: string, payload: PushPayload): string => {
   const message: Record<string, unknown> = {
     token,
-    notification: { title: payload.title, body: payload.body },
+    // Android's FCM notification schema has no subtitle. Keep the same
+    // information visible in the title, with the sender above the destination.
+    notification: {
+      title: payload.subtitle ? `${payload.title}\n${payload.subtitle}` : payload.title,
+      body: payload.body,
+    },
   }
   if (payload.data !== undefined) message.data = payload.data
   const android: Record<string, unknown> = {}

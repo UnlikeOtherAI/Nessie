@@ -57,9 +57,11 @@ export type PushDispatchDeps = {
   retryDelayMs?: (completedAttempt: number) => number
 }
 
-type GenericReplyMessage = {
+type PushMessage = {
   agentId: string | null
+  agent: { name: string } | null
   basisScopes: BasisScopeRow[]
+  user: { displayName: string } | null
 }
 
 const genericReplyBody = 'An agent reply is ready.'
@@ -116,15 +118,18 @@ export const handlePushDispatch = async (
   // That makes membership and grant revocation effective before a queued push
   // can reach a lock screen.
   const protectedReply = payload.contentVisibility === 'generic'
-  const replyMessage: GenericReplyMessage | null = protectedReply
-    ? await deps.prisma.message.findUnique({
-      where: { id: payload.messageId },
-      select: {
-        agentId: true,
-        basisScopes: { select: { scopeId: true, scopeType: true } },
-      },
-    })
-    : null
+  // Resolve the durable author, not an enqueue-time label. Agent replies do
+  // not have a user author, while ordinary messages may have either source.
+  // This gives every platform the familiar sender + destination presentation.
+  const replyMessage: PushMessage | null = await deps.prisma.message.findUnique({
+    where: { id: payload.messageId },
+    select: {
+      agentId: true,
+      agent: { select: { name: true } },
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      user: { select: { displayName: true } },
+    },
+  })
   if (protectedReply && !replyMessage) {
     return summary
   }
@@ -146,16 +151,18 @@ export const handlePushDispatch = async (
   }
   const now = deps.now?.() ?? new Date()
   // 3. Build the notification payloads (deep-link data + per-channel
-  // coalescing). Mentioned recipients get distinct mention framing; the rest
-  // keep the standard channel-label title. Muted members were filtered out
-  // above for everyone — a muted channel suppresses even mention pushes, but
-  // the durable UserAlert row + bell badge are still created API-side, so a
-  // mention is never lost, just quiet.
+  // coalescing). Muted members were filtered out above for everyone — a muted
+  // channel suppresses even mention pushes, but the durable UserAlert row +
+  // bell badge are still created API-side, so a mention is never lost, just
+  // quiet.
   const channel = await deps.prisma.channel.findUnique({
     where: { id: payload.channelId },
     select: { label: true },
   })
-  const channelLabel = channel?.label ?? 'New message'
+  const senderName = replyMessage?.agent?.name
+    ?? replyMessage?.user?.displayName
+    ?? 'Someone'
+  const destination = channel?.label ? `to ${channel.label}` : undefined
   const mentionUserIds = new Set(protectedReply ? [] : payload.mentionUserIds)
   const mentionedRecipientIds = entitledUsers
     .filter((user) => mentionUserIds.has(user.id))
@@ -170,8 +177,9 @@ export const handlePushDispatch = async (
   // and a reply. Older queued jobs simply use their message as the root.
   const deepLinkUrl = buildChannelMessagePath(payload)
 
-  const buildPayload = (title: string): PushPayload => ({
-    title,
+  const buildPayload = (): PushPayload => ({
+    title: senderName,
+    ...(destination ? { subtitle: destination } : {}),
     body: protectedReply
       ? genericReplyBody
       : payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
@@ -189,7 +197,7 @@ export const handlePushDispatch = async (
 
   // 4. Deliver over native + Web Push through the shared core, once per
   // framing group.
-  const deliver = (title: string, ids: string[]) =>
+  const deliver = (ids: string[]) =>
     deliverToRecipients({
       prisma: deps.prisma,
       apnsCreds,
@@ -197,7 +205,7 @@ export const handlePushDispatch = async (
       ...(deps.webPush ? { webPush: deps.webPush } : {}),
       ...(deps.senders ? { senders: deps.senders } : {}),
       retryDelayMs,
-      payload: buildPayload(title),
+      payload: buildPayload(),
       recipientIds: ids,
       organizationId: payload.organizationId,
       deepLinkUrl,
@@ -212,24 +220,14 @@ export const handlePushDispatch = async (
     })
 
   if (otherRecipientIds.length > 0) {
-    const delivered = await deliver(channelLabel, otherRecipientIds)
+    const delivered = await deliver(otherRecipientIds)
     summary.sent += delivered.sent
     summary.failed += delivered.failed
     summary.pruned += delivered.pruned
   }
 
   if (mentionedRecipientIds.length > 0) {
-    const author = payload.authorUserId
-      ? await deps.prisma.user.findUnique({
-          where: { id: payload.authorUserId },
-          select: { displayName: true },
-        })
-      : null
-    const authorName = author?.displayName ?? 'Someone'
-    const mentionTitle = channel?.label
-      ? `${authorName} mentioned you in ${channel.label}`
-      : `${authorName} mentioned you`
-    const delivered = await deliver(mentionTitle, mentionedRecipientIds)
+    const delivered = await deliver(mentionedRecipientIds)
     summary.sent += delivered.sent
     summary.failed += delivered.failed
     summary.pruned += delivered.pruned

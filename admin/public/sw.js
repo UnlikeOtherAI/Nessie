@@ -27,7 +27,9 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     self.registration.showNotification(payload.title || 'Nessie', {
-      body: payload.body,
+      // The Web Notifications API has no subtitle, so preserve the destination
+      // as the first line of the body.
+      body: payload.subtitle ? `${payload.subtitle}\n${payload.body}` : payload.body,
       icon: '/icon-1024.png',
       badge: '/icon-1024.png',
       tag,

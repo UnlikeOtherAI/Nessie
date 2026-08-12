@@ -55,6 +55,13 @@ type SurfaceViewer = {
 const encrypt = (plaintext: string): Omit<SecretRow, 'ref'> =>
   encryptWithKey(deriveSecretKey(AUTH_SECRET), plaintext)
 
+type FakeMessage = {
+  agent: { name: string } | null
+  agentId: string | null
+  basisScopes: { scopeId: string; scopeType: string }[]
+  user: { displayName: string } | null
+}
+
 type FakeState = {
   creds: CredRow[]
   members: MemberRow[]
@@ -62,7 +69,7 @@ type FakeState = {
   tokens: TokenRow[]
   secrets: SecretRow[]
   channel: { label: string } | null
-  message?: { agentId: string | null; basisScopes: { scopeId: string; scopeType: string }[] } | null
+  message?: FakeMessage | null
   disclosureGrants?: { grantedByUserId: string }[]
   activeOrganizationMemberIds?: string[]
   deleted: string[]
@@ -110,7 +117,15 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
       findUnique: async () => state.channel,
     },
     message: {
-      findUnique: async () => state.message ?? null,
+      findUnique: async () => state.message ?? {
+        agent: null,
+        agentId: null,
+        basisScopes: [],
+        user: (() => {
+          const author = (state.users ?? []).find((entry) => entry.id === 'author-1')
+          return author ? { displayName: author.displayName ?? author.id } : null
+        })(),
+      },
     },
     teamMember: { findMany: async () => [] },
     projectMember: { findMany: async () => [] },
@@ -358,8 +373,10 @@ test('sends a generic protected reply only when its requester still has access',
     deleted: [],
     members: [member('asking-user')],
     message: {
+      agent: { name: 'Smith' },
       agentId: 'agent-1',
       basisScopes: [{ scopeId: 'channel-1', scopeType: 'channel' }],
+      user: null,
     },
     secrets: [apnsSecret()],
     tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
@@ -378,6 +395,8 @@ test('sends a generic protected reply only when its requester still has access',
   )
 
   assert.deepEqual(apnsCalls.map((target) => target.token), ['tok-asking'])
+  assert.equal(apnsPayloads[0]?.title, 'Smith')
+  assert.equal(apnsPayloads[0]?.subtitle, 'to General')
   assert.equal(apnsPayloads[0]?.body, 'An agent reply is ready.')
 })
 
@@ -388,8 +407,10 @@ test('withholds a generic protected reply after its source access is revoked', a
     deleted: [],
     members: [member('asking-user')],
     message: {
+      agent: { name: 'Smith' },
       agentId: 'agent-1',
       basisScopes: [{ scopeId: 'project-that-was-revoked', scopeType: 'project' }],
+      user: null,
     },
     secrets: [apnsSecret()],
     tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
@@ -418,8 +439,10 @@ test('withholds a generic protected reply when its grantor has been deactivated'
     disclosureGrants: [{ grantedByUserId: 'deactivated-grantor' }],
     members: [member('asking-user')],
     message: {
+      agent: { name: 'Smith' },
       agentId: 'agent-1',
       basisScopes: [{ scopeId: 'deactivated-grantor', scopeType: 'user' }],
+      user: null,
     },
     secrets: [apnsSecret()],
     tokens: [{ id: 'asking-token', userId: 'asking-user', token: 'tok-asking', platform: 'ios' }],
@@ -734,7 +757,7 @@ test('notifies users outside quiet hours', async () => {
   assert.deepEqual(apnsCalls.map((c) => c.token), ['tok-u2'])
 })
 
-test('mentioned recipients get mention framing; unmentioned keep channel framing', async () => {
+test('message recipients see the sender and destination, including mentions', async () => {
   const state: FakeState = {
     creds: [apnsCred()],
     members: [member('u2'), member('u3')],
@@ -762,9 +785,11 @@ test('mentioned recipients get mention framing; unmentioned keep channel framing
   const mentionedIdx = apnsCalls.findIndex((call) => call.token === 'tok-u2')
   const unmentionedIdx = apnsCalls.findIndex((call) => call.token === 'tok-u3')
   assert.ok(mentionedIdx >= 0 && unmentionedIdx >= 0)
-  assert.equal(apnsPayloads[mentionedIdx]?.title, 'Ada Author mentioned you in General')
-  assert.equal(apnsPayloads[unmentionedIdx]?.title, 'General')
-  // Both groups carry the same deep-link data and coalescing key.
+  assert.equal(apnsPayloads[mentionedIdx]?.title, 'Ada Author')
+  assert.equal(apnsPayloads[mentionedIdx]?.subtitle, 'to General')
+  assert.equal(apnsPayloads[unmentionedIdx]?.title, 'Ada Author')
+  assert.equal(apnsPayloads[unmentionedIdx]?.subtitle, 'to General')
+  // Both groups carry the same title, deep-link data, and coalescing key.
   assert.equal(apnsPayloads[mentionedIdx]?.collapseId, 'thread-1')
   assert.deepEqual(apnsPayloads[mentionedIdx]?.data, apnsPayloads[unmentionedIdx]?.data)
   assert.equal(
@@ -800,5 +825,6 @@ test('a muted member receives no push even when mentioned', async () => {
   // still created API-side (covered by the api alert tests).
   assert.equal(summary.sent, 1)
   assert.deepEqual(apnsCalls.map((call) => call.token), ['tok-u3'])
-  assert.equal(apnsPayloads[0]?.title, 'General')
+  assert.equal(apnsPayloads[0]?.title, 'Ada Author')
+  assert.equal(apnsPayloads[0]?.subtitle, 'to General')
 })

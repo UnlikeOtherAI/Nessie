@@ -63,9 +63,9 @@ export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPay
  * `contentSnippet` is the already-truncated notification body. A generic reply
  * body intentionally replaces it at delivery time when the reply drew on
  * restricted sources; live entitlement is rechecked then. `mentionUserIds`
- * carries the resolved @mention user ids — mentioned recipients get distinct
- * '<author> mentioned you in <channel>' framing while unmentioned members keep
- * standard framing.
+ * carries the resolved @mention user ids. All recipients see the durable
+ * sender as the title and the channel as the destination subtitle; the alert
+ * and preference paths retain the distinct mention semantics.
  */
 export const PushDispatchJobPayloadSchema = z.object({
   messageId: z.string().uuid(),
