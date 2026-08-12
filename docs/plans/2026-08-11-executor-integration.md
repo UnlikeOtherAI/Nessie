@@ -103,13 +103,16 @@ browser/coding slice must add guest COW transport and a forced-egress broker as
 one reviewed unit; it may not turn this validator into a host-browser fallback.
 Its only guest-control primitive is a fixed virtio socket on the individual VM:
 the guest initiates one connection and the host rejects a replacement while it
-is live. It is not a host network listener and carries no executable protocol
-or descriptor operation on its own.
-Its v1 future-broker framing is a 4-byte big-endian length with a 64 KiB frame
-and 32 KiB payload limit. Only the initial guest hello carries the fresh
-per-session 32-byte boot token; ordinary request/response/close frames cannot
-repeat it. This is only a bounded transport contract until the initrd builder,
-host hello verification, and typed browser/coding handlers ship together.
+is live. It is not a host network listener and carries no executable descriptor
+operation on its own. Its v1 host broker now verifies the guest's empty-payload
+hello against the fresh per-session 32-byte boot token before accepting any
+frame, parses only bounded 4-byte-length JSON frames (64 KiB frame/32 KiB
+payload), permits no guest-initiated request and only one matching host
+request/response at a time, and fails closed for malformed input, I/O, timeout,
+or response mismatch. It returns descriptor closure to the same VM socket
+owner, preventing a terminal file descriptor from being reused by another VM.
+This is still only a capability-free transport until the initrd builder and
+typed browser/coding handlers ship together.
 
 The companion now also contains the inactive foundation for that egress broker:
 an owner-only Unix-socket HTTPS CONNECT gateway whose local policy names exact,

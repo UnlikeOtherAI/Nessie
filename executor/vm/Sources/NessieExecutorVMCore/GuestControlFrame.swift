@@ -40,8 +40,16 @@ public enum GuestControlFrameError: Error, Equatable {
 
 private let sessionTokenCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
-private func validSessionToken(_ value: String) -> Bool {
-  value.count == 43 && value.unicodeScalars.allSatisfy(sessionTokenCharacters.contains)
+func isValidGuestControlBootstrapToken(_ value: String) -> Bool {
+  guard value.count == 43, value.unicodeScalars.allSatisfy(sessionTokenCharacters.contains) else {
+    return false
+  }
+  let base64 = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+  guard let decoded = Data(base64Encoded: base64 + "="), decoded.count == 32 else { return false }
+  return decoded.base64EncodedString()
+    .replacingOccurrences(of: "+", with: "-")
+    .replacingOccurrences(of: "/", with: "_")
+    .dropLast() == value
 }
 
 private func validate(_ envelope: GuestControlEnvelope) throws {
@@ -50,7 +58,7 @@ private func validate(_ envelope: GuestControlEnvelope) throws {
   }
   switch envelope.kind {
   case .hello:
-    guard envelope.payload.isEmpty, let token = envelope.sessionToken, validSessionToken(token) else {
+    guard envelope.payload.isEmpty, let token = envelope.sessionToken, isValidGuestControlBootstrapToken(token) else {
       throw GuestControlFrameError.invalidEnvelope
     }
   case .close, .request, .response:

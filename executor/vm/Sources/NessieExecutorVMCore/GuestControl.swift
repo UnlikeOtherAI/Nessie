@@ -1,3 +1,4 @@
+import Foundation
 import Virtualization
 
 /** A guest connects outward to this fixed port; the host never opens a guest socket. */
@@ -5,6 +6,7 @@ public let nessieGuestControlPort: UInt32 = 49_152
 
 public enum GuestControlError: Error {
   case unavailable
+  case invalidBootstrapToken
 }
 
 /**
@@ -12,20 +14,38 @@ public enum GuestControlError: Error {
  * installed only on that VM's virtio device, accepts one connection at the
  * fixed port, and has no host network listener or ability to reach another VM.
  *
- * The future guest broker owns framing/authentication over this connection. It
- * must call finishConnection after the bounded session ends; otherwise this
- * object deliberately rejects another connection instead of replacing a live
- * control channel.
+ * The listener owns framing authentication over this connection. Its expected
+ * one-use bootstrap token belongs to the VM session, not to an executor-wide
+ * daemon identity. It deliberately rejects another connection instead of
+ * replacing a live control channel.
  */
 @available(macOS 15.0, *)
 public final class GuestControlListener: NSObject, VZVirtioSocketListenerDelegate {
   private var activeConnection: VZVirtioSocketConnection?
+  private var activeSession: GuestControlSession?
+  private let expectedBootstrapToken: String
   private weak var socketDevice: VZVirtioSocketDevice?
   private let listener = VZVirtioSocketListener()
-  private let onConnection: (VZVirtioSocketConnection) -> Bool
+  private let onAuthenticated: () -> Void
+  private let onResponse: (GuestControlEnvelope) -> Void
+  private let onTerminated: (GuestControlSessionError) -> Void
+  private let requestTimeout: TimeInterval
 
-  public init(onConnection: @escaping (VZVirtioSocketConnection) -> Bool) {
-    self.onConnection = onConnection
+  public init(
+    expectedBootstrapToken: String,
+    requestTimeout: TimeInterval = 30,
+    onAuthenticated: @escaping () -> Void,
+    onResponse: @escaping (GuestControlEnvelope) -> Void,
+    onTerminated: @escaping (GuestControlSessionError) -> Void,
+  ) throws {
+    guard isValidGuestControlBootstrapToken(expectedBootstrapToken) else {
+      throw GuestControlError.invalidBootstrapToken
+    }
+    self.expectedBootstrapToken = expectedBootstrapToken
+    self.requestTimeout = requestTimeout
+    self.onAuthenticated = onAuthenticated
+    self.onResponse = onResponse
+    self.onTerminated = onTerminated
     super.init()
     listener.delegate = self
   }
@@ -40,8 +60,12 @@ public final class GuestControlListener: NSObject, VZVirtioSocketListenerDelegat
   }
 
   public func finishConnection() {
-    activeConnection?.close()
+    let session = activeSession
+    let connection = activeConnection
+    activeSession = nil
     activeConnection = nil
+    session?.stop()
+    connection?.close()
   }
 
   public func invalidate() {
@@ -50,14 +74,41 @@ public final class GuestControlListener: NSObject, VZVirtioSocketListenerDelegat
     finishConnection()
   }
 
+  @discardableResult
+  public func sendRequest(payload: Data, requestId: UUID = UUID()) throws -> UUID {
+    guard let activeSession else { throw GuestControlError.unavailable }
+    return try activeSession.sendRequest(payload: payload, requestId: requestId)
+  }
+
   public func listener(
     _ listener: VZVirtioSocketListener,
     shouldAcceptNewConnection connection: VZVirtioSocketConnection,
     from socketDevice: VZVirtioSocketDevice,
   ) -> Bool {
     guard socketDevice === self.socketDevice, activeConnection == nil else { return false }
-    guard connection.destinationPort == nessieGuestControlPort, onConnection(connection) else { return false }
-    activeConnection = connection
+    guard connection.destinationPort == nessieGuestControlPort else { return false }
+    let session: GuestControlSession
+    do {
+      session = try GuestControlSession(
+        fileDescriptor: connection.fileDescriptor,
+        expectedBootstrapToken: expectedBootstrapToken,
+        requestTimeout: requestTimeout,
+        onAuthenticated: onAuthenticated,
+        onResponse: onResponse,
+        onTerminated: { [weak self] reason in
+          self?.onTerminated(reason)
+          self?.finishConnection()
+        },
+      )
+      activeConnection = connection
+      activeSession = session
+      try session.start()
+    } catch {
+      activeSession = nil
+      activeConnection = nil
+      connection.close()
+      return false
+    }
     return true
   }
 }

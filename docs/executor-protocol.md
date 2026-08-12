@@ -364,17 +364,25 @@ unit; a browser or coding descriptor is forbidden until that unit is live.
 The macOS-native verification command is `swift test --package-path executor/vm`.
 The bootstrap also has a fixed, guest-initiated virtio-socket control port for
 that future broker. It is one connection on one VM's device, rejects replacement
-while live, and is neither a host TCP listener nor a route to another VM. It
-carries no executable framing or descriptor capability until the guest broker,
-run binding, COW transport, and egress route are delivered together.
-Its checked-in v1 transport codec is a 4-byte big-endian length plus at most a
-64 KiB JSON frame, with a 32 KiB payload ceiling. The guest's first and only
-token-bearing frame is an empty-payload `hello` containing a fresh 32-byte
-base64url boot token; request, response, and close frames cannot carry that
-token. The per-session initrd builder must provision the token only to the
-matching guest and the host must reject a missing/changed hello before it
-accepts operation framing. Frames themselves remain capability-free until their
-typed browser/coding schemas and run-bound handler exist.
+while live, and is neither a host TCP listener nor a route to another VM. Its
+checked-in `GuestControlSession` owns that connection's non-blocking file
+descriptor but never closes it itself: terminal state returns ownership to the
+matching `VZVirtioSocketConnection`, preventing descriptor reuse from crossing
+VMs. It carries no executable descriptor capability until the guest broker, run
+binding, COW transport, and egress route are delivered together.
+
+Its v1 transport codec is a 4-byte big-endian length plus at most a 64 KiB JSON
+frame, with a 32 KiB payload ceiling; streaming input holds only a partial frame
+plus one fixed read chunk. The guest's first and only token-bearing frame is an
+empty-payload `hello` containing a fresh 32-byte base64url boot token; request,
+response, and close frames cannot carry that token. The host verifies that exact
+hello in constant-time before any request, accepts no guest-initiated request,
+and permits only one host request awaiting a matching response. It closes the
+channel on malformed/unsolicited input, I/O failure, a 10-second handshake
+deadline, or a bounded request deadline (30 seconds by default, never over five
+minutes). The per-session initrd builder remains responsible for provisioning
+the token only to the matching guest. Frames themselves remain capability-free
+until typed browser/coding schemas and a run-bound handler exist.
 The helper carries the `com.apple.security.virtualization` and
 `com.apple.security.hypervisor` entitlements. `sh
 executor/vm/scripts/build-signed-vm-helper.sh` creates an ad-hoc local validator
