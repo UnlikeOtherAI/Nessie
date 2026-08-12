@@ -257,6 +257,17 @@ The remaining prerequisites are:
 - The `extra.eas.projectId` value in `mobile/app.json` filled by `eas init`.
 - The `owner` value in `mobile/app.json` replaced with the Expo account name.
 
+### Android FCM prerequisite
+
+Android uses the same in-house sender, but Firebase issues the raw FCM token.
+Before an Android production build can register or receive pushes for
+`com.km.nessie`, add the Firebase project's `google-services.json` to the
+mobile build configuration and upload the corresponding Firebase
+**service-account JSON** through **Settings → Push credentials**. The first is
+safe client build configuration; the second is the server credential used by
+Nessie to call FCM directly and must remain in the encrypted server-side secret
+store. Both files must belong to the same Firebase project and Android app ID.
+
 Use the global EAS CLI:
 
 ```sh

@@ -36,7 +36,7 @@ ALTER TABLE "user_push_surface_presence"
   ADD CONSTRAINT "user_push_surface_presence_knowledge_space_id_fkey"
   FOREIGN KEY ("knowledge_space_id") REFERENCES "knowledge_spaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER INDEX "user_push_surface_presence_organization_id_user_id_surface_kind"
+ALTER INDEX "user_push_surface_presence_organization_id_user_id_surface_kind_channel_id_last_seen_at_idx"
   RENAME TO "idx_push_presence_channel";
 
 CREATE INDEX "idx_push_presence_project"

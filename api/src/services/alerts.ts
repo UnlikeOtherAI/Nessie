@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { visibleUserAlertWhere } from '@nessie/db'
 
 import type { UserAlertRecord } from '../contracts.js'
 
@@ -45,72 +46,6 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   actorDisplayName: alert.actorUser?.displayName ?? alert.actorAgent?.name ?? null,
   readAt: alert.readAt ? alert.readAt.toISOString() : null,
   createdAt: alert.createdAt.toISOString(),
-})
-
-const TERMINAL_TASK_STATUSES = ['done', 'cancelled'] as const
-
-// A durable row is never itself proof of current authorization. The same
-// predicate backs list, count, summary, and reads so an old mention, task, or
-// document title disappears immediately after its entitlement/lifecycle does.
-export const visibleUserAlertWhere = (input: {
-  organizationId: string
-  userId: string
-}): Prisma.UserAlertWhereInput => ({
-  organizationId: input.organizationId,
-  userId: input.userId,
-  user: {
-    organizationMembers: {
-      some: { deactivatedAt: null, organizationId: input.organizationId },
-    },
-  },
-  OR: [
-    {
-      kind: 'mention',
-      channel: {
-        is: {
-          organizationId: input.organizationId,
-          members: { some: { userId: input.userId } },
-        },
-      },
-    },
-    {
-      kind: 'task_assigned',
-      task: {
-        is: {
-          archivedAt: null,
-          assigneeUserId: input.userId,
-          organizationId: input.organizationId,
-          status: { notIn: [...TERMINAL_TASK_STATUSES] },
-          project: { is: { members: { some: { userId: input.userId } } } },
-        },
-      },
-    },
-    {
-      kind: 'knowledge_published',
-      knowledgePage: {
-        is: {
-          deletedAt: null,
-          organizationId: input.organizationId,
-          status: 'published',
-          space: {
-            is: {
-              deletedAt: null,
-              organizationId: input.organizationId,
-              OR: [
-                { createdBy: input.userId },
-                { members: { some: { userId: input.userId } } },
-                { visibility: 'organization' },
-                {
-                  visibility: 'project',
-                  project: { members: { some: { userId: input.userId } } },
-                },
-              ],
-            },
-          },
-        },
-      },
-    },
-  ],
 })
 
 const unreadCount = (

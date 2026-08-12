@@ -13,6 +13,7 @@ export {
 } from './audit-chain.js'
 
 export { enqueueQueueJob, enqueueRunExecution } from './queue.js'
+export { visibleUserAlertWhere } from './user-alerts.js'
 
 export {
   claimThreadRunOrPend,

@@ -1,6 +1,6 @@
 # Push attention management
 
-**Status:** implementation verified in source; production APNs credential validation pending platform-super-admin access · **Date:** 2026-08-11
+**Status:** implementation verified in source; production APNs credential uploaded and accepted by Apple; Android FCM configuration pending Firebase project files · **Date:** 2026-08-12
 
 ## Goal
 
@@ -31,8 +31,10 @@ alert kinds are the source for the Projects and Knowledge counts.
    so this holds for both direct publication and approval-effect publication.
 2. Every assignment/publication produces a new immutable alert generation. The
    generation is unique at the durable layer, so retries do not duplicate a
-   count, while assign-away/assign-back and unpublish/republish correctly create
-   a fresh unread event rather than reviving an already-read row.
+   count. A fresh event for the same task or knowledge page retires its older
+   unread generation before creating the replacement, while assign-away/
+   assign-back and unpublish/republish correctly create a fresh unread event
+   rather than reviving an already-read row.
 3. The delivery worker rechecks the recipient's current entitlement and
    preference, uses the existing encrypted APNs/FCM credentials and delivery
    audit, and never sends to an inactive member or token. Attention pushes
@@ -138,8 +140,8 @@ server state into web and native presentation.
   updates, OS-notification dismissal, and iPhone/iPad/Android tab badges.
 - Visual verification: Playwright at `/settings/notifications` and a project
   Board/Docs view.
-- Operator verification: upload the supplied Apple `.p8` through the
-  super-admin Push Credentials surface, then use its APNs test action against
-  a registered iPhone/iPad token. This remains blocked until the production
-  account is granted platform-super-admin authority (an existing platform
-  super-admin must grant it or sign in and perform the upload).
+- Operator verification: the supplied Apple `.p8` was uploaded through the
+  super-admin Push Credentials surface as an APNs **production** credential for
+  `com.km.nessie`, and its test action was accepted by Apple against a
+  registered iPhone/iPad token. Android end-to-end verification still requires
+  the Firebase Android client configuration and FCM service-account credential.

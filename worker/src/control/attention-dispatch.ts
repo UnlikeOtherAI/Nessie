@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { visibleUserAlertWhere } from '@nessie/db'
 import { canReadSpace } from '@nessie/knowledge'
 import { type AttentionDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
@@ -142,8 +143,21 @@ export const handleAttentionDispatch = async (
 
   const { apnsCreds, fcmCreds } = await loadPushCredentials(deps)
   if (!apnsCreds && !fcmCreds && !deps.webPush) return summary
+  // This is the current visible project/knowledge attention subtotal. The
+  // native shell folds it into the channel unread total on its next sync; do
+  // not include mention-alert rows here because those are already represented
+  // by the channel counter. Most importantly, reuse the same entitlement and
+  // lifecycle predicate as the API so revoked/superseded rows never inflate a
+  // device badge.
   const unreadAttentionCount = await deps.prisma.userAlert.count({
-    where: { organizationId: resolved.alert.organizationId, userId: resolved.alert.userId, readAt: null },
+    where: {
+      ...visibleUserAlertWhere({
+        organizationId: resolved.alert.organizationId,
+        userId: resolved.alert.userId,
+      }),
+      kind: { in: ['task_assigned', 'knowledge_published'] },
+      readAt: null,
+    },
   })
   const notification: PushPayload = {
     badge: unreadAttentionCount,
