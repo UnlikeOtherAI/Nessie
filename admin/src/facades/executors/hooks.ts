@@ -7,6 +7,7 @@ import {
   ExecutorCreateResponseSchema,
   ExecutorRecordResponseSchema,
   ExecutorRunLaunchResponseSchema,
+  ExecutorWorkspaceReviewRecordResponseSchema,
   PendingExecutorEnrollmentResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
   type ExecutorOperationKey,
@@ -36,6 +37,17 @@ export const useExecutorAccess = (executorId?: string) => {
     queryKey: executorId ? [...executorKey(executorId), 'access'] : [...executorKeyPrefix, 'none', 'access'],
     queryFn: async () => ExecutorAccessViewResponseSchema.parse(
       await apiClient.get(`/api/executors/${executorId}/access`),
+    ),
+    enabled: Boolean(executorId),
+  })
+}
+
+export const useExecutorWorkspaceReviews = (executorId?: string) => {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: executorId ? [...executorKey(executorId), 'workspace-reviews'] : [...executorKeyPrefix, 'none', 'workspace-reviews'],
+    queryFn: async () => ExecutorWorkspaceReviewRecordResponseSchema.array().parse(
+      await apiClient.get(`/api/executors/${executorId}/workspace-reviews`),
     ),
     enabled: Boolean(executorId),
   })

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type {
   ExecutorAccessViewResponse,
   ExecutorRecordResponse,
+  ExecutorWorkspaceReviewRecordResponse,
   PreparedExecutorAccessChangeResponse,
 } from '@nessie/schemas'
 import type { AgentRecord, UserRecord } from '../../../lib/api-client'
@@ -14,6 +15,7 @@ type ExecutorDetailPanelsProps = {
   agents: AgentRecord[]
   executor: ExecutorRecordResponse
   onPrepared: (prepared: PreparedExecutorAccessChangeResponse) => void
+  reviews: ExecutorWorkspaceReviewRecordResponse[]
   users: UserRecord[]
 }
 
@@ -43,6 +45,7 @@ export const ExecutorDetailPanels = ({
   agents,
   executor,
   onPrepared,
+  reviews,
   users,
 }: ExecutorDetailPanelsProps) => {
   const [tab, setTab] = useState<ExecutorTab>('overview')
@@ -93,6 +96,24 @@ export const ExecutorDetailPanels = ({
           <p><span className="font-medium text-[color:var(--tx)]">Data boundary:</span> paired executors run only the reviewed local policy. They do not expose host credentials, a host shell, or raw session output to Nessie.</p>
           <p><span className="font-medium text-[color:var(--tx)]">Last seen:</span> {executor.lastSeenAt ?? 'Never'}</p>
           {executor.statusDetail ? <p className="text-xs text-[color:var(--tx3)]">{executor.statusDetail}</p> : null}
+          {reviews.length > 0 ? (
+            <div className="grid gap-2 border-t border-[color:var(--sep)] pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--tx3)]">Recent draft reviews</p>
+              {reviews.slice(0, 3).map((review) => (
+                <div className="rounded border border-[color:var(--sep)] p-2 text-xs" key={review.commandId}>
+                  <p className="font-medium text-[color:var(--tx)]">{review.changes.length} change{review.changes.length === 1 ? '' : 's'} · {review.acknowledgedAt}</p>
+                  <p className="mt-1 break-all text-[color:var(--tx3)]">{review.manifestDigest}</p>
+                  <ul className="mt-1 grid gap-0.5 text-[color:var(--tx2)]">
+                    {review.changes.map((change) => (
+                      <li key={change.path}>
+                        {change.kind} · {change.path} · {change.byteCount} bytes
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {tab === 'access' ? (

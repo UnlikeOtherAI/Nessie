@@ -94,3 +94,4 @@ export {
   type ExecutorAccessChange,
   type PreparedExecutorAccessChange,
 } from './executor-access-changes.js'
+export { listExecutorWorkspaceReviews } from './executor-workspace-reviews.js'

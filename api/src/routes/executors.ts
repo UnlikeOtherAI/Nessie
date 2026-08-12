@@ -10,6 +10,7 @@ import {
   getExecutorAccessChangeForUser,
   getExecutorAccessView,
   getExecutorForUser,
+  listExecutorWorkspaceReviews,
   getPendingExecutorEnrollment,
   listVisibleExecutors,
   prepareExecutorAccessChange,
@@ -50,6 +51,7 @@ import {
   ExecutorRunBindSchema,
   ExecutorRunLaunchBodySchema,
   ExecutorRunLaunchSchema,
+  ExecutorWorkspaceReviewRecordSchema,
   PendingExecutorEnrollmentSchema,
   PrepareExecutorAccessChangeBodySchema,
   PreparedExecutorAccessChangeSchema,
@@ -294,6 +296,24 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       return reply
     }
     return createApiResponse(ExecutorAccessViewSchema.parse(access))
+  })
+
+  app.get('/api/executors/:executorId/workspace-reviews', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const { executorId } = request.params as { executorId: string }
+    try {
+      const reviews = await listExecutorWorkspaceReviews(
+        prisma,
+        deps.authSecret,
+        actorContext,
+        executorId,
+      )
+      return createApiResponse(ExecutorWorkspaceReviewRecordSchema.array().parse(reviews))
+    } catch (error) {
+      if (sendExecutorError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.get('/api/executors/:executorId/pairing-pending', async (request, reply) => {

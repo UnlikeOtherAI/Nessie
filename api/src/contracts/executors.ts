@@ -23,6 +23,7 @@ import {
   ExecutorRunLaunchRequestSchema,
   ExecutorRunLaunchResponseSchema,
   ExecutorScopeSchema,
+  ExecutorWorkspaceReviewRecordResponseSchema,
   PendingExecutorEnrollmentResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
 } from '@nessie/schemas'
@@ -142,6 +143,9 @@ export type PreparedExecutorAccessChange = z.infer<
 
 export const ExecutorAccessViewSchema = ExecutorAccessViewResponseSchema
 export type ExecutorAccessView = z.infer<typeof ExecutorAccessViewSchema>
+
+export const ExecutorWorkspaceReviewRecordSchema = ExecutorWorkspaceReviewRecordResponseSchema
+export type ExecutorWorkspaceReviewRecord = z.infer<typeof ExecutorWorkspaceReviewRecordSchema>
 
 export const ReviewExecutorDescriptorBodySchema = z.object({
   revision: z.number().int().positive(),

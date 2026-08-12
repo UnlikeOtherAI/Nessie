@@ -12,6 +12,7 @@ import {
   useConfirmExecutorEnrollment,
   useExecutorAccess,
   useExecutorAccessChange,
+  useExecutorWorkspaceReviews,
   useExecutors,
   usePendingExecutorEnrollment,
   useRejectExecutorAccessChange,
@@ -53,6 +54,7 @@ export const ExecutorsPage = () => {
   const selectedId = searchParams.get('executorId') ?? created?.executor.id ?? executors[0]?.id
   const selected = executors.find((executor) => executor.id === selectedId) ?? created?.executor
   const accessQuery = useExecutorAccess(selected?.id)
+  const reviewsQuery = useExecutorWorkspaceReviews(selected?.id)
   const changeId = searchParams.get('accessChange') ?? undefined
   const changeQuery = useExecutorAccessChange(changeId)
   const pendingPairing = usePendingExecutorEnrollment(selected?.id)
@@ -206,7 +208,7 @@ export const ExecutorsPage = () => {
               {executors.map((executor) => <button className={['rounded-md p-2 text-left text-xs', executor.id === selected?.id ? 'bg-[color:var(--accent-soft)]' : 'hover:bg-[color:var(--overlay-weak)]'].join(' ')} key={executor.id} onClick={() => setSelection(executor.id)} type="button"><span className="block truncate font-semibold text-[color:var(--tx)]">{executor.label}</span><span className={statusClass(executor.status)}>{executor.status}</span><span className="ml-2 text-[color:var(--tx3)]">{executor.scope.kind}</span></button>)}
             </div>
           </aside>
-          {selected ? <ExecutorDetailPanels access={accessQuery.data} agents={agentsQuery.data ?? []} executor={selected} onPrepared={openReview} users={usersQuery.data ?? []} /> : <section className="admin-card flex items-center justify-center p-6 text-sm text-[color:var(--tx3)]">Select an executor to inspect its boundary and effective access.</section>}
+          {selected ? <ExecutorDetailPanels access={accessQuery.data} agents={agentsQuery.data ?? []} executor={selected} onPrepared={openReview} reviews={reviewsQuery.data ?? []} users={usersQuery.data ?? []} /> : <section className="admin-card flex items-center justify-center p-6 text-sm text-[color:var(--tx3)]">Select an executor to inspect its boundary and effective access.</section>}
         </div>
 
         {selected?.status === 'pending_pairing' ? (

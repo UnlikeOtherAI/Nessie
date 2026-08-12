@@ -13,6 +13,7 @@ import {
   ExecutorRunLaunchRequestSchema,
   ExecutorRunLaunchResponseSchema,
   ExecutorScopeSchema,
+  ExecutorWorkspaceReviewRecordResponseSchema,
 } from '../executor.js'
 
 const ids = {
@@ -240,4 +241,21 @@ test('access confirmation requires an opaque change and confirmation token', () 
     }).success,
     false,
   )
+})
+
+test('workspace review records allow only bounded, content-free changes', () => {
+  assert.equal(ExecutorWorkspaceReviewRecordResponseSchema.safeParse({
+    acknowledgedAt: '2026-08-12T12:00:00.000Z',
+    changes: [{ byteCount: 4, kind: 'created', path: 'draft.txt' }],
+    commandId: '00000000-0000-4000-8000-000000000001',
+    manifestDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    runId: '00000000-0000-4000-8000-000000000002',
+  }).success, true)
+  assert.equal(ExecutorWorkspaceReviewRecordResponseSchema.safeParse({
+    acknowledgedAt: '2026-08-12T12:00:00.000Z',
+    changes: [{ byteCount: 4, content: 'raw draft', kind: 'created', path: 'draft.txt' }],
+    commandId: '00000000-0000-4000-8000-000000000001',
+    manifestDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    runId: '00000000-0000-4000-8000-000000000002',
+  }).success, false)
 })

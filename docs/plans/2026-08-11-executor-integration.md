@@ -81,6 +81,16 @@ a bounded ready/rejected result. It does not have an apply mode and has no
 worker schema, descriptor operation, or user-facing promotion action. That
 means a missing approval, journal, recovery implementation, or native helper
 cannot fall back to a Node path-based write.
+
+Executor managers can now inspect the latest bounded COW review receipts on the
+executor's Overview tab. That surface decrypts only the server-held result for
+the exact `workspace.review` command and renders its manifest digest plus the
+relative path, change kind, and byte count—never draft contents or a host path.
+It is deliberately manager-only: a management screen must not become a way for
+an organization/project member to browse another person's executor run data.
+The originating user still receives the review through the task that invoked
+it. Reviewing a receipt cannot approve or promote it; promotion remains
+unavailable until its complete approval/apply/recovery delivery unit exists.
 Neither does it expose the planned availability union with connectors.
 
 The availability endpoint deliberately creates a five-minute, one-use opaque

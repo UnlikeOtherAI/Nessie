@@ -584,6 +584,25 @@ export type ExecutorAccessViewResponse = z.infer<
   typeof ExecutorAccessViewResponseSchema
 >
 
+/** A content-free, human-reviewable COW change summary. */
+export const ExecutorWorkspaceReviewChangeSchema = z.object({
+  byteCount: z.number().int().nonnegative(),
+  kind: z.enum(['created', 'modified', 'deleted']),
+  path: z.string().min(1).max(1_024),
+}).strict()
+export type ExecutorWorkspaceReviewChange = z.infer<typeof ExecutorWorkspaceReviewChangeSchema>
+
+export const ExecutorWorkspaceReviewRecordResponseSchema = z.object({
+  acknowledgedAt: TimestampSchema,
+  changes: z.array(ExecutorWorkspaceReviewChangeSchema).max(100),
+  commandId: ExecutorCommandIdSchema,
+  manifestDigest: Sha256DigestSchema,
+  runId: RunIdSchema,
+}).strict()
+export type ExecutorWorkspaceReviewRecordResponse = z.infer<
+  typeof ExecutorWorkspaceReviewRecordResponseSchema
+>
+
 export const ExecutorAccessChangeResponseSchema = z.object({
   accessChangeId: ExecutorAccessChangeIdSchema,
   executorId: ExecutorIdSchema,
