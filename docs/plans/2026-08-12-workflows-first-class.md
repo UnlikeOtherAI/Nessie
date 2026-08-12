@@ -443,11 +443,6 @@ living inside execution data.
    resolution state, and an explicit entitlement-checked replay action. Poison
    caps: a hard ceiling per step (5) and per run (25 total attempts) so a
    mis-configured retry block cannot spin.
-8a. **Compensation is explicitly out of scope for Stage 2.** `onError: { goto }`
-   can approximate a cleanup step, but the plan does not record compensation
-   intent or status, prevent double compensation, or relate a compensating action
-   to the original side effect. Saying so plainly is the point: error routing is
-   not rollback, and governed side effects must not be sold as transactional.
 7. **Partial resume from the failed step.**
    `POST /api/workflow-runs/:id/resume` flips the failed step — and only it —
    back to `pending` and re-enqueues execute. Completed steps stay completed and
@@ -468,6 +463,12 @@ living inside execution data.
    Keep full `retry` for the "inputs were wrong" case; the run card offers both.
    Changed inputs or a changed definition **fork a new run**; an unchanged retry
    keeps the original logical key and version.
+
+8. **Compensation is explicitly out of scope for Stage 2.** `onError: { goto }`
+   can approximate a cleanup step, but the plan does not record compensation
+   intent or status, prevent double compensation, or relate a compensating action
+   to the original side effect. Saying so plainly is the point: error routing is
+   not rollback, and governed side effects must not be sold as transactional.
 
 ### 4.2a Immutable published versions (was S3.1 — moved earlier, and blocking)
 
@@ -640,6 +641,12 @@ upstream steps with `{{steps.<id>.output}}` hints.
 4. **Save-time compilation** in `validateWorkflowGraphSteps`: compile every
    `expression`, `jmespath:` and `when:` string; parse errors become validation
    issues. Combined with W9's reference checking, a typo is a save error.
+   **One grammar, defined once, shared by both readers.** `{{…}}` bindings and
+   `jmespath:` expressions coexist in the same field, so W9's binding parser and
+   this compiler must consume a single exported grammar definition — not two
+   implementations that happen to agree. Two hand-maintained parsers of the same
+   syntax is precisely the disease W12 cures for tool lists, and it would fail the
+   same way: silently, and only at runtime.
 
 **Agent authoring: the identical artifact.** PA `workflow_create`/`workflow_update`
 tools accept the same graph JSON and get the same validation errors back as tool
@@ -675,7 +682,10 @@ ceiling are **Stage 2**.
   **Enforced at every entrypoint** — scheduled, manual (W20), webhook, event, and
   `invoke_workflow` — not only in `queueWorkflowTriggerRun`, or the policy is
   trivially bypassed by the surfaces this plan is adding. And per §4.3, a run
-  waiting on a human or a timer **releases its slot**.
+  waiting on a human or a timer **releases its slot per §4.3's
+  `releaseSlotWhileWaiting` configuration** — which defaults to *off* where the
+  installation writes state, because releasing there would re-open the very
+  interleaving hole `onOverlap: 'skip'` closes. Not unconditional policy.
 - **Catch-up after downtime is two accidents, not a policy.** Cron computes the
   next fire from the *missed* slot, so an outage of N slots replays N fires
   uncapped; interval uses `max(from, now)` and silently drops them. Add per-trigger
@@ -732,7 +742,7 @@ the decision here either way.
 
 **S4.1 · The template/installation collapse decision.** Revisit with usage data
 from Stages 1–3. Two of three reviewers argued the indirection buys nothing today;
-the third argued for keeping it. Deferred this long because W4 and S3.1 remove the
+the third argued for keeping it. Deferred this long because W4 and §4.2a remove the
 correctness argument for rushing it, and collapsing is expensive to reverse if a
 shared template library is ever wanted.
 
@@ -740,7 +750,7 @@ shared template library is ever wanted.
 parameterise concrete values into typed bindings, classify deterministic vs
 agent-owned steps, and re-run schema and policy checks. §7 calls this "a PA prompt
 over the same tools", which understates it — the PA needs a trustworthy trace and
-a defined validation pass. Not before S3.1 gives it a version to write into.
+a defined validation pass. Not before §4.2a gives it a version to write into.
 
 **S4.3 · (moved to Stage 2.)** The three seeded playbooks — changed-page alert,
 weekly project-risk review, webhook → approval → governed action — ship with
@@ -926,7 +936,7 @@ be closed or explicitly waived before this plan is considered delivered.
 | D1 | `delegate` advertised, save-valid, always fails at runtime | W5 |
 | D2 | Cancelled runs resurrected by orphaned children (unguarded terminal writes) | W1, W2 — W2 must also cancel `environment_launch` and in-flight connector/tool work, not only the child agent flag |
 | D3 | Designer silently linearizes drawn branches; disconnected nodes still execute | W11 (v1: require exactly one connected chain — reject merges, multiple *incoming* edges, and disconnected components, not just multiple outgoing), §4.1 (v2: bypassed steps atomically `skipped`) |
-| D4 | Version pinning decorative; template edits mutate installed **and in-flight** runs | W4 for the live defect; **S3.1** for the versioning contract. W4 alone does not close immutable publish history |
+| D4 | Version pinning decorative; template edits mutate installed **and in-flight** runs | W4 for the live defect; **§4.2a** for the versioning contract. W4 alone does not close immutable publish history |
 | D5 | No overlap control; `state_put` blind upsert loses updates | W18 (full CAS contract), W26 (`onOverlap` default `skip`, all entrypoints) |
 | D6 | Cron catch-up uncapped replay; interval silently skips | §6 Stage 2, with per-trigger `maxCatchUpRuns` |
 | D7 | No budget gate anywhere | §4.4 — incl. run-limit snapshot, connector charges, consumed/remaining display |
@@ -960,7 +970,7 @@ be closed or explicitly waived before this plan is considered delivered.
 | C1 | No `message_send` — deterministic layer cannot deliver its own output | W15 |
 | C2 | No condition — watcher pays for an agent on every sweep | W16 |
 | C3 | No `transform`/mapper — cannot reshape between steps | W17, §5 |
-| C4 | No `invoke_workflow` — the founding design decision, unbuilt | §4.3 + **S3.1** (published version to call), W25 (origin thread to reply into), typed input/output validation, and a `get_workflow_run` contract |
+| C4 | No `invoke_workflow` — the founding design decision, unbuilt | §4.3 + **§4.2a** (published version to call), W25 (origin thread to reply into), typed input/output validation, and a `get_workflow_run` contract |
 | C5 | No approval step (operator `blocked` toggle is not an approval) | §4.3 — durable single-use wait, entitlement re-checked at resolution, eligible approvers, expiry branch, mandatory audit |
 | C6 | No human-input step | §4.3 — schema-validated reply payload |
 | C7 | No MCP connector step | **S3.3**, gated on S3.2 (per-installation allow-list) and W0 |
@@ -986,7 +996,7 @@ be closed or explicitly waived before this plan is considered delivered.
 reviewers argued the indirection buys nothing today — no marketplace, no cross-org
 sharing, `resolvedBindings` largely unused. The third argued for keeping it with
 immutable `WorkflowVersion` rows and, on audit, conceded the deferral. Deferred
-because W4 and S3.1 remove the correctness argument for rushing it, and collapsing
+because W4 and §4.2a remove the correctness argument for rushing it, and collapsing
 is expensive to reverse if a shared template library is ever wanted.
 
 **S3.5 · Bounded `map`.** Deferred with a named decision point, not refused.
