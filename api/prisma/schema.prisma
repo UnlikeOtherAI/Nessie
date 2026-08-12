@@ -2855,6 +2855,7 @@ model Executor {
   status                      ExecutorStatus                 @default(pending_pairing)
   authorizationRevision       Int                            @default(1) @map("authorization_revision")
   activeConnectionEpoch       BigInt                         @default(0) @map("active_connection_epoch")
+  nextBindingFence            BigInt                         @default(0) @map("next_binding_fence")
   lastSeenAt                  DateTime?                      @map("last_seen_at")
   statusDetail                String?                        @map("status_detail")
   createdAt                   DateTime                       @default(now()) @map("created_at")

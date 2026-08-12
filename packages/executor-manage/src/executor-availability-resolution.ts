@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import {
@@ -10,13 +10,14 @@ import {
 } from '@nessie/schemas'
 
 import { requireHumanActor } from './executor-access.js'
+import { executorCandidateHandleDigest } from './executor-candidate-handle.js'
 import {
   resolveExecutorAvailability,
   type ExecutorAvailabilityDecision,
-  type ScopeAvailability,
 } from './availability.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import { ensureExecutorLogicalTools } from './executor-logical-tools.js'
+import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
 
 const CANDIDATE_TTL_MS = 5 * 60 * 1_000
 
@@ -32,9 +33,6 @@ type AvailabilityRequest = {
   projectId?: string
   runId?: string
 }
-
-const digest = (value: string): string =>
-  `sha256:${createHash('sha256').update(value).digest('hex')}`
 
 const booleanRecord = (value: unknown): Record<string, boolean> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -93,43 +91,6 @@ const resolveContext = async (
     projectMember: Boolean(projectMember),
     runId: null,
   }
-}
-
-const scopeFacts = (
-  executor: {
-    projectId: string | null
-    privateAssignments: Array<{
-      agentId: string | null
-      principalKind: 'user' | 'agent'
-      role: 'use' | 'admin'
-      userId: string | null
-    }>
-    scopeKind: 'private' | 'project' | 'organization'
-  },
-  actorUserId: string,
-  agentId: string,
-  context: AvailabilityContext,
-): ScopeAvailability => {
-  if (executor.scopeKind === 'private') {
-    const human = executor.privateAssignments.find(
-      (assignment) => assignment.principalKind === 'user' && assignment.userId === actorUserId,
-    )
-    return {
-      agentAssigned: executor.privateAssignments.some(
-        (assignment) => assignment.principalKind === 'agent' && assignment.agentId === agentId,
-      ),
-      humanAssignment: human?.role ?? 'none',
-      kind: 'private',
-    }
-  }
-  if (executor.scopeKind === 'project') {
-    return {
-      humanProjectEntitled: context.projectMember,
-      kind: 'project',
-      runProjectMatches: context.projectId === executor.projectId,
-    }
-  }
-  return { humanOrganizationEntitled: true, kind: 'organization' }
 }
 
 const explanation = (
@@ -239,7 +200,7 @@ export const resolveExecutorAvailabilityCandidates = async (
           && descriptor.data.operationKeys.includes(operationKey)),
         logicalToolAllowed: policy[logicalTools.get(operationKey) ?? ''] === true,
         operationGrantState: grants.get(operationKey) ?? null,
-        scope: scopeFacts(executor, actorUserId, agent.id, context),
+        scope: resolveExecutorScopeFacts(executor, actorUserId, agent.id, context),
       })
       if (decision.available) {
         readyKeys.push(operationKey)
@@ -277,7 +238,7 @@ export const resolveExecutorAvailabilityCandidates = async (
         capabilityRevisionId: entry.capabilityRevisionId,
         executorId: entry.executorId,
         expiresAt,
-        handleDigest: digest(handle),
+        handleDigest: executorCandidateHandleDigest(handle),
         operationKeys: entry.operationKeys,
         projectId: context.projectId,
         runId: context.runId,

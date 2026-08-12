@@ -11,6 +11,12 @@ export {
 export {
   resolveExecutorAvailabilityCandidates,
 } from './executor-availability-resolution.js'
+export { executorCandidateHandleDigest } from './executor-candidate-handle.js'
+export {
+  bindExecutorCandidate,
+  type ExecutorBindingInput,
+  type ExecutorBindingRecord,
+} from './executor-binding.js'
 export {
   ensureExecutorLogicalTools,
   executorLogicalToolDefinitions,

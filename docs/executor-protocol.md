@@ -200,9 +200,13 @@ and `ToolCall`; it never owns a second poller, lease, retry loop, or terminal
 state.
 
 The server creates `ExecutorBinding` under a PostgreSQL transaction-scoped
-advisory lock derived from `(runOrSessionId, operationKey)`. It stores executor,
-descriptor revision, a monotonically increasing fencing token, and the consumed
-candidate handle. A retry reuses that binding. Dispatch rechecks the fencing
+advisory lock derived from `(runOrSessionId, operationKey)`. It reads the opaque
+candidate, then takes the executor lock and rechecks initiating human, agent,
+scope/project membership, approved current descriptor, exact operation grant,
+logical policy grant, online status, and authorization revision. Only then does
+it consume the candidate and advance the executor's separate monotonic binding
+fence. It stores executor, descriptor revision, that fence, and the consumed
+candidate digest. A retry reuses that binding. Dispatch rechecks the fencing
 token while advancing the existing queue lease; it cannot select another
 executor after retry, policy change, or revocation.
 

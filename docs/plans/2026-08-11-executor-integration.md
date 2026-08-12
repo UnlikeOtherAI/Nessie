@@ -14,6 +14,14 @@ into the existing tool registry and resolves durable, opaque availability
 candidates only when the human scope, exact executor-operation grant, explicit
 logical policy, approved descriptor, local capability, and online state all
 agree.
+It now consumes an opaque candidate into a durable `ExecutorBinding` under an
+exact `(run, operation)` lock. Binding re-reads the initiator, agent, scope,
+membership, approved current descriptor, exact operation grant, logical grant,
+online state, and authorization revision. It then consumes the candidate and
+advances a binding-specific monotonic fence; daemon connection epochs and
+binding fences remain separate. A retry must reuse the same candidate and
+binding or fails closed.
+
 It does **not** dispatch files, browser work, commands, or coding sessions
 yet; the companion advertises only its harmless stop capability until a
 concrete isolated backend is delivered. Neither does it expose the planned
