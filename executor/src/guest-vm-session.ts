@@ -192,6 +192,7 @@ export const startGuestVmSession = async (
         '--initrd', initrdPath,
         '--workspace-cow', input.lease.workspace,
         '--runtime-bundle', runtimeBundle.root,
+        '--runtime-manifest-digest', runtimeBundle.manifestDigest,
         '--egress-gateway', gateway.socketPath,
         '--bootstrap-token-stdin',
       ],

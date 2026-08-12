@@ -285,6 +285,7 @@ private func session(_ arguments: [String]) throws {
   let consoleURL = try safeConsoleFile(try requiredOption(arguments, "--console"))
   let guestWorkspaceURL = try safeGuestWorkspaceDirectory(try requiredOption(arguments, "--workspace-cow"))
   let guestRuntimeURL = try safeGuestRuntimeDirectory(try requiredOption(arguments, "--runtime-bundle"))
+  let runtimeManifestDigest = try requiredOption(arguments, "--runtime-manifest-digest")
   let gatewaySocketPath = try requiredOption(arguments, "--egress-gateway")
   guard input.initrdURL != nil else { throw VMError.invalidArgument }
   let bootstrapToken = try bootstrapTokenFromStandardInput(arguments)
@@ -298,6 +299,7 @@ private func session(_ arguments: [String]) throws {
         consoleURL: consoleURL,
         enableGuestControl: true,
         enableGuestEgress: true,
+        guestRuntimeManifestDigest: runtimeManifestDigest,
         guestRuntimeURL: guestRuntimeURL,
         guestWorkspaceURL: guestWorkspaceURL,
       ))

@@ -91,6 +91,13 @@ public func safeGuestRuntimeDirectory(_ rawPath: String) throws -> URL {
   return resolved
 }
 
+public func isValidGuestRuntimeManifestDigest(_ value: String) -> Bool {
+  guard value.count == 71, value.hasPrefix("sha256:") else { return false }
+  return value.dropFirst(7).unicodeScalars.allSatisfy { scalar in
+    ("0"..."9").contains(Character(String(scalar))) || ("a"..."f").contains(Character(String(scalar)))
+  }
+}
+
 public func hostProbe() -> VMHostProbe {
   #if arch(arm64)
   let architecture = "arm64"
@@ -134,6 +141,7 @@ public func configuration(
   consoleURL: URL? = nil,
   enableGuestControl: Bool = false,
   enableGuestEgress: Bool = false,
+  guestRuntimeManifestDigest: String? = nil,
   guestRuntimeURL: URL? = nil,
   guestWorkspaceURL: URL? = nil,
 ) throws -> VZVirtualMachineConfiguration {
@@ -143,11 +151,17 @@ public func configuration(
   guard !enableGuestEgress || enableGuestControl else {
     throw VMError.invalidArgument
   }
+  guard (guestRuntimeURL == nil) == (guestRuntimeManifestDigest == nil),
+    guestRuntimeManifestDigest.map(isValidGuestRuntimeManifestDigest) ?? true
+  else {
+    throw VMError.invalidArgument
+  }
   let loader = VZLinuxBootLoader(kernelURL: input.kernelURL)
   let baseBootCommand = input.diskURL == nil
     ? "console=hvc0 rdinit=/init panic=-1"
     : "console=hvc0 root=/dev/vda ro panic=-1"
   let bootArguments = [
+    guestRuntimeManifestDigest.map { "nessie.runtime_manifest=\($0)" },
     guestRuntimeURL == nil ? nil : "nessie.runtime=1",
     guestWorkspaceURL == nil ? nil : "nessie.workspace=1",
     enableGuestEgress ? "nessie.egress=1" : nil,

@@ -243,7 +243,12 @@ The guest mounts it at `/runtime` with `nosuid,nodev` (not `noexec`, because the
 verified browser/tmux/CLI must run there), while the separate writable COW
 share remains `nodev,nosuid,noexec`. A missing explicit runtime mount fails
 before control hello. Operations remain unavailable until an in-guest manifest
-check and typed process backend are added.
+check and typed process backend are added. The helper supplies the host-verified
+manifest digest only as a VM boot value. Before privilege drop or control hello,
+the guest independently hashes the mounted manifest and every declared file,
+then rejects changed, missing, duplicate, undeclared, non-executable, or
+misdeclared runtime artifacts. This closes the mutable-host-bundle interval;
+it still does not advertise a browser/coding operation.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for

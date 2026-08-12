@@ -483,7 +483,13 @@ executable: a `noexec` runtime mount would make a browser, tmux, or CLI
 impossible. The writable `/work` COW mount remains `nodev,nosuid,noexec`, so
 guest execution can originate only from the read-only runtime payload (or the
 fixed initrd `/init`), never from a workspace edit. A runtime-requested boot
-fails before control hello if its exact mount is unavailable.
+fails before control hello if its exact mount is unavailable. The companion
+passes the verified manifest's `sha256:` digest in the VM-only boot contract;
+before privilege drop or control hello, the guest hashes that manifest, rejects
+an altered/duplicate/missing digest, validates the declared file set and
+entrypoints, and hashes every runtime file again. A changed bundle therefore
+fails closed across the host-to-guest mount interval rather than relying on the
+host-side check alone.
 
 Before that launch, the companion creates an owner-only `guest-lease.json`
 beside the exact COW draft. It contains the run ID, executor binding fence, and

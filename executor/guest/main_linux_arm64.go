@@ -116,10 +116,17 @@ func mountGuestRuntimeIfRequested() (bool, error) {
 	if !runtimeRequested(string(commandLine)) {
 		return false, nil
 	}
+	manifestDigest, ok := runtimeManifestDigest(string(commandLine))
+	if !ok {
+		return true, errInvalidFrame
+	}
 	if err := os.Mkdir("/runtime", 0o755); err != nil && !os.IsExist(err) {
 		return true, err
 	}
-	return true, syscall.Mount("nessie-runtime", "/runtime", "virtiofs", syscall.MS_RDONLY|syscall.MS_NOSUID|syscall.MS_NODEV, "")
+	if err := syscall.Mount("nessie-runtime", "/runtime", "virtiofs", syscall.MS_RDONLY|syscall.MS_NOSUID|syscall.MS_NODEV, ""); err != nil {
+		return true, err
+	}
+	return true, verifyMountedGuestRuntime(manifestDigest)
 }
 
 func main() {

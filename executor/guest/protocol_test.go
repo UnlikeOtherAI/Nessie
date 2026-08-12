@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -76,6 +80,33 @@ func TestRuntimeMustBeExplicitlyRequestedByTheHostBootCommand(t *testing.T) {
 	}
 	if runtimeRequested("console=hvc0 rdinit=/init nessie.runtime=10") {
 		t.Fatal("accepted a lookalike runtime command-line flag")
+	}
+}
+
+func TestGuestRuntimeRechecksTheMountedManifestAndEveryFile(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	browser := []byte("browser")
+	if err := os.WriteFile(filepath.Join(root, "bin", "browser"), browser, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fileHash := sha256.Sum256(browser)
+	manifest := []byte(`{"entrypoints":{"browser":"bin/browser"},"files":[{"executable":true,"path":"bin/browser","sha256":"` + hex.EncodeToString(fileHash[:]) + `"}],"version":1}`)
+	if err := os.WriteFile(filepath.Join(root, "nessie-guest-runtime.json"), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifestHash := sha256.Sum256(manifest)
+	digest := "sha256:" + hex.EncodeToString(manifestHash[:])
+	if err := verifyGuestRuntime(root, digest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "bin", "browser"), []byte("tampered"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyGuestRuntime(root, digest); err == nil {
+		t.Fatal("accepted a changed mounted runtime file")
 	}
 }
 
