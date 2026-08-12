@@ -18,10 +18,16 @@ import {
   getNativePushRegistration,
   reconcileNativeAttentionPresentation,
   subscribeToPushTokenChanges,
-  subscribeToPushNavigation,
   type NativePushRegistration,
 } from './src/lib/push-notifications'
+import { useNativePushNavigation } from './src/lib/native-push-navigation'
+import {
+  createNativePushSurfaceClientId,
+  nativeAppForegroundScript,
+  nativeShellInfoScript,
+} from './src/lib/native-shell'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
+import { launchUrlForPushPath } from './src/lib/push-navigation'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
@@ -47,34 +53,6 @@ const IPAD_TAB_BAR_HEIGHT = 50
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
-const NATIVE_APP_FOREGROUND_EVENT = 'nessie:native-app-foreground'
-const createNativePushSurfaceClientId = (): string => {
-  const fragment = (): string => Math.floor(Math.random() * 0x1_0000_0000)
-    .toString(16)
-    .padStart(8, '0')
-  const random = `${fragment()}${fragment()}${fragment()}${fragment()}`
-  return `${random.slice(0, 8)}-${random.slice(8, 12)}-4${random.slice(13, 16)}-8${random.slice(17, 20)}-${random.slice(20, 32)}`
-}
-
-const nativeShellInfoScript = (pushSurfaceClientId: string): string => `
-window.__nessieNativeShell = { platform: ${JSON.stringify(Platform.OS)}, formFactor: ${
-  IS_IPAD ? "'ipad'" : "'phone'"
-} };
-window.__nessieNativeAppForeground = true;
-window.__nessiePushSurfaceClientId = ${JSON.stringify(pushSurfaceClientId)};
-try { window.dispatchEvent(new Event('nessie:native-shell-info')); } catch (e) {}
-true;
-`
-
-const nativeAppForegroundScript = (foreground: boolean): string => `
-window.__nessieNativeAppForeground = ${JSON.stringify(foreground)};
-try {
-  window.dispatchEvent(new CustomEvent(${JSON.stringify(NATIVE_APP_FOREGROUND_EVENT)}, {
-    detail: ${JSON.stringify(foreground)},
-  }));
-} catch (e) {}
-`
-
 const DEFAULT_ACTIVE_TINT = '#7c3aed'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
 const withOpacity = (color: string, opacity: number): string => {
@@ -128,16 +106,10 @@ const Shell = (): React.JSX.Element => {
   const bootRetries = useRef(0)
   const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const currentPathRef = useRef<string | null>(null)
-  const pendingPushPath = useRef<string | null>(null)
   const pushSurfaceClientId = useRef(createNativePushSurfaceClientId())
   const nativeAppForeground = useRef(AppState.currentState === 'active')
   const nativePushRegistration = useRef<NativePushRegistration | null>(null)
   const nativePushRegistrationPromise = useRef<Promise<NativePushRegistration | null> | null>(null)
-
-  const sourceUri =
-    reloadNonce === 0
-      ? ADMIN_URL
-      : `${ADMIN_URL}${ADMIN_URL.includes('?') ? '&' : '?'}__boot=${reloadNonce}`
 
   const clearBootTimer = useCallback((): void => {
     if (bootTimer.current) {
@@ -153,6 +125,16 @@ const Shell = (): React.JSX.Element => {
   const navigateTo = useCallback((path: string): void => {
     runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
   }, [runScript])
+
+  const canNavigateFromPush = useCallback(
+    (): boolean => Boolean(currentPathRef.current && !isAuthGateRoute(currentPathRef.current)),
+    [],
+  )
+  const { initialPushPath, takePendingPushPath } = useNativePushNavigation({
+    canNavigate: canNavigateFromPush,
+    navigate: navigateTo,
+  })
+  const sourceUri = launchUrlForPushPath(ADMIN_URL, initialPushPath ?? null, reloadNonce)
 
   const sendNativePushRegistration = useCallback((registration: NativePushRegistration): void => {
     runScript(
@@ -214,19 +196,6 @@ const Shell = (): React.JSX.Element => {
       if (bootTimer.current) clearTimeout(bootTimer.current)
     }
   }, [])
-
-  useEffect(
-    () =>
-      subscribeToPushNavigation((path) => {
-        pendingPushPath.current = path
-        const current = currentPathRef.current
-        if (current && !isAuthGateRoute(current)) {
-          pendingPushPath.current = null
-          navigateTo(path)
-        }
-      }),
-    [navigateTo],
-  )
 
   useEffect(
     () => subscribeToPushTokenChanges(publishNativePushRegistration),
@@ -357,10 +326,9 @@ const Shell = (): React.JSX.Element => {
       setIndex((current) => (current === next ? current : next))
       if (!isAuthGateRoute(msg.path)) {
         ensureNativePushRegistration()
-        const pendingPath = pendingPushPath.current
+        const pendingPath = takePendingPushPath()
         if (pendingPath) {
-          pendingPushPath.current = null
-          navigateTo(pendingPath)
+          if (pendingPath !== msg.path) navigateTo(pendingPath)
         }
       }
     }
@@ -450,11 +418,19 @@ const Shell = (): React.JSX.Element => {
       ) : null}
 
       <View style={webviewLayerStyle}>
-        <WebView
+        {initialPushPath === undefined ? null : <WebView
           allowsBackForwardNavigationGestures
           domStorageEnabled
-          injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript(pushSurfaceClientId.current)}
-          injectedJavaScript={`${nativeShellInfoScript(pushSurfaceClientId.current)}\n${INJECTED}`}
+          injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript({
+            clientId: pushSurfaceClientId.current,
+            formFactor: IS_IPAD ? 'ipad' : 'phone',
+            platform: Platform.OS,
+          })}
+          injectedJavaScript={`${nativeShellInfoScript({
+            clientId: pushSurfaceClientId.current,
+            formFactor: IS_IPAD ? 'ipad' : 'phone',
+            platform: Platform.OS,
+          })}\n${INJECTED}`}
           key={webviewKey}
           mediaPlaybackRequiresUserAction={false}
           onContentProcessDidTerminate={() => webRef.current?.reload()}
@@ -480,7 +456,7 @@ const Shell = (): React.JSX.Element => {
           sharedCookiesEnabled
           source={{ uri: sourceUri }}
           style={[styles.fill, { backgroundColor: bg }]}
-        />
+        />}
       </View>
 
       {showBar && IS_IPAD ? (

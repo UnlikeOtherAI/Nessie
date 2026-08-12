@@ -19,7 +19,7 @@ import {
 import { readSseStream } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { getNotificationApi } from './permission'
+import { showBrowserNotification } from './browser-notification'
 
 const RECONNECT_DELAY_MS = 2_000
 const MAX_NOTIFIED_MESSAGE_IDS = 500
@@ -251,28 +251,17 @@ const trimNotifiedMessageIds = (ids: Set<string>): void => {
   }
 }
 
-const showNativeNotification = (
-  input: NotificationToastInput & {
-    openChannel: (channelId: string, threadId?: string, rootMessageId?: string) => void
-  },
-): void => {
-  const notificationApi = getNotificationApi()
-  if (!notificationApi || notificationApi.permission !== 'granted') {
-    return
-  }
-
-  try {
-    const notification = new notificationApi(input.title, {
-      body: input.body,
-      tag: input.rootMessageId ?? input.threadId ?? input.channelId,
-    })
-    notification.addEventListener('click', () => {
-      input.openChannel(input.channelId, input.threadId, input.rootMessageId)
-      notification.close()
-    })
-  } catch {
-    // Native notification support varies by host webview; the in-app toast remains.
-  }
+/**
+ * Atomically claim a realtime message before any asynchronous work. The same
+ * message can arrive through overlapping stream/reconnect event paths, and a
+ * later claim would let both callbacks create an in-app banner.
+ */
+export const claimMessageNotification = (messageIds: Set<string>, messageId?: string): boolean => {
+  if (!messageId) return true
+  if (messageIds.has(messageId)) return false
+  messageIds.add(messageId)
+  trimNotifiedMessageIds(messageIds)
+  return true
 }
 
 export const useMessageNotifications = (input: {
@@ -392,7 +381,7 @@ export const useMessageNotifications = (input: {
         return
       }
 
-      if (payload.messageId && notifiedMessageIdsRef.current.has(payload.messageId)) {
+      if (!claimMessageNotification(notifiedMessageIdsRef.current, payload.messageId)) {
         return
       }
 
@@ -403,11 +392,6 @@ export const useMessageNotifications = (input: {
       )
       if (authoredByCurrentUser) {
         return
-      }
-
-      if (payload.messageId) {
-        notifiedMessageIdsRef.current.add(payload.messageId)
-        trimNotifiedMessageIds(notifiedMessageIdsRef.current)
       }
 
       const title = channel?.label ?? payload.authorName ?? 'New message'
@@ -422,7 +406,7 @@ export const useMessageNotifications = (input: {
         title,
       }
 
-      showNativeNotification({
+      showBrowserNotification({
         ...notificationInput,
         openChannel: latest.openChannel,
       })

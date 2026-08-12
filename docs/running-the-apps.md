@@ -246,6 +246,10 @@ does not use Expo Push. The iOS app registers its raw APNs token after an
 authenticated WebView route loads; the authenticated admin then stores that
 token with the current organization. A notification tap returns to the exact
 channel message when its deep-link target is still available.
+On a cold launch, the native shell claims that tap before creating the WebView,
+so the shell's default Personal Assistant route cannot replace the notified
+conversation. The launch response is consumed once, preventing it from
+reopening an old message on a later app launch.
 
 Before a real-device build can receive pushes, an Apple Developer Account
 Holder or Admin must do the one-time Apple portal setup for
