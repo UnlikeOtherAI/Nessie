@@ -6,6 +6,7 @@ import {
   parseTeamId,
   type AuthorizedActionContext,
   type TriggerEventDispatchJobPayload,
+  type WorkflowRunFailureDispatchJobPayload,
 } from '@nessie/schemas'
 import { enqueueQueueJob } from '../queue.js'
 
@@ -143,6 +144,20 @@ export const emitWorkflowRunTerminalEvent = async (
       payload: job.payload,
       topic: job.topic,
     })
+    if (status === 'failed') {
+      // W23: the failure also reaches a human through the push pipeline. The
+      // payload carries ids only — no raw error or input data.
+      const failureDispatch: WorkflowRunFailureDispatchJobPayload = {
+        organizationId: context.organizationId,
+        workflowInstallationId: context.workflowInstallationId,
+        workflowRunId: context.workflowRunId,
+      }
+      await enqueueQueueJob(prisma, {
+        idempotencyKey: `workflow-run-failure:${context.workflowRunId}`,
+        payload: failureDispatch,
+        topic: 'workflow.run.failure-dispatch',
+      })
+    }
   } catch (error) {
     console.error('[workflow-run-events] failed to enqueue workflow run terminal event', {
       error,

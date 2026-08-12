@@ -131,6 +131,22 @@ export const BudgetAlertDispatchJobPayloadSchema = z.object({
 })
 export type BudgetAlertDispatchJobPayload = z.infer<typeof BudgetAlertDispatchJobPayloadSchema>
 
+/**
+ * `workflow.run.failure-dispatch` queue job — emitted once when a workflow run
+ * reaches `failed` (the terminal-event seam dedupes), consumed by the worker to
+ * push-notify the installation creator and the channel managers entitled to
+ * act, deep-linking the run. Carries no raw error or input data — the link is
+ * the diagnostic (W23).
+ */
+export const WorkflowRunFailureDispatchJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  workflowInstallationId: z.string().uuid(),
+  workflowRunId: z.string().uuid(),
+})
+export type WorkflowRunFailureDispatchJobPayload = z.infer<
+  typeof WorkflowRunFailureDispatchJobPayloadSchema
+>
+
 export const WorkflowRunExecuteJobPayloadSchema = z.object({
   actorContext: AuthorizedActionContextSchema,
   workflowRunId: z.string().uuid(),
