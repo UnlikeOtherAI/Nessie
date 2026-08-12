@@ -36,7 +36,10 @@ const getConfirmationToken = (): string | null => {
 export const ExecutorsPage = () => {
   const { me } = useAuthSession()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [showCreate, setShowCreate] = useState(false)
+  const fixedProjectId = searchParams.get('create') === 'project'
+    ? searchParams.get('scopeProjectId') ?? undefined
+    : undefined
+  const [showCreate, setShowCreate] = useState(() => Boolean(fixedProjectId))
   const [created, setCreated] = useState<ExecutorCreateResponse | null>(null)
   const [confirmationToken, setConfirmationToken] = useState<string | null>(getConfirmationToken)
   const [currentPassword, setCurrentPassword] = useState('')
@@ -154,6 +157,7 @@ export const ExecutorsPage = () => {
           <ExecutorCreatePanel
             agents={agentsQuery.data ?? []}
             currentUserId={me.user.id}
+            fixedProjectId={fixedProjectId}
             onCreated={handleCreated}
             organizationId={me.context.organizationId}
             projects={projectsQuery.data ?? []}

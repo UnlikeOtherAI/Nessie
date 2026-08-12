@@ -10,6 +10,7 @@ import { useCreateExecutor } from '../../../facades/executors/hooks'
 type ExecutorCreatePanelProps = {
   agents: AgentRecord[]
   currentUserId: string
+  fixedProjectId?: string
   onCreated: (created: ExecutorCreateResponse) => void
   organizationId: string
   projects: ProjectRecord[]
@@ -22,6 +23,7 @@ type UserRole = 'none' | 'use' | 'admin'
 export const ExecutorCreatePanel = ({
   agents,
   currentUserId,
+  fixedProjectId,
   onCreated,
   organizationId,
   projects,
@@ -29,8 +31,8 @@ export const ExecutorCreatePanel = ({
 }: ExecutorCreatePanelProps) => {
   const createExecutor = useCreateExecutor()
   const [label, setLabel] = useState('My executor')
-  const [scopeKind, setScopeKind] = useState<ScopeKind>('private')
-  const [projectId, setProjectId] = useState('')
+  const [scopeKind, setScopeKind] = useState<ScopeKind>(fixedProjectId ? 'project' : 'private')
+  const [projectId, setProjectId] = useState(fixedProjectId ?? '')
   const [userRoles, setUserRoles] = useState<Record<string, UserRole>>(() => ({
     [currentUserId]: 'admin',
   }))
@@ -94,18 +96,24 @@ export const ExecutorCreatePanel = ({
         Name
         <input className="admin-input" maxLength={120} onChange={(event) => setLabel(event.target.value)} value={label} />
       </label>
-      <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">
-        Scope
-        <select className="admin-input" onChange={(event) => setScopeKind(event.target.value as ScopeKind)} value={scopeKind}>
-          <option value="private">Private — exact people and agents</option>
-          <option value="project">Project — exact project members</option>
-          <option value="organization">Organization — organization members</option>
-        </select>
-      </label>
+      {fixedProjectId ? (
+        <p className="rounded border border-[color:var(--sep)] bg-[color:var(--overlay-weak)] px-3 py-2 text-xs text-[color:var(--tx2)]">
+          Scope: <span className="font-medium text-[color:var(--tx)]">this project only</span>
+        </p>
+      ) : (
+        <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">
+          Scope
+          <select className="admin-input" onChange={(event) => setScopeKind(event.target.value as ScopeKind)} value={scopeKind}>
+            <option value="private">Private — exact people and agents</option>
+            <option value="project">Project — exact project members</option>
+            <option value="organization">Organization — organization members</option>
+          </select>
+        </label>
+      )}
       {scopeKind === 'project' ? (
         <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">
           Project
-          <select className="admin-input" onChange={(event) => setProjectId(event.target.value)} required value={projectId}>
+          <select className="admin-input" disabled={Boolean(fixedProjectId)} onChange={(event) => setProjectId(event.target.value)} required value={projectId}>
             <option value="">Choose a project</option>
             {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
           </select>

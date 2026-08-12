@@ -143,6 +143,10 @@ export const router = createBrowserRouter([
         element: <ProjectView />,
       },
       {
+        path: '/projects/:projectId/executors',
+        element: <ProjectView />,
+      },
+      {
         path: '/projects/:projectId/settings',
         element: <ProjectView />,
       },
