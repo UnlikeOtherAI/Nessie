@@ -1,6 +1,7 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { CaptureConfig } from '@nessie/memory'
+import type { ConsumedSourceSink } from './execute/disclosure-basis.js'
 import type {
   ConnectorUsage,
   LedgerIdentityService,
@@ -27,6 +28,14 @@ export type BuiltinToolRuntimeContext = {
     organizationId: RunExecuteJobPayload['actorContext']['tenant']['organizationId']
     systemChannelType?: ChannelSystemType | null
   }
+  /**
+   * Scoped sources the run has consumed so far. Tools that persist content —
+   * `send_message`, knowledge-base writes — consult it so a run holding
+   * restricted material cannot write that material somewhere unrestricted.
+   * Optional so partial test fixtures keep compiling; absent is treated as
+   * "nothing consumed", which is the pre-existing behaviour.
+   */
+  consumedSources?: ConsumedSourceSink
   ledgerIdentity: LedgerIdentityService | null
   // MCP credential plumbing for the connector management tools: the store
   // encrypts user-provided secrets into Postgres, the resolver resolves any

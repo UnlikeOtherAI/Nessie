@@ -14,6 +14,7 @@ import {
   buildRealtimeScopesForChannel,
   resolveMessageDestination,
 } from './message-destination.js'
+import { computeReplyBasis } from '../execute/disclosure-basis.js'
 import { truncate } from './tool-output.js'
 
 export const runSendMessageTool = async (
@@ -43,25 +44,62 @@ export const runSendMessageTool = async (
     )
   }
 
-  const message = await context.prisma.message.create({
-    data: {
-      content,
-      metadata: {
-        delegatedByAgentId: context.agentId,
-        delegatedFromRunId: context.run.id,
-      } as Prisma.InputJsonValue,
-      role: 'user',
-      threadId: parseThreadId(destination.threadId),
-      userId: parseUserId(userId),
-    },
-    select: {
-      id: true,
-      createdAt: true,
-      threadId: true,
-    },
+  // `send_message` can target a channel other than the one the run is in, so a
+  // run holding restricted sources could otherwise relay them somewhere they
+  // were never implied. The destination's own chain decides: anything the run
+  // consumed that this destination does not imply is stamped on the post.
+  const consumed = context.consumedSources?.list() ?? []
+  const destinationChannel = consumed.length > 0
+    ? await context.prisma.channel.findUnique({
+      where: { id: destination.channelId },
+      select: { projectId: true, teamId: true },
+    })
+    : null
+  const destinationBasis = destinationChannel
+    ? computeReplyBasis(consumed, {
+      channelId: destination.channelId,
+      organizationId: context.channel.organizationId,
+      projectId: destinationChannel.projectId,
+      teamId: destinationChannel.teamId,
+    })
+    : []
+
+  const message = await context.prisma.$transaction(async (tx) => {
+    const created = await tx.message.create({
+      data: {
+        content,
+        metadata: {
+          delegatedByAgentId: context.agentId,
+          delegatedFromRunId: context.run.id,
+        } as Prisma.InputJsonValue,
+        role: 'user',
+        threadId: parseThreadId(destination.threadId),
+        userId: parseUserId(userId),
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        threadId: true,
+      },
+    })
+    if (destinationBasis.length > 0) {
+      await tx.messageBasisScope.createMany({
+        data: destinationBasis.map((scope) => ({
+          messageId: created.id,
+          organizationId: context.channel.organizationId,
+          scopeId: scope.scopeId,
+          scopeType: scope.scopeType,
+        })),
+        skipDuplicates: true,
+      })
+    }
+    return created
   })
 
-  if (context.memoryCaptureConfig) {
+  // Capture writes this content back as durable memory. A restricted post must
+  // not become a memory that later recall serves without the restriction, so a
+  // stamped post is not captured at all.
+  if (context.memoryCaptureConfig && destinationBasis.length === 0) {
     await captureUserMessageMemory(
       {
         channelId: destination.channelId,
@@ -100,7 +138,11 @@ export const runSendMessageTool = async (
       data: {
         agentId: undefined,
         channelId: parseChannelId(destination.channelId),
-        contentPreview: content.slice(0, 200),
+        // Channel-wide push: a restricted post goes out content-free, since the
+        // wire reaches every connected member regardless of entitlement.
+        ...(destinationBasis.length > 0
+          ? { restricted: true }
+          : { contentPreview: content.slice(0, 200) }),
         messageId: message.id,
         role: 'user',
         threadId: parseThreadId(destination.threadId),
@@ -110,25 +152,28 @@ export const runSendMessageTool = async (
   )
 
   // Agent-authored @mentions (the PA posting as its owner) create the same
-  // durable alerts as human-authored ones.
-  await createMessageMentionAlerts(
-    { prisma: context.prisma, realtimeTransport: context.realtimeTransport },
-    {
-      organizationId: context.channel.organizationId,
-      channelId: destination.channelId,
-      threadId: destination.threadId,
-      messageId: message.id,
-      messageCreatedAt: message.createdAt,
-      content,
-      actorUserId: userId,
-      actorAgentId: context.agentId,
-      scopes: buildRealtimeScopesForChannel({
-        channelId: destination.channelId,
+  // durable alerts as human-authored ones — but never for a restricted post,
+  // which would hand a non-entitled recipient its existence and a way in.
+  if (destinationBasis.length === 0) {
+    await createMessageMentionAlerts(
+      { prisma: context.prisma, realtimeTransport: context.realtimeTransport },
+      {
         organizationId: context.channel.organizationId,
-        systemChannelType: destination.systemChannelType,
-      }),
-    },
-  )
+        channelId: destination.channelId,
+        threadId: destination.threadId,
+        messageId: message.id,
+        messageCreatedAt: message.createdAt,
+        content,
+        actorUserId: userId,
+        actorAgentId: context.agentId,
+        scopes: buildRealtimeScopesForChannel({
+          channelId: destination.channelId,
+          organizationId: context.channel.organizationId,
+          systemChannelType: destination.systemChannelType,
+        }),
+      },
+    )
+  }
 
   let queuedReplyCount = 0
   if (destination.channelAgents.length > 0) {

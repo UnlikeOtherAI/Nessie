@@ -259,11 +259,21 @@ const loadThreadTail = async (
   limit: number,
   config: CaptureConfig,
 ): Promise<ConsolidationThreadMessage[]> => {
+  // Skip anything carrying a disclosure basis. Consolidation writes what it
+  // reads back as a CHANNEL-audience thought, which then feeds every channel
+  // member's future recall — so a restricted reply consolidated here would be
+  // laundered into unrestricted memory, defeating the message predicate
+  // entirely. Skip rather than inherit: a thought has one audience, and the
+  // conservative choice is not to create it. See
+  // docs/plans/2026-08-11-disclosure-boundaries-build.md.
   const result = await config.pool.query(
     `SELECT id, role::text, content, user_id, agent_id, created_at
-     FROM messages
+     FROM messages m
      WHERE thread_id = $1::uuid
        AND created_at <= COALESCE($2::timestamptz, now())
+       AND NOT EXISTS (
+         SELECT 1 FROM message_basis_scopes mbs WHERE mbs.message_id = m.id
+       )
      ORDER BY created_at DESC
      LIMIT $3`,
     [run.thread_id, run.finished_at, limit],
