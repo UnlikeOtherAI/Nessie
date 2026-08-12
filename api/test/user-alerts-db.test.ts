@@ -33,6 +33,12 @@ const seedWorkspace = async (prisma: PrismaClient): Promise<Seed> => {
   const mentioned = await prisma.user.create({
     data: { email: `alerts-mentioned-${randomUUID()}@example.com`, displayName: 'Mentioned One' },
   })
+  await prisma.organizationMember.createMany({
+    data: [
+      { organizationId: org.id, userId: author.id },
+      { organizationId: org.id, userId: mentioned.id },
+    ],
+  })
   const channel = await prisma.channel.create({
     data: {
       label: 'alerts-channel',
