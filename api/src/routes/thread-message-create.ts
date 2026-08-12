@@ -278,6 +278,7 @@ export const registerCreateThreadMessageRoute = (
           authorUserId: actorContext.actor.actorId,
           channelId: thread.channel.id,
           threadId: thread.id,
+          rootMessageId: result.replyRoot?.rootMessageId ?? result.message.id,
           organizationId: actorContext.tenant.organizationId,
           contentSnippet: result.message.content.slice(0, 140),
           mentionUserIds,

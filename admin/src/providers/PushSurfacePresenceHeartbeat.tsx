@@ -12,6 +12,7 @@ const NATIVE_APP_FOREGROUND_EVENT = 'nessie:native-app-foreground'
 type NativeAppForegroundWindow = Window & {
   __nessieNativeAppForeground?: boolean
   __nessiePushSurfaceClientId?: string
+  ReactNativeWebView?: { postMessage: (message: string) => void }
 }
 
 const createClientId = (): string => {
@@ -33,9 +34,16 @@ const createClientId = (): string => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-const isForeground = (): boolean =>
-  document.visibilityState === 'visible'
-  && (window as NativeAppForegroundWindow).__nessieNativeAppForeground !== false
+const isForeground = (): boolean => {
+  const nativeWindow = window as NativeAppForegroundWindow
+  if (document.visibilityState !== 'visible' || nativeWindow.__nessieNativeAppForeground === false) {
+    return false
+  }
+  // Native shells report foreground through AppState. A browser must also own
+  // window focus: a visible but inactive tab cannot suppress every device's
+  // notification for up to the heartbeat window.
+  return Boolean(nativeWindow.ReactNativeWebView) || document.hasFocus()
+}
 
 const getClientId = (): string => {
   const nativeClientId = (window as NativeAppForegroundWindow).__nessiePushSurfaceClientId
@@ -118,10 +126,14 @@ export const PushSurfacePresenceHeartbeat = () => {
       setForeground(false)
     }
     document.addEventListener('visibilitychange', refreshVisibility)
+    window.addEventListener('blur', refreshVisibility)
+    window.addEventListener('focus', refreshVisibility)
     window.addEventListener(NATIVE_APP_FOREGROUND_EVENT, refreshVisibility)
     window.addEventListener('pagehide', clearForPageHide)
     return () => {
       document.removeEventListener('visibilitychange', refreshVisibility)
+      window.removeEventListener('blur', refreshVisibility)
+      window.removeEventListener('focus', refreshVisibility)
       window.removeEventListener(NATIVE_APP_FOREGROUND_EVENT, refreshVisibility)
       window.removeEventListener('pagehide', clearForPageHide)
     }

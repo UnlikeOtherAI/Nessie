@@ -1,4 +1,9 @@
-import { ChannelIdSchema, ProjectIdSchema, type PushSurface } from '@nessie/schemas'
+import {
+  ChannelIdSchema,
+  ProjectIdSchema,
+  ThreadIdSchema,
+  type PushSurface,
+} from '@nessie/schemas'
 import { z } from 'zod'
 
 export const PUSH_SURFACE_CHANGE_EVENT = 'nessie:push-surface-change'
@@ -15,8 +20,8 @@ export const reportPushSurface = (surface: PushSurface | null): void => {
 }
 
 const UUID_PATH_SEGMENT = '[0-9a-f-]{36}'
-const CHANNEL_PATH = new RegExp(
-  `^/channels/(${UUID_PATH_SEGMENT})(?:/threads/${UUID_PATH_SEGMENT}/replies/${UUID_PATH_SEGMENT})?/?$`,
+const THREAD_PATH = new RegExp(
+  `^/channels/(${UUID_PATH_SEGMENT})/threads/(${UUID_PATH_SEGMENT})/replies/${UUID_PATH_SEGMENT}/?$`,
   'i',
 )
 const PROJECT_BOARD_PATH = new RegExp(
@@ -26,10 +31,11 @@ const PROJECT_BOARD_PATH = new RegExp(
 
 /** Maps only concrete, push-targetable routes to the structured API contract. */
 export const resolvePushSurface = (pathname: string, search = ''): PushSurface | null => {
-  const channel = pathname.match(CHANNEL_PATH)
-  const channelId = ChannelIdSchema.safeParse(channel?.[1])
-  if (channelId.success) {
-    return { kind: 'channel', channelId: channelId.data }
+  const threadRoute = pathname.match(THREAD_PATH)
+  const channelId = ChannelIdSchema.safeParse(threadRoute?.[1])
+  const threadId = ThreadIdSchema.safeParse(threadRoute?.[2])
+  if (channelId.success && threadId.success) {
+    return { channelId: channelId.data, kind: 'channel', threadId: threadId.data }
   }
   const project = pathname.match(PROJECT_BOARD_PATH)
   const projectId = ProjectIdSchema.safeParse(project?.[1])

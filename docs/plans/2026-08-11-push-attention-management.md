@@ -58,7 +58,12 @@ alert kinds are the source for the Projects and Knowledge counts.
    the shared preferences schema, merge request contract, worker preference
    kind map, and Settings UI together.
 7. A live interactive agent turn notifies only its originating user when the
-   reply becomes durable and they are no longer viewing that exact channel.
+   reply becomes durable and they are no longer viewing that exact thread in a
+   focused foreground client. Presence is user-wide: one focused client on the
+   exact thread suppresses delivery to all of that user's devices, while a
+   different channel, a different thread, an unfocused window, or a background
+   client does not. A foreground client elsewhere in Nessie receives the
+   in-app banner as well as the native delivery to registered devices.
    Every terminal route (normal reply, reaction-only answer, cancellation,
    budget stop, error, and external-agent reply) shares one run-scoped queue
    idempotency key. A reply carrying a disclosure basis never exposes its text:

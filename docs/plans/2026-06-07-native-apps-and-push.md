@@ -336,7 +336,10 @@ The dispatch loop is live (no standalone gateway yet — the worker calls the
   realtime publish (`api/src/routes/threads.ts`, fire-and-forget; a push failure
   never breaks message posting). Payload (`PushDispatchJobPayloadSchema` in
   `@nessie/schemas`): `{ messageId, authorUserId, channelId, threadId,
-  organizationId, contentSnippet (≤140 chars), mentionUserIds[] }`. Interactive
+  rootMessageId?, organizationId, contentSnippet (≤140 chars), mentionUserIds[] }`.
+  New jobs target `/channels/:channelId/threads/:threadId/replies/:rootMessageId`
+  (a top-level message is its own root), so native, web, and in-app taps open
+  the notified conversation rather than the channel default. Interactive
   agent replies use the same consumer with `recipientUserIds[]` instead of an
   author id, so the person who asked receives the completed reply even after
   leaving the app. Enqueue helper: `enqueuePushDispatch` in
@@ -366,15 +369,17 @@ stream directly:
 - `admin/src/facades/notifications/useMessageNotifications.ts` opens a fetch-based
   SSE connection to `GET /api/events/stream` (bearer token + `Last-Event-ID`
   reconnect, shared frame reader in `admin/src/lib/sse.ts`, also used by
-  `useThreadStream`). On each `message.new` it fires a native
+  `useThreadStream`). On each newly created message (`message.new` or an agent
+  `message.reply`) it fires a native
   `Notification` (when permission is granted) **and** an in-app toast
   (`admin/src/providers/NotificationsProvider.tsx`), deep-linking to
   `/channels/:channelId` on click. Wired into `AdminShellLayout`.
 - Suppression rules: never notify for the recipient's **own** message
-  (`authorUserId === me`) and never for the **channel currently being viewed**
-  (`channelId === active route` while the tab is focused/visible). Backlog
-  replay events (ts < connect time) are ignored; notified message ids are
-  de-duplicated.
+  (`authorUserId === me`) and never for the **exact thread currently being
+  viewed** (`threadId === active thread` while the window is focused and
+  visible). A foreground client elsewhere in Nessie still receives its in-app
+  banner; only the exact active thread suppresses it. Backlog replay events
+  (ts < connect time) are ignored; notified message ids are de-duplicated.
 - To make those rules reliable the `message.new` realtime event now carries
   `channelId` + `authorUserId` (optional fields on `MessageNewEventSchema` in
   `@nessie/schemas`), populated by every publisher (`api/src/routes/threads.ts`

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
 import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
@@ -16,6 +17,7 @@ import { useFileDrop } from '../hooks/useFileDrop'
 import { useStickToBottom } from '../hooks/useStickToBottom'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { reportPushSurface } from '../lib/push-surface'
 import { CallBanner } from '../components/shared/CallBanner'
 import { DropZoneOverlay } from '../components/shared/DropZoneOverlay'
 import { ChannelComposer } from '../components/features/channels/ChannelComposer'
@@ -132,6 +134,22 @@ export const ChannelsPage = () => {
   // Reply-thread panel (#233): URL-driven open state, replies/root queries,
   // follow mutation, and the persisted drag-resizable width.
   const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
+
+  // Presence is exact-thread, not merely exact-channel. The Files, Info, and
+  // Runs tabs deliberately clear it: a reply there still needs an in-app and
+  // native banner because the user is not reading the conversation.
+  useEffect(() => {
+    if (visibleActiveTab !== 'messages' || !activeChannel || !replyThread.activeThreadId) {
+      reportPushSurface(null)
+      return undefined
+    }
+    reportPushSurface({
+      channelId: parseChannelId(activeChannel.id),
+      kind: 'channel',
+      threadId: parseThreadId(replyThread.activeThreadId),
+    })
+    return () => reportPushSurface(null)
+  }, [activeChannel, replyThread.activeThreadId, visibleActiveTab])
 
   const {
     message,

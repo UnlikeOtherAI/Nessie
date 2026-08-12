@@ -20,6 +20,7 @@ type PushSurfacePresenceTransaction = Pick<
   | 'knowledgeSpace'
   | 'projectMember'
   | 'refreshToken'
+  | 'thread'
   | 'userPushSurfacePresence'
 >
 
@@ -107,7 +108,21 @@ const resolveRecordableSurface = async (
     },
     select: { id: true },
   })
-  return membership ? input.surface : null
+  if (!membership) {
+    return null
+  }
+
+  // The caller may only report a thread within the channel they can read.
+  // Keeping this relation exact lets delivery suppress only the conversation
+  // actually in focus, rather than every message in a broad channel surface.
+  const thread = await prisma.thread.findFirst({
+    where: {
+      channelId: input.surface.channelId,
+      id: input.surface.threadId,
+    },
+    select: { id: true },
+  })
+  return thread ? input.surface : null
 }
 
 /**
@@ -145,6 +160,7 @@ export const recordPushSurfacePresence = async (
     const now = new Date()
     const surfaceKind = surface?.kind ?? null
     const channelId = surface?.kind === 'channel' ? surface.channelId : null
+    const threadId = surface?.kind === 'channel' ? surface.threadId : null
     const projectId = surface?.kind === 'project_board'
       ? surface.projectId
       : null
@@ -156,6 +172,7 @@ export const recordPushSurfacePresence = async (
     }
     const writeData = {
       channelId,
+      threadId,
       projectId,
       knowledgeSpaceId,
       heartbeatSequence: input.sequence,

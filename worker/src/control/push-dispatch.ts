@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { canUserReadDisclosureBasis, type BasisScopeRow } from '@nessie/runtime'
-import type { PushDispatchJobPayload } from '@nessie/schemas'
+import { buildChannelMessagePath, type PushDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
 import { defaultPushRetryDelayMs } from './push-retry.js'
@@ -166,6 +166,12 @@ export const handlePushDispatch = async (
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'messages'))
     .map((user) => user.id)
 
+  // New jobs always carry the reply root. Keep the previous channel/message
+  // route for already-queued jobs, whose reply root was not persisted yet.
+  const deepLinkUrl = payload.rootMessageId
+    ? buildChannelMessagePath(payload)
+    : `/channels/${payload.channelId}?messageId=${payload.messageId}`
+
   const buildPayload = (title: string): PushPayload => ({
     title,
     body: protectedReply
@@ -175,7 +181,8 @@ export const handlePushDispatch = async (
       channelId: payload.channelId,
       threadId: payload.threadId,
       messageId: payload.messageId,
-      url: `/channels/${payload.channelId}?messageId=${payload.messageId}`,
+      ...(payload.rootMessageId ? { rootMessageId: payload.rootMessageId } : {}),
+      url: deepLinkUrl,
     },
     collapseId: payload.channelId,
   })
@@ -193,9 +200,13 @@ export const handlePushDispatch = async (
       payload: buildPayload(title),
       recipientIds: ids,
       organizationId: payload.organizationId,
-      deepLinkUrl: `/channels/${payload.channelId}`,
+      deepLinkUrl,
       messageId: payload.messageId,
-      surface: { kind: 'channel', channelId: payload.channelId },
+      surface: {
+        channelId: payload.channelId,
+        kind: 'channel',
+        threadId: payload.threadId,
+      },
       now: deps.now ?? (() => new Date()),
     })
 

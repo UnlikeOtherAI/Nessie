@@ -74,6 +74,8 @@ export const PushDispatchJobPayloadSchema = z.object({
   recipientUserIds: z.array(z.string().uuid()).min(1).optional(),
   channelId: z.string().uuid(),
   threadId: z.string().uuid(),
+  /** Conversation root used to make a delivered notification actionable. */
+  rootMessageId: z.string().uuid().optional(),
   organizationId: z.string().uuid(),
   contentSnippet: z.string(),
   /**

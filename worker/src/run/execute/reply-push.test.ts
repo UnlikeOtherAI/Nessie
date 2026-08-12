@@ -61,6 +61,7 @@ test('queues an interactive reply only for the requesting user', async () => {
   assert.equal(queued.channelId, CHANNEL_ID)
   assert.equal(queued.threadId, THREAD_ID)
   assert.equal(queued.messageId, MESSAGE_ID)
+  assert.equal(queued.rootMessageId, MESSAGE_ID)
 })
 
 test('uses the acting effective user for an interactive delegated turn', async () => {
