@@ -57,6 +57,8 @@ export const runExecutionAgentLoop = async (
     // the loop throws before returning (see run-job's failure path).
     invocationSink: InvocationRecord[]
     mcpToolset: McpToolset
+    /** Called when the run reacts, so the terminal path knows it already spoke. */
+    onReacted?: () => void
     resolvedToolIds: Set<string>
     // Durable thought log + coalesced live thinking events for the main agent.
     // Delegate sub-agents stay silent, exactly as before.
@@ -260,6 +262,9 @@ export const runExecutionAgentLoop = async (
           output: DEEP_WATER_START_FAILURE_DETAIL,
           success: false,
         }
+      }
+      if (toolName === 'react') {
+        input.onReacted?.()
       }
       if (toolName === 'delegate') {
         if (!delegateGate.tryAcquire()) {

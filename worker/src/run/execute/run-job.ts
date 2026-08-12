@@ -42,7 +42,7 @@ import {
   WIND_DOWN_INSTRUCTION,
 } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
-import { markWorking } from './working-marker.js'
+import { isContentlessAfterReacting, markWorking } from './working-marker.js'
 import { resolveRollingWatch } from './watch-status-gate.js'
 import { handleCancelStop } from './cancel-stop.js'
 import { completeRunExecution } from './completion.js'
@@ -285,8 +285,12 @@ export const executeRunJob = async (
       utilityModel,
     })
 
+    let reacted = false
     loopResult = await runExecutionAgentLoop(deps, payload, context, {
       allowedToolIds: setup.allowedToolIds,
+      onReacted: () => {
+        reacted = true
+      },
       budget: resolveEffectiveRunBudget(context.agent.runLimits),
       // Resolved once per run against the model this run will actually use
       // (the budget gate's degrade override wins over the agent's own).
@@ -410,6 +414,11 @@ export const executeRunJob = async (
       runUtility: inference.runUtility,
     })
 
+    // A run that answered with a reaction has already spoken. Posting its
+    // leftover "👍" as a message too would say the same thing twice, the
+    // second time as text.
+    const reactionWasTheAnswer = isContentlessAfterReacting(reacted, responseText)
+
     await completeRunExecution(deps, payload, context, planContext, {
       invocations: loopResult.invocations,
       iterations: loopResult.iterations,
@@ -417,6 +426,7 @@ export const executeRunJob = async (
       ...(windDownMetadata ? { messageMetadata: { runStop: windDownMetadata } } : {}),
       responseText,
       ...(rollingWatch ? { rollingWatch } : {}),
+      ...(reactionWasTheAnswer ? { reactionWasTheAnswer: true } : {}),
       toolCallsUsed: loopResult.toolCallsUsed,
     })
     terminalOutcome = 'completed'

@@ -117,34 +117,35 @@ export const buildModelPrompt = (
     ].join(' '),
     'When you have enough information, respond directly without calling more tools.',
     'Use relevant memory context when it helps, but prefer the latest explicit user instructions on conflict.',
-    // "Concise" names a quality, not a shape, and on its own it did not work:
-    // a routine hardware sweep came back as ~400 words with headers, a table
-    // and a per-site bulleted breakdown. What follows gives the default a
-    // shape instead. This is prompt guidance, never an output cap — depth has
-    // to stay reachable the moment somebody asks for it.
+    // Length is a judgement, not a limit. "Concise" alone did not work — a
+    // routine sweep came back as ~400 words with a table — but a hard ceiling
+    // is worse, because the times detail is genuinely wanted are exactly the
+    // times it matters. So: name the default, name the cost of overshooting,
+    // and leave the call with the model.
     [
-      'Answer at the length a colleague would in a chat thread. Lead with the',
-      'answer in the first sentence, then a sentence or two of support. The',
-      'normal shape is one short paragraph of plain prose — no headers, no',
-      'tables, no bullet lists unless the content genuinely is a list.',
+      'Match the length to what is actually being asked. Most answers are',
+      'short because most questions are — lead with the answer, add the',
+      'sentence or two that makes it useful, and stop. That is a default, not',
+      'a limit.',
     ].join(' '),
     [
-      'Go long only when the person asks for it ("detail", "full report",',
-      '"walk me through it") or when the answer genuinely needs it — code,',
-      'a comparison, a multi-part question. If you found more than fits, give',
-      'the headline plus one line on what else there is and let them ask.',
+      'Write long when long is genuinely the right answer: someone asked for',
+      'detail or a full report, the work has several parts that each matter,',
+      'you are walking through code or a comparison, or the findings really',
+      'are that substantial. Four hundred words that someone needs is a good',
+      'message.',
     ].join(' '),
     [
-      'On a scheduled or unattended run, report only what is new or needs',
-      'someone to act. If nothing does, say so in one sentence and stop.',
+      'What to avoid is padding: restating the question, headers and tables',
+      'over content that is a sentence, exhaustive inventories of everything',
+      'you checked, a summary of what you just said. That is the cost to weigh',
+      '— every extra paragraph is one more thing a colleague has to read past',
+      'to find what matters, and a channel full of it stops being read at all.',
     ].join(' '),
     [
-      'When a message needs registering but no answer — a thank-you, an FYI,',
-      'a decision already made, something you have seen and will act on later',
-      '— use the `react` tool on it instead of writing a reply. That puts a',
-      'real reaction on the message, the same as clicking the buttons under',
-      'it. Do not type an emoji into a reply to mean this: an emoji in a',
-      'message is still a message.',
+      'On a scheduled or unattended run the bar is higher, because nobody',
+      'asked: report what is new or needs someone to act, and if nothing does,',
+      'say so in a line.',
     ].join(' '),
     [
       'Write like a person in a chat thread, not a help-desk bot.',
