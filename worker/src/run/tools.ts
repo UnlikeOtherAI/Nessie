@@ -25,6 +25,7 @@ import {
   runConnectorUninstallTool,
   runDeepWaterRunUpdateTool,
   runExecutorAgentAccessPrepareTool,
+  runExecutorDescriptorReviewPrepareTool,
   runExecutorInspectTool,
   runExecutorLifecyclePrepareTool,
   runExecutorListTool,
@@ -415,6 +416,12 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () => runExecutorLifecyclePrepareTool(context, {
         action: 'revoke',
         executorId: args.executorId,
+      }))
+    case 'executor_descriptor_review_prepare':
+      return wrapTool(inputSummary, () => runExecutorDescriptorReviewPrepareTool(context, {
+        executorId: args.executorId,
+        revision: args.revision,
+        status: args.status,
       }))
     case 'executor_agent_access_prepare':
       return wrapTool(inputSummary, () => runExecutorAgentAccessPrepareTool(context, {

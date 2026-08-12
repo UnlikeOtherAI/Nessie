@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { parseOrganizationId, parseUserId } from '@nessie/schemas'
 
-import { runExecutorPairTool } from './executors.js'
+import {
+  runExecutorDescriptorReviewPrepareTool,
+  runExecutorPairTool,
+} from './executors.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
@@ -55,5 +58,24 @@ test('executor management refuses a personal assistant outside its own DM', asyn
       },
     })),
     /Personal Assistant conversation/,
+  )
+})
+
+test('descriptor review preparation rejects an invalid activation request before any mutation', async () => {
+  await assert.rejects(
+    () => runExecutorDescriptorReviewPrepareTool(makeContext(), {
+      executorId: '88888888-8888-4888-8888-888888888888',
+      revision: 0,
+      status: 'active',
+    }),
+    /positive integer/,
+  )
+  await assert.rejects(
+    () => runExecutorDescriptorReviewPrepareTool(makeContext(), {
+      executorId: '88888888-8888-4888-8888-888888888888',
+      revision: 1,
+      status: 'pending_review',
+    }),
+    /active or disabled/,
   )
 })

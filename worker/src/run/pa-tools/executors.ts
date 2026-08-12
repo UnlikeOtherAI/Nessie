@@ -1,4 +1,5 @@
 import {
+  getExecutorAccessView,
   getExecutorForUser,
   listVisibleExecutors,
   prepareExecutorAccessChange,
@@ -141,12 +142,25 @@ export const runExecutorInspectTool = async (
 ): Promise<ToolExecutionResult> => {
   const actorContext = requireExecutorPersonalAssistant(context)
   const executorId = requireId(input.executorId, 'executorId')
-  const found = await getExecutorForUser(context.prisma, actorContext, executorId)
+  const [found, access] = await Promise.all([
+    getExecutorForUser(context.prisma, actorContext, executorId),
+    getExecutorAccessView(context.prisma, actorContext, executorId),
+  ])
   if (!found) throw new Error('Executor not found.')
+  const descriptorRevisions = access?.canManage
+    ? formatSection(
+        'Local policy proposals',
+        (access.descriptorRevisions ?? []).map((revision) => (
+          `- revision=${revision.revision} status=${revision.reviewStatus} `
+          + `operations=${revision.operationKeys.join(', ')} digest=${revision.localPolicyDigest}`
+        )),
+      )
+    : null
   return {
     inputSummary: `executorId=${executorId}`,
     outputPreview:
-      `${formatExecutor(found.executor)}\n  access=your entitlement only\n  manage=${found.access.privateAssignment === 'admin' || found.access.organizationRole === 'owner' || found.access.organizationRole === 'admin' || found.access.projectRole === 'owner' || found.access.projectRole === 'admin'}`,
+      `${formatExecutor(found.executor)}\n  access=your entitlement only\n  manage=${access?.canManage === true}`
+      + (descriptorRevisions ? `\n${descriptorRevisions}` : ''),
     toolName: 'executor_inspect',
   }
 }
@@ -172,6 +186,23 @@ export const runExecutorLifecyclePrepareTool = async (
   requireId(input.executorId, 'executorId'),
   { kind: 'lifecycle', action: input.action },
 )
+
+export const runExecutorDescriptorReviewPrepareTool = async (
+  context: BuiltinToolRuntimeContext,
+  input: { executorId: unknown; revision: unknown; status: unknown },
+): Promise<ToolExecutionResult> => {
+  if (typeof input.revision !== 'number' || !Number.isInteger(input.revision) || input.revision < 1) {
+    throw new Error('revision must be a positive integer.')
+  }
+  if (input.status !== 'active' && input.status !== 'disabled') {
+    throw new Error('status must be active or disabled.')
+  }
+  return prepare(context, requireId(input.executorId, 'executorId'), {
+    kind: 'descriptor_review',
+    revision: input.revision,
+    status: input.status,
+  })
+}
 
 export const runExecutorAgentAccessPrepareTool = async (
   context: BuiltinToolRuntimeContext,

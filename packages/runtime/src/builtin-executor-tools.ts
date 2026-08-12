@@ -74,6 +74,25 @@ export const EXECUTOR_REVOKE_TOOL_DEFINITION = lifecycleTool(
   'irreversible revoke',
 )
 
+export const EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'executor_descriptor_review_prepare',
+  label: 'Prepare Executor Local Policy Review',
+  description:
+    'Prepare activation or disablement of one signed local executor-policy revision. The requesting '
+    + 'user must inspect and confirm it in Executors; activation requires fresh verification and this assistant cannot apply it.',
+  parameters: {
+    type: 'object',
+    properties: {
+      executorId: UUID,
+      revision: { type: 'integer', minimum: 1 },
+      status: { type: 'string', enum: ['active', 'disabled'] },
+    },
+    required: ['executorId', 'revision', 'status'],
+  },
+  safe: false,
+  personalAssistantOnly: true,
+}
+
 export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_agent_access_prepare',
   label: 'Prepare Executor Agent Access',
@@ -130,6 +149,7 @@ export const EXECUTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   EXECUTOR_PAUSE_TOOL_DEFINITION,
   EXECUTOR_DRAIN_TOOL_DEFINITION,
   EXECUTOR_REVOKE_TOOL_DEFINITION,
+  EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION,
   EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION,
   EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION,
 ]

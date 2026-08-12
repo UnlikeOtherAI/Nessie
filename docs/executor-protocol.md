@@ -177,7 +177,9 @@ claim/connect and sign the proposal; its **Overview → Local policy proposals**
 row then lets an entitled person prepare and explicitly confirm the review.
 Activating a revision requires fresh human verification. Neither an agent nor
 the Personal Assistant can activate a proposal, and no direct descriptor-review
-endpoint bypasses this confirmation path.
+endpoint bypasses this confirmation path. The Personal Assistant can inspect
+the same signature-free proposal summary for a manager and prepare a review
+link, but it cannot submit the confirmation on the person's behalf.
 
 On connection, the daemon sends a `hello` frame:
 

@@ -30,6 +30,7 @@ export {
 } from './pa-tools/connectors.js'
 export {
   runExecutorAgentAccessPrepareTool,
+  runExecutorDescriptorReviewPrepareTool,
   runExecutorInspectTool,
   runExecutorLifecyclePrepareTool,
   runExecutorListTool,
