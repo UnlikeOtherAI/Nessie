@@ -1,3 +1,4 @@
+import { AgentModelOptionSchema } from '@nessie/schemas'
 import { z } from 'zod'
 
 // ─── Designer chat ────────────────────────────────────────────────────────
@@ -29,4 +30,8 @@ export const DesignerChatBodySchema = z.object({
   messages: z.array(DesignerChatMessageSchema),
   formState: DesignerFormStateSchema,
   availableTools: z.array(DesignerToolDescriptorSchema).optional(),
+  // The same catalogue the model combobox renders (`GET /api/agents/models`),
+  // in the same order. The designer cannot pick a model out of a catalogue it
+  // cannot see, and the pair it names has to be one the form can resolve.
+  availableModels: z.array(AgentModelOptionSchema).optional(),
 })

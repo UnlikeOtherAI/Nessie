@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   filterModelOptions,
+  findModelOption,
   modelOptionLabel,
   modelOptionSubtitle,
 } from '../src/components/features/agents/designer/model-options.js'
@@ -55,6 +56,20 @@ test('the subtitle carries the model id and description, falling back to the pro
     modelOptionSubtitle(option({ displayName: 'gpt-5-mini' })),
     'OpenAI',
   )
+})
+
+test('a model resolves only when its provider matches too', () => {
+  const options = [
+    option({}),
+    option({ displayName: 'Kimi K2', model: 'kimi-k2', provider: 'kimi', providerDisplayName: 'Kimi' }),
+  ]
+
+  assert.equal(findModelOption(options, 'kimi-k2', 'kimi'), options[1])
+  // The Design Assistant naming a real model against the wrong provider is
+  // still an unsaveable pair, so it resolves to nothing.
+  assert.equal(findModelOption(options, 'kimi-k2', 'openai'), undefined)
+  assert.equal(findModelOption(options, 'gpt-6', 'openai'), undefined)
+  assert.equal(findModelOption([], 'gpt-5-mini', 'openai'), undefined)
 })
 
 test('the field label repeats the model id only when it differs from the name', () => {

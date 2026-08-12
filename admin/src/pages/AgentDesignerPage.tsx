@@ -91,14 +91,13 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
     }
   }, [editingAgent])
 
-  const { actions, state } = useAgentDesigner(initialState)
+  const { actions, state } = useAgentDesigner(initialState, modelOptions)
 
-  // A new agent cannot be saved without a model, and nothing else fills that
-  // field in: the Design Assistant has no model tool, so a user who let it
-  // configure the form met a permanently disabled Create button. Lead with the
-  // catalogue's first entry — Ledger returns it provider-ordered, newest model
-  // of each provider first — and never touch a selection that already exists,
-  // which is also why edit mode (always seeded from the stored agent) is out.
+  // A new agent cannot be saved without a model, and the Design Assistant may
+  // never be asked to pick one. Lead with the catalogue's first entry — Ledger
+  // returns it provider-ordered, newest model of each provider first — and
+  // never touch a selection that already exists, which is also why edit mode
+  // (always seeded from the stored agent) is out.
   const { setModelSelection } = actions
   const leadingModelOption = modelOptions[0]
   useEffect(() => {
@@ -106,7 +105,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
     setModelSelection(leadingModelOption)
   }, [isEditMode, leadingModelOption, setModelSelection, state.model, state.provider])
 
-  const chat = useDesignerChat(state, actions, toolCatalog.options)
+  const chat = useDesignerChat(state, actions, toolCatalog.options, modelOptions)
   const createAgent = useCreateAgent()
   const updateAgent = useUpdateAgent()
 

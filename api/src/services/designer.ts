@@ -316,7 +316,11 @@ export const streamDesignerChat = async (
   const messages: OpenAIMessage[] = [
     {
       role: 'system',
-      content: buildDesignerSystemPrompt(input.formState, input.availableTools),
+      content: buildDesignerSystemPrompt(
+        input.formState,
+        input.availableTools,
+        input.availableModels,
+      ),
     },
     ...input.messages.map((m) => ({
       role: m.role as 'assistant' | 'user',
