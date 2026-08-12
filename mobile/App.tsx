@@ -10,7 +10,6 @@ import * as WebBrowser from 'expo-web-browser'
 import TabView from 'react-native-bottom-tabs'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
-
 import { ADMIN_URL } from './src/config'
 import { startDevInspector } from './src/lib/dev-inspector'
 import {
@@ -24,10 +23,10 @@ import { useNativePushNavigation } from './src/lib/native-push-navigation'
 import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
+  nativePushPathScript,
   nativeShellInfoScript,
 } from './src/lib/native-shell'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
-import { launchUrlForPushPath } from './src/lib/push-navigation'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
@@ -40,11 +39,9 @@ import {
   type ToolbarState,
 } from './src/components/IpadNativeToolbar'
 import { IpadNativeTabBar } from './src/components/IpadNativeTabBar'
-
 // Deep-link callback the OS browser redirects to after external sign-in. Must
 // match the admin's externalAuthRedirectUri and the API's allow-listed URL.
 const AUTH_CALLBACK_URL = 'nessie://auth/callback'
-
 // The native tab bar sits beside the WebView; reserve room for it so the
 // WebView's own content (e.g. the channel composer) is never hidden. iOS 26 on
 // iPad puts the tab bar at the TOP; iPhone and Android keep it at the bottom.
@@ -61,7 +58,6 @@ const withOpacity = (color: string, opacity: number): string => {
     const [red, green, blue] = rgb
     return `rgba(${red}, ${green}, ${blue}, ${opacity})`
   }
-
   const hex = color.replace(/^#/, '')
   if (/^[0-9a-f]{6}$/i.test(hex)) {
     const alpha = Math.round(opacity * 255)
@@ -69,7 +65,6 @@ const withOpacity = (color: string, opacity: number): string => {
       .padStart(2, '0')
     return `#${hex}${alpha}`
   }
-
   return color
 }
 
@@ -122,19 +117,22 @@ const Shell = (): React.JSX.Element => {
     webRef.current?.injectJavaScript(`${script} true;`)
   }, [])
 
+  const cachePushPath = useCallback((path: string): void => {
+    runScript(nativePushPathScript(path))
+  }, [runScript])
+  const {
+    acknowledgePushPath,
+    initialPushPathResolved,
+    pendingPushPath,
+    replayPendingPushPath,
+  } = useNativePushNavigation({
+    cachePushPath,
+  })
+  const sourceUri = reloadNonce === 0 ? ADMIN_URL : `${ADMIN_URL}?__boot=${reloadNonce}`
+
   const navigateTo = useCallback((path: string): void => {
     runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
   }, [runScript])
-
-  const canNavigateFromPush = useCallback(
-    (): boolean => Boolean(currentPathRef.current && !isAuthGateRoute(currentPathRef.current)),
-    [],
-  )
-  const { initialPushPath, takePendingPushPath } = useNativePushNavigation({
-    canNavigate: canNavigateFromPush,
-    navigate: navigateTo,
-  })
-  const sourceUri = launchUrlForPushPath(ADMIN_URL, initialPushPath ?? null, reloadNonce)
 
   const sendNativePushRegistration = useCallback((registration: NativePushRegistration): void => {
     runScript(
@@ -324,12 +322,13 @@ const Shell = (): React.JSX.Element => {
       setCurrentPath(msg.path)
       const next = tabIndexForPath(msg.path)
       setIndex((current) => (current === next ? current : next))
+      if (acknowledgePushPath(msg.path)) {
+        runScript(nativePushPathScript(null))
+      } else {
+        replayPendingPushPath()
+      }
       if (!isAuthGateRoute(msg.path)) {
         ensureNativePushRegistration()
-        const pendingPath = takePendingPushPath()
-        if (pendingPath) {
-          if (pendingPath !== msg.path) navigateTo(pendingPath)
-        }
       }
     }
   }
@@ -418,17 +417,19 @@ const Shell = (): React.JSX.Element => {
       ) : null}
 
       <View style={webviewLayerStyle}>
-        {initialPushPath === undefined ? null : <WebView
+        {!initialPushPathResolved ? null : <WebView
           allowsBackForwardNavigationGestures
           domStorageEnabled
           injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript({
             clientId: pushSurfaceClientId.current,
             formFactor: IS_IPAD ? 'ipad' : 'phone',
+            pendingPushPath,
             platform: Platform.OS,
           })}
           injectedJavaScript={`${nativeShellInfoScript({
             clientId: pushSurfaceClientId.current,
             formFactor: IS_IPAD ? 'ipad' : 'phone',
+            pendingPushPath,
             platform: Platform.OS,
           })}\n${INJECTED}`}
           key={webviewKey}
