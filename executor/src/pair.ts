@@ -22,13 +22,53 @@ export type PairExecutorInput = {
   workspaceRoot: string
 }
 
+export const COW_WORKSPACE_OPERATION_KEYS = [
+  'file.list',
+  'file.read',
+  'file.write',
+  'workspace.review',
+  'sandbox.stop',
+] as const
+
 const initialLocalPolicy = {
   limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
   // File writes land in the daemon-owned COW scratch workspace. The paired
   // root stays read-only: there is still no shell, browser, or host promotion.
-  operationKeys: ['file.list', 'file.read', 'file.write', 'workspace.review', 'sandbox.stop'],
+  operationKeys: [...COW_WORKSPACE_OPERATION_KEYS],
   profiles: ['workspace_sandbox'],
   revision: 1,
+}
+
+/**
+ * Update only the companion's locally enforced COW policy. This deliberately
+ * does not submit a descriptor: `connect` signs and proposes the new revision,
+ * then an entitled human must confirm its review in Nessie before it is usable.
+ */
+export const configureExecutorLocalPolicy = async (
+  stateDir: string,
+  state: ExecutorLocalState,
+  requestedOperationKeys: string[],
+): Promise<ExecutorLocalState> => {
+  const requested = new Set(requestedOperationKeys)
+  if (requested.size === 0 || requested.size !== requestedOperationKeys.length) {
+    throw new Error('Specify one or more distinct COW workspace operations.')
+  }
+  if ([...requested].some((operationKey) => !COW_WORKSPACE_OPERATION_KEYS.includes(
+    operationKey as typeof COW_WORKSPACE_OPERATION_KEYS[number],
+  ))) {
+    throw new Error('Only implemented COW workspace operations may be configured.')
+  }
+  const next: ExecutorLocalState = {
+    ...state,
+    descriptor: {
+      ...state.descriptor,
+      operationKeys: COW_WORKSPACE_OPERATION_KEYS.filter((operationKey) => requested.has(operationKey)),
+      profiles: ['workspace_sandbox'],
+      revision: state.descriptor.revision + 1,
+    },
+  }
+  await saveExecutorState(stateDir, next)
+  return next
 }
 
 export const pairExecutor = async (input: PairExecutorInput): Promise<{ fingerprint: string }> => {

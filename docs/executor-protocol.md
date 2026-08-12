@@ -164,9 +164,20 @@ the candidate is not an authorization cache or a caller-selectable machine.
 The initial `nessie-executor` CLI requires an explicit HTTPS API origin and an
 owner-only local state directory. It generates and stores the machine key
 locally, submits the signed enrollment proof, and after the human confirms the
-fingerprint, claims a connection and sends heartbeats. Its presence-only
-profile advertises `sandbox.stop` but deliberately refuses every file, command,
-browser, and coding operation until a concrete sandbox backend is installed.
+fingerprint, claims a connection and sends heartbeats. Its initial companion
+profile is deliberately limited to daemon-owned COW workspace operations:
+`file.list`, `file.read`, `file.write`, `workspace.review`, and
+`sandbox.stop`. It refuses shell, browser, coding, host-promotion, and every
+unimplemented operation.
+
+`nessie-executor configure --operations ...` can narrow or restore only that
+fixed COW subset in the local owner-only state. It increments the local
+descriptor revision but does not submit or activate it. The daemon must next
+claim/connect and sign the proposal; its **Overview → Local policy proposals**
+row then lets an entitled person prepare and explicitly confirm the review.
+Activating a revision requires fresh human verification. Neither an agent nor
+the Personal Assistant can activate a proposal, and no direct descriptor-review
+endpoint bypasses this confirmation path.
 
 On connection, the daemon sends a `hello` frame:
 
@@ -189,8 +200,8 @@ an interactive session holds its outbound control stream while live.
 A descriptor lists structural facts only: supported operation schemas,
 resource/network limits, platform facts, and local-policy digest. A revision is
 monotonic for one key. A newly advertised operation is pending review and
-ungranted until an entitled human enables it. The descriptor cannot nominate a
-host path or create cloud authority.
+ungranted until an entitled human prepares and confirms its activation. The
+descriptor cannot nominate a host path or create cloud authority.
 
 ## 6. Binding, queue lifecycle, and command receipts
 

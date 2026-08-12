@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  ExecutorAccessChangeRequestSchema,
   ExecutorAccessChangeConfirmationSchema,
+  ExecutorAccessViewResponseSchema,
   ExecutorAgentOperationGrantSchema,
   ExecutorAvailabilityCandidateSchema,
   ExecutorAvailabilityResponseSchema,
@@ -238,6 +240,37 @@ test('access confirmation requires an opaque change and confirmation token', () 
   assert.equal(
     ExecutorAccessChangeConfirmationSchema.safeParse({
       accessChangeId: ids.change,
+    }).success,
+    false,
+  )
+})
+
+test('descriptor activation is a structural access change and descriptor rows stay signature-free', () => {
+  assert.deepEqual(
+    ExecutorAccessChangeRequestSchema.parse({
+      kind: 'descriptor_review',
+      revision: 2,
+      status: 'active',
+    }),
+    { kind: 'descriptor_review', revision: 2, status: 'active' },
+  )
+  assert.equal(
+    ExecutorAccessViewResponseSchema.safeParse({
+      canManage: true,
+      descriptorRevisions: [{
+        localPolicyDigest: digest,
+        operationKeys: ['file.read'],
+        profiles: ['workspace_sandbox'],
+        reviewStatus: 'pending_review',
+        revision: 2,
+        signature: 'must never reach a browser',
+      }],
+      effectiveAccess: {
+        organizationRole: 'owner',
+        privateAssignment: 'admin',
+        projectRole: null,
+      },
+      executorId: ids.executor,
     }).success,
     false,
   )

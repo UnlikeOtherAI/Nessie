@@ -488,6 +488,11 @@ export const ExecutorAccessChangeRequestSchema = z.union([
     kind: z.literal('lifecycle'),
     action: ExecutorLifecycleActionSchema,
   }).strict(),
+  z.object({
+    kind: z.literal('descriptor_review'),
+    revision: z.number().int().positive(),
+    status: z.enum(['active', 'disabled']),
+  }).strict(),
 ])
 export type ExecutorAccessChangeRequest = z.infer<
   typeof ExecutorAccessChangeRequestSchema
@@ -564,6 +569,18 @@ export type ExecutorPrivateAssignmentResponse = z.infer<
   typeof ExecutorPrivateAssignmentResponseSchema
 >
 
+/** A reviewed, signed local policy proposal. The raw signature remains server-only. */
+export const ExecutorDescriptorReviewResponseSchema = z.object({
+  localPolicyDigest: Sha256DigestSchema,
+  operationKeys: z.array(ExecutorOperationKeySchema).min(1).max(100),
+  profiles: z.array(ExecutorProfileSchema).min(1).max(10),
+  reviewStatus: z.enum(['pending_review', 'active', 'disabled']),
+  revision: z.number().int().positive(),
+}).strict()
+export type ExecutorDescriptorReviewResponse = z.infer<
+  typeof ExecutorDescriptorReviewResponseSchema
+>
+
 export const ExecutorAccessViewResponseSchema = z.object({
   canManage: z.boolean(),
   executorId: ExecutorIdSchema,
@@ -572,6 +589,7 @@ export const ExecutorAccessViewResponseSchema = z.object({
     privateAssignment: z.enum(['none', 'use', 'admin']),
     projectRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullable(),
   }).strict(),
+  descriptorRevisions: z.array(ExecutorDescriptorReviewResponseSchema).max(20).optional(),
   operationGrants: z.array(z.object({
     agentId: AgentIdSchema,
     operationKey: ExecutorOperationKeySchema,

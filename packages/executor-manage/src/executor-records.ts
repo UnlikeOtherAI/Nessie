@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
-import { ExecutorScopeSchema } from '@nessie/schemas'
+import { ExecutorCapabilityDescriptorSchema, ExecutorScopeSchema } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
   ExecutorScope,
@@ -66,6 +66,13 @@ export type ExecutorAccessView = {
     privateAssignment: ExecutorHumanAccess['privateAssignment']
     projectRole: ExecutorHumanAccess['projectRole']
   }
+  descriptorRevisions?: Array<{
+    localPolicyDigest: string
+    operationKeys: string[]
+    profiles: Array<'workspace_sandbox' | 'coding_session'>
+    reviewStatus: 'pending_review' | 'active' | 'disabled'
+    revision: number
+  }>
   operationGrants?: Array<{
     agentId: string
     operationKey: string
@@ -377,7 +384,7 @@ export const getExecutorAccessView = async (
       effectiveAccess: found.access,
     }
   }
-  const [privateAssignments, operationGrants] = await Promise.all([
+  const [privateAssignments, operationGrants, descriptorRevisions] = await Promise.all([
     found.executor.scope.kind === 'private'
       ? prisma.executorPrivateAssignment.findMany({
           where: { executorId: found.executor.id },
@@ -389,6 +396,12 @@ export const getExecutorAccessView = async (
       where: { executorId: found.executor.id },
       orderBy: [{ agentId: 'asc' }, { operationKey: 'asc' }],
       select: { agentId: true, operationKey: true, state: true, updatedAt: true },
+    }),
+    prisma.executorCapabilityRevision.findMany({
+      where: { executorId: found.executor.id },
+      orderBy: { revision: 'desc' },
+      take: 20,
+      select: { descriptor: true, localPolicyDigest: true, reviewStatus: true, revision: true },
     }),
   ])
   return {
@@ -412,6 +425,18 @@ export const getExecutorAccessView = async (
           )),
         }
       : {}),
+    descriptorRevisions: descriptorRevisions.flatMap((revision) => {
+      const descriptor = ExecutorCapabilityDescriptorSchema.safeParse(revision.descriptor)
+      return descriptor.success
+        ? [{
+            localPolicyDigest: revision.localPolicyDigest,
+            operationKeys: descriptor.data.operationKeys,
+            profiles: descriptor.data.profiles,
+            reviewStatus: revision.reviewStatus,
+            revision: revision.revision,
+          }]
+        : []
+    }),
     operationGrants: operationGrants.map((grant) => ({
       agentId: grant.agentId,
       operationKey: grant.operationKey,

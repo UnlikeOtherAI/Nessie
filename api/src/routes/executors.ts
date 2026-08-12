@@ -22,7 +22,6 @@ import {
   reportExecutorHeartbeat,
   submitExecutorDescriptor,
   submitExecutorEnrollment,
-  reviewExecutorDescriptor,
 } from '@nessie/executor-manage'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { ExecutorOperationKeySchema, parseChannelId, parseUserId } from '@nessie/schemas'
@@ -55,7 +54,6 @@ import {
   PendingExecutorEnrollmentSchema,
   PrepareExecutorAccessChangeBodySchema,
   PreparedExecutorAccessChangeSchema,
-  ReviewExecutorDescriptorBodySchema,
   SubmitExecutorEnrollmentBodySchema,
 } from '../contracts.js'
 import { verifyPassword } from '../auth/password.js'
@@ -484,21 +482,6 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
           outcome: 'denied',
         })
       }
-      if (sendExecutorError(reply, error)) return reply
-      throw error
-    }
-  })
-
-  app.put('/api/executors/:executorId/descriptor-review', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    const { executorId } = request.params as { executorId: string }
-    const body = parseInput(ReviewExecutorDescriptorBodySchema, request.body, reply)
-    if (!body) return reply
-    try {
-      await reviewExecutorDescriptor(prisma, actorContext, { executorId, ...body })
-      return createApiResponse({ reviewed: true })
-    } catch (error) {
       if (sendExecutorError(reply, error)) return reply
       throw error
     }

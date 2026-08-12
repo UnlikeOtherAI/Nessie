@@ -146,9 +146,3 @@ export type ExecutorAccessView = z.infer<typeof ExecutorAccessViewSchema>
 
 export const ExecutorWorkspaceReviewRecordSchema = ExecutorWorkspaceReviewRecordResponseSchema
 export type ExecutorWorkspaceReviewRecord = z.infer<typeof ExecutorWorkspaceReviewRecordSchema>
-
-export const ReviewExecutorDescriptorBodySchema = z.object({
-  revision: z.number().int().positive(),
-  status: z.enum(['active', 'disabled']),
-}).strict()
-export type ReviewExecutorDescriptorBody = z.infer<typeof ReviewExecutorDescriptorBodySchema>

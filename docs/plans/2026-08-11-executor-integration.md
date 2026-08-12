@@ -732,10 +732,13 @@ Deliver a reachable, no-execution slice:
    an explicit choice and is never inferred from the active session.
 2. The desktop companion (or headless daemon) consumes the pairing challenge;
    the owner confirms the machine fingerprint and selects a strict initial
-   policy locally.
+   policy locally. Local configuration produces a signed revision proposal
+   only; it cannot activate a new operation.
 3. The daemon reports a signed descriptor and heartbeats. The owner can inspect
    its policy, pause/drain/revoke it, and see its data boundary from the web
-   home and companion.
+   home and companion. A local policy revision remains pending until an
+   entitled person prepares and confirms descriptor activation; activation
+   requires fresh verification.
 4. Pairing replay, descriptor rollback, competing active connections, offline,
    drain, and revoke all
    produce deterministic status and audit receipts.

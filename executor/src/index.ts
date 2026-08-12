@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { claimExecutor, heartbeatExecutor, serveExecutor } from './daemon.js'
-import { pairExecutor } from './pair.js'
+import { configureExecutorLocalPolicy, pairExecutor } from './pair.js'
 import { loadExecutorState } from './state-store.js'
 
 type ParsedCommand =
@@ -12,6 +12,7 @@ type ParsedCommand =
     stateDir: string
     workspaceRoot: string
   }
+  | { kind: 'configure'; operationKeys: string[]; stateDir: string }
   | { kind: 'connect'; stateDir: string }
   | { kind: 'heartbeat'; stateDir: string }
   | { kind: 'serve'; stateDir: string }
@@ -20,6 +21,8 @@ const usage = (): never => {
   throw new Error(
     'Usage: nessie-executor pair --api <https://api.example> --enrollment <uuid> '
     + '--challenge <token> --state-dir <owner-only-path> --workspace <absolute-read-only-root>\n'
+    + '       nessie-executor configure --state-dir <owner-only-path> '
+    + '--operations <file.list,file.read,file.write,workspace.review,sandbox.stop>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>',
   )
 }
@@ -54,6 +57,13 @@ export const parseCommand = (args: string[]): ParsedCommand => {
       workspaceRoot: option(args, '--workspace'),
     }
   }
+  if (command === 'configure') {
+    return {
+      kind: 'configure',
+      operationKeys: option(args, '--operations').split(',').map((value) => value.trim()),
+      stateDir: option(args, '--state-dir'),
+    }
+  }
   if (command === 'connect' || command === 'heartbeat' || command === 'serve') {
     return { kind: command, stateDir: option(args, '--state-dir') }
   }
@@ -70,6 +80,14 @@ export const run = async (args: string[]): Promise<void> => {
     return
   }
   const state = await loadExecutorState(command.stateDir)
+  if (command.kind === 'configure') {
+    const updated = await configureExecutorLocalPolicy(command.stateDir, state, command.operationKeys)
+    process.stdout.write(
+      `Local policy proposal saved as revision ${updated.descriptor.revision}. `
+      + 'Run connect (or restart serve), then have a person review it in Nessie.\n',
+    )
+    return
+  }
   if (command.kind === 'connect') {
     await claimExecutor(command.stateDir, state)
     process.stdout.write('Executor daemon connection established.\n')

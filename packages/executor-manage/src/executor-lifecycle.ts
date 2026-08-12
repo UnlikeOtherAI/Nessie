@@ -148,29 +148,41 @@ export const transitionExecutorLifecycleInTransaction = async (
   return updated
 }
 
-export const reviewExecutorDescriptor = async (
-  prisma: PrismaClient,
+/** Internal to the prepare/confirm access-change transaction. */
+export const reviewExecutorDescriptorInTransaction = async (
+  tx: Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
   input: { executorId: string; revision: number; status: 'active' | 'disabled' },
 ): Promise<void> => {
-  await prisma.$transaction(async (tx) => {
-    await lockExecutorMutation(tx, input.executorId)
-    await requireManagedExecutor(tx, actorContext, input.executorId)
-    const actorUserId = requireHumanActor(actorContext)
-    const revision = await tx.executorCapabilityRevision.findFirst({
+  await requireManagedExecutor(tx, actorContext, input.executorId)
+  const actorUserId = requireHumanActor(actorContext)
+  const [revision, latest] = await Promise.all([
+    tx.executorCapabilityRevision.findFirst({
       where: { executorId: input.executorId, revision: input.revision },
-      select: { id: true },
-    })
-    if (!revision || !actorUserId) {
-      throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor descriptor not found.')
-    }
-    await tx.executorCapabilityRevision.update({
-      where: { id: revision.id },
-      data: {
-        reviewStatus: input.status,
-        reviewedAt: new Date(),
-        reviewedByUserId: actorUserId,
-      },
-    })
+      select: { id: true, reviewStatus: true },
+    }),
+    tx.executorCapabilityRevision.findFirst({
+      where: { executorId: input.executorId },
+      orderBy: { revision: 'desc' },
+      select: { revision: true },
+    }),
+  ])
+  if (!revision || !latest || !actorUserId) {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor descriptor not found.')
+  }
+  const requiredCurrentStatus = input.status === 'active' ? 'pending_review' : 'active'
+  if (latest.revision !== input.revision || revision.reviewStatus !== requiredCurrentStatus) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.STATE_TRANSITION_INVALID,
+      'This descriptor proposal is no longer current for review.',
+    )
+  }
+  await tx.executorCapabilityRevision.update({
+    where: { id: revision.id },
+    data: {
+      reviewStatus: input.status,
+      reviewedAt: new Date(),
+      reviewedByUserId: actorUserId,
+    },
   })
 }

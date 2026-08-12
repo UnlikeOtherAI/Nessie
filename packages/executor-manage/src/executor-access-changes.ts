@@ -17,6 +17,7 @@ import {
 import { canonicalExecutorJson } from './executor-canonical-json.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import {
+  reviewExecutorDescriptorInTransaction,
   transitionExecutorLifecycleInTransaction,
   type ExecutorLifecycleAction,
 } from './executor-lifecycle.js'
@@ -47,6 +48,11 @@ export type ExecutorAccessChange =
   | {
       kind: 'lifecycle'
       action: ExecutorLifecycleAction
+    }
+  | {
+      kind: 'descriptor_review'
+      revision: number
+      status: 'active' | 'disabled'
     }
 
 export type PreparedExecutorAccessChange = {
@@ -83,6 +89,7 @@ export const requiresFreshExecutorVerification = (change: ExecutorAccessChange):
   change.kind === 'private_assignment'
   || (change.kind === 'agent_operation_grant' && change.state === 'allowed')
   || (change.kind === 'lifecycle' && change.action === 'revoke')
+  || (change.kind === 'descriptor_review' && change.status === 'active')
 
 const isPrincipal = (value: unknown): value is { principalKind: 'user'; userId: string } | {
   principalKind: 'agent'
@@ -131,6 +138,14 @@ const parseStoredAccessChange = (value: unknown): StoredAccessChange | null => {
   ) {
     return stored as StoredAccessChange
   }
+  if (
+    change.kind === 'descriptor_review'
+    && Number.isInteger(change.revision)
+    && change.revision > 0
+    && (change.status === 'active' || change.status === 'disabled')
+  ) {
+    return stored as StoredAccessChange
+  }
   return null
 }
 
@@ -158,6 +173,21 @@ const applyChange = async (
       operationKey: change.operationKey,
       state: change.state,
     })
+  }
+  if (change.kind === 'descriptor_review') {
+    await reviewExecutorDescriptorInTransaction(tx, actorContext, {
+      executorId,
+      revision: change.revision,
+      status: change.status,
+    })
+    const executor = await tx.executor.findUnique({
+      where: { id: executorId },
+      select: { authorizationRevision: true },
+    })
+    if (!executor) {
+      throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor not found.')
+    }
+    return executor.authorizationRevision
   }
   const result = await transitionExecutorLifecycleInTransaction(tx, actorContext, {
     executorId,

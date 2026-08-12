@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { requiresFreshExecutorVerification } from '../src/index.js'
 
-test('private assignment changes, grants, and revocation require a fresh human verification', () => {
+test('private assignment changes, grants, descriptor activation, and revocation require fresh human verification', () => {
   assert.equal(requiresFreshExecutorVerification({
     kind: 'private_assignment',
     action: 'set',
@@ -19,6 +19,11 @@ test('private assignment changes, grants, and revocation require a fresh human v
     kind: 'lifecycle',
     action: 'revoke',
   }), true)
+  assert.equal(requiresFreshExecutorVerification({
+    kind: 'descriptor_review',
+    revision: 2,
+    status: 'active',
+  }), true)
 })
 
 test('low-risk denial and pause changes still require structural user confirmation', () => {
@@ -31,5 +36,10 @@ test('low-risk denial and pause changes still require structural user confirmati
   assert.equal(requiresFreshExecutorVerification({
     kind: 'lifecycle',
     action: 'pause',
+  }), false)
+  assert.equal(requiresFreshExecutorVerification({
+    kind: 'descriptor_review',
+    revision: 2,
+    status: 'disabled',
   }), false)
 })

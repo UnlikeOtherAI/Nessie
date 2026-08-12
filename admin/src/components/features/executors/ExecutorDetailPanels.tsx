@@ -96,6 +96,46 @@ export const ExecutorDetailPanels = ({
           <p><span className="font-medium text-[color:var(--tx)]">Data boundary:</span> paired executors run only the reviewed local policy. They do not expose host credentials, a host shell, or raw session output to Nessie.</p>
           <p><span className="font-medium text-[color:var(--tx)]">Last seen:</span> {executor.lastSeenAt ?? 'Never'}</p>
           {executor.statusDetail ? <p className="text-xs text-[color:var(--tx3)]">{executor.statusDetail}</p> : null}
+          {(access?.descriptorRevisions ?? []).length > 0 ? (
+            <div className="grid gap-2 border-t border-[color:var(--sep)] pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--tx3)]">Local policy proposals</p>
+              {(access?.descriptorRevisions ?? []).map((revision, index) => (
+                <div className="rounded border border-[color:var(--sep)] p-2 text-xs" key={revision.revision}>
+                  <p className="font-medium text-[color:var(--tx)]">Revision {revision.revision} · {revision.reviewStatus}</p>
+                  <p className="mt-1 text-[color:var(--tx2)]">{revision.profiles.join(', ')} · {revision.operationKeys.join(', ')}</p>
+                  <p className="mt-1 break-all text-[color:var(--tx3)]">{revision.localPolicyDigest}</p>
+                  {canManage && index === 0 && revision.reviewStatus === 'pending_review' ? (
+                    <button
+                      className="admin-button admin-button-secondary mt-2"
+                      disabled={prepare.isPending}
+                      onClick={() => void submitPrepared({
+                        kind: 'descriptor_review',
+                        revision: revision.revision,
+                        status: 'active',
+                      })}
+                      type="button"
+                    >
+                      Review activation
+                    </button>
+                  ) : null}
+                  {canManage && index === 0 && revision.reviewStatus === 'active' ? (
+                    <button
+                      className="admin-button admin-button-secondary mt-2"
+                      disabled={prepare.isPending}
+                      onClick={() => void submitPrepared({
+                        kind: 'descriptor_review',
+                        revision: revision.revision,
+                        status: 'disabled',
+                      })}
+                      type="button"
+                    >
+                      Review disable
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
           {reviews.length > 0 ? (
             <div className="grid gap-2 border-t border-[color:var(--sep)] pt-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--tx3)]">Recent draft reviews</p>

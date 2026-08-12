@@ -7,6 +7,7 @@ import test from 'node:test'
 
 import { executeExecutorCommand } from '../src/daemon.js'
 import { parseCommand } from '../src/index.js'
+import { configureExecutorLocalPolicy } from '../src/pair.js'
 import {
   stopSandboxWorkspace,
   workspaceForRun,
@@ -64,6 +65,52 @@ test('the daemon rejects an insecure API origin', () => {
 
 test('the daemon refuses commands without a state directory', () => {
   assert.throws(() => parseCommand(['serve']), /state-dir/)
+})
+
+test('local policy configuration proposes only implemented COW operations', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-configure-'))
+  const state = {
+    apiBaseUrl: 'https://api.example.test',
+    descriptor: {
+      limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
+      operationKeys: ['file.list', 'file.read'],
+      profiles: ['workspace_sandbox'],
+      revision: 3,
+    },
+    executorId: '00000000-0000-4000-8000-000000000006',
+    machinePrivateKey: 'private',
+    machinePublicKey: 'public',
+    workspaceRoot: '/private/tmp/nessie-workspace',
+  }
+  try {
+    await saveExecutorState(stateDir, state)
+    assert.deepEqual(
+      parseCommand([
+        'configure',
+        '--state-dir', stateDir,
+        '--operations', 'file.write,file.read',
+      ]),
+      { kind: 'configure', operationKeys: ['file.write', 'file.read'], stateDir },
+    )
+    const configured = await configureExecutorLocalPolicy(
+      stateDir,
+      state,
+      ['file.write', 'file.read'],
+    )
+    assert.deepEqual(configured.descriptor, {
+      ...state.descriptor,
+      operationKeys: ['file.read', 'file.write'],
+      profiles: ['workspace_sandbox'],
+      revision: 4,
+    })
+    assert.deepEqual((await loadExecutorState(stateDir)).descriptor, configured.descriptor)
+    await assert.rejects(
+      configureExecutorLocalPolicy(stateDir, configured, ['browser.open']),
+      /Only implemented COW workspace operations/,
+    )
+  } finally {
+    await rm(stateDir, { force: true, recursive: true })
+  }
 })
 
 test('state storage rejects shared or symbolic paths and preserves owner-only state', async () => {

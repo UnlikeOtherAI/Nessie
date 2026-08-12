@@ -80,7 +80,6 @@ export {
 } from './executor-access-mutations.js'
 export {
   nextExecutorLifecycleStatus,
-  reviewExecutorDescriptor,
   transitionExecutorLifecycle,
   transitionExecutorLifecycleInTransaction,
   type ExecutorLifecycleAction,
