@@ -6,7 +6,10 @@ import {
 
 import { assertExecutorEgressOrigin, compileExecutorEgressPolicy } from './egress-policy.js'
 import { startGuestVmSession, type GuestVmSession, type GuestVmSessionInput } from './guest-vm-session.js'
-import { createGuestWorkspaceLease, releaseGuestWorkspaceLease } from './guest-workspace-lease.js'
+import {
+  createGuestWorkspaceLease,
+  releaseGuestWorkspaceLeaseIfCurrent,
+} from './guest-workspace-lease.js'
 import type { ExecutorLocalState } from './state-store.js'
 
 const BROWSER_SESSION_MAX_MS = 10 * 60 * 1_000
@@ -100,6 +103,13 @@ export const createExecutorBrowserSessionManager = (
       openingByRun.set(runId, opening)
       let lease: Awaited<ReturnType<typeof createGuestWorkspaceLease>> | undefined
       let session: GuestVmSession | undefined
+      const stopSessionAndReleaseLease = async (): Promise<void> => {
+        try {
+          await session?.stop()
+        } finally {
+          if (lease) await releaseGuestWorkspaceLeaseIfCurrent(stateDir, lease)
+        }
+      }
       try {
         lease = await createGuestWorkspaceLease(stateDir, state.workspaceRoot, {
           bindingFence: command.bindingFence,
@@ -116,19 +126,22 @@ export const createExecutorBrowserSessionManager = (
           vmHelperPath: browserSandbox.vmHelperPath,
         })
         if (opening.cancelled || !(await session.inspectRuntime()).browser) {
-          await session.stop()
+          await stopSessionAndReleaseLease()
           return unavailable()
         }
       } catch {
-        await session?.stop().catch(() => undefined)
-        if (lease) await releaseGuestWorkspaceLease(stateDir, lease).catch(() => undefined)
+        // A guest session normally releases its own marker when it closes.
+        // The manager also performs an idempotent exact-marker release here
+        // so a failed start or failing `stop()` cannot strand this run's COW
+        // workspace. It can never remove a replacement lease.
+        await stopSessionAndReleaseLease().catch(() => undefined)
         return unavailable()
       } finally {
         if (openingByRun.get(runId) === opening) openingByRun.delete(runId)
         opening.finish()
       }
       if (!session || opening.cancelled) {
-        await session?.stop().catch(() => undefined)
+        await stopSessionAndReleaseLease().catch(() => undefined)
         return unavailable()
       }
       const active: ActiveBrowserSession = {
@@ -136,7 +149,12 @@ export const createExecutorBrowserSessionManager = (
         stopTimer: setTimeout(() => { void stop(runId).catch(() => undefined) }, BROWSER_SESSION_MAX_MS),
       }
       activeByRun.set(runId, active)
-      void session.closed.finally(() => clear(runId, active))
+      void session.closed
+        .finally(async () => {
+          clear(runId, active)
+          if (lease) await releaseGuestWorkspaceLeaseIfCurrent(stateDir, lease)
+        })
+        .catch(() => undefined)
       if (opening.cancelled) {
         await stop(runId).catch(() => undefined)
         return unavailable()

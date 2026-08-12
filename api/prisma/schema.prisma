@@ -2960,7 +2960,6 @@ model ExecutorSession {
   executorId              String                @map("executor_id") @db.Uuid
   runId                   String?               @map("run_id") @db.Uuid
   profile                 ExecutorProfile
-  workspaceGrantDigest    String                @map("workspace_grant_digest")
   status                  ExecutorSessionStatus @default(pending)
   controlLeaseUserId      String?               @map("control_lease_user_id") @db.Uuid
   controlLeaseExpiresAt   DateTime?             @map("control_lease_expires_at")

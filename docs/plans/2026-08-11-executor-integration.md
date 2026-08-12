@@ -89,7 +89,11 @@ next control poll stops every live browser before the daemon may reconnect.
 The daemon enforces the descriptor `maxSessions` ceiling across run IDs and
 the durable session consumes the run's one browser-open attempt before VM
 startup, so a stopped, failed, or daemon-restarted VM cannot be reused as a
-general launcher. Its manager-visible session record is read-only.
+general launcher. Its manager-visible session record is read-only. It provides
+an origin-channel doorway only when the manager already has channel
+entitlement, explains the current browser decision, and offers only separately
+confirmed executor revocation to end activity; it never exposes browser content
+or a hidden cross-channel run.
 
 The native promotion substrate remains unreachable from agents. Its
 `workspace-preflight` command accepts the host root and COW draft only as

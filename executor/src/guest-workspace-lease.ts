@@ -146,6 +146,25 @@ export const releaseGuestWorkspaceLease = async (stateDir: string, lease: GuestW
   await unlink(paths.guestLease)
 }
 
+/**
+ * Release this exact lease when it is still present. Guest process cleanup and
+ * a caller recovering from a failed start can race here, but neither may
+ * remove a newer lease: a missing marker is already clean, while a different
+ * marker still fails closed in `releaseGuestWorkspaceLease`.
+ */
+export const releaseGuestWorkspaceLeaseIfCurrent = async (
+  stateDir: string,
+  lease: GuestWorkspaceLease,
+): Promise<boolean> => {
+  try {
+    await releaseGuestWorkspaceLease(stateDir, lease)
+    return true
+  } catch (error) {
+    if (missing(error)) return false
+    throw error
+  }
+}
+
 /** Re-read durable state before a VM process receives the COW directory. */
 export const assertGuestWorkspaceLeaseCurrent = async (
   stateDir: string,

@@ -138,6 +138,46 @@ test('browser operations are withheld when their session bundle is incomplete or
   })
   assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
     'executor.file.read',
-    'executor.sandbox.stop',
   ])
+})
+
+test('a stopped browser session exposes no residual browser or stop tool', async () => {
+  const prisma = {
+    executorBinding: {
+      findMany: async () => [
+        {
+          id: '00000000-0000-4000-8000-000000000005',
+          operationKey: 'browser.open',
+          session: { id: '00000000-0000-4000-8000-000000000009', status: 'stopped' },
+        },
+        {
+          id: '00000000-0000-4000-8000-000000000006',
+          operationKey: 'browser.observe',
+          session: { id: '00000000-0000-4000-8000-000000000009', status: 'stopped' },
+        },
+        {
+          id: '00000000-0000-4000-8000-000000000007',
+          operationKey: 'sandbox.stop',
+          session: { id: '00000000-0000-4000-8000-000000000009', status: 'stopped' },
+        },
+      ],
+    },
+    toolRegistryEntry: {
+      upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+        id: where.organizationId_scopeKey_toolId.toolId,
+      }),
+    },
+  } as unknown as PrismaClient
+  const toolset = await buildExecutorToolset(prisma, {
+    agentId,
+    agentToolPolicy: {
+      'executor.browser.observe': true,
+      'executor.browser.open': true,
+      'executor.sandbox.stop': true,
+    },
+    encryptionSecret: 'test-secret',
+    organizationId,
+    runId,
+  })
+  assert.deepEqual(toolset.descriptors, [])
 })

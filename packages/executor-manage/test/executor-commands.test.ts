@@ -209,9 +209,52 @@ test('a late terminal receipt can resolve an unknown outcome without changing it
   assert.equal(state.resultDigest, digest(result))
 })
 
+test('a failed browser receipt terminalizes only its exact active session', async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000009'
+  const state = {
+    binding: { executorId, operationKey: 'browser.open', sessionId },
+    id: commandId,
+    state: 'started',
+  }
+  let terminalState: string | undefined
+  const prisma = {
+    $executeRaw: async () => 1,
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma),
+    executorCommand: {
+      findUnique: async () => state,
+      update: async () => state,
+    },
+    executorSession: {
+      updateMany: async ({ data, where }: {
+        data: { status: string }
+        where: { executorId: string; id: string; status: { in: string[] } }
+      }) => {
+        assert.deepEqual(where, {
+          executorId,
+          id: sessionId,
+          status: { in: ['pending', 'active'] },
+        })
+        terminalState = data.status
+        return { count: 1 }
+      },
+    },
+  } as unknown as PrismaClient
+  const result = { code: 'EXECUTOR_BROWSER_UNAVAILABLE', success: false }
+
+  await recordExecutorCommandReceipt(prisma, secret, executorId, {
+    commandId,
+    occurredAt: '2026-08-12T12:00:01.000Z',
+    resultDigest: digest(result),
+    state: 'result_acknowledged',
+  }, result)
+
+  assert.equal(terminalState, 'failed')
+})
+
 const currentBindingPrisma = (
   agentAssigned: boolean,
   operationKey: 'browser.open' | 'sandbox.stop' = 'sandbox.stop',
+  browserSessionStatus: 'active' | 'pending' | 'stopped' = 'active',
 ): PrismaClient => {
   const browserSessionId = operationKey === 'browser.open'
     ? '00000000-0000-4000-8000-000000000009'
@@ -260,7 +303,7 @@ const currentBindingPrisma = (
           ? {
               executorId,
               runId: '00000000-0000-4000-8000-000000000008',
-              status: 'active',
+              status: browserSessionStatus,
             }
           : null,
       }),
@@ -328,4 +371,15 @@ test('delivery fences a browser command after its session is stopped', async () 
     { code: 'EXECUTOR_BINDING_FENCED' },
   )
   assert.equal(reads, 2)
+})
+
+test('only browser.open can consume its own pending browser session', async () => {
+  const client = currentBindingPrisma(true, 'browser.open', 'pending') as never
+  await assert.rejects(
+    assertExecutorCommandBindingCurrent(client, bindingId),
+    { code: 'EXECUTOR_BINDING_FENCED' },
+  )
+  await assert.doesNotReject(
+    assertExecutorCommandBindingCurrent(client, bindingId, { allowPendingBrowserOpen: true }),
+  )
 })

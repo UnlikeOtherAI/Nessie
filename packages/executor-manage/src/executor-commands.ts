@@ -66,6 +66,7 @@ export type ExecutorCommandCreateInput = {
 export const assertExecutorCommandBindingCurrent = async (
   tx: Prisma.TransactionClient,
   bindingId: string,
+  options: { allowPendingBrowserOpen?: boolean } = {},
 ): Promise<{ executorId: string; runId: string; sessionId: string | null }> => {
   let binding = await tx.executorBinding.findUnique({
     where: { id: bindingId },
@@ -238,7 +239,14 @@ export const assertExecutorCommandBindingCurrent = async (
       !binding.sessionId
       || binding.session?.executorId !== executor.id
       || binding.session.runId !== binding.runId
-      || binding.session.status !== 'active'
+      || (
+        binding.session.status !== 'active'
+        && !(
+          options.allowPendingBrowserOpen === true
+          && binding.operationKey === 'browser.open'
+          && binding.session.status === 'pending'
+        )
+      )
     )
   ) {
     throw new ExecutorError(
@@ -395,7 +403,11 @@ export const recordExecutorCommandReceipt = async (
     `)
     const command = await tx.executorCommand.findUnique({
       where: { id: receipt.commandId },
-      include: { binding: { select: { executorId: true } } },
+      include: {
+        binding: {
+          select: { executorId: true, operationKey: true, sessionId: true },
+        },
+      },
     })
     if (!command || command.binding.executorId !== executorId) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor command is unavailable.')
@@ -434,6 +446,28 @@ export const recordExecutorCommandReceipt = async (
         state: receipt.state,
       },
     })
+    let terminalBrowserState: 'failed' | 'stopped' | null = null
+    const sessionId = command.binding.sessionId
+    if (receipt.state === 'result_acknowledged' && sessionId) {
+      if (command.binding.operationKey === 'sandbox.stop') {
+        terminalBrowserState = 'stopped'
+      } else if (
+        (command.binding.operationKey === 'browser.open' || command.binding.operationKey === 'browser.observe')
+        && result?.success !== true
+      ) {
+        terminalBrowserState = 'failed'
+      }
+    }
+    if (terminalBrowserState && sessionId) {
+      await tx.executorSession.updateMany({
+        where: {
+          executorId,
+          id: sessionId,
+          status: { in: ['pending', 'active'] },
+        },
+        data: { status: terminalBrowserState },
+      })
+    }
   })
 }
 

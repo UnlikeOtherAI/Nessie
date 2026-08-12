@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import type {
   ExecutorAccessViewResponse,
   ExecutorRecordResponse,
@@ -39,6 +40,23 @@ const scopeSummary = (executor: ExecutorRecordResponse): string =>
     : executor.scope.kind === 'project'
       ? `Project — eligible only for runs in project ${executor.scope.projectId}.`
       : 'Organization — available only to entitled organization work.'
+
+const sessionSummary = (status: 'pending' | 'active' | 'attention' | 'detached' | 'stopped' | 'failed'): string => {
+  switch (status) {
+    case 'pending':
+      return 'Awaiting the run’s first browser navigation.'
+    case 'active':
+      return 'The run has consumed its one browser navigation; it can only observe or stop this isolated browser.'
+    case 'stopped':
+      return 'Ended. This run cannot start another browser.'
+    case 'failed':
+      return 'Ended after an unavailable browser result. This run cannot retry it.'
+    case 'attention':
+      return 'Awaiting a human session decision.'
+    case 'detached':
+      return 'Detached from interactive control.'
+  }
+}
 
 export const ExecutorDetailPanels = ({
   access,
@@ -94,6 +112,9 @@ export const ExecutorDetailPanels = ({
         <div className="mt-4 grid gap-3 text-sm text-[color:var(--tx2)]">
           <p><span className="font-medium text-[color:var(--tx)]">Profiles:</span> {executor.profiles.join(', ') || 'None approved yet'}</p>
           <p><span className="font-medium text-[color:var(--tx)]">Data boundary:</span> paired executors run only the reviewed local policy. They do not expose host credentials, a host shell, or raw session output to Nessie.</p>
+          {(access?.descriptorRevisions ?? []).some((revision) => revision.operationKeys.includes('browser.open')) ? (
+            <p><span className="font-medium text-[color:var(--tx)]">Browser origin ceiling:</span> enforced only by the owner’s companion and deliberately not uploaded to Nessie. Confirm the exact site with a human executor administrator before launching a browser run.</p>
+          ) : null}
           <p><span className="font-medium text-[color:var(--tx)]">Last seen:</span> {executor.lastSeenAt ?? 'Never'}</p>
           {executor.statusDetail ? <p className="text-xs text-[color:var(--tx3)]">{executor.statusDetail}</p> : null}
           {(access?.descriptorRevisions ?? []).length > 0 ? (
@@ -253,15 +274,33 @@ export const ExecutorDetailPanels = ({
       ) : null}
       {tab === 'sessions' ? (
         <div className="mt-4 grid gap-2 text-sm text-[color:var(--tx2)]">
-          <p className="text-xs text-[color:var(--tx3)]">Browser records show whether a run’s one-time browser capability is pending, consumed, or stopped. They never expose browser content or controls.</p>
+          <p className="text-xs text-[color:var(--tx3)]">Browser records show a run’s one-time capability state, never browser content or controls. Open the origin channel when it is available to you; revocation ends all executor activity after a separate human confirmation.</p>
           {(access?.sessions ?? []).length === 0
             ? <p>No executor session has been created.</p>
             : (access?.sessions ?? []).map((session) => (
               <div className="rounded-md border border-[color:var(--sep)] px-3 py-2" key={session.id}>
                 <p className="font-medium text-[color:var(--tx)]">{session.profile} · {session.status}</p>
+                <p className="mt-0.5 text-xs text-[color:var(--tx2)]">{sessionSummary(session.status)}</p>
                 <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
                   Created {new Date(session.createdAt).toLocaleString()}
                 </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {session.originChannelId ? (
+                    <Link className="admin-button admin-button-secondary" to={`/channels/${session.originChannelId}`}>
+                      Open origin channel
+                    </Link>
+                  ) : null}
+                  {canManage && (session.status === 'pending' || session.status === 'active') ? (
+                    <button
+                      className="admin-button admin-button-secondary text-[color:var(--danger-text)]"
+                      disabled={prepare.isPending}
+                      onClick={() => void submitPrepared({ kind: 'lifecycle', action: 'revoke' })}
+                      type="button"
+                    >
+                      Review revocation to end activity
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ))}
         </div>

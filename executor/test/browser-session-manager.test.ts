@@ -222,3 +222,50 @@ test('failed browser startup releases the exact COW lease so sandbox.stop can te
     await rm(workspaceRoot, { force: true, recursive: true })
   }
 })
+
+test('a rejected guest stop cannot strand a startup lease', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-stop-lease-'))
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-stop-lease-workspace-'))
+  const state = {
+    apiBaseUrl: 'https://api.example.test',
+    browserSandbox: {
+      allowedOrigins: ['https://app.example.test'],
+      guestInitrdBuilderPath: '/private/builder',
+      guestRuntimeBundlePath: '/private/runtime',
+      kernelPath: '/private/kernel',
+      vmHelperPath: '/private/helper',
+    },
+    descriptor: {
+      limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
+      operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
+      profiles: ['workspace_sandbox'],
+      revision: 1,
+    },
+    executorId: '00000000-0000-4000-8000-000000000305',
+    machinePrivateKey: 'private',
+    machinePublicKey: 'public',
+    workspaceRoot,
+  }
+  try {
+    const manager = createExecutorBrowserSessionManager(stateDir, state, {
+      startSession: async () => ({
+        closed: new Promise<void>(() => {}),
+        closeCodingSession: async () => {},
+        inspectRuntime: async () => ({ browser: false, claude: false, codex: false, tmux: false }),
+        launchCodingSession: async () => {},
+        observeBrowser: async () => ({ targets: [] }),
+        observeCodingSession: async () => ({ agent: 'codex', lifecycle: 'running', output: '' }),
+        openBrowser: async () => {},
+        stop: async () => { throw new Error('guest stop failed') },
+      }),
+    })
+    assert.deepEqual(
+      await manager.open(commandFor('browser.open', { url: 'https://app.example.test/guide' }), runId),
+      { code: 'EXECUTOR_BROWSER_UNAVAILABLE', success: false },
+    )
+    assert.equal(await stopSandboxWorkspace(stateDir, runId), true)
+  } finally {
+    await rm(stateDir, { force: true, recursive: true })
+    await rm(workspaceRoot, { force: true, recursive: true })
+  }
+})

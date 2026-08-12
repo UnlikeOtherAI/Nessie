@@ -78,6 +78,13 @@ const nextAuthorizationRevision = async (
     },
     select: { authorizationRevision: true },
   })
+  // The daemon receives the epoch fence and stops its VM before it reconnects;
+  // persist the matching control-plane outcome immediately so a Sessions view
+  // never advertises a browser as usable after a human access decision.
+  await tx.executorSession.updateMany({
+    where: { executorId, status: { in: ['pending', 'active'] } },
+    data: { status: 'stopped' },
+  })
   return executor.authorizationRevision
 }
 

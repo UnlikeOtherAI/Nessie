@@ -126,6 +126,9 @@ export const buildExecutorToolset = async (
   const browserOperationKeys = new Set(['browser.open', 'browser.observe', 'sandbox.stop'])
   const browserBindings = bindings.filter((binding) => browserOperationKeys.has(binding.operationKey))
   const browserSessionId = browserBindings[0]?.session?.id
+  const browserSessionLive = browserBindings.every((binding) => (
+    binding.session?.status === 'pending' || binding.session?.status === 'active'
+  ))
   const hasExactBrowserBundle = Boolean(
     browserSessionId
     && bindings.length === 3
@@ -133,10 +136,14 @@ export const buildExecutorToolset = async (
     && browserBindings.every((binding) => binding.session?.id === browserSessionId)
     && browserBindings.some((binding) => binding.operationKey === 'browser.open')
     && browserBindings.some((binding) => binding.operationKey === 'browser.observe')
-    && browserBindings.some((binding) => binding.operationKey === 'sandbox.stop'),
+    && browserBindings.some((binding) => binding.operationKey === 'sandbox.stop')
+    && browserSessionLive,
   )
   const entries = bindings.flatMap((binding): ExecutorEntry[] => {
-    if ((binding.operationKey === 'browser.open' || binding.operationKey === 'browser.observe') && !hasExactBrowserBundle) {
+    const browserSessionBinding = binding.operationKey === 'browser.open'
+      || binding.operationKey === 'browser.observe'
+      || (binding.operationKey === 'sandbox.stop' && Boolean(binding.session?.id))
+    if (browserSessionBinding && !hasExactBrowserBundle) {
       return []
     }
     const registryId = logicalTools.get(binding.operationKey as never)
@@ -164,7 +171,12 @@ export const buildExecutorToolset = async (
       const startedAt = new Date()
       const commandId = randomUUID()
       const created = await prisma.$transaction(async (tx) => {
-        const binding = await assertExecutorCommandBindingCurrent(tx, entry.bindingId)
+        const binding = await assertExecutorCommandBindingCurrent(tx, entry.bindingId, {
+          // browser.open is the one transition that consumes its freshly
+          // created pending session. Delivery still requires active, so a
+          // queued command cannot reopen a stopped browser.
+          allowPendingBrowserOpen: entry.operationKey === 'browser.open',
+        })
         if (binding.runId !== input.runId) throw new Error('Executor binding run mismatch.')
         if (binding.sessionId !== entry.sessionId) throw new Error('Executor binding session mismatch.')
         if (entry.operationKey === 'browser.open') {

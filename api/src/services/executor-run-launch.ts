@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-
 import type { PrismaClient } from '@prisma/client'
 import { bindExecutorCandidateBundleInTransaction } from '@nessie/executor-manage'
 import { enqueueRunExecution, isThreadRunSlotBusy } from '@nessie/db'
@@ -10,7 +8,6 @@ import {
   parseRunId,
   parseTaskId,
   parseThreadId,
-  canonicalExecutorJson,
   withActionContext,
   type AuthorizedActionContext,
   type ExecutorOperationKey,
@@ -122,16 +119,11 @@ export const launchExecutorRun = async (
       if (!executorId || bindings.some((binding) => binding.executorId !== executorId)) {
         throw new Error('Browser executor bundle must bind one executor.')
       }
-      const workspaceGrantDigest = `sha256:${createHash('sha256').update(canonicalExecutorJson({
-        bindingIds: bindings.map((binding) => binding.bindingId).sort(),
-        runId: run.id,
-      })).digest('hex')}`
       const session = await tx.executorSession.create({
         data: {
           executorId,
           profile: 'workspace_sandbox',
           runId: run.id,
-          workspaceGrantDigest,
         },
         select: { id: true },
       })

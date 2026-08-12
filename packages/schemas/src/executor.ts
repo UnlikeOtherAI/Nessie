@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import {
   AgentIdSchema,
+  ChannelIdSchema,
   OrganizationIdSchema,
   ProjectIdSchema,
   RunIdSchema,
@@ -641,6 +642,7 @@ export type ExecutorSessionStatus = z.infer<typeof ExecutorSessionStatusSchema>
 export const ExecutorSessionSummaryResponseSchema = z.object({
   createdAt: TimestampSchema,
   id: ExecutorSessionIdSchema,
+  originChannelId: ChannelIdSchema.optional(),
   profile: ExecutorProfileSchema,
   runId: RunIdSchema.optional(),
   status: ExecutorSessionStatusSchema,

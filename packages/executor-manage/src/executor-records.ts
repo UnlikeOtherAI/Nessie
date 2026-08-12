@@ -86,6 +86,7 @@ export type ExecutorAccessView = {
   sessions?: Array<{
     createdAt: string
     id: string
+    originChannelId?: string
     profile: 'workspace_sandbox' | 'coding_session'
     runId?: string
     status: 'pending' | 'active' | 'attention' | 'detached' | 'stopped' | 'failed'
@@ -415,7 +416,33 @@ export const getExecutorAccessView = async (
       where: { executorId: found.executor.id },
       orderBy: { createdAt: 'desc' },
       take: 20,
-      select: { createdAt: true, id: true, profile: true, runId: true, status: true, updatedAt: true },
+      select: {
+        createdAt: true,
+        id: true,
+        profile: true,
+        runId: true,
+        run: {
+          select: {
+            thread: {
+              select: {
+                channel: {
+                  select: {
+                    id: true,
+                    members: {
+                      where: { userId: actorContext.actor.actorId },
+                      select: { id: true },
+                      take: 1,
+                    },
+                    visibility: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        status: true,
+        updatedAt: true,
+      },
     }),
   ])
   return {
@@ -457,13 +484,19 @@ export const getExecutorAccessView = async (
       state: grant.state,
       updatedAt: grant.updatedAt.toISOString(),
     })),
-    sessions: sessions.map((session) => ({
-      createdAt: session.createdAt.toISOString(),
-      id: session.id,
-      profile: session.profile,
-      ...(session.runId ? { runId: session.runId } : {}),
-      status: session.status,
-      updatedAt: session.updatedAt.toISOString(),
-    })),
+    sessions: sessions.map((session) => {
+      const channel = session.run?.thread.channel
+      const canOpenOriginChannel = channel
+        && (channel.visibility === 'public' || channel.members.length > 0)
+      return {
+        createdAt: session.createdAt.toISOString(),
+        id: session.id,
+        ...(canOpenOriginChannel ? { originChannelId: channel.id } : {}),
+        profile: session.profile,
+        ...(session.runId ? { runId: session.runId } : {}),
+        status: session.status,
+        updatedAt: session.updatedAt.toISOString(),
+      }
+    }),
   }
 }

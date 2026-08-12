@@ -147,6 +147,10 @@ export const transitionExecutorLifecycleInTransaction = async (
     },
     select: { authorizationRevision: true, status: true },
   })
+  await tx.executorSession.updateMany({
+    where: { executorId: executor.id, status: { in: ['pending', 'active'] } },
+    data: { status: 'stopped' },
+  })
   return updated
 }
 
@@ -192,5 +196,9 @@ export const reviewExecutorDescriptorInTransaction = async (
   await tx.executor.update({
     where: { id: input.executorId },
     data: { activeConnectionEpoch: { increment: 1 } },
+  })
+  await tx.executorSession.updateMany({
+    where: { executorId: input.executorId, status: { in: ['pending', 'active'] } },
+    data: { status: 'stopped' },
   })
 }

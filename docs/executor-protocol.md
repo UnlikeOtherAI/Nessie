@@ -205,8 +205,13 @@ The local descriptor's `maxSessions` limit is enforced across all run IDs; a
 durable browser-session row consumes a run's one browser-open attempt before
 VM startup, so neither a daemon restart, stopped VM, nor failed start turns the
 browser into a retryable general launcher. The executor manager's read-only
-**Sessions** tab shows that pending, active, or stopped record without browser
-content or controls. The guest creates a fresh private browser-profile leaf for
+**Sessions** tab explains whether the run is awaiting its first navigation, is
+limited to observation, has ended, or failed—without browser content or
+controls. It links only to an origin channel the viewer may already open, and a
+human manager can prepare a separate executor-revocation review to end current
+activity. The local origin ceiling is intentionally not uploaded: the UI names
+that absence so a launcher confirms the target with the human companion owner
+rather than mistaking Nessie for an origin-policy editor. The guest creates a fresh private browser-profile leaf for
 each VM and rejects one preseeded by the COW workspace, so the browser starts
 without workspace-provided cookies, extensions, or other ambient state.
 
@@ -264,7 +269,12 @@ same session, so a file operation cannot share the browser's COW workspace.
 creating its command; `sandbox.stop` changes it to `stopped`. Poll delivery
 re-reads the binding and exact session *after* acquiring the executor lock, and
 will terminalize a stale browser command rather than deliver it after stop or
-revocation.
+revocation. A terminal unavailable result for `browser.open` or
+`browser.observe` instead marks only that exact active session `failed`, and
+the worker withholds all three browser-bundle tools once a session is stopped
+or failed. Human access, descriptor, and lifecycle fences persist `stopped`
+for live browser records in the same transaction that advances the daemon
+epoch.
 
 The only command transition receipts are:
 
