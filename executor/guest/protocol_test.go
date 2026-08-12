@@ -70,6 +70,20 @@ func TestEgressMustBeExplicitlyRequestedByTheHostBootCommand(t *testing.T) {
 	}
 }
 
+func TestGuestDropsToTheCOWOwnerOrAnUnprivilegedFallback(t *testing.T) {
+	withoutWorkspace, err := selectGuestIdentity(false, 0, 0)
+	if err != nil || withoutWorkspace.userID != guestFallbackID || withoutWorkspace.groupID != guestFallbackID {
+		t.Fatal("guest without a workspace must use the unprivileged fallback identity")
+	}
+	withWorkspace, err := selectGuestIdentity(true, 501, 20)
+	if err != nil || withWorkspace.userID != 501 || withWorkspace.groupID != 20 {
+		t.Fatal("guest must use the mounted COW owner identity")
+	}
+	if _, err := selectGuestIdentity(true, 0, 20); err == nil {
+		t.Fatal("guest must refuse a root-owned COW workspace identity")
+	}
+}
+
 func TestEgressTokenIsDistinctAndStableForOneKnownBootstrapToken(t *testing.T) {
 	egress, err := deriveEgressToken(testBootstrapToken)
 	if err != nil {

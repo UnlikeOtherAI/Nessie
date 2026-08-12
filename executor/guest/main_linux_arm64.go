@@ -109,11 +109,16 @@ func mountGuestWorkspaceIfRequested() (bool, error) {
 }
 
 func main() {
-	if _, err := mountGuestWorkspaceIfRequested(); err != nil {
+	workspaceAttached, err := mountGuestWorkspaceIfRequested()
+	if err != nil {
 		os.Exit(1)
 	}
 	token, err := readBootstrapToken()
 	if err != nil {
+		os.Exit(1)
+	}
+	if err := dropGuestPrivileges(workspaceAttached); err != nil {
+		clearBytes(token)
 		os.Exit(1)
 	}
 	requestID, err := newRequestID()

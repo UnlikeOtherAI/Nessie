@@ -420,6 +420,14 @@ hello, and clears its mutable token buffer. It implements no browser, command,
 workspace, or coding action: until typed handlers are installed, a valid host
 request receives only `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE`.
 
+Root exists in the guest only long enough to mount `/proc` and the explicitly
+requested COW virtiofs share and to remove the one-use token file. Before it
+opens a control or egress socket, init drops groups, GID, and UID to the COW
+mount's non-root visible owner (or `65534:65534` when no workspace is mounted).
+A root-owned share fails boot instead of leaving a privileged workload behind.
+Browser, CLI, and any future child process inherit that unprivileged identity;
+there is no setuid helper or privilege reacquisition path in the guest image.
+
 The VM configuration can now add exactly one `nessie-cow` virtiofs device. It
 is writable only from inside the guest and mounts at `/work` with `nodev`,
 `nosuid`, and `noexec`; the host directory must be an absolute, non-link,

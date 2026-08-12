@@ -125,6 +125,13 @@ mount, browser, tmux, or operation handler. Until the next reviewed slice, any
 otherwise valid control request returns the fixed
 `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE` result.
 
+The guest's root phase is now limited to boot mounts and one-time bootstrap-file
+removal. It then drops supplementary groups, GID, and UID before opening either
+control or egress transport, using the mounted COW directory's non-root visible
+owner or `65534:65534` without a workspace; a root-owned share fails closed.
+Future browser, tmux, and CLI processes therefore start unprivileged, with no
+setuid route back to a guest root identity.
+
 The VM core now has the narrow COW transport primitive for that future launcher:
 one fixed-tag `nessie-cow` virtiofs share, writable only to the guest and mounted
 there at `/work` with `nodev,nosuid,noexec`. It accepts only an owner-private,
