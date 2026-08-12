@@ -8,7 +8,6 @@ import {
   compileExecutorEgressPolicy,
   type ExecutorEgressPolicy,
 } from './egress-policy.js'
-import type { CodingSessionBroker } from './coding-session-broker.js'
 import { startExecutorEgressGateway } from './egress-gateway.js'
 import {
   GUEST_VM_BUILD_TIMEOUT_MS,
@@ -59,8 +58,6 @@ type GuestVmSessionLauncher = (input: {
 }) => Promise<ActiveGuestVmSessionProcess>
 
 export type GuestVmSessionInput = GuestVmHandshakeInput & {
-  /** Present only for a private, live coding session; never persisted. */
-  codingBroker?: CodingSessionBroker
   egressPolicy: ExecutorEgressPolicy
   guestRuntimeBundlePath: string
 }
@@ -156,7 +153,6 @@ export const startGuestVmSession = async (
   const cleanup = async (): Promise<void> => {
     if (cleaned) return
     cleaned = true
-    input.codingBroker?.revoke()
     await gateway?.close().catch(() => undefined)
     await removeGuestRuntimeBundleSnapshot(join(sessionDirectory, 'runtime')).catch(() => undefined)
     await rm(sessionDirectory, { force: true, recursive: true })
@@ -165,25 +161,11 @@ export const startGuestVmSession = async (
   }
   let gateway: Awaited<ReturnType<typeof startExecutorEgressGateway>> | undefined
   try {
-    if (input.codingBroker) {
-      const requiredEntrypoint: 'claude' | 'codex' = input.codingBroker.provider === 'openai' ? 'codex' : 'claude'
-      if (!runtimeBundle.entrypoints.tmux || !runtimeBundle.entrypoints[requiredEntrypoint]) {
-        throw new WorkspacePathError('The guest runtime does not support the selected coding provider.')
-      }
-    }
     const runtimeSnapshot = await materializeGuestRuntimeBundle(runtimeBundle, join(sessionDirectory, 'runtime'))
-    gateway = await startExecutorEgressGateway({
-      ...(input.codingBroker ? { codingBroker: input.codingBroker } : {}),
-      policy: input.egressPolicy,
-      socketPath: gatewayPath,
-    })
+    gateway = await startExecutorEgressGateway({ policy: input.egressPolicy, socketPath: gatewayPath })
     await runProcess({
-      argv: [
-        '--output', initrdPath,
-        '--bootstrap-token-stdin',
-        ...(input.codingBroker ? ['--coding-session-proof-stdin'] : []),
-      ],
-      input: `${bootstrapToken}${input.codingBroker?.sessionProof ?? ''}`,
+      argv: ['--output', initrdPath, '--bootstrap-token-stdin'],
+      input: bootstrapToken,
       path: builderPath,
       timeoutMs: GUEST_VM_BUILD_TIMEOUT_MS,
     })

@@ -28,15 +28,11 @@ type runtimeController struct {
 	manifest *runtimeManifest
 }
 
-func newRuntimeController(manifest *runtimeManifest, codingSessionProof string) *runtimeController {
+func newRuntimeController(manifest *runtimeManifest) *runtimeController {
 	if manifest == nil {
 		return nil
 	}
-	return &runtimeController{
-		browser:  newBrowserRuntime(manifest),
-		coding:   newCodingRuntime(manifest, codingSessionProof),
-		manifest: manifest,
-	}
+	return &runtimeController{browser: newBrowserRuntime(manifest), coding: newCodingRuntime(manifest), manifest: manifest}
 }
 
 func (controller *runtimeController) close() {

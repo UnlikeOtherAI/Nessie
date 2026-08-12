@@ -566,45 +566,23 @@ names, caller input, and a default/pre-existing tmux server never become
 targets. An existing dedicated socket makes launch fail closed.
 
 The isolated CLI home is created inside the guest COW workspace, with a fresh
-environment that names only that home, its temporary directory, the fixed
-guest configuration location, and (when a broker exists) the session-only
-route proof. It does not inherit a host home, `PATH`, keychain, global
-Codex/Claude configuration, or API token. Observation uses the authoritative
-tmux dead-pane fields plus an 8 KiB, UTF-8, non-binary, non-ANSI
-`capture-pane` snapshot; terminal prose never supplies lifecycle truth. Close
-kills only the exact dedicated session.
+environment that names only that home, its temporary directory, and the
+tool-specific state location. It does not inherit a host home, `PATH`,
+keychain, global Codex/Claude configuration, or API token. Observation uses
+the authoritative tmux dead-pane fields plus an 8 KiB, UTF-8, non-binary,
+non-ANSI `capture-pane` snapshot; terminal prose never supplies lifecycle
+truth. Close kills only the exact dedicated session.
 
 This is intentionally **not** `coding.launch`, `coding.observe`, or
 `coding.close` product availability: no executor descriptor, daemon command,
-agent tool, UI route, remote terminal attach, approval, control lease, or
-task/session record reaches it. The companion now has a private credential
-broker substrate, but it still has no user credential installer or durable
-control-plane record, so the daemon cannot advertise or call this mechanism.
-
-When a future user-confirmed coding session supplies one locally resolved
-credential, the companion creates an in-memory broker for that VM only. It
-keeps the raw OpenAI or Anthropic credential in companion memory and gives the
-guest a one-session proof via the token-bearing initrd (never helper argv); the
-guest deletes the file before its privilege drop. The proof is accepted only on
-the already authenticated egress tunnel, and the fixed `/init
---coding-credential` helper exchanges it for a 45-second proxy token. The
-owner-only gateway accepts that proxy token only for `POST /v1/responses` at
-`https://api.openai.com` or `POST /v1/messages`/`count_tokens` at
-`https://api.anthropic.com`; it strips guest headers, injects the raw provider
-credential at that one pinned destination, disables redirects, and bounds both
-request and response streams. Broker expiry, teardown, or revocation drops all
-tokens immediately. It cannot proxy an arbitrary origin, path, header, or
-provider credential.
-
-The guest configures Codex through a root-owned `CODEX_HOME/config.toml` using
-Codex's documented command-backed provider authentication. It configures
-Claude through one root-owned `--settings` file whose static `apiKeyHelper`
-calls that same fixed helper, an explicit loopback base URL, and host-managed
-provider mode. Neither launch receives `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-a host home, a keychain, or a reusable provider bearer. These are internal
-session mechanics only; a subsequent slice must add the local user credential
-installer plus durable server session/control records before any of them are
-projected.
+agent tool, UI route, remote terminal attach, credential broker, approval,
+control lease, or task/session record reaches it. The guest has no coding CLI
+credential or direct network path, so its internal control messages cannot be
+used as a working Codex/Claude product session. A subsequent slice must add a
+credential-principal boundary, session-bound credential/egress broker, and
+durable control plane before any of these mechanics are projected. A proof or
+token inherited by a coding CLI is insufficient: child workspace processes can
+read it and must never receive delegated provider capability.
 
 Its optional `--workspace-cow` argument exists only for the companion's
 lease-derived release probe. It passes that one COW directory into the fixed VM
@@ -628,14 +606,13 @@ download, and upload policy. It uses `@nessie/runtime` `safeFetch` or
 `pinnedFetch` for HTTP handling and constrained `pinnedConnect` for the raw
 CONNECT transport, rather than implementing a second SSRF policy.
 
-The checked-in companion foundation is owner-only and cannot be advertised: it
-is a Unix-socket gateway with no TCP listener. Its normal mode permits only
-HTTPS CONNECT to exact local-policy browser origins and uses runtime
-`pinnedConnect`, so URL validation and literal-IP dial occur as a single
-operation rather than validating then re-resolving a hostname. Its optional
-coding mode is not generic HTTP forwarding: it is the one session-bound,
-fixed-origin broker route described above. The VM bridge, Chromium profile, and
-download/upload controls remain required before browser operations are enabled.
+The checked-in companion foundation is not connected to a guest and cannot be
+advertised: it is an owner-only Unix-socket HTTPS CONNECT listener with exact
+local-origin policy and no TCP listener or generic forwarding mode. Its one raw
+socket path uses runtime `pinnedConnect`, so URL validation and literal-IP dial
+occur as a single operation rather than validating then re-resolving a hostname.
+The VM bridge, Chromium profile, credential broker, and download/upload controls
+remain required before browser operations are enabled.
 
 Codex/Claude runs inside the same guest in a dedicated tmux server. The host
 `~/.codex`, `~/.claude`, keychain, and global CLI tokens are never mounted.

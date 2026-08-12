@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestCodingRuntimePinsClaudeSettingsAndSessionProof(t *testing.T) {
+func TestCodingRuntimeUsesCredentialFreeCOWProfile(t *testing.T) {
 	root := t.TempDir()
 	profile := filepath.Join(root, ".nessie-executor", "coding", "claude")
 	var actualArgs, actualEnvironment []string
@@ -19,9 +19,8 @@ func TestCodingRuntimePinsClaudeSettingsAndSessionProof(t *testing.T) {
 			actualEnvironment = append([]string{}, environment...)
 			return nil, nil
 		},
-		sessionProof: testBootstrapToken,
-		socket:       filepath.Join(root, "tmux.sock"),
-		tmux:         "/runtime/bin/tmux",
+		socket: filepath.Join(root, "tmux.sock"),
+		tmux:   "/runtime/bin/tmux",
 	}
 	if err := runtime.launch(codingAgentClaude); err != nil {
 		t.Fatal(err)
@@ -30,30 +29,15 @@ func TestCodingRuntimePinsClaudeSettingsAndSessionProof(t *testing.T) {
 		"-f", codingConfigPath,
 		"-S", runtime.socket,
 		"new-session", "-d", "-s", codingSessionName, "--",
-		"/runtime/bin/claude", "--settings", codingClaudeSettingsPath,
+		"/runtime/bin/claude",
 	}) {
 		t.Fatalf("unexpected Claude launch %#v", actualArgs)
 	}
-	if !reflect.DeepEqual(actualEnvironment, codingEnvironment(codingAgentClaude, profile, testBootstrapToken)) {
+	if !reflect.DeepEqual(actualEnvironment, codingEnvironment(codingAgentClaude, profile)) {
 		t.Fatalf("unexpected Claude environment %#v", actualEnvironment)
 	}
-	if strings.Contains(strings.Join(actualEnvironment, "\x00"), "ANTHROPIC_API_KEY=") {
-		t.Fatal("Claude launch received a raw provider key")
-	}
-	if !strings.Contains(codingCodexConfig, "command = \"/init\"") || strings.Contains(codingCodexConfig, testBootstrapToken) {
-		t.Fatal("Codex configuration did not use the fixed credential helper")
-	}
-	if codingClaudeSettings != "{\"apiKeyHelper\":\"/init --coding-credential\"}\n" {
-		t.Fatal("Claude settings are not the fixed credential helper")
-	}
-}
-
-func TestCodingRuntimeRequiresAnInjectedSessionProof(t *testing.T) {
-	manifest := &runtimeManifest{Entrypoints: map[string]string{
-		"codex": "bin/codex",
-		"tmux":  "bin/tmux",
-	}}
-	if newCodingRuntime(manifest, "") != nil {
-		t.Fatal("coding runtime accepted a missing session proof")
+	joined := strings.Join(actualEnvironment, "\x00")
+	if strings.Contains(joined, "ANTHROPIC_API_KEY=") || strings.Contains(joined, "NESSIE_EXECUTOR_SESSION_PROOF=") {
+		t.Fatal("Claude launch received a credential or broker proof")
 	}
 }

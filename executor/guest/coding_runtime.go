@@ -14,41 +14,18 @@ import (
 )
 
 const (
-	codingClaudeSettingsPath = "/run/nessie-executor/claude-settings.json"
-	codingConfigPath         = "/run/nessie-executor/tmux.conf"
-	codingCodexHomePath      = "/run/nessie-executor/codex-home"
-	codingProfileRoot        = "/work"
-	codingSessionName        = "nessie"
-	codingSocketPath         = "/run/nessie-executor/tmux/session.sock"
-	codingSessionTarget      = "=nessie"
-	codingTarget             = "=nessie:0.0"
+	codingConfigPath    = "/run/nessie-executor/tmux.conf"
+	codingProfileRoot   = "/work"
+	codingSessionName   = "nessie"
+	codingSocketPath    = "/run/nessie-executor/tmux/session.sock"
+	codingSessionTarget = "=nessie"
+	codingTarget        = "=nessie:0.0"
 	// Eight KiB keeps the worst-case JSON representation below the 64 KiB
 	// authenticated guest-control frame cap, even when JSON must escape every
 	// returned character.
 	maxCodingObserveBytes = 8_192
 	codingCommandTimeout  = 5 * time.Second
 )
-
-const codingCodexConfig = `model_provider = "nessie"
-allow_login_shell = false
-
-[history]
-persistence = "none"
-
-[model_providers.nessie]
-name = "Nessie executor coding proxy"
-base_url = "http://127.0.0.1:8137/v1"
-wire_api = "responses"
-
-[model_providers.nessie.auth]
-command = "/init"
-args = ["--coding-credential"]
-timeout_ms = 5000
-refresh_interval_ms = 45000
-`
-
-const codingClaudeSettings = `{"apiKeyHelper":"/init --coding-credential"}
-`
 
 type codingAgent string
 
@@ -76,11 +53,10 @@ type codingRuntime struct {
 	socket           string
 	tmux             string
 	profileRoot      string
-	sessionProof     string
 }
 
-func newCodingRuntime(manifest *runtimeManifest, sessionProof string) *codingRuntime {
-	if manifest == nil || manifest.Entrypoints["tmux"] == "" || !validBootstrapToken(sessionProof) {
+func newCodingRuntime(manifest *runtimeManifest) *codingRuntime {
+	if manifest == nil || manifest.Entrypoints["tmux"] == "" {
 		return nil
 	}
 	agents := map[codingAgent]string{}
@@ -99,7 +75,6 @@ func newCodingRuntime(manifest *runtimeManifest, sessionProof string) *codingRun
 		socket:           codingSocketPath,
 		tmux:             filepath.Join("/runtime", filepath.FromSlash(manifest.Entrypoints["tmux"])),
 		profileRoot:      codingProfileRoot,
-		sessionProof:     sessionProof,
 	}
 }
 
@@ -113,22 +88,20 @@ func (runtime *codingRuntime) launch(agent codingAgent) error {
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.launched || runtime.agentExecutables[agent] == "" || runtime.socketExists() || !validBootstrapToken(runtime.sessionProof) {
+	if runtime.launched || runtime.agentExecutables[agent] == "" || runtime.socketExists() {
 		return errInvalidFrame
 	}
 	profile := filepath.Join(runtime.profileRoot, ".nessie-executor", "coding", string(agent))
 	if err := secureBrowserProfile(runtime.profileRoot, profile); err != nil {
 		return err
 	}
-	environment := codingEnvironment(agent, profile, runtime.sessionProof)
-	agentArguments := codingAgentArguments(agent, runtime.agentExecutables[agent])
-	launchArguments := []string{
+	environment := codingEnvironment(agent, profile)
+	if _, err := runtime.invoke([]string{
 		"-f", codingConfigPath,
 		"-S", runtime.socket,
 		"new-session", "-d", "-s", codingSessionName, "--",
-	}
-	launchArguments = append(launchArguments, agentArguments...)
-	if _, err := runtime.invoke(launchArguments, environment); err != nil {
+		runtime.agentExecutables[agent],
+	}, environment); err != nil {
 		return err
 	}
 	runtime.launched = true
@@ -238,28 +211,12 @@ func (runtime *codingRuntime) invoke(args, environment []string) ([]byte, error)
 	return runtime.run(runtime.tmux, args, environment)
 }
 
-func codingAgentArguments(agent codingAgent, executable string) []string {
-	if agent == codingAgentClaude {
-		return []string{executable, "--settings", codingClaudeSettingsPath}
-	}
-	return []string{executable}
-}
-
-func codingEnvironment(agent codingAgent, profile, sessionProof string) []string {
-	environment := []string{
-		"HOME=" + profile,
-		"TMPDIR=" + profile,
-		"NESSIE_EXECUTOR_SESSION_PROOF=" + sessionProof,
-	}
+func codingEnvironment(agent codingAgent, profile string) []string {
+	environment := []string{"HOME=" + profile, "TMPDIR=" + profile}
 	if agent == codingAgentCodex {
-		return append(environment, "CODEX_HOME="+codingCodexHomePath)
+		return append(environment, "CODEX_HOME="+filepath.Join(profile, "state"))
 	}
-	return append(environment,
-		"ANTHROPIC_BASE_URL=http://127.0.0.1:8137",
-		"CLAUDE_CODE_API_KEY_HELPER_TTL_MS=45000",
-		"CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=true",
-		"CLAUDE_CONFIG_DIR="+filepath.Join(profile, "state"),
-	)
+	return append(environment, "CLAUDE_CONFIG_DIR="+filepath.Join(profile, "state"))
 }
 
 func runCodingCommand(path string, args, environment []string) ([]byte, error) {

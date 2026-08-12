@@ -1012,15 +1012,13 @@ Progress: the guest now proves the dedicated-server mechanics privately: it
 creates a root-configured, guest-owned socket directory before privilege drop;
 uses the manifest-pinned tmux and Codex/Claude argv directly; accepts only a
 fixed session/pane target; retains exited panes; and bounds/sanitizes
-observation. A new private in-memory broker keeps the raw provider credential
-outside the guest, exchanges a VM-session proof only through the authenticated
-egress tunnel for short-lived proxy tokens, and permits only the fixed official
-OpenAI/Anthropic coding endpoints through IP-pinned transport. Codex receives a
-root-owned command-backed auth config; Claude receives a root-owned static
-`apiKeyHelper` settings file. It exposes no `coding.*` executor operation yet:
-there is still no local user credential installer, durable session/control
-record, descriptor projection, daemon command, agent grant, UI control, or PA
-confirmation. Those durable control-plane pieces are the next coding slice.
+observation. It exposes no `coding.*` executor operation yet. The next coding
+slice requires a credential-principal boundary before a session-bound
+credential/egress broker and durable session/control records: a proof inherited
+by the coding CLI can be read by its workspace children and is therefore not a
+safe credential boundary. Only then may this guest substrate be wired through a
+descriptor, the daemon, agent grants, the Executors surface, and Personal
+Assistant user confirmation.
 
 ### 6. Expansion and hardening
 

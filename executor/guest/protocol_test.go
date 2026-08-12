@@ -131,7 +131,7 @@ func TestGuestRuntimeInspectionExposesOnlyDeclaredCapabilityNames(t *testing.T) 
 		"codex":   "bin/codex",
 		"tmux":    "bin/tmux",
 	}}
-	controller := newRuntimeController(&manifest, testBootstrapToken)
+	controller := newRuntimeController(&manifest)
 	defer controller.close()
 	payload := []byte(`{"operation":"runtime.inspect","version":1}`)
 	response := handleRuntimeControlRequest(payload, controller)
@@ -264,9 +264,8 @@ func TestGuestCodingUsesOneDedicatedTmuxServerAndExactTarget(t *testing.T) {
 			}
 			return nil, nil
 		},
-		socket:       socket,
-		tmux:         "/runtime/bin/tmux",
-		sessionProof: testBootstrapToken,
+		socket: socket,
+		tmux:   "/runtime/bin/tmux",
 	}
 	if err := runtime.launch(codingAgentCodex); err != nil {
 		t.Fatal(err)
@@ -279,7 +278,7 @@ func TestGuestCodingUsesOneDedicatedTmuxServerAndExactTarget(t *testing.T) {
 	if len(calls) != 1 || !reflect.DeepEqual(calls[0], expectedLaunch) {
 		t.Fatalf("unexpected tmux launch %#v", calls)
 	}
-	if !reflect.DeepEqual(environments[0], codingEnvironment(codingAgentCodex, profile, testBootstrapToken)) || strings.Contains(strings.Join(environments[0], "\x00"), "PATH=") {
+	if !reflect.DeepEqual(environments[0], codingEnvironment(codingAgentCodex, profile)) || strings.Contains(strings.Join(environments[0], "\x00"), "PATH=") || strings.Contains(strings.Join(environments[0], "\x00"), "NESSIE_EXECUTOR_SESSION_PROOF=") {
 		t.Fatalf("coding launch inherited an ambient environment %#v", environments[0])
 	}
 	observed, err := runtime.observation()
@@ -322,9 +321,8 @@ func TestGuestCodingRefusesPreexistingDedicatedSocket(t *testing.T) {
 			t.Fatal("attempted to use a preexisting tmux socket")
 			return nil, errInvalidFrame
 		},
-		socket:       socket,
-		tmux:         "/runtime/bin/tmux",
-		sessionProof: testBootstrapToken,
+		socket: socket,
+		tmux:   "/runtime/bin/tmux",
 	}
 	if err := runtime.launch(codingAgentCodex); err == nil {
 		t.Fatal("accepted a preexisting tmux socket")
