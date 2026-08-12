@@ -76,7 +76,6 @@ export const ChannelsPage = () => {
     useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
   const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
-  useThreadReadMarker(activeChannel?.defaultThreadId, threadMessages)
 
   const channelUsers = useMemo(
     () =>
@@ -96,6 +95,13 @@ export const ChannelsPage = () => {
     activeChannel?.type === 'dm' || isPersonalAssistantConversation
   const visibleActiveTab =
     isConversationSurface && isOperationsTab(activeTab) ? 'messages' : activeTab
+  // Loading a channel's Files, Info, or Runs data must not acknowledge its
+  // messages. Only the actual conversation surface is a read.
+  useThreadReadMarker(
+    activeChannel?.defaultThreadId,
+    threadMessages,
+    visibleActiveTab === 'messages',
+  )
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })

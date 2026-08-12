@@ -14,13 +14,18 @@ This change covers three user-facing attention sections:
 
 | Section | Durable source | New attention event | Clears when the user views |
 | --- | --- | --- | --- |
-| Channels | `ThreadReadState` | New message or direct mention | The exact channel/thread (existing read path) |
+| Channels | `ThreadReadState` | New message or direct mention | The exact channel/thread while its Messages surface is visible |
 | Assigned work | `UserAlert(kind=task_assigned)` | A reachable project task is assigned or reassigned to a different person | That project's Board |
 | Project knowledge | `UserAlert(kind=knowledge_published)` | A page is published for people who can currently read its space | Its reachable Knowledge space/page |
 
 Channel message counts remain the source for channel badges. A mention is a
 channel message, so it is never added again to the app-icon total. The two new
 alert kinds are the source for the Projects and Knowledge counts.
+
+Channel read acknowledgement is deliberately narrower than route loading:
+Files, Info, and Runs may fetch channel data, but they do not clear a channel's
+badge or mark its message thread read. The user must be on the Messages
+surface that actually displays the conversation.
 
 ## Delivery contract
 
