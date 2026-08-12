@@ -123,6 +123,48 @@ func guestEgressAdmissionRejectsWrongToken() throws {
   #expect(authenticated.wait(timeout: .now() + 0.05) == .timedOut)
 }
 
+@Test("authenticated guest egress bridges only to an owner-private Unix gateway")
+func guestEgressGatewayBridge() throws {
+  let directory = try makePrivateTestDirectory()
+  let gatewayURL = directory.appendingPathComponent("gateway.sock")
+  let listener = try makeUnixSocketListener(at: gatewayURL)
+  defer {
+    close(listener)
+    try? FileManager.default.removeItem(at: directory)
+  }
+  let request = Data("CONNECT app.example:443 HTTP/1.1\\r\\n\\r\\n".utf8)
+  let response = Data("HTTP/1.1 200 Connection Established\\r\\n\\r\\n".utf8)
+  let gatewayReceived = DispatchSemaphore(value: 0)
+  DispatchQueue.global().async {
+    let connection = Darwin.accept(listener, nil, nil)
+    guard connection >= 0 else { return }
+    defer { close(connection) }
+    guard (try? readGuestBytes(request.count, from: connection)) == request else { return }
+    gatewayReceived.signal()
+    try? writeGuestBytes(response, to: connection)
+  }
+
+  var descriptors = [Int32](repeating: -1, count: 2)
+  guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else {
+    throw NSError(domain: "GuestEgressBridgeTest", code: 0)
+  }
+  let host = descriptors[0]
+  let guest = descriptors[1]
+  defer { close(guest) }
+  let terminated = DispatchSemaphore(value: 0)
+  let bridge = GuestEgressGatewayBridge(
+    guestFileDescriptor: host,
+    gatewaySocketPath: gatewayURL.path,
+    releaseGuest: { close(host) },
+    onTerminated: { terminated.signal() },
+  )
+  try bridge.start()
+  try writeGuestBytes(request, to: guest)
+  #expect(gatewayReceived.wait(timeout: .now() + 1) == .success)
+  #expect(try readGuestBytes(response.count, from: guest) == response)
+  #expect(terminated.wait(timeout: .now() + 1) == .success)
+}
+
 @Test("guest control rejects malformed or oversized length-delimited input")
 func guestControlFrameBounds() throws {
   #expect(throws: GuestControlFrameError.self) {
@@ -290,4 +332,44 @@ private func readGuestBytes(_ count: Int, from descriptor: Int32) throws -> Data
     result.append(contentsOf: chunk.prefix(Int(readCount)))
   }
   return result
+}
+
+private func makePrivateTestDirectory() throws -> URL {
+  let directory = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+    .appendingPathComponent("nessie-executor-\\(UUID().uuidString)", isDirectory: true)
+  try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+  guard chmod(directory.path, S_IRWXU) == 0 else {
+    throw NSError(domain: "GuestEgressBridgeTest", code: 1)
+  }
+  return directory
+}
+
+private func makeUnixSocketListener(at url: URL) throws -> Int32 {
+  let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+  guard descriptor >= 0 else { throw NSError(domain: "GuestEgressBridgeTest", code: 2) }
+  var address = try unixSocketAddress(url.path)
+  let addressLength = socklen_t(address.sun_len)
+  let bindResult = withUnsafePointer(to: &address) { pointer in
+    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+      Darwin.bind(descriptor, $0, addressLength)
+    }
+  }
+  guard bindResult == 0, chmod(url.path, S_IRUSR | S_IWUSR) == 0, listen(descriptor, 1) == 0 else {
+    close(descriptor)
+    throw NSError(domain: "GuestEgressBridgeTest", code: 3)
+  }
+  return descriptor
+}
+
+private func unixSocketAddress(_ path: String) throws -> sockaddr_un {
+  guard path.utf8.count <= 96 else { throw NSError(domain: "GuestEgressBridgeTest", code: 4) }
+  var address = sockaddr_un()
+  address.sun_len = UInt8(MemoryLayout<sa_family_t>.size + path.utf8.count + 1)
+  address.sun_family = sa_family_t(AF_UNIX)
+  path.withCString { source in
+    withUnsafeMutableBytes(of: &address.sun_path) { destination in
+      _ = strncpy(destination.baseAddress!.assumingMemoryBound(to: CChar.self), source, destination.count)
+    }
+  }
+  return address
 }

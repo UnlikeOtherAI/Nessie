@@ -436,9 +436,14 @@ it refuses to set that flag unless the matching control socket is enabled. The
 guest then binds its proxy only to `127.0.0.1:8137`, caps itself at 16 streams,
 and opens each only through host-CID virtio port `49153` after writing the
 derived-tunnel prelude. It has no TCP listener outside loopback and no direct
-guest network interface. No current helper command sets this flag, attaches the
-host egress listener, or bridges the tunnel to the Unix gateway, so it remains
-unreachable from browser/coding operations.
+guest network interface. The matching host bridge accepts only an authenticated
+VM-bound descriptor and an absolute, non-link, current-user-owned Unix socket
+in an owner-only directory (maximum 96 path bytes). It copies bounded buffered
+bytes in each direction to that socket, then closes both ends on EOF, I/O
+failure, or overflow. It has no origin, HTTP, DNS, credential, TCP, or remote
+socket code; those decisions remain inside the already owner-private CONNECT
+gateway. No current helper command sets this flag, attaches the host egress
+listener and bridge together, or exposes either to browser/coding operations.
 
 Before that launch, the companion creates an owner-only `guest-lease.json`
 beside the exact COW draft. It contains the run ID, executor binding fence, and

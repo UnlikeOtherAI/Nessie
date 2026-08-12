@@ -202,7 +202,13 @@ control socket is enabled. The proxy listens at guest `127.0.0.1:8137`, limits
 itself to 16 streams, sends the egress prelude before every host-CID virtio
 tunnel, and forwards nothing directly to a network address. The current helper
 does not set the flag or attach the listener/bridge, so the compiled proxy is
-not an advertised or reachable browser/coding backend.
+not an advertised or reachable browser/coding backend. The native bridge
+accepts only an authenticated VM-owned descriptor plus an absolute,
+non-link, current-user socket located in an owner-only directory; it moves
+bounded bytes bidirectionally and closes the exact tunnel on EOF, I/O failure,
+or overflow. It cannot parse HTTP, resolve DNS, select an origin, acquire a
+credential, or open any remote socket. Those operations stay exclusively in
+the existing owner-only CONNECT gateway.
 
 Executor managers can now inspect the latest bounded COW review receipts on the
 executor's Overview tab. That surface decrypts only the server-held result for
