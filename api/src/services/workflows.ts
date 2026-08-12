@@ -1299,6 +1299,9 @@ export const listWorkflowRuns = async (
   input: {
     cursor?: string
     installationId?: string
+    // W19: entitlement fragment over the run's installation; undefined means
+    // "no additional filter" (owners/admins).
+    installationWhere?: Prisma.WorkflowInstallationWhereInput
     limit?: number
     status?: 'cancelled' | 'completed' | 'failed' | 'pending' | 'running'
   },
@@ -1312,6 +1315,7 @@ export const listWorkflowRuns = async (
       organizationId,
       ...(input.installationId ? { installationId: input.installationId } : {}),
       ...(input.status ? { status: input.status } : {}),
+      ...(input.installationWhere ? { installation: input.installationWhere } : {}),
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),

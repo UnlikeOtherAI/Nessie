@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   buildWorkflowRunEventContext,
   emitWorkflowRunTerminalEvent,
+  postWorkflowRunCard,
   type WorkflowGraphForEvents,
 } from '../control/workflow-run-events.js'
 import {
@@ -50,8 +51,11 @@ export const finishWorkflowStepRun = async (
       'failed',
       input.summary,
     )
+    // W21: the failure card in the origin channel.
+    await postWorkflowRunCard(prisma, workflow, 'failed')
   } else if (result.workflowRunCompleted) {
     await emitWorkflowRunTerminalEvent(prisma, buildWorkflowRunEventContext(workflow), 'completed')
+    await postWorkflowRunCard(prisma, workflow, 'completed')
   }
 
   return result
@@ -79,6 +83,7 @@ export const finishWorkflowRun = async (
     input.success ? 'completed' : 'failed',
     input.summary,
   )
+  await postWorkflowRunCard(prisma, workflow, input.success ? 'completed' : 'failed')
 
   return result
 }

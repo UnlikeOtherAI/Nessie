@@ -424,6 +424,11 @@ export type WorkflowRunRecord = {
   organizationId: string
   triggerId?: string | null
   retriedFromWorkflowRunId?: string | null
+  // W25: where the run was asked for.
+  originChannelId?: string | null
+  originMessageId?: string | null
+  originThreadId?: string | null
+  replyRootMessageId?: string | null
   status: WorkflowRunStatus
   input: unknown
   output: unknown

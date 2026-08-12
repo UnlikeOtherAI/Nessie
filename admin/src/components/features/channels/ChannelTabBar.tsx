@@ -103,6 +103,29 @@ export const ChannelTabBar = ({
     ) : null}
     {!isConversationSurface ? (
       <button
+        className={`admin-tab ${visibleActiveTab === 'automations' ? 'active' : ''}`}
+        data-testid="channel-tab-automations"
+        onClick={() => onSelectTab('automations')}
+        type="button"
+      >
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        Automations
+      </button>
+    ) : null}
+    {!isConversationSurface ? (
+      <button
         className={`admin-tab ${visibleActiveTab === 'agents' ? 'active' : ''}`}
         onClick={() => onSelectTab('agents')}
         type="button"

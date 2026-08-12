@@ -3,6 +3,7 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AgentInfoCard } from '../agents/AgentInfoCard'
 import { PersonalAssistantConfigBanner } from '../personal-assistant/PersonalAssistantSurface'
+import { ChannelAutomationsPanel } from './ChannelAutomationsPanel'
 import { formatClock, runsCardClass, type ChannelTab } from './channel-helpers'
 
 interface ChannelTabPanelsProps {
@@ -48,6 +49,9 @@ export const ChannelTabPanels = ({
   onCreateAgent,
 }: ChannelTabPanelsProps) => (
   <>
+    {visibleActiveTab === 'automations' && activeChannel ? (
+      <ChannelAutomationsPanel channelId={activeChannel.id} />
+    ) : null}
     {visibleActiveTab === 'files' ? (
       <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="admin-card p-4">

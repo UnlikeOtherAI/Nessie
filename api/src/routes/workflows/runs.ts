@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import {
   BlockWorkflowStepRunBodySchema,
+  WorkflowListQuerySchema,
   CancelWorkflowRunBodySchema,
   RetryWorkflowRunBodySchema,
   SkipWorkflowStepRunBodySchema,
@@ -14,6 +15,7 @@ import {
   blockWorkflowStepRun,
   cancelWorkflowRun,
   getWorkflowRun,
+  listWorkflowRuns,
   retryWorkflowRun,
   skipWorkflowStepRun,
   unblockWorkflowStepRun,
@@ -23,6 +25,7 @@ import { auditWorkflowMutation } from '../../services/workflow-audit.js'
 import {
   canActorReadWorkflowInstallation,
   isWorkflowAdmin,
+  workflowInstallationEntitlementFilter,
 } from '../../services/workflow-entitlement.js'
 import type { RouteDeps } from '../types.js'
 
@@ -61,6 +64,34 @@ const requireWorkflowRunReadAccess = async (
 
 export const registerWorkflowRunRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext } = deps
+
+  // W29: cross-installation "what failed" feed. Entitlement-scoped exactly
+  // like the per-installation runs list — a member sees failures on
+  // installations their channels cover, nothing else.
+  app.get('/api/workflow-runs', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const query = parseInput(WorkflowListQuerySchema, request.query ?? {}, reply)
+    if (!query) {
+      return reply
+    }
+
+    const installationWhere =
+      (await workflowInstallationEntitlementFilter(prisma, actorContext)) ?? undefined
+    const page = await listWorkflowRuns(prisma, actorContext.tenant.organizationId, {
+      cursor: query.cursor,
+      limit: query.limit,
+      ...(query.status ? { status: query.status } : {}),
+      ...(installationWhere ? { installationWhere } : {}),
+    })
+    return createApiResponse(
+      WorkflowRunRecordSchema.array().parse(page.items),
+      { cursor: page.nextCursor, hasMore: page.nextCursor !== null },
+    )
+  })
 
   app.get('/api/workflow-runs/:workflowRunId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

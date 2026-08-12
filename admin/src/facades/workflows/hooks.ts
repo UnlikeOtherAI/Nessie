@@ -79,13 +79,50 @@ export const useUpdateWorkflowTemplate = () => {
   })
 }
 
-export const useWorkflowInstallations = (enabled = true) => {
+export const useWorkflowInstallations = (enabled = true, channelId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<WorkflowInstallationRecord[]>({
-    queryKey: ['workflow-installations'],
-    queryFn: () => apiClient.get('/api/workflow-installations'),
+    queryKey: ['workflow-installations', channelId ?? null],
+    queryFn: () =>
+      apiClient.get(
+        channelId
+          ? `/api/workflow-installations?channelId=${encodeURIComponent(channelId)}`
+          : '/api/workflow-installations',
+      ),
     enabled,
+  })
+}
+
+// W29: cross-installation "what failed" feed for the triage surface.
+export const useFailedWorkflowRuns = (enabled = true) => {
+  const apiClient = useApiClient()
+
+  return useQuery<WorkflowRunRecord[]>({
+    queryKey: ['workflow-runs', 'failed'],
+    queryFn: () => apiClient.get('/api/workflow-runs?status=failed'),
+    enabled,
+  })
+}
+
+export const useUpdateWorkflowInstallation = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      installationId: string
+      status?: WorkflowInstallationRecord['status']
+    }) => {
+      const { installationId, ...body } = input
+      return apiClient.patch<WorkflowInstallationRecord>(
+        `/api/workflow-installations/${installationId}`,
+        body,
+      )
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
+    },
   })
 }
 
