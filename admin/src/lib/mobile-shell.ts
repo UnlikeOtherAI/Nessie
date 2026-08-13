@@ -51,10 +51,16 @@ export const useNativeIPadApp = (): boolean => {
   return isReactNativeWebView() && info?.platform === 'ios' && info.formFactor === 'ipad'
 }
 
-// A phone WebView shares the web content with Android, but iOS receives the
-// glass-adjacent conversation controls that visually meet its native tab bar.
-// Keep this platform distinction here rather than scattering shell checks
-// through page components.
+// A phone WebView uses native home controls on both iOS and Android. Keep this
+// form-factor distinction here rather than scattering shell checks through page
+// components.
+export const useNativePhoneApp = (): boolean => {
+  const info = useNativeShellInfo()
+  return isReactNativeWebView() && info?.formFactor === 'phone'
+}
+
+// iOS-only controls (such as its glass conversation Back affordance) still
+// need to distinguish an iPhone from an Android handset.
 export const useNativeIOSPhoneApp = (): boolean => {
   const info = useNativeShellInfo()
   return isReactNativeWebView() && info?.platform === 'ios' && info.formFactor === 'phone'

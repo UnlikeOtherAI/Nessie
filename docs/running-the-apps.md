@@ -198,11 +198,12 @@ control: the same avatar, presence/status badges, and account menu used at the
 bottom of the desktop rail. A shell with that rail never renders a second
 top-bar account badge.
 
-On the native iPhone **Channels** index, `IphoneConversationMenuChrome` adds a
-theme-specific dark workspace header above that retained WebView: the workspace
-control opens the existing entitlement-aware switcher, Recent Channels delegates
-to the existing toolbar bridge, and the account control opens the canonical
-account menu. Its bottom-right **+** opens native actions for **Project**,
+On the native iPhone and Android **Channels** index (including its ordinary
+query-string state), `NativePhoneConversationMenuChrome` adds a theme-specific
+dark workspace header above that retained WebView: the workspace control opens
+the existing entitlement-aware switcher, Recent Channels delegates to the
+existing toolbar bridge, and the account control opens the canonical account
+menu. Its bottom-right **+** opens native actions for **Project**,
 **Channel**, or **Message**; each delegates to the same web-shell handler and
 dialog as the sidebar, rather than creating a second permission path. The
 WebView sidebar carries a native-touch marker on iPhone, iPad, and Android so

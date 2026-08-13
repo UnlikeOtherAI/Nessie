@@ -43,13 +43,13 @@ test('touch navigation uses rounded avatar tiles and sidebar-coloured presence c
   assert.match(badge, /ringWidth = 2/)
 })
 
-test('the iPhone native menu delegates workspace, history, account, and creation actions to the web shell', () => {
+test('the native phone menu delegates workspace, history, account, and creation actions to the web shell', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const account = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
   const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
-  const phoneChrome = readSource('../../mobile/src/components/IphoneConversationMenuChrome.tsx')
+  const phoneChrome = readSource('../../mobile/src/components/NativePhoneConversationMenuChrome.tsx')
 
-  assert.match(shell, /useNativeIOSPhoneApp/)
+  assert.match(shell, /useNativePhoneApp/)
   assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
   assert.match(shell, /<UserMenuTrigger nativePhoneBridge/)

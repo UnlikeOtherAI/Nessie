@@ -3,11 +3,14 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { withOpacity } from '../lib/ipad-native-chrome'
-import { IPHONE_MENU_HEADER_HEIGHT, IPHONE_TAB_BAR_HEIGHT } from '../lib/native-shell-layout'
+import {
+  getNativePhoneBottomChromeClearance,
+  getNativePhoneComposeBottom,
+  NATIVE_PHONE_MENU_HEADER_HEIGHT,
+  type NativePhoneCreationAction,
+} from '../lib/native-shell-layout'
 
-export type IphoneCreationAction = 'project' | 'channel' | 'message'
-
-type IphoneConversationMenuChromeProps = {
+type NativePhoneConversationMenuChromeProps = {
   accentColor: string
   accountAvatarUrl: string | null
   accountName: string | null
@@ -18,11 +21,12 @@ type IphoneConversationMenuChromeProps = {
   onAccentColor: string
   onAccountPress: () => void
   onHistoryPress: () => void
-  onCreateAction: (action: IphoneCreationAction) => void
+  onCreateAction: (action: NativePhoneCreationAction) => void
   safeTop: number
   sheetMutedText: string
   sheetSurface: string
   sheetText: string
+  platform: 'android' | 'ios'
   onWorkspacePress: () => void
   workspaceName: string | null
 }
@@ -53,11 +57,11 @@ const AccountPresenceIndicator = ({
 }
 
 /**
- * iPhone-only shell chrome for the conversation index. The controls are native
+ * Native phone shell chrome for the conversation index. The controls are native
  * but delegate to the WebView's existing workspace, recents, account, and
  * compose actions, preserving their authorization and menus.
  */
-export const IphoneConversationMenuChrome = ({
+export const NativePhoneConversationMenuChrome = ({
   accentColor,
   accountAvatarUrl,
   accountName,
@@ -73,11 +77,12 @@ export const IphoneConversationMenuChrome = ({
   sheetMutedText,
   sheetSurface,
   sheetText,
+  platform,
   onWorkspacePress,
   workspaceName,
-}: IphoneConversationMenuChromeProps): React.JSX.Element => {
+}: NativePhoneConversationMenuChromeProps): React.JSX.Element => {
   const [creationOpen, setCreationOpen] = useState(false)
-  const selectCreationAction = (action: IphoneCreationAction): void => {
+  const selectCreationAction = (action: NativePhoneCreationAction): void => {
     setCreationOpen(false)
     onCreateAction(action)
   }
@@ -86,7 +91,7 @@ export const IphoneConversationMenuChrome = ({
     <>
     <View
       pointerEvents="box-none"
-      style={[styles.header, { backgroundColor: headerSurface, height: safeTop + IPHONE_MENU_HEADER_HEIGHT }]}
+      style={[styles.header, { backgroundColor: headerSurface, height: safeTop + NATIVE_PHONE_MENU_HEADER_HEIGHT }]}
     >
       <View style={[styles.headerContent, { paddingTop: safeTop }]}>
         <Pressable
@@ -157,7 +162,10 @@ export const IphoneConversationMenuChrome = ({
       onPress={() => setCreationOpen(true)}
       style={({ pressed }) => [
         styles.composeButton,
-        { backgroundColor: accentColor, bottom: bottomInset + IPHONE_TAB_BAR_HEIGHT + 18 },
+        {
+          backgroundColor: accentColor,
+          bottom: getNativePhoneComposeBottom(bottomInset, platform),
+        },
         pressed ? styles.composeButtonPressed : null,
       ]}
     >
@@ -177,7 +185,7 @@ export const IphoneConversationMenuChrome = ({
             {
               backgroundColor: withOpacity(sheetSurface, 0.98),
               borderColor: withOpacity(sheetText, 0.16),
-              bottom: bottomInset + IPHONE_TAB_BAR_HEIGHT + 8,
+              bottom: bottomInset + getNativePhoneBottomChromeClearance(platform) + 8,
             },
           ]}
         >

@@ -44,8 +44,8 @@ import {
 } from './src/components/IpadNativeToolbar'
 import { IpadNativeChrome } from './src/components/IpadNativeChrome'
 import {
-  IphoneConversationMenuChrome,
-} from './src/components/IphoneConversationMenuChrome'
+  NativePhoneConversationMenuChrome,
+} from './src/components/NativePhoneConversationMenuChrome'
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
 import { createNativeWebviewActions } from './src/lib/native-webview-actions'
@@ -54,7 +54,7 @@ import {
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
   isFullScreenTaskRoute,
-  isIphoneConversationMenuRoute,
+  isNativePhoneConversationMenuRoute,
 } from './src/lib/native-shell-layout'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
@@ -62,10 +62,10 @@ const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 const DEFAULT_ACTIVE_TINT = '#7c3aed'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
 const DEFAULT_IPAD_CHROME_SURFACE = '#222629'
-const DEFAULT_IPHONE_HEADER_SURFACE = '#2b2018'
-const DEFAULT_IPHONE_HEADER_TEXT = '#fffdf8'
-const DEFAULT_IPHONE_TEXT = '#2b2018'
-const DEFAULT_IPHONE_TEXT_MUTED = '#74665b'
+const DEFAULT_PHONE_HEADER_SURFACE = '#2b2018'
+const DEFAULT_PHONE_HEADER_TEXT = '#fffdf8'
+const DEFAULT_PHONE_TEXT = '#2b2018'
+const DEFAULT_PHONE_TEXT_MUTED = '#74665b'
 
 // If the admin never reports itself mounted (it posts a `nessie:route` message on
 // boot) within this window after a load finishes, the WebView is blank/white —
@@ -88,12 +88,12 @@ const Shell = (): React.JSX.Element => {
   const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
   const [ipadTabBarWidth, setIpadTabBarWidth] = useState<number | null>(null)
   const [ipadWorkspaceName, setIpadWorkspaceName] = useState<string | null>(null)
-  const [iphoneHeaderSurface, setIphoneHeaderSurface] = useState(DEFAULT_IPHONE_HEADER_SURFACE)
-  const [iphoneHeaderText, setIphoneHeaderText] = useState(DEFAULT_IPHONE_HEADER_TEXT)
-  const [iphoneText, setIphoneText] = useState(DEFAULT_IPHONE_TEXT)
-  const [iphoneTextMuted, setIphoneTextMuted] = useState(DEFAULT_IPHONE_TEXT_MUTED)
-  const [iphoneOnAccent, setIphoneOnAccent] = useState(DEFAULT_IPHONE_HEADER_TEXT)
-  const [iphoneAccount, setIphoneAccount] = useState({
+  const [phoneHeaderSurface, setPhoneHeaderSurface] = useState(DEFAULT_PHONE_HEADER_SURFACE)
+  const [phoneHeaderText, setPhoneHeaderText] = useState(DEFAULT_PHONE_HEADER_TEXT)
+  const [phoneText, setPhoneText] = useState(DEFAULT_PHONE_TEXT)
+  const [phoneTextMuted, setPhoneTextMuted] = useState(DEFAULT_PHONE_TEXT_MUTED)
+  const [phoneOnAccent, setPhoneOnAccent] = useState(DEFAULT_PHONE_HEADER_TEXT)
+  const [phoneAccount, setPhoneAccount] = useState({
     avatarUrl: null as string | null,
     name: null as string | null,
     presence: 'offline' as 'away' | 'offline' | 'online',
@@ -249,17 +249,17 @@ const Shell = (): React.JSX.Element => {
       if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
       if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
       if (typeof msg.surface === 'string' && msg.surface) setIpadChromeSurface(msg.surface)
-      if (typeof msg.headerSurface === 'string' && msg.headerSurface) setIphoneHeaderSurface(msg.headerSurface)
-      if (typeof msg.headerText === 'string' && msg.headerText) setIphoneHeaderText(msg.headerText)
-      if (typeof msg.text === 'string' && msg.text) setIphoneText(msg.text)
-      if (typeof msg.textMuted === 'string' && msg.textMuted) setIphoneTextMuted(msg.textMuted)
-      if (typeof msg.onAccent === 'string' && msg.onAccent) setIphoneOnAccent(msg.onAccent)
+      if (typeof msg.headerSurface === 'string' && msg.headerSurface) setPhoneHeaderSurface(msg.headerSurface)
+      if (typeof msg.headerText === 'string' && msg.headerText) setPhoneHeaderText(msg.headerText)
+      if (typeof msg.text === 'string' && msg.text) setPhoneText(msg.text)
+      if (typeof msg.textMuted === 'string' && msg.textMuted) setPhoneTextMuted(msg.textMuted)
+      if (typeof msg.onAccent === 'string' && msg.onAccent) setPhoneOnAccent(msg.onAccent)
       const nextStatusBarStyle = statusBarStyleForScheme(msg.scheme)
       if (nextStatusBarStyle) setStatusBarStyle(nextStatusBarStyle)
       return
     }
     if (msg.type === 'nessie:phone-account') {
-      setIphoneAccount({
+      setPhoneAccount({
         avatarUrl: typeof msg.userAvatarUrl === 'string' && msg.userAvatarUrl ? msg.userAvatarUrl : null,
         name: typeof msg.userName === 'string' && msg.userName.trim() ? msg.userName : null,
         presence: msg.userPresence === 'online' || msg.userPresence === 'away' ? msg.userPresence : 'offline',
@@ -344,7 +344,7 @@ const Shell = (): React.JSX.Element => {
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
   const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
-  const showIphoneConversationMenu = showBar && !IS_IPAD && !IS_ANDROID && isIphoneConversationMenuRoute(currentPath)
+  const showNativePhoneConversationMenu = showBar && !IS_IPAD && isNativePhoneConversationMenuRoute(currentPath)
 
   // The native frame owns all unsafe edges. In particular, a phone tab root is
   // not always a direct aside/main child in the web DOM, so relying on injected
@@ -355,7 +355,7 @@ const Shell = (): React.JSX.Element => {
     isIpad: IS_IPAD,
     platform: Platform.OS,
     safeArea: insets,
-    showIphoneMenuHeader: showIphoneConversationMenu,
+    showNativePhoneMenuHeader: showNativePhoneConversationMenu,
     showTabBar: showBar,
   })
   const webviewLayerStyle = {
@@ -373,7 +373,7 @@ const Shell = (): React.JSX.Element => {
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
-      <StatusBar style={showIphoneConversationMenu ? 'light' : statusBarStyle} />
+      <StatusBar style={showNativePhoneConversationMenu ? 'light' : statusBarStyle} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <IphoneNativeTabBar
@@ -442,24 +442,25 @@ const Shell = (): React.JSX.Element => {
         />}
       </View>
 
-      {showIphoneConversationMenu ? (
-        <IphoneConversationMenuChrome
+      {showNativePhoneConversationMenu ? (
+        <NativePhoneConversationMenuChrome
           accentColor={accent}
-          accountAvatarUrl={iphoneAccount.avatarUrl}
-          accountName={iphoneAccount.name}
-          accountPresence={iphoneAccount.presence}
+          accountAvatarUrl={phoneAccount.avatarUrl}
+          accountName={phoneAccount.name}
+          accountPresence={phoneAccount.presence}
           bottomInset={insets.bottom}
-          headerSurface={iphoneHeaderSurface}
-          headerText={iphoneHeaderText}
-          onAccentColor={iphoneOnAccent}
+          headerSurface={phoneHeaderSurface}
+          headerText={phoneHeaderText}
+          onAccentColor={phoneOnAccent}
           onAccountPress={nativeActions.togglePhoneAccountMenu}
           onCreateAction={nativeActions.createFromPhoneMenu}
           onHistoryPress={() => nativeActions.runToolbarAction('history')}
           onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}
           safeTop={insets.top}
-          sheetMutedText={iphoneTextMuted}
-          sheetText={iphoneText}
+          sheetMutedText={phoneTextMuted}
+          sheetText={phoneText}
           sheetSurface={ipadChromeSurface}
+          platform={IS_ANDROID ? 'android' : 'ios'}
           workspaceName={ipadWorkspaceName}
         />
       ) : null}

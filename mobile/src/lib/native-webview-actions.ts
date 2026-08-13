@@ -1,5 +1,5 @@
-import type { IphoneCreationAction } from '../components/IphoneConversationMenuChrome'
 import type { ToolbarAction } from '../components/IpadNativeToolbar'
+import type { NativePhoneCreationAction } from './native-shell-layout'
 
 type RunScript = (script: string) => void
 
@@ -7,7 +7,7 @@ export const createNativeWebviewActions = (runScript: RunScript) => ({
   closeSearchOverlay: (): void => {
     runScript("window.dispatchEvent(new Event('nessie:close-search-overlay'));")
   },
-  createFromPhoneMenu: (action: IphoneCreationAction): void => {
+  createFromPhoneMenu: (action: NativePhoneCreationAction): void => {
     runScript(`window.__nessieCreateFromPhoneMenu && window.__nessieCreateFromPhoneMenu(${JSON.stringify(action)});`)
   },
   openSearchOverlay: (): void => {

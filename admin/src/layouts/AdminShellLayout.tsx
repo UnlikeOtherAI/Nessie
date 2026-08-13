@@ -6,7 +6,7 @@ import {
   isReactNativeWebView,
   useMobileLayout,
   useNativeIPadApp,
-  useNativeIOSPhoneApp,
+  useNativePhoneApp,
   usePhoneLayout,
 } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
@@ -92,7 +92,7 @@ const AuthenticatedAdminShellLayout = () => {
   const phoneLayout = usePhoneLayout();
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
-  const nativeIOSPhoneApp = useNativeIOSPhoneApp();
+  const nativePhoneApp = useNativePhoneApp();
   const showPhoneTabRoot = phoneLayout && isPhoneTabRoot(shell.pathname);
   useEffect(() => {
     if (showPhoneTabRoot) shell.closeMobileDrawer();
@@ -252,9 +252,9 @@ const AuthenticatedAdminShellLayout = () => {
               </div>
 
               {showWebTabBar && <MobileTabBar />}
-              {(nativeIPadApp || nativeIOSPhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
-              {(nativeIPadApp || nativeIOSPhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
-              {nativeIOSPhoneApp ? (
+              {(nativeIPadApp || nativePhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
+              {(nativeIPadApp || nativePhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
+              {nativePhoneApp ? (
                 <>
                   <UserMenuTrigger nativePhoneBridge onLogout={shell.logoutAndRedirect} placement="topbar" />
                   <NativePhoneCreationBridge

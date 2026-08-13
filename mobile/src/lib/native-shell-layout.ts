@@ -1,8 +1,14 @@
+import {
+  ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
+  ANDROID_TABLET_TAB_BAR_HEIGHT,
+} from './android-tablet-dock'
 import { getIpadContentTop } from './ipad-native-chrome'
 import { TABS } from './tabs'
 
 export const IPHONE_TAB_BAR_HEIGHT = 49
-export const IPHONE_MENU_HEADER_HEIGHT = 64
+export const NATIVE_PHONE_MENU_HEADER_HEIGHT = 64
+
+export type NativePhoneCreationAction = 'project' | 'channel' | 'message'
 
 export type NativeSafeAreaInsets = {
   bottom: number
@@ -32,9 +38,24 @@ export const isAuthGateRoute = (path: string): boolean =>
 
 export const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new'
 
-// The channel root is the conversation index; it is the only phone route that
-// presents the workspace header and the floating new-message action.
-export const isIphoneConversationMenuRoute = (path: string | null): boolean => path === '/channels'
+// The native bridge reports the SPA path together with its query string. The
+// channel root is still the conversation index when it carries ordinary URL
+// state, so normalize that structural suffix before deciding whether to render
+// the workspace header and floating new-message action.
+export const isNativePhoneConversationMenuRoute = (path: string | null): boolean => {
+  const pathname = path?.split(/[?#]/, 1)[0]?.replace(/\/+$/, '')
+  return pathname === '/channels'
+}
+
+// Android's dock is taller and raised above the safe area, so its native phone
+// actions need their own exact bottom-chrome clearance.
+export const getNativePhoneBottomChromeClearance = (platform: 'android' | 'ios'): number =>
+  platform === 'android'
+    ? ANDROID_TABLET_TAB_BAR_HEIGHT + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP
+    : IPHONE_TAB_BAR_HEIGHT
+
+export const getNativePhoneComposeBottom = (bottomInset: number, platform: 'android' | 'ios'): number =>
+  bottomInset + getNativePhoneBottomChromeClearance(platform) + 18
 
 /**
  * The native frame, not a DOM selector, owns unsafe screen edges. Phone pages
@@ -46,13 +67,13 @@ export const getNativeWebviewFrameInsets = (input: {
   isIpad: boolean
   platform: string
   safeArea: NativeSafeAreaInsets
-  showIphoneMenuHeader: boolean
+  showNativePhoneMenuHeader: boolean
   showTabBar: boolean
 }): NativeSafeAreaInsets => {
   const top = input.isIpad && input.showTabBar
     ? getIpadContentTop(input.ipadChromeTop)
     : input.platform === 'ios' || input.platform === 'android'
-      ? input.safeArea.top + (input.showIphoneMenuHeader ? IPHONE_MENU_HEADER_HEIGHT : 0)
+      ? input.safeArea.top + (input.showNativePhoneMenuHeader ? NATIVE_PHONE_MENU_HEADER_HEIGHT : 0)
       : 0
   const bottom = input.platform === 'android'
     ? input.safeArea.bottom

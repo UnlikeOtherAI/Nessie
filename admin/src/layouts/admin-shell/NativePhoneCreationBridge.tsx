@@ -14,7 +14,7 @@ type NativePhoneCreationBridgeProps = {
 }
 
 /**
- * The native iPhone action sheet deliberately calls the same shell handlers as
+ * The native phone action sheet deliberately calls the same shell handlers as
  * the sidebar controls, so create permissions and dialogs remain identical.
  */
 export const NativePhoneCreationBridge = ({

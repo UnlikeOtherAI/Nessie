@@ -3,9 +3,11 @@ import test from 'node:test'
 
 import {
   createNativeTabNavigationState,
+  getNativePhoneBottomChromeClearance,
+  getNativePhoneComposeBottom,
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
-  isIphoneConversationMenuRoute,
+  isNativePhoneConversationMenuRoute,
 } from './native-shell-layout'
 
 test('the iPhone native frame always owns the status and tab-bar safe areas', () => {
@@ -14,7 +16,7 @@ test('the iPhone native frame always owns the status and tab-bar safe areas', ()
     isIpad: false,
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showIphoneMenuHeader: false,
+    showNativePhoneMenuHeader: false,
     showTabBar: true,
   }), { top: 59, bottom: 83 })
 })
@@ -25,7 +27,7 @@ test('full-screen iPhone tasks keep the status inset while leaving the home indi
     isIpad: false,
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showIphoneMenuHeader: false,
+    showNativePhoneMenuHeader: false,
     showTabBar: false,
   }), { top: 59, bottom: 0 })
 })
@@ -36,7 +38,7 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     isIpad: true,
     platform: 'ios',
     safeArea: { top: 24, bottom: 20 },
-    showIphoneMenuHeader: false,
+    showNativePhoneMenuHeader: false,
     showTabBar: true,
   }), { top: 78, bottom: 0 })
   assert.deepEqual(getNativeWebviewFrameInsets({
@@ -44,23 +46,37 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     isIpad: false,
     platform: 'android',
     safeArea: { top: 32, bottom: 28 },
-    showIphoneMenuHeader: false,
+    showNativePhoneMenuHeader: false,
     showTabBar: true,
   }), { top: 32, bottom: 28 })
 })
 
-test('the iPhone conversation index reserves the native workspace header', () => {
+test('the native phone conversation index reserves the workspace header on iPhone and Android', () => {
   assert.deepEqual(getNativeWebviewFrameInsets({
     ipadChromeTop: 59,
     isIpad: false,
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showIphoneMenuHeader: true,
+    showNativePhoneMenuHeader: true,
     showTabBar: true,
   }), { top: 123, bottom: 83 })
-  assert.equal(isIphoneConversationMenuRoute('/channels'), true)
-  assert.equal(isIphoneConversationMenuRoute('/channels/new'), false)
-  assert.equal(isIphoneConversationMenuRoute('/projects'), false)
+  assert.equal(isNativePhoneConversationMenuRoute('/channels'), true)
+  assert.equal(isNativePhoneConversationMenuRoute('/channels?source=tab'), true)
+  assert.equal(isNativePhoneConversationMenuRoute('/channels/'), true)
+  assert.equal(isNativePhoneConversationMenuRoute('/channels/new'), false)
+  assert.equal(isNativePhoneConversationMenuRoute('/projects'), false)
+  assert.deepEqual(getNativeWebviewFrameInsets({
+    ipadChromeTop: 0,
+    isIpad: false,
+    platform: 'android',
+    safeArea: { top: 32, bottom: 28 },
+    showNativePhoneMenuHeader: true,
+    showTabBar: true,
+  }), { top: 96, bottom: 28 })
+  assert.equal(getNativePhoneBottomChromeClearance('ios'), 49)
+  assert.equal(getNativePhoneBottomChromeClearance('android'), 78)
+  assert.equal(getNativePhoneComposeBottom(34, 'ios'), 101)
+  assert.equal(getNativePhoneComposeBottom(28, 'android'), 124)
 })
 
 test('the native tab state keeps attention badges scoped to their owning tab', () => {
