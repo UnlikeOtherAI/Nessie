@@ -236,7 +236,11 @@ Phase 0 slice.
    all five paths + context rebuild; refactor to full module later).
 2. SB-02 ceiling: `isExposed` scope check becomes unconditional for
    non-explicit-grant rows; user-scope credential resolution requires the
-   owner expectation.
+   owner expectation. **(Landed 2026-08-13: `worker/src/run/mcp-toolset.ts`
+   `isExposed`, `packages/mcp-manage/src/mcp-credentials.ts`
+   `resolveCredentialRef` — user-scope mismatch fails closed with
+   `MCP_CREDENTIAL_USER_SCOPE_MISMATCH`; probes always resolve as a concrete
+   probe user.)**
 3. Webpush/FCM pinned at the delivery seam (retyped sender); OIDC + UOA
    fetches pinned, `redirectPolicy: 'none'`, discovery endpoints
    origin-checked.

@@ -122,15 +122,20 @@ const rowRequiresExplicitGrant = (metadata: unknown): boolean =>
 /**
  * Exposure rule for one registry entry.
  *
+ * The instance's install scope is a HARD CEILING on exposure: explicit
+ * per-agent policy may narrow it but never broaden it past the install scope.
+ *
  * - Rows flagged `requiresExplicitGrant` are OFF by default: they surface ONLY
  *   when the per-agent policy carries an explicit allow (`=== true`) AND the
  *   instance's install scope reaches the run. The explicit grant is an
  *   additional gate, never a way around tenancy.
- * - For every other row an explicit verdict wins (true exposes, false hides);
- *   otherwise the instance's install scope decides. This is what makes an
+ * - For every other row an explicit deny hides the tool, and an explicit allow
+ *   exposes it only when the instance's install scope also reaches the run;
+ *   with no verdict the install scope decides alone. This is what makes an
  *   admin's org-scope install available to the whole org, and a member's
  *   self-installed connector available to their own personal assistant, without
- *   owner-managed per-agent policy edits.
+ *   owner-managed per-agent policy edits — while ensuring an explicit allow on
+ *   a user-scoped connector can never leak it into a shared agent's run.
  */
 const isExposed = (
   toolPolicy: McpToolPolicy,
@@ -143,7 +148,6 @@ const isExposed = (
   if (requiresExplicitGrant) {
     return verdict === true && scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)
   }
-  if (verdict === true) return true
   if (verdict === false) return false
   return scopeMatchesRun(instance.scopeType, instance.scopeId, ctx)
 }

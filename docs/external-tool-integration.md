@@ -218,7 +218,10 @@ using it" flow. The worker enforces the reach rule at toolset assembly
 the installing user's delegated personal-assistant runs — never in shared
 agents' channels; org/system instances surface to every run in the org; and
 team/project/channel instances follow the run's context. An explicit per-agent
-`toolPolicy` verdict overrides the scope default in either direction.
+`toolPolicy` verdict may only NARROW that reach: a `false` verdict hides a tool
+that scope would expose, while a `true` verdict exposes a tool only when the
+install scope already reaches the run — install scope is a hard ceiling that
+policy can never broaden.
 
 ### Connector Library & Link Discovery
 
@@ -1199,7 +1202,15 @@ Resolution order:
 4. Team-specific credential
 5. Project-specific credential
 6. Organization-specific credential
-7. Connector/server default credential (organization-wide)
+7. Connector/server default credential
+
+Step 7 has an owner rule: for a `user`-scoped instance the caller's effective
+user must equal the instance's scope id before the installer's stored
+credential is used — when it does not, resolution fails closed
+(`MCP_CREDENTIAL_USER_SCOPE_MISMATCH`) rather than spending the installer's
+secret on someone else's run. Probes (test/refresh/healthcheck) always resolve
+as a concrete probe user, so an owner or admin may manage a user-scoped
+instance but never probe it with the installer's credential.
 
 Example: GitHub MCP server is org-scoped, but each developer has their own PAT. The org installs GitHub MCP once, and each user adds their own credential override. When an agent acts on behalf of user A, it uses user A's PAT. When acting on behalf of user B, it uses user B's PAT.
 

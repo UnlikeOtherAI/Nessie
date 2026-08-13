@@ -57,7 +57,7 @@ export const runTestAndDescribe = async (
   context: BuiltinToolRuntimeContext,
   organizationId: string,
   instanceId: string,
-  probeUserId?: string,
+  probeUserId: string,
 ): Promise<string> => {
   try {
     const tested = await testInstance(context.prisma, organizationId, instanceId, {
