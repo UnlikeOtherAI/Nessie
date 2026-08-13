@@ -32,6 +32,7 @@ test('centres the complete iPad chrome group when no workspace is present', () =
     insetLeft: 0,
     insetRight: 0,
     screenWidth: 1_024,
+    trailingReservedWidth: 54,
   }), { controlsLeft: 202, mode: 'full', workspaceWidth: null })
 })
 
@@ -43,6 +44,7 @@ test('moves the full group trailing before compacting it to preserve the workspa
     insetLeft: 0,
     insetRight: 0,
     screenWidth: 1_024,
+    trailingReservedWidth: 54,
   }), { controlsLeft: 244, mode: 'full', workspaceWidth: 220 })
 })
 
@@ -54,7 +56,8 @@ test('compacts navigation into overflow only after the full group cannot fit', (
     insetLeft: 0,
     insetRight: 0,
     screenWidth: 768,
-  }), { controlsLeft: 244, mode: 'compact', workspaceWidth: 220 })
+    trailingReservedWidth: 54,
+  }), { controlsLeft: 242, mode: 'compact', workspaceWidth: 218 })
 })
 
 test('shrinks and finally hides the workspace switcher before overlap in a narrow iPad window', () => {
@@ -65,7 +68,8 @@ test('shrinks and finally hides the workspace switcher before overlap in a narro
     insetLeft: 0,
     insetRight: 0,
     screenWidth: 700,
-  }), { controlsLeft: 120, mode: 'compact', workspaceWidth: 96 })
+    trailingReservedWidth: 54,
+  }), { controlsLeft: 174, mode: 'compact', workspaceWidth: 150 })
   assert.deepEqual(getIpadTopChromeLayout({
     compactControlsWidth: 460,
     fullControlsWidth: 620,
@@ -73,6 +77,19 @@ test('shrinks and finally hides the workspace switcher before overlap in a narro
     insetLeft: 0,
     insetRight: 0,
     screenWidth: 600,
+    trailingReservedWidth: 54,
+  }), { controlsLeft: 70, mode: 'compact', workspaceWidth: null })
+})
+
+test('reserves the trailing safe-edge account control before centring or compacting navigation', () => {
+  assert.deepEqual(getIpadTopChromeLayout({
+    compactControlsWidth: 460,
+    fullControlsWidth: 620,
+    hasWorkspace: false,
+    insetLeft: 0,
+    insetRight: 0,
+    screenWidth: 600,
+    trailingReservedWidth: 54,
   }), { controlsLeft: 70, mode: 'compact', workspaceWidth: null })
 })
 

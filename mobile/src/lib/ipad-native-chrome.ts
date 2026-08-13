@@ -22,8 +22,9 @@ export const IPAD_WINDOWED_CHROME_TOP = 12
 export const IPAD_NATIVE_WORKSPACE_MAX_WIDTH = 220
 export const IPAD_NATIVE_WORKSPACE_COLLAPSED_WIDTH = 68
 export const IPAD_NATIVE_CHROME_GAP = 12
-export const IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE = 628
-export const IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE = 463
+export const IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH = 42
+export const IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE = 574
+export const IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE = 409
 
 export type IpadTopChromeMode = 'compact' | 'full'
 
@@ -92,6 +93,7 @@ export const getIpadTopChromeLayout = ({
   insetLeft,
   insetRight,
   screenWidth,
+  trailingReservedWidth,
 }: {
   compactControlsWidth: number
   fullControlsWidth: number
@@ -99,9 +101,10 @@ export const getIpadTopChromeLayout = ({
   insetLeft: number
   insetRight: number
   screenWidth: number
+  trailingReservedWidth: number
 }): IpadTopChromeLayout => {
   const leadingEdge = insetLeft + IPAD_NATIVE_CHROME_GAP
-  const trailingEdge = screenWidth - insetRight - IPAD_NATIVE_CHROME_GAP
+  const trailingEdge = screenWidth - insetRight - IPAD_NATIVE_CHROME_GAP - trailingReservedWidth
   const workspaceRight = leadingEdge + IPAD_NATIVE_WORKSPACE_MAX_WIDTH + IPAD_NATIVE_CHROME_GAP
   const arrangeWithWorkspace = (controlsWidth: number): number => Math.max(
     getCentredControlsLeft(screenWidth, controlsWidth),
@@ -138,16 +141,16 @@ export const getIpadTopChromeLayout = ({
     }
   }
 
-  const centredCompactLeft = getCentredControlsLeft(screenWidth, compactControlsWidth)
-  const availableWorkspaceWidth = centredCompactLeft - leadingEdge - IPAD_NATIVE_CHROME_GAP
+  const availableWorkspaceWidth = trailingEdge - leadingEdge - IPAD_NATIVE_CHROME_GAP - compactControlsWidth
   if (availableWorkspaceWidth >= IPAD_NATIVE_WORKSPACE_COLLAPSED_WIDTH) {
     return {
-      controlsLeft: centredCompactLeft,
+      controlsLeft: leadingEdge + availableWorkspaceWidth + IPAD_NATIVE_CHROME_GAP,
       mode: 'compact',
       workspaceWidth: Math.min(availableWorkspaceWidth, IPAD_NATIVE_WORKSPACE_MAX_WIDTH),
     }
   }
 
+  const centredCompactLeft = getCentredControlsLeft(screenWidth, compactControlsWidth)
   return {
     controlsLeft: Math.max(leadingEdge, centredCompactLeft),
     mode: 'compact',

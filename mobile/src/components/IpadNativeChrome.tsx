@@ -12,6 +12,7 @@ import {
   IPAD_NATIVE_CHROME_GAP,
   IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE,
   IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE,
+  IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH,
   type IpadTopChromeMode,
   type IpadNativeChromeTheme,
 } from '../lib/ipad-native-chrome'
@@ -62,6 +63,7 @@ export const IpadNativeChrome = ({
     insetLeft,
     insetRight,
     screenWidth: chromeWidth,
+    trailingReservedWidth: IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH + IPAD_NATIVE_CHROME_GAP,
   })
   const workspaceLeft = insetLeft + IPAD_NATIVE_CHROME_GAP
   const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
@@ -111,10 +113,13 @@ export const IpadNativeChrome = ({
               toolbarState={toolbarState}
             />
           ) : null}
-          <IpadNativeChromeSurface style={styles.accountSurface} theme={theme}>
-            <IpadNativeAccountButton {...account} onPress={onToggleAccountMenu} theme={theme} />
-          </IpadNativeChromeSurface>
         </View>
+        <IpadNativeChromeSurface
+          style={[styles.accountSurface, { right: insetRight + IPAD_NATIVE_CHROME_GAP }]}
+          theme={theme}
+        >
+          <IpadNativeAccountButton {...account} onPress={onToggleAccountMenu} theme={theme} />
+        </IpadNativeChromeSurface>
       </View>
       {workspaceName && layout.workspaceWidth !== null ? (
         <IpadNativeWorkspaceSwitcher
@@ -131,7 +136,12 @@ export const IpadNativeChrome = ({
 }
 
 const styles = StyleSheet.create({
-  accountSurface: { justifyContent: 'center', width: 42 },
+  accountSurface: {
+    justifyContent: 'center',
+    position: 'absolute',
+    top: 0,
+    width: IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH,
+  },
   controls: {
     flexDirection: 'row',
     gap: IPAD_NATIVE_CHROME_GAP,
