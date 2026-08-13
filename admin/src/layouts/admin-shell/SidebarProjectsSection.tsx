@@ -86,7 +86,7 @@ export const SidebarProjectsSection = ({
           <div key={project.id} className="mt-1">
             <button
               className={[
-                'admin-sb-item group',
+                'admin-sb-item sidebar-project-tile group',
                 projectUnreadCount > 0 ? 'unread' : '',
                 project.id === currentProjectId ? 'active-parent' : '',
               ].join(' ')}

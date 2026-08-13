@@ -32,9 +32,6 @@ import { statusBarStyleForScheme } from './src/lib/status-bar'
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
-  getIpadToolbarLeft,
-  getIpadWorkspaceWidth,
-  IPAD_NATIVE_CHROME_GAP,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
 import {
@@ -43,19 +40,21 @@ import {
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
 import {
   DEFAULT_TOOLBAR_STATE,
-  IpadNativeToolbar,
-  type ToolbarAction,
   type ToolbarState,
 } from './src/components/IpadNativeToolbar'
-import { IpadNativeTabBar } from './src/components/IpadNativeTabBar'
-import { IpadNativeWorkspaceSwitcher } from './src/components/IpadNativeWorkspaceSwitcher'
+import { IpadNativeChrome } from './src/components/IpadNativeChrome'
+import {
+  IphoneConversationMenuChrome,
+} from './src/components/IphoneConversationMenuChrome'
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
+import { createNativeWebviewActions } from './src/lib/native-webview-actions'
 import {
   createNativeTabNavigationState,
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
   isFullScreenTaskRoute,
+  isIphoneConversationMenuRoute,
 } from './src/lib/native-shell-layout'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
@@ -63,6 +62,10 @@ const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 const DEFAULT_ACTIVE_TINT = '#7c3aed'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
 const DEFAULT_IPAD_CHROME_SURFACE = '#222629'
+const DEFAULT_IPHONE_HEADER_SURFACE = '#2b2018'
+const DEFAULT_IPHONE_HEADER_TEXT = '#fffdf8'
+const DEFAULT_IPHONE_TEXT = '#2b2018'
+const DEFAULT_IPHONE_TEXT_MUTED = '#74665b'
 
 // If the admin never reports itself mounted (it posts a `nessie:route` message on
 // boot) within this window after a load finishes, the WebView is blank/white —
@@ -85,6 +88,16 @@ const Shell = (): React.JSX.Element => {
   const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
   const [ipadTabBarWidth, setIpadTabBarWidth] = useState<number | null>(null)
   const [ipadWorkspaceName, setIpadWorkspaceName] = useState<string | null>(null)
+  const [iphoneHeaderSurface, setIphoneHeaderSurface] = useState(DEFAULT_IPHONE_HEADER_SURFACE)
+  const [iphoneHeaderText, setIphoneHeaderText] = useState(DEFAULT_IPHONE_HEADER_TEXT)
+  const [iphoneText, setIphoneText] = useState(DEFAULT_IPHONE_TEXT)
+  const [iphoneTextMuted, setIphoneTextMuted] = useState(DEFAULT_IPHONE_TEXT_MUTED)
+  const [iphoneOnAccent, setIphoneOnAccent] = useState(DEFAULT_IPHONE_HEADER_TEXT)
+  const [iphoneAccount, setIphoneAccount] = useState({
+    avatarUrl: null as string | null,
+    name: null as string | null,
+    presence: 'offline' as 'away' | 'offline' | 'online',
+  })
   const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
   const [attentionBadges, setAttentionBadges] = useState({ channels: 0, assignedWork: 0, knowledge: 0 })
   // Bumping this remounts the WebView — used to recover Android after its render
@@ -210,25 +223,7 @@ const Shell = (): React.JSX.Element => {
     return () => subscription.remove()
   }, [runScript])
 
-  const openSearchOverlay = (): void => {
-    runScript("window.dispatchEvent(new Event('nessie:open-search-overlay'));")
-  }
-
-  const closeSearchOverlay = (): void => {
-    runScript("window.dispatchEvent(new Event('nessie:close-search-overlay'));")
-  }
-
-  const runToolbarAction = (action: ToolbarAction): void => {
-    runScript(
-      `window.__nessieToolbarAction && window.__nessieToolbarAction(${JSON.stringify(action)});`,
-    )
-  }
-
-  const toggleWorkspaceMenu = (left: number): void => {
-    runScript(
-      `window.__nessieToggleWorkspaceMenu && window.__nessieToggleWorkspaceMenu(${JSON.stringify(left)});`,
-    )
-  }
+  const nativeActions = createNativeWebviewActions(runScript)
 
   const runExternalAuth = async (authorizeUrl: string): Promise<void> => {
     const callbackUrl = await completeExternalAuth(authorizeUrl)
@@ -254,8 +249,21 @@ const Shell = (): React.JSX.Element => {
       if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
       if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
       if (typeof msg.surface === 'string' && msg.surface) setIpadChromeSurface(msg.surface)
+      if (typeof msg.headerSurface === 'string' && msg.headerSurface) setIphoneHeaderSurface(msg.headerSurface)
+      if (typeof msg.headerText === 'string' && msg.headerText) setIphoneHeaderText(msg.headerText)
+      if (typeof msg.text === 'string' && msg.text) setIphoneText(msg.text)
+      if (typeof msg.textMuted === 'string' && msg.textMuted) setIphoneTextMuted(msg.textMuted)
+      if (typeof msg.onAccent === 'string' && msg.onAccent) setIphoneOnAccent(msg.onAccent)
       const nextStatusBarStyle = statusBarStyleForScheme(msg.scheme)
       if (nextStatusBarStyle) setStatusBarStyle(nextStatusBarStyle)
+      return
+    }
+    if (msg.type === 'nessie:phone-account') {
+      setIphoneAccount({
+        avatarUrl: typeof msg.userAvatarUrl === 'string' && msg.userAvatarUrl ? msg.userAvatarUrl : null,
+        name: typeof msg.userName === 'string' && msg.userName.trim() ? msg.userName : null,
+        presence: msg.userPresence === 'online' || msg.userPresence === 'away' ? msg.userPresence : 'offline',
+      })
       return
     }
     if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
@@ -327,15 +335,16 @@ const Shell = (): React.JSX.Element => {
   const onIndexChange = (next: number): void => {
     setIndex(next)
     if (IS_IPAD && TABS[next]?.key === 'search') {
-      openSearchOverlay()
+      nativeActions.openSearchOverlay()
       return
     }
-    closeSearchOverlay()
+    nativeActions.closeSearchOverlay()
     navigateTo(TABS[next].path)
   }
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
   const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
+  const showIphoneConversationMenu = showBar && !IS_IPAD && !IS_ANDROID && isIphoneConversationMenuRoute(currentPath)
 
   // The native frame owns all unsafe edges. In particular, a phone tab root is
   // not always a direct aside/main child in the web DOM, so relying on injected
@@ -346,6 +355,7 @@ const Shell = (): React.JSX.Element => {
     isIpad: IS_IPAD,
     platform: Platform.OS,
     safeArea: insets,
+    showIphoneMenuHeader: showIphoneConversationMenu,
     showTabBar: showBar,
   })
   const webviewLayerStyle = {
@@ -359,19 +369,11 @@ const Shell = (): React.JSX.Element => {
     inactiveTintColor: inactive,
     surfaceColor: ipadChromeSurface,
   })
-  const ipadToolbarLeft = ipadTabBarWidth === null
-    ? null
-    : getIpadToolbarLeft(windowWidth, ipadTabBarWidth, insets.left)
-  const ipadWorkspaceWidth = ipadToolbarLeft === null
-    ? null
-    : getIpadWorkspaceWidth(ipadToolbarLeft, insets.left)
-  const ipadWorkspaceLeft = insets.left + IPAD_NATIVE_CHROME_GAP
-
   const navigationState = createNativeTabNavigationState(index, attentionBadges)
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
-      <StatusBar style={statusBarStyle} />
+      <StatusBar style={showIphoneConversationMenu ? 'light' : statusBarStyle} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <IphoneNativeTabBar
@@ -440,37 +442,43 @@ const Shell = (): React.JSX.Element => {
         />}
       </View>
 
+      {showIphoneConversationMenu ? (
+        <IphoneConversationMenuChrome
+          accentColor={accent}
+          accountAvatarUrl={iphoneAccount.avatarUrl}
+          accountName={iphoneAccount.name}
+          accountPresence={iphoneAccount.presence}
+          bottomInset={insets.bottom}
+          headerSurface={iphoneHeaderSurface}
+          headerText={iphoneHeaderText}
+          onAccentColor={iphoneOnAccent}
+          onAccountPress={nativeActions.togglePhoneAccountMenu}
+          onCreateAction={nativeActions.createFromPhoneMenu}
+          onHistoryPress={() => nativeActions.runToolbarAction('history')}
+          onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}
+          safeTop={insets.top}
+          sheetMutedText={iphoneTextMuted}
+          sheetText={iphoneText}
+          sheetSurface={ipadChromeSurface}
+          workspaceName={ipadWorkspaceName}
+        />
+      ) : null}
+
       {showBar && IS_IPAD ? (
-        <IpadNativeTabBar
+        <IpadNativeChrome
           activeIndex={index}
           badgeCounts={attentionBadges}
           onIndexChange={onIndexChange}
-          onWidthChange={setIpadTabBarWidth}
+          onTabBarWidthChange={setIpadTabBarWidth}
+          onToggleWorkspaceMenu={nativeActions.toggleWorkspaceMenu}
+          onToolbarAction={nativeActions.runToolbarAction}
+          insetLeft={insets.left}
+          tabBarWidth={ipadTabBarWidth}
           theme={ipadChromeTheme}
+          toolbarState={toolbarState}
           top={ipadChromeTop}
-        />
-      ) : null}
-
-      {showBar && IS_IPAD && ipadToolbarLeft !== null ? (
-        <IpadNativeToolbar
-          canBack={toolbarState.canBack}
-          canForward={toolbarState.canForward}
-          left={ipadToolbarLeft}
-          onAction={runToolbarAction}
-          recentOpen={toolbarState.recentOpen}
-          theme={ipadChromeTheme}
-          top={ipadChromeTop}
-        />
-      ) : null}
-
-      {showBar && IS_IPAD && ipadWorkspaceName && ipadWorkspaceWidth !== null ? (
-        <IpadNativeWorkspaceSwitcher
-          left={ipadWorkspaceLeft}
-          maxWidth={ipadWorkspaceWidth}
-          name={ipadWorkspaceName}
-          onPress={() => toggleWorkspaceMenu(ipadWorkspaceLeft)}
-          theme={ipadChromeTheme}
-          top={ipadChromeTop}
+          windowWidth={windowWidth}
+          workspaceName={ipadWorkspaceName}
         />
       ) : null}
     </View>

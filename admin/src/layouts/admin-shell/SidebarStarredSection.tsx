@@ -2,6 +2,7 @@ import type { ChannelRecord } from '../../lib/api-client';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
+import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { StarredItem, VisibleStarredEntry } from './types';
@@ -38,6 +39,7 @@ export const SidebarStarredSection = ({
   unreadCountByChannelId,
 }: SidebarStarredSectionProps) => {
   const { token } = useAuthSession();
+  const nativeTouchShell = isReactNativeWebView();
   if (entries.length === 0) {
     return null;
   }
@@ -72,7 +74,7 @@ export const SidebarStarredSection = ({
               onClick={() => onNavigateAgent(agent.id)}
               type="button"
             >
-              <AgentAvatar agent={agent} shape="circle" size="xs" token={token} />
+              <AgentAvatar agent={agent} shape={nativeTouchShell ? 'rounded' : 'circle'} size="xs" token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>
               <span
                 className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
@@ -120,7 +122,7 @@ export const SidebarStarredSection = ({
             <div key={`starred-prj-${project.id}`} className="mt-1">
               <button
                 className={[
-                  'admin-sb-item group',
+                  'admin-sb-item sidebar-project-tile group',
                   unreadCount > 0 ? 'unread' : '',
                   project.id === currentProjectId ? 'active-parent' : '',
                 ].join(' ')}
@@ -199,7 +201,11 @@ export const SidebarStarredSection = ({
               avatarUrl={person.avatarUrl ?? undefined}
               displayName={person.label}
               gravatarUrl={person.gravatarUrl ?? undefined}
-              size={18}
+              presenceRingWidth={nativeTouchShell ? 3 : undefined}
+              ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
+              shape={nativeTouchShell ? 'rounded' : 'circle'}
+              showPresence={nativeTouchShell}
+              size={nativeTouchShell ? 28 : 18}
               token={token}
               userId={person.id}
             />

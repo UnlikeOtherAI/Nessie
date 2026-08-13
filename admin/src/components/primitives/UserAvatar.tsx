@@ -52,6 +52,8 @@ type UserAvatarProps = AvatarSources & {
   showStatus?: boolean
   // Background the avatar sits on (for the badges' separating ring).
   ringColor?: string
+  presenceRingWidth?: number
+  shape?: 'circle' | 'rounded'
 }
 
 // Round user avatar: renders the resolved image (custom > UnlikeOtherAI >
@@ -65,6 +67,8 @@ export const UserAvatar = ({
   showPresence,
   showStatus,
   ringColor,
+  presenceRingWidth,
+  shape = 'circle',
   ...sources
 }: UserAvatarProps) => {
   const url = useResolvedAvatarUrl(sources, token)
@@ -80,7 +84,8 @@ export const UserAvatar = ({
     <div
       aria-hidden="true"
       className={[
-        'flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full',
+        'flex flex-shrink-0 items-center justify-center overflow-hidden',
+        shape === 'rounded' ? 'rounded-lg' : 'rounded-full',
         'font-bold text-[color:var(--on-accent)]',
         className ?? '',
       ].join(' ')}
@@ -106,6 +111,7 @@ export const UserAvatar = ({
   return (
     <AvatarBadges
       ringColor={ringColor}
+      ringWidth={presenceRingWidth}
       showPresence={showPresence}
       showStatus={showStatus}
       size={size}

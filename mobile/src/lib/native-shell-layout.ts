@@ -2,6 +2,7 @@ import { getIpadContentTop } from './ipad-native-chrome'
 import { TABS } from './tabs'
 
 export const IPHONE_TAB_BAR_HEIGHT = 49
+export const IPHONE_MENU_HEADER_HEIGHT = 64
 
 export type NativeSafeAreaInsets = {
   bottom: number
@@ -31,6 +32,10 @@ export const isAuthGateRoute = (path: string): boolean =>
 
 export const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new'
 
+// The channel root is the conversation index; it is the only phone route that
+// presents the workspace header and the floating new-message action.
+export const isIphoneConversationMenuRoute = (path: string | null): boolean => path === '/channels'
+
 /**
  * The native frame, not a DOM selector, owns unsafe screen edges. Phone pages
  * have several valid DOM shapes (notably the tab-root sidebars), so CSS alone
@@ -41,12 +46,13 @@ export const getNativeWebviewFrameInsets = (input: {
   isIpad: boolean
   platform: string
   safeArea: NativeSafeAreaInsets
+  showIphoneMenuHeader: boolean
   showTabBar: boolean
 }): NativeSafeAreaInsets => {
   const top = input.isIpad && input.showTabBar
     ? getIpadContentTop(input.ipadChromeTop)
     : input.platform === 'ios' || input.platform === 'android'
-      ? input.safeArea.top
+      ? input.safeArea.top + (input.showIphoneMenuHeader ? IPHONE_MENU_HEADER_HEIGHT : 0)
       : 0
   const bottom = input.platform === 'android'
     ? input.safeArea.bottom

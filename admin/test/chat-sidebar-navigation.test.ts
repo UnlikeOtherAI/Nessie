@@ -43,7 +43,8 @@ test('the starred Personal Assistant follows its active direct-message route', (
 test('the Direct-messages Personal Assistant reuses the managed agent avatar record', () => {
   const source = readSource('../src/layouts/admin-shell/useAdminShell.ts')
 
-  assert.match(source, /personalAssistantState\?\.agent\n      \?\? agents\.find\(\(agent\) => agent\.agentKind === 'personal_assistant'\)/)
+  assert.match(source, /personalAssistantState\?\.agent/)
+  assert.match(source, /\?\? agents\.find\(\(agent\) => agent\.agentKind === 'personal_assistant'\)/)
   assert.match(source, /personalAssistantAgent,\n    personalAssistantBootstrapping/)
 })
 
@@ -51,6 +52,8 @@ test('the new-message surface excludes the sender and keeps recipients available
   const source = readSource('../src/pages/ChannelConversationComposePage.tsx')
 
   assert.match(source, /aria-label="Close new message"/)
+  assert.match(source, /setAddressFocused\(true\)/)
+  assert.match(source, /document\.activeElement !== addressInputRef\.current/)
   assert.match(source, /useModalA11y\(dialogRef, close, !phoneLayout, addressInputRef\)/)
   assert.match(source, /fixed inset-0 z-\[90\] bg-\[color:var\(--main\)\]/)
   assert.match(source, /placeholder=\{recipients\.length === 0 \? 'Type a name or email address' : ''\}/)

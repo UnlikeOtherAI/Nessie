@@ -13,6 +13,7 @@ type AvatarBadgesProps = {
   showStatus?: boolean
   // Background the avatar sits on, used for the badges' separating ring.
   ringColor?: string
+  ringWidth?: number
 }
 
 // Overlays the active-status emoji (top-right) and the presence dot
@@ -25,6 +26,7 @@ export const AvatarBadges = ({
   showPresence = true,
   showStatus = true,
   ringColor = 'var(--panel)',
+  ringWidth = 2,
 }: AvatarBadgesProps) => {
   const presence = useUserPresence(userId)
 
@@ -62,7 +64,12 @@ export const AvatarBadges = ({
       )}
       {showPresence && (
         <span className="absolute" style={{ bottom: -1, right: -1 }}>
-          <PresenceBadge ringColor={ringColor} size={dotSize} state={presence.state} />
+          <PresenceBadge
+            ringColor={ringColor}
+            ringWidth={ringWidth}
+            size={dotSize}
+            state={presence.state}
+          />
         </span>
       )}
     </span>

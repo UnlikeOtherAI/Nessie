@@ -6,6 +6,9 @@ type PresenceBadgeProps = {
   size?: number
   // Colour of the separating ring — should match the background the dot sits on.
   ringColor?: string
+  // Width of the separating ring. Navigation uses a wider cutout so the badge
+  // appears to emerge from the sidebar rather than sit on top of the avatar.
+  ringWidth?: number
 }
 
 // Three-state presence dot: filled green when online, an amber "z" when away
@@ -14,11 +17,12 @@ export const PresenceBadge = ({
   state,
   size = 10,
   ringColor = 'var(--panel)',
+  ringWidth = 2,
 }: PresenceBadgeProps) => {
   const base = {
     width: size,
     height: size,
-    boxShadow: `0 0 0 2px ${ringColor}`,
+    boxShadow: `0 0 0 ${ringWidth}px ${ringColor}`,
   }
 
   if (state === 'online') {

@@ -1,4 +1,5 @@
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
+import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
@@ -106,12 +107,14 @@ export const SidebarNav = (props: SidebarNavProps) => {
     visibleSidebarProjects,
     visibleStarredEntries,
   } = props;
+  const nativeTouchShell = isReactNativeWebView();
 
   return (
     <aside
       className={[
         'flex h-full w-full flex-col overflow-hidden',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
+        nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
       <div className="min-h-0 flex-1 overflow-y-auto py-1">

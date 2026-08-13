@@ -78,12 +78,19 @@ export const INJECTED = `
     var accent = cssVar('--accent');
     var inactive = cssVar('--tx3');
     var surface = cssVar('--panel');
+    var text = cssVar('--tx');
+    var textMuted = cssVar('--tx2');
+    var onAccent = cssVar('--on-accent');
+    var headerSurface = cssVar('--ink');
+    var headerText = cssVar('--surface-inverse');
     var scheme = '';
     try { scheme = getComputedStyle(document.documentElement).colorScheme } catch (e) {}
     if (accent || surface || scheme === 'light' || scheme === 'dark') {
       try {
         window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'theme', accent: accent, inactive: inactive, scheme: scheme, surface: surface
+          type: 'theme', accent: accent, inactive: inactive, scheme: scheme, surface: surface,
+          headerSurface: headerSurface, headerText: headerText,
+          text: text, textMuted: textMuted, onAccent: onAccent
         }))
       } catch (e) {}
     }

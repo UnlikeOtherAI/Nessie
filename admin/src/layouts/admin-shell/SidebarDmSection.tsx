@@ -4,6 +4,7 @@ import {
 import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { agentGradient } from '../../lib/avatar';
 import type { AgentRecord } from '../../lib/api-client';
+import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -62,6 +63,8 @@ export const SidebarDmSection = ({
   unreadCountByChannelId,
 }: SidebarDmSectionProps) => {
   const { token } = useAuthSession();
+  const nativeTouchShell = isReactNativeWebView();
+  const avatarSize = nativeTouchShell ? 28 : 18;
   return (
     <SidebarMenuSection
       action={
@@ -106,7 +109,10 @@ export const SidebarDmSection = ({
             type="button"
           >
             <span
-              className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px] text-[var(--on-accent)]"
+              className={[
+                'flex shrink-0 items-center justify-center text-[9px] text-[var(--on-accent)]',
+                nativeTouchShell ? 'h-7 w-7 rounded-lg' : 'h-[18px] w-[18px] rounded-full',
+              ].join(' ')}
               style={{ background: agentGradient }}
             >
               {(assistant.iconGlyph ?? assistant.label.slice(0, 1)).toUpperCase()}
@@ -128,7 +134,10 @@ export const SidebarDmSection = ({
             type="button"
           >
             <span
-              className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[9px] text-[var(--on-accent)]"
+              className={[
+                'flex shrink-0 items-center justify-center text-[9px] text-[var(--on-accent)]',
+                nativeTouchShell ? 'h-7 w-7 rounded-lg' : 'h-[18px] w-[18px] rounded-full',
+              ].join(' ')}
               style={{ background: agentGradient }}
             >
               {agent.label.slice(0, 1).toUpperCase()}
@@ -187,7 +196,11 @@ export const SidebarDmSection = ({
               avatarUrl={person.avatarUrl ?? undefined}
               displayName={person.label}
               gravatarUrl={person.gravatarUrl ?? undefined}
-              size={18}
+              presenceRingWidth={nativeTouchShell ? 3 : undefined}
+              ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
+              shape={nativeTouchShell ? 'rounded' : 'circle'}
+              showPresence={nativeTouchShell}
+              size={avatarSize}
               token={token}
               userId={person.id}
             />

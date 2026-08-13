@@ -198,6 +198,19 @@ control: the same avatar, presence/status badges, and account menu used at the
 bottom of the desktop rail. A shell with that rail never renders a second
 top-bar account badge.
 
+On the native iPhone **Channels** index, `IphoneConversationMenuChrome` adds a
+theme-specific dark workspace header above that retained WebView: the workspace
+control opens the existing entitlement-aware switcher, Recent Channels delegates
+to the existing toolbar bridge, and the account control opens the canonical
+account menu. Its bottom-right **+** opens native actions for **Project**,
+**Channel**, or **Message**; each delegates to the same web-shell handler and
+dialog as the sidebar, rather than creating a second permission path. The
+WebView sidebar carries a native-touch marker on iPhone, iPad, and Android so
+only those installed interfaces use the larger 48-point rows and 19px menu
+type; desktop remains compact even on a touchscreen. Project folder rows alone
+are bold. Human avatar tiles are rounded squares with live online/away/offline
+badges; the badge's three-pixel cutout matches the sidebar background.
+
 The login route is its own full-height touch-scroll container because the page
 root remains fixed for the authenticated shell. On phone widths it presents the
 sign-in panel before the welcome panel, keeping hosted SSO visible without an
