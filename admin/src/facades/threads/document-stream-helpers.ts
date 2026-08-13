@@ -276,27 +276,31 @@ const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/
 const BULLET_PREFIX = /^(\s*)([*+\-]|\d+[.)])(\s+)/
 const THEMATIC_BREAK = /^ {0,3}([*_-])(?:[ \t]*\1){2,}[ \t]*$/
 
-const openFenceFrom = (line: string): OpenFence => {
+const fenceMarker = (line: string): { info: string; marker: string } | null => {
   const match = FENCE_LINE.exec(line)
-  if (!match) {
+  return match && match[1] ? { info: match[2] ?? '', marker: match[1] } : null
+}
+
+const openFenceFrom = (line: string): OpenFence => {
+  const found = fenceMarker(line)
+  if (!found) {
     return null
   }
-  const marker = match[1]
   // A backtick fence's info string may not itself contain a backtick, so
   // `` ```a`b `` opens nothing.
-  if (marker.startsWith('`') && match[2].includes('`')) {
+  if (found.marker.startsWith('`') && found.info.includes('`')) {
     return null
   }
-  return { char: marker[0], length: marker.length }
+  return { char: found.marker.slice(0, 1), length: found.marker.length }
 }
 
 const closesFence = (line: string, fence: NonNullable<OpenFence>): boolean => {
-  const match = FENCE_LINE.exec(line)
+  const found = fenceMarker(line)
   return Boolean(
-    match &&
-      match[1][0] === fence.char &&
-      match[1].length >= fence.length &&
-      match[2].trim() === '',
+    found &&
+      found.marker.startsWith(fence.char) &&
+      found.marker.length >= fence.length &&
+      found.info.trim() === '',
   )
 }
 

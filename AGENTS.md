@@ -147,6 +147,20 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `agent_trigger_create` usable on an agent the user merely named, rather than
   only on one created in the same conversation. Details:
   `CLAUDE.md` → "Personal assistant — workspace provisioning".
+- **Live document streaming taps the model's own tool-call arguments, and its
+  live path never touches durable storage.** `kb_document_compose` emits the
+  document as its `markdown` argument; the enriched `tool_call.delta` events
+  feed a per-run recorder whose *live* lane publishes each provider chunk over
+  `publishSseEphemeral` (notify-only) and whose *durable* lane coalesces
+  separately for bootstrap — two lanes precisely so a slow INSERT cannot delay
+  a token. The drain loop calls the recorder synchronously; anything that would
+  make the provider read wait belongs on a lane, not in the callback. Session
+  identity is `(runId, invocationId, toolCallId)` because indexes restart per
+  attempt and retries re-issue the same iteration. Never publish a document
+  delta durably, never emit a partial escape or lone surrogate to a client
+  (`createPartialJsonScanner` owns that invariant), and never save a document
+  the streamed text does not byte-match. Interruption of any kind saves
+  nothing. Spec: `docs/plans/2026-08-13-live-document-streaming.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and

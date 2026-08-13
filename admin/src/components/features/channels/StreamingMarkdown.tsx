@@ -57,7 +57,7 @@ export const StreamingMarkdown = ({ markdown, streaming }: StreamingMarkdownProp
     )
   }
 
-  const tail = blocks.length > 0 ? blocks[blocks.length - 1] : null
+  const tail = blocks[blocks.length - 1] ?? null
 
   return (
     <>

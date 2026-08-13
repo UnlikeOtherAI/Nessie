@@ -147,6 +147,19 @@ export const runKbDocumentComposeTool = async (
       title: filename,
     })
 
+    // Publish where review would be ceremony rather than oversight. In a
+    // private space the person who asked for the document is its only reader
+    // and just watched it being written, so leaving it as a draft they have to
+    // approve to themselves helps nobody. Shared spaces keep the review gate.
+    const published = space.visibility === 'private'
+    if (published) {
+      await provider.publishPage({
+        actorUserId: context.actorContext.actionContext.effectiveUserId ?? null,
+        organizationId,
+        pageId: page.id,
+      })
+    }
+
     const versionNumber = page.latestVersion?.versionNumber ?? 1
     if (session) {
       await context.prisma.runDocumentSession.update({
@@ -155,6 +168,7 @@ export const runKbDocumentComposeTool = async (
           chars: markdown.length,
           finishedAt: new Date(),
           pageId: page.id,
+          published,
           status: 'saved',
           versionNumber,
         },
@@ -167,8 +181,10 @@ export const runKbDocumentComposeTool = async (
       outputPreview:
         `Saved "${filename}" (${markdown.length} characters) to space "${space.name}"`
         + `${stored?.overrideSpaceId ? ' — the person moved it there from the document window' : ''}`
-        + `. pageId=${page.id}, version ${versionNumber}. It is a draft; call `
-        + 'kb_publish_request when it is ready for review.',
+        + `. pageId=${page.id}, version ${versionNumber}. `
+        + (published
+          ? 'It is published in that private space.'
+          : 'It is a draft; call kb_publish_request when it is ready for review.'),
       toolName: 'kb_document_compose',
     }
   } catch (error) {

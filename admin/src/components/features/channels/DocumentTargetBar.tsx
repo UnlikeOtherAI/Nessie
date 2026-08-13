@@ -8,7 +8,7 @@ import {
 import {
   isFolderPage,
   sortFilesystemPages,
-} from '../../knowledge/KnowledgeFilesystemRows'
+} from '../knowledge/KnowledgeFilesystemRows'
 
 type DocumentTargetBarProps = {
   disabled: boolean
