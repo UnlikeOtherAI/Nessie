@@ -263,14 +263,20 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
           requestDetail(sessionId)
           return
         }
+        // A retarget states the whole location — a document moved to a space
+        // root carries no parent, and keeping the previous folder would show a
+        // path the save will not use. `meta` only fills in what it parsed.
+        const retargeted = event === 'stream.document.target'
         setEntry(
           {
             ...current,
             target: {
-              parentPageId: data.parentPageId ?? current.target.parentPageId,
-              parentTitle: data.parentTitle ?? current.target.parentTitle,
+              parentPageId:
+                data.parentPageId ?? (retargeted ? null : current.target.parentPageId),
+              parentTitle:
+                data.parentTitle ?? (retargeted ? null : current.target.parentTitle),
               spaceId: data.spaceId ?? current.target.spaceId,
-              spaceName: data.spaceName ?? current.target.spaceName,
+              spaceName: data.spaceName ?? (retargeted ? null : current.target.spaceName),
             },
             title: data.title ?? current.title,
           },
