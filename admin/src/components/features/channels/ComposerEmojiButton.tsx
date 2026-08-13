@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { faFaceSmile } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { usePhoneLayout } from '../../../lib/mobile-shell'
 import { EmojiPickerPanel } from '../../shared/EmojiPickerPanel'
 import { toolbarButtonClass } from './channel-helpers'
 
@@ -8,6 +9,7 @@ import { toolbarButtonClass } from './channel-helpers'
 // popover above the toolbar and inserting the picked glyph into the input.
 // Dismissal mirrors the reaction picker — outside pointerdown or Escape.
 export const ComposerEmojiButton = ({ onSelect }: { onSelect: (emoji: string) => void }) => {
+  const phoneLayout = usePhoneLayout()
   const pickerId = useId()
   const pickerRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
@@ -51,6 +53,7 @@ export const ComposerEmojiButton = ({ onSelect }: { onSelect: (emoji: string) =>
       {open ? (
         <div className="admin-compose-emoji-menu" id={pickerId} role="dialog">
           <EmojiPickerPanel
+            autoFocusSearch={!phoneLayout}
             onSelect={(emoji) => {
               onSelect(emoji)
               setOpen(false)
