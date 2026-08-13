@@ -49,7 +49,11 @@ const injectedThemeMessage = (colorScheme: 'dark' | 'light'): Record<string, unk
   } => ({
     backgroundColor: 'rgb(26, 29, 33)',
     colorScheme,
-    getPropertyValue: (name) => (name === '--accent' ? '#7c3aed' : '#949597'),
+    getPropertyValue: (name) => {
+      if (name === '--accent') return '#7c3aed'
+      if (name === '--tx3') return '#949597'
+      return '#222629'
+    },
   })
 
   const runInjectedScript = new Function('window', 'document', 'MutationObserver', 'getComputedStyle', INJECTED)
@@ -133,4 +137,5 @@ test('iPad and Android keep top safe-area ownership in the native frame', () => 
 test('reports the page color scheme for the native status bar', () => {
   assert.equal(injectedThemeMessage('light')?.scheme, 'light')
   assert.equal(injectedThemeMessage('dark')?.scheme, 'dark')
+  assert.equal(injectedThemeMessage('dark')?.surface, '#222629')
 })

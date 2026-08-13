@@ -119,11 +119,12 @@ Designer/Workflows/Triggers/Tools), and **Search** is the trailing tab (iOS 26
 separated search role) backed by a global `/search` page. The bar is hidden on
 the login / bootstrap screens. On iPhone and Android the bar sits at the bottom;
 on iPad (iPadOS 26) `IpadNativeTabBar` renders the same destinations in a
-lightweight native **top** row, so `App.tsx` insets the WebView accordingly
-(`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
+lightweight native **top** row aligned with the system status area, so `App.tsx`
+insets the WebView accordingly (`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
 its empty tab scenes can cover the sibling WKWebView with a black controller
 surface after login. Back, Forward, Recent Channels, and Help buttons sit on the
-trailing side of the iPad row. Tapping **Search** opens the full `/search` page
+leading side of the iPad row, using the same theme-derived chrome as the tabs.
+Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split
 lives in `mobile/src/config.ts`:
 
