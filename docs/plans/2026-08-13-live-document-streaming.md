@@ -14,8 +14,10 @@ A user asks their personal assistant (PA) to create a document. In conversation
 they agree on a location for it. When the assistant starts writing, a centered
 popup opens over the conversation and renders the document as **formatted
 markdown, progressively, token-by-token, as the model actually emits them**.
-When generation finishes, the document is saved as a Knowledge Base draft at the
-agreed location and the popup offers to open it.
+When generation finishes, the document is saved as a real **markdown `.md`
+file** (a KB file node — never converted to HTML) at the agreed location, the
+popup offers to open it, and an address bar at the bottom of the popup lets the
+user retarget where it lands while it is still being written.
 
 Hard requirements, restated as invariants this design must satisfy:
 
@@ -241,8 +243,12 @@ New builtin, defined beside the other KB tools in
 ```jsonc
 {
   "name": "kb_document_compose",
-  "personalAssistantOnly": true,          // v1 scope — see §6 decision 3
-  "description": "Write a full markdown document and save it as a Knowledge Base draft at an agreed location. The user watches the document stream in live, so write the final document directly — no preamble inside `markdown`.",
+  // Ordinary builtin like the other kb_* tools — NOT personalAssistantOnly.
+  // On by default for the PA (and, like kb_draft_write, for any agent unless
+  // toolPolicy disables it). Owner decision 2026-08-13: "available for the
+  // personal assistant, and addable to any other agent." Note the disclosure
+  // consequence for shared channels in §6 decision 3.
+  "description": "Write a full markdown document and save it as a .md file in the Knowledge Base at an agreed location. The user watches the document stream in live, so write the final document directly — no preamble inside `markdown`.",
   "input": {
     // Location/identity fields FIRST, content LAST. Models overwhelmingly emit
     // arguments in schema order; the popup can therefore show the title and
@@ -263,23 +269,44 @@ New builtin, defined beside the other KB tools in
 Execution (the tool handler, running *after* the turn's stream has completed and
 the args parsed):
 
-1. Re-run the exact `kb_draft_write` authorization: owner-principal space
-   access (`buildSpaceViewerPrincipal` → `canWriteSpace`), restricted-tier
-   deny, 200 000-char body cap. Same service seam, not a copy — factor the
-   shared core out of `runKbDraftWriteTool` rather than forking it
+1. **Resolve the effective target.** The args carry the conversationally
+   agreed `spaceId`/`parentPageId`; if the user retargeted from the popup's
+   address bar mid-stream (§4.4), the session row carries a
+   `targetOverride {spaceId, parentPageId}` that **wins over the args** — the
+   user's last click beats the model's earlier agreement.
+2. Re-run the `kb_draft_write`-equivalent authorization against the effective
+   target: access principal via `buildSpaceViewerPrincipal` (delegating PA =
+   the owner's identity) → `canWriteSpace`, restricted-tier deny, 200 000-char
+   body cap. Same service seam, not a copy — factor the shared core out of
+   `worker/src/run/pa-tools/knowledge-write.ts` rather than forking it
    (AGENTS.md "reuse, never fork").
-2. Convert markdown → HTML with the **same converter the markdown upload path
-   uses**. `api/src/lib/markdown.ts` (`markdown-it`, `html: false`) moves to a
-   shared package (natural home: `packages/knowledge`, exported as
-   `markdownToHtml`) and the api re-exports it — the worker must not grow a
-   second, different markdown pipeline. `html: false` neutralizes raw tags
-   before the existing `UNSAFE_BODY_PATTERN` guard even runs.
-3. Create the page exactly as `kb_draft_write` does: `kind: document`,
-   `status: draft`, `authorType: agent`, version 1, chunks + link index.
-4. Finalize the stream session (§4.3): mark it `saved`, record `pageId` /
-   `versionNumber`, publish `stream.document.done`.
-5. Return to the model: `pageId`, `title`, resolved location (space name +
-   parent title), version number, and character count — **not** the body (the
+3. **Save as a markdown file — never HTML.** Owner decision 2026-08-13: the
+   deliverable is a real `.md` file. The handler streams the markdown bytes
+   through the one `FileService` chokepoint (quota-gated, storage-accounted,
+   like every blob write) as an `Attachment`, then creates a
+   `KnowledgePage` with `kind: file`, title `<title>.md`, `authorType: agent`,
+   and a `KnowledgePageVersion` whose `attachmentId` is that attachment —
+   the exact shape a file upload produces. **Deliberate divergence from the
+   HTTP upload path:** `POST /spaces/:spaceId/files` auto-converts markdown
+   uploads into HTML `kind: document` pages
+   (`api/src/routes/knowledge-base-files.ts`); this tool intentionally does
+   not — the `.md` file *is* the artifact. No markdown→HTML conversion
+   exists anywhere in this feature. (The `UNSAFE_BODY_PATTERN` HTML guard is
+   moot for file bytes; rendering safety is the viewer's job, §4.4/§5.2.)
+4. **Publish by usefulness.** When the effective space is the owner's private
+   space (`visibility: private` and the acting principal is the owner — e.g.
+   "My Docs"), the page is created **published** (`status: published`,
+   `publishedVersionId` set): the owner asked for it, watched it stream, and
+   there is nobody else to approve it. In any shared space it lands
+   `status: draft` and the PA offers `kb_publish_request` in chat (the
+   Librarian pattern). This auto-publish is a product decision implemented in
+   the shared save core; the human publish route's agent-actor refusal is
+   untouched.
+5. Finalize the stream session (§4.3): mark it `saved`, record `pageId` /
+   `versionNumber` / `attachmentId`, publish `stream.document.done`.
+6. Return to the model: `pageId`, `title`, effective location (space name +
+   parent title — including telling the model when a user retarget overrode
+   its args), published-or-draft, and character count — **not** the body (the
    model already has it verbatim in its own tool call).
 
 The model keeps `kb_list` / `kb_search` for the location-agreement phase and
@@ -331,21 +358,25 @@ This is the only writer of the `superseded` status.
 **(b′) Output-token budget.** The deployment default per-call cap is
 **2,048 tokens** (`NESSIE_MODEL_MAX_TOKENS`,
 `packages/config/src/index.ts:43`) — a fatal ceiling for a document emitted
-as tool-call arguments in one completion. Two required behaviours:
+as tool-call arguments in one completion. Owner decision 2026-08-13: **no
+output cap for the compose turn.** Two required behaviours:
 
 - When `kb_document_compose` is present in the turn's tool array (a
-  structural fact, not content inspection), the main-turn call raises
-  `maxOutputTokens` to
-  `max(configured, NESSIE_DOC_COMPOSE_MAX_OUTPUT_TOKENS)` (new env, default
-  16 384 ≈ a 40–60 KB markdown document). Run-budget token metering is
-  unchanged — this widens one call's ceiling, not the run's budget.
-- `finish_reason: 'length'` while a session is streaming is a first-class
-  failure: the args JSON is truncated (`safeParseJson` returns `{_raw}`), so
-  the tool is **not** executed with garbage; the session ends
-  `failed {reason:'truncated', partialSaved}` (§4.7 policy), and the tool
-  result tells the model the document exceeded the output window — advise a
-  shorter document or splitting. The practical v1 ceiling is one output
-  window per document; multi-call continuation is out of scope.
+  structural fact, not content inspection), the main-turn call requests the
+  **provider/model maximum output tokens** (from the model catalogue where
+  known, else omits the parameter and lets the provider default to its own
+  maximum) instead of `NESSIE_MODEL_MAX_TOKENS`. There is deliberately no
+  intermediate env knob. The run-level budget (effective-token metering,
+  pre-flight context gate, org budget) remains the only spend envelope —
+  this widens one call's ceiling, not the run's budget.
+- `finish_reason: 'length'` while a session is streaming can still occur at
+  the model's own hard output limit and is a first-class failure: the args
+  JSON is truncated (`safeParseJson` returns `{_raw}`), so the tool is
+  **not** executed with garbage; the session ends
+  `failed {reason:'truncated'}` (nothing is saved, §4.7), and the tool
+  result tells the model the document exceeded the model's output window —
+  advise a shorter document or splitting. Multi-call continuation is out of
+  scope for v1.
 
 **(c) The `DocumentStreamRecorder`**
 (`worker/src/run/execute/document-stream.ts`, sibling and structural mirror of
@@ -443,8 +474,11 @@ union + `SseEventMap`):
 'stream.document.error': { runId, sessionId, reason:
                            'cancelled' | 'run_failed' | 'save_failed' |
                            'budget_stopped' | 'invalid_args' | 'truncated' |
-                           'superseded',
-                           partialSaved: boolean, pageId? }
+                           'superseded' }
+'stream.document.target': { runId, sessionId, spaceId, spaceName,
+                            parentPageId?, parentTitle? }
+                           // user retargeted from the address bar; keeps a
+                           // second open client (e.g. phone + desktop) in sync
 ```
 
 - **Only `stream.document.delta` joins the hub's no-replay list**
@@ -486,6 +520,24 @@ before answering — `sessionId` is a global UUID, and the thread gate alone
 would let any authenticated user with *some* readable thread fetch any org's
 streamed markdown by UUID. 404 on mismatch, indistinguishable from absent.
 
+One mutation route backs the popup's address bar (§4.4):
+
+```
+POST /api/threads/:threadId/document-streams/:sessionId/target
+  { spaceId, parentPageId? }
+```
+
+Same thread + session-binding gate, **plus** the same owner-principal
+`canWriteSpace` check the save will make (fail at click time, not save time).
+While the session is `streaming`, it persists `targetOverride` on the session
+row and publishes `stream.document.target`; if the session is already `saved`,
+it instead moves the existing page through the existing
+`POST /api/knowledge-base/pages/:pageId/move` service core (one behaviour from
+the user's seat: "the address bar always works"). Terminal-failed sessions →
+409. Race with the save transaction: the save reads `targetOverride` inside
+the same transaction that creates the page, so a retarget either lands before
+the read (wins) or the route sees `saved` and takes the move path.
+
 Client contract: bootstrap gives `{markdown, offset}`; live deltas carry
 `offset`; the client drops any delta whose `offset + content.length ≤` what it
 already has, applies the tail of one that straddles, and on a `seq` gap
@@ -524,10 +576,16 @@ and reply panel share it for free):
   `max-w-3xl max-h-[calc(100dvh-3rem)]`; `usePhoneLayout()` switches to the
   fullscreen-sheet variant (`100dvh`, safe-area padding, backdrop click
   disabled) per `ChannelConversationComposePage`. Header: doc title (or
-  "Writing document…" until `meta`), target path chip
-  (`spaceName / parentTitle`), a live character counter, and the streaming
-  dots. Footer while streaming: **Hide** (minimize) and **Stop** (§4.7);
-  after `done`: **Open document** (navigates
+  "Writing document…" until `meta`), a live character counter, and the
+  streaming dots. **Footer: the address bar** — a full-width control showing
+  the effective target as a path (`Space › Folder › <title>.md`), seeded from
+  `stream.document.meta`, updated by `stream.document.target`. Clicking it
+  opens a folder picker dropdown (spaces from `GET /api/knowledge-base/spaces`,
+  outline drill-down per space — a lightweight list reusing the knowledge
+  facade queries, not a fork of `KnowledgeFilesystemBrowser`) which POSTs the
+  retarget route (§4.3): before save it re-aims the save; after save it moves
+  the file. Beside it while streaming: **Hide** (minimize) and **Stop**
+  (§4.7); after `done`: **Open document** (navigates
   `/knowledge-base?spaceId=…&pageId=…` — the existing
   `useKnowledgePageDeepLink` contract) and **Close**.
 - **Minimize ≠ cancel.** Escape / scrim click / Hide collapse the dialog to a
@@ -581,33 +639,42 @@ and reply panel share it for free):
 
 ### 4.5 Agreeing the location, and saving
 
-The agreement phase is **conversation, not UI** (v1): the PA already has
-`kb_list` to enumerate spaces and walk a space's outline, well-known anchors
-("My Docs", "Project Documents", ticket folders), and title→id resolution.
-The PA proposes ("I'll put it in *Project Documents › Meetings*, under the
-2026 folder — ok?"), the user confirms in their own words, the model judges
-the confirmation (never string-matched — AGENTS.md), and only then calls
-`kb_document_compose` with resolved UUIDs. The popup's target chip (from
-`stream.document.meta`) is the visible receipt of that agreement; if it shows
-the wrong place, Stop is one click and nothing was published.
+The agreement phase starts as **conversation**: the PA already has `kb_list`
+to enumerate spaces and walk a space's outline, well-known anchors ("My
+Docs", "Project Documents", ticket folders), and title→id resolution. The PA
+proposes ("I'll put it in *Project Documents › Meetings*, under the 2026
+folder — ok?"), the user confirms in their own words, the model judges the
+confirmation (never string-matched — AGENTS.md), and only then calls
+`kb_document_compose` with resolved UUIDs. From the moment the popup opens,
+the **address bar takes over as the location control** (§4.4): it is the
+visible receipt of the agreement, and clicking it retargets the save — the
+user's click always beats the model's earlier choice, with no need to
+interrupt the stream or re-negotiate in chat.
 
-Save semantics (decisions, flagged in §6):
+Save semantics (owner decisions 2026-08-13, recorded in §6):
 
-- The page is created **once, at tool execution** — not progressively. A
-  half-generated draft page would churn versions/chunks/embeddings per flush
-  for no user value; the durable stream lives in `run_document_chunks` until
-  the save.
-- Saved as **`status: draft`, agent-authored**, exactly like `kb_draft_write`;
-  the PA then *offers* `kb_publish_request` in chat (Librarian precedent).
-  The existing publish approval gate is untouched.
-- The original markdown source is stored on the page as
-  `metadata.markdownSource = { sessionId, runId }`? **No** — v1 stores HTML
-  only, matching the markdown-upload precedent; the markdown is recoverable
-  from the session chunks until pruned. Revisit if two-way md editing ever
-  ships (§6 Q5).
-- Missing intermediate folders are **not** auto-created (`kb_draft_write`
-  cannot create folders today); the PA must target an existing parent or the
-  space root. Widening folder creation is out of scope.
+- The file is created **once, at tool execution** — not progressively. A
+  half-generated file would churn attachment versions and storage-accounting
+  events per flush for no user value; the durable stream lives in
+  `run_document_chunks` until the save.
+- **The artifact is a `.md` file node** — `KnowledgePage {kind: file}` + an
+  `Attachment` holding the exact markdown bytes, stored through the
+  `FileService` chokepoint (quota-gated by `Budget.storageLimitBytes`,
+  `StorageUsageEvent`-accounted, like every other blob). No HTML is produced
+  anywhere in this feature; the upload path's md→HTML auto-conversion is
+  deliberately bypassed (§4.1 step 3).
+- **Published where that is obviously right, draft elsewhere:** owner-private
+  target space → created `published`; shared space → `draft` + a
+  `kb_publish_request` offer in chat (§4.1 step 4).
+- **The KB must render what it stores** (rule zero: the capability is not
+  done until the person can reach it): `FileNodeViewer.tsx` gains a markdown
+  preview branch — `.md` file versions render through
+  `<MessageMarkdown renderInlineText={identity}>` (the message renderer, not
+  TipTap), with the existing raw-download affordance unchanged. Without this
+  the saved document would open as an opaque file card.
+- Missing intermediate folders are **not** auto-created; the PA targets an
+  existing parent or the space root, and the address-bar picker only offers
+  existing folders. Folder creation from the picker is a natural v2.
 
 ### 4.6 The genuine-real-time guarantee, stated as an audit list
 
@@ -644,13 +711,13 @@ Honest degrades (never faked):
 
 | Scenario | Behaviour |
 |---|---|
-| **User clicks Stop** | Dialog calls existing `POST /api/runs/:id/cancel` (confirm-in-dialog first). Cooperative cancel today only polls between iterations/tool batches (`agentic-loop.ts:263, 463`) — during argument streaming nothing would notice, and **no abort plumbing exists anywhere in the inference stack today** (every connector calls bare `fetch` with no `signal`). This is a real, bounded subsystem addition, spelled out so nobody discovers it mid-build: (1) `InferenceRequest` gains an optional `AbortSignal`, threaded from `executeStage` through `InferenceService.stream()` into every connector's `fetch`; (2) while a document session is active, the drain loop checks `cancelRequestedAt` (piggybacking `checkCancelled`, throttled to ≥1 s) and fires the controller; (3) `classifyError` (`worker/src/run/error-classification.ts`) gains an explicit **abort branch** — without it, AbortError classifies as `transient`/`unknown` and `callInferenceWithRetry` would *retry the whole document generation* (re-streaming it) or surface an apology text the loop would deliver as a completed reply; the abort classification instead bypasses retry entirely and returns a distinguished aborted outcome; (4) `executeStage`/`agent-loop` treat that outcome, when `cancelRequestedAt` is set, as the cooperative-cancel exit, so the run leaves through the existing `cancel-stop.ts` machinery. Session → `cancelled`, `stream.document.error {reason:'cancelled', partialSaved}`. Partial body **saved as an interrupted draft** (change comment "Interrupted — cancelled by user", title suffix "(incomplete)") — recommended default, see §6 Q2. |
-| **Run fails / crashes mid-stream** | `failure.ts` path already publishes `stream.done`; the lifecycle terminal fusion (§4.2(c)6) marks any non-terminal session `failed` and publishes `stream.document.error {reason:'run_failed', partialSaved}` first. Worker hard-crash: queue redelivery drives the run to a terminal status through the same `updateRunStatus`, closing the session then — the `run-job.ts` `finally` close is best-effort fast-path only. The client's zombie-guard (§4.4) covers the gap meanwhile. |
-| **Budget stop / wind-down** | `budget-stop.ts` aborts like a failure for the in-flight turn: session `failed`, `reason:'budget_stopped'`, partial saved per the same policy. The wind-down injection (80 %) happens between turns, so a compose call that already started streaming is never truncated by wind-down itself. |
-| **Args invalid at execution** (bad `spaceId`, access denied, body cap) | The stream looked fine but the save is refused: session `failed`, `reason:'save_failed'` (or `invalid_args`), `partialSaved:false`; the tool returns the error to the model, which apologizes / retries with a corrected location in the same run — a brand-new session, popup follows the newest. Dialog shows the error with the streamed content still visible (copyable), so nothing the user watched is lost. |
+| **User clicks Stop** | Dialog calls existing `POST /api/runs/:id/cancel` (confirm-in-dialog first). Cooperative cancel today only polls between iterations/tool batches (`agentic-loop.ts:263, 463`) — during argument streaming nothing would notice, and **no abort plumbing exists anywhere in the inference stack today** (every connector calls bare `fetch` with no `signal`). This is a real, bounded subsystem addition, spelled out so nobody discovers it mid-build: (1) `InferenceRequest` gains an optional `AbortSignal`, threaded from `executeStage` through `InferenceService.stream()` into every connector's `fetch`; (2) while a document session is active, the drain loop checks `cancelRequestedAt` (piggybacking `checkCancelled`, throttled to ≥1 s) and fires the controller; (3) `classifyError` (`worker/src/run/error-classification.ts`) gains an explicit **abort branch** — without it, AbortError classifies as `transient`/`unknown` and `callInferenceWithRetry` would *retry the whole document generation* (re-streaming it) or surface an apology text the loop would deliver as a completed reply; the abort classification instead bypasses retry entirely and returns a distinguished aborted outcome; (4) `executeStage`/`agent-loop` treat that outcome, when `cancelRequestedAt` is set, as the cooperative-cancel exit, so the run leaves through the existing `cancel-stop.ts` machinery. Session → `cancelled`, `stream.document.error {reason:'cancelled'}`. **Nothing is saved** (owner decision 2026-08-13: "if the user stops the writing, we're not gonna save"); the streamed text stays visible and copyable in the dialog, and in `run_document_chunks` until pruned. |
+| **Run fails / crashes mid-stream** | `failure.ts` path already publishes `stream.done`; the lifecycle terminal fusion (§4.2(c)6) marks any non-terminal session `failed` and publishes `stream.document.error {reason:'run_failed'}` first. Worker hard-crash: queue redelivery drives the run to a terminal status through the same `updateRunStatus`, closing the session then — the `run-job.ts` `finally` close is best-effort fast-path only. The client's zombie-guard (§4.4) covers the gap meanwhile. |
+| **Budget stop / wind-down** | `budget-stop.ts` aborts like a failure for the in-flight turn: session `failed`, `reason:'budget_stopped'`, nothing saved. The wind-down injection (80 %) happens between turns, so a compose call that already started streaming is never truncated by wind-down itself. |
+| **Args invalid at execution** (bad `spaceId`, access denied, body cap, storage quota) | The stream looked fine but the save is refused: session `failed`, `reason:'save_failed'` (or `invalid_args`), nothing saved; the tool returns the error to the model, which apologizes / retries with a corrected location in the same run — a brand-new session, popup follows the newest. Dialog shows the error with the streamed content still visible (copyable), so nothing the user watched is lost. |
 | **SSE payload oversize / notify failure** | Fragments >4 KiB split; publish errors are swallowed (warn) — the durable chunk path and bootstrap self-heal the client via the `seq` gap → re-bootstrap rule. |
 | **Two sessions at once** | Dialog binds to the newest `streaming` session; earlier ones chip-ize. |
-| **Partial-save preconditions** | `partialSaved` can be `true` only when all hold: the location args (`spaceId`, `title`) parsed before the interruption, the owner-principal write authorization passes, and the decoded body is non-empty. The save runs through the **shared save core** factored from `runKbDraftWriteTool` (§4.1) — callable from `cancel-stop.ts` / `failure.ts` / the lifecycle terminal transition, i.e. *outside* the tool handler, using the run's `buildSpaceViewerPrincipal` identity. When the target never parsed, `partialSaved:false` and the streamed text remains visible/copyable in the dialog (and in `run_document_chunks` until pruned). |
+| **No partial saves, ever** | A save happens in exactly one place — the tool handler, on a complete, parsed, authorized document (§4.1). Every interruption path (cancel, failure, budget, truncation, supersession) discards: session terminal, nothing written to the KB or object storage, streamed text preserved read-only in the dialog and in `run_document_chunks` until pruned. This removes the interrupted-draft machinery entirely (owner decision 2026-08-13). |
 
 ### 4.8 Web vs. mobile (WebView shell)
 
@@ -688,9 +755,12 @@ model RunDocumentSession {          // run_document_sessions
   toolCallIndex  Int
   status         RunDocumentSessionStatus   // streaming|saved|failed|cancelled|superseded
   title          String?
-  spaceId        String?  @db.Uuid
+  spaceId        String?  @db.Uuid          // from args, via meta parse
   parentPageId   String?  @db.Uuid
+  overrideSpaceId      String? @db.Uuid     // user retarget from the address bar;
+  overrideParentPageId String? @db.Uuid     // wins over args at save (§4.1 step 1)
   pageId         String?  @db.Uuid          // set on save
+  attachmentId   String?  @db.Uuid          // the .md file's Attachment
   versionNumber  Int?
   errorReason    String?
   chars          Int      @default(0)
@@ -729,7 +799,9 @@ than grow the file).
 | Recorder | `worker/src/run/execute/document-stream.ts` (new) + wiring in `run-job.ts` and `lifecycle.ts` (`updateRunStatus` terminal fusion, working-marker pattern) | session lifecycle, incremental extraction, ephemeral publish, coalesced durable chunks, bounded queue |
 | Partial-JSON util | new shared module (e.g. `packages/schemas/src/partial-json.ts`); `admin/src/facades/designer/hooks.ts` | `extractPartialStringField` — one implementation; designer migrates to it |
 | Tool | `packages/runtime/src/builtin-kb-tools.ts`, `worker/src/run/pa-tools/` (new `knowledge-compose.ts`), `worker/src/run/tools.ts`, shared save core factored from `knowledge-write.ts` | `kb_document_compose` |
-| Markdown converter | `api/src/lib/markdown.ts` → `packages/knowledge` (api re-exports) | shared `markdownToHtml` |
+| File save | shared save core factored from `worker/src/run/pa-tools/knowledge-write.ts`; `FileService` (existing chokepoint) | `.md` `Attachment` + `KnowledgePage {kind: file}` + version; owner-private auto-publish; `targetOverride` honored in the save transaction |
+| KB viewer | `admin/src/components/features/knowledge/FileNodeViewer.tsx` | markdown preview branch for `.md` file versions via `MessageMarkdown` (rule zero: the saved file must be readable where it lives) |
+| Address bar | new `DocumentTargetBar.tsx` + folder-picker dropdown (knowledge facade queries); retarget route `POST …/document-streams/:sessionId/target` in the document-streams service | live retarget → `targetOverride` or page move; `stream.document.target` sync |
 | Transport | `packages/runtime/src/realtime.ts` (`publishSseEphemeral`), `packages/schemas/src/realtime-sse.ts`, `api/src/realtime/hub.ts` | events + no-replay + ephemeral path |
 | API | `api/src/routes/threads.ts` + a **new** `api/src/services/document-streams.ts` (threads.ts is at 431 lines — the routes stay thin, the service owns the queries) | SSE hardening; two document-stream GET routes (with session→thread+org binding check); prisma migration |
 | Mock LLM | `packages/mock-llm` (scenario schema + `src/server.ts`) | today the server streams each tool call's whole `arguments` in **one** SSE chunk with no pacing (`server.ts:169-188`) — add scenario-controlled fragmentation + inter-chunk delay for tool args, or none of §5.3's progressive assertions can run |
@@ -750,17 +822,19 @@ than grow the file).
   `kb_document_compose` call that streams args in awkward fragment boundaries
   (escape split mid-`\n`); assert the full worker path (session rows, chunk
   content equals the args' markdown field, `stream.document.*` order, saved
-  page HTML equals `markdownToHtml(markdown)`). Include non-English/emoji
-  content per repo fixture standards.
+  attachment bytes byte-identical to the args' `markdown` value, correct
+  published/draft status per target-space visibility, `targetOverride`
+  winning over args). Include non-English/emoji content per repo fixture
+  standards.
 - **Playwright (mandatory):** load `http://localhost:5455`, drive a mock-LLM
   PA conversation, assert the dialog opens, formatted elements appear
   progressively (poll innerText growth + presence of rendered `<h1>`/`<pre>`
   mid-stream), minimize→chip→reopen, and the final "Open document" lands on
   the KB page. Mobile viewport variant for the sheet layout.
 
-## 6. Key decisions, tradeoffs, and questions for Ondrej
+## 6. Key decisions and tradeoffs (all questions resolved)
 
-Decisions already taken above (challenge in review if wrong):
+Architectural decisions (challenge in review if wrong):
 
 1. **Tool-arg streaming (Option A) over sub-inference (B).** Single inference,
    model owns its own document, designer precedent; cost = provider-coverage
@@ -771,36 +845,33 @@ Decisions already taken above (challenge in review if wrong):
    durable INSERT deliberately.
 3. **Server-side extraction** (not designer-style client-side): clean markdown
    on the wire, one escape-decoder, trivially consumable by any future client.
-4. **Save once at tool execution; draft + human publish gate preserved.**
+4. **Save once at tool execution.** No progressive page churn; interruptions
+   discard (below).
 5. **Popup is conversation-local UI state** — auto-open on `start`, minimize to
-   chip, no routes/deep-links in v1.
+   chip, no routes/deep-links in v1; the footer address bar is the location
+   control from the moment the popup opens.
 
-Open questions — input needed:
+Product decisions from the owner (2026-08-13), all folded into the sections
+above:
 
-- **Q1 — publish friction.** PA documents land as agent-authored drafts and
-  publication needs `kb_publish_request` + human approval, even in the owner's
-  own private "My Docs". For a personal assistant acting for its owner this
-  may feel like pointless ceremony. Options: (a) keep the gate everywhere
-  (recommended for v1 — one rule, no new policy surface); (b) auto-publish
-  when the target space is the owner's private space. Which?
-- **Q2 — partial content on cancel/failure.** Recommended: save the partial
-  body as a clearly-marked interrupted draft (nothing you watched stream is
-  ever lost). Alternative: discard, chat notice only. Confirm?
-- **Q3 — v1 scope: PA-only.** `kb_document_compose` is `personalAssistantOnly`
-  in v1. Reason: document deltas ride the *thread's* SSE stream, so in a shared
-  channel every thread viewer would watch content that may be destined for a
-  space they cannot read — a disclosure question PA DMs structurally don't
-  have (viewer = owner). Extending to shared agents later needs a
-  space-visibility ⊇ thread-visibility gate before publishing deltas. OK?
-- **Q4 — non-streaming providers.** On Kimi/prompt-translated (and any
-  non-streaming connector) the popup shows "writing…" and the document appears
-  complete when it arrives — honest, but not a token stream. Accepting this
-  (rather than faking a typewriter, which requirement 1 forbids) — confirm.
-- **Q5 — markdown source retention.** v1 saves HTML only (upload-path parity);
-  the markdown source lives in session chunks until pruned (7 days). If you
-  want the markdown kept permanently (e.g. `KnowledgePageVersion.bodyRef` or
-  page metadata), say so now — it's cheap at write time and expensive to
-  backfill.
-- **Q6 — location agreement UX.** v1 is conversational agreement only. A
-  clickable location-picker card (CommsConnectCard precedent) is a natural v2;
-  not designed here. Fine to defer?
+- **No output-token cap for the compose turn** — request the model's maximum;
+  the run budget is the only envelope (§4.2(b′)).
+- **Markdown files, no HTML.** The artifact is a `.md` file node
+  (`kind: file` + attachment via `FileService`); the upload path's md→HTML
+  conversion is deliberately not used; `FileNodeViewer` gains a markdown
+  preview so the saved file is readable in place (§4.1 step 3, §4.5).
+- **Publish by usefulness:** owner-private space → created published; shared
+  space → draft + `kb_publish_request` offer (§4.1 step 4).
+- **Stop discards.** No partial saves on cancel — nor on any other
+  interruption; the streamed text stays copyable in the dialog (§4.7).
+- **Not PA-only.** Ordinary builtin like the other `kb_*` tools — on for the
+  PA and available to any agent via tool policy. Consequence accepted: in a
+  shared channel the deltas are visible to thread viewers, the same audience
+  an agent's chat message already reaches; the *saved file's* access is
+  governed by the target space exactly as today. (§4.1)
+- **Non-streaming providers wait honestly** — "writing…", then the document
+  appears when it arrives; never a fake typewriter (§4.6).
+- **Location = chat first, then the address bar.** Conversational agreement
+  seeds the target; the popup's footer address bar with its folder picker can
+  retarget mid-stream (override before save, move after save) (§4.3, §4.4,
+  §4.5).
