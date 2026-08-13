@@ -78,12 +78,13 @@ export const INJECTED = `
   function postTheme() {
     var accent = cssVar('--accent');
     var inactive = cssVar('--tx3');
+    var surface = cssVar('--panel');
     var scheme = '';
     try { scheme = getComputedStyle(document.documentElement).colorScheme } catch (e) {}
-    if (accent || scheme === 'light' || scheme === 'dark') {
+    if (accent || surface || scheme === 'light' || scheme === 'dark') {
       try {
         window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'theme', accent: accent, inactive: inactive, scheme: scheme
+          type: 'theme', accent: accent, inactive: inactive, scheme: scheme, surface: surface
         }))
       } catch (e) {}
     }

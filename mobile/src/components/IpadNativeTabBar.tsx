@@ -1,69 +1,75 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
+import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
+import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
 import { TABS } from '../lib/tabs'
 
 type IpadNativeTabBarProps = {
   activeIndex: number
   badgeCounts: { assignedWork: number; channels: number; knowledge: number }
-  activeTintColor: string
-  dark: boolean
-  inactiveTintColor: string
   onIndexChange: (index: number) => void
+  onWidthChange: (width: number) => void
+  theme: IpadNativeChromeTheme
   top: number
 }
 
 export const IpadNativeTabBar = ({
   activeIndex,
   badgeCounts,
-  activeTintColor,
-  dark,
-  inactiveTintColor,
   onIndexChange,
+  onWidthChange,
+  theme,
   top,
 }: IpadNativeTabBarProps): React.JSX.Element => (
   <View pointerEvents="box-none" style={[styles.layer, { top }]}>
-    <View style={[styles.bar, dark ? styles.barDark : styles.barLight]}>
-      {TABS.map((tab, index) => {
-        const active = index === activeIndex
-        const color = active ? activeTintColor : inactiveTintColor
-        const badge = tab.key === 'channels'
-          ? badgeCounts.channels
-          : tab.key === 'projects'
-            ? badgeCounts.assignedWork
-            : tab.key === 'knowledge'
-              ? badgeCounts.knowledge
-              : 0
+    <View onLayout={(event: LayoutChangeEvent) => onWidthChange(event.nativeEvent.layout.width)}>
+      <IpadNativeChromeSurface theme={theme}>
+        {TABS.map((tab, index) => {
+          const active = index === activeIndex
+          const color = active ? theme.activeTintColor : theme.inactiveTintColor
+          const badge = tab.key === 'channels'
+            ? badgeCounts.channels
+            : tab.key === 'projects'
+              ? badgeCounts.assignedWork
+              : tab.key === 'knowledge'
+                ? badgeCounts.knowledge
+                : 0
 
-        return (
-          <Pressable
-            accessible
-            accessibilityLabel={tab.title}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            hitSlop={4}
-            key={tab.key}
-            onAccessibilityTap={() => onIndexChange(index)}
-            onPress={() => onIndexChange(index)}
-            testID={`ipad-tab-${tab.key}`}
-            style={({ pressed }) => [
-              styles.tab,
-              tab.key === 'search' ? styles.searchTab : null,
-              active ? (dark ? styles.tabActiveDark : styles.tabActiveLight) : null,
-              pressed ? styles.tabPressed : null,
-            ]}
-          >
-            {tab.key === 'search' ? (
-              <MaterialIcons color={color} name={tab.materialIcon} size={22} />
-            ) : (
-              <Text numberOfLines={1} style={[styles.label, { color }]}>
-                {tab.title}
-              </Text>
-            )}
-            {badge > 0 ? <Text style={styles.badge}>{badge > 99 ? '99+' : badge}</Text> : null}
-          </Pressable>
-        )
-      })}
+          return (
+            <Pressable
+              accessible
+              accessibilityLabel={tab.title}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              hitSlop={4}
+              key={tab.key}
+              onAccessibilityTap={() => onIndexChange(index)}
+              onPress={() => onIndexChange(index)}
+              testID={`ipad-tab-${tab.key}`}
+              style={({ pressed }) => [
+                styles.tab,
+                tab.key === 'search' ? styles.searchTab : null,
+                active ? { backgroundColor: theme.activeBackgroundColor } : null,
+                pressed ? { backgroundColor: theme.pressedBackgroundColor } : null,
+              ]}
+            >
+              {tab.key === 'search' ? (
+                <MaterialIcons color={color} name={tab.materialIcon} size={22} />
+              ) : (
+                <Text numberOfLines={1} style={[styles.label, { color }]}>
+                  {tab.title}
+                </Text>
+              )}
+              {badge > 0 ? (
+                <Text style={[styles.badge, { backgroundColor: theme.activeTintColor }]}>
+                  {badge > 99 ? '99+' : badge}
+                </Text>
+              ) : null}
+            </Pressable>
+          )
+        })}
+      </IpadNativeChromeSurface>
     </View>
   </View>
 )
@@ -76,32 +82,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
     color: '#fff',
-    backgroundColor: '#7c3aed',
     fontSize: 9,
     fontWeight: '700',
     lineHeight: 15,
     textAlign: 'center',
-  },
-  bar: {
-    height: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    padding: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-  },
-  barDark: {
-    backgroundColor: 'rgba(15, 23, 42, 0.82)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
-  },
-  barLight: {
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
-    borderColor: 'rgba(15, 23, 42, 0.1)',
   },
   label: {
     fontSize: 15,
@@ -125,14 +109,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 14,
     borderRadius: 17,
-  },
-  tabActiveDark: {
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-  },
-  tabActiveLight: {
-    backgroundColor: 'rgba(15, 23, 42, 0.08)',
-  },
-  tabPressed: {
-    opacity: 0.68,
   },
 })
