@@ -96,7 +96,10 @@ const FORBIDDEN_HEADER_NAMES = new Set([
   'transfer-encoding',
   'upgrade',
   'x-forwarded-for',
+  // These are outbound denylist values, not reads from inbound request headers.
+  // eslint-disable-next-line no-restricted-syntax
   'x-forwarded-host',
+  // eslint-disable-next-line no-restricted-syntax
   'x-forwarded-proto',
   'x-real-ip',
   'x-nessie-context',
