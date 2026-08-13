@@ -17,8 +17,11 @@ coverage/
 .nessie/
 simulation/state/
 
+# The pinned billing package emits these only during an ad-hoc source typecheck.
+# Its committed/public artifacts live under dist; source siblings are disposable.
+packages/billing-statement-protocol/src/*.js
+
 # Git worktrees (per project convention, never committed)
 .worktrees/
 executor/native/target/
 executor/vm/.build/
-
