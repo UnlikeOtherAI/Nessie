@@ -106,7 +106,7 @@ export const PersonalAssistantSidebarEntry = ({
       <span className="min-w-0 flex-1 truncate text-current">
         Personal Assistant
       </span>
-      <span className={badgeClassName}>PA</span>
+      <span className={`${badgeClassName} sidebar-pa-badge`}>PA</span>
       {bootstrapping ? (
         <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-[var(--overlay-strong)] border-t-[var(--on-accent)]" />
       ) : unreadCount > 0 ? (

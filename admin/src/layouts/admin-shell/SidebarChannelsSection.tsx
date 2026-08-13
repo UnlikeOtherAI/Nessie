@@ -62,7 +62,7 @@ export const SidebarChannelsSection = ({
             {renderUnreadCount(channel.unreadCount)}
             <span
               className={[
-                'flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+                'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
                 isStarredChannel
                   ? 'ml-1 text-[color:var(--warning-text)] opacity-100'
                   : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',

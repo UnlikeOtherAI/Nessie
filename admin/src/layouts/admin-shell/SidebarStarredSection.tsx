@@ -78,7 +78,7 @@ export const SidebarStarredSection = ({
               <AgentAvatar agent={agent} size="xs" token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>
               <span
-                className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleStar('agent', agent.id);
@@ -102,7 +102,7 @@ export const SidebarStarredSection = ({
               <GroupDmSidebarLabel label={channel.label} />
               {renderUnreadCount(channel.unreadCount)}
               <span
-                className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleStar('channel', channel.id);
@@ -147,7 +147,7 @@ export const SidebarStarredSection = ({
                 {renderUnreadCount(unreadCount)}
                 {item.starred ? (
                   <span
-                    className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                    className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleStar('project', project.id);
@@ -173,7 +173,7 @@ export const SidebarStarredSection = ({
                   <GroupDmSidebarLabel label={channel.label} />
                   {renderUnreadCount(channel.unreadCount)}
                   <span
-                    className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+                    className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggleStar('channel', channel.id);
@@ -213,7 +213,7 @@ export const SidebarStarredSection = ({
             <span className="min-w-0 flex-1 truncate">{person.label}</span>
             {renderUnreadCount(personUnreadCount)}
             <span
-              className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
+              className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleStar('user', person.id);

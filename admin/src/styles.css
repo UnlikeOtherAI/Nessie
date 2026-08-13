@@ -1058,20 +1058,29 @@ a {
 }
 
 .admin-sb-item.active {
-  background: var(--sb-active);
-  color: var(--on-accent);
+  /* A selected channel shares its project's existing contextual tint rather
+     than overpowering the project hierarchy with a full accent slab. */
+  background: color-mix(in srgb, var(--sb-active) 20%, transparent);
+  color: var(--tx);
 }
 
 /* Several sidebar glyphs carry a dim or accent utility while inactive. Keep
-   every selected navigation symbol on the same high-contrast foreground as
-   its row label instead of letting that inactive colour leak through. */
+   every selected navigation affordance on the row's readable foreground
+   instead of letting that inactive colour leak through. */
 .admin-sb-item.active svg,
-.admin-sb-item.active .sidebar-row-symbol {
-  color: var(--on-accent);
+.admin-sb-item.active .sidebar-row-symbol,
+.admin-sb-item.active .sidebar-row-star {
+  color: var(--tx);
+}
+
+.admin-sb-item.active .sidebar-pa-badge {
+  background: color-mix(in srgb, var(--tx) 10%, transparent);
+  color: var(--tx);
 }
 
 .admin-sb-item.active-parent {
-  background: color-mix(in srgb, var(--sb-active) 20%, transparent);
+  /* The parent remains visible, but at half the selected child's intensity. */
+  background: color-mix(in srgb, var(--sb-active) 10%, transparent);
   color: var(--tx);
 }
 

@@ -36,15 +36,34 @@ test('project folder rows become bold only in the touch sidebar', () => {
   assert.match(starred, /admin-sb-item sidebar-project-tile group/)
 })
 
-test('selected sidebar symbols use the active foreground colour', () => {
+test('selected sidebar affordances follow the project selection hierarchy', () => {
   const styles = readSource('../src/styles.css')
   const row = readSource('../src/layouts/admin-shell/SidebarRow.tsx')
+  const channels = readSource('../src/layouts/admin-shell/SidebarChannelsSection.tsx')
+  const assistant = readSource('../src/components/features/personal-assistant/PersonalAssistantSurface.tsx')
 
+  assert.match(styles, /\.admin-sb-item\.active svg/)
+  assert.match(styles, /\.admin-sb-item\.active \.sidebar-row-symbol/)
+  assert.match(styles, /\.admin-sb-item\.active \.sidebar-row-star/)
   assert.match(
     styles,
-    /\.admin-sb-item\.active svg,[\s\S]*?\.admin-sb-item\.active \.sidebar-row-symbol[\s\S]*?color: var\(--on-accent\)/,
+    /\.admin-sb-item\.active \.sidebar-row-star\s*\{\s*color: var\(--tx\)/,
+  )
+  assert.match(
+    styles,
+    /\.admin-sb-item\.active \.sidebar-pa-badge[\s\S]*?color: var\(--tx\)/,
+  )
+  assert.match(
+    styles,
+    /\.admin-sb-item\.active\s*\{[\s\S]*?background: color-mix\(in srgb, var\(--sb-active\) 20%, transparent\)/,
+  )
+  assert.match(
+    styles,
+    /\.admin-sb-item\.active-parent\s*\{[\s\S]*?background: color-mix\(in srgb, var\(--sb-active\) 10%, transparent\)/,
   )
   assert.match(row, /sidebar-row-symbol/)
+  assert.match(channels, /sidebar-row-star/)
+  assert.match(assistant, /sidebar-pa-badge/)
 })
 
 test('secondary sidebar menus do not repeat the active tab title above their items', () => {
