@@ -84,3 +84,14 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneChrome, /Channel/)
   assert.match(phoneChrome, /Message/)
 })
+
+test('sidebar action menus have room to read and tap their choices', () => {
+  const styles = readSource('../src/styles.css')
+
+  assert.match(styles, /\.admin-sidebar-menu\s*\{[\s\S]*?border-radius: 12px[\s\S]*?padding: 6px/)
+  assert.match(styles, /\.admin-sidebar-menu button\s*\{[\s\S]*?border-radius: 8px[\s\S]*?padding: 10px 12px/)
+  assert.match(
+    styles,
+    /\.admin-sidebar-menu \[role="button"\]\s*\{[\s\S]*?border-radius: 8px[\s\S]*?padding: 10px 12px/,
+  )
+})
