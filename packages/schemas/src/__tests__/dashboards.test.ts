@@ -112,9 +112,9 @@ test('binding validation refuses a field the source does not declare', () => {
     ...timeseries,
     binding: { x: 'observed_at', series: [{ key: 'not_a_column', label: 'Nope' }] },
   })
-  const issues = validateWidgetBinding(parsed, columns)
-  assert.equal(issues.length, 1)
-  assert.match(issues[0].message, /no column named "not_a_column"/)
+  const [issue, ...rest] = validateWidgetBinding(parsed, columns)
+  assert.equal(rest.length, 0)
+  assert.match(issue?.message ?? '', /no column named "not_a_column"/)
 })
 
 test('binding validation refuses plotting a string column as a series', () => {
@@ -122,9 +122,9 @@ test('binding validation refuses plotting a string column as a series', () => {
     ...timeseries,
     binding: { x: 'observed_at', series: [{ key: 'region', label: 'Region' }] },
   })
-  const issues = validateWidgetBinding(parsed, columns)
-  assert.equal(issues.length, 1)
-  assert.match(issues[0].message, /is string; this slot accepts number/)
+  const [issue, ...rest] = validateWidgetBinding(parsed, columns)
+  assert.equal(rest.length, 0)
+  assert.match(issue?.message ?? '', /is string; this slot accepts number/)
 })
 
 test('binding validation reports every problem at once, not just the first', () => {
@@ -152,9 +152,9 @@ test('a table cannot sort by a column it does not display', () => {
       sort: { key: 'failed', direction: 'desc' },
     },
   })
-  const issues = validateWidgetBinding(parsed, columns)
-  assert.equal(issues.length, 1)
-  assert.match(issues[0].message, /does not display it/)
+  const [issue, ...rest] = validateWidgetBinding(parsed, columns)
+  assert.equal(rest.length, 0)
+  assert.match(issue?.message ?? '', /does not display it/)
 })
 
 test('a valid binding produces no issues', () => {
