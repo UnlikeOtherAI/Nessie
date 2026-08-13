@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AppState,
+  Dimensions,
   Platform,
   StyleSheet,
   View,
@@ -36,6 +37,7 @@ import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
   getIpadWindowedLeadingControlsClearance,
+  isIpadWindowed,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
 import {
@@ -84,7 +86,7 @@ const MAX_BOOT_RETRIES = 4
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
-  const { width: windowWidth } = useWindowDimensions()
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions()
   const [bg, setBg] = useState(DEFAULT_BG)
   const [statusBarStyle, setStatusBarStyle] = useState<'light' | 'dark'>('light')
   const [index, setIndex] = useState(0)
@@ -379,7 +381,15 @@ const Shell = (): React.JSX.Element => {
   // not always a direct aside/main child in the web DOM, so relying on injected
   // CSS can leave its first row beneath the status bar.
   const ipadChromeTop = getIpadChromeTop(insets.top)
-  const ipadLeadingControlsClearance = getIpadWindowedLeadingControlsClearance(insets.top)
+  const screenDimensions = Dimensions.get('screen')
+  const ipadLeadingControlsClearance = getIpadWindowedLeadingControlsClearance(
+    IS_IPAD && isIpadWindowed({
+      screenHeight: screenDimensions.height,
+      screenWidth: screenDimensions.width,
+      windowHeight,
+      windowWidth,
+    }),
+  )
   const webviewInsets = getNativeWebviewFrameInsets({
     ipadChromeTop,
     isIpad: IS_IPAD,

@@ -43,11 +43,24 @@ export const getIpadChromeTop = (safeAreaTop: number): number => (
   safeAreaTop > 0 ? safeAreaTop : IPAD_WINDOWED_CHROME_TOP
 )
 
-// Stage Manager exposes no top safe-area inset, even though its traffic-light
-// controls occupy the leading title-bar edge. Keep the workspace switcher clear
-// of that system-owned hit area without shifting full-screen iPad layouts.
-export const getIpadWindowedLeadingControlsClearance = (safeAreaTop: number): number => (
-  safeAreaTop > 0 ? 0 : IPAD_WINDOWED_LEADING_CONTROLS_CLEARANCE
+export const isIpadWindowed = ({
+  screenHeight,
+  screenWidth,
+  windowHeight,
+  windowWidth,
+}: {
+  screenHeight: number
+  screenWidth: number
+  windowHeight: number
+  windowWidth: number
+}): boolean => (
+  Math.abs(screenWidth - windowWidth) > 1 || Math.abs(screenHeight - windowHeight) > 1
+)
+
+// A Stage Manager window may still report a top safe-area inset. Its actual
+// window bounds are the reliable way to identify the traffic-light title bar.
+export const getIpadWindowedLeadingControlsClearance = (windowed: boolean): number => (
+  windowed ? IPAD_WINDOWED_LEADING_CONTROLS_CLEARANCE : 0
 )
 
 // Keep the WebView's first row clear of the floating native controls. This is
