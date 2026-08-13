@@ -176,10 +176,12 @@ also hide the admin top bar entirely; the iPad native layout hides that web top
 bar too and exposes its remaining controls through `window.__nessieToolbarAction`
 from `admin/src/layouts/admin-shell/NativeIPadToolbarBridge.tsx`, while global
 search opens from the native Search tab overlay. Because that web top bar is
-absent on iPhone, `mobile/src/lib/webview-inject.ts` applies the top safe-area
-inset to the admin columns' content while leaving their backgrounds edge to
-edge. The iPhone native tab bar's surrounding surface matches the page's main
-content surface, so its translucency never exposes the desktop rail colour;
+absent on iPhone, the native `App.tsx` frame reserves the status-bar inset for
+every phone route — including tab roots whose content is not a direct admin
+column — while `mobile/src/lib/webview-inject.ts` leaves full-screen web
+surfaces clear of the home indicator. The iPhone tab controller uses its
+transparent scroll-edge appearance, so the page-matched native root supplies
+the intended backdrop without a second tinted bar beneath the glass controls;
 iPad and Android reserve their top inset in the native frame. Android's
 floating dock has no independent separator: the shared dock-geometry contract
 adds its exact interaction clearance to the WebView columns, keeping the chat

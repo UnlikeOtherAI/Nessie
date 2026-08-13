@@ -4,10 +4,9 @@ import { ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE } from './android-tablet-dock'
 // floating dock so full-height columns and dividers do not stop at a detached
 // native slab; its content reserves the dock through a shared CSS custom
 // property. This (1) enables CSS safe-area insets via viewport-fit=cover, (2)
-// keeps iPhone page chrome below the status bar while column backgrounds remain
-// edge to edge, (3) pads content clear of native overlays, and (4) reports the
-// document background so the native view behind the WebView matches during
-// load/overscroll.
+// pads full-screen web surfaces clear of the home indicator, (3) reserves
+// interaction space below Android's floating dock, and (4) reports the document
+// background so the native view behind the WebView matches during load/overscroll.
 export const INJECTED = `
 (function () {
   var vp = document.querySelector('meta[name=viewport]');
@@ -23,12 +22,13 @@ export const INJECTED = `
   if (!document.getElementById(styleId)) {
     var st = document.createElement('style');
     var shell = window.__nessieNativeShell;
-    var insetIosPhoneTop =
+    var isIosPhone =
       shell && shell.platform === 'ios' && shell.formFactor === 'phone';
-    // The iPhone's native tab bar sits outside the WebView. Match the surface
-    // that reaches its edge, not the desktop rail colour, so translucency does
-    // not reveal a disconnected tinted strip below the page.
-    var iosPhoneBackgroundCss = insetIosPhoneTop
+    // The native frame owns the iPhone status-bar inset: phone tab roots can
+    // place their aside below an intermediate DOM wrapper, so a selector-based
+    // top inset is not reliable. Keep the surface behind native chrome aligned
+    // with the page itself.
+    var iosPhoneBackgroundCss = isIosPhone
       ? 'body { background: var(--main); }'
       : '';
     var nativeTopbarOwnsSafeArea = shell && shell.platform === 'android';
@@ -47,7 +47,6 @@ export const INJECTED = `
     st.id = styleId;
     st.textContent =
       '.admin-shell > aside, .admin-shell > main {' +
-      (insetIosPhoneTop ? '  padding-top: env(safe-area-inset-top);' : '') +
       '  padding-bottom: env(safe-area-inset-bottom);' +
       '}' +
       iosPhoneBackgroundCss +
