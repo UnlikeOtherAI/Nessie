@@ -14,6 +14,21 @@ import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 // and presence belong on the WebSocket (see realtime-ws.ts). Import from
 // `./realtime.js`, which is the single surface over both halves.
 
+// Why a document stream ended without a saved file. `superseded` is written
+// only by the recorder's per-invocation bracket (a retried or re-issued
+// inference attempt replaces an in-flight session).
+export const DOCUMENT_STREAM_ERROR_REASONS = [
+  'cancelled',
+  'run_failed',
+  'save_failed',
+  'budget_stopped',
+  'invalid_args',
+  'truncated',
+  'superseded',
+] as const
+export const DocumentStreamErrorReasonSchema = z.enum(DOCUMENT_STREAM_ERROR_REASONS)
+export type DocumentStreamErrorReason = (typeof DOCUMENT_STREAM_ERROR_REASONS)[number]
+
 export type SseEventMap = {
   // `rootMessageId` is the resolved reply anchor for this run (null = the reply
   // lands top-level in the channel), so a client can place the live "thinking"
@@ -42,6 +57,62 @@ export type SseEventMap = {
     rootMessageId?: string
   }
   'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
+  // Live document composition (`kb_document_compose`). `stream.document.delta`
+  // is EPHEMERAL — notify-only, never a `thread_stream_events` row — because a
+  // per-provider-chunk durable insert is the write-amplification mistake
+  // `stream.delta` already makes. Reconnecting clients repair from the
+  // document-stream bootstrap route instead. The other five are durable and
+  // replay, so a reconnect still learns a session started/ended.
+  'stream.document.start': {
+    runId: RunId
+    sessionId: string
+    threadId: ThreadId
+    agentId: AgentId
+    toolCallId: string
+  }
+  'stream.document.meta': {
+    runId: RunId
+    sessionId: string
+    title?: string
+    spaceId?: string
+    spaceName?: string
+    parentPageId?: string
+    parentTitle?: string
+  }
+  // `offset` is the decoded-markdown offset (UTF-16 code units, the unit JS
+  // strings count in) before this fragment; `seq` is a per-session counter
+  // assigned at publish time so merges/splits cannot fabricate gaps.
+  'stream.document.delta': {
+    runId: RunId
+    sessionId: string
+    seq: number
+    offset: number
+    content: string
+  }
+  'stream.document.done': {
+    runId: RunId
+    sessionId: string
+    pageId: string
+    versionNumber: number
+    title: string
+    spaceId: string
+    spaceName?: string
+    chars: number
+    published: boolean
+  }
+  'stream.document.error': {
+    runId: RunId
+    sessionId: string
+    reason: DocumentStreamErrorReason
+  }
+  'stream.document.target': {
+    runId: RunId
+    sessionId: string
+    spaceId: string
+    spaceName?: string
+    parentPageId?: string
+    parentTitle?: string
+  }
 }
 
 export const StreamStartEventSchema = z.object({
@@ -90,6 +161,67 @@ export const MessageReactionEventSchema = z.object({
   emoji: z.string(),
 })
 export type MessageReactionEvent = z.infer<typeof MessageReactionEventSchema>
+const SessionIdSchema = z.string().uuid()
+
+export const StreamDocumentStartEventSchema = z.object({
+  agentId: AgentIdSchema,
+  runId: RunIdSchema,
+  sessionId: SessionIdSchema,
+  threadId: ThreadIdSchema,
+  toolCallId: NonEmptyStringSchema,
+})
+export type StreamDocumentStartEvent = z.infer<typeof StreamDocumentStartEventSchema>
+
+export const StreamDocumentMetaEventSchema = z.object({
+  parentPageId: z.string().uuid().optional(),
+  parentTitle: z.string().optional(),
+  runId: RunIdSchema,
+  sessionId: SessionIdSchema,
+  spaceId: z.string().uuid().optional(),
+  spaceName: z.string().optional(),
+  title: z.string().optional(),
+})
+export type StreamDocumentMetaEvent = z.infer<typeof StreamDocumentMetaEventSchema>
+
+export const StreamDocumentDeltaEventSchema = z.object({
+  content: z.string(),
+  offset: z.number().int().nonnegative(),
+  runId: RunIdSchema,
+  seq: z.number().int().nonnegative(),
+  sessionId: SessionIdSchema,
+})
+export type StreamDocumentDeltaEvent = z.infer<typeof StreamDocumentDeltaEventSchema>
+
+export const StreamDocumentDoneEventSchema = z.object({
+  chars: z.number().int().nonnegative(),
+  pageId: z.string().uuid(),
+  published: z.boolean(),
+  runId: RunIdSchema,
+  sessionId: SessionIdSchema,
+  spaceId: z.string().uuid(),
+  spaceName: z.string().optional(),
+  title: NonEmptyStringSchema,
+  versionNumber: z.number().int().positive(),
+})
+export type StreamDocumentDoneEvent = z.infer<typeof StreamDocumentDoneEventSchema>
+
+export const StreamDocumentErrorEventSchema = z.object({
+  reason: DocumentStreamErrorReasonSchema,
+  runId: RunIdSchema,
+  sessionId: SessionIdSchema,
+})
+export type StreamDocumentErrorEvent = z.infer<typeof StreamDocumentErrorEventSchema>
+
+export const StreamDocumentTargetEventSchema = z.object({
+  parentPageId: z.string().uuid().optional(),
+  parentTitle: z.string().optional(),
+  runId: RunIdSchema,
+  sessionId: SessionIdSchema,
+  spaceId: z.string().uuid(),
+  spaceName: z.string().optional(),
+})
+export type StreamDocumentTargetEvent = z.infer<typeof StreamDocumentTargetEventSchema>
+
 export const SseEventNameSchema = z.enum([
   'stream.start',
   'stream.reasoning',
@@ -97,6 +229,25 @@ export const SseEventNameSchema = z.enum([
   'stream.delta',
   'stream.done',
   'message.reaction',
+  'stream.document.start',
+  'stream.document.meta',
+  'stream.document.delta',
+  'stream.document.done',
+  'stream.document.error',
+  'stream.document.target',
+])
+
+/**
+ * Events published notify-only, with no durable `thread_stream_events` row.
+ *
+ * The hub must treat these specially: no SSE `id:` line (an absent sequence
+ * would otherwise set the client's Last-Event-ID to the string "undefined"),
+ * no `connection.lastSequence` assignment, and dropped rather than buffered
+ * during connect-hydration — a hydrating client bootstraps over REST, which
+ * covers the gap by construction.
+ */
+export const EPHEMERAL_SSE_EVENTS: ReadonlySet<SseEvent['event']> = new Set([
+  'stream.document.delta',
 ])
 
 export const SseEventSchema = z.discriminatedUnion('event', [
@@ -123,6 +274,30 @@ export const SseEventSchema = z.discriminatedUnion('event', [
   z.object({
     event: z.literal('message.reaction'),
     data: MessageReactionEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.document.start'),
+    data: StreamDocumentStartEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.document.meta'),
+    data: StreamDocumentMetaEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.document.delta'),
+    data: StreamDocumentDeltaEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.document.done'),
+    data: StreamDocumentDoneEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.document.error'),
+    data: StreamDocumentErrorEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.document.target'),
+    data: StreamDocumentTargetEventSchema,
   }),
 ])
 export type SseEvent = z.infer<typeof SseEventSchema>

@@ -61,6 +61,81 @@ the model: removal is fused to the terminal status transition in
 cancellation all clear it without having to remember, and a crashed run clears
 it when the queue re-delivers it to a terminal state.
 
+## Live document streaming — watch a document being written
+
+`kb_document_compose` writes a markdown document and saves it as a real **`.md`
+file node** (`KnowledgePage.kind = file` + an `Attachment` through the one
+`FileService` chokepoint). While the model writes it, the person watches the
+tokens arrive in a centered popup that renders formatted markdown
+progressively. Spec:
+[docs/plans/2026-08-13-live-document-streaming.md](docs/plans/2026-08-13-live-document-streaming.md).
+
+**The document is the model's own tool call.** The body is the `markdown`
+argument, so it costs one inference and stays verbatim in the model's context
+for follow-up edits. The OpenAI-compatible connector already streamed
+`tool_call.delta` fragments and the worker dropped them; it now enriches each
+fragment with the call's accumulated `id`/`toolName`/`index`
+(`openai-chat-protocol.ts`) — never from the current chunk, because the
+canonical first chunk announces the name with empty arguments and yields no
+event. The same change removed a `continue` that silently dropped tool
+fragments from any chunk that also carried content, corrupting the executed
+call. **Only OpenAI-compatible connectors stream tool arguments**; Kimi and
+MiniMax are `prompt-translated` and degrade honestly — the popup waits and the
+document appears complete when it arrives, never a fake typewriter.
+
+- **Genuine real-time, audited hop by hop** (`document-stream-lanes.ts`): the
+  drain loop calls the recorder **synchronously** and the recorder returns
+  immediately, so Postgres never backpressures the provider read. Two
+  independent lanes: **live** publishes every provider chunk over
+  `publishSseEphemeral` (`pg_notify` only — no `thread_stream_events` row,
+  because `stream.delta`'s per-token durable INSERT is the known
+  write-amplification mistake), and **durable** coalesces at 2 KiB/250 ms into
+  `run_document_chunks` for reconnect/late-join bootstrap. `seq` is assigned at
+  publish time, after any merge or NOTIFY-size split, so neither can fabricate
+  a gap. The thread SSE route now sets `X-Accel-Buffering: no` and
+  `socket.setNoDelay(true)` (this fixes the existing `stream.delta` path too).
+- **Session identity is `(runId, invocationId, toolCallId)`, never the index.**
+  Tool-call indexes restart at 0 on every attempt and `callInferenceWithRetry`
+  re-issues the same iteration, so `executeStage` brackets each attempt with
+  `onInferenceAttempt` → `beginInvocation`, which marks any still-open session
+  `superseded`. The executing handler finds *its* session by `toolCallId` and
+  awaits `settle()` before saving.
+- **What you watched is what gets saved.** `createPartialJsonScanner`
+  (`packages/schemas/src/partial-json.ts`) is a real lexer with two invariants:
+  **committed-prefix monotonicity** (a half-arrived escape, `\uXXXX` fragment,
+  or lone high surrogate is withheld — raw text and escapes alike, since a
+  chunk boundary splits a literal emoji just as easily) and **duplicate-key
+  rejection** (`JSON.parse` keeps the *last* duplicate, so a second top-level
+  `markdown` key could make the saved file differ from the streamed one). The
+  save then asserts streamed-equals-parsed byte-for-byte and refuses on
+  mismatch.
+- **Stop discards.** Cancellation aborts the provider request through a typed
+  `InferenceAbortedError` converted in `executeStage` where the signal is still
+  in scope (below that the error is re-wrapped and only its message survives,
+  and `callInferenceWithRetry` would otherwise *re-run the whole generation*).
+  A poller on its own timer (`document-cancel-poll.ts`) watches
+  `cancelRequestedAt` only while a session is open, so ordinary runs pay
+  nothing. Nothing partial is ever saved; the save claims its session with a
+  conditional `streaming → saving` update, so cancel and save have a winner
+  and never a tie.
+- **Published where review would be ceremony:** a document landing in a
+  private space is created published — the person who asked for it is its only
+  reader and just watched it being written. Shared spaces keep the
+  `kb_publish_request` review gate.
+- SSE events: `stream.document.start` / `.meta` / `.delta` / `.done` / `.error`
+  / `.target`. Only `.delta` joins the hub's no-replay list — that list
+  *withholds* events from `Last-Event-ID` reconnects, so terminators must
+  replay. Ephemeral events write no `id:` line, never touch
+  `connection.lastSequence`, and are dropped (not buffered) during
+  connect-hydration; a saturated connection drops them and the resulting `seq`
+  gap makes the client re-bootstrap. REST:
+  `GET /api/threads/:id/document-streams[?active=1]`,
+  `GET …/document-streams/:sessionId` (offset watermark in UTF-16 code units),
+  `POST …/document-streams/:sessionId/target` for the popup's address bar.
+  Every per-session route re-checks `session.threadId` **and**
+  `organizationId` — `sessionId` is a global UUID and the thread gate alone
+  would leak other orgs' documents.
+
 ## A recurring watch keeps one rolling status message
 
 A sweep that finds nothing does not add a message. It edits the watch's own

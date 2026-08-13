@@ -32,8 +32,18 @@ type RunInferenceGraphInput = {
   }
   baseMessages: ProviderMessage[]
   modelConfig: ModelConfig
+  maxOutputTokensOverride?: number
+  onInferenceAttempt?: (attempt: { invocationId: string }) => void
+  onToolCallDelta?: (event: {
+    id: string
+    index: number
+    invocationId: string
+    text: string
+    toolName: string
+  }) => void
   onVisibleReasoningDelta?: (delta: string) => Promise<void>
   onVisibleTextDelta?: (delta: string) => Promise<void>
+  signal?: AbortSignal
   organizationId: string
   reasoningEffort?: ProviderReasoningEffort
   requestHeadersForProvider?: ProviderRequestHeadersResolver
@@ -106,8 +116,18 @@ const executeSingleMode = async (
     actorContext: AuthorizedActionContext
     baseMessages: ProviderMessage[]
     modelConfig: ModelConfig
+    maxOutputTokensOverride?: number
+    onInferenceAttempt?: (attempt: { invocationId: string }) => void
+    onToolCallDelta?: (event: {
+      id: string
+      index: number
+      invocationId: string
+      text: string
+      toolName: string
+    }) => void
     onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
+    signal?: AbortSignal
     organizationId: string
     reasoningEffort?: ProviderReasoningEffort
     route: ResolvedRoute
@@ -138,11 +158,15 @@ const executeSingleMode = async (
     baseMessages: input.baseMessages,
     emitBufferedOutput: !input.route.streamLive,
     mode: input.route.mode,
+    maxOutputTokensOverride: input.maxOutputTokensOverride,
     modelConfig: input.modelConfig,
+    onInferenceAttempt: input.onInferenceAttempt,
+    onToolCallDelta: input.onToolCallDelta,
     onVisibleReasoningDelta: input.onVisibleReasoningDelta,
     onVisibleTextDelta: input.onVisibleTextDelta,
     organizationId: input.organizationId,
     profileId: input.route.profileId,
+    signal: input.signal,
     reasoningEffort: input.reasoningEffort,
     routeSource: input.routeSource,
     requestHeadersForProvider: input.requestHeadersForProvider,
@@ -199,12 +223,16 @@ export const runInferenceGraph = async (
   return executeSingleMode(prisma, {
     actorContext: input.actorContext,
     baseMessages: input.baseMessages,
+    maxOutputTokensOverride: input.maxOutputTokensOverride,
     modelConfig: input.modelConfig,
+    onInferenceAttempt: input.onInferenceAttempt,
+    onToolCallDelta: input.onToolCallDelta,
     onVisibleReasoningDelta: input.onVisibleReasoningDelta,
     onVisibleTextDelta: input.onVisibleTextDelta,
     organizationId: input.organizationId,
     reasoningEffort: input.reasoningEffort,
     route,
+    signal: input.signal,
     routeSource: 'direct',
     requestHeadersForProvider: input.requestHeadersForProvider,
     toolChoice: input.toolChoice,

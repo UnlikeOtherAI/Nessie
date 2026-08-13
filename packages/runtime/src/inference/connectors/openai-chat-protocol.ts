@@ -221,9 +221,12 @@ export const collectChatStream = async function* (
             yieldedDelta = true
             outputText += deltaText
             yield { type: 'output_text.delta', text: deltaText }
-            continue
           }
 
+          // Not an `else`: a chunk may legitimately carry both content and tool
+          // fragments, and skipping the tool loop for those chunks used to drop
+          // the fragment from the accumulation map too — corrupting the very
+          // arguments the tool was about to be called with.
           for (const toolCallDelta of choice?.delta?.tool_calls ?? []) {
             const existing = toolCalls.get(toolCallDelta.index) ?? {
               args: '',
@@ -239,15 +242,21 @@ export const collectChatStream = async function* (
               existing.name = toolCallDelta.function.name
             }
 
+            toolCalls.set(toolCallDelta.index, existing)
+
             if (toolCallDelta.function?.arguments) {
               existing.args += toolCallDelta.function.arguments
               yield {
-                type: 'tool_call.delta',
+                // Identity comes from the accumulated call, never this chunk:
+                // the id and name arrive in a first chunk whose `arguments` is
+                // empty, which yields no event at all.
+                id: existing.id,
+                index: toolCallDelta.index,
                 text: toolCallDelta.function.arguments,
+                toolName: existing.name,
+                type: 'tool_call.delta',
               }
             }
-
-            toolCalls.set(toolCallDelta.index, existing)
           }
 
           const messageText = choice?.message?.content ?? ''

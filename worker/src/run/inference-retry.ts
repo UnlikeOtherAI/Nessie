@@ -6,6 +6,7 @@
 
 import type { InferenceResult, ProviderMessage } from '@nessie/runtime'
 import { classifyError, resolveRecovery, type RetryBudget } from './error-classification.js'
+import { isInferenceAbortedError } from './inference-abort.js'
 import { trimConversationToFit } from './context-management.js'
 
 const MAX_ATTEMPTS = 3
@@ -25,6 +26,12 @@ export const callInferenceWithRetry = async (
       return await runInference(messages)
     } catch (error) {
       lastError = error
+      // A deliberate abort is not a failure to recover from: retrying would
+      // re-run the generation the user just cancelled, and surfacing it as
+      // text would deliver an apology as the run's answer.
+      if (isInferenceAbortedError(error)) {
+        throw error
+      }
       const reason = classifyError(error)
       const recovery = resolveRecovery(reason, attempt, retryBudget)
 

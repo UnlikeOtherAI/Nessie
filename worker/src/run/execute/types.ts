@@ -3,6 +3,7 @@ import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
 import type { ConsumedSourceSink } from './disclosure-basis.js'
+import type { DocumentStreamRecorder } from './document-stream.js'
 import type {
   DeepSignalMcpIdentityService,
   LedgerIdentityService,
@@ -16,6 +17,8 @@ import type {
 export type ExecutionDependencies = {
   deepSignalMcpIdentity?: DeepSignalMcpIdentityService | null
   /** Deployment secret used solely to encrypt executor payloads at rest. */
+  /** Per-run live document stream, created alongside the thinking recorder. */
+  documentStream?: DocumentStreamRecorder
   executorCommandEncryptionSecret?: string
   ledgerIdentity?: LedgerIdentityService | null
   /**

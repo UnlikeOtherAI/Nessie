@@ -1,6 +1,11 @@
 import { Fragment, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AgentRecord, MessageReaction, UserRecord } from '../../../lib/api-client'
 import {
+  emptyDocumentStore,
+  type DocumentStreamStore,
+} from '../../../facades/threads/document-stream'
+import type { DocumentStreamEntry } from '../../../facades/threads/document-stream-helpers'
+import {
   groupPendingByRoot,
   type PendingStreamMessage,
 } from '../../../facades/threads/thinking'
@@ -12,6 +17,7 @@ import { OptimisticMessageRow, StreamingMessageRow } from './ChannelTransientMes
 import type { ResolveReactorName } from './ReactionPills'
 import { ThinkingBubble } from './ThinkingBubble'
 import { useAttachmentViewer } from '../../shared/AttachmentViewer'
+import { useDocumentStreamDialog } from './DocumentStreamDialog'
 import { useThoughtProcessDialog } from './ThoughtProcessDialog'
 import {
   type FeedItem,
@@ -19,6 +25,10 @@ import {
   type OptimisticMessage,
 } from './channel-helpers'
 import type { ThreadParticipant } from './thread-panel/thread-panel-helpers'
+
+// Stable identity so a feed without a document facade never re-runs the
+// dialog's effects on a fresh array.
+const EMPTY_DOCUMENT_SESSIONS: DocumentStreamEntry[] = []
 
 // Tombstone for a deleted message that still has replies below it: a small
 // light-dashed bubble in place of the original row (no avatar/name).
@@ -29,6 +39,11 @@ const DeletedBubble = () => (
 )
 
 interface ChannelMessageFeedProps {
+  // Documents an agent is writing into this conversation (`useThreadStream`).
+  // Optional: the read-only info drawers render a feed with no live surface, so
+  // they pass nothing and get no popup.
+  documentSessions?: DocumentStreamEntry[]
+  documentStore?: DocumentStreamStore
   feedItems: FeedItem[]
   optimisticMessages: OptimisticMessage[]
   pendingMessages: PendingStreamMessage[]
@@ -94,6 +109,8 @@ interface ChannelMessageFeedProps {
 }
 
 export const ChannelMessageFeed = ({
+  documentSessions,
+  documentStore,
   feedItems,
   optimisticMessages,
   pendingMessages,
@@ -155,6 +172,14 @@ export const ChannelMessageFeed = ({
   // channel feed, the reply panel, and the info drawers — same seam as the
   // thought-process dialog below.
   const { openAttachment, attachmentViewer } = useAttachmentViewer(token)
+  // Same ownership seam as the thought-process dialog: the popup and its
+  // minimized chips live with the feed, so the channel and the reply panel get
+  // them from one implementation.
+  const { chips: documentChips, dialog: documentDialog } = useDocumentStreamDialog(
+    documentSessions ?? EMPTY_DOCUMENT_SESSIONS,
+    documentStore ?? emptyDocumentStore,
+    threadId,
+  )
   const { openThoughtProcess, thoughtProcessDialog } = useThoughtProcessDialog(
     pendingMessages,
     resolveAgentIdentity,
@@ -432,7 +457,10 @@ export const ChannelMessageFeed = ({
         </div>
       ) : null}
 
+      {documentChips}
+
       {attachmentViewer}
+      {documentDialog}
       {thoughtProcessDialog}
       <div className="h-3" />
     </div>

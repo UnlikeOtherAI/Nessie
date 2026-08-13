@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ThreadMessageRecord } from '../../lib/api-client'
 import { readSseStream, type SseFrame } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import {
+  useDocumentStreams,
+  type DocumentFrameData,
+  type DocumentStreamController,
+  type DocumentStreamStore,
+} from './document-stream'
+import type { DocumentStreamEntry } from './document-stream-helpers'
 import {
   classifyStreamResponse,
   runStreamConnectionLoop,
@@ -19,6 +26,11 @@ import {
 } from './thinking'
 
 type StreamState = {
+  // Documents an agent is writing into this thread. Structural state only —
+  // the live text of a session is read through `documentStore` so a delta never
+  // re-renders the feed (see `document-stream.ts`).
+  documentSessions: DocumentStreamEntry[]
+  documentStore: DocumentStreamStore
   pendingMessages: PendingStreamMessage[]
 }
 
@@ -117,6 +129,11 @@ export const useThreadStream = (threadId?: string): StreamState => {
   const { token } = useAuthSession()
   const queryClient = useQueryClient()
   const [pendingMessages, setPendingMessages] = useState<StreamState['pendingMessages']>([])
+  const documents = useDocumentStreams(threadId)
+  // The connection effect must not re-run when the document controller's
+  // callbacks change identity — a reconnect would cost the thread its stream.
+  const documentsRef = useRef<DocumentStreamController>(documents)
+  documentsRef.current = documents
 
   useEffect(() => {
     // Always reset on threadId/token change: without this, pending stream
@@ -190,7 +207,12 @@ export const useThreadStream = (threadId?: string): StreamState => {
         return
       }
 
-      const data = JSON.parse(frame.data) as StreamEventData
+      const data = JSON.parse(frame.data) as DocumentFrameData & StreamEventData
+
+      if (frame.event.startsWith('stream.document.')) {
+        documentsRef.current.handleDocumentFrame(frame.event, data)
+        return
+      }
 
       if (frame.event === 'stream.start') {
         liveRunStartedAt.set(data.runId, Date.now())
@@ -318,6 +340,9 @@ export const useThreadStream = (threadId?: string): StreamState => {
         }
 
         void bootstrapThinking(controller.signal)
+        // `stream.document.delta` is ephemeral and never replayed, so every
+        // (re)connect reads the durable watermark before trusting live deltas.
+        documentsRef.current.bootstrapDocuments()
         try {
           await readSseStream(response.body, handleFrame)
         } catch {
@@ -346,8 +371,10 @@ export const useThreadStream = (threadId?: string): StreamState => {
 
   return useMemo(
     () => ({
+      documentSessions: documents.documentSessions,
+      documentStore: documents.documentStore,
       pendingMessages,
     }),
-    [pendingMessages],
+    [documents.documentSessions, documents.documentStore, pendingMessages],
   )
 }

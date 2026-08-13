@@ -11,7 +11,12 @@ import {
   reasoningEffortForAgentEffort,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
+import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
 import { runInferenceGraph } from '../inference.js'
+import {
+  resolveComposeOutputTokens,
+  startCancellationPoll,
+} from './document-cancel-poll.js'
 import { createProviderRequestHeadersResolver } from '../inference-identity.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { UtilityModel } from './utility-model.js'
@@ -78,50 +83,82 @@ export const createRunInference = (
     agentModel: { model: string | null; provider: string | null },
     streaming: boolean,
   ): Promise<InferenceResult> => {
-    const mpr = await runInferenceGraph(deps.prisma, {
-      actorContext: payload.actorContext,
-      agent: {
-        id: context.agent.id,
-        model: agentModel.model,
-        provider: agentModel.provider,
-        routingProfileId: null,
-      },
-      baseMessages: messages,
-      modelConfig: runtimeModelConfig,
-      onVisibleReasoningDelta: async (chunk) => {
-        if (!streaming) return
-        await options.thinkingRecorder.appendReasoning(chunk)
-      },
-      onVisibleTextDelta: async (chunk) => {
-        if (!streaming) return
-        currentTurnStreamed = true
-        await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
-          content: chunk,
-          runId: parseRunId(context.run.id),
-        })
-      },
-      organizationId: context.channel.organizationId,
-      reasoningEffort,
-      requestHeadersForProvider,
-      // Note/compaction calls carry no tools at all; providers reject an empty
-      // tool array, so the whole tool block is omitted instead.
-      ...(tools.length > 0 ? { toolChoice: 'auto' as const, tools } : {}),
-    })
-    if (
-      mpr.status !== 'completed'
-      || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
-    ) {
-      throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
-    }
-    return {
-      correlationId: mpr.correlationId,
-      finishReason: mpr.invocations[0]?.finishReason,
-      invocations: mpr.invocations as unknown as InvocationRecord[],
-      model: mpr.invocations[0]?.model ?? '',
-      outputText: mpr.finalAnswer ?? '',
-      provider: (mpr.invocations[0]?.provider ?? 'openai') as InferenceResult['provider'],
-      requestId: mpr.requestId,
-      toolCalls: mpr.toolCalls,
+    const documentStream = streaming ? deps.documentStream : undefined
+    // A document is emitted as tool-call arguments inside one completion, so
+    // the ordinary per-call output cap would truncate it mid-sentence. When the
+    // tool is on the table this call asks for the model's own maximum instead;
+    // the run budget, not this number, remains the spend envelope.
+    const composeAvailable = tools.some(
+      (tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID,
+    )
+    const controller = documentStream ? new AbortController() : null
+    const cancelPoll = controller
+      ? startCancellationPoll({
+        documentStream,
+        onCancelled: () => controller.abort(),
+        prisma: deps.prisma,
+        runId: context.run.id,
+      })
+      : null
+
+    try {
+      const mpr = await runInferenceGraph(deps.prisma, {
+        actorContext: payload.actorContext,
+        agent: {
+          id: context.agent.id,
+          model: agentModel.model,
+          provider: agentModel.provider,
+          routingProfileId: null,
+        },
+        baseMessages: messages,
+        maxOutputTokensOverride: composeAvailable
+          ? resolveComposeOutputTokens(runtimeModelConfig.maxTokens)
+          : undefined,
+        modelConfig: runtimeModelConfig,
+        onInferenceAttempt: ({ invocationId }) => {
+          documentStream?.beginInvocation(invocationId)
+        },
+        onToolCallDelta: (event) => {
+          documentStream?.handleToolCallDelta(event)
+        },
+        onVisibleReasoningDelta: async (chunk) => {
+          if (!streaming) return
+          await options.thinkingRecorder.appendReasoning(chunk)
+        },
+        onVisibleTextDelta: async (chunk) => {
+          if (!streaming) return
+          currentTurnStreamed = true
+          await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
+            content: chunk,
+            runId: parseRunId(context.run.id),
+          })
+        },
+        organizationId: context.channel.organizationId,
+        reasoningEffort,
+        requestHeadersForProvider,
+        signal: controller?.signal,
+        // Note/compaction calls carry no tools at all; providers reject an empty
+        // tool array, so the whole tool block is omitted instead.
+        ...(tools.length > 0 ? { toolChoice: 'auto' as const, tools } : {}),
+      })
+      if (
+        mpr.status !== 'completed'
+        || (!mpr.finalAnswer?.trim() && mpr.toolCalls.length === 0)
+      ) {
+        throw new Error(mpr.failure?.message ?? 'Inference execution produced no final answer')
+      }
+      return {
+        correlationId: mpr.correlationId,
+        finishReason: mpr.invocations[0]?.finishReason,
+        invocations: mpr.invocations as unknown as InvocationRecord[],
+        model: mpr.invocations[0]?.model ?? '',
+        outputText: mpr.finalAnswer ?? '',
+        provider: (mpr.invocations[0]?.provider ?? 'openai') as InferenceResult['provider'],
+        requestId: mpr.requestId,
+        toolCalls: mpr.toolCalls,
+      }
+    } finally {
+      cancelPoll?.stop()
     }
   }
 

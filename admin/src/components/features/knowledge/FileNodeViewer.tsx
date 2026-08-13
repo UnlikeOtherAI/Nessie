@@ -8,8 +8,14 @@ import {
 } from '../../../lib/uploads'
 import { versionDownloadPath } from '../../../facades/knowledge/file-hooks'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
+import { MessageMarkdown } from '../channels/MessageMarkdown'
 import { CommentsSection } from './comments/CommentsSection'
-import { iconForFilename, isZipFilename, previewKindForFilename } from './file-icons'
+import {
+  iconForFilename,
+  isMarkdownFilename,
+  isZipFilename,
+  previewKindForFilename,
+} from './file-icons'
 import { KnowledgePane } from './KnowledgePane'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
@@ -32,6 +38,11 @@ export const FileNodeViewer = ({
   const { token } = useAuthSession()
   const version = page.latestVersion
   const previewKind = previewKindForFilename(page.title)
+  // A `.md` file node is a document that happens to be stored as a file — a
+  // streamed document saves exactly this way — so it renders as markdown
+  // through the message renderer (not TipTap, which owns *editing* documents).
+  // Remote images are never fetched: the bytes may be model-authored.
+  const markdownPreview = previewKind === 'text' && isMarkdownFilename(page.title)
   // Pin the PDF preview blob's MIME to application/pdf so a file with an
   // attacker-controlled content-type (e.g. text/html bytes named "x.pdf") can
   // never render as executable HTML in the same-origin iframe. Image previews
@@ -145,6 +156,26 @@ export const FileNodeViewer = ({
                 Your browser can’t play this audio — use Download.
               </audio>
             </div>
+          ) : markdownPreview ? (
+            textPreview.loading ? (
+              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>
+            ) : textPreview.error || textPreview.text === null ? (
+              <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Preview unavailable.</p>
+            ) : (
+              <div
+                className="max-h-[70vh] overflow-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--sb)] p-4"
+                data-testid="markdown-file-preview"
+              >
+                <MessageMarkdown allowRemoteImages={false} renderInlineText={(text) => text}>
+                  {textPreview.text}
+                </MessageMarkdown>
+                {textPreview.truncated ? (
+                  <p className="mt-3 text-xs text-[color:var(--tx3)]">
+                    …truncated — download to see the rest.
+                  </p>
+                ) : null}
+              </div>
+            )
           ) : previewKind === 'text' ? (
             textPreview.loading ? (
               <p className="py-12 text-center text-sm text-[color:var(--tx3)]">Loading preview…</p>

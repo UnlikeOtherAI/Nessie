@@ -2,6 +2,7 @@ import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { CaptureConfig } from '@nessie/memory'
 import type { ConsumedSourceSink } from './execute/disclosure-basis.js'
+import type { DocumentStreamRecorder } from './execute/document-stream.js'
 import type {
   ConnectorUsage,
   LedgerIdentityService,
@@ -49,6 +50,13 @@ export type BuiltinToolRuntimeContext = {
    * "nothing consumed", which is the pre-existing behaviour.
    */
   consumedSources?: ConsumedSourceSink
+  /**
+   * The run's live document stream. `kb_document_compose` awaits its own
+   * session here before saving, so the file it writes is exactly the document
+   * the person watched arrive. Absent in test fixtures and on runs that never
+   * streamed one, which simply means no live preview existed.
+   */
+  documentStream?: DocumentStreamRecorder
   /** Deployment secret used only to decrypt an acknowledged executor receipt
    * while preparing a user-owned continuation. It is never model-visible. */
   executorCommandEncryptionSecret?: string

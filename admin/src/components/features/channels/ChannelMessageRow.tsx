@@ -13,6 +13,7 @@ import { CommsConnectCard } from './CommsConnectCard'
 import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
+import { DocumentRefChip } from './DocumentRefChip'
 import { RunStopContinue } from './RunStopContinue'
 import { WorkflowRunCard } from './WorkflowRunCard'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
@@ -361,6 +362,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <RunStopContinue metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <DocumentRefChip metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <WorkflowRunCard metadata={message.metadata} />
