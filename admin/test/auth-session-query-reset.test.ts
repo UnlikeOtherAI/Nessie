@@ -6,6 +6,7 @@ import { createSessionMutationCoordinator } from '@nessie/client-core'
 import {
   createSessionQueryBoundary,
   hasSessionBoundaryChanged,
+  isCurrentSessionResponse,
 } from '../src/providers/auth-session-query-reset.js'
 
 const me = (
@@ -27,6 +28,27 @@ test('session boundary comparison covers user, organization, project, and team',
   assert.equal(hasSessionBoundaryChanged(current, me('org-a', 'project-b', 'team-a')), true)
   assert.equal(hasSessionBoundaryChanged(current, me('org-a', 'project-a', 'team-b')), true)
   assert.equal(hasSessionBoundaryChanged(current, me('org-a', 'project-a', 'team-a', 'user-b')), true)
+})
+
+test('late profile responses cannot restore an old session boundary', () => {
+  const current = me('org-b', 'project-b', 'team-b', 'user-a')
+
+  assert.equal(
+    isCurrentSessionResponse(current, me('org-b', 'project-b', 'team-b', 'user-a')),
+    true,
+  )
+  assert.equal(
+    isCurrentSessionResponse(current, me('org-a', 'project-a', 'team-a', 'user-a')),
+    false,
+  )
+  assert.equal(
+    isCurrentSessionResponse(current, me('org-b', 'project-b', 'team-b', 'user-b')),
+    false,
+  )
+  assert.equal(
+    isCurrentSessionResponse(null, me('org-b', 'project-b', 'team-b', 'user-a')),
+    false,
+  )
 })
 
 test('ordinary refresh clears tenant queries before applying a changed context', async () => {

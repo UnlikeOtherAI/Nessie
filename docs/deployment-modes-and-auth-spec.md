@@ -312,7 +312,9 @@ Claims:
   its adoption and exact-intent cancellation are one transaction. Safe target
   refusals (`WORKSPACE_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, or
   `WORKSPACE_SWITCH_CONFLICT`) never revoke the source family; only
-  `INVALID_REFRESH_TOKEN` and invalid/tampered source proof force re-login.
+  `INVALID_REFRESH_TOKEN` and invalid/tampered source proof force re-login,
+  surfaced to the browser as `WORKSPACE_SWITCH_REAUTH_REQUIRED` so it clears
+  stale local session state instead of treating the result as a safe 2FA step-up.
   After UOA accepts a switch, transient local materialization failures retain
   the intent for exact replay, while a permanent local binding collision
   revokes the now-unrecoverable source family rather than retaining a consumed

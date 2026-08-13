@@ -32,7 +32,10 @@ import {
   NATIVE_PUSH_UNREGISTER_EVENT,
 } from '../lib/native-push-registration'
 import { isReactNativeWebView } from '../lib/mobile-shell'
-import { createSessionQueryBoundary } from './auth-session-query-reset'
+import {
+  createSessionQueryBoundary,
+  isCurrentSessionResponse,
+} from './auth-session-query-reset'
 
 type AuthSessionContextValue = {
   applyMeResponse: (nextMe: MeResponse) => void
@@ -285,6 +288,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   }, [refreshAccessToken, token])
 
   const applyMeResponse = (nextMe: MeResponse): void => {
+    if (!isCurrentSessionResponse(meRef.current, nextMe)) return
     meRef.current = nextMe
     setMe(nextMe)
     setBootstrapState(null)
