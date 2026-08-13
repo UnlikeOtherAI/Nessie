@@ -51,6 +51,20 @@ interface ThreadReplyPanelProps {
 const channelLabel = (channel: ChannelRecord): string =>
   channel.type === 'dm' ? channel.label : `#${channel.label}`
 
+const BackArrow = () => (
+  <svg
+    aria-hidden="true"
+    fill="none"
+    height="18"
+    stroke="currentColor"
+    strokeWidth="2"
+    viewBox="0 0 24 24"
+    width="18"
+  >
+    <path d="m15 18-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
 // Right-hand reply-thread panel (#233): one component whose classes adapt at
 // the breakpoints — in-flow third pane at >=1280px (drag-resizable via the
 // left-edge separator), fixed overlay with scrim at 900–1279px, full-screen
@@ -75,7 +89,6 @@ export const ThreadReplyPanel = ({
   const {
     activeThreadId,
     closeThread,
-    followMutation,
     openRootMessageId,
     panelWidth,
     repliesQuery,
@@ -83,7 +96,6 @@ export const ThreadReplyPanel = ({
     rootQuery,
   } = thread
   const root = rootQuery.data?.message ?? null
-  const viewerFollowing = rootQuery.data?.viewerFollowing ?? false
   const replies = useMemo(() => repliesQuery.data ?? [], [repliesQuery.data])
   const [alsoSendToChannel, setAlsoSendToChannel] = useState(false)
   const resizeCleanup = useRef<(() => void) | null>(null)
@@ -202,7 +214,7 @@ export const ThreadReplyPanel = ({
   return (
     <>
       <button
-        aria-label="Close thread"
+        aria-label="Back to channel"
         className="fixed inset-0 z-40 hidden bg-[var(--scrim-strong)] min-[900px]:max-[1279px]:block"
         onClick={closeThread}
         type="button"
@@ -237,30 +249,21 @@ export const ThreadReplyPanel = ({
           onPointerDown={startResize}
           role="separator"
         />
-        <header className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[color:var(--sep)] px-4 py-3">
+        <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
+          <button
+            aria-label="Back to channel"
+            className="admin-button admin-button-secondary flex h-8 w-8 shrink-0 items-center justify-center px-0"
+            onClick={closeThread}
+            title="Back to channel"
+            type="button"
+          >
+            <BackArrow />
+          </button>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-[var(--tx)]">Thread</h2>
             <div className="truncate text-xs text-[color:var(--tx3)]">
               {channelLabel(activeChannel)}
             </div>
-          </div>
-          <div className="flex flex-shrink-0 items-center gap-2">
-            <button
-              className="admin-button admin-button-secondary h-8 px-3 text-xs"
-              disabled={!root || followMutation.isPending}
-              onClick={() => followMutation.mutate(!viewerFollowing)}
-              type="button"
-            >
-              {viewerFollowing ? 'Unfollow' : 'Follow'}
-            </button>
-            <button
-              aria-label="Close thread"
-              className="admin-button admin-button-secondary h-8 w-8 px-0 text-sm"
-              onClick={closeThread}
-              type="button"
-            >
-              ×
-            </button>
           </div>
         </header>
 
@@ -276,7 +279,7 @@ export const ThreadReplyPanel = ({
               onClick={closeThread}
               type="button"
             >
-              Close
+              Back to channel
             </button>
           </div>
         ) : (
