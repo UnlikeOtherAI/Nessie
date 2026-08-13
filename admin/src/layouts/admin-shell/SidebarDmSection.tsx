@@ -111,7 +111,7 @@ export const SidebarDmSection = ({
             <span
               className={[
                 'flex shrink-0 items-center justify-center text-[9px] text-[var(--on-accent)]',
-                nativeTouchShell ? 'h-6 w-6 rounded-lg' : 'h-[18px] w-[18px] rounded-full',
+                nativeTouchShell ? 'h-6 w-6 rounded-md' : 'h-[18px] w-[18px] rounded-md',
               ].join(' ')}
               style={{ background: agentGradient }}
             >
@@ -136,7 +136,7 @@ export const SidebarDmSection = ({
             <span
               className={[
                 'flex shrink-0 items-center justify-center text-[9px] text-[var(--on-accent)]',
-                nativeTouchShell ? 'h-6 w-6 rounded-lg' : 'h-[18px] w-[18px] rounded-full',
+                nativeTouchShell ? 'h-6 w-6 rounded-md' : 'h-[18px] w-[18px] rounded-md',
               ].join(' ')}
               style={{ background: agentGradient }}
             >
@@ -198,7 +198,6 @@ export const SidebarDmSection = ({
               gravatarUrl={person.gravatarUrl ?? undefined}
               presenceRingWidth={nativeTouchShell ? 3 : undefined}
               ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
-              shape={nativeTouchShell ? 'rounded' : 'circle'}
               showPresence={nativeTouchShell}
               showStatus={!nativeTouchShell}
               size={avatarSize}

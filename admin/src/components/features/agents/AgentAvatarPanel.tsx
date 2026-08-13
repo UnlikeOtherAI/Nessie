@@ -108,7 +108,7 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
     <>
       <AvatarUploadPanel
         busy={busy}
-        cropperDescription="Drag to reposition, scroll or use the slider to zoom. The circle becomes this agent avatar."
+        cropperDescription="Drag to reposition, scroll or use the slider to zoom. The rounded square becomes this agent avatar."
         cropperTitle="Edit agent avatar"
         error={error}
         hasCustom={hasCustom}
@@ -117,7 +117,6 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
           <AgentAvatar
             agent={agent}
             className="border border-[color:var(--sep)]"
-            shape="circle"
             size="xl"
             token={token}
           />
@@ -171,13 +170,12 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
             </p>
             <div className="mt-5 flex items-center justify-center gap-8">
               <div className="grid justify-items-center gap-2 text-xs text-[color:var(--tx3)]">
-                <AgentAvatar agent={agent} shape="circle" size="xl" token={token} />
+                <AgentAvatar agent={agent} size="xl" token={token} />
                 Current
               </div>
               <div className="grid justify-items-center gap-2 text-xs text-[color:var(--tx3)]">
                 <AgentAvatar
                   agent={{ ...agent, ...generatedAvatar }}
-                  shape="circle"
                   size="xl"
                   token={token}
                 />

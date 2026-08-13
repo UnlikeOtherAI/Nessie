@@ -53,10 +53,9 @@ type UserAvatarProps = AvatarSources & {
   // Background the avatar sits on (for the badges' separating ring).
   ringColor?: string
   presenceRingWidth?: number
-  shape?: 'circle' | 'rounded'
 }
 
-// Round user avatar: renders the resolved image (custom > UnlikeOtherAI >
+// Rounded-square user avatar: renders the resolved image (custom > UnlikeOtherAI >
 // Google > Gravatar) and falls back to initials on an empty source or a
 // failed/404 image load. Presence + active-status badges are opt-in.
 export const UserAvatar = ({
@@ -68,7 +67,6 @@ export const UserAvatar = ({
   showStatus,
   ringColor,
   presenceRingWidth,
-  shape = 'circle',
   ...sources
 }: UserAvatarProps) => {
   const url = useResolvedAvatarUrl(sources, token)
@@ -85,7 +83,7 @@ export const UserAvatar = ({
       aria-hidden="true"
       className={[
         'flex flex-shrink-0 items-center justify-center overflow-hidden',
-        shape === 'rounded' ? 'rounded-lg' : 'rounded-full',
+        'rounded-md',
         'font-bold text-[color:var(--on-accent)]',
         className ?? '',
       ].join(' ')}

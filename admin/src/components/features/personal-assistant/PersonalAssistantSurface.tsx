@@ -4,7 +4,6 @@ import type {
   PersonalAssistantConfigSummary,
 } from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
-import { isReactNativeWebView } from '../../../lib/mobile-shell'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 
@@ -78,7 +77,6 @@ export const PersonalAssistantSidebarEntry = ({
   token,
   unreadCount = 0,
 }: PersonalAssistantSidebarEntryProps) => {
-  const nativeTouchShell = isReactNativeWebView()
   return (
     <button
       className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${active ? 'active' : ''}`}
@@ -86,12 +84,7 @@ export const PersonalAssistantSidebarEntry = ({
       type="button"
     >
       {agent ? (
-        <AgentAvatar
-          agent={agent}
-          shape={nativeTouchShell ? 'rounded' : 'circle'}
-          size="xs"
-          token={token}
-        />
+        <AgentAvatar agent={agent} size="xs" token={token} />
       ) : (
         <div className={assistantGlyphClassName}>
           <svg
@@ -141,7 +134,7 @@ export const PersonalAssistantConfigBanner = ({
   return (
     <section className="mx-5 mt-3 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3">
       <div className="flex items-start gap-3">
-        <AgentAvatar agent={agent} shape="circle" size="md" token={token} />
+        <AgentAvatar agent={agent} size="md" token={token} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-[var(--tx)]">

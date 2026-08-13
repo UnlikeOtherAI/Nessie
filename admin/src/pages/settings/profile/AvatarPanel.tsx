@@ -51,7 +51,7 @@ export const AvatarPanel = () => {
   return (
     <AvatarUploadPanel
       busy={busy}
-      cropperDescription="Drag to reposition, scroll or use the slider to zoom. The circle becomes your photo."
+      cropperDescription="Drag to reposition, scroll or use the slider to zoom. The rounded square becomes your photo."
       cropperTitle="Edit profile photo"
       error={error}
       hasCustom={hasCustom}
