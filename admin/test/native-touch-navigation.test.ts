@@ -52,7 +52,7 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
   assert.match(badge, /ringWidth = 2/)
 })
 
-test('the iPhone native menu delegates workspace, history, account, and creation actions to the web shell', () => {
+test('native iOS chrome delegates workspace, history, account, and creation actions to the web shell', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const account = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
   const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
@@ -61,9 +61,9 @@ test('the iPhone native menu delegates workspace, history, account, and creation
   assert.match(shell, /useNativeIOSPhoneApp/)
   assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
-  assert.match(shell, /<UserMenuTrigger nativePhoneBridge/)
-  assert.match(account, /__nessieTogglePhoneAccountMenu/)
-  assert.match(account, /type: 'nessie:phone-account'/)
+  assert.match(shell, /<UserMenuTrigger nativeShellBridge/)
+  assert.match(account, /__nessieToggleAccountMenu/)
+  assert.match(account, /type: 'nessie:account'/)
   assert.match(account, /userPresence: selfPresence\?\.state \?\? 'offline'/)
   assert.match(creation, /onCreateProject\(\)/)
   assert.match(creation, /onCreateChannel\(\)/)

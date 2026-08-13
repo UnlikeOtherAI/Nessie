@@ -1,7 +1,9 @@
+import { IpadNativeAccountMenu } from './IpadNativeAccountMenu'
 import { IpadNativeToolbar, type ToolbarAction, type ToolbarState } from './IpadNativeToolbar'
 import { IpadNativeTabBar } from './IpadNativeTabBar'
 import { IpadNativeWorkspaceSwitcher } from './IpadNativeWorkspaceSwitcher'
 import {
+  getIpadAccountMenuLeft,
   getIpadToolbarLeft,
   getIpadWorkspaceWidth,
   IPAD_NATIVE_CHROME_GAP,
@@ -10,9 +12,17 @@ import {
 
 type IpadNativeChromeProps = {
   activeIndex: number
+  account: {
+    avatarUrl: string | null
+    name: string | null
+    presence: 'away' | 'offline' | 'online'
+    statusEmoji: string | null
+  }
   badgeCounts: { assignedWork: number; channels: number; knowledge: number }
   insetLeft: number
+  insetRight: number
   onIndexChange: (index: number) => void
+  onToggleAccountMenu: () => void
   onToolbarAction: (action: ToolbarAction) => void
   onToggleWorkspaceMenu: (left: number) => void
   onTabBarWidthChange: (width: number) => void
@@ -26,10 +36,13 @@ type IpadNativeChromeProps = {
 
 export const IpadNativeChrome = ({
   activeIndex,
+  account,
   badgeCounts,
   insetLeft,
+  insetRight,
   onIndexChange,
   onTabBarWidthChange,
+  onToggleAccountMenu,
   onToggleWorkspaceMenu,
   onToolbarAction,
   tabBarWidth,
@@ -45,6 +58,9 @@ export const IpadNativeChrome = ({
   const workspaceWidth = toolbarLeft === null
     ? null
     : getIpadWorkspaceWidth(toolbarLeft, insetLeft)
+  const accountLeft = tabBarWidth === null
+    ? null
+    : getIpadAccountMenuLeft(windowWidth, tabBarWidth, insetRight)
   const workspaceLeft = insetLeft + IPAD_NATIVE_CHROME_GAP
 
   return (
@@ -74,6 +90,18 @@ export const IpadNativeChrome = ({
           maxWidth={workspaceWidth}
           name={workspaceName}
           onPress={() => onToggleWorkspaceMenu(workspaceLeft)}
+          theme={theme}
+          top={top}
+        />
+      ) : null}
+      {accountLeft !== null ? (
+        <IpadNativeAccountMenu
+          avatarUrl={account.avatarUrl}
+          left={accountLeft}
+          name={account.name}
+          onPress={onToggleAccountMenu}
+          presence={account.presence}
+          statusEmoji={account.statusEmoji}
           theme={theme}
           top={top}
         />

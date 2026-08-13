@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   createIpadNativeChromeTheme,
+  getIpadAccountMenuLeft,
   getIpadChromeTop,
   getIpadContentTop,
   getIpadToolbarLeft,
@@ -29,6 +30,12 @@ test('positions controls to the leading side of the centred iPad tab bar', () =>
   assert.equal(getIpadToolbarLeft(1_024, 360, 0), 167)
   assert.equal(getIpadToolbarLeft(768, 360, 0), 39)
   assert.equal(getIpadToolbarLeft(768, 600, 20), 32)
+})
+
+test('places the account control directly after the native tab group', () => {
+  assert.equal(getIpadAccountMenuLeft(1_024, 360, 0), 704)
+  assert.equal(getIpadAccountMenuLeft(600, 360, 0), 492)
+  assert.equal(getIpadAccountMenuLeft(600, 560, 0), 546)
 })
 
 test('places iPad chrome flush below the fullscreen safe area and centred in a window title bar', () => {

@@ -93,10 +93,11 @@ const Shell = (): React.JSX.Element => {
   const [iphoneText, setIphoneText] = useState(DEFAULT_IPHONE_TEXT)
   const [iphoneTextMuted, setIphoneTextMuted] = useState(DEFAULT_IPHONE_TEXT_MUTED)
   const [iphoneOnAccent, setIphoneOnAccent] = useState(DEFAULT_IPHONE_HEADER_TEXT)
-  const [iphoneAccount, setIphoneAccount] = useState({
+  const [nativeAccount, setNativeAccount] = useState({
     avatarUrl: null as string | null,
     name: null as string | null,
     presence: 'offline' as 'away' | 'offline' | 'online',
+    statusEmoji: null as string | null,
   })
   const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
   const [attentionBadges, setAttentionBadges] = useState({ channels: 0, assignedWork: 0, knowledge: 0 })
@@ -258,11 +259,12 @@ const Shell = (): React.JSX.Element => {
       if (nextStatusBarStyle) setStatusBarStyle(nextStatusBarStyle)
       return
     }
-    if (msg.type === 'nessie:phone-account') {
-      setIphoneAccount({
+    if (msg.type === 'nessie:account') {
+      setNativeAccount({
         avatarUrl: typeof msg.userAvatarUrl === 'string' && msg.userAvatarUrl ? msg.userAvatarUrl : null,
         name: typeof msg.userName === 'string' && msg.userName.trim() ? msg.userName : null,
         presence: msg.userPresence === 'online' || msg.userPresence === 'away' ? msg.userPresence : 'offline',
+        statusEmoji: typeof msg.userStatusEmoji === 'string' && msg.userStatusEmoji ? msg.userStatusEmoji : null,
       })
       return
     }
@@ -445,14 +447,14 @@ const Shell = (): React.JSX.Element => {
       {showIphoneConversationMenu ? (
         <IphoneConversationMenuChrome
           accentColor={accent}
-          accountAvatarUrl={iphoneAccount.avatarUrl}
-          accountName={iphoneAccount.name}
-          accountPresence={iphoneAccount.presence}
+          accountAvatarUrl={nativeAccount.avatarUrl}
+          accountName={nativeAccount.name}
+          accountPresence={nativeAccount.presence}
           bottomInset={insets.bottom}
           headerSurface={iphoneHeaderSurface}
           headerText={iphoneHeaderText}
           onAccentColor={iphoneOnAccent}
-          onAccountPress={nativeActions.togglePhoneAccountMenu}
+          onAccountPress={nativeActions.toggleAccountMenu}
           onCreateAction={nativeActions.createFromPhoneMenu}
           onHistoryPress={() => nativeActions.runToolbarAction('history')}
           onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}
@@ -467,12 +469,15 @@ const Shell = (): React.JSX.Element => {
       {showBar && IS_IPAD ? (
         <IpadNativeChrome
           activeIndex={index}
+          account={nativeAccount}
           badgeCounts={attentionBadges}
           onIndexChange={onIndexChange}
           onTabBarWidthChange={setIpadTabBarWidth}
+          onToggleAccountMenu={nativeActions.toggleAccountMenu}
           onToggleWorkspaceMenu={nativeActions.toggleWorkspaceMenu}
           onToolbarAction={nativeActions.runToolbarAction}
           insetLeft={insets.left}
+          insetRight={insets.right}
           tabBarWidth={ipadTabBarWidth}
           theme={ipadChromeTheme}
           toolbarState={toolbarState}
