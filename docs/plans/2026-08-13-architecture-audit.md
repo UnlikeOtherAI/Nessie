@@ -464,14 +464,21 @@ framing: "the first four should block a production security sign-off."
   does), so a deactivated user's queued PA work retains channel authority.
   Strengthens finding 1: the fork is not just drift-prone, it has already
   drifted on a security property. (Folds into finding 1's fix.)
-- **S11 — Worker tool-policy copy fails open.** The canonical evaluator in
-  `@nessie/workspace-admin` denies when no rule matches;
-  `worker/src/run/execute/policy.ts` returns
-  `{allowed: true, policySource: 'none'}` on no match. Not exploitable today
-  (the registry/grant gate runs first), but two opposite defaults for one
-  security decision is a latent bypass. *Fix:* one shared evaluator; if tools
-  intentionally default-allow, encode that as an explicit mode. (Medium;
-  quick.)
+- **S11 — Worker tool-policy copy fails open — and is bypassed entirely by
+  dispatch order.** The canonical evaluator in `@nessie/workspace-admin`
+  denies when no rule matches; `worker/src/run/execute/policy.ts` returns
+  `{allowed: true, policySource: 'none'}` on no match. **Correction
+  (2026-08-13, from the Sol design review, verified):** the original "not
+  exploitable today (the registry/grant gate runs first)" verdict was wrong —
+  `agent-loop.ts` dispatches `delegate` (L277), MCP (L300), and executor
+  tools (L303) *before* the registry gate (L306) and policy evaluator
+  (L337), and delegated sub-agents dispatch builtins/MCP with no policy,
+  approval, registry, or telemetry checks at all — a live policy/approval
+  bypass the repo's own G11 analysis
+  (`docs/plans/2026-08-11-inter-agent-communication/current-state.md:118`)
+  had already documented. *Fix:* one pre-dispatch authorization boundary for
+  all five dispatch paths — see the hardening design v2, Workstream 0.
+  (High; Phase 0.)
 - **S12 — Forwarded-header parsing bypasses proxy trust.** MCP OAuth and
   comms callback construction read `x-forwarded-proto`/`x-forwarded-host`
   directly from headers (`api/src/routes/mcp/oauth.ts:58-62`,
