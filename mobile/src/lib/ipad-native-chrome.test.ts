@@ -8,6 +8,7 @@ import {
   getIpadTopChromeLayout,
   getIpadWindowedLeadingControlsClearance,
   IPAD_WINDOWED_CHROME_TOP,
+  isIpadWindowed,
 } from './ipad-native-chrome'
 
 const controls = {
@@ -84,8 +85,20 @@ test('reserves the trailing safe-edge account control before centring or compact
 })
 
 test('keeps the workspace switcher clear of Stage Manager window controls', () => {
-  assert.equal(getIpadWindowedLeadingControlsClearance(24), 0)
-  assert.equal(getIpadWindowedLeadingControlsClearance(0), 80)
+  assert.equal(isIpadWindowed({
+    screenHeight: 1_024,
+    screenWidth: 1_366,
+    windowHeight: 1_024,
+    windowWidth: 1_366,
+  }), false)
+  assert.equal(isIpadWindowed({
+    screenHeight: 1_024,
+    screenWidth: 1_366,
+    windowHeight: 860,
+    windowWidth: 744,
+  }), true)
+  assert.equal(getIpadWindowedLeadingControlsClearance(false), 0)
+  assert.equal(getIpadWindowedLeadingControlsClearance(true), 80)
   assert.deepEqual(getIpadTopChromeLayout({
     ...controls,
     hasWorkspace: true,
