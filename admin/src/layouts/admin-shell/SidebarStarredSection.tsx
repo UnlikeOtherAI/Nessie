@@ -74,7 +74,7 @@ export const SidebarStarredSection = ({
               onClick={() => onNavigateAgent(agent.id)}
               type="button"
             >
-              <AgentAvatar agent={agent} shape={nativeTouchShell ? 'rounded' : 'circle'} size="xs" token={token} />
+              <AgentAvatar agent={agent} size="xs" token={token} />
               <span className="min-w-0 flex-1 truncate">{agent.name}</span>
               <span
                 className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
@@ -203,8 +203,8 @@ export const SidebarStarredSection = ({
               gravatarUrl={person.gravatarUrl ?? undefined}
               presenceRingWidth={nativeTouchShell ? 3 : undefined}
               ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
-              shape={nativeTouchShell ? 'rounded' : 'circle'}
               showPresence={nativeTouchShell}
+              showStatus={!nativeTouchShell}
               size={nativeTouchShell ? 24 : 18}
               token={token}
               userId={person.id}

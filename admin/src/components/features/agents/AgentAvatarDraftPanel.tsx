@@ -44,7 +44,7 @@ export const AgentAvatarDraftPanel = ({
   return (
     <AvatarUploadPanel
       busy={uploading}
-      cropperDescription="Drag to reposition, scroll or use the slider to zoom. The circle becomes this agent avatar."
+      cropperDescription="Drag to reposition, scroll or use the slider to zoom. The rounded square becomes this agent avatar."
       cropperTitle="Edit agent avatar"
       error={error}
       hasCustom={Boolean(avatarAttachmentId)}
@@ -53,7 +53,6 @@ export const AgentAvatarDraftPanel = ({
         <AgentAvatar
           agent={draftAgent}
           className="border border-[color:var(--sep)]"
-          shape="circle"
           size="xl"
           token={token}
         />

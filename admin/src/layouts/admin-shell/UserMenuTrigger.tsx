@@ -57,7 +57,7 @@ export const UserMenuTrigger = ({
         aria-haspopup="menu"
         aria-label="Account menu"
         className={[
-          'rounded-full transition-shadow',
+          'rounded-md transition-shadow',
           nativePhoneBridge ? 'pointer-events-none fixed right-3 top-0 z-[69] h-px w-px opacity-0' : '',
           menuOpen
             ? 'ring-2 ring-[color:var(--accent)]'

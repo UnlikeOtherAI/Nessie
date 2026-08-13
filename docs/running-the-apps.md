@@ -209,8 +209,9 @@ dialog as the sidebar, rather than creating a second permission path. The
 WebView sidebar carries a native-touch marker on iPhone, iPad, and Android so
 only those installed interfaces use Slack-scale 38-point rows and 14px menu
 type; desktop remains compact even on a touchscreen. Project folder rows alone
-are bold. Human avatar tiles are rounded squares with live online/away/offline
-badges; the badge's three-pixel cutout matches the sidebar background.
+are bold. Human, agent, and workspace avatar tiles use the same subtly rounded
+square shape everywhere. Human avatar presence badges use a three-pixel cutout
+that matches the sidebar background.
 
 The login route is its own full-height touch-scroll container because the page
 root remains fixed for the authenticated shell. On phone widths it presents the

@@ -1,20 +1,23 @@
 import { type PropsWithChildren } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { type StyleProp, StyleSheet, type ViewStyle, View } from 'react-native'
 
 import { IPAD_NATIVE_CHROME_HEIGHT, type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
 
 type IpadNativeChromeSurfaceProps = PropsWithChildren<{
+  style?: StyleProp<ViewStyle>
   theme: IpadNativeChromeTheme
 }>
 
 export const IpadNativeChromeSurface = ({
   children,
+  style,
   theme,
 }: IpadNativeChromeSurfaceProps): React.JSX.Element => (
   <View
     style={[
       styles.surface,
       { backgroundColor: theme.backgroundColor, borderColor: theme.borderColor },
+      style,
     ]}
   >
     {children}

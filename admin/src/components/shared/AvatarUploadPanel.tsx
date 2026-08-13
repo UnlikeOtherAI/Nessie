@@ -103,6 +103,7 @@ export const AvatarUploadPanel = ({
           onCancel={() => setSelectedFile(null)}
           onSave={handleSave}
           saveLabel={saveLabel}
+          shape="rounded"
           title={cropperTitle}
         />
       ) : null}
