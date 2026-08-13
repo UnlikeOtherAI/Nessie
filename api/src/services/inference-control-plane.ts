@@ -48,6 +48,26 @@ const assertProviderBaseUrlSafe = async (baseUrl: string | null): Promise<void> 
   }
 }
 
+/**
+ * Phase-0 secret-custody gate (security boundary hardening, Workstream 2, S2).
+ *
+ * The worker resolves a binding's `authSecretRef` as `process.env[ref]`, so a
+ * caller-chosen ref would bind any deployment secret (DATABASE_URL, signing
+ * keys, ...) as a bearer token to the caller's own endpoint. Until the
+ * secret-store (`secret_*`) refs land, the control plane refuses new
+ * caller-supplied env refs server-side. Persisted (grandfathered) rows are
+ * untouched and keep resolving through the worker; the contract shape is
+ * unchanged so old clients keep parsing. Operators configure inference
+ * credentials at the deployment level.
+ */
+export class InferenceEnvRefForbiddenError extends Error {
+  readonly code = 'INFERENCE_ENV_REF_FORBIDDEN'
+  constructor() {
+    super('INFERENCE_ENV_REF_FORBIDDEN')
+    this.name = 'InferenceEnvRefForbiddenError'
+  }
+}
+
 const asJsonValue = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue
 
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
@@ -566,6 +586,12 @@ export const createInferenceCredentialBinding = async (
   actorContext: AuthorizedActionContext,
   input: CreateInferenceCredentialBindingBody,
 ): Promise<InferenceCredentialBindingRecord> => {
+  // Every credential-binding create carries a caller-chosen env ref, so the
+  // write path is refused outright. Grandfathered rows keep working through
+  // the worker resolver; this gate never touches existing rows.
+  if (typeof input.authSecretRef === 'string' && input.authSecretRef.length > 0) {
+    throw new InferenceEnvRefForbiddenError()
+  }
   const provider = await ensureProvider(
     prisma,
     actorContext.tenant.organizationId,
