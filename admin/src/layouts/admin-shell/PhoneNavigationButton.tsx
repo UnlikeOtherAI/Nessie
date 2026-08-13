@@ -1,17 +1,19 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { usePhoneLayout } from '../../lib/mobile-shell';
 import { useMobileNav } from './MobileNavContext';
 import { PhoneBackButton } from './PhoneBackButton';
 import { getPhoneNavigationBackTarget } from './phone-navigation';
+import { usePhoneNavigation } from './PhoneNavigationProvider';
 
-// The phone's leading control mirrors a native navigation controller: section
-// roots open their contextual drawer, while every routed child receives an
-// in-context Back action. Desktop and tablet keep their pinned sidebar.
+// The phone's leading doorway mirrors a native navigation controller: exactly
+// one control per screen. A local/nested Back (an open in-page stack) is owned
+// by the page itself and wins; this route-level control shows Back at detail
+// routes and Menu at section roots. Desktop and tablet keep the pinned sidebar.
 export const PhoneNavigationButton = () => {
   const phoneLayout = usePhoneLayout();
   const location = useLocation();
-  const navigate = useNavigate();
   const nav = useMobileNav();
+  const history = usePhoneNavigation();
   const backTarget = getPhoneNavigationBackTarget(location.pathname);
 
   if (!phoneLayout || !nav) {
@@ -22,7 +24,7 @@ export const PhoneNavigationButton = () => {
     return (
       <PhoneBackButton
         label={backTarget.label}
-        onBack={() => void navigate(backTarget.pathname)}
+        onBack={() => history?.performBack()}
       />
     );
   }
@@ -38,6 +40,7 @@ export const PhoneNavigationButton = () => {
       type="button"
     >
       <svg
+        aria-hidden="true"
         className="h-5 w-5"
         fill="none"
         stroke="currentColor"

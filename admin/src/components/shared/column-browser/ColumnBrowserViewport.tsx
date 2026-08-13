@@ -1,5 +1,6 @@
 import { Children, type ReactNode, useMemo } from 'react'
 import { useViewport } from '../../../hooks/useViewport'
+import { usePhoneLayout } from '../../../lib/mobile-shell'
 
 type ColumnBrowserViewportProps = {
   activeColumn: number
@@ -10,13 +11,13 @@ export const ColumnBrowserViewport = ({
   activeColumn,
   columns,
 }: ColumnBrowserViewportProps) => {
-  // Bands derive from minimum-width queries only, so there is no fractional
-  // gap between bands: below-md is exactly NOT min-768, and tablet is exactly
-  // min-768 AND NOT min-1024. Both come from the shared viewport store's
-  // named minimums, so this component cannot drift from the Tailwind scale.
+  // Phone ownership follows the shell's geometry-aware classification, so
+  // native Android/iOS tablets keep multiple columns even at a narrow CSS
+  // width. Non-phone widths still use the shared viewport bands.
   const { atLeast } = useViewport()
-  const isMobile = !atLeast.md
-  const isTablet = atLeast.md && !atLeast.lg
+  const phoneLayout = usePhoneLayout()
+  const isMobile = phoneLayout
+  const isTablet = !phoneLayout && !atLeast.lg
 
   const visibleColumns = isMobile ? 1 : isTablet ? 2 : 3
   const normalizedColumns = Children.toArray(columns)

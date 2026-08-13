@@ -86,10 +86,26 @@ test('pushes Admin destinations from the Admin menu and returns to it', () => {
 })
 
 test('keeps routes on the same screen from replaying a navigation transition', () => {
+  // The channel info chain stays one screen identity (channel A → B at any
+  // depth swaps content in place); deeper pages still animate by depth.
   assert.equal(
     getPhoneNavigationDirection(
-      '/channels/channel_a',
+      '/channels/channel_a/info',
       '/channels/channel_a/info/members',
+    ),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection(
+      '/channels/channel_a/info/members',
+      '/channels/channel_a/info',
+    ),
+    'back',
+  )
+  assert.equal(
+    getPhoneNavigationDirection(
+      '/channels/channel_a/info',
+      '/channels/channel_b/info',
     ),
     null,
   )
@@ -124,7 +140,7 @@ test('does not animate cross-tab, compose, or unrelated routes', () => {
 test('classifies channel project overviews before the generic channel pattern', () => {
   assert.deepEqual(getPhoneNavigationScreen('/channels/projects/project_a'), {
     depth: 1,
-    key: 'channels:project:project_a',
+    key: 'channels:projects',
     section: 'channels',
   })
 })
@@ -135,8 +151,16 @@ test('gives every phone detail route a deterministic in-app Back destination', (
     { label: 'Back to Channels', pathname: '/channels' },
   )
   assert.deepEqual(
+    getPhoneNavigationBackTarget('/channels/channel_a/info'),
+    { label: 'Back to conversation', pathname: '/channels/channel_a' },
+  )
+  assert.deepEqual(
     getPhoneNavigationBackTarget('/channels/channel_a/info/members'),
-    { label: 'Back to Channels', pathname: '/channels' },
+    { label: 'Back to channel info', pathname: '/channels/channel_a/info' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/channels/channel_a/info/members/add'),
+    { label: 'Back to members', pathname: '/channels/channel_a/info/members' },
   )
   assert.deepEqual(
     getPhoneNavigationBackTarget('/projects/project_a/docs'),
@@ -176,13 +200,17 @@ test('keeps the drawer control at phone section roots', () => {
   for (const pathname of [
     '/channels',
     '/projects',
-    '/dashboards',
     '/knowledge-base',
     '/settings',
     '/search',
   ]) {
     assert.equal(getPhoneNavigationBackTarget(pathname), null)
   }
+  // /dashboards is a Knowledge-section detail: its Back returns to Knowledge.
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/dashboards'),
+    { label: 'Back to Knowledge', pathname: '/knowledge-base' },
+  )
 })
 
 test('routes phone Knowledge selections and Projects rows to stack details', () => {

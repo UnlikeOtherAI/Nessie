@@ -27,7 +27,7 @@ import {
   useMcpToolRegistry,
 } from '../facades/tool-grants/hooks'
 import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
-import { useMobileLayout } from '../lib/mobile-shell'
+import { usePhoneLayout } from '../lib/mobile-shell'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
@@ -43,7 +43,7 @@ import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationBut
  */
 export const ToolsPage = () => {
   const { me } = useAuthSession()
-  const isMobile = useMobileLayout()
+  const isMobile = usePhoneLayout()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const [searchParams] = useSearchParams()
   const deepWaterInstanceId = readDeepWaterInstanceFilter(searchParams)

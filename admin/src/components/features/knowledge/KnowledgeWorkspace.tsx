@@ -37,7 +37,11 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 
-export const KnowledgeWorkspace = () => {
+// `backVariant` selects the Back doorway owner: 'standalone' for the Knowledge
+// section's own routes (the pane owns the local Back; the shell adds the
+// route-level one in a separate header), 'embedded' for Project Docs, where
+// the project route header already carries the only leading doorway.
+export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant?: 'embedded' | 'standalone' }) => {
   const {
     activeProductView,
     selectedSpace,
@@ -223,7 +227,7 @@ export const KnowledgeWorkspace = () => {
   if (editor) {
     const editLoading = editor.mode === 'edit' && !fullPage
     return (
-      <KnowledgePane onBack={closeEditor} title={editor.mode === 'edit' ? 'Edit page' : 'Create page'}>
+      <KnowledgePane onBack={closeEditor} title={editor.mode === 'edit' ? 'Edit page' : 'Create page'} variant={backVariant}>
         <div className="flex h-full w-full flex-col">
           {editLoading ? (
             <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
@@ -249,7 +253,7 @@ export const KnowledgeWorkspace = () => {
   const historyPage = historyPageId ? pageById(historyPageId) : undefined
   if (historyPage) {
     return (
-      <KnowledgePane onBack={closeHistory} title={`History — ${historyPage.title}`}>
+      <KnowledgePane onBack={closeHistory} title={`History — ${historyPage.title}`} variant={backVariant}>
         <div className="mx-auto w-full max-w-3xl px-6 py-6">
           <VersionHistory
             onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
@@ -268,7 +272,7 @@ export const KnowledgeWorkspace = () => {
     return (
       <div className="relative h-full w-full" {...attachmentDrop.dropHandlers}>
         {isMarkdownFileNode && !convertToDocument.isError ? (
-          <KnowledgePane onBack={() => popTo(depth)} title={current.title}>
+          <KnowledgePane onBack={() => popTo(depth)} title={current.title} variant={backVariant}>
             <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
               Opening as document…
             </div>
@@ -383,6 +387,7 @@ export const KnowledgeWorkspace = () => {
       <KnowledgePane
         actions={workspaceActions}
         title={selectedSpace?.name ?? 'Pages'}
+        variant={backVariant}
       >
         <div className="h-full w-full">
           {!selectedSpaceId ? (

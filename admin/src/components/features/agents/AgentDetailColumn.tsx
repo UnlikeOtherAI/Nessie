@@ -7,6 +7,7 @@ import { AgentCreateButton } from './AgentCreateButton'
 import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
 import { AgentStatusDot } from './AgentStatusDot'
 import { AgentDetailTabs } from './AgentDetailTabs'
+import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
 
 type AgentDetailColumnProps = {
   agent: AgentRecord
@@ -37,25 +38,7 @@ export const AgentDetailColumn = ({
         <div className="rounded-xl border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-4">
           <div className="flex flex-wrap items-center gap-2">
             {showBack && onBack ? (
-              <button
-                className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[var(--overlay)]"
-                onClick={onBack}
-                type="button"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M15 19l-7-7 7-7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+              <PhoneBackButton label={`Back to agents from ${agent.name}`} onBack={onBack} variant="labelled" />
             ) : null}
             <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
             <h2 className="min-w-0 flex-1 text-xl font-semibold text-[var(--tx)]">
