@@ -143,6 +143,9 @@ safe area, while a Stage Manager window centres it in that window's title bar;
 its empty tab scenes can cover the sibling WKWebView with a black controller
 surface after login. Back, Forward, Recent Channels, and Help buttons sit on the
 leading side of the iPad row, using the same theme-derived chrome as the tabs.
+The active workspace's initial and name appear ahead of those controls; tapping
+it opens the web shell's existing workspace menu, so context switching and
+adding a workspace follow the same entitlement-aware flow as the desktop rail.
 Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split
 lives in `mobile/src/config.ts`:

@@ -28,7 +28,6 @@ type SidebarNavProps = {
   onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
   onNavigateDm: (userId: string) => void;
-  onNavigateHome: () => void;
   onNavigateNewConversation: () => void;
   onNavigateProject: (projectId: string) => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
@@ -73,7 +72,6 @@ export const SidebarNav = (props: SidebarNavProps) => {
     onNavigateAgent,
     onNavigateChannel,
     onNavigateDm,
-    onNavigateHome,
     onNavigateNewConversation,
     onNavigateProject,
     onOpenCreateChannel,
@@ -112,54 +110,6 @@ export const SidebarNav = (props: SidebarNavProps) => {
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
       ].join(' ')}
     >
-      <div className="flex h-[50px] items-center justify-between px-4">
-        <button
-          className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-[color:var(--overlay)]"
-          onClick={onNavigateHome}
-          type="button"
-        >
-          <span className="text-[17px] font-black tracking-[-0.01em] text-[color:var(--tx)]">Nessie</span>
-          <svg
-            className="h-4 w-4 text-[color:var(--tx2)]"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              d="M19 9l-7 7-7-7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2.5"
-            />
-          </svg>
-        </button>
-
-        <button
-          aria-label="Start new chat"
-          className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"
-          onClick={onNavigateNewConversation}
-          title="Start new chat"
-          type="button"
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            viewBox="0 0 24 24"
-          >
-            <path
-              d={[
-                'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5',
-                'm-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
-              ].join(' ')}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         <SidebarStarredSection
           activeDmChannelId={activeDmChannelId}

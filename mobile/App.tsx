@@ -34,7 +34,9 @@ import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
   getIpadToolbarLeft,
+  getIpadWorkspaceWidth,
   IPAD_NATIVE_CHROME_HEIGHT,
+  IPAD_NATIVE_CHROME_GAP,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
 import {
@@ -48,6 +50,7 @@ import {
   type ToolbarState,
 } from './src/components/IpadNativeToolbar'
 import { IpadNativeTabBar } from './src/components/IpadNativeTabBar'
+import { IpadNativeWorkspaceSwitcher } from './src/components/IpadNativeWorkspaceSwitcher'
 // Deep-link callback the OS browser redirects to after external sign-in. Must
 // match the admin's externalAuthRedirectUri and the API's allow-listed URL.
 const AUTH_CALLBACK_URL = 'nessie://auth/callback'
@@ -89,6 +92,7 @@ const Shell = (): React.JSX.Element => {
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
   const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
   const [ipadTabBarWidth, setIpadTabBarWidth] = useState<number | null>(null)
+  const [ipadWorkspaceName, setIpadWorkspaceName] = useState<string | null>(null)
   const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
   const [attentionBadges, setAttentionBadges] = useState({ channels: 0, assignedWork: 0, knowledge: 0 })
   // Bumping this remounts the WebView — used to recover Android after its render
@@ -228,6 +232,12 @@ const Shell = (): React.JSX.Element => {
     )
   }
 
+  const toggleWorkspaceMenu = (left: number): void => {
+    runScript(
+      `window.__nessieToggleWorkspaceMenu && window.__nessieToggleWorkspaceMenu(${JSON.stringify(left)});`,
+    )
+  }
+
   // Google blocks OAuth inside embedded webviews, so the admin hands SSO off to
   // us: open the authorize URL in the OS browser (ASWebAuthenticationSession),
   // then deliver the deep-link callback back into the webview to finish.
@@ -253,6 +263,7 @@ const Shell = (): React.JSX.Element => {
       canBack?: boolean
       canForward?: boolean
       recentOpen?: boolean
+      name?: string
       channels?: number
       assignedWork?: number
       knowledge?: number
@@ -314,6 +325,10 @@ const Shell = (): React.JSX.Element => {
         canForward: Boolean(msg.canForward),
         recentOpen: Boolean(msg.recentOpen),
       })
+      return
+    }
+    if (msg.type === 'nessie:workspace') {
+      setIpadWorkspaceName(typeof msg.name === 'string' && msg.name.trim() ? msg.name : null)
       return
     }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
@@ -379,6 +394,10 @@ const Shell = (): React.JSX.Element => {
   const ipadToolbarLeft = ipadTabBarWidth === null
     ? null
     : getIpadToolbarLeft(windowWidth, ipadTabBarWidth, insets.left)
+  const ipadWorkspaceWidth = ipadToolbarLeft === null
+    ? null
+    : getIpadWorkspaceWidth(ipadToolbarLeft, insets.left)
+  const ipadWorkspaceLeft = insets.left + IPAD_NATIVE_CHROME_GAP
 
   const navigationState = {
     index,
@@ -497,6 +516,17 @@ const Shell = (): React.JSX.Element => {
           left={ipadToolbarLeft}
           onAction={runToolbarAction}
           recentOpen={toolbarState.recentOpen}
+          theme={ipadChromeTheme}
+          top={ipadChromeTop}
+        />
+      ) : null}
+
+      {showBar && IS_IPAD && ipadWorkspaceName && ipadWorkspaceWidth !== null ? (
+        <IpadNativeWorkspaceSwitcher
+          left={ipadWorkspaceLeft}
+          maxWidth={ipadWorkspaceWidth}
+          name={ipadWorkspaceName}
+          onPress={() => toggleWorkspaceMenu(ipadWorkspaceLeft)}
           theme={ipadChromeTheme}
           top={ipadChromeTop}
         />
