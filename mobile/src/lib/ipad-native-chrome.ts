@@ -74,18 +74,6 @@ export const getIpadToolbarLeft = (
   insetLeft: number,
 ): number => Math.max(insetLeft + 12, (screenWidth - tabBarWidth) / 2 - IPAD_NATIVE_TOOLBAR_WIDTH - 12)
 
-// The account trigger is part of the native top chrome, immediately after the
-// centred tab group. In a constrained Stage Manager window it stays inside the
-// trailing safe edge rather than leaving the person without an account menu.
-export const getIpadAccountMenuLeft = (
-  screenWidth: number,
-  tabBarWidth: number,
-  insetRight: number,
-): number => Math.min(
-  (screenWidth + tabBarWidth) / 2 + IPAD_NATIVE_CHROME_GAP,
-  screenWidth - insetRight - IPAD_NATIVE_CHROME_GAP - IPAD_NATIVE_CHROME_HEIGHT,
-)
-
 // The workspace chip occupies the leading space before browser controls. Hide
 // it in a narrow split view rather than letting it cover those controls.
 export const getIpadWorkspaceWidth = (toolbarLeft: number, insetLeft: number): number | null => {
