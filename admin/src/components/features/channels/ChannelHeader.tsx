@@ -1,4 +1,5 @@
 import {
+  faCircleInfo,
   faGear,
   faMagnifyingGlass,
   faPhone,
@@ -8,11 +9,13 @@ import {
 import type { ExternalAgentIdentity } from '../../../facades/integrations/hooks'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-client'
 import { MobileMenuButton } from '../../../layouts/admin-shell/MobileMenuButton'
+import { usePhoneLayout } from '../../../lib/mobile-shell'
 import {
   ResponsivePageHeader,
   type PageHeaderAction,
 } from '../../shared/ResponsivePageHeader'
 import type { ChannelTitleFavorite } from './ChannelFavoriteButton'
+import { ConversationBackButton } from './ConversationBackButton'
 
 interface ChannelHeaderProps {
   activeCall: boolean
@@ -23,9 +26,12 @@ interface ChannelHeaderProps {
   externalAgentIdentity: ExternalAgentIdentity | null
   isExternalAgentConversation: boolean
   isInCall: boolean
+  isConversationDetail: boolean
   isPersonalAssistantConversation: boolean
   joinPending: boolean
   onCallButton: () => void
+  onBack: () => void
+  onOpenInfo: () => void
   onJoin: () => void
   onOpenMembers: () => void
   onOpenSettings: () => void
@@ -46,16 +52,20 @@ export const ChannelHeader = ({
   externalAgentIdentity,
   isExternalAgentConversation,
   isInCall,
+  isConversationDetail,
   isPersonalAssistantConversation,
   joinPending,
   onCallButton,
+  onBack,
   onJoin,
+  onOpenInfo,
   onOpenMembers,
   onOpenSettings,
   onToggleSearch,
   searchOpen,
   titleFavorite,
 }: ChannelHeaderProps) => {
+  const phoneLayout = usePhoneLayout()
   const title = isPersonalAssistantConversation
     ? 'Personal Assistant'
     : isExternalAgentConversation
@@ -63,6 +73,9 @@ export const ChannelHeader = ({
       : activeChannel?.label ?? 'Channels'
   const canManageChannel = Boolean(
     activeChannel && activeChannel.type !== 'dm' && !isPersonalAssistantConversation,
+  )
+  const canOpenConversationInfo = Boolean(
+    activeChannel && activeChannel.type === 'dm' && !isPersonalAssistantConversation,
   )
   const shouldJoin = Boolean(
     canManageChannel && activeChannel?.visibility === 'public' && !activeChannel.memberRole,
@@ -87,7 +100,14 @@ export const ChannelHeader = ({
       priority: 90,
       selected: titleFavorite.isFavorite,
     } satisfies PageHeaderAction] : []),
-    ...(!isPersonalAssistantConversation ? [{
+    ...(canOpenConversationInfo ? [{
+      compact: true,
+      icon: faCircleInfo,
+      id: 'conversation-info',
+      label: 'Conversation info',
+      onSelect: onOpenInfo,
+      priority: 80,
+    } satisfies PageHeaderAction] : !isPersonalAssistantConversation ? [{
       icon: faUsers,
       id: 'members',
       label: `Members (${participantCount})`,
@@ -142,7 +162,11 @@ export const ChannelHeader = ({
             ? externalAgentIdentity?.description ?? undefined
             : undefined
       }
-      leading={<MobileMenuButton />}
+      leading={
+        phoneLayout && isConversationDetail
+          ? <ConversationBackButton onBack={onBack} />
+          : <MobileMenuButton />
+      }
       title={title}
     />
   )
