@@ -220,12 +220,13 @@ bridge, and the account control opens the canonical account menu. The header
 owns the status-bar backdrop, so its system indicators remain light against the
 dark surface even when the active Nessie theme is light. Its Slack-positioned
 bottom-right **+** is deliberately limited to the Channels root: it uses the
-theme's darker primary colour (`--accent-strong`) and opens the native sheet,
-**“Start a new channel, project, or direct message”**. **Project** replaces
-Slack's Huddle, **Channel** remains a regular row, and the highlighted
-**Message** action opens a direct message. Each delegates to the same web-shell
-handler and dialog as the sidebar, rather than creating a second permission
-path. The Channels, Projects, Knowledge, and Admin WebView sidebars each carry
+theme's darker primary colour (`--accent-strong`) and expands directly into the
+highlighted **Message** action. The surrounding native sheet and its compact
+**Project** and **Channel** choices fade and grow around that action. **Project**
+replaces Slack's Huddle, **Channel** remains a regular row, and **Message**
+opens a direct message. Each delegates to the same web-shell handler and dialog
+as the sidebar, rather than creating a second permission path. The Channels,
+Projects, Knowledge, and Admin WebView sidebars each carry
 the native-touch marker on iPhone, iPad, and Android, so those installed
 interfaces use the same Slack-scale 38-point rows and 14px menu type while
 desktop remains compact even on a touchscreen. Project folder rows alone are

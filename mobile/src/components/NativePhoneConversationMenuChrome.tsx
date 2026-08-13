@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Animated, Easing, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { withOpacity } from '../lib/ipad-native-chrome'
@@ -36,7 +36,7 @@ type NativePhoneConversationMenuChromeProps = {
 const initial = (label: string | null, fallback: string): string =>
   [...(label?.trim() ?? '')][0]?.toUpperCase() ?? fallback
 
-const creationHeading = 'Start a new channel, project, or direct message'
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 
 const AccountPresenceIndicator = ({
   headerSurface,
@@ -88,13 +88,64 @@ export const NativePhoneConversationMenuChrome = ({
   workspaceName,
 }: NativePhoneConversationMenuChromeProps): React.JSX.Element => {
   const [creationOpen, setCreationOpen] = useState(false)
+  const creationProgress = useRef(new Animated.Value(0)).current
+  const { width: windowWidth } = useWindowDimensions()
+
   useEffect(() => {
-    if (!showCreationActions) setCreationOpen(false)
-  }, [showCreationActions])
+    if (showCreationActions) return
+    creationProgress.stopAnimation()
+    creationProgress.setValue(0)
+    setCreationOpen(false)
+  }, [creationProgress, showCreationActions])
+
+  const openCreationMenu = (): void => {
+    creationProgress.stopAnimation()
+    creationProgress.setValue(0)
+    setCreationOpen(true)
+    requestAnimationFrame(() => {
+      Animated.timing(creationProgress, {
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        toValue: 1,
+        useNativeDriver: false,
+      }).start()
+    })
+  }
+
+  const closeCreationMenu = (): void => {
+    Animated.timing(creationProgress, {
+      duration: 180,
+      easing: Easing.in(Easing.cubic),
+      toValue: 0,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) setCreationOpen(false)
+    })
+  }
 
   const selectCreationAction = (action: NativePhoneCreationAction): void => {
+    creationProgress.stopAnimation()
+    creationProgress.setValue(0)
     setCreationOpen(false)
     onCreateAction(action)
+  }
+
+  const createSheetBottom = bottomInset + getNativePhoneBottomChromeClearance(platform) + 8
+  const initialComposeBottom = getNativePhoneComposeBottom(bottomInset, platform)
+  const messageActionWidth = Math.max(62, windowWidth - 48)
+  const sheetAnimation = {
+    opacity: creationProgress,
+    transform: [
+      { translateX: creationProgress.interpolate({ inputRange: [0, 1], outputRange: [116, 0] }) },
+      { translateY: creationProgress.interpolate({ inputRange: [0, 1], outputRange: [96, 0] }) },
+      { scale: creationProgress.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] }) },
+    ],
+  }
+  const optionsAnimation = {
+    opacity: creationProgress.interpolate({ inputRange: [0, 0.44, 1], outputRange: [0, 0, 1] }),
+    transform: [
+      { translateY: creationProgress.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) },
+    ],
   }
 
   return (
@@ -165,93 +216,114 @@ export const NativePhoneConversationMenuChrome = ({
       </View>
     </View>
 
-    {showCreationActions && !creationOpen ? (
-      <Pressable
-        accessibilityLabel="Start a new channel, project, or direct message"
+    {showCreationActions ? (
+      <AnimatedPressable
+        accessibilityLabel={creationOpen ? 'Start a direct message' : 'Open creation menu'}
         accessibilityRole="button"
         hitSlop={8}
-        onPress={() => setCreationOpen(true)}
-        style={({ pressed }) => [
-          styles.composeButton,
+        onPress={() => {
+          if (creationOpen) selectCreationAction('message')
+          else openCreationMenu()
+        }}
+        style={[
+          styles.morphingMessageAction,
           {
             backgroundColor: creationAccentColor,
-            bottom: getNativePhoneComposeBottom(bottomInset, platform),
+            bottom: creationProgress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [initialComposeBottom, createSheetBottom + 8],
+            }),
+            borderRadius: creationProgress.interpolate({ inputRange: [0, 1], outputRange: [31, 16] }),
+            height: creationProgress.interpolate({ inputRange: [0, 1], outputRange: [62, 38] }),
+            right: creationProgress.interpolate({ inputRange: [0, 1], outputRange: [22, 24] }),
+            width: creationProgress.interpolate({ inputRange: [0, 1], outputRange: [62, messageActionWidth] }),
           },
-          pressed ? styles.composeButtonPressed : null,
         ]}
       >
-        <Text style={[styles.composeSymbol, { color: onAccentColor }]}>+</Text>
-      </Pressable>
+        <Animated.Text
+          style={[
+            styles.composeSymbol,
+            {
+              color: onAccentColor,
+              opacity: creationProgress.interpolate({ inputRange: [0, 0.52, 1], outputRange: [1, 0, 0] }),
+            },
+          ]}
+        >
+          +
+        </Animated.Text>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.morphingMessageContent,
+            {
+              opacity: creationProgress.interpolate({ inputRange: [0, 0.38, 1], outputRange: [0, 0, 1] }),
+            },
+          ]}
+        >
+          <MaterialIcons color={onAccentColor} name="edit" size={17} />
+          <Text style={[styles.messageActionText, { color: onAccentColor }]}>Message</Text>
+        </Animated.View>
+      </AnimatedPressable>
     ) : null}
     {showCreationActions && creationOpen ? (
       <>
         <Pressable
           accessibilityLabel="Close create menu"
-          onPress={() => setCreationOpen(false)}
+          onPress={closeCreationMenu}
           style={styles.createBackdrop}
         />
-        <View
+        <Animated.View
           accessibilityViewIsModal
           style={[
             styles.createSheet,
             {
               backgroundColor: withOpacity(sheetSurface, 0.98),
               borderColor: withOpacity(sheetText, 0.16),
-              bottom: bottomInset + getNativePhoneBottomChromeClearance(platform) + 8,
+              bottom: createSheetBottom,
             },
+            sheetAnimation,
           ]}
         >
-          <Text style={[styles.createHeading, { color: sheetText }]}>{creationHeading}</Text>
-          <Pressable
-            accessibilityLabel="Create project"
-            accessibilityRole="button"
-            onPress={() => selectCreationAction('project')}
-            style={({ pressed }) => [
-              styles.createRow,
-              pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
-            ]}
-          >
-            <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
-              <MaterialIcons color={creationAccentColor} name="folder" size={28} />
-            </View>
-            <View style={styles.createCopy}>
-              <Text style={[styles.createTitle, { color: sheetText }]}>Project</Text>
-              <Text style={[styles.createDescription, { color: sheetMutedText }]}>
-                Organise work in a shared folder
-              </Text>
-            </View>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Create channel"
-            accessibilityRole="button"
-            onPress={() => selectCreationAction('channel')}
-            style={({ pressed }) => [
-              styles.createRow,
-              pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
-            ]}
-          >
-            <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
-              <MaterialIcons color={creationAccentColor} name="tag" size={28} />
-            </View>
-            <View style={styles.createCopy}>
-              <Text style={[styles.createTitle, { color: sheetText }]}>Channel</Text>
-              <Text style={[styles.createDescription, { color: sheetMutedText }]}>Start a team conversation</Text>
-            </View>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Start a direct message"
-            accessibilityRole="button"
-            onPress={() => selectCreationAction('message')}
-            style={({ pressed }) => [
-              styles.messageAction,
-              { backgroundColor: creationAccentColor },
-              pressed ? styles.messageActionPressed : null,
-            ]}
-          >
-            <MaterialIcons color={onAccentColor} name="edit" size={26} />
-            <Text style={[styles.messageActionText, { color: onAccentColor }]}>Message</Text>
-          </Pressable>
-        </View>
+          <Animated.View style={[styles.createOptions, optionsAnimation]}>
+            <Pressable
+              accessibilityLabel="Create project"
+              accessibilityRole="button"
+              onPress={() => selectCreationAction('project')}
+              style={({ pressed }) => [
+                styles.createRow,
+                pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
+              ]}
+            >
+              <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
+                <MaterialIcons color={creationAccentColor} name="folder" size={18} />
+              </View>
+              <View style={styles.createCopy}>
+                <Text style={[styles.createTitle, { color: sheetText }]}>Project</Text>
+                <Text style={[styles.createDescription, { color: sheetMutedText }]}>
+                  Organise work in a shared folder
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Create channel"
+              accessibilityRole="button"
+              onPress={() => selectCreationAction('channel')}
+              style={({ pressed }) => [
+                styles.createRow,
+                pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
+              ]}
+            >
+              <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
+                <MaterialIcons color={creationAccentColor} name="tag" size={18} />
+              </View>
+              <View style={styles.createCopy}>
+                <Text style={[styles.createTitle, { color: sheetText }]}>Channel</Text>
+                <Text style={[styles.createDescription, { color: sheetMutedText }]}>Start a team conversation</Text>
+              </View>
+            </Pressable>
+          </Animated.View>
+          <View style={styles.messageActionSlot} />
+        </Animated.View>
       </>
     ) : null}
   </>
@@ -277,43 +349,40 @@ const styles = StyleSheet.create({
     borderRadius: 19,
   },
   accountInitial: { fontSize: 16, fontWeight: '700' },
-  composeButton: {
+  morphingMessageAction: {
     position: 'absolute',
-    right: 22,
-    zIndex: 30,
-    height: 62,
-    width: 62,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 31,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { height: 6, width: 0 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
+    zIndex: 42,
   },
-  composeButtonPressed: { transform: [{ scale: 0.94 }] },
-  composeSymbol: { fontSize: 38, fontWeight: '300', lineHeight: 42 },
+  morphingMessageContent: { alignItems: 'center', flexDirection: 'row', gap: 7, justifyContent: 'center' },
+  composeSymbol: { fontSize: 38, fontWeight: '300', lineHeight: 42, position: 'absolute' },
   createBackdrop: { ...StyleSheet.absoluteFillObject, zIndex: 39 },
-  createCopy: { flex: 1, gap: 2 },
-  createDescription: { fontSize: 16, lineHeight: 20 },
-  createHeading: { fontSize: 17, fontWeight: '700', lineHeight: 22, paddingHorizontal: 10, paddingTop: 4 },
-  createIcon: { alignItems: 'center', borderRadius: 12, height: 52, justifyContent: 'center', width: 52 },
-  createRow: { alignItems: 'center', borderRadius: 14, flexDirection: 'row', gap: 14, padding: 10 },
+  createCopy: { flex: 1, gap: 1 },
+  createDescription: { fontSize: 10, lineHeight: 13 },
+  createIcon: { alignItems: 'center', borderRadius: 8, height: 34, justifyContent: 'center', width: 34 },
+  createOptions: { gap: 4 },
+  createRow: { alignItems: 'center', borderRadius: 9, flexDirection: 'row', gap: 9, padding: 7 },
   createSheet: {
     position: 'absolute',
     zIndex: 40,
     left: 16,
     right: 16,
-    gap: 6,
-    borderRadius: 28,
+    gap: 4,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 12,
+    padding: 8,
     shadowColor: '#000',
     shadowOffset: { height: 10, width: 0 },
     shadowOpacity: 0.2,
     shadowRadius: 24,
   },
-  createTitle: { fontSize: 22, fontWeight: '700', lineHeight: 26 },
+  createTitle: { fontSize: 14, fontWeight: '700', lineHeight: 17 },
   header: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 30 },
   headerActions: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   headerContent: {
@@ -324,17 +393,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   historyButton: { alignItems: 'center', borderRadius: 21, height: 42, justifyContent: 'center', width: 42 },
-  messageAction: {
-    alignItems: 'center',
-    borderRadius: 24,
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'center',
-    marginTop: 4,
-    minHeight: 58,
-  },
-  messageActionPressed: { opacity: 0.84 },
-  messageActionText: { fontSize: 23, fontWeight: '700' },
+  messageActionSlot: { height: 38 },
+  messageActionText: { fontSize: 15, fontWeight: '700', lineHeight: 18 },
   presenceCutout: {
     position: 'absolute',
     bottom: -1,
