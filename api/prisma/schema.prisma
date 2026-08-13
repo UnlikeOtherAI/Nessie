@@ -1717,6 +1717,7 @@ model Agent {
   model                          String?                         @map("model")
   routingProfileId               String?                         @map("routing_profile_id") @db.Uuid
   avatarAttachmentId             String?                         @map("avatar_attachment_id") @db.Uuid
+  avatarBackgroundColor          String?                         @map("avatar_background_color")
   parentAgentId                  String?                         @map("parent_agent_id") @db.Uuid
   /// Intentionally nullable and without an Organization FK: system / personal-
   /// assistant agents may be global (no owning org). Do not "fix" to required.

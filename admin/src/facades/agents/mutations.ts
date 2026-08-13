@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AgentRunLimits } from '@nessie/schemas'
+import type { AgentAvatarBackgroundColor, AgentRunLimits } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -9,6 +9,7 @@ export const useCreateAgent = () => {
 
   return useMutation({
     mutationFn: (input: {
+      avatarAttachmentId?: string
       effort?: 'low' | 'medium' | 'high' | 'xhigh'
       model?: string
       name: string
@@ -58,12 +59,38 @@ export const useUpdateAgentAvatar = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { agentId: string; avatarAttachmentId: string | null }) =>
+    mutationFn: (input: {
+      agentId: string
+      avatarAttachmentId: string | null
+      avatarBackgroundColor?: AgentAvatarBackgroundColor
+    }) =>
       apiClient.patch<AgentRecord>(`/api/agents/${input.agentId}/avatar`, {
         avatarAttachmentId: input.avatarAttachmentId,
+        ...(input.avatarBackgroundColor
+          ? { avatarBackgroundColor: input.avatarBackgroundColor }
+          : {}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
+export const useGenerateAgentAvatar = () => {
+  const apiClient = useApiClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      agentId: string
+      name?: string
+      role?: string
+      systemPrompt?: string
+    }) => {
+      const { agentId, ...body } = input
+      return apiClient.post<{
+        avatarAttachmentId: string
+        avatarBackgroundColor: AgentAvatarBackgroundColor
+      }>(`/api/agents/${agentId}/avatar/generate`, body)
     },
   })
 }

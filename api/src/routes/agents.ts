@@ -5,10 +5,16 @@ import {
   AgentRecordSchema,
   CreateAgentBindingBodySchema,
   CreateAgentBodySchema,
+  GenerateAgentAvatarBodySchema,
+  GeneratedAgentAvatarSchema,
   UpdateAgentBodySchema,
   UpdateAgentAvatarBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import {
+  AgentAvatarGenerationError,
+  generateAgentAvatar,
+} from '../services/agent-avatar-generation.js'
 import { updateAgentAvatar } from '../services/agent-avatars.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import {
@@ -23,20 +29,49 @@ import {
   loadRunToolCalls,
   unbindAgentFromChannel,
   updateAgentRecord,
+  validateAgentCreateInput,
 } from '../services/agents.js'
 import { enqueueInvitedAgentMentionReplay } from '../services/agent-invite-reply.js'
 import {
   assertLedgerAgentModelSelection,
   ledgerAgentModelCatalogRequestHeaders,
   listLedgerAgentModels,
+  randomAgentAvatarBackgroundColor,
 } from '@nessie/workspace-admin'
 import { checkPolicy } from '../services/policy.js'
 import {
   sendAgentManagementError,
+  sendAgentAvatarGenerationError,
   sendAgentModelCatalogError,
   sendProtectedPolicyError,
 } from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
+
+const validateAgentAvatarAttachment = async (input: {
+  actorContext: NonNullable<ReturnType<RouteDeps['requireActorContext']>>
+  attachmentId: string
+  deps: Pick<RouteDeps, 'prisma'>
+  reply: Parameters<typeof sendApiError>[0]
+}): Promise<boolean> => {
+  const attachment = await input.deps.prisma.attachment.findUnique({
+    where: { id: input.attachmentId },
+  })
+  if (
+    !attachment
+    || !(await canAccessAttachment(input.deps.prisma, attachment, {
+      organizationId: input.actorContext.tenant.organizationId,
+      userId: input.actorContext.actor.actorId,
+    }))
+  ) {
+    sendApiError(input.reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
+    return false
+  }
+  if (attachment.kind !== 'image') {
+    sendApiError(input.reply, 400, 'INVALID_AVATAR', 'Avatar must be an image')
+    return false
+  }
+  return true
+}
 
 export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -97,8 +132,26 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
+    if (
+      body.avatarAttachmentId
+      && !(await validateAgentAvatarAttachment({
+        actorContext,
+        attachmentId: body.avatarAttachmentId,
+        deps,
+        reply,
+      }))
+    ) {
+      return reply
+    }
+
     let agent
     try {
+      // Validate before a missing avatar triggers billed prompt/image calls.
+      await validateAgentCreateInput(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        parentAgentId: body.parentAgentId,
+        toolPolicy: body.toolPolicy,
+      })
       if (body.model !== undefined || body.provider !== undefined) {
         await assertLedgerAgentModelSelection({
           config: deps.config.model,
@@ -111,7 +164,27 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
           }),
         })
       }
+      let generatedAvatar
+      if (!body.avatarAttachmentId) {
+        if (!deps.sharedModelClient) {
+          throw new AgentAvatarGenerationError('The model service is not configured.')
+        }
+        generatedAvatar = await generateAgentAvatar({
+          actorContext,
+          agent: {
+            name: body.name,
+            role: body.role ?? 'assistant',
+            systemPrompt: body.systemPrompt,
+          },
+          config: deps.config.model,
+          fileService: deps.fileService,
+          ledgerIdentity: deps.ledgerIdentity,
+          modelClient: deps.sharedModelClient,
+        })
+      }
       agent = await createAgentRecord(prisma, {
+        avatarAttachmentId: body.avatarAttachmentId ?? generatedAvatar?.avatarAttachmentId,
+        avatarBackgroundColor: generatedAvatar?.avatarBackgroundColor,
         effort: body.effort,
         model: body.model,
         name: body.name,
@@ -129,6 +202,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       if (sendProtectedPolicyError(reply, error)) return reply
       if (sendAgentManagementError(reply, error)) return reply
       if (sendAgentModelCatalogError(reply, error)) return reply
+      if (sendAgentAvatarGenerationError(reply, error)) return reply
       throw error
     }
 
@@ -229,33 +303,75 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    if (body.avatarAttachmentId) {
-      const attachment = await prisma.attachment.findUnique({
-        where: { id: body.avatarAttachmentId },
-      })
-      if (
-        !attachment ||
-        !(await canAccessAttachment(prisma, attachment, {
-          organizationId: actorContext.tenant.organizationId,
-          userId: actorContext.actor.actorId,
-        }))
-      ) {
-        sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
-        return reply
-      }
-      if (attachment.kind !== 'image') {
-        sendApiError(reply, 400, 'INVALID_AVATAR', 'Avatar must be an image')
-        return reply
-      }
+    if (
+      body.avatarAttachmentId
+      && !(await validateAgentAvatarAttachment({
+        actorContext,
+        attachmentId: body.avatarAttachmentId,
+        deps,
+        reply,
+      }))
+    ) {
+      return reply
     }
 
-    const agent = await updateAgentAvatar(prisma, agentId, body.avatarAttachmentId)
+    const agent = await updateAgentAvatar(
+      prisma,
+      agentId,
+      body.avatarAttachmentId,
+      body.avatarAttachmentId
+        ? body.avatarBackgroundColor ?? randomAgentAvatarBackgroundColor()
+        : body.avatarBackgroundColor,
+    )
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
     }
 
     return createApiResponse(AgentRecordSchema.parse(agent))
+  })
+
+  app.post('/api/agents/:agentId/avatar/generate', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+
+    const body = parseInput(GenerateAgentAvatarBodySchema, request.body ?? {}, reply)
+    if (!body) return reply
+
+    const { agentId } = request.params as { agentId: string }
+    const existingAgent = await prisma.agent.findFirst({
+      where: { id: agentId, organizationId: actorContext.tenant.organizationId },
+      select: { id: true, name: true, role: true, systemPrompt: true },
+    })
+    if (!existingAgent || !(await isAgentAccessibleToActor(actorContext, agentId))) {
+      sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
+      return reply
+    }
+    if (!requireOwner(actorContext, reply)) return reply
+    if (!deps.sharedModelClient) {
+      sendApiError(reply, 503, 'AGENT_AVATAR_GENERATION_UNAVAILABLE', 'The model service is not configured')
+      return reply
+    }
+
+    try {
+      const generated = await generateAgentAvatar({
+        actorContext,
+        agent: {
+          id: existingAgent.id,
+          name: body.name ?? existingAgent.name,
+          role: body.role ?? existingAgent.role,
+          systemPrompt: body.systemPrompt ?? existingAgent.systemPrompt,
+        },
+        config: deps.config.model,
+        fileService: deps.fileService,
+        ledgerIdentity: deps.ledgerIdentity,
+        modelClient: deps.sharedModelClient,
+      })
+      return createApiResponse(GeneratedAgentAvatarSchema.parse(generated))
+    } catch (error) {
+      if (sendAgentAvatarGenerationError(reply, error)) return reply
+      throw error
+    }
   })
 
   app.post('/api/agents/:agentId/bindings', async (request, reply) => {

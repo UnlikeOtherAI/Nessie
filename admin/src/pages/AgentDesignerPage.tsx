@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   useLocation,
   useNavigate,
@@ -6,6 +6,7 @@ import {
   useSearchParams,
 } from 'react-router-dom'
 import { AgentAvatarPanel } from '../components/features/agents/AgentAvatarPanel'
+import { AgentAvatarDraftPanel } from '../components/features/agents/AgentAvatarDraftPanel'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
 import {
@@ -92,6 +93,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
   }, [editingAgent])
 
   const { actions, state } = useAgentDesigner(initialState, modelOptions)
+  const [avatarAttachmentId, setAvatarAttachmentId] = useState<string | undefined>()
 
   // A new agent cannot be saved without a model, and the Design Assistant may
   // never be asked to pick one. Lead with the catalogue's first entry — Ledger
@@ -178,6 +180,7 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
       })
     } else {
       await createAgent.mutateAsync({
+        avatarAttachmentId,
         effort: state.effort,
         name: state.name.trim(),
         role: state.role.trim() || 'assistant',
@@ -238,7 +241,23 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
         {/* Form panel */}
         <div className="min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)] p-5 lg:flex-[7] lg:border-b-0 lg:border-r">
           <div className="grid gap-5">
-            {editingAgent ? <AgentAvatarPanel agent={editingAgent} /> : null}
+            {editingAgent ? (
+              <AgentAvatarPanel
+                agent={editingAgent}
+                avatarContext={{
+                  name: state.name,
+                  role: state.role.trim() || 'assistant',
+                  systemPrompt: state.systemPrompt,
+                }}
+              />
+            ) : (
+              <AgentAvatarDraftPanel
+                avatarAttachmentId={avatarAttachmentId}
+                name={state.name}
+                onAvatarAttachmentChange={setAvatarAttachmentId}
+                role={state.role.trim() || 'assistant'}
+              />
+            )}
             <AgentDesignerForm
               actions={actions}
               canManageExplicitTools={isOwner}

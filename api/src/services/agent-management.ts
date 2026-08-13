@@ -1,5 +1,8 @@
 import type { PrismaClient } from '@prisma/client'
-import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
+import type {
+  AgentEffort,
+  AgentRunLimits,
+} from '@nessie/schemas'
 import {
   acquireAgentToolPolicyLock,
   AGENT_MANAGEMENT_ERROR_CODES,
@@ -10,9 +13,11 @@ import {
   listAgentsForUser,
   mapAgentRecord,
   mergeGenericAgentToolPolicy,
+  randomAgentAvatarBackgroundColor,
   readAgentRunLimits,
   runLimitsWriteValue,
   stripProtectedAgentToolPolicy,
+  validateAgentCreateInput,
 } from '@nessie/workspace-admin'
 
 import type { AgentRecord } from '../contracts.js'
@@ -25,6 +30,7 @@ export {
   AgentManagementError,
   createAgentRecord,
   listAgentsForUser,
+  validateAgentCreateInput,
 }
 
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
@@ -162,6 +168,7 @@ export const cloneAgentRecord = async (
   const agent = await prisma.agent.create({
     data: {
       agentKind: 'shared',
+      avatarBackgroundColor: randomAgentAvatarBackgroundColor(),
       delegationMode: 'none',
       effort: source.effort,
       model: source.model,

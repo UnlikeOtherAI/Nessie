@@ -1,5 +1,13 @@
+import { randomInt } from 'node:crypto'
+
 import { Prisma, type PrismaClient } from '@prisma/client'
-import type { AgentEffort, AgentRecord, AgentRunLimits } from '@nessie/schemas'
+import {
+  AGENT_AVATAR_BACKGROUND_COLORS,
+  type AgentAvatarBackgroundColor,
+  type AgentEffort,
+  type AgentRecord,
+  type AgentRunLimits,
+} from '@nessie/schemas'
 
 import { assertGenericAgentToolPolicyInput } from './agent-tool-policy-core.js'
 import { mapAgentRecord } from './agent-record.js'
@@ -17,6 +25,11 @@ export const runLimitsWriteValue = (
 const PERSONAL_ASSISTANT_AGENT_KIND = 'personal_assistant' as const
 const PERSONAL_ASSISTANT_SURFACE_POLICY = 'dm_only' as const
 const PERSONAL_ASSISTANT_DELEGATION_MODE = 'act_as_requesting_user' as const
+
+export const randomAgentAvatarBackgroundColor = (): AgentAvatarBackgroundColor =>
+  AGENT_AVATAR_BACKGROUND_COLORS[
+    randomInt(AGENT_AVATAR_BACKGROUND_COLORS.length)
+  ]!
 
 export const AGENT_MANAGEMENT_ERROR_CODES = {
   ORGANIZATION_REQUIRED: 'AGENT_ORGANIZATION_REQUIRED',
@@ -65,41 +78,37 @@ export const agentRecordInclude = {
  * record the Agent Designer would have written — including the refusal of
  * personal-assistant provenance and of protected tool-policy keys.
  */
-export const createAgentRecord = async (
+export type CreateAgentRecordInput = {
+  agentKind?: 'personal_assistant' | 'shared'
+  avatarAttachmentId?: string
+  avatarBackgroundColor?: AgentAvatarBackgroundColor
+  effort?: AgentEffort
+  model?: string
+  name: string
+  organizationId: string
+  parentAgentId?: string
+  projectId?: string
+  provider?: string
+  role: string
+  runLimits?: AgentRunLimits | null
+  surfacePolicy?: 'dm_only' | 'shared'
+  systemPrompt?: string
+  systemManaged?: boolean
+  delegationMode?: 'act_as_requesting_user' | 'none'
+  teamId?: string
+  toolPolicy?: Record<string, boolean>
+}
+
+/** Validate creation before a route spends on optional follow-on work. */
+export const validateAgentCreateInput = async (
   prisma: PrismaClient,
-  input: {
-    agentKind?: 'personal_assistant' | 'shared'
-    effort?: AgentEffort
-    model?: string
-    name: string
-    organizationId: string
-    parentAgentId?: string
-    projectId?: string
-    provider?: string
-    role: string
-    runLimits?: AgentRunLimits | null
-    surfacePolicy?: 'dm_only' | 'shared'
-    systemPrompt?: string
-    systemManaged?: boolean
-    delegationMode?: 'act_as_requesting_user' | 'none'
-    teamId?: string
-    toolPolicy?: Record<string, boolean>
-  },
-): Promise<AgentRecord> => {
+  input: Pick<CreateAgentRecordInput, 'organizationId' | 'parentAgentId' | 'toolPolicy'>,
+): Promise<void> => {
   if (!input.organizationId) {
     throw new AgentManagementError(
       AGENT_MANAGEMENT_ERROR_CODES.ORGANIZATION_REQUIRED,
       'Shared agents require an organization.',
     )
-  }
-
-  if (
-    input.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
-    || input.systemManaged === true
-    || input.surfacePolicy === PERSONAL_ASSISTANT_SURFACE_POLICY
-    || input.delegationMode === PERSONAL_ASSISTANT_DELEGATION_MODE
-  ) {
-    throw new Error('PERSONAL_ASSISTANT_CREATE_REQUIRES_BOOTSTRAP')
   }
 
   if (input.parentAgentId) {
@@ -120,10 +129,28 @@ export const createAgentRecord = async (
   }
 
   await assertGenericAgentToolPolicyInput(prisma, input.toolPolicy)
+}
+
+export const createAgentRecord = async (
+  prisma: PrismaClient,
+  input: CreateAgentRecordInput,
+): Promise<AgentRecord> => {
+  if (
+    input.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
+    || input.systemManaged === true
+    || input.surfacePolicy === PERSONAL_ASSISTANT_SURFACE_POLICY
+    || input.delegationMode === PERSONAL_ASSISTANT_DELEGATION_MODE
+  ) {
+    throw new Error('PERSONAL_ASSISTANT_CREATE_REQUIRES_BOOTSTRAP')
+  }
+
+  await validateAgentCreateInput(prisma, input)
 
   const agent = await prisma.agent.create({
     data: {
       agentKind: 'shared',
+      avatarAttachmentId: input.avatarAttachmentId,
+      avatarBackgroundColor: input.avatarBackgroundColor ?? randomAgentAvatarBackgroundColor(),
       delegationMode: 'none',
       effort: input.effort ?? 'medium',
       model: input.model,

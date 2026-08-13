@@ -385,7 +385,8 @@ Rules:
 
 `GET /api/agents`, `POST /api/agents`, `PUT /api/agents/{agentId}`, and
 `PATCH /api/agents/{agentId}/avatar` return `ApiResponse<AgentRecord>` or
-`ApiResponse<AgentRecord[]>` depending on the route.
+`ApiResponse<AgentRecord[]>` depending on the route. `POST
+/api/agents/{agentId}/avatar/generate` returns a private replacement preview.
 
 ```ts
 type AgentRecord = {
@@ -398,6 +399,7 @@ type AgentRecord = {
   surfacePolicy: 'dm_only' | 'shared';
   delegationMode: 'act_as_requesting_user' | 'none';
   avatarAttachmentId?: string | null;
+  avatarBackgroundColor?: string;
   channelIds: ChannelId[];
   createdAt: string;
   updatedAt: string;
@@ -406,7 +408,15 @@ type AgentRecord = {
 
 Rules:
 
-- `avatarAttachmentId` is a custom uploaded image served through attachments
+- `avatarAttachmentId` is an uploaded or Ledger-generated image served through
+  attachments; a generated preview remains private until an owner confirms it
+  through the avatar PATCH route
+- creating an agent without `avatarAttachmentId` generates a cartoon headshot
+  through Ledger's OpenAI `image-2` endpoint; a text model first turns the
+  agent's name, role, and purpose into the image prompt
+- `avatarBackgroundColor` is a persisted random pastel from the fixed palette;
+  it also sits behind transparent uploaded images and keeps every avatar surface
+  visually consistent
 - clients resolve the attachment when present and fall back to the generated agent glyph when absent or not yet loaded
 - avatar uploads must use an attachment visible to the acting user in the same organization
 - generic shared agents always belong to the active organization; list,

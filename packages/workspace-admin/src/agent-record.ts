@@ -1,6 +1,12 @@
 import type { Prisma } from '@prisma/client'
-import type { AgentEffort, AgentRecord, AgentRunLimits } from '@nessie/schemas'
+import type {
+  AgentAvatarBackgroundColor,
+  AgentEffort,
+  AgentRecord,
+  AgentRunLimits,
+} from '@nessie/schemas'
 import {
+  AgentAvatarBackgroundColorSchema,
   AgentRunLimitsSchema,
   parseAgentId,
   parseChannelId,
@@ -52,6 +58,13 @@ const toToolPolicyRecord = (
   return Object.keys(policy).length > 0 ? policy : undefined
 }
 
+const readAgentAvatarBackgroundColor = (
+  value: string | null | undefined,
+): AgentAvatarBackgroundColor | undefined => {
+  const parsed = AgentAvatarBackgroundColorSchema.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
+
 /**
  * Read the stored `Agent.runLimits` JSON back through the shared schema. A row
  * written before the column existed (or hand-edited into a shape the contract
@@ -70,6 +83,7 @@ export const mapAgentRecord = (agent: {
   createdAt: Date
   id: string
   avatarAttachmentId: string | null
+  avatarBackgroundColor?: string | null
   messages?: Array<{ createdAt: Date }>
   name: string
   parentAgentId: string | null
@@ -136,6 +150,7 @@ export const mapAgentRecord = (agent: {
     runLimits: readAgentRunLimits(agent.runLimits) ?? undefined,
     toolPolicy: toToolPolicyRecord(agent.toolPolicy),
     avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
+    avatarBackgroundColor: readAgentAvatarBackgroundColor(agent.avatarBackgroundColor),
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
     channelIds: agent.bindings.map((binding) =>

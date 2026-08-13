@@ -8,6 +8,16 @@ import {
   AGENT_TOOL_POLICY_ERROR_CODES,
   AgentToolPolicyError,
 } from '../services/agent-tool-policy.js'
+import { AgentAvatarGenerationError } from '../services/agent-avatar-generation.js'
+
+export const sendAgentAvatarGenerationError = (
+  reply: Parameters<typeof sendApiError>[0],
+  error: unknown,
+): boolean => {
+  if (!(error instanceof AgentAvatarGenerationError)) return false
+  sendApiError(reply, 503, 'AGENT_AVATAR_GENERATION_UNAVAILABLE', error.message)
+  return true
+}
 
 export const sendProtectedPolicyError = (
   reply: Parameters<typeof sendApiError>[0],

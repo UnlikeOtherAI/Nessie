@@ -13,6 +13,7 @@ export {
   useBindAgent,
   useCloneAgent,
   useCreateAgent,
+  useGenerateAgentAvatar,
   useUnbindAgent,
   useUpdateAgent,
   useUpdateAgentAvatar,

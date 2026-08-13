@@ -62,6 +62,26 @@ export const ChannelRecordSchema = z.object({
 })
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
 
+// A deliberately small palette keeps agent portraits recognisable at a glance
+// without turning their backgrounds into a second identity-setting surface.
+export const AGENT_AVATAR_BACKGROUND_COLORS = [
+  '#F8D7DA',
+  '#FCE1C3',
+  '#F9EDB7',
+  '#D9F0D3',
+  '#CDEDE7',
+  '#D5E8FA',
+  '#E1D8FA',
+  '#F3D7EB',
+] as const
+
+export const AgentAvatarBackgroundColorSchema = z.enum(
+  AGENT_AVATAR_BACKGROUND_COLORS,
+)
+export type AgentAvatarBackgroundColor = z.infer<
+  typeof AgentAvatarBackgroundColorSchema
+>
+
 export const AgentRecordSchema = z.object({
   id: AgentIdSchema,
   name: NonEmptyStringSchema,
@@ -86,6 +106,7 @@ export const AgentRecordSchema = z.object({
   runLimits: AgentRunLimitsSchema.optional(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
+  avatarBackgroundColor: AgentAvatarBackgroundColorSchema.optional(),
   routingProfileId: z.string().uuid().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,

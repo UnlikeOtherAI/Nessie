@@ -1,4 +1,9 @@
-import type { AgentRunLimits, AgentStatusResponse, MeResponse } from '@nessie/schemas'
+import type {
+  AgentAvatarBackgroundColor,
+  AgentRunLimits,
+  AgentStatusResponse,
+  MeResponse,
+} from '@nessie/schemas'
 
 export type AuthProviderDescriptor = {
   autoRedirect: boolean
@@ -96,6 +101,7 @@ export type CallRecord = {
 
 export type AgentRecord = {
   avatarAttachmentId?: string | null
+  avatarBackgroundColor?: AgentAvatarBackgroundColor | null
   channelIds: string[]
   createdAt: string
   currentRunId?: string

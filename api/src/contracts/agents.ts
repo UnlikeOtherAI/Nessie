@@ -1,4 +1,5 @@
 import {
+  AgentAvatarBackgroundColorSchema,
   AgentEffortSchema,
   AgentRecordSchema,
   AgentRunLimitsSchema,
@@ -22,6 +23,7 @@ export { AgentRecordSchema }
 // protected tool-policy key): omit it to leave the stored value untouched, send
 // an object to replace it, send `null` to clear every explicit limit.
 export const CreateAgentBodySchema = z.object({
+  avatarAttachmentId: z.string().uuid().optional(),
   name: NonEmptyStringSchema,
   role: NonEmptyStringSchema.optional(),
   systemPrompt: z.string().optional(),
@@ -47,6 +49,22 @@ export const UpdateAgentBodySchema = z.object({
 
 export const UpdateAgentAvatarBodySchema = z.object({
   avatarAttachmentId: z.string().uuid().nullable(),
+  avatarBackgroundColor: AgentAvatarBackgroundColorSchema.optional(),
+})
+
+// The image is stored as a normal private attachment. It becomes visible to
+// the wider workspace only after the owner confirms it as the agent's avatar.
+export const GeneratedAgentAvatarSchema = z.object({
+  avatarAttachmentId: z.string().uuid(),
+  avatarBackgroundColor: AgentAvatarBackgroundColorSchema,
+})
+
+// Draft fields are accepted for regeneration so the preview can reflect edits
+// still open in Agent Designer. They never update the agent themselves.
+export const GenerateAgentAvatarBodySchema = z.object({
+  name: NonEmptyStringSchema.optional(),
+  role: NonEmptyStringSchema.optional(),
+  systemPrompt: z.string().optional(),
 })
 
 export const CreateAgentBindingBodySchema = z.object({
