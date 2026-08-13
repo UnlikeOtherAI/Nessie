@@ -61,10 +61,6 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
         nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
-      <div className="flex h-[50px] items-center px-4">
-        <span className="text-[15px] font-bold text-[color:var(--tx)]">Projects</span>
-      </div>
-
       <nav className="min-h-0 flex-1 overflow-y-auto py-1">
         <SidebarMenuSection
           action={

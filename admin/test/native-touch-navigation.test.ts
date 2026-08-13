@@ -36,6 +36,16 @@ test('project folder rows become bold only in the touch sidebar', () => {
   assert.match(starred, /admin-sb-item sidebar-project-tile group/)
 })
 
+test('secondary sidebar menus do not repeat the active tab title above their items', () => {
+  const projects = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
+  const knowledge = readSource('../src/layouts/admin-shell/KnowledgeSidebarNav.tsx')
+  const admin = readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx')
+
+  assert.doesNotMatch(projects, /text-\[15px\] font-bold text-\[color:var\(--tx\)\]">Projects<\/span>/)
+  assert.doesNotMatch(knowledge, /text-\[15px\] font-bold text-\[color:var\(--tx\)\]">Knowledge<\/span>/)
+  assert.doesNotMatch(admin, /text-\[15px\] font-bold text-\[color:var\(--tx\)\]">Admin<\/span>/)
+})
+
 test('avatar tiles are rounded squares and touch navigation uses sidebar-coloured presence cutouts', () => {
   const people = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
   const starred = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')

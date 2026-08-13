@@ -463,9 +463,6 @@ export const AdminSidebarNav = ({
         nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
-      <div className="flex h-[50px] items-center px-4">
-        <span className="text-[15px] font-bold text-[color:var(--tx)]">Admin</span>
-      </div>
       <nav className="min-h-0 flex-1 overflow-y-auto py-1">
         {groupsWithBadges.map((group) => (
           <AdminNavSection

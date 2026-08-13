@@ -48,10 +48,6 @@ export const KnowledgeSidebarNav = () => {
         nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
-      <div className="flex h-[50px] flex-shrink-0 items-center px-4">
-        <span className="text-[15px] font-bold text-[color:var(--tx)]">Knowledge</span>
-      </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {myDocsSpace ? (
           <div className="border-b border-[color:var(--sep)] pb-1">
