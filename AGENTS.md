@@ -168,7 +168,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   deliberately independent implementations and the save asserts they agree —
   never collapse them into one, or the check becomes a restatement. An
   ambiguous anchor is skipped in the preview and refused in words at save.
-  Spec: `docs/plans/2026-08-13-live-document-streaming.md`.
+  Spec: `docs/plans/2026-08-13-live-document-streaming/overview.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and

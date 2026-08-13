@@ -4619,7 +4619,7 @@ model RateLimitBucket {
 }
 
 // ---------------------------------------------------------------------------
-// Live Data Dashboards (docs/plans/2026-08-13-live-data-dashboards.md)
+// Live Data Dashboards (docs/plans/2026-08-13-live-data-dashboards/overview.md)
 //
 // Tenancy note: `organizationId` carries a real FK on the two roots (Dashboard,
 // DashboardDataSource) and is a denormalized plain column on their children —
