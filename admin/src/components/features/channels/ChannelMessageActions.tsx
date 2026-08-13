@@ -8,18 +8,17 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
+  faCheck,
+  faCopy,
   faFaceSmile,
   faPen,
   faReply,
-  faThumbsUp,
   faTrashCan,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MessageReaction } from '../../../lib/api-client'
 import { EmojiPickerPanel } from '../../shared/EmojiPickerPanel'
 import { ReactionPills, type ResolveReactorName } from './ReactionPills'
-
-const THUMBS_UP = '\u{1F44D}'
 
 type ChannelMessageActionsProps = {
   canDelete: boolean
@@ -59,6 +58,8 @@ export const ChannelMessageActions = ({
 }: ChannelMessageActionsProps) => {
   const pickerId = useId()
   const pickerRef = useRef<HTMLDivElement>(null)
+  const copiedTimer = useRef<number | null>(null)
+  const [copied, setCopied] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
 
   useEffect(() => {
@@ -76,6 +77,15 @@ export const ChannelMessageActions = ({
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
   }, [pickerOpen])
 
+  useEffect(
+    () => () => {
+      if (copiedTimer.current !== null) {
+        window.clearTimeout(copiedTimer.current)
+      }
+    },
+    [],
+  )
+
   const addReaction = (emoji: string) => {
     onAddReaction(messageId, emoji)
     setPickerOpen(false)
@@ -86,6 +96,21 @@ export const ChannelMessageActions = ({
       event.stopPropagation()
       setPickerOpen(false)
     }
+  }
+
+  const copyMessage = () => {
+    void navigator.clipboard.writeText(content).then(
+      () => {
+        setCopied(true)
+        if (copiedTimer.current !== null) {
+          window.clearTimeout(copiedTimer.current)
+        }
+        copiedTimer.current = window.setTimeout(() => {
+          setCopied(false)
+        }, 1400)
+      },
+      () => undefined,
+    )
   }
 
   return (
@@ -105,13 +130,13 @@ export const ChannelMessageActions = ({
         onPointerDown={stopRowToggle}
       >
         <button
-          aria-label="Add thumbs up reaction"
+          aria-label={copied ? 'Message copied' : 'Copy message'}
           className="admin-msg-action-button"
-          onClick={() => addReaction(THUMBS_UP)}
-          title="Add thumbs up reaction"
+          onClick={copyMessage}
+          title={copied ? 'Copied' : 'Copy message'}
           type="button"
         >
-          <FontAwesomeIcon icon={faThumbsUp} />
+          <FontAwesomeIcon icon={copied ? faCheck : faCopy} />
         </button>
         <div className="relative" ref={pickerRef}>
           <button

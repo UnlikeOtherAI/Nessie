@@ -5,7 +5,6 @@ import type { PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import type { OptimisticMessage } from './channel-helpers'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
-import { ChatMessageCopyAction } from './ChatMessageCopyAction'
 import { StatusBadge } from './ChannelMessageRow'
 import { MessageMarkdown } from './MessageMarkdown'
 
@@ -28,66 +27,44 @@ export const OptimisticMessageRow = ({
   renderContent,
   token,
 }: OptimisticMessageRowProps) => (
-  <ChatMessageCopyAction content={entry.content}>
-    {({
-      copyAction,
-      onContextMenu,
-      onPointerCancel,
-      onPointerDown,
-      onPointerLeave,
-      onPointerMove,
-      onPointerUp,
-    }) => (
-      <article
-        className="admin-msg-row relative py-1"
-        data-testid="optimistic-message"
-        onContextMenu={onContextMenu}
-        onPointerCancel={onPointerCancel}
-        onPointerDown={onPointerDown}
-        onPointerLeave={onPointerLeave}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      >
-        <UserAvatar
-          avatarAttachmentId={meAvatar.avatarAttachmentId}
-          avatarUrl={meAvatar.avatarUrl}
-          displayName={meDisplayName}
-          gravatarUrl={meAvatar.gravatarUrl}
-          size={36}
-          token={token}
-          userId={meUserId}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-bold text-[var(--tx)]">{meDisplayName}</span>
-            <StatusBadge presence={getPresence(meUserId)} />
-            {entry.status === 'failed' ? (
-              <span
-                className={[
-                  'inline-flex items-center rounded px-1.5 py-0.5',
-                  'bg-[var(--danger-soft)] text-[11px] font-semibold text-[var(--danger-text)]',
-                ].join(' ')}
-              >
-                failed
-              </span>
-            ) : (
-              <span
-                className="inline-flex items-center gap-1 text-xs text-[color:var(--tx3)]"
-                title="Sending…"
-              >
-                sending
-                <span className="streaming-dot" />
-              </span>
-            )}
-          </div>
-          <div className="mt-0.5">
-            <MessageMarkdown renderInlineText={renderContent}>{entry.content}</MessageMarkdown>
-          </div>
-        </div>
-        {copyAction}
-      </article>
-    )}
-  </ChatMessageCopyAction>
+  <article className="admin-msg-row relative py-1" data-testid="optimistic-message">
+    <UserAvatar
+      avatarAttachmentId={meAvatar.avatarAttachmentId}
+      avatarUrl={meAvatar.avatarUrl}
+      displayName={meDisplayName}
+      gravatarUrl={meAvatar.gravatarUrl}
+      size={36}
+      token={token}
+      userId={meUserId}
+    />
+    <div className="min-w-0 flex-1">
+      <div className="flex items-baseline gap-2">
+        <span className="text-sm font-bold text-[var(--tx)]">{meDisplayName}</span>
+        <StatusBadge presence={getPresence(meUserId)} />
+        {entry.status === 'failed' ? (
+          <span
+            className={[
+              'inline-flex items-center rounded px-1.5 py-0.5',
+              'bg-[var(--danger-soft)] text-[11px] font-semibold text-[var(--danger-text)]',
+            ].join(' ')}
+          >
+            failed
+          </span>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-[color:var(--tx3)]"
+            title="Sending…"
+          >
+            sending
+            <span className="streaming-dot" />
+          </span>
+        )}
+      </div>
+      <div className="mt-0.5">
+        <MessageMarkdown renderInlineText={renderContent}>{entry.content}</MessageMarkdown>
+      </div>
+    </div>
+  </article>
 )
 
 type StreamingMessageRowProps = {
@@ -107,52 +84,31 @@ export const StreamingMessageRow = ({
   renderContent,
   token,
 }: StreamingMessageRowProps) => (
-  <ChatMessageCopyAction content={entry.content}>
-    {({
-      copyAction,
-      onContextMenu,
-      onPointerCancel,
-      onPointerDown,
-      onPointerLeave,
-      onPointerMove,
-      onPointerUp,
-    }) => (
-      <article
-        className="admin-msg-row relative py-1"
-        onContextMenu={onContextMenu}
-        onPointerCancel={onPointerCancel}
-        onPointerDown={onPointerDown}
-        onPointerLeave={onPointerLeave}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      >
-        <ChannelAgentGlyph agent={agent} token={token} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-bold text-[var(--tx)]">{displayName}</span>
-            <span
-              className={[
-                'inline-flex items-center rounded',
-                'bg-[var(--accent-soft)] px-2 py-0.5',
-                'text-[11px] font-semibold text-[var(--thinking)]',
-              ].join(' ')}
-            >
-              {isDedicatedAgentConversation ? 'thinking' : 'running'}
-            </span>
-          </div>
-          <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
-            <MessageMarkdown renderInlineText={renderContent}>
-              {entry.content
-                ? entry.content
-                : isDedicatedAgentConversation
-                  ? `${displayName} is thinking…`
-                  : '... thinking ...'}
-            </MessageMarkdown>
-            <span className="streaming-dot" />
-          </div>
-        </div>
-        {copyAction}
-      </article>
-    )}
-  </ChatMessageCopyAction>
+  <article className="admin-msg-row relative py-1">
+    <ChannelAgentGlyph agent={agent} token={token} />
+    <div className="min-w-0 flex-1">
+      <div className="flex items-baseline gap-2">
+        <span className="text-sm font-bold text-[var(--tx)]">{displayName}</span>
+        <span
+          className={[
+            'inline-flex items-center rounded',
+            'bg-[var(--accent-soft)] px-2 py-0.5',
+            'text-[11px] font-semibold text-[var(--thinking)]',
+          ].join(' ')}
+        >
+          {isDedicatedAgentConversation ? 'thinking' : 'running'}
+        </span>
+      </div>
+      <div className="mt-0.5 border-l-2 border-[var(--accent)] pl-3">
+        <MessageMarkdown renderInlineText={renderContent}>
+          {entry.content
+            ? entry.content
+            : isDedicatedAgentConversation
+              ? `${displayName} is thinking…`
+              : '... thinking ...'}
+        </MessageMarkdown>
+        <span className="streaming-dot" />
+      </div>
+    </div>
+  </article>
 )

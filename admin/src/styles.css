@@ -1380,33 +1380,6 @@ button.reaction-pill-active:focus-visible {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.admin-message-copy-action {
-  position: absolute;
-  right: 12px;
-  bottom: 4px;
-  z-index: 40;
-  border: 1px solid var(--sep);
-  border-radius: 10px;
-  background: var(--panel);
-  padding: 3px;
-  box-shadow: 0 8px 18px rgb(0 0 0 / 18%);
-}
-
-.admin-message-copy-button {
-  min-height: 44px;
-  border-radius: 7px;
-  padding: 0 12px;
-  color: var(--tx);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.admin-message-copy-button:hover,
-.admin-message-copy-button:focus-visible {
-  background: var(--overlay);
-  outline: none;
-}
-
 .admin-msg-actions {
   display: none;
   width: max-content;
@@ -1483,9 +1456,9 @@ button.reaction-pill-active:focus-visible {
 }
 
 @media (max-width: 1024px), (hover: none), (pointer: coarse), (any-pointer: coarse) {
-  /* Chat rows use an explicit long-press Copy action. Native selection would
-     conflict with reaction and message controls; knowledge and project text
-     never receives this class and remains selectable. */
+  /* Chat message controls are explicit. Native selection would conflict with
+     the tap-on-message action bar; knowledge and project text never receives
+     this class and remains selectable. */
   .admin-chat-surface,
   .admin-chat-feed {
     -webkit-touch-callout: none;
