@@ -10,15 +10,17 @@ import {
 } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
-  createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
+  createSessionMutationCoordinator,
   getAccessTokenRenewalDelayMs,
   type AuthSessionState,
   type BootstrapInput,
   type BootstrapModeResponse,
   type LoginInput,
   type SwitchContextInput,
+  type SwitchUoaWorkspaceInput,
 } from '@nessie/client-core'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   clearStoredToken,
   loadStoredToken,
@@ -42,6 +44,7 @@ type AuthSessionContextValue = {
   refreshSession: () => Promise<void>
   sessionState: AuthSessionState
   switchContext: (input: SwitchContextInput) => Promise<void>
+  switchUoaWorkspace: (input: SwitchUoaWorkspaceInput) => Promise<void>
   token: string | null
 }
 
@@ -66,6 +69,7 @@ const unregisterNativePushDevice = (): Promise<void> =>
 const authApi = createAuthSessionApi(getBaseUrl())
 
 export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
+  const queryClient = useQueryClient()
   const [sessionState, setSessionState] = useState<AuthSessionState>('loading')
   const [token, setToken] = useState<string | null>(() => loadStoredToken())
   // Session restoration is one lifecycle, not a side effect of token changes:
@@ -77,6 +81,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const applySession = useCallback((payload: { me: MeResponse; token: string }): void => {
     storeToken(payload.token)
+    tokenRef.current = payload.token
     setToken(payload.token)
     setMe(payload.me)
     setBootstrapState(null)
@@ -85,25 +90,26 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const clearSession = useCallback((): void => {
     clearStoredToken()
+    tokenRef.current = null
     setToken(null)
     setMe(null)
     setBootstrapState(null)
     setSessionState('unauthenticated')
   }, [])
 
-  // Startup restore and every API 401 share this exact coordinator. A refresh
-  // cookie is single-use, so no other path may call authApi.refresh directly.
-  // Only an explicit refresh 401 clears credentials; transient errors reject,
-  // leaving the stored token intact for the retry effects below.
-  const refreshAccessToken = useMemo(
+  // Startup restore, every API 401, and workspace switching share this exact
+  // coordinator. Both refresh cookies are single-use, so no other path may
+  // mutate the session concurrently or apply an older response afterwards.
+  const sessionMutations = useMemo(
     () =>
-      createAccessTokenRefreshCoordinator({
+      createSessionMutationCoordinator({
         applySession,
         clearSession,
         refresh: authApi.refresh,
       }),
     [applySession, clearSession],
   )
+  const refreshAccessToken = sessionMutations.refresh
 
   const refreshSession = useCallback(async (): Promise<void> => {
     setSessionState((current) => current === 'authenticated' ? current : 'loading')
@@ -271,7 +277,23 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   }
 
   const switchContext = async (input: SwitchContextInput): Promise<void> => {
-    applySession(await authApi.switchContext(token, input))
+    await sessionMutations.run(
+      () => authApi.switchContext(tokenRef.current, input),
+      async () => {
+        await queryClient.cancelQueries()
+        queryClient.clear()
+      },
+    )
+  }
+
+  const switchUoaWorkspace = async (input: SwitchUoaWorkspaceInput): Promise<void> => {
+    await sessionMutations.run(
+      () => authApi.switchUoaWorkspace(tokenRef.current, input),
+      async () => {
+        await queryClient.cancelQueries()
+        queryClient.clear()
+      },
+    )
   }
 
   const logout = async (): Promise<void> => {
@@ -295,6 +317,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       refreshSession,
       sessionState,
       switchContext,
+      switchUoaWorkspace,
       token,
     }),
     [bootstrapState, me, refreshAccessToken, refreshSession, sessionState, token],

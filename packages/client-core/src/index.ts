@@ -152,8 +152,10 @@ export {
 
 // Framework-neutral auth/session flows (token exchange, session shape).
 export {
+  AuthSessionApiError,
   createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
+  createSessionMutationCoordinator,
   getAccessTokenExpiresAtMs,
   getAccessTokenRenewalDelayMs,
   type AccessTokenRefreshCoordinator,
@@ -162,7 +164,9 @@ export {
   type BootstrapInput,
   type LoginInput,
   type SessionPayload,
+  type SessionMutationCoordinator,
   type SessionSnapshot,
   type SwitchContextInput,
+  type SwitchUoaWorkspaceInput,
   type TokenStore,
 } from './auth-session.js'

@@ -7,15 +7,15 @@ import { QueryProvider } from './QueryProvider'
 import { ThemeProvider } from './ThemeProvider'
 
 export const AppProvider = () => (
-  <AuthSessionProvider>
-    <ApiClientProvider>
-      <QueryProvider>
+  <QueryProvider>
+    <AuthSessionProvider>
+      <ApiClientProvider>
         <ThemeProvider>
           <FontScaleProvider>
             <RouterProvider router={router} />
           </FontScaleProvider>
         </ThemeProvider>
-      </QueryProvider>
-    </ApiClientProvider>
-  </AuthSessionProvider>
+      </ApiClientProvider>
+    </AuthSessionProvider>
+  </QueryProvider>
 )

@@ -152,7 +152,8 @@ its empty tab scenes can cover the sibling WKWebView with a black controller
 surface after login. Back, Forward, Recent Channels, Help, the destination tabs,
 and Search form one centred, theme-derived native control group. The signed-in
 person's SSO avatar is independently pinned at the trailing safe edge of the
-top bar. The active workspace's initial and name occupy the leading edge; in a
+top bar. The active workspace's public UOA picture (with initials as its failure
+fallback) and name occupy the leading edge; in a
 Stage Manager window that trigger first clears the system's leading window
 controls. If the remaining space is tight, the workspace trigger flexes before
 the centred group is reshuffled, reserving the avatar's space. That decision
@@ -164,6 +165,11 @@ a last resort. Tapping the workspace opens the web shell's existing workspace
 menu, while tapping the avatar opens the canonical web account menu (presence,
 status, settings, and logout), so neither native presentation forks the
 entitlement-aware web actions.
+Selecting an existing workspace stays inside the persistent WebView: the shared
+menu calls Nessie's server-authorized UOA workspace-switch route and atomically
+replaces the session. It does not open `ASWebAuthenticationSession`. Only
+**Add a workspace** (and an exceptional target that requires stronger sign-in
+verification) opens hosted UOA.
 The duplicate web header trigger is omitted on native iPad and iPhone shells.
 Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split

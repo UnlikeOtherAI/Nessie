@@ -96,6 +96,7 @@ const Shell = (): React.JSX.Element => {
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
   const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
   const [ipadWorkspaceName, setIpadWorkspaceName] = useState<string | null>(null)
+  const [nativeWorkspaceAvatarUrl, setNativeWorkspaceAvatarUrl] = useState<string | null>(null)
   const [phoneHeaderSurface, setPhoneHeaderSurface] = useState(DEFAULT_PHONE_HEADER_SURFACE)
   const [phoneHeaderText, setPhoneHeaderText] = useState(DEFAULT_PHONE_HEADER_TEXT)
   const [phoneText, setPhoneText] = useState(DEFAULT_PHONE_TEXT)
@@ -338,6 +339,11 @@ const Shell = (): React.JSX.Element => {
     }
     if (msg.type === 'nessie:workspace') {
       setIpadWorkspaceName(typeof msg.name === 'string' && msg.name.trim() ? msg.name : null)
+      setNativeWorkspaceAvatarUrl(
+        typeof msg.workspaceAvatarUrl === 'string' && msg.workspaceAvatarUrl.trim()
+          ? msg.workspaceAvatarUrl
+          : null,
+      )
       return
     }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
@@ -506,6 +512,7 @@ const Shell = (): React.JSX.Element => {
           sheetSurface={ipadChromeSurface}
           platform={IS_ANDROID ? 'android' : 'ios'}
           showCreationActions={showNativePhoneCreationActions}
+          workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
           workspaceName={ipadWorkspaceName}
         />
       ) : null}
@@ -526,6 +533,7 @@ const Shell = (): React.JSX.Element => {
           toolbarState={toolbarState}
           top={ipadChromeTop}
           windowWidth={windowWidth}
+          workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
           workspaceName={ipadWorkspaceName}
         />
       ) : null}

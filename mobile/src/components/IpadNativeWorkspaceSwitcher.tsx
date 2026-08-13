@@ -2,20 +2,21 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
+import { NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
 import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
 
 type IpadNativeWorkspaceSwitcherProps = {
   left: number
   maxWidth: number
   name: string
+  imageUrl: string | null
   onPress: () => void
   theme: IpadNativeChromeTheme
   top: number
 }
 
-const workspaceInitial = (name: string): string => [...name.trim()][0]?.toUpperCase() ?? 'W'
-
 export const IpadNativeWorkspaceSwitcher = ({
+  imageUrl,
   left,
   maxWidth,
   name,
@@ -36,11 +37,13 @@ export const IpadNativeWorkspaceSwitcher = ({
           pressed ? { backgroundColor: theme.pressedBackgroundColor } : null,
         ]}
       >
-        <View style={[styles.avatar, { backgroundColor: theme.activeBackgroundColor }]}>
-          <Text style={[styles.avatarLabel, { color: theme.activeTintColor }]}>
-            {workspaceInitial(name)}
-          </Text>
-        </View>
+        <NativeWorkspaceAvatar
+          backgroundColor={theme.activeBackgroundColor}
+          imageUrl={imageUrl}
+          label={name}
+          size={28}
+          textColor={theme.activeTintColor}
+        />
         <Text numberOfLines={1} style={[styles.name, { color: theme.inactiveTintColor }]}>
           {name}
         </Text>
@@ -51,17 +54,6 @@ export const IpadNativeWorkspaceSwitcher = ({
 )
 
 const styles = StyleSheet.create({
-  avatar: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-  },
-  avatarLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
   layer: {
     position: 'absolute',
     zIndex: 20,

@@ -38,6 +38,14 @@ export type SessionPayload = {
 
 export type AccessTokenRefreshCoordinator = () => Promise<string | null>
 
+export type SessionMutationCoordinator = {
+  refresh: AccessTokenRefreshCoordinator
+  run: (
+    mutation: () => Promise<SessionPayload>,
+    beforeApply?: () => Promise<void> | void,
+  ) => Promise<SessionPayload>
+}
+
 const MAX_SAFE_JWT_EXPIRY_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1_000)
 
 const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
@@ -92,46 +100,78 @@ export const getAccessTokenRenewalDelayMs = (
 }
 
 /**
- * Coordinate every access-token renewal in one process. Refresh-token rotation
- * is single-use, so startup restoration and concurrent API 401s must share the
- * same request. A null payload is an explicit authentication rejection; thrown
- * errors are transient and deliberately leave the current session untouched.
+ * Serialize every mutation of the renewable session — startup restoration,
+ * proactive renewal, API 401 recovery, and workspace switching. A rotating
+ * refresh cookie is single-use, so a refresh joins any in-flight mutation and
+ * explicit mutations wait their turn. A null payload is an authentication
+ * rejection; thrown errors deliberately leave the current session untouched.
  */
-export const createAccessTokenRefreshCoordinator = (input: {
+export const createSessionMutationCoordinator = (input: {
   applySession: (payload: SessionPayload) => void
   clearSession: () => void
   refresh: () => Promise<SessionPayload | null>
-}): AccessTokenRefreshCoordinator => {
-  let pending: Promise<string | null> | null = null
+}): SessionMutationCoordinator => {
+  let queue: Promise<void> | null = null
+  let latest: Promise<SessionPayload | null> | null = null
+  let latestToken: Promise<string | null> | null = null
 
-  return (): Promise<string | null> => {
-    if (pending) {
-      return pending
-    }
-
-    const run = (async (): Promise<string | null> => {
-      const payload = await input.refresh()
+  const enqueue = (
+    mutation: () => Promise<SessionPayload | null>,
+    beforeApply?: () => Promise<void> | void,
+  ): Promise<SessionPayload | null> => {
+    const execute = async (): Promise<SessionPayload | null> => {
+      const payload = await mutation()
       if (payload === null) {
         input.clearSession()
         return null
       }
-
+      await beforeApply?.()
       input.applySession(payload)
-      return payload.token
-    })()
-    pending = run
+      return payload
+    }
+    const run = queue ? queue.then(execute) : execute()
+    const nextQueue = run.then(() => undefined, () => undefined)
+    queue = nextQueue
+    latest = run
+    latestToken = run.then((payload) => payload?.token ?? null)
 
-    const clearPending = (): void => {
-      if (pending === run) {
-        pending = null
+    const clearLatest = (): void => {
+      if (queue === nextQueue) queue = null
+      if (latest === run) {
+        latest = null
+        latestToken = null
       }
     }
-    // Supply both handlers instead of `finally`: the promise returned by
-    // `finally` would itself reject and can become an unhandled rejection.
-    void run.then(clearPending, clearPending)
+    void run.then(clearLatest, clearLatest)
     return run
   }
+
+  const refresh = (): Promise<string | null> => {
+    // A refresh arriving while another session mutation is queued must join
+    // that mutation. Issuing a second request could otherwise apply an older
+    // access token after a workspace switch or race two single-use cookies.
+    if (latest && latestToken) return latestToken
+    void enqueue(input.refresh)
+    return latestToken as Promise<string | null>
+  }
+
+  const run = async (
+    mutation: () => Promise<SessionPayload>,
+    beforeApply?: () => Promise<void> | void,
+  ): Promise<SessionPayload> => {
+    const payload = await enqueue(mutation, beforeApply)
+    if (!payload) throw new Error('Session mutation returned no session.')
+    return payload
+  }
+
+  return { refresh, run }
 }
+
+export const createAccessTokenRefreshCoordinator = (input: {
+  applySession: (payload: SessionPayload) => void
+  clearSession: () => void
+  refresh: () => Promise<SessionPayload | null>
+}): AccessTokenRefreshCoordinator => createSessionMutationCoordinator(input).refresh
 
 // Re-scope the session to another workspace the user already belongs to. The
 // server re-validates membership of the full org/project/team triple.
@@ -139,6 +179,22 @@ export type SwitchContextInput = {
   organizationId: string
   projectId: string
   teamId: string
+}
+
+export type SwitchUoaWorkspaceInput = {
+  organizationId: string
+  teamId: string
+}
+
+export class AuthSessionApiError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string | undefined,
+    public readonly status: number,
+  ) {
+    super(message)
+    this.name = 'AuthSessionApiError'
+  }
 }
 
 // Result of fetching the current session: either an authenticated user, the
@@ -160,6 +216,11 @@ export type AuthSessionApi = {
   refresh: () => Promise<SessionPayload | null>
   // Switch the active workspace (org/project/team); returns the re-scoped session.
   switchContext: (token: string | null, input: SwitchContextInput) => Promise<SessionPayload>
+  // Switch a renewable UOA session without leaving Nessie.
+  switchUoaWorkspace: (
+    token: string | null,
+    input: SwitchUoaWorkspaceInput,
+  ) => Promise<SessionPayload>
 }
 
 const normaliseBaseUrl = (baseUrl: string): string => baseUrl.trim().replace(/\/$/, '')
@@ -169,16 +230,24 @@ const parseResponse = async <TData>(response: Response): Promise<TData> => {
   return payload.data
 }
 
-const parseApiError = async (response: Response): Promise<string> => {
+const parseApiError = async (response: Response): Promise<AuthSessionApiError> => {
   const text = await response.text()
   if (!text) {
-    return `${response.status} ${response.statusText}`
+    return new AuthSessionApiError(
+      `${response.status} ${response.statusText}`,
+      undefined,
+      response.status,
+    )
   }
   try {
     const payload = JSON.parse(text) as { error?: { code?: string; message?: string } }
-    return payload.error?.message ?? text
+    return new AuthSessionApiError(
+      payload.error?.message ?? text,
+      payload.error?.code,
+      response.status,
+    )
   } catch {
-    return text
+    return new AuthSessionApiError(text, undefined, response.status)
   }
 }
 
@@ -190,7 +259,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
       credentials: 'include',
     })
     if (!response.ok) {
-      throw new Error(await parseApiError(response))
+      throw await parseApiError(response)
     }
     return parseResponse<AuthProviderDescriptor[]>(response)
   }
@@ -229,7 +298,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
     })
 
     if (!response.ok) {
-      throw new Error(await parseApiError(response))
+      throw await parseApiError(response)
     }
 
     return parseResponse<SessionPayload>(response)
@@ -242,7 +311,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
         credentials: 'include',
       })
       if (!response.ok) {
-        throw new Error(await parseApiError(response))
+        throw await parseApiError(response)
       }
       return parseResponse<SessionPayload>(response)
     },
@@ -266,7 +335,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
         return null
       }
       if (!response.ok) {
-        throw new Error(await parseApiError(response))
+        throw await parseApiError(response)
       }
       return parseResponse<SessionPayload>(response)
     },
@@ -282,7 +351,22 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
         credentials: 'include',
       })
       if (!response.ok) {
-        throw new Error(await parseApiError(response))
+        throw await parseApiError(response)
+      }
+      return parseResponse<SessionPayload>(response)
+    },
+    switchUoaWorkspace: async (token, input) => {
+      const response = await fetch(`${resolvedBaseUrl}/api/auth/uoa/workspace`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(input),
+        credentials: 'include',
+      })
+      if (!response.ok) {
+        throw await parseApiError(response)
       }
       return parseResponse<SessionPayload>(response)
     },

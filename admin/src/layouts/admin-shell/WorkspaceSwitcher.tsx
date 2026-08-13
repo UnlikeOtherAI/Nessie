@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { faCheck, faPlus } from '@fortawesome/free-solid-svg-icons'
+import { faCheck, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { AuthSessionApiError } from '@nessie/client-core'
 import { useAuthProviders } from '../../facades/auth/hooks'
 import {
   groupWorkspacesByOrganization,
@@ -18,6 +19,7 @@ import {
   resolveWorkspaceMenuPosition,
   type WorkspaceMenuPosition,
 } from './workspace-menu-position'
+import { workspaceSwitchFailureMessage } from './workspace-switch-message'
 
 type NativeWorkspaceWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
@@ -29,7 +31,8 @@ type WorkspaceMenuProps = {
   workspaces: Workspace[]
   activeTeamId: string | null
   ssoProviderId: string | null
-  busy: boolean
+  busyTeamId: string | null
+  error: string | null
   token: string | null
   avatarRevision: number
   onSelect: (workspace: Workspace) => void
@@ -42,7 +45,8 @@ const WorkspaceMenu = ({
   workspaces,
   activeTeamId,
   ssoProviderId,
-  busy,
+  busyTeamId,
+  error,
   token,
   avatarRevision,
   onSelect,
@@ -117,14 +121,16 @@ const WorkspaceMenu = ({
             </div>
             {organization.workspaces.map((workspace) => {
               const isActive = workspace.active || workspace.teamId === activeTeamId
+              const isBusy = workspace.teamId === busyTeamId
               return (
                 <button
+                  aria-busy={isBusy}
                   aria-label={`${workspace.label}, ${organization.label}`}
                   className={[
                     'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors',
                     'hover:bg-[color:var(--overlay-weak)] disabled:opacity-60',
                   ].join(' ')}
-                  disabled={busy}
+                  disabled={busyTeamId !== null}
                   key={workspace.teamId}
                   onClick={() => onSelect(workspace)}
                   type="button"
@@ -140,7 +146,13 @@ const WorkspaceMenu = ({
                   <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
                     {workspace.label}
                   </span>
-                  {isActive ? (
+                  {isBusy ? (
+                    <FontAwesomeIcon
+                      className="h-3.5 w-3.5 text-[color:var(--accent)]"
+                      icon={faSpinner}
+                      spin
+                    />
+                  ) : isActive ? (
                     <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" icon={faCheck} />
                   ) : null}
                 </button>
@@ -148,6 +160,15 @@ const WorkspaceMenu = ({
             })}
           </section>
         ))}
+
+        {error ? (
+          <div
+            className="mx-2 my-2 rounded-lg bg-[color:var(--danger-soft)] px-2.5 py-2 text-xs text-[color:var(--danger-text)]"
+            role="alert"
+          >
+            {error}
+          </div>
+        ) : null}
 
         {ssoProviderId ? (
           <>
@@ -157,7 +178,7 @@ const WorkspaceMenu = ({
                 'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors',
                 'hover:bg-[color:var(--overlay-weak)] disabled:opacity-60',
               ].join(' ')}
-              disabled={busy}
+              disabled={busyTeamId !== null}
               onClick={() => onAddWorkspace(ssoProviderId)}
               type="button"
             >
@@ -181,8 +202,8 @@ const WorkspaceMenu = ({
 
 /**
  * Shared workspace switcher. Local sessions re-scope through
- * `switch-context`; UOA sessions use their saved directory and re-enter UOA
- * with `team_hint`, so local and signed UOA workspace scopes cannot drift.
+ * `switch-context`; renewable UOA sessions use a server-authorized in-app
+ * workspace switch, so local and signed UOA workspace scopes cannot drift.
  * The desktop rail and mobile web header render triggers; native iPad and
  * iPhone controls open this same menu. "Add a workspace" opens UOA's full
  * chooser.
@@ -192,7 +213,13 @@ type WorkspaceSwitcherProps = {
 }
 
 export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) => {
-  const { me, switchContext, token } = useAuthSession()
+  const {
+    me,
+    refreshAccessToken,
+    switchContext,
+    switchUoaWorkspace,
+    token,
+  } = useAuthSession()
   const { data: providers = [] } = useAuthProviders()
   const avatarRevision = useWorkspaceAvatarRevision()
   const { theme } = useTheme()
@@ -200,7 +227,8 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const buttonRef = useRef<HTMLButtonElement>(null)
   const nativeAnchorRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [busyTeamId, setBusyTeamId] = useState<string | null>(null)
+  const [switchError, setSwitchError] = useState<string | null>(null)
   const [nativeAnchorLeft, setNativeAnchorLeft] = useState(8)
 
   const workspaces = useMemo(() => workspacesFromMe(me), [me])
@@ -213,31 +241,54 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
     providers.find((provider) => provider.enabled && provider.type !== 'local-bootstrap')?.providerId ??
     null
 
+  const toggleMenu = (): void => {
+    if (busyTeamId !== null) return
+    setSwitchError(null)
+    setOpen((value) => !value)
+  }
+
+  const closeMenu = (): void => {
+    if (busyTeamId === null) setOpen(false)
+  }
+
   const handleSelect = async (workspace: Workspace): Promise<void> => {
     if (workspace.active || workspace.teamId === activeTeamId) {
       setOpen(false)
       return
     }
-    if (workspace.uoaWorkspace && ssoProviderId) {
-      setOpen(false)
-      void startExternalSignIn(
-        ssoProviderId,
-        resolveAppliedTheme(theme),
-        workspace.teamId,
-      )
-      return
-    }
-    setBusy(true)
+    setSwitchError(null)
+    setBusyTeamId(workspace.teamId)
     try {
-      await switchContext({
-        organizationId: workspace.organizationId,
-        projectId: workspace.projectId,
-        teamId: workspace.teamId,
-      })
+      if (workspace.uoaWorkspace) {
+        await switchUoaWorkspace({
+          organizationId: workspace.organizationId,
+          teamId: workspace.teamId,
+        })
+      } else {
+        await switchContext({
+          organizationId: workspace.organizationId,
+          projectId: workspace.projectId,
+          teamId: workspace.teamId,
+        })
+      }
       setOpen(false)
       void navigate('/channels', { replace: true })
+    } catch (error) {
+      const code = error instanceof AuthSessionApiError ? error.code : undefined
+      setSwitchError(workspaceSwitchFailureMessage({
+        code,
+        currentWorkspace: active?.label,
+        targetWorkspace: workspace.label,
+      }))
+      if (code === 'WORKSPACE_NOT_AVAILABLE') {
+        try {
+          await refreshAccessToken()
+        } catch {
+          // The original error remains actionable; renewal retries independently.
+        }
+      }
     } finally {
-      setBusy(false)
+      setBusyTeamId(null)
     }
   }
 
@@ -253,12 +304,12 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
       if (typeof left === 'number' && Number.isFinite(left)) {
         setNativeAnchorLeft(Math.max(8, left))
       }
-      setOpen((value) => !value)
+      toggleMenu()
     }
     return () => {
       delete target.__nessieToggleWorkspaceMenu
     }
-  }, [variant])
+  }, [busyTeamId, variant])
 
   useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return
@@ -266,9 +317,10 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
       JSON.stringify({
         name: active?.label ?? null,
         type: 'nessie:workspace',
+        workspaceAvatarUrl: active?.avatarImageUrl ?? null,
       }),
     )
-  }, [active?.label, variant])
+  }, [active?.avatarImageUrl, active?.label, variant])
 
   // The switcher is the rail's single workspace identity control, including
   // when there is currently only one workspace.
@@ -286,7 +338,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
             'mb-4 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
             open ? 'ring-2 ring-[color:var(--accent)]' : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
           ].join(' ')}
-          onClick={() => setOpen((value) => !value)}
+          onClick={toggleMenu}
           ref={buttonRef}
           title={active ? `Workspace: ${active.label}` : 'Switch workspace'}
           type="button"
@@ -305,12 +357,13 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
           aria-haspopup="menu"
           aria-label="Switch workspace"
           className="mobile-web-home-workspace"
-          onClick={() => setOpen((value) => !value)}
+          onClick={toggleMenu}
           ref={buttonRef}
           title={active ? `Workspace: ${active.label}` : 'Switch workspace'}
           type="button"
         >
           <WorkspaceAvatar
+            imageUrl={active?.avatarImageUrl}
             label={active?.label ?? 'Workspace'}
             revision={avatarRevision}
             size={36}
@@ -335,9 +388,10 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
           activeTeamId={activeTeamId}
           anchorRef={anchorRef}
           avatarRevision={avatarRevision}
-          busy={busy}
+          busyTeamId={busyTeamId}
+          error={switchError}
           onAddWorkspace={handleAddWorkspace}
-          onClose={() => setOpen(false)}
+          onClose={closeMenu}
           onSelect={handleSelect}
           ssoProviderId={ssoProviderId}
           token={token}

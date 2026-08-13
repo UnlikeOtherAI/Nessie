@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
+import { NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
 import { withOpacity } from '../lib/ipad-native-chrome'
 import {
   getNativePhoneBottomChromeClearance,
@@ -30,6 +31,7 @@ type NativePhoneConversationMenuChromeProps = {
   showCreationActions: boolean
   platform: 'android' | 'ios'
   onWorkspacePress: () => void
+  workspaceAvatarUrl: string | null
   workspaceName: string | null
 }
 
@@ -85,6 +87,7 @@ export const NativePhoneConversationMenuChrome = ({
   showCreationActions,
   platform,
   onWorkspacePress,
+  workspaceAvatarUrl,
   workspaceName,
 }: NativePhoneConversationMenuChromeProps): React.JSX.Element => {
   const [creationOpen, setCreationOpen] = useState(false)
@@ -165,9 +168,13 @@ export const NativePhoneConversationMenuChrome = ({
             pressed ? { backgroundColor: withOpacity(headerText, 0.14) } : null,
           ]}
         >
-          <View style={[styles.workspaceAvatar, { backgroundColor: withOpacity(accentColor, 0.45) }]}>
-            <Text style={[styles.workspaceInitial, { color: headerText }]}>{initial(workspaceName, 'W')}</Text>
-          </View>
+          <NativeWorkspaceAvatar
+            backgroundColor={withOpacity(accentColor, 0.45)}
+            imageUrl={workspaceAvatarUrl}
+            label={workspaceName ?? 'Workspace'}
+            size={30}
+            textColor={headerText}
+          />
           <Text numberOfLines={1} style={[styles.workspaceName, { color: headerText }]}>
             {workspaceName ?? 'Workspace'}
           </Text>
@@ -418,7 +425,5 @@ const styles = StyleSheet.create({
     maxWidth: '58%',
     paddingHorizontal: 4,
   },
-  workspaceAvatar: { alignItems: 'center', borderRadius: 15, height: 30, justifyContent: 'center', width: 30 },
-  workspaceInitial: { fontSize: 14, fontWeight: '700' },
   workspaceName: { flexShrink: 1, fontSize: 21, fontWeight: '700' },
 })

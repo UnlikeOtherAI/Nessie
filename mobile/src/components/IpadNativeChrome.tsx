@@ -35,6 +35,7 @@ type IpadNativeChromeProps = {
   toolbarState: ToolbarState
   top: number
   windowWidth: number
+  workspaceAvatarUrl: string | null
   workspaceName: string | null
 }
 
@@ -53,6 +54,7 @@ export const IpadNativeChrome = ({
   toolbarState,
   top,
   windowWidth,
+  workspaceAvatarUrl,
   workspaceName,
 }: IpadNativeChromeProps): React.JSX.Element => {
   const [chromeWidth, setChromeWidth] = useState(windowWidth)
@@ -131,6 +133,7 @@ export const IpadNativeChrome = ({
       </View>
       {workspaceName && layout.workspaceWidth !== null ? (
         <IpadNativeWorkspaceSwitcher
+          imageUrl={workspaceAvatarUrl}
           left={workspaceLeft}
           maxWidth={layout.workspaceWidth}
           name={workspaceName}
