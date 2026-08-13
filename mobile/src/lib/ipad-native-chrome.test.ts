@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
+  getIpadContentTop,
   getIpadToolbarLeft,
   getIpadWorkspaceWidth,
   IPAD_WINDOWED_CHROME_TOP,
@@ -33,6 +34,11 @@ test('positions controls to the leading side of the centred iPad tab bar', () =>
 test('places iPad chrome flush below the fullscreen safe area and centred in a window title bar', () => {
   assert.equal(getIpadChromeTop(24), 24)
   assert.equal(getIpadChromeTop(0), IPAD_WINDOWED_CHROME_TOP)
+})
+
+test('leaves twelve points between the iPad chrome and web content', () => {
+  assert.equal(getIpadContentTop(24), 78)
+  assert.equal(getIpadContentTop(IPAD_WINDOWED_CHROME_TOP), 66)
 })
 
 test('fits the workspace switcher before the leading controls without covering them', () => {

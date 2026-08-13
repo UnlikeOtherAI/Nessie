@@ -33,9 +33,9 @@ import { statusBarStyleForScheme } from './src/lib/status-bar'
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
+  getIpadContentTop,
   getIpadToolbarLeft,
   getIpadWorkspaceWidth,
-  IPAD_NATIVE_CHROME_HEIGHT,
   IPAD_NATIVE_CHROME_GAP,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
@@ -219,11 +219,11 @@ const Shell = (): React.JSX.Element => {
   }, [runScript])
 
   const openSearchOverlay = (): void => {
-    runScript('window.__nessieOpenSearchOverlay && window.__nessieOpenSearchOverlay();')
+    runScript("window.dispatchEvent(new Event('nessie:open-search-overlay'));")
   }
 
   const closeSearchOverlay = (): void => {
-    runScript('window.__nessieCloseSearchOverlay && window.__nessieCloseSearchOverlay();')
+    runScript("window.dispatchEvent(new Event('nessie:close-search-overlay'));")
   }
 
   const runToolbarAction = (action: ToolbarAction): void => {
@@ -374,7 +374,7 @@ const Shell = (): React.JSX.Element => {
   // gives its page content the top safe-area padding.
   const ipadChromeTop = getIpadChromeTop(insets.top)
   const topInset = IS_IPAD && showBar
-    ? ipadChromeTop + IPAD_NATIVE_CHROME_HEIGHT
+    ? getIpadContentTop(ipadChromeTop)
     : IS_ANDROID
       ? insets.top
       : 0
