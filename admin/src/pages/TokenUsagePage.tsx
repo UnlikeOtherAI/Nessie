@@ -13,17 +13,17 @@ import {
   billingCreditsKey,
   billingRecurringAddonsKey,
   billingStatementKey,
+  useUoaBillingCapability,
 } from '../facades/billing/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 export const TokenUsagePage = () => {
   const { me } = useAuthSession()
+  const billingCapability = useUoaBillingCapability()
   const location = useLocation()
   const queryClient = useQueryClient()
   const refreshedCheckoutLocation = useRef<string | null>(null)
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
-  const canReadStatement =
-    isOwner || (me?.user.roleIds.includes('admin') ?? false)
+  const canReadStatement = billingCapability.data?.canReadStatement === true
   const checkoutReturn = readUoaBillingCheckoutReturn(location.search)
   const checkoutNotice = checkoutReturn
     ? getUoaBillingCheckoutReturnNotice(checkoutReturn)
@@ -37,10 +37,12 @@ export const TokenUsagePage = () => {
       return
     }
     refreshedCheckoutLocation.current = location.key
+    const scope = billingCapability.data?.scope
+    if (!scope) return
     for (const queryKey of [
-      billingCreditsKey,
-      billingRecurringAddonsKey,
-      ...(canReadStatement ? [billingStatementKey] : []),
+      billingCreditsKey(scope),
+      billingRecurringAddonsKey(scope),
+      ...(canReadStatement ? [billingStatementKey(scope)] : []),
     ]) {
       void queryClient.refetchQueries({
         exact: true,
@@ -48,7 +50,7 @@ export const TokenUsagePage = () => {
         type: 'all',
       })
     }
-  }, [canReadStatement, checkoutReturn, location.key, queryClient])
+  }, [billingCapability.data?.scope, canReadStatement, checkoutReturn, location.key, queryClient])
 
   if (!me) {
     return (

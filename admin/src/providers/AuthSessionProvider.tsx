@@ -311,3 +311,7 @@ export const useAuthSession = (): AuthSessionContextValue => {
 
   return context
 }
+
+/** For read-only facades that can also render inside isolated component tests. */
+export const useOptionalAuthSession = (): AuthSessionContextValue | null =>
+  useContext(AuthSessionContext)

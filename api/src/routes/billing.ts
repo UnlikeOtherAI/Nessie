@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { getUoaBillingCapability } from '../services/uoa-billing-capability.js'
 import { UoaBillingError } from '../services/uoa-billing-client.js'
 import {
   confirmUoaBillingRecurringAddonCancellation,
@@ -44,17 +45,6 @@ const AddonCancellationConfirmSchema = z.object({
   choice: z.literal('cancel_addon'),
 }).strict()
 
-const requireBillingManager = (
-  roles: string[] | undefined,
-  reply: FastifyReply,
-): boolean => {
-  if (roles?.some((role) => role === 'owner' || role === 'admin')) {
-    return true
-  }
-  sendApiError(reply, 403, 'FORBIDDEN', 'Owner or admin access required')
-  return false
-}
-
 const sendBillingError = (
   reply: FastifyReply,
   error: unknown,
@@ -69,6 +59,21 @@ export const registerBillingRoutes = (
   deps: RouteDeps,
 ): void => {
   const { prisma, requireActorContext } = deps
+
+  app.get('/api/billing/capability', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    try {
+      reply.header('Cache-Control', 'private, no-store')
+      return createApiResponse(
+        await getUoaBillingCapability(prisma, actorContext),
+      )
+    } catch (error) {
+      const response = sendBillingError(reply, error)
+      if (response) return response
+      throw error
+    }
+  })
 
   app.get('/api/billing/credits', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -103,7 +108,6 @@ export const registerBillingRoutes = (
   app.post('/api/billing/credits/top-ups/:offerId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
     const params = parseInput(OfferParamsSchema, request.params, reply, 'params')
     if (!params) return reply
     if (!parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
@@ -128,7 +132,6 @@ export const registerBillingRoutes = (
     async (request, reply) => {
       const actorContext = requireActorContext(request, reply)
       if (!actorContext) return reply
-      if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
       const params = parseInput(OptionParamsSchema, request.params, reply, 'params')
       if (!params) return reply
       if (!parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
@@ -154,7 +157,6 @@ export const registerBillingRoutes = (
     async (request, reply) => {
       const actorContext = requireActorContext(request, reply)
       if (!actorContext) return reply
-      if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
       const params = parseInput(OptionParamsSchema, request.params, reply, 'params')
       if (!params) return reply
       if (!parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
@@ -179,7 +181,6 @@ export const registerBillingRoutes = (
   app.post('/api/billing/credits/auto-top-up/disable', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
     if (!parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
     try {
       await disableUoaBillingAutoTopUp(prisma, actorContext)
@@ -197,7 +198,6 @@ export const registerBillingRoutes = (
   app.post('/api/billing/credits/auto-top-up/recover', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
     if (!parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
     try {
       reply.header('Cache-Control', 'private, no-store')
@@ -216,7 +216,6 @@ export const registerBillingRoutes = (
     async (request, reply) => {
       const actorContext = requireActorContext(request, reply)
       if (!actorContext) return reply
-      if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
       const params = parseInput(OfferParamsSchema, request.params, reply, 'params')
       if (!params) return reply
       if (!parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
@@ -242,7 +241,6 @@ export const registerBillingRoutes = (
     async (request, reply) => {
       const actorContext = requireActorContext(request, reply)
       if (!actorContext) return reply
-      if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
       const params = parseInput(
         SubscriptionParamsSchema,
         request.params,
@@ -273,7 +271,6 @@ export const registerBillingRoutes = (
     async (request, reply) => {
       const actorContext = requireActorContext(request, reply)
       if (!actorContext) return reply
-      if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
       const body = parseInput(
         AddonCancellationConfirmSchema,
         request.body,
@@ -300,7 +297,6 @@ export const registerBillingRoutes = (
   app.get('/api/billing/statement', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
     const query = parseInput(StatementQuerySchema, request.query, reply, 'query')
     if (!query) return reply
     try {
@@ -323,7 +319,6 @@ export const registerBillingRoutes = (
     app.post(`/api/billing/actions/${id}`, async (request, reply) => {
       const actorContext = requireActorContext(request, reply)
       if (!actorContext) return reply
-      if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
       if (!parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
       try {
         reply.header('Cache-Control', 'private, no-store')
@@ -348,7 +343,6 @@ export const registerBillingRoutes = (
   app.post('/api/billing/cancellation/preview', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
     if (!parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
     try {
       reply.header('Cache-Control', 'private, no-store')
@@ -368,7 +362,6 @@ export const registerBillingRoutes = (
   app.post('/api/billing/cancellation/confirm', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
-    if (!requireBillingManager(actorContext.actor.roles, reply)) return reply
     const body = parseBillingCancellationConfirmRequest(request.body)
     if (!body) {
       sendApiError(

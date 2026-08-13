@@ -43,7 +43,7 @@ import { parseUoaBillingHostedRedirect } from './uoa-billing-redirect.js'
 
 const NESSIE_PRODUCT = 'nessie'
 
-type BillingFundingPrisma = Pick<
+export type BillingFundingPrisma = Pick<
   PrismaClient,
   'productAccountLink' | 'team'
 >

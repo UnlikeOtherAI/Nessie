@@ -262,8 +262,8 @@ does not hold Stripe customer, subscription, invoice, Price, credit balance,
 top-up policy, payment consent, recurring add-on, statement, adjustment,
 entitlement, or cancellation-intent state. UOA remains the sole commercial
 authority and publishes the open protocol at
-`GET /schemas/billing-statement-v2.json`. Active-team owners/admins use these
-Nessie proxy endpoints:
+`GET /schemas/billing-statement-v2.json`. Active-team UOA billing managers use
+these Nessie proxy endpoints:
 
 - `GET /api/billing/statement`;
 - `POST /api/billing/actions/upgrade`;
@@ -284,6 +284,10 @@ UOA fixes 1,000 credits to US$1 and supplies display-ready credit and money
 values. Nessie never reads raw Ledger billing data or converts tokens, provider
 cost, or money into credits. The account belongs to the UOA team, not Nessie,
 so a customer sees the same balance through every connected product.
+Credit quantities are whole credits: UOA retains sub-credit rated remainders
+internally and deducts another displayed credit only once the cumulative amount
+reaches it. Nessie displays those values without rounding, accumulating, or
+rating them.
 
 UOA discriminates the response by viewer authority. A billing manager receives
 the full per-user breakdown, payment-method display, consent record, funding
@@ -305,11 +309,18 @@ local/UOA workspace drift. It then calls UOA with Nessie's dedicated
 request and whose lifetime is 45 seconds. This key is distinct from Nessie's
 Ledger execution key and from every sibling product key.
 UOA independently re-checks membership and billing-manager authority.
+Nessie obtains an effective billing capability from that exact UOA projection
+before rendering manager-only statement controls; it never infers authority
+from a local `OrganizationMember` role. The browser keys credits, add-ons, and
+statement data by UOA user, organization, team, and credential epoch, and
+treats the capability as immediately stale. A user who manages Team A and is a
+member or contractor in Team B therefore never sees Team A's projection after
+switching active teams.
 
 The consumer contract is the public MIT-licensed
 `@unlikeotherai/billing-statement-protocol` 1.2.0 package authored by UOA.
 Nessie vendors that package byte-for-byte from UOA commit
-`272e4d95846788f752d1e623d5f69f7c961f1dc5`; the root lint gate verifies its
+`698765f`; the root lint gate verifies its
 complete SHA-256 manifest. API responses and requests are validated with the
 package's exported JSON Schemas, while the admin imports its exported view-model
 types. Nessie must not keep an independently editable schema or type copy.
