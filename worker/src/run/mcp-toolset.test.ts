@@ -159,6 +159,37 @@ test('user-scope instances expose tools only to the installing user\'s PA runs',
   assert.deepEqual(await exposedNames(rows, { agentKind: 'shared' }), [])
 })
 
+test('an explicit policy allow never broadens a user-scope install past its ceiling', async () => {
+  const rows: RowSeed[] = [
+    { id: 'r1', toolName: 'my_tool', scopeType: 'user', scopeId: 'user-1' },
+  ]
+  // Install scope is a hard ceiling: an explicit per-agent allow on a SHARED
+  // agent must not surface the connector (channel members could drive it).
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'shared', toolPolicy: { r1: true } }),
+    [],
+  )
+  // Nor may it surface the connector in ANOTHER user's PA run.
+  assert.deepEqual(
+    await exposedNames(rows, {
+      agentKind: 'personal_assistant',
+      effectiveUserId: 'user-2',
+      toolPolicy: { r1: true },
+    }),
+    [],
+  )
+  // An explicit allow inside the install scope still exposes it.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { r1: true } }),
+    ['my_tool'],
+  )
+  // An explicit deny inside the install scope still hides it.
+  assert.deepEqual(
+    await exposedNames(rows, { agentKind: 'personal_assistant', toolPolicy: { r1: false } }),
+    [],
+  )
+})
+
 test('team and channel scopes follow the run context', async () => {
   const rows: RowSeed[] = [
     { id: 'r1', toolName: 'team_tool', scopeType: 'team', scopeId: 'team-1' },
@@ -455,16 +486,25 @@ test('pre-transport fatal handoff errors do not record connector usage', async (
   assert.equal(usageEvents, 0)
 })
 
-test('an explicit per-agent policy verdict overrides scope defaults both ways', async () => {
+test('explicit per-agent policy narrows exposure; an allow never lifts the install-scope ceiling', async () => {
   const rows: RowSeed[] = [
     { id: 'allow-me', toolName: 'far_tool', scopeType: 'channel', scopeId: 'channel-9' },
     { id: 'deny-me', toolName: 'org_tool', scopeType: 'organization', scopeId: 'org-1' },
   ]
+  // Explicit allow CANNOT broaden exposure past install scope (channel-9 is
+  // not this run's channel), while explicit deny still narrows it.
   const names = await exposedNames(rows, {
     agentKind: 'shared',
     toolPolicy: { 'allow-me': true, 'deny-me': false },
   })
-  assert.deepEqual(names, ['far_tool'])
+  assert.deepEqual(names, [])
+  // In scope, the explicit allow exposes the channel tool.
+  const inScope = await exposedNames(rows, {
+    agentKind: 'shared',
+    channelId: 'channel-9',
+    toolPolicy: { 'allow-me': true, 'deny-me': false },
+  })
+  assert.deepEqual(inScope, ['far_tool'])
 })
 
 test('toolset picks deferred mode above the inline limit', async () => {

@@ -66,11 +66,11 @@ const isManagedError = (error: unknown): boolean =>
 test('managed DeepWater rejects every generic lifecycle operation before mutation', async () => {
   const operations = [
     (prisma: PrismaClient) =>
-      testInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+      testInstance(prisma, ORGANIZATION_ID, INSTANCE_ID, { probeUserId: 'probe-user-1' }),
     (prisma: PrismaClient) =>
-      refreshInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+      refreshInstance(prisma, ORGANIZATION_ID, INSTANCE_ID, { probeUserId: 'probe-user-1' }),
     (prisma: PrismaClient) =>
-      healthcheckInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+      healthcheckInstance(prisma, ORGANIZATION_ID, INSTANCE_ID, { probeUserId: 'probe-user-1' }),
     (prisma: PrismaClient) =>
       deleteInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
   ]
@@ -89,11 +89,11 @@ test('managed DeepWater rejects every generic lifecycle operation before mutatio
 test('managed DeepSignal rejects every generic lifecycle operation before mutation', async () => {
   const operations = [
     (prisma: PrismaClient) =>
-      testInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+      testInstance(prisma, ORGANIZATION_ID, INSTANCE_ID, { probeUserId: 'probe-user-1' }),
     (prisma: PrismaClient) =>
-      refreshInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+      refreshInstance(prisma, ORGANIZATION_ID, INSTANCE_ID, { probeUserId: 'probe-user-1' }),
     (prisma: PrismaClient) =>
-      healthcheckInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
+      healthcheckInstance(prisma, ORGANIZATION_ID, INSTANCE_ID, { probeUserId: 'probe-user-1' }),
     (prisma: PrismaClient) =>
       deleteInstance(prisma, ORGANIZATION_ID, INSTANCE_ID),
   ]

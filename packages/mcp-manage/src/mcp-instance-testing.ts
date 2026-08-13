@@ -21,17 +21,24 @@ import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
 
 /**
  * Probe options shared by test, refresh, and healthcheck operations.
+ *
+ * A probe user is REQUIRED: probes always resolve the credential through the
+ * 7-level chain as a concrete user, and for a user-scoped instance that user
+ * must be the installer — a privileged manager may test, refresh, or
+ * healthcheck the instance but never drive it with the installer's stored
+ * secret.
  */
 export type ProbeOptions = {
   managerFactory?: ManagerFactory
   secretResolver?: SecretResolver
   /**
    * Probe with this user's credential (their override, falling back to the
-   * instance default via the 7-level chain). This is what makes shared OAuth
+   * instance default via the 7-level chain, subject to the user-scope owner
+   * rule in `resolveCredentialRef`). This is what makes shared OAuth
    * connectors testable: each user connects their own account, and their
    * probe runs with their own token.
    */
-  probeUserId?: string
+  probeUserId: string
 }
 
 export type HealthcheckResult = {
@@ -53,14 +60,12 @@ const resolveProbeCredentialRef = async (
   prisma: PrismaClient,
   organizationId: string,
   instance: McpInstanceRow,
-  probeUserId?: string,
-): Promise<string | null> => {
-  if (!probeUserId) return instance.credentialRef
-  return resolveCredentialRef(prisma, instance.id, {
+  probeUserId: string,
+): Promise<string | null> =>
+  resolveCredentialRef(prisma, instance.id, {
     userId: probeUserId,
     organizationId,
   })
-}
 
 /**
  * Synchronous health probe. Reuses the same probe path as `testInstance`, but
@@ -70,7 +75,7 @@ export const healthcheckInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: ProbeOptions = {},
+  options: ProbeOptions,
 ): Promise<HealthcheckResult> => {
   const instance = await getInstance(prisma, organizationId, id)
   if (!instance) {
@@ -115,7 +120,7 @@ export const refreshInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: ProbeOptions = {},
+  options: ProbeOptions,
 ): Promise<McpInstanceRow> => {
   try {
     return await testInstance(prisma, organizationId, id, options)
@@ -142,7 +147,7 @@ export const testInstance = async (
   prisma: PrismaClient,
   organizationId: string,
   id: string,
-  options: ProbeOptions = {},
+  options: ProbeOptions,
 ): Promise<McpInstanceRow> => {
   const instance = await getInstance(prisma, organizationId, id)
   if (!instance) {

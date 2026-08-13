@@ -19,6 +19,7 @@ export const MCP_CREDENTIAL_ERROR_CODES = {
   INSTANCE_NOT_FOUND: 'MCP_CREDENTIAL_INSTANCE_NOT_FOUND',
   OVERRIDE_NOT_FOUND: 'MCP_CREDENTIAL_OVERRIDE_NOT_FOUND',
   CREDENTIAL_REF_FORBIDDEN: 'MCP_CREDENTIAL_REF_FORBIDDEN',
+  USER_SCOPE_MISMATCH: 'MCP_CREDENTIAL_USER_SCOPE_MISMATCH',
 } as const
 
 export class McpCredentialError extends Error {
@@ -137,6 +138,13 @@ export const deleteOverride = async (
  * 7-level credential resolution. The returned ref is opaque — pass it to the
  * `SecretResolver` (see `secret-resolver.ts`) to obtain plaintext at dispatch
  * time. NEVER persist or log the resolved plaintext.
+ *
+ * Owner rule (install scope is a hard ceiling): for a user-scoped instance the
+ * run's effective user must be the installing user (`context.userId` must equal
+ * the instance's scope id) before the instance's stored credential is used.
+ * When it is not, resolution FAILS CLOSED — the installer's secret must never
+ * resolve for a run acting as someone else. Per-principal overrides keyed to
+ * other principals are explicit grants by a privileged actor and still resolve.
  */
 export const resolveCredentialRef = async (
   prisma: PrismaClient,
@@ -145,7 +153,7 @@ export const resolveCredentialRef = async (
 ): Promise<string | null> => {
   const instance = await prisma.mcpServerInstance.findUnique({
     where: { id: instanceId },
-    select: { id: true, credentialRef: true },
+    select: { id: true, credentialRef: true, scopeType: true, scopeId: true },
   })
   if (!instance) {
     throw new McpCredentialError(
@@ -170,6 +178,13 @@ export const resolveCredentialRef = async (
     if (override?.credentialRef) {
       return override.credentialRef
     }
+  }
+
+  if (instance.scopeType === 'user' && context.userId !== instance.scopeId) {
+    throw new McpCredentialError(
+      MCP_CREDENTIAL_ERROR_CODES.USER_SCOPE_MISMATCH,
+      `MCP server instance ${instanceId} is scoped to a specific user; its credential is not available to this caller`,
+    )
   }
 
   return instance.credentialRef ?? null
