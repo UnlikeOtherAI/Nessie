@@ -22,10 +22,14 @@ test('chat navigation does not duplicate the Agents activity section', () => {
   assert.doesNotMatch(source, /sidebar-nav-agents/)
 })
 
-test('the new-message screen has an email-style recipient address field', () => {
+test('the new-message screen excludes the sender and keeps recipients available after selection', () => {
   const source = readSource('../src/pages/ChannelConversationComposePage.tsx')
 
   assert.match(source, /AdminPageHeader title="New message"/)
   assert.match(source, /placeholder=\{recipients\.length === 0 \? 'Type a name or email address' : ''\}/)
+  assert.match(source, /allUsers\.filter\(\(user\) => user\.id !== me\?\.user\.id\)/)
+  assert.match(source, /const hasSelectableOptions = options\.length > 0/)
+  assert.doesNotMatch(source, /\(you\)/)
+  assert.match(source, /admin-compose mt-auto flex-shrink-0/)
   assert.match(source, /StartChannelConversation/)
 })

@@ -67,29 +67,7 @@ export const ChannelConversationComposePage = () => {
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
 
   const users = useMemo<UserRecord[]>(() => {
-    if (!me) {
-      return allUsers
-    }
-    const currentUser = allUsers.find((user) => user.id === me.user.id)
-    if (currentUser) {
-      return allUsers
-    }
-    return [
-      {
-        activeStatus: null,
-        avatarAttachmentId: me.user.avatarAttachmentId ?? null,
-        avatarUrl: me.user.avatarUrl ?? null,
-        channelIds: [],
-        createdAt: '',
-        displayName: me.user.displayName,
-        email: me.user.email,
-        gravatarUrl: me.user.gravatarUrl ?? null,
-        id: me.user.id,
-        role: me.user.roleIds[0] ?? 'member',
-        updatedAt: '',
-      },
-      ...allUsers,
-    ]
+    return allUsers.filter((user) => user.id !== me?.user.id)
   }, [allUsers, me])
 
   const usersById = useMemo(
@@ -113,7 +91,7 @@ export const ChannelConversationComposePage = () => {
       detail: user.email,
       id: user.id,
       kind: 'user' as const,
-      label: user.id === me?.user.id ? `${user.displayName} (you)` : user.displayName,
+      label: user.displayName,
       user,
     }))
     const agentOptions = agents.map((agent) => ({
@@ -127,7 +105,7 @@ export const ChannelConversationComposePage = () => {
       .filter((option) => !selectedKeys.has(optionKey(option)))
       .filter((option) => matchesQuery(option, query))
       .slice(0, 8)
-  }, [agents, me?.user.id, query, selectedKeys, users])
+  }, [agents, query, selectedKeys, users])
 
   const mentionEntities = useMemo<MentionEntity[]>(
     () =>
@@ -190,8 +168,7 @@ export const ChannelConversationComposePage = () => {
     [navigate, recipients, sendMessage, startConversation],
   )
 
-  const hasSelectableOptions =
-    options.length > 0 && (recipients.length === 0 || query.trim().length > 0)
+  const hasSelectableOptions = options.length > 0
 
   const onAddressKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' && hasSelectableOptions) {
@@ -230,151 +207,149 @@ export const ChannelConversationComposePage = () => {
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col">
+    <section className="flex h-full min-h-0 flex-col bg-[color:var(--main)]">
       <AdminPageHeader title="New message" />
 
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-5 py-5">
-        <div className="rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)]">
-          <div className="relative border-b border-[color:var(--sep)] p-3">
-            <div className="flex min-h-[38px] items-center gap-2">
-              <span className="w-8 flex-shrink-0 text-sm font-semibold text-[color:var(--tx2)]">
-                To
-              </span>
-              <div
-                className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
-                onClick={() => addressInputRef.current?.focus()}
-                role="presentation"
-              >
-                {recipients.map((recipient) => (
-                  <span
-                    key={optionKey(recipient)}
-                    className={[
-                      'flex max-w-full items-center gap-1 rounded-md',
-                      'bg-[color:var(--overlay)] px-2 py-1 text-sm text-[color:var(--tx)]',
-                    ].join(' ')}
-                  >
-                    <span className="truncate">
-                      {getRecipientName(recipient, usersById, agentsById)}
-                    </span>
-                    <button
-                      aria-label={`Remove ${getRecipientName(recipient, usersById, agentsById)}`}
-                      className="flex h-4 w-4 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[color:var(--overlay-strong)] hover:text-[color:var(--tx)]"
-                      onClick={() => removeRecipient(recipient)}
-                      type="button"
-                    >
-                      ×
-                    </button>
+      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">
+        <div className="relative flex-shrink-0 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">
+          <div className="flex min-h-[38px] items-center gap-2">
+            <span className="w-8 flex-shrink-0 text-sm font-semibold text-[color:var(--tx2)]">
+              To
+            </span>
+            <div
+              className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
+              onClick={() => addressInputRef.current?.focus()}
+              role="presentation"
+            >
+              {recipients.map((recipient) => (
+                <span
+                  key={optionKey(recipient)}
+                  className={[
+                    'flex max-w-full items-center gap-1 rounded-md',
+                    'bg-[color:var(--overlay)] px-2 py-1 text-sm text-[color:var(--tx)]',
+                  ].join(' ')}
+                >
+                  <span className="truncate">
+                    {getRecipientName(recipient, usersById, agentsById)}
                   </span>
-                ))}
-                <input
-                  ref={addressInputRef}
-                  autoFocus
-                  className="min-w-[160px] flex-1 bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
-                  onBlur={() => window.setTimeout(() => setAddressFocused(false), 120)}
-                  onChange={(event) => {
-                    setQuery(event.target.value)
-                    setHighlightedIndex(0)
-                  }}
-                  onFocus={() => setAddressFocused(true)}
-                  onKeyDown={onAddressKeyDown}
-                  placeholder={recipients.length === 0 ? 'Type a name or email address' : ''}
-                  value={query}
-                />
-              </div>
-            </div>
-
-            {showOptions ? (
-              <div className="absolute left-12 right-3 top-[calc(100%-4px)] z-50 max-h-72 overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--main)] py-1 shadow-xl">
-                {options.map((option, index) => (
                   <button
-                    key={optionKey(option)}
-                    className={[
-                      'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
-                      index === highlightedIndex
-                        ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
-                        : 'text-[color:var(--tx)] hover:bg-[color:var(--overlay-weak)]',
-                    ].join(' ')}
-                    onMouseDown={(event) => {
-                      event.preventDefault()
-                      addRecipient(option)
-                    }}
-                    onMouseEnter={() => setHighlightedIndex(index)}
+                    aria-label={`Remove ${getRecipientName(recipient, usersById, agentsById)}`}
+                    className="flex h-4 w-4 items-center justify-center rounded text-[color:var(--tx3)] hover:bg-[color:var(--overlay-strong)] hover:text-[color:var(--tx)]"
+                    onClick={() => removeRecipient(recipient)}
                     type="button"
                   >
-                    {option.kind === 'user' && option.user ? (
-                      <UserAvatar
-                        avatarAttachmentId={option.user.avatarAttachmentId ?? undefined}
-                        avatarUrl={option.user.avatarUrl ?? undefined}
-                        displayName={option.user.displayName}
-                        gravatarUrl={option.user.gravatarUrl ?? undefined}
-                        size={24}
-                        token={token}
-                        userId={option.user.id}
-                      />
-                    ) : (
-                      <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] text-[var(--on-accent)]"
-                        style={{ background: agentGradient }}
-                      >
-                        {option.label.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                    <span className="min-w-0 flex flex-col">
-                      <span className="truncate">{option.label}</span>
-                      <span className="truncate text-xs opacity-60">{option.detail}</span>
-                    </span>
-                    <span className="ml-auto text-xs opacity-60">
-                      {option.kind}
-                    </span>
+                    ×
                   </button>
-                ))}
-              </div>
-            ) : null}
+                </span>
+              ))}
+              <input
+                ref={addressInputRef}
+                autoFocus
+                className="min-w-[160px] flex-1 bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
+                onBlur={() => window.setTimeout(() => setAddressFocused(false), 120)}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setHighlightedIndex(0)
+                }}
+                onFocus={() => setAddressFocused(true)}
+                onKeyDown={onAddressKeyDown}
+                placeholder={recipients.length === 0 ? 'Type a name or email address' : ''}
+                value={query}
+              />
+            </div>
           </div>
 
-          <form
-            className="admin-compose rounded-none border-0"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void submit(mentionRef.current?.getText() ?? message)
-            }}
-          >
-            <MentionInput
-              ref={mentionRef}
-              entities={mentionEntities}
-              maxLength={CHAT_MESSAGE_MAX_CHARS}
-              onChange={setMessage}
-              onOversizePaste={setOversizePaste}
-              onSubmit={(text) => void submit(text)}
-              placeholder="Message"
-            />
-            <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
-              <div className="text-sm text-[color:var(--danger-text)]">
-                {error}
-              </div>
-              <button
-                aria-label="Send message"
-                className="flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
-                disabled={recipients.length === 0 || !message.trim() || isPending}
-                type="submit"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
+          {showOptions ? (
+            <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-72 overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-xl">
+              {options.map((option, index) => (
+                <button
+                  key={optionKey(option)}
+                  className={[
+                    'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
+                    index === highlightedIndex
+                      ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
+                      : 'text-[color:var(--tx)] hover:bg-[color:var(--overlay-weak)]',
+                  ].join(' ')}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    addRecipient(option)
+                  }}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  type="button"
                 >
-                  <path
-                    d="m12 19 9 2-9-18-9 18 9-2Zm0 0v-8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+                  {option.kind === 'user' && option.user ? (
+                    <UserAvatar
+                      avatarAttachmentId={option.user.avatarAttachmentId ?? undefined}
+                      avatarUrl={option.user.avatarUrl ?? undefined}
+                      displayName={option.user.displayName}
+                      gravatarUrl={option.user.gravatarUrl ?? undefined}
+                      size={24}
+                      token={token}
+                      userId={option.user.id}
+                    />
+                  ) : (
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] text-[var(--on-accent)]"
+                      style={{ background: agentGradient }}
+                    >
+                      {option.label.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex flex-col">
+                    <span className="truncate">{option.label}</span>
+                    <span className="truncate text-xs opacity-60">{option.detail}</span>
+                  </span>
+                  <span className="ml-auto text-xs opacity-60">
+                    {option.kind}
+                  </span>
+                </button>
+              ))}
             </div>
-          </form>
+          ) : null}
         </div>
+
+        <form
+          className="admin-compose mt-auto flex-shrink-0"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void submit(mentionRef.current?.getText() ?? message)
+          }}
+        >
+          <MentionInput
+            ref={mentionRef}
+            entities={mentionEntities}
+            maxLength={CHAT_MESSAGE_MAX_CHARS}
+            onChange={setMessage}
+            onOversizePaste={setOversizePaste}
+            onSubmit={(text) => void submit(text)}
+            placeholder="Message"
+          />
+          <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
+            <div className="text-sm text-[color:var(--danger-text)]">
+              {error}
+            </div>
+            <button
+              aria-label="Send message"
+              className="flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
+              disabled={recipients.length === 0 || !message.trim() || isPending}
+              type="submit"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="m12 19 9 2-9-18-9 18 9-2Zm0 0v-8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </form>
       </div>
 
       <OversizePasteDialog

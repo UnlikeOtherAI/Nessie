@@ -147,7 +147,9 @@ from `admin/src/layouts/admin-shell/NativeIPadToolbarBridge.tsx`, while global
 search opens from the native Search tab overlay. Because that web top bar is
 absent on iPhone, `mobile/src/lib/webview-inject.ts` applies the top safe-area
 inset to the admin columns' content while leaving their backgrounds edge to
-edge; iPad and Android reserve their top inset in the native frame. Android's
+edge. The iPhone native tab bar's surrounding surface matches the page's main
+content surface, so its translucency never exposes the desktop rail colour;
+iPad and Android reserve their top inset in the native frame. Android's
 floating dock has no independent separator: the shared dock-geometry contract
 adds its exact interaction clearance to the WebView columns, keeping the chat
 composer entirely above the dock while page backgrounds continue beneath it. The
