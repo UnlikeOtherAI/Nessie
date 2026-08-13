@@ -73,6 +73,7 @@ const withUoaEnv = async <T>(fn: () => Promise<T>): Promise<T> => {
 
 test('refreshUoaSession sends the exact refresh contract and accepts a monotonic epoch', async () => {
   await withUoaEnv(async () => {
+    const urls: string[] = []
     const refreshed = await refreshUoaSession({
       configUrl: uoaEnv.UOA_CONFIG_URL,
       expectedIdentity: {
@@ -83,6 +84,24 @@ test('refreshUoaSession sends the exact refresh contract and accepts a monotonic
       },
       refreshToken: 'uoa-refresh-1',
       fetchImpl: async (input, init) => {
+        urls.push(String(input))
+        if (new URL(String(input)).pathname === '/org/me') {
+          assert.match(
+            new Headers(init?.headers).get('x-uoa-access-token') ?? '',
+            /^Bearer /,
+          )
+          return new Response(JSON.stringify({
+            org: {
+              workspaces: [{
+                avatarImageUrl: '/teams/team-active/avatar',
+                name: 'Fresh workspace',
+                orgId: 'org-active',
+                orgName: 'Fresh org',
+                teamId: 'team-active',
+              }],
+            },
+          }), { status: 200 })
+        }
         assert.equal(
           String(input),
           'https://1.1.1.1/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig',
@@ -107,6 +126,44 @@ test('refreshUoaSession sends the exact refresh contract and accepts a monotonic
 
     assert.equal(refreshed.refreshToken, 'uoa-refresh-2')
     assert.equal(refreshed.identity.uoaTokenVersion, 8)
+    assert.deepEqual(refreshed.workspaceDirectory, [{
+      avatarImageUrl: 'https://1.1.1.1/teams/team-active/avatar',
+      label: 'Fresh workspace',
+      organizationId: 'org-active',
+      orgName: 'Fresh org',
+      teamId: 'team-active',
+    }])
+    assert.equal(urls.length, 2)
+  })
+})
+
+test('refreshUoaSession retains the caller directory when its optional read fails', async () => {
+  await withUoaEnv(async () => {
+    let calls = 0
+    const refreshed = await refreshUoaSession({
+      configUrl: uoaEnv.UOA_CONFIG_URL,
+      expectedIdentity: {
+        organizationId: 'org-active',
+        subject: 'uoa-user-123',
+        teamId: 'team-active',
+        tokenVersion: 7,
+      },
+      refreshToken: 'uoa-refresh-1',
+      fetchImpl: async () => {
+        calls += 1
+        if (calls === 2) return new Response(null, { status: 503 })
+        return new Response(JSON.stringify({
+          access_token: jwtForClaims({ ...completeSessionClaims, tv: 8 }),
+          expires_in: 1_800,
+          refresh_token: 'uoa-refresh-2',
+          refresh_token_expires_in: 2_592_000,
+          token_type: 'Bearer',
+        }), { status: 200 })
+      },
+    })
+
+    assert.equal(refreshed.workspaceDirectory, undefined)
+    assert.equal(calls, 2)
   })
 })
 

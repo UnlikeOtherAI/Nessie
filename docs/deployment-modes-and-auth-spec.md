@@ -317,6 +317,12 @@ Claims:
   the intent for exact replay, while a permanent local binding collision
   revokes the now-unrecoverable source family rather than retaining a consumed
   upstream credential.
+  Every successful UOA renewal also reads `/org/me` with the fresh access token
+  and transactionally replaces the cached workspace directory used by the
+  switcher, so membership removals and avatar/name changes appear without a new
+  login. That directory is display-only and never authorizes a switch. If the
+  optional directory read is unavailable, Nessie retains the last verified
+  copy while continuing the independently authorized token rotation.
   UOA session and billing requests use IP-pinned `safeFetch` and allow zero
   redirects, so refresh credentials, domain hashes, app keys, and signed actor
   assertions are never forwarded to a redirect target.

@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
+import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 
 type UoaSessionContextPrisma = Pick<PrismaClient, 'productAccountLink' | 'team'>
 
@@ -149,6 +150,7 @@ const advanceUoaBindingInTransaction = async (
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
+    workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   },
   allowWorkspaceRescope: boolean,
 ): Promise<UoaLocalSessionContext> => {
@@ -191,7 +193,12 @@ const advanceUoaBindingInTransaction = async (
       uoaSub: input.nextIdentity.subject,
       userId: input.userId,
     },
-    select: { id: true, productSlug: true, uoaTokenVersion: true },
+    select: {
+      id: true,
+      metadata: true,
+      productSlug: true,
+      uoaTokenVersion: true,
+    },
   })
   if (
     !exactFirstPartyLinks.some(
@@ -207,33 +214,49 @@ const advanceUoaBindingInTransaction = async (
     )
   }
 
-  const updated = await transaction.productAccountLink.updateMany({
-    where: {
-      id: { in: exactFirstPartyLinks.map((link) => link.id) },
-      organizationId: context.organizationId,
-      status: 'linked',
-      uoaSub: input.nextIdentity.subject,
-      userId: input.userId,
-      OR: [
-        { uoaTokenVersion: null },
-        { uoaTokenVersion: { lte: nextVersion } },
-      ],
-    },
-    data: {
-      lastVerifiedAt: new Date(),
-      uoaTokenVersion: nextVersion,
-      ...(allowWorkspaceRescope
-        ? {
-            activeOrgId: input.nextIdentity.organizationId,
-            activeTeamId: input.nextIdentity.teamId,
-          }
-        : {}),
-    },
-  })
-  if (updated.count !== exactFirstPartyLinks.length) {
-    throw new UoaLocalSessionBindingError(
-      'A first-party account link changed while refreshing the session.',
-    )
+  const now = new Date()
+  for (const link of exactFirstPartyLinks) {
+    const metadata = link.metadata
+      && typeof link.metadata === 'object'
+      && !Array.isArray(link.metadata)
+      ? link.metadata as Prisma.JsonObject
+      : {}
+    const updated = await transaction.productAccountLink.updateMany({
+      where: {
+        id: link.id,
+        organizationId: context.organizationId,
+        status: 'linked',
+        uoaSub: input.nextIdentity.subject,
+        userId: input.userId,
+        OR: [
+          { uoaTokenVersion: null },
+          { uoaTokenVersion: { lte: nextVersion } },
+        ],
+      },
+      data: {
+        lastVerifiedAt: now,
+        uoaTokenVersion: nextVersion,
+        ...(input.workspaceDirectory
+          ? {
+              metadata: {
+                ...metadata,
+                workspaceDirectory: input.workspaceDirectory,
+              },
+            }
+          : {}),
+        ...(allowWorkspaceRescope
+          ? {
+              activeOrgId: input.nextIdentity.organizationId,
+              activeTeamId: input.nextIdentity.teamId,
+            }
+          : {}),
+      },
+    })
+    if (updated.count !== 1) {
+      throw new UoaLocalSessionBindingError(
+        'A first-party account link changed while refreshing the session.',
+      )
+    }
   }
   return context
 }

@@ -1,10 +1,6 @@
 import type { SsoTheme } from '../contracts/auth.js'
 import type { UoaSessionIdentity } from '@nessie/schemas'
-import {
-  safeFetch,
-  type PinnedFetch,
-  type ResolveHost,
-} from '@nessie/runtime'
+import { safeFetch } from '@nessie/runtime'
 import {
   resolveExternalWorkspaceSelection,
   resolveIdentityDisplayName,
@@ -19,6 +15,16 @@ import {
   themedConfigUrl,
   type UoaSettings,
 } from './uoa-auth.js'
+import {
+  fetchUoaWorkspaceDirectory,
+  type UoaSessionHttpDeps,
+  type UoaWorkspaceDirectoryEntry,
+} from './uoa-workspace-directory.js'
+
+export type {
+  UoaSessionHttpDeps,
+  UoaWorkspaceDirectoryEntry,
+} from './uoa-workspace-directory.js'
 
 type UoaTokenResponse = {
   access_token?: unknown
@@ -26,14 +32,6 @@ type UoaTokenResponse = {
   refresh_token?: unknown
   refresh_token_expires_in?: unknown
   token_type?: unknown
-}
-
-export type UoaWorkspaceDirectoryEntry = {
-  organizationId: string
-  teamId: string
-  avatarImageUrl?: string
-  label: string
-  orgName?: string
 }
 
 export type UoaSessionExchange = {
@@ -45,7 +43,7 @@ export type UoaSessionExchange = {
   }
   refreshToken: string
   refreshTokenExpiresInSeconds: number
-  workspaceDirectory: UoaWorkspaceDirectoryEntry[]
+  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
 }
 
 export class UoaSessionRefreshError extends Error {
@@ -58,11 +56,6 @@ export class UoaSessionRefreshError extends Error {
     super(message)
     this.name = 'UoaSessionRefreshError'
   }
-}
-
-export type UoaSessionHttpDeps = {
-  fetchImpl?: PinnedFetch
-  resolveHost?: ResolveHost
 }
 
 export type UoaWorkspaceSwitchTarget = {
@@ -78,34 +71,6 @@ const trimString = (value: unknown): string | undefined => {
   }
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : undefined
-}
-
-const parseAvatarImageUrl = (value: unknown, baseUrl: string): string | undefined => {
-  const candidate = trimString(value)
-  if (!candidate) return undefined
-
-  try {
-    // UOA may return its public image endpoint as `/...`. Resolve only a true
-    // root-relative path against the configured UOA origin; protocol-relative
-    // `//host/...` values must not silently select another host.
-    const rootRelative = candidate.startsWith('/') && !candidate.startsWith('//')
-    const base = new URL(baseUrl)
-    const url = rootRelative ? new URL(candidate, base) : new URL(candidate)
-    if (
-      !['http:', 'https:'].includes(url.protocol)
-      || url.username
-      || url.password
-      // WHATWG URLs treat backslashes as separators for special schemes. This
-      // catches inputs such as `/\\host/path` that look root-relative but would
-      // otherwise resolve onto a different origin.
-      || (rootRelative && url.origin !== base.origin)
-    ) {
-      return undefined
-    }
-    return url.toString()
-  } catch {
-    return undefined
-  }
 }
 
 const stringArray = (value: unknown): string[] => {
@@ -250,34 +215,6 @@ const parseUoaSessionExchange = (
   } }
 }
 
-const parseWorkspaceDirectory = (
-  payload: unknown,
-  baseUrl: string,
-): UoaWorkspaceDirectoryEntry[] => {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return []
-  const org = (payload as { org?: unknown }).org
-  if (!org || typeof org !== 'object' || Array.isArray(org)) return []
-  const workspaces = (org as { workspaces?: unknown }).workspaces
-  if (!Array.isArray(workspaces)) return []
-  return workspaces.flatMap((workspace) => {
-    if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) return []
-    const entry = workspace as Record<string, unknown>
-    const organizationId = trimString(entry.orgId)
-    const teamId = trimString(entry.teamId)
-    const label = trimString(entry.name)
-    const orgName = trimString(entry.orgName)
-    const avatarImageUrl = parseAvatarImageUrl(entry.avatarImageUrl, baseUrl)
-    if (!organizationId || !teamId || !label) return []
-    return [{
-      organizationId,
-      teamId,
-      ...(avatarImageUrl ? { avatarImageUrl } : {}),
-      label,
-      ...(orgName ? { orgName } : {}),
-    }]
-  })
-}
-
 // Both UOA login calls carry credentials and must never follow a redirect: the
 // token exchange POSTs the authorization code + PKCE verifier, and the workspace
 // directory carries the bearer access token. safeFetch validates the URL and
@@ -288,32 +225,6 @@ const uoaFetchOptions = (options?: UoaSessionHttpDeps) => ({
   ...(options?.resolveHost ? { resolveHost: options.resolveHost } : {}),
   maxRedirects: 0,
 })
-
-const fetchWorkspaceDirectory = async (
-  settings: UoaSettings,
-  configUrl: string,
-  accessToken: string,
-  deps: UoaSessionHttpDeps = {},
-): Promise<UoaWorkspaceDirectoryEntry[]> => {
-  try {
-    const directoryUrl = new URL(`${settings.baseUrl}/org/me`)
-    directoryUrl.searchParams.set('domain', settings.domain)
-    directoryUrl.searchParams.set('config_url', configUrl)
-    const response = await safeFetch(directoryUrl, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${clientHash(settings)}`,
-        'X-UOA-Access-Token': `Bearer ${accessToken}`,
-      },
-      signal: AbortSignal.timeout(10_000),
-    }, uoaFetchOptions(deps))
-    return response.ok
-      ? parseWorkspaceDirectory(await response.json(), settings.baseUrl)
-      : []
-  } catch {
-    return []
-  }
-}
 
 const ensureStoredConfigUrl = (
   settings: UoaSettings,
@@ -384,7 +295,7 @@ export const exchangeUoaSession = async (
   const parsed = parseUoaSessionExchange((await response.json()) as UoaTokenResponse, settings, configUrl)
   return {
     ...parsed.exchange,
-    workspaceDirectory: await fetchWorkspaceDirectory(
+    workspaceDirectory: await fetchUoaWorkspaceDirectory(
       settings,
       configUrl,
       parsed.accessToken,
@@ -505,5 +416,13 @@ export const refreshUoaSession = async (input: {
       true,
     )
   }
-  return refreshed
+  return {
+    ...refreshed,
+    workspaceDirectory: await fetchUoaWorkspaceDirectory(
+      settings,
+      configUrl,
+      parsedRefresh.accessToken,
+      input,
+    ),
+  }
 }

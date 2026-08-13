@@ -26,6 +26,7 @@ class FakeBindingPrisma {
     activeOrgId: IDENTITY.organizationId,
     activeTeamId: IDENTITY.teamId,
     id: '00000000-0000-4000-8000-000000000010',
+    metadata: { retained: 'value' },
     status: 'linked',
     uoaSub: IDENTITY.subject,
     uoaTokenVersion: IDENTITY.tokenVersion,
@@ -33,11 +34,13 @@ class FakeBindingPrisma {
   siblingLinks = [
     {
       id: '00000000-0000-4000-8000-000000000011',
+      metadata: { retained: 'sibling-one' },
       productSlug: 'deep-water',
       uoaTokenVersion: IDENTITY.tokenVersion as number | null,
     },
     {
       id: '00000000-0000-4000-8000-000000000012',
+      metadata: { retained: 'sibling-two' },
       productSlug: 'deepsignal',
       uoaTokenVersion: IDENTITY.tokenVersion as number | null,
     },
@@ -88,28 +91,28 @@ class FakeBindingPrisma {
       ...this.siblingLinks.map((link) => ({ ...link })),
     ],
     updateMany: async (input: {
-      where: {
-        id: { in: string[] }
-      }
+      where: { id: string }
       data: {
         activeOrgId?: string
         activeTeamId?: string
+        metadata?: unknown
         uoaTokenVersion: number
       }
     }) => {
-      let count = 0
-      if (input.where.id.in.includes(this.link.id)) {
+      if (input.where.id === this.link.id) {
         this.link.uoaTokenVersion = input.data.uoaTokenVersion
         if (input.data.activeOrgId) this.link.activeOrgId = input.data.activeOrgId
         if (input.data.activeTeamId) this.link.activeTeamId = input.data.activeTeamId
-        count += 1
+        if (input.data.metadata) this.link.metadata = input.data.metadata as typeof this.link.metadata
+        return { count: 1 }
       }
       for (const link of this.siblingLinks) {
-        if (!input.where.id.in.includes(link.id)) continue
+        if (input.where.id !== link.id) continue
         link.uoaTokenVersion = input.data.uoaTokenVersion
-        count += 1
+        if (input.data.metadata) link.metadata = input.data.metadata as typeof link.metadata
+        return { count: 1 }
       }
-      return { count }
+      return { count: 0 }
     },
   }
 
@@ -235,4 +238,35 @@ test('rescope advances the stable epoch and last-seen workspace to the exact tar
   assert.equal(fake.link.activeOrgId, nextIdentity.organizationId)
   assert.equal(fake.link.activeTeamId, nextIdentity.teamId)
   assert.equal(context.teamId, '00000000-0000-4000-8000-000000000020')
+})
+
+test('refresh atomically replaces a verified directory and retains unrelated metadata', async () => {
+  const fake = new FakeBindingPrisma()
+  const workspaceDirectory = [{
+    organizationId: IDENTITY.organizationId,
+    teamId: IDENTITY.teamId,
+    label: 'Fresh workspace',
+  }]
+
+  await rescopeUoaLocalSessionBindingInTransaction(
+    fake.asClient() as never,
+    {
+      nextIdentity: IDENTITY,
+      previousIdentity: IDENTITY,
+      userId: USER_ID,
+      workspaceDirectory,
+    },
+  )
+
+  assert.deepEqual(fake.link.metadata, {
+    retained: 'value',
+    workspaceDirectory,
+  })
+  assert.deepEqual(
+    fake.siblingLinks.map((link) => link.metadata),
+    [
+      { retained: 'sibling-one', workspaceDirectory },
+      { retained: 'sibling-two', workspaceDirectory },
+    ],
+  )
 })

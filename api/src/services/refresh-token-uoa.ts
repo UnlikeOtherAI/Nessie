@@ -11,6 +11,7 @@ import {
 
 import { hashRefreshToken } from './refresh-token-crypto.js'
 import type { RefreshTokenRecord } from './refresh-token-family.js'
+import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 
 export type UoaCredentialRecord = {
   familyId: string
@@ -36,6 +37,7 @@ export type RotatedUoaCredential = {
   identity: UoaSessionIdentity
   refreshTokenExpiresAt: Date
   refreshTokenHash: string
+  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
 }
 
 export class UoaRefreshBindingError extends Error {
@@ -160,6 +162,7 @@ export const validateUoaRefresh = (input: {
   refreshToken: string
   refreshTokenExpiresAt: Date
   targetIdentity?: Pick<UoaSessionIdentity, 'organizationId' | 'teamId'>
+  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
 }): RotatedUoaCredential => {
   const parsedIdentity = UoaSessionIdentitySchema.safeParse(input.identity)
   const expectedWorkspace = input.targetIdentity ?? input.expectedIdentity
@@ -192,6 +195,9 @@ export const validateUoaRefresh = (input: {
     identity: parsedIdentity.data,
     refreshTokenExpiresAt: input.refreshTokenExpiresAt,
     refreshTokenHash: nextRefreshTokenHash,
+    ...(input.workspaceDirectory
+      ? { workspaceDirectory: input.workspaceDirectory }
+      : {}),
   }
 }
 

@@ -81,6 +81,7 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
       refreshTokenExpiresAt: new Date(
         Date.now() + refreshed.refreshTokenExpiresInSeconds * 1_000,
       ),
+      workspaceDirectory: refreshed.workspaceDirectory,
     }
   },
   advanceUoaSessionBinding: async (

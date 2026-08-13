@@ -214,7 +214,7 @@ test('a different target cannot replace a live family switch intent', async () =
   assert.equal(fake.uoaWorkspaceSwitchIntents.size, 1)
 })
 
-test('workspace switch refuses a bearer and cookie from different source sessions before I/O', async () => {
+test('workspace switch preserves a healthy cookie when the bearer source is stale or unrelated', async () => {
   const { fake, rawToken } = await createFixture()
   let upstreamCalls = 0
 
@@ -238,10 +238,87 @@ test('workspace switch refuses a bearer and cookie from different source session
         target: SWITCH_TARGET,
       },
     }),
-    UoaRefreshBindingError,
+    (error: unknown) =>
+      error instanceof UoaWorkspaceSwitchError
+      && error.code === 'WORKSPACE_SWITCH_CONFLICT',
   )
   assert.equal(upstreamCalls, 0)
   assert.equal(fake.uoaWorkspaceSwitchIntents.size, 0)
+  assert.equal(fake.findByHash(hashRefreshToken(rawToken))?.revokedAt, null)
+})
+
+test('a stale source bearer cannot revoke a workspace-switch successor', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+  const switched = await switchWorkspace(fake, rawToken, now)
+  assert.equal(switched.ok, true)
+  if (!switched.ok) return
+
+  let upstreamCalls = 0
+  await assert.rejects(
+    switchWorkspace(
+      fake,
+      switched.rawToken,
+      new Date(now.getTime() + 1_000),
+      async (input) => {
+        upstreamCalls += 1
+        return defaultUoaRefresh(now)(input)
+      },
+    ),
+    (error: unknown) =>
+      error instanceof UoaWorkspaceSwitchError
+      && error.code === 'WORKSPACE_SWITCH_CONFLICT',
+  )
+  assert.equal(upstreamCalls, 0)
+  assert.equal(fake.uoaWorkspaceSwitchIntents.size, 0)
+  assert.equal(
+    fake.findByHash(hashRefreshToken(switched.rawToken))?.revokedAt,
+    null,
+  )
+
+  const reconciled = await consume(
+    fake,
+    switched.rawToken,
+    new Date(now.getTime() + 2_000),
+  )
+  assert.equal(reconciled.ok, true)
+  if (reconciled.ok) {
+    assert.deepEqual(reconciled.uoaIdentity, {
+      ...UOA_IDENTITY,
+      ...SWITCH_TARGET,
+    })
+  }
+})
+
+test('a stale bearer epoch is a non-revoking switch conflict', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+  const advanced = await consume(fake, rawToken, now, async (input) => ({
+    identity: { ...input.expectedIdentity, tokenVersion: 8 },
+    refreshToken: `${input.refreshToken}.next`,
+    refreshTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
+  }))
+  assert.equal(advanced.ok, true)
+  if (!advanced.ok) return
+
+  let upstreamCalls = 0
+  await assert.rejects(
+    switchWorkspace(
+      fake,
+      advanced.rawToken,
+      new Date(now.getTime() + 1_000),
+      async (input) => {
+        upstreamCalls += 1
+        return defaultUoaRefresh(now)(input)
+      },
+    ),
+    (error: unknown) =>
+      error instanceof UoaWorkspaceSwitchError
+      && error.code === 'WORKSPACE_SWITCH_CONFLICT',
+  )
+  assert.equal(upstreamCalls, 0)
+  assert.equal(fake.uoaWorkspaceSwitchIntents.size, 0)
+  assert.equal(fake.findByHash(hashRefreshToken(advanced.rawToken))?.revokedAt, null)
 })
 
 test('workspace switch revalidates its exact source after access confirmation', async () => {

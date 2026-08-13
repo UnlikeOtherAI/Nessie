@@ -10,6 +10,7 @@ import {
   lockRefreshFamily,
   refreshTokenSelect,
   resolveReplayDescendant,
+  revokeRefreshFamily,
   revokeRefreshFamilyRows,
   type RefreshTokenRecord,
 } from './refresh-token-family.js'
@@ -32,6 +33,7 @@ import {
   type UoaWorkspaceSwitchIntentRecord,
 } from './uoa-workspace-switch-intent.js'
 import type { UoaWorkspaceSwitchTarget } from './uoa-session.js'
+import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 import {
   assertWorkspaceSwitchSource,
   clearRefusedWorkspaceSwitchIntent,
@@ -47,6 +49,7 @@ export {
 } from './refresh-token-issuance.js'
 
 export { REFRESH_TOKEN_REPLAY_GRACE_MS } from './refresh-token-family.js'
+export { revokeRefreshFamily as revokeFamily } from './refresh-token-family.js'
 export { UoaRefreshBindingError } from './refresh-token-uoa.js'
 export { UoaWorkspaceSwitchError } from './uoa-workspace-switch-intent.js'
 
@@ -79,6 +82,7 @@ type ConsumeInput = UoaRotationCallbacks & {
     identity: UoaSessionIdentity
     refreshToken: string
     refreshTokenExpiresAt: Date
+    workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   }>
   beforeUoaWorkspaceSwitch?: (input: {
     sourceIdentity: UoaSessionIdentity
@@ -138,15 +142,6 @@ const successResult = async (
   }
 }
 
-
-// Revoke every still-live token in a family. Used on reuse detection and logout.
-export const revokeFamily = async (prisma: PrismaClient, familyId: string): Promise<void> => {
-  await prisma.$transaction(async (tx) => {
-    await lockRefreshFamily(tx, familyId)
-    await revokeRefreshFamilyRows(tx, familyId, new Date())
-  }, AUTH_LOCK_TRANSACTION_OPTIONS)
-}
-
 // Consume an active refresh token and create its deterministic successor. UOA
 // renewal runs between two short family-locked transactions: its refresh-token
 // endpoint deterministically replays one exact successor, so concurrent or
@@ -192,8 +187,10 @@ export const consumeRefreshToken = async (
           || presented.sessionId !== input.uoaWorkspaceSwitch.sourceSessionId
         )
       ) {
-        throw new UoaRefreshBindingError(
+        throw new UoaWorkspaceSwitchError(
+          'WORKSPACE_SWITCH_CONFLICT',
           'The UnlikeOtherAI access token and refresh cookie do not identify the same session.',
+          false,
         )
       }
       const replay = await resolveReplayDescendant(tx, {
@@ -210,6 +207,8 @@ export const consumeRefreshToken = async (
         && result.ok
         && (
           !result.uoaIdentity
+          || result.uoaIdentity.subject
+            !== input.uoaWorkspaceSwitch.sourceIdentity.subject
           || !identityMatchesTarget(
             result.uoaIdentity,
             input.uoaWorkspaceSwitch.target,
@@ -342,6 +341,7 @@ export const consumeRefreshToken = async (
         now: readClock(),
         refreshToken: refreshed.refreshToken,
         refreshTokenExpiresAt: refreshed.refreshTokenExpiresAt,
+        workspaceDirectory: refreshed.workspaceDirectory,
         ...(workspaceSwitch ? { targetIdentity: workspaceSwitch } : {}),
       })
     } catch (error) {
@@ -495,6 +495,6 @@ export const revokeRefreshTokenByRaw = async (
     select: { familyId: true, userId: true },
   })
   if (!record) return null
-  await revokeFamily(prisma, record.familyId)
+  await revokeRefreshFamily(prisma, record.familyId)
   return { userId: record.userId }
 }

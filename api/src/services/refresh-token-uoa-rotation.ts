@@ -24,17 +24,20 @@ import {
   type RefreshTokenRecord,
 } from './refresh-token-family.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
+import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 
 export type UoaRotationCallbacks = {
   advanceUoaSessionBinding?: (input: {
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
+    workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   }, transaction: Prisma.TransactionClient) => Promise<void>
   rescopeUoaSessionBinding?: (input: {
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
+    workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   }, transaction: Prisma.TransactionClient) => Promise<void>
 }
 
@@ -66,8 +69,16 @@ export const assertWorkspaceSwitchSource = (
     || presented.sessionId !== input.sourceSessionId
     || !identityMatches(credentialIdentity, input.sourceIdentity)
   ) {
-    throw new UoaRefreshBindingError(
+    // The credential was already proven to be internally coupled to this
+    // refresh family by loadBoundUoaCredential. A mismatch here is therefore
+    // stale or unrelated request state (for example, another tab committed a
+    // switch and rotated the shared cookie), not evidence that the healthy
+    // cookie family is corrupt. Preserve it so an ordinary refresh can
+    // reconcile the caller to the winning workspace.
+    throw new UoaWorkspaceSwitchError(
+      'WORKSPACE_SWITCH_CONFLICT',
       'The UnlikeOtherAI access token and refresh cookie do not identify the same source session.',
+      false,
     )
   }
 }
@@ -179,6 +190,7 @@ export const commitUoaRotation = async (
       nextIdentity: rotated.identity,
       previousIdentity: identityFromCredential(rotated.credential),
       userId: presented.userId,
+      workspaceDirectory: rotated.workspaceDirectory,
     }, transaction)
   } else {
     if (!callbacks.advanceUoaSessionBinding) {
@@ -190,6 +202,7 @@ export const commitUoaRotation = async (
       nextIdentity: rotated.identity,
       previousIdentity: identityFromCredential(rotated.credential),
       userId: presented.userId,
+      workspaceDirectory: rotated.workspaceDirectory,
     }, transaction)
   }
   await persistUoaRotation(transaction, { lastLocalTokenId, rotated })
