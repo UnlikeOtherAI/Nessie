@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-test('native touch shells receive larger sidebar targets while desktop remains compact', () => {
+test('native touch shells use Slack-scale sidebar density while desktop remains compact', () => {
   const sidebar = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
   const styles = readSource('../src/styles.css')
 
@@ -16,6 +16,8 @@ test('native touch shells receive larger sidebar targets while desktop remains c
   assert.match(styles, /\.touch-sidebar \.admin-sb-item/)
   assert.match(styles, /\.touch-sidebar \.admin-sb-item\.sidebar-child/)
   assert.match(styles, /\.touch-sidebar \.sidebar-project-tile/)
+  assert.match(styles, /\.touch-sidebar \.admin-sec-hdr\s*\{[\s\S]*?min-height: 38px[\s\S]*?font-size: 14px/)
+  assert.match(styles, /\.touch-sidebar \.admin-sb-item\s*\{[\s\S]*?min-height: 38px[\s\S]*?font-size: 14px/)
   assert.doesNotMatch(styles, /@media \(any-pointer: coarse\)/)
 })
 
