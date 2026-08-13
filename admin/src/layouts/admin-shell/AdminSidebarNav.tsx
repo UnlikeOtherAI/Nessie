@@ -456,7 +456,7 @@ export const AdminSidebarNav = ({
   return (
     <aside
       className={[
-        'flex h-full w-[220px] flex-col overflow-y-auto',
+        'flex h-full w-full flex-col overflow-y-auto',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
       ].join(' ')}
     >

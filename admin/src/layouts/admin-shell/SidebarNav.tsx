@@ -108,7 +108,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
   return (
     <aside
       className={[
-        'flex h-full w-[260px] flex-col overflow-hidden',
+        'flex h-full w-full flex-col overflow-hidden',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
       ].join(' ')}
     >
