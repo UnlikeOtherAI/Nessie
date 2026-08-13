@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
+import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/mobile-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
 
 type AdminSidebarNavProps = {
@@ -475,6 +476,24 @@ export const AdminSidebarNav = ({
           />
         ))}
       </nav>
+      {isReactNativeWebView() ? (
+        <div className="border-t border-[color:var(--sep)] py-1">
+          <button
+            className="admin-sb-item"
+            onClick={requestNativeFullRefresh}
+            type="button"
+          >
+            {icon(
+              <path
+                d="M19 8a8 8 0 10.5 7M19 4v4h-4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />,
+            )}
+            <span className="min-w-0 flex-1 truncate">Full refresh</span>
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 };

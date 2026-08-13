@@ -6,9 +6,11 @@ import { useUserPresence } from '../../providers/PresenceProvider'
 import { UserMenuPopover, type UserMenuPopoverPlacement } from './UserMenuPopover'
 
 type UserMenuTriggerProps = {
+  className?: string
   nativeShellBridge?: boolean
   onLogout: () => void
   placement?: UserMenuPopoverPlacement
+  ringColor?: string
 }
 
 type NativePhoneAccountWindow = Window & {
@@ -19,9 +21,11 @@ type NativePhoneAccountWindow = Window & {
 // The desktop rail is the canonical account control. Other shells only change
 // where its menu opens; its avatar, presence badges, and actions stay identical.
 export const UserMenuTrigger = ({
+  className,
   nativeShellBridge = false,
   onLogout,
   placement = 'rail',
+  ringColor = 'var(--rail)',
 }: UserMenuTriggerProps) => {
   const { me, token } = useAuthSession()
   const selfPresence = useUserPresence(me?.user.id)
@@ -59,6 +63,7 @@ export const UserMenuTrigger = ({
         aria-label="Account menu"
         className={[
           'rounded-md transition-shadow',
+          className ?? '',
           nativeShellBridge ? 'pointer-events-none fixed right-3 top-0 z-[69] h-px w-px opacity-0' : '',
           menuOpen
             ? 'ring-2 ring-[color:var(--accent)]'
@@ -74,7 +79,7 @@ export const UserMenuTrigger = ({
           avatarUrl={me.user.avatarUrl}
           displayName={me.user.displayName}
           gravatarUrl={me.user.gravatarUrl}
-          ringColor="var(--rail)"
+          ringColor={ringColor}
           showPresence
           showStatus
           size={32}

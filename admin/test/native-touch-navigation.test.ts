@@ -56,6 +56,7 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const account = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
   const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
+  const mobileShell = readSource('../src/lib/mobile-shell.ts')
   const phoneChrome = readSource('../../mobile/src/components/NativePhoneConversationMenuChrome.tsx')
   const nativeApp = readSource('../../mobile/App.tsx')
 
@@ -67,6 +68,8 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(account, /__nessieToggleAccountMenu/)
   assert.match(account, /type: 'nessie:account'/)
   assert.match(account, /userPresence: selfPresence\?\.state \?\? 'offline'/)
+  assert.match(mobileShell, /requestNativeFullRefresh/)
+  assert.match(mobileShell, /type: 'nessie:full-refresh'/)
   assert.match(creation, /onCreateProject\(\)/)
   assert.match(creation, /onCreateChannel\(\)/)
   assert.match(creation, /onCreateMessage\(\)/)
@@ -83,6 +86,31 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneChrome, /Project/)
   assert.match(phoneChrome, /Channel/)
   assert.match(phoneChrome, /Message/)
+})
+
+test('the final native Admin item asks the frame for a cache-busting full refresh', () => {
+  const adminNav = readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx')
+  const nativeApp = readSource('../../mobile/App.tsx')
+
+  assert.match(adminNav, /isReactNativeWebView\(\) \? \(/)
+  assert.match(adminNav, /onClick=\{requestNativeFullRefresh\}/)
+  assert.match(adminNav, /Full refresh/)
+  assert.match(nativeApp, /msg.type === 'nessie:full-refresh'/)
+  assert.match(nativeApp, /setReloadPath\(currentPathRef.current\)/)
+  assert.match(nativeApp, /setWebviewKey\(\(key\) => key \+ 1\)/)
+})
+
+test('Safari and Android browser tab roots reuse the mobile workspace, recents, and account controls', () => {
+  const shell = readSource('../src/layouts/AdminShellLayout.tsx')
+  const header = readSource('../src/layouts/admin-shell/MobileWebHomeHeader.tsx')
+  const workspace = readSource('../src/layouts/admin-shell/WorkspaceSwitcher.tsx')
+
+  assert.match(shell, /showMobileWebHomeHeader = showWebTabBar && showPhoneTabRoot/)
+  assert.match(shell, /<MobileWebHomeHeader onLogout=\{shell.logoutAndRedirect\} \/>/)
+  assert.match(header, /<WorkspaceSwitcher variant="mobile-header" \/>/)
+  assert.match(header, /<RecentChannelsControl/)
+  assert.match(header, /<UserMenuTrigger/)
+  assert.match(workspace, /variant\?: 'mobile-header' \| 'native-bridge' \| 'rail'/)
 })
 
 test('sidebar action menus have room to read and tap their choices', () => {

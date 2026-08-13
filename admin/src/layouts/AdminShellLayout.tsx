@@ -21,6 +21,7 @@ import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
+import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
 import { getPhoneNavigationScreen } from './admin-shell/phone-navigation-transition';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
@@ -32,6 +33,7 @@ import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
 import { TopBar } from './admin-shell/TopBar';
+import { useRecordRecentChannelVisits } from './admin-shell/topbar-navigation';
 import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
@@ -81,6 +83,7 @@ export const AdminShellLayout = () => {
 // token is being restored can create competing refresh-token rotations.
 const AuthenticatedAdminShellLayout = () => {
   const shell = useAdminShell();
+  useRecordRecentChannelVisits();
   const attention = useAttentionSummary();
   const attentionCountByProjectId = new Map<string, number>();
   for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
@@ -104,6 +107,7 @@ const AuthenticatedAdminShellLayout = () => {
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
   const showWebTabBar = mobileLayout && !nativeShell && !isComposeRoute;
+  const showMobileWebHomeHeader = showWebTabBar && showPhoneTabRoot;
   // Whenever a bottom tab bar is present — the web tab bar on mobile web, or the
   // native app's own tab bar on phone/iPad — drop the entire top bar. Navigation
   // lives in the bottom bar (which carries its own Search tab) and each page
@@ -243,6 +247,7 @@ const AuthenticatedAdminShellLayout = () => {
           >
             <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
               <div className={frameClassName}>
+                {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
                 {hideTopBar ? null : (
                   <TopBar
                     hideSearch={nativeIPadApp}

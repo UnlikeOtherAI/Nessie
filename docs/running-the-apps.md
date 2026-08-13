@@ -229,6 +229,16 @@ Slack-scale 38-point rows and 14px menu type; desktop remains compact even on a
 touchscreen. Project folder rows alone are bold. Human, agent, and workspace
 avatar tiles use the same subtly rounded square shape everywhere. Human avatar
 presence badges use a three-pixel cutout that matches the sidebar background.
+
+The same dark workspace header appears at the first screen of every tab in
+mobile Safari and Android browsers. Its workspace, Recent Channels, and account
+buttons are the existing shared web controls, not browser-specific copies; the
+mobile browser still owns its own system and address-bar chrome.
+
+The native **Admin** sidebar ends with a native-only **Full refresh** action on
+iPhone, iPad, and Android. It remounts the embedded WebView at the current
+route and adds a cache-busting URL marker, so it can recover stale or failed
+hosted content without adding an equivalent control to the browser UI.
 Group direct-message rows retain the complete participant list in their native
 HTML hover tooltip. Their visible label is measured in the sidebar: complete
 names are shown first, then surnames collapse to initials, then the first names

@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { isDesktopApp } from '../../lib/desktop'
 import { AlertsBell } from './AlertsBell'
 import { TopBarSearch } from './TopBarSearch'
-import { RecentChannelsMenu, useHistoryNav, useRecordRecentChannelVisits } from './topbar-navigation'
+import { RecentChannelsControl, useHistoryNav } from './topbar-navigation'
 import { UserMenuTrigger } from './UserMenuTrigger'
 
 const iconProps = {
@@ -27,13 +26,6 @@ const ChevronRight = () => (
   </svg>
 )
 
-const Clock = () => (
-  <svg {...iconProps}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-
 const Help = () => (
   <svg {...iconProps}>
     <circle cx="12" cy="12" r="9" />
@@ -45,38 +37,6 @@ const Help = () => (
     <path d="M12 17h.01" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
-
-// Clock button → quick-jump menu of recently opened channels.
-const RecentMenu = () => {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onClick = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [open])
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        aria-label="Recent channels"
-        className="admin-topbar-btn"
-        onClick={() => setOpen((value) => !value)}
-        title="Recent channels"
-        type="button"
-      >
-        <Clock />
-      </button>
-      {open ? (
-        <RecentChannelsMenu onSelect={() => setOpen(false)} />
-      ) : null}
-    </div>
-  )
-}
 
 type TopBarProps = {
   hideSearch?: boolean
@@ -90,8 +50,6 @@ type TopBarProps = {
 export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBarProps) => {
   const desktop = isDesktopApp()
   const { goBack, goForward, canBack, canForward } = useHistoryNav()
-
-  useRecordRecentChannelVisits()
 
   return (
     <header
@@ -126,7 +84,7 @@ export const TopBar = ({ hideSearch = false, onLogout, showAccountMenu }: TopBar
         >
           <ChevronRight />
         </button>
-        <RecentMenu />
+        <RecentChannelsControl />
       </div>
 
       {desktop ? (

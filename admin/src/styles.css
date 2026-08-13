@@ -471,6 +471,57 @@ a {
   height: calc(100dvh - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
 }
 
+/* Browser counterpart to the installed phone shell's workspace bar. It only
+   appears on a top-level tab screen, so it keeps the list/detail hierarchy
+   clear while making core navigation available in Safari and Android browsers. */
+.mobile-web-home-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-inverse) 18%, transparent);
+  background: var(--ink);
+  color: var(--surface-inverse);
+}
+
+.mobile-web-home-workspace {
+  display: flex;
+  min-width: 0;
+  max-width: 62%;
+  align-items: center;
+  gap: 9px;
+  border-radius: 22px;
+  padding: 3px 5px;
+  color: var(--surface-inverse);
+  font-size: 21px;
+  font-weight: 700;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.mobile-web-home-workspace:hover,
+.mobile-web-home-workspace:focus-visible,
+.mobile-web-home-action:hover,
+.mobile-web-home-action:focus-visible {
+  background: color-mix(in srgb, var(--surface-inverse) 16%, transparent);
+  outline: none;
+}
+
+.mobile-web-home-action {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--surface-inverse) 32%, transparent);
+  border-radius: 21px;
+  color: var(--surface-inverse);
+  transition: background-color 120ms ease;
+}
+
 /* ── Global top bar (Slack-style) ──────────────────────────────────────────
    Full-width chrome above the rail + content. On the desktop (Tauri) app it
    doubles as the window title bar: it carries the drag region and leaves a gap

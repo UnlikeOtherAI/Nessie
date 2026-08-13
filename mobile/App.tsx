@@ -112,6 +112,7 @@ const Shell = (): React.JSX.Element => {
   // Changing the loaded URL forces WKWebView to fetch a fresh index.html instead of
   // a cached (possibly stale, asset-404ing) one that boots to a blank white screen.
   const [reloadNonce, setReloadNonce] = useState(0)
+  const [reloadPath, setReloadPath] = useState<string | null>(null)
   const adminBooted = useRef(false)
   const bootRetries = useRef(0)
   const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -143,7 +144,13 @@ const Shell = (): React.JSX.Element => {
   } = useNativePushNavigation({
     cachePushPath,
   })
-  const sourceUri = reloadNonce === 0 ? ADMIN_URL : `${ADMIN_URL}?__boot=${reloadNonce}`
+  const sourceUri = reloadNonce === 0
+    ? ADMIN_URL
+    : (() => {
+      const url = new URL(reloadPath ?? '/', ADMIN_URL)
+      url.searchParams.set('__boot', String(reloadNonce))
+      return url.toString()
+    })()
 
   const navigateTo = useCallback((path: string): void => {
     runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
@@ -192,6 +199,14 @@ const Shell = (): React.JSX.Element => {
     clearBootTimer()
     setReloadNonce((nonce) => nonce + 1)
   }, [clearBootTimer])
+
+  const fullRefreshWebView = useCallback((): void => {
+    adminBooted.current = false
+    bootRetries.current = 0
+    setReloadPath(currentPathRef.current)
+    loadFreshWebView()
+    setWebviewKey((key) => key + 1)
+  }, [loadFreshWebView])
 
   // Reload the WebView fresh after a blank/failed load, capped so a persistently
   // broken page doesn't loop forever.
@@ -276,6 +291,10 @@ const Shell = (): React.JSX.Element => {
     }
     if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
       void runExternalAuth(msg.url)
+      return
+    }
+    if (msg.type === 'nessie:full-refresh') {
+      fullRefreshWebView()
       return
     }
     if (msg.type === 'nessie:request-push-registration') {

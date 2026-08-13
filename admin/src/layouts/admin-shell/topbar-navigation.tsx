@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { useChannels } from '../../facades/channels/hooks'
 import { recordRecentChannel, useRecentChannels } from './useRecentChannels'
@@ -54,6 +54,46 @@ export const useRecordRecentChannelVisits = () => {
     const channel = channels.find((entry) => entry.id === match[1])
     if (channel) recordRecentChannel({ id: channel.id, label: channel.label })
   }, [location.pathname, channels])
+}
+
+type RecentChannelsControlProps = {
+  buttonClassName?: string
+}
+
+// Reuse the same recents menu in each presentation of the global phone/tablet
+// header so its history and navigation always agree.
+export const RecentChannelsControl = ({
+  buttonClassName = 'admin-topbar-btn',
+}: RecentChannelsControlProps): React.JSX.Element => {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        aria-label="Recent channels"
+        className={buttonClassName}
+        onClick={() => setOpen((value) => !value)}
+        title="Recent channels"
+        type="button"
+      >
+        <svg fill="none" height="22" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" width="22">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? <RecentChannelsMenu onSelect={() => setOpen(false)} /> : null}
+    </div>
+  )
 }
 
 type RecentChannelsMenuProps = {
