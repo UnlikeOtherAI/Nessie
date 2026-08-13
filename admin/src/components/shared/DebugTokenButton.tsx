@@ -74,7 +74,11 @@ const BugIcon = () => (
 // A rail debug affordance: dumps the signed-in session (token + decoded claims,
 // plus every localStorage and cookie value) as pretty JSON so it can be copied
 // and handed to an assistant for debugging "what I see".
-export const DebugTokenButton = () => {
+type DebugTokenButtonProps = {
+  variant?: 'rail' | 'sidebar'
+}
+
+export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) => {
   const { me } = useAuthSession()
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -123,17 +127,25 @@ export const DebugTokenButton = () => {
       <button
         aria-label="Open session debug"
         className={[
-          'admin-rail-btn mb-[22px] border-0 bg-transparent',
+          variant === 'sidebar'
+            ? 'admin-sb-item border-0 bg-transparent'
+            : 'admin-rail-btn mb-[22px] border-0 bg-transparent',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]',
         ].join(' ')}
         onClick={handleOpen}
         title="Session debug"
         type="button"
       >
-        <span className="admin-rail-btn-icon">
+        {variant === 'sidebar' ? (
           <BugIcon />
+        ) : (
+          <span className="admin-rail-btn-icon">
+            <BugIcon />
+          </span>
+        )}
+        <span className={variant === 'sidebar' ? 'min-w-0 flex-1 truncate' : 'admin-rail-btn-label'}>
+          {variant === 'sidebar' ? 'Session debug' : 'Debug'}
         </span>
-        <span className="admin-rail-btn-label">Debug</span>
       </button>
 
       {open && (

@@ -112,12 +112,17 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneChrome, /Message/)
 })
 
-test('the final native Admin item asks the frame for a cache-busting full refresh', () => {
+test('the native Admin actions offer session debugging above a cache-busting full refresh', () => {
   const adminNav = readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx')
+  const debugButton = readSource('../src/components/shared/DebugTokenButton.tsx')
   const nativeApp = readSource('../../mobile/App.tsx')
 
   assert.match(adminNav, /isReactNativeWebView\(\) \? \(/)
+  assert.match(adminNav, /<DebugTokenButton variant="sidebar" \/>/)
   assert.match(adminNav, /onClick=\{requestNativeFullRefresh\}/)
+  assert.ok(adminNav.indexOf('<DebugTokenButton variant="sidebar" />') < adminNav.indexOf('Full refresh'))
+  assert.match(debugButton, /variant\?: 'rail' \| 'sidebar'/)
+  assert.match(debugButton, /Session debug/)
   assert.match(adminNav, /Full refresh/)
   assert.match(nativeApp, /msg.type === 'nessie:full-refresh'/)
   assert.match(nativeApp, /setReloadPath\(currentPathRef.current\)/)

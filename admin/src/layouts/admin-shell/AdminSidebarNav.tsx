@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
+import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
 import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
 import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/mobile-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
@@ -477,6 +478,7 @@ export const AdminSidebarNav = ({
       </nav>
       {isReactNativeWebView() ? (
         <div className="border-t border-[color:var(--sep)] py-1">
+          <DebugTokenButton variant="sidebar" />
           <button
             className="admin-sb-item"
             onClick={requestNativeFullRefresh}
