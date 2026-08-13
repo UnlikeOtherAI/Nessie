@@ -412,7 +412,7 @@ Rules:
   attachments; a generated preview remains private until an owner confirms it
   through the avatar PATCH route
 - creating an agent without `avatarAttachmentId` generates a cartoon headshot
-  through Ledger's OpenAI `image-2` endpoint; a text model first turns the
+  through Ledger's OpenAI `gpt-image-2` endpoint; a text model first turns the
   agent's name, role, and purpose into the image prompt
 - `avatarBackgroundColor` is a persisted random pastel from the fixed palette;
   it also sits behind transparent uploaded images and keeps every avatar surface

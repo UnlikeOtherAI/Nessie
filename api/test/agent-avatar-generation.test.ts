@@ -19,7 +19,7 @@ const actorContext: AuthorizedActionContext = {
   },
 }
 
-test('generates an image-2 avatar through Ledger and stores it as an attachment preview', async () => {
+test('generates a gpt-image-2 avatar through Ledger and stores it as an attachment preview', async () => {
   let promptMessages: unknown
   let imageRequest: { body: Record<string, unknown>; headers: Headers; url: string } | null = null
   let stored: { body: NodeJS.ReadableStream; input: Record<string, unknown> } | null = null
@@ -69,7 +69,7 @@ test('generates an image-2 avatar through Ledger and stores it as an attachment 
   assert.equal(generated.avatarAttachmentId, '00000000-0000-4000-8000-000000000006')
   assert.ok(AGENT_AVATAR_BACKGROUND_COLORS.includes(generated.avatarBackgroundColor))
   assert.equal(imageRequest?.url, 'https://ledger.unlikeotherai.com/v1/openai/images/generations')
-  assert.equal(imageRequest?.body.model, 'image-2')
+  assert.equal(imageRequest?.body.model, 'gpt-image-2')
   assert.equal(imageRequest?.body.response_format, 'b64_json')
   assert.equal(imageRequest?.headers.get('authorization'), 'Bearer lk_nessie_test')
   assert.equal(imageRequest?.headers.get('x-nessie-context'), 'signed-nessie-context')

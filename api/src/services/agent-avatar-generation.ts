@@ -18,7 +18,7 @@ import {
   randomAgentAvatarBackgroundColor,
 } from '@nessie/workspace-admin'
 
-const IMAGE_MODEL = 'image-2'
+const IMAGE_MODEL = 'gpt-image-2'
 const IMAGE_GENERATION_TIMEOUT_MS = 60_000
 const MAX_GENERATED_IMAGE_BYTES = 25 * 1024 * 1024
 
