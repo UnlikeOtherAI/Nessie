@@ -5,6 +5,7 @@ import type { PrismaClient } from '@prisma/client'
 
 import {
   advanceUoaLocalSessionBinding,
+  rescopeUoaLocalSessionBindingInTransaction,
   resolveUoaLocalSessionContext,
   UoaLocalSessionBindingError,
 } from '../src/services/uoa-session-context.js'
@@ -19,6 +20,8 @@ const IDENTITY = {
 
 class FakeBindingPrisma {
   teamAvailable = true
+  expectedOrganizationId = IDENTITY.organizationId
+  expectedTeamId = IDENTITY.teamId
   link = {
     activeOrgId: IDENTITY.organizationId,
     activeTeamId: IDENTITY.teamId,
@@ -48,8 +51,8 @@ class FakeBindingPrisma {
         members: { some: { userId: string } }
       }
     }) => {
-      assert.equal(input.where.externalOrgId, IDENTITY.organizationId)
-      assert.equal(input.where.externalWorkspaceId, IDENTITY.teamId)
+      assert.equal(input.where.externalOrgId, this.expectedOrganizationId)
+      assert.equal(input.where.externalWorkspaceId, this.expectedTeamId)
       assert.equal(input.where.members.some.userId, USER_ID)
       if (!this.teamAvailable) return null
       return {
@@ -88,11 +91,17 @@ class FakeBindingPrisma {
       where: {
         id: { in: string[] }
       }
-      data: { uoaTokenVersion: number }
+      data: {
+        activeOrgId?: string
+        activeTeamId?: string
+        uoaTokenVersion: number
+      }
     }) => {
       let count = 0
       if (input.where.id.in.includes(this.link.id)) {
         this.link.uoaTokenVersion = input.data.uoaTokenVersion
+        if (input.data.activeOrgId) this.link.activeOrgId = input.data.activeOrgId
+        if (input.data.activeTeamId) this.link.activeTeamId = input.data.activeTeamId
         count += 1
       }
       for (const link of this.siblingLinks) {
@@ -204,4 +213,26 @@ test('concurrent replay accepts an already-advanced epoch but rejects a changed 
     }),
     UoaLocalSessionBindingError,
   )
+})
+
+test('rescope advances the stable epoch and last-seen workspace to the exact target', async () => {
+  const fake = new FakeBindingPrisma()
+  const nextIdentity = {
+    ...IDENTITY,
+    organizationId: 'uoa-org-target',
+    teamId: 'uoa-team-target',
+    tokenVersion: 8,
+  }
+  fake.expectedOrganizationId = nextIdentity.organizationId
+  fake.expectedTeamId = nextIdentity.teamId
+
+  const context = await rescopeUoaLocalSessionBindingInTransaction(
+    fake.asClient() as never,
+    { nextIdentity, previousIdentity: IDENTITY, userId: USER_ID },
+  )
+
+  assert.equal(fake.link.uoaTokenVersion, 8)
+  assert.equal(fake.link.activeOrgId, nextIdentity.organizationId)
+  assert.equal(fake.link.activeTeamId, nextIdentity.teamId)
+  assert.equal(context.teamId, '00000000-0000-4000-8000-000000000020')
 })

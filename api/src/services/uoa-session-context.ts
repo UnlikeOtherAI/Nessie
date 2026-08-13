@@ -143,20 +143,26 @@ export const resolveUoaLocalSessionContext = async (
  * activeTeamId are only last-seen UI metadata and cannot invalidate another
  * live family for the same user in a different team.
  */
-export const advanceUoaLocalSessionBindingInTransaction = async (
+const advanceUoaBindingInTransaction = async (
   transaction: Prisma.TransactionClient,
   input: {
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
   },
+  allowWorkspaceRescope: boolean,
 ): Promise<UoaLocalSessionContext> => {
   const previousVersion = requireTokenVersion(input.previousIdentity)
   const nextVersion = requireTokenVersion(input.nextIdentity)
   if (
     input.nextIdentity.subject !== input.previousIdentity.subject
-    || input.nextIdentity.organizationId !== input.previousIdentity.organizationId
-    || input.nextIdentity.teamId !== input.previousIdentity.teamId
+    || (
+      !allowWorkspaceRescope
+      && (
+        input.nextIdentity.organizationId !== input.previousIdentity.organizationId
+        || input.nextIdentity.teamId !== input.previousIdentity.teamId
+      )
+    )
     || nextVersion < previousVersion
   ) {
     throw new UoaLocalSessionBindingError(
@@ -216,6 +222,12 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
     data: {
       lastVerifiedAt: new Date(),
       uoaTokenVersion: nextVersion,
+      ...(allowWorkspaceRescope
+        ? {
+            activeOrgId: input.nextIdentity.organizationId,
+            activeTeamId: input.nextIdentity.teamId,
+          }
+        : {}),
     },
   })
   if (updated.count !== exactFirstPartyLinks.length) {
@@ -225,6 +237,25 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
   }
   return context
 }
+
+export const advanceUoaLocalSessionBindingInTransaction = async (
+  transaction: Prisma.TransactionClient,
+  input: Parameters<typeof advanceUoaBindingInTransaction>[1],
+): Promise<UoaLocalSessionContext> =>
+  advanceUoaBindingInTransaction(transaction, input, false)
+
+/**
+ * Commit a UOA-authorized change to the family's workspace tuple. This is a
+ * sibling of ordinary same-scope renewal: it permits only org/team rescoping,
+ * retains the immutable subject and monotonic epoch checks, resolves the exact
+ * materialized target membership, and updates product-link workspace fields as
+ * non-authoritative last-seen metadata in the caller's transaction.
+ */
+export const rescopeUoaLocalSessionBindingInTransaction = async (
+  transaction: Prisma.TransactionClient,
+  input: Parameters<typeof advanceUoaBindingInTransaction>[1],
+): Promise<UoaLocalSessionContext> =>
+  advanceUoaBindingInTransaction(transaction, input, true)
 
 export const advanceUoaLocalSessionBinding = async (
   prisma: PrismaClient,

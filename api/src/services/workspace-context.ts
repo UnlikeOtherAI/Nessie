@@ -31,6 +31,13 @@ export type WorkspaceIdentityInput = {
   workspace?: ExternalAuthWorkspace
 }
 
+export class WorkspaceExternalBindingConflictError extends Error {
+  constructor() {
+    super('The selected external organization and team conflict with an existing workspace binding.')
+    this.name = 'WorkspaceExternalBindingConflictError'
+  }
+}
+
 // UOA team roles (`owner | admin | member`, plus legacy `lead`) → Nessie MemberRole.
 const mapUoaTeamRole = (role: string | undefined): MemberRole => {
   switch ((role ?? '').trim().toLowerCase()) {
@@ -284,9 +291,7 @@ const resolveWorkspaceTarget = async (
         || existing.externalWorkspaceId !== workspaceId
         || existing.externalOrgId !== externalOrgId
       ) {
-        throw new Error(
-          'The selected external organization and team conflict with an existing workspace binding.',
-        )
+        throw new WorkspaceExternalBindingConflictError()
       }
       return {
         projectId: existing.projectId,

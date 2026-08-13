@@ -60,7 +60,7 @@ test('confirms direct Nessie access only through the exact 204 no-store seam', a
   await assert.doesNotReject(result)
   assert.equal(
     requestUrl,
-    'https://uoa.example/billing/v1/service-access/confirm',
+    'https://1.1.1.1/billing/v1/service-access/confirm',
   )
   assert.deepEqual(requestBody, subjectBody)
 
@@ -79,4 +79,29 @@ test('confirms direct Nessie access only through the exact 204 no-store seam', a
       error instanceof UoaBillingError
       && error.code === 'UOA_BILLING_RESPONSE_INVALID',
   )
+})
+
+test('credential-bearing UOA billing calls never follow redirects', async () => {
+  let calls = 0
+  await assert.rejects(
+    confirmUoaDirectServiceAccess({
+      organizationId: 'uoa-org',
+      teamId: 'uoa-team',
+      tokenVersion: 7,
+      userId: 'uoa-user',
+    }, {
+      env,
+      fetchImpl: async () => {
+        calls += 1
+        return new Response(null, {
+          headers: { Location: 'https://attacker.example/steal' },
+          status: 307,
+        })
+      },
+    }),
+    (error: unknown) =>
+      error instanceof UoaBillingError
+      && error.code === 'UOA_BILLING_UPSTREAM_REJECTED',
+  )
+  assert.equal(calls, 1)
 })

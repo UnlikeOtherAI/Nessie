@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 
+import { materializeUoaWorkspaceSwitch } from '../src/services/uoa-workspace-switch.js'
 import { resolveUoaWorkspaceContext } from '../src/services/workspace-context.js'
 import type { ExternalAuthWorkspace } from '../src/services/identity-display.js'
 
@@ -83,7 +84,7 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         const found = users.find(
           (u) => (where.email && u.email === where.email) || (where.id && u.id === where.id),
         )
-        return found ? { id: found.id } : null
+        return found ? { ...found } : null
       },
       create: async ({ data }: { data: { email: string; displayName: string; avatarUrl?: string } }) => {
         const row: User = {
@@ -402,4 +403,43 @@ test('an existing workspace maps the UOA team role to the Nessie member role', a
     (m) => m.teamId === adminCtx!.teamId && m.userId === adminCtx!.userId,
   )
   assert.equal(adminMembership?.role, 'admin')
+})
+
+test('workspace switch materialization uses the authoritative target role and is idempotent', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+  const target = { organizationId: 'uoa-org-1', teamId: 'ws-target' }
+  await resolveUoaWorkspaceContext(
+    client,
+    identityFor('owner@x.com', workspace(target.teamId, 'owner')),
+  )
+  const source = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('switcher@x.com', workspace('ws-source', 'member')),
+  )
+  assert.ok(source)
+
+  const materialize = () => materializeUoaWorkspaceSwitch(client, {
+    identity: {
+      displayName: 'Switching Admin',
+      email: 'switcher@x.com',
+      externalSubject: 'uoa-user-switcher',
+      uoaTokenVersion: 4,
+      workspace: workspace(target.teamId, 'admin'),
+    },
+    target,
+    userId: source!.userId,
+  })
+  await materialize()
+  await materialize()
+
+  const targetTeam = state.teams.find(
+    (team) => team.externalWorkspaceId === target.teamId,
+  )
+  assert.ok(targetTeam)
+  const memberships = state.teamMembers.filter(
+    (member) => member.teamId === targetTeam.id && member.userId === source!.userId,
+  )
+  assert.equal(memberships.length, 1)
+  assert.equal(memberships[0]?.role, 'admin')
 })

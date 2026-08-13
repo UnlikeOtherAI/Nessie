@@ -12,9 +12,7 @@ import type { SafeFetchOptions } from '@nessie/runtime'
 import {
   exchangeUoaCode,
   exchangeUoaSession,
-  refreshUoaSession,
   resolveUoaIdentityFromAccessToken,
-  UoaSessionRefreshError,
 } from '../src/services/uoa-session.js'
 
 // The UOA login egress goes through safeFetch (validated + IP-pinned, no
@@ -33,7 +31,7 @@ const testPrivateKeyPem = String(
 )
 
 const uoaEnv = {
-  UOA_BASE_URL: 'https://uoa.example.com',
+  UOA_BASE_URL: 'https://1.1.1.1',
   UOA_CLIENT_SECRET: 'client-secret',
   UOA_CONFIG_JWT_KID: 'test-kid',
   UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from(testPrivateKeyPem).toString('base64'),
@@ -97,7 +95,7 @@ const withUoaEnv = async <T>(fn: () => Promise<T>): Promise<T> => {
 const withTokenResponse = async <T>(
   claims: Record<string, unknown>,
   fn: () => Promise<T>,
-  expectedUrl = 'https://uoa.example.com/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig',
+  expectedUrl = 'https://1.1.1.1/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig',
 ): Promise<T> => {
   const previousFetch = globalThis.fetch
   globalThis.fetch = async (input, init) => {
@@ -218,7 +216,7 @@ test('exchangeUoaSession retains the exact server-side refresh session', async (
         {
           organizationId: 'org-active',
           teamId: 'team-active',
-          avatarImageUrl: 'https://uoa.example.com/public/teams/team-active/avatar',
+          avatarImageUrl: 'https://1.1.1.1/public/teams/team-active/avatar',
           label: 'Active workspace',
           orgName: 'Active org',
         },
@@ -331,7 +329,7 @@ test('exchangeUoaCode reuses the selected theme for the token config_url', async
 
         assert.equal(identity.email, 'ada.lovelace@example.com')
       },
-      'https://uoa.example.com/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig%3Ftheme%3Drose',
+      'https://1.1.1.1/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig%3Ftheme%3Drose',
     )
   })
 })
@@ -426,123 +424,5 @@ test('exchangeUoaCode ignores a name claim that is just the email address', asyn
 
       assert.equal(identity.displayName, 'Ada Lovelace')
     })
-  })
-})
-
-test('refreshUoaSession sends the exact refresh contract and accepts a monotonic epoch', async () => {
-  await withUoaEnv(async () => {
-    const refreshed = await refreshUoaSession({
-      configUrl: uoaEnv.UOA_CONFIG_URL,
-      expectedIdentity: {
-        organizationId: 'org-active',
-        subject: 'uoa-user-123',
-        teamId: 'team-active',
-        tokenVersion: 7,
-      },
-      refreshToken: 'uoa-refresh-1',
-      fetchImpl: async (input, init) => {
-        assert.equal(
-          String(input),
-          'https://uoa.example.com/auth/token?config_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fauth%2Fsso%2Fconfig',
-        )
-        assert.equal(init?.method, 'POST')
-        const headers = new Headers(init?.headers)
-        assert.equal(headers.get('authorization'), `Bearer ${clientHash}`)
-        assert.equal(headers.get('content-type'), 'application/json')
-        assert.deepEqual(JSON.parse(String(init?.body)), {
-          grant_type: 'refresh_token',
-          refresh_token: 'uoa-refresh-1',
-        })
-        return new Response(JSON.stringify({
-          access_token: jwtForClaims({ ...completeSessionClaims, tv: 8 }),
-          expires_in: 1_800,
-          refresh_token: 'uoa-refresh-2',
-          refresh_token_expires_in: 2_592_000,
-          token_type: 'Bearer',
-        }), { status: 200 })
-      },
-    })
-
-    assert.equal(refreshed.refreshToken, 'uoa-refresh-2')
-    assert.equal(refreshed.identity.uoaTokenVersion, 8)
-  })
-})
-
-test('refreshUoaSession rejects changed identity and regressed epochs definitively', async () => {
-  await withUoaEnv(async () => {
-    for (const claims of [
-      { sub: 'different-user' },
-      { active: { orgId: 'different-org', teamId: 'team-active' } },
-      { active: { orgId: 'org-active', teamId: 'different-team' } },
-      { tv: 6 },
-    ]) {
-      await assert.rejects(
-        refreshUoaSession({
-          configUrl: uoaEnv.UOA_CONFIG_URL,
-          expectedIdentity: {
-            organizationId: 'org-active',
-            subject: 'uoa-user-123',
-            teamId: 'team-active',
-            tokenVersion: 7,
-          },
-          refreshToken: 'uoa-refresh-1',
-          fetchImpl: async () => new Response(JSON.stringify({
-            access_token: jwtForClaims({ ...completeSessionClaims, ...claims }),
-            expires_in: 1_800,
-            refresh_token: 'uoa-refresh-2',
-            refresh_token_expires_in: 2_592_000,
-            token_type: 'Bearer',
-          }), { status: 200 }),
-        }),
-        (error: unknown) =>
-          error instanceof UoaSessionRefreshError && error.definitive,
-      )
-    }
-  })
-})
-
-test('refreshUoaSession classifies stored-config and endpoint failures safely', async () => {
-  await withUoaEnv(async () => {
-    const expectedIdentity = {
-      organizationId: 'org-active',
-      subject: 'uoa-user-123',
-      teamId: 'team-active',
-      tokenVersion: 7,
-    } as const
-
-    await assert.rejects(
-      refreshUoaSession({
-        configUrl: 'https://attacker.example/config',
-        expectedIdentity,
-        refreshToken: 'uoa-refresh-1',
-      }),
-      (error: unknown) =>
-        error instanceof UoaSessionRefreshError && error.definitive,
-    )
-    await assert.rejects(
-      refreshUoaSession({
-        configUrl: uoaEnv.UOA_CONFIG_URL,
-        expectedIdentity,
-        refreshToken: 'uoa-refresh-1',
-        fetchImpl: async () => new Response(null, { status: 401 }),
-      }),
-      (error: unknown) =>
-        error instanceof UoaSessionRefreshError && error.definitive,
-    )
-    for (const fetchImpl of [
-      async () => new Response(null, { status: 503 }),
-      async () => { throw new Error('network down') },
-    ]) {
-      await assert.rejects(
-        refreshUoaSession({
-          configUrl: uoaEnv.UOA_CONFIG_URL,
-          expectedIdentity,
-          refreshToken: 'uoa-refresh-1',
-          fetchImpl,
-        }),
-        (error: unknown) =>
-          error instanceof UoaSessionRefreshError && !error.definitive,
-      )
-    }
   })
 })

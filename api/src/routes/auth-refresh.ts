@@ -1,28 +1,22 @@
 import type { FastifyInstance } from 'fastify'
-import { MeResponseSchema, type UoaSessionIdentity } from '@nessie/schemas'
-
-import { type SessionTokenClaims, verifySessionToken } from '../auth/session.js'
-import { createApiResponse, sendApiError } from '../lib/api.js'
-import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refresh-cookie.js'
-import { buildMeResponse } from '../services/auth.js'
-import { resolveExternalWorkspaceSelection } from '../services/identity-display.js'
+import { sendApiError } from '../lib/api.js'
+import { clearRefreshCookie, readRefreshCookie } from '../lib/refresh-cookie.js'
 import { hashRefreshToken } from '../services/refresh-token-crypto.js'
 import {
   consumeRefreshToken,
   revokeRefreshTokenByRaw,
   UoaRefreshBindingError,
+  UoaWorkspaceSwitchError,
 } from '../services/refresh-token.js'
 import {
-  advanceUoaLocalSessionBindingInTransaction,
-  resolveUoaLocalSessionContext,
   UoaLocalSessionBindingError,
-  type UoaLocalSessionContext,
 } from '../services/uoa-session-context.js'
+import { createUoaRefreshCallbacks } from '../services/uoa-refresh-coordinator.js'
 import {
-  refreshUoaSession,
   UoaSessionRefreshError,
 } from '../services/uoa-session.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { completeConsumedAuthSession } from './auth-session-completion.js'
 import type { RouteDeps } from './types.js'
 
 export const registerAuthRefreshRoute = (
@@ -31,8 +25,6 @@ export const registerAuthRefreshRoute = (
 ): void => {
   const {
     authSecret,
-    buildLocalSession,
-    buildSessionForUser,
     config,
     prisma,
     rateLimiter,
@@ -90,35 +82,21 @@ export const registerAuthRefreshRoute = (
         rawToken,
         ttlSeconds: config.auth.refreshTokenTtlSeconds,
         userAgent: request.headers['user-agent'] ?? null,
-        refreshUoaSession: async (upstream) => {
-          const refreshed = await refreshUoaSession(upstream)
-          const selected = resolveExternalWorkspaceSelection(
-            refreshed.identity.workspace,
-          )
-          if (!selected.organizationId || !selected.teamId) {
-            throw new UoaRefreshBindingError(
-              'UnlikeOtherAI did not return the bound session workspace.',
-            )
-          }
-          const nextIdentity: UoaSessionIdentity = {
-            organizationId: selected.organizationId,
-            subject: refreshed.identity.externalSubject,
-            teamId: selected.teamId,
-            tokenVersion: refreshed.identity.uoaTokenVersion,
-          }
-          return {
-            identity: nextIdentity,
-            refreshToken: refreshed.refreshToken,
-            refreshTokenExpiresAt: new Date(
-              Date.now() + refreshed.refreshTokenExpiresInSeconds * 1000,
-            ),
-          }
-        },
-        advanceUoaSessionBinding: async (binding, transaction) => {
-          await advanceUoaLocalSessionBindingInTransaction(transaction, binding)
-        },
+        ...createUoaRefreshCallbacks(prisma),
       })
     } catch (error) {
+      if (error instanceof UoaWorkspaceSwitchError) {
+        const statusCode = error.code === 'WORKSPACE_SWITCH_CONFLICT' ? 409 : 403
+        sendApiError(
+          reply,
+          statusCode,
+          error.code,
+          error.code === 'INTERACTION_REQUIRED'
+            ? 'Sign in again to access the requested UnlikeOtherAI workspace.'
+            : 'The pending UnlikeOtherAI workspace switch could not be completed.',
+        )
+        return reply
+      }
       const definitive =
         error instanceof UoaRefreshBindingError
         || error instanceof UoaLocalSessionBindingError
@@ -151,69 +129,9 @@ export const registerAuthRefreshRoute = (
       return reply
     }
 
-    let uoaContext: UoaLocalSessionContext | undefined
-    if (consumed.uoaIdentity) {
-      try {
-        uoaContext = await resolveUoaLocalSessionContext(prisma, {
-          identity: consumed.uoaIdentity,
-          userId: consumed.userId,
-        })
-      } catch (error) {
-        if (!(error instanceof UoaLocalSessionBindingError)) throw error
-        await revokeRefreshTokenByRaw(prisma, rawToken)
-        clearRefreshCookie(reply, config)
-        sendApiError(
-          reply,
-          401,
-          'REFRESH_REAUTH_REQUIRED',
-          'Sign in again to renew this UnlikeOtherAI session.',
-        )
-        return reply
-      }
-    }
-
-    const user = await prisma.user.findUnique({ where: { id: consumed.userId } })
-    if (!user) {
-      clearRefreshCookie(reply, config)
-      sendApiError(reply, 401, 'USER_NOT_FOUND', 'User no longer exists')
-      return reply
-    }
-    const session = uoaContext && consumed.uoaIdentity
-      ? await buildSessionForUser({
-          organizationId: uoaContext.organizationId,
-          projectId: uoaContext.projectId,
-          providerId: consumed.providerId,
-          providerType: consumed.providerType as SessionTokenClaims['providerType'],
-          roles: [uoaContext.role],
-          sessionId: consumed.sessionId,
-          teamId: uoaContext.teamId,
-          uoaIdentity: consumed.uoaIdentity,
-          userId: consumed.userId,
-        })
-      : await buildLocalSession(
-          consumed.userId,
-          [],
-          {
-            providerId: consumed.providerId,
-            providerType: consumed.providerType as SessionTokenClaims['providerType'],
-          },
-          consumed.sessionId,
-        )
-    const verification = verifySessionToken(session.token, authSecret)
-    if (!verification.ok) {
-      sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')
-      return reply
-    }
-    const remainingTtlSeconds = Math.max(
-      1,
-      Math.ceil((consumed.expiresAt.getTime() - Date.now()) / 1000),
-    )
-    setRefreshCookie(reply, consumed.rawToken, config, remainingTtlSeconds)
-    return createApiResponse({
-      token: session.token,
-      me: MeResponseSchema.parse(
-        await buildMeResponse(prisma, user, verification.claims, config),
-      ),
+    return completeConsumedAuthSession(deps, reply, {
+      consumed,
+      presentedRawToken: rawToken,
     })
   })
 }

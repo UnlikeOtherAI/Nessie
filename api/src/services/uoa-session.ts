@@ -1,7 +1,10 @@
-import { safeFetch, type SafeFetchOptions } from '@nessie/runtime'
-
 import type { SsoTheme } from '../contracts/auth.js'
 import type { UoaSessionIdentity } from '@nessie/schemas'
+import {
+  safeFetch,
+  type PinnedFetch,
+  type ResolveHost,
+} from '@nessie/runtime'
 import {
   resolveExternalWorkspaceSelection,
   resolveIdentityDisplayName,
@@ -49,12 +52,26 @@ export class UoaSessionRefreshError extends Error {
   constructor(
     message: string,
     public readonly definitive: boolean,
+    public readonly upstreamCode?: string,
+    public readonly safeWorkspaceSwitchFailure = false,
   ) {
     super(message)
     this.name = 'UoaSessionRefreshError'
   }
 }
 
+export type UoaSessionHttpDeps = {
+  fetchImpl?: PinnedFetch
+  resolveHost?: ResolveHost
+}
+
+export type UoaWorkspaceSwitchTarget = {
+  organizationId: string
+  teamId: string
+}
+
+export const UOA_WORKSPACE_SWITCH_GRANT =
+  'urn:unlikeotherai:params:oauth:grant-type:workspace-switch'
 const trimString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
     return undefined
@@ -266,8 +283,9 @@ const parseWorkspaceDirectory = (
 // directory carries the bearer access token. safeFetch validates the URL and
 // pins the socket to the vetted addresses; maxRedirects 0 returns any 3xx raw.
 // The options are injectable so tests can stub DNS resolution at this seam.
-const uoaFetchOptions = (options?: SafeFetchOptions): SafeFetchOptions => ({
-  ...options,
+const uoaFetchOptions = (options?: UoaSessionHttpDeps) => ({
+  ...(options?.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+  ...(options?.resolveHost ? { resolveHost: options.resolveHost } : {}),
   maxRedirects: 0,
 })
 
@@ -275,7 +293,7 @@ const fetchWorkspaceDirectory = async (
   settings: UoaSettings,
   configUrl: string,
   accessToken: string,
-  options?: SafeFetchOptions,
+  deps: UoaSessionHttpDeps = {},
 ): Promise<UoaWorkspaceDirectoryEntry[]> => {
   try {
     const directoryUrl = new URL(`${settings.baseUrl}/org/me`)
@@ -288,7 +306,7 @@ const fetchWorkspaceDirectory = async (
         'X-UOA-Access-Token': `Bearer ${accessToken}`,
       },
       signal: AbortSignal.timeout(10_000),
-    }, uoaFetchOptions(options))
+    }, uoaFetchOptions(deps))
     return response.ok
       ? parseWorkspaceDirectory(await response.json(), settings.baseUrl)
       : []
@@ -331,8 +349,8 @@ export const exchangeUoaSession = async (
     codeVerifier: string
     redirectUri: string
     theme?: SsoTheme
-  },
-  options?: SafeFetchOptions,
+  } & UoaSessionHttpDeps,
+  options?: UoaSessionHttpDeps,
 ): Promise<UoaSessionExchange> => {
   const settings = loadUoaSettings()
   ensureAllowedRedirectUrl(settings, input.redirectUri)
@@ -345,7 +363,7 @@ export const exchangeUoaSession = async (
   const configUrl = themedConfigUrl(settings, input.theme)
   tokenUrl.searchParams.set('config_url', configUrl)
 
-  const response = await safeFetch(tokenUrl.toString(), {
+  const response = await safeFetch(tokenUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -357,7 +375,8 @@ export const exchangeUoaSession = async (
       redirect_url: input.redirectUri,
       code_verifier: input.codeVerifier,
     }),
-  }, uoaFetchOptions(options))
+    signal: AbortSignal.timeout(10_000),
+  }, uoaFetchOptions(options ?? input))
   if (!response.ok) {
     throw new Error(`[uoa] token endpoint returned ${response.status}`)
   }
@@ -365,7 +384,12 @@ export const exchangeUoaSession = async (
   const parsed = parseUoaSessionExchange((await response.json()) as UoaTokenResponse, settings, configUrl)
   return {
     ...parsed.exchange,
-    workspaceDirectory: await fetchWorkspaceDirectory(settings, configUrl, parsed.accessToken, options),
+    workspaceDirectory: await fetchWorkspaceDirectory(
+      settings,
+      configUrl,
+      parsed.accessToken,
+      options ?? input,
+    ),
   }
 }
 
@@ -375,36 +399,63 @@ export const exchangeUoaCode = async (
     codeVerifier: string
     redirectUri: string
     theme?: SsoTheme
-  },
-  options?: SafeFetchOptions,
+  } & UoaSessionHttpDeps,
+  options?: UoaSessionHttpDeps,
 ): Promise<ExternalAuthIdentity> =>
   (await exchangeUoaSession(input, options)).identity
+
+const upstreamErrorCode = async (response: Response): Promise<string | undefined> => {
+  try {
+    const payload = await response.json() as { code?: unknown; error?: unknown }
+    return trimString(payload.code) ?? trimString(payload.error)
+  } catch {
+    return undefined
+  }
+}
+
+const isSafeWorkspaceSwitchFailure = (
+  status: number,
+  code: string | undefined,
+): boolean =>
+  (status === 403
+    && (code === 'INTERACTION_REQUIRED' || code === 'WORKSPACE_NOT_AVAILABLE'))
+  || (status === 409 && code === 'WORKSPACE_SWITCH_CONFLICT')
 
 export const refreshUoaSession = async (input: {
   configUrl: string
   expectedIdentity: UoaSessionIdentity
   refreshToken: string
-  fetchImpl?: typeof fetch
-}): Promise<UoaSessionExchange> => {
+  workspaceSwitch?: UoaWorkspaceSwitchTarget
+} & UoaSessionHttpDeps): Promise<UoaSessionExchange> => {
   const settings = loadUoaSettings()
   const configUrl = ensureStoredConfigUrl(settings, input.configUrl)
   const tokenUrl = new URL(`${settings.baseUrl}/auth/token`)
   tokenUrl.searchParams.set('config_url', configUrl)
-
   let response: Response
   try {
-    response = await (input.fetchImpl ?? fetch)(tokenUrl, {
+    response = await safeFetch(tokenUrl, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${clientHash(settings)}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        grant_type: 'refresh_token',
-        refresh_token: input.refreshToken,
-      }),
+      body: JSON.stringify(input.workspaceSwitch
+        ? {
+            grant_type: UOA_WORKSPACE_SWITCH_GRANT,
+            refresh_token: input.refreshToken,
+            organization_id: input.workspaceSwitch.organizationId,
+            team_id: input.workspaceSwitch.teamId,
+          }
+        : {
+            grant_type: 'refresh_token',
+            refresh_token: input.refreshToken,
+          }),
       signal: AbortSignal.timeout(10_000),
+    }, {
+      fetchImpl: input.fetchImpl,
+      maxRedirects: 0,
+      resolveHost: input.resolveHost,
     })
   } catch {
     throw new UoaSessionRefreshError(
@@ -413,31 +464,40 @@ export const refreshUoaSession = async (input: {
     )
   }
   if (!response.ok) {
+    const code = await upstreamErrorCode(response)
+    const safeSwitchFailure = Boolean(
+      input.workspaceSwitch && isSafeWorkspaceSwitchFailure(response.status, code),
+    )
     throw new UoaSessionRefreshError(
       `[uoa] refresh endpoint returned ${response.status}`,
-      [400, 401, 403].includes(response.status),
+      code === 'INVALID_REFRESH_TOKEN'
+        || (!input.workspaceSwitch && [400, 401, 403].includes(response.status)),
+      code,
+      safeSwitchFailure,
     )
   }
 
-  let refreshed: UoaSessionExchange
+  let parsedRefresh: ReturnType<typeof parseUoaSessionExchange>
   try {
-    refreshed = parseUoaSessionExchange(
+    parsedRefresh = parseUoaSessionExchange(
       await response.json() as UoaTokenResponse,
       settings,
       configUrl,
-    ).exchange
+    )
   } catch (error) {
     throw new UoaSessionRefreshError(
       error instanceof Error ? error.message : '[uoa] invalid refresh response',
       false,
     )
   }
+  const refreshed = parsedRefresh.exchange
   const selected = resolveExternalWorkspaceSelection(refreshed.identity.workspace)
+  const expectedWorkspace = input.workspaceSwitch ?? input.expectedIdentity
   if (
     input.expectedIdentity.tokenVersion === null
     || refreshed.identity.externalSubject !== input.expectedIdentity.subject
-    || selected.organizationId !== input.expectedIdentity.organizationId
-    || selected.teamId !== input.expectedIdentity.teamId
+    || selected.organizationId !== expectedWorkspace.organizationId
+    || selected.teamId !== expectedWorkspace.teamId
     || refreshed.identity.uoaTokenVersion < input.expectedIdentity.tokenVersion
   ) {
     throw new UoaSessionRefreshError(

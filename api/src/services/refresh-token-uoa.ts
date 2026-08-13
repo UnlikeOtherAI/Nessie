@@ -159,14 +159,16 @@ export const validateUoaRefresh = (input: {
   now: Date
   refreshToken: string
   refreshTokenExpiresAt: Date
+  targetIdentity?: Pick<UoaSessionIdentity, 'organizationId' | 'teamId'>
 }): RotatedUoaCredential => {
   const parsedIdentity = UoaSessionIdentitySchema.safeParse(input.identity)
+  const expectedWorkspace = input.targetIdentity ?? input.expectedIdentity
   if (
     !parsedIdentity.success
     || parsedIdentity.data.tokenVersion === null
     || parsedIdentity.data.subject !== input.expectedIdentity.subject
-    || parsedIdentity.data.organizationId !== input.expectedIdentity.organizationId
-    || parsedIdentity.data.teamId !== input.expectedIdentity.teamId
+    || parsedIdentity.data.organizationId !== expectedWorkspace.organizationId
+    || parsedIdentity.data.teamId !== expectedWorkspace.teamId
     || input.expectedIdentity.tokenVersion === null
     || parsedIdentity.data.tokenVersion < input.expectedIdentity.tokenVersion
     || input.refreshTokenExpiresAt.getTime() <= input.now.getTime()
