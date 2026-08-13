@@ -23,6 +23,8 @@ import { FeedbackPage } from './pages/FeedbackPage'
 import { ProductPageHost } from './components/features/integrations/ProductPageHost'
 import { IntegrationsPage } from './pages/IntegrationsPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
+import { DashboardsPage } from './pages/DashboardsPage'
+import { DashboardDetailPage } from './pages/DashboardDetailPage'
 import { LoginPage } from './pages/LoginPage'
 import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -180,6 +182,14 @@ export const router = createBrowserRouter([
         // manifest-declared path here.
         path: '/signals',
         element: <ProductPageHost />,
+      },
+      {
+        path: '/dashboards',
+        element: <DashboardsPage />,
+      },
+      {
+        path: '/dashboards/:dashboardId',
+        element: <DashboardDetailPage />,
       },
       {
         path: '/agents',

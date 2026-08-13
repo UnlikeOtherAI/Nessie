@@ -89,6 +89,17 @@ const CredentialBodySchema = z.object({
 const IdParamsSchema = z.object({ id: z.string().uuid() }).strict()
 
 const sendDashboardError = (reply: Parameters<typeof sendApiError>[0], error: unknown): boolean => {
+  if (error instanceof z.ZodError) {
+    // A malformed widget definition is an author error, not a server fault.
+    // Without this the contract still rejects the payload — but as a 500 with
+    // no usable message, which makes an agent retry blindly instead of fixing
+    // the field it got wrong.
+    const detail = error.issues
+      .map((issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`)
+      .join('; ')
+    sendApiError(reply, 400, 'DASHBOARD_WIDGET_INVALID', detail)
+    return true
+  }
   if (error instanceof DashboardAccessError) {
     // `not_found` for an unreachable resource: a viewer with no path to a
     // dashboard should not learn that the id exists.

@@ -23,6 +23,7 @@ export const matchesAdminRoute = (pathname: string): boolean =>
 export type NavSectionId =
   | 'channels'
   | 'projects'
+  | 'dashboards'
   | 'knowledge'
   | 'admin'
   | 'search';
@@ -74,6 +75,15 @@ const SearchIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   </svg>
 );
 
+const DashboardsIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
+  <svg className={className} {...svgProps}>
+    <path d="M4 13h6V4H4v9z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 20h6v-9h-6v9z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4 20h6v-3H4v3z" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 8h6V4h-6v4z" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 const KnowledgeIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   <svg className={className} {...svgProps}>
     <path d="M4 19.5A2.5 2.5 0 016.5 17H20" strokeLinecap="round" strokeLinejoin="round" />
@@ -122,6 +132,13 @@ export const NAV_ITEMS: NavItem[] = [
     to: '/projects',
     isActive: (pathname) => pathname.startsWith('/projects'),
     icon: ProjectsIcon,
+  },
+  {
+    id: 'dashboards',
+    label: 'Dashboards',
+    to: '/dashboards',
+    isActive: (pathname) => pathname.startsWith('/dashboards'),
+    icon: DashboardsIcon,
   },
   {
     id: 'knowledge',

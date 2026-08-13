@@ -106,23 +106,39 @@ export const createDashboardSource = async (
   // be fetched cannot be saved and left to fail silently on a schedule.
   buildSourceUrl({ origin: input.origin, path: input.path ?? '/' }, policy)
 
-  return prisma.dashboardDataSource.create({
-    data: {
-      organizationId: actor.organizationId,
-      name: input.name,
-      origin: input.origin,
-      path: input.path ?? '/',
-      queryParams: (input.queryParams ?? null) as Prisma.InputJsonValue,
-      transform: input.transform,
-      outputColumns: columns as unknown as Prisma.InputJsonValue,
-      refreshMode,
-      intervalMinutes: refreshMode === 'interval' ? (input.intervalMinutes ?? null) : null,
-      nextRunAt: refreshMode === 'interval' ? new Date() : null,
-      authorityUserId: actor.userId,
-      createdByType: input.createdByType ?? 'user',
-      createdBy: actor.userId,
-    },
-  })
+  try {
+    return await prisma.dashboardDataSource.create({
+      data: {
+        organizationId: actor.organizationId,
+        name: input.name,
+        origin: input.origin,
+        path: input.path ?? '/',
+        queryParams: (input.queryParams ?? null) as Prisma.InputJsonValue,
+        transform: input.transform,
+        outputColumns: columns as unknown as Prisma.InputJsonValue,
+        refreshMode,
+        intervalMinutes: refreshMode === 'interval' ? (input.intervalMinutes ?? null) : null,
+        nextRunAt: refreshMode === 'interval' ? new Date() : null,
+        authorityUserId: actor.userId,
+        createdByType: input.createdByType ?? 'user',
+        createdBy: actor.userId,
+      },
+    })
+  } catch (error) {
+    // A duplicate name is an author mistake, not a server fault, and the
+    // message has to name the collision or a caller cannot fix it.
+    const code = error && typeof error === 'object' && 'code' in error
+      ? (error as { code?: string }).code
+      : undefined
+    if (code === 'P2002') {
+      throw new DashboardServiceError(
+        409,
+        'DASHBOARD_SOURCE_NAME_TAKEN',
+        `a data source named "${input.name}" already exists`,
+      )
+    }
+    throw error
+  }
 }
 
 export const listDashboardSources = async (context: DashboardContext) =>
