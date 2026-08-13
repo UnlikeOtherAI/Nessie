@@ -89,18 +89,22 @@ export type LoopResult = {
   invocations: InvocationRecord[]
 }
 
-type ExecuteToolFn = (
-  toolName: string,
-  args: Record<string, unknown>,
-  toolCallId: string,
-) => Promise<{
+type ExecutedToolResult = {
   acknowledgeDelivery?: () => void
   connectorUsage?: ConnectorUsage
   output: string
   success: boolean
   inputSummary: string
+  toolCallId?: string
   toolCallRecordId?: string
-}>
+  toolName?: string
+}
+
+type ExecuteToolFn = (
+  toolName: string,
+  args: Record<string, unknown>,
+  toolCallId: string,
+) => Promise<ExecutedToolResult>
 
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000
 const LOOP_DETECTION_THRESHOLD = 3
@@ -166,7 +170,16 @@ export const runAgenticLoop = async (input: {
   // aborted run's partial token spend is still attributable — the caller reads
   // this array on the failure path even when no LoopResult is returned.
   invocationSink?: InvocationRecord[]
-  runInference: (messages: ProviderMessage[]) => Promise<InferenceResult>
+  /**
+   * Optional capture of the tool results produced since the previous
+   * inference call, passed as an out-param so callers that bound context to
+   * their inference function (delegate sub-agents) can observe how each
+   * nested tool call resolved.
+   */
+  runInference: (
+    messages: ProviderMessage[],
+    captured?: { toolResults: ExecutedToolResult[] },
+  ) => Promise<InferenceResult>
   toolTimeoutError?: (toolName: string) => Error | null
   tools: ToolSchemaDescriptor[]
   // Wind-down (spec §3a): when set, crossing WIND_DOWN_FRACTION of any budget
@@ -192,6 +205,7 @@ export const runAgenticLoop = async (input: {
 
   let iterations = 0
   let toolCallsUsed = 0
+  let pendingToolResults: ExecutedToolResult[] | null = null
   let totalToolMs = 0
   let spend: SpendTotals = ZERO_SPEND
   let woundDown = false
@@ -298,9 +312,13 @@ export const runAgenticLoop = async (input: {
     })
     if (preInferenceStop) return stop(preInferenceStop)
 
+    const captured = pendingToolResults
+      ? { toolResults: pendingToolResults }
+      : undefined
+    pendingToolResults = null
     const result = await callInferenceWithRetry(
       messages,
-      input.runInference,
+      (inferenceMessages) => input.runInference(inferenceMessages, captured),
       retryBudget,
       contextPlan.targetTokens,
     )
@@ -432,6 +450,7 @@ export const runAgenticLoop = async (input: {
     })
 
     toolCallsUsed += toolResults.length
+    pendingToolResults = toolResults.map(({ acknowledgeDelivery: _ack, ...rest }) => rest)
 
     for (const tr of toolResults) {
       // Single truncation chokepoint: every tool result — builtin, MCP, and

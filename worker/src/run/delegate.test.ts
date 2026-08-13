@@ -9,6 +9,9 @@ import {
 } from '@nessie/runtime'
 
 import { runDelegate } from './delegate.js'
+import { parseOrganizationId } from '@nessie/schemas'
+
+import type { ToolAuthorizationDecision } from './execute/tool-authorization.js'
 import type { McpToolset } from './mcp-toolset.js'
 import { resolveAgentTools } from './tool-policy.js'
 
@@ -59,17 +62,28 @@ const webSearchDescriptor: ToolSchemaDescriptor = {
   inputSchema: { type: 'object', properties: {} },
 }
 
+const emptyMcpView = () => ({
+  descriptors: [],
+  handledNames: new Set<string>(),
+  dispatch: async () => {
+    throw new Error('no MCP tools in this test')
+  },
+})
+
 const emptyMcpToolset = (): McpToolset =>
   ({
-    createView: () => ({
-      descriptors: [],
-      handledNames: new Set<string>(),
-      dispatch: async () => {
-        throw new Error('no MCP tools in this test')
-      },
-    }),
+    createView: emptyMcpView,
     timeoutErrorFor: () => null,
   }) as unknown as McpToolset
+
+const allowAll: () => Promise<ToolAuthorizationDecision> = async () => ({
+  decision: 'allow',
+  toolActorContext: {
+    actor: { actorType: 'user', actorId: 'user-1' },
+    tenant: { organizationId: parseOrganizationId('11111111-1111-4111-8111-111111111111') },
+    actionContext: { requestId: 'req-1' },
+  },
+})
 
 const inferenceResult = (
   over: Partial<InferenceResult> = {},
@@ -89,6 +103,7 @@ test('a delegate sub-agent is never shown the delegate tool itself', async () =>
     { task: 'Find the current pricing page.' },
     {
       mcpToolset: emptyMcpToolset(),
+      mcpView: emptyMcpView(),
       runInference: async (
         _messages: ProviderMessage[],
         tools: ToolSchemaDescriptor[],
@@ -96,13 +111,13 @@ test('a delegate sub-agent is never shown the delegate tool itself', async () =>
         advertised.push(tools.map((tool) => tool.toolName))
         return inferenceResult({ outputText: 'Pricing starts at $10/month.' })
       },
+      authorizeSubAgentTool: allowAll,
       executeBuiltinTool: async () => {
         throw new Error('not called')
       },
       // The caller (execute/agent-loop.ts) filters `delegate` out of the
       // sub-agent's builtins; the sub-agent advertises exactly what it is given.
       builtinDescriptors: [webSearchDescriptor],
-      allowedBuiltinIds: new Set(['web_search']),
     },
   )
 
@@ -119,6 +134,7 @@ test('a sub-agent that calls delegate anyway is refused, not recursed', async ()
     { task: 'Research competitors.', hint: 'web search' },
     {
       mcpToolset: emptyMcpToolset(),
+      mcpView: emptyMcpView(),
       runInference: async () => {
         turn += 1
         return turn === 1
@@ -129,11 +145,11 @@ test('a sub-agent that calls delegate anyway is refused, not recursed', async ()
           })
           : inferenceResult({ outputText: 'Done.' })
       },
+      authorizeSubAgentTool: allowAll,
       executeBuiltinTool: async () => {
         throw new Error('not called')
       },
       builtinDescriptors: [webSearchDescriptor],
-      allowedBuiltinIds: new Set(['web_search']),
     },
   )
 
