@@ -30,7 +30,9 @@ import {
   setChannelArchived,
   updateChannel,
 } from '../services/channels.js'
+import { ensurePersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
+import { sendAgentAvatarGenerationError } from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
 
 export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -83,14 +85,29 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      teamId:
-        actorContext.tenant.teamId
-        ?? actorContext.actionContext.teamId
-        ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
-      userId: actorContext.actor.actorId,
-    })
+    let bootstrap: Awaited<ReturnType<typeof ensurePersonalAssistantBootstrap>>
+    try {
+      bootstrap = await ensurePersonalAssistantBootstrap(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        teamId:
+          actorContext.tenant.teamId
+          ?? actorContext.actionContext.teamId
+          ?? DEFAULT_BOOTSTRAP_RECORD_IDS.teamId,
+        userId: actorContext.actor.actorId,
+      })
+      await ensurePersonalAssistantAvatar({
+        actorContext,
+        config: deps.config.model,
+        fileService: deps.fileService,
+        ledgerIdentity: deps.ledgerIdentity,
+        modelClient: deps.sharedModelClient,
+        organizationId: actorContext.tenant.organizationId,
+        prisma,
+      })
+    } catch (error) {
+      if (sendAgentAvatarGenerationError(reply, error)) return reply
+      throw error
+    }
     const state = await loadPersonalAssistantState(actorContext)
     if (!state?.agent || !state.channel || !state.thread) {
       sendApiError(

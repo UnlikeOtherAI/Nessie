@@ -4,11 +4,15 @@ import type {
   PersonalAssistantConfigSummary,
 } from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
+import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { AgentAvatar } from '../../shared/AgentAvatar'
 
 type PersonalAssistantSidebarEntryProps = {
   active?: boolean
+  agent?: AgentRecord | null
   bootstrapping?: boolean
   onClick: () => void
+  token: string | null
   unreadCount?: number
 }
 
@@ -67,8 +71,10 @@ const assistantPills = (
 
 export const PersonalAssistantSidebarEntry = ({
   active = false,
+  agent,
   bootstrapping = false,
   onClick,
+  token,
   unreadCount = 0,
 }: PersonalAssistantSidebarEntryProps) => (
   <button
@@ -76,22 +82,26 @@ export const PersonalAssistantSidebarEntry = ({
     onClick={onClick}
     type="button"
   >
-    <div className={assistantGlyphClassName}>
-      <svg
-        fill="none"
-        height="10"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-        viewBox="0 0 24 24"
-        width="10"
-      >
-        <path d="M12 3v5" />
-        <path d="M9 8h6" />
-        <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
-      </svg>
-    </div>
+    {agent ? (
+      <AgentAvatar agent={agent} shape="circle" size="xs" token={token} />
+    ) : (
+      <div className={assistantGlyphClassName}>
+        <svg
+          fill="none"
+          height="10"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          viewBox="0 0 24 24"
+          width="10"
+        >
+          <path d="M12 3v5" />
+          <path d="M9 8h6" />
+          <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
+        </svg>
+      </div>
+    )}
     <span className="min-w-0 flex-1 truncate text-current">
       Personal Assistant
     </span>
@@ -111,6 +121,8 @@ export const PersonalAssistantConfigBanner = ({
   channel,
   configSummary,
 }: PersonalAssistantConfigBannerProps) => {
+  const { token } = useAuthSession()
+
   if (!isPersonalAssistantChannel(channel)) {
     return null
   }
@@ -120,9 +132,7 @@ export const PersonalAssistantConfigBanner = ({
   return (
     <section className="mx-5 mt-3 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3">
       <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-lg">
-          ⚡
-        </div>
+        <AgentAvatar agent={agent} shape="circle" size="md" token={token} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-[var(--tx)]">

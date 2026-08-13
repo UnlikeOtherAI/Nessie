@@ -22,6 +22,8 @@ import {
   setOrganizationMemberDeactivated,
   updateOrganizationMemberRole,
 } from '../services/users.js'
+import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
+import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
 import type { RouteDeps } from './types.js'
 
 // The membership mutators throw LAST_OWNER_ERROR from inside their transaction
@@ -85,13 +87,30 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
           '00000000-0000-4000-8000-000000000003',
       })
 
+      const teamId = actorContext.tenant.teamId
+        ?? actorContext.actionContext.teamId
+        ?? '00000000-0000-4000-8000-000000000003'
+      await ensurePersonalAssistantBootstrap(prisma, {
+        organizationId: actorContext.tenant.organizationId,
+        teamId,
+        userId: user.id,
+      })
+      await attemptPersonalAssistantAvatar({
+        actorContext,
+        config: deps.config.model,
+        fileService: deps.fileService,
+        ledgerIdentity: deps.ledgerIdentity,
+        modelClient: deps.sharedModelClient,
+        organizationId: actorContext.tenant.organizationId,
+        prisma,
+      })
+
       return reply.code(201).send(createApiResponse(UserRecordSchema.parse(user)))
     } catch (error) {
       if (error instanceof Error && error.message === 'USER_ALREADY_EXISTS') {
         sendApiError(reply, 409, 'USER_ALREADY_EXISTS', 'A user with that email already exists')
         return reply
       }
-
       throw error
     }
   })

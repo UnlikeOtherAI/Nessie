@@ -27,11 +27,14 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { clearRefreshCookie, readRefreshCookie } from '../lib/refresh-cookie.js'
 import {
   buildMeResponse,
+  createActorContextFromClaims,
   listAuthProviders,
   resolveConfiguredAuthProvider,
 } from '../services/auth.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl } from '../services/external-auth.js'
+import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
+import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
 import { revokeRefreshTokenByRaw } from '../services/refresh-token.js'
 import { clearPushSurfacePresenceForUser } from '../services/push-surface-presence.js'
 import {
@@ -285,6 +288,21 @@ export const registerAuthCoreRoutes = (
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue bootstrap session')
       return reply
     }
+    const actorContext = createActorContextFromClaims(verification.claims)
+    await ensurePersonalAssistantBootstrap(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId: actorContext.tenant.teamId!,
+      userId: result.user.id,
+    })
+    await attemptPersonalAssistantAvatar({
+      actorContext,
+      config: deps.config.model,
+      fileService: deps.fileService,
+      ledgerIdentity: deps.ledgerIdentity,
+      modelClient: deps.sharedModelClient,
+      organizationId: actorContext.tenant.organizationId,
+      prisma,
+    })
     await issueRefreshCookie(request, reply, {
       userId: result.user.id,
       organizationId: verification.claims.org,

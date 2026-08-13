@@ -161,7 +161,10 @@ function (advisory-lock upsert-by-kind — find-by-kind-and-name, else create):
 - **Personal Assistant** (`api/src/services/personal-assistant.ts`,
   `ensurePersonalAssistantAgent`) — `agentKind: 'personal_assistant'`, DM-only
   surface, delegates as its owning user for "act as the user" tools
-  (`send_message`, channel management, etc.).
+  (`send_message`, channel management, etc.). New-user provisioning creates
+  each user's private DM and generates the shared organization-managed agent's
+  first original cartoon headshot through Ledger; later users retain that
+  assistant avatar rather than replacing it.
 - **Librarian** (`api/src/services/librarian.ts`, `ensureLibrarianAgent`,
   bootstrapped via `POST /api/knowledge-base/librarian`) — `agentKind:
   'shared'`, read-only knowledge-base research today (`kb_search`,

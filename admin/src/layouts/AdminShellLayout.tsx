@@ -136,6 +136,7 @@ const AuthenticatedAdminShellLayout = () => {
       onOpenPersonalAssistant={() => void shell.openPersonalAssistant()}
       onOpenRenameProject={shell.openRenameProject}
       onToggleStar={shell.toggleStar}
+      personalAssistantAgent={shell.personalAssistantAgent}
       personalAssistantBootstrapping={shell.personalAssistantBootstrapping}
       personalAssistantChannelId={shell.personalAssistantChannelId}
       personalAssistantUnreadCount={shell.personalAssistantUnreadCount}

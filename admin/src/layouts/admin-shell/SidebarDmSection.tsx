@@ -3,6 +3,7 @@ import {
 } from '../../components/features/personal-assistant/PersonalAssistantSurface';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { agentGradient } from '../../lib/avatar';
+import type { AgentRecord } from '../../lib/api-client';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
@@ -22,6 +23,7 @@ type SidebarDmSectionProps = {
   onStartNewConversation: () => void;
   onOpenPersonalAssistant: () => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
+  personalAssistantAgent: AgentRecord | null;
   personalAssistantBootstrapping: boolean;
   personalAssistantChannelId?: string;
   personalAssistantUnreadCount: number;
@@ -43,6 +45,7 @@ export const SidebarDmSection = ({
   onStartNewConversation,
   onOpenPersonalAssistant,
   onToggleStar,
+  personalAssistantAgent,
   personalAssistantBootstrapping,
   personalAssistantChannelId,
   personalAssistantUnreadCount,
@@ -76,8 +79,10 @@ export const SidebarDmSection = ({
     >
       <PersonalAssistantSidebarEntry
         active={personalAssistantChannelId === currentChannelId}
+        agent={personalAssistantAgent}
         bootstrapping={personalAssistantBootstrapping}
         onClick={onOpenPersonalAssistant}
+        token={token}
         unreadCount={personalAssistantUnreadCount}
       />
       {sidebarProductAssistants.map((assistant) => {

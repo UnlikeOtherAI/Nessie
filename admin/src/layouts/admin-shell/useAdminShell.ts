@@ -374,6 +374,7 @@ export const useAdminShell = () => {
     openPersonalAssistant,
     openRenameProject,
     pathname: location.pathname,
+    personalAssistantAgent: personalAssistantState?.agent ?? null,
     personalAssistantBootstrapping: personalAssistantBootstrap.isPending,
     personalAssistantChannelId: personalAssistantChannel?.id,
     personalAssistantUnreadCount: personalAssistantChannel?.unreadCount ?? 0,

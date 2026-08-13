@@ -144,6 +144,8 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
           where: { id: channel.agentBindings[0].agentId },
           select: {
             agentKind: true,
+            avatarAttachmentId: true,
+            avatarBackgroundColor: true,
             bindings: {
               where: { channelId: channel.id },
               orderBy: { createdAt: 'asc' },
@@ -228,6 +230,8 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
             parentAgentId: null,
             provider: agent.provider ?? undefined,
             model: agent.model ?? undefined,
+            avatarAttachmentId: agent.avatarAttachmentId ?? undefined,
+            avatarBackgroundColor: agent.avatarBackgroundColor ?? undefined,
             createdAt: agent.createdAt.toISOString(),
             updatedAt: agent.updatedAt.toISOString(),
             channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),

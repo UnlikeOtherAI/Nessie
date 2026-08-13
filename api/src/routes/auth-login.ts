@@ -7,12 +7,15 @@ import { LoginRequestSchema } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   buildMeResponse,
+  createActorContextFromClaims,
   LOCAL_AUTH_PROVIDER_ID,
   resolveConfiguredAuthProvider,
 } from '../services/auth.js'
 import { exchangeExternalAuthCode } from '../services/external-auth.js'
 import { resolveExternalWorkspaceSelection } from '../services/identity-display.js'
 import { syncUoaProductAccountLinks } from '../services/integrations.js'
+import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
+import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
 import { RefreshTokenIssuanceError } from '../services/refresh-token.js'
 import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
 import { loadSessionUserByEmail } from '../services/users.js'
@@ -169,6 +172,21 @@ export const registerAuthLoginRoute = (
           sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue external auth session')
           return reply
         }
+        const actorContext = createActorContextFromClaims(verification.claims)
+        await ensurePersonalAssistantBootstrap(prisma, {
+          organizationId: context.organizationId,
+          teamId: context.teamId,
+          userId: context.userId,
+        })
+        await attemptPersonalAssistantAvatar({
+          actorContext,
+          config: deps.config.model,
+          fileService: deps.fileService,
+          ledgerIdentity: deps.ledgerIdentity,
+          modelClient: deps.sharedModelClient,
+          organizationId: context.organizationId,
+          prisma,
+        })
         await issueRefreshCookie(request, reply, {
           userId: sessionUser.id,
           organizationId: verification.claims.org,
@@ -221,6 +239,21 @@ export const registerAuthLoginRoute = (
       sendApiError(reply, 500, 'TOKEN_INVALID', 'Failed to issue session')
       return reply
     }
+    const actorContext = createActorContextFromClaims(verification.claims)
+    await ensurePersonalAssistantBootstrap(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      teamId: actorContext.tenant.teamId!,
+      userId: user.id,
+    })
+    await attemptPersonalAssistantAvatar({
+      actorContext,
+      config: deps.config.model,
+      fileService: deps.fileService,
+      ledgerIdentity: deps.ledgerIdentity,
+      modelClient: deps.sharedModelClient,
+      organizationId: actorContext.tenant.organizationId,
+      prisma,
+    })
     try {
       await issueRefreshCookie(request, reply, {
         userId: user.id,

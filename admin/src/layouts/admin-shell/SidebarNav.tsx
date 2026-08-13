@@ -1,4 +1,4 @@
-import type { ChannelRecord } from '../../lib/api-client';
+import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
 import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
@@ -35,6 +35,7 @@ type SidebarNavProps = {
   onOpenPersonalAssistant: () => void;
   onOpenRenameProject: (target: RenameProjectTarget) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
+  personalAssistantAgent: AgentRecord | null;
   personalAssistantBootstrapping: boolean;
   personalAssistantChannelId?: string;
   personalAssistantUnreadCount: number;
@@ -79,6 +80,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     onOpenPersonalAssistant,
     onOpenRenameProject,
     onToggleStar,
+    personalAssistantAgent,
     personalAssistantBootstrapping,
     personalAssistantChannelId,
     personalAssistantUnreadCount,
@@ -167,6 +169,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onStartNewConversation={onNavigateNewConversation}
           onOpenPersonalAssistant={onOpenPersonalAssistant}
           onToggleStar={onToggleStar}
+          personalAssistantAgent={personalAssistantAgent}
           personalAssistantBootstrapping={personalAssistantBootstrapping}
           personalAssistantChannelId={personalAssistantChannelId}
           personalAssistantUnreadCount={personalAssistantUnreadCount}
