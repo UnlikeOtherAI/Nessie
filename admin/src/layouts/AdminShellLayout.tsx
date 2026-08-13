@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, useOutlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import {
@@ -21,6 +21,8 @@ import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
+import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
+import { getPhoneNavigationScreen } from './admin-shell/phone-navigation-transition';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
@@ -108,16 +110,20 @@ const AuthenticatedAdminShellLayout = () => {
   // supplies its own mobile header (hamburger + title).
   const hideTopBar = isComposeRoute || showWebTabBar || (nativeShell && (phoneLayout || nativeIPadApp));
 
+  // Capture the matched route as a concrete element. The phone transition
+  // keeps that element mounted while it leaves; retaining a live <Outlet>
+  // would resolve both layers against the new route and duplicate the incoming
+  // page instead of preserving the outgoing one.
+  const outlet = useOutlet({
+    onCreateAgent: shell.navigateToAgentDesigner,
+    onCreateChannel: shell.openCreateChannel,
+    onSelectAgent: shell.selectAgent,
+    scopedAgents: shell.scopedAgents,
+  });
+
   const mainContent = (
     <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
-      <Outlet
-        context={{
-          onCreateAgent: shell.navigateToAgentDesigner,
-          onCreateChannel: shell.openCreateChannel,
-          onSelectAgent: shell.selectAgent,
-          scopedAgents: shell.scopedAgents,
-        }}
-      />
+      {outlet}
     </main>
   );
 
@@ -190,6 +196,17 @@ const AuthenticatedAdminShellLayout = () => {
   // hamburger is never a dead button.
   const drawerNavElement = secNavElement ?? sidebarNavElement;
 
+  const phonePageContent = showPhoneTabRoot ? (
+    <div
+      className={[
+        'flex min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
+        '[&>aside]:w-full [&>aside]:border-r-0',
+      ].join(' ')}
+    >
+      {drawerNavElement}
+    </div>
+  ) : mainContent;
+
   const contentRegion = phoneLayout ? (
     <>
       {!showPhoneTabRoot ? (
@@ -197,16 +214,11 @@ const AuthenticatedAdminShellLayout = () => {
           {drawerNavElement}
         </MobileNavDrawer>
       ) : null}
-      {showPhoneTabRoot ? (
-        <div
-          className={[
-            'flex min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
-            '[&>aside]:w-full [&>aside]:border-r-0',
-          ].join(' ')}
-        >
-          {drawerNavElement}
-        </div>
-      ) : mainContent}
+      {getPhoneNavigationScreen(shell.pathname) ? (
+        <PhoneNavigationViewport pathname={shell.pathname}>
+          {phonePageContent}
+        </PhoneNavigationViewport>
+      ) : phonePageContent}
     </>
   ) : (
     <>

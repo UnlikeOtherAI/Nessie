@@ -281,6 +281,85 @@ a {
   color: var(--tx);
 }
 
+/* Phone list/detail navigation mirrors a native controller: the selected
+   screen enters over the tab root, then slides back off to reveal it. The
+   viewport is mounted only by the single-column phone branch; tablet and
+   desktop keep their adjacent columns and never receive these transforms. */
+.phone-navigation-viewport {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  background: var(--main);
+}
+
+.phone-navigation-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--main);
+  animation-duration: 300ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.phone-navigation-screen--current {
+  z-index: 1;
+  animation: none;
+  will-change: auto;
+}
+
+.phone-navigation-screen--forward-out {
+  z-index: 1;
+  animation-name: phone-navigation-forward-out;
+  pointer-events: none;
+}
+
+.phone-navigation-screen--forward-in {
+  z-index: 2;
+  animation-name: phone-navigation-forward-in;
+  box-shadow: -12px 0 32px var(--scrim);
+}
+
+.phone-navigation-screen--back-out {
+  z-index: 2;
+  animation-name: phone-navigation-back-out;
+  box-shadow: -12px 0 32px var(--scrim);
+  pointer-events: none;
+}
+
+.phone-navigation-screen--back-in {
+  z-index: 1;
+  animation-name: phone-navigation-back-in;
+}
+
+@keyframes phone-navigation-forward-out {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-28%, 0, 0); }
+}
+
+@keyframes phone-navigation-forward-in {
+  from { transform: translate3d(100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes phone-navigation-back-out {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
+}
+
+@keyframes phone-navigation-back-in {
+  from { transform: translate3d(-28%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
 /* The secondary navigation is a viewport-relative, per-device width on desktop
    and tablet. The separator stays at the column boundary; its larger coarse-
    pointer hit area makes the same control practical with an iPad finger. */

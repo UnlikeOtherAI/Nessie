@@ -1,0 +1,103 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import test from 'node:test'
+import { fileURLToPath } from 'node:url'
+import {
+  getPhoneNavigationDirection,
+  getPhoneNavigationScreen,
+} from '../src/layouts/admin-shell/phone-navigation-transition'
+
+const readSource = (relativePath: string): string =>
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+
+test('pushes channel and channel-project details forward from the Channels root', () => {
+  assert.equal(
+    getPhoneNavigationDirection('/channels', '/channels/channel_a'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/channels/', '/channels/projects/project_a'),
+    'forward',
+  )
+})
+
+test('pops channel details back even when Back navigates to an explicit URL', () => {
+  assert.equal(
+    getPhoneNavigationDirection('/channels/channel_a', '/channels'),
+    'back',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/channels/channel_a/info/members', '/channels'),
+    'back',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/channels/projects/project_a', '/channels'),
+    'back',
+  )
+})
+
+test('pushes and pops project details within the Projects tab', () => {
+  assert.equal(
+    getPhoneNavigationDirection('/projects', '/projects/project_a'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/projects/project_a/board', '/projects'),
+    'back',
+  )
+})
+
+test('keeps routes on the same screen from replaying a navigation transition', () => {
+  assert.equal(
+    getPhoneNavigationDirection(
+      '/channels/channel_a',
+      '/channels/channel_a/info/members',
+    ),
+    null,
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/projects/project_a', '/projects/project_a/docs'),
+    null,
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/channels/channel_a', '/channels/channel_b'),
+    null,
+  )
+})
+
+test('does not animate cross-tab, compose, or unrelated routes', () => {
+  assert.equal(getPhoneNavigationDirection('/channels', '/projects'), null)
+  assert.equal(getPhoneNavigationDirection('/channels', '/channels/new'), null)
+  assert.equal(getPhoneNavigationDirection('/projects', '/settings'), null)
+  assert.equal(getPhoneNavigationScreen('/channels/new'), null)
+})
+
+test('classifies channel project overviews before the generic channel pattern', () => {
+  assert.deepEqual(getPhoneNavigationScreen('/channels/projects/project_a'), {
+    depth: 1,
+    key: 'channels:project:project_a',
+    section: 'channels',
+  })
+})
+
+test('mounts the transition viewport only in the shell phone branch', () => {
+  const shell = readSource('../src/layouts/AdminShellLayout.tsx')
+  const phoneBranchStart = shell.indexOf('const contentRegion = phoneLayout ? (')
+  const widerBranchStart = shell.indexOf('\n  ) : (\n    <>', phoneBranchStart)
+  const viewport = shell.indexOf('<PhoneNavigationViewport', phoneBranchStart)
+
+  assert.notEqual(phoneBranchStart, -1)
+  assert.notEqual(widerBranchStart, -1)
+  assert.ok(viewport > phoneBranchStart && viewport < widerBranchStart)
+  assert.equal(shell.indexOf('<PhoneNavigationViewport', viewport + 1), -1)
+})
+
+test('defines paired push and pop animations under the global reduced-motion rule', () => {
+  const styles = readSource('../src/styles.css')
+
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/)
+  assert.match(styles, /@keyframes phone-navigation-forward-out/)
+  assert.match(styles, /@keyframes phone-navigation-forward-in/)
+  assert.match(styles, /@keyframes phone-navigation-back-out/)
+  assert.match(styles, /@keyframes phone-navigation-back-in/)
+})

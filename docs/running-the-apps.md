@@ -319,8 +319,11 @@ and leaves page data, URLs, and conversation state in the admin React app.
 
 - On a **phone**, selecting or reselecting Channels, Projects, Knowledge, or
   Admin opens that tab's contextual navigation list first. Selecting an item
-  then enters its detail route; a conversation's Back control returns to the
-  Channels list.
+  then pushes its detail route in from the right while the list moves left. A
+  conversation's Back control, browser/WebView Back, or tab-root navigation
+  reverses that motion. This shared admin transition runs in both the iPhone
+  and Android WebView shells (and narrow mobile web), and follows the system's
+  reduced-motion preference.
 - Conversation information is addressable at
   `/channels/:channelId/info`, with nested `/members` and `/members/add`
   destinations. This gives a cold deep link the same deterministic Back path
@@ -329,8 +332,10 @@ and leaves page data, URLs, and conversation state in the admin React app.
   the system Liquid Glass tab bar. **Android** uses the same routes and
   hierarchy, but keeps its normal Material-style Back affordance rather than
   imitating iOS glass.
-- **iPad and desktop** retain their side navigation beside the selected detail;
-  conversation information is an inspector, not a phone-style replacement.
+- **iPad, Android tablets with a multi-column viewport, and desktop** retain
+  their side navigation beside the selected detail and never mount the phone
+  transition viewport; conversation information is an inspector, not a
+  phone-style replacement.
 
 ## iPhone Dev Build And Direct APNs Push
 
