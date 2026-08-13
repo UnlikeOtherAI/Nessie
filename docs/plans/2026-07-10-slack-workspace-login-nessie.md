@@ -44,10 +44,12 @@ Chosen mapping (product decision, 2026-07-10):
   `owner`. Everyone shares the org as `member` (the very first bootstrap user is
   the org `owner`).
 
-Switching between environments reuses the existing `POST /api/auth/switch-context`
-(it already validates the full org/project/team triple) surfaced by a new
-sidebar **workspace switcher**. Adding a workspace re-runs SSO so UOA's chooser
-appears.
+Local sessions may reuse `POST /api/auth/switch-context` after it validates the
+full org/project/team triple. UOA sessions must instead use UOA's authoritative
+workspace directory and re-enter through its `team_hint` flow: a local context
+switch cannot change the signed UOA organisation/team proof. This makes every
+workspace in UOA's directory selectable without allowing the local and external
+session scopes to drift.
 
 Why not the alternatives: mapping a workspace to a whole **Organization** would
 mean provisioning a new tenant per workspace (heavier, and UOA's one-org-per-user
@@ -85,9 +87,10 @@ project** would leak agents/policies across workspaces (both scope by project).
 - `packages/client-core` `auth-session.ts` — `switchContext({ organizationId,
   projectId, teamId })` (POST `/api/auth/switch-context`, bearer + cookie).
 - `AuthSessionProvider` exposes `switchContext`.
-- `layouts/admin-shell/WorkspaceSwitcher.tsx` — a rail control listing the
-  workspaces (teams) from `me.memberships`, switching the active one, plus
-  "Add a workspace" (re-runs SSO → UOA chooser).
+- `layouts/admin-shell/WorkspaceSwitcher.tsx` — a rail control. Local sessions
+  list `me.memberships` and switch context; UOA sessions list the named UOA
+  directory saved at authentication and select an entry through `team_hint`.
+  "Add a workspace" still opens the full UOA chooser.
 - `LoginPage` processes an OAuth `code` even when already authenticated (so
   "add a workspace" re-scopes the session).
 

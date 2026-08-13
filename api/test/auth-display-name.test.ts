@@ -38,7 +38,7 @@ const makeUser = (displayName: string): User => ({
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 })
 
-const makePrisma = () => {
+const makePrisma = (workspaceDirectory?: unknown) => {
   const updates: Array<{ displayName: string; id: string }> = []
   const prisma = {
     // loadUserMemberships now issues its three membership queries in parallel
@@ -48,6 +48,9 @@ const makePrisma = () => {
     },
     projectMember: { findMany: async () => [] },
     teamMember: { findMany: async () => [] },
+    productAccountLink: {
+      findUnique: async () => workspaceDirectory ? { metadata: { workspaceDirectory } } : null,
+    },
     user: {
       update: async ({ data, where }: { data: { displayName: string }; where: { id: string } }) => {
         updates.push({ displayName: data.displayName, id: where.id })
@@ -83,4 +86,50 @@ test('buildMeResponse leaves a non-email display name untouched', async () => {
 
   assert.equal(me.user.displayName, 'Ada L.')
   assert.deepEqual(updates, [])
+})
+
+test('buildMeResponse exposes the UOA workspace directory with its signed active workspace', async () => {
+  const { prisma } = makePrisma([
+    {
+      organizationId: 'uoa-org-active',
+      teamId: 'uoa-team-active',
+      label: 'Active workspace',
+      orgName: 'Active org',
+    },
+    {
+      organizationId: 'uoa-org-other',
+      teamId: 'uoa-team-other',
+      label: 'Other workspace',
+    },
+  ])
+  const me = await buildMeResponse(
+    prisma,
+    makeUser('Ada L.'),
+    {
+      ...claims,
+      uoaIdentity: {
+        organizationId: 'uoa-org-active',
+        subject: 'uoa-subject',
+        teamId: 'uoa-team-active',
+        tokenVersion: 3,
+      },
+    },
+    { auth: { autoRedirectToSso: true }, mode: 'hosted' } as Parameters<typeof buildMeResponse>[3],
+  )
+
+  assert.deepEqual(me.uoaWorkspaces, [
+    {
+      organizationId: 'uoa-org-active',
+      teamId: 'uoa-team-active',
+      label: 'Active workspace',
+      orgName: 'Active org',
+      active: true,
+    },
+    {
+      organizationId: 'uoa-org-other',
+      teamId: 'uoa-team-other',
+      label: 'Other workspace',
+      active: false,
+    },
+  ])
 })

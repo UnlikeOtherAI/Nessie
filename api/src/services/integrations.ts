@@ -22,6 +22,12 @@ type UoaProductAccountLinkSyncInput = ProductOwner & {
   externalSubject: string | undefined
   uoaTokenVersion: number | undefined
   workspace: ExternalAuthWorkspace | undefined
+  workspaceDirectory?: Array<{
+    organizationId: string
+    teamId: string
+    label: string
+    orgName?: string
+  }>
 }
 
 type ProductSlugRow = {
@@ -30,13 +36,20 @@ type ProductSlugRow = {
 
 const FIRST_PARTY_PLUGIN_MANIFEST_PREFIX = 'first-party/'
 
-const uoaLinkMetadata = (workspace?: ExternalAuthWorkspace): Prisma.InputJsonObject => {
+const uoaLinkMetadata = (
+  workspace?: ExternalAuthWorkspace,
+  workspaceDirectory?: UoaProductAccountLinkSyncInput['workspaceDirectory'],
+): Prisma.InputJsonObject => {
   const metadata = {
     provider: 'uoa',
     teamIds: workspace?.teamIds ?? [],
     teamRoles: workspace?.teamRoles ?? {},
   }
-  return workspace?.orgRole ? { ...metadata, orgRole: workspace.orgRole } : metadata
+  return {
+    ...metadata,
+    ...(workspace?.orgRole ? { orgRole: workspace.orgRole } : {}),
+    ...(workspaceDirectory && workspaceDirectory.length > 0 ? { workspaceDirectory } : {}),
+  }
 }
 
 export const syncUoaProductAccountLinks = async (
@@ -65,7 +78,7 @@ export const syncUoaProductAccountLinks = async (
   }
 
   const now = new Date()
-  const metadata = uoaLinkMetadata(input.workspace)
+  const metadata = uoaLinkMetadata(input.workspace, input.workspaceDirectory)
   const externalAccountId = input.externalSubject
   const {
     organizationId: activeOrgId,
@@ -117,7 +130,10 @@ export const syncUoaProductAccountLinks = async (
           "active_team_id" = EXCLUDED."active_team_id",
           "status" = EXCLUDED."status",
           "last_verified_at" = EXCLUDED."last_verified_at",
-          "metadata_json" = EXCLUDED."metadata_json",
+          -- The directory is refreshed opportunistically from UOA. Retain the
+          -- last verified directory if that non-essential read is unavailable
+          -- while the account-link proof itself is being renewed.
+          "metadata_json" = "product_account_links"."metadata_json" || EXCLUDED."metadata_json",
           "updated_at" = CURRENT_TIMESTAMP
         WHERE (
           "product_account_links"."uoa_sub" IS NULL

@@ -72,6 +72,7 @@ export const buildExternalAuthAuthorizeUrl = async (
     codeChallenge: string
     redirectUri: string
     state: string
+    teamHint?: string
     theme?: SsoTheme
   },
 ): Promise<string> => {

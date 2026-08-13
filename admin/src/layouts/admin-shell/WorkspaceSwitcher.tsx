@@ -99,7 +99,7 @@ const WorkspaceMenu = ({
           Workspaces
         </div>
         {workspaces.map((workspace) => {
-          const isActive = workspace.teamId === activeTeamId
+          const isActive = workspace.active || workspace.teamId === activeTeamId
           return (
             <button
               className={[
@@ -115,7 +115,7 @@ const WorkspaceMenu = ({
                 label={workspace.label}
                 revision={isActive ? avatarRevision : 0}
                 size={32}
-                teamId={workspace.teamId}
+                teamId={workspace.uoaWorkspace ? undefined : workspace.teamId}
                 token={token}
               />
               <span className="min-w-0 flex-1">
@@ -166,11 +166,11 @@ const WorkspaceMenu = ({
 }
 
 /**
- * Slack-style workspace switcher: the desktop rail renders its avatar button,
- * while native iPad opens this exact menu from its companion control. Both
- * re-scope the session through `switch-context`, and "Add a workspace" re-runs
- * SSO so UOA's chooser appears. Hidden only when there is no workspace and no
- * SSO provider to add one.
+ * Shared desktop/iPad workspace switcher. Local sessions re-scope through
+ * `switch-context`; UOA sessions use their saved directory and re-enter UOA
+ * with `team_hint`, so local and signed UOA workspace scopes cannot drift.
+ * The desktop rail renders the trigger; native iPad opens this same menu from
+ * its companion control. "Add a workspace" opens UOA's full chooser.
  */
 type WorkspaceSwitcherProps = {
   variant?: 'native-bridge' | 'rail'
@@ -190,15 +190,26 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
 
   const workspaces = useMemo(() => workspacesFromMe(me), [me])
   const activeTeamId = me?.context.teamId ?? null
-  const active = workspaces.find((workspace) => workspace.teamId === activeTeamId)
+  const active = workspaces.find(
+    (workspace) => workspace.active || workspace.teamId === activeTeamId,
+  )
   const anchorRef = variant === 'rail' ? buttonRef : nativeAnchorRef
   const ssoProviderId =
     providers.find((provider) => provider.enabled && provider.type !== 'local-bootstrap')?.providerId ??
     null
 
   const handleSelect = async (workspace: Workspace): Promise<void> => {
-    if (workspace.teamId === activeTeamId) {
+    if (workspace.active || workspace.teamId === activeTeamId) {
       setOpen(false)
+      return
+    }
+    if (workspace.uoaWorkspace && ssoProviderId) {
+      setOpen(false)
+      void startExternalSignIn(
+        ssoProviderId,
+        resolveAppliedTheme(theme),
+        workspace.teamId,
+      )
       return
     }
     setBusy(true)
@@ -269,7 +280,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
             label={active?.label ?? 'Workspace'}
             revision={avatarRevision}
             size={36}
-            teamId={active?.teamId}
+            teamId={active?.uoaWorkspace ? undefined : active?.teamId}
             token={token}
           />
         </button>

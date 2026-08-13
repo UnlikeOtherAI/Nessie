@@ -32,6 +32,7 @@ export const AuthProviderAuthorizeQuerySchema = z.object({
   redirectUri: z.string().url(),
   state: NonEmptyStringSchema,
   theme: SsoThemeSchema.optional(),
+  teamHint: z.string().trim().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/).optional(),
 })
 export type AuthProviderAuthorizeQuery = z.infer<typeof AuthProviderAuthorizeQuerySchema>
 

@@ -23,6 +23,13 @@ type UoaTokenResponse = {
   token_type?: unknown
 }
 
+export type UoaWorkspaceDirectoryEntry = {
+  organizationId: string
+  teamId: string
+  label: string
+  orgName?: string
+}
+
 export type UoaSessionExchange = {
   configUrl: string
   identity: ExternalAuthIdentity & {
@@ -32,6 +39,7 @@ export type UoaSessionExchange = {
   }
   refreshToken: string
   refreshTokenExpiresInSeconds: number
+  workspaceDirectory: UoaWorkspaceDirectoryEntry[]
 }
 
 export class UoaSessionRefreshError extends Error {
@@ -155,7 +163,7 @@ const parseUoaSessionExchange = (
   payload: UoaTokenResponse,
   settings: UoaSettings,
   configUrl: string,
-): UoaSessionExchange => {
+): { accessToken: string; exchange: UoaSessionExchange } => {
   const accessToken = trimString(payload.access_token)
   const refreshToken = trimString(payload.refresh_token)
   if (!accessToken || !refreshToken || payload.token_type !== 'Bearer') {
@@ -180,7 +188,7 @@ const parseUoaSessionExchange = (
   ) {
     throw new Error('[uoa] token response carried an incomplete session proof')
   }
-  return {
+  return { accessToken, exchange: {
     configUrl,
     identity: {
       ...identity,
@@ -190,6 +198,48 @@ const parseUoaSessionExchange = (
     },
     refreshToken,
     refreshTokenExpiresInSeconds,
+    workspaceDirectory: [],
+  } }
+}
+
+const parseWorkspaceDirectory = (payload: unknown): UoaWorkspaceDirectoryEntry[] => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return []
+  const org = (payload as { org?: unknown }).org
+  if (!org || typeof org !== 'object' || Array.isArray(org)) return []
+  const workspaces = (org as { workspaces?: unknown }).workspaces
+  if (!Array.isArray(workspaces)) return []
+  return workspaces.flatMap((workspace) => {
+    if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) return []
+    const entry = workspace as Record<string, unknown>
+    const organizationId = trimString(entry.orgId)
+    const teamId = trimString(entry.teamId)
+    const label = trimString(entry.name)
+    const orgName = trimString(entry.orgName)
+    if (!organizationId || !teamId || !label) return []
+    return [{ organizationId, teamId, label, ...(orgName ? { orgName } : {}) }]
+  })
+}
+
+const fetchWorkspaceDirectory = async (
+  settings: UoaSettings,
+  configUrl: string,
+  accessToken: string,
+): Promise<UoaWorkspaceDirectoryEntry[]> => {
+  try {
+    const directoryUrl = new URL(`${settings.baseUrl}/org/me`)
+    directoryUrl.searchParams.set('domain', settings.domain)
+    directoryUrl.searchParams.set('config_url', configUrl)
+    const response = await fetch(directoryUrl, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${clientHash(settings)}`,
+        'X-UOA-Access-Token': `Bearer ${accessToken}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    })
+    return response.ok ? parseWorkspaceDirectory(await response.json()) : []
+  } catch {
+    return []
   }
 }
 
@@ -255,8 +305,11 @@ export const exchangeUoaSession = async (input: {
     throw new Error(`[uoa] token endpoint returned ${response.status}`)
   }
 
-  const payload = (await response.json()) as UoaTokenResponse
-  return parseUoaSessionExchange(payload, settings, configUrl)
+  const parsed = parseUoaSessionExchange((await response.json()) as UoaTokenResponse, settings, configUrl)
+  return {
+    ...parsed.exchange,
+    workspaceDirectory: await fetchWorkspaceDirectory(settings, configUrl, parsed.accessToken),
+  }
 }
 
 export const exchangeUoaCode = async (input: {
@@ -312,7 +365,7 @@ export const refreshUoaSession = async (input: {
       await response.json() as UoaTokenResponse,
       settings,
       configUrl,
-    )
+    ).exchange
   } catch (error) {
     throw new UoaSessionRefreshError(
       error instanceof Error ? error.message : '[uoa] invalid refresh response',

@@ -327,6 +327,7 @@ export const clientHash = (settings: UoaSettings): string =>
 export const buildUoaAuthorizeUrl = (input: {
   codeChallenge: string
   redirectUri: string
+  teamHint?: string
   theme?: SsoTheme
 }): string => {
   const settings = loadUoaSettings()
@@ -337,5 +338,8 @@ export const buildUoaAuthorizeUrl = (input: {
   url.searchParams.set('redirect_url', input.redirectUri)
   url.searchParams.set('code_challenge', input.codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
+  if (input.teamHint) {
+    url.searchParams.set('team_hint', input.teamHint)
+  }
   return url.toString()
 }

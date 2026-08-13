@@ -160,6 +160,15 @@ export const MeMembershipSchema = z.object({
 })
 export type MeMembership = z.infer<typeof MeMembershipSchema>
 
+export const UoaWorkspaceDirectoryEntrySchema = z.object({
+  organizationId: z.string().min(1),
+  teamId: z.string().min(1),
+  label: z.string().min(1),
+  orgName: z.string().min(1).optional(),
+  active: z.boolean(),
+})
+export type UoaWorkspaceDirectoryEntry = z.infer<typeof UoaWorkspaceDirectoryEntrySchema>
+
 export const SetChannelMuteRequestSchema = z.object({
   muted: z.boolean(),
 })
@@ -171,6 +180,7 @@ export const MeResponseSchema = z.object({
   context: MeContextSchema,
   auth: MeAuthSchema,
   memberships: z.array(MeMembershipSchema).optional(),
+  uoaWorkspaces: z.array(UoaWorkspaceDirectoryEntrySchema).optional(),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 

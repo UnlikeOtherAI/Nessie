@@ -11,10 +11,23 @@ export type Workspace = {
   teamId: string
   label: string
   orgName?: string
+  active?: boolean
+  uoaWorkspace?: boolean
 }
 
 /** Flatten `me.memberships` (org → projects → teams) into the workspace list. */
 export const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
+  if (me?.auth.providerType === 'uoa' && me.uoaWorkspaces?.length) {
+    return me.uoaWorkspaces.map((workspace) => ({
+      organizationId: workspace.organizationId,
+      projectId: '',
+      teamId: workspace.teamId,
+      label: workspace.label,
+      orgName: workspace.orgName,
+      active: workspace.active,
+      uoaWorkspace: true,
+    }))
+  }
   if (!me?.memberships) {
     return []
   }
@@ -37,5 +50,7 @@ export const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
 
 /** The workspace the session is currently scoped to, if it is still listed. */
 export const activeWorkspace = (me: MeResponse | null): Workspace | null =>
-  workspacesFromMe(me).find((workspace) => workspace.teamId === me?.context.teamId)
+  workspacesFromMe(me).find(
+    (workspace) => workspace.active || workspace.teamId === me?.context.teamId,
+  )
   ?? null

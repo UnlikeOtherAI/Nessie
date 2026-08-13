@@ -92,6 +92,35 @@ const withTokenResponse = async <T>(
 ): Promise<T> => {
   const previousFetch = globalThis.fetch
   globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/org/me') {
+      assert.equal(init?.method, undefined)
+      assert.equal(new Headers(init?.headers).get('authorization'), `Bearer ${clientHash}`)
+      assert.match(new Headers(init?.headers).get('x-uoa-access-token') ?? '', /^Bearer /)
+      assert.equal(url.searchParams.get('domain'), uoaEnv.UOA_DOMAIN)
+      return new Response(JSON.stringify({
+        ok: true,
+        org: {
+          workspaces: [
+            {
+              orgId: 'org-active',
+              orgName: 'Active org',
+              teamId: 'team-active',
+              name: 'Active workspace',
+            },
+            {
+              orgId: 'org-other',
+              orgName: 'Other org',
+              teamId: 'team-other',
+              name: 'Other workspace',
+            },
+          ],
+        },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
     assert.equal(String(input), expectedUrl)
     assert.equal(init?.method, 'POST')
     assert.equal(new Headers(init?.headers).get('authorization'), `Bearer ${clientHash}`)
@@ -153,6 +182,20 @@ test('exchangeUoaSession retains the exact server-side refresh session', async (
         organizationId: 'org-active',
         teamId: 'team-active',
       })
+      assert.deepEqual(exchange.workspaceDirectory, [
+        {
+          organizationId: 'org-active',
+          teamId: 'team-active',
+          label: 'Active workspace',
+          orgName: 'Active org',
+        },
+        {
+          organizationId: 'org-other',
+          teamId: 'team-other',
+          label: 'Other workspace',
+          orgName: 'Other org',
+        },
+      ])
     })
   })
 })
