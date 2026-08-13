@@ -121,7 +121,6 @@ const requestImage = async (input: {
         n: 1,
         output_format: 'png',
         prompt: input.prompt,
-        response_format: 'b64_json',
         size: '1024x1024',
       }),
       headers,

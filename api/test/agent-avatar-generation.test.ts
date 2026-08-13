@@ -70,7 +70,7 @@ test('generates a gpt-image-2 avatar through Ledger and stores it as an attachme
   assert.ok(AGENT_AVATAR_BACKGROUND_COLORS.includes(generated.avatarBackgroundColor))
   assert.equal(imageRequest?.url, 'https://ledger.unlikeotherai.com/v1/openai/images/generations')
   assert.equal(imageRequest?.body.model, 'gpt-image-2')
-  assert.equal(imageRequest?.body.response_format, 'b64_json')
+  assert.equal(imageRequest?.body.response_format, undefined)
   assert.equal(imageRequest?.headers.get('authorization'), 'Bearer lk_nessie_test')
   assert.equal(imageRequest?.headers.get('x-nessie-context'), 'signed-nessie-context')
   assert.equal(imageRequest?.headers.get('x-uoa-delegation'), 'signed-uoa-delegation')
