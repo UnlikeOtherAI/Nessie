@@ -348,3 +348,58 @@ export const loadWidgetProjection = async (
 }
 
 export type { WidgetDefinition }
+
+/**
+ * Renders a frozen snapshot.
+ *
+ * A snapshot never fetches and never follows later widget edits — that is the
+ * whole point of freezing one. It is always `fresh` relative to the moment it
+ * captured, and carries that moment so the reader knows what they are looking
+ * at rather than mistaking it for live data.
+ */
+export const loadSnapshotProjection = async (
+  context: DashboardContext,
+  snapshotId: string,
+  loadDataset: (attachmentId: string) => Promise<unknown>,
+): Promise<DashboardWidgetProjection> => {
+  await assertDashboardAccess({
+    prisma: context.prisma,
+    membership: context.membership,
+    actor: context.actor,
+    resource: { type: 'widget_snapshot', id: snapshotId },
+    capability: 'view',
+  })
+
+  const snapshot = await context.prisma.dashboardWidgetSnapshot.findFirst({
+    where: { id: snapshotId, organizationId: context.actor.organizationId },
+    include: { dataset: { select: { attachmentId: true, fetchedAt: true } } },
+  })
+  if (!snapshot) {
+    throw new DashboardServiceError(404, 'DASHBOARD_SNAPSHOT_NOT_FOUND', 'snapshot not found')
+  }
+
+  const base = {
+    widgetId: snapshot.widgetId,
+    dashboardId: snapshot.dashboardId,
+    kind: snapshot.kind as DashboardWidgetProjection['kind'],
+    schemaVersion: snapshot.schemaVersion,
+    snapshotId: snapshot.id,
+    ...(snapshot.authorityLabel ? { authorityLabel: snapshot.authorityLabel } : {}),
+  }
+
+  const definition = readStoredWidgetSpec(snapshot.spec)
+  if (!definition) return { ...base, state: 'unsupported' }
+
+  try {
+    const dataset = DashboardDatasetSchema.parse(await loadDataset(snapshot.dataset.attachmentId))
+    return {
+      ...base,
+      definition,
+      dataset,
+      state: dataset.rows.length === 0 ? 'empty' : 'fresh',
+      fetchedAt: dataset.fetchedAt,
+    }
+  } catch {
+    return { ...base, definition, state: 'error', errorCode: 'DATASET_UNREADABLE' }
+  }
+}

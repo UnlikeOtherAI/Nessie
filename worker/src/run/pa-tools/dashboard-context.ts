@@ -14,6 +14,8 @@ import {
   createDashboard,
   createDashboardMembership,
   createDashboardSource,
+  createEmbedPlacement,
+  freezeWidgetSnapshot,
   getDashboardWithWidgets,
   listDashboardSources,
   listDashboardsForActor,
@@ -43,6 +45,8 @@ export type DashboardToolServices = {
   getDashboardWithWidgets: typeof getDashboardWithWidgets
   listDashboardSources: typeof listDashboardSources
   createDashboardSource: typeof createDashboardSource
+  freezeWidgetSnapshot: typeof freezeWidgetSnapshot
+  createEmbedPlacement: typeof createEmbedPlacement
   probeSource: typeof probeSource
   setSourceCredential: typeof setSourceCredential
   addWidget: typeof addWidget
@@ -160,6 +164,8 @@ export const createDashboardToolServices = (input: {
   getDashboardWithWidgets,
   listDashboardSources,
   createDashboardSource,
+  freezeWidgetSnapshot,
+  createEmbedPlacement,
   probeSource,
   setSourceCredential,
   addWidget,

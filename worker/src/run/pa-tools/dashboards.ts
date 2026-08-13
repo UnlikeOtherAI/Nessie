@@ -357,7 +357,42 @@ export const runDashboardTool = async (
       return runDashboardWidgetRemoveTool(context, args, services)
     case 'dashboard_read':
       return runDashboardReadTool(context, args, services)
+    case 'dashboard_widget_post':
+      return runDashboardWidgetPostTool(context, args, services)
     default:
       return { inputSummary: name, outputPreview: `Unknown dashboard tool: ${name}`, toolName: name }
   }
 }
+
+/**
+ * Freeze-and-place in one call, because "put that chart in here" is one
+ * intention. Static freezes first so the quotation is stable; live places a
+ * reference that keeps updating.
+ */
+export const runDashboardWidgetPostTool = async (
+  context: BuiltinToolRuntimeContext,
+  args: Record<string, unknown>,
+  services: DashboardToolServices,
+): Promise<ToolExecutionResult> =>
+  run('dashboard_widget_post', `widgetId=${String(args.widgetId ?? '')}`, async () => {
+    const dashboardContext = await buildDashboardContext(context, services)
+    const widgetId = String(args.widgetId ?? '')
+    const messageId = String(args.messageId ?? '')
+    const mode = args.mode === 'live' ? 'live' : 'static'
+
+    const snapshot = mode === 'static'
+      ? await services.freezeWidgetSnapshot(dashboardContext, { widgetId, byAgent: true })
+      : null
+
+    await services.createEmbedPlacement(dashboardContext, {
+      mode,
+      ...(mode === 'live' ? { widgetId } : { widgetSnapshotId: snapshot?.id }),
+      targetType: 'message',
+      targetId: messageId,
+      byAgent: true,
+    })
+
+    return mode === 'static'
+      ? 'Posted a frozen snapshot of the widget. It shows the numbers as they are now and will not change.'
+      : 'Posted the widget live. It will keep updating in place.'
+  })

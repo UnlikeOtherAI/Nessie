@@ -24,6 +24,7 @@ import {
 } from '../services/dashboards.js'
 import {
   addWidget,
+  loadSnapshotProjection,
   loadWidgetProjection,
   removeWidget,
   setWidgetLock,
@@ -39,6 +40,14 @@ import {
   createDashboardMembership,
   resolveDashboardActor,
 } from '../services/dashboard-membership.js'
+import {
+  createEmbedPlacement,
+  freezeWidgetSnapshot,
+  grantDashboardAccess,
+  listDashboardGrants,
+  resolveEmbedForViewer,
+  revokeDashboardGrant,
+} from '@nessie/dashboard'
 import { createDashboardDatasetLoader } from '../services/dashboard-runtime.js'
 import type { RouteDeps } from './types.js'
 import type { DashboardEgressPolicy } from '@nessie/dashboard'
@@ -87,6 +96,20 @@ const CredentialBodySchema = z.object({
 }).strict()
 
 const IdParamsSchema = z.object({ id: z.string().uuid() }).strict()
+
+const EmbedBodySchema = z.object({
+  mode: z.enum(['live', 'static']),
+  widgetId: z.string().uuid().optional(),
+  widgetSnapshotId: z.string().uuid().optional(),
+  targetType: z.enum(['message', 'knowledge_page_version']),
+  targetId: z.string().uuid(),
+}).strict()
+
+const GrantBodySchema = z.object({
+  subjectType: z.enum(['user', 'agent', 'channel', 'team', 'project', 'knowledge_space']),
+  subjectId: z.string().uuid(),
+  level: z.enum(['view', 'edit']),
+}).strict()
 
 const sendDashboardError = (reply: Parameters<typeof sendApiError>[0], error: unknown): boolean => {
   if (error instanceof z.ZodError) {
@@ -363,6 +386,117 @@ export const registerDashboardRoutes = (
       )
       // The response carries no part of the value, no ref, and no length.
       return createApiResponse(result)
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  // Freeze the current moment. A snapshot is what makes a widget quotable:
+  // it pins the spec and the exact dataset so a later edit or a retention
+  // sweep cannot change what somebody quoted into a conversation.
+  app.post('/api/dashboard-widgets/:id/freeze', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const params = parseInput(IdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    try {
+      const snapshot = await freezeWidgetSnapshot(context, { widgetId: params.id })
+      return createApiResponse({ snapshotId: snapshot.id, createdAt: snapshot.createdAt })
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.post('/api/dashboard-embeds', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const body = parseInput(EmbedBodySchema, request.body, reply, 'body')
+    if (!body) return reply
+    try {
+      const placement = await createEmbedPlacement(context, body)
+      return createApiResponse({ embedId: placement.id })
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  // The one read path all three surfaces share. Both checks run here, so a
+  // copied embed id is worth nothing on its own.
+  app.get('/api/dashboard-embeds/:id', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const params = parseInput(IdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    try {
+      const resolved = await resolveEmbedForViewer(context, { embedId: params.id })
+      if (!resolved.visible) {
+        return createApiResponse({ visible: false })
+      }
+      const widgetId = resolved.mode === 'live' ? resolved.widgetId : null
+      const projection = widgetId
+        ? await loadWidgetProjection(
+          context,
+          {
+            widgetId,
+            loadDataset: createDashboardDatasetLoader(
+              deps.fileService,
+              context.actor.organizationId,
+            ),
+          },
+          { compact: true },
+        )
+        : await loadSnapshotProjection(
+          context,
+          resolved.widgetSnapshotId as string,
+          createDashboardDatasetLoader(deps.fileService, context.actor.organizationId),
+        )
+      return createApiResponse({ visible: true, mode: resolved.mode, projection })
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.get('/api/dashboards/:id/grants', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const params = parseInput(IdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    try {
+      return createApiResponse(await listDashboardGrants(context, { dashboardId: params.id }))
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.post('/api/dashboards/:id/grants', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const params = parseInput(IdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const body = parseInput(GrantBodySchema, request.body, reply, 'body')
+    if (!body) return reply
+    try {
+      const grant = await grantDashboardAccess(context, { dashboardId: params.id, ...body })
+      return createApiResponse(grant)
+    } catch (error) {
+      if (sendDashboardError(reply, error)) return reply
+      throw error
+    }
+  })
+
+  app.delete('/api/dashboard-grants/:id', async (request, reply) => {
+    const context = await contextFor(request, reply as never)
+    if (!context) return reply
+    const params = parseInput(IdParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    try {
+      await revokeDashboardGrant(context, { grantId: params.id })
+      return createApiResponse({ revoked: true })
     } catch (error) {
       if (sendDashboardError(reply, error)) return reply
       throw error

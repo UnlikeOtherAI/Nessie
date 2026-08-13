@@ -289,3 +289,41 @@ export const DASHBOARD_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: true,
   },
 ]
+
+/**
+ * Posting a widget into a conversation.
+ *
+ * Separate from the authoring bundle because these place a widget where OTHER
+ * people will see it, which is the step where reach can go wrong. `static` is
+ * the default: a posted widget is usually a quotation of a moment, and a
+ * quotation should not silently change under the reader.
+ */
+export const DASHBOARD_EMBED_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
+  {
+    id: 'dashboard_widget_post',
+    label: 'Post A Widget Into A Conversation',
+    description:
+      'Put a widget into the current conversation. Use mode "static" (the '
+      + 'default) to post a frozen snapshot of the numbers as they are right now '
+      + '— this is what people usually mean, and it will not change later. Use '
+      + '"live" only when the user wants it to keep updating in place. You cannot '
+      + 'widen who can see a dashboard: if the people in this conversation do not '
+      + 'already have access you will get DASHBOARD_SHARE_REQUIRED, and you should '
+      + 'tell the user that someone with sharing rights has to grant it first '
+      + 'rather than trying another route.',
+    parameters: {
+      type: 'object',
+      properties: {
+        widgetId: { type: 'string', description: 'The widget to post.' },
+        messageId: {
+          type: 'string',
+          description: 'The message to attach it to. Usually the reply you are writing.',
+        },
+        mode: { type: 'string', enum: ['static', 'live'] },
+      },
+      required: ['widgetId', 'messageId'],
+    },
+    // Mutating: other people will see the result.
+    safe: false,
+  },
+]
