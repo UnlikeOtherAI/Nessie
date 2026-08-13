@@ -7,11 +7,12 @@ import {
 } from 'react'
 import { useModalA11y } from './useModalA11y'
 
-// On-screen editing stage (square). The circular crop is inscribed in it, so the
-// masked corners sit outside the circle. The exported image is rendered at a fixed
+// On-screen editing stage (square). The crop is inscribed in it, with either a
+// circular or rounded-square mask. The exported image is rendered at a fixed
 // higher resolution regardless of the stage size.
 const STAGE = 320
 const OUTPUT = 512
+const ROUNDED_OUTPUT_RADIUS = 64
 const MIN_ZOOM = 1
 const MAX_ZOOM = 3
 
@@ -29,11 +30,12 @@ type CircleImageCropperProps = {
   title?: string
   description?: string
   saveLabel?: string
+  shape?: 'circle' | 'rounded'
 }
 
 // Reusable modal editor: a square stage with a semi-transparent mask and a centred
-// circular cut-out. The user pans (drag) and zooms (slider / wheel) the image to
-// frame what shows inside the circle, then we rasterise the circle to a PNG.
+// crop shape. The user pans (drag) and zooms (slider / wheel) the image to frame
+// the saved image.
 export const CircleImageCropper = ({
   file,
   busy = false,
@@ -42,6 +44,7 @@ export const CircleImageCropper = ({
   title = 'Edit image',
   description = 'Drag to reposition, scroll or use the slider to zoom. The circle is what gets saved.',
   saveLabel = 'Save',
+  shape = 'circle',
 }: CircleImageCropperProps) => {
   const dialogRef = useRef<HTMLDivElement | null>(null)
   useModalA11y(dialogRef, onCancel)
@@ -129,7 +132,11 @@ export const CircleImageCropper = ({
 
     ctx.save()
     ctx.beginPath()
-    ctx.arc(OUTPUT / 2, OUTPUT / 2, OUTPUT / 2, 0, Math.PI * 2)
+    if (shape === 'circle') {
+      ctx.arc(OUTPUT / 2, OUTPUT / 2, OUTPUT / 2, 0, Math.PI * 2)
+    } else {
+      ctx.roundRect(0, 0, OUTPUT, OUTPUT, ROUNDED_OUTPUT_RADIUS)
+    }
     ctx.closePath()
     ctx.clip()
     ctx.drawImage(img, dx, dy, drawW, drawH)
@@ -187,10 +194,13 @@ export const CircleImageCropper = ({
                 }}
               />
             )}
-            {/* Semi-transparent mask with a transparent circle cut out + accent ring. */}
+            {/* Semi-transparent mask with a transparent crop cut-out + accent ring. */}
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute left-1/2 top-1/2 rounded-full"
+              className={[
+                'pointer-events-none absolute left-1/2 top-1/2',
+                shape === 'circle' ? 'rounded-full' : 'rounded-[40px]',
+              ].join(' ')}
               style={{
                 boxShadow: '0 0 0 9999px var(--scrim-strong), inset 0 0 0 2px var(--accent)',
                 height: STAGE,

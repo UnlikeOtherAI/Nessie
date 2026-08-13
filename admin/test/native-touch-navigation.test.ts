@@ -29,19 +29,26 @@ test('project folder rows become bold only in the touch sidebar', () => {
   assert.match(starred, /admin-sb-item sidebar-project-tile group/)
 })
 
-test('touch navigation uses rounded avatar tiles and sidebar-coloured presence cutouts', () => {
+test('avatar tiles are rounded squares and touch navigation uses sidebar-coloured presence cutouts', () => {
   const people = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
   const starred = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
   const avatar = readSource('../src/components/primitives/UserAvatar.tsx')
+  const agentAvatar = readSource('../src/components/shared/AgentAvatar.tsx')
+  const workspaceAvatar = readSource('../src/components/primitives/WorkspaceAvatar.tsx')
   const badge = readSource('../src/components/primitives/PresenceBadge.tsx')
 
   assert.match(people, /presenceRingWidth=\{nativeTouchShell \? 3 : undefined\}/)
   assert.match(people, /ringColor=\{nativeTouchShell \? 'var\(--sb\)' : undefined\}/)
-  assert.match(people, /shape=\{nativeTouchShell \? 'rounded' : 'circle'\}/)
   assert.match(people, /showStatus=\{!nativeTouchShell\}/)
   assert.match(starred, /showPresence=\{nativeTouchShell\}/)
   assert.match(starred, /showStatus=\{!nativeTouchShell\}/)
-  assert.match(avatar, /shape === 'rounded' \? 'rounded-lg' : 'rounded-full'/)
+  assert.match(avatar, /rounded-md/)
+  assert.match(agentAvatar, /rounded-md/)
+  assert.match(workspaceAvatar, /rounded-md/)
+  assert.doesNotMatch(avatar, /shape/)
+  assert.doesNotMatch(agentAvatar, /shape/)
+  assert.doesNotMatch(people, /shape=/)
+  assert.doesNotMatch(starred, /shape=/)
   assert.match(badge, /ringWidth = 2/)
 })
 

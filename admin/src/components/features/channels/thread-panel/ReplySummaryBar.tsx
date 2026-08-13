@@ -66,7 +66,7 @@ export const ReplySummaryBar = ({
                   userId={participant.userId}
                 />
               ) : (
-                <span className="block overflow-hidden rounded-full ring-2 ring-[color:var(--main)]">
+                <span className="block overflow-hidden rounded-md ring-2 ring-[color:var(--main)]">
                   <AgentAvatar agent={participant.agent} size="xs" token={token} />
                 </span>
               )}

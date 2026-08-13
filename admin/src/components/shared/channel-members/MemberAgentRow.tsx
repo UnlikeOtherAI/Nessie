@@ -33,7 +33,7 @@ export const CurrentAgentRow = ({
   const { token } = useAuthSession()
   return (
     <div className={rowClass}>
-      <AgentAvatar agent={agent} shape="circle" size="sm" token={token} />
+      <AgentAvatar agent={agent} size="sm" token={token} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-[color:var(--tx)]">
           {agent.name}
@@ -105,7 +105,7 @@ export const AvailableAgentRow = ({
   const { token } = useAuthSession()
   return (
     <div className={rowClass}>
-      <AgentAvatar agent={agent} muted shape="circle" size="sm" token={token} />
+      <AgentAvatar agent={agent} muted size="sm" token={token} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm text-[color:var(--tx2)]">
           {agent.name}

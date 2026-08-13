@@ -14,7 +14,7 @@ export const Avatar = ({ label, size = 'md' }: AvatarProps) => (
   <div
     aria-hidden="true"
     className={[
-      'inline-flex items-center justify-center rounded-2xl',
+      'inline-flex items-center justify-center rounded-md',
       'bg-[color:var(--accent-soft)] font-semibold',
       'text-[color:var(--accent)]',
       sizeClasses[size],

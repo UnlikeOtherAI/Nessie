@@ -17,7 +17,7 @@ type AvatarBadgesProps = {
 }
 
 // Overlays the active-status emoji (top-right) and the presence dot
-// (bottom-right) on any circular avatar. Reads live state from PresenceProvider
+// (bottom-right) on any avatar tile. Reads live state from PresenceProvider
 // so every human avatar across the app stays in sync.
 export const AvatarBadges = ({
   userId,

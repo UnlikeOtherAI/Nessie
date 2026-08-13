@@ -31,7 +31,7 @@ type WorkspaceAvatarProps = {
 }
 
 /**
- * Square-cornered workspace avatar, the counterpart to the round `UserAvatar`.
+ * Rounded-square workspace avatar, matching user and agent avatar tiles.
  * Renders the UnlikeOtherAI company image when there is one and the workspace
  * initials otherwise, so it looks the same as it always did on a deployment with
  * no UOA configured.
@@ -58,7 +58,7 @@ export const WorkspaceAvatar = ({
   return (
     <span
       className={[
-        'flex shrink-0 items-center justify-center overflow-hidden rounded-xl',
+        'flex shrink-0 items-center justify-center overflow-hidden rounded-md',
         'bg-[color:var(--overlay)] text-xs font-semibold text-[color:var(--tx)]',
         className ?? '',
       ].join(' ')}

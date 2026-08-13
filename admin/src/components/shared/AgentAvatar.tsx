@@ -11,7 +11,6 @@ type AgentAvatarProps = {
   agent?: AgentAvatarSource | null
   className?: string
   muted?: boolean
-  shape?: 'circle' | 'rounded'
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   token: string | null
 }
@@ -62,17 +61,15 @@ export const AgentAvatar = ({
   agent,
   className = '',
   muted = false,
-  shape = 'rounded',
   size = 'md',
   token,
 }: AgentAvatarProps) => {
   const objectUrl = useAuthedObjectUrl(agent?.avatarAttachmentId ?? null, token)
   const dimension = sizePx[size]
-  const shapeClass = shape === 'circle' ? 'rounded-full' : 'rounded-lg'
   const backgroundColor = agent?.avatarBackgroundColor ?? fallbackBackgroundColor(agent)
   const classes = [
     'flex flex-shrink-0 items-center justify-center overflow-hidden',
-    shapeClass,
+    'rounded-md',
     muted ? 'opacity-60' : '',
     className,
   ].join(' ')
