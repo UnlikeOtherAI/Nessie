@@ -277,7 +277,7 @@ export const useAdminShell = () => {
     void logout().then(() => navigate('/login', { replace: true }));
   }, [logout, navigate]);
 
-  const { sidebarAgentDms, sidebarPeople, sidebarProductAssistants } = useSidebarDms({
+  const { sidebarAgentDms, sidebarGroupDms, sidebarPeople, sidebarProductAssistants } = useSidebarDms({
     agents,
     channels,
     chatAssistants: productSurfaces.chatAssistants,
@@ -393,6 +393,7 @@ export const useAdminShell = () => {
     setSidebarMenu,
     sidebarMenu,
     sidebarAgentDms,
+    sidebarGroupDms,
     sidebarPeople,
     sidebarProductAssistants,
     starredChannelIds,

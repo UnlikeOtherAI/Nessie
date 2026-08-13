@@ -45,12 +45,19 @@ export const resolveDmUserId = (
   }
 
   const participantIds = channel.dmKey.split(':').slice(2)
-  if (participantIds.includes('agent')) {
+  if (participantIds.length !== 2) {
     return null
   }
   const targetId = participantIds.find((candidate) => candidate !== userId) ?? participantIds[0]
   return targetId ? parseUserId(targetId) : null
 }
+
+export const isGroupDm = (
+  channel: Pick<Channel, 'dmKey' | 'systemChannelType' | 'type'>,
+): boolean =>
+  channel.type === 'dm'
+  && !channel.systemChannelType
+  && channel.dmKey?.split(':')[2] === 'group'
 
 // Shared include so create/upsert sites return the channel's team + project in
 // one query — mapChannelRecord then never needs a follow-up team lookup.
@@ -237,6 +244,7 @@ export const mapChannelRecord = async (
     type: channel.type,
     systemChannelType: channel.systemChannelType ?? undefined,
     dmUserId: resolveDmUserId(channel, userId),
+    isGroupDm: isGroupDm(channel),
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
     projectId: parseProjectId(team.project.id),

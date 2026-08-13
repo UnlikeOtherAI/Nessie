@@ -35,6 +35,7 @@ export type ChannelRecord = {
   teamName: string
   type: 'dm' | 'standard'
   dmUserId?: string | null
+  isGroupDm?: boolean
   unreadCount: number
   // When the channel's default thread last received a message; null when it has
   // none. Optional on the client so a UI stays functional against a server that

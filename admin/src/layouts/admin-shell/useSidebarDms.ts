@@ -7,7 +7,12 @@ import {
 import type { ResolvedChatAssistantSurface } from '../../facades/integrations/useProductSurfaces';
 import type { AgentRecord, ChannelRecord, MeResponse, UserRecord } from '../../lib/api-client';
 import { getDmStyle } from '../../lib/avatar';
-import type { SidebarAgentDm, SidebarPerson, SidebarProductAssistant } from './types';
+import type {
+  SidebarAgentDm,
+  SidebarGroupDm,
+  SidebarPerson,
+  SidebarProductAssistant,
+} from './types';
 
 type UseSidebarDmsInput = {
   agents: AgentRecord[];
@@ -19,6 +24,7 @@ type UseSidebarDmsInput = {
 
 type UseSidebarDmsResult = {
   sidebarAgentDms: SidebarAgentDm[];
+  sidebarGroupDms: SidebarGroupDm[];
   sidebarPeople: SidebarPerson[];
   sidebarProductAssistants: SidebarProductAssistant[];
 };
@@ -110,6 +116,7 @@ export const useSidebarDms = ({
     () =>
       channels
         .filter((channel) => channel.type === 'dm' && !isPersonalAssistantChannel(channel))
+        .filter((channel) => channel.isGroupDm !== true)
         // A channel pinned as a product assistant under the PA is never also
         // listed in the generic agent-DM list.
         .filter((channel) => !productAssistantChannelIds.has(channel.id))
@@ -137,5 +144,13 @@ export const useSidebarDms = ({
     [agents, channels, productAssistantChannelIds],
   );
 
-  return { sidebarAgentDms, sidebarPeople, sidebarProductAssistants };
+  const sidebarGroupDms = useMemo<SidebarGroupDm[]>(
+    () =>
+      channels
+        .filter((channel) => channel.isGroupDm === true)
+        .map((channel) => ({ dmChannelId: channel.id, label: channel.label })),
+    [channels],
+  );
+
+  return { sidebarAgentDms, sidebarGroupDms, sidebarPeople, sidebarProductAssistants };
 };
