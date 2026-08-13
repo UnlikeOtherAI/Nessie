@@ -7,12 +7,18 @@ import { workspacesFromMe, type Workspace } from '../../lib/workspaces'
 import { useWorkspaceAvatarRevision } from '../../facades/workspace/hooks'
 import { WorkspaceAvatar } from '../../components/primitives/WorkspaceAvatar'
 import { startExternalSignIn } from '../../lib/external-auth'
+import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
 import {
   resolveWorkspaceMenuPosition,
   type WorkspaceMenuPosition,
 } from './workspace-menu-position'
+
+type NativeWorkspaceWindow = Window & {
+  ReactNativeWebView?: { postMessage: (data: string) => void }
+  __nessieToggleWorkspaceMenu?: (left?: unknown) => void
+}
 
 type WorkspaceMenuProps = {
   anchorRef: RefObject<HTMLElement | null>
@@ -160,33 +166,35 @@ const WorkspaceMenu = ({
 }
 
 /**
- * Slack-style workspace switcher for the sidebar rail: lists the workspaces
- * (teams) the user belongs to and re-scopes the session to the chosen one via
- * `switch-context`. "Add a workspace" re-runs SSO so UOA's chooser appears.
- * Hidden only when there is no workspace and no SSO provider to add one.
+ * Slack-style workspace switcher: the desktop rail renders its avatar button,
+ * while native iPad opens this exact menu from its companion control. Both
+ * re-scope the session through `switch-context`, and "Add a workspace" re-runs
+ * SSO so UOA's chooser appears. Hidden only when there is no workspace and no
+ * SSO provider to add one.
  */
-export const WorkspaceSwitcher = () => {
+type WorkspaceSwitcherProps = {
+  variant?: 'native-bridge' | 'rail'
+}
+
+export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) => {
   const { me, switchContext, token } = useAuthSession()
   const { data: providers = [] } = useAuthProviders()
   const avatarRevision = useWorkspaceAvatarRevision()
   const { theme } = useTheme()
   const navigate = useNavigate()
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const nativeAnchorRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [nativeAnchorLeft, setNativeAnchorLeft] = useState(8)
 
   const workspaces = useMemo(() => workspacesFromMe(me), [me])
   const activeTeamId = me?.context.teamId ?? null
   const active = workspaces.find((workspace) => workspace.teamId === activeTeamId)
+  const anchorRef = variant === 'rail' ? buttonRef : nativeAnchorRef
   const ssoProviderId =
     providers.find((provider) => provider.enabled && provider.type !== 'local-bootstrap')?.providerId ??
     null
-
-  // The switcher is the rail's single workspace identity control, including
-  // when there is currently only one workspace.
-  if (workspaces.length === 0 && !ssoProviderId) {
-    return null
-  }
 
   const handleSelect = async (workspace: Workspace): Promise<void> => {
     if (workspace.teamId === activeTeamId) {
@@ -212,32 +220,71 @@ export const WorkspaceSwitcher = () => {
     void startExternalSignIn(providerId, resolveAppliedTheme(theme))
   }
 
+  useEffect(() => {
+    if (variant !== 'native-bridge' || !isReactNativeWebView()) return undefined
+    const target = window as NativeWorkspaceWindow
+    target.__nessieToggleWorkspaceMenu = (left?: unknown) => {
+      if (typeof left === 'number' && Number.isFinite(left)) {
+        setNativeAnchorLeft(Math.max(8, left))
+      }
+      setOpen((value) => !value)
+    }
+    return () => {
+      delete target.__nessieToggleWorkspaceMenu
+    }
+  }, [variant])
+
+  useEffect(() => {
+    if (variant !== 'native-bridge' || !isReactNativeWebView()) return
+    ;(window as NativeWorkspaceWindow).ReactNativeWebView?.postMessage(
+      JSON.stringify({
+        name: active?.label ?? null,
+        type: 'nessie:workspace',
+      }),
+    )
+  }, [active?.label, variant])
+
+  // The switcher is the rail's single workspace identity control, including
+  // when there is currently only one workspace.
+  if (workspaces.length === 0 && !ssoProviderId) {
+    return null
+  }
+
   return (
     <>
-      <button
-        aria-haspopup="menu"
-        aria-label="Switch workspace"
-        className={[
-          'mb-4 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
-          open ? 'ring-2 ring-[color:var(--accent)]' : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
-        ].join(' ')}
-        onClick={() => setOpen((value) => !value)}
-        ref={buttonRef}
-        title={active ? `Workspace: ${active.label}` : 'Switch workspace'}
-        type="button"
-      >
-        <WorkspaceAvatar
-          label={active?.label ?? 'Workspace'}
-          revision={avatarRevision}
-          size={36}
-          teamId={active?.teamId}
-          token={token}
+      {variant === 'rail' ? (
+        <button
+          aria-haspopup="menu"
+          aria-label="Switch workspace"
+          className={[
+            'mb-4 flex h-9 w-9 items-center justify-center rounded-xl transition-shadow',
+            open ? 'ring-2 ring-[color:var(--accent)]' : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
+          ].join(' ')}
+          onClick={() => setOpen((value) => !value)}
+          ref={buttonRef}
+          title={active ? `Workspace: ${active.label}` : 'Switch workspace'}
+          type="button"
+        >
+          <WorkspaceAvatar
+            label={active?.label ?? 'Workspace'}
+            revision={avatarRevision}
+            size={36}
+            teamId={active?.teamId}
+            token={token}
+          />
+        </button>
+      ) : (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed top-0 z-[69] h-px w-px"
+          ref={nativeAnchorRef}
+          style={{ left: nativeAnchorLeft }}
         />
-      </button>
+      )}
       {open ? (
         <WorkspaceMenu
           activeTeamId={activeTeamId}
-          anchorRef={buttonRef}
+          anchorRef={anchorRef}
           avatarRevision={avatarRevision}
           busy={busy}
           onAddWorkspace={handleAddWorkspace}

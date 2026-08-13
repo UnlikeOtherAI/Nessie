@@ -29,6 +29,7 @@ import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
 import { TopBar } from './admin-shell/TopBar';
 import { useAdminShell } from './admin-shell/useAdminShell';
+import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
@@ -128,7 +129,6 @@ const AuthenticatedAdminShellLayout = () => {
       onNavigateAgent={shell.navigateToAgent}
       onNavigateChannel={shell.navigateToChannel}
       onNavigateDm={shell.navigateToDm}
-      onNavigateHome={shell.navigateHome}
       onNavigateNewConversation={shell.navigateToNewConversation}
       onNavigateProject={shell.navigateToProject}
       onOpenCreateChannel={shell.openCreateChannel}
@@ -246,6 +246,7 @@ const AuthenticatedAdminShellLayout = () => {
               </div>
 
               {showWebTabBar && <MobileTabBar />}
+              {nativeIPadApp && <WorkspaceSwitcher variant="native-bridge" />}
               {nativeIPadApp && !isComposeRoute && <NativeIPadToolbarBridge />}
               {nativeIPadApp && <NativeSearchOverlay />}
 

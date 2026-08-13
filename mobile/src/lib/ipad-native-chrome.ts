@@ -19,6 +19,9 @@ type IpadNativeChromeThemeOptions = {
 export const IPAD_NATIVE_TOOLBAR_WIDTH = 153
 export const IPAD_NATIVE_CHROME_HEIGHT = 42
 export const IPAD_WINDOWED_CHROME_TOP = 12
+export const IPAD_NATIVE_WORKSPACE_MAX_WIDTH = 220
+export const IPAD_NATIVE_WORKSPACE_MIN_WIDTH = 104
+export const IPAD_NATIVE_CHROME_GAP = 12
 
 // A full-screen iPad app owns no pixels above its safe area, so native chrome
 // must begin exactly at that edge. A Stage Manager window has no top safe-area
@@ -62,3 +65,12 @@ export const getIpadToolbarLeft = (
   tabBarWidth: number,
   insetLeft: number,
 ): number => Math.max(insetLeft + 12, (screenWidth - tabBarWidth) / 2 - IPAD_NATIVE_TOOLBAR_WIDTH - 12)
+
+// The workspace chip occupies the leading space before browser controls. Hide
+// it in a narrow split view rather than letting it cover those controls.
+export const getIpadWorkspaceWidth = (toolbarLeft: number, insetLeft: number): number | null => {
+  const available = toolbarLeft - insetLeft - IPAD_NATIVE_CHROME_GAP * 2
+  return available >= IPAD_NATIVE_WORKSPACE_MIN_WIDTH
+    ? Math.min(available, IPAD_NATIVE_WORKSPACE_MAX_WIDTH)
+    : null
+}

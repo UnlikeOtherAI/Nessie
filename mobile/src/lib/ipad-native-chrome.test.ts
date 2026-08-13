@@ -5,6 +5,7 @@ import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
   getIpadToolbarLeft,
+  getIpadWorkspaceWidth,
   IPAD_WINDOWED_CHROME_TOP,
 } from './ipad-native-chrome'
 
@@ -32,4 +33,10 @@ test('positions controls to the leading side of the centred iPad tab bar', () =>
 test('places iPad chrome flush below the fullscreen safe area and centred in a window title bar', () => {
   assert.equal(getIpadChromeTop(24), 24)
   assert.equal(getIpadChromeTop(0), IPAD_WINDOWED_CHROME_TOP)
+})
+
+test('fits the workspace switcher before the leading controls without covering them', () => {
+  assert.equal(getIpadWorkspaceWidth(407, 0), 220)
+  assert.equal(getIpadWorkspaceWidth(128, 0), 104)
+  assert.equal(getIpadWorkspaceWidth(39, 0), null)
 })
