@@ -139,7 +139,7 @@ export const ChannelsPage = () => {
   })
 
   // Reply-thread panel (#233): URL-driven open state, replies/root queries,
-  // follow mutation, and the persisted drag-resizable width.
+  // and the persisted drag-resizable width.
   const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
 
   // Presence is the channel feed or one exact reply conversation. The Files,

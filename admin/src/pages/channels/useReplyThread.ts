@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  useSetMessageThreadFollow,
   useThreadMessage,
   useThreadReplies,
 } from '../../facades/threads/hooks'
@@ -66,10 +65,6 @@ export const useReplyThread = ({
 
   const rootQuery = useThreadMessage(activeThreadId, openRootMessageId ?? undefined)
   const repliesQuery = useThreadReplies(activeThreadId, openRootMessageId ?? undefined)
-  const followMutation = useSetMessageThreadFollow(
-    activeThreadId,
-    openRootMessageId ?? undefined,
-  )
 
   const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
   const userMap = useMemo(
@@ -100,7 +95,6 @@ export const useReplyThread = ({
   return {
     activeThreadId,
     closeThread,
-    followMutation,
     openRootMessageId,
     openThread,
     panelWidth,

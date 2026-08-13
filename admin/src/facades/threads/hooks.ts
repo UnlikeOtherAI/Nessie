@@ -65,11 +65,10 @@ export const useThreadReplies = (threadId?: string, rootMessageId?: string) => {
 
 export type ThreadMessageDetail = {
   message: ThreadMessageRecord
-  viewerFollowing: boolean
 }
 
 // Single message fetch — used to hydrate a thread panel's root on cold
-// deep-links and to read the viewer's follow state.
+// deep-links.
 export const useThreadMessage = (threadId?: string, messageId?: string) => {
   const apiClient = useApiClient()
 
@@ -77,24 +76,6 @@ export const useThreadMessage = (threadId?: string, messageId?: string) => {
     queryKey: ['threads', threadId, 'message', messageId],
     queryFn: () => apiClient.get(`/api/threads/${threadId}/messages/${messageId}`),
     enabled: Boolean(threadId) && Boolean(messageId),
-  })
-}
-
-export const useSetMessageThreadFollow = (threadId?: string, messageId?: string) => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (following: boolean) =>
-      apiClient.put<{ following: boolean }>(
-        `/api/threads/${threadId}/messages/${messageId}/follow`,
-        { following },
-      ),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ['threads', threadId, 'message', messageId],
-      })
-    },
   })
 }
 
