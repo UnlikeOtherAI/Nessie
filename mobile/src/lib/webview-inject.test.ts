@@ -103,10 +103,10 @@ const injectedSafeAreaCss = (platform: string, formFactor: string): string => {
   return capture.safeAreaStyle?.textContent ?? ''
 }
 
-test('iOS phone content clears the status bar and home indicator', () => {
+test('iOS phone injection leaves the status bar to the native frame and clears the home indicator', () => {
   const css = injectedSafeAreaCss('ios', 'phone')
 
-  assert.match(css, /padding-top: env\(safe-area-inset-top\)/)
+  assert.doesNotMatch(css, /padding-top: env\(safe-area-inset-top\)/)
   assert.match(css, /padding-bottom: env\(safe-area-inset-bottom\)/)
   assert.match(css, /body \{ background: var\(--main\); \}/)
 })

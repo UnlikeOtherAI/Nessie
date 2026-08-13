@@ -7,8 +7,6 @@ import {
   useWindowDimensions,
 } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
-import * as WebBrowser from 'expo-web-browser'
-import TabView from 'react-native-bottom-tabs'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 import { ADMIN_URL } from './src/config'
@@ -27,13 +25,13 @@ import {
   nativePushPathScript,
   nativeShellInfoScript,
 } from './src/lib/native-shell'
+import { type NativeShellMessage } from './src/lib/native-shell-message'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import { statusBarStyleForScheme } from './src/lib/status-bar'
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
-  getIpadContentTop,
   getIpadToolbarLeft,
   getIpadWorkspaceWidth,
   IPAD_NATIVE_CHROME_GAP,
@@ -51,13 +49,14 @@ import {
 } from './src/components/IpadNativeToolbar'
 import { IpadNativeTabBar } from './src/components/IpadNativeTabBar'
 import { IpadNativeWorkspaceSwitcher } from './src/components/IpadNativeWorkspaceSwitcher'
-// Deep-link callback the OS browser redirects to after external sign-in. Must
-// match the admin's externalAuthRedirectUri and the API's allow-listed URL.
-const AUTH_CALLBACK_URL = 'nessie://auth/callback'
-// The native tab bar sits beside the WebView; reserve room for it so the
-// WebView's own content (e.g. the channel composer) is never hidden. iOS 26 on
-// iPad puts the tab bar at the TOP; iPhone and Android keep it at the bottom.
-const IPHONE_TAB_BAR_HEIGHT = 49
+import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
+import { completeExternalAuth } from './src/lib/external-auth-session'
+import {
+  createNativeTabNavigationState,
+  getNativeWebviewFrameInsets,
+  isAuthGateRoute,
+  isFullScreenTaskRoute,
+} from './src/lib/native-shell-layout'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
@@ -72,13 +71,6 @@ const DEFAULT_IPAD_CHROME_SURFACE = '#222629'
 // changed URL forces a fresh fetch. Capped so a genuinely broken page can't loop.
 const BOOT_TIMEOUT_MS = 9000
 const MAX_BOOT_RETRIES = 4
-
-// The tab bar only makes sense once the user is inside the workspace; hide it on
-// the login / bootstrap screens (reported via nessie:route).
-const isAuthGateRoute = (path: string): boolean =>
-  path.startsWith('/login') || path.startsWith('/bootstrap')
-
-const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new'
 
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
@@ -238,37 +230,16 @@ const Shell = (): React.JSX.Element => {
     )
   }
 
-  // Google blocks OAuth inside embedded webviews, so the admin hands SSO off to
-  // us: open the authorize URL in the OS browser (ASWebAuthenticationSession),
-  // then deliver the deep-link callback back into the webview to finish.
   const runExternalAuth = async (authorizeUrl: string): Promise<void> => {
-    const result = await WebBrowser.openAuthSessionAsync(authorizeUrl, AUTH_CALLBACK_URL)
-    if (result.type === 'success' && result.url) {
-      const payload = JSON.stringify(result.url)
+    const callbackUrl = await completeExternalAuth(authorizeUrl)
+    if (callbackUrl) {
+      const payload = JSON.stringify(callbackUrl)
       runScript(`window.__nessieExternalAuthCallback && window.__nessieExternalAuthCallback(${payload});`)
     }
   }
 
   const onMessage = (event: WebViewMessageEvent): void => {
-    let msg: {
-      type?: string
-      color?: string
-      url?: string
-      path?: string
-      accent?: string
-      inactive?: string
-      surface?: string
-      scheme?: string
-      active?: boolean
-      canBack?: boolean
-      canForward?: boolean
-      recentOpen?: boolean
-      name?: string
-      channels?: number
-      assignedWork?: number
-      knowledge?: number
-      total?: number
-    }
+    let msg: NativeShellMessage
     try {
       msg = JSON.parse(event.nativeEvent.data)
     } catch {
@@ -366,25 +337,22 @@ const Shell = (): React.JSX.Element => {
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
   const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
 
-  // Inset the WebView for the status bar (Android draws edge-to-edge) and for the
-  // native tab bar when it's shown (top on iPad, bottom elsewhere). Android's
-  // floating dock overlays the WebView rather than shortening it: injected CSS
-  // reserves interaction space while the page background and column dividers
-  // continue beneath the dock. The iPhone WebView stays edge to edge; INJECTED
-  // gives its page content the top safe-area padding.
+  // The native frame owns all unsafe edges. In particular, a phone tab root is
+  // not always a direct aside/main child in the web DOM, so relying on injected
+  // CSS can leave its first row beneath the status bar.
   const ipadChromeTop = getIpadChromeTop(insets.top)
-  const topInset = IS_IPAD && showBar
-    ? getIpadContentTop(ipadChromeTop)
-    : IS_ANDROID
-      ? insets.top
-      : 0
-  const bottomInset =
-    IS_ANDROID
-      ? insets.bottom
-      : showBar && !IS_IPAD
-        ? IPHONE_TAB_BAR_HEIGHT + insets.bottom
-        : 0
-  const webviewLayerStyle = { ...styles.webviewLayer, top: topInset, bottom: bottomInset }
+  const webviewInsets = getNativeWebviewFrameInsets({
+    ipadChromeTop,
+    isIpad: IS_IPAD,
+    platform: Platform.OS,
+    safeArea: insets,
+    showTabBar: showBar,
+  })
+  const webviewLayerStyle = {
+    ...styles.webviewLayer,
+    top: webviewInsets.top,
+    bottom: webviewInsets.bottom,
+  }
   const ipadChromeTheme = createIpadNativeChromeTheme({
     activeTintColor: accent,
     dark: isDark(bg),
@@ -399,45 +367,19 @@ const Shell = (): React.JSX.Element => {
     : getIpadWorkspaceWidth(ipadToolbarLeft, insets.left)
   const ipadWorkspaceLeft = insets.left + IPAD_NATIVE_CHROME_GAP
 
-  const navigationState = {
-    index,
-    routes: TABS.map((tab) => ({
-      key: tab.key,
-      title: tab.title,
-      role: tab.role,
-      badge: (() => {
-        const value = tab.key === 'channels'
-          ? attentionBadges.channels
-          : tab.key === 'projects'
-            ? attentionBadges.assignedWork
-            : tab.key === 'knowledge'
-              ? attentionBadges.knowledge
-              : 0
-        return value > 0 ? String(value) : undefined
-      })(),
-    })),
-  }
+  const navigationState = createNativeTabNavigationState(index, attentionBadges)
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={statusBarStyle} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
-        <View style={StyleSheet.absoluteFill}>
-          <TabView
-            getIcon={({ route }) => {
-              const tab = TABS.find((item) => item.key === route.key)
-              if (!tab) return undefined
-              return { sfSymbol: tab.sfSymbol }
-            }}
-            navigationState={navigationState}
-            onIndexChange={onIndexChange}
-            renderScene={() => <View style={styles.scene} />}
-            tabBarActiveTintColor={accent}
-            tabBarInactiveTintColor={inactive}
-            translucent
-          />
-        </View>
+        <IphoneNativeTabBar
+          activeTintColor={accent}
+          inactiveTintColor={inactive}
+          navigationState={navigationState}
+          onIndexChange={onIndexChange}
+        />
       ) : null}
 
       {showBar && IS_ANDROID ? (
@@ -545,6 +487,5 @@ export default function App(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  scene: { flex: 1 },
   webviewLayer: { position: 'absolute', right: 0, left: 0 },
 })
