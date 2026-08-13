@@ -11,6 +11,11 @@
 
 ---
 
+## Table of Contents
+
+- [Core design and security model](#0-the-one-paragraph-version)
+- [Delivery and decision record](./delivery.md)
+
 ## 0. The one-paragraph version
 
 A dashboard is a typed, versioned, entitlement-scoped workspace object holding
