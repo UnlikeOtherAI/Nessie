@@ -12,6 +12,7 @@ import {
   IPAD_NATIVE_CHROME_GAP,
   IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE,
   IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE,
+  IPAD_NATIVE_ICON_TOP_CHROME_WIDTH_ESTIMATE,
   IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH,
   type IpadTopChromeMode,
   type IpadNativeChromeTheme,
@@ -24,6 +25,7 @@ type IpadNativeChromeProps = {
   badgeCounts: { assignedWork: number; channels: number; knowledge: number }
   insetLeft: number
   insetRight: number
+  leadingReservedWidth: number
   onIndexChange: (index: number) => void
   onToggleAccountMenu: () => void
   onToolbarAction: (action: ToolbarAction) => void
@@ -41,6 +43,7 @@ export const IpadNativeChrome = ({
   badgeCounts,
   insetLeft,
   insetRight,
+  leadingReservedWidth,
   onIndexChange,
   onToggleAccountMenu,
   onToggleWorkspaceMenu,
@@ -55,17 +58,20 @@ export const IpadNativeChrome = ({
   const [controlsWidth, setControlsWidth] = useState<Record<IpadTopChromeMode, number>>({
     compact: IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE,
     full: IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE,
+    icons: IPAD_NATIVE_ICON_TOP_CHROME_WIDTH_ESTIMATE,
   })
   const layout = getIpadTopChromeLayout({
     compactControlsWidth: controlsWidth.compact,
     fullControlsWidth: controlsWidth.full,
     hasWorkspace: Boolean(workspaceName),
+    iconControlsWidth: controlsWidth.icons,
     insetLeft,
     insetRight,
+    leadingReservedWidth,
     screenWidth: chromeWidth,
     trailingReservedWidth: IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH + IPAD_NATIVE_CHROME_GAP,
   })
-  const workspaceLeft = insetLeft + IPAD_NATIVE_CHROME_GAP
+  const workspaceLeft = insetLeft + leadingReservedWidth + IPAD_NATIVE_CHROME_GAP
   const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
   const onControlsLayout = useCallback((event: LayoutChangeEvent): void => {
     const width = Math.round(event.nativeEvent.layout.width)
@@ -101,6 +107,7 @@ export const IpadNativeChrome = ({
           <IpadNativeTabBar
             activeIndex={activeIndex}
             badgeCounts={badgeCounts}
+            iconOnly={layout.mode === 'icons'}
             onIndexChange={onIndexChange}
             showSearch={layout.mode === 'full'}
             theme={theme}
