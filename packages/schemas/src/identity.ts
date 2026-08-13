@@ -21,6 +21,14 @@ export type AuthProviderResponseType = z.infer<typeof AuthProviderResponseTypeSc
 
 const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 
+const HttpUrlSchema = z.string().url().refine(
+  (value) => {
+    const protocol = new URL(value).protocol
+    return protocol === 'http:' || protocol === 'https:'
+  },
+  { message: 'URL must use HTTP or HTTPS' },
+)
+
 const isIanaTimeZone = (value: string): boolean => {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: value }).format()
@@ -167,6 +175,10 @@ export const UoaWorkspaceDirectoryEntrySchema = z.object({
   // environment that mirrors the UOA workspace. It authorizes the workspace
   // picker to use the membership-scoped company-avatar relay.
   avatarTeamId: TeamIdSchema.optional(),
+  // Public UOA-hosted image for directory entries that have not yet been
+  // materialized as local Nessie teams. UOA may return a root-relative value,
+  // but the API always exposes it here as an absolute HTTP(S) URL.
+  avatarImageUrl: HttpUrlSchema.optional(),
   label: z.string().min(1),
   orgName: z.string().min(1).optional(),
   active: z.boolean(),

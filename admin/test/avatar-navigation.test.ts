@@ -36,13 +36,18 @@ test('workspace menu stays within the right edge of a narrow viewport', () => {
   assert.equal(position.left, 800 - 260 - 8)
 })
 
-test('workspace pictures use the membership-scoped team relay', () => {
+test('workspace pictures prefer the team relay and accept the UOA public fallback', () => {
   assert.equal(workspaceAvatarPath(), '/api/workspace/avatar')
   assert.equal(workspaceAvatarPath(null), null)
   assert.equal(
     workspaceAvatarPath('team/with spaces'),
     '/api/teams/team%2Fwith%20spaces/avatar',
   )
+
+  const avatar = readFileSync(`${sourceRoot}/components/primitives/WorkspaceAvatar.tsx`, 'utf8')
+  const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceSwitcher.tsx`, 'utf8')
+  assert.match(avatar, /relayedUrl \?\? imageUrl \?\? null/)
+  assert.match(switcher, /imageUrl=\{workspace\.avatarImageUrl\}/)
 })
 
 test('every shared UserAvatar usage supplies the SSO user identity source', () => {

@@ -23,18 +23,20 @@ type WorkspaceAvatarProps = {
   // Bumping this refetches after an upload/remove, whose new image lives at the
   // same URL and would otherwise be served from the browser cache.
   revision?: number
+  // UOA's public, always-resolving team-avatar endpoint. It covers directory
+  // entries that have not been materialised as local Nessie teams yet.
+  imageUrl?: string
   // A specific local team id makes the component use the membership-scoped
-  // relay, which lets workspace pickers show every team's UOA picture. `null`
-  // deliberately uses initials for an SSO workspace with no local membership;
-  // omitting the id preserves the current-workspace endpoint used by settings.
+  // relay. `null` skips that relay so an unmaterialised SSO workspace can use
+  // imageUrl (or initials when the public image is absent/broken); omitting the
+  // id preserves the current-workspace endpoint used by settings.
   teamId?: string | null
 }
 
 /**
  * Rounded-square workspace avatar, matching user and agent avatar tiles.
- * Renders the UnlikeOtherAI company image when there is one and the workspace
- * initials otherwise, so it looks the same as it always did on a deployment with
- * no UOA configured.
+ * Prefers Nessie's authenticated relay, then UOA's public directory image, and
+ * finally workspace initials. Deployments without UOA retain their old look.
  */
 export const WorkspaceAvatar = ({
   label,
@@ -42,13 +44,18 @@ export const WorkspaceAvatar = ({
   size = 36,
   className,
   revision = 0,
+  imageUrl,
   teamId,
 }: WorkspaceAvatarProps) => {
   const path = workspaceAvatarPath(teamId)
-  const url = useAuthedObjectUrlFromPath(
+  const relayedUrl = useAuthedObjectUrlFromPath(
     path && revision > 0 ? `${path}?v=${revision}` : path,
     token,
   )
+  // Prefer the membership-scoped relay when it exists so an avatar changed in
+  // Nessie can be cache-busted immediately. The public UOA URL fills the gap
+  // for authorized workspaces that do not have a local Team row yet.
+  const url = relayedUrl ?? imageUrl ?? null
   const [broken, setBroken] = useState(false)
 
   useEffect(() => setBroken(false), [url])

@@ -102,8 +102,10 @@ project** would leak agents/policies across workspaces (both scope by project).
   shortcut, never a trust boundary.
 - Additive migration; existing installs keep their default org/team.
 
-## Follow-ups (not in this change)
-- Friendly workspace names: the UOA access token carries workspace **ids** only;
-  auto-created teams are named `Workspace <shortid>` and renameable. Fetching the
-  real name from UOA `GET /org/me` at login is a future enhancement.
+## Follow-ups
+
+- **Completed 2026-08-13:** Nessie fetches the entitlement-scoped UOA
+  `GET /org/me` directory at interactive login, retains the organisation and
+  team names plus public workspace-avatar URLs, and renders teams grouped under
+  their organisation in the shared desktop/iPad/phone switcher.
 - Reflecting UOA membership **removal/deactivation** back onto Nessie memberships.

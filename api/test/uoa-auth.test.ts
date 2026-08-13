@@ -103,16 +103,39 @@ const withTokenResponse = async <T>(
         org: {
           workspaces: [
             {
+              avatarImageUrl: '/public/teams/team-active/avatar',
               orgId: 'org-active',
               orgName: 'Active org',
               teamId: 'team-active',
               name: 'Active workspace',
             },
             {
+              avatarImageUrl: 'https://images.example.com/workspaces/team-other.png',
               orgId: 'org-other',
               orgName: 'Other org',
               teamId: 'team-other',
               name: 'Other workspace',
+            },
+            {
+              avatarImageUrl: 'data:image/png;base64,unsafe',
+              orgId: 'org-other',
+              orgName: 'Other org',
+              teamId: 'team-unsafe-scheme',
+              name: 'Unsafe scheme workspace',
+            },
+            {
+              avatarImageUrl: '//attacker.example/workspace.png',
+              orgId: 'org-other',
+              orgName: 'Other org',
+              teamId: 'team-protocol-relative',
+              name: 'Protocol-relative workspace',
+            },
+            {
+              avatarImageUrl: String.raw`/\\attacker.example/workspace.png`,
+              orgId: 'org-other',
+              orgName: 'Other org',
+              teamId: 'team-backslash-host',
+              name: 'Backslash-host workspace',
             },
           ],
         },
@@ -186,13 +209,33 @@ test('exchangeUoaSession retains the exact server-side refresh session', async (
         {
           organizationId: 'org-active',
           teamId: 'team-active',
+          avatarImageUrl: 'https://uoa.example.com/public/teams/team-active/avatar',
           label: 'Active workspace',
           orgName: 'Active org',
         },
         {
           organizationId: 'org-other',
           teamId: 'team-other',
+          avatarImageUrl: 'https://images.example.com/workspaces/team-other.png',
           label: 'Other workspace',
+          orgName: 'Other org',
+        },
+        {
+          organizationId: 'org-other',
+          teamId: 'team-unsafe-scheme',
+          label: 'Unsafe scheme workspace',
+          orgName: 'Other org',
+        },
+        {
+          organizationId: 'org-other',
+          teamId: 'team-protocol-relative',
+          label: 'Protocol-relative workspace',
+          orgName: 'Other org',
+        },
+        {
+          organizationId: 'org-other',
+          teamId: 'team-backslash-host',
+          label: 'Backslash-host workspace',
           orgName: 'Other org',
         },
       ])

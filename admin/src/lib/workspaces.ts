@@ -10,10 +10,17 @@ export type Workspace = {
   projectId: string
   teamId: string
   avatarTeamId?: string
+  avatarImageUrl?: string
   label: string
   orgName?: string
   active?: boolean
   uoaWorkspace?: boolean
+}
+
+export type WorkspaceOrganization = {
+  organizationId: string
+  label: string
+  workspaces: Workspace[]
 }
 
 /** Flatten `me.memberships` (org → projects → teams) into the workspace list. */
@@ -24,6 +31,7 @@ export const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
       projectId: '',
       teamId: workspace.teamId,
       ...(workspace.avatarTeamId ? { avatarTeamId: workspace.avatarTeamId } : {}),
+      ...(workspace.avatarImageUrl ? { avatarImageUrl: workspace.avatarImageUrl } : {}),
       label: workspace.label,
       orgName: workspace.orgName,
       active: workspace.active,
@@ -48,6 +56,26 @@ export const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
     }
   }
   return list
+}
+
+/** Group teams by their stable organisation id while preserving directory order. */
+export const groupWorkspacesByOrganization = (
+  workspaces: Workspace[],
+): WorkspaceOrganization[] => {
+  const groups = new Map<string, WorkspaceOrganization>()
+  for (const workspace of workspaces) {
+    const existing = groups.get(workspace.organizationId)
+    if (existing) {
+      existing.workspaces.push(workspace)
+      continue
+    }
+    groups.set(workspace.organizationId, {
+      organizationId: workspace.organizationId,
+      label: workspace.orgName?.trim() || 'Organization',
+      workspaces: [workspace],
+    })
+  }
+  return [...groups.values()]
 }
 
 /** The workspace the session is currently scoped to, if it is still listed. */

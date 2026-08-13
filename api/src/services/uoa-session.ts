@@ -26,6 +26,7 @@ type UoaTokenResponse = {
 export type UoaWorkspaceDirectoryEntry = {
   organizationId: string
   teamId: string
+  avatarImageUrl?: string
   label: string
   orgName?: string
 }
@@ -58,6 +59,34 @@ const trimString = (value: unknown): string | undefined => {
   }
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : undefined
+}
+
+const parseAvatarImageUrl = (value: unknown, baseUrl: string): string | undefined => {
+  const candidate = trimString(value)
+  if (!candidate) return undefined
+
+  try {
+    // UOA may return its public image endpoint as `/...`. Resolve only a true
+    // root-relative path against the configured UOA origin; protocol-relative
+    // `//host/...` values must not silently select another host.
+    const rootRelative = candidate.startsWith('/') && !candidate.startsWith('//')
+    const base = new URL(baseUrl)
+    const url = rootRelative ? new URL(candidate, base) : new URL(candidate)
+    if (
+      !['http:', 'https:'].includes(url.protocol)
+      || url.username
+      || url.password
+      // WHATWG URLs treat backslashes as separators for special schemes. This
+      // catches inputs such as `/\\host/path` that look root-relative but would
+      // otherwise resolve onto a different origin.
+      || (rootRelative && url.origin !== base.origin)
+    ) {
+      return undefined
+    }
+    return url.toString()
+  } catch {
+    return undefined
+  }
 }
 
 const stringArray = (value: unknown): string[] => {
@@ -202,7 +231,10 @@ const parseUoaSessionExchange = (
   } }
 }
 
-const parseWorkspaceDirectory = (payload: unknown): UoaWorkspaceDirectoryEntry[] => {
+const parseWorkspaceDirectory = (
+  payload: unknown,
+  baseUrl: string,
+): UoaWorkspaceDirectoryEntry[] => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return []
   const org = (payload as { org?: unknown }).org
   if (!org || typeof org !== 'object' || Array.isArray(org)) return []
@@ -215,8 +247,15 @@ const parseWorkspaceDirectory = (payload: unknown): UoaWorkspaceDirectoryEntry[]
     const teamId = trimString(entry.teamId)
     const label = trimString(entry.name)
     const orgName = trimString(entry.orgName)
+    const avatarImageUrl = parseAvatarImageUrl(entry.avatarImageUrl, baseUrl)
     if (!organizationId || !teamId || !label) return []
-    return [{ organizationId, teamId, label, ...(orgName ? { orgName } : {}) }]
+    return [{
+      organizationId,
+      teamId,
+      ...(avatarImageUrl ? { avatarImageUrl } : {}),
+      label,
+      ...(orgName ? { orgName } : {}),
+    }]
   })
 }
 
@@ -237,7 +276,9 @@ const fetchWorkspaceDirectory = async (
       },
       signal: AbortSignal.timeout(10_000),
     })
-    return response.ok ? parseWorkspaceDirectory(await response.json()) : []
+    return response.ok
+      ? parseWorkspaceDirectory(await response.json(), settings.baseUrl)
+      : []
   } catch {
     return []
   }

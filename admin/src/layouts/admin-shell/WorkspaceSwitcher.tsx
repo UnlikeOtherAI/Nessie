@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { faCheck, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthProviders } from '../../facades/auth/hooks'
-import { workspacesFromMe, type Workspace } from '../../lib/workspaces'
+import {
+  groupWorkspacesByOrganization,
+  workspacesFromMe,
+  type Workspace,
+} from '../../lib/workspaces'
 import { useWorkspaceAvatarRevision } from '../../facades/workspace/hooks'
 import { WorkspaceAvatar } from '../../components/primitives/WorkspaceAvatar'
 import { startExternalSignIn } from '../../lib/external-auth'
@@ -46,6 +50,10 @@ const WorkspaceMenu = ({
   onClose,
 }: WorkspaceMenuProps) => {
   const [position, setPosition] = useState<WorkspaceMenuPosition | null>(null)
+  const organizations = useMemo(
+    () => groupWorkspacesByOrganization(workspaces),
+    [workspaces],
+  )
 
   useLayoutEffect(() => {
     const anchor = anchorRef.current
@@ -95,45 +103,50 @@ const WorkspaceMenu = ({
           maxHeight: position.maxHeight,
         }}
       >
-        <div className="px-2 py-1 text-xs uppercase tracking-[0.18em] text-[color:var(--tx3)]">
+        <div className="px-2 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
           Workspaces
         </div>
-        {workspaces.map((workspace) => {
-          const isActive = workspace.active || workspace.teamId === activeTeamId
-          return (
-            <button
-              className={[
-                'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors',
-                'hover:bg-[color:var(--overlay-weak)] disabled:opacity-60',
-              ].join(' ')}
-              disabled={busy}
-              key={workspace.teamId}
-              onClick={() => onSelect(workspace)}
-              type="button"
-            >
-              <WorkspaceAvatar
-                label={workspace.label}
-                revision={isActive ? avatarRevision : 0}
-                size={32}
-                teamId={workspace.uoaWorkspace ? workspace.avatarTeamId ?? null : workspace.teamId}
-                token={token}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-[color:var(--tx)]">
-                  {workspace.label}
-                </span>
-                {workspace.orgName ? (
-                  <span className="block truncate text-xs text-[color:var(--tx3)]">
-                    {workspace.orgName}
+        {organizations.map((organization, organizationIndex) => (
+          <section
+            className={organizationIndex > 0 ? 'mt-1 border-t border-[color:var(--sep)] pt-1' : undefined}
+            key={organization.organizationId}
+          >
+            <div className="truncate px-2 pb-1 pt-1.5 text-[11px] font-semibold text-[color:var(--tx3)]">
+              {organization.label}
+            </div>
+            {organization.workspaces.map((workspace) => {
+              const isActive = workspace.active || workspace.teamId === activeTeamId
+              return (
+                <button
+                  aria-label={`${workspace.label}, ${organization.label}`}
+                  className={[
+                    'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors',
+                    'hover:bg-[color:var(--overlay-weak)] disabled:opacity-60',
+                  ].join(' ')}
+                  disabled={busy}
+                  key={workspace.teamId}
+                  onClick={() => onSelect(workspace)}
+                  type="button"
+                >
+                  <WorkspaceAvatar
+                    imageUrl={workspace.avatarImageUrl}
+                    label={workspace.label}
+                    revision={isActive ? avatarRevision : 0}
+                    size={32}
+                    teamId={workspace.uoaWorkspace ? workspace.avatarTeamId ?? null : workspace.teamId}
+                    token={token}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
+                    {workspace.label}
                   </span>
-                ) : null}
-              </span>
-              {isActive ? (
-                <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" icon={faCheck} />
-              ) : null}
-            </button>
-          )
-        })}
+                  {isActive ? (
+                    <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" icon={faCheck} />
+                  ) : null}
+                </button>
+              )
+            })}
+          </section>
+        ))}
 
         {ssoProviderId ? (
           <>
@@ -166,11 +179,11 @@ const WorkspaceMenu = ({
 }
 
 /**
- * Shared desktop/iPad workspace switcher. Local sessions re-scope through
+ * Shared desktop/iPad/iPhone workspace switcher. Local sessions re-scope through
  * `switch-context`; UOA sessions use their saved directory and re-enter UOA
  * with `team_hint`, so local and signed UOA workspace scopes cannot drift.
- * The desktop rail renders the trigger; native iPad opens this same menu from
- * its companion control. "Add a workspace" opens UOA's full chooser.
+ * The desktop rail renders the trigger; native iPad and iPhone controls open
+ * this same menu. "Add a workspace" opens UOA's full chooser.
  */
 type WorkspaceSwitcherProps = {
   variant?: 'native-bridge' | 'rail'
@@ -277,6 +290,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
           type="button"
         >
           <WorkspaceAvatar
+            imageUrl={active?.avatarImageUrl}
             label={active?.label ?? 'Workspace'}
             revision={avatarRevision}
             size={36}

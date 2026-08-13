@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { MeResponse } from '@nessie/schemas'
-import { activeWorkspace, workspacesFromMe } from '../src/lib/workspaces.js'
+import {
+  activeWorkspace,
+  groupWorkspacesByOrganization,
+  workspacesFromMe,
+  type Workspace,
+} from '../src/lib/workspaces.js'
 
 const uoaMe = {
   auth: { providerId: 'uoa', providerType: 'uoa', autoRedirectToSso: false },
@@ -28,6 +33,7 @@ const uoaMe = {
       organizationId: 'uoa-org-current',
       teamId: 'uoa-team-current',
       avatarTeamId: '00000000-0000-4000-8000-000000000003',
+      avatarImageUrl: 'https://authentication.example/teams/uoa-team-current/avatar',
       label: 'Current workspace',
       orgName: 'Nessie Works',
       active: true,
@@ -35,6 +41,7 @@ const uoaMe = {
     {
       organizationId: 'uoa-org-other',
       teamId: 'uoa-team-other',
+      avatarImageUrl: 'https://authentication.example/teams/uoa-team-other/avatar',
       label: 'Another authorized workspace',
       orgName: 'Ondrej’s Team',
       active: false,
@@ -56,6 +63,7 @@ test('UOA sessions render the authoritative directory rather than local provisio
       projectId: '',
       teamId: 'uoa-team-current',
       avatarTeamId: '00000000-0000-4000-8000-000000000003',
+      avatarImageUrl: 'https://authentication.example/teams/uoa-team-current/avatar',
       label: 'Current workspace',
       orgName: 'Nessie Works',
       active: true,
@@ -65,6 +73,7 @@ test('UOA sessions render the authoritative directory rather than local provisio
       organizationId: 'uoa-org-other',
       projectId: '',
       teamId: 'uoa-team-other',
+      avatarImageUrl: 'https://authentication.example/teams/uoa-team-other/avatar',
       label: 'Another authorized workspace',
       orgName: 'Ondrej’s Team',
       active: false,
@@ -72,4 +81,55 @@ test('UOA sessions render the authoritative directory rather than local provisio
     },
   ])
   assert.equal(activeWorkspace(uoaMe)?.teamId, 'uoa-team-current')
+})
+
+test('teams are grouped by organization id without changing directory order', () => {
+  const workspaces: Workspace[] = [
+    {
+      organizationId: 'org-a',
+      projectId: '',
+      teamId: 'team-a-1',
+      label: 'Design',
+      orgName: 'Acme',
+    },
+    {
+      organizationId: 'org-b',
+      projectId: '',
+      teamId: 'team-b-1',
+      label: 'General',
+      orgName: 'Beta',
+    },
+    {
+      organizationId: 'org-a',
+      projectId: '',
+      teamId: 'team-a-2',
+      label: 'Engineering',
+      orgName: 'Acme',
+    },
+  ]
+
+  assert.deepEqual(groupWorkspacesByOrganization(workspaces), [
+    {
+      organizationId: 'org-a',
+      label: 'Acme',
+      workspaces: [workspaces[0], workspaces[2]],
+    },
+    {
+      organizationId: 'org-b',
+      label: 'Beta',
+      workspaces: [workspaces[1]],
+    },
+  ])
+})
+
+test('organizations with the same display name remain separate groups', () => {
+  const workspaces: Workspace[] = [
+    { organizationId: 'org-a', projectId: '', teamId: 'team-a', label: 'One', orgName: 'Acme' },
+    { organizationId: 'org-b', projectId: '', teamId: 'team-b', label: 'Two', orgName: 'Acme' },
+  ]
+
+  assert.deepEqual(
+    groupWorkspacesByOrganization(workspaces).map((group) => group.organizationId),
+    ['org-a', 'org-b'],
+  )
 })

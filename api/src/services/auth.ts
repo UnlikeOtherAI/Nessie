@@ -133,6 +133,18 @@ export const loadUserMemberships = async (
   }))
 }
 
+const parseHttpUrl = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  try {
+    const url = new URL(value.trim())
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
+      ? url.toString()
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const uoaWorkspaceDirectoryFromMetadata = (
   metadata: unknown,
   activeTeamId: string | undefined,
@@ -147,10 +159,12 @@ const uoaWorkspaceDirectoryFromMetadata = (
     const teamId = typeof values.teamId === 'string' ? values.teamId.trim() : ''
     const label = typeof values.label === 'string' ? values.label.trim() : ''
     const orgName = typeof values.orgName === 'string' ? values.orgName.trim() : ''
+    const avatarImageUrl = parseHttpUrl(values.avatarImageUrl)
     if (!organizationId || !teamId || !label) return []
     return [{
       organizationId,
       teamId,
+      ...(avatarImageUrl ? { avatarImageUrl } : {}),
       label,
       ...(orgName ? { orgName } : {}),
       active: teamId === activeTeamId,

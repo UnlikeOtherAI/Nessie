@@ -13,6 +13,13 @@ const syncInput = {
   teamId: '00000000-0000-4000-8000-000000000002',
   uoaTokenVersion: 8,
   userId: '00000000-0000-4000-8000-000000000003',
+  workspaceDirectory: [{
+    organizationId: 'uoa-org',
+    teamId: 'uoa-team',
+    avatarImageUrl: 'https://authentication.example.com/public/teams/uoa-team/avatar',
+    label: 'Engineering',
+    orgName: 'Example organization',
+  }],
   workspace: {
     activeOrgId: 'uoa-org',
     activeTeamId: 'uoa-team',
@@ -24,6 +31,11 @@ const syncInput = {
 const sqlText = (query: unknown): string => {
   const candidate = query as { strings?: readonly string[] }
   return candidate.strings?.join('?') ?? ''
+}
+
+const sqlValues = (query: unknown): readonly unknown[] => {
+  const candidate = query as { values?: readonly unknown[] }
+  return candidate.values ?? []
 }
 
 test('account-link sync rejects incomplete UOA proof before persistence', async () => {
@@ -60,6 +72,7 @@ test('account-link sync fails closed without the canonical Nessie product', asyn
 })
 
 test('account-link sync updates every first-party product under one transaction', async () => {
+  const persistedDirectories: unknown[] = []
   const statements: string[] = []
   let transactionCalls = 0
   const prisma = {
@@ -72,6 +85,13 @@ test('account-link sync updates every first-party product under one transaction'
       return operation({
         $executeRaw: async (query: unknown) => {
           statements.push(sqlText(query))
+          const metadataJson = sqlValues(query).find(
+            (value) => typeof value === 'string' && value.includes('"workspaceDirectory"'),
+          )
+          assert.equal(typeof metadataJson, 'string')
+          persistedDirectories.push(
+            (JSON.parse(metadataJson as string) as { workspaceDirectory?: unknown }).workspaceDirectory,
+          )
           return 1
         },
       })
@@ -81,6 +101,7 @@ test('account-link sync updates every first-party product under one transaction'
   await syncUoaProductAccountLinks(prisma as never, syncInput)
   assert.equal(transactionCalls, 1)
   assert.equal(statements.length, 2)
+  assert.deepEqual(persistedDirectories, [syncInput.workspaceDirectory, syncInput.workspaceDirectory])
   for (const statement of statements) {
     assert.match(statement, /"uoa_sub" = EXCLUDED\."uoa_sub"/)
     assert.match(

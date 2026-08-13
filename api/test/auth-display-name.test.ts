@@ -108,12 +108,14 @@ test('buildMeResponse exposes the UOA workspace directory with its signed active
       {
         organizationId: 'uoa-org-active',
         teamId: 'uoa-team-active',
+        avatarImageUrl: 'https://authentication.example.com/public/teams/uoa-team-active/avatar',
         label: 'Active workspace',
         orgName: 'Active org',
       },
       {
         organizationId: 'uoa-org-other',
         teamId: 'uoa-team-other',
+        avatarImageUrl: 'javascript:alert(1)',
         label: 'Other workspace',
       },
     ],
@@ -139,6 +141,7 @@ test('buildMeResponse exposes the UOA workspace directory with its signed active
       organizationId: 'uoa-org-active',
       teamId: 'uoa-team-active',
       avatarTeamId: teamId,
+      avatarImageUrl: 'https://authentication.example.com/public/teams/uoa-team-active/avatar',
       label: 'Active workspace',
       orgName: 'Active org',
       active: true,

@@ -9,6 +9,7 @@ import {
   type IntegratedProductRow,
   type ProductTeamEnablementRow,
 } from './integration-product-rows.js'
+import type { UoaWorkspaceDirectoryEntry } from './uoa-session.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 type ProductOwner = {
@@ -22,12 +23,7 @@ type UoaProductAccountLinkSyncInput = ProductOwner & {
   externalSubject: string | undefined
   uoaTokenVersion: number | undefined
   workspace: ExternalAuthWorkspace | undefined
-  workspaceDirectory?: Array<{
-    organizationId: string
-    teamId: string
-    label: string
-    orgName?: string
-  }>
+  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
 }
 
 type ProductSlugRow = {
