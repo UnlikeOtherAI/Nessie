@@ -266,7 +266,6 @@ const parseWorkspaceDirectory = (
 // directory carries the bearer access token. safeFetch validates the URL and
 // pins the socket to the vetted addresses; maxRedirects 0 returns any 3xx raw.
 // The options are injectable so tests can stub DNS resolution at this seam.
-const SAFE_UOA_FETCH_OPTIONS = { maxRedirects: 0 } as const
 const uoaFetchOptions = (options?: SafeFetchOptions): SafeFetchOptions => ({
   ...options,
   maxRedirects: 0,
