@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
@@ -27,6 +27,7 @@ type NativePhoneConversationMenuChromeProps = {
   sheetMutedText: string
   sheetSurface: string
   sheetText: string
+  showCreationActions: boolean
   platform: 'android' | 'ios'
   onWorkspacePress: () => void
   workspaceName: string | null
@@ -60,9 +61,9 @@ const AccountPresenceIndicator = ({
 }
 
 /**
- * Native phone shell chrome for the conversation index. The controls are native
- * but delegate to the WebView's existing workspace, recents, account, and
- * compose actions, preserving their authorization and menus.
+ * Native phone shell chrome for every tab's first screen. The controls are
+ * native but delegate to the WebView's existing workspace, recents, account,
+ * and compose actions, preserving their authorization and menus.
  */
 export const NativePhoneConversationMenuChrome = ({
   accentColor,
@@ -81,11 +82,16 @@ export const NativePhoneConversationMenuChrome = ({
   sheetMutedText,
   sheetSurface,
   sheetText,
+  showCreationActions,
   platform,
   onWorkspacePress,
   workspaceName,
 }: NativePhoneConversationMenuChromeProps): React.JSX.Element => {
   const [creationOpen, setCreationOpen] = useState(false)
+  useEffect(() => {
+    if (!showCreationActions) setCreationOpen(false)
+  }, [showCreationActions])
+
   const selectCreationAction = (action: NativePhoneCreationAction): void => {
     setCreationOpen(false)
     onCreateAction(action)
@@ -159,7 +165,7 @@ export const NativePhoneConversationMenuChrome = ({
       </View>
     </View>
 
-    {!creationOpen ? (
+    {showCreationActions && !creationOpen ? (
       <Pressable
         accessibilityLabel="Start a new channel, project, or direct message"
         accessibilityRole="button"
@@ -177,7 +183,7 @@ export const NativePhoneConversationMenuChrome = ({
         <Text style={[styles.composeSymbol, { color: onAccentColor }]}>+</Text>
       </Pressable>
     ) : null}
-    {creationOpen ? (
+    {showCreationActions && creationOpen ? (
       <>
         <Pressable
           accessibilityLabel="Close create menu"

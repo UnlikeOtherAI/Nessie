@@ -52,7 +52,7 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
   assert.match(badge, /ringWidth = 2/)
 })
 
-test('the native phone menu delegates workspace, history, account, and creation actions to the web shell', () => {
+test('the native phone home chrome delegates workspace, history, account, and Channels creation actions to the web shell', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const account = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
   const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
@@ -60,6 +60,7 @@ test('the native phone menu delegates workspace, history, account, and creation 
   const nativeApp = readSource('../../mobile/App.tsx')
 
   assert.match(shell, /useNativePhoneApp/)
+  assert.match(shell, /\|\| pathname === '\/search'/)
   assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
   assert.match(shell, /<UserMenuTrigger nativeShellBridge/)
@@ -69,9 +70,14 @@ test('the native phone menu delegates workspace, history, account, and creation 
   assert.match(creation, /onCreateProject\(\)/)
   assert.match(creation, /onCreateChannel\(\)/)
   assert.match(creation, /onCreateMessage\(\)/)
-  assert.match(nativeApp, /showNativePhoneConversationMenu = showBar && !IS_IPAD/)
+  assert.match(nativeApp, /showNativePhoneHomeChrome = showBar && !IS_IPAD && isNativePhoneTabRootRoute\(currentPath\)/)
+  assert.match(
+    nativeApp,
+    /showNativePhoneCreationActions = showNativePhoneHomeChrome && isNativePhoneChannelsRootRoute\(currentPath\)/,
+  )
   assert.match(nativeApp, /creationAccentColor=\{strongAccent\}/)
-  assert.match(phoneChrome, /\{!creationOpen \? \(/)
+  assert.match(nativeApp, /showCreationActions=\{showNativePhoneCreationActions\}/)
+  assert.match(phoneChrome, /\{showCreationActions && !creationOpen \? \(/)
   assert.match(phoneChrome, /Start a new channel, project, or direct message/)
   assert.match(phoneChrome, /backgroundColor: creationAccentColor/)
   assert.match(phoneChrome, /Project/)

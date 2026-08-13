@@ -38,14 +38,21 @@ export const isAuthGateRoute = (path: string): boolean =>
 
 export const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new'
 
-// The native bridge reports the SPA path together with its query string. The
-// channel root is still the conversation index when it carries ordinary URL
-// state, so normalize that structural suffix before deciding whether to render
-// the workspace header and floating new-message action.
-export const isNativePhoneConversationMenuRoute = (path: string | null): boolean => {
-  const pathname = path?.split(/[?#]/, 1)[0]?.replace(/\/+$/, '')
-  return pathname === '/channels'
+const nativePhoneTabRootPaths = new Set(TABS.map((tab) => tab.path))
+
+// The native bridge reports the SPA path together with its query string. A tab
+// root remains its first screen when it carries ordinary URL state, so normalize
+// that structural suffix before deciding whether to render native home chrome.
+const nativePhonePathname = (path: string | null): string | undefined =>
+  path?.split(/[?#]/, 1)[0]?.replace(/\/+$/, '')
+
+export const isNativePhoneTabRootRoute = (path: string | null): boolean => {
+  const pathname = nativePhonePathname(path)
+  return pathname != null && nativePhoneTabRootPaths.has(pathname)
 }
+
+export const isNativePhoneChannelsRootRoute = (path: string | null): boolean =>
+  nativePhonePathname(path) === '/channels'
 
 // Android's dock is taller and raised above the safe area, so its native phone
 // actions need their own exact bottom-chrome clearance.
@@ -67,13 +74,13 @@ export const getNativeWebviewFrameInsets = (input: {
   isIpad: boolean
   platform: string
   safeArea: NativeSafeAreaInsets
-  showNativePhoneMenuHeader: boolean
+  showNativePhoneHomeHeader: boolean
   showTabBar: boolean
 }): NativeSafeAreaInsets => {
   const top = input.isIpad && input.showTabBar
     ? getIpadContentTop(input.ipadChromeTop)
     : input.platform === 'ios' || input.platform === 'android'
-      ? input.safeArea.top + (input.showNativePhoneMenuHeader ? NATIVE_PHONE_MENU_HEADER_HEIGHT : 0)
+      ? input.safeArea.top + (input.showNativePhoneHomeHeader ? NATIVE_PHONE_MENU_HEADER_HEIGHT : 0)
       : 0
   const bottom = input.platform === 'android'
     ? input.safeArea.bottom

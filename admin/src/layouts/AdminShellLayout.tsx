@@ -44,7 +44,8 @@ const isPhoneTabRoot = (pathname: string): boolean =>
   pathname === '/channels'
   || pathname === '/projects'
   || pathname === '/knowledge-base'
-  || pathname === '/settings';
+  || pathname === '/settings'
+  || pathname === '/search';
 
 export const AdminShellLayout = () => {
   const { me, sessionState } = useAuthSession();

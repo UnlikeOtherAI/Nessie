@@ -208,18 +208,21 @@ control: the same avatar, presence/status badges, and account menu used at the
 bottom of the desktop rail. A shell with that rail never renders a second
 top-bar account badge.
 
-On the native iPhone and Android **Channels** index (including its ordinary
-query-string state), `NativePhoneConversationMenuChrome` adds a theme-specific
-dark workspace header above that retained WebView: the workspace control opens
-the existing entitlement-aware switcher, Recent Channels delegates to the
-existing toolbar bridge, and the account control opens the canonical account
-menu. Its Slack-positioned bottom-right **+** uses the theme's darker primary
-colour (`--accent-strong`) and appears only on phones. Tapping it hides the
-button and opens the native sheet, **“Start a new channel, project, or direct
-message”**: **Project** replaces Slack's Huddle, **Channel** remains a regular
-row, and the highlighted **Message** action opens a direct message. Each
-delegates to the same web-shell handler and dialog as the sidebar, rather than
-creating a second permission path. The WebView sidebar carries a native-touch
+On the native iPhone and Android first screen of **every tab** (Channels,
+Projects, Knowledge, Admin, and Search, including ordinary query-string state),
+`NativePhoneConversationMenuChrome` adds a theme-specific dark workspace header
+above the retained WebView. The workspace control opens the existing
+entitlement-aware switcher, Recent Channels delegates to the existing toolbar
+bridge, and the account control opens the canonical account menu. The header
+owns the status-bar backdrop, so its system indicators remain light against the
+dark surface even when the active Nessie theme is light. Its Slack-positioned
+bottom-right **+** is deliberately limited to the Channels root: it uses the
+theme's darker primary colour (`--accent-strong`) and opens the native sheet,
+**“Start a new channel, project, or direct message”**. **Project** replaces
+Slack's Huddle, **Channel** remains a regular row, and the highlighted
+**Message** action opens a direct message. Each delegates to the same web-shell
+handler and dialog as the sidebar, rather than creating a second permission
+path. The WebView sidebar carries a native-touch
 marker on iPhone, iPad, and Android so only those installed interfaces use
 Slack-scale 38-point rows and 14px menu type; desktop remains compact even on a
 touchscreen. Project folder rows alone are bold. Human, agent, and workspace

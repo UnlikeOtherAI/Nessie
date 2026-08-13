@@ -28,7 +28,10 @@ import {
 import { type NativeShellMessage } from './src/lib/native-shell-message'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
-import { statusBarStyleForScheme } from './src/lib/status-bar'
+import {
+  statusBarStyleForNativePhoneHomeHeader,
+  statusBarStyleForScheme,
+} from './src/lib/status-bar'
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
@@ -54,7 +57,8 @@ import {
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
   isFullScreenTaskRoute,
-  isNativePhoneConversationMenuRoute,
+  isNativePhoneChannelsRootRoute,
+  isNativePhoneTabRootRoute,
 } from './src/lib/native-shell-layout'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
@@ -348,7 +352,8 @@ const Shell = (): React.JSX.Element => {
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
   const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
-  const showNativePhoneConversationMenu = showBar && !IS_IPAD && isNativePhoneConversationMenuRoute(currentPath)
+  const showNativePhoneHomeChrome = showBar && !IS_IPAD && isNativePhoneTabRootRoute(currentPath)
+  const showNativePhoneCreationActions = showNativePhoneHomeChrome && isNativePhoneChannelsRootRoute(currentPath)
 
   // The native frame owns all unsafe edges. In particular, a phone tab root is
   // not always a direct aside/main child in the web DOM, so relying on injected
@@ -359,7 +364,7 @@ const Shell = (): React.JSX.Element => {
     isIpad: IS_IPAD,
     platform: Platform.OS,
     safeArea: insets,
-    showNativePhoneMenuHeader: showNativePhoneConversationMenu,
+    showNativePhoneHomeHeader: showNativePhoneHomeChrome,
     showTabBar: showBar,
   })
   const webviewLayerStyle = {
@@ -377,7 +382,7 @@ const Shell = (): React.JSX.Element => {
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
-      <StatusBar style={statusBarStyle} />
+      <StatusBar style={statusBarStyleForNativePhoneHomeHeader(showNativePhoneHomeChrome, statusBarStyle)} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <IphoneNativeTabBar
@@ -446,7 +451,7 @@ const Shell = (): React.JSX.Element => {
         />}
       </View>
 
-      {showNativePhoneConversationMenu ? (
+      {showNativePhoneHomeChrome ? (
         <NativePhoneConversationMenuChrome
           accentColor={accent}
           accountAvatarUrl={nativeAccount.avatarUrl}
@@ -466,6 +471,7 @@ const Shell = (): React.JSX.Element => {
           sheetText={phoneText}
           sheetSurface={ipadChromeSurface}
           platform={IS_ANDROID ? 'android' : 'ios'}
+          showCreationActions={showNativePhoneCreationActions}
           workspaceName={ipadWorkspaceName}
         />
       ) : null}

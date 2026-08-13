@@ -7,7 +7,8 @@ import {
   getNativePhoneComposeBottom,
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
-  isNativePhoneConversationMenuRoute,
+  isNativePhoneChannelsRootRoute,
+  isNativePhoneTabRootRoute,
 } from './native-shell-layout'
 
 test('the iPhone native frame always owns the status and tab-bar safe areas', () => {
@@ -16,7 +17,7 @@ test('the iPhone native frame always owns the status and tab-bar safe areas', ()
     isIpad: false,
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showNativePhoneMenuHeader: false,
+    showNativePhoneHomeHeader: false,
     showTabBar: true,
   }), { top: 59, bottom: 83 })
 })
@@ -27,7 +28,7 @@ test('full-screen iPhone tasks keep the status inset while leaving the home indi
     isIpad: false,
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showNativePhoneMenuHeader: false,
+    showNativePhoneHomeHeader: false,
     showTabBar: false,
   }), { top: 59, bottom: 0 })
 })
@@ -38,7 +39,7 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     isIpad: true,
     platform: 'ios',
     safeArea: { top: 24, bottom: 20 },
-    showNativePhoneMenuHeader: false,
+    showNativePhoneHomeHeader: false,
     showTabBar: true,
   }), { top: 78, bottom: 0 })
   assert.deepEqual(getNativeWebviewFrameInsets({
@@ -46,31 +47,36 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     isIpad: false,
     platform: 'android',
     safeArea: { top: 32, bottom: 28 },
-    showNativePhoneMenuHeader: false,
+    showNativePhoneHomeHeader: false,
     showTabBar: true,
   }), { top: 32, bottom: 28 })
 })
 
-test('the native phone conversation index reserves the workspace header on iPhone and Android', () => {
+test('every native phone tab root reserves the workspace header on iPhone and Android', () => {
   assert.deepEqual(getNativeWebviewFrameInsets({
     ipadChromeTop: 59,
     isIpad: false,
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
-    showNativePhoneMenuHeader: true,
+    showNativePhoneHomeHeader: true,
     showTabBar: true,
   }), { top: 123, bottom: 83 })
-  assert.equal(isNativePhoneConversationMenuRoute('/channels'), true)
-  assert.equal(isNativePhoneConversationMenuRoute('/channels?source=tab'), true)
-  assert.equal(isNativePhoneConversationMenuRoute('/channels/'), true)
-  assert.equal(isNativePhoneConversationMenuRoute('/channels/new'), false)
-  assert.equal(isNativePhoneConversationMenuRoute('/projects'), false)
+  assert.equal(isNativePhoneTabRootRoute('/channels'), true)
+  assert.equal(isNativePhoneTabRootRoute('/channels?source=tab'), true)
+  assert.equal(isNativePhoneTabRootRoute('/channels/'), true)
+  assert.equal(isNativePhoneTabRootRoute('/projects'), true)
+  assert.equal(isNativePhoneTabRootRoute('/knowledge-base'), true)
+  assert.equal(isNativePhoneTabRootRoute('/settings'), true)
+  assert.equal(isNativePhoneTabRootRoute('/search'), true)
+  assert.equal(isNativePhoneTabRootRoute('/channels/new'), false)
+  assert.equal(isNativePhoneChannelsRootRoute('/channels'), true)
+  assert.equal(isNativePhoneChannelsRootRoute('/projects'), false)
   assert.deepEqual(getNativeWebviewFrameInsets({
     ipadChromeTop: 0,
     isIpad: false,
     platform: 'android',
     safeArea: { top: 32, bottom: 28 },
-    showNativePhoneMenuHeader: true,
+    showNativePhoneHomeHeader: true,
     showTabBar: true,
   }), { top: 96, bottom: 28 })
   assert.equal(getNativePhoneBottomChromeClearance('ios'), 49)
