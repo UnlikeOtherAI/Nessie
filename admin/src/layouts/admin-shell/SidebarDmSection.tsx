@@ -200,6 +200,7 @@ export const SidebarDmSection = ({
               ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
               shape={nativeTouchShell ? 'rounded' : 'circle'}
               showPresence={nativeTouchShell}
+              showStatus={!nativeTouchShell}
               size={avatarSize}
               token={token}
               userId={person.id}
