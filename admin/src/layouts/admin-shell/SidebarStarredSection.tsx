@@ -3,7 +3,11 @@ import { UserAvatar } from '../../components/primitives/UserAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
-import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import {
+  channelHashClassName,
+  projectSelectionClassName,
+  renderUnreadCount,
+} from './SidebarRow';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { StarredItem, VisibleStarredEntry } from './types';
@@ -125,7 +129,7 @@ export const SidebarStarredSection = ({
                 className={[
                   'admin-sb-item sidebar-project-tile group',
                   unreadCount > 0 ? 'unread' : '',
-                  project.id === currentProjectId ? 'active-parent' : '',
+                  projectSelectionClassName(project.id, currentProjectId, currentChannelId),
                 ].join(' ')}
                 onClick={() => onNavigateProject(project.id)}
                 type="button"

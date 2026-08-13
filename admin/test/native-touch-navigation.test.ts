@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { projectSelectionClassName } from '../src/layouts/admin-shell/SidebarRow'
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -40,6 +41,8 @@ test('selected sidebar affordances follow the project selection hierarchy', () =
   const styles = readSource('../src/styles.css')
   const row = readSource('../src/layouts/admin-shell/SidebarRow.tsx')
   const channels = readSource('../src/layouts/admin-shell/SidebarChannelsSection.tsx')
+  const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
+  const starred = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
   const assistant = readSource('../src/components/features/personal-assistant/PersonalAssistantSurface.tsx')
 
   assert.match(styles, /\.admin-sb-item\.active svg/)
@@ -62,7 +65,12 @@ test('selected sidebar affordances follow the project selection hierarchy', () =
     /\.admin-sb-item\.active-parent\s*\{[\s\S]*?background: color-mix\(in srgb, var\(--sb-active\) 10%, transparent\)/,
   )
   assert.match(row, /sidebar-row-symbol/)
+  assert.equal(projectSelectionClassName('project-1', 'project-1'), 'active')
+  assert.equal(projectSelectionClassName('project-1', 'project-1', 'channel-1'), 'active-parent')
+  assert.equal(projectSelectionClassName('project-1', 'project-2'), '')
   assert.match(channels, /sidebar-row-star/)
+  assert.match(projects, /projectSelectionClassName\(project\.id, currentProjectId, currentChannelId\)/)
+  assert.match(starred, /projectSelectionClassName\(project\.id, currentProjectId, currentChannelId\)/)
   assert.match(assistant, /sidebar-pa-badge/)
 })
 
