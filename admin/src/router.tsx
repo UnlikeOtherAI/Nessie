@@ -4,7 +4,7 @@ import {
   useLocation,
 } from 'react-router-dom'
 import { resolveRootLandingPath } from './facades/billing/checkout-return'
-import { readNativePendingPushPath } from './lib/mobile-shell'
+import { readNativePendingPushPath, usePhoneLayout } from './lib/mobile-shell'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { SearchPage } from './pages/SearchPage'
@@ -53,6 +53,13 @@ const RootRouteRedirect = () => {
   // starts. Resolve it here, rather than first redirecting to /channels and
   // replacing the notification destination with the default conversation.
   return <Navigate to={resolveRootLandingPath(search, readNativePendingPushPath())} replace />
+}
+
+// The Admin tab's first phone page is its existing navigation list. Wider
+// layouts preserve the established direct route to Profile & Session.
+const SettingsRootRoute = () => {
+  const phoneLayout = usePhoneLayout()
+  return phoneLayout ? null : <Navigate to="/settings/profile" replace />
 }
 
 export const router = createBrowserRouter([
@@ -124,6 +131,12 @@ export const router = createBrowserRouter([
             // Reply-thread panel (#233): deep-linkable third pane; Back closes it.
             path: ':channelId/threads/:threadId/replies/:rootMessageId',
           },
+          // Conversation information is a route, not a transient popup: phone
+          // Back, notification deep links, tablet inspectors, and desktop all
+          // resolve the same explicit hierarchy.
+          { path: ':channelId/info' },
+          { path: ':channelId/info/members' },
+          { path: ':channelId/info/members/add' },
           { path: ':channelId' },
         ],
       },
@@ -224,7 +237,7 @@ export const router = createBrowserRouter([
       },
       {
         path: '/settings',
-        element: <Navigate to="/settings/profile" replace />,
+        element: <SettingsRootRoute />,
       },
       {
         path: '/settings/profile',

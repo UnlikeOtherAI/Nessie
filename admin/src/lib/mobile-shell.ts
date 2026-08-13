@@ -51,6 +51,15 @@ export const useNativeIPadApp = (): boolean => {
   return isReactNativeWebView() && info?.platform === 'ios' && info.formFactor === 'ipad'
 }
 
+// A phone WebView shares the web content with Android, but iOS receives the
+// glass-adjacent conversation controls that visually meet its native tab bar.
+// Keep this platform distinction here rather than scattering shell checks
+// through page components.
+export const useNativeIOSPhoneApp = (): boolean => {
+  const info = useNativeShellInfo()
+  return isReactNativeWebView() && info?.platform === 'ios' && info.formFactor === 'phone'
+}
+
 // Below Tailwind's `md` breakpoint (768px) we treat the layout as mobile and drive
 // navigation from a tab bar + hamburger drawer instead of the rail + secondary
 // sidebar (the layout decides which to render; the sidebars carry no responsive

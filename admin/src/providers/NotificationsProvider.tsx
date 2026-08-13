@@ -1,11 +1,16 @@
-import { useCallback, type PropsWithChildren } from 'react'
+import { useCallback, useEffect, type PropsWithChildren } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { buildChannelMessagePath } from '@nessie/schemas'
 import {
   useMessageNotifications,
   type NotificationToastInput,
 } from '../facades/notifications/useMessageNotifications'
 import { shouldShowInAppMessageBanner } from '../facades/notifications/in-app-message-banner'
+import {
+  buildMessageNotificationPath,
+  DESKTOP_NOTIFICATION_OPEN_EVENT,
+  readDesktopNotificationOpenPath,
+} from '../facades/notifications/desktop-native-notification'
+import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { useToasts } from './ToastProvider'
 
@@ -20,11 +25,20 @@ export const NotificationsProvider = ({ children }: PropsWithChildren) => {
 
   const openChannel = useCallback((channelId: string, threadId?: string, rootMessageId?: string) => {
     window.focus()
-    void navigate(
-      threadId && rootMessageId
-        ? buildChannelMessagePath({ channelId, messageId: rootMessageId, rootMessageId, threadId })
-        : `/channels/${channelId}`,
-    )
+    void navigate(buildMessageNotificationPath({ channelId, rootMessageId, threadId }))
+  }, [navigate])
+
+  useEffect(() => {
+    if (!isDesktopApp()) return undefined
+    const openDesktopNotification = (event: Event) => {
+      const path = readDesktopNotificationOpenPath(event)
+      if (path) {
+        window.focus()
+        void navigate(path)
+      }
+    }
+    window.addEventListener(DESKTOP_NOTIFICATION_OPEN_EVENT, openDesktopNotification)
+    return () => window.removeEventListener(DESKTOP_NOTIFICATION_OPEN_EVENT, openDesktopNotification)
   }, [navigate])
 
   const addToast = useCallback((toast: NotificationToastInput) => {

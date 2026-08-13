@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
@@ -31,6 +32,15 @@ import { useAdminShell } from './admin-shell/useAdminShell';
 import { useAttentionSummary } from '../facades/alerts/hooks';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
+
+// A phone has room for one primary decision at a time. Its tab root therefore
+// renders the tab's existing contextual navigation as the page, while tablet
+// and desktop keep that navigation beside the selected detail.
+const isPhoneTabRoot = (pathname: string): boolean =>
+  pathname === '/channels'
+  || pathname === '/projects'
+  || pathname === '/knowledge-base'
+  || pathname === '/settings';
 
 export const AdminShellLayout = () => {
   const { me, sessionState } = useAuthSession();
@@ -78,6 +88,10 @@ const AuthenticatedAdminShellLayout = () => {
   const phoneLayout = usePhoneLayout();
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
+  const showPhoneTabRoot = phoneLayout && isPhoneTabRoot(shell.pathname);
+  useEffect(() => {
+    if (showPhoneTabRoot) shell.closeMobileDrawer();
+  }, [shell.closeMobileDrawer, showPhoneTabRoot]);
   const isComposeRoute = shell.pathname === '/channels/new';
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
@@ -171,10 +185,21 @@ const AuthenticatedAdminShellLayout = () => {
 
   const contentRegion = phoneLayout ? (
     <>
-      <MobileNavDrawer onClose={shell.closeMobileDrawer} open={shell.mobileDrawerOpen}>
-        {drawerNavElement}
-      </MobileNavDrawer>
-      {mainContent}
+      {!showPhoneTabRoot ? (
+        <MobileNavDrawer onClose={shell.closeMobileDrawer} open={shell.mobileDrawerOpen}>
+          {drawerNavElement}
+        </MobileNavDrawer>
+      ) : null}
+      {showPhoneTabRoot ? (
+        <div
+          className={[
+            'flex min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
+            '[&>aside]:w-full [&>aside]:border-r-0',
+          ].join(' ')}
+        >
+          {drawerNavElement}
+        </div>
+      ) : mainContent}
     </>
   ) : (
     <>

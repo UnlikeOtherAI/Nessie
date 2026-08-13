@@ -389,10 +389,11 @@ stream directly:
   publishers in `pa-tools`/`orchestrate`/`execute`/`mailbox`, which set
   `channelId`). Verified live: a message posted by another user lands a toast on
   the recipient's stream; the recipient's own message does not.
-- The desktop app's native OS notifications use this exact path (the Tauri
-  WKWebView/WebView2 surfaces the Web `Notification` API), so desktop needs no
-  extra dispatch service. Mobile (backgrounded/closed) still requires the
-  APNs/FCM pipeline above.
+- The desktop app's native OS notifications use this exact path: the shared
+  admin controller calls the Tauri notification bridge, which emits a macOS or
+  Windows system alert and returns the click to the same route mapper. Desktop
+  therefore needs no separate notification SSE stream. Mobile
+  (backgrounded/closed) still requires the APNs/FCM pipeline above.
 
 ## Accounts & infra checklist
 

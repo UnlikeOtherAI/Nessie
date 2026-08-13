@@ -53,6 +53,23 @@ desktop bundle declares the `nessie` URL scheme; after UOA redirects to
 `nessie://auth/callback`, macOS focuses the running app and the admin login page
 finishes the PKCE exchange from the deep link.
 
+### Desktop notifications
+
+The desktop app uses the same authenticated realtime message controller as the
+web UI, then sends its system alert through Tauri's native macOS notification
+API. Enable **Push enabled** in Nessie’s **Settings → Notifications** while the
+desktop app is open to trigger the macOS permission prompt; then leave Nessie
+allowed in **System Settings → Notifications**. This handles new messages and
+agent replies, honours the exact conversation focus rule, and opens the exact
+reply conversation when the user clicks the alert.
+
+This is a native OS notification from the running desktop process, not a
+remote APNs registration. A completely quit Mac app cannot receive it. True
+APNs delivery to a quit macOS app requires a macOS App ID with the Push
+Notifications entitlement, its own APNs device-token registration, and
+per-topic APNs credentials in the server; Nessie currently registers only iOS
+and Android device tokens.
+
 To create a local distributable that contains the current local admin code:
 
 ```sh
@@ -119,11 +136,12 @@ Designer/Workflows/Triggers/Tools), and **Search** is the trailing tab (iOS 26
 separated search role) backed by a global `/search` page. The bar is hidden on
 the login / bootstrap screens. On iPhone and Android the bar sits at the bottom;
 on iPad (iPadOS 26) `IpadNativeTabBar` renders the same destinations in a
-lightweight native **top** row, so `App.tsx` insets the WebView accordingly
-(`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
+lightweight native **top** row aligned with the system status area, so `App.tsx`
+insets the WebView accordingly (`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
 its empty tab scenes can cover the sibling WKWebView with a black controller
 surface after login. Back, Forward, Recent Channels, and Help buttons sit on the
-trailing side of the iPad row. Tapping **Search** opens the full `/search` page
+leading side of the iPad row, using the same theme-derived chrome as the tabs.
+Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split
 lives in `mobile/src/config.ts`:
 
@@ -240,6 +258,26 @@ The build outputs land at `/tmp/gpteen-xcode2/Prod/Debug-iphonesimulator/Nessie.
 The WebView shows the admin's own login (SSO + local-dev email/password); there
 is no separate native login. ATS allows the dev LAN `http://` origin via
 `NSAllowsLocalNetworking` in `mobile/app.json`.
+
+### Mobile navigation
+
+The mobile shell keeps the native system tab bar as the primary section switcher
+and leaves page data, URLs, and conversation state in the admin React app.
+
+- On a **phone**, selecting or reselecting Channels, Projects, Knowledge, or
+  Admin opens that tab's contextual navigation list first. Selecting an item
+  then enters its detail route; a conversation's Back control returns to the
+  Channels list.
+- Conversation information is addressable at
+  `/channels/:channelId/info`, with nested `/members` and `/members/add`
+  destinations. This gives a cold deep link the same deterministic Back path
+  as an in-app navigation sequence.
+- **iOS** uses the translucent circular conversation Back affordance alongside
+  the system Liquid Glass tab bar. **Android** uses the same routes and
+  hierarchy, but keeps its normal Material-style Back affordance rather than
+  imitating iOS glass.
+- **iPad and desktop** retain their side navigation beside the selected detail;
+  conversation information is an inspector, not a phone-style replacement.
 
 ## iPhone Dev Build And Direct APNs Push
 

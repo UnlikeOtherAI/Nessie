@@ -4,6 +4,7 @@ import {
   Platform,
   StyleSheet,
   View,
+  useWindowDimensions,
 } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
@@ -30,6 +31,11 @@ import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
 import { statusBarStyleForScheme } from './src/lib/status-bar'
 import {
+  createIpadNativeChromeTheme,
+  getIpadToolbarLeft,
+  withOpacity,
+} from './src/lib/ipad-native-chrome'
+import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
 } from './src/lib/android-tablet-dock'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
@@ -48,26 +54,13 @@ const AUTH_CALLBACK_URL = 'nessie://auth/callback'
 // iPad puts the tab bar at the TOP; iPhone and Android keep it at the bottom.
 const IPHONE_TAB_BAR_HEIGHT = 49
 const IPAD_TAB_BAR_HEIGHT = 50
+const IPAD_INLINE_TOP_CHROME_TOP = 4
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 const DEFAULT_ACTIVE_TINT = '#7c3aed'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
-const withOpacity = (color: string, opacity: number): string => {
-  const rgb = parseRgb(color)
-  if (rgb) {
-    const [red, green, blue] = rgb
-    return `rgba(${red}, ${green}, ${blue}, ${opacity})`
-  }
-  const hex = color.replace(/^#/, '')
-  if (/^[0-9a-f]{6}$/i.test(hex)) {
-    const alpha = Math.round(opacity * 255)
-      .toString(16)
-      .padStart(2, '0')
-    return `#${hex}${alpha}`
-  }
-  return color
-}
+const DEFAULT_IPAD_CHROME_SURFACE = '#222629'
 
 // If the admin never reports itself mounted (it posts a `nessie:route` message on
 // boot) within this window after a load finishes, the WebView is blank/white —
@@ -87,12 +80,15 @@ const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions()
   const [bg, setBg] = useState(DEFAULT_BG)
   const [statusBarStyle, setStatusBarStyle] = useState<'light' | 'dark'>('light')
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
+  const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
+  const [ipadTabBarWidth, setIpadTabBarWidth] = useState<number | null>(null)
   const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
   const [attentionBadges, setAttentionBadges] = useState({ channels: 0, assignedWork: 0, knowledge: 0 })
   // Bumping this remounts the WebView — used to recover Android after its render
@@ -251,6 +247,7 @@ const Shell = (): React.JSX.Element => {
       path?: string
       accent?: string
       inactive?: string
+      surface?: string
       scheme?: string
       active?: boolean
       canBack?: boolean
@@ -274,6 +271,7 @@ const Shell = (): React.JSX.Element => {
     if (msg.type === 'theme') {
       if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
       if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
+      if (typeof msg.surface === 'string' && msg.surface) setIpadChromeSurface(msg.surface)
       const nextStatusBarStyle = statusBarStyleForScheme(msg.scheme)
       if (nextStatusBarStyle) setStatusBarStyle(nextStatusBarStyle)
       return
@@ -367,6 +365,16 @@ const Shell = (): React.JSX.Element => {
         ? IPHONE_TAB_BAR_HEIGHT + insets.bottom
         : 0
   const webviewLayerStyle = { ...styles.webviewLayer, top: topInset, bottom: bottomInset }
+  const ipadChromeTop = windowWidth >= windowHeight ? IPAD_INLINE_TOP_CHROME_TOP : insets.top + 4
+  const ipadChromeTheme = createIpadNativeChromeTheme({
+    activeTintColor: accent,
+    dark: isDark(bg),
+    inactiveTintColor: inactive,
+    surfaceColor: ipadChromeSurface,
+  })
+  const ipadToolbarLeft = ipadTabBarWidth === null
+    ? null
+    : getIpadToolbarLeft(windowWidth, ipadTabBarWidth, insets.left)
 
   const navigationState = {
     index,
@@ -471,21 +479,22 @@ const Shell = (): React.JSX.Element => {
         <IpadNativeTabBar
           activeIndex={index}
           badgeCounts={attentionBadges}
-          activeTintColor={accent}
-          dark={isDark(bg)}
-          inactiveTintColor={inactive}
           onIndexChange={onIndexChange}
-          top={insets.top + 4}
+          onWidthChange={setIpadTabBarWidth}
+          theme={ipadChromeTheme}
+          top={ipadChromeTop}
         />
       ) : null}
 
-      {showBar && IS_IPAD ? (
+      {showBar && IS_IPAD && ipadToolbarLeft !== null ? (
         <IpadNativeToolbar
           canBack={toolbarState.canBack}
           canForward={toolbarState.canForward}
+          left={ipadToolbarLeft}
           onAction={runToolbarAction}
           recentOpen={toolbarState.recentOpen}
-          top={insets.top + 6}
+          theme={ipadChromeTheme}
+          top={ipadChromeTop}
         />
       ) : null}
     </View>
