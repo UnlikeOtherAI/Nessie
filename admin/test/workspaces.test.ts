@@ -27,6 +27,7 @@ const uoaMe = {
     {
       organizationId: 'uoa-org-current',
       teamId: 'uoa-team-current',
+      avatarTeamId: '00000000-0000-4000-8000-000000000003',
       label: 'Current workspace',
       orgName: 'Nessie Works',
       active: true,
@@ -54,6 +55,7 @@ test('UOA sessions render the authoritative directory rather than local provisio
       organizationId: 'uoa-org-current',
       projectId: '',
       teamId: 'uoa-team-current',
+      avatarTeamId: '00000000-0000-4000-8000-000000000003',
       label: 'Current workspace',
       orgName: 'Nessie Works',
       active: true,

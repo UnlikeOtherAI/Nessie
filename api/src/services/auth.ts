@@ -159,6 +159,35 @@ const uoaWorkspaceDirectoryFromMetadata = (
   return workspaces.length > 0 ? workspaces : undefined
 }
 
+// UOA's directory identifies workspaces with the external team id used for
+// login. The avatar relay intentionally accepts only a local Team id and checks
+// a live TeamMember row, so add that id only for workspaces this person can
+// already reach in Nessie. This keeps every picker image entitlement-scoped.
+const addWorkspaceAvatarTeamIds = async (
+  prisma: PrismaClient,
+  userId: string,
+  workspaces: NonNullable<MeResponse['uoaWorkspaces']>,
+): Promise<MeResponse['uoaWorkspaces']> => {
+  const externalWorkspaceIds = [...new Set(workspaces.map((workspace) => workspace.teamId))]
+  const teams = await prisma.team.findMany({
+    where: {
+      externalWorkspaceId: { in: externalWorkspaceIds },
+      members: { some: { userId } },
+    },
+    select: { externalWorkspaceId: true, id: true },
+  })
+  const localTeamIds = new Map(
+    teams.flatMap((team) => team.externalWorkspaceId
+      ? [[team.externalWorkspaceId, parseTeamId(team.id)] as const]
+      : []),
+  )
+
+  return workspaces.map((workspace) => {
+    const avatarTeamId = localTeamIds.get(workspace.teamId)
+    return avatarTeamId ? { ...workspace, avatarTeamId } : workspace
+  })
+}
+
 const loadUoaWorkspaceDirectory = async (
   prisma: PrismaClient,
   userId: string,
@@ -175,7 +204,11 @@ const loadUoaWorkspaceDirectory = async (
     },
     select: { metadata: true },
   })
-  return uoaWorkspaceDirectoryFromMetadata(link?.metadata, claims.uoaIdentity?.teamId)
+  const workspaces = uoaWorkspaceDirectoryFromMetadata(
+    link?.metadata,
+    claims.uoaIdentity?.teamId,
+  )
+  return workspaces ? addWorkspaceAvatarTeamIds(prisma, userId, workspaces) : undefined
 }
 
 export const buildMeResponse = async (

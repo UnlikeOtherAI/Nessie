@@ -9,6 +9,7 @@ export type Workspace = {
   organizationId: string
   projectId: string
   teamId: string
+  avatarTeamId?: string
   label: string
   orgName?: string
   active?: boolean
@@ -22,6 +23,7 @@ export const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
       organizationId: workspace.organizationId,
       projectId: '',
       teamId: workspace.teamId,
+      ...(workspace.avatarTeamId ? { avatarTeamId: workspace.avatarTeamId } : {}),
       label: workspace.label,
       orgName: workspace.orgName,
       active: workspace.active,

@@ -7,8 +7,10 @@ import { useAuthedObjectUrlFromPath } from '../../lib/uploads'
 // <img src> (see lib/uploads).
 export const WORKSPACE_AVATAR_PATH = '/api/workspace/avatar'
 
-export const workspaceAvatarPath = (teamId?: string): string =>
-  teamId ? `/api/teams/${encodeURIComponent(teamId)}/avatar` : WORKSPACE_AVATAR_PATH
+export const workspaceAvatarPath = (teamId?: string | null): string | null => {
+  if (teamId === null) return null
+  return teamId ? `/api/teams/${encodeURIComponent(teamId)}/avatar` : WORKSPACE_AVATAR_PATH
+}
 
 type WorkspaceAvatarProps = {
   // Falls back to these initials while loading, on failure, and for a workspace
@@ -22,9 +24,10 @@ type WorkspaceAvatarProps = {
   // same URL and would otherwise be served from the browser cache.
   revision?: number
   // A specific local team id makes the component use the membership-scoped
-  // relay, which lets workspace pickers show every team's UOA picture. Omitting
-  // it preserves the current-workspace endpoint used by avatar settings.
-  teamId?: string
+  // relay, which lets workspace pickers show every team's UOA picture. `null`
+  // deliberately uses initials for an SSO workspace with no local membership;
+  // omitting the id preserves the current-workspace endpoint used by settings.
+  teamId?: string | null
 }
 
 /**
@@ -43,7 +46,7 @@ export const WorkspaceAvatar = ({
 }: WorkspaceAvatarProps) => {
   const path = workspaceAvatarPath(teamId)
   const url = useAuthedObjectUrlFromPath(
-    revision > 0 ? `${path}?v=${revision}` : path,
+    path && revision > 0 ? `${path}?v=${revision}` : path,
     token,
   )
   const [broken, setBroken] = useState(false)
