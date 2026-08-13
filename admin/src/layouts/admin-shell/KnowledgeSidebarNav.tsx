@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { faLayerGroup, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
@@ -7,10 +8,12 @@ import { KnowledgeSpaceList } from '../../components/features/knowledge/Knowledg
 import { StorageUsageMeter } from '../../components/features/knowledge/StorageUsageMeter'
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
 import { useProjects } from '../../facades/projects/hooks'
-import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
 
 export const KnowledgeSidebarNav = () => {
+  const navigate = useNavigate()
   const nativeTouchShell = isReactNativeWebView()
+  const phoneLayout = usePhoneLayout()
   const {
     spaces,
     myDocsSpaceId,
@@ -25,6 +28,20 @@ export const KnowledgeSidebarNav = () => {
   const { documentsSections } = useProductSurfaces()
   const { data: projects = [] } = useProjects()
   const [createOpen, setCreateOpen] = useState(false)
+
+  const openSpace = (spaceId: string) => {
+    selectSpace(spaceId)
+    if (phoneLayout) {
+      void navigate(`/knowledge-base/spaces/${encodeURIComponent(spaceId)}`)
+    }
+  }
+
+  const openProductView = (view: string) => {
+    selectProductView(view)
+    if (phoneLayout) {
+      void navigate(`/knowledge-base/views/${encodeURIComponent(view)}`)
+    }
+  }
 
   const myDocsSpace = spaces.find((space) => space.id === myDocsSpaceId)
   // The personal space is pinned above "Spaces" — never duplicated below.
@@ -61,7 +78,7 @@ export const KnowledgeSidebarNav = () => {
                 'admin-sb-item',
                 !activeProductView && myDocsSpace.id === selectedSpaceId ? 'active' : '',
               ].join(' ')}
-              onClick={() => selectSpace(myDocsSpace.id)}
+              onClick={() => openSpace(myDocsSpace.id)}
               type="button"
             >
               <FontAwesomeIcon
@@ -83,7 +100,7 @@ export const KnowledgeSidebarNav = () => {
                   activeProductView === section.view ? 'active' : '',
                 ].join(' ')}
                 key={section.productSlug + section.view}
-                onClick={() => selectProductView(section.view)}
+                onClick={() => openProductView(section.view)}
                 type="button"
               >
                 <FontAwesomeIcon
@@ -118,7 +135,7 @@ export const KnowledgeSidebarNav = () => {
 
         <KnowledgeSpaceList
           emptyLabel="No spaces yet"
-          onSelect={selectSpace}
+          onSelect={openSpace}
           projectLabels={projectLabels}
           selectedSpaceId={activeProductView ? undefined : selectedSpaceId}
           spaces={otherSpaces}
@@ -137,7 +154,10 @@ export const KnowledgeSidebarNav = () => {
       <CreateSpaceDialog
         onClose={() => setCreateOpen(false)}
         onCreate={async (name, memberAgentIds, visibility) => {
-          await createSpace(name, memberAgentIds, visibility)
+          const created = await createSpace(name, memberAgentIds, visibility)
+          if (phoneLayout) {
+            void navigate(`/knowledge-base/spaces/${encodeURIComponent(created.id)}`)
+          }
         }}
         open={createOpen}
         pending={createSpacePending}

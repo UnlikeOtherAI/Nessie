@@ -48,6 +48,36 @@ test('pushes and pops project details within the Projects tab', () => {
   )
 })
 
+test('pushes Knowledge spaces and product views from the Knowledge list', () => {
+  assert.equal(
+    getPhoneNavigationDirection('/knowledge-base', '/knowledge-base/spaces/space_a'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/knowledge-base', '/knowledge-base/views/research'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/knowledge-base/spaces/space_a', '/knowledge-base'),
+    'back',
+  )
+})
+
+test('pushes Admin destinations from the Admin menu and returns to it', () => {
+  assert.equal(
+    getPhoneNavigationDirection('/settings', '/settings/security'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/settings', '/agents'),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/agents/activity', '/settings'),
+    'back',
+  )
+})
+
 test('keeps routes on the same screen from replaying a navigation transition', () => {
   assert.equal(
     getPhoneNavigationDirection(
@@ -58,6 +88,17 @@ test('keeps routes on the same screen from replaying a navigation transition', (
   )
   assert.equal(
     getPhoneNavigationDirection('/projects/project_a', '/projects/project_a/docs'),
+    null,
+  )
+  assert.equal(
+    getPhoneNavigationDirection(
+      '/knowledge-base/spaces/space_a',
+      '/knowledge-base/spaces/space_b',
+    ),
+    null,
+  )
+  assert.equal(
+    getPhoneNavigationDirection('/settings/security', '/settings/profile'),
     null,
   )
   assert.equal(
@@ -100,7 +141,15 @@ test('gives every phone detail route a deterministic in-app Back destination', (
   )
   assert.deepEqual(
     getPhoneNavigationBackTarget('/agents/activity'),
-    { label: 'Back to Agents', pathname: '/agents' },
+    { label: 'Back to Admin', pathname: '/settings' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/agents'),
+    { label: 'Back to Admin', pathname: '/settings' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/knowledge-base/spaces/space_a'),
+    { label: 'Back to Knowledge', pathname: '/knowledge-base' },
   )
   assert.deepEqual(
     getPhoneNavigationBackTarget('/settings/security'),
@@ -122,12 +171,28 @@ test('keeps the drawer control at phone section roots', () => {
     '/projects',
     '/dashboards',
     '/knowledge-base',
-    '/agents',
     '/settings',
     '/search',
   ]) {
     assert.equal(getPhoneNavigationBackTarget(pathname), null)
   }
+})
+
+test('routes phone Knowledge selections and Projects rows to stack details', () => {
+  const router = readSource('../src/router.tsx')
+  const knowledgeSidebar = readSource(
+    '../src/layouts/admin-shell/KnowledgeSidebarNav.tsx',
+  )
+  const projectsSidebar = readSource(
+    '../src/layouts/admin-shell/ProjectsSidebarNav.tsx',
+  )
+
+  assert.match(router, /path: '\/knowledge-base\/spaces\/:spaceId'/)
+  assert.match(router, /path: '\/knowledge-base\/views\/:productView'/)
+  assert.match(knowledgeSidebar, /usePhoneLayout/)
+  assert.match(knowledgeSidebar, /navigate\(`\/knowledge-base\/spaces\//)
+  assert.match(projectsSidebar, /usePhoneLayout/)
+  assert.match(projectsSidebar, /`\/projects\/\$\{project\.id\}\/board`/)
 })
 
 test('shares the phone Back control across route headers and channel flows', () => {

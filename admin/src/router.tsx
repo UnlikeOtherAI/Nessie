@@ -206,6 +206,14 @@ export const router = createBrowserRouter([
         element: <KnowledgeBasePage />,
       },
       {
+        path: '/knowledge-base/spaces/:spaceId',
+        element: <KnowledgeBasePage />,
+      },
+      {
+        path: '/knowledge-base/views/:productView',
+        element: <KnowledgeBasePage />,
+      },
+      {
         path: '/agents/activity',
         element: <AgentActivityPage />,
       },

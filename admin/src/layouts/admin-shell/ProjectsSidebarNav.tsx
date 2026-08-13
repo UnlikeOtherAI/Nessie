@@ -5,7 +5,7 @@ import { ProjectMembersDialog } from '../../components/shared/ProjectMembersDial
 import { RenameProjectDialog } from '../../components/shared/RenameProjectDialog'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
-import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
 
 type ProjectsSidebarNavProps = {
@@ -32,6 +32,7 @@ const FolderIcon = () => (
 export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProps) => {
   const navigate = useNavigate()
   const nativeTouchShell = isReactNativeWebView()
+  const phoneLayout = usePhoneLayout()
   const { data: projects = [] } = useProjects()
   const deleteProject = useDeleteProject()
 
@@ -87,12 +88,15 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
               const isActive =
                 pathname === `/projects/${project.id}`
                 || pathname.startsWith(`/projects/${project.id}/`)
+              const projectPath = phoneLayout
+                ? `/projects/${project.id}/board`
+                : `/projects/${project.id}`
 
               return (
                 <div key={project.id} className="group relative">
                   <Link
                     className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
-                    to={`/projects/${project.id}`}
+                    to={projectPath}
                   >
                     <FolderIcon />
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>

@@ -338,9 +338,14 @@ and leaves page data, URLs, and conversation state in the admin React app.
   reverses that motion. This shared admin transition runs in both the iPhone
   and Android WebView shells (and narrow mobile web), and follows the system's
   reduced-motion preference.
+- A project selected from the phone **Projects** list opens its PM **Board**
+  columns by default. A project selected from the **Channels** list still opens
+  the project overview because that entry point supplies conversation context.
+  Selecting a Knowledge space or product document view uses an addressable
+  child route and pushes the shared Knowledge workspace over its list.
 - Every phone route below its contextual list has the same leading **Back**
   control, including project overviews opened from Channels. It returns to the
-  route's owning list (Channels, Projects, Dashboards, Agents, or Admin), so a
+  route's owning list (Channels, Projects, Dashboards, Knowledge, or Admin), so a
   direct link remains inside Nessie; tab roots retain the navigation-menu
   control instead.
 - Conversation information is addressable at
