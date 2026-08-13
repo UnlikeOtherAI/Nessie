@@ -1,6 +1,6 @@
 # Live Data Dashboards
 
-> **Status:** **Stage 1 built and on `main`** — revision 2.
+> **Status:** **Built and on `main`** — revision 3. Stages 1–3 delivered.
 > §17 records what shipped, what changed against this plan during the build,
 > and what is deliberately not built yet.
 > **Date:** 2026-08-13
@@ -1144,11 +1144,23 @@ unmodified path. End-to-end through the real API and admin with headless
 Playwright: all five widget kinds rendering `fresh`. 962 tests green across
 worker, dashboard, schemas and runtime.
 
-### Not built (Stage 2+)
+### Stages 2–3 — also delivered
 
-Widget embedding in chat and knowledge pages, snapshots and the freeze command,
-sharing UI and grant management, the widget inspector and add-widget flow (the
-canvas edits layout; widgets are added by agent or API), realtime invalidation,
-CSV export, and the stock dashboards agent's bootstrap. The access resolver,
-grant model, snapshot tables and embed-placement table exist and are enforced —
-what is missing is the surface, not the safety.
+Snapshots (`freezeWidgetSnapshot`), embed placements with the two-check read
+rule, grants with sharing as its own capability, `dashboard_widget_post`,
+widgets rendering in the message feed off server-written
+`metadata.dashboardEmbeds`, the TipTap embed node for knowledge pages, and the
+add-widget panel.
+
+One more defect surfaced only by looking: a frozen snapshot's footer read
+"Live · 3m ago" — a quotation of a past moment claiming to be current, which is
+exactly what the freshness footer exists to prevent. It now keys off the
+projection's `snapshotId`.
+
+### Still not built
+
+Realtime invalidation (embeds poll on a 60 s interval), CSV export, the stock
+dashboards agent's bootstrap row, and the spatial version diff (§10 describes
+it; the history panel currently lists versions and their deterministic
+summaries without the canvas overlay). Restore is recorded in the model and the
+API appends versions, but there is no restore button yet.
