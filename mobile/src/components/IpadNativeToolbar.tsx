@@ -1,5 +1,5 @@
 import { type ComponentProps } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
@@ -55,52 +55,46 @@ const IpadToolbarButton = ({
 )
 
 type IpadNativeToolbarProps = ToolbarState & {
-  left: number
   onAction: (action: ToolbarAction) => void
   theme: IpadNativeChromeTheme
-  top: number
 }
 
 export const IpadNativeToolbar = ({
   canBack,
   canForward,
-  left,
   onAction,
   recentOpen,
   theme,
-  top,
 }: IpadNativeToolbarProps): React.JSX.Element => (
-  <View pointerEvents="box-none" style={[styles.layer, { left, top }]}>
-    <IpadNativeChromeSurface theme={theme}>
-      <IpadToolbarButton
-        disabled={!canBack}
-        icon="arrow-back-ios-new"
-        label="Back"
-        onPress={() => onAction('back')}
-        theme={theme}
-      />
-      <IpadToolbarButton
-        disabled={!canForward}
-        icon="arrow-forward-ios"
-        label="Forward"
-        onPress={() => onAction('forward')}
-        theme={theme}
-      />
-      <IpadToolbarButton
-        active={recentOpen}
-        icon="history"
-        label="Recent channels"
-        onPress={() => onAction('history')}
-        theme={theme}
-      />
-      <IpadToolbarButton
-        icon="help-outline"
-        label="Help and feedback"
-        onPress={() => onAction('help')}
-        theme={theme}
-      />
-    </IpadNativeChromeSurface>
-  </View>
+  <IpadNativeChromeSurface theme={theme}>
+    <IpadToolbarButton
+      disabled={!canBack}
+      icon="arrow-back-ios-new"
+      label="Back"
+      onPress={() => onAction('back')}
+      theme={theme}
+    />
+    <IpadToolbarButton
+      disabled={!canForward}
+      icon="arrow-forward-ios"
+      label="Forward"
+      onPress={() => onAction('forward')}
+      theme={theme}
+    />
+    <IpadToolbarButton
+      active={recentOpen}
+      icon="history"
+      label="Recent channels"
+      onPress={() => onAction('history')}
+      theme={theme}
+    />
+    <IpadToolbarButton
+      icon="help-outline"
+      label="Help and feedback"
+      onPress={() => onAction('help')}
+      theme={theme}
+    />
+  </IpadNativeChromeSurface>
 )
 
 const styles = StyleSheet.create({
@@ -113,9 +107,5 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.28,
-  },
-  layer: {
-    position: 'absolute',
-    zIndex: 20,
   },
 })
