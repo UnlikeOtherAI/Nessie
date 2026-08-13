@@ -7,6 +7,7 @@ type NativeShellInfo = {
 }
 
 type NativeShellWindow = Window & {
+  ReactNativeWebView?: { postMessage: (data: string) => void }
   __nessieNativeShell?: NativeShellInfo
   __nessiePendingPushPath?: unknown
 }
@@ -18,6 +19,15 @@ const NATIVE_SHELL_INFO_EVENT = 'nessie:native-shell-info'
 // desktop `isDesktopApp()` check in ./desktop.ts.
 export const isReactNativeWebView = (): boolean =>
   typeof window !== 'undefined' && 'ReactNativeWebView' in window
+
+// A full refresh belongs to the native frame: it remounts the WebView with a
+// cache-busting URL instead of asking the hosted page to reload itself.
+export const requestNativeFullRefresh = (): void => {
+  if (!isReactNativeWebView()) return
+  ;(window as NativeShellWindow).ReactNativeWebView?.postMessage(
+    JSON.stringify({ type: 'nessie:full-refresh' }),
+  )
+}
 
 // The native shell writes a tapped notification target before the SPA exists,
 // then emits an event. Reading the retained path closes the startup race where

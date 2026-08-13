@@ -152,16 +152,18 @@ its empty tab scenes can cover the sibling WKWebView with a black controller
 surface after login. Back, Forward, Recent Channels, Help, the destination tabs,
 and Search form one centred, theme-derived native control group. The signed-in
 person's SSO avatar is independently pinned at the trailing safe edge of the
-top bar. The active workspace's initial and name occupy the leading edge; if
-they would overlap, the centred group moves trailing before any controls are
-removed, reserving the avatar's space. That decision uses the native chrome
-layer's measured width, rather than a cached orientation value. Only in a
-genuinely narrow Stage Manager window does the group compact: Search and the
-four toolbar actions move into a native three-dot menu, and the workspace
-trigger then truncates to its icon/chevron or hides as a last resort. Tapping
-the workspace opens the web shell's existing workspace menu, while tapping the
-avatar opens the canonical web account menu (presence, status, settings, and
-logout), so neither native presentation forks the entitlement-aware web actions.
+top bar. The active workspace's initial and name occupy the leading edge; in a
+Stage Manager window that trigger first clears the system's leading window
+controls. If the remaining space is tight, the workspace trigger flexes before
+the centred group is reshuffled, reserving the avatar's space. That decision
+uses the native chrome layer's measured width, rather than a cached orientation
+value. The responsive sequence is: retain labelled controls, put Search and the
+four toolbar actions in a native three-dot menu, then change the section tabs
+to icons. The workspace trigger only truncates to its icon/chevron or hides as
+a last resort. Tapping the workspace opens the web shell's existing workspace
+menu, while tapping the avatar opens the canonical web account menu (presence,
+status, settings, and logout), so neither native presentation forks the
+entitlement-aware web actions.
 The duplicate web header trigger is omitted on native iPad and iPhone shells.
 Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split
@@ -223,12 +225,23 @@ theme's darker primary colour (`--accent-strong`) and opens the native sheet,
 Slack's Huddle, **Channel** remains a regular row, and the highlighted
 **Message** action opens a direct message. Each delegates to the same web-shell
 handler and dialog as the sidebar, rather than creating a second permission
-path. The WebView sidebar carries a native-touch
-marker on iPhone, iPad, and Android so only those installed interfaces use
-Slack-scale 38-point rows and 14px menu type; desktop remains compact even on a
-touchscreen. Project folder rows alone are bold. Human, agent, and workspace
-avatar tiles use the same subtly rounded square shape everywhere. Human avatar
+path. The Channels, Projects, Knowledge, and Admin WebView sidebars each carry
+the native-touch marker on iPhone, iPad, and Android, so those installed
+interfaces use the same Slack-scale 38-point rows and 14px menu type while
+desktop remains compact even on a touchscreen. Project folder rows alone are
+bold. Human, agent, and workspace avatar tiles use the same subtly rounded
+square shape everywhere. Human avatar
 presence badges use a three-pixel cutout that matches the sidebar background.
+
+The same dark workspace header appears at the first screen of every tab in
+mobile Safari and Android browsers. Its workspace, Recent Channels, and account
+buttons are the existing shared web controls, not browser-specific copies; the
+mobile browser still owns its own system and address-bar chrome.
+
+The native **Admin** sidebar ends with a native-only **Full refresh** action on
+iPhone, iPad, and Android. It remounts the embedded WebView at the current
+route and adds a cache-busting URL marker, so it can recover stale or failed
+hosted content without adding an equivalent control to the browser UI.
 Group direct-message rows retain the complete participant list in their native
 HTML hover tooltip. Their visible label is measured in the sidebar: complete
 names are shown first, then surnames collapse to initials, then the first names
@@ -320,8 +333,11 @@ and leaves page data, URLs, and conversation state in the admin React app.
 
 - On a **phone**, selecting or reselecting Channels, Projects, Knowledge, or
   Admin opens that tab's contextual navigation list first. Selecting an item
-  then enters its detail route; a conversation's Back control returns to the
-  Channels list.
+  then pushes its detail route in from the right while the list moves left. A
+  conversation's Back control, browser/WebView Back, or tab-root navigation
+  reverses that motion. This shared admin transition runs in both the iPhone
+  and Android WebView shells (and narrow mobile web), and follows the system's
+  reduced-motion preference.
 - Conversation information is addressable at
   `/channels/:channelId/info`, with nested `/members` and `/members/add`
   destinations. This gives a cold deep link the same deterministic Back path
@@ -330,8 +346,10 @@ and leaves page data, URLs, and conversation state in the admin React app.
   the system Liquid Glass tab bar. **Android** uses the same routes and
   hierarchy, but keeps its normal Material-style Back affordance rather than
   imitating iOS glass.
-- **iPad and desktop** retain their side navigation beside the selected detail;
-  conversation information is an inspector, not a phone-style replacement.
+- **iPad, Android tablets with a multi-column viewport, and desktop** retain
+  their side navigation beside the selected detail and never mount the phone
+  transition viewport; conversation information is an inspector, not a
+  phone-style replacement.
 
 ## iPhone Dev Build And Direct APNs Push
 

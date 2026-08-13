@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AppState,
+  Dimensions,
   Platform,
   StyleSheet,
   View,
@@ -35,6 +36,8 @@ import {
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
+  getIpadWindowedLeadingControlsClearance,
+  isIpadWindowed,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
 import {
@@ -83,7 +86,7 @@ const MAX_BOOT_RETRIES = 4
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
-  const { width: windowWidth } = useWindowDimensions()
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions()
   const [bg, setBg] = useState(DEFAULT_BG)
   const [statusBarStyle, setStatusBarStyle] = useState<'light' | 'dark'>('light')
   const [index, setIndex] = useState(0)
@@ -112,6 +115,7 @@ const Shell = (): React.JSX.Element => {
   // Changing the loaded URL forces WKWebView to fetch a fresh index.html instead of
   // a cached (possibly stale, asset-404ing) one that boots to a blank white screen.
   const [reloadNonce, setReloadNonce] = useState(0)
+  const [reloadPath, setReloadPath] = useState<string | null>(null)
   const adminBooted = useRef(false)
   const bootRetries = useRef(0)
   const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -143,7 +147,13 @@ const Shell = (): React.JSX.Element => {
   } = useNativePushNavigation({
     cachePushPath,
   })
-  const sourceUri = reloadNonce === 0 ? ADMIN_URL : `${ADMIN_URL}?__boot=${reloadNonce}`
+  const sourceUri = reloadNonce === 0
+    ? ADMIN_URL
+    : (() => {
+      const url = new URL(reloadPath ?? '/', ADMIN_URL)
+      url.searchParams.set('__boot', String(reloadNonce))
+      return url.toString()
+    })()
 
   const navigateTo = useCallback((path: string): void => {
     runScript(`window.__nessieNavigate && window.__nessieNavigate(${JSON.stringify(path)});`)
@@ -192,6 +202,14 @@ const Shell = (): React.JSX.Element => {
     clearBootTimer()
     setReloadNonce((nonce) => nonce + 1)
   }, [clearBootTimer])
+
+  const fullRefreshWebView = useCallback((): void => {
+    adminBooted.current = false
+    bootRetries.current = 0
+    setReloadPath(currentPathRef.current)
+    loadFreshWebView()
+    setWebviewKey((key) => key + 1)
+  }, [loadFreshWebView])
 
   // Reload the WebView fresh after a blank/failed load, capped so a persistently
   // broken page doesn't loop forever.
@@ -278,6 +296,10 @@ const Shell = (): React.JSX.Element => {
       void runExternalAuth(msg.url)
       return
     }
+    if (msg.type === 'nessie:full-refresh') {
+      fullRefreshWebView()
+      return
+    }
     if (msg.type === 'nessie:request-push-registration') {
       const path = currentPathRef.current
       if (path && !isAuthGateRoute(path)) {
@@ -359,6 +381,15 @@ const Shell = (): React.JSX.Element => {
   // not always a direct aside/main child in the web DOM, so relying on injected
   // CSS can leave its first row beneath the status bar.
   const ipadChromeTop = getIpadChromeTop(insets.top)
+  const screenDimensions = Dimensions.get('screen')
+  const ipadLeadingControlsClearance = getIpadWindowedLeadingControlsClearance(
+    IS_IPAD && isIpadWindowed({
+      screenHeight: screenDimensions.height,
+      screenWidth: screenDimensions.width,
+      windowHeight,
+      windowWidth,
+    }),
+  )
   const webviewInsets = getNativeWebviewFrameInsets({
     ipadChromeTop,
     isIpad: IS_IPAD,
@@ -487,6 +518,7 @@ const Shell = (): React.JSX.Element => {
           onToolbarAction={nativeActions.runToolbarAction}
           insetLeft={insets.left}
           insetRight={insets.right}
+          leadingReservedWidth={ipadLeadingControlsClearance}
           theme={ipadChromeTheme}
           toolbarState={toolbarState}
           top={ipadChromeTop}

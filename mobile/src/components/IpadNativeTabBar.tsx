@@ -15,6 +15,7 @@ const SEARCH_TAB = TABS.find((tab) => tab.key === 'search')
 type IpadNativeTabBarProps = {
   activeIndex: number
   badgeCounts: { assignedWork: number; channels: number; knowledge: number }
+  iconOnly: boolean
   onIndexChange: (index: number) => void
   showSearch: boolean
   theme: IpadNativeChromeTheme
@@ -23,6 +24,7 @@ type IpadNativeTabBarProps = {
 type IpadNativeTabButtonProps = {
   activeIndex: number
   badgeCounts: IpadNativeTabBarProps['badgeCounts']
+  iconOnly: boolean
   onIndexChange: IpadNativeTabBarProps['onIndexChange']
   tab: TabDef
   theme: IpadNativeChromeTheme
@@ -31,6 +33,7 @@ type IpadNativeTabButtonProps = {
 const IpadNativeTabButton = ({
   activeIndex,
   badgeCounts,
+  iconOnly,
   onIndexChange,
   tab,
   theme,
@@ -59,11 +62,12 @@ const IpadNativeTabButton = ({
       style={({ pressed }) => [
         styles.tab,
         tab.key === 'search' ? styles.searchTab : null,
+        iconOnly ? styles.iconTab : null,
         active ? { backgroundColor: theme.activeBackgroundColor } : null,
         pressed ? { backgroundColor: theme.pressedBackgroundColor } : null,
       ]}
     >
-      {tab.key === 'search' ? (
+      {tab.key === 'search' || iconOnly ? (
         <MaterialIcons color={color} name={tab.materialIcon} size={22} />
       ) : (
         <Text numberOfLines={1} style={[styles.label, { color }]}>
@@ -71,7 +75,7 @@ const IpadNativeTabButton = ({
         </Text>
       )}
       {badge > 0 ? (
-        <Text style={[styles.badge, { backgroundColor: theme.activeTintColor }]}>
+        <Text style={[styles.badge, iconOnly ? styles.iconBadge : null, { backgroundColor: theme.activeTintColor }]}>
           {badge > 99 ? '99+' : badge}
         </Text>
       ) : null}
@@ -82,6 +86,7 @@ const IpadNativeTabButton = ({
 export const IpadNativeTabBar = ({
   activeIndex,
   badgeCounts,
+  iconOnly,
   onIndexChange,
   showSearch,
   theme,
@@ -92,6 +97,7 @@ export const IpadNativeTabBar = ({
         <IpadNativeTabButton
           activeIndex={activeIndex}
           badgeCounts={badgeCounts}
+          iconOnly={iconOnly}
           key={tab.key}
           onIndexChange={onIndexChange}
           tab={tab}
@@ -104,6 +110,7 @@ export const IpadNativeTabBar = ({
         <IpadNativeTabButton
           activeIndex={activeIndex}
           badgeCounts={badgeCounts}
+          iconOnly={false}
           onIndexChange={onIndexChange}
           tab={SEARCH_TAB}
           theme={theme}
@@ -133,6 +140,16 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  iconBadge: {
+    position: 'absolute',
+    right: -4,
+    top: -4,
+  },
+  iconTab: {
+    minWidth: 34,
+    paddingHorizontal: 0,
+    width: 34,
   },
   searchTab: {
     width: IPAD_NATIVE_CHROME_HEIGHT - 8,

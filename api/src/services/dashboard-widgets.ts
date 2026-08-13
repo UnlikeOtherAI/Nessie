@@ -49,6 +49,25 @@ export const isStale = (input: {
   return age > window
 }
 
+/**
+ * Binding failures are author errors, so they carry the specific mismatch and a
+ * 400 rather than surfacing as an unhandled server fault.
+ */
+const assertBindableWidget = (
+  definition: WidgetDefinition,
+  columns: DashboardOutputColumn[],
+): void => {
+  try {
+    assertWidgetBinding(definition, columns)
+  } catch (error) {
+    throw new DashboardServiceError(
+      400,
+      'DASHBOARD_WIDGET_BINDING_INVALID',
+      error instanceof Error ? error.message : 'binding does not match the source schema',
+    )
+  }
+}
+
 export const addWidget = async (
   context: DashboardContext,
   input: { dashboardId: string; definition: unknown },
@@ -78,7 +97,7 @@ export const addWidget = async (
 
   // A widget may only name fields its source declares — checked here as well as
   // at read time, because the source's columns can change under a stored widget.
-  assertWidgetBinding(definition, source.outputColumns as unknown as DashboardOutputColumn[])
+  assertBindableWidget(definition, source.outputColumns as unknown as DashboardOutputColumn[])
 
   return prisma.dashboardWidget.create({
     data: {
@@ -130,7 +149,7 @@ export const updateWidget = async (
   if (!source) {
     throw new DashboardServiceError(404, 'DASHBOARD_SOURCE_NOT_FOUND', 'data source not found')
   }
-  assertWidgetBinding(definition, source.outputColumns as unknown as DashboardOutputColumn[])
+  assertBindableWidget(definition, source.outputColumns as unknown as DashboardOutputColumn[])
 
   return prisma.dashboardWidget.update({
     where: { id: existing.id },

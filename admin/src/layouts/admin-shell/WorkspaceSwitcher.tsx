@@ -179,14 +179,15 @@ const WorkspaceMenu = ({
 }
 
 /**
- * Shared desktop/iPad/iPhone workspace switcher. Local sessions re-scope through
+ * Shared workspace switcher. Local sessions re-scope through
  * `switch-context`; UOA sessions use their saved directory and re-enter UOA
  * with `team_hint`, so local and signed UOA workspace scopes cannot drift.
- * The desktop rail renders the trigger; native iPad and iPhone controls open
- * this same menu. "Add a workspace" opens UOA's full chooser.
+ * The desktop rail and mobile web header render triggers; native iPad and
+ * iPhone controls open this same menu. "Add a workspace" opens UOA's full
+ * chooser.
  */
 type WorkspaceSwitcherProps = {
-  variant?: 'native-bridge' | 'rail'
+  variant?: 'mobile-header' | 'native-bridge' | 'rail'
 }
 
 export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) => {
@@ -206,7 +207,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const active = workspaces.find(
     (workspace) => workspace.active || workspace.teamId === activeTeamId,
   )
-  const anchorRef = variant === 'rail' ? buttonRef : nativeAnchorRef
+  const anchorRef = variant === 'native-bridge' ? nativeAnchorRef : buttonRef
   const ssoProviderId =
     providers.find((provider) => provider.enabled && provider.type !== 'local-bootstrap')?.providerId ??
     null
@@ -297,6 +298,28 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
             teamId={active?.uoaWorkspace ? active.avatarTeamId ?? null : active?.teamId}
             token={token}
           />
+        </button>
+      ) : variant === 'mobile-header' ? (
+        <button
+          aria-haspopup="menu"
+          aria-label="Switch workspace"
+          className="mobile-web-home-workspace"
+          onClick={() => setOpen((value) => !value)}
+          ref={buttonRef}
+          title={active ? `Workspace: ${active.label}` : 'Switch workspace'}
+          type="button"
+        >
+          <WorkspaceAvatar
+            label={active?.label ?? 'Workspace'}
+            revision={avatarRevision}
+            size={36}
+            teamId={active?.uoaWorkspace ? active.avatarTeamId ?? null : active?.teamId}
+            token={token}
+          />
+          <span className="min-w-0 flex-1 truncate">{active?.label ?? 'Workspace'}</span>
+          <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" width="22">
+            <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
       ) : (
         <div

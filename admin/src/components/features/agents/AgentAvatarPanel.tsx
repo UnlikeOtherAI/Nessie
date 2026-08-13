@@ -8,6 +8,7 @@ import {
   type GeneratedAgentAvatar,
   useAgentAvatarChanges,
 } from './useAgentAvatarChanges'
+import { AgentAvatarGenerationIndicator } from './AgentAvatarGenerationIndicator'
 
 type AgentAvatarPanelProps = {
   agent: AgentRecord
@@ -83,6 +84,9 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
         >
           {avatarChanges.isGenerating ? 'Generating headshot…' : 'Generate new headshot'}
         </button>
+        {avatarChanges.isGenerating ? (
+          <AgentAvatarGenerationIndicator className="mt-3" />
+        ) : null}
       </section>
       {generatedAvatar ? (
         <div
@@ -124,7 +128,7 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
             <div className="mt-6 flex justify-end gap-2">
               <button
                 className="admin-button admin-button-secondary"
-              disabled={avatarChanges.isReplacing}
+                disabled={avatarChanges.isReplacing}
                 onClick={closeGeneratedAvatar}
                 type="button"
               >
@@ -132,7 +136,7 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
               </button>
               <button
                 className="admin-button admin-button-primary"
-              disabled={avatarChanges.isReplacing}
+                disabled={avatarChanges.isReplacing}
                 onClick={() => void confirmGeneratedAvatar()}
                 type="button"
               >

@@ -281,6 +281,85 @@ a {
   color: var(--tx);
 }
 
+/* Phone list/detail navigation mirrors a native controller: the selected
+   screen enters over the tab root, then slides back off to reveal it. The
+   viewport is mounted only by the single-column phone branch; tablet and
+   desktop keep their adjacent columns and never receive these transforms. */
+.phone-navigation-viewport {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  background: var(--main);
+}
+
+.phone-navigation-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--main);
+  animation-duration: 300ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.phone-navigation-screen--current {
+  z-index: 1;
+  animation: none;
+  will-change: auto;
+}
+
+.phone-navigation-screen--forward-out {
+  z-index: 1;
+  animation-name: phone-navigation-forward-out;
+  pointer-events: none;
+}
+
+.phone-navigation-screen--forward-in {
+  z-index: 2;
+  animation-name: phone-navigation-forward-in;
+  box-shadow: -12px 0 32px var(--scrim);
+}
+
+.phone-navigation-screen--back-out {
+  z-index: 2;
+  animation-name: phone-navigation-back-out;
+  box-shadow: -12px 0 32px var(--scrim);
+  pointer-events: none;
+}
+
+.phone-navigation-screen--back-in {
+  z-index: 1;
+  animation-name: phone-navigation-back-in;
+}
+
+@keyframes phone-navigation-forward-out {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-28%, 0, 0); }
+}
+
+@keyframes phone-navigation-forward-in {
+  from { transform: translate3d(100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes phone-navigation-back-out {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
+}
+
+@keyframes phone-navigation-back-in {
+  from { transform: translate3d(-28%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
 /* The secondary navigation is a viewport-relative, per-device width on desktop
    and tablet. The separator stays at the column boundary; its larger coarse-
    pointer hit area makes the same control practical with an iPad finger. */
@@ -390,6 +469,57 @@ a {
 
 .admin-frame.has-mobile-tabbar {
   height: calc(100dvh - var(--mobile-tabbar-h) - env(safe-area-inset-bottom));
+}
+
+/* Browser counterpart to the installed phone shell's workspace bar. It only
+   appears on a top-level tab screen, so it keeps the list/detail hierarchy
+   clear while making core navigation available in Safari and Android browsers. */
+.mobile-web-home-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-inverse) 18%, transparent);
+  background: var(--ink);
+  color: var(--surface-inverse);
+}
+
+.mobile-web-home-workspace {
+  display: flex;
+  min-width: 0;
+  max-width: 62%;
+  align-items: center;
+  gap: 9px;
+  border-radius: 22px;
+  padding: 3px 5px;
+  color: var(--surface-inverse);
+  font-size: 21px;
+  font-weight: 700;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.mobile-web-home-workspace:hover,
+.mobile-web-home-workspace:focus-visible,
+.mobile-web-home-action:hover,
+.mobile-web-home-action:focus-visible {
+  background: color-mix(in srgb, var(--surface-inverse) 16%, transparent);
+  outline: none;
+}
+
+.mobile-web-home-action {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--surface-inverse) 32%, transparent);
+  border-radius: 21px;
+  color: var(--surface-inverse);
+  transition: background-color 120ms ease;
 }
 
 /* ── Global top bar (Slack-style) ──────────────────────────────────────────

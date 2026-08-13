@@ -88,6 +88,9 @@ test('generates a gpt-image-2 avatar through Ledger and stores it as an attachme
   assert.ok(Array.isArray(promptMessages))
   assert.equal(promptMessages[0]?.role, 'system')
   assert.equal(promptMessages[1]?.role, 'user')
+  assert.match(String(promptMessages[0]?.content), /Default to one original fictional human character/)
+  assert.match(String(promptMessages[0]?.content), /Do not use a robot, machine, AI mascot/)
+  assert.match(String(promptMessages[0]?.content), /never from a keyword list/)
 })
 
 test('refuses to generate an avatar when the configured model endpoint is not Ledger', async () => {

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, useOutlet } from 'react-router-dom';
 import { AgentDetailDrawer } from '../components/features/agents/AgentDetailDrawer';
 import { KnowledgeProvider } from '../components/features/knowledge/KnowledgeProvider';
 import {
@@ -21,6 +21,9 @@ import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
+import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
+import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
+import { getPhoneNavigationScreen } from './admin-shell/phone-navigation-transition';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
@@ -30,6 +33,7 @@ import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
 import { TopBar } from './admin-shell/TopBar';
+import { useRecordRecentChannelVisits } from './admin-shell/topbar-navigation';
 import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
@@ -79,6 +83,7 @@ export const AdminShellLayout = () => {
 // token is being restored can create competing refresh-token rotations.
 const AuthenticatedAdminShellLayout = () => {
   const shell = useAdminShell();
+  useRecordRecentChannelVisits();
   const attention = useAttentionSummary();
   const attentionCountByProjectId = new Map<string, number>();
   for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
@@ -102,22 +107,27 @@ const AuthenticatedAdminShellLayout = () => {
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
   const showWebTabBar = mobileLayout && !nativeShell && !isComposeRoute;
+  const showMobileWebHomeHeader = showWebTabBar && showPhoneTabRoot;
   // Whenever a bottom tab bar is present — the web tab bar on mobile web, or the
   // native app's own tab bar on phone/iPad — drop the entire top bar. Navigation
   // lives in the bottom bar (which carries its own Search tab) and each page
   // supplies its own mobile header (hamburger + title).
   const hideTopBar = isComposeRoute || showWebTabBar || (nativeShell && (phoneLayout || nativeIPadApp));
 
+  // Capture the matched route as a concrete element. The phone transition
+  // keeps that element mounted while it leaves; retaining a live <Outlet>
+  // would resolve both layers against the new route and duplicate the incoming
+  // page instead of preserving the outgoing one.
+  const outlet = useOutlet({
+    onCreateAgent: shell.navigateToAgentDesigner,
+    onCreateChannel: shell.openCreateChannel,
+    onSelectAgent: shell.selectAgent,
+    scopedAgents: shell.scopedAgents,
+  });
+
   const mainContent = (
     <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
-      <Outlet
-        context={{
-          onCreateAgent: shell.navigateToAgentDesigner,
-          onCreateChannel: shell.openCreateChannel,
-          onSelectAgent: shell.selectAgent,
-          scopedAgents: shell.scopedAgents,
-        }}
-      />
+      {outlet}
     </main>
   );
 
@@ -190,6 +200,17 @@ const AuthenticatedAdminShellLayout = () => {
   // hamburger is never a dead button.
   const drawerNavElement = secNavElement ?? sidebarNavElement;
 
+  const phonePageContent = showPhoneTabRoot ? (
+    <div
+      className={[
+        'flex min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
+        '[&>aside]:w-full [&>aside]:border-r-0',
+      ].join(' ')}
+    >
+      {drawerNavElement}
+    </div>
+  ) : mainContent;
+
   const contentRegion = phoneLayout ? (
     <>
       {!showPhoneTabRoot ? (
@@ -197,16 +218,11 @@ const AuthenticatedAdminShellLayout = () => {
           {drawerNavElement}
         </MobileNavDrawer>
       ) : null}
-      {showPhoneTabRoot ? (
-        <div
-          className={[
-            'flex min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
-            '[&>aside]:w-full [&>aside]:border-r-0',
-          ].join(' ')}
-        >
-          {drawerNavElement}
-        </div>
-      ) : mainContent}
+      {getPhoneNavigationScreen(shell.pathname) ? (
+        <PhoneNavigationViewport pathname={shell.pathname}>
+          {phonePageContent}
+        </PhoneNavigationViewport>
+      ) : phonePageContent}
     </>
   ) : (
     <>
@@ -231,6 +247,7 @@ const AuthenticatedAdminShellLayout = () => {
           >
             <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
               <div className={frameClassName}>
+                {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
                 {hideTopBar ? null : (
                   <TopBar
                     hideSearch={nativeIPadApp}
