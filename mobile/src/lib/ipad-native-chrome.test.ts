@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createIpadNativeChromeTheme, getIpadToolbarLeft } from './ipad-native-chrome'
+import {
+  createIpadNativeChromeTheme,
+  getIpadChromeTop,
+  getIpadToolbarLeft,
+  IPAD_WINDOWED_CHROME_TOP,
+} from './ipad-native-chrome'
 
 test('builds iPad top chrome from the active theme colours', () => {
   const theme = createIpadNativeChromeTheme({
@@ -22,4 +27,9 @@ test('positions controls to the leading side of the centred iPad tab bar', () =>
   assert.equal(getIpadToolbarLeft(1_024, 360, 0), 167)
   assert.equal(getIpadToolbarLeft(768, 360, 0), 39)
   assert.equal(getIpadToolbarLeft(768, 600, 20), 32)
+})
+
+test('places iPad chrome flush below the fullscreen safe area and centred in a window title bar', () => {
+  assert.equal(getIpadChromeTop(24), 24)
+  assert.equal(getIpadChromeTop(0), IPAD_WINDOWED_CHROME_TOP)
 })

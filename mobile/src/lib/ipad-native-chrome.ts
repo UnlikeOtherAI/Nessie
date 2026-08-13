@@ -17,6 +17,15 @@ type IpadNativeChromeThemeOptions = {
 }
 
 export const IPAD_NATIVE_TOOLBAR_WIDTH = 153
+export const IPAD_NATIVE_CHROME_HEIGHT = 42
+export const IPAD_WINDOWED_CHROME_TOP = 12
+
+// A full-screen iPad app owns no pixels above its safe area, so native chrome
+// must begin exactly at that edge. A Stage Manager window has no top safe-area
+// inset; its controls belong in the window title bar instead.
+export const getIpadChromeTop = (safeAreaTop: number): number => (
+  safeAreaTop > 0 ? safeAreaTop : IPAD_WINDOWED_CHROME_TOP
+)
 
 export const withOpacity = (color: string, opacity: number): string => {
   const rgb = parseRgb(color)

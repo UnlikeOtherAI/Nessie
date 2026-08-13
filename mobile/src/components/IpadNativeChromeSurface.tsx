@@ -1,7 +1,7 @@
 import { type PropsWithChildren } from 'react'
 import { StyleSheet, View } from 'react-native'
 
-import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
+import { IPAD_NATIVE_CHROME_HEIGHT, type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
 
 type IpadNativeChromeSurfaceProps = PropsWithChildren<{
   theme: IpadNativeChromeTheme
@@ -23,7 +23,7 @@ export const IpadNativeChromeSurface = ({
 
 const styles = StyleSheet.create({
   surface: {
-    height: 42,
+    height: IPAD_NATIVE_CHROME_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
