@@ -106,7 +106,7 @@ export const ChannelMembersPopup = ({
     >
       <div
         className={[
-          'flex max-h-[80vh] w-full max-w-[480px] flex-col rounded-xl',
+          'flex max-h-[80vh] w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
           'border border-[color:var(--sep)] bg-[color:var(--main)]',
         ].join(' ')}
         style={{ boxShadow: '0 24px 48px var(--scrim-strong)' }}
