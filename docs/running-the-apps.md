@@ -153,7 +153,8 @@ surface after login. Back, Forward, Recent Channels, Help, the destination tabs,
 Search, and the signed-in person's SSO avatar form one centred, theme-derived
 native control group. The active workspace's initial and name occupy the leading
 edge; if they would overlap, the complete group moves trailing before any
-controls are removed. Only in a genuinely narrow Stage Manager window does the
+controls are removed. That decision uses the native chrome layer's measured
+width, rather than a cached orientation value. Only in a genuinely narrow Stage Manager window does the
 group compact: Search and the four toolbar actions move into a native
 three-dot menu, and the workspace trigger then truncates to its icon/chevron or
 hides as a last resort. Tapping the workspace opens the web shell's existing
