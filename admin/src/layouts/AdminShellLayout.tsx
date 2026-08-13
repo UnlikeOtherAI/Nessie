@@ -226,7 +226,7 @@ const AuthenticatedAdminShellLayout = () => {
         <NotificationsProvider>
           <AccountMenuProvider
             onLogout={shell.logoutAndRedirect}
-            showHeaderAccountMenu={hideTopBar && mobileLayout}
+            showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
           >
             <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
               <div className={frameClassName}>
@@ -254,15 +254,15 @@ const AuthenticatedAdminShellLayout = () => {
               {showWebTabBar && <MobileTabBar />}
               {(nativeIPadApp || nativePhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
               {(nativeIPadApp || nativePhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
+              {(nativeIPadApp || nativePhoneApp) ? (
+                <UserMenuTrigger nativeShellBridge onLogout={shell.logoutAndRedirect} placement="topbar" />
+              ) : null}
               {nativePhoneApp ? (
-                <>
-                  <UserMenuTrigger nativePhoneBridge onLogout={shell.logoutAndRedirect} placement="topbar" />
-                  <NativePhoneCreationBridge
-                    onCreateChannel={shell.openCreateChannel}
-                    onCreateMessage={shell.navigateToNewConversation}
-                    onCreateProject={shell.openCreateProject}
-                  />
-                </>
+                <NativePhoneCreationBridge
+                  onCreateChannel={shell.openCreateChannel}
+                  onCreateMessage={shell.navigateToNewConversation}
+                  onCreateProject={shell.openCreateProject}
+                />
               ) : null}
               {nativeIPadApp && <NativeSearchOverlay />}
 
