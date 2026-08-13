@@ -205,15 +205,40 @@ const serverStore: ViewportStore = {
 }
 
 // SSR / non-DOM contexts (tests without a window) see the base snapshot.
-const store: ViewportStore = typeof window === 'undefined' ? serverStore : createBrowserViewportStore()
+// The browser store is created lazily on first use, NOT at module init: in
+// dev, Vite injects styles.css into the document after the import graph
+// evaluates, so the emitted --breakpoint-* tokens are only readable once the
+// first component renders. Reading them at import time threw the fail-loud
+// dev error on every page load.
+let lazyStore: ViewportStore | null = null
+// Registrations arriving before first use (module-level callers like
+// lib/mobile-shell.ts) are buffered so they never force store creation at
+// import time; they replay onto the real store when it is first created.
+const pendingQueries: Array<[string, string]> = []
+const resolveStore = (): ViewportStore => {
+  if (lazyStore === null) {
+    lazyStore = typeof window === 'undefined' ? serverStore : createBrowserViewportStore()
+    for (const [name, query] of pendingQueries.splice(0)) {
+      lazyStore.registerMediaQuery(name, query)
+    }
+  }
+  return lazyStore
+}
 
-export const useViewport = (): ViewportSnapshot =>
-  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
+export const useViewport = (): ViewportSnapshot => {
+  const store = resolveStore()
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
+}
 
 // Named one-off media queries for facts the band scale cannot express (the
 // two-dimensional tablet gate is the current only consumer, owned by
 // lib/mobile-shell.ts). The name is registered once per store; the lane value
 // is undefined until the browser store has read it, so consumers must treat
 // `undefined` as false (server render / pre-registration render).
-export const registerViewportMediaQuery = (name: string, query: string): void =>
-  store.registerMediaQuery(name, query)
+export const registerViewportMediaQuery = (name: string, query: string): void => {
+  if (lazyStore === null) {
+    pendingQueries.push([name, query])
+    return
+  }
+  lazyStore.registerMediaQuery(name, query)
+}
