@@ -3,10 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import type { ChannelRecord, MeResponse, UserRecord } from '../../../lib/api-client'
 import { conversationParentPath, getConversationRoute } from '../../../lib/conversation-navigation'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
+import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
 import { useAddChannelMember, useRemoveChannelMember, useSetChannelMute } from '../../../facades/channels/hooks'
 import { AvailableUserRow, CurrentUserRow } from '../../shared/channel-members/MemberUserRow'
 import { UserAvatar } from '../../primitives/UserAvatar'
-import { ConversationBackButton } from './ConversationBackButton'
 
 type ConversationInfoFlowProps = {
   activeChannel: ChannelRecord
@@ -33,7 +33,7 @@ const FlowHeader = ({
   title: string
 }) => (
   <header className="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-[color:var(--sep)] px-4">
-    <ConversationBackButton label="Back" onBack={onBack} />
+    <PhoneBackButton label="Back" onBack={onBack} />
     <h1 className="min-w-0 flex-1 truncate text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
     {action ? <div className="flex flex-shrink-0 items-center">{action}</div> : null}
   </header>

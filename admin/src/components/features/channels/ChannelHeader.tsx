@@ -8,14 +8,14 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import type { ExternalAgentIdentity } from '../../../facades/integrations/hooks'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-client'
-import { MobileMenuButton } from '../../../layouts/admin-shell/MobileMenuButton'
+import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
+import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
 import {
   ResponsivePageHeader,
   type PageHeaderAction,
 } from '../../shared/ResponsivePageHeader'
 import type { ChannelTitleFavorite } from './ChannelFavoriteButton'
-import { ConversationBackButton } from './ConversationBackButton'
 
 interface ChannelHeaderProps {
   activeCall: boolean
@@ -164,8 +164,8 @@ export const ChannelHeader = ({
       }
       leading={
         phoneLayout && isConversationDetail
-          ? <ConversationBackButton onBack={onBack} />
-          : <MobileMenuButton />
+          ? <PhoneBackButton label="Back to Channels" onBack={onBack} />
+          : <PhoneNavigationButton />
       }
       title={title}
     />

@@ -18,6 +18,7 @@ import {
   useWidgetData,
   type DashboardWidgetRecord,
 } from '../facades/dashboards/hooks'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 /**
  * Each widget loads its own data so one inaccessible widget degrades to a lock
@@ -128,6 +129,7 @@ export const DashboardDetailPage = () => {
           className="flex items-center gap-3 border-b px-6 py-3"
           style={{ borderColor: 'var(--sep)' }}
         >
+          <PhoneNavigationButton />
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold" style={{ color: 'var(--tx)' }}>
               {dashboard.title}

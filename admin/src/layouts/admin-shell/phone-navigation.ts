@@ -1,5 +1,10 @@
 export type PhoneNavigationDirection = 'back' | 'forward'
 
+export type PhoneNavigationBackTarget = {
+  label: string
+  pathname: string
+}
+
 type PhoneNavigationScreen = {
   depth: 0 | 1
   key: string
@@ -9,6 +14,64 @@ type PhoneNavigationScreen = {
 const normalizePathname = (pathname: string): string => {
   const normalized = pathname.replace(/\/+$/, '')
   return normalized || '/'
+}
+
+const phoneBackTarget = (pathname: string, label: string): PhoneNavigationBackTarget => ({
+  label,
+  pathname,
+})
+
+// Phone tab roots own the contextual navigation list, so they keep the menu
+// control. Every other routed surface gets an explicit parent destination;
+// this keeps a cold deep link inside Nessie instead of depending on browser
+// history being available.
+export const getPhoneNavigationBackTarget = (
+  pathname: string,
+): PhoneNavigationBackTarget | null => {
+  const normalized = normalizePathname(pathname)
+
+  if (
+    normalized === '/channels'
+    || normalized === '/projects'
+    || normalized === '/dashboards'
+    || normalized === '/knowledge-base'
+    || normalized === '/agents'
+    || normalized === '/settings'
+    || normalized === '/search'
+  ) {
+    return null
+  }
+
+  if (normalized.startsWith('/channels/')) {
+    return phoneBackTarget('/channels', 'Back to Channels')
+  }
+  if (normalized.startsWith('/projects/')) {
+    return phoneBackTarget('/projects', 'Back to Projects')
+  }
+  if (normalized.startsWith('/dashboards/')) {
+    return phoneBackTarget('/dashboards', 'Back to Dashboards')
+  }
+  if (normalized.startsWith('/knowledge-base/')) {
+    return phoneBackTarget('/knowledge-base', 'Back to Knowledge')
+  }
+  if (normalized.startsWith('/agents/')) {
+    return phoneBackTarget('/agents', 'Back to Agents')
+  }
+  if (
+    normalized.startsWith('/settings/')
+    || normalized === '/mcp-app-store'
+    || normalized.startsWith('/mcp-app-store/')
+    || normalized === '/approvals'
+    || normalized === '/audit'
+    || normalized === '/tokens'
+    || normalized === '/policy'
+    || normalized === '/ops'
+    || normalized.startsWith('/ops/')
+  ) {
+    return phoneBackTarget('/settings', 'Back to Admin')
+  }
+
+  return phoneBackTarget('/channels', 'Back to Channels')
 }
 
 // Phone navigation is a two-level stack: each tab's contextual list is the

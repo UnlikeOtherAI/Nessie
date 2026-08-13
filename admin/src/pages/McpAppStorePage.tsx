@@ -39,6 +39,7 @@ import {
   type McpLibraryEntryRecord,
 } from '../facades/mcp-library/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 /**
  * `/mcp-app-store` — the MCP App Store. Open to every signed-in user:
@@ -238,6 +239,7 @@ export const McpAppStorePage = () => {
 
   const columns = [
     <ColumnBrowserColumn
+      leading={<PhoneNavigationButton />}
       headerAction={
         <button
           className="admin-button admin-button-primary admin-button-compact"

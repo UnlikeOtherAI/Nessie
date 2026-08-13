@@ -4,6 +4,7 @@ import { TriggerListColumn } from '../components/features/triggers/TriggerListCo
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { useTriggersPageState } from './triggers/useTriggersPageState'
 
 export const TriggersPage = () => {
@@ -25,6 +26,7 @@ export const TriggersPage = () => {
       effectiveTriggerId={state.effectiveTriggerId}
       filteredTriggers={state.filteredTriggers}
       key="triggers"
+      leading={<PhoneNavigationButton />}
       onCreate={() => state.setCreateDialogOpen(true)}
       onSearchChange={state.setSearchQuery}
       onSelect={state.setSelectedTriggerId}

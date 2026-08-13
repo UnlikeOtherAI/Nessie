@@ -29,6 +29,7 @@ import {
 import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 /**
  * `/agents/tools` — the single, canonical tool surface.
@@ -189,7 +190,7 @@ export const ToolsPage = () => {
   )
 
   const columns = [
-    <ColumnBrowserColumn key="list" title={`Tools (${sortedTools.length})`}>
+    <ColumnBrowserColumn leading={<PhoneNavigationButton />} key="list" title={`Tools (${sortedTools.length})`}>
       <div className="grid gap-3">
         <input
           autoComplete="off"

@@ -1,4 +1,4 @@
-import { MobileMenuButton } from '../../layouts/admin-shell/MobileMenuButton'
+import { PhoneNavigationButton } from '../../layouts/admin-shell/PhoneNavigationButton'
 import {
   ResponsivePageHeader,
   type PageHeaderAction,
@@ -23,7 +23,7 @@ export const AdminPageHeader = ({
   <ResponsivePageHeader
     actions={actions}
     eyebrow={eyebrow}
-    leading={<MobileMenuButton />}
+    leading={<PhoneNavigationButton />}
     title={title}
     titleTone={titleTone}
   />

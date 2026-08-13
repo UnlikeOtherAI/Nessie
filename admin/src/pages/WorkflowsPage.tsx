@@ -19,6 +19,7 @@ import { WorkflowInstallationDetail } from '../components/features/workflows/Wor
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
 import { WorkflowImportButton } from '../components/features/workflows/WorkflowImportButton'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -231,6 +232,7 @@ export const WorkflowsPage = () => {
 
   columns.push(
     <ColumnBrowserColumn
+      leading={<PhoneNavigationButton />}
       headerAction={
         isWorkflowAdmin ? (
           <button

@@ -21,6 +21,7 @@ import {
 } from '../facades/integrations/hooks'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 type SurfacePlan = {
   nativePage: string
@@ -438,7 +439,11 @@ export const IntegrationsPage = () => {
   )
 
   const columns = [
-    <ColumnBrowserColumn key="list" title={`Integrations (${products.length})`}>
+    <ColumnBrowserColumn
+      key="list"
+      leading={<PhoneNavigationButton />}
+      title={`Integrations (${products.length})`}
+    >
       {listBody}
     </ColumnBrowserColumn>,
   ]

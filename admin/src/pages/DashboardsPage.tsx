@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useCreateDashboard, useDashboards } from '../facades/dashboards/hooks'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 const HOME_LABEL: Record<string, string> = {
   organization: 'Organisation',
@@ -35,6 +36,7 @@ export const DashboardsPage = () => {
   return (
     <div className="flex h-full flex-col gap-4 p-6" data-testid="dashboards-page">
       <header className="flex items-center gap-3">
+        <PhoneNavigationButton />
         <div className="min-w-0">
           <h1 className="text-lg font-semibold" style={{ color: 'var(--tx)' }}>
             Dashboards

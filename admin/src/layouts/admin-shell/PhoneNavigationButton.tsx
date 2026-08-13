@@ -1,15 +1,30 @@
+import { useLocation, useNavigate } from 'react-router-dom';
 import { usePhoneLayout } from '../../lib/mobile-shell';
 import { useMobileNav } from './MobileNavContext';
+import { PhoneBackButton } from './PhoneBackButton';
+import { getPhoneNavigationBackTarget } from './phone-navigation';
 
-// Top-left hamburger shown on every page header in the phone layout. Opens the
-// contextual secondary-nav drawer. Renders nothing on desktop / tablet (iPad) /
-// large web (where the secondary sidebar is shown inline) or outside the admin shell.
-export const MobileMenuButton = () => {
+// The phone's leading control mirrors a native navigation controller: section
+// roots open their contextual drawer, while every routed child receives an
+// in-context Back action. Desktop and tablet keep their pinned sidebar.
+export const PhoneNavigationButton = () => {
   const phoneLayout = usePhoneLayout();
+  const location = useLocation();
+  const navigate = useNavigate();
   const nav = useMobileNav();
+  const backTarget = getPhoneNavigationBackTarget(location.pathname);
 
   if (!phoneLayout || !nav) {
     return null;
+  }
+
+  if (backTarget) {
+    return (
+      <PhoneBackButton
+        label={backTarget.label}
+        onBack={() => void navigate(backTarget.pathname)}
+      />
+    );
   }
 
   return (
