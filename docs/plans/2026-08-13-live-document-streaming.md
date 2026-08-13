@@ -1,7 +1,12 @@
 # Live document streaming — PA writes a document while you watch the tokens arrive
 
-**Status:** design for review (codex/sol, kimix, fable verify → Opus builds). No code
-has been written.
+**Status:** design for review (codex/sol + kimix verify next → Opus builds). No
+code has been written. A fresh-context Fable adversarial pass has already run
+against the codebase; its findings (output-token ceiling, abort plumbing,
+per-invocation index scoping, name-enrichment from the accumulation map,
+replay-list semantics, ephemeral hub mechanics, offset units, partial-save
+preconditions, bounded publish queue, lifecycle-fused terminalization,
+mock-llm gap, session→thread binding) are folded in below.
 
 ## 1. Goal
 
@@ -61,12 +66,19 @@ Facts that shape this design:
   MiniMax connectors yield one event per `function.arguments` fragment
   (`openai-chat-protocol.ts:242-248`). The event type is in the union
   (`packages/runtime/src/inference/types.ts:163`) and both Zod mirrors
-  (`packages/schemas/src/inference-core.ts:266`,
-  `api/src/contracts/inference-core.ts:294`). The worker's drain loop
+  (`packages/schemas/src/inference-core.ts:267`,
+  `api/src/contracts/inference-core.ts:295`). The worker's drain loop
   (`inference-stage.ts:232-246`) handles only reasoning and output text; the
   tool fragments fall through unread. Today the payload carries only `text` —
   no tool-call `index`/`id`/`name` — so fragments are uncorrelatable until
-  enriched.
+  enriched. Two wrinkles the enrichment must handle: the canonical OpenAI
+  first chunk carries `id` + `function.name` with **empty** `arguments`, so no
+  event is yielded for it at all (`openai-chat-protocol.ts:242-248` yields only
+  on non-empty argument fragments); and a chunk carrying both `delta.content`
+  and `delta.tool_calls` hits the `continue` at
+  `openai-chat-protocol.ts:220-225`, silently dropping the tool fragments from
+  the yielded stream *and* the accumulation map — a live parsing bug this
+  change fixes in passing.
 - **Kimi does not stream tool args.** `connectors/kimi.ts` uses
   `toolCallingMode: 'prompt-translated'`: the tool call streams as
   `output_text.delta` XML and is parsed only after the stream ends. The
@@ -204,8 +216,9 @@ and saves the document.
   32 k tool-result truncation chokepoint.
 - ❌ New machinery: a second inference path inside a tool handler, its own
   budget/cancel/timing integration, prompt construction for "now write it".
-- ❌ The 30 s default tool timeout (`budget.toolTimeoutMs`) is hostile to a
-  multi-minute generation living *inside* a tool call.
+- ❌ The 75 s effective tool timeout (`TOOL_TIMEOUT_MS`,
+  `worker/src/run/run-budget.ts:17`) is hostile to a multi-minute generation
+  living *inside* a tool call.
 
 ### Option C — write the document as the visible reply, then save it (rejected)
 
@@ -278,23 +291,61 @@ the user and resolve names to ids via `kb_list`.
 
 ### 4.2 Worker: tapping the stream
 
-**(a) Enrich `tool_call.delta`.** Add `index: number`, and when present
-`id: string` / `toolName: string`, to the yielded event in
-`openai-chat-protocol.ts` (the connector already tracks all three in its
-accumulation map) and to the three type mirrors
-(`runtime/src/inference/types.ts`, `packages/schemas/src/inference-core.ts`,
-`api/src/contracts/inference-core.ts`). MiniMax inherits via the shared
+**(a) Enrich `tool_call.delta`.** Every yielded event carries
+`{ index: number, id: string, toolName: string, text }`, populated **from the
+connector's accumulation map** (`existing.id` / `existing.name`,
+`openai-chat-protocol.ts:228-240`) — never from the current chunk alone,
+because on the canonical OpenAI shape the name arrives in a first chunk with
+empty arguments that yields no event, and every later fragment carries only
+`index` + `arguments`. The same change removes the `continue` at
+`openai-chat-protocol.ts:220-225` so a chunk carrying both `delta.content`
+and `delta.tool_calls` feeds both paths (today the tool fragments of such a
+chunk are silently lost, corrupting even the executed call). Type mirrors:
+`runtime/src/inference/types.ts`, `packages/schemas/src/inference-core.ts`,
+`api/src/contracts/inference-core.ts`. MiniMax inherits via the shared
 protocol. Kimi remains without the event — by design.
 
-**(b) New drain-loop branch.** `executeStage`
+**(b) New drain-loop branch, scoped per invocation.** `executeStage`
 (`worker/src/run/inference-stage.ts`) gains
-`onToolCallDelta?: (event: {index, id?, toolName?, text}) => void` beside the
+`onToolCallDelta?: (event: {index, id, toolName, text}) => void` beside the
 two existing callbacks, threaded up through `runInferenceGraph`
 (`worker/src/run/inference.ts`) to `createRunInference`
 (`worker/src/run/execute/run-inference.ts`) exactly like
-`onVisibleTextDelta`. Note the signature is **synchronous fire-and-forget**
+`onVisibleTextDelta`. The signature is **synchronous fire-and-forget**
 (`void`, not `Promise`): the document pipeline must never add backpressure to
 the provider read loop (see (d)).
+
+Correlation is **per inference invocation, never per run**: `index` restarts
+at 0 for every HTTP call, and `callInferenceWithRetry`
+(`worker/src/run/inference-retry.ts`) re-issues the *same* iteration up to
+3 times on transient errors — a mid-stream retry would otherwise re-stream
+index 0 into a half-filled buffer. `executeStage` therefore brackets each
+attempt with `recorder.beginInvocation()` / `endInvocation()`: `begin` resets
+all per-index buffers and marks any session still `streaming` as
+**`superseded`** (publishing `stream.document.error {reason:'superseded'}` so
+the popup resets cleanly before the replacement session starts); a later
+iteration's compose call likewise supersedes a session that never reached a
+terminal state (failed save, budget stop between inference and tool batch).
+This is the only writer of the `superseded` status.
+
+**(b′) Output-token budget.** The deployment default per-call cap is
+**2,048 tokens** (`NESSIE_MODEL_MAX_TOKENS`,
+`packages/config/src/index.ts:43`) — a fatal ceiling for a document emitted
+as tool-call arguments in one completion. Two required behaviours:
+
+- When `kb_document_compose` is present in the turn's tool array (a
+  structural fact, not content inspection), the main-turn call raises
+  `maxOutputTokens` to
+  `max(configured, NESSIE_DOC_COMPOSE_MAX_OUTPUT_TOKENS)` (new env, default
+  16 384 ≈ a 40–60 KB markdown document). Run-budget token metering is
+  unchanged — this widens one call's ceiling, not the run's budget.
+- `finish_reason: 'length'` while a session is streaming is a first-class
+  failure: the args JSON is truncated (`safeParseJson` returns `{_raw}`), so
+  the tool is **not** executed with garbage; the session ends
+  `failed {reason:'truncated', partialSaved}` (§4.7 policy), and the tool
+  result tells the model the document exceeded the output window — advise a
+  shorter document or splitting. The practical v1 ceiling is one output
+  window per document; multi-call continuation is out of scope.
 
 **(c) The `DocumentStreamRecorder`**
 (`worker/src/run/execute/document-stream.ts`, sibling and structural mirror of
@@ -332,22 +383,38 @@ tool-call deltas and:
    write-amplification/latency mistake; replay is covered by the bootstrap
    endpoint instead (§4.5). Each event:
    `stream.document.delta { runId, sessionId, seq, offset, content }` where
-   `offset` is the decoded-markdown byte offset before this fragment and `seq`
-   a per-session counter — the client can detect gaps/overlaps exactly.
-   Fragments over 4 KiB are split (pg_notify 8 KB cap, JSON envelope
-   overhead). Publishes are serialized on a per-session promise queue (the
-   ThinkingRecorder pattern) so ordering holds **without** the drain loop
-   awaiting them; errors are swallowed with a `console.warn` (streaming
-   display is never worth failing a run).
+   `offset` is the decoded-markdown offset before this fragment, `seq` a
+   per-session counter — the client can detect gaps/overlaps exactly.
+   **Offsets are UTF-16 code units everywhere** (event, chunk table,
+   bootstrap): the unit JS strings natively count in, so client merge
+   arithmetic is `offset + content.length` with no encoding step. The
+   pg_notify split rule, by contrast, is **byte**-aware: fragments are split
+   so the JSON-escaped UTF-8 envelope stays under ~7.5 KB (the 8,000-byte
+   NOTIFY cap; 4,096 emoji-heavy code units can exceed it). Publishes are
+   serialized on a per-session promise queue (the ThinkingRecorder pattern)
+   so ordering holds **without** the drain loop awaiting them; errors are
+   swallowed with a `console.warn` (streaming display is never worth failing
+   a run). The queue is **bounded**: beyond a depth of 32 unsent entries
+   (a degraded Postgres), adjacent offset-contiguous queued fragments merge
+   into one — content-preserving and latency-neutral, since it only merges
+   what is already backed up, so the real-time requirement is untouched.
 5. **Persists durable chunks, coalesced.** In the same queue, append decoded
    markdown to `run_document_chunks` batched at 2 KiB / 250 ms (ThinkingRecorder
    constants). This is the mid-stream-join/reconnect source of truth. The live
    path and the durable path are deliberately different cadences: live = every
    chunk, durable = coalesced. Requirement 1 constrains the live path only.
-6. **Finalizes.** The tool handler (§4.1) or the failure paths (§4.7) close the
-   session: `status ∈ saved | failed | cancelled | superseded`, then
-   `stream.document.done` / `stream.document.error`. `stream.done` (the run
-   terminator) remains published last, unchanged.
+6. **Finalizes — fused to the run's terminal transition.** The tool handler
+   (§4.1) closes a session `saved`; invocation brackets mark `superseded`
+   (§4.2(b)); and — the crash-safe backstop — **terminalizing any run closes
+   its non-terminal sessions**, fused into `lifecycle.ts` `updateRunStatus`
+   exactly like the 👀 working-marker removal (per CLAUDE.md, that fusion is
+   what makes completion, failure, budget stop, cancellation *and*
+   queue-redelivery-after-crash all clear it without remembering). A
+   `run-job.ts` `finally` close alone would not survive SIGKILL; the
+   lifecycle fusion does, because redelivery drives the run to a terminal
+   status through the same function. Ordering: `stream.document.error` /
+   `done` publish before `stream.done` (the run terminator stays last,
+   unchanged).
 
 **(d) No backpressure, no reordering.** The drain loop calls the recorder
 synchronously; the recorder enqueues onto its internal promise chain and
@@ -375,15 +442,27 @@ union + `SseEventMap`):
                            spaceId, spaceName, chars }
 'stream.document.error': { runId, sessionId, reason:
                            'cancelled' | 'run_failed' | 'save_failed' |
-                           'budget_stopped' | 'invalid_args',
+                           'budget_stopped' | 'invalid_args' | 'truncated' |
+                           'superseded',
                            partialSaved: boolean, pageId? }
 ```
 
-- All five are added to the hub's no-replay list (`api/src/realtime/hub.ts`).
-  `delta` is never durable at all; `start/meta/done/error` are published
-  durably (ordinary `publishSse`) so a *reconnecting* client (`Last-Event-ID`)
-  still learns a session ended — cheap (≤4 rows per document) and consistent
-  with `stream.done` replay semantics. Fresh connects rely on bootstrap.
+- **Only `stream.document.delta` joins the hub's no-replay list**
+  (`api/src/realtime/hub.ts:222-237`) — that list *withholds* events from
+  `Last-Event-ID` reconnects, so putting terminators on it would defeat the
+  point. `start/meta/done/error` are published durably (ordinary
+  `publishSse`, ≤4 rows per document) and **replay**, exactly like
+  `stream.done` (which is deliberately absent from that list today): a
+  reconnecting client learns a session started/ended even across the gap.
+  Fresh connects rely on bootstrap.
+- **Ephemeral events need three explicit hub behaviours** (today's hub
+  assumes every notification has a sequence): they are written with **no
+  `id:` line** (`formatSseEvent`, `hub.ts:54-55`, currently unconditional —
+  an undefined sequence would literally set the client's Last-Event-ID to
+  the string `"undefined"`); they **never assign `connection.lastSequence`**
+  (`hub.ts:113-131`); and during connect-hydration they bypass the
+  sequence-sorted `pending` buffer (`hub.ts:245`) and are dropped — the
+  bootstrap that hydration triggers covers them by construction.
 - **SSE route hardening** (`api/src/routes/threads.ts`): add
   `X-Accel-Buffering: no` and `socket.setNoDelay(true)`, matching
   `designer.ts:311-314`. This benefits the existing `stream.delta` path too and
@@ -397,8 +476,15 @@ GET /api/threads/:threadId/document-streams?active=1
   → [{ sessionId, runId, agentId, status, title?, target?, startedAt }]
 GET /api/threads/:threadId/document-streams/:sessionId
   → { session: {…as above, pageId?, versionNumber?}, markdown, offset }
-       // markdown = concatenated run_document_chunks; offset = its byte length
+       // markdown = concatenated run_document_chunks; offset = its length
+       // in UTF-16 code units (same unit as delta offsets)
 ```
+
+The per-session route additionally verifies
+`session.threadId === :threadId && session.organizationId === actor org`
+before answering — `sessionId` is a global UUID, and the thread gate alone
+would let any authenticated user with *some* readable thread fetch any org's
+streamed markdown by UUID. 404 on mismatch, indistinguishable from absent.
 
 Client contract: bootstrap gives `{markdown, offset}`; live deltas carry
 `offset`; the client drops any delta whose `offset + content.length ≤` what it
@@ -472,8 +558,9 @@ and reply panel share it for free):
    the final one are *stable*: rendered once through
    `<MessageMarkdown renderInlineText={identity}>` and memoized
    (`React.memo` on `(blockText)`). Only the live tail block re-parses per
-   frame. Cost per frame is O(tail), not O(document) — a 100-page document
-   streams as cheaply as a paragraph.
+   frame. Cost per frame is O(tail), not O(document), so render cost never
+   grows with document length (the practical length ceiling is the output
+   window, §4.2(b′), not the renderer).
 3. **Tail repair, not tail hiding.** Before parsing, the tail block passes
    through `repairStreamingTail()`: append a closing ``` for an odd fence
    count (so a streaming code block renders *as a code block* immediately —
@@ -557,12 +644,13 @@ Honest degrades (never faked):
 
 | Scenario | Behaviour |
 |---|---|
-| **User clicks Stop** | Dialog calls existing `POST /api/runs/:id/cancel` (confirm-in-dialog first). Cooperative cancel today only polls between iterations/tool batches — during argument streaming nothing would notice. **Addition:** the drain loop, when a document session is active, checks `cancelRequestedAt` (piggybacking `checkCancelled`, throttled to ≥1 s) and aborts the provider request via the connector's fetch `AbortController`; the run then exits through the existing `cancel-stop.ts` machinery. Session → `cancelled`, `stream.document.error {reason:'cancelled', partialSaved}`. Partial body **saved as an interrupted draft** (change comment "Interrupted — cancelled by user", title suffix "(incomplete)") — recommended default, see §6 Q2. |
-| **Run fails / crashes mid-stream** | `failure.ts` path already publishes `stream.done`; the recorder's `close()` (fused in `run-job.ts` `finally`, like ThinkingRecorder) marks any non-terminal session `failed` and publishes `stream.document.error {reason:'run_failed', partialSaved}` first. Worker hard-crash: sessions are re-terminalized when the queue re-delivers the run to a terminal state (the working-marker precedent); the client's zombie-guard (§4.4) covers the gap meanwhile. |
+| **User clicks Stop** | Dialog calls existing `POST /api/runs/:id/cancel` (confirm-in-dialog first). Cooperative cancel today only polls between iterations/tool batches (`agentic-loop.ts:263, 463`) — during argument streaming nothing would notice, and **no abort plumbing exists anywhere in the inference stack today** (every connector calls bare `fetch` with no `signal`). This is a real, bounded subsystem addition, spelled out so nobody discovers it mid-build: (1) `InferenceRequest` gains an optional `AbortSignal`, threaded from `executeStage` through `InferenceService.stream()` into every connector's `fetch`; (2) while a document session is active, the drain loop checks `cancelRequestedAt` (piggybacking `checkCancelled`, throttled to ≥1 s) and fires the controller; (3) `classifyError` (`worker/src/run/error-classification.ts`) gains an explicit **abort branch** — without it, AbortError classifies as `transient`/`unknown` and `callInferenceWithRetry` would *retry the whole document generation* (re-streaming it) or surface an apology text the loop would deliver as a completed reply; the abort classification instead bypasses retry entirely and returns a distinguished aborted outcome; (4) `executeStage`/`agent-loop` treat that outcome, when `cancelRequestedAt` is set, as the cooperative-cancel exit, so the run leaves through the existing `cancel-stop.ts` machinery. Session → `cancelled`, `stream.document.error {reason:'cancelled', partialSaved}`. Partial body **saved as an interrupted draft** (change comment "Interrupted — cancelled by user", title suffix "(incomplete)") — recommended default, see §6 Q2. |
+| **Run fails / crashes mid-stream** | `failure.ts` path already publishes `stream.done`; the lifecycle terminal fusion (§4.2(c)6) marks any non-terminal session `failed` and publishes `stream.document.error {reason:'run_failed', partialSaved}` first. Worker hard-crash: queue redelivery drives the run to a terminal status through the same `updateRunStatus`, closing the session then — the `run-job.ts` `finally` close is best-effort fast-path only. The client's zombie-guard (§4.4) covers the gap meanwhile. |
 | **Budget stop / wind-down** | `budget-stop.ts` aborts like a failure for the in-flight turn: session `failed`, `reason:'budget_stopped'`, partial saved per the same policy. The wind-down injection (80 %) happens between turns, so a compose call that already started streaming is never truncated by wind-down itself. |
 | **Args invalid at execution** (bad `spaceId`, access denied, body cap) | The stream looked fine but the save is refused: session `failed`, `reason:'save_failed'` (or `invalid_args`), `partialSaved:false`; the tool returns the error to the model, which apologizes / retries with a corrected location in the same run — a brand-new session, popup follows the newest. Dialog shows the error with the streamed content still visible (copyable), so nothing the user watched is lost. |
 | **SSE payload oversize / notify failure** | Fragments >4 KiB split; publish errors are swallowed (warn) — the durable chunk path and bootstrap self-heal the client via the `seq` gap → re-bootstrap rule. |
 | **Two sessions at once** | Dialog binds to the newest `streaming` session; earlier ones chip-ize. |
+| **Partial-save preconditions** | `partialSaved` can be `true` only when all hold: the location args (`spaceId`, `title`) parsed before the interruption, the owner-principal write authorization passes, and the decoded body is non-empty. The save runs through the **shared save core** factored from `runKbDraftWriteTool` (§4.1) — callable from `cancel-stop.ts` / `failure.ts` / the lifecycle terminal transition, i.e. *outside* the tool handler, using the run's `buildSpaceViewerPrincipal` identity. When the target never parsed, `partialSaved:false` and the streamed text remains visible/copyable in the dialog (and in `run_document_chunks` until pruned). |
 
 ### 4.8 Web vs. mobile (WebView shell)
 
@@ -619,22 +707,32 @@ model RunDocumentChunk {            // run_document_chunks — mirrors run_think
 
 Retention: chunks are working data — a `document-stream.prune` sweep (worker
 control loop, beside existing sweeps) deletes chunks for sessions terminal
-for >7 days; sessions rows stay (cheap, and back the ops/debug story).
+for >7 days. Session rows stay: **deliberately machine-only in v1** (rule
+zero's written exception) — they back the bootstrap endpoint, crash
+re-terminalization, and debugging; no owning surface is added, and if one
+ever is, the natural home is the run's activity panel
+(`RunLifecyclePanel.tsx`), not a new page.
 Index-creation lint rule: neither table is on the hot-table list, plain
-indexes fine.
+indexes fine. Also note `worker/src/run/execute/run-job.ts` already sits at
+528 lines (over the 500-line cap): the recorder wiring lands together with a
+seam split of run-job (the cap is an architectural signal, and the
+implementer should split along the existing setup/loop/finalize seams rather
+than grow the file).
 
 ### 5.2 Change map (for the implementer)
 
 | Area | Files | Change |
 |---|---|---|
 | Provider event | `packages/runtime/src/inference/connectors/openai-chat-protocol.ts`; `packages/runtime/src/inference/types.ts`; `packages/schemas/src/inference-core.ts`; `api/src/contracts/inference-core.ts` | enrich `tool_call.delta` with `index`/`id?`/`toolName?` |
-| Drain loop | `worker/src/run/inference-stage.ts`, `worker/src/run/inference.ts`, `worker/src/run/execute/run-inference.ts` | `onToolCallDelta` (sync), threaded like `onVisibleTextDelta`; cancel-poll + abort while a session is active |
-| Recorder | `worker/src/run/execute/document-stream.ts` (new) + wiring in `run-job.ts` | session lifecycle, incremental extraction, ephemeral publish, coalesced durable chunks |
+| Drain loop | `worker/src/run/inference-stage.ts`, `worker/src/run/inference.ts`, `worker/src/run/execute/run-inference.ts` | `onToolCallDelta` (sync), threaded like `onVisibleTextDelta`; invocation brackets (`beginInvocation`/`endInvocation`); compose-aware `maxOutputTokens` raise; cancel-poll while a session is active |
+| Abort plumbing | `packages/runtime/src/inference/` (request type + `service.ts` + all connectors' `fetch`), `worker/src/run/error-classification.ts`, `worker/src/run/inference-retry.ts`, `worker/src/run/agentic-loop.ts` | optional `AbortSignal` end-to-end; abort branch in `classifyError` that bypasses retry; aborted-outcome → cooperative-cancel exit (§4.7 Stop row) |
+| Recorder | `worker/src/run/execute/document-stream.ts` (new) + wiring in `run-job.ts` and `lifecycle.ts` (`updateRunStatus` terminal fusion, working-marker pattern) | session lifecycle, incremental extraction, ephemeral publish, coalesced durable chunks, bounded queue |
 | Partial-JSON util | new shared module (e.g. `packages/schemas/src/partial-json.ts`); `admin/src/facades/designer/hooks.ts` | `extractPartialStringField` — one implementation; designer migrates to it |
 | Tool | `packages/runtime/src/builtin-kb-tools.ts`, `worker/src/run/pa-tools/` (new `knowledge-compose.ts`), `worker/src/run/tools.ts`, shared save core factored from `knowledge-write.ts` | `kb_document_compose` |
 | Markdown converter | `api/src/lib/markdown.ts` → `packages/knowledge` (api re-exports) | shared `markdownToHtml` |
 | Transport | `packages/runtime/src/realtime.ts` (`publishSseEphemeral`), `packages/schemas/src/realtime-sse.ts`, `api/src/realtime/hub.ts` | events + no-replay + ephemeral path |
-| API | `api/src/routes/threads.ts` (+ a small service) | SSE hardening; two document-stream GET routes; prisma migration |
+| API | `api/src/routes/threads.ts` + a **new** `api/src/services/document-streams.ts` (threads.ts is at 431 lines — the routes stay thin, the service owns the queries) | SSE hardening; two document-stream GET routes (with session→thread+org binding check); prisma migration |
+| Mock LLM | `packages/mock-llm` (scenario schema + `src/server.ts`) | today the server streams each tool call's whole `arguments` in **one** SSE chunk with no pacing (`server.ts:169-188`) — add scenario-controlled fragmentation + inter-chunk delay for tool args, or none of §5.3's progressive assertions can run |
 | Admin facade | `admin/src/facades/threads/hooks.ts`, new `document-stream.ts` + `document-stream-helpers.ts` (+ node tests) | frame handling, entries, bootstrap, offset merge, reconcile |
 | Admin UI | new `DocumentStreamDialog.tsx`, `DocumentStreamChip.tsx`, `StreamingMarkdown.tsx`; `ChannelMessageFeed.tsx` | dialog + chip + renderer, feed wiring |
 | PA prompt | PA base-prompt module | compose-tool guidance (agree location first; resolve ids via `kb_list`) |
