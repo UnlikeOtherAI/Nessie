@@ -38,12 +38,12 @@ export type SessionPayload = {
 
 export type AccessTokenRefreshCoordinator = () => Promise<string | null>
 
+export type SessionReconcileCoordinator = () => Promise<SessionPayload | null>
+
 export type SessionMutationCoordinator = {
   refresh: AccessTokenRefreshCoordinator
-  run: (
-    mutation: () => Promise<SessionPayload>,
-    beforeApply?: () => Promise<void> | void,
-  ) => Promise<SessionPayload>
+  reconcile: SessionReconcileCoordinator
+  run: (mutation: () => Promise<SessionPayload>) => Promise<SessionPayload>
 }
 
 const MAX_SAFE_JWT_EXPIRY_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1_000)
@@ -108,7 +108,8 @@ export const getAccessTokenRenewalDelayMs = (
  */
 export const createSessionMutationCoordinator = (input: {
   applySession: (payload: SessionPayload) => void
-  clearSession: () => void
+  beforeApply?: (payload: SessionPayload) => Promise<void> | void
+  clearSession: () => Promise<void> | void
   refresh: () => Promise<SessionPayload | null>
 }): SessionMutationCoordinator => {
   let queue: Promise<void> | null = null
@@ -117,15 +118,14 @@ export const createSessionMutationCoordinator = (input: {
 
   const enqueue = (
     mutation: () => Promise<SessionPayload | null>,
-    beforeApply?: () => Promise<void> | void,
   ): Promise<SessionPayload | null> => {
     const execute = async (): Promise<SessionPayload | null> => {
       const payload = await mutation()
       if (payload === null) {
-        input.clearSession()
+        await input.clearSession()
         return null
       }
-      await beforeApply?.()
+      await input.beforeApply?.(payload)
       input.applySession(payload)
       return payload
     }
@@ -133,7 +133,14 @@ export const createSessionMutationCoordinator = (input: {
     const nextQueue = run.then(() => undefined, () => undefined)
     queue = nextQueue
     latest = run
-    latestToken = run.then((payload) => payload?.token ?? null)
+    latestToken = run.then(
+      (payload) => payload?.token ?? null,
+      (error: unknown) => { throw error },
+    )
+    // Payload-aware callers may own `run` directly. Attach a rejection handler
+    // to the token projection as well so that unused compatibility projections
+    // never become unhandled rejections.
+    void latestToken.catch(() => undefined)
 
     const clearLatest = (): void => {
       if (queue === nextQueue) queue = null
@@ -146,30 +153,35 @@ export const createSessionMutationCoordinator = (input: {
     return run
   }
 
-  const refresh = (): Promise<string | null> => {
+  const reconcile = (): Promise<SessionPayload | null> => {
     // A refresh arriving while another session mutation is queued must join
     // that mutation. Issuing a second request could otherwise apply an older
     // access token after a workspace switch or race two single-use cookies.
-    if (latest && latestToken) return latestToken
-    void enqueue(input.refresh)
-    return latestToken as Promise<string | null>
+    if (latest) return latest
+    return enqueue(input.refresh)
+  }
+
+  const refresh = (): Promise<string | null> => {
+    if (latestToken) return latestToken
+    const pending = reconcile()
+    return latestToken ?? pending.then((payload) => payload?.token ?? null)
   }
 
   const run = async (
     mutation: () => Promise<SessionPayload>,
-    beforeApply?: () => Promise<void> | void,
   ): Promise<SessionPayload> => {
-    const payload = await enqueue(mutation, beforeApply)
+    const payload = await enqueue(mutation)
     if (!payload) throw new Error('Session mutation returned no session.')
     return payload
   }
 
-  return { refresh, run }
+  return { reconcile, refresh, run }
 }
 
 export const createAccessTokenRefreshCoordinator = (input: {
   applySession: (payload: SessionPayload) => void
-  clearSession: () => void
+  beforeApply?: (payload: SessionPayload) => Promise<void> | void
+  clearSession: () => Promise<void> | void
   refresh: () => Promise<SessionPayload | null>
 }): AccessTokenRefreshCoordinator => createSessionMutationCoordinator(input).refresh
 

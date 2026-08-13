@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import { useNavigate } from 'react-router-dom'
 import { faCheck, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { AuthSessionApiError } from '@nessie/client-core'
 import { useAuthProviders } from '../../facades/auth/hooks'
 import {
   groupWorkspacesByOrganization,
@@ -19,7 +18,7 @@ import {
   resolveWorkspaceMenuPosition,
   type WorkspaceMenuPosition,
 } from './workspace-menu-position'
-import { workspaceSwitchFailureMessage } from './workspace-switch-message'
+import { recoverWorkspaceSwitchFailure } from './workspace-switch-recovery'
 
 type NativeWorkspaceWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
@@ -215,7 +214,7 @@ type WorkspaceSwitcherProps = {
 export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) => {
   const {
     me,
-    refreshAccessToken,
+    reconcileSession,
     switchContext,
     switchUoaWorkspace,
     token,
@@ -274,18 +273,17 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
       setOpen(false)
       void navigate('/channels', { replace: true })
     } catch (error) {
-      const code = error instanceof AuthSessionApiError ? error.code : undefined
-      setSwitchError(workspaceSwitchFailureMessage({
-        code,
-        currentWorkspace: active?.label,
-        targetWorkspace: workspace.label,
-      }))
-      if (code === 'WORKSPACE_NOT_AVAILABLE') {
-        try {
-          await refreshAccessToken()
-        } catch {
-          // The original error remains actionable; renewal retries independently.
-        }
+      const recovery = await recoverWorkspaceSwitchFailure({
+        currentWorkspace: active ?? null,
+        error,
+        reconcileSession,
+        targetWorkspace: workspace,
+      })
+      if (recovery.outcome === 'switched') {
+        setOpen(false)
+        void navigate('/channels', { replace: true })
+      } else {
+        setSwitchError(recovery.message)
       }
     } finally {
       setBusyTeamId(null)

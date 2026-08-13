@@ -165,6 +165,7 @@ export {
   type LoginInput,
   type SessionPayload,
   type SessionMutationCoordinator,
+  type SessionReconcileCoordinator,
   type SessionSnapshot,
   type SwitchContextInput,
   type SwitchUoaWorkspaceInput,

@@ -97,14 +97,20 @@ project** would leak agents/policies across workspaces (both scope by project).
   organizationId, teamId })`, both with bearer + cookie. Refresh and switching
   share one session-mutation coordinator so a delayed response cannot restore
   an older access token.
-- `AuthSessionProvider` exposes both switch operations and clears tenant query
-  caches before applying a successful replacement session.
+- `AuthSessionProvider` exposes both switch operations and a payload-aware
+  reconciliation refresh. Before any mutation applies a replacement session,
+  it cancels and clears tenant queries when the user or active
+  organisation/project/team changed; an ordinary refresh therefore handles a
+  shared-cookie switch made in another tab. Clearing authentication also clears
+  the cache.
 - `layouts/admin-shell/WorkspaceSwitcher.tsx` — a rail control. Local sessions
   list `me.memberships` and switch context; UOA sessions list the named UOA
   directory saved at authentication and switch directly inside Nessie. The menu
-  remains open with a row spinner during the request and reports failures while
-  retaining the current workspace. "Add a workspace" still opens the full UOA
-  chooser.
+  remains open with a row spinner during the request. After an ambiguous error
+  it reconciles through ordinary refresh: a recovered target completes the
+  navigation, a recovered source is named accurately, and an unconfirmed state
+  never claims the source was retained. "Add a workspace" still opens the full
+  UOA chooser.
 - `LoginPage` processes an OAuth `code` even when already authenticated (so
   "add a workspace" re-scopes the session).
 

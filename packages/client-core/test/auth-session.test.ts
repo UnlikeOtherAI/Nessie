@@ -276,7 +276,54 @@ test('session mutation coordinator makes refresh join an in-flight workspace swi
   assert.deepEqual(applied, ['switched-token'])
 })
 
-test('session mutation coordinator applies a refresh before a queued switch', async () => {
+test('session mutation coordinator exposes the refreshed payload and token-only API', async () => {
+  let resolveRefresh: ((payload: SessionPayload) => void) | undefined
+  let refreshCalls = 0
+  const refreshResult = new Promise<SessionPayload>((resolve) => {
+    resolveRefresh = resolve
+  })
+  const coordinator = createSessionMutationCoordinator({
+    applySession: () => undefined,
+    clearSession: () => assert.fail('session must remain authenticated'),
+    refresh: () => {
+      refreshCalls += 1
+      return refreshResult
+    },
+  })
+
+  const reconciling = coordinator.reconcile()
+  const refreshing = coordinator.refresh()
+  assert.equal(refreshCalls, 1)
+
+  const payload = sessionPayload('renewed-token')
+  resolveRefresh?.(payload)
+  assert.equal(await reconciling, payload)
+  assert.equal(await refreshing, 'renewed-token')
+})
+
+test('payload reconciliation refreshes after a failed explicit mutation', async () => {
+  let refreshCalls = 0
+  const coordinator = createSessionMutationCoordinator({
+    applySession: () => undefined,
+    clearSession: () => assert.fail('session must remain authenticated'),
+    refresh: async () => {
+      refreshCalls += 1
+      return sessionPayload('reconciled-token')
+    },
+  })
+
+  await assert.rejects(
+    coordinator.run(async () => {
+      throw new TypeError('response body was lost')
+    }),
+    /response body was lost/,
+  )
+
+  assert.equal((await coordinator.reconcile())?.token, 'reconciled-token')
+  assert.equal(refreshCalls, 1)
+})
+
+test('session mutation coordinator runs its global before-apply for every mutation', async () => {
   let resolveRefresh: ((payload: SessionPayload) => void) | undefined
   let currentToken = 'old-token'
   const events: string[] = []
@@ -284,6 +331,9 @@ test('session mutation coordinator applies a refresh before a queued switch', as
     resolveRefresh = resolve
   })
   const coordinator = createSessionMutationCoordinator({
+    beforeApply: (payload) => {
+      events.push(`before:${payload.token}`)
+    },
     applySession: (payload) => {
       currentToken = payload.token
       events.push(`apply:${payload.token}`)
@@ -296,17 +346,16 @@ test('session mutation coordinator applies a refresh before a queued switch', as
   const switching = coordinator.run(async () => {
     events.push(`switch:${currentToken}`)
     return sessionPayload('switched-token')
-  }, () => {
-    events.push('clear-cache')
   })
 
   resolveRefresh?.(sessionPayload('renewed-token'))
   assert.equal(await renewing, 'renewed-token')
   assert.equal((await switching).token, 'switched-token')
   assert.deepEqual(events, [
+    'before:renewed-token',
     'apply:renewed-token',
     'switch:renewed-token',
-    'clear-cache',
+    'before:switched-token',
     'apply:switched-token',
   ])
 })
