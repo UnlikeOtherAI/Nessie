@@ -1,25 +1,32 @@
-import { type IpadNativeAccount } from './IpadNativeAccountMenu'
+import { useCallback, useState } from 'react'
+import { type LayoutChangeEvent, StyleSheet, View } from 'react-native'
+
+import { IpadNativeAccountButton, type IpadNativeAccount } from './IpadNativeAccountMenu'
+import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
+import { IpadNativeOverflowMenu } from './IpadNativeOverflowMenu'
 import { IpadNativeToolbar, type ToolbarAction, type ToolbarState } from './IpadNativeToolbar'
 import { IpadNativeTabBar } from './IpadNativeTabBar'
 import { IpadNativeWorkspaceSwitcher } from './IpadNativeWorkspaceSwitcher'
 import {
-  getIpadToolbarLeft,
-  getIpadWorkspaceWidth,
+  getIpadTopChromeLayout,
   IPAD_NATIVE_CHROME_GAP,
+  IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE,
+  IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE,
+  type IpadTopChromeMode,
   type IpadNativeChromeTheme,
 } from '../lib/ipad-native-chrome'
+import { TABS } from '../lib/tabs'
 
 type IpadNativeChromeProps = {
   activeIndex: number
   account: IpadNativeAccount
   badgeCounts: { assignedWork: number; channels: number; knowledge: number }
   insetLeft: number
+  insetRight: number
   onIndexChange: (index: number) => void
   onToggleAccountMenu: () => void
   onToolbarAction: (action: ToolbarAction) => void
   onToggleWorkspaceMenu: (left: number) => void
-  onTabBarWidthChange: (width: number) => void
-  tabBarWidth: number | null
   theme: IpadNativeChromeTheme
   toolbarState: ToolbarState
   top: number
@@ -32,53 +39,76 @@ export const IpadNativeChrome = ({
   account,
   badgeCounts,
   insetLeft,
+  insetRight,
   onIndexChange,
-  onTabBarWidthChange,
   onToggleAccountMenu,
   onToggleWorkspaceMenu,
   onToolbarAction,
-  tabBarWidth,
   theme,
   toolbarState,
   top,
   windowWidth,
   workspaceName,
 }: IpadNativeChromeProps): React.JSX.Element => {
-  const toolbarLeft = tabBarWidth === null
-    ? null
-    : getIpadToolbarLeft(windowWidth, tabBarWidth, insetLeft)
-  const workspaceWidth = toolbarLeft === null
-    ? null
-    : getIpadWorkspaceWidth(toolbarLeft, insetLeft)
+  const [controlsWidth, setControlsWidth] = useState<Record<IpadTopChromeMode, number>>({
+    compact: IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE,
+    full: IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE,
+  })
+  const layout = getIpadTopChromeLayout({
+    compactControlsWidth: controlsWidth.compact,
+    fullControlsWidth: controlsWidth.full,
+    hasWorkspace: Boolean(workspaceName),
+    insetLeft,
+    insetRight,
+    screenWidth: windowWidth,
+  })
   const workspaceLeft = insetLeft + IPAD_NATIVE_CHROME_GAP
+  const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
+  const onControlsLayout = useCallback((event: LayoutChangeEvent): void => {
+    const width = Math.round(event.nativeEvent.layout.width)
+    setControlsWidth((current) => current[layout.mode] === width
+      ? current
+      : { ...current, [layout.mode]: width })
+  }, [layout.mode])
 
   return (
     <>
-      <IpadNativeTabBar
-        account={account}
-        activeIndex={activeIndex}
-        badgeCounts={badgeCounts}
-        onAccountPress={onToggleAccountMenu}
-        onIndexChange={onIndexChange}
-        onWidthChange={onTabBarWidthChange}
-        theme={theme}
-        top={top}
-      />
-      {toolbarLeft !== null ? (
-        <IpadNativeToolbar
-          canBack={toolbarState.canBack}
-          canForward={toolbarState.canForward}
-          left={toolbarLeft}
-          onAction={onToolbarAction}
-          recentOpen={toolbarState.recentOpen}
+      <View
+        onLayout={onControlsLayout}
+        style={[styles.controls, { left: layout.controlsLeft, top }]}
+      >
+        {layout.mode === 'full' ? (
+          <IpadNativeToolbar
+            canBack={toolbarState.canBack}
+            canForward={toolbarState.canForward}
+            onAction={onToolbarAction}
+            recentOpen={toolbarState.recentOpen}
+            theme={theme}
+          />
+        ) : null}
+        <IpadNativeTabBar
+          activeIndex={activeIndex}
+          badgeCounts={badgeCounts}
+          onIndexChange={onIndexChange}
+          showSearch={layout.mode === 'full'}
           theme={theme}
-          top={top}
         />
-      ) : null}
-      {workspaceName && workspaceWidth !== null ? (
+        {layout.mode === 'compact' ? (
+          <IpadNativeOverflowMenu
+            onSearchPress={() => searchIndex !== -1 && onIndexChange(searchIndex)}
+            onToolbarAction={onToolbarAction}
+            theme={theme}
+            toolbarState={toolbarState}
+          />
+        ) : null}
+        <IpadNativeChromeSurface style={styles.accountSurface} theme={theme}>
+          <IpadNativeAccountButton {...account} onPress={onToggleAccountMenu} theme={theme} />
+        </IpadNativeChromeSurface>
+      </View>
+      {workspaceName && layout.workspaceWidth !== null ? (
         <IpadNativeWorkspaceSwitcher
           left={workspaceLeft}
-          maxWidth={workspaceWidth}
+          maxWidth={layout.workspaceWidth}
           name={workspaceName}
           onPress={() => onToggleWorkspaceMenu(workspaceLeft)}
           theme={theme}
@@ -88,3 +118,13 @@ export const IpadNativeChrome = ({
     </>
   )
 }
+
+const styles = StyleSheet.create({
+  accountSurface: { justifyContent: 'center', width: 42 },
+  controls: {
+    flexDirection: 'row',
+    gap: IPAD_NATIVE_CHROME_GAP,
+    position: 'absolute',
+    zIndex: 20,
+  },
+})

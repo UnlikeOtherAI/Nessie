@@ -1,7 +1,6 @@
-import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
-import { IpadNativeAccountButton, type IpadNativeAccount } from './IpadNativeAccountMenu'
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
 import {
   IPAD_NATIVE_CHROME_GAP,
@@ -14,14 +13,11 @@ const PRIMARY_TABS = TABS.filter((tab) => tab.key !== 'search')
 const SEARCH_TAB = TABS.find((tab) => tab.key === 'search')
 
 type IpadNativeTabBarProps = {
-  account: IpadNativeAccount
   activeIndex: number
   badgeCounts: { assignedWork: number; channels: number; knowledge: number }
-  onAccountPress: () => void
   onIndexChange: (index: number) => void
-  onWidthChange: (width: number) => void
+  showSearch: boolean
   theme: IpadNativeChromeTheme
-  top: number
 }
 
 type IpadNativeTabButtonProps = {
@@ -84,52 +80,40 @@ const IpadNativeTabButton = ({
 }
 
 export const IpadNativeTabBar = ({
-  account,
   activeIndex,
   badgeCounts,
-  onAccountPress,
   onIndexChange,
-  onWidthChange,
+  showSearch,
   theme,
-  top,
 }: IpadNativeTabBarProps): React.JSX.Element => (
-  <View pointerEvents="box-none" style={[styles.layer, { top }]}>
-    <View
-      onLayout={(event: LayoutChangeEvent) => onWidthChange(event.nativeEvent.layout.width)}
-      style={styles.controls}
-    >
-      <IpadNativeChromeSurface theme={theme}>
-        {PRIMARY_TABS.map((tab) => (
-          <IpadNativeTabButton
-            activeIndex={activeIndex}
-            badgeCounts={badgeCounts}
-            key={tab.key}
-            onIndexChange={onIndexChange}
-            tab={tab}
-            theme={theme}
-          />
-        ))}
+  <View style={styles.controls}>
+    <IpadNativeChromeSurface theme={theme}>
+      {PRIMARY_TABS.map((tab) => (
+        <IpadNativeTabButton
+          activeIndex={activeIndex}
+          badgeCounts={badgeCounts}
+          key={tab.key}
+          onIndexChange={onIndexChange}
+          tab={tab}
+          theme={theme}
+        />
+      ))}
+    </IpadNativeChromeSurface>
+    {showSearch && SEARCH_TAB ? (
+      <IpadNativeChromeSurface style={styles.searchSurface} theme={theme}>
+        <IpadNativeTabButton
+          activeIndex={activeIndex}
+          badgeCounts={badgeCounts}
+          onIndexChange={onIndexChange}
+          tab={SEARCH_TAB}
+          theme={theme}
+        />
       </IpadNativeChromeSurface>
-      {SEARCH_TAB ? (
-        <IpadNativeChromeSurface style={styles.searchSurface} theme={theme}>
-          <IpadNativeTabButton
-            activeIndex={activeIndex}
-            badgeCounts={badgeCounts}
-            onIndexChange={onIndexChange}
-            tab={SEARCH_TAB}
-            theme={theme}
-          />
-        </IpadNativeChromeSurface>
-      ) : null}
-      <IpadNativeChromeSurface style={styles.accountSurface} theme={theme}>
-        <IpadNativeAccountButton {...account} onPress={onAccountPress} theme={theme} />
-      </IpadNativeChromeSurface>
-    </View>
+    ) : null}
   </View>
 )
 
 const styles = StyleSheet.create({
-  accountSurface: { width: IPAD_NATIVE_CHROME_HEIGHT, justifyContent: 'center' },
   badge: {
     minWidth: 15,
     height: 15,
@@ -149,13 +133,6 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 15,
     fontWeight: '600',
-  },
-  layer: {
-    position: 'absolute',
-    right: 0,
-    left: 0,
-    zIndex: 20,
-    alignItems: 'center',
   },
   searchTab: {
     width: IPAD_NATIVE_CHROME_HEIGHT - 8,

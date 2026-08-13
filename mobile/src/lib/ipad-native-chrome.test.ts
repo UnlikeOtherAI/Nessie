@@ -5,8 +5,7 @@ import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
   getIpadContentTop,
-  getIpadToolbarLeft,
-  getIpadWorkspaceWidth,
+  getIpadTopChromeLayout,
   IPAD_WINDOWED_CHROME_TOP,
 } from './ipad-native-chrome'
 
@@ -25,10 +24,56 @@ test('builds iPad top chrome from the active theme colours', () => {
   assert.equal(theme.inactiveTintColor, '#64748b')
 })
 
-test('positions controls to the leading side of the centred iPad tab bar', () => {
-  assert.equal(getIpadToolbarLeft(1_024, 360, 0), 167)
-  assert.equal(getIpadToolbarLeft(768, 360, 0), 39)
-  assert.equal(getIpadToolbarLeft(768, 600, 20), 32)
+test('centres the complete iPad chrome group when no workspace is present', () => {
+  assert.deepEqual(getIpadTopChromeLayout({
+    compactControlsWidth: 460,
+    fullControlsWidth: 620,
+    hasWorkspace: false,
+    insetLeft: 0,
+    insetRight: 0,
+    screenWidth: 1_024,
+  }), { controlsLeft: 202, mode: 'full', workspaceWidth: null })
+})
+
+test('moves the full group trailing before compacting it to preserve the workspace switcher', () => {
+  assert.deepEqual(getIpadTopChromeLayout({
+    compactControlsWidth: 460,
+    fullControlsWidth: 620,
+    hasWorkspace: true,
+    insetLeft: 0,
+    insetRight: 0,
+    screenWidth: 1_024,
+  }), { controlsLeft: 244, mode: 'full', workspaceWidth: 220 })
+})
+
+test('compacts navigation into overflow only after the full group cannot fit', () => {
+  assert.deepEqual(getIpadTopChromeLayout({
+    compactControlsWidth: 460,
+    fullControlsWidth: 620,
+    hasWorkspace: true,
+    insetLeft: 0,
+    insetRight: 0,
+    screenWidth: 768,
+  }), { controlsLeft: 244, mode: 'compact', workspaceWidth: 220 })
+})
+
+test('shrinks and finally hides the workspace switcher before overlap in a narrow iPad window', () => {
+  assert.deepEqual(getIpadTopChromeLayout({
+    compactControlsWidth: 460,
+    fullControlsWidth: 620,
+    hasWorkspace: true,
+    insetLeft: 0,
+    insetRight: 0,
+    screenWidth: 700,
+  }), { controlsLeft: 120, mode: 'compact', workspaceWidth: 96 })
+  assert.deepEqual(getIpadTopChromeLayout({
+    compactControlsWidth: 460,
+    fullControlsWidth: 620,
+    hasWorkspace: true,
+    insetLeft: 0,
+    insetRight: 0,
+    screenWidth: 600,
+  }), { controlsLeft: 70, mode: 'compact', workspaceWidth: null })
 })
 
 test('places iPad chrome flush below the fullscreen safe area and centred in a window title bar', () => {
@@ -39,10 +84,4 @@ test('places iPad chrome flush below the fullscreen safe area and centred in a w
 test('leaves twelve points between the iPad chrome and web content', () => {
   assert.equal(getIpadContentTop(24), 78)
   assert.equal(getIpadContentTop(IPAD_WINDOWED_CHROME_TOP), 66)
-})
-
-test('fits the workspace switcher before the leading controls without covering them', () => {
-  assert.equal(getIpadWorkspaceWidth(407, 0), 220)
-  assert.equal(getIpadWorkspaceWidth(128, 0), 104)
-  assert.equal(getIpadWorkspaceWidth(39, 0), null)
 })

@@ -149,16 +149,18 @@ safe area, while a Stage Manager window centres it in that window's title bar;
 `App.tsx` keeps a 12-point clearance between that chrome and the WebView's first
 row (`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
 its empty tab scenes can cover the sibling WKWebView with a black controller
-surface after login. Back, Forward, Recent Channels, and Help buttons sit on the
-leading side of the iPad row, using the same theme-derived chrome as the tabs.
-The active workspace's initial and name appear ahead of those controls; tapping
-it opens the web shell's existing workspace menu, so context switching and
-adding a workspace follow the same entitlement-aware flow as the desktop rail.
-The signed-in person's SSO avatar, presence indicator, and active-status badge
-sit immediately after the iPad tab group in the same native chrome. Tapping it
-opens the canonical web account menu (presence, status, settings, and logout),
-so the native presentation does not fork any account actions; the duplicate web
-header trigger is omitted on native iPad and iPhone shells.
+surface after login. Back, Forward, Recent Channels, Help, the destination tabs,
+Search, and the signed-in person's SSO avatar form one centred, theme-derived
+native control group. The active workspace's initial and name occupy the leading
+edge; if they would overlap, the complete group moves trailing before any
+controls are removed. Only in a genuinely narrow Stage Manager window does the
+group compact: Search and the four toolbar actions move into a native
+three-dot menu, and the workspace trigger then truncates to its icon/chevron or
+hides as a last resort. Tapping the workspace opens the web shell's existing
+workspace menu, while tapping the avatar opens the canonical web account menu
+(presence, status, settings, and logout), so neither native presentation forks
+the entitlement-aware web actions. The duplicate web header trigger is omitted
+on native iPad and iPhone shells.
 Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split
 lives in `mobile/src/config.ts`:

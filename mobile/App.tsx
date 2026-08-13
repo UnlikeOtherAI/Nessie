@@ -88,7 +88,6 @@ const Shell = (): React.JSX.Element => {
   const [strongAccent, setStrongAccent] = useState(DEFAULT_STRONG_ACTIVE_TINT)
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
   const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
-  const [ipadTabBarWidth, setIpadTabBarWidth] = useState<number | null>(null)
   const [ipadWorkspaceName, setIpadWorkspaceName] = useState<string | null>(null)
   const [phoneHeaderSurface, setPhoneHeaderSurface] = useState(DEFAULT_PHONE_HEADER_SURFACE)
   const [phoneHeaderText, setPhoneHeaderText] = useState(DEFAULT_PHONE_HEADER_TEXT)
@@ -477,12 +476,11 @@ const Shell = (): React.JSX.Element => {
           account={nativeAccount}
           badgeCounts={attentionBadges}
           onIndexChange={onIndexChange}
-          onTabBarWidthChange={setIpadTabBarWidth}
           onToggleAccountMenu={nativeActions.toggleAccountMenu}
           onToggleWorkspaceMenu={nativeActions.toggleWorkspaceMenu}
           onToolbarAction={nativeActions.runToolbarAction}
           insetLeft={insets.left}
-          tabBarWidth={ipadTabBarWidth}
+          insetRight={insets.right}
           theme={ipadChromeTheme}
           toolbarState={toolbarState}
           top={ipadChromeTop}

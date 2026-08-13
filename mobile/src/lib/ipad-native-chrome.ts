@@ -16,13 +16,22 @@ type IpadNativeChromeThemeOptions = {
   surfaceColor: string
 }
 
-export const IPAD_NATIVE_TOOLBAR_WIDTH = 153
 export const IPAD_NATIVE_CHROME_HEIGHT = 42
 export const IPAD_NATIVE_CHROME_BOTTOM_CLEARANCE = 12
 export const IPAD_WINDOWED_CHROME_TOP = 12
 export const IPAD_NATIVE_WORKSPACE_MAX_WIDTH = 220
-export const IPAD_NATIVE_WORKSPACE_MIN_WIDTH = 104
+export const IPAD_NATIVE_WORKSPACE_COLLAPSED_WIDTH = 68
 export const IPAD_NATIVE_CHROME_GAP = 12
+export const IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE = 628
+export const IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE = 463
+
+export type IpadTopChromeMode = 'compact' | 'full'
+
+export type IpadTopChromeLayout = {
+  controlsLeft: number
+  mode: IpadTopChromeMode
+  workspaceWidth: number | null
+}
 
 // A full-screen iPad app owns no pixels above its safe area, so native chrome
 // must begin exactly at that edge. A Stage Manager window has no top safe-area
@@ -68,17 +77,80 @@ export const createIpadNativeChromeTheme = ({
   pressedBackgroundColor: withOpacity(activeTintColor, dark ? 0.42 : 0.2),
 })
 
-export const getIpadToolbarLeft = (
-  screenWidth: number,
-  tabBarWidth: number,
-  insetLeft: number,
-): number => Math.max(insetLeft + 12, (screenWidth - tabBarWidth) / 2 - IPAD_NATIVE_TOOLBAR_WIDTH - 12)
+const getCentredControlsLeft = (screenWidth: number, controlsWidth: number): number =>
+  (screenWidth - controlsWidth) / 2
 
-// The workspace chip occupies the leading space before browser controls. Hide
-// it in a narrow split view rather than letting it cover those controls.
-export const getIpadWorkspaceWidth = (toolbarLeft: number, insetLeft: number): number | null => {
-  const available = toolbarLeft - insetLeft - IPAD_NATIVE_CHROME_GAP * 2
-  return available >= IPAD_NATIVE_WORKSPACE_MIN_WIDTH
-    ? Math.min(available, IPAD_NATIVE_WORKSPACE_MAX_WIDTH)
-    : null
+const fitsTrailingEdge = (left: number, width: number, trailingEdge: number): boolean =>
+  left + width <= trailingEdge
+
+// The workspace owns the leading edge, while all navigation controls are one
+// visual group. Preserve both by moving that group trailing before reducing it.
+export const getIpadTopChromeLayout = ({
+  compactControlsWidth,
+  fullControlsWidth,
+  hasWorkspace,
+  insetLeft,
+  insetRight,
+  screenWidth,
+}: {
+  compactControlsWidth: number
+  fullControlsWidth: number
+  hasWorkspace: boolean
+  insetLeft: number
+  insetRight: number
+  screenWidth: number
+}): IpadTopChromeLayout => {
+  const leadingEdge = insetLeft + IPAD_NATIVE_CHROME_GAP
+  const trailingEdge = screenWidth - insetRight - IPAD_NATIVE_CHROME_GAP
+  const workspaceRight = leadingEdge + IPAD_NATIVE_WORKSPACE_MAX_WIDTH + IPAD_NATIVE_CHROME_GAP
+  const arrangeWithWorkspace = (controlsWidth: number): number => Math.max(
+    getCentredControlsLeft(screenWidth, controlsWidth),
+    workspaceRight,
+  )
+
+  if (!hasWorkspace) {
+    const controlsLeft = Math.max(leadingEdge, getCentredControlsLeft(screenWidth, fullControlsWidth))
+    if (fitsTrailingEdge(controlsLeft, fullControlsWidth, trailingEdge)) {
+      return { controlsLeft, mode: 'full', workspaceWidth: null }
+    }
+    return {
+      controlsLeft: Math.max(leadingEdge, getCentredControlsLeft(screenWidth, compactControlsWidth)),
+      mode: 'compact',
+      workspaceWidth: null,
+    }
+  }
+
+  const fullControlsLeft = arrangeWithWorkspace(fullControlsWidth)
+  if (fitsTrailingEdge(fullControlsLeft, fullControlsWidth, trailingEdge)) {
+    return {
+      controlsLeft: fullControlsLeft,
+      mode: 'full',
+      workspaceWidth: IPAD_NATIVE_WORKSPACE_MAX_WIDTH,
+    }
+  }
+
+  const compactControlsLeft = arrangeWithWorkspace(compactControlsWidth)
+  if (fitsTrailingEdge(compactControlsLeft, compactControlsWidth, trailingEdge)) {
+    return {
+      controlsLeft: compactControlsLeft,
+      mode: 'compact',
+      workspaceWidth: IPAD_NATIVE_WORKSPACE_MAX_WIDTH,
+    }
+  }
+
+  const centredCompactLeft = getCentredControlsLeft(screenWidth, compactControlsWidth)
+  const availableWorkspaceWidth = centredCompactLeft - leadingEdge - IPAD_NATIVE_CHROME_GAP
+  if (availableWorkspaceWidth >= IPAD_NATIVE_WORKSPACE_COLLAPSED_WIDTH) {
+    return {
+      controlsLeft: centredCompactLeft,
+      mode: 'compact',
+      workspaceWidth: Math.min(availableWorkspaceWidth, IPAD_NATIVE_WORKSPACE_MAX_WIDTH),
+    }
+  }
+
+  return {
+    controlsLeft: Math.max(leadingEdge, centredCompactLeft),
+    mode: 'compact',
+    workspaceWidth: null,
+  }
 }
