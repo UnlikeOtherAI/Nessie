@@ -144,6 +144,7 @@ export const registerAuthLoginRoute = (
             uoaTokenVersion: uoaIdentity.uoaTokenVersion,
             userId: context.userId,
             workspace: uoaIdentity.workspace,
+            workspaceDirectory: uoaSession.workspaceDirectory,
           })
           uoaSessionIdentity = {
             organizationId: verifiedUoaWorkspace.organizationId,

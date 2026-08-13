@@ -24,6 +24,7 @@ export type BeginExternalAuthInput = {
   providerId: string
   redirectUri: string
   storage: PkceStorage
+  teamHint?: string
   theme?: string
 }
 
@@ -53,6 +54,7 @@ export const beginExternalAuth = async ({
   providerId,
   redirectUri,
   storage,
+  teamHint,
   theme,
 }: BeginExternalAuthInput): Promise<string> => {
   const codeVerifier = randomString()
@@ -78,6 +80,9 @@ export const beginExternalAuth = async ({
   authorizeUrl.searchParams.set('state', state)
   if (theme) {
     authorizeUrl.searchParams.set('theme', theme)
+  }
+  if (teamHint) {
+    authorizeUrl.searchParams.set('teamHint', teamHint)
   }
 
   const response = await fetch(authorizeUrl.toString())

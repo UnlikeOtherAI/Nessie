@@ -87,6 +87,10 @@ test('account-link sync updates every first-party product under one transaction'
       statement,
       /"uoa_token_version"[\s\S]*<= EXCLUDED\."uoa_token_version"/,
     )
+    assert.match(
+      statement,
+      /"metadata_json" = "product_account_links"\."metadata_json" \|\| EXCLUDED\."metadata_json"/,
+    )
   }
 })
 

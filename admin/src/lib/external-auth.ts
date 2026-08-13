@@ -25,9 +25,10 @@ export const externalAuthRedirectUri = (): string =>
 export const startExternalSignIn = async (
   providerId: string,
   theme: AppliedTheme,
+  teamHint?: string,
 ): Promise<void> => {
   const redirectUri = externalAuthRedirectUri()
-  const authorizeUrl = await beginExternalAuth(providerId, redirectUri, theme)
+  const authorizeUrl = await beginExternalAuth(providerId, redirectUri, theme, teamHint)
 
   if (isDesktopApp()) {
     const { openUrl } = await import('@tauri-apps/plugin-opener')

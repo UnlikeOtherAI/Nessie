@@ -133,6 +133,51 @@ export const loadUserMemberships = async (
   }))
 }
 
+const uoaWorkspaceDirectoryFromMetadata = (
+  metadata: unknown,
+  activeTeamId: string | undefined,
+): MeResponse['uoaWorkspaces'] => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined
+  const entries = (metadata as Record<string, unknown>).workspaceDirectory
+  if (!Array.isArray(entries)) return undefined
+  const workspaces = entries.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const values = entry as Record<string, unknown>
+    const organizationId = typeof values.organizationId === 'string' ? values.organizationId.trim() : ''
+    const teamId = typeof values.teamId === 'string' ? values.teamId.trim() : ''
+    const label = typeof values.label === 'string' ? values.label.trim() : ''
+    const orgName = typeof values.orgName === 'string' ? values.orgName.trim() : ''
+    if (!organizationId || !teamId || !label) return []
+    return [{
+      organizationId,
+      teamId,
+      label,
+      ...(orgName ? { orgName } : {}),
+      active: teamId === activeTeamId,
+    }]
+  })
+  return workspaces.length > 0 ? workspaces : undefined
+}
+
+const loadUoaWorkspaceDirectory = async (
+  prisma: PrismaClient,
+  userId: string,
+  claims: SessionTokenClaims,
+): Promise<MeResponse['uoaWorkspaces']> => {
+  if (claims.providerType !== 'uoa') return undefined
+  const link = await prisma.productAccountLink.findUnique({
+    where: {
+      organizationId_userId_productSlug: {
+        organizationId: claims.org,
+        userId,
+        productSlug: 'nessie',
+      },
+    },
+    select: { metadata: true },
+  })
+  return uoaWorkspaceDirectoryFromMetadata(link?.metadata, claims.uoaIdentity?.teamId)
+}
+
 export const buildMeResponse = async (
   prisma: PrismaClient,
   user: User,
@@ -147,7 +192,10 @@ export const buildMeResponse = async (
     })
   }
 
-  const memberships = await loadUserMemberships(prisma, user.id)
+  const [memberships, uoaWorkspaces] = await Promise.all([
+    loadUserMemberships(prisma, user.id),
+    loadUoaWorkspaceDirectory(prisma, user.id, claims),
+  ])
 
   // Surface the live per-org role for the active context org so the admin's
   // client-side gating matches the server's now-authoritative role check
@@ -190,5 +238,6 @@ export const buildMeResponse = async (
       autoRedirectToSso: config.auth.autoRedirectToSso,
     },
     memberships,
+    ...(uoaWorkspaces ? { uoaWorkspaces } : {}),
   }
 }

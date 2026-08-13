@@ -16,6 +16,7 @@ export const beginExternalAuth = (
   providerId: string,
   redirectUri: string,
   theme: AppliedTheme,
+  teamHint?: string,
 ): Promise<string> =>
   coreBeginExternalAuth({
     baseUrl: getBaseUrl(),
@@ -23,6 +24,7 @@ export const beginExternalAuth = (
     providerId,
     redirectUri,
     storage,
+    teamHint,
     theme,
   })
 
