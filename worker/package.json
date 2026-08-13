@@ -24,6 +24,7 @@
     "@nessie/comms-connect": "workspace:*",
     "@nessie/comms-providers": "workspace:*",
     "@nessie/config": "workspace:*",
+    "@nessie/dashboard": "workspace:*",
     "@nessie/db": "workspace:*",
     "@nessie/executor-manage": "workspace:*",
     "@nessie/knowledge": "workspace:*",

@@ -47,6 +47,11 @@ import {
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
 import { executeAttachmentThumbnailJob } from './control/attachment-thumbnail.js'
+import {
+  DASHBOARD_REFRESH_TOPIC,
+  refreshDashboardDataSource,
+  sweepDueDashboardSources,
+} from './control/dashboard-refresh.js'
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
@@ -363,6 +368,30 @@ export const startWorker = async (
     { signal: abortController.signal },
   )
 
+  // Dashboards: one cache per source, refreshed here and nowhere else, so
+  // viewing a dashboard never causes an outbound request.
+  const dashboardEgressPolicy = {
+    deniedOrigins: [config.api.publicUrl].filter((value): value is string => Boolean(value)),
+  }
+  const dashboardSecretResolver = createMcpSecretResolver(prisma, config.auth.secret ?? '')
+  const dashboardRefreshDeps = {
+    prisma,
+    fileService,
+    egressPolicy: dashboardEgressPolicy,
+    resolveCredential: async (ref: string) =>
+      ref.startsWith('secret_dashboard_') ? dashboardSecretResolver.resolve(ref) : null,
+  }
+
+  queueProvider.subscribe(
+    DASHBOARD_REFRESH_TOPIC,
+    async (job) => {
+      const payload = job.payload as { sourceId?: unknown }
+      if (typeof payload?.sourceId !== 'string') return
+      await refreshDashboardDataSource(dashboardRefreshDeps, { sourceId: payload.sourceId })
+    },
+    { signal: abortController.signal },
+  )
+
   queueProvider.subscribe(
     'trigger.event.dispatch',
     async (job) => {
@@ -491,6 +520,30 @@ export const startWorker = async (
       triggerSweepInFlight = false
     }
   }, 15_000)
+
+  // Due-source sweep. Reuses the trigger poller's claim shape rather than
+  // introducing a second scheduler: a conditional update on `claimedAt` means
+  // two workers cannot both take one source.
+  let dashboardSweepInFlight = false
+  const dashboardSweepInterval = setInterval(async () => {
+    if (dashboardSweepInFlight || abortController.signal.aborted) return
+    dashboardSweepInFlight = true
+    try {
+      const claimed = await sweepDueDashboardSources(prisma, { limit: 20 })
+      for (const source of claimed) {
+        // One queued attempt per source: a slow fetch must not pile up.
+        await queueProvider.enqueue(
+          DASHBOARD_REFRESH_TOPIC,
+          { sourceId: source.sourceId },
+          { idempotencyKey: `dashboard:refresh:${source.sourceId}` },
+        )
+      }
+    } catch (error) {
+      console.error('[worker.dashboard-sweep] failed', error)
+    } finally {
+      dashboardSweepInFlight = false
+    }
+  }, 30_000)
 
   // W6: reclaim stuck workflow steps — an expired lease (actively-worked step
   // whose worker died) or an expired deadline (suspended step waiting on an
@@ -640,6 +693,7 @@ export const startWorker = async (
   const stop = async () => {
     abortController.abort()
     clearInterval(triggerSweepInterval)
+    clearInterval(dashboardSweepInterval)
     clearInterval(workflowStepReapInterval)
     clearInterval(deliveryRetryInterval)
     clearInterval(mailboxSweepInterval)
