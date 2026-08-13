@@ -68,7 +68,7 @@
   color: var(--tx);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .notification-toast-viewport {
     top: auto;
     right: 12px;

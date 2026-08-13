@@ -1797,7 +1797,7 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
-@media (max-width: 1024px), (hover: none), (pointer: coarse), (any-pointer: coarse) {
+@media (hover: none), (pointer: coarse), (any-pointer: coarse) {
   /* Chat message controls are explicit. Native selection would conflict with
      the tap-on-message action bar; knowledge and project text never receives
      this class and remains selectable. */
