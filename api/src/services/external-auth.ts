@@ -57,7 +57,6 @@ const ensureOidcProvider = (provider: AuthProviderConfig): void => {
 // with no redirect following, so an IdP (or its discovery document) cannot
 // bounce the code exchange or userinfo read onto another origin.
 // The options are injectable so tests can stub DNS resolution at this seam.
-const SAFE_OIDC_FETCH_OPTIONS = { maxRedirects: 0 } as const
 const oidcFetchOptions = (options?: SafeFetchOptions): SafeFetchOptions => ({
   ...options,
   maxRedirects: 0,
