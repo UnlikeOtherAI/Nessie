@@ -3,12 +3,12 @@ import { TriggerEditorDialog } from '../components/features/triggers/TriggerEdit
 import { TriggerListColumn } from '../components/features/triggers/TriggerListColumn'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
-import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useMobileLayout } from '../lib/mobile-shell'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { useTriggersPageState } from './triggers/useTriggersPageState'
 
 export const TriggersPage = () => {
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const isMobile = useMobileLayout()
   const state = useTriggersPageState()
 
   if (!state.isOwner) {

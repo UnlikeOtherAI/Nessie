@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import type { AgentChild } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
 import { useAgentChildren, useAgents } from '../../../facades/agents/hooks'
-import { useMediaQuery } from '../../../hooks/useMediaQuery'
+import { useMobileLayout } from '../../../lib/mobile-shell'
 import type { AgentRecord } from '../../../lib/api-client'
 import { ColumnBrowserViewport } from '../../shared/column-browser/ColumnBrowserViewport'
 import { AgentColumn } from './AgentColumn'
@@ -142,7 +142,7 @@ export const AgentColumnBrowser = () => {
   const [subAgentPopupAgentId, setSubAgentPopupAgentId] = useState<
     string | null
   >(null)
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const isMobile = useMobileLayout()
 
   const rootAgents = useMemo(
     () =>

@@ -1,5 +1,5 @@
 import { Children, type ReactNode, useMemo } from 'react'
-import { useMediaQuery } from '../../../hooks/useMediaQuery'
+import { useViewport } from '../../../hooks/useViewport'
 
 type ColumnBrowserViewportProps = {
   activeColumn: number
@@ -12,11 +12,11 @@ export const ColumnBrowserViewport = ({
 }: ColumnBrowserViewportProps) => {
   // Bands derive from minimum-width queries only, so there is no fractional
   // gap between bands: below-md is exactly NOT min-768, and tablet is exactly
-  // min-768 AND NOT min-1024.
-  const atLeastMd = useMediaQuery('(min-width: 768px)')
-  const atLeastLg = useMediaQuery('(min-width: 1024px)')
-  const isMobile = !atLeastMd
-  const isTablet = atLeastMd && !atLeastLg
+  // min-768 AND NOT min-1024. Both come from the shared viewport store's
+  // named minimums, so this component cannot drift from the Tailwind scale.
+  const { atLeast } = useViewport()
+  const isMobile = !atLeast.md
+  const isTablet = atLeast.md && !atLeast.lg
 
   const visibleColumns = isMobile ? 1 : isTablet ? 2 : 3
   const normalizedColumns = Children.toArray(columns)

@@ -20,6 +20,11 @@ export type ViewportSnapshot = {
   band: ViewportBand
   atLeast: Record<BreakpointName, boolean>
   capabilities: ViewportCapabilities
+  // Named one-off media queries layered onto the band scale for a two-dimensional
+  // fact the band scale cannot express (e.g. mobile-shell's 600x600 tablet gate).
+  // Absent on the server snapshot; a browser snapshot only carries entries for
+  // queries registered before that snapshot was read.
+  media?: Record<string, boolean>
 }
 
 export type BreakpointThresholds = Record<BreakpointName, number>
@@ -38,12 +43,13 @@ export const deriveBand = (atLeast: Record<BreakpointName, boolean>): ViewportBa
 export const deriveSnapshot = (
   readMinimum: (name: BreakpointName) => boolean,
   capabilities: ViewportCapabilities,
+  media: Record<string, boolean> = {},
 ): ViewportSnapshot => {
   const atLeast = {} as Record<BreakpointName, boolean>
   for (const name of BREAKPOINT_NAMES) {
     atLeast[name] = readMinimum(name)
   }
-  return { band: deriveBand(atLeast), atLeast, capabilities }
+  return { band: deriveBand(atLeast), atLeast, capabilities, media }
 }
 
 // Exported for tests so the parsing contract (px and rem, root font size 16) is
@@ -84,13 +90,24 @@ type ViewportStore = {
   subscribe: (listener: () => void) => () => void
   getSnapshot: () => ViewportSnapshot
   getServerSnapshot: () => ViewportSnapshot
+  registerMediaQuery: (name: string, query: string) => void
+}
+
+const mediaEqual = (
+  a: Record<string, boolean> | undefined,
+  b: Record<string, boolean> | undefined,
+): boolean => {
+  const aKeys = Object.keys(a ?? {})
+  const bKeys = Object.keys(b ?? {})
+  return aKeys.length === bKeys.length && aKeys.every((key) => a?.[key] === b?.[key])
 }
 
 const snapshotsEqual = (a: ViewportSnapshot, b: ViewportSnapshot): boolean =>
   a.band === b.band &&
   BREAKPOINT_NAMES.every((name) => a.atLeast[name] === b.atLeast[name]) &&
   a.capabilities.hover === b.capabilities.hover &&
-  a.capabilities.coarsePointer === b.capabilities.coarsePointer
+  a.capabilities.coarsePointer === b.capabilities.coarsePointer &&
+  mediaEqual(a.media, b.media)
 
 const createViewportStore = (thresholds: BreakpointThresholds): ViewportStore => {
   type WatchedQuery = { mql: MediaQueryList; read: () => boolean }
@@ -98,30 +115,42 @@ const createViewportStore = (thresholds: BreakpointThresholds): ViewportStore =>
     const mql = window.matchMedia(query)
     return { mql, read: () => mql.matches }
   }
-  const minimumQueries = BREAKPOINT_NAMES.map(
-    (name) => [name, watch(minimumWidthQuery(thresholds[name]))] as const,
-  )
-  const hover = watch(HOVER_QUERY)
-  const coarsePointer = watch(COARSE_POINTER_QUERY)
+  const namedMediaQueries = new Map<string, WatchedQuery>()
+  const listeners = new Set<() => void>()
+  const notify = (): void => {
+    for (const listener of listeners) listener()
+  }
+  const watchLane = (query: string): WatchedQuery => {
+    const lane = watch(query)
+    lane.mql.addEventListener('change', notify)
+    return lane
+  }
 
-  const readSnapshot = (): ViewportSnapshot =>
-    deriveSnapshot(
+  const minimumQueries = BREAKPOINT_NAMES.map(
+    (name) => [name, watchLane(minimumWidthQuery(thresholds[name]))] as const,
+  )
+  const hover = watchLane(HOVER_QUERY)
+  const coarsePointer = watchLane(COARSE_POINTER_QUERY)
+
+  const readSnapshot = (): ViewportSnapshot => {
+    const media: Record<string, boolean> = {}
+    for (const [name, query] of namedMediaQueries) {
+      media[name] = query.read()
+    }
+    return deriveSnapshot(
       (name) => minimumQueries.find(([key]) => key === name)?.[1].read() ?? false,
       { hover: hover.read(), coarsePointer: coarsePointer.read() },
+      media,
     )
+  }
 
   let snapshot = readSnapshot()
 
   return {
     subscribe: (listener) => {
-      const queries = [...minimumQueries.map(([, query]) => query), hover, coarsePointer]
-      for (const query of queries) {
-        query.mql.addEventListener('change', listener)
-      }
+      listeners.add(listener)
       return () => {
-        for (const query of queries) {
-          query.mql.removeEventListener('change', listener)
-        }
+        listeners.delete(listener)
       }
     },
     // Identity changes only when a value changes, which is what keeps
@@ -132,6 +161,15 @@ const createViewportStore = (thresholds: BreakpointThresholds): ViewportStore =>
       return snapshot
     },
     getServerSnapshot: () => SERVER_SNAPSHOT,
+    // Registering a lane re-reads the snapshot so the next getSnapshot() call
+    // already carries the new entry, then notifies so subscribers re-read.
+    registerMediaQuery: (name, query) => {
+      if (!namedMediaQueries.has(name)) {
+        namedMediaQueries.set(name, watchLane(query))
+      }
+      snapshot = readSnapshot()
+      notify()
+    },
   }
 }
 
@@ -163,10 +201,44 @@ const serverStore: ViewportStore = {
   subscribe: () => () => {},
   getSnapshot: () => SERVER_SNAPSHOT,
   getServerSnapshot: () => SERVER_SNAPSHOT,
+  registerMediaQuery: () => {},
 }
 
 // SSR / non-DOM contexts (tests without a window) see the base snapshot.
-const store: ViewportStore = typeof window === 'undefined' ? serverStore : createBrowserViewportStore()
+// The browser store is created lazily on first use, NOT at module init: in
+// dev, Vite injects styles.css into the document after the import graph
+// evaluates, so the emitted --breakpoint-* tokens are only readable once the
+// first component renders. Reading them at import time threw the fail-loud
+// dev error on every page load.
+let lazyStore: ViewportStore | null = null
+// Registrations arriving before first use (module-level callers like
+// lib/mobile-shell.ts) are buffered so they never force store creation at
+// import time; they replay onto the real store when it is first created.
+const pendingQueries: Array<[string, string]> = []
+const resolveStore = (): ViewportStore => {
+  if (lazyStore === null) {
+    lazyStore = typeof window === 'undefined' ? serverStore : createBrowserViewportStore()
+    for (const [name, query] of pendingQueries.splice(0)) {
+      lazyStore.registerMediaQuery(name, query)
+    }
+  }
+  return lazyStore
+}
 
-export const useViewport = (): ViewportSnapshot =>
-  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
+export const useViewport = (): ViewportSnapshot => {
+  const store = resolveStore()
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
+}
+
+// Named one-off media queries for facts the band scale cannot express (the
+// two-dimensional tablet gate is the current only consumer, owned by
+// lib/mobile-shell.ts). The name is registered once per store; the lane value
+// is undefined until the browser store has read it, so consumers must treat
+// `undefined` as false (server render / pre-registration render).
+export const registerViewportMediaQuery = (name: string, query: string): void => {
+  if (lazyStore === null) {
+    pendingQueries.push([name, query])
+    return
+  }
+  lazyStore.registerMediaQuery(name, query)
+}
