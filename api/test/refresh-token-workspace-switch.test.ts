@@ -163,6 +163,42 @@ test('ordinary refresh resumes after target materialization fails post-grant', a
   assert.equal(fake.uoaWorkspaceSwitchIntents.size, 0)
 })
 
+test('a resumed switch refusal is definitive because its upstream edge may be committed', async () => {
+  const { fake, rawToken } = await createFixture()
+  const now = new Date()
+  const refresh = defaultUoaRefresh(now)
+
+  await assert.rejects(
+    switchWorkspace(fake, rawToken, now, async (input) => {
+      await refresh(input)
+      throw new Error('local commit failed after upstream success')
+    }),
+    /local commit failed after upstream success/,
+  )
+  assert.equal(fake.uoaWorkspaceSwitchIntents.size, 1)
+
+  await assert.rejects(
+    consumeRefreshToken(fake.asClient(), {
+      authSecret: AUTH_SECRET,
+      advanceUoaSessionBinding: async () => undefined,
+      beforeUoaWorkspaceSwitch: async () => {
+        throw new UoaWorkspaceSwitchError(
+          'WORKSPACE_NOT_AVAILABLE',
+          'target access was removed',
+          true,
+        )
+      },
+      rawToken,
+      refreshUoaSession: refresh,
+      rescopeUoaSessionBinding: async () => undefined,
+      ttlSeconds: TTL_SECONDS,
+    }),
+    UoaRefreshBindingError,
+  )
+  assert.equal(fake.uoaWorkspaceSwitchIntents.size, 1)
+  assert.equal(fake.findByHash(hashRefreshToken(rawToken))?.revokedAt, null)
+})
+
 test('safe upstream switch refusal clears only the intent and preserves the source family', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()

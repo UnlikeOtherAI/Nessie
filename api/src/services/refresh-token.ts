@@ -34,6 +34,7 @@ import {
 } from './uoa-workspace-switch-intent.js'
 import type { UoaWorkspaceSwitchTarget } from './uoa-session.js'
 import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
+import type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 import {
   assertWorkspaceSwitchSource,
   clearRefusedWorkspaceSwitchIntent,
@@ -52,21 +53,7 @@ export { REFRESH_TOKEN_REPLAY_GRACE_MS } from './refresh-token-family.js'
 export { revokeRefreshFamily as revokeFamily } from './refresh-token-family.js'
 export { UoaRefreshBindingError } from './refresh-token-uoa.js'
 export { UoaWorkspaceSwitchError } from './uoa-workspace-switch-intent.js'
-
-export type ConsumeRefreshTokenResult =
-  | {
-      ok: true
-      expiresAt: Date
-      familyId: string
-      rawToken: string
-      replayed: boolean
-      sessionId: string
-      userId: string
-      providerId: string
-      providerType: string
-      uoaIdentity?: UoaSessionIdentity
-    }
-  | { ok: false; reason: 'expired' | 'invalid' | 'reuse' }
+export type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 
 type ConsumeInput = UoaRotationCallbacks & {
   authSecret: string
@@ -110,6 +97,7 @@ type RefreshPreflight =
         credential: UoaCredentialRecord
         expectedIdentity: UoaSessionIdentity
         intent: UoaWorkspaceSwitchIntentRecord | null
+        intentWasPending: boolean
         refreshToken: string
       } | null
     }
@@ -264,16 +252,17 @@ export const consumeRefreshToken = async (
         prepared.expectedIdentity,
       )
     }
+    const pendingIntent = await loadUoaWorkspaceSwitchIntent(tx, {
+      credential: prepared.credential,
+      presented,
+    })
     const intent = input.uoaWorkspaceSwitch
       ? await ensureUoaWorkspaceSwitchIntent(tx, {
           credential: prepared.credential,
           presented,
           target: input.uoaWorkspaceSwitch.target,
         })
-      : await loadUoaWorkspaceSwitchIntent(tx, {
-          credential: prepared.credential,
-          presented,
-        })
+      : pendingIntent
     if (
       presented.replayProtectedUntil
       && presented.replayProtectedUntil.getTime() > requestTime.getTime()
@@ -292,7 +281,7 @@ export const consumeRefreshToken = async (
     return {
       kind: 'rotate',
       presented,
-      uoa: { ...prepared, intent },
+      uoa: { ...prepared, intent, intentWasPending: Boolean(pendingIntent) },
     }
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
 
@@ -350,6 +339,14 @@ export const consumeRefreshToken = async (
         && error instanceof UoaWorkspaceSwitchError
         && error.clearIntent
       ) {
+        if (preflight.uoa.intentWasPending) {
+          // A previous attempt may already have committed UOA's deterministic
+          // target edge. Preserving the old local credential after a resumed
+          // refusal would strand the family on a consumed predecessor.
+          throw new UoaRefreshBindingError(
+            'The pending UnlikeOtherAI workspace switch can no longer be resumed.',
+          )
+        }
         await clearRefusedWorkspaceSwitchIntent(prisma, {
           intent: rotatedUoaIntent,
           presented: preflight.presented,

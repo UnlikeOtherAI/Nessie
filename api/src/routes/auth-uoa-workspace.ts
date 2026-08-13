@@ -128,7 +128,7 @@ export const registerAuthUoaWorkspaceRoute = (
         sendApiError(
           reply,
           401,
-          'INTERACTION_REQUIRED',
+          'WORKSPACE_SWITCH_REAUTH_REQUIRED',
           'Sign in again before switching UnlikeOtherAI workspaces.',
         )
         return reply
@@ -149,7 +149,7 @@ export const registerAuthUoaWorkspaceRoute = (
       sendApiError(
         reply,
         401,
-        'INTERACTION_REQUIRED',
+        'WORKSPACE_SWITCH_REAUTH_REQUIRED',
         'Sign in again before switching UnlikeOtherAI workspaces.',
       )
       return reply
