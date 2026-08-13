@@ -2,9 +2,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { AgentAvatar } from '../../shared/AgentAvatar'
 import { StatusPill } from '../../primitives/StatusPill'
 import { AgentCreateButton } from './AgentCreateButton'
+import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
 import { AgentStatusDot } from './AgentStatusDot'
 import { AgentDetailTabs } from './AgentDetailTabs'
 
@@ -27,8 +27,9 @@ export const AgentDetailColumn = ({
   showBack,
 }: AgentDetailColumnProps) => {
   const navigate = useNavigate()
-  const { token } = useAuthSession()
+  const { me } = useAuthSession()
   const { data: status } = useAgentStatus(agent.id)
+  const isOwner = me?.user.roleIds.includes('owner') ?? false
 
   return (
     <div className="flex h-full flex-col bg-[color:var(--main)]">
@@ -56,7 +57,7 @@ export const AgentDetailColumn = ({
                 </svg>
               </button>
             ) : null}
-            <AgentAvatar agent={agent} token={token} />
+            <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
             <h2 className="min-w-0 flex-1 text-xl font-semibold text-[var(--tx)]">
               {agent.name}
             </h2>
@@ -64,34 +65,15 @@ export const AgentDetailColumn = ({
             <StatusPill tone={getStatusTone(agent.status)}>
               {agent.status}
             </StatusPill>
-            <button
-              className={[
-                'flex h-7 w-7 items-center justify-center rounded',
-                'text-[color:var(--tx2)] hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
-              ].join(' ')}
-              onClick={() => void navigate(`/agents/designer/${agent.id}`)}
-              title="Edit agent"
-              type="button"
-            >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                viewBox="0 0 24 24"
+            {isOwner ? (
+              <button
+                className="admin-button admin-button-secondary"
+                onClick={() => void navigate(`/agents/designer/${agent.id}`)}
+                type="button"
               >
-                <path
-                  d="M12 20h9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
+                Edit details
+              </button>
+            ) : null}
             <AgentCreateButton
               className="flex-shrink-0"
               label="Create sub-agent"
