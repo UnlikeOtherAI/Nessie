@@ -1,7 +1,10 @@
-// Live document composition (`kb_document_compose`): the wire/state shape plus
-// the pure merge, block-splitting and tail-repair helpers the thread stream hook
-// and the streaming renderer use. Deliberately React-free so it is unit-testable
+// Live document composition *and editing* (`kb_document_compose`): the wire/state
+// shape plus the pure merge and repair helpers the thread stream hook uses.
+// Deliberately React-free so it is unit-testable
 // (`admin/test/document-stream-helpers.test.ts`), exactly like `thinking.ts`.
+//
+// Rendering-side helpers (block splitting, tail repair, cursor location) live in
+// `document-markdown.ts`.
 
 import type {
   DocumentStreamErrorReason,
@@ -24,18 +27,24 @@ export type DocumentStreamResult = {
 
 /**
  * One document being written into the open thread. `markdown` always holds the
- * exact bytes received so far and `offset` its length in UTF-16 code units —
- * the unit `stream.document.delta` offsets are expressed in — so a delta can be
- * merged against it without any encoding step.
+ * composed document exactly as received so far; `cursor` is where the agent is
+ * currently writing into it, in UTF-16 code units — the unit every
+ * `stream.document.*` offset is expressed in, so no encoding step is ever
+ * needed. `appliedSeq` is the ordering authority: since an edit can land
+ * anywhere, offsets no longer increase and only `seq` says what comes next.
  */
 export type DocumentStreamEntry = {
+  appliedSeq: number
+  cursor: number
+  // Which edit the cursor belongs to. A change of value means a *new* edit
+  // began somewhere else in the document — a deliberate jump, not drift.
+  editIndex: number
   errorReason?: DocumentStreamErrorReason | null
-  lastSeq: number
   markdown: string
-  // A delta arrived past the end of `markdown`: the text in between is missing,
-  // so the entry must be repaired from the bootstrap route before it can grow.
+  // A frame arrived out of the entry's reach — a `seq` past the next one, or an
+  // offset past the end of the text we hold — so the entry must be repaired
+  // from the bootstrap route before it can grow.
   needsBootstrap?: boolean
-  offset: number
   result?: DocumentStreamResult
   runId: string
   sessionId: string
@@ -51,13 +60,29 @@ export type DocumentDelta = {
   seq: number
 }
 
-// `duplicate` = already in `markdown` (a bootstrap and the live lane overlap by
-// design); `gap` = the delta starts past the end of what we hold.
+export type DocumentEdit = {
+  editIndex: number
+  offset: number
+  removeLength: number
+}
+
+/** A frame held back while a bootstrap request is in flight. */
+export type DocumentFrame =
+  | { delta: DocumentDelta; kind: 'delta' }
+  | { edit: DocumentEdit; kind: 'edit' }
+
+// `duplicate` = a seq already applied (a bootstrap and the live lane overlap by
+// design); `gap` = the frame cannot be placed against what we hold.
 export type DeltaOutcome = 'applied' | 'duplicate' | 'gap'
 
 export type DeltaApplication = {
   entry: DocumentStreamEntry
   outcome: DeltaOutcome
+}
+
+export type EditApplication = {
+  entry: DocumentStreamEntry
+  outcome: 'applied' | 'gap'
 }
 
 export type BootstrapWatermark = {
@@ -68,7 +93,7 @@ export type BootstrapWatermark = {
 
 export type BootstrapMerge = {
   entry: DocumentStreamEntry
-  // The watermark is still behind the buffered deltas: the durable lane trails
+  // The watermark is still behind the buffered frames: the durable lane trails
   // the live one, so the caller re-fetches rather than applying across a hole.
   needsRefetch: boolean
 }
@@ -88,6 +113,9 @@ const EMPTY_TARGET: DocumentStreamTarget = {
   spaceName: null,
 }
 
+const clamp = (value: number, max: number): number =>
+  Math.min(Math.max(value, 0), max)
+
 export const emptyDocumentTarget = (): DocumentStreamTarget => ({ ...EMPTY_TARGET })
 
 export const isDocumentStreamActive = (entry: DocumentStreamEntry): boolean =>
@@ -98,10 +126,11 @@ export const createDocumentStreamEntry = (input: {
   sessionId: string
   startedAt?: string
 }): DocumentStreamEntry => ({
+  appliedSeq: 0,
+  cursor: 0,
+  editIndex: 0,
   errorReason: null,
-  lastSeq: 0,
   markdown: '',
-  offset: 0,
   runId: input.runId,
   sessionId: input.sessionId,
   startedAt: input.startedAt ?? new Date().toISOString(),
@@ -154,68 +183,120 @@ export const entryFromSummary = (summary: DocumentStreamSummary): DocumentStream
   )
 
 /**
- * The offset merge contract (§4.3). A delta is applied only where it is
- * contiguous with what we hold:
+ * `stream.document.edit`: the agent is about to replace `removeLength` code
+ * units at `offset`. The span is spliced out immediately — so the reader sees
+ * the old words go before the new ones arrive, which is what an edit looks
+ * like — and the cursor moves there, which is where the following deltas will
+ * insert.
  *
- * - entirely below the entry's offset → already applied, dropped whole;
- * - straddling the offset → only its tail is appended;
- * - starting past the offset → a hole, never applied. The entry is flagged for
- *   a bootstrap repair instead, because appending across a gap would corrupt
- *   the document silently.
+ * An offset past the end of what we hold means the text in between is missing:
+ * splicing would corrupt the document silently, so the entry is flagged for a
+ * bootstrap repair instead.
  */
-export const applyDocumentDelta = (
+export const applyDocumentEdit = (
   entry: DocumentStreamEntry,
-  delta: DocumentDelta,
-): DeltaApplication => {
-  if (delta.offset + delta.content.length <= entry.offset) {
-    return { entry, outcome: 'duplicate' }
-  }
-
-  if (delta.offset > entry.offset) {
+  edit: DocumentEdit,
+): EditApplication => {
+  if (edit.offset > entry.markdown.length || edit.offset < 0) {
     return { entry: { ...entry, needsBootstrap: true }, outcome: 'gap' }
   }
 
-  const tail = delta.content.slice(entry.offset - delta.offset)
+  const removed = clamp(edit.removeLength, entry.markdown.length - edit.offset)
   return {
     entry: {
       ...entry,
-      lastSeq: Math.max(entry.lastSeq, delta.seq),
-      markdown: `${entry.markdown}${tail}`,
+      cursor: edit.offset,
+      editIndex: edit.editIndex,
+      markdown: `${entry.markdown.slice(0, edit.offset)}${entry.markdown.slice(
+        edit.offset + removed,
+      )}`,
       needsBootstrap: false,
-      offset: entry.offset + tail.length,
     },
     outcome: 'applied',
   }
 }
 
 /**
- * Fold the durable watermark in, then the deltas buffered while it was in
- * flight. A watermark behind what the client already holds is simply older, so
- * the local text wins; one behind the first buffered delta cannot be bridged at
- * all, and the caller is told to re-fetch until the durable lane catches up.
+ * The merge contract. `seq` is the authoritative *order* and `offset` the
+ * authoritative *position* — the two are independent now that an edit can land
+ * anywhere, so a delta is placed by offset but admitted only in seq order:
+ *
+ * - a seq at or below the last applied one → already merged, dropped whole;
+ * - the next seq → inserted at its offset, cursor moved past what it wrote;
+ * - a seq beyond the next one, or an offset past the end of what we hold → a
+ *   hole, never applied. The entry is flagged for a bootstrap repair, because
+ *   writing across a gap would corrupt the document silently.
+ *
+ * Composing a brand-new document is the degenerate case: offsets happen to
+ * increase monotonically and every insertion lands at the end.
+ */
+export const applyDocumentDelta = (
+  entry: DocumentStreamEntry,
+  delta: DocumentDelta,
+): DeltaApplication => {
+  if (delta.seq <= entry.appliedSeq) {
+    return { entry, outcome: 'duplicate' }
+  }
+
+  if (delta.seq > entry.appliedSeq + 1 || delta.offset > entry.markdown.length) {
+    return { entry: { ...entry, needsBootstrap: true }, outcome: 'gap' }
+  }
+
+  const offset = Math.max(delta.offset, 0)
+  return {
+    entry: {
+      ...entry,
+      appliedSeq: delta.seq,
+      cursor: offset + delta.content.length,
+      markdown: `${entry.markdown.slice(0, offset)}${delta.content}${entry.markdown.slice(
+        offset,
+      )}`,
+      needsBootstrap: false,
+    },
+    outcome: 'applied',
+  }
+}
+
+const applyFrame = (
+  entry: DocumentStreamEntry,
+  frame: DocumentFrame,
+): DeltaApplication | EditApplication =>
+  frame.kind === 'delta'
+    ? applyDocumentDelta(entry, frame.delta)
+    : applyDocumentEdit(entry, frame.edit)
+
+/**
+ * Fold the durable watermark in, then the frames buffered while it was in
+ * flight. The watermark is compared by `seq`, never by length: an edit can make
+ * a *newer* document shorter than an older one, so "further along" is a
+ * question only the sequence can answer. A watermark behind what the client
+ * already holds is simply older, so the local text wins; one that cannot bridge
+ * the buffered frames leaves the caller re-fetching until the durable lane
+ * catches up.
+ *
+ * Buffered frames replay in arrival order — the thread has one SSE connection,
+ * so arrival order *is* the order the server published, and it is the only
+ * thing that interleaves seq-carrying deltas with seq-less edits correctly.
  */
 export const mergeBootstrap = (
   entry: DocumentStreamEntry,
   bootstrap: BootstrapWatermark,
-  buffered: DocumentDelta[] = [],
+  buffered: DocumentFrame[] = [],
 ): BootstrapMerge => {
+  const watermark = bootstrap.lastSeq ?? 0
   let merged: DocumentStreamEntry =
-    bootstrap.offset > entry.offset
+    watermark > entry.appliedSeq
       ? {
           ...entry,
-          lastSeq: Math.max(entry.lastSeq, bootstrap.lastSeq ?? 0),
+          appliedSeq: watermark,
+          cursor: clamp(bootstrap.offset, bootstrap.markdown.length),
           markdown: bootstrap.markdown,
           needsBootstrap: false,
-          offset: bootstrap.offset,
         }
       : { ...entry, needsBootstrap: false }
 
-  const ordered = [...buffered].sort(
-    (left, right) => left.seq - right.seq || left.offset - right.offset,
-  )
-
-  for (const delta of ordered) {
-    const application = applyDocumentDelta(merged, delta)
+  for (const frame of buffered) {
+    const application = applyFrame(merged, frame)
     if (application.outcome === 'gap') {
       return { entry: application.entry, needsRefetch: true }
     }
@@ -247,7 +328,7 @@ export const reconcileDocumentSessions = (
     if (summary) {
       unmatched.delete(entry.sessionId)
       sessions.push(applyDocumentSummary(entry, summary))
-      if (entry.needsBootstrap || entry.offset === 0) {
+      if (entry.needsBootstrap || entry.markdown.length === 0) {
         detailSessionIds.push(entry.sessionId)
       }
       continue
@@ -268,222 +349,4 @@ export const reconcileDocumentSessions = (
   }
 
   return { detailSessionIds, sessions }
-}
-
-type OpenFence = { char: string; length: number } | null
-
-const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/
-const BULLET_PREFIX = /^(\s*)([*+\-]|\d+[.)])(\s+)/
-const THEMATIC_BREAK = /^ {0,3}([*_-])(?:[ \t]*\1){2,}[ \t]*$/
-
-const fenceMarker = (line: string): { info: string; marker: string } | null => {
-  const match = FENCE_LINE.exec(line)
-  return match && match[1] ? { info: match[2] ?? '', marker: match[1] } : null
-}
-
-const openFenceFrom = (line: string): OpenFence => {
-  const found = fenceMarker(line)
-  if (!found) {
-    return null
-  }
-  // A backtick fence's info string may not itself contain a backtick, so
-  // `` ```a`b `` opens nothing.
-  if (found.marker.startsWith('`') && found.info.includes('`')) {
-    return null
-  }
-  return { char: found.marker.slice(0, 1), length: found.marker.length }
-}
-
-const closesFence = (line: string, fence: NonNullable<OpenFence>): boolean => {
-  const found = fenceMarker(line)
-  return Boolean(
-    found &&
-      found.marker.startsWith(fence.char) &&
-      found.marker.length >= fence.length &&
-      found.info.trim() === '',
-  )
-}
-
-/**
- * Backtick runs in one line, carrying an inline code span opened on an earlier
- * line of the same paragraph. Returns the run length still open (0 = none) so a
- * fence-lookalike sitting inside `` `…` `` is never read as a fence.
- */
-const scanInlineCode = (text: string, openRun: number): number => {
-  let open = openRun
-  let index = 0
-
-  while (index < text.length) {
-    if (open === 0 && text[index] === '\\') {
-      index += 2
-      continue
-    }
-    if (text[index] !== '`') {
-      index += 1
-      continue
-    }
-    let run = 0
-    while (index + run < text.length && text[index + run] === '`') {
-      run += 1
-    }
-    if (open === 0) {
-      open = run
-    } else if (run === open) {
-      open = 0
-    }
-    index += run
-  }
-
-  return open
-}
-
-/**
- * Split markdown at top-level blank lines that are outside fenced code, so
- * every block but the last can be frozen (parsed once, memoized) while a
- * document streams. Fence-aware for backtick and tilde fences of any length ≥ 3
- * — a longer fence closes only with an equal-or-longer fence of the same
- * character — and blind to fence-lookalikes inside inline code spans.
- */
-export const splitMarkdownBlocks = (markdown: string): string[] => {
-  const blocks: string[] = []
-  let current: string[] = []
-  let fence: OpenFence = null
-  let inlineOpen = 0
-
-  const flush = () => {
-    if (current.some((line) => line.trim() !== '')) {
-      blocks.push(current.join('\n'))
-    }
-    current = []
-  }
-
-  for (const line of markdown.split('\n')) {
-    if (fence) {
-      current.push(line)
-      if (closesFence(line, fence)) {
-        fence = null
-      }
-      continue
-    }
-
-    if (line.trim() === '') {
-      // A blank line ends the paragraph, and an inline code span cannot cross
-      // one — so the carried span dies with it.
-      inlineOpen = 0
-      flush()
-      continue
-    }
-
-    if (inlineOpen === 0) {
-      const opened = openFenceFrom(line)
-      if (opened) {
-        fence = opened
-        current.push(line)
-        continue
-      }
-    }
-
-    inlineOpen = scanInlineCode(line, inlineOpen)
-    current.push(line)
-  }
-
-  flush()
-  return blocks
-}
-
-const toggleMarker = (stack: string[], marker: string): void => {
-  if (stack[stack.length - 1] === marker) {
-    stack.pop()
-    return
-  }
-  stack.push(marker)
-}
-
-const scanEmphasis = (line: string, stack: string[]): void => {
-  const body = line.replace(BULLET_PREFIX, '')
-  let index = 0
-
-  while (index < body.length) {
-    const insideCode = stack[stack.length - 1]?.startsWith('`') ?? false
-
-    if (!insideCode && body[index] === '\\') {
-      index += 2
-      continue
-    }
-
-    if (body[index] === '`') {
-      let run = 0
-      while (index + run < body.length && body[index + run] === '`') {
-        run += 1
-      }
-      toggleMarker(stack, '`'.repeat(run))
-      index += run
-      continue
-    }
-
-    if (!insideCode && body[index] === '*') {
-      let run = 0
-      while (index + run < body.length && body[index + run] === '*') {
-        run += 1
-      }
-      let remaining = run
-      while (remaining >= 2) {
-        toggleMarker(stack, '**')
-        remaining -= 2
-      }
-      if (remaining === 1) {
-        toggleMarker(stack, '*')
-      }
-      index += run
-      continue
-    }
-
-    index += 1
-  }
-}
-
-/**
- * A render-only repaired copy of the block still being written: close an
- * unclosed fence so a streaming code block renders *as* a code block, and close
- * unbalanced trailing `**` / `*` / `` ` `` in the order they were opened. Half
- * written links stay literal text — they complete on their own a few tokens
- * later, and inventing a target would be worse than the flicker.
- *
- * Stored state is never touched: it always holds the exact received bytes.
- */
-export const repairStreamingTail = (tailBlock: string): string => {
-  let fence: OpenFence = null
-  const stack: string[] = []
-
-  for (const line of tailBlock.split('\n')) {
-    if (fence) {
-      if (closesFence(line, fence)) {
-        fence = null
-      }
-      continue
-    }
-
-    const opened = openFenceFrom(line)
-    if (opened && stack.length === 0) {
-      fence = opened
-      continue
-    }
-
-    if (THEMATIC_BREAK.test(line)) {
-      continue
-    }
-
-    scanEmphasis(line, stack)
-  }
-
-  if (fence) {
-    const separator = tailBlock.endsWith('\n') ? '' : '\n'
-    return `${tailBlock}${separator}${fence.char.repeat(fence.length)}`
-  }
-
-  let repaired = tailBlock
-  while (stack.length > 0) {
-    repaired += stack.pop()
-  }
-  return repaired
 }

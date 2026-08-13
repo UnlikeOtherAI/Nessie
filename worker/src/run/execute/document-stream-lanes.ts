@@ -114,6 +114,16 @@ export const createLiveLane = (input: LiveLaneInput) => {
 type DurableLaneInput = {
   prisma: PrismaClient
   sessionId: string
+  /**
+   * `append` grows a composed-from-nothing document, so each flush is a new
+   * chunk. `snapshot` replaces the stored document wholesale, which is what an
+   * *edit* needs: content changes in the middle, and a log of appends could not
+   * represent that. Bootstrap concatenates chunks in id order either way, so a
+   * single snapshot row reads back correctly with no API change.
+   */
+  mode?: 'append' | 'snapshot'
+  /** Snapshot mode: the current whole document at flush time. */
+  readSnapshot?: () => string
 }
 
 /**
@@ -127,6 +137,7 @@ export const createDurableLane = (input: DurableLaneInput) => {
   let bufferStarted = false
   let timer: NodeJS.Timeout | null = null
   let queue: Promise<void> = Promise.resolve()
+  let dirty = false
 
   const clearFlushTimer = (): void => {
     if (timer) {
@@ -135,7 +146,28 @@ export const createDurableLane = (input: DurableLaneInput) => {
     }
   }
 
+  const flushSnapshot = async (): Promise<void> => {
+    clearFlushTimer()
+    if (!dirty) return
+    dirty = false
+    const content = input.readSnapshot?.() ?? ''
+    try {
+      await input.prisma.$transaction([
+        input.prisma.runDocumentChunk.deleteMany({ where: { sessionId: input.sessionId } }),
+        input.prisma.runDocumentChunk.create({
+          data: { content, offset: 0, sessionId: input.sessionId },
+        }),
+      ])
+    } catch (error) {
+      console.warn('[worker] document stream snapshot flush failed', error)
+    }
+  }
+
   const flush = async (): Promise<void> => {
+    if (input.mode === 'snapshot') {
+      await flushSnapshot()
+      return
+    }
     clearFlushTimer()
     if (!bufferStarted || buffer.length === 0) return
     const content = buffer
@@ -157,6 +189,18 @@ export const createDurableLane = (input: DurableLaneInput) => {
 
   return {
     append: (fragment: LiveFragment): void => {
+      dirty = true
+      if (input.mode === 'snapshot') {
+        // The snapshot reader owns the content; this only paces the writes.
+        if (!timer) {
+          timer = setTimeout(() => {
+            timer = null
+            enqueueFlush()
+          }, DURABLE_FLUSH_MS)
+          timer.unref?.()
+        }
+        return
+      }
       if (!bufferStarted) {
         bufferOffset = fragment.offset
         bufferStarted = true

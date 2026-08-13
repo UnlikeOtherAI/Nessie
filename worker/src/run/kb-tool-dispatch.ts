@@ -4,6 +4,7 @@ import {
   runKbCommentResolveTool,
   runKbCommentsListTool,
   runKbDocumentComposeTool,
+  runKbDocumentEditTool,
   runKbDraftWriteTool,
   runKbFileTool,
   runKbListTool,
@@ -111,6 +112,22 @@ export const dispatchKbTool = (
           summary: typeof args.summary === 'string' ? args.summary : undefined,
           taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
           title: typeof args.title === 'string' ? args.title : undefined,
+        }),
+      )
+    case 'kb_document_edit':
+      return wrapTool(inputSummary, () =>
+        runKbDocumentEditTool(context, {
+          changeComment: typeof args.changeComment === 'string' ? args.changeComment : undefined,
+          edits: Array.isArray(args.edits)
+            ? args.edits.map((entry) => {
+              const edit = entry as { find?: unknown; replace?: unknown }
+              return {
+                find: typeof edit?.find === 'string' ? edit.find : undefined,
+                replace: typeof edit?.replace === 'string' ? edit.replace : undefined,
+              }
+            })
+            : undefined,
+          pageId: typeof args.pageId === 'string' ? args.pageId : undefined,
         }),
       )
     case 'kb_file':

@@ -66,6 +66,8 @@ import {
 import { buildScopes } from './scopes.js'
 import { createThinkingRecorder, type ThinkingRecorder } from './thinking-recorder.js'
 import { createDocumentStreamRecorder } from './document-stream.js'
+import { fileServiceFor } from '../file-service.js'
+import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 
 export const executeRunJob = async (
@@ -175,6 +177,15 @@ export const executeRunJob = async (
   // reason: it must exist before the first provider chunk, and every exit path
   // has to settle it.
   const documentStream = createDocumentStreamRecorder({
+    loadDocument: async (pageId) => {
+      const document = await readMarkdownDocument(
+        deps.prisma,
+        fileServiceFor(deps.prisma),
+        String(context.channel.organizationId),
+        pageId,
+      )
+      return document?.content ?? null
+    },
     prisma: deps.prisma,
     realtimeTransport: deps.realtimeTransport,
     run: {

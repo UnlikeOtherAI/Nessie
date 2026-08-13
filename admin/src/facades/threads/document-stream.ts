@@ -20,11 +20,14 @@ import type {
 import { useApiClient } from '../../providers/ApiClientProvider'
 import {
   applyDocumentDelta,
+  applyDocumentEdit,
   applyDocumentSummary,
   createDocumentStreamEntry,
   mergeBootstrap,
   reconcileDocumentSessions,
   type DocumentDelta,
+  type DocumentEdit,
+  type DocumentFrame,
   type DocumentStreamEntry,
 } from './document-stream-helpers'
 
@@ -40,11 +43,13 @@ export type DocumentStreamController = {
   handleDocumentFrame: (event: string, data: DocumentFrameData) => void
 }
 
-// The union of the six frames' payloads, read defensively: this is wire data.
+// The union of the frames' payloads, read defensively: this is wire data.
 export type DocumentFrameData = {
   chars?: number
   content?: string
+  editIndex?: number
   offset?: number
+  removeLength?: number
   pageId?: string
   parentPageId?: string
   parentTitle?: string
@@ -86,7 +91,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
 
   const entriesRef = useRef(new Map<string, DocumentStreamEntry>())
   const listenersRef = useRef(new Map<string, Set<() => void>>())
-  const bufferedRef = useRef(new Map<string, DocumentDelta[]>())
+  const bufferedRef = useRef(new Map<string, DocumentFrame[]>())
   const detailAttemptsRef = useRef(new Map<string, number>())
   const pendingDetailRef = useRef(new Set<string>())
   const startedAtRef = useRef(new Map<string, number>())
@@ -114,13 +119,13 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
     [notify, publish],
   )
 
-  const bufferDelta = useCallback((sessionId: string, delta: DocumentDelta) => {
+  const bufferFrame = useCallback((sessionId: string, frame: DocumentFrame) => {
     const buffered = bufferedRef.current.get(sessionId)
     if (buffered) {
-      buffered.push(delta)
+      buffered.push(frame)
       return
     }
-    bufferedRef.current.set(sessionId, [delta])
+    bufferedRef.current.set(sessionId, [frame])
   }, [])
 
   const fetchDetail = useCallback(
@@ -204,28 +209,48 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
     [fetchDetail, publish, setEntry, threadId],
   )
 
-  const applyDelta = useCallback(
-    (sessionId: string, delta: DocumentDelta) => {
+  /**
+   * One path for both text frames: a session that is mid-repair buffers, a hole
+   * buffers and asks for a repair, and anything else merges straight in. The
+   * frame is buffered *as it arrived* so a seq-less edit keeps its place
+   * between the deltas around it.
+   */
+  const applyFrame = useCallback(
+    (sessionId: string, frame: DocumentFrame) => {
       const current = entriesRef.current.get(sessionId)
       if (!current || pendingDetailRef.current.has(sessionId)) {
-        bufferDelta(sessionId, delta)
+        bufferFrame(sessionId, frame)
         requestDetail(sessionId)
         return
       }
 
-      const application = applyDocumentDelta(current, delta)
+      const application =
+        frame.kind === 'delta'
+          ? applyDocumentDelta(current, frame.delta)
+          : applyDocumentEdit(current, frame.edit)
+
       if (application.outcome === 'duplicate') {
         return
       }
       if (application.outcome === 'gap') {
-        bufferDelta(sessionId, delta)
+        bufferFrame(sessionId, frame)
         setEntry(application.entry, false)
         requestDetail(sessionId)
         return
       }
       setEntry(application.entry, false)
     },
-    [bufferDelta, requestDetail, setEntry],
+    [bufferFrame, requestDetail, setEntry],
+  )
+
+  const applyDelta = useCallback(
+    (sessionId: string, delta: DocumentDelta) => applyFrame(sessionId, { delta, kind: 'delta' }),
+    [applyFrame],
+  )
+
+  const applyEdit = useCallback(
+    (sessionId: string, edit: DocumentEdit) => applyFrame(sessionId, { edit, kind: 'edit' }),
+    [applyFrame],
   )
 
   const handleDocumentFrame = useCallback(
@@ -252,6 +277,16 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
           content: data.content ?? '',
           offset: data.offset ?? 0,
           seq: data.seq ?? 0,
+        })
+        return
+      }
+
+      // An edit begins: a span is being replaced, so the cursor jumps to it.
+      if (event === 'stream.document.edit') {
+        applyEdit(sessionId, {
+          editIndex: data.editIndex ?? 0,
+          offset: data.offset ?? 0,
+          removeLength: data.removeLength ?? 0,
         })
         return
       }
@@ -329,7 +364,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
         )
       }
     },
-    [applyDelta, requestDetail, setEntry],
+    [applyDelta, applyEdit, requestDetail, setEntry],
   )
 
   /**
