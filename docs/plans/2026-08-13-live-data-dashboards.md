@@ -1,6 +1,8 @@
 # Live Data Dashboards
 
-> **Status:** agreed design, not yet in delivery — **revision 1**
+> **Status:** **Stage 1 built and on `main`** — revision 2.
+> §17 records what shipped, what changed against this plan during the build,
+> and what is deliberately not built yet.
 > **Date:** 2026-08-13
 > **Provenance:** three independent designs (Fable, Kimix, Codex Sol) against one
 > shared brief, merged here. §15 records every place they disagreed and which
@@ -1086,3 +1088,67 @@ which is a drafting artifact, not a defect in the conclusion.
    shipping the post flow against a thinner editor.
 5. **CSV export at v1** — included; it is also the easiest way for data to leave
    the entitlement model. Worth an explicit yes or no.
+
+
+---
+
+## 17. Delivery log — Stage 1
+
+Built and merged 2026-08-13/14. Seven commits, each verified before merge.
+
+**Shipped:** the closed widget contract (`@nessie/schemas`); eight Prisma models
+with three CHECK constraints; `@nessie/dashboard` (egress, normalize, probe,
+access, and the four service modules); eleven API routes; the
+`dashboard.source.refresh` worker job and its due-source sweep; the admin
+surface with all five renderers, the drag/resize canvas and version history;
+and the eleven-tool grantable agent bundle.
+
+### Where the build deviated from §1–§16
+
+- **The JMESPath evaluator moved rather than being wrapped.** It lived in
+  `workflow-jmespath.ts`, named for its one consumer. Dashboards became the
+  second, so it is now `sandboxed-jmespath.ts` with neutral exports and the old
+  names kept as aliases. No caller changed.
+- **The services live in `@nessie/dashboard`, not `api/src/services`.** The plan
+  said agent tools call the same function the route calls; that is only literally
+  true if the worker can import it. api keeps thin re-exports.
+- **`react-grid-layout` v2 differs from what §5 assumed.** No `WidthProvider`
+  (width comes from `useContainerWidth`), `ResponsiveLayouts` not `Layouts`, a
+  `compactor` function instead of `compactType`, and drag/resize moved into
+  `dragConfig`/`resizeConfig`.
+- **Widget size limits are enforced on layout writes**, so an agent's move and a
+  human drag are validated by one rule set — the plan asserted the property, the
+  build needed `validateLayout` to make it true.
+
+### Defects found by running it, not by reading it
+
+- The bar chart plotted one bar per row, repeating a category as many times as
+  it appeared. Only visible in a screenshot; now aggregates by category.
+- Table and status cells rendered raw ISO timestamps.
+- An invalid widget definition returned 500 with no message. The contract always
+  rejected the write; the defect was that a caller could not tell what to fix.
+  Now 400 naming the field. A duplicate source name likewise now returns 409.
+- Generating the migration as a diff against a live database emitted destructive
+  statements against unrelated tables — pre-existing drift between the committed
+  migrations and `schema.prisma`. Worked around by diffing schema-to-schema;
+  the drift itself is unfixed and needs its own change.
+
+### Verification
+
+Full 171-migration chain applied to a clean pgvector container, each CHECK
+constraint proven to reject its bad row, cascade and restrict behaviour
+exercised on real rows. The egress path is driven against a real self-signed
+HTTPS server — actual TLS, real headers, a genuine 304, a 4 MiB stream cut at
+the 1 MiB cap — plus a test asserting `safeFetch` still refuses loopback on the
+unmodified path. End-to-end through the real API and admin with headless
+Playwright: all five widget kinds rendering `fresh`. 962 tests green across
+worker, dashboard, schemas and runtime.
+
+### Not built (Stage 2+)
+
+Widget embedding in chat and knowledge pages, snapshots and the freeze command,
+sharing UI and grant management, the widget inspector and add-widget flow (the
+canvas edits layout; widgets are added by agent or API), realtime invalidation,
+CSV export, and the stock dashboards agent's bootstrap. The access resolver,
+grant model, snapshot tables and embed-placement table exist and are enforced —
+what is missing is the surface, not the safety.
