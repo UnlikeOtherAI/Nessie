@@ -1,3 +1,5 @@
+import { matchesAdminRoute } from './nav-items'
+
 export type PhoneNavigationDirection = 'back' | 'forward'
 
 export type PhoneNavigationBackTarget = {
@@ -8,7 +10,7 @@ export type PhoneNavigationBackTarget = {
 type PhoneNavigationScreen = {
   depth: 0 | 1
   key: string
-  section: 'channels' | 'projects'
+  section: 'admin' | 'channels' | 'knowledge' | 'projects'
 }
 
 const normalizePathname = (pathname: string): string => {
@@ -35,7 +37,6 @@ export const getPhoneNavigationBackTarget = (
     || normalized === '/projects'
     || normalized === '/dashboards'
     || normalized === '/knowledge-base'
-    || normalized === '/agents'
     || normalized === '/settings'
     || normalized === '/search'
   ) {
@@ -54,30 +55,17 @@ export const getPhoneNavigationBackTarget = (
   if (normalized.startsWith('/knowledge-base/')) {
     return phoneBackTarget('/knowledge-base', 'Back to Knowledge')
   }
-  if (normalized.startsWith('/agents/')) {
-    return phoneBackTarget('/agents', 'Back to Agents')
-  }
-  if (
-    normalized.startsWith('/settings/')
-    || normalized === '/mcp-app-store'
-    || normalized.startsWith('/mcp-app-store/')
-    || normalized === '/approvals'
-    || normalized === '/audit'
-    || normalized === '/tokens'
-    || normalized === '/policy'
-    || normalized === '/ops'
-    || normalized.startsWith('/ops/')
-  ) {
+  if (matchesAdminRoute(normalized)) {
     return phoneBackTarget('/settings', 'Back to Admin')
   }
 
   return phoneBackTarget('/channels', 'Back to Channels')
 }
 
-// Phone navigation is a two-level stack: each tab's contextual list is the
-// root and a selected project/channel is its detail. Nested channel inspectors
-// and project sections stay on the same screen, so changing a tab or query does
-// not replay the route-level transition.
+// Phone navigation is a two-level stack: each section's contextual list is the
+// root and its selected destination is the detail. Nested channel inspectors,
+// project sections, and sibling detail selections stay on the same screen, so
+// changing a tab or query does not replay the route-level transition.
 export const getPhoneNavigationScreen = (
   pathname: string,
 ): PhoneNavigationScreen | null => {
@@ -117,6 +105,40 @@ export const getPhoneNavigationScreen = (
       depth: 1,
       key: `projects:project:${project[1]}`,
       section: 'projects',
+    }
+  }
+
+  if (normalized === '/knowledge-base') {
+    return { depth: 0, key: 'knowledge:root', section: 'knowledge' }
+  }
+
+  const knowledgeSpace = normalized.match(/^\/knowledge-base\/spaces\/([^/]+)$/)
+  if (knowledgeSpace?.[1]) {
+    return {
+      depth: 1,
+      key: `knowledge:space:${knowledgeSpace[1]}`,
+      section: 'knowledge',
+    }
+  }
+
+  const knowledgeView = normalized.match(/^\/knowledge-base\/views\/([^/]+)$/)
+  if (knowledgeView?.[1]) {
+    return {
+      depth: 1,
+      key: `knowledge:view:${knowledgeView[1]}`,
+      section: 'knowledge',
+    }
+  }
+
+  if (normalized === '/settings') {
+    return { depth: 0, key: 'admin:root', section: 'admin' }
+  }
+
+  if (matchesAdminRoute(normalized)) {
+    return {
+      depth: 1,
+      key: `admin:detail:${normalized}`,
+      section: 'admin',
     }
   }
 
