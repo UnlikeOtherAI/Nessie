@@ -34,6 +34,7 @@ import {
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import {
   createSessionQueryBoundary,
+  fetchCurrentSessionSnapshot,
   isCurrentSessionResponse,
 } from './auth-session-query-reset'
 
@@ -139,7 +140,11 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const refreshSession = useCallback(async (): Promise<void> => {
     setSessionState((current) => current === 'authenticated' ? current : 'loading')
-    const snapshot = await authApi.fetchSession(tokenRef.current)
+    const snapshot = await fetchCurrentSessionSnapshot({
+      fetchSession: authApi.fetchSession,
+      readCurrentToken: () => tokenRef.current,
+    })
+    if (!snapshot) return
 
     if (snapshot.kind === 'unauthenticated') {
       // The access token may simply have expired — try the refresh cookie before

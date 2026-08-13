@@ -5,6 +5,7 @@ import type { MeResponse } from '@nessie/schemas'
 import { createSessionMutationCoordinator } from '@nessie/client-core'
 import {
   createSessionQueryBoundary,
+  fetchCurrentSessionSnapshot,
   hasSessionBoundaryChanged,
   isCurrentSessionResponse,
 } from '../src/providers/auth-session-query-reset.js'
@@ -48,6 +49,42 @@ test('late profile responses cannot restore an old session boundary', () => {
   assert.equal(
     isCurrentSessionResponse(null, me('org-b', 'project-b', 'team-b', 'user-a')),
     false,
+  )
+})
+
+test('a delayed startup snapshot cannot overwrite a refreshed token session', async () => {
+  let currentToken: string | null = 'source-token'
+  let releaseSnapshot: ((value: { workspace: string }) => void) | undefined
+  const delayedSnapshot = new Promise<{ workspace: string }>((resolve) => {
+    releaseSnapshot = resolve
+  })
+
+  const pendingSnapshot = fetchCurrentSessionSnapshot({
+    fetchSession: async (token) => {
+      assert.equal(token, 'source-token')
+      return delayedSnapshot
+    },
+    readCurrentToken: () => currentToken,
+  })
+
+  currentToken = 'target-token'
+  releaseSnapshot?.({ workspace: 'source' })
+
+  assert.equal(await pendingSnapshot, null)
+})
+
+test('startup restoration accepts a snapshot while its bearer remains current', async () => {
+  const snapshot = { workspace: 'source' }
+
+  assert.strictEqual(
+    await fetchCurrentSessionSnapshot({
+      fetchSession: async (token) => {
+        assert.equal(token, 'source-token')
+        return snapshot
+      },
+      readCurrentToken: () => 'source-token',
+    }),
+    snapshot,
   )
 })
 

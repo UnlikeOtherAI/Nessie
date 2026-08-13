@@ -6,6 +6,11 @@ type TenantQueryResetInput = {
   resetTenantQueries: () => Promise<void>
 }
 
+type CurrentSessionSnapshotInput<Snapshot> = {
+  fetchSession: (token: string | null) => Promise<Snapshot>
+  readCurrentToken: () => string | null
+}
+
 export const hasSessionBoundaryChanged = (
   current: MeResponse | null,
   next: MeResponse,
@@ -29,6 +34,18 @@ export const isCurrentSessionResponse = (
   current: MeResponse | null,
   response: MeResponse,
 ): boolean => Boolean(current && !hasSessionBoundaryChanged(current, response))
+
+/**
+ * Startup restoration may overlap a proactive refresh. A snapshot fetched with
+ * the old bearer must not overwrite the session that won that mutation race.
+ */
+export const fetchCurrentSessionSnapshot = async <Snapshot>(
+  input: CurrentSessionSnapshotInput<Snapshot>,
+): Promise<Snapshot | null> => {
+  const requestedToken = input.readCurrentToken()
+  const snapshot = await input.fetchSession(requestedToken)
+  return input.readCurrentToken() === requestedToken ? snapshot : null
+}
 
 /**
  * Cancel and discard tenant-owned queries before a replacement session is
