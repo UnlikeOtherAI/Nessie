@@ -77,14 +77,15 @@ const AuthenticatedAdminShellLayout = () => {
   const phoneLayout = usePhoneLayout();
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
+  const isComposeRoute = shell.pathname === '/channels/new';
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
-  const showWebTabBar = mobileLayout && !nativeShell;
+  const showWebTabBar = mobileLayout && !nativeShell && !isComposeRoute;
   // Whenever a bottom tab bar is present — the web tab bar on mobile web, or the
   // native app's own tab bar on phone/iPad — drop the entire top bar. Navigation
   // lives in the bottom bar (which carries its own Search tab) and each page
   // supplies its own mobile header (hamburger + title).
-  const hideTopBar = showWebTabBar || (nativeShell && (phoneLayout || nativeIPadApp));
+  const hideTopBar = isComposeRoute || showWebTabBar || (nativeShell && (phoneLayout || nativeIPadApp));
 
   const mainContent = (
     <main className="min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]">
@@ -218,7 +219,7 @@ const AuthenticatedAdminShellLayout = () => {
               </div>
 
               {showWebTabBar && <MobileTabBar />}
-              {nativeIPadApp && <NativeIPadToolbarBridge />}
+              {nativeIPadApp && !isComposeRoute && <NativeIPadToolbarBridge />}
               {nativeIPadApp && <NativeSearchOverlay />}
 
               <SidebarDialogs

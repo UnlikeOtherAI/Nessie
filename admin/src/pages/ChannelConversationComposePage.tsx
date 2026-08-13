@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
 import { useStartChannelConversation } from '../facades/channels/hooks'
@@ -7,10 +7,12 @@ import { useSendMessageToThread } from '../facades/messages/hooks'
 import { useUsers } from '../facades/users/hooks'
 import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { agentGradient } from '../lib/avatar'
+import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
+import { usePhoneLayout } from '../lib/mobile-shell'
 import { UserAvatar } from '../components/primitives/UserAvatar'
-import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
+import { useModalA11y } from '../components/shared/useModalA11y'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 type RecipientKind = 'agent' | 'user'
@@ -48,7 +50,9 @@ const getRecipientName = (
 }
 
 export const ChannelConversationComposePage = () => {
+  const location = useLocation()
   const navigate = useNavigate()
+  const phoneLayout = usePhoneLayout()
   const { me, token } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const { data: allUsers = [] } = useUsers(isOwner)
@@ -57,6 +61,7 @@ export const ChannelConversationComposePage = () => {
   const sendMessage = useSendMessageToThread()
   const mentionRef = useRef<MentionInputHandle>(null)
   const addressInputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLElement | null>(null)
 
   const [recipients, setRecipients] = useState<Recipient[]>([])
   const [query, setQuery] = useState('')
@@ -65,6 +70,12 @@ export const ChannelConversationComposePage = () => {
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [oversizePaste, setOversizePaste] = useState<string | null>(null)
+
+  const returnTo = readChannelComposeReturnTo(location.state)
+  const close = useCallback(() => {
+    void navigate(returnTo, { replace: true })
+  }, [navigate, returnTo])
+  useModalA11y(dialogRef, close, !phoneLayout, addressInputRef)
 
   const users = useMemo<UserRecord[]>(() => {
     return allUsers.filter((user) => user.id !== me?.user.id)
@@ -160,7 +171,7 @@ export const ChannelConversationComposePage = () => {
         })
         mentionRef.current?.clear()
         setMessage('')
-        void navigate(`/channels/${channel.id}`)
+        void navigate(`/channels/${channel.id}`, { replace: true })
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not start chat.')
       }
@@ -207,10 +218,42 @@ export const ChannelConversationComposePage = () => {
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[color:var(--main)]">
-      <AdminPageHeader title="New message" />
+    <div
+      className={phoneLayout
+        ? 'fixed inset-0 z-[90] bg-[color:var(--main)]'
+        : 'fixed inset-0 z-[90] flex items-center justify-center bg-[var(--scrim-strong)] p-6 backdrop-blur-sm'}
+      onMouseDown={(event) => {
+        if (!phoneLayout && event.target === event.currentTarget) close()
+      }}
+      role="presentation"
+    >
+      <section
+        aria-labelledby="channel-conversation-compose-title"
+        aria-modal={phoneLayout ? undefined : true}
+        className={phoneLayout
+          ? 'flex h-[100dvh] min-h-0 w-full flex-col bg-[color:var(--main)] pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]'
+          : 'flex h-[46rem] max-h-[calc(100dvh-3rem)] min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[color:var(--sep)] bg-[color:var(--main)] shadow-2xl'}
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={phoneLayout ? undefined : -1}
+      >
+        <header className="flex h-[58px] flex-shrink-0 items-center justify-between border-b border-[color:var(--sep)] px-5">
+          <h1 className="text-[17px] font-bold text-[color:var(--tx)]" id="channel-conversation-compose-title">
+            New message
+          </h1>
+          <button
+            aria-label="Close new message"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
+            onClick={close}
+            type="button"
+          >
+            <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+            </svg>
+          </button>
+        </header>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">
         <div className="relative flex-shrink-0 rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] p-3">
           <div className="flex min-h-[38px] items-center gap-2">
             <span className="w-8 flex-shrink-0 text-sm font-semibold text-[color:var(--tx2)]">
@@ -362,6 +405,7 @@ export const ChannelConversationComposePage = () => {
         open={oversizePaste !== null}
         pastedText={oversizePaste ?? ''}
       />
-    </section>
+      </section>
+    </div>
   )
 }

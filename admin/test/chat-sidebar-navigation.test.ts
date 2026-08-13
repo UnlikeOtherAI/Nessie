@@ -22,14 +22,27 @@ test('chat navigation does not duplicate the Agents activity section', () => {
   assert.doesNotMatch(source, /sidebar-nav-agents/)
 })
 
-test('the new-message screen excludes the sender and keeps recipients available after selection', () => {
+test('the new-message surface excludes the sender and keeps recipients available after selection', () => {
   const source = readSource('../src/pages/ChannelConversationComposePage.tsx')
 
-  assert.match(source, /AdminPageHeader title="New message"/)
+  assert.match(source, /aria-label="Close new message"/)
+  assert.match(source, /useModalA11y\(dialogRef, close, !phoneLayout, addressInputRef\)/)
+  assert.match(source, /fixed inset-0 z-\[90\] bg-\[color:var\(--main\)\]/)
   assert.match(source, /placeholder=\{recipients\.length === 0 \? 'Type a name or email address' : ''\}/)
   assert.match(source, /allUsers\.filter\(\(user\) => user\.id !== me\?\.user\.id\)/)
   assert.match(source, /const hasSelectableOptions = options\.length > 0/)
   assert.doesNotMatch(source, /\(you\)/)
   assert.match(source, /admin-compose mt-auto flex-shrink-0/)
   assert.match(source, /StartChannelConversation/)
+})
+
+test('the compose route retains the channel workspace and hides mobile navigation chrome', () => {
+  const router = readSource('../src/router.tsx')
+  const shell = readSource('../src/layouts/AdminShellLayout.tsx')
+  const nativeShell = readSource('../../mobile/App.tsx')
+
+  assert.match(router, /path: '\/channels',\n        element: <ChannelsPage \/>/)
+  assert.match(router, /path: 'new',\n            element: <ChannelConversationComposePage \/>/)
+  assert.match(shell, /mobileLayout && !nativeShell && !isComposeRoute/)
+  assert.match(nativeShell, /isFullScreenTaskRoute\(currentPath\)/)
 })

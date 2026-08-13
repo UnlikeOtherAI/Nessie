@@ -106,21 +106,26 @@ export const router = createBrowserRouter([
     element: <AdminShellLayout />,
     children: [
       {
-        path: '/channels/new',
-        element: <ChannelConversationComposePage />,
-      },
-      {
         path: '/channels/projects/:projectId',
         element: <ChannelProjectOverviewPage />,
       },
       {
-        // Reply-thread panel (#233): deep-linkable third pane; Back closes it.
-        path: '/channels/:channelId/threads/:threadId/replies/:rootMessageId',
+        // The Channels workspace stays mounted when a new-message sheet opens,
+        // so wider layouts retain the source conversation beneath the composer.
+        path: '/channels',
         element: <ChannelsPage />,
-      },
-      {
-        path: '/channels/:channelId?',
-        element: <ChannelsPage />,
+        children: [
+          { index: true },
+          {
+            path: 'new',
+            element: <ChannelConversationComposePage />,
+          },
+          {
+            // Reply-thread panel (#233): deep-linkable third pane; Back closes it.
+            path: ':channelId/threads/:threadId/replies/:rootMessageId',
+          },
+          { path: ':channelId' },
+        ],
       },
       {
         path: '/projects',

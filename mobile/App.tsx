@@ -82,6 +82,8 @@ const MAX_BOOT_RETRIES = 4
 const isAuthGateRoute = (path: string): boolean =>
   path.startsWith('/login') || path.startsWith('/bootstrap')
 
+const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new'
+
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
@@ -349,7 +351,7 @@ const Shell = (): React.JSX.Element => {
   }
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
-  const showBar = currentPath != null && !isAuthGateRoute(currentPath)
+  const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
 
   // Inset the WebView for the status bar (Android draws edge-to-edge) and for the
   // native tab bar when it's shown (top on iPad, bottom elsewhere). Android's

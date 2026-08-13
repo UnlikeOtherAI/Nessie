@@ -13,6 +13,7 @@ import {
 import { useProjects, useTeams } from '../../facades/projects/hooks';
 import { useUsers } from '../../facades/users/hooks';
 import type { AgentRecord } from '../../lib/api-client';
+import { newChannelComposeLocationState } from '../../lib/channel-compose-navigation';
 import { parseChannelIdFromPath, parseChannelProjectIdFromPath } from '../../lib/channel-route';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { matchesAdminRoute } from './nav-items';
@@ -259,8 +260,10 @@ export const useAdminShell = () => {
 
   const navigateToNewConversation = useCallback(() => {
     setSidebarMenu(null);
-    void navigate('/channels/new');
-  }, [navigate]);
+    void navigate('/channels/new', {
+      state: newChannelComposeLocationState(`${location.pathname}${location.search}${location.hash}`),
+    });
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   const navigateToSettings = useCallback((subPage?: string) => {
     void navigate(subPage ? `/settings/${subPage}` : '/settings');

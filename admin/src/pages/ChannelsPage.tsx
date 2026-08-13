@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
@@ -17,6 +17,8 @@ import { useFileDrop } from '../hooks/useFileDrop'
 import { useStickToBottom } from '../hooks/useStickToBottom'
 import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
+import { parseChannelIdFromPath } from '../lib/channel-route'
 import { reportPushSurface } from '../lib/push-surface'
 import { CallBanner } from '../components/shared/CallBanner'
 import { DropZoneOverlay } from '../components/shared/DropZoneOverlay'
@@ -54,8 +56,13 @@ export const ChannelsPage = () => {
   const isOwner = me?.user.roleIds?.includes('owner') ?? false
   const { data: allUsers = [] } = useUsers(isOwner)
 
+  const isComposeRoute = location.pathname === '/channels/new'
+  const composeReturnTo = readChannelComposeReturnTo(location.state)
+  const backgroundChannelId = isComposeRoute
+    ? parseChannelIdFromPath(composeReturnTo)
+    : channelId
   const activeChannel =
-    channels.find((channel) => channel.id === channelId) ?? channels[0] ?? null
+    channels.find((channel) => channel.id === backgroundChannelId) ?? channels[0] ?? null
   const isPersonalAssistantActiveChannel = isPersonalAssistantChannel(activeChannel)
   const isExternalAgentActiveChannel = isExternalAgentChannel(activeChannel)
   // Function-first identity + conversation starters for the active external
@@ -266,10 +273,10 @@ export const ChannelsPage = () => {
   ])
 
   useEffect(() => {
-    if (!channelId && activeChannel) {
+    if (!isComposeRoute && !channelId && activeChannel) {
       void navigate(`/channels/${activeChannel.id}`, { replace: true })
     }
-  }, [activeChannel, channelId, navigate])
+  }, [activeChannel, channelId, isComposeRoute, navigate])
 
   // Structural only: is there an agent here at all? Whether one engages is the
   // orchestrator's model-judged call. The Personal Assistant and external-agent
@@ -524,6 +531,7 @@ export const ChannelsPage = () => {
         onSendAsFile={sendAsFile}
       />
       {executorLauncher.dialog}
+      <Outlet />
     </section>
   )
 }
