@@ -1061,3 +1061,28 @@ run either, so the choices are **Leave — it keeps writing**, **Stop and
 discard**, and **Stay here**. The guard lives with the session list rather than
 with the popup, because the question is whether anything is still being written
 in this thread — minimised chips included — not whether the popup is open.
+
+### Two integration bugs the end-to-end verification caught
+
+Both were invisible to unit tests on either side, because each half was correct
+against the contract as written and the contract was underspecified.
+
+1. **An edit session opened on an empty page.** The client created its entry
+   from `stream.document.start` and waited for deltas — but an edit's offsets
+   are relative to a document that already exists, which the client had never
+   fetched. `stream.document.start` now carries `mode: 'compose' | 'edit'`, and
+   an `edit` triggers the bootstrap read immediately. A compose session still
+   fetches nothing.
+2. **A snapshot bootstrap double-applied buffered frames.** The durable lane
+   keeps appends for a composed document but a whole *snapshot* for an edited
+   one, and a snapshot silently contains every delta published before it was
+   read. Replaying the frames buffered during the fetch wrote that text twice.
+   `mergeBootstrap` now takes a `snapshot` flag: it adopts the snapshot, drops
+   the buffer, and asks for one more read. The lane flushes every 250 ms, so it
+   converges immediately and nothing is applied twice in between.
+
+`admin/test/document-edit-replay.test.ts` exists so neither can come back: it
+emits the exact event sequence the worker produces and asserts the client's
+helpers land on the worker's document — for a single edit, several edits whose
+offsets depend on each other, shrinking edits, deletions, single-character
+provider chunks, and the snapshot-bootstrap case.
