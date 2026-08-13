@@ -335,7 +335,7 @@ test('findOrCreatePrivateConversationChannel creates a private mixed group DM', 
   assert.equal(createArgs?.data.label, 'Member, Planner')
   assert.equal(
     createArgs?.data.dmKey,
-    `${organizationId}:${teamId}:group:${otherUserId}:${userId}:agents:${agentId}`,
+    `${organizationId}:${teamId}:group:${userId}:${otherUserId}:agents:${agentId}`,
   )
   assert.equal(createArgs?.data.visibility, 'private')
   assert.deepEqual(createArgs?.data.members.create, [
