@@ -1,6 +1,4 @@
-import { AgentActivityPanel } from '../../components/features/agents/AgentActivityPanel';
-import type { AgentActivityRealtimeState } from '../../facades/agents/hooks';
-import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
+import type { ChannelRecord } from '../../lib/api-client';
 import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
@@ -26,28 +24,21 @@ type SidebarNavProps = {
   defaultProjectChannels: ChannelRecord[];
   defaultProjectTeamId?: string;
   dmCollapsed: boolean;
-  isOwner: boolean;
   onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
   onNavigateDm: (userId: string) => void;
   onNavigateHome: () => void;
   onNavigateNewConversation: () => void;
   onNavigateProject: (projectId: string) => void;
-  onNavigateSettings: (hash?: string) => void;
-  onCreateAgent: () => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onOpenCreateProject: () => void;
   onOpenPersonalAssistant: () => void;
   onOpenRenameProject: (target: RenameProjectTarget) => void;
-  onSelectAgent: (agentId: string) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
   personalAssistantBootstrapping: boolean;
   personalAssistantChannelId?: string;
   personalAssistantUnreadCount: number;
   projectsCollapsed: boolean;
-  realtime: AgentActivityRealtimeState;
-  scopedAgents: AgentRecord[];
-  selectedAgentId: string | null;
   setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
   sidebarAgentDms: SidebarAgentDm[];
   sidebarMenu: SidebarMenu;
@@ -77,28 +68,21 @@ export const SidebarNav = (props: SidebarNavProps) => {
     defaultProjectChannels,
     defaultProjectTeamId,
     dmCollapsed,
-    isOwner,
     onNavigateAgent,
     onNavigateChannel,
     onNavigateDm,
     onNavigateHome,
     onNavigateNewConversation,
     onNavigateProject,
-    onNavigateSettings,
-    onCreateAgent,
     onOpenCreateChannel,
     onOpenCreateProject,
     onOpenPersonalAssistant,
     onOpenRenameProject,
-    onSelectAgent,
     onToggleStar,
     personalAssistantBootstrapping,
     personalAssistantChannelId,
     personalAssistantUnreadCount,
     projectsCollapsed,
-    realtime,
-    scopedAgents,
-    selectedAgentId,
     setSidebarMenu,
     sidebarAgentDms,
     sidebarMenu,
@@ -225,10 +209,9 @@ export const SidebarNav = (props: SidebarNavProps) => {
           activeDmChannelId={activeDmChannelId}
           currentChannelId={currentChannelId}
           dmCollapsed={dmCollapsed}
-          isOwner={isOwner}
           onNavigateDm={onNavigateDm}
           onNavigateAgentDm={onNavigateChannel}
-          onNavigateSettings={onNavigateSettings}
+          onStartNewConversation={onNavigateNewConversation}
           onOpenPersonalAssistant={onOpenPersonalAssistant}
           onToggleStar={onToggleStar}
           personalAssistantBootstrapping={personalAssistantBootstrapping}
@@ -240,15 +223,6 @@ export const SidebarNav = (props: SidebarNavProps) => {
           starredUserIds={starredUserIds}
           toggleDmCollapsed={toggleDmCollapsed}
           unreadCountByChannelId={unreadCountByChannelId}
-        />
-
-        <AgentActivityPanel
-          agents={scopedAgents}
-          currentChannelId={currentChannelId}
-          onCreateAgent={onCreateAgent}
-          onSelectAgent={onSelectAgent}
-          realtime={realtime}
-          selectedAgentId={selectedAgentId}
         />
       </div>
     </aside>
