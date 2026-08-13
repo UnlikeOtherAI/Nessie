@@ -1,14 +1,13 @@
 import { useCallback, useRef, useState } from 'react'
-import {
-  useGenerateAgentAvatar,
-  useUpdateAgentAvatar,
-} from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
-import { uploadAttachment } from '../../../lib/uploads'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AvatarUploadPanel } from '../../shared/AvatarUploadPanel'
 import { useModalA11y } from '../../shared/useModalA11y'
+import {
+  type GeneratedAgentAvatar,
+  useAgentAvatarChanges,
+} from './useAgentAvatarChanges'
 
 type AgentAvatarPanelProps = {
   agent: AgentRecord
@@ -24,93 +23,33 @@ const sourceHint = (hasCustom: boolean): string =>
     ? "Using this agent's current avatar. Replace it with an upload or generate a new headshot."
     : 'Upload an avatar or generate a cartoon headshot based on this agent’s role.'
 
-type GeneratedAvatarPreview = {
-  avatarAttachmentId: string
-  avatarBackgroundColor: NonNullable<AgentRecord['avatarBackgroundColor']>
-}
-
 export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps) => {
   const { token } = useAuthSession()
-  const updateAvatar = useUpdateAgentAvatar()
-  const generateAvatar = useGenerateAgentAvatar()
-  const [uploading, setUploading] = useState(false)
-  const [generatedAvatar, setGeneratedAvatar] = useState<GeneratedAvatarPreview | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [generatedAvatar, setGeneratedAvatar] = useState<GeneratedAgentAvatar | null>(null)
   const replacementDialogRef = useRef<HTMLDivElement | null>(null)
   const hasCustom = Boolean(agent.avatarAttachmentId)
-  const busy = uploading || updateAvatar.isPending || generateAvatar.isPending
+  const avatarChanges = useAgentAvatarChanges(agent.id, avatarContext)
 
   const closeGeneratedAvatar = useCallback(() => setGeneratedAvatar(null), [])
   useModalA11y(replacementDialogRef, closeGeneratedAvatar)
 
-  const handleSave = async (blob: Blob) => {
-    setUploading(true)
-    setError(null)
-    try {
-      const file = new File([blob], 'agent-avatar.png', { type: 'image/png' })
-      const attachment = await uploadAttachment(file, token)
-      await updateAvatar.mutateAsync({
-        agentId: agent.id,
-        avatarAttachmentId: attachment.id,
-      })
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save avatar')
-      throw saveError
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const handleRemove = () => {
-    setError(null)
-    updateAvatar.mutate(
-      { agentId: agent.id, avatarAttachmentId: null },
-      {
-        onError: (removeError) =>
-          setError(removeError instanceof Error ? removeError.message : 'Failed to remove avatar'),
-      },
-    )
-  }
-
   const handleGenerate = async () => {
-    setError(null)
-    try {
-      const preview = await generateAvatar.mutateAsync({
-        agentId: agent.id,
-        ...avatarContext,
-      })
-      setGeneratedAvatar(preview)
-    } catch (generationError) {
-      setError(
-        generationError instanceof Error
-          ? generationError.message
-          : 'Failed to generate a headshot',
-      )
-    }
+    const preview = await avatarChanges.generate()
+    if (preview) setGeneratedAvatar(preview)
   }
 
   const confirmGeneratedAvatar = async () => {
     if (!generatedAvatar) return
-    setError(null)
-    try {
-      await updateAvatar.mutateAsync({ agentId: agent.id, ...generatedAvatar })
-      closeGeneratedAvatar()
-    } catch (replacementError) {
-      setError(
-        replacementError instanceof Error
-          ? replacementError.message
-          : 'Failed to replace avatar',
-      )
-    }
+    if (await avatarChanges.replace(generatedAvatar)) closeGeneratedAvatar()
   }
 
   return (
     <>
       <AvatarUploadPanel
-        busy={busy}
+        busy={avatarChanges.busy}
         cropperDescription="Drag to reposition, scroll or use the slider to zoom. The rounded square becomes this agent avatar."
         cropperTitle="Edit agent avatar"
-        error={error}
+        error={avatarChanges.error}
         hasCustom={hasCustom}
         hint={sourceHint(hasCustom)}
         preview={
@@ -125,8 +64,8 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
         saveLabel="Save avatar"
         title="Agent avatar"
         uploadLabel="Upload avatar"
-        onRemove={handleRemove}
-        onSave={handleSave}
+        onRemove={() => void avatarChanges.remove()}
+        onSave={avatarChanges.upload}
       />
       <section className="admin-card p-4">
         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
@@ -138,11 +77,11 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
         </p>
         <button
           className="admin-button admin-button-secondary mt-4"
-          disabled={busy}
+          disabled={avatarChanges.busy}
           onClick={() => void handleGenerate()}
           type="button"
         >
-          {generateAvatar.isPending ? 'Generating headshot…' : 'Generate new headshot'}
+          {avatarChanges.isGenerating ? 'Generating headshot…' : 'Generate new headshot'}
         </button>
       </section>
       {generatedAvatar ? (
@@ -185,7 +124,7 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
             <div className="mt-6 flex justify-end gap-2">
               <button
                 className="admin-button admin-button-secondary"
-                disabled={updateAvatar.isPending}
+              disabled={avatarChanges.isReplacing}
                 onClick={closeGeneratedAvatar}
                 type="button"
               >
@@ -193,11 +132,11 @@ export const AgentAvatarPanel = ({ agent, avatarContext }: AgentAvatarPanelProps
               </button>
               <button
                 className="admin-button admin-button-primary"
-                disabled={updateAvatar.isPending}
+              disabled={avatarChanges.isReplacing}
                 onClick={() => void confirmGeneratedAvatar()}
                 type="button"
               >
-                {updateAvatar.isPending ? 'Replacing…' : 'Use new headshot'}
+                {avatarChanges.isReplacing ? 'Replacing…' : 'Use new headshot'}
               </button>
             </div>
           </div>

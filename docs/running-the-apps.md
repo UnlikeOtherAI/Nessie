@@ -150,18 +150,19 @@ safe area, while a Stage Manager window centres it in that window's title bar;
 row (`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
 its empty tab scenes can cover the sibling WKWebView with a black controller
 surface after login. Back, Forward, Recent Channels, Help, the destination tabs,
-Search, and the signed-in person's SSO avatar form one centred, theme-derived
-native control group. The active workspace's initial and name occupy the leading
-edge; if they would overlap, the complete group moves trailing before any
-controls are removed. That decision uses the native chrome layer's measured
-width, rather than a cached orientation value. Only in a genuinely narrow Stage Manager window does the
-group compact: Search and the four toolbar actions move into a native
-three-dot menu, and the workspace trigger then truncates to its icon/chevron or
-hides as a last resort. Tapping the workspace opens the web shell's existing
-workspace menu, while tapping the avatar opens the canonical web account menu
-(presence, status, settings, and logout), so neither native presentation forks
-the entitlement-aware web actions. The duplicate web header trigger is omitted
-on native iPad and iPhone shells.
+and Search form one centred, theme-derived native control group. The signed-in
+person's SSO avatar is independently pinned at the trailing safe edge of the
+top bar. The active workspace's initial and name occupy the leading edge; if
+they would overlap, the centred group moves trailing before any controls are
+removed, reserving the avatar's space. That decision uses the native chrome
+layer's measured width, rather than a cached orientation value. Only in a
+genuinely narrow Stage Manager window does the group compact: Search and the
+four toolbar actions move into a native three-dot menu, and the workspace
+trigger then truncates to its icon/chevron or hides as a last resort. Tapping
+the workspace opens the web shell's existing workspace menu, while tapping the
+avatar opens the canonical web account menu (presence, status, settings, and
+logout), so neither native presentation forks the entitlement-aware web actions.
+The duplicate web header trigger is omitted on native iPad and iPhone shells.
 Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split
 lives in `mobile/src/config.ts`:
