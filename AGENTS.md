@@ -160,7 +160,15 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   delta durably, never emit a partial escape or lone surrogate to a client
   (`createPartialJsonScanner` owns that invariant), and never save a document
   the streamed text does not byte-match. Interruption of any kind saves
-  nothing. Spec: `docs/plans/2026-08-13-live-document-streaming.md`.
+  nothing. **Editing an existing document is deltas, never a rewrite**
+  (`kb_document_edit`): `{find, replace}` pairs anchored to an exact single
+  match, streamed in document order, with the edit site published *before* its
+  replacement text so a viewer can move there and wait. The streaming preview
+  (`document-stream-edit.ts` tracker) and the save (`applyDocumentEdits`) are
+  deliberately independent implementations and the save asserts they agree —
+  never collapse them into one, or the check becomes a restatement. An
+  ambiguous anchor is skipped in the preview and refused in words at save.
+  Spec: `docs/plans/2026-08-13-live-document-streaming.md`.
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and

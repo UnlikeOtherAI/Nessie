@@ -987,3 +987,67 @@ above:
   seeds the target; the popup's footer address bar with its folder picker can
   retarget mid-stream (override before save, move after save) (§4.3, §4.4,
   §4.5).
+
+---
+
+## 7. Delta editing + edit-following viewport (shipped 2026-08-14)
+
+Composing a document was only half of it: asking for a change to an existing
+document should not regenerate the whole thing, and the person should be able to
+watch the change land where it belongs.
+
+**`kb_document_edit`** takes `pageId` + `edits: [{find, replace}]`. Only the
+changed passages are generated. `find` must match the current document exactly
+once — anything else is refused in words rather than guessed at, and the live
+preview skips an anchor it cannot place so a viewer never sees a change that
+will not be saved. An empty `replace` deletes.
+
+**Anchor before text.** An edit is published (`stream.document.edit
+{editIndex, offset, removeLength}`) the moment its `find` value closes, before
+any replacement text exists. That ordering is the whole reason the viewport can
+move to the change site and wait there instead of revealing after the fact
+where the change happened. Models emit arguments in schema order, so `find`
+naturally arrives first.
+
+**Positions, not appends.** `stream.document.delta.offset` is now the absolute
+insertion point in the composed document, and the client applies deltas in
+`seq` order — offsets stop being monotonic once edits land mid-document, so
+offset-based dedup would be wrong. Composing a new document is the degenerate
+case: one edit at offset 0 removing nothing, then increasing offsets.
+
+**Durable lane switches to snapshot mode for edits.** A log of appends cannot
+represent a change in the middle of a document. Bootstrap concatenates chunks
+in id order either way, so one replaced snapshot row reads back correctly with
+no API change. The base document is written to that lane *before*
+`stream.document.start` is published, so a client bootstrapping on the event
+sees the document rather than an empty page.
+
+**Two implementations, deliberately.** The streaming tracker
+(`document-stream-edit.ts` `createDocumentEditTracker`) and the save
+(`applyDocumentEdits`) apply the edits independently, and the save asserts they
+produced the same document. Collapsing them would turn a real check into a
+restatement.
+
+### Edit-following viewport
+
+The change cursor stays vertically centred in the popup while text is being
+written, with two rules that come straight from how it should feel:
+
+- **Clamped, never padded.** The scroll target is clamped to
+  `[0, scrollHeight - clientHeight]`. Near the end of a document the clamp
+  naturally stops centring and the text simply grows upward — which is what
+  "no white space at the bottom" means. Spacer elements to force centring are
+  forbidden.
+- **Stable, not twitchy.** A deadzone suppresses sub-threshold corrections so
+  continuous writing does not jitter the page; a new `stream.document.edit`
+  (a deliberate jump the user wants to see) re-engages following and animates.
+  Manual scrolling releases the follow, with an affordance to re-engage.
+
+### Leaving mid-write
+
+While a session is `streaming`/`saving` the admin registers a `beforeunload`
+guard, and closing the dialog asks first. The confirmation offers honest
+choices, because hiding is *not* destructive: **Keep writing** (minimise to the
+chip, generation continues), **Stop and discard** (cancels the run — nothing is
+saved, the established behaviour), **Cancel**. The guard is removed the moment
+no session is active, so it can never block ordinary navigation.

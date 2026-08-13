@@ -107,33 +107,26 @@ export const StreamingMarkdown = ({
       {spans.map((span, index) => {
         const isTail = index === spans.length - 1
         const isCursor = location?.blockIndex === index
-
-        if (!isTail && !isCursor) {
-          return <FrozenBlock key={`block-${index}`} text={span.text} />
-        }
-
         const repaired = isTail ? repairStreamingTail(span.text) : span.text
         const text =
           isCursor && location ? withCursorMarker(repaired, location.localOffset) : repaired
 
-        const block = (
-          <MessageMarkdown
-            allowRemoteImages={false}
-            renderInlineText={isCursor ? renderWithMarker : identity}
-          >
-            {text}
-          </MessageMarkdown>
-        )
-
-        if (!isCursor) {
-          return <div key={`block-${index}`}>{block}</div>
-        }
-        // The wrapper exists only to give the follower something to measure
-        // when the cursor sits where no marker can go; blocks are already
-        // separate block-level elements, so it changes no layout.
+        // Every block gets the same plain wrapper — they are block-level
+        // elements already, so it changes no layout — and the one holding the
+        // cursor hands its element to the follower, which measures it when no
+        // marker could be placed inside.
         return (
-          <div key={`block-${index}`} ref={onCursorBlock}>
-            {block}
+          <div key={`block-${index}`} ref={isCursor ? onCursorBlock : undefined}>
+            {!isTail && !isCursor ? (
+              <FrozenBlock text={span.text} />
+            ) : (
+              <MessageMarkdown
+                allowRemoteImages={false}
+                renderInlineText={isCursor ? renderWithMarker : identity}
+              >
+                {text}
+              </MessageMarkdown>
+            )}
           </div>
         )
       })}

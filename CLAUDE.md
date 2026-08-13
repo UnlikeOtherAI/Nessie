@@ -122,8 +122,35 @@ document appears complete when it arrives, never a fake typewriter.
   private space is created published — the person who asked for it is its only
   reader and just watched it being written. Shared spaces keep the
   `kb_publish_request` review gate.
+**Editing is deltas, not a rewrite** (`kb_document_edit`). The model gives
+`edits: [{find, replace}]` against an existing `.md` document — only the changed
+passages are generated, and the person watches each one land *in place*:
+
+- **An edit is anchored the moment its `find` closes**, before any replacement
+  text exists, which is what lets the viewer move to the change site and wait
+  there rather than discovering afterwards where the change was
+  (`document-stream-edit.ts`). `find` must match exactly once; an ambiguous or
+  absent anchor is skipped in the preview and refused in words by the save,
+  because guessing would show a change that never gets written.
+- The recorder loads the base document through the same reader the save uses
+  (`knowledge-document-io.ts` `readMarkdownDocument`) and seeds the durable lane
+  with it *before* publishing `stream.document.start`, so a client bootstrapping
+  on that event sees the document rather than an empty page.
+- The durable lane switches to **snapshot** mode for edits: content changes in
+  the middle of a document, which a log of appends cannot express. Bootstrap
+  concatenates chunks in id order either way, so one snapshot row reads back
+  correctly with no API change.
+- `stream.document.edit {editIndex, offset, removeLength}` precedes the
+  replacement deltas; `stream.document.delta.offset` is the absolute insertion
+  point, so composing a new document is the degenerate case (one edit at offset
+  0 removing nothing). The client applies deltas in `seq` order — offsets are no
+  longer monotonic, so offset-based dedup would be wrong.
+- **The preview and the save are independent implementations** — the streaming
+  tracker and `applyDocumentEdits` — and the save asserts they landed on the
+  same document. Two readers agreeing is a real check; one restating itself is
+  not.
 - SSE events: `stream.document.start` / `.meta` / `.delta` / `.done` / `.error`
-  / `.target`. Only `.delta` joins the hub's no-replay list — that list
+  / `.target` / `.edit`. Only `.delta` joins the hub's no-replay list — that list
   *withholds* events from `Last-Event-ID` reconnects, so terminators must
   replay. Ephemeral events write no `id:` line, never touch
   `connection.lastSequence`, and are dropped (not buffered) during
