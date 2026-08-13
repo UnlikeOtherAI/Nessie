@@ -68,7 +68,7 @@ file node** (`KnowledgePage.kind = file` + an `Attachment` through the one
 `FileService` chokepoint). While the model writes it, the person watches the
 tokens arrive in a centered popup that renders formatted markdown
 progressively. Spec:
-[docs/plans/2026-08-13-live-document-streaming.md](docs/plans/2026-08-13-live-document-streaming.md).
+[docs/plans/2026-08-13-live-document-streaming/overview.md](docs/plans/2026-08-13-live-document-streaming/overview.md).
 
 **The document is the model's own tool call.** The body is the `markdown`
 argument, so it costs one inference and stays verbatim in the model's context

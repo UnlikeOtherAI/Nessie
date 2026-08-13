@@ -1,6 +1,6 @@
 /**
  * The Live Data Dashboards contract
- * (docs/plans/2026-08-13-live-data-dashboards.md §3).
+ * (docs/plans/2026-08-13-live-data-dashboards/overview.md §3).
  *
  * This file IS the "no arbitrary code" boundary. An agent authors a widget by
  * emitting one of these objects and nothing else, so the boundary holds by what
