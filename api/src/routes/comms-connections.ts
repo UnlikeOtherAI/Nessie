@@ -16,6 +16,7 @@ import {
 
 import { writeAuditEntry } from '@nessie/db'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { PublicOriginConfigError } from '../lib/public-origin.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import type { RouteDeps } from './types.js'
@@ -125,7 +126,26 @@ export const registerCommsConnectionRoutes = (
 
     const pkce = oauthConfig.usePkce ? generatePkcePair() : undefined
     const state = generateOAuthStateToken()
-    const redirectUri = buildCommsCallbackUrl(request, provider, config.api.publicUrl)
+    // Resolve the public origin before minting the state row: a missing
+    // api.publicUrl in a non-local deployment must fail here, not after a
+    // state token bound to a wrong redirect URI has been persisted.
+    let redirectUri: string
+    try {
+      redirectUri = buildCommsCallbackUrl(request, provider, config)
+    } catch (error) {
+      if (error instanceof PublicOriginConfigError) {
+        sendApiError(
+          reply,
+          500,
+          'PUBLIC_ORIGIN_NOT_CONFIGURED',
+          'The server cannot determine its public origin; set '
+            + 'NESSIE_API_PUBLIC_URL to the public origin of this API '
+            + '(required outside local mode)',
+        )
+        return reply
+      }
+      throw error
+    }
 
     await prisma.commsOAuthState.create({
       data: {
@@ -199,7 +219,7 @@ export const registerCommsConnectionRoutes = (
       }
       const redirectUri =
         payload.redirectUri
-        ?? buildCommsCallbackUrl(request, provider, config.api.publicUrl)
+        ?? buildCommsCallbackUrl(request, provider, config)
 
       let connector
       try {

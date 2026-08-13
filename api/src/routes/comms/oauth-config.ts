@@ -3,6 +3,8 @@ import { createHash, randomBytes } from 'node:crypto'
 import type { FastifyRequest } from 'fastify'
 import type { CommsProvider } from '@nessie/schemas'
 
+import { resolvePublicOrigin } from '../../lib/public-origin.js'
+
 /**
  * Server-side OAuth *start* configuration for the Individual Communications
  * Connector. This owns only what is needed to build the provider authorization
@@ -85,29 +87,19 @@ export const generateOAuthStateToken = (): string =>
   randomBytes(32).toString('base64url')
 
 /**
- * Build the callback URL the provider redirects back to. Prefer the configured
- * public API origin (stable behind a proxy); fall back to the inbound
- * request's forwarded proto/host so local dev works without extra config.
+ * Build the callback URL the provider redirects back to. The origin comes
+ * from `resolvePublicOrigin`: the configured `api.publicUrl`, or — local
+ * mode only — Fastify's trust-proxy-scoped protocol/hostname. Raw
+ * X-Forwarded-* / Host headers are never consulted, and a hosted/selfHosted
+ * deployment without `api.publicUrl` fails loudly instead of trusting the
+ * request.
  */
 export const buildCommsCallbackUrl = (
   request: FastifyRequest,
   provider: CommsProvider,
-  apiPublicUrl?: string,
-): string => {
-  const path = `/api/comms/connections/${provider}/callback`
-  if (apiPublicUrl) {
-    return `${apiPublicUrl.replace(/\/$/, '')}${path}`
-  }
-  const protoHeader = request.headers['x-forwarded-proto']
-  const proto = typeof protoHeader === 'string'
-    ? protoHeader.split(',')[0]?.trim() ?? request.protocol
-    : request.protocol
-  const hostHeader = request.headers['x-forwarded-host'] ?? request.headers.host
-  const host = typeof hostHeader === 'string'
-    ? hostHeader.split(',')[0]?.trim()
-    : undefined
-  return host ? `${proto}://${host}${path}` : path
-}
+  config: Parameters<typeof resolvePublicOrigin>[1],
+): string =>
+  `${resolvePublicOrigin(request, config)}/api/comms/connections/${provider}/callback`
 
 export type BuildAuthorizeUrlInput = {
   config: CommsOAuthProviderConfig

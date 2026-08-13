@@ -16,6 +16,7 @@ import {
   McpOAuthError,
   MCP_OAUTH_ERROR_CODES,
   McpToolReviewError,
+  type McpUrlSafetyOptions,
   type OAuthStateStore,
   type SecretResolver,
   type SecretStore,
@@ -37,6 +38,8 @@ import {
 
 export type McpRouteHelpers = {
   prisma: PrismaClient
+  /** Test seam: DNS resolution override for OAuth URL safety checks. */
+  oauthResolveHost?: McpUrlSafetyOptions['resolveHost']
   /**
    * API config (rate-limit thresholds) + the brute-force limiter used by the
    * OAuth handshake and credential-write sub-registrars. Optional so existing
@@ -92,6 +95,12 @@ export type McpSubRegistrarContext = {
   secretResolver: SecretResolver
   mcpSecretStore: SecretStore
   oauthStateStore?: OAuthStateStore
+  /**
+   * DNS resolver override for the OAuth SSRF guard. Tests inject a fixed
+   * public-IP answer so the handshake never touches the network; production
+   * leaves this unset (system DNS via `@nessie/runtime`).
+   */
+  oauthResolveHost?: McpUrlSafetyOptions['resolveHost']
 }
 
 export const JsonRecordSchema = z.record(z.string(), z.unknown())

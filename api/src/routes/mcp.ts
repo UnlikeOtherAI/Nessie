@@ -79,6 +79,7 @@ export const registerMcpRoutes = (
     secretResolver: helpers.secretResolver ?? new EnvSecretResolver(),
     mcpSecretStore: helpers.mcpSecretStore ?? oauthSecretStore,
     oauthStateStore: helpers.oauthStateStore,
+    oauthResolveHost: helpers.oauthResolveHost,
   }
 
   registerMcpCatalogRoutes(app, ctx)

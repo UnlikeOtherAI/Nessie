@@ -8,6 +8,7 @@ import {
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
 import { createApiResponse, sendApiError } from '../../lib/api.js'
+import { PublicOriginConfigError, resolvePublicOrigin } from '../../lib/public-origin.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from '../auth-rate-limit.js'
 
 import { sendMcpError, type McpSubRegistrarContext } from './shared.js'
@@ -49,26 +50,26 @@ const sanitizeOAuthErrorCode = (raw: unknown): string => {
  */
 
 /**
- * Build the OAuth callback URL the provider should redirect to. We resolve
- * the protocol/host from the inbound request rather than hardcoding so the
- * same code works behind a reverse proxy or on localhost dev. The path is
- * fixed at `/api/mcp/oauth/callback` per task #20 spec.
+ * Build the OAuth callback URL the provider should redirect to. The origin
+ * comes from `resolvePublicOrigin` (configured `api.publicUrl`, or — local
+ * mode only — Fastify's trust-proxy-scoped protocol/hostname); raw
+ * X-Forwarded-* / Host headers are never consulted. The path is fixed at
+ * `/api/mcp/oauth/callback` per task #20 spec.
  */
-export const buildOAuthCallbackUrl = (request: FastifyRequest): string => {
-  const protoHeader = request.headers['x-forwarded-proto']
-  const proto = typeof protoHeader === 'string'
-    ? protoHeader.split(',')[0]?.trim() ?? request.protocol
-    : request.protocol
-  const hostHeader = request.headers['x-forwarded-host'] ?? request.headers.host
-  const host = typeof hostHeader === 'string' ? hostHeader.split(',')[0]?.trim() : undefined
-  if (!host) {
-    // Fallback to a relative-ish URL so we still surface a usable redirect
-    // even when the host header is missing — most providers will reject this
-    // but at least the error is visible in logs rather than silently using
-    // the wrong domain.
-    return '/api/mcp/oauth/callback'
-  }
-  return `${proto}://${host}/api/mcp/oauth/callback`
+export const buildOAuthCallbackUrl = (
+  request: FastifyRequest,
+  config: Parameters<typeof resolvePublicOrigin>[1],
+): string => `${resolvePublicOrigin(request, config)}/api/mcp/oauth/callback`
+
+/** A misconfigured public origin is an operator error, not a client one. */
+const sendPublicOriginError = (reply: Parameters<typeof sendApiError>[0]): void => {
+  sendApiError(
+    reply,
+    500,
+    'PUBLIC_ORIGIN_NOT_CONFIGURED',
+    'The server cannot determine its public origin; set NESSIE_API_PUBLIC_URL '
+      + 'to the public origin of this API (required outside local mode)',
+  )
 }
 
 /**
@@ -143,6 +144,20 @@ export const registerMcpOAuthRoutes = (
       return reply
     }
 
+    // Resolve the public origin OUTSIDE the OAuth service call: a missing
+    // config must fail before any state token is minted or upstream metadata
+    // is discovered (dynamic client registration would persist a steered
+    // origin), never be swallowed into a provider flow.
+    let callbackUrl: string
+    try {
+      callbackUrl = buildOAuthCallbackUrl(request, config)
+    } catch (error) {
+      if (error instanceof PublicOriginConfigError) {
+        sendPublicOriginError(reply)
+        return reply
+      }
+      throw error
+    }
     try {
       const result = await startOAuth({
         prisma,
@@ -150,7 +165,8 @@ export const registerMcpOAuthRoutes = (
         secretStore: oauthSecretStore,
         instanceId,
         actorContext,
-        callbackUrl: buildOAuthCallbackUrl(request),
+        callbackUrl,
+        resolveHost: ctx.oauthResolveHost,
       })
       return createApiResponse(result)
     } catch (error) {
@@ -218,6 +234,16 @@ export const registerMcpOAuthRoutes = (
       )
       return reply
     }
+    let callbackUrl: string
+    try {
+      callbackUrl = buildOAuthCallbackUrl(request, config)
+    } catch (error) {
+      if (error instanceof PublicOriginConfigError) {
+        sendPublicOriginError(reply)
+        return reply
+      }
+      throw error
+    }
     try {
       await completeOAuth({
         prisma,
@@ -226,7 +252,7 @@ export const registerMcpOAuthRoutes = (
         secretResolver: ctx.secretResolver,
         state: query.state,
         code: query.code,
-        callbackUrl: buildOAuthCallbackUrl(request),
+        callbackUrl,
       })
       // The redirect lands in a bare browser tab — answer with a human page,
       // not JSON.
