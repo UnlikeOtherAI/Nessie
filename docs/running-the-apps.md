@@ -241,6 +241,26 @@ The WebView shows the admin's own login (SSO + local-dev email/password); there
 is no separate native login. ATS allows the dev LAN `http://` origin via
 `NSAllowsLocalNetworking` in `mobile/app.json`.
 
+### Mobile navigation
+
+The mobile shell keeps the native system tab bar as the primary section switcher
+and leaves page data, URLs, and conversation state in the admin React app.
+
+- On a **phone**, selecting or reselecting Channels, Projects, Knowledge, or
+  Admin opens that tab's contextual navigation list first. Selecting an item
+  then enters its detail route; a conversation's Back control returns to the
+  Channels list.
+- Conversation information is addressable at
+  `/channels/:channelId/info`, with nested `/members` and `/members/add`
+  destinations. This gives a cold deep link the same deterministic Back path
+  as an in-app navigation sequence.
+- **iOS** uses the translucent circular conversation Back affordance alongside
+  the system Liquid Glass tab bar. **Android** uses the same routes and
+  hierarchy, but keeps its normal Material-style Back affordance rather than
+  imitating iOS glass.
+- **iPad and desktop** retain their side navigation beside the selected detail;
+  conversation information is an inspector, not a phone-style replacement.
+
 ## iPhone Dev Build And Direct APNs Push
 
 Nessie sends iOS notifications **directly from its own worker/API to APNs**. It
