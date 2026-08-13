@@ -21,6 +21,7 @@ export const IPAD_NATIVE_CHROME_BOTTOM_CLEARANCE = 12
 export const IPAD_WINDOWED_CHROME_TOP = 12
 export const IPAD_NATIVE_WORKSPACE_MAX_WIDTH = 220
 export const IPAD_NATIVE_WORKSPACE_COLLAPSED_WIDTH = 68
+export const IPAD_NATIVE_WORKSPACE_MENU_TABLET_OFFSET = 44
 export const IPAD_NATIVE_CHROME_GAP = 12
 export const IPAD_NATIVE_TRAILING_ACCOUNT_WIDTH = 42
 export const IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE = 574
@@ -68,6 +69,10 @@ export const getIpadWindowedLeadingControlsClearance = (windowed: boolean): numb
 // layouts need the same breathing room beneath the controls.
 export const getIpadContentTop = (chromeTop: number): number => (
   chromeTop + IPAD_NATIVE_CHROME_HEIGHT + IPAD_NATIVE_CHROME_BOTTOM_CLEARANCE
+)
+
+export const getIpadWorkspaceMenuAnchorLeft = (workspaceLeft: number): number => (
+  workspaceLeft + IPAD_NATIVE_WORKSPACE_MENU_TABLET_OFFSET
 )
 
 export const withOpacity = (color: string, opacity: number): string => {

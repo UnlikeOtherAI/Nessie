@@ -9,6 +9,7 @@ import { IpadNativeTabBar } from './IpadNativeTabBar'
 import { IpadNativeWorkspaceSwitcher } from './IpadNativeWorkspaceSwitcher'
 import {
   getIpadTopChromeLayout,
+  getIpadWorkspaceMenuAnchorLeft,
   IPAD_NATIVE_CHROME_GAP,
   IPAD_NATIVE_COMPACT_TOP_CHROME_WIDTH_ESTIMATE,
   IPAD_NATIVE_FULL_TOP_CHROME_WIDTH_ESTIMATE,
@@ -133,7 +134,7 @@ export const IpadNativeChrome = ({
           left={workspaceLeft}
           maxWidth={layout.workspaceWidth}
           name={workspaceName}
-          onPress={() => onToggleWorkspaceMenu(workspaceLeft)}
+          onPress={() => onToggleWorkspaceMenu(getIpadWorkspaceMenuAnchorLeft(workspaceLeft))}
           theme={theme}
           top={top}
         />

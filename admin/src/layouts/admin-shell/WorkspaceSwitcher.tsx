@@ -93,7 +93,7 @@ const WorkspaceMenu = ({
       <div className="fixed inset-0 z-[60]" onClick={onClose} />
       <div
         className={[
-          'fixed z-[61] w-[260px] overflow-y-auto rounded-xl border',
+          'fixed z-[61] overflow-y-auto rounded-xl border',
           'border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5',
           'shadow-[0_16px_48px_var(--scrim-strong)]',
         ].join(' ')}
@@ -101,6 +101,7 @@ const WorkspaceMenu = ({
           left: position.left,
           top: position.top,
           maxHeight: position.maxHeight,
+          width: position.width,
         }}
       >
         <div className="px-2 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
