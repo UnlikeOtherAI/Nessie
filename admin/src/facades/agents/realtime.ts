@@ -192,6 +192,11 @@ export const useAgentRealtime = (input: {
       // Reply threads (#233): a new reply or updated root summary refreshes
       // both the top-level feed (summary bars) and any open reply panel.
       if (message.event === 'message.reply' || message.event === 'message.reply.meta') {
+        // This listener owns cache coherence independently of notification
+        // preference. A muted user still needs their sidebar/app badge to move.
+        if (message.event === 'message.reply') {
+          void queryClient.invalidateQueries({ queryKey: ['channels'] })
+        }
         void queryClient.invalidateQueries({
           queryKey: ['threads', message.data.threadId, 'messages'],
         })

@@ -37,6 +37,7 @@ import { useChannelMentions } from './channels/useChannelMentions'
 import { useAlertMessageHighlight, useChannelMessageSearch } from './channels/useChannelMessageSearch'
 import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
 import { useReplyThread } from './channels/useReplyThread'
+import { isConversationReadReady } from './channels/thread-read-marker'
 import { useThreadReadMarker } from './channels/useThreadReadMarker'
 
 export const ChannelsPage = () => {
@@ -106,13 +107,6 @@ export const ChannelsPage = () => {
       setActiveTab(requestedTab)
     }
   }, [location.search])
-  // Loading a channel's Files, Info, or Runs data must not acknowledge its
-  // messages. Only the actual conversation surface is a read.
-  useThreadReadMarker(
-    activeChannel?.defaultThreadId,
-    threadMessages,
-    visibleActiveTab === 'messages',
-  )
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
@@ -152,6 +146,24 @@ export const ChannelsPage = () => {
   // Reply-thread panel (#233): URL-driven open state, replies/root queries,
   // and the persisted drag-resizable width.
   const replyThread = useReplyThread({ activeChannel, agents, channelUsers })
+  const visibleConversationMessages = useMemo(() => {
+    if (!replyThread.openRootMessageId) return threadMessages
+    const root = replyThread.rootQuery.data?.message
+    return root ? [root, ...(replyThread.repliesQuery.data ?? [])] : []
+  }, [replyThread.openRootMessageId, replyThread.repliesQuery.data, replyThread.rootQuery.data, threadMessages])
+  const conversationReadReady = isConversationReadReady({
+    isReplyConversation: Boolean(replyThread.openRootMessageId),
+    repliesLoaded: replyThread.repliesQuery.isSuccess,
+    rootLoaded: replyThread.rootQuery.isSuccess,
+  })
+  // Loading a channel's Files, Info, or Runs data must not acknowledge its
+  // messages. A reply panel acknowledges only its exact, rendered conversation.
+  useThreadReadMarker(
+    replyThread.activeThreadId,
+    visibleConversationMessages,
+    visibleActiveTab === 'messages' && conversationReadReady,
+    replyThread.openRootMessageId ?? undefined,
+  )
 
   // Presence is the channel feed or one exact reply conversation. The Files,
   // Info, and Runs tabs deliberately clear it: a reply there still needs an

@@ -27,15 +27,24 @@ self.addEventListener('push', (event) => {
   const title = payload.subtitle
     ? `${payload.title || 'Nessie'} · ${payload.subtitle}`
     : (payload.title || 'Nessie')
+  const count = Number(payload.badge)
+  const badgeUpdate = Number.isFinite(count) && count > 0 && typeof self.navigator.setAppBadge === 'function'
+    ? self.navigator.setAppBadge(Math.floor(count))
+    : Number.isFinite(count) && count === 0 && typeof self.navigator.clearAppBadge === 'function'
+      ? self.navigator.clearAppBadge()
+      : Promise.resolve()
 
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: payload.body,
-      icon: '/icon-1024.png',
-      badge: '/icon-1024.png',
-      tag,
-      data,
-    }),
+    Promise.all([
+      badgeUpdate,
+      self.registration.showNotification(title, {
+        body: payload.body,
+        icon: '/icon-1024.png',
+        badge: '/icon-1024.png',
+        tag,
+        data,
+      }),
+    ]),
   )
 })
 

@@ -766,6 +766,7 @@ model User {
   messages                            Message[]
   reactions                           MessageReaction[]
   threadReadStates                    ThreadReadState[]
+  messageConversationReadStates       MessageConversationReadState[]
   userAlerts                          UserAlert[]
   disclosureGrants                    DisclosureGrant[]
   scopeDisclosureGrants               ScopeDisclosureGrant[]
@@ -1307,6 +1308,26 @@ model ThreadReadState {
   @@map("thread_read_states")
 }
 
+// Read state for one reachable message-level reply conversation. A root post
+// is also the root of its own conversation, so this cursor keeps a reply panel
+// from acknowledging a different root in the same channel container.
+// ThreadReadState remains the migration baseline for roots that have not yet
+// been explicitly acknowledged under this precise model.
+model MessageConversationReadState {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rootMessageId String   @map("root_message_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  lastReadAt    DateTime @map("last_read_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  rootMessage   Message  @relation("MessageConversationReadRoot", fields: [rootMessageId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([rootMessageId, userId])
+  @@index([userId])
+  @@map("message_conversation_read_states")
+}
+
 enum UserAlertKind {
   mention
   task_assigned
@@ -1550,6 +1571,7 @@ model Message {
   basisScopes              MessageBasisScope[]
   disclosureGrants         DisclosureGrant[]
   pushSurfacePresences     UserPushSurfacePresence[] @relation("PushSurfaceReplyRoot")
+  conversationReadStates   MessageConversationReadState[] @relation("MessageConversationReadRoot")
 
   @@index([threadId, createdAt])
   @@index([agentId, createdAt])

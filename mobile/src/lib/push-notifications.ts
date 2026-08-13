@@ -98,7 +98,7 @@ export const subscribeToPushTokenChanges = (
 
 /** Native presentation only; the API remains the authoritative attention state. */
 export const reconcileNativeAttentionPresentation = async (total: number): Promise<void> => {
-  if (Platform.OS === 'ios') {
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
     await Notifications.setBadgeCountAsync(Math.max(0, Math.floor(total)))
   }
 }

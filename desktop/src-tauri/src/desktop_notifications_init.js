@@ -14,6 +14,12 @@
 
   const notificationApi = () => window.__TAURI__ && window.__TAURI__.notification
 
+  const desktopWindow = () => window.__TAURI__
+    && window.__TAURI__.window
+    && window.__TAURI__.window.getCurrentWindow
+    ? window.__TAURI__.window.getCurrentWindow()
+    : null
+
   const requestPermission = async () => {
     const api = notificationApi()
     if (!api || typeof api.isPermissionGranted !== 'function') return false
@@ -28,14 +34,11 @@
   }
 
   const focusDesktopWindow = async () => {
-    const currentWindow = window.__TAURI__
-      && window.__TAURI__.window
-      && window.__TAURI__.window.getCurrentWindow
     try {
-      const desktopWindow = currentWindow ? currentWindow() : null
-      await desktopWindow?.show?.()
-      await desktopWindow?.unminimize?.()
-      await desktopWindow?.setFocus?.()
+      const currentWindow = desktopWindow()
+      await currentWindow?.show?.()
+      await currentWindow?.unminimize?.()
+      await currentWindow?.setFocus?.()
     } catch {
       // The route is still actionable if window focus is unavailable.
     }
@@ -59,6 +62,18 @@
   }
 
   window.__nessieDesktopRequestNotificationPermission = requestPermission
+  window.__nessieDesktopSetBadgeCount = async (input) => {
+    const parsed = Number(input)
+    const count = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null
+    const currentWindow = desktopWindow()
+    if (!currentWindow || typeof currentWindow.setBadgeCount !== 'function') return false
+    try {
+      await currentWindow.setBadgeCount(count)
+      return true
+    } catch {
+      return false
+    }
+  }
   window.__nessieDesktopNotify = async (input) => {
     if (!input || !isInternalPath(input.path)) return false
     const api = notificationApi()

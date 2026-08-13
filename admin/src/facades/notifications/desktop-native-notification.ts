@@ -12,6 +12,7 @@ type DesktopNativeNotificationInput = {
 type DesktopNotificationWindow = Window & {
   __nessieDesktopNotify?: (input: DesktopNativeNotificationInput) => Promise<boolean> | boolean
   __nessieDesktopRequestNotificationPermission?: () => Promise<boolean> | boolean
+  __nessieDesktopSetBadgeCount?: (count: number) => Promise<boolean> | boolean
 }
 
 const isInternalPath = (value: unknown): value is string =>
@@ -45,6 +46,15 @@ export const requestDesktopNotificationPermission = (): boolean => {
   const request = (window as DesktopNotificationWindow).__nessieDesktopRequestNotificationPermission
   if (typeof request !== 'function') return false
   void Promise.resolve(request()).catch(() => undefined)
+  return true
+}
+
+/** Mirrors the authenticated attention total onto the macOS Dock icon. */
+export const setDesktopBadgeCount = (count: number): boolean => {
+  if (!isDesktopApp()) return false
+  const setBadge = (window as DesktopNotificationWindow).__nessieDesktopSetBadgeCount
+  if (typeof setBadge !== 'function') return false
+  void Promise.resolve(setBadge(Math.max(0, Math.floor(count)))).catch(() => undefined)
   return true
 }
 

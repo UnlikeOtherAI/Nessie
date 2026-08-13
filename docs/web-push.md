@@ -212,6 +212,12 @@ in local mode the API runs the worker embedded from its built `dist`.
   Safari profile's subscription and the worker sends its encrypted Web Push
   payload to Apple's browser push service. Each Safari profile and device needs
   its own opt-in.
+- **Badges.** An active Nessie web app mirrors the same authoritative attention
+  total onto the browser's Badging API when available. The service worker also
+  applies the absolute `badge` supplied with a Web Push payload, so an
+  installed Home Screen Nessie app can update its icon while it is backgrounded.
+  On Apple platforms this requires notification permission; regular Safari tabs
+  do not expose an app-icon badge, whereas installed web apps do.
 - **iOS needs an installed PWA.** Safari on iOS/iPadOS delivers Web Push **only
   to a Home Screen-installed PWA** (Add to Home Screen), and only on iOS
   16.4+. A regular Safari tab cannot subscribe. The web app manifest exists to

@@ -74,6 +74,8 @@ type FakeState = {
   activeOrganizationMemberIds?: string[]
   deleted: string[]
   deliveries?: DeliveryRow[]
+  unreadAttentionCount?: number
+  unreadMessageCount?: number
   surfaceViewers?: SurfaceViewer[]
 }
 
@@ -157,6 +159,10 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
         state.deliveries?.push(data)
         return { id: crypto.randomUUID(), createdAt: new Date(), ...data }
       },
+    },
+    $queryRaw: async () => [{ unread_count: state.unreadMessageCount ?? 0 }],
+    userAlert: {
+      count: async () => state.unreadAttentionCount ?? 0,
     },
     userPushSurfacePresence: {
       findMany: async ({ where }: {
@@ -293,6 +299,8 @@ test('delivers to every device when a foreground window is in a different thread
     creds: [apnsCred(), fcmCred()],
     deleted: [],
     members: [member('u2')],
+    unreadAttentionCount: 2,
+    unreadMessageCount: 3,
     secrets: [apnsSecret(), fcmSecret()],
     surfaceViewers: [{ userId: 'u2', kind: 'channel', channelId: 'channel-1', rootMessageId: null, threadId: 'thread-2' }],
     tokens: [
@@ -301,7 +309,7 @@ test('delivers to every device when a foreground window is in a different thread
       { id: 'android', userId: 'u2', token: 'tok-android', platform: 'android' },
     ],
   }
-  const { apnsCalls, apnsPayloads, fcmCalls, senders } = recordingSenders()
+  const { apnsCalls, apnsPayloads, fcmCalls, fcmPayloads, senders } = recordingSenders()
 
   const summary = await handlePushDispatch(
     { prisma: makeFakePrisma(state), authSecret: AUTH_SECRET, senders },
@@ -311,6 +319,9 @@ test('delivers to every device when a foreground window is in a different thread
   assert.deepEqual(summary, { sent: 3, failed: 0, pruned: 0 })
   assert.deepEqual(apnsCalls.map((target) => target.token), ['tok-iphone', 'tok-ipad'])
   assert.deepEqual(fcmCalls.map((target) => target.token), ['tok-android'])
+  assert.equal(apnsPayloads[0]?.badge, 5)
+  assert.equal(apnsPayloads[1]?.badge, 5)
+  assert.equal(fcmPayloads[0]?.badge, 5)
   assert.equal(
     apnsPayloads[0]?.data?.url,
     '/channels/channel-1/threads/thread-1/replies/message-1',

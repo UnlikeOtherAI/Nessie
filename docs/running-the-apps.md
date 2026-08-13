@@ -71,6 +71,13 @@ Notifications entitlement, its own APNs device-token registration, and
 per-topic APNs credentials in the server; Nessie currently registers only iOS
 and Android device tokens.
 
+While the desktop app is running, its Dock badge is the same authoritative
+attention total as mobile: unread channel messages plus assigned work and
+published knowledge that remain visible to the signed-in user. It refreshes
+from the authenticated SPA state and clears when that total reaches zero. A
+quit desktop app cannot refresh its Dock badge until macOS APNs registration is
+implemented.
+
 To create a production distributable:
 
 ```sh
@@ -414,7 +421,11 @@ Install the development build on the device. Unlike Expo Go, the development bui
    thread before its terminal reply: the requester receives one completion
    notification per run. A reply based on restricted sources is rechecked
    against live membership and disclosure grants immediately before delivery
-   and uses only the generic body “An agent reply is ready.”
+   and uses only the generic body “An agent reply is ready.” Every native and
+   browser push also carries that recipient's current total badge: unread
+   channel messages plus visible assigned-work and knowledge attention. This is
+   an absolute total, never a per-notification increment, so a later
+   task/knowledge push cannot overwrite channel unread badges.
 
 For a production check, repeat step 3 with a TestFlight build. It must reach
 the production APNs host; a sandbox development token must not be sent there.
@@ -450,6 +461,13 @@ deactivated, and unrelated pages never suppress delivery; the API reaps expired
 session records every five minutes. The selected-surface signal is shared with
 the in-app banner: viewing Files, Info, or Runs in the same channel clears both
 server delivery suppression and local-banner suppression.
+
+Read state has the same precision as suppression. Each top-level post is the
+root of its own reply conversation; opening reply A advances only A's cursor,
+not reply B's. Opening the channel feed acknowledges its visible roots without
+acknowledging their replies. Existing thread-wide read cursors remain a safe
+baseline during the rollout, so deployment never reintroduces historical
+unread items.
 
 ## TestFlight
 
