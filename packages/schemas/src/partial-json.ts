@@ -1,44 +1,32 @@
 /**
- * Incremental extraction of one top-level string field out of JSON that is
- * still being written.
+ * Incremental extraction of tool-call arguments that are still being written.
  *
- * This exists because a model emits a document as the `markdown` argument of a
- * tool call, and the provider streams those arguments as raw JSON fragments.
- * To show the document as it arrives we must decode the value *before* the
- * JSON is parseable — but a viewer watching one document and a Knowledge Base
- * saving another would be worse than no streaming at all, so the scanner is a
- * real lexer with two hard invariants rather than a regex over half-written
- * text:
+ * A model emits a document as the arguments of a tool call, and the provider
+ * streams those arguments as raw JSON fragments. To show the document as it
+ * arrives we must decode it *before* the JSON is parseable — but a viewer
+ * watching one document while a different one is saved would be worse than no
+ * streaming at all, so these are real lexer-backed readers with two hard
+ * invariants rather than regexes over half-written text:
  *
- * - **Committed-prefix monotonicity.** Output only ever grows by appending.
- *   A half-arrived escape (`\`, three of the four `\uXXXX` digits) or a lone
- *   high surrogate at the end of the buffer is withheld until it completes, so
- *   every prefix published to a client stays a prefix of the final value. Raw
- *   text and escaped text are held back by the same rule, because a chunk
- *   boundary can split a literal emoji just as easily as an escape.
+ * - **Committed-prefix monotonicity.** Output only ever grows by appending. A
+ *   half-arrived escape (`\`, three of four `\uXXXX` digits) or a lone high
+ *   surrogate is withheld until it completes — raw text and escapes alike,
+ *   since a chunk boundary splits a literal emoji just as easily as an escape.
  * - **Duplicate-key rejection.** `JSON.parse` keeps the *last* of duplicated
- *   keys, so a second top-level `markdown` key could make the saved document
- *   differ from the streamed one. That fails the scan instead.
+ *   keys, so a second `markdown` key could make the saved document differ from
+ *   the streamed one. That fails the scan instead.
  *
- * Feed it the raw argument fragments in order; it is O(new characters).
+ * Both readers are fed fragments in order and are O(new characters).
  */
 
-const HIGH_SURROGATE_FIRST = 0xd800
-const HIGH_SURROGATE_LAST = 0xdbff
+import {
+  committedPrefix,
+  createJsonLexer,
+  type JsonPath,
+} from './partial-json-lexer.js'
 
-/** Completed top-level string values are kept for cheap metadata reads. */
+/** Completed scalar fields are kept for cheap metadata reads. */
 const MAX_TRACKED_FIELD_LENGTH = 4_096
-
-const SIMPLE_ESCAPES: Record<string, string> = {
-  '"': '"',
-  '\\': '\\',
-  '/': '/',
-  b: '\b',
-  f: '\f',
-  n: '\n',
-  r: '\r',
-  t: '\t',
-}
 
 export type PartialJsonScanner = {
   /** Feed the next raw JSON fragment. Ignored once the scan has failed. */
@@ -56,204 +44,197 @@ export type PartialJsonScanner = {
   error: () => string | null
 }
 
-type Container = 'object' | 'array'
+const isTopLevelKey = (path: JsonPath, key: string): boolean =>
+  path.length === 1 && path[0] === key
 
+/**
+ * Reads one top-level string field as it streams (the composed document body),
+ * while collecting the other top-level scalars whole so a caller can show the
+ * title and destination before the body has finished.
+ */
 export const createPartialJsonScanner = (targetKey: string): PartialJsonScanner => {
-  const stack: Container[] = []
   const completedFields: Record<string, string> = {}
 
-  // Raw decoded output for the target field. `committed()` trims whatever is
-  // not yet safe to publish; nothing is ever removed from `raw` itself.
   let raw = ''
   let failure: string | null = null
   let complete = false
+  let seenTarget = false
 
-  let inString = false
-  let stringIsKey = false
-  // Text of the string currently being read, when it is a key or a tracked
-  // top-level scalar. The target field's value never accumulates here.
-  let stringBuf = ''
-  let trackingString = false
-  let capturing = false
+  // Non-target top-level scalars are accumulated whole rather than streamed.
+  let trackedKey: string | null = null
+  let trackedValue = ''
 
-  let escaping = false
-  let unicodeDigits: string | null = null
-
-  let lastKey: string | null = null
-  let expectKey = false
-  let nextValueIsTarget = false
-  let seenTargetKey = false
-
-  const fail = (message: string): void => {
-    if (!failure) failure = message
-  }
-
-  const emit = (text: string): void => {
-    if (capturing) {
+  const lexer = createJsonLexer({
+    appendText: (text) => {
+      if (trackedKey !== null) {
+        if (trackedValue.length < MAX_TRACKED_FIELD_LENGTH) trackedValue += text
+        return
+      }
       raw += text
-      return
-    }
-    if (trackingString && stringBuf.length < MAX_TRACKED_FIELD_LENGTH) {
-      stringBuf += text
-    }
-  }
-
-  const openString = (): void => {
-    inString = true
-    escaping = false
-    unicodeDigits = null
-    stringBuf = ''
-    const container = stack[stack.length - 1]
-    stringIsKey = container === 'object' && expectKey
-    if (stringIsKey) {
-      trackingString = true
-      capturing = false
-      return
-    }
-    // A value string. Only the top-level target field streams; other top-level
-    // strings are tracked whole so metadata (title, ids) can be read early.
-    capturing = nextValueIsTarget
-    trackingString = !capturing && stack.length === 1 && lastKey !== null
-    nextValueIsTarget = false
-  }
-
-  const closeString = (): void => {
-    inString = false
-    if (stringIsKey) {
-      lastKey = stringBuf
-      expectKey = false
-      if (stack.length === 1 && stringBuf === targetKey) {
-        if (seenTargetKey) {
-          fail(`Duplicate top-level "${targetKey}" key in tool arguments`)
-          return
+    },
+    beginValue: (path) => {
+      if (isTopLevelKey(path, targetKey)) {
+        if (seenTarget) {
+          failure = `Duplicate top-level "${targetKey}" key in tool arguments`
+          return 'ignore'
         }
-        seenTargetKey = true
+        seenTarget = true
+        trackedKey = null
+        return 'capture'
       }
-      stringBuf = ''
-      trackingString = false
-      return
-    }
-    if (capturing) {
-      capturing = false
+      if (path.length === 1 && typeof path[0] === 'string') {
+        trackedKey = path[0]
+        trackedValue = ''
+        return 'capture'
+      }
+      return 'ignore'
+    },
+    endValue: () => {
+      if (trackedKey !== null) {
+        completedFields[trackedKey] = trackedValue
+        trackedKey = null
+        trackedValue = ''
+        return
+      }
       complete = true
-      return
-    }
-    if (trackingString && lastKey !== null) {
-      completedFields[lastKey] = stringBuf
-    }
-    trackingString = false
-    stringBuf = ''
-  }
-
-  const pushStringChar = (char: string): void => {
-    if (unicodeDigits !== null) {
-      if (!/^[0-9a-fA-F]$/.test(char)) {
-        fail('Malformed \\u escape in tool arguments')
-        return
-      }
-      unicodeDigits += char
-      if (unicodeDigits.length === 4) {
-        emit(String.fromCharCode(Number.parseInt(unicodeDigits, 16)))
-        unicodeDigits = null
-      }
-      return
-    }
-
-    if (escaping) {
-      escaping = false
-      if (char === 'u') {
-        unicodeDigits = ''
-        return
-      }
-      const decoded = SIMPLE_ESCAPES[char]
-      if (decoded === undefined) {
-        fail(`Invalid escape "\\${char}" in tool arguments`)
-        return
-      }
-      emit(decoded)
-      return
-    }
-
-    if (char === '\\') {
-      escaping = true
-      return
-    }
-    if (char === '"') {
-      closeString()
-      return
-    }
-    emit(char)
-  }
-
-  const pushStructuralChar = (char: string): void => {
-    switch (char) {
-      case '{':
-        stack.push('object')
-        expectKey = true
-        lastKey = null
-        return
-      case '[':
-        stack.push('array')
-        expectKey = false
-        return
-      case '}':
-      case ']':
-        stack.pop()
-        expectKey = false
-        return
-      case '"':
-        openString()
-        return
-      case ':':
-        // Only a top-level key can name the streaming target.
-        nextValueIsTarget = stack.length === 1 && lastKey === targetKey
-        return
-      case ',':
-        if (stack[stack.length - 1] === 'object') {
-          expectKey = true
-          lastKey = null
-        }
-        return
-      default:
-        return
-    }
-  }
+    },
+    fail: (message) => {
+      failure ??= message
+    },
+  })
 
   return {
-    push: (fragment) => {
-      if (failure !== null) return
-      for (const char of splitCodeUnits(fragment)) {
-        if (failure !== null) return
-        if (inString) {
-          pushStringChar(char)
-        } else {
-          pushStructuralChar(char)
-        }
-      }
-    },
-    committed: () => {
-      if (raw.length === 0) return raw
-      const lastUnit = raw.charCodeAt(raw.length - 1)
-      // Hold back a trailing high surrogate: its pair may be in the next
-      // fragment, and half a pair is not a prefix of the final value.
-      if (lastUnit >= HIGH_SURROGATE_FIRST && lastUnit <= HIGH_SURROGATE_LAST) {
-        return raw.slice(0, -1)
-      }
-      return raw
-    },
+    committed: () => committedPrefix(raw),
+    error: () => failure,
     fields: () => ({ ...completedFields }),
     isComplete: () => complete,
-    error: () => failure,
+    push: (fragment) => {
+      if (failure !== null) return
+      lexer.push(fragment)
+    },
   }
 }
 
+/** One `{find, replace}` pair as it streams in. */
+export type PartialEdit = {
+  /** The anchor text to locate. Null until its own value has closed. */
+  find: string | null
+  /** Replacement text so far, safe to publish as a prefix. */
+  replace: string
+  /** True once the replacement's closing quote was read. */
+  replaceComplete: boolean
+}
+
+export type PartialJsonEditScanner = {
+  push: (fragment: string) => void
+  /** Edits in array order, growing as they stream. */
+  edits: () => PartialEdit[]
+  /** Completed top-level string fields (e.g. `pageId`). */
+  fields: () => Record<string, string>
+  error: () => string | null
+}
+
+type EditState = {
+  find: string | null
+  findRaw: string
+  replaceRaw: string
+  replaceComplete: boolean
+}
+
+const EDITS_KEY = 'edits'
+const FIND_KEY = 'find'
+const REPLACE_KEY = 'replace'
+
 /**
- * Iterate UTF-16 code units, not code points: a fragment can legitimately end
- * on half a surrogate pair, and `for...of` would yield a replacement-character
- * reading of it. The pair is reassembled by plain concatenation in `emit`.
+ * Reads a streaming `edits: [{find, replace}]` array.
+ *
+ * `find` is what anchors an edit in the existing document, so it is read whole
+ * before its `replace` starts streaming — which is exactly the order a model
+ * emits them in schema order, and what lets a viewer jump to the edit site
+ * before any replacement text exists.
  */
-function* splitCodeUnits(text: string): Generator<string> {
-  for (let index = 0; index < text.length; index += 1) {
-    yield text[index]!
+export const createPartialJsonEditScanner = (): PartialJsonEditScanner => {
+  const completedFields: Record<string, string> = {}
+  const states: EditState[] = []
+
+  let failure: string | null = null
+  let current: { index: number; field: 'find' | 'replace' } | null = null
+  let trackedKey: string | null = null
+  let trackedValue = ''
+
+  const stateAt = (index: number): EditState => {
+    while (states.length <= index) {
+      states.push({ find: null, findRaw: '', replaceComplete: false, replaceRaw: '' })
+    }
+    return states[index]!
+  }
+
+  const lexer = createJsonLexer({
+    appendText: (text) => {
+      if (trackedKey !== null) {
+        if (trackedValue.length < MAX_TRACKED_FIELD_LENGTH) trackedValue += text
+        return
+      }
+      if (!current) return
+      const state = stateAt(current.index)
+      if (current.field === 'find') {
+        state.findRaw += text
+        return
+      }
+      state.replaceRaw += text
+    },
+    beginValue: (path) => {
+      trackedKey = null
+      current = null
+      // edits[<index>].<field>
+      if (path.length === 3 && path[0] === EDITS_KEY && typeof path[1] === 'number') {
+        const field = path[2]
+        if (field === FIND_KEY || field === REPLACE_KEY) {
+          current = { field, index: path[1] }
+          return 'capture'
+        }
+        return 'ignore'
+      }
+      if (path.length === 1 && typeof path[0] === 'string') {
+        trackedKey = path[0]
+        trackedValue = ''
+        return 'capture'
+      }
+      return 'ignore'
+    },
+    endValue: () => {
+      if (trackedKey !== null) {
+        completedFields[trackedKey] = trackedValue
+        trackedKey = null
+        trackedValue = ''
+        return
+      }
+      if (!current) return
+      const state = stateAt(current.index)
+      if (current.field === 'find') {
+        state.find = state.findRaw
+      } else {
+        state.replaceComplete = true
+      }
+      current = null
+    },
+    fail: (message) => {
+      failure ??= message
+    },
+  })
+
+  return {
+    edits: () =>
+      states.map((state) => ({
+        find: state.find,
+        replace: committedPrefix(state.replaceRaw),
+        replaceComplete: state.replaceComplete,
+      })),
+    error: () => failure,
+    fields: () => ({ ...completedFields }),
+    push: (fragment) => {
+      if (failure !== null) return
+      lexer.push(fragment)
+    },
   }
 }

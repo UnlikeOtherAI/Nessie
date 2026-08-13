@@ -183,6 +183,53 @@ export const KB_DOCUMENT_COMPOSE_TOOL_DEFINITION: BuiltinToolDefinition = {
   safe: false,
 }
 
+export const KB_DOCUMENT_EDIT_TOOL_ID = 'kb_document_edit'
+
+// Targeted edits rather than a rewrite: the person watches each change land in
+// place in the existing document, and only the changed passages are generated.
+export const KB_DOCUMENT_EDIT_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: KB_DOCUMENT_EDIT_TOOL_ID,
+  label: 'KB Document Edit',
+  description:
+    'Change parts of an existing markdown document in place. Prefer this over rewriting: '
+    + 'give only the passages that change. Each edit finds an exact snippet of the current '
+    + 'document and replaces it, so `find` must match the file exactly once — include '
+    + 'enough surrounding text to be unambiguous. An empty `replace` deletes the snippet. '
+    + 'The person watches each change appear where it belongs, so edit in document order.',
+  parameters: {
+    type: 'object',
+    properties: {
+      pageId: { type: 'string', description: 'Id of the .md document page to edit' },
+      changeComment: {
+        type: 'string',
+        description: 'Optional short note describing this revision',
+      },
+      edits: {
+        type: 'array',
+        description: 'Edits to apply, in document order',
+        items: {
+          type: 'object',
+          properties: {
+            find: {
+              type: 'string',
+              description:
+                'Exact snippet of the current document to replace. Must occur exactly once.',
+            },
+            replace: {
+              type: 'string',
+              description: 'Replacement text. Empty string deletes the snippet.',
+            },
+          },
+          required: ['find', 'replace'],
+        },
+        maxItems: 40,
+      },
+    },
+    required: ['pageId', 'edits'],
+  },
+  safe: false,
+}
+
 export const KB_FILE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_file',
   label: 'KB File',
@@ -230,6 +277,7 @@ export const KB_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   KB_LIST_TOOL_DEFINITION,
   KB_DRAFT_WRITE_TOOL_DEFINITION,
   KB_DOCUMENT_COMPOSE_TOOL_DEFINITION,
+  KB_DOCUMENT_EDIT_TOOL_DEFINITION,
   KB_FILE_TOOL_DEFINITION,
   KB_PUBLISH_REQUEST_TOOL_DEFINITION,
 ]
