@@ -52,6 +52,12 @@ const injectedThemeMessage = (colorScheme: 'dark' | 'light'): Record<string, unk
     getPropertyValue: (name) => {
       if (name === '--accent') return '#7c3aed'
       if (name === '--tx3') return '#949597'
+      if (name === '--panel') return '#222629'
+      if (name === '--tx') return '#f8f5ef'
+      if (name === '--tx2') return '#b6b0a9'
+      if (name === '--on-accent') return '#ffffff'
+      if (name === '--ink') return '#2b2018'
+      if (name === '--surface-inverse') return '#fffdf8'
       return '#222629'
     },
   })
@@ -138,4 +144,9 @@ test('reports the page color scheme for the native status bar', () => {
   assert.equal(injectedThemeMessage('light')?.scheme, 'light')
   assert.equal(injectedThemeMessage('dark')?.scheme, 'dark')
   assert.equal(injectedThemeMessage('dark')?.surface, '#222629')
+  assert.equal(injectedThemeMessage('dark')?.headerSurface, '#2b2018')
+  assert.equal(injectedThemeMessage('dark')?.headerText, '#fffdf8')
+  assert.equal(injectedThemeMessage('dark')?.text, '#f8f5ef')
+  assert.equal(injectedThemeMessage('dark')?.textMuted, '#b6b0a9')
+  assert.equal(injectedThemeMessage('dark')?.onAccent, '#ffffff')
 })

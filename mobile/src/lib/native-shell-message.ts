@@ -7,6 +7,8 @@ export type NativeShellMessage = {
   canForward?: boolean
   channels?: number
   color?: string
+  headerSurface?: string
+  headerText?: string
   inactive?: string
   knowledge?: number
   name?: string
@@ -14,7 +16,13 @@ export type NativeShellMessage = {
   recentOpen?: boolean
   scheme?: string
   surface?: string
+  text?: string
+  textMuted?: string
+  onAccent?: string
   total?: number
   type?: string
   url?: string
+  userAvatarUrl?: string
+  userName?: string
+  userPresence?: 'away' | 'offline' | 'online'
 }

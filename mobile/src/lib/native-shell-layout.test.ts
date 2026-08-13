@@ -5,6 +5,7 @@ import {
   createNativeTabNavigationState,
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
+  isIphoneConversationMenuRoute,
 } from './native-shell-layout'
 
 test('the iPhone native frame always owns the status and tab-bar safe areas', () => {
@@ -13,6 +14,7 @@ test('the iPhone native frame always owns the status and tab-bar safe areas', ()
     isIpad: false,
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
+    showIphoneMenuHeader: false,
     showTabBar: true,
   }), { top: 59, bottom: 83 })
 })
@@ -23,6 +25,7 @@ test('full-screen iPhone tasks keep the status inset while leaving the home indi
     isIpad: false,
     platform: 'ios',
     safeArea: { top: 59, bottom: 34 },
+    showIphoneMenuHeader: false,
     showTabBar: false,
   }), { top: 59, bottom: 0 })
 })
@@ -33,6 +36,7 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     isIpad: true,
     platform: 'ios',
     safeArea: { top: 24, bottom: 20 },
+    showIphoneMenuHeader: false,
     showTabBar: true,
   }), { top: 78, bottom: 0 })
   assert.deepEqual(getNativeWebviewFrameInsets({
@@ -40,8 +44,23 @@ test('iPad and Android retain their respective native-frame geometry', () => {
     isIpad: false,
     platform: 'android',
     safeArea: { top: 32, bottom: 28 },
+    showIphoneMenuHeader: false,
     showTabBar: true,
   }), { top: 32, bottom: 28 })
+})
+
+test('the iPhone conversation index reserves the native workspace header', () => {
+  assert.deepEqual(getNativeWebviewFrameInsets({
+    ipadChromeTop: 59,
+    isIpad: false,
+    platform: 'ios',
+    safeArea: { top: 59, bottom: 34 },
+    showIphoneMenuHeader: true,
+    showTabBar: true,
+  }), { top: 123, bottom: 83 })
+  assert.equal(isIphoneConversationMenuRoute('/channels'), true)
+  assert.equal(isIphoneConversationMenuRoute('/channels/new'), false)
+  assert.equal(isIphoneConversationMenuRoute('/projects'), false)
 })
 
 test('the native tab state keeps attention badges scoped to their owning tab', () => {

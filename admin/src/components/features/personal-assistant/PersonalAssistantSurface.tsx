@@ -4,6 +4,7 @@ import type {
   PersonalAssistantConfigSummary,
 } from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
+import { isReactNativeWebView } from '../../../lib/mobile-shell'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 
@@ -76,45 +77,53 @@ export const PersonalAssistantSidebarEntry = ({
   onClick,
   token,
   unreadCount = 0,
-}: PersonalAssistantSidebarEntryProps) => (
-  <button
-    className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${active ? 'active' : ''}`}
-    onClick={onClick}
-    type="button"
-  >
-    {agent ? (
-      <AgentAvatar agent={agent} shape="circle" size="xs" token={token} />
-    ) : (
-      <div className={assistantGlyphClassName}>
-        <svg
-          fill="none"
-          height="10"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-          width="10"
-        >
-          <path d="M12 3v5" />
-          <path d="M9 8h6" />
-          <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
-        </svg>
-      </div>
-    )}
-    <span className="min-w-0 flex-1 truncate text-current">
-      Personal Assistant
-    </span>
-    <span className={badgeClassName}>PA</span>
-    {bootstrapping ? (
-      <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-[var(--overlay-strong)] border-t-[var(--on-accent)]" />
-    ) : unreadCount > 0 ? (
-      <span className="ml-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-[10px] font-bold text-[var(--on-accent)]">
-        {unreadCount}
+}: PersonalAssistantSidebarEntryProps) => {
+  const nativeTouchShell = isReactNativeWebView()
+  return (
+    <button
+      className={`admin-sb-item group ${unreadCount > 0 ? 'unread' : ''} ${active ? 'active' : ''}`}
+      onClick={onClick}
+      type="button"
+    >
+      {agent ? (
+        <AgentAvatar
+          agent={agent}
+          shape={nativeTouchShell ? 'rounded' : 'circle'}
+          size="xs"
+          token={token}
+        />
+      ) : (
+        <div className={assistantGlyphClassName}>
+          <svg
+            fill="none"
+            height="10"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            width="10"
+          >
+            <path d="M12 3v5" />
+            <path d="M9 8h6" />
+            <path d="M8 11a4 4 0 018 0v4a4 4 0 01-8 0z" />
+          </svg>
+        </div>
+      )}
+      <span className="min-w-0 flex-1 truncate text-current">
+        Personal Assistant
       </span>
-    ) : null}
-  </button>
-)
+      <span className={badgeClassName}>PA</span>
+      {bootstrapping ? (
+        <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-[var(--overlay-strong)] border-t-[var(--on-accent)]" />
+      ) : unreadCount > 0 ? (
+        <span className="ml-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-[10px] font-bold text-[var(--on-accent)]">
+          {unreadCount}
+        </span>
+      ) : null}
+    </button>
+  )
+}
 
 export const PersonalAssistantConfigBanner = ({
   agent,

@@ -261,7 +261,10 @@ export const ChannelConversationComposePage = () => {
             </span>
             <div
               className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
-              onClick={() => addressInputRef.current?.focus()}
+              onClick={() => {
+                setAddressFocused(true)
+                addressInputRef.current?.focus()
+              }}
               role="presentation"
             >
               {recipients.map((recipient) => (
@@ -289,7 +292,11 @@ export const ChannelConversationComposePage = () => {
                 ref={addressInputRef}
                 autoFocus
                 className="min-w-[160px] flex-1 bg-transparent text-sm text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
-                onBlur={() => window.setTimeout(() => setAddressFocused(false), 120)}
+                onBlur={() => window.setTimeout(() => {
+                  if (document.activeElement !== addressInputRef.current) {
+                    setAddressFocused(false)
+                  }
+                }, 120)}
                 onChange={(event) => {
                   setQuery(event.target.value)
                   setHighlightedIndex(0)

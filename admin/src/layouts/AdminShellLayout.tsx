@@ -6,6 +6,7 @@ import {
   isReactNativeWebView,
   useMobileLayout,
   useNativeIPadApp,
+  useNativeIOSPhoneApp,
   usePhoneLayout,
 } from '../lib/mobile-shell';
 import { NotificationsProvider } from '../providers/NotificationsProvider';
@@ -21,6 +22,7 @@ import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
+import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
 import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
 import { ResizableSidebar } from './admin-shell/ResizableSidebar';
@@ -28,6 +30,7 @@ import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
 import { TopBar } from './admin-shell/TopBar';
+import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
@@ -89,6 +92,7 @@ const AuthenticatedAdminShellLayout = () => {
   const phoneLayout = usePhoneLayout();
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
+  const nativeIOSPhoneApp = useNativeIOSPhoneApp();
   const showPhoneTabRoot = phoneLayout && isPhoneTabRoot(shell.pathname);
   useEffect(() => {
     if (showPhoneTabRoot) shell.closeMobileDrawer();
@@ -248,8 +252,18 @@ const AuthenticatedAdminShellLayout = () => {
               </div>
 
               {showWebTabBar && <MobileTabBar />}
-              {nativeIPadApp && <WorkspaceSwitcher variant="native-bridge" />}
-              {nativeIPadApp && !isComposeRoute && <NativeIPadToolbarBridge />}
+              {(nativeIPadApp || nativeIOSPhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
+              {(nativeIPadApp || nativeIOSPhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
+              {nativeIOSPhoneApp ? (
+                <>
+                  <UserMenuTrigger nativePhoneBridge onLogout={shell.logoutAndRedirect} placement="topbar" />
+                  <NativePhoneCreationBridge
+                    onCreateChannel={shell.openCreateChannel}
+                    onCreateMessage={shell.navigateToNewConversation}
+                    onCreateProject={shell.openCreateProject}
+                  />
+                </>
+              ) : null}
               {nativeIPadApp && <NativeSearchOverlay />}
 
               <SidebarDialogs
