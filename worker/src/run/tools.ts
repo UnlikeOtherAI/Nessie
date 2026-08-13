@@ -1,4 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
+import { resolveDashboardToolServices } from './pa-tools/dashboard-context.js'
+import { runDashboardTool } from './pa-tools/dashboards.js'
 import {
   runAttachmentListTool,
   runAttachmentReadTool,
@@ -225,6 +227,24 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':
       return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
+    // Dashboards. Grantable to any agent (not PA-only), so the gate is the
+    // agent's tool policy; each call runs the same service function the REST
+    // route runs and inherits its authorization.
+    case 'dashboard_list':
+    case 'dashboard_create':
+    case 'dashboard_source_list':
+    case 'dashboard_source_probe':
+    case 'dashboard_source_create':
+    case 'dashboard_source_set_credential':
+    case 'dashboard_widget_add':
+    case 'dashboard_widget_update':
+    case 'dashboard_widget_move':
+    case 'dashboard_widget_remove':
+    case 'dashboard_read':
+      return wrapTool(inputSummary, async () => {
+        const services = await resolveDashboardToolServices(context.prisma)
+        return runDashboardTool(toolName, context, args, services)
+      })
     case 'web_search':
       return wrapTool(inputSummary, () =>
         runWebSearchTool(context, String(args.query ?? ''), coercePage(args.page)),

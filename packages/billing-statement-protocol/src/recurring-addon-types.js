@@ -1,0 +1,9 @@
+export const BILLING_RECURRING_ADDONS_SCHEMA_VERSION = 1;
+export const BILLING_RECURRING_ADDONS_PROTOCOL_VERSION = '1.0.0';
+export const BILLING_RECURRING_ADDONS_SCHEMA_PATH = '/schemas/billing-recurring-addons-v1.json';
+export const BILLING_RECURRING_ADDONS_EXAMPLE_PATH = '/schemas/billing-recurring-addons-v1.example.json';
+export const BILLING_RECURRING_ADDONS_OPENAPI_PATH = '/schemas/billing-recurring-addons-v1.openapi.json';
+export const BILLING_RECURRING_ADDONS_READ_PATH = '/billing/v1/recurring-addons';
+export const BILLING_RECURRING_ADDONS_CHECKOUT_PATH = '/billing/v1/recurring-addons/checkout';
+export const BILLING_RECURRING_ADDONS_CANCELLATION_PREVIEW_PATH = '/billing/v1/recurring-addons/cancellation/preview';
+export const BILLING_RECURRING_ADDONS_CANCELLATION_CONFIRM_PATH = '/billing/v1/recurring-addons/cancellation/confirm';
