@@ -7,6 +7,7 @@ import type {
   CreateChannelTarget,
   RenameProjectTarget,
   SidebarAgentDm,
+  SidebarGroupDm,
   SidebarMenu,
   SidebarPerson,
   SidebarProductAssistant,
@@ -41,6 +42,7 @@ type SidebarNavProps = {
   projectsCollapsed: boolean;
   setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
   sidebarAgentDms: SidebarAgentDm[];
+  sidebarGroupDms: SidebarGroupDm[];
   sidebarMenu: SidebarMenu;
   sidebarPeople: SidebarPerson[];
   sidebarProductAssistants: SidebarProductAssistant[];
@@ -85,6 +87,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     projectsCollapsed,
     setSidebarMenu,
     sidebarAgentDms,
+    sidebarGroupDms,
     sidebarMenu,
     sidebarPeople,
     sidebarProductAssistants,
@@ -210,7 +213,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           currentChannelId={currentChannelId}
           dmCollapsed={dmCollapsed}
           onNavigateDm={onNavigateDm}
-          onNavigateAgentDm={onNavigateChannel}
+          onNavigateChannel={onNavigateChannel}
           onStartNewConversation={onNavigateNewConversation}
           onOpenPersonalAssistant={onOpenPersonalAssistant}
           onToggleStar={onToggleStar}
@@ -218,6 +221,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           personalAssistantChannelId={personalAssistantChannelId}
           personalAssistantUnreadCount={personalAssistantUnreadCount}
           sidebarAgentDms={sidebarAgentDms}
+          sidebarGroupDms={sidebarGroupDms}
           sidebarPeople={sidebarPeople}
           sidebarProductAssistants={sidebarProductAssistants}
           starredUserIds={starredUserIds}

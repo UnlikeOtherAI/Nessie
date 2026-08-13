@@ -37,6 +37,10 @@ export const ChannelRecordSchema = z.object({
   type: z.enum(['standard', 'dm']),
   systemChannelType: SystemChannelTypeSchema.optional(),
   dmUserId: UserIdSchema.nullish(),
+  // Group DMs are private conversations with multiple human and/or agent
+  // recipients. They share the channel storage model, but must be surfaced in
+  // Direct messages rather than a project channel list.
+  isGroupDm: z.boolean().optional(),
   visibility: z.enum(['public', 'protected', 'private']),
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema,

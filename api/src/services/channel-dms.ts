@@ -2,11 +2,8 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import type { ChannelRecord } from '../contracts.js'
 import {
   channelTeamInclude,
-  ensureChannelSlugAvailable,
   loadChannelTeamProject,
   mapChannelRecord,
-  throwIfChannelSlugConflict,
-  toChannelSlug,
   validateChannelLabel,
 } from '@nessie/workspace-admin'
 
@@ -32,30 +29,19 @@ const agentDmKey = (input: {
     input.agentId,
   ].join(':')
 
-const uniquePrivateChannelSlug = async (
-  prisma: PrismaClient,
-  input: { label: string; projectId: string },
-): Promise<string> => {
-  const baseSlug = toChannelSlug(input.label) || 'private-chat'
-  const existing = await prisma.channel.findMany({
-    where: {
-      projectId: input.projectId,
-      slug: { startsWith: baseSlug },
-      type: 'standard',
-    },
-    select: { slug: true },
-  })
-  const usedSlugs = new Set(existing.map((channel) => channel.slug).filter(Boolean))
-
-  for (let index = 0; index <= usedSlugs.size + 1; index += 1) {
-    const candidate = index === 0 ? baseSlug : `${baseSlug}-${index + 1}`
-    if (!usedSlugs.has(candidate)) {
-      return candidate
-    }
-  }
-
-  return `${baseSlug}-${usedSlugs.size + 2}`
-}
+const groupDmKey = (input: {
+  agentIds: string[]
+  organizationId: string
+  teamId: string
+  userIds: string[]
+}): string => [
+  input.organizationId,
+  input.teamId,
+  'group',
+  ...uniqueIds(input.userIds).sort(),
+  'agents',
+  ...uniqueIds(input.agentIds).sort(),
+].join(':')
 
 export const findOrCreateDmChannel = async (
   prisma: PrismaClient,
@@ -166,6 +152,11 @@ export const createGroupFromDm = async (
 ): Promise<ChannelRecord | null> => {
   const dmChannel = await prisma.channel.findUniqueOrThrow({
     where: { id: input.dmChannelId },
+    include: {
+      agentBindings: {
+        select: { agentId: true },
+      },
+    },
   })
 
   const isMember = await prisma.organizationMember.count({
@@ -195,31 +186,51 @@ export const createGroupFromDm = async (
     .map((user) => user.displayName ?? 'Unknown')
     .sort()
   const label = validateChannelLabel(otherNames.join(', ') || 'Group')
-
-  await ensureChannelSlugAvailable(prisma, {
-    projectId: dmChannel.projectId,
-    slug: label.slug,
+  const agentIds = dmChannel.agentBindings.map((binding) => binding.agentId)
+  const dmKey = groupDmKey({
+    agentIds,
+    organizationId: dmChannel.organizationId,
+    teamId: dmChannel.teamId,
+    userIds: allUserIds,
   })
 
   try {
-    const channel = await prisma.channel.create({
-      data: {
+    const channel = await prisma.channel.upsert({
+      where: { dmKey },
+      create: {
         label: label.label,
-        slug: label.slug,
-        type: 'standard',
+        type: 'dm',
         organizationId: dmChannel.organizationId,
         projectId: dmChannel.projectId,
         teamId: dmChannel.teamId,
         visibility: 'private',
+        dmKey,
         members: {
-          create: allUserIds.map((userId) => ({ userId })),
+          create: allUserIds.map((userId) => ({
+            userId,
+            role: userId === input.currentUserId ? 'owner' : 'member',
+          })),
         },
+        ...(agentIds.length > 0
+          ? {
+              agentBindings: {
+                create: agentIds.map((agentId) => ({ agentId })),
+              },
+            }
+          : {}),
       },
+      update: {},
       include: channelTeamInclude,
     })
     return mapChannelRecord(prisma, channel, input.currentUserId)
   } catch (error) {
-    throwIfChannelSlugConflict(error, label.slug)
+    if (isUniqueConstraintError(error)) {
+      const existing = await prisma.channel.findUniqueOrThrow({
+        where: { dmKey },
+        include: channelTeamInclude,
+      })
+      return mapChannelRecord(prisma, existing, input.currentUserId)
+    }
     throw error
   }
 }
@@ -396,36 +407,50 @@ export const findOrCreatePrivateConversationChannel = async (
     ...selectedAgentIds.map((agentId) => agentNameById.get(agentId) ?? 'Agent'),
   ]
   const label = participantNames.join(', ') || 'Private chat'
-  const slug = await uniquePrivateChannelSlug(prisma, {
-    label,
-    projectId: teamProject.projectId,
+  const dmKey = groupDmKey({
+    agentIds: selectedAgentIds,
+    organizationId: input.organizationId,
+    teamId: input.teamId,
+    userIds: memberUserIds,
   })
 
-  const channel = await prisma.channel.create({
-    data: {
-      label,
-      slug,
-      type: 'standard',
-      organizationId: input.organizationId,
-      projectId: teamProject.projectId,
-      teamId: input.teamId,
-      visibility: 'private',
-      members: {
-        create: memberUserIds.map((userId) => ({
-          userId,
-          role: userId === input.currentUserId ? 'owner' : 'member',
-        })),
+  try {
+    const channel = await prisma.channel.upsert({
+      where: { dmKey },
+      create: {
+        label,
+        type: 'dm',
+        organizationId: input.organizationId,
+        projectId: teamProject.projectId,
+        teamId: input.teamId,
+        visibility: 'private',
+        dmKey,
+        members: {
+          create: memberUserIds.map((userId) => ({
+            userId,
+            role: userId === input.currentUserId ? 'owner' : 'member',
+          })),
+        },
+        ...(selectedAgentIds.length > 0
+          ? {
+              agentBindings: {
+                create: selectedAgentIds.map((agentId) => ({ agentId })),
+              },
+            }
+          : {}),
       },
-      ...(selectedAgentIds.length > 0
-        ? {
-            agentBindings: {
-              create: selectedAgentIds.map((agentId) => ({ agentId })),
-            },
-          }
-        : {}),
-    },
-    include: channelTeamInclude,
-  })
-
-  return mapChannelRecord(prisma, channel, input.currentUserId)
+      update: {},
+      include: channelTeamInclude,
+    })
+    return mapChannelRecord(prisma, channel, input.currentUserId)
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const existing = await prisma.channel.findUniqueOrThrow({
+        where: { dmKey },
+        include: channelTeamInclude,
+      })
+      return mapChannelRecord(prisma, existing, input.currentUserId)
+    }
+    throw error
+  }
 }

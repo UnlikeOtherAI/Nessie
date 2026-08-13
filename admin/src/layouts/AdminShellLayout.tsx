@@ -127,6 +127,7 @@ const AuthenticatedAdminShellLayout = () => {
       projectsCollapsed={shell.projectsCollapsed}
       setSidebarMenu={shell.setSidebarMenu}
       sidebarAgentDms={shell.sidebarAgentDms}
+      sidebarGroupDms={shell.sidebarGroupDms}
       sidebarMenu={shell.sidebarMenu}
       sidebarPeople={shell.sidebarPeople}
       sidebarProductAssistants={shell.sidebarProductAssistants}

@@ -41,6 +41,7 @@ export const isUserDmChannel = (channel?: ChannelRecord | null): boolean =>
   channel?.type === 'dm'
   && !isPersonalAssistantChannel(channel)
   && !isExternalAgentChannel(channel)
+  && Boolean(channel.dmUserId)
 
 export const usePersonalAssistant = (enabled = true) => {
   const apiClient = useApiClient()
