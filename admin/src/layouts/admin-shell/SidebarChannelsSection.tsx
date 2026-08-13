@@ -1,5 +1,6 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { CreateChannelTarget } from './types';
 
@@ -57,7 +58,7 @@ export const SidebarChannelsSection = ({
             type="button"
           >
             <span className={channelHashClassName}>#</span>
-            <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+            <GroupDmSidebarLabel label={channel.label} />
             {renderUnreadCount(channel.unreadCount)}
             <span
               className={[

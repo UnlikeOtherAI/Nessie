@@ -246,13 +246,15 @@ The native **Admin** sidebar ends with a native-only **Full refresh** action on
 iPhone, iPad, and Android. It remounts the embedded WebView at the current
 route and adds a cache-busting URL marker, so it can recover stale or failed
 hosted content without adding an equivalent control to the browser UI.
-Group direct-message rows retain the complete participant list in their native
-HTML hover tooltip. Their visible label is measured in the sidebar: complete
+Participant-named conversation rows retain the complete participant list in a
+custom HTML hover tooltip, whether they appear in Direct messages, Projects,
+Channels, or Starred. Their visible label is measured in the sidebar: complete
 names are shown first, then surnames collapse to initials, then the first names
-that fit followed by an ellipsis and a `+N` count. The label adds no interaction
-layer, so a touch still opens the conversation on its first tap. Project and
-channel action popovers use a 12px container radius with a padded, 8px-radius
-action row so their choices do not feel cramped.
+that fit followed by an ellipsis and a `+N` count. The tooltip lives outside the
+scrolling sidebar and has no pointer events, so a touch still opens the
+conversation on its first tap. Project and channel action popovers use a 12px
+container radius with a padded, 8px-radius action row so their choices do not
+feel cramped.
 
 The login route is its own full-height touch-scroll container because the page
 root remains fixed for the authenticated shell. On phone widths it presents the

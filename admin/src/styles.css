@@ -963,6 +963,31 @@ a {
   font-weight: 700;
 }
 
+/* Group participant names preserve a full label for mouse/keyboard users while
+   their visible row is measured down to a compact, navigable participant list. */
+.group-dm-sidebar-label {
+  position: relative;
+}
+
+.group-dm-sidebar-tooltip {
+  position: fixed;
+  z-index: 80;
+  left: 0;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  transform: translateY(-100%);
+  white-space: normal;
+  padding: 7px 9px;
+  border: 1px solid var(--sep);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--tx);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 /* Status chip after a chat author's name (emoji or speech-bubble fallback) with
    a hover tooltip carrying the status message. */
 .admin-status-badge {

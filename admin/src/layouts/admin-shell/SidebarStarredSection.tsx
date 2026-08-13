@@ -4,6 +4,7 @@ import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { channelHashClassName, renderUnreadCount } from './SidebarRow';
+import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type { StarredItem, VisibleStarredEntry } from './types';
 
@@ -98,7 +99,7 @@ export const SidebarStarredSection = ({
               type="button"
             >
               <span className={channelHashClassName}>#</span>
-              <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+              <GroupDmSidebarLabel label={channel.label} />
               {renderUnreadCount(channel.unreadCount)}
               <span
                 className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"
@@ -169,7 +170,7 @@ export const SidebarStarredSection = ({
                   type="button"
                 >
                   <span className={channelHashClassName}>#</span>
-                  <span className="min-w-0 flex-1 truncate">{channel.label}</span>
+                  <GroupDmSidebarLabel label={channel.label} />
                   {renderUnreadCount(channel.unreadCount)}
                   <span
                     className="ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"

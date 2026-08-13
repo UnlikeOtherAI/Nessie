@@ -32,14 +32,26 @@ test('a starred direct-message entry is removed from its original sidebar locati
   assert.match(source, /starredUserIds\.has\(person\.id\)/)
 })
 
-test('a group direct-message label is compacted only after its full participant list is measured', () => {
+test('group participant labels compact in every sidebar location without consuming the row click', () => {
   const sidebar = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
+  const channels = readSource('../src/layouts/admin-shell/SidebarChannelsSection.tsx')
+  const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
+  const starred = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
   const label = readSource('../src/layouts/admin-shell/GroupDmSidebarLabel.tsx')
+  const styles = readSource('../src/styles.css')
 
   assert.match(sidebar, /<GroupDmSidebarLabel label=\{group\.label\} \/>/)
-  assert.match(label, /title=\{label\}/)
+  assert.match(channels, /<GroupDmSidebarLabel label=\{channel\.label\} \/>/)
+  assert.match(projects, /<GroupDmSidebarLabel label=\{channel\.label\} \/>/)
+  assert.match(starred, /<GroupDmSidebarLabel label=\{channel\.label\} \/>/)
   assert.match(label, /new ResizeObserver\(updateWidth\)/)
   assert.match(label, /selectGroupDmSidebarLabel/)
+  assert.match(label, /createPortal\(/)
+  assert.match(label, /onMouseEnter=\{candidates\.length > 1 \? showTooltip : undefined\}/)
+  assert.match(label, /role="tooltip"/)
+  assert.match(label, /pointer-events-none/)
+  assert.match(styles, /\.group-dm-sidebar-tooltip\s*\{[\s\S]*?position: fixed/)
+  assert.doesNotMatch(label, /title=\{label\}/)
   assert.doesNotMatch(label, /onClick=/)
 })
 
