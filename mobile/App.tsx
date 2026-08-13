@@ -28,6 +28,7 @@ import {
 } from './src/lib/native-shell'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
+import { statusBarStyleForScheme } from './src/lib/status-bar'
 import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
 } from './src/lib/android-tablet-dock'
@@ -85,6 +86,7 @@ const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
   const [bg, setBg] = useState(DEFAULT_BG)
+  const [statusBarStyle, setStatusBarStyle] = useState<'light' | 'dark'>('light')
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
@@ -247,6 +249,7 @@ const Shell = (): React.JSX.Element => {
       path?: string
       accent?: string
       inactive?: string
+      scheme?: string
       active?: boolean
       canBack?: boolean
       canForward?: boolean
@@ -269,6 +272,8 @@ const Shell = (): React.JSX.Element => {
     if (msg.type === 'theme') {
       if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
       if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
+      const nextStatusBarStyle = statusBarStyleForScheme(msg.scheme)
+      if (nextStatusBarStyle) setStatusBarStyle(nextStatusBarStyle)
       return
     }
     if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
@@ -382,7 +387,7 @@ const Shell = (): React.JSX.Element => {
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
-      <StatusBar style={isDark(bg) ? 'light' : 'dark'} />
+      <StatusBar style={statusBarStyle} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <View style={StyleSheet.absoluteFill}>
