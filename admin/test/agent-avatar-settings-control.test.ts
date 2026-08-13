@@ -35,3 +35,14 @@ test('full designer and quick settings avatar edits share the same mutation flow
   assert.match(panel, /useAgentAvatarChanges\(agent\.id, avatarContext\)/)
   assert.match(quickEdit, /useAgentAvatarChanges\(agent\.id, \{/)
 })
+
+test('agent avatar generation has an announced spinning progress indicator in both doorways', () => {
+  const quickEdit = readSource('../src/components/features/agents/AgentAvatarQuickEdit.tsx')
+  const panel = readSource('../src/components/features/agents/AgentAvatarPanel.tsx')
+  const indicator = readSource('../src/components/features/agents/AgentAvatarGenerationIndicator.tsx')
+
+  assert.match(quickEdit, /avatarChanges\.isGenerating \? \(\n              <AgentAvatarGenerationIndicator/)
+  assert.match(panel, /avatarChanges\.isGenerating \? \(\n          <AgentAvatarGenerationIndicator/)
+  assert.match(indicator, /animate-spin/)
+  assert.match(indicator, /role="status"/)
+})

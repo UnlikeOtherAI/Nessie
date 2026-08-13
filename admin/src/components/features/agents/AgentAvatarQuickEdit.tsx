@@ -9,6 +9,7 @@ import {
   type GeneratedAgentAvatar,
   useAgentAvatarChanges,
 } from './useAgentAvatarChanges'
+import { AgentAvatarGenerationIndicator } from './AgentAvatarGenerationIndicator'
 
 type AgentAvatarQuickEditProps = {
   agent: AgentRecord
@@ -152,7 +153,11 @@ export const AgentAvatarQuickEdit = ({ agent, canEdit }: AgentAvatarQuickEditPro
               onClick={() => void handleGenerate()}
               type="button"
             >
-              <span className="grid h-10 w-10 place-items-center rounded-lg bg-[color:var(--accent-soft)] text-[color:var(--accent)]"><SparkleIcon /></span>
+              <span className="grid h-10 w-10 place-items-center rounded-lg bg-[color:var(--accent-soft)] text-[color:var(--accent)]">
+                {avatarChanges.isGenerating ? (
+                  <AgentAvatarGenerationIndicator iconOnly />
+                ) : <SparkleIcon />}
+              </span>
               <span>
                 <span className="block font-medium text-[color:var(--tx)]">
                   {avatarChanges.isGenerating ? 'Generating headshot…' : 'Generate with AI'}
@@ -192,6 +197,9 @@ export const AgentAvatarQuickEdit = ({ agent, canEdit }: AgentAvatarQuickEditPro
               ref={fileInputRef}
               type="file"
             />
+            {avatarChanges.isGenerating ? (
+              <AgentAvatarGenerationIndicator className="mt-4" />
+            ) : null}
             {error ? <p className="mt-3 text-sm text-[color:var(--danger-text)]">{error}</p> : null}
           </div>
         </div>
