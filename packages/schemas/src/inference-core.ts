@@ -265,6 +265,9 @@ export const ProviderStreamEventSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('tool_call.delta'),
+    index: z.number().int().nonnegative(),
+    id: z.string(),
+    toolName: z.string(),
     text: z.string(),
   }),
   z.object({

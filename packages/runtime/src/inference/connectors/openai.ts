@@ -59,11 +59,13 @@ export const createOpenAiLikeConnector = (
   const invokeRequest = async (
     body: Record<string, unknown>,
     requestHeaders?: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<Response> => {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       body: JSON.stringify(body),
       headers: { ...requestHeaders, ...headers },
       method: 'POST',
+      signal,
     })
 
     if (!response.ok) {
@@ -294,7 +296,7 @@ export const createOpenAiLikeConnector = (
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
           tools,
-        }, request.requestHeaders)
+        }, request.requestHeaders, request.signal)
 
         const json = (await response.json()) as OpenAiChatResponse
         const outputText = json.choices?.[0]?.message?.content ?? ''
@@ -359,7 +361,7 @@ export const createOpenAiLikeConnector = (
           temperature: resolveOpenAiTemperature(model, request.temperature),
           tool_choice: request.toolChoice,
           tools,
-        }, request.requestHeaders)
+        }, request.requestHeaders, request.signal)
 
         const stream = collectChatStream(response)
         let next = await stream.next()

@@ -29,6 +29,8 @@ import { useChannelComposer } from '../../components/features/channels/useChanne
 import { useFileDrop } from '../../hooks/useFileDrop'
 import type { useShareRestrictedMessage } from '../../facades/messages/hooks'
 import { useStickToBottom } from '../../hooks/useStickToBottom'
+import type { DocumentStreamStore } from '../../facades/threads/document-stream'
+import type { DocumentStreamEntry } from '../../facades/threads/document-stream-helpers'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
 import type { ConversationRoute } from '../../lib/conversation-navigation'
 import type { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
@@ -69,6 +71,9 @@ interface ChannelConversationSurfaceProps {
   >
   conversationRoute: ConversationRoute | null
   deepWaterLauncher: ReturnType<typeof useDeepWaterResearchLauncher>
+  // Live document composition for this conversation; the feed owns the popup.
+  documentSessions: DocumentStreamEntry[]
+  documentStore: DocumentStreamStore
   executorLauncher: ReturnType<typeof useExecutorRunLauncher>
   externalAgentIdentity: ExternalAgentIdentity | null
   feedItems: ReturnType<typeof buildFeedItems>
@@ -139,6 +144,8 @@ export const ChannelConversationSurface = ({
   composer,
   conversationRoute,
   deepWaterLauncher,
+  documentSessions,
+  documentStore,
   executorLauncher,
   externalAgentIdentity,
   feedItems,
@@ -250,6 +257,8 @@ export const ChannelConversationSurface = ({
         <div ref={feedScroll.contentRef}>
           {visibleActiveTab === 'messages' ? (
             <ChannelMessageFeed
+              documentSessions={documentSessions}
+              documentStore={documentStore}
               agentById={agentMap}
               agentMap={agentMap}
               channelUsers={channelUsers}

@@ -3,6 +3,7 @@ import {
   runKbCommentReplyTool,
   runKbCommentResolveTool,
   runKbCommentsListTool,
+  runKbDocumentComposeTool,
   runKbDraftWriteTool,
   runKbFileTool,
   runKbListTool,
@@ -97,6 +98,19 @@ export const dispatchKbTool = (
           parentPageId: typeof args.parentPageId === 'string' ? args.parentPageId : undefined,
           taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
           changeComment: typeof args.changeComment === 'string' ? args.changeComment : undefined,
+        }),
+      )
+    case 'kb_document_compose':
+      return wrapTool(inputSummary, () =>
+        runKbDocumentComposeTool(context, {
+          changeComment: typeof args.changeComment === 'string' ? args.changeComment : undefined,
+          labels: Array.isArray(args.labels) ? args.labels.map(String) : undefined,
+          markdown: typeof args.markdown === 'string' ? args.markdown : undefined,
+          parentPageId: typeof args.parentPageId === 'string' ? args.parentPageId : undefined,
+          spaceId: typeof args.spaceId === 'string' ? args.spaceId : undefined,
+          summary: typeof args.summary === 'string' ? args.summary : undefined,
+          taskId: typeof args.taskId === 'string' ? args.taskId : undefined,
+          title: typeof args.title === 'string' ? args.title : undefined,
         }),
       )
     case 'kb_file':

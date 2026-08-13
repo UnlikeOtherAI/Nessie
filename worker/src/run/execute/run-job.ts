@@ -65,6 +65,7 @@ import {
 } from './reply-placement.js'
 import { buildScopes } from './scopes.js'
 import { createThinkingRecorder, type ThinkingRecorder } from './thinking-recorder.js'
+import { createDocumentStreamRecorder } from './document-stream.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 
 export const executeRunJob = async (
@@ -169,6 +170,21 @@ export const executeRunJob = async (
     runId: context.run.id,
     threadId: context.run.threadId,
   })
+
+  // Live document composition, created alongside the thought log for the same
+  // reason: it must exist before the first provider chunk, and every exit path
+  // has to settle it.
+  const documentStream = createDocumentStreamRecorder({
+    prisma: deps.prisma,
+    realtimeTransport: deps.realtimeTransport,
+    run: {
+      agentId: context.agent.id,
+      id: context.run.id,
+      organizationId: String(context.channel.organizationId),
+      threadId: context.run.threadId,
+    },
+  })
+  const executionDeps = { ...deps, documentStream }
 
   try {
     if (
@@ -279,14 +295,14 @@ export const executeRunJob = async (
       providerKey: budgetGate.modelOverride?.provider ?? context.agent.provider,
     }).catch(() => null)
 
-    const inference = createRunInference(deps, payload, context, {
+    const inference = createRunInference(executionDeps, payload, context, {
       budgetModelOverride: budgetGate.modelOverride,
       thinkingRecorder,
       utilityModel,
     })
 
     let reacted = false
-    loopResult = await runExecutionAgentLoop(deps, payload, context, {
+    loopResult = await runExecutionAgentLoop(executionDeps, payload, context, {
       allowedToolIds: setup.allowedToolIds,
       onReacted: () => {
         reacted = true
@@ -321,6 +337,7 @@ export const executeRunJob = async (
     // terminal path publishes it, or a trailing `stream.reasoning` would arrive
     // after the stream terminator (clients treat the run as live again).
     await thinkingRecorder.close()
+    await documentStream.close()
     deepWaterHandoffGuard.assertCompletion()
 
     const responseText = stripLeadingSectionTag(loopResult.finalText)
@@ -332,6 +349,10 @@ export const executeRunJob = async (
     // is never set on them; the `!handoffLocator` check keeps their invariants
     // untouched even if the flag somehow appeared.
     if (loopResult.cancelled && !handoffLocator) {
+      // Stopping means nothing is saved (a half-written document filed under a
+      // real name is worse than none), so any live session ends here — before
+      // the cancel handler publishes `stream.done`.
+      await documentStream.finalizeOutstanding('cancelled')
       await handleCancelStop(deps, payload, context, planContext, loopResult, responseText)
       terminalOutcome = 'cancelled'
       return
@@ -341,6 +362,7 @@ export const executeRunJob = async (
     // empty reply. DeepWater handoff runs (`handoffLocator`) keep their exact
     // existing completion path so their strict invariants are untouched.
     if (loopResult.exhaustedBudget && !handoffLocator) {
+      await documentStream.finalizeOutstanding('budget_stopped')
       const hadPartialText = responseText.trim().length > 0
       // Reserved headroom pays for the checkpoint here, before anything is
       // delivered — a checkpoint cannot be produced after the budget is gone.
@@ -437,6 +459,11 @@ export const executeRunJob = async (
     // error-swallowing, and also correct on the retry-throw path (the retry
     // republishes `stream.start`, so its stream stays well-formed).
     await thinkingRecorder.close()
+    // A document that was still streaming when the run failed never became a
+    // file. Terminalize it before the failure handler publishes `stream.done`,
+    // so the popup resolves instead of hanging on a run that has ended.
+    await documentStream.finalizeOutstanding('run_failed')
+    await documentStream.close()
     const error = promoteUnresolvedDeepWaterHandoffError(
       caughtError,
       deepWaterHandoffGuard,
@@ -494,6 +521,7 @@ export const executeRunJob = async (
     // (completion, classified stop, crash, retry-throw). Idempotent and
     // error-swallowing by construction, so it can never mask a run outcome.
     await thinkingRecorder.close()
+    await documentStream.close()
 
     // Record the run's stage-timing breakdown at every terminal state
     // (completion and failure), reusing timestamps the run already produced.

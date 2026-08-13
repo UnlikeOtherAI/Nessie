@@ -4,6 +4,15 @@ import remarkGfm from 'remark-gfm'
 import { normalizeMessageMarkdown } from '../../../lib/message-markdown'
 
 interface MessageMarkdownProps {
+  /**
+   * Remote images are loaded by default (a channel message is written by people
+   * and agents in the room). Pass `false` where the markdown is model-authored
+   * and shown without anyone asking for it — a streamed document popup opens by
+   * itself, so an `![](https://attacker/beacon.png)` in it would report the
+   * viewer's IP, user agent and reading time before a human saw a word. Those
+   * images render as an inert placeholder and fetch nothing.
+   */
+  allowRemoteImages?: boolean
   children: string
   renderInlineText: (text: string) => ReactNode
 }
@@ -19,12 +28,31 @@ const renderTextChildren = (
 // Channel content is stored as Markdown for both humans and agents. Text nodes
 // still pass through the channel mention renderer, while literal code stays
 // untouched so an @name or #channel inside a snippet is never made interactive.
+const ImagePlaceholder = ({ alt }: { alt?: string }) => (
+  <span
+    className={[
+      'my-1 inline-flex max-w-full items-center gap-1.5 rounded border border-dashed',
+      'border-[color:var(--sep)] px-2 py-1 text-xs text-[color:var(--tx3)]',
+    ].join(' ')}
+    data-testid="blocked-remote-image"
+  >
+    <span aria-hidden="true">🖼</span>
+    <span className="min-w-0 truncate">{alt?.trim() || 'Image'} — not loaded</span>
+  </span>
+)
+
 export const MessageMarkdown = ({
+  allowRemoteImages = true,
   children,
   renderInlineText,
 }: MessageMarkdownProps) => {
   const components = useMemo<Components>(
     () => ({
+      ...(allowRemoteImages
+        ? {}
+        : {
+            img: ({ alt }: { alt?: string }) => <ImagePlaceholder alt={alt} />,
+          }),
       a: ({ children: linkChildren, node: _node, ...props }) => (
         <a
           {...props}
@@ -89,7 +117,7 @@ export const MessageMarkdown = ({
         <th {...props}>{renderTextChildren(cellChildren, renderInlineText)}</th>
       ),
     }),
-    [renderInlineText],
+    [allowRemoteImages, renderInlineText],
   )
 
   return (

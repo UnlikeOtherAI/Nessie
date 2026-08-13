@@ -85,6 +85,16 @@ enum RunThinkingChunkKind {
   tool
 }
 
+enum RunDocumentSessionStatus {
+  streaming
+  /// Claimed by the executing handler; a Stop arriving now loses the race.
+  saving
+  saved
+  failed
+  cancelled
+  superseded
+}
+
 enum AgentTriggerType {
   manual
   scheduled
@@ -1960,6 +1970,7 @@ model Run {
   executionEnvironmentInstances  ExecutionEnvironmentInstance[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   thinkingChunks                 RunThinkingChunk[]
+  documentSessions               RunDocumentSession[]
   basisScopes                    RunBasisScope[]
   executorSessions               ExecutorSession[]
   executorBindings               ExecutorBinding[]
@@ -2013,6 +2024,69 @@ model RunCheckpoint {
 // the same chunk with its id, letting a client merge fetched history with live
 // events without duplication. Per-run order is `id` order: exactly one worker
 // writes a run at a time (the queue renews its lock for the job's lifetime).
+/// One live document composition (`kb_document_compose`). Identity is the
+/// provider tool-call id plus the inference invocation that produced it — the
+/// tool-call *index* restarts at 0 for every HTTP attempt and cannot correlate
+/// a retried or re-issued call with the handler that later executes it.
+model RunDocumentSession {
+  id             String  @id @default(uuid()) @db.Uuid
+  runId          String  @map("run_id") @db.Uuid
+  threadId       String  @map("thread_id") @db.Uuid
+  agentId        String  @map("agent_id") @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  invocationId   String  @map("invocation_id")
+  toolCallId     String  @map("tool_call_id")
+
+  status      RunDocumentSessionStatus @default(streaming)
+  errorReason String?                  @map("error_reason")
+
+  // Target parsed from the model's arguments.
+  title        String?
+  spaceId      String? @map("space_id") @db.Uuid
+  parentPageId String? @map("parent_page_id") @db.Uuid
+
+  // Target chosen by the user from the popup's address bar. Wins over the
+  // model's arguments at save time.
+  overrideSpaceId      String? @map("override_space_id") @db.Uuid
+  overrideParentPageId String? @map("override_parent_page_id") @db.Uuid
+
+  // Set once the document is saved as a .md file node.
+  pageId        String? @map("page_id") @db.Uuid
+  attachmentId  String? @map("attachment_id") @db.Uuid
+  versionNumber Int?    @map("version_number")
+  published     Boolean @default(false)
+
+  chars      Int       @default(0)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  finishedAt DateTime? @map("finished_at")
+
+  run    Run                 @relation(fields: [runId], references: [id], onDelete: Cascade)
+  chunks RunDocumentChunk[]
+
+  @@unique([runId, invocationId, toolCallId], map: "run_document_sessions_identity_key")
+  @@index([threadId, createdAt])
+  @@index([runId])
+  @@map("run_document_sessions")
+}
+
+/// Durable lane for a composing document: coalesced markdown appended as it
+/// streams, so a reconnecting or late-joining client can bootstrap. Working
+/// data — pruned once the session has been terminal for a week.
+model RunDocumentChunk {
+  id        BigInt   @id @default(autoincrement())
+  sessionId String   @map("session_id") @db.Uuid
+  /// Offset of this chunk within the decoded markdown, in UTF-16 code units.
+  offset    Int
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session RunDocumentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, id])
+  @@map("run_document_chunks")
+}
+
 model RunThinkingChunk {
   id        BigInt               @id @default(autoincrement())
   runId     String               @map("run_id") @db.Uuid

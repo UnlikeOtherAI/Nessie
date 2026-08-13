@@ -25,6 +25,7 @@ import {
   type ResolvedProviderConfig,
 } from './inference-provider.js'
 import type { ProviderRequestHeadersResolver } from './inference-identity.js'
+import { InferenceAbortedError } from './inference-abort.js'
 
 // Stable cache key from the request's cacheable prefix (model + tool set + the
 // system anchor message). Identical whenever the prefix is identical, so the
@@ -144,14 +145,36 @@ export const executeStage = async (
     modelConfig: ModelConfig
     onVisibleReasoningDelta?: (delta: string) => Promise<void>
     onVisibleTextDelta?: (delta: string) => Promise<void>
+    // Fired once per inference attempt, before any delta. `callInferenceWithRetry`
+    // re-issues the same iteration, and tool-call indexes restart at 0 on every
+    // attempt, so a consumer correlating fragments must reset on this boundary
+    // rather than accumulate across the run.
+    onInferenceAttempt?: (attempt: { invocationId: string }) => void
+    // Synchronous by contract: a document stream must never make the provider
+    // read loop wait on Postgres. Consumers enqueue and return.
+    onToolCallDelta?: (event: {
+      id: string
+      index: number
+      invocationId: string
+      text: string
+      toolName: string
+    }) => void
     organizationId: string
     profileId?: string
     reasoningEffort?: ProviderReasoningEffort
     requestHeadersForProvider?: ProviderRequestHeadersResolver
     routeSource: 'direct' | 'routing-profile'
+    // Aborts the in-flight provider request. Used by cooperative cancellation
+    // while a document is streaming, where waiting for the turn to end would
+    // mean watching the rest of a document the user already stopped.
+    signal?: AbortSignal
     stage: RouteStage
     stageIndex: number
     stream: boolean
+    // Raises this call's output ceiling above `modelConfig.maxTokens`. A
+    // document is emitted as tool-call arguments in one completion, so the
+    // ordinary per-call default would truncate it mid-write.
+    maxOutputTokensOverride?: number
     toolChoice?: 'auto' | 'none' | 'required'
     tools?: ToolSchemaDescriptor[]
     upstream: CandidateOutput[]
@@ -211,16 +234,22 @@ export const executeStage = async (
     let outputText = ''
     let invocation: InvocationRecord | undefined
     let toolCalls: ProviderToolCall[] = []
+    // One attempt = one id. Retries re-enter this function, so this is exactly
+    // the boundary a fragment consumer must reset on.
+    const invocationId = randomUUID()
+    const maxOutputTokens = input.maxOutputTokensOverride ?? input.modelConfig.maxTokens
+    input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
       const source = service.stream?.({
         actorContext: input.actorContext,
-        maxOutputTokens: input.modelConfig.maxTokens,
+        maxOutputTokens,
         messages,
         model: providerConfig.model,
         promptCacheKey,
         reasoningEffort: input.reasoningEffort,
         requestId,
         requestHeaders,
+        signal: input.signal,
         temperature: input.modelConfig.temperature,
         tools: input.tools,
         toolChoice: input.toolChoice,
@@ -242,6 +271,15 @@ export const executeStage = async (
             await input.onVisibleTextDelta(next.value.text)
           }
         }
+        if (next.value.type === 'tool_call.delta' && next.value.text) {
+          input.onToolCallDelta?.({
+            id: next.value.id,
+            index: next.value.index,
+            invocationId,
+            text: next.value.text,
+            toolName: next.value.toolName,
+          })
+        }
         next = await source.next()
       }
       outputText = next.value.outputText
@@ -250,13 +288,14 @@ export const executeStage = async (
     } else {
       const result = await service.run({
         actorContext: input.actorContext,
-        maxOutputTokens: input.modelConfig.maxTokens,
+        maxOutputTokens,
         messages,
         model: providerConfig.model,
         promptCacheKey,
         reasoningEffort: input.reasoningEffort,
         requestId,
         requestHeaders,
+        signal: input.signal,
         temperature: input.modelConfig.temperature,
         tools: input.tools,
         toolChoice: input.toolChoice,
@@ -314,6 +353,12 @@ export const executeStage = async (
       toolCalls,
     }
   } catch (error) {
+    // Convert here, where the signal is still in scope. Below this point the
+    // error is re-wrapped and only its message survives, which is not enough to
+    // tell a deliberate cancellation from a transient provider failure.
+    if (input.signal?.aborted) {
+      throw new InferenceAbortedError(error)
+    }
     const maybeInvocation =
       isObject(error) && 'invocation' in error && isObject(error.invocation)
         ? (error.invocation as InvocationRecord)

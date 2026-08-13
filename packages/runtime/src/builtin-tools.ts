@@ -11,6 +11,8 @@ import { EXECUTOR_TOOL_DEFINITIONS } from './builtin-executor-tools.js'
 import { INTEGRATION_TOOL_DEFINITIONS } from './builtin-integration-tools.js'
 import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
+
+export { KB_DOCUMENT_COMPOSE_TOOL_ID } from './builtin-kb-tools.js'
 import {
   CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
   LIST_SCHEDULED_TASKS_TOOL_DEFINITION,

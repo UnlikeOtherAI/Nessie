@@ -141,6 +141,10 @@ export type ProviderInvocationRequest = {
   // the request body as `reasoning_effort`. Other providers ignore it.
   reasoningEffort?: ProviderReasoningEffort
   responseFormat?: JsonObjectResponseFormat
+  // Aborts the in-flight HTTP request. A caller that passes one must classify
+  // the resulting error as an abort rather than a transient failure: retrying a
+  // deliberately cancelled call would re-run the work the user just stopped.
+  signal?: AbortSignal
   temperature?: number
   tools?: ToolSchemaDescriptor[]
   toolChoice?:
@@ -160,7 +164,11 @@ export type ProviderInvocationResult = {
 export type ProviderStreamEvent =
   | { type: 'reasoning_text.delta'; text: string }
   | { type: 'output_text.delta'; text: string }
-  | { type: 'tool_call.delta'; text: string }
+  // `id`/`toolName` come from the connector's accumulated call, not from the
+  // chunk that carried this fragment: the canonical OpenAI stream announces the
+  // name in a first chunk with empty arguments (which yields no event at all),
+  // and every later fragment carries only an index and argument text.
+  | { type: 'tool_call.delta'; index: number; id: string; toolName: string; text: string }
   | { type: 'response.error'; message: string; retryable: boolean }
 
 export type ProviderEmbeddingRequest = {
@@ -246,6 +254,8 @@ export type InferenceRequest = {
   actorContext?: AuthorizedActionContext
   correlationId?: string
   maxOutputTokens?: number
+  /** Aborts the in-flight provider call; see ProviderInvocationRequest.signal. */
+  signal?: AbortSignal
   messages: ProviderMessage[]
   metadata?: Record<string, unknown>
   model?: string

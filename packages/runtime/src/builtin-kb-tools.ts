@@ -129,6 +129,60 @@ export const KB_DRAFT_WRITE_TOOL_DEFINITION: BuiltinToolDefinition = {
   safe: false,
 }
 
+/**
+ * The tool id is referenced by the worker's document-stream recorder, which
+ * decides from the streaming tool name alone whether to open a live document
+ * session. Keep them in one place so the two can never drift.
+ */
+export const KB_DOCUMENT_COMPOSE_TOOL_ID = 'kb_document_compose'
+
+// Writes a markdown file rather than a rich-text page: the artifact is the .md
+// itself, so nothing here converts to HTML. Arguments are ordered
+// location-then-body deliberately — models emit them in schema order, which
+// lets the live popup show the title and destination while the body is still
+// arriving.
+export const KB_DOCUMENT_COMPOSE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: KB_DOCUMENT_COMPOSE_TOOL_ID,
+  label: 'KB Document Compose',
+  description:
+    'Write a complete markdown document and save it as a .md file in the knowledge base. '
+    + 'Agree the destination with the person first (use kb_list to resolve names to ids). '
+    + 'The person watches the document appear live as you write it, so put the finished '
+    + 'document in `markdown` with no preamble, commentary, or wrapper fences.',
+  parameters: {
+    type: 'object',
+    properties: {
+      spaceId: {
+        type: 'string',
+        description: 'Knowledge-base space id to save the document in',
+      },
+      parentPageId: {
+        type: 'string',
+        description: 'Optional folder/page id to nest the document under',
+      },
+      title: {
+        type: 'string',
+        description: 'Document title. The saved file is named "<title>.md".',
+      },
+      summary: { type: 'string', description: 'Optional one-line summary' },
+      labels: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional labels (max 16)',
+        maxItems: 16,
+      },
+      taskId: { type: 'string', description: 'Optional ticket id to bind the document to' },
+      changeComment: { type: 'string', description: 'Optional note describing this document' },
+      markdown: {
+        type: 'string',
+        description: 'The complete document body, in GitHub-flavored markdown',
+      },
+    },
+    required: ['spaceId', 'title', 'markdown'],
+  },
+  safe: false,
+}
+
 export const KB_FILE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_file',
   label: 'KB File',
@@ -175,6 +229,7 @@ export const KB_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   KB_PAGE_READ_TOOL_DEFINITION,
   KB_LIST_TOOL_DEFINITION,
   KB_DRAFT_WRITE_TOOL_DEFINITION,
+  KB_DOCUMENT_COMPOSE_TOOL_DEFINITION,
   KB_FILE_TOOL_DEFINITION,
   KB_PUBLISH_REQUEST_TOOL_DEFINITION,
 ]

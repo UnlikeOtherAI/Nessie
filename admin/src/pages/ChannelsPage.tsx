@@ -80,7 +80,9 @@ export const ChannelsPage = () => {
   const { data: threadMessages = [], isFetched: threadMessagesFetched } =
     useThreadMessages(activeChannel?.defaultThreadId)
   const { data: personalAssistantState } = usePersonalAssistant(isPersonalAssistantActiveChannel)
-  const { pendingMessages } = useThreadStream(activeChannel?.defaultThreadId)
+  const { documentSessions, documentStore, pendingMessages } = useThreadStream(
+    activeChannel?.defaultThreadId,
+  )
 
   const channelUsers = useMemo(
     () =>
@@ -370,6 +372,8 @@ export const ChannelsPage = () => {
         }}
         conversationRoute={conversationRoute}
         deepWaterLauncher={deepWaterLauncher}
+        documentSessions={documentSessions}
+        documentStore={documentStore}
         executorLauncher={executorLauncher}
         externalAgentIdentity={externalAgentIdentity}
         feedItems={feedItems}

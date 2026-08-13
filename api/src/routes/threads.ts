@@ -24,6 +24,7 @@ import {
 } from '../services/messages.js'
 import { toggleUserReaction } from '../services/message-reactions.js'
 import { loadRunThinkingLog, loadThreadThinking } from '../services/run-thinking.js'
+import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js'
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
 import type { RouteDeps } from './types.js'
@@ -81,6 +82,9 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
   registerCreateThreadMessageRoute(app, deps)
   registerThreadReplyRoutes(app, deps)
+  // Live document composition (bootstrap + address-bar retarget). Split out for
+  // the same reason as the two above: this module is at its size budget.
+  registerThreadDocumentStreamRoutes(app, deps)
 
   // ─── Agent thought process ────────────────────────────────────────────────
   // Both routes gate on thread visibility exactly like the SSE stream route
@@ -384,7 +388,11 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'Content-Type': 'text/event-stream',
+      // Token-by-token delivery only survives if no hop buffers the response:
+      // the proxy hint plus Nagle off, matching streamDesignerChat.
+      'X-Accel-Buffering': 'no',
     })
+    reply.raw.socket?.setNoDelay(true)
     reply.raw.write(': stream connected\n\n')
 
     const lastEventIdHeader = request.headers['last-event-id']
