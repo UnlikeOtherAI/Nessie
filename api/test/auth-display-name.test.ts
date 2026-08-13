@@ -102,13 +102,13 @@ test('buildMeResponse leaves a non-email display name untouched', async () => {
   assert.deepEqual(updates, [])
 })
 
-test('buildMeResponse exposes the UOA workspace directory with its signed active workspace', async () => {
+test('buildMeResponse exposes UOA workspace avatars without requiring a fresh login', async () => {
   const { prisma } = makePrisma(
     [
       {
         organizationId: 'uoa-org-active',
         teamId: 'uoa-team-active',
-        avatarImageUrl: 'https://authentication.example.com/public/teams/uoa-team-active/avatar',
+        avatarImageUrl: 'https://authentication.example.com/teams/uoa-team-active/avatar',
         label: 'Active workspace',
         orgName: 'Active org',
       },
@@ -117,6 +117,11 @@ test('buildMeResponse exposes the UOA workspace directory with its signed active
         teamId: 'uoa-team-other',
         avatarImageUrl: 'javascript:alert(1)',
         label: 'Other workspace',
+      },
+      {
+        organizationId: 'uoa-org-legacy',
+        teamId: 'uoa-team-legacy',
+        label: 'Legacy workspace',
       },
     ],
     [{ id: teamId, externalWorkspaceId: 'uoa-team-active' }],
@@ -141,7 +146,7 @@ test('buildMeResponse exposes the UOA workspace directory with its signed active
       organizationId: 'uoa-org-active',
       teamId: 'uoa-team-active',
       avatarTeamId: teamId,
-      avatarImageUrl: 'https://authentication.example.com/public/teams/uoa-team-active/avatar',
+      avatarImageUrl: 'https://authentication.example.com/teams/uoa-team-active/avatar?size=128',
       label: 'Active workspace',
       orgName: 'Active org',
       active: true,
@@ -149,7 +154,17 @@ test('buildMeResponse exposes the UOA workspace directory with its signed active
     {
       organizationId: 'uoa-org-other',
       teamId: 'uoa-team-other',
+      avatarImageUrl:
+        'https://authentication.unlikeotherai.com/teams/uoa-team-other/avatar?size=128',
       label: 'Other workspace',
+      active: false,
+    },
+    {
+      organizationId: 'uoa-org-legacy',
+      teamId: 'uoa-team-legacy',
+      avatarImageUrl:
+        'https://authentication.unlikeotherai.com/teams/uoa-team-legacy/avatar?size=128',
+      label: 'Legacy workspace',
       active: false,
     },
   ])

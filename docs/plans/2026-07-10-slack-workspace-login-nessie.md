@@ -51,6 +51,11 @@ switch cannot change the signed UOA organisation/team proof. This makes every
 workspace in UOA's directory selectable without allowing the local and external
 session scopes to drift.
 
+The same `/auth/me` hydration reconstructs a workspace's credential-free UOA avatar URL from its
+external team id when older link metadata predates the directory's `avatarImageUrl` field. It uses
+UOA's supported `size=128` image parameter so clients do not reuse a cached response from before
+cross-origin embedding was enabled; the shared workspace menu rows use that fallback directly.
+
 Why not the alternatives: mapping a workspace to a whole **Organization** would
 mean provisioning a new tenant per workspace (heavier, and UOA's one-org-per-user
 means the UOA org can't be the key); mapping to a **Team under one shared

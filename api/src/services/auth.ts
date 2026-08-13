@@ -21,6 +21,9 @@ const LOCAL_AUTH_PROVIDER_LABEL = 'Email and password'
 
 const UOA_DEFAULT_BASE_URL = 'https://authentication.unlikeotherai.com'
 
+const resolveUoaBaseUrl = (): string =>
+  (process.env.UOA_BASE_URL ?? UOA_DEFAULT_BASE_URL).replace(/\/$/, '')
+
 // The public-facing URL of the authenticator behind a provider, shown in the
 // profile. OIDC/custom carry it in config; UOA's lives in the UOA_BASE_URL env
 // (with the same default the worker uses), not the per-provider config block.
@@ -29,7 +32,7 @@ const resolveProviderUrl = (provider: AuthProviderConfig): string | undefined =>
     return provider.issuerUrl
   }
   if (provider.type === 'uoa') {
-    return (process.env.UOA_BASE_URL ?? UOA_DEFAULT_BASE_URL).replace(/\/$/, '')
+    return resolveUoaBaseUrl()
   }
   return undefined
 }
@@ -145,6 +148,21 @@ const parseHttpUrl = (value: unknown): string | undefined => {
   }
 }
 
+const uoaWorkspaceAvatarImageUrl = (teamId: string, value: unknown): string | undefined => {
+  const supplied = parseHttpUrl(value)
+  const fallbackBase = supplied ? undefined : parseHttpUrl(resolveUoaBaseUrl())
+  if (!supplied && !fallbackBase) return undefined
+
+  const url = new URL(
+    supplied ?? `/teams/${encodeURIComponent(teamId)}/avatar`,
+    fallbackBase,
+  )
+  // This supported UOA image parameter gives sessions created before avatar URLs were added a
+  // deterministic URL and avoids reusing a browser-cached pre-embedding-policy response.
+  url.searchParams.set('size', '128')
+  return url.toString()
+}
+
 const uoaWorkspaceDirectoryFromMetadata = (
   metadata: unknown,
   activeTeamId: string | undefined,
@@ -159,8 +177,8 @@ const uoaWorkspaceDirectoryFromMetadata = (
     const teamId = typeof values.teamId === 'string' ? values.teamId.trim() : ''
     const label = typeof values.label === 'string' ? values.label.trim() : ''
     const orgName = typeof values.orgName === 'string' ? values.orgName.trim() : ''
-    const avatarImageUrl = parseHttpUrl(values.avatarImageUrl)
     if (!organizationId || !teamId || !label) return []
+    const avatarImageUrl = uoaWorkspaceAvatarImageUrl(teamId, values.avatarImageUrl)
     return [{
       organizationId,
       teamId,
