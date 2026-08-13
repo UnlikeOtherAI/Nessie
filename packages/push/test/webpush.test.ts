@@ -100,3 +100,26 @@ test('network error → status 0, not a dead token', async () => {
 test('constructing with an invalid subject throws early', () => {
   assert.throws(() => new WebPushClient({ ...vapidCreds(), subject: 'nope' }), /mailto:.*https/)
 })
+
+test('default transport refuses to follow redirects (a 307 is not replayed)', async () => {
+  // The default fetch must dial with redirect: 'manual', so a push service
+  // answering 307 never replays the credentialed POST at a cross-origin target.
+  const calls: string[] = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.redirect, 'manual')
+    calls.push(String(input))
+    return new Response(null, {
+      status: 307,
+      headers: { location: 'https://attacker.example.com/collect' },
+    })
+  }) as typeof globalThis.fetch
+  try {
+    const result = await new WebPushClient(vapidCreds()).send(target(), { title: 'T', body: 'B' })
+    assert.equal(result.ok, false)
+    assert.equal(result.status, 307, 'the raw 307 surfaces as a failed delivery')
+    assert.deepEqual(calls, ['https://fcm.googleapis.com/wp/abc123'])
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})

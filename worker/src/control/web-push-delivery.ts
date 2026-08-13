@@ -1,12 +1,13 @@
 import type { PrismaClient } from '@prisma/client'
 import {
-  sendWebPush,
+  WebPushClient,
   type PushPayload,
   type PushResult,
   type WebPushCredentials,
+  type WebPushFetch,
   type WebPushTarget,
 } from '@nessie/push'
-import { assertSafeUrl, UrlSafetyError } from '@nessie/runtime'
+import { safeFetch, UrlSafetyError, type SafeFetchOptions } from '@nessie/runtime'
 
 /**
  * Browser Web Push fan-out for a dispatched notification. Runs alongside (not
@@ -50,10 +51,13 @@ export type DeliverWebPushInput = {
   messageId: string | null
   /** Deep link the service worker focuses/opens (e.g. `/channels/:id`, `/ops/usage`). */
   deepLinkUrl: string
-  /** Sender injection for tests (default: the real {@link sendWebPush}). */
+  /** Sender injection for tests (default: the real {@link WebPushClient} on the pinned transport). */
   sender?: WebPushSender
-  /** SSRF guard injection for tests (default: the real {@link assertSafeUrl}). */
-  urlGuard?: (url: string) => Promise<unknown>
+  /**
+   * safeFetch options for the default sender's pinned transport, injected so
+   * tests can exercise the real dial without DNS (e.g. a stubbed resolveHost).
+   */
+  fetchOptions?: SafeFetchOptions
 }
 
 type DeliveryStatus = 'sent' | 'failed' | 'dead'
@@ -94,6 +98,22 @@ const buildWebPayload = (payload: PushPayload, deepLinkUrl: string): PushPayload
   },
 })
 
+// The subscription endpoint is stored operator/user input and was SSRF-checked
+// at subscribe time, but DNS can be repointed to an internal host afterwards.
+// Re-validate AND pin the socket to the vetted addresses at dial time, and
+// refuse redirects outright: a push service answering 3xx must never cause the
+// credentialed POST to be replayed at a cross-origin location.
+const safeWebPushFetch = (options?: SafeFetchOptions): WebPushFetch => (url, init) =>
+  safeFetch(
+    url,
+    { method: init.method, headers: init.headers, body: init.body },
+    { ...options, maxRedirects: 0 },
+  ).then((response) => ({ status: response.status, text: () => response.text() }))
+
+const defaultWebPushSender = (options?: SafeFetchOptions): WebPushSender =>
+  (creds, target, payload) =>
+    new WebPushClient(creds, safeWebPushFetch(options)).send(target, payload)
+
 export const deliverWebPush = async (
   input: DeliverWebPushInput,
 ): Promise<WebPushDeliverySummary> => {
@@ -109,18 +129,13 @@ export const deliverWebPush = async (
     return summary
   }
 
-  const send = input.sender ?? sendWebPush
-  const urlGuard = input.urlGuard ?? assertSafeUrl
+  const send = input.sender ?? defaultWebPushSender(input.fetchOptions)
   const webPayload = buildWebPayload(input.payload, input.deepLinkUrl)
   const deadSubscriptionIds: string[] = []
 
   for (const subscription of subscriptions) {
     let result: PushResult
     try {
-      // Re-validate the endpoint at send time: it was SSRF-checked at subscribe,
-      // but DNS can be repointed to an internal host afterwards. A stored unsafe
-      // endpoint is dead to us — mark it for pruning rather than POSTing to it.
-      await urlGuard(subscription.endpoint)
       result = await send(
         input.creds,
         {
@@ -132,7 +147,7 @@ export const deliverWebPush = async (
       )
     } catch (err) {
       // A guard failure means we simply do NOT POST (SSRF-safe either way). Do
-      // not prune on it: `assertSafeUrl` throws the same error for a genuinely
+      // not prune on it: the SSRF guard throws the same error for a genuinely
       // blocked host and for a transient DNS hiccup, so pruning would silently
       // destroy a valid subscription on a momentary resolver blip. Count it as a
       // (non-dead) failure; a truly blocked endpoint just keeps failing harmlessly.

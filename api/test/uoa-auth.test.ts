@@ -7,6 +7,8 @@ import {
   buildUoaAuthorizeUrl,
   loadUoaSettings,
 } from '../src/services/uoa-auth.js'
+import type { SafeFetchOptions } from '@nessie/runtime'
+
 import {
   exchangeUoaCode,
   exchangeUoaSession,
@@ -14,6 +16,13 @@ import {
   resolveUoaIdentityFromAccessToken,
   UoaSessionRefreshError,
 } from '../src/services/uoa-session.js'
+
+// The UOA login egress goes through safeFetch (validated + IP-pinned, no
+// redirect following); stub DNS at that seam so tests stay hermetic while the
+// pinned transport itself still runs.
+const safeFetchTestOptions: SafeFetchOptions = {
+  resolveHost: async () => ['93.184.216.34'],
+}
 import { resolveExternalWorkspaceSelection } from '../src/services/identity-display.js'
 
 const testPrivateKeyPem = String(
@@ -179,7 +188,7 @@ test('exchangeUoaCode humanizes email-only identities', async () => {
         code: 'code',
         codeVerifier: 'verifier',
         redirectUri: uoaEnv.UOA_REDIRECT_URL,
-      })
+      }, safeFetchTestOptions)
 
       assert.equal(identity.displayName, 'Ada Lovelace')
       assert.equal(identity.email, 'ada.lovelace@example.com')
@@ -194,7 +203,7 @@ test('exchangeUoaSession retains the exact server-side refresh session', async (
         code: 'code',
         codeVerifier: 'verifier',
         redirectUri: uoaEnv.UOA_REDIRECT_URL,
-      })
+      }, safeFetchTestOptions)
 
       assert.equal(exchange.configUrl, uoaEnv.UOA_CONFIG_URL)
       assert.equal(exchange.refreshToken, 'uoa-refresh-1')
@@ -259,7 +268,7 @@ test('exchangeUoaSession rejects an incomplete multi-team selection', async () =
           code: 'code',
           codeVerifier: 'verifier',
           redirectUri: uoaEnv.UOA_REDIRECT_URL,
-        }),
+        }, safeFetchTestOptions),
         /incomplete session proof/,
       )
     })
@@ -318,7 +327,7 @@ test('exchangeUoaCode reuses the selected theme for the token config_url', async
           codeVerifier: 'verifier',
           redirectUri: uoaEnv.UOA_REDIRECT_URL,
           theme: 'rose',
-        })
+        }, safeFetchTestOptions)
 
         assert.equal(identity.email, 'ada.lovelace@example.com')
       },
@@ -413,7 +422,7 @@ test('exchangeUoaCode ignores a name claim that is just the email address', asyn
         code: 'code',
         codeVerifier: 'verifier',
         redirectUri: uoaEnv.UOA_REDIRECT_URL,
-      })
+      }, safeFetchTestOptions)
 
       assert.equal(identity.displayName, 'Ada Lovelace')
     })

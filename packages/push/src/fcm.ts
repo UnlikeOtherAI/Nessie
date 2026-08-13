@@ -35,8 +35,11 @@ interface CachedToken {
   expiresAtMs: number
 }
 
+// The token exchange and message POST are credentialed and must never be
+// replayed cross-origin: `redirect: 'manual'` surfaces any 3xx to the caller,
+// which classifies it as a failed send rather than following it.
 const defaultFetch: FetchLike = (url, init) =>
-  fetch(url, init).then((res) => ({
+  fetch(url, { ...init, redirect: 'manual' }).then((res) => ({
     status: res.status,
     text: () => res.text(),
   }))
