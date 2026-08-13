@@ -231,7 +231,7 @@ export const ChannelConversationComposePage = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="New chat" />
+      <AdminPageHeader title="New message" />
 
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-5 py-5">
         <div className="rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)]">
@@ -277,7 +277,7 @@ export const ChannelConversationComposePage = () => {
                   }}
                   onFocus={() => setAddressFocused(true)}
                   onKeyDown={onAddressKeyDown}
-                  placeholder={recipients.length === 0 ? 'Add people or agents' : ''}
+                  placeholder={recipients.length === 0 ? 'Type a name or email address' : ''}
                   value={query}
                 />
               </div>

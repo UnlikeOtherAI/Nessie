@@ -12,10 +12,9 @@ type SidebarDmSectionProps = {
   activeDmChannelId?: string;
   currentChannelId?: string;
   dmCollapsed: boolean;
-  isOwner: boolean;
   onNavigateAgentDm: (channelId: string) => void;
   onNavigateDm: (userId: string) => void;
-  onNavigateSettings: (subPage?: string) => void;
+  onStartNewConversation: () => void;
   onOpenPersonalAssistant: () => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
   personalAssistantBootstrapping: boolean;
@@ -33,10 +32,9 @@ export const SidebarDmSection = ({
   activeDmChannelId,
   currentChannelId,
   dmCollapsed,
-  isOwner,
   onNavigateAgentDm,
   onNavigateDm,
-  onNavigateSettings,
+  onStartNewConversation,
   onOpenPersonalAssistant,
   onToggleStar,
   personalAssistantBootstrapping,
@@ -54,9 +52,10 @@ export const SidebarDmSection = ({
     <SidebarMenuSection
       action={
         <button
-          aria-label={isOwner ? 'Invite people' : 'Open workspace profile'}
+          aria-label="Start new chat"
           className="admin-sidebar-plus"
-          onClick={() => onNavigateSettings('members')}
+          onClick={onStartNewConversation}
+          title="Start new chat"
           type="button"
         >
           +
