@@ -1,8 +1,8 @@
 # Architecture audit — structure, naming, layering (2026-08-13)
 
-Status: **primary audit, all six area passes, and the Kimix external review
-folded in and verified; one external reviewer (Codex Sol) outstanding**
-(Appendix A). No code was changed; this document is the deliverable.
+Status: **complete — primary audit, all six area passes, and both external
+reviews (Kimix, Codex Sol) folded in and verified** (Appendix A). No code was
+changed; this document is the deliverable.
 
 Scope: every workspace (`api`, `admin`, `web`, `worker`, `cli`, `mobile`,
 `desktop`, `gateway`, `executor`, `macos`, `packages/*`, plus non-workspace
@@ -12,12 +12,14 @@ own business workflows; 500-line cap split along cohesive seams; no catch-all
 buckets; shared rules in the smallest owning package; egress IP-pinned via
 `safeFetch`; no import-time side effects; docs updated with every change).
 
-Method: direct inspection at `eab4622c`; six parallel area subagents (api,
-worker, admin, packages/dependency-graph, peripheral/hygiene, docs-drift); two
-independent external reviewers on a shared brief (Kimix complete, Sol
-outstanding). Every high-severity claim below was re-verified against the
-working tree before acceptance; reviewer disagreements are recorded in
-Appendix A rather than silently resolved.
+Method: direct inspection at `eab4622c` (Sol addendum verified at
+`bde3b1cc`); six parallel area subagents (api, worker, admin,
+packages/dependency-graph, peripheral/hygiene, docs-drift); two independent
+external reviewers on a shared brief (Kimix, Codex Sol). Every high-severity
+claim below was re-verified against the working tree before acceptance;
+reviewer disagreements are recorded in Appendix A rather than silently
+resolved. Sol's deeper security-boundary findings are in the Addendum before
+Priority 3.
 
 ---
 
@@ -351,11 +353,12 @@ CI run. **Fix.** One line per workspace in CLAUDE.md + pointers to existing
 docs; delete `web/src/Workflow.tsx`; decide desktop/cli CI coverage
 deliberately. **Impact: medium. Effort: trivial–small — quick win.**
 
-### 16. The 500-line cap: 23 breaches, and no mechanical enforcement
+### 16. The 500-line cap: 25 breaches, and no mechanical enforcement
 
 **Evidence.** Non-test breaches (verified `wc -l`): workflows tier (finding
 4: 1,989 / 1,180 / 673 / 598), `api/src/services/inference-control-plane.ts`
-938 (four sub-domains), `packages/schemas/src/executor.ts` 804,
+938 (four sub-domains), `cli/src/local.ts` 898 (missed by the primary sweep;
+flagged by Sol, verified), `packages/schemas/src/executor.ts` 804,
 `packages/knowledge/src/native-provider.ts` 729, `worker/src/index.ts` 670,
 `api/src/services/messages.ts` 627 (cohesive — lowest priority),
 `api/src/routes/agents.ts` 614, `api/src/routes/knowledge-base-files.ts` 607,
@@ -375,6 +378,130 @@ concern through ~8 independent exit paths — fold it into the existing
 **Fix.** Add `'max-lines': ['error', {max: 500}]` with the current list
 grandfathered per-file; split along the seams named above when next touched.
 **Impact: medium. Effort: medium, amortizable; the lint rule is a quick win.**
+
+---
+
+## Addendum — security-boundary findings (Codex Sol pass, verified)
+
+Sol's independent pass went deeper on trust boundaries than the structural
+brief asked for. Every finding below was **re-verified against the tree**
+(load-bearing lines confirmed verbatim) before inclusion; they are
+architectural in the sense that each is a good primitive that exists in-repo
+but is an optional convention rather than an unavoidable boundary. Sol's
+framing: "the first four should block a production security sign-off."
+
+- **S1 — Session tuples can cross tenants.** `session-issuers.ts:30-56` loads
+  org/project/team memberships independently and combines element zero of each
+  list with no `project → organization` / `team → project` hierarchy check;
+  refresh rebuilds the tuple the same way, and `RefreshToken` stores no
+  selected project/team. `POST /api/users` then writes `OrganizationMember` +
+  `ProjectMember` + `TeamMember` from that ambient tuple without hierarchy
+  validation in the transaction. *Fix:* one authoritative
+  `resolveSessionContext` that verifies the hierarchy before issuance, bound
+  to the refresh family; revalidate in membership writers. (High; larger
+  refactor.)
+- **S2 — Owners can bind arbitrary `process.env` names as inference
+  credentials.** The public contract accepts any non-empty `authSecretRef`
+  (`api/src/contracts/inference-control-plane.ts:97`) and the worker resolves
+  it as `process.env[authSecretRef]`
+  (`worker/src/run/inference-provider.ts:79-80`) — so `DATABASE_URL` can be
+  sent as a Bearer token to an owner-controlled endpoint. A deployment-wide
+  Ledger base URL suppresses the binding; self-hosted/multi-tenant remains
+  exposed. The MCP secret-resolver's exact allowlist is the in-repo correct
+  pattern. *Fix:* remove caller-chosen env refs; encrypted opaque refs only,
+  as MCP already does. (High; medium effort.)
+- **S3 — Inference connectors dial unpinned.** Provider URLs are
+  SSRF-validated at write time, but the connectors use raw `fetch` at runtime
+  (`packages/runtime/src/inference/connectors/openai.ts:64,86,135,190`; kimi,
+  minimax likewise) — the exact validate-then-dial gap the egress rule names.
+  Extends finding 2's family to the model-call path itself. *Fix:* injectable
+  pinned fetch in the connector interface, `maxRedirects: 0` for credentialed
+  calls. (High; medium.)
+- **S4 — `safeFetch` replays origin-bound credentials across redirects.** The
+  manual redirect loop passes the original `init` (headers and body) to every
+  hop (`packages/runtime/src/url-safety.ts` redirect path), and manual
+  following means native cross-origin credential-stripping never applies; the
+  `http_fetch` one-hop redirect repeats the pattern. A legitimate MCP host can
+  redirect its bearer to another origin. `packages/dashboard/src/source-fetch.ts`
+  (`maxRedirects: 0`) is the in-repo correct precedent. *Fix:* centralize
+  redirect policy — same-origin or refuse for credentialed requests; strip
+  auth headers on permitted cross-origin hops. (High; medium.)
+- **S5 — Any channel member can add/remove members.** Both mutation routes
+  gate only on `getChannelIfMember` (`api/src/routes/channels.ts:349+`) and
+  the service takes no actor (`channel-members.ts` — it does block cross-org
+  targets, but has no manager gate, no policy check, no audit). The manager
+  rule (`canManageChannel`) exists and is unused here; the admin UI shows "Add
+  people" to owners only, masking the gap. (High; quick–medium.)
+- **S6 — Run lifecycle is org-wide, including private-channel and PA runs.**
+  List/cancel/restart check only `thread.channel.organizationId`
+  (`api/src/services/run-access.ts:35`, `runs.ts` routes carry only
+  `requireActorContext`), letting any org member enumerate and kill runs in
+  channels they cannot see; `continueRun` already does the correct
+  `findThreadForUser` check. *Fix:* `loadRunForActor` with channel entitlement
+  + PA ownership, used by all four verbs. (High; medium.)
+- **S7 — Thread SSE authorizes only at connect.** `ThreadSseConnection`
+  stores no user/org identity (`api/src/realtime/hub.ts:17-28`) and fan-out
+  matches by `threadId` alone, so a revoked member's open stream keeps
+  receiving messages/reasoning/documents until it disconnects — while user
+  SSE/WS run `canAccessChannelEvent` per event. *Fix:* store identity on the
+  connection and check per event, or disconnect on revocation. (High; medium.)
+- **S8 — Web Push delivery is check-then-fetch.** `web-push-delivery.ts`
+  re-validates with `assertSafeUrl`, then `packages/push/src/webpush.ts:40`
+  dials raw global `fetch` (fresh DNS, follows redirects) — rebind/redirect
+  SSRF from the worker on member-registered endpoints. *Fix:* pinned fetch at
+  the socket boundary, `maxRedirects: 0`. (High; medium.) *(Corrects the
+  Kimix-era "Web Push is handled correctly" note in "notably healthy," which
+  described the validation but not the dial.)*
+- **S9 — Targeted session revocation leaves access JWTs live.** "Revoke
+  session" and password change revoke refresh families only
+  (`refresh-session-management.ts:120`); central auth checks only the
+  user-wide `tokenVersion` (`server-context.ts:276-281`), so a revoked
+  session's ~30-minute access token keeps working. Logout already bumps
+  `tokenVersion` — the targeted paths do not. (High; medium.)
+- **S10 — pa-tools channel authz also ignores deactivation.** The forked
+  `canManageChannel` in `pa-tools/channels.ts` contains no `deactivatedAt`
+  check (the correct `resolveActingMember` in `pa-tools/access.ts:80-82`
+  does), so a deactivated user's queued PA work retains channel authority.
+  Strengthens finding 1: the fork is not just drift-prone, it has already
+  drifted on a security property. (Folds into finding 1's fix.)
+- **S11 — Worker tool-policy copy fails open.** The canonical evaluator in
+  `@nessie/workspace-admin` denies when no rule matches;
+  `worker/src/run/execute/policy.ts` returns
+  `{allowed: true, policySource: 'none'}` on no match. Not exploitable today
+  (the registry/grant gate runs first), but two opposite defaults for one
+  security decision is a latent bypass. *Fix:* one shared evaluator; if tools
+  intentionally default-allow, encode that as an explicit mode. (Medium;
+  quick.)
+- **S12 — Forwarded-header parsing bypasses proxy trust.** MCP OAuth and
+  comms callback construction read `x-forwarded-proto`/`x-forwarded-host`
+  directly from headers (`api/src/routes/mcp/oauth.ts:58-62`,
+  `comms/oauth-config.ts:101-105`) instead of Fastify's trusted-proxy-scoped
+  values — the exact pattern `docs/architecture.md` forbids. *Fix:* one shared
+  callback-URL helper over `request.protocol`/hostname. (Medium; quick.)
+- **S13 — The encrypted secret table has no tenant/purpose at its decrypt
+  boundary.** `McpOAuthSecret` is ref+ciphertext only
+  (`api/prisma/schema.prisma:4115-4123`) yet now stores MCP OAuth tokens,
+  platform push credentials, and dashboard credentials; the resolver decrypts
+  any `secret_*` ref with no expected-scope argument, and push duplicates the
+  store implementation. *Fix:* purpose-named store with required
+  tenant/owner/purpose columns; scope-checked resolve/delete. (Medium; larger.)
+- **S14 — The duplicated api inference contracts have diverged from schemas.**
+  `api/src/contracts/inference-core.ts:98` accepts any non-empty `imageUrl`
+  where `packages/schemas/src/inference-core.ts:58` requires `.url()`, and the
+  api copy omits `reasoning_text.delta` from the stream union — a live
+  divergence in *validation strength*, extending finding 6 beyond client-core.
+  (Medium; small.)
+
+Sol also confirmed independently: `document_read` doc exposure (finding 7),
+the dead intent helpers (finding 8), the comms-route workflow and worker
+composition-root side effects (findings 3, 9), the ops-pages facade bypass and
+workflow-designer theming (findings 13, 14), dead `web/src/Workflow.tsx`, and
+the clean workspace dependency graph. New hygiene: tracked
+`api/.dash-storage/` runtime data and two tracked `.playwright-mcp/` logs
+(verified); admin/web ESLint loads no `react-hooks` rules while mobile's does;
+and the inference control plane has no admin surface at all (routes registered,
+zero admin references — a live rule-zero violation with its surface already
+designed in `docs/plans/2026-08-11-unsurfaced-capabilities.md`).
 
 ---
 
@@ -408,7 +535,8 @@ grandfathered per-file; split along the seams named above when next touched.
   Kimix.
 - **Credential-at-rest crypto is centralized:** one AES-256-GCM primitive set
   (`runtime/src/secret-crypto.ts`) reused by every store — no duplication.
-  Web-push/FCM/APNs egress is correctly pinned and re-validated at send time.
+  FCM/APNs egress is pinned (`safeFcmFetch`, fixed APNs host); Web Push
+  *validation* is done at send time but its dial is not pinned — see S8.
 - **The agentic loop is genuinely orchestration-over-collaborators:**
   `run/agentic-loop.ts` is a pure loop (no Prisma; effects behind injected
   callbacks); the 57-file `execute/` directory is fine-grained, one decision
@@ -446,7 +574,10 @@ grandfathered per-file; split along the seams named above when next touched.
 | 10 | services→routes inversion; transport in services | Medium | Small | Cleanup |
 | 11 | api→worker edge undocumented; tests deep-importing apps | Medium | Small | Cleanup |
 | 12 | Retired GCP paths config-reachable | Medium | Small–Med | Decision |
-| 16 | 500-line-cap ratchet (23 files, no `max-lines` rule) | Medium | Medium | Ratchet |
+| 16 | 500-line-cap ratchet (25 files, no `max-lines` rule) | Medium | Medium | Ratchet |
+| S1–S4 | Session tenant tuple; env-ref credentials; unpinned inference; redirect credential replay | High | Medium–Large | Security fixes |
+| S5–S9 | Channel-member mutation; org-wide run lifecycle; SSE connect-only auth; Web Push dial; revocation gap | High | Small–Med | Security fixes |
+| S10–S14 | Deactivation gap in the pa-tools fork; fail-open policy copy; forwarded headers; secret-store scoping; api contract divergence | Medium | Small–Large | Security fixes |
 | — | P3 hygiene table | Low | Trivial–Small | Sweep |
 
 Suggested order: (1) the doc-drift quick wins (5, 15) — they poison every
@@ -462,11 +593,21 @@ refactor (4) and the `document_read`/GCP decisions (7, 12) as tracked tasks.
 **Complete and folded in** (every high-severity claim re-verified against the
 tree before acceptance): primary audit; api, worker, admin,
 packages/dependency-graph, peripheral/hygiene, docs-drift area passes;
-**Kimix** external review.
+**Kimix** and **Codex Sol** external reviews.
 
-**Outstanding — to be appended after verification:** **Codex Sol**
-(independent full-repo pass, security-structure emphasis, same brief as
-Kimix). Treat its output as leads; verify each claim before adding it here.
+**On Sol:** its pass went deepest on trust boundaries (Addendum). Nineteen of
+its claims were sampled for direct verification — session-issuer tuple
+construction, `process.env[authSecretRef]`, four raw-`fetch` connector sites,
+the `safeFetch` redirect `init` reuse, channel-member route guards,
+run-access org-only filter, `ThreadSseConnection` shape, web-push raw fetch,
+`tokenVersion`-only revocation, the fail-open worker policy default, the
+missing `deactivatedAt` check, forwarded-header parsing, `McpOAuthSecret`
+columns, `imageUrl` contract divergence, `cli/src/local.ts` 898 lines,
+tracked `.dash-storage`/`.playwright-mcp` files, the react-hooks lint gap,
+and the surfaceless inference control plane — **all nineteen confirmed
+verbatim**; no sampled claim failed. Sol avoided both of Kimix's factual
+errors (it did not call gateway orphaned, and it correctly identified the
+intent-regex exports as dead).
 
 **Agreements (independent convergence):** workflows oversize (primary + api +
 worker passes + Kimix); comms-connections route violation (api pass + Kimix);
