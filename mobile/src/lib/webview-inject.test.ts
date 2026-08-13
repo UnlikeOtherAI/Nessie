@@ -104,6 +104,7 @@ test('iOS phone content clears the status bar and home indicator', () => {
 
   assert.match(css, /padding-top: env\(safe-area-inset-top\)/)
   assert.match(css, /padding-bottom: env\(safe-area-inset-bottom\)/)
+  assert.match(css, /body \{ background: var\(--main\); \}/)
 })
 
 test('iPad and Android keep top safe-area ownership in the native frame', () => {
@@ -112,6 +113,8 @@ test('iPad and Android keep top safe-area ownership in the native frame', () => 
 
   assert.doesNotMatch(ipadCss, /padding-top/)
   assert.doesNotMatch(androidCss, /padding-top: env/)
+  assert.doesNotMatch(ipadCss, /body \{ background: var\(--main\); \}/)
+  assert.doesNotMatch(androidCss, /body \{ background: var\(--main\); \}/)
   assert.match(ipadCss, /padding-bottom: env\(safe-area-inset-bottom\)/)
   assert.match(androidCss, /padding-bottom: env\(safe-area-inset-bottom\)/)
   assert.match(

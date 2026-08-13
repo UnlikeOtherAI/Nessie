@@ -25,6 +25,12 @@ export const INJECTED = `
     var shell = window.__nessieNativeShell;
     var insetIosPhoneTop =
       shell && shell.platform === 'ios' && shell.formFactor === 'phone';
+    // The iPhone's native tab bar sits outside the WebView. Match the surface
+    // that reaches its edge, not the desktop rail colour, so translucency does
+    // not reveal a disconnected tinted strip below the page.
+    var iosPhoneBackgroundCss = insetIosPhoneTop
+      ? 'body { background: var(--main); }'
+      : '';
     var nativeTopbarOwnsSafeArea = shell && shell.platform === 'android';
     var androidNativeFrameCss = nativeTopbarOwnsSafeArea
       ? [
@@ -44,6 +50,7 @@ export const INJECTED = `
       (insetIosPhoneTop ? '  padding-top: env(safe-area-inset-top);' : '') +
       '  padding-bottom: env(safe-area-inset-bottom);' +
       '}' +
+      iosPhoneBackgroundCss +
       androidNativeFrameCss;
     (document.head || document.documentElement).appendChild(st);
   }
