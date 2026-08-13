@@ -205,6 +205,7 @@ export const SidebarStarredSection = ({
               ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
               shape={nativeTouchShell ? 'rounded' : 'circle'}
               showPresence={nativeTouchShell}
+              showStatus={!nativeTouchShell}
               size={nativeTouchShell ? 24 : 18}
               token={token}
               userId={person.id}
