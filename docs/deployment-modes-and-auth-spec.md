@@ -247,6 +247,11 @@ Claims:
 - app startup and API 401 recovery use one in-process single-flight coordinator,
   because a rotating refresh cookie may be consumed only once. Authenticated
   data queries mount only after session restoration completes
+- a production Tauri window is pinned to the top-level hosted admin origin
+  `https://app.nessie.works`, rather than an embedded `tauri://localhost`
+  bundle. The latter makes the API refresh cookie third-party in macOS WebKit,
+  where tracking prevention blocks it; development continues to use the local
+  Vite origin and its same-origin API proxy
 - only an explicit `401` from `POST /api/auth/refresh` proves that the saved
   session is no longer renewable and clears client credentials. Network errors,
   rate limits, and server failures preserve the stored access token and retry
