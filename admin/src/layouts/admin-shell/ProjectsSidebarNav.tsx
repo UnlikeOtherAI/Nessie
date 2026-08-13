@@ -5,6 +5,7 @@ import { ProjectMembersDialog } from '../../components/shared/ProjectMembersDial
 import { RenameProjectDialog } from '../../components/shared/RenameProjectDialog'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
+import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
 
 type ProjectsSidebarNavProps = {
@@ -30,6 +31,7 @@ const FolderIcon = () => (
 
 export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProps) => {
   const navigate = useNavigate()
+  const nativeTouchShell = isReactNativeWebView()
   const { data: projects = [] } = useProjects()
   const deleteProject = useDeleteProject()
 
@@ -56,6 +58,7 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
       className={[
         'flex h-full w-full flex-col overflow-hidden',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
+        nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
       <div className="flex h-[50px] items-center px-4">

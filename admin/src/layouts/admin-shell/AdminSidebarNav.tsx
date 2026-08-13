@@ -427,6 +427,7 @@ export const AdminSidebarNav = ({
   isOwner,
   isSuperAdmin,
 }: AdminSidebarNavProps) => {
+  const nativeTouchShell = isReactNativeWebView();
   const visibleGroups = useMemo(
     () =>
       ADMIN_NAV.filter(
@@ -459,6 +460,7 @@ export const AdminSidebarNav = ({
       className={[
         'flex h-full w-full flex-col overflow-y-auto',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
+        nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
       <div className="flex h-[50px] items-center px-4">

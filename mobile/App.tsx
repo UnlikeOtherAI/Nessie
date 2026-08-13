@@ -35,6 +35,7 @@ import {
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
+  getIpadWindowedLeadingControlsClearance,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
 import {
@@ -378,6 +379,7 @@ const Shell = (): React.JSX.Element => {
   // not always a direct aside/main child in the web DOM, so relying on injected
   // CSS can leave its first row beneath the status bar.
   const ipadChromeTop = getIpadChromeTop(insets.top)
+  const ipadLeadingControlsClearance = getIpadWindowedLeadingControlsClearance(insets.top)
   const webviewInsets = getNativeWebviewFrameInsets({
     ipadChromeTop,
     isIpad: IS_IPAD,
@@ -506,6 +508,7 @@ const Shell = (): React.JSX.Element => {
           onToolbarAction={nativeActions.runToolbarAction}
           insetLeft={insets.left}
           insetRight={insets.right}
+          leadingReservedWidth={ipadLeadingControlsClearance}
           theme={ipadChromeTheme}
           toolbarState={toolbarState}
           top={ipadChromeTop}

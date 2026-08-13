@@ -7,8 +7,10 @@ import { KnowledgeSpaceList } from '../../components/features/knowledge/Knowledg
 import { StorageUsageMeter } from '../../components/features/knowledge/StorageUsageMeter'
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
 import { useProjects } from '../../facades/projects/hooks'
+import { isReactNativeWebView } from '../../lib/mobile-shell'
 
 export const KnowledgeSidebarNav = () => {
+  const nativeTouchShell = isReactNativeWebView()
   const {
     spaces,
     myDocsSpaceId,
@@ -43,6 +45,7 @@ export const KnowledgeSidebarNav = () => {
       className={[
         'flex h-full w-full flex-col overflow-hidden',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
+        nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
       <div className="flex h-[50px] flex-shrink-0 items-center px-4">

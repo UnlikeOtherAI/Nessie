@@ -6,8 +6,19 @@ import {
   getIpadChromeTop,
   getIpadContentTop,
   getIpadTopChromeLayout,
+  getIpadWindowedLeadingControlsClearance,
   IPAD_WINDOWED_CHROME_TOP,
 } from './ipad-native-chrome'
+
+const controls = {
+  compactControlsWidth: 460,
+  fullControlsWidth: 620,
+  iconControlsWidth: 198,
+  insetLeft: 0,
+  insetRight: 0,
+  leadingReservedWidth: 0,
+  trailingReservedWidth: 54,
+}
 
 test('builds iPad top chrome from the active theme colours', () => {
   const theme = createIpadNativeChromeTheme({
@@ -26,71 +37,61 @@ test('builds iPad top chrome from the active theme colours', () => {
 
 test('centres the complete iPad chrome group when no workspace is present', () => {
   assert.deepEqual(getIpadTopChromeLayout({
-    compactControlsWidth: 460,
-    fullControlsWidth: 620,
+    ...controls,
     hasWorkspace: false,
-    insetLeft: 0,
-    insetRight: 0,
     screenWidth: 1_024,
-    trailingReservedWidth: 54,
   }), { controlsLeft: 202, mode: 'full', workspaceWidth: null })
 })
 
 test('moves the full group trailing before compacting it to preserve the workspace switcher', () => {
   assert.deepEqual(getIpadTopChromeLayout({
-    compactControlsWidth: 460,
-    fullControlsWidth: 620,
+    ...controls,
     hasWorkspace: true,
-    insetLeft: 0,
-    insetRight: 0,
     screenWidth: 1_024,
-    trailingReservedWidth: 54,
   }), { controlsLeft: 244, mode: 'full', workspaceWidth: 220 })
 })
 
-test('compacts navigation into overflow only after the full group cannot fit', () => {
+test('uses workspace flexibility before reshuffling the native controls', () => {
   assert.deepEqual(getIpadTopChromeLayout({
-    compactControlsWidth: 460,
-    fullControlsWidth: 620,
+    ...controls,
     hasWorkspace: true,
-    insetLeft: 0,
-    insetRight: 0,
+    screenWidth: 780,
+  }), { controlsLeft: 94, mode: 'full', workspaceWidth: 70 })
+})
+
+test('compacts navigation into overflow only after full controls and flexible workspace cannot fit', () => {
+  assert.deepEqual(getIpadTopChromeLayout({
+    ...controls,
+    hasWorkspace: true,
     screenWidth: 768,
-    trailingReservedWidth: 54,
   }), { controlsLeft: 242, mode: 'compact', workspaceWidth: 218 })
 })
 
-test('shrinks and finally hides the workspace switcher before overlap in a narrow iPad window', () => {
+test('uses section icons before hiding the workspace switcher in a narrow iPad window', () => {
   assert.deepEqual(getIpadTopChromeLayout({
-    compactControlsWidth: 460,
-    fullControlsWidth: 620,
+    ...controls,
     hasWorkspace: true,
-    insetLeft: 0,
-    insetRight: 0,
-    screenWidth: 700,
-    trailingReservedWidth: 54,
-  }), { controlsLeft: 174, mode: 'compact', workspaceWidth: 150 })
-  assert.deepEqual(getIpadTopChromeLayout({
-    compactControlsWidth: 460,
-    fullControlsWidth: 620,
-    hasWorkspace: true,
-    insetLeft: 0,
-    insetRight: 0,
     screenWidth: 600,
-    trailingReservedWidth: 54,
-  }), { controlsLeft: 70, mode: 'compact', workspaceWidth: null })
+  }), { controlsLeft: 244, mode: 'icons', workspaceWidth: 220 })
 })
 
 test('reserves the trailing safe-edge account control before centring or compacting navigation', () => {
   assert.deepEqual(getIpadTopChromeLayout({
-    compactControlsWidth: 460,
-    fullControlsWidth: 620,
+    ...controls,
     hasWorkspace: false,
-    insetLeft: 0,
-    insetRight: 0,
     screenWidth: 600,
-    trailingReservedWidth: 54,
   }), { controlsLeft: 70, mode: 'compact', workspaceWidth: null })
+})
+
+test('keeps the workspace switcher clear of Stage Manager window controls', () => {
+  assert.equal(getIpadWindowedLeadingControlsClearance(24), 0)
+  assert.equal(getIpadWindowedLeadingControlsClearance(0), 80)
+  assert.deepEqual(getIpadTopChromeLayout({
+    ...controls,
+    hasWorkspace: true,
+    leadingReservedWidth: 80,
+    screenWidth: 1_024,
+  }), { controlsLeft: 324, mode: 'full', workspaceWidth: 220 })
 })
 
 test('places iPad chrome flush below the fullscreen safe area and centred in a window title bar', () => {
