@@ -478,7 +478,6 @@ const Shell = (): React.JSX.Element => {
           onToggleWorkspaceMenu={nativeActions.toggleWorkspaceMenu}
           onToolbarAction={nativeActions.runToolbarAction}
           insetLeft={insets.left}
-          insetRight={insets.right}
           tabBarWidth={ipadTabBarWidth}
           theme={ipadChromeTheme}
           toolbarState={toolbarState}

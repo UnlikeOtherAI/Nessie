@@ -1,6 +1,7 @@
 import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
+import { IpadNativeAccountButton, type IpadNativeAccount } from './IpadNativeAccountMenu'
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
 import {
   IPAD_NATIVE_CHROME_GAP,
@@ -13,8 +14,10 @@ const PRIMARY_TABS = TABS.filter((tab) => tab.key !== 'search')
 const SEARCH_TAB = TABS.find((tab) => tab.key === 'search')
 
 type IpadNativeTabBarProps = {
+  account: IpadNativeAccount
   activeIndex: number
   badgeCounts: { assignedWork: number; channels: number; knowledge: number }
+  onAccountPress: () => void
   onIndexChange: (index: number) => void
   onWidthChange: (width: number) => void
   theme: IpadNativeChromeTheme
@@ -81,8 +84,10 @@ const IpadNativeTabButton = ({
 }
 
 export const IpadNativeTabBar = ({
+  account,
   activeIndex,
   badgeCounts,
+  onAccountPress,
   onIndexChange,
   onWidthChange,
   theme,
@@ -116,11 +121,15 @@ export const IpadNativeTabBar = ({
           />
         </IpadNativeChromeSurface>
       ) : null}
+      <IpadNativeChromeSurface style={styles.accountSurface} theme={theme}>
+        <IpadNativeAccountButton {...account} onPress={onAccountPress} theme={theme} />
+      </IpadNativeChromeSurface>
     </View>
   </View>
 )
 
 const styles = StyleSheet.create({
+  accountSurface: { width: IPAD_NATIVE_CHROME_HEIGHT, justifyContent: 'center' },
   badge: {
     minWidth: 15,
     height: 15,
