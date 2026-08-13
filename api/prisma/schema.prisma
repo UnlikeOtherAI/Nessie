@@ -895,6 +895,8 @@ model Organization {
   knowledgeSpaces        KnowledgeSpace[]
   knowledgePages         KnowledgePage[]
   knowledgePageChunks    KnowledgePageChunk[]
+  dashboards             Dashboard[]
+  dashboardDataSources   DashboardDataSource[]
   tasks                  Task[]
   budgets                Budget[]
   plans                  Plan[]
@@ -1245,7 +1247,7 @@ model Channel {
   project                Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   team                   Team                      @relation(fields: [teamId], references: [id], onDelete: Cascade)
   members                ChannelMember[]
-  workflowRunOrigins     WorkflowRun[]            @relation("WorkflowRunOriginChannel")
+  workflowRunOrigins     WorkflowRun[]             @relation("WorkflowRunOriginChannel")
   calls                  Call[]
   agentBindings          AgentBinding[]
   scopeDisclosureGrants  ScopeDisclosureGrant[]
@@ -1289,7 +1291,7 @@ model Thread {
   channel                  Channel                   @relation(fields: [channelId], references: [id], onDelete: Cascade)
   mailboxMessages          AgentMailboxMessage[]
   messages                 Message[]
-  workflowRunOrigins       WorkflowRun[]            @relation("WorkflowRunOriginThread")
+  workflowRunOrigins       WorkflowRun[]             @relation("WorkflowRunOriginThread")
   readStates               ThreadReadState[]
   userAlerts               UserAlert[]
   runs                     Run[]
@@ -1545,42 +1547,42 @@ model UserStatusRule {
 }
 
 model Message {
-  id                       String                    @id @default(uuid()) @db.Uuid
-  threadId                 String                    @map("thread_id") @db.Uuid
-  agentId                  String?                   @map("agent_id") @db.Uuid
-  userId                   String?                   @map("user_id") @db.Uuid
+  id                       String                         @id @default(uuid()) @db.Uuid
+  threadId                 String                         @map("thread_id") @db.Uuid
+  agentId                  String?                        @map("agent_id") @db.Uuid
+  userId                   String?                        @map("user_id") @db.Uuid
   role                     MessageRole
   content                  String
-  metadata                 Json?                     @default("{}")
+  metadata                 Json?                          @default("{}")
   // Message-level reply threads: null = top-level post in the container
   // thread; set = reply belonging to that root's reply thread (one level
   // deep — replies to replies attach to the same root).
-  rootMessageId            String?                   @map("root_message_id") @db.Uuid
+  rootMessageId            String?                        @map("root_message_id") @db.Uuid
   // Materialized per-root reply metadata, maintained transactionally on
   // reply create. replyParticipantIds holds distinct author ids (user or
   // agent) of replies, capped for cheap collapsed-bar rendering.
-  replyCount               Int                       @default(0) @map("reply_count")
-  lastReplyAt              DateTime?                 @map("last_reply_at")
-  replyParticipantIds      String[]                  @map("reply_participant_ids") @db.Uuid
-  createdAt                DateTime                  @default(now()) @map("created_at")
-  editedAt                 DateTime?                 @map("edited_at")
-  deletedAt                DateTime?                 @map("deleted_at")
-  thread                   Thread                    @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  agent                    Agent?                    @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  user                     User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  rootMessage              Message?                  @relation("MessageReplies", fields: [rootMessageId], references: [id], onDelete: SetNull)
-  replies                  Message[]                 @relation("MessageReplies")
+  replyCount               Int                            @default(0) @map("reply_count")
+  lastReplyAt              DateTime?                      @map("last_reply_at")
+  replyParticipantIds      String[]                       @map("reply_participant_ids") @db.Uuid
+  createdAt                DateTime                       @default(now()) @map("created_at")
+  editedAt                 DateTime?                      @map("edited_at")
+  deletedAt                DateTime?                      @map("deleted_at")
+  thread                   Thread                         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  agent                    Agent?                         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user                     User?                          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rootMessage              Message?                       @relation("MessageReplies", fields: [rootMessageId], references: [id], onDelete: SetNull)
+  replies                  Message[]                      @relation("MessageReplies")
   reactions                MessageReaction[]
   userAlerts               UserAlert[]
   threadFollows            MessageThreadFollow[]
   productIntegrationRuns   ProductIntegrationRun[]
-  triggeredRuns            Run[]                     @relation("RunTriggerMessage")
-  workflowRunOrigins       WorkflowRun[]             @relation("WorkflowRunOriginMessage")
-  workflowRunReplyRoots    WorkflowRun[]             @relation("WorkflowRunReplyRootMessage")
+  triggeredRuns            Run[]                          @relation("RunTriggerMessage")
+  workflowRunOrigins       WorkflowRun[]                  @relation("WorkflowRunOriginMessage")
+  workflowRunReplyRoots    WorkflowRun[]                  @relation("WorkflowRunReplyRootMessage")
   runThreadPendingMessages RunThreadPendingMessage[]
   basisScopes              MessageBasisScope[]
   disclosureGrants         DisclosureGrant[]
-  pushSurfacePresences     UserPushSurfacePresence[] @relation("PushSurfaceReplyRoot")
+  pushSurfacePresences     UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
   conversationReadStates   MessageConversationReadState[] @relation("MessageConversationReadRoot")
 
   @@index([threadId, createdAt])
@@ -4614,4 +4616,284 @@ model RateLimitBucket {
   @@unique([bucket, keyHash, windowStart])
   @@index([windowStart])
   @@map("rate_limit_buckets")
+}
+
+// ---------------------------------------------------------------------------
+// Live Data Dashboards (docs/plans/2026-08-13-live-data-dashboards.md)
+//
+// Tenancy note: `organizationId` carries a real FK on the two roots (Dashboard,
+// DashboardDataSource) and is a denormalized plain column on their children —
+// the same shape the Thought/KnowledgePage envelope uses for its loose scope
+// columns. Children cascade through their parent, and every by-id read still
+// filters on organizationId (never a bare findUnique on a caller-supplied id).
+// ---------------------------------------------------------------------------
+
+/// Which container a dashboard belongs to. Exactly one matching scope column is
+/// set; the pairing is enforced by a CHECK constraint in the migration, not by
+/// convention, because an unmatched pair would silently widen an audience.
+enum DashboardHome {
+  organization
+  project
+  team
+  channel
+  personal
+}
+
+enum DashboardAuthorType {
+  user
+  agent
+}
+
+/// Only `http` at v1. In-process adapters for internal Nessie data are a later
+/// kind, deliberately not a loopback HTTP source (privilege confusion).
+enum DashboardSourceKind {
+  http
+}
+
+enum DashboardRefreshMode {
+  manual
+  interval
+}
+
+enum DashboardGrantLevel {
+  view
+  edit
+}
+
+/// `delegated`: fetched under the source authority's credential and visible to
+/// the dashboard's audience — the confirmed model for external APIs, because a
+/// third-party service cannot evaluate a Nessie viewer. `viewer` is reserved
+/// for future in-process adapters where per-viewer entitlement IS expressible.
+enum DashboardAccessMode {
+  delegated
+  viewer
+}
+
+model Dashboard {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  home           DashboardHome
+  projectId      String?       @map("project_id") @db.Uuid
+  teamId         String?       @map("team_id") @db.Uuid
+  channelId      String?       @map("channel_id") @db.Uuid
+  ownerUserId    String?       @map("owner_user_id") @db.Uuid
+
+  title       String
+  description String?
+  /// DashboardLayout — per-breakpoint rects (lg/md/sm), validated on write.
+  layout      Json    @default("{\"lg\":[],\"md\":[],\"sm\":[]}")
+  /// Optimistic concurrency: a stale editor loses rather than silently
+  /// overwriting an agent that moved a widget a second ago.
+  revision    Int     @default(1)
+
+  createdByType DashboardAuthorType @map("created_by_type")
+  createdBy     String              @map("created_by")
+  archivedAt    DateTime?           @map("archived_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  widgets      DashboardWidget[]
+  versions     DashboardVersion[]
+
+  @@index([organizationId, home, archivedAt])
+  @@index([organizationId, projectId])
+  @@map("dashboards")
+}
+
+model DashboardDataSource {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  name           String
+  kind           DashboardSourceKind @default(http)
+
+  /// Locked once a credential is attached: changing it revokes the secret, so
+  /// "point Alice's key at my server" is not expressible.
+  origin      String
+  path        String @default("/")
+  /// Bounded literals plus closed relative-time tokens. No templating.
+  queryParams Json?  @map("query_params")
+
+  /// Server-minted `secret_dashboard_*` reference. Never returned by any read
+  /// API and never accepted from a client — write-only, including for agents.
+  credentialRef    String? @map("credential_ref")
+  credentialMode   String? @map("credential_mode")
+  credentialHeader String? @map("credential_header")
+
+  /// Whose API access refreshes this source. Visible to the audience.
+  authorityUserId String              @map("authority_user_id") @db.Uuid
+  accessMode      DashboardAccessMode @default(delegated) @map("access_mode")
+
+  /// JMESPath, compiled at write through the shared sandboxed evaluator.
+  transform     String
+  /// Declared [{ key, label, type, nullable }] — rows carrying anything else
+  /// fail the refresh rather than being persisted "just in case".
+  outputColumns Json   @map("output_columns")
+
+  refreshMode     DashboardRefreshMode @default(manual) @map("refresh_mode")
+  intervalMinutes Int?                 @map("interval_minutes")
+  cacheTtlSeconds Int                  @default(300) @map("cache_ttl_seconds")
+
+  latestDatasetId     String?   @map("latest_dataset_id") @db.Uuid
+  lastAttemptAt       DateTime? @map("last_attempt_at")
+  lastValidatedAt     DateTime? @map("last_validated_at")
+  /// A stable code, never an upstream message and never a response body.
+  lastErrorCode       String?   @map("last_error_code")
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  nextRunAt           DateTime? @map("next_run_at")
+  claimedAt           DateTime? @map("claimed_at")
+  etag                String?
+  lastModified        String?   @map("last_modified")
+
+  createdByType DashboardAuthorType @map("created_by_type")
+  createdBy     String              @map("created_by")
+  archivedAt    DateTime?           @map("archived_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  datasets     DashboardDataset[]
+  widgets      DashboardWidget[]
+
+  @@unique([organizationId, name])
+  @@index([nextRunAt, claimedAt])
+  @@map("dashboard_data_sources")
+}
+
+/// One immutable normalized fetch. Bytes live in an Attachment through the
+/// FileService chokepoint, so they carry storage accounting like every blob.
+model DashboardDataset {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sourceId       String   @map("source_id") @db.Uuid
+  attachmentId   String   @map("attachment_id") @db.Uuid
+  schemaVersion  Int      @map("schema_version")
+  rowCount       Int      @map("row_count")
+  byteSize       Int      @map("byte_size")
+  fetchedAt      DateTime @map("fetched_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  source    DashboardDataSource       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  snapshots DashboardWidgetSnapshot[]
+
+  @@index([organizationId, sourceId, fetchedAt(sort: Desc)])
+  @@map("dashboard_datasets")
+}
+
+model DashboardWidget {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  dashboardId    String @map("dashboard_id") @db.Uuid
+  sourceId       String @map("source_id") @db.Uuid
+
+  kind          String
+  schemaVersion Int    @default(1) @map("schema_version")
+  /// Validated WidgetDefinition. Re-validated on read: a stored row is
+  /// untrusted, and one no current reader accepts renders inert.
+  spec          Json
+
+  /// "Agents can't change this widget" — enforced server-side, not by asking.
+  lockedAt DateTime? @map("locked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  dashboard Dashboard           @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  source    DashboardDataSource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, dashboardId])
+  @@map("dashboard_widgets")
+}
+
+/// A frozen moment: spec, binding and the exact dataset pinned together.
+/// `widgetId` is a loose column deliberately — a snapshot outlives the widget
+/// it came from, because it has already been quoted into a message or a page.
+model DashboardWidgetSnapshot {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  widgetId       String @map("widget_id") @db.Uuid
+  dashboardId    String @map("dashboard_id") @db.Uuid
+
+  kind          String
+  schemaVersion Int    @map("schema_version")
+  spec          Json
+  datasetId     String @map("dataset_id") @db.Uuid
+
+  takenByType    DashboardAuthorType @map("taken_by_type")
+  takenById      String              @map("taken_by_id")
+  /// "Captured under Alice's API access" — delegation stays visible on the
+  /// frozen copy, because that is where it travels furthest from its origin.
+  authorityLabel String?             @map("authority_label")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  dataset DashboardDataset @relation(fields: [datasetId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, widgetId])
+  @@map("dashboard_widget_snapshots")
+}
+
+/// Append-only. A version captures STRUCTURE, never data — data has its own
+/// immutable lineage in datasets and snapshots. Restore appends a new version.
+model DashboardVersion {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  dashboardId    String @map("dashboard_id") @db.Uuid
+  versionNumber  Int    @map("version_number")
+
+  layout  Json
+  /// Frozen validated widget specs, not joins: history must survive deletion.
+  widgets Json
+
+  authorType DashboardAuthorType @map("author_type")
+  authorId   String              @map("author_id")
+  /// The run that made the change, so "why did this move?" is one click away.
+  runId      String?             @map("run_id") @db.Uuid
+  /// Composed deterministically from the op log (structural fact, never a
+  /// reading of message content).
+  summary    String
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, versionNumber])
+  @@index([organizationId, dashboardId, createdAt(sort: Desc)])
+  @@map("dashboard_versions")
+}
+
+/// An explicit grant. Audience grants (channel/team/project/knowledge space)
+/// follow membership dynamically; user and agent grants are exact principals.
+model DashboardGrant {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  resourceType   String              @map("resource_type")
+  resourceId     String              @map("resource_id") @db.Uuid
+  subjectType    String              @map("subject_type")
+  subjectId      String              @map("subject_id") @db.Uuid
+  level          DashboardGrantLevel
+  createdBy      String              @map("created_by")
+  expiresAt      DateTime?           @map("expires_at")
+  revokedAt      DateTime?           @map("revoked_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  @@unique([resourceType, resourceId, subjectType, subjectId])
+  @@index([organizationId, subjectType, subjectId])
+  @@map("dashboard_grants")
+}
+
+/// Where an embed physically sits. Grants NOTHING by itself: every read
+/// re-checks both the target container and the resource.
+model DashboardEmbedPlacement {
+  id               String  @id @default(uuid()) @db.Uuid
+  organizationId   String  @map("organization_id") @db.Uuid
+  mode             String
+  widgetId         String? @map("widget_id") @db.Uuid
+  widgetSnapshotId String? @map("widget_snapshot_id") @db.Uuid
+  targetType       String  @map("target_type")
+  targetId         String  @map("target_id") @db.Uuid
+
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, targetType, targetId])
+  @@map("dashboard_embed_placements")
 }
