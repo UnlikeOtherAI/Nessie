@@ -413,7 +413,10 @@ const Shell = (): React.JSX.Element => {
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
-      <StatusBar style={statusBarStyleForNativePhoneHomeHeader(showNativePhoneHomeChrome, statusBarStyle)} />
+      <StatusBar style={statusBarStyleForNativePhoneHomeHeader(
+        showNativePhoneHomeChrome && isDark(phoneHeaderSurface),
+        statusBarStyle,
+      )} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <IphoneNativeTabBar

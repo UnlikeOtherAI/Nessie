@@ -82,8 +82,11 @@ export const INJECTED = `
     var text = cssVar('--tx');
     var textMuted = cssVar('--tx2');
     var onAccent = cssVar('--on-accent');
-    var headerSurface = cssVar('--ink');
-    var headerText = cssVar('--surface-inverse');
+    // Match the uninterrupted surface behind iPad's transparent native tab
+    // controls. This is deliberately the page rail rather than a dark top-bar
+    // colour, so light themes keep a light phone workspace header too.
+    var headerSurface = cssVar('--rail');
+    var headerText = cssVar('--tx');
     var scheme = '';
     try { scheme = getComputedStyle(document.documentElement).colorScheme } catch (e) {}
     if (accent || surface || scheme === 'light' || scheme === 'dark') {
@@ -181,6 +184,19 @@ export const INJECTED = `
 export const DEFAULT_BG = '#1a1d21'
 
 export const parseRgb = (c: string): [number, number, number, number] | null => {
+  const hex = c.trim().replace(/^#/, '')
+  if (/^[0-9a-f]{3,4}$/i.test(hex) || /^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(hex)) {
+    const expanded = hex.length <= 4
+      ? hex.split('').map((value) => `${value}${value}`).join('')
+      : hex
+    const alpha = expanded.length === 8 ? parseInt(expanded.slice(6, 8), 16) / 255 : 1
+    return [
+      parseInt(expanded.slice(0, 2), 16),
+      parseInt(expanded.slice(2, 4), 16),
+      parseInt(expanded.slice(4, 6), 16),
+      alpha,
+    ]
+  }
   const m = c.match(/rgba?\(([^)]+)\)/)
   if (!m) return null
   const p = m[1].split(',').map((s) => parseFloat(s.trim()))

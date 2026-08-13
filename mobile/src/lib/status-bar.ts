@@ -6,9 +6,9 @@ export const statusBarStyleForScheme = (scheme: unknown): NativeStatusBarStyle |
   return null
 }
 
-// The phone tab-root chrome occupies the status-bar backdrop with the theme's
-// dark header, so its indicators stay light regardless of the page scheme.
+// A phone tab-root header owns the status-bar backdrop. Override the page
+// scheme only when that header is actually dark.
 export const statusBarStyleForNativePhoneHomeHeader = (
-  hasNativePhoneHomeHeader: boolean,
+  hasDarkNativePhoneHomeHeader: boolean,
   themeStyle: NativeStatusBarStyle,
-): NativeStatusBarStyle => hasNativePhoneHomeHeader ? 'light' : themeStyle
+): NativeStatusBarStyle => hasDarkNativePhoneHomeHeader ? 'light' : themeStyle

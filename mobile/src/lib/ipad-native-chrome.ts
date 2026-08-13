@@ -71,17 +71,17 @@ export const getIpadContentTop = (chromeTop: number): number => (
 )
 
 export const withOpacity = (color: string, opacity: number): string => {
-  const rgb = parseRgb(color)
-  if (rgb) {
-    const [red, green, blue] = rgb
-    return `rgba(${red}, ${green}, ${blue}, ${opacity})`
-  }
   const hex = color.replace(/^#/, '')
   if (/^[0-9a-f]{6}$/i.test(hex)) {
     const alpha = Math.round(opacity * 255)
       .toString(16)
       .padStart(2, '0')
     return `#${hex}${alpha}`
+  }
+  const rgb = parseRgb(color)
+  if (rgb) {
+    const [red, green, blue] = rgb
+    return `rgba(${red}, ${green}, ${blue}, ${opacity})`
   }
   return color
 }

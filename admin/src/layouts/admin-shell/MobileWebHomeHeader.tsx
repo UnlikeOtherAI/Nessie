@@ -18,7 +18,7 @@ export const MobileWebHomeHeader = ({ onLogout }: MobileWebHomeHeaderProps): Rea
           className="mobile-web-home-action"
           onLogout={onLogout}
           placement="topbar"
-          ringColor="var(--ink)"
+          ringColor="var(--rail)"
         />
       </div>
     </header>

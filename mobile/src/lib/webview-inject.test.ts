@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE } from './android-tablet-dock'
-import { INJECTED } from './webview-inject'
+import { INJECTED, isDark, parseRgb } from './webview-inject'
 
 type FakeElement = {
   content?: string
@@ -11,7 +11,10 @@ type FakeElement = {
   textContent?: string
 }
 
-const injectedThemeMessage = (colorScheme: 'dark' | 'light'): Record<string, unknown> | undefined => {
+const injectedThemeMessage = (
+  colorScheme: 'dark' | 'light',
+  tokens: { rail?: string; text?: string } = {},
+): Record<string, unknown> | undefined => {
   const elements = new Map<string, FakeElement>()
   const messages: Record<string, unknown>[] = []
 
@@ -54,11 +57,10 @@ const injectedThemeMessage = (colorScheme: 'dark' | 'light'): Record<string, unk
       if (name === '--accent-strong') return '#5b21b6'
       if (name === '--tx3') return '#949597'
       if (name === '--panel') return '#222629'
-      if (name === '--tx') return '#f8f5ef'
+      if (name === '--tx') return tokens.text ?? '#f8f5ef'
       if (name === '--tx2') return '#b6b0a9'
       if (name === '--on-accent') return '#ffffff'
-      if (name === '--ink') return '#2b2018'
-      if (name === '--surface-inverse') return '#fffdf8'
+      if (name === '--rail') return tokens.rail ?? '#2e1132'
       return '#222629'
     },
   })
@@ -146,9 +148,22 @@ test('reports the page color scheme for the native status bar', () => {
   assert.equal(injectedThemeMessage('dark')?.scheme, 'dark')
   assert.equal(injectedThemeMessage('dark')?.surface, '#222629')
   assert.equal(injectedThemeMessage('dark')?.accentStrong, '#5b21b6')
-  assert.equal(injectedThemeMessage('dark')?.headerSurface, '#2b2018')
-  assert.equal(injectedThemeMessage('dark')?.headerText, '#fffdf8')
+  assert.equal(injectedThemeMessage('dark')?.headerSurface, '#2e1132')
+  assert.equal(injectedThemeMessage('dark')?.headerText, '#f8f5ef')
   assert.equal(injectedThemeMessage('dark')?.text, '#f8f5ef')
   assert.equal(injectedThemeMessage('dark')?.textMuted, '#b6b0a9')
   assert.equal(injectedThemeMessage('dark')?.onAccent, '#ffffff')
+})
+
+test('uses the iPad page rail for the Sandstone phone header', () => {
+  const sandstone = injectedThemeMessage('light', { rail: '#f1e9dc', text: '#2b2018' })
+
+  assert.equal(sandstone?.headerSurface, '#f1e9dc')
+  assert.equal(sandstone?.headerText, '#2b2018')
+})
+
+test('recognises hexadecimal CSS colours when choosing native contrast', () => {
+  assert.deepEqual(parseRgb('#f1e9dc'), [241, 233, 220, 1])
+  assert.equal(isDark('#f1e9dc'), false)
+  assert.equal(isDark('#2e1132'), true)
 })

@@ -213,12 +213,15 @@ top-bar account badge.
 
 On the native iPhone and Android first screen of **every tab** (Channels,
 Projects, Knowledge, Admin, and Search, including ordinary query-string state),
-`NativePhoneConversationMenuChrome` adds a theme-specific dark workspace header
-above the retained WebView. The workspace control opens the existing
+`NativePhoneConversationMenuChrome` adds a workspace header above the retained
+WebView. Its surface is the same `--rail` backing surface visible beneath the
+transparent iPad tab controls, and its controls use the theme's `--tx` colour;
+in particular, the default Sandstone header is the same warm light beige as
+that iPad background. The workspace control opens the existing
 entitlement-aware switcher, Recent Channels delegates to the existing toolbar
 bridge, and the account control opens the canonical account menu. The header
-owns the status-bar backdrop, so its system indicators remain light against the
-dark surface even when the active Nessie theme is light. Its Slack-positioned
+owns the status-bar backdrop, so its system indicators follow the header's
+actual contrast. Its Slack-positioned
 bottom-right **+** is deliberately limited to the Channels root: it uses the
 theme's darker primary colour (`--accent-strong`) and expands directly into the
 highlighted **Message** action. The surrounding native sheet and its compact
@@ -234,7 +237,7 @@ bold. Human, agent, and workspace avatar tiles use the same subtly rounded
 square shape everywhere. Human avatar
 presence badges use a three-pixel cutout that matches the sidebar background.
 
-The same dark workspace header appears at the first screen of every tab in
+The same page-rail workspace header appears at the first screen of every tab in
 mobile Safari and Android browsers. Its workspace, Recent Channels, and account
 buttons are the existing shared web controls, not browser-specific copies; the
 mobile browser still owns its own system and address-bar chrome.
