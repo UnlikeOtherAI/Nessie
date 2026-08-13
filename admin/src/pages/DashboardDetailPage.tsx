@@ -8,10 +8,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import type { DashboardLayout, DashboardWidgetKind } from '@nessie/schemas'
 import { DashboardGrid } from '../components/features/dashboards/DashboardGrid'
 import { DashboardWidgetCard } from '../components/features/dashboards/DashboardWidgetCard'
 import { DashboardVersionsPanel } from '../components/features/dashboards/DashboardVersionsPanel'
+import { AddWidgetPanel } from '../components/features/dashboards/AddWidgetPanel'
 import {
   useDashboard,
   useSaveLayout,
@@ -57,9 +59,11 @@ export const DashboardDetailPage = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>()
   const { data: dashboard, isLoading } = useDashboard(dashboardId)
   const saveLayout = useSaveLayout(dashboardId ?? '')
+  const queryClient = useQueryClient()
 
   const [editing, setEditing] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
+  const [showAddWidget, setShowAddWidget] = useState(false)
   const [draftLayout, setDraftLayout] = useState<DashboardLayout | null>(null)
 
   useEffect(() => {
@@ -151,6 +155,17 @@ export const DashboardDetailPage = () => {
             </button>
             {editing ? (
               <button
+                className="rounded px-2.5 py-1.5 text-xs"
+                onClick={() => setShowAddWidget(true)}
+                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
+                type="button"
+                data-testid="dashboard-add-widget"
+              >
+                + Add widget
+              </button>
+            ) : null}
+            {editing ? (
+              <button
                 className="rounded px-3 py-1.5 text-xs font-medium"
                 disabled={saveLayout.isPending}
                 onClick={() => {
@@ -198,6 +213,17 @@ export const DashboardDetailPage = () => {
               <p className="mt-1 text-xs" style={{ color: 'var(--tx3)' }}>
                 Ask your assistant to add one, or connect a data source to get started.
               </p>
+              <button
+                className="mt-4 rounded px-3 py-1.5 text-sm"
+                onClick={() => {
+                  setEditing(true)
+                  setShowAddWidget(true)
+                }}
+                style={{ background: 'var(--overlay-weak)', color: 'var(--tx2)' }}
+                type="button"
+              >
+                Add a widget yourself
+              </button>
             </div>
           ) : (
             <DashboardGrid
@@ -215,6 +241,14 @@ export const DashboardDetailPage = () => {
           )}
         </div>
       </div>
+
+      {showAddWidget ? (
+        <AddWidgetPanel
+          dashboardId={dashboard.id}
+          onAdded={() => queryClient.invalidateQueries({ queryKey: ['dashboards', dashboard.id] })}
+          onClose={() => setShowAddWidget(false)}
+        />
+      ) : null}
 
       {showVersions ? (
         <DashboardVersionsPanel

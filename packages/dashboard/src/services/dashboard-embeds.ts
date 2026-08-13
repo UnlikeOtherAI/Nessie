@@ -140,7 +140,7 @@ export const createEmbedPlacement = async (
     }
   }
 
-  return prisma.dashboardEmbedPlacement.create({
+  const placement = await prisma.dashboardEmbedPlacement.create({
     data: {
       organizationId: actor.organizationId,
       mode: input.mode,
@@ -151,6 +151,30 @@ export const createEmbedPlacement = async (
       createdBy: actor.userId,
     },
   })
+
+  // The message feed renders from `metadata.dashboardEmbeds`. It is written
+  // HERE, server-side, and never accepted from a client — a message must not be
+  // able to claim it carries a widget it was never given. The value is only an
+  // id; visibility is still resolved per viewer on every read.
+  if (input.targetType === 'message') {
+    const message = await prisma.message.findFirst({
+      where: { id: input.targetId },
+      select: { metadata: true },
+    })
+    const metadata = (message?.metadata ?? {}) as Record<string, unknown>
+    const existing = Array.isArray(metadata.dashboardEmbeds) ? metadata.dashboardEmbeds : []
+    await prisma.message.update({
+      where: { id: input.targetId },
+      data: {
+        metadata: {
+          ...metadata,
+          dashboardEmbeds: [...existing, { embedId: placement.id }],
+        } as Prisma.InputJsonValue,
+      },
+    })
+  }
+
+  return placement
 }
 
 /**

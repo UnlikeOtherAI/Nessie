@@ -12,7 +12,7 @@ import type {
   DashboardWidgetProjection,
   WidgetPresentation,
 } from '@nessie/schemas'
-import { formatRelative } from './widget-format'
+import { formatRelative, formatTemporal as formatMoment } from './widget-format'
 
 type WidgetFrameProps = {
   presentation?: WidgetPresentation
@@ -34,8 +34,16 @@ const stateDot: Record<string, string> = {
 
 const FreshnessFooter = ({ projection }: { projection: DashboardWidgetProjection }) => {
   const { state, fetchedAt, errorCode } = projection
+  // A frozen snapshot must never say "Live". It carries a snapshotId, and that
+  // is the only thing separating "these numbers are current" from "these are a
+  // quotation of a past moment" — getting it wrong is precisely the
+  // confidently-wrong reading the footer exists to prevent.
+  const frozen = Boolean(projection.snapshotId)
 
   const label = (() => {
+    if (frozen) {
+      return `Snapshot · ${fetchedAt ? formatMoment(fetchedAt) : 'a past moment'}`
+    }
     switch (state) {
       case 'fresh':
         return `Live · ${formatRelative(fetchedAt)}`
@@ -58,14 +66,17 @@ const FreshnessFooter = ({ projection }: { projection: DashboardWidgetProjection
   return (
     <div
       className="mt-2 flex items-center gap-1.5 text-[11px]"
-      style={{ color: state === 'stale' ? 'var(--warning-text)' : 'var(--tx3)' }}
+      style={{ color: !frozen && state === 'stale' ? 'var(--warning-text)' : 'var(--tx3)' }}
       data-testid="widget-freshness"
     >
-      <span
-        aria-hidden
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ background: stateDot[state] ?? 'var(--tx3)' }}
-      />
+      <span aria-hidden>{frozen ? '📌' : null}</span>
+      {frozen ? null : (
+        <span
+          aria-hidden
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{ background: stateDot[state] ?? 'var(--tx3)' }}
+        />
+      )}
       <span>{label}</span>
       {/* A stable code, never an upstream message. */}
       {errorCode && state !== 'fresh' ? (

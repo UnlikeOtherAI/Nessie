@@ -9,6 +9,10 @@ import { ChannelMessageActions } from './ChannelMessageActions'
 import type { ResolveReactorName } from './ReactionPills'
 import { formatClock, getDisplayName, type MessageUserIdentity } from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
+import {
+  EmbeddedWidget,
+  readMessageEmbedIds,
+} from '../dashboards/EmbeddedWidget'
 import { CommsConnectCard } from './CommsConnectCard'
 import { MessageMarkdown } from './MessageMarkdown'
 import { MarkdownEditInput } from './MarkdownEditInput'
@@ -357,6 +361,15 @@ export const ChannelMessageRow = ({
               metadata={message.metadata}
             />
           ) : null}
+          {/* Dashboard widgets quoted into the conversation. Each resolves by
+              embed id, so the server decides visibility per viewer. */}
+          {!isEditingMessage
+            ? readMessageEmbedIds(message.metadata).map((embedId) => (
+              <div className="mt-2" key={embedId}>
+                <EmbeddedWidget embedId={embedId} surface="message" />
+              </div>
+            ))
+            : null}
           {!isEditingMessage ? (
             <CommsConnectCard metadata={message.metadata} />
           ) : null}

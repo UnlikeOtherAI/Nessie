@@ -3,6 +3,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import Placeholder from '@tiptap/extension-placeholder'
 import StarterKit from '@tiptap/starter-kit'
 import { Wikilink } from './wikilink/wikilink-node'
+import { WidgetEmbedEditing } from './widget-embed/WidgetEmbedView'
 import { WikilinkSuggestion } from './wikilink/wikilink-suggestion'
 import { WikilinkSuggestionMenu } from './wikilink/WikilinkSuggestionMenu'
 
@@ -134,6 +135,8 @@ export const RichTextEditor = ({ onChange, placeholder, value }: RichTextEditorP
       Placeholder.configure({ placeholder: placeholder ?? 'Write something…' }),
       Wikilink,
       WikilinkSuggestion,
+      // A chip while editing: a live chart fights the cursor.
+      WidgetEmbedEditing,
     ],
     immediatelyRender: false,
     onUpdate: ({ editor: instance }) => onChange(instance.getHTML()),

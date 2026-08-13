@@ -10,6 +10,7 @@ import {
 import { WikilinkCreateConfirm } from './wikilink/WikilinkCreateConfirm'
 import { useWikilinkNavigation } from './wikilink/use-wikilink-navigation'
 import { Wikilink } from './wikilink/wikilink-node'
+import { WidgetEmbedReading } from './widget-embed/WidgetEmbedView'
 
 export type SelectionPoint = { top: number; left: number }
 
@@ -39,6 +40,8 @@ export const RichTextContent = ({
       StarterKit.configure({ link: { openOnClick: true } }),
       NoteHighlight.configure({ notes: notes ?? [] }),
       Wikilink,
+      // Renders the real widget; the editor shows a chip instead.
+      WidgetEmbedReading,
     ],
     immediatelyRender: false,
   })
