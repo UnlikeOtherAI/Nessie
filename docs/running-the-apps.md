@@ -225,11 +225,12 @@ theme's darker primary colour (`--accent-strong`) and opens the native sheet,
 Slack's Huddle, **Channel** remains a regular row, and the highlighted
 **Message** action opens a direct message. Each delegates to the same web-shell
 handler and dialog as the sidebar, rather than creating a second permission
-path. The WebView sidebar carries a native-touch
-marker on iPhone, iPad, and Android so only those installed interfaces use
-Slack-scale 38-point rows and 14px menu type; desktop remains compact even on a
-touchscreen. Project folder rows alone are bold. Human, agent, and workspace
-avatar tiles use the same subtly rounded square shape everywhere. Human avatar
+path. The Channels, Projects, Knowledge, and Admin WebView sidebars each carry
+the native-touch marker on iPhone, iPad, and Android, so those installed
+interfaces use the same Slack-scale 38-point rows and 14px menu type while
+desktop remains compact even on a touchscreen. Project folder rows alone are
+bold. Human, agent, and workspace avatar tiles use the same subtly rounded
+square shape everywhere. Human avatar
 presence badges use a three-pixel cutout that matches the sidebar background.
 Group direct-message rows retain the complete participant list in their native
 HTML hover tooltip. Their visible label is measured in the sidebar: complete

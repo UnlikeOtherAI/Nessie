@@ -6,12 +6,19 @@ import { fileURLToPath } from 'node:url'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-test('native touch shells use Slack-scale sidebar density while desktop remains compact', () => {
-  const sidebar = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
+test('every native touch sidebar uses Slack-scale density while desktop remains compact', () => {
+  const sidebars = [
+    readSource('../src/layouts/admin-shell/SidebarNav.tsx'),
+    readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx'),
+    readSource('../src/layouts/admin-shell/KnowledgeSidebarNav.tsx'),
+    readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx'),
+  ]
   const styles = readSource('../src/styles.css')
 
-  assert.match(sidebar, /nativeTouchShell = isReactNativeWebView\(\)/)
-  assert.match(sidebar, /nativeTouchShell \? 'touch-sidebar' : ''/)
+  for (const sidebar of sidebars) {
+    assert.match(sidebar, /nativeTouchShell = isReactNativeWebView\(\)/)
+    assert.match(sidebar, /nativeTouchShell \? 'touch-sidebar' : ''/)
+  }
   assert.match(styles, /\.touch-sidebar \.admin-sec-hdr/)
   assert.match(styles, /\.touch-sidebar \.admin-sb-item/)
   assert.match(styles, /\.touch-sidebar \.admin-sb-item\.sidebar-child/)
