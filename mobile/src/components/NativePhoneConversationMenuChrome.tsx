@@ -16,6 +16,7 @@ type NativePhoneConversationMenuChromeProps = {
   accountName: string | null
   accountPresence: 'away' | 'offline' | 'online'
   bottomInset: number
+  creationAccentColor: string
   headerSurface: string
   headerText: string
   onAccentColor: string
@@ -33,6 +34,8 @@ type NativePhoneConversationMenuChromeProps = {
 
 const initial = (label: string | null, fallback: string): string =>
   [...(label?.trim() ?? '')][0]?.toUpperCase() ?? fallback
+
+const creationHeading = 'Start a new channel, project, or direct message'
 
 const AccountPresenceIndicator = ({
   headerSurface,
@@ -67,6 +70,7 @@ export const NativePhoneConversationMenuChrome = ({
   accountName,
   accountPresence,
   bottomInset,
+  creationAccentColor,
   headerSurface,
   headerText,
   onAccentColor,
@@ -155,22 +159,24 @@ export const NativePhoneConversationMenuChrome = ({
       </View>
     </View>
 
-    <Pressable
-      accessibilityLabel="New message"
-      accessibilityRole="button"
-      hitSlop={8}
-      onPress={() => setCreationOpen(true)}
-      style={({ pressed }) => [
-        styles.composeButton,
-        {
-          backgroundColor: accentColor,
-          bottom: getNativePhoneComposeBottom(bottomInset, platform),
-        },
-        pressed ? styles.composeButtonPressed : null,
-      ]}
-    >
-      <Text style={[styles.composeSymbol, { color: onAccentColor }]}>+</Text>
-    </Pressable>
+    {!creationOpen ? (
+      <Pressable
+        accessibilityLabel="Start a new channel, project, or direct message"
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={() => setCreationOpen(true)}
+        style={({ pressed }) => [
+          styles.composeButton,
+          {
+            backgroundColor: creationAccentColor,
+            bottom: getNativePhoneComposeBottom(bottomInset, platform),
+          },
+          pressed ? styles.composeButtonPressed : null,
+        ]}
+      >
+        <Text style={[styles.composeSymbol, { color: onAccentColor }]}>+</Text>
+      </Pressable>
+    ) : null}
     {creationOpen ? (
       <>
         <Pressable
@@ -189,6 +195,7 @@ export const NativePhoneConversationMenuChrome = ({
             },
           ]}
         >
+          <Text style={[styles.createHeading, { color: sheetText }]}>{creationHeading}</Text>
           <Pressable
             accessibilityLabel="Create project"
             accessibilityRole="button"
@@ -198,8 +205,8 @@ export const NativePhoneConversationMenuChrome = ({
               pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
             ]}
           >
-            <View style={[styles.createIcon, { backgroundColor: withOpacity(accentColor, 0.12) }]}>
-              <MaterialIcons color={accentColor} name="folder" size={28} />
+            <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
+              <MaterialIcons color={creationAccentColor} name="folder" size={28} />
             </View>
             <View style={styles.createCopy}>
               <Text style={[styles.createTitle, { color: sheetText }]}>Project</Text>
@@ -217,8 +224,8 @@ export const NativePhoneConversationMenuChrome = ({
               pressed ? { backgroundColor: withOpacity(sheetText, 0.07) } : null,
             ]}
           >
-            <View style={[styles.createIcon, { backgroundColor: withOpacity(accentColor, 0.12) }]}>
-              <MaterialIcons color={accentColor} name="tag" size={28} />
+            <View style={[styles.createIcon, { backgroundColor: withOpacity(creationAccentColor, 0.12) }]}>
+              <MaterialIcons color={creationAccentColor} name="tag" size={28} />
             </View>
             <View style={styles.createCopy}>
               <Text style={[styles.createTitle, { color: sheetText }]}>Channel</Text>
@@ -226,12 +233,12 @@ export const NativePhoneConversationMenuChrome = ({
             </View>
           </Pressable>
           <Pressable
-            accessibilityLabel="New message"
+            accessibilityLabel="Start a direct message"
             accessibilityRole="button"
             onPress={() => selectCreationAction('message')}
             style={({ pressed }) => [
               styles.messageAction,
-              { backgroundColor: accentColor },
+              { backgroundColor: creationAccentColor },
               pressed ? styles.messageActionPressed : null,
             ]}
           >
@@ -283,6 +290,7 @@ const styles = StyleSheet.create({
   createBackdrop: { ...StyleSheet.absoluteFillObject, zIndex: 39 },
   createCopy: { flex: 1, gap: 2 },
   createDescription: { fontSize: 16, lineHeight: 20 },
+  createHeading: { fontSize: 17, fontWeight: '700', lineHeight: 22, paddingHorizontal: 10, paddingTop: 4 },
   createIcon: { alignItems: 'center', borderRadius: 12, height: 52, justifyContent: 'center', width: 52 },
   createRow: { alignItems: 'center', borderRadius: 14, flexDirection: 'row', gap: 14, padding: 10 },
   createSheet: {

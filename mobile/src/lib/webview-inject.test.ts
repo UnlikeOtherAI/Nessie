@@ -51,6 +51,7 @@ const injectedThemeMessage = (colorScheme: 'dark' | 'light'): Record<string, unk
     colorScheme,
     getPropertyValue: (name) => {
       if (name === '--accent') return '#7c3aed'
+      if (name === '--accent-strong') return '#5b21b6'
       if (name === '--tx3') return '#949597'
       if (name === '--panel') return '#222629'
       if (name === '--tx') return '#f8f5ef'
@@ -144,6 +145,7 @@ test('reports the page color scheme for the native status bar', () => {
   assert.equal(injectedThemeMessage('light')?.scheme, 'light')
   assert.equal(injectedThemeMessage('dark')?.scheme, 'dark')
   assert.equal(injectedThemeMessage('dark')?.surface, '#222629')
+  assert.equal(injectedThemeMessage('dark')?.accentStrong, '#5b21b6')
   assert.equal(injectedThemeMessage('dark')?.headerSurface, '#2b2018')
   assert.equal(injectedThemeMessage('dark')?.headerText, '#fffdf8')
   assert.equal(injectedThemeMessage('dark')?.text, '#f8f5ef')
