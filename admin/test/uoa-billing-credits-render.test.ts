@@ -19,7 +19,10 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { UoaBillingCreditsPanel } from '../src/components/features/billing/UoaBillingCreditsPanel.js'
-import { billingCreditsKey } from '../src/facades/billing/hooks.js'
+import {
+  billingCapabilityKey,
+  billingCreditsKey,
+} from '../src/facades/billing/hooks.js'
 
 // The production Vite transform injects the JSX runtime. Node's lightweight
 // tsx loader uses the classic transform for imported TSX modules.
@@ -109,7 +112,18 @@ const renderCredits = (
   credits: BillingCreditsManagerV1 | BillingCreditsMemberV1,
 ): string => {
   const queryClient = new QueryClient()
-  queryClient.setQueryData(billingCreditsKey, credits)
+  const scope = {
+    organisationId: credits.subject.organisation_id,
+    teamId: credits.subject.team_id,
+    tokenVersion: 7,
+    userId: credits.subject.user_id,
+  }
+  queryClient.setQueryData(billingCapabilityKey(null), {
+    canManageBilling: credits.viewer.role === 'billing_manager',
+    canReadStatement: credits.viewer.role === 'billing_manager',
+    scope,
+  })
+  queryClient.setQueryData(billingCreditsKey(scope), credits)
   return renderToStaticMarkup(
     createElement(
       QueryClientProvider,

@@ -124,7 +124,7 @@ Root app layout:
 - API validation and admin view-model types come directly from the public
   MIT-licensed `@unlikeotherai/billing-statement-protocol` 1.2.0 workspace
   vendored byte-for-byte from UOA commit
-  `272e4d95846788f752d1e623d5f69f7c961f1dc5`. Root lint verifies the pinned
+  `698765f`. Root lint verifies the pinned
   SHA-256 manifest, preventing a Nessie-specific billing contract fork.
 - The statement uses protocol V2 and one exact Ledger
   `metering-portfolio-v1` `group_by=user` snapshot. UOA supplies the complete

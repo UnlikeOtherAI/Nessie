@@ -15,9 +15,10 @@ There are two desktop modes:
 
 - **Dev:** Tauri loads the local Vite admin at `http://localhost:5455`. The Vite
   dev server proxies `/api` to the local API on `5454`.
-- **Installable production bundle:** Tauri embeds a built `admin/dist`. That
-  bundle must call the production API directly at
-  `https://api.nessie.works`.
+- **Installable production bundle:** Tauri loads the hosted admin at
+  `https://app.nessie.works`. The hosted admin and API share the
+  `nessie.works` site, so macOS WebKit can retain the API's HttpOnly refresh
+  cookie and renew the short-lived access JWT.
 
 Terminal 1:
 
@@ -70,18 +71,20 @@ Notifications entitlement, its own APNs device-token registration, and
 per-topic APNs credentials in the server; Nessie currently registers only iOS
 and Android device tokens.
 
-To create a local distributable that contains the current local admin code:
+To create a production distributable:
 
 ```sh
-VITE_API_BASE_URL=https://api.nessie.works pnpm --filter @nessie/admin build
-NESSIE_DESKTOP_SIGNING_TEAM_ID=<APPLE_TEAM_ID> pnpm --dir desktop run tauri:build:executor --bundles app \
-  --config '{"build":{"frontendDist":"../../admin/dist"}}'
+NESSIE_DESKTOP_SIGNING_TEAM_ID=<APPLE_TEAM_ID> pnpm --dir desktop run tauri:build:executor --bundles app
 codesign --force --deep --options runtime --sign 'Developer ID Application: <LEGAL_NAME> (<APPLE_TEAM_ID>)' \
   desktop/src-tauri/target/release/bundle/macos/Nessie.app
 ```
 
-This produces `desktop/src-tauri/target/release/bundle/macos/Nessie.app`.
-The API origin in the first command is intentional:
+This produces `desktop/src-tauri/target/release/bundle/macos/Nessie.app`. A
+release window is pinned to the hosted admin even if a build-time config tries
+to replace `frontendDist` with local assets. Loading an embedded bundle from
+`tauri://localhost` would make its calls to `https://api.nessie.works`
+third-party in the macOS WebKit view; WebKit blocks that refresh-cookie storage,
+which logs the user out when the access JWT expires.
 
 - `https://api.nessie.works` is the API and returns JSON for
   `/api/auth/providers`.
@@ -89,10 +92,8 @@ The API origin in the first command is intentional:
   use it as `VITE_API_BASE_URL`; `/api/auth/providers` will return the admin
   HTML shell and the desktop login page will sit at "Loading providers...".
 
-The plain `pnpm --filter @nessie/desktop run tauri:build` command uses
-`desktop/src-tauri/tauri.conf.json` as-is. That config points `frontendDist` at
-the hosted admin (`https://app.nessie.works`), so it is useful for a
-thin remote shell but does not embed un-deployed local admin changes.
+Use `pnpm dev` to exercise un-deployed admin changes in the desktop shell. Its
+localhost Vite origin and API proxy remain first-party for local refresh cookies.
 
 To replace the locally installed app:
 

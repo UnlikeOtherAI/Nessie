@@ -6,7 +6,7 @@ import Fastify from 'fastify'
 import { registerBillingRoutes } from '../src/routes/billing.js'
 
 const context = (
-  role: 'member' | 'owner',
+  role: 'member' | 'owner' | 'admin',
 ): AuthorizedActionContext => ({
   actionContext: { requestId: `billing-${role}` },
   actor: {
@@ -21,7 +21,7 @@ const context = (
   },
 })
 
-const makeApp = (role: 'member' | 'owner') => {
+const makeApp = (role: 'member' | 'owner' | 'admin') => {
   const app = Fastify({ logger: false })
   registerBillingRoutes(app, {
     prisma: {},
@@ -84,14 +84,16 @@ test('confirmation accepts no fields beyond the opaque UOA protocol', async () =
   }
 })
 
-test('the canonical statement is restricted to billing managers', async () => {
+test('local roles never preempt UOA billing authority', async () => {
   const app = makeApp('member')
   try {
     const response = await app.inject({
       method: 'GET',
       url: '/api/billing/statement',
     })
-    assert.equal(response.statusCode, 403)
+    // The empty test deployment is unconfigured. Crucially, this is not a
+    // local-role 403; UOA is the only billing-manager authority.
+    assert.equal(response.statusCode, 503)
   } finally {
     await app.close()
   }
@@ -112,7 +114,7 @@ test('active team members can request shared credits and add-on status', async (
   }
 })
 
-test('funding mutations remain restricted to billing managers', async () => {
+test('funding mutations defer manager authority to UOA', async () => {
   const app = makeApp('member')
   try {
     for (const request of [
@@ -134,7 +136,7 @@ test('funding mutations remain restricted to billing managers', async () => {
       },
     ]) {
       const response = await app.inject(request)
-      assert.equal(response.statusCode, 403, request.url)
+      assert.equal(response.statusCode, 503, request.url)
     }
   } finally {
     await app.close()
