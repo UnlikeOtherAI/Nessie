@@ -6,20 +6,20 @@ import { useUserPresence } from '../../providers/PresenceProvider'
 import { UserMenuPopover, type UserMenuPopoverPlacement } from './UserMenuPopover'
 
 type UserMenuTriggerProps = {
-  nativePhoneBridge?: boolean
+  nativeShellBridge?: boolean
   onLogout: () => void
   placement?: UserMenuPopoverPlacement
 }
 
 type NativePhoneAccountWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
-  __nessieTogglePhoneAccountMenu?: () => void
+  __nessieToggleAccountMenu?: () => void
 }
 
 // The desktop rail is the canonical account control. Other shells only change
 // where its menu opens; its avatar, presence badges, and actions stay identical.
 export const UserMenuTrigger = ({
-  nativePhoneBridge = false,
+  nativeShellBridge = false,
   onLogout,
   placement = 'rail',
 }: UserMenuTriggerProps) => {
@@ -29,25 +29,26 @@ export const UserMenuTrigger = ({
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
-    if (!nativePhoneBridge || !isReactNativeWebView()) return undefined
+    if (!nativeShellBridge || !isReactNativeWebView()) return undefined
     const target = window as NativePhoneAccountWindow
-    target.__nessieTogglePhoneAccountMenu = () => setMenuOpen((open) => !open)
+    target.__nessieToggleAccountMenu = () => setMenuOpen((open) => !open)
     return () => {
-      delete target.__nessieTogglePhoneAccountMenu
+      delete target.__nessieToggleAccountMenu
     }
-  }, [nativePhoneBridge])
+  }, [nativeShellBridge])
 
   useEffect(() => {
-    if (!nativePhoneBridge || !isReactNativeWebView() || !me) return
+    if (!nativeShellBridge || !isReactNativeWebView() || !me) return
     ;(window as NativePhoneAccountWindow).ReactNativeWebView?.postMessage(
       JSON.stringify({
-        type: 'nessie:phone-account',
+        type: 'nessie:account',
         userAvatarUrl: me.user.avatarUrl ?? me.user.gravatarUrl ?? null,
         userName: me.user.displayName,
         userPresence: selfPresence?.state ?? 'offline',
+        userStatusEmoji: selfPresence?.statusEmoji ?? null,
       }),
     )
-  }, [me, nativePhoneBridge, selfPresence?.state])
+  }, [me, nativeShellBridge, selfPresence?.state, selfPresence?.statusEmoji])
 
   if (!me) return null
 
@@ -58,7 +59,7 @@ export const UserMenuTrigger = ({
         aria-label="Account menu"
         className={[
           'rounded-full transition-shadow',
-          nativePhoneBridge ? 'pointer-events-none fixed right-3 top-0 z-[69] h-px w-px opacity-0' : '',
+          nativeShellBridge ? 'pointer-events-none fixed right-3 top-0 z-[69] h-px w-px opacity-0' : '',
           menuOpen
             ? 'ring-2 ring-[color:var(--accent)]'
             : 'hover:ring-2 hover:ring-[color:var(--overlay)]',

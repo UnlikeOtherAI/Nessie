@@ -154,6 +154,11 @@ leading side of the iPad row, using the same theme-derived chrome as the tabs.
 The active workspace's initial and name appear ahead of those controls; tapping
 it opens the web shell's existing workspace menu, so context switching and
 adding a workspace follow the same entitlement-aware flow as the desktop rail.
+The signed-in person's SSO avatar, presence indicator, and active-status badge
+sit immediately after the iPad tab group in the same native chrome. Tapping it
+opens the canonical web account menu (presence, status, settings, and logout),
+so the native presentation does not fork any account actions; the duplicate web
+header trigger is omitted on native iPad and iPhone shells.
 Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split
 lives in `mobile/src/config.ts`:
