@@ -374,9 +374,9 @@ commands:
 1. **Declare endpoint** — HTTPS origin + path, GET only at v1. Query params are a
    strict object of bounded literals or a closed relative-time token
    (`{"relativeTime": "now_minus_24h"}`). No templating exists.
-2. **Attach credential** *(optional, owner/admin only)* — bearer or named header,
-   supplied once through a dedicated route, minted to a `secret_dashboard_*` ref.
-   Agents cannot attach credentials.
+2. **Attach credential** *(optional)* — bearer or named header, supplied once
+   through a dedicated route, minted to a `secret_dashboard_*` ref. Write-only:
+   whoever attaches it, including an agent, can never read it back (§11.4).
 3. **Select rows** — a JMESPath expression turning the JSON body into an array of
    records.
 4. **Declare output columns** — ≤32 columns of `{ key, label, type, nullable }`
@@ -550,22 +550,63 @@ enforced server-side, not by asking the model nicely.
 Every agent run that changes a dashboard closes with one auto-version attributed
 to the agent and carrying `runId`, so recovery from a bad build is one Restore.
 
-Agent tools follow the standing PA rule — **a tool that does what a person does
-by clicking calls the same function that person's button calls and mirrors that
-route's authorization exactly** — with the shared functions in
-`@nessie/workspace-admin` (or a new `@nessie/dashboard` peer), never a second copy
-in `pa-tools`. Because the tools take ids, the read that resolves them ships with
-them: `dashboard_list` and `dashboard_source_list` are part of v1, not an
-afterthought, or an agent can only act on what it created in the same conversation.
+### 6.1 The capability is a tool bundle, not an agent
+
+**Decided 2026-08-13.** Dashboards are a *grantable tool bundle* in the ordinary
+tool registry — **not** `personalAssistantOnly`, and not welded to one bespoke
+agent. Nessie additionally ships one fixed stock dashboards agent so the
+capability has an owner out of the box, but that agent is only a preset
+definition holding the same tools any other agent can hold. Three consumers, one
+implementation:
+
+- the **Personal Assistant**, which already provisions workspaces;
+- the shipped **stock dashboards agent**;
+- any **user-designed agent** built in Agent Designer and granted the bundle.
+
+Tools follow the standing rule — *a tool that does what a person does by clicking
+calls the same function that person's button calls and mirrors that route's
+authorization exactly* — with the shared functions in a new `@nessie/dashboard`
+package consumed by both the API routes and the worker, never a second copy in
+`pa-tools`. Because the tools take ids, the reads that resolve them ship with
+them (`dashboard_list`, `dashboard_source_list`), or an agent can only act on
+what it created in the same conversation.
 
 Owner-gated actions stay **visible** to non-owners and refuse in words (the
 `connector_*` precedent), and role is re-read from the live `OrganizationMember`
 row at call time, never from the run's enqueue-time snapshot.
 
-Two hard structural limits on agents: they cannot attach, read, rotate, or test a
-credential, and they cannot widen an audience. An agent asked to post a widget
-where the audience lacks access returns `DASHBOARD_SHARE_REQUIRED` for a human to
-action — it never silently publishes data to a wider room.
+### 6.2 The agent sees the data, because it cannot choose a component otherwise
+
+**Decided 2026-08-13.** Picking `timeseries` over `table`, and binding the right
+field to the right slot, is impossible without seeing the shape and a sample of
+the values. So `dashboard_source_probe` returns the **bounded normalized preview**
+— declared columns plus a capped sample of rows — to the calling agent as part of
+source creation and widget binding.
+
+This pulls the untrusted-data framing of §11.2 forward into **Stage 1**: the
+moment an agent can see external values is the moment indirect prompt injection
+becomes reachable, so the Nessie-authored delimiter block, the escaping, and the
+length bounds ship with the probe, not later with `dashboard_widget_read`.
+Sample rows are capped harder than a render (≤20 rows, ≤8 columns shown) because
+the agent needs the *shape*, not the dataset.
+
+### 6.3 Full post-hoc editing, layout included
+
+**Decided 2026-08-13.** "Move that one over there" is a normal instruction, so
+the bundle is not create-only. Agents get the complete edit surface: add, remove,
+rebind, restyle, retitle, **move, and resize**, plus source edits — every
+operation the inspector and the canvas expose, over the same atomic ops a click
+produces. Layout is agent-writable, snapped to the same grid, so an agent cannot
+produce a layout a person could not have made by dragging.
+
+### 6.4 The two limits that remain
+
+Agents **cannot read a credential** (§11.4 — they may set one, never retrieve,
+copy, or move one) and **cannot widen an audience**. An agent asked to post a
+widget where the audience lacks access returns `DASHBOARD_SHARE_REQUIRED` for a
+human to action; it never silently publishes data into a wider room. Since
+delegation is the intended data model (§9.1), the share step is the one place the
+risk concentrates, which is precisely why it stays human.
 
 ---
 
@@ -799,10 +840,36 @@ first extracted into a domain-neutral package (dashboards would be its third
 consumer — justified reuse, not speculative abstraction). Distinct
 `secret_dashboard_` prefix.
 
-One plaintext route, `PUT /api/dashboard-data-sources/:id/credential`, owner/admin
-only. The client never submits a ref; the response returns only
+One plaintext route, `PUT /api/dashboard-data-sources/:id/credential`. The client
+never submits a ref; the response returns only
 `{ attached, mode, headerName, lockedOrigin, rotatedAt }`. No read API ever
 returns the ref, ciphertext, length, or prefix.
+
+**Agents may set a credential; they may never read one.** Decided 2026-08-13,
+following the existing `connector_set_secret` precedent — conversational setup is
+how connectors already work, and refusing it here would make an agent-driven
+dashboard impossible to finish. `dashboard_source_set_credential` is a
+**write-only** tool: it forwards a value the user supplied in the conversation
+straight to the encrypted store and returns only `{ attached: true }`.
+
+The exfiltration primitive stays closed, because two separate things are being
+denied and only one of them moved:
+
+- An agent can attach a credential **it was just given**. There is nothing to
+  steal — the user already had the value.
+- An agent can never *obtain* a stored credential. Refs are server-minted and
+  never returned, plaintext is never readable back, there is no test/echo tool,
+  and the origin lock below means an existing credentialed source cannot be
+  retargeted at an attacker's host. So "take Alice's stored key and point it
+  somewhere else" remains inexpressible — that was always the real attack, and
+  it is closed by the ref model and the origin lock, not by who may type a key.
+
+Two residual risks this creates, both handled rather than accepted: a key pasted
+into chat lands in message history and the run transcript, so the UI offers a
+secret field on the connect card and the tool description instructs the agent
+never to echo the value; and a member could attach a key to a source whose data
+then reaches that source's audience — which is the delegation model working as
+intended (§9.1), gated at the share step, and audited on attach.
 
 **The exfiltration primitive is closed by construction.** A credential is bound to
 exact org, source, authority user, placement, and normalized
@@ -893,10 +960,19 @@ audit, quotas, read-time validation; `/dashboards` and `/dashboards/:id`
 view/edit/history, sidebar entry, project Insights doorway; all five renderers
 with every state; the source wizard, manual + scheduled HTTPS GET JSON, JMESPath
 normalization (relocated, not reimplemented), owner-only credential attach;
-realtime invalidation; human routes **and** the matching agent tools including
-the list tools; append-only versions, spatial diff, restore, optimistic
+realtime invalidation; append-only versions, spatial diff, restore, optimistic
 concurrency, archive, home inheritance, grants. Verified with headless Playwright
 across every renderer state, breakpoint, theme, and the access-denied state.
+
+Plus the **complete agent tool bundle**, registered as ordinary grantable tools
+and held by the PA, the stock dashboards agent, and any Designer-built agent:
+`dashboard_list`, `dashboard_create`, `dashboard_source_list`,
+`dashboard_source_create`, `dashboard_source_probe`,
+`dashboard_source_set_credential` (write-only), `dashboard_widget_add`,
+`dashboard_widget_update` (rebind, restyle, retitle), `dashboard_widget_move`
+(position and size), `dashboard_widget_remove`, and `dashboard_version_list` /
+`dashboard_restore`. The probe's untrusted-data framing (§6.2, §11.2) ships here,
+not in Stage 3 — an agent sees external values from the first source it creates.
 
 This is genuinely useful before any embedding exists: a person can find, create,
 monitor, edit, share, and restore a dashboard, and an agent can do the same.
@@ -927,7 +1003,8 @@ that has earned its place by then.
 
 Arbitrary HTML/Markdown/SVG/JS/CSS/SQL in widgets, formatter or template code,
 raw JSON editors, iframes, images, arbitrary URLs or actions, mutation buttons ·
-agent credential attach/read/rotate, caller-chosen secret refs, browser-side
+agent credential *read* or retrieval of any kind, caller-chosen secret refs,
+browser-side
 external fetches, private-network endpoints, authenticated redirects, internal
 Nessie HTTP endpoints · non-GET methods, GraphQL, webhook/push sources,
 sub-5-minute schedules, streaming APIs, per-viewer fetches, custom request bodies
@@ -983,15 +1060,29 @@ which is a drafting artifact, not a defect in the conclusion.
   where the audience must be stated in real numbers, and it is the step that must
   never be reachable by an agent acting alone (§6).
 
+- **Agents may set credentials — settled 2026-08-13, yes, write-only.** Following
+  the `connector_set_secret` precedent. §11.4 rewritten; the plan's original
+  "agents can never touch a credential" was wrong and would have made an
+  agent-driven setup impossible to finish.
+- **The capability is a grantable tool bundle, plus one shipped stock dashboards
+  agent — settled 2026-08-13.** Not `personalAssistantOnly`, not welded to a
+  bespoke agent (§6.1).
+- **Agents get the data sample and the full edit surface including layout —
+  settled 2026-08-13** (§6.2, §6.3).
+
 ### Still open
 
-1. **`status` as a fifth kind** — included on Fable's argument, cut by Sol as
+1. **"Static agent" — confirm the reading.** Taken to mean Nessie ships one fixed
+   stock dashboards agent definition, while the capability itself is a tool
+   bundle any agent can hold. If it meant something else, §6.1 is the section to
+   correct.
+2. **`status` as a fifth kind** — included on Fable's argument, cut by Sol as
    unnecessary to prove the product. Cheap to build, easy to drop.
-2. **Personal dashboards** — kept as a home. If personal-scope dashboards are not
+3. **Personal dashboards** — kept as a home. If personal-scope dashboards are not
    wanted at v1, dropping them removes a whole entitlement branch.
-3. **Stage 1 without embedding** — Stage 1 is useful and reachable on its own, but
+4. **Stage 1 without embedding** — Stage 1 is useful and reachable on its own, but
    the request that started this was largely about widgets in conversations. If
    chat matters more than the canvas, Stage 2 can be pulled forward at the cost of
    shipping the post flow against a thinner editor.
-4. **CSV export at v1** — included; it is also the easiest way for data to leave
+5. **CSV export at v1** — included; it is also the easiest way for data to leave
    the entitlement model. Worth an explicit yes or no.
