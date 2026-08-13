@@ -18,6 +18,11 @@ decisions of 2026-08-13 (markdown `.md` files — no HTML, no output cap,
 publish-by-usefulness, discard on stop, not PA-only, address-bar retarget)
 are recorded in §6.
 
+## Table of Contents
+
+- [Core streaming design](#1-goal)
+- [Delta editing and viewport behaviour](./editing.md)
+
 ## 1. Goal
 
 A user asks their personal assistant (PA) to create a document. In conversation
