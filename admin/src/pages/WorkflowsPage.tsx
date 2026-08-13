@@ -10,7 +10,6 @@ import {
   useWorkflowInstallations,
   useWorkflowTemplates,
 } from '../facades/workflows/hooks'
-import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { StatusPill } from '../components/primitives/StatusPill'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
@@ -20,6 +19,7 @@ import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunD
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
 import { WorkflowImportButton } from '../components/features/workflows/WorkflowImportButton'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { usePhoneLayout } from '../lib/mobile-shell'
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -74,7 +74,7 @@ const summarizeInstallations = (
 export const WorkflowsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const isMobile = usePhoneLayout()
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const isWorkflowAdmin =

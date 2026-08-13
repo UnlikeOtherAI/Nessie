@@ -1,5 +1,6 @@
 import { Children, type ReactNode, useMemo } from 'react'
 import { useMediaQuery } from '../../../hooks/useMediaQuery'
+import { usePhoneLayout } from '../../../lib/mobile-shell'
 
 type ColumnBrowserViewportProps = {
   activeColumn: number
@@ -10,10 +11,13 @@ export const ColumnBrowserViewport = ({
   activeColumn,
   columns,
 }: ColumnBrowserViewportProps) => {
-  const isMobile = useMediaQuery('(max-width: 767px)')
-  const isTablet = useMediaQuery(
-    '(min-width: 768px) and (max-width: 1023px)',
-  )
+  // Column count follows the shell's phone semantics, not a raw width check:
+  // a native phone (iPhone/Android, any orientation) is one column; a native
+  // tablet (both dimensions ≥ 600) keeps multiple columns like desktop.
+  const phoneLayout = usePhoneLayout()
+  const isNarrow = useMediaQuery('(max-width: 1023px)')
+  const isMobile = phoneLayout
+  const isTablet = !phoneLayout && isNarrow
 
   const visibleColumns = isMobile ? 1 : isTablet ? 2 : 3
   const normalizedColumns = Children.toArray(columns)

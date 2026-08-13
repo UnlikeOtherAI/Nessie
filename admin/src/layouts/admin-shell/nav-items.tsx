@@ -15,6 +15,13 @@ export const ADMIN_ROUTE_PREFIXES = [
   '/ops',
 ];
 
+// Strip query/hash and trailing slashes so route-family checks compare the
+// semantic pathname only (a tab root with ?state stays its root screen).
+export const normalizeAdminPathname = (pathname: string): string => {
+  const normalized = (pathname.split(/[?#]/, 1)[0] ?? '/').replace(/\/+$/, '');
+  return normalized || '/';
+};
+
 export const matchesAdminRoute = (pathname: string): boolean =>
   ADMIN_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),

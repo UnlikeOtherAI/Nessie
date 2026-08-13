@@ -20,6 +20,10 @@ import {
   type NativePushRegistration,
 } from './src/lib/push-notifications'
 import { useNativePushNavigation } from './src/lib/native-push-navigation'
+import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
+import { useNativePhoneBack } from './src/lib/use-native-phone-back'
+import { useNativeTheme } from './src/lib/use-native-theme'
+import { nativeSelectTabScript } from './src/lib/native-phone-navigation'
 import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
@@ -28,11 +32,8 @@ import {
 } from './src/lib/native-shell'
 import { type NativeShellMessage } from './src/lib/native-shell-message'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
-import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
-import {
-  statusBarStyleForNativePhoneHomeHeader,
-  statusBarStyleForScheme,
-} from './src/lib/status-bar'
+import { INJECTED, isDark } from './src/lib/webview-inject'
+import { statusBarStyleForNativePhoneHomeHeader } from './src/lib/status-bar'
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
@@ -66,41 +67,15 @@ import {
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
-const DEFAULT_ACTIVE_TINT = '#7c3aed'
-const DEFAULT_STRONG_ACTIVE_TINT = '#5b21b6'
-const DEFAULT_INACTIVE_TINT = '#8a8f98'
-const DEFAULT_IPAD_CHROME_SURFACE = '#222629'
-const DEFAULT_PHONE_HEADER_SURFACE = '#2b2018'
-const DEFAULT_PHONE_HEADER_TEXT = '#fffdf8'
-const DEFAULT_PHONE_TEXT = '#2b2018'
-const DEFAULT_PHONE_TEXT_MUTED = '#74665b'
-
-// If the admin never reports itself mounted (it posts a `nessie:route` message on
-// boot) within this window after a load finishes, the WebView is blank/white —
-// reload it with a cache-bust. WKWebView can serve a stale cached index.html (e.g.
-// one referencing a JS bundle that 404s after a deploy), which boots to white; a
-// changed URL forces a fresh fetch. Capped so a genuinely broken page can't loop.
-const BOOT_TIMEOUT_MS = 9000
-const MAX_BOOT_RETRIES = 4
 
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
   const { height: windowHeight, width: windowWidth } = useWindowDimensions()
-  const [bg, setBg] = useState(DEFAULT_BG)
-  const [statusBarStyle, setStatusBarStyle] = useState<'light' | 'dark'>('light')
+  const theme = useNativeTheme()
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
-  const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
-  const [strongAccent, setStrongAccent] = useState(DEFAULT_STRONG_ACTIVE_TINT)
-  const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
-  const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
   const [ipadWorkspaceName, setIpadWorkspaceName] = useState<string | null>(null)
-  const [phoneHeaderSurface, setPhoneHeaderSurface] = useState(DEFAULT_PHONE_HEADER_SURFACE)
-  const [phoneHeaderText, setPhoneHeaderText] = useState(DEFAULT_PHONE_HEADER_TEXT)
-  const [phoneText, setPhoneText] = useState(DEFAULT_PHONE_TEXT)
-  const [phoneTextMuted, setPhoneTextMuted] = useState(DEFAULT_PHONE_TEXT_MUTED)
-  const [phoneOnAccent, setPhoneOnAccent] = useState(DEFAULT_PHONE_HEADER_TEXT)
   const [nativeAccount, setNativeAccount] = useState({
     avatarUrl: null as string | null,
     name: null as string | null,
@@ -109,32 +84,18 @@ const Shell = (): React.JSX.Element => {
   })
   const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
   const [attentionBadges, setAttentionBadges] = useState({ channels: 0, assignedWork: 0, knowledge: 0 })
-  // Bumping this remounts the WebView — used to recover Android after its render
-  // process is killed (the instance is unusable until recreated).
-  const [webviewKey, setWebviewKey] = useState(0)
-  // Changing the loaded URL forces WKWebView to fetch a fresh index.html instead of
-  // a cached (possibly stale, asset-404ing) one that boots to a blank white screen.
-  const [reloadNonce, setReloadNonce] = useState(0)
-  const [reloadPath, setReloadPath] = useState<string | null>(null)
-  const adminBooted = useRef(false)
-  const bootRetries = useRef(0)
-  const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const currentPathRef = useRef<string | null>(null)
   const pushSurfaceClientId = useRef(createNativePushSurfaceClientId())
   const nativeAppForeground = useRef(AppState.currentState === 'active')
   const nativePushRegistration = useRef<NativePushRegistration | null>(null)
   const nativePushRegistrationPromise = useRef<Promise<NativePushRegistration | null> | null>(null)
 
-  const clearBootTimer = useCallback((): void => {
-    if (bootTimer.current) {
-      clearTimeout(bootTimer.current)
-      bootTimer.current = null
-    }
-  }, [])
-
   const runScript = useCallback((script: string): void => {
     webRef.current?.injectJavaScript(`${script} true;`)
   }, [])
+
+  const bootRecovery = useNativeBootRecovery(currentPathRef)
+  const phoneBack = useNativePhoneBack(IS_ANDROID && !IS_IPAD, runScript)
 
   const cachePushPath = useCallback((path: string): void => {
     runScript(nativePushPathScript(path))
@@ -147,11 +108,11 @@ const Shell = (): React.JSX.Element => {
   } = useNativePushNavigation({
     cachePushPath,
   })
-  const sourceUri = reloadNonce === 0
+  const sourceUri = bootRecovery.reloadNonce === 0
     ? ADMIN_URL
     : (() => {
-      const url = new URL(reloadPath ?? '/', ADMIN_URL)
-      url.searchParams.set('__boot', String(reloadNonce))
+      const url = new URL(bootRecovery.reloadPath ?? '/', ADMIN_URL)
+      url.searchParams.set('__boot', String(bootRecovery.reloadNonce))
       return url.toString()
     })()
 
@@ -198,34 +159,9 @@ const Shell = (): React.JSX.Element => {
       })
   }
 
-  const loadFreshWebView = useCallback((): void => {
-    clearBootTimer()
-    setReloadNonce((nonce) => nonce + 1)
-  }, [clearBootTimer])
-
-  const fullRefreshWebView = useCallback((): void => {
-    adminBooted.current = false
-    bootRetries.current = 0
-    setReloadPath(currentPathRef.current)
-    loadFreshWebView()
-    setWebviewKey((key) => key + 1)
-  }, [loadFreshWebView])
-
-  // Reload the WebView fresh after a blank/failed load, capped so a persistently
-  // broken page doesn't loop forever.
-  const recoverBlankWebView = (): void => {
-    if (adminBooted.current || bootRetries.current >= MAX_BOOT_RETRIES) return
-    bootRetries.current += 1
-    loadFreshWebView()
-    setWebviewKey((key) => key + 1)
-  }
-
   useEffect(() => {
     // Dev-only: expose the AppReveal debug server for on-device inspection.
     startDevInspector()
-    return () => {
-      if (bootTimer.current) clearTimeout(bootTimer.current)
-    }
   }, [])
 
   useEffect(
@@ -264,25 +200,7 @@ const Shell = (): React.JSX.Element => {
     } catch {
       return
     }
-    if (msg.type === 'bg' && typeof msg.color === 'string') {
-      const rgb = parseRgb(msg.color)
-      if (rgb && rgb[3] !== 0) setBg(msg.color)
-      return
-    }
-    if (msg.type === 'theme') {
-      if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
-      if (typeof msg.accentStrong === 'string' && msg.accentStrong) setStrongAccent(msg.accentStrong)
-      if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
-      if (typeof msg.surface === 'string' && msg.surface) setIpadChromeSurface(msg.surface)
-      if (typeof msg.headerSurface === 'string' && msg.headerSurface) setPhoneHeaderSurface(msg.headerSurface)
-      if (typeof msg.headerText === 'string' && msg.headerText) setPhoneHeaderText(msg.headerText)
-      if (typeof msg.text === 'string' && msg.text) setPhoneText(msg.text)
-      if (typeof msg.textMuted === 'string' && msg.textMuted) setPhoneTextMuted(msg.textMuted)
-      if (typeof msg.onAccent === 'string' && msg.onAccent) setPhoneOnAccent(msg.onAccent)
-      const nextStatusBarStyle = statusBarStyleForScheme(msg.scheme)
-      if (nextStatusBarStyle) setStatusBarStyle(nextStatusBarStyle)
-      return
-    }
+    if (theme.applyMessage(msg)) return
     if (msg.type === 'nessie:account') {
       setNativeAccount({
         avatarUrl: typeof msg.userAvatarUrl === 'string' && msg.userAvatarUrl ? msg.userAvatarUrl : null,
@@ -297,7 +215,7 @@ const Shell = (): React.JSX.Element => {
       return
     }
     if (msg.type === 'nessie:full-refresh') {
-      fullRefreshWebView()
+      bootRecovery.fullRefreshWebView()
       return
     }
     if (msg.type === 'nessie:request-push-registration') {
@@ -340,12 +258,16 @@ const Shell = (): React.JSX.Element => {
       setIpadWorkspaceName(typeof msg.name === 'string' && msg.name.trim() ? msg.name : null)
       return
     }
+    if (msg.type === 'nessie:back-state') {
+      // The admin's phone navigation bridge reports whether the current route
+      // has an in-app parent; Android hardware Back consults the latest value.
+      phoneBack.noteBackState(Boolean(msg.hasBackDepth))
+      return
+    }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
       // The admin only emits this once React has mounted, so it doubles as the
       // "booted" signal that defuses the blank-screen watchdog.
-      adminBooted.current = true
-      bootRetries.current = 0
-      clearBootTimer()
+      bootRecovery.markBooted()
       currentPathRef.current = msg.path
       void dismissNativeNotificationCards().catch(() => undefined)
       setCurrentPath(msg.path)
@@ -369,7 +291,15 @@ const Shell = (): React.JSX.Element => {
       return
     }
     nativeActions.closeSearchOverlay()
-    navigateTo(TABS[next].path)
+    const tab = TABS[next]
+    if (!tab) return
+    if (IS_IPAD) {
+      // Tablets keep their existing push navigation; only the phone shell
+      // shares the admin's tab select/reselect ledger.
+      navigateTo(tab.path)
+      return
+    }
+    runScript(nativeSelectTabScript(tab.path))
   }
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
@@ -404,24 +334,24 @@ const Shell = (): React.JSX.Element => {
     bottom: webviewInsets.bottom,
   }
   const ipadChromeTheme = createIpadNativeChromeTheme({
-    activeTintColor: accent,
-    dark: isDark(bg),
-    inactiveTintColor: inactive,
-    surfaceColor: ipadChromeSurface,
+    activeTintColor: theme.accent,
+    dark: theme.dark,
+    inactiveTintColor: theme.inactive,
+    surfaceColor: theme.ipadChromeSurface,
   })
   const navigationState = createNativeTabNavigationState(index, attentionBadges)
 
   return (
-    <View style={[styles.fill, { backgroundColor: bg }]}>
+    <View style={[styles.fill, { backgroundColor: theme.bg }]}>
       <StatusBar style={statusBarStyleForNativePhoneHomeHeader(
-        showNativePhoneHomeChrome && isDark(phoneHeaderSurface),
-        statusBarStyle,
+        showNativePhoneHomeChrome && isDark(theme.phoneHeaderSurface),
+        theme.statusBarStyle,
       )} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <IphoneNativeTabBar
-          activeTintColor={accent}
-          inactiveTintColor={inactive}
+          activeTintColor={theme.accent}
+          inactiveTintColor={theme.inactive}
           navigationState={navigationState}
           onIndexChange={onIndexChange}
         />
@@ -431,13 +361,13 @@ const Shell = (): React.JSX.Element => {
         <AndroidTabletTabBar
           activeIndex={index}
           badgeCounts={attentionBadges}
-          activeIndicatorColor={withOpacity(accent, 0.14)}
-          activeTintColor={accent}
+          activeIndicatorColor={withOpacity(theme.accent, 0.14)}
+          activeTintColor={theme.accent}
           bottom={insets.bottom + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP}
-          dark={isDark(bg)}
-          inactiveTintColor={inactive}
+          dark={theme.dark}
+          inactiveTintColor={theme.inactive}
           onIndexChange={onIndexChange}
-          rippleColor={withOpacity(accent, 0.18)}
+          rippleColor={withOpacity(theme.accent, 0.18)}
         />
       ) : null}
 
@@ -457,53 +387,46 @@ const Shell = (): React.JSX.Element => {
             pendingPushPath,
             platform: Platform.OS,
           })}\n${INJECTED}\ntrue;`}
-          key={webviewKey}
+          key={bootRecovery.webviewKey}
           mediaPlaybackRequiresUserAction={false}
           onContentProcessDidTerminate={() => webRef.current?.reload()}
-          onError={recoverBlankWebView}
-          onHttpError={recoverBlankWebView}
+          onError={bootRecovery.recoverBlankWebView}
+          onHttpError={bootRecovery.recoverBlankWebView}
           onLoadEnd={() => {
             runScript(nativeAppForegroundScript(nativeAppForeground.current))
-            // Page finished loading; give the admin a window to report itself
-            // mounted before assuming the WebView is blank/white.
-            clearBootTimer()
-            if (!adminBooted.current) {
-              bootTimer.current = setTimeout(recoverBlankWebView, BOOT_TIMEOUT_MS)
-            }
+            bootRecovery.noteLoadEnd()
           }}
-          onLoadStart={() => {
-            adminBooted.current = false
-          }}
+          onLoadStart={bootRecovery.noteLoadStart}
           onMessage={onMessage}
-          onRenderProcessGone={() => setWebviewKey((value) => value + 1)}
+          onRenderProcessGone={bootRecovery.remountWebView}
           originWhitelist={['*']}
           pullToRefreshEnabled
           ref={webRef}
           sharedCookiesEnabled
           source={{ uri: sourceUri }}
-          style={[styles.fill, { backgroundColor: bg }]}
+          style={[styles.fill, { backgroundColor: theme.bg }]}
         />}
       </View>
 
       {showNativePhoneHomeChrome ? (
         <NativePhoneConversationMenuChrome
-          accentColor={accent}
+          accentColor={theme.accent}
           accountAvatarUrl={nativeAccount.avatarUrl}
           accountName={nativeAccount.name}
           accountPresence={nativeAccount.presence}
           bottomInset={insets.bottom}
-          creationAccentColor={strongAccent}
-          headerSurface={phoneHeaderSurface}
-          headerText={phoneHeaderText}
-          onAccentColor={phoneOnAccent}
+          creationAccentColor={theme.strongAccent}
+          headerSurface={theme.phoneHeaderSurface}
+          headerText={theme.phoneHeaderText}
+          onAccentColor={theme.phoneOnAccent}
           onAccountPress={nativeActions.toggleAccountMenu}
           onCreateAction={nativeActions.createFromPhoneMenu}
           onHistoryPress={() => nativeActions.runToolbarAction('history')}
           onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}
           safeTop={insets.top}
-          sheetMutedText={phoneTextMuted}
-          sheetText={phoneText}
-          sheetSurface={ipadChromeSurface}
+          sheetMutedText={theme.phoneTextMuted}
+          sheetText={theme.phoneText}
+          sheetSurface={theme.ipadChromeSurface}
           platform={IS_ANDROID ? 'android' : 'ios'}
           showCreationActions={showNativePhoneCreationActions}
           workspaceName={ipadWorkspaceName}

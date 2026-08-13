@@ -19,9 +19,9 @@ import {
   useIntegrationPluginManifest,
   useSetProductTeamEnablement,
 } from '../facades/integrations/hooks'
-import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { usePhoneLayout } from '../lib/mobile-shell'
 
 type SurfacePlan = {
   nativePage: string
@@ -401,7 +401,7 @@ const ProductDetail = ({
 
 export const IntegrationsPage = () => {
   const productsQuery = useIntegratedProducts()
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const isMobile = usePhoneLayout()
   const [selectedSlug, setSelectedSlug] = useState<string>()
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
 

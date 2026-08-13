@@ -22,6 +22,7 @@ import {
   HeaderAccountMenu,
   useHeaderAccountMenuVisible,
 } from '../../layouts/admin-shell/AccountMenuContext'
+import { PhoneBackButton } from '../../layouts/admin-shell/PhoneBackButton'
 
 export type PageHeaderMenuItem = {
   checked?: boolean
@@ -335,19 +336,7 @@ export const ResponsivePageHeader = ({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {leading}
         {onBack ? (
-          <button
-            className={[
-              'flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md pl-1.5 pr-2.5 text-sm',
-              'text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
-            ].join(' ')}
-            onClick={onBack}
-            type="button"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Back
-          </button>
+          <PhoneBackButton label={`Back from ${title}`} onBack={onBack} variant="labelled" />
         ) : null}
         <div className="min-w-0 flex-1">
           {eyebrow ? (

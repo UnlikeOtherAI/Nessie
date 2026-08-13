@@ -50,8 +50,10 @@ const NavigationScreen = ({
 
 // Owns the phone's list/detail page swap. The outgoing route stays mounted for
 // one animation so its live DOM can leave with the incoming screen rather than
-// disappearing before the next frame. Tablets never mount this viewport: the
-// shell keeps their navigation and detail columns visible side by side.
+// disappearing before the next frame. A reversed navigation inside the
+// animation window replaces the in-flight transition instead of stacking a
+// stale layer over the new current screen. Tablets never mount this viewport:
+// the shell keeps their navigation and detail columns visible side by side.
 export const PhoneNavigationViewport = ({
   children,
   pathname,
@@ -67,6 +69,10 @@ export const PhoneNavigationViewport = ({
   const [, commitRoute] = useReducer((version: number) => version + 1, 0)
   const latestEntry = useRef(nextEntry)
   const transitionId = useRef(0)
+  // Returning to a screen that left within the transition window reuses its
+  // captured entry, so the list's DOM — scroll position included — survives a
+  // forward→back round trip instead of being rebuilt cold.
+  const recentEntries = useRef(new Map<string, NavigationEntry>())
 
   if (latestEntry.current.id === nextEntry.id) {
     latestEntry.current = nextEntry
@@ -82,11 +88,13 @@ export const PhoneNavigationViewport = ({
     )
     latestEntry.current = nextEntry
     commitRoute()
+    recentEntries.current.clear()
     if (!direction) {
       setTransition(null)
       return
     }
 
+    recentEntries.current.set(outgoing.id, outgoing)
     transitionId.current += 1
     setTransition({
       direction,
@@ -106,8 +114,14 @@ export const PhoneNavigationViewport = ({
   // A changed screen id is committed in the layout effect before paint. Until
   // then, keep the prior route on screen and suppress any superseded animation.
   const awaitingRouteCommit = latestEntry.current.id !== nextEntry.id
-  const currentEntry = awaitingRouteCommit ? latestEntry.current : nextEntry
-  const activeTransition = awaitingRouteCommit ? null : transition
+  const currentEntry = awaitingRouteCommit
+    ? latestEntry.current
+    : (recentEntries.current.get(nextEntry.id) ?? nextEntry)
+  const activeTransition = awaitingRouteCommit
+    ? null
+    : transition && transition.outgoing.id !== currentEntry.id
+      ? transition
+      : null
 
   if (!activeTransition) {
     return (
