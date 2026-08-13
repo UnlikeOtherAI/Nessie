@@ -206,6 +206,12 @@ in local mode the API runs the worker embedded from its built `dist`.
 
 - **HTTPS required.** Service workers and the Push API only run in a secure
   context. Production is HTTPS via Caddy; `localhost` is exempt for dev.
+- **Safari on macOS.** Open `https://app.nessie.works/settings/notifications`,
+  keep the Nessie push preferences enabled, turn on **Browser notifications**,
+  and allow the `app.nessie.works` prompt in Safari. Nessie then stores that
+  Safari profile's subscription and the worker sends its encrypted Web Push
+  payload to Apple's browser push service. Each Safari profile and device needs
+  its own opt-in.
 - **iOS needs an installed PWA.** Safari on iOS/iPadOS delivers Web Push **only
   to a Home Screen-installed PWA** (Add to Home Screen), and only on iOS
   16.4+. A regular Safari tab cannot subscribe. The web app manifest exists to

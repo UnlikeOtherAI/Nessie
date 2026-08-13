@@ -53,6 +53,23 @@ desktop bundle declares the `nessie` URL scheme; after UOA redirects to
 `nessie://auth/callback`, macOS focuses the running app and the admin login page
 finishes the PKCE exchange from the deep link.
 
+### Desktop notifications
+
+The desktop app uses the same authenticated realtime message controller as the
+web UI, then sends its system alert through Tauri's native macOS notification
+API. Enable **Push enabled** in Nessie’s **Settings → Notifications** while the
+desktop app is open to trigger the macOS permission prompt; then leave Nessie
+allowed in **System Settings → Notifications**. This handles new messages and
+agent replies, honours the exact conversation focus rule, and opens the exact
+reply conversation when the user clicks the alert.
+
+This is a native OS notification from the running desktop process, not a
+remote APNs registration. A completely quit Mac app cannot receive it. True
+APNs delivery to a quit macOS app requires a macOS App ID with the Push
+Notifications entitlement, its own APNs device-token registration, and
+per-topic APNs credentials in the server; Nessie currently registers only iOS
+and Android device tokens.
+
 To create a local distributable that contains the current local admin code:
 
 ```sh

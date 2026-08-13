@@ -1,4 +1,8 @@
 import { getNotificationApi } from './permission'
+import {
+  buildMessageNotificationPath,
+  showDesktopNativeNotification,
+} from './desktop-native-notification'
 
 type BrowserNotificationInput = {
   body: string
@@ -9,8 +13,19 @@ type BrowserNotificationInput = {
   title: string
 }
 
-/** Browser-hosted notification presentation; the toast remains the fallback. */
+/**
+ * Sends a system notification through Tauri on desktop and the Web Notification
+ * API elsewhere. The in-app toast remains the foreground fallback.
+ */
 export const showBrowserNotification = (input: BrowserNotificationInput): void => {
+  if (showDesktopNativeNotification({
+    body: input.body,
+    path: buildMessageNotificationPath(input),
+    title: input.title,
+  })) {
+    return
+  }
+
   const notificationApi = getNotificationApi()
   if (!notificationApi || notificationApi.permission !== 'granted') return
 
