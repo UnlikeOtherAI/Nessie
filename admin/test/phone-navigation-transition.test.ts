@@ -6,6 +6,7 @@ import {
   getPhoneNavigationBackTarget,
   getPhoneNavigationDirection,
   getPhoneNavigationScreen,
+  shouldHighlightKnowledgeSidebarSelection,
 } from '../src/layouts/admin-shell/phone-navigation'
 
 const readSource = (relativePath: string): string =>
@@ -61,6 +62,12 @@ test('pushes Knowledge spaces and product views from the Knowledge list', () => 
     getPhoneNavigationDirection('/knowledge-base/spaces/space_a', '/knowledge-base'),
     'back',
   )
+})
+
+test('clears the Knowledge space highlight when a phone returns to its list', () => {
+  assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base', true), false)
+  assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base/spaces/space_a', true), true)
+  assert.equal(shouldHighlightKnowledgeSidebarSelection('/knowledge-base', false), true)
 })
 
 test('pushes Admin destinations from the Admin menu and returns to it', () => {
@@ -190,6 +197,7 @@ test('routes phone Knowledge selections and Projects rows to stack details', () 
   assert.match(router, /path: '\/knowledge-base\/spaces\/:spaceId'/)
   assert.match(router, /path: '\/knowledge-base\/views\/:productView'/)
   assert.match(knowledgeSidebar, /usePhoneLayout/)
+  assert.match(knowledgeSidebar, /shouldHighlightKnowledgeSidebarSelection/)
   assert.match(knowledgeSidebar, /navigate\(`\/knowledge-base\/spaces\//)
   assert.match(projectsSidebar, /usePhoneLayout/)
   assert.match(projectsSidebar, /`\/projects\/\$\{project\.id\}\/board`/)

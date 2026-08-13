@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { faLayerGroup, faUser } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CreateSpaceDialog } from '../../components/features/knowledge/CreateSpaceDialog'
@@ -9,8 +9,10 @@ import { StorageUsageMeter } from '../../components/features/knowledge/StorageUs
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces'
 import { useProjects } from '../../facades/projects/hooks'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
+import { shouldHighlightKnowledgeSidebarSelection } from './phone-navigation'
 
 export const KnowledgeSidebarNav = () => {
+  const location = useLocation()
   const navigate = useNavigate()
   const nativeTouchShell = isReactNativeWebView()
   const phoneLayout = usePhoneLayout()
@@ -28,6 +30,7 @@ export const KnowledgeSidebarNav = () => {
   const { documentsSections } = useProductSurfaces()
   const { data: projects = [] } = useProjects()
   const [createOpen, setCreateOpen] = useState(false)
+  const showSelectedSpace = shouldHighlightKnowledgeSidebarSelection(location.pathname, phoneLayout)
 
   const openSpace = (spaceId: string) => {
     selectSpace(spaceId)
@@ -76,7 +79,7 @@ export const KnowledgeSidebarNav = () => {
             <button
               className={[
                 'admin-sb-item',
-                !activeProductView && myDocsSpace.id === selectedSpaceId ? 'active' : '',
+                !activeProductView && showSelectedSpace && myDocsSpace.id === selectedSpaceId ? 'active' : '',
               ].join(' ')}
               onClick={() => openSpace(myDocsSpace.id)}
               type="button"
@@ -137,7 +140,7 @@ export const KnowledgeSidebarNav = () => {
           emptyLabel="No spaces yet"
           onSelect={openSpace}
           projectLabels={projectLabels}
-          selectedSpaceId={activeProductView ? undefined : selectedSpaceId}
+          selectedSpaceId={activeProductView || !showSelectedSpace ? undefined : selectedSpaceId}
           spaces={otherSpaces}
         />
       </div>

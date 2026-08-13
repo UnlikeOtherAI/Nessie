@@ -420,9 +420,11 @@ route outlet on the Knowledge route.
 On a phone, `/knowledge-base` owns the Spaces/product-views list as the first
 screen. Selecting a row pushes the same workspace into view at the addressable
 `/knowledge-base/spaces/:spaceId` or `/knowledge-base/views/:productView`
-route, with a deterministic Back action to the list. Tablet and desktop keep
-the sidebar and workspace side by side; they update the shared provider state
-without changing to the phone child route.
+route, with a deterministic Back action to the list. The returned phone list
+does not mark the previously viewed space as active: it is a picker rather than
+an open workspace. Tablet and desktop keep the sidebar and workspace side by
+side; they update the shared provider state without changing to the phone child
+route.
 
 **Two surfaces, one workspace.** `KnowledgeProvider` takes an optional
 `projectId`, which puts it in *project scope* — the **Docs** tab of a project
