@@ -166,6 +166,9 @@ importers:
       '@nessie/connectors':
         specifier: workspace:*
         version: link:../packages/connectors
+      '@nessie/dashboard':
+        specifier: workspace:*
+        version: link:../packages/dashboard
       '@nessie/db':
         specifier: workspace:*
         version: link:../packages/db

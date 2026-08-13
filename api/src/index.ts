@@ -67,6 +67,11 @@ import { registerEventRoutes } from './routes/events.js'
 import { registerExecutionEnvironmentRoutes } from './routes/execution-environments.js'
 import { registerExecutorRoutes } from './routes/executors.js'
 import { registerFavoriteRoutes } from './routes/favorites.js'
+import { registerDashboardRoutes } from './routes/dashboards.js'
+import {
+  buildDashboardEgressPolicy,
+  createDashboardCredentialStore,
+} from './services/dashboard-runtime.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerInferenceControlPlaneRoutes } from './routes/inference-control-plane.js'
 import { registerIntegrationRoutes } from './routes/integrations.js'
@@ -399,6 +404,16 @@ export const buildApp = async () => {
   registerStatusRoutes(app, deps)
   registerPresenceRoutes(app, deps)
   registerFavoriteRoutes(app, deps)
+  registerDashboardRoutes(app, {
+    ...deps,
+    // Nessie's own origins are denied as dashboard sources: the SSRF guard
+    // stops private addresses, but a plain HTTPS call to our own REST surface
+    // would carry a source credential instead of the viewer's session.
+    egressPolicy: buildDashboardEgressPolicy({
+      apiPublicUrl: config.api.publicUrl ?? null,
+    }),
+    credentials: createDashboardCredentialStore(prisma, authSecret ?? ''),
+  })
   registerAlertRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
   registerWorkspaceAvatarRoutes(app, deps)
