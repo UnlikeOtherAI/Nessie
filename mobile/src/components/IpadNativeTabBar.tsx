@@ -2,7 +2,11 @@ import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
-import { IPAD_NATIVE_CHROME_GAP, type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
+import {
+  IPAD_NATIVE_CHROME_GAP,
+  IPAD_NATIVE_CHROME_HEIGHT,
+  type IpadNativeChromeTheme,
+} from '../lib/ipad-native-chrome'
 import { TABS, type TabDef } from '../lib/tabs'
 
 const PRIMARY_TABS = TABS.filter((tab) => tab.key !== 'search')
@@ -102,7 +106,7 @@ export const IpadNativeTabBar = ({
         ))}
       </IpadNativeChromeSurface>
       {SEARCH_TAB ? (
-        <IpadNativeChromeSurface theme={theme}>
+        <IpadNativeChromeSurface style={styles.searchSurface} theme={theme}>
           <IpadNativeTabButton
             activeIndex={activeIndex}
             badgeCounts={badgeCounts}
@@ -145,11 +149,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   searchTab: {
-    width: 38,
-    // Override the text-tab minimum width so the magnifier centres in the
-    // visible search capsule, not in an invisible trailing hit area.
+    width: IPAD_NATIVE_CHROME_HEIGHT - 8,
     minWidth: 0,
     paddingHorizontal: 0,
+  },
+  // Search is intentionally square. Its fixed frame lets the inner 34-point
+  // target and magnifier share the exact same centre on every iPad size.
+  searchSurface: {
+    width: IPAD_NATIVE_CHROME_HEIGHT,
+    justifyContent: 'center',
   },
   tab: {
     height: 34,
