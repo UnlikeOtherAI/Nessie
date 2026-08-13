@@ -60,6 +60,7 @@ const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 const DEFAULT_ACTIVE_TINT = '#7c3aed'
+const DEFAULT_STRONG_ACTIVE_TINT = '#5b21b6'
 const DEFAULT_INACTIVE_TINT = '#8a8f98'
 const DEFAULT_IPAD_CHROME_SURFACE = '#222629'
 const DEFAULT_PHONE_HEADER_SURFACE = '#2b2018'
@@ -84,6 +85,7 @@ const Shell = (): React.JSX.Element => {
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
+  const [strongAccent, setStrongAccent] = useState(DEFAULT_STRONG_ACTIVE_TINT)
   const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
   const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
   const [ipadTabBarWidth, setIpadTabBarWidth] = useState<number | null>(null)
@@ -248,6 +250,7 @@ const Shell = (): React.JSX.Element => {
     }
     if (msg.type === 'theme') {
       if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
+      if (typeof msg.accentStrong === 'string' && msg.accentStrong) setStrongAccent(msg.accentStrong)
       if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
       if (typeof msg.surface === 'string' && msg.surface) setIpadChromeSurface(msg.surface)
       if (typeof msg.headerSurface === 'string' && msg.headerSurface) setPhoneHeaderSurface(msg.headerSurface)
@@ -451,6 +454,7 @@ const Shell = (): React.JSX.Element => {
           accountName={nativeAccount.name}
           accountPresence={nativeAccount.presence}
           bottomInset={insets.bottom}
+          creationAccentColor={strongAccent}
           headerSurface={phoneHeaderSurface}
           headerText={phoneHeaderText}
           onAccentColor={phoneOnAccent}

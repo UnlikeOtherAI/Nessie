@@ -76,6 +76,7 @@ export const INJECTED = `
   }
   function postTheme() {
     var accent = cssVar('--accent');
+    var accentStrong = cssVar('--accent-strong');
     var inactive = cssVar('--tx3');
     var surface = cssVar('--panel');
     var text = cssVar('--tx');
@@ -88,7 +89,7 @@ export const INJECTED = `
     if (accent || surface || scheme === 'light' || scheme === 'dark') {
       try {
         window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: 'theme', accent: accent, inactive: inactive, scheme: scheme, surface: surface,
+          type: 'theme', accent: accent, accentStrong: accentStrong, inactive: inactive, scheme: scheme, surface: surface,
           headerSurface: headerSurface, headerText: headerText,
           text: text, textMuted: textMuted, onAccent: onAccent
         }))

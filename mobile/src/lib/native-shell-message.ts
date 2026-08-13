@@ -1,6 +1,7 @@
 /** Messages emitted by the hosted admin across the persistent WebView bridge. */
 export type NativeShellMessage = {
   accent?: string
+  accentStrong?: string
   active?: boolean
   assignedWork?: number
   canBack?: boolean
