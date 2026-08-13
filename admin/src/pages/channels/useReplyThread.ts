@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   useThreadMessage,
@@ -51,12 +51,34 @@ export const useReplyThread = ({
     navigate(`/channels/${channelId}`)
   }, [channelId, navigate])
 
+  // Live viewport width drives both the persisted-width clamp below and the
+  // panel's aria-valuemax, so neither goes stale on window resize.
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [panelWidth, setPanelWidth] = useState(() =>
     readThreadPanelWidth(
       window.localStorage.getItem(THREAD_PANEL_WIDTH_STORAGE_KEY),
-      window.innerWidth,
+      viewportWidth,
     ),
   )
+
+  useEffect(() => {
+    const onResize = () => {
+      setViewportWidth(window.innerWidth)
+      // Re-clamp the persisted width against the shrunk/grown viewport and
+      // persist the correction, so a wide drag on a large window does not
+      // leave the panel oversized on a small one.
+      setPanelWidth((width) => {
+        const clamped = clampThreadPanelWidth(width, window.innerWidth)
+        if (clamped !== width) {
+          window.localStorage.setItem(THREAD_PANEL_WIDTH_STORAGE_KEY, String(clamped))
+        }
+        return clamped
+      })
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   const resizePanel = useCallback((next: number) => {
     const clamped = clampThreadPanelWidth(next, window.innerWidth)
     setPanelWidth(clamped)
@@ -102,5 +124,6 @@ export const useReplyThread = ({
     resizePanel,
     resolveThreadParticipant,
     rootQuery,
+    viewportWidth,
   }
 }

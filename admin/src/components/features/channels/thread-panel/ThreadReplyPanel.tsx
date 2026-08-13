@@ -94,6 +94,7 @@ export const ThreadReplyPanel = ({
     repliesQuery,
     resizePanel,
     rootQuery,
+    viewportWidth,
   } = thread
   const root = rootQuery.data?.message ?? null
   const replies = useMemo(() => repliesQuery.data ?? [], [repliesQuery.data])
@@ -215,7 +216,7 @@ export const ThreadReplyPanel = ({
     <>
       <button
         aria-label="Back to channel"
-        className="fixed inset-0 z-40 hidden bg-[var(--scrim-strong)] min-[900px]:max-[1279px]:block"
+        className="fixed inset-0 z-40 hidden bg-[var(--scrim-strong)] min-[900px]:max-xl:block"
         onClick={closeThread}
         type="button"
       />
@@ -227,11 +228,11 @@ export const ThreadReplyPanel = ({
           // WebView bridge. This fixed overlay sits outside those columns, so
           // it owns the inset itself and keeps its header controls out from
           // under an iOS notch in both phone and tablet overlay modes.
-          'max-[899px]:fixed max-[899px]:inset-0 max-[1279px]:pt-[env(safe-area-inset-top,0px)]',
+          'max-[900px]:fixed max-[900px]:inset-0 max-xl:pt-[env(safe-area-inset-top,0px)]',
           'min-[900px]:w-[var(--thread-panel-width)]',
-          'min-[900px]:max-[1279px]:fixed min-[900px]:max-[1279px]:inset-y-0 min-[900px]:max-[1279px]:right-0',
-          'min-[900px]:max-[1279px]:shadow-[0_32px_80px_var(--scrim-strong)]',
-          'min-[1280px]:relative min-[1280px]:z-auto min-[1280px]:h-full min-[1280px]:shrink-0',
+          'min-[900px]:max-xl:fixed min-[900px]:max-xl:inset-y-0 min-[900px]:max-xl:right-0',
+          'min-[900px]:max-xl:shadow-[0_32px_80px_var(--scrim-strong)]',
+          'xl:relative xl:z-auto xl:h-full xl:shrink-0',
         ].join(' ')}
         style={{ '--thread-panel-width': `${panelWidth}px` } as CSSProperties}
         {...replyDrop.dropHandlers}
@@ -239,12 +240,12 @@ export const ThreadReplyPanel = ({
         <div
           aria-label="Resize thread panel"
           aria-orientation="vertical"
-          aria-valuemax={Math.floor(window.innerWidth / 2)}
+          aria-valuemax={Math.floor(viewportWidth / 2)}
           aria-valuemin={320}
           aria-valuenow={panelWidth}
           className={[
             'absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize touch-none',
-            'hover:bg-[var(--accent-soft)] min-[1280px]:block',
+            'hover:bg-[var(--accent-soft)] xl:block',
           ].join(' ')}
           onPointerDown={startResize}
           role="separator"

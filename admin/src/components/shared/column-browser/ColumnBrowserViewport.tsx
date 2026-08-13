@@ -10,10 +10,13 @@ export const ColumnBrowserViewport = ({
   activeColumn,
   columns,
 }: ColumnBrowserViewportProps) => {
-  const isMobile = useMediaQuery('(max-width: 767px)')
-  const isTablet = useMediaQuery(
-    '(min-width: 768px) and (max-width: 1023px)',
-  )
+  // Bands derive from minimum-width queries only, so there is no fractional
+  // gap between bands: below-md is exactly NOT min-768, and tablet is exactly
+  // min-768 AND NOT min-1024.
+  const atLeastMd = useMediaQuery('(min-width: 768px)')
+  const atLeastLg = useMediaQuery('(min-width: 1024px)')
+  const isMobile = !atLeastMd
+  const isTablet = atLeastMd && !atLeastLg
 
   const visibleColumns = isMobile ? 1 : isTablet ? 2 : 3
   const normalizedColumns = Children.toArray(columns)
