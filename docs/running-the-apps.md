@@ -228,6 +228,13 @@ Slack-scale 38-point rows and 14px menu type; desktop remains compact even on a
 touchscreen. Project folder rows alone are bold. Human, agent, and workspace
 avatar tiles use the same subtly rounded square shape everywhere. Human avatar
 presence badges use a three-pixel cutout that matches the sidebar background.
+Group direct-message rows retain the complete participant list in their native
+HTML hover tooltip. Their visible label is measured in the sidebar: complete
+names are shown first, then surnames collapse to initials, then the first names
+that fit followed by an ellipsis and a `+N` count. The label adds no interaction
+layer, so a touch still opens the conversation on its first tap. Project and
+channel action popovers use a 12px container radius with a padded, 8px-radius
+action row so their choices do not feel cramped.
 
 The login route is its own full-height touch-scroll container because the page
 root remains fixed for the authenticated shell. On phone widths it presents the

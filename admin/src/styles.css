@@ -736,11 +736,14 @@ a {
   justify-content: center;
   width: 22px;
   height: 22px;
+  border: none;
   border-radius: 5px;
+  background: transparent;
   color: var(--tx3);
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
+  padding: 0;
 }
 
 .admin-sidebar-more:hover {
@@ -756,8 +759,9 @@ a {
   width: 180px;
   overflow: hidden;
   border: 1px solid var(--sep);
-  border-radius: 6px;
+  border-radius: 12px;
   background: var(--panel);
+  padding: 6px;
   box-shadow: 0 16px 48px var(--scrim-strong);
 }
 
@@ -772,7 +776,8 @@ a {
   width: 100%;
   border: none;
   background: transparent;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
   color: var(--tx);
   cursor: pointer;
   font-size: 13px;
@@ -782,7 +787,8 @@ a {
 .admin-sidebar-menu [role="button"] {
   display: block;
   width: 100%;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
   color: var(--tx);
   cursor: pointer;
   font-size: 13px;

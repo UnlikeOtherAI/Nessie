@@ -8,6 +8,7 @@ import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
+import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import type {
   SidebarAgentDm,
   SidebarGroupDm,
@@ -170,7 +171,7 @@ export const SidebarDmSection = ({
               <path d="M3.5 20c.5-3.4 2.3-5.1 5.5-5.1s5 1.7 5.5 5.1" />
               <path d="M16.1 5.6a3 3 0 010 5.1M17.1 14.9c2.1.5 3.2 2.2 3.4 5.1" />
             </svg>
-            <span className="min-w-0 flex-1 truncate">{group.label}</span>
+            <GroupDmSidebarLabel label={group.label} />
             {renderUnreadCount(unreadCount)}
           </button>
         );

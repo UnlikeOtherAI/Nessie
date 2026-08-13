@@ -32,6 +32,17 @@ test('a starred direct-message entry is removed from its original sidebar locati
   assert.match(source, /starredUserIds\.has\(person\.id\)/)
 })
 
+test('a group direct-message label is compacted only after its full participant list is measured', () => {
+  const sidebar = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
+  const label = readSource('../src/layouts/admin-shell/GroupDmSidebarLabel.tsx')
+
+  assert.match(sidebar, /<GroupDmSidebarLabel label=\{group\.label\} \/>/)
+  assert.match(label, /title=\{label\}/)
+  assert.match(label, /new ResizeObserver\(updateWidth\)/)
+  assert.match(label, /selectGroupDmSidebarLabel/)
+  assert.doesNotMatch(label, /onClick=/)
+})
+
 test('the starred Personal Assistant follows its active direct-message route', () => {
   const source = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
 
