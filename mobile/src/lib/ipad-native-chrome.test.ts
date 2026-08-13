@@ -7,6 +7,7 @@ import {
   getIpadContentTop,
   getIpadTopChromeLayout,
   getIpadWindowedLeadingControlsClearance,
+  getIpadWorkspaceMenuAnchorLeft,
   IPAD_WINDOWED_CHROME_TOP,
   isIpadWindowed,
 } from './ipad-native-chrome'
@@ -115,4 +116,8 @@ test('places iPad chrome flush below the fullscreen safe area and centred in a w
 test('leaves twelve points between the iPad chrome and web content', () => {
   assert.equal(getIpadContentTop(24), 78)
   assert.equal(getIpadContentTop(IPAD_WINDOWED_CHROME_TOP), 66)
+})
+
+test('moves the iPad workspace menu anchor clear of the tablet edge', () => {
+  assert.equal(getIpadWorkspaceMenuAnchorLeft(16), 60)
 })

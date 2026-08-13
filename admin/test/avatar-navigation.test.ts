@@ -23,6 +23,7 @@ test('workspace menu stays within the viewport when opened near the top edge', (
 
   assert.equal(position.left, 73)
   assert.equal(position.top, 8)
+  assert.equal(position.width, 390)
   assert.ok(position.maxHeight <= 720 * 0.7)
   assert.ok(position.top + position.maxHeight <= 720 - 8)
 })
@@ -33,7 +34,18 @@ test('workspace menu stays within the right edge of a narrow viewport', () => {
     { width: 800, height: 600 },
   )
 
-  assert.equal(position.left, 800 - 260 - 8)
+  assert.equal(position.width, 390)
+  assert.equal(position.left, 800 - 390 - 8)
+})
+
+test('workspace menu is capped at eighty percent of the available width', () => {
+  const position = resolveWorkspaceMenuPosition(
+    { right: 40, top: 32 },
+    { width: 400, height: 600 },
+  )
+
+  assert.equal(position.width, 320)
+  assert.equal(position.left, 48)
 })
 
 test('workspace pictures prefer the team relay and accept the UOA public fallback', () => {
