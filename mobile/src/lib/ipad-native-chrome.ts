@@ -18,6 +18,7 @@ type IpadNativeChromeThemeOptions = {
 
 export const IPAD_NATIVE_TOOLBAR_WIDTH = 153
 export const IPAD_NATIVE_CHROME_HEIGHT = 42
+export const IPAD_NATIVE_CHROME_BOTTOM_CLEARANCE = 12
 export const IPAD_WINDOWED_CHROME_TOP = 12
 export const IPAD_NATIVE_WORKSPACE_MAX_WIDTH = 220
 export const IPAD_NATIVE_WORKSPACE_MIN_WIDTH = 104
@@ -28,6 +29,13 @@ export const IPAD_NATIVE_CHROME_GAP = 12
 // inset; its controls belong in the window title bar instead.
 export const getIpadChromeTop = (safeAreaTop: number): number => (
   safeAreaTop > 0 ? safeAreaTop : IPAD_WINDOWED_CHROME_TOP
+)
+
+// Keep the WebView's first row clear of the floating native controls. This is
+// separate from the window title-bar offset: both full-screen and Stage Manager
+// layouts need the same breathing room beneath the controls.
+export const getIpadContentTop = (chromeTop: number): number => (
+  chromeTop + IPAD_NATIVE_CHROME_HEIGHT + IPAD_NATIVE_CHROME_BOTTOM_CLEARANCE
 )
 
 export const withOpacity = (color: string, opacity: number): string => {

@@ -139,8 +139,8 @@ the login / bootstrap screens. On iPhone and Android the bar sits at the bottom;
 on iPad (iPadOS 26) `IpadNativeTabBar` renders the same destinations in a
 lightweight native **top** row. Full-screen iPad places it flush below the top
 safe area, while a Stage Manager window centres it in that window's title bar;
-`App.tsx` insets the WebView to begin immediately below the native chrome
-(`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
+`App.tsx` keeps a 12-point clearance between that chrome and the WebView's first
+row (`IS_IPAD`). The iPad deliberately does not mount `react-native-bottom-tabs`:
 its empty tab scenes can cover the sibling WKWebView with a black controller
 surface after login. Back, Forward, Recent Channels, and Help buttons sit on the
 leading side of the iPad row, using the same theme-derived chrome as the tabs.
