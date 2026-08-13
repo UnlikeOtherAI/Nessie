@@ -395,8 +395,11 @@ user's active sessions is already displaying the exact channel feed, reply
 conversation, or
 operational-usage page the notification would open. If so, it does not send an
 APNs/FCM/browser push—the realtime stream is already updating that destination.
-A foreground client elsewhere in Nessie is not suppressed: it receives its
-in-app banner and registered devices receive the native delivery. A later
+A foreground **desktop or browser** client elsewhere in Nessie is not
+suppressed: it receives its in-app banner and registered devices receive the
+native delivery. The native iPhone/iPad/Android WebView does not render the
+duplicate in-app message banner; its system push remains the notification
+surface. A later
 background signal wins over a delayed earlier foreground request, and `pagehide`
 sends an unconditional null target. Backgrounded, unfocused, stale, revoked,
 deactivated, and unrelated pages never suppress delivery; the API reaps expired

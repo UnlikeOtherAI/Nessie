@@ -88,8 +88,8 @@ export const PushPreferenceCard = ({
       <div className="font-semibold text-[color:var(--tx)]">Notify me about</div>
       <div className="mt-1 text-sm text-[color:var(--tx2)]">
         Every type starts enabled. Nessie skips delivery only when a focused app is already
-        showing that exact conversation or page. When you are elsewhere in Nessie, it shows a banner
-        and sends the notification to your registered devices.
+        showing that exact conversation or page. When you are elsewhere in Nessie, desktop and
+        browser sessions show a banner and registered devices receive the system notification.
       </div>
       <div className="mt-4 grid gap-3">
         {[
