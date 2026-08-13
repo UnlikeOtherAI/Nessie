@@ -48,7 +48,11 @@ export const useAdminShell = () => {
   const isSuperAdmin = me?.user.superAdmin ?? false;
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
-  const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base');
+  // Dashboards render inside the Knowledge section (they are filed between
+  // My Docs and Spaces), so they share its secondary column rather than
+  // owning one.
+  const isKnowledgeRoute = location.pathname.startsWith('/knowledge-base')
+    || location.pathname.startsWith('/dashboards');
   const isProjectsRoute = location.pathname.startsWith('/projects');
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
   const isAdminRoute = matchesAdminRoute(location.pathname);

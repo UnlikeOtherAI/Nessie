@@ -23,7 +23,6 @@ export const matchesAdminRoute = (pathname: string): boolean =>
 export type NavSectionId =
   | 'channels'
   | 'projects'
-  | 'dashboards'
   | 'knowledge'
   | 'admin'
   | 'search';
@@ -72,15 +71,6 @@ const SearchIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
   <svg className={className} {...svgProps}>
     <circle cx="11" cy="11" r="7" />
     <path d="M21 21l-4.35-4.35" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const DashboardsIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
-  <svg className={className} {...svgProps}>
-    <path d="M4 13h6V4H4v9z" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M14 20h6v-9h-6v9z" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M4 20h6v-3H4v3z" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M14 8h6V4h-6v4z" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -134,17 +124,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: ProjectsIcon,
   },
   {
-    id: 'dashboards',
-    label: 'Dashboards',
-    to: '/dashboards',
-    isActive: (pathname) => pathname.startsWith('/dashboards'),
-    icon: DashboardsIcon,
-  },
-  {
     id: 'knowledge',
     label: 'Knowledge',
     to: '/knowledge-base',
-    isActive: (pathname) => pathname.startsWith('/knowledge-base'),
+    // Dashboards live inside Knowledge rather than owning a first-column
+    // section, so the Knowledge entry stays lit while you are in one.
+    isActive: (pathname) =>
+      pathname.startsWith('/knowledge-base') || pathname.startsWith('/dashboards'),
     icon: KnowledgeIcon,
   },
   {

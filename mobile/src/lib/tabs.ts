@@ -62,7 +62,10 @@ export const TABS: TabDef[] = [
     path: '/knowledge-base',
     sfSymbol: 'book',
     materialIcon: 'menu-book',
-    matches: (p) => p.startsWith('/knowledge-base'),
+    // Dashboards live inside Knowledge in the admin's own IA, so the tab
+    // owns that route too — otherwise the bar highlights Channels while
+    // showing a dashboard.
+    matches: (p) => p.startsWith('/knowledge-base') || p.startsWith('/dashboards'),
   },
   {
     key: 'admin',
