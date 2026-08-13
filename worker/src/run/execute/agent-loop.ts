@@ -1,6 +1,4 @@
 import {
-  BUILTIN_TOOL_DEFINITIONS,
-  DEEP_WATER_START_FAILURE_DETAIL,
   type InvocationRecord,
   type ProviderMessage,
   type ToolSchemaDescriptor,
@@ -20,17 +18,12 @@ import type { ExecutorToolset } from '../executor-toolset.js'
 import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
-import { authorizeToolCall } from '../tool-policy.js'
 import { summarizeToolInput } from '../tool-util.js'
 import { executeBuiltinTool } from '../tools.js'
+import { authorizeToolExecution } from './tool-authorization.js'
 import { buildScopes } from './scopes.js'
 import { setAgentStatus } from './lifecycle.js'
-import {
-  buildToolActorContext,
-  emitWorkerAuditEvent,
-  evaluateToolInvokePolicy,
-  toolDeniedResult,
-} from './policy.js'
+import { buildToolActorContext } from './policy.js'
 import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
@@ -73,17 +66,17 @@ export const runExecutionAgentLoop = async (
     windDownInstruction: string | null
   },
 ): Promise<LoopResult> => {
+  // The sub-agent inherits the run's resolved builtin set (minus `delegate`)
+  // for advertisement; execution still passes the authorization gate below.
   const subAgentBuiltinDescriptors = input.toolDefs.filter(
     (descriptor) => descriptor.toolName !== 'delegate' && input.resolvedToolIds.has(descriptor.toolName),
-  )
-  const subAgentBuiltinIds = new Set(
-    [...input.resolvedToolIds].filter((id) => id !== 'delegate'),
   )
   // Per-run MCP view: in deferred mode its descriptor array is LIVE
   // (mcp_load_tools / mcp_drop_tools mutate it), so the model's tool list is
   // recomposed from it on every inference call below.
   const mcpView = input.mcpToolset.createView()
   const mcpExposedNames = mcpView.handledNames
+  const externalToolNames = new Set([...mcpExposedNames, ...input.executorToolset.handledNames])
   const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
 
   const delegateGate = createDelegateGate()
@@ -127,25 +120,17 @@ export const runExecutionAgentLoop = async (
     toolCallId,
   })
 
-  const executeGuardedBuiltin = async (
+  const executeGuardedBuiltin = (
     toolName: string,
     args: Record<string, unknown>,
     toolActorContext: ReturnType<typeof buildToolActorContext>,
     toolCallId: string,
-  ) => {
-    if (await input.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
-      return {
-        inputSummary: summarizeToolInput(args),
-        output: DEEP_WATER_START_FAILURE_DETAIL,
-        success: false,
-      }
-    }
-    return executeBuiltinTool(
+  ) =>
+    executeBuiltinTool(
       toolName,
       args,
       buildBuiltinCtx(toolActorContext, toolCallId),
     )
-  }
 
   const contextPlan = buildContextPlan({
     model: context.agent.model,
@@ -263,13 +248,26 @@ export const runExecutionAgentLoop = async (
       },
     },
     executeTool: async (toolName, args, toolCallId) => {
-      const toolActorContext = buildToolActorContext(payload.actorContext, context, toolName)
-      if (await input.deepWaterHandoffGuard.suppressBuiltin(toolName)) {
-        return {
-          inputSummary: summarizeToolInput(args),
-          output: DEEP_WATER_START_FAILURE_DETAIL,
-          success: false,
-        }
+      // Gate before dispatch: every tool name — `delegate` itself, MCP names,
+      // executor names and builtins — is authorized (handoff suppression,
+      // registry/grant gate, policy/approval) before any dispatcher runs.
+      const authorization = await authorizeToolExecution(
+        deps.prisma,
+        payload.actorContext,
+        context,
+        toolName,
+        args,
+        {
+          agentKind: context.agent.agentKind,
+          allowedToolIds: input.allowedToolIds,
+          externalToolNames,
+          parentAgentId: context.agent.parentAgentId,
+          toolPolicy: input.toolPolicy,
+        },
+        { deepWaterHandoffGuard: input.deepWaterHandoffGuard },
+      )
+      if (authorization.decision === 'deny') {
+        return authorization.result
       }
       if (toolName === 'react') {
         input.onReacted?.()
@@ -282,13 +280,38 @@ export const runExecutionAgentLoop = async (
             success: false,
           }
         }
+        // Created here rather than inside runDelegate so the authorization
+        // gate can recognize the sub-agent view's exposed MCP names.
+        const subAgentMcpView = input.mcpToolset.createView()
         const result = await runDelegate(args, {
+          mcpView: subAgentMcpView,
           mcpToolset: input.mcpToolset,
           runInference: input.inference.runUtility,
-          executeBuiltinTool: (n, a, id) =>
+          authorizeSubAgentTool: (nestedToolName, nestedArgs) =>
+            authorizeToolExecution(
+              deps.prisma,
+              payload.actorContext,
+              context,
+              nestedToolName,
+              nestedArgs,
+              {
+                agentKind: context.agent.agentKind,
+                allowedToolIds: input.allowedToolIds,
+                externalToolNames: subAgentMcpView.handledNames,
+                parentAgentId: context.agent.parentAgentId,
+                toolPolicy: input.toolPolicy,
+              },
+              {
+                deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+                // The sub-agent's audit/ToolCall recording is out of scope for
+                // this ordering change: nested denials keep the previous
+                // silent behaviour while going through the same gate.
+                emitAudit: async () => undefined,
+              },
+            ),
+          executeBuiltinTool: (n, a, id, toolActorContext) =>
             executeGuardedBuiltin(n, a, toolActorContext, id),
           builtinDescriptors: subAgentBuiltinDescriptors,
-          allowedBuiltinIds: subAgentBuiltinIds,
         })
         input.invocationSink.push(...result.invocations)
         return {
@@ -303,77 +326,10 @@ export const runExecutionAgentLoop = async (
       if (input.executorToolset.handledNames.has(toolName)) {
         return input.executorToolset.dispatch(toolName, args, toolCallId)
       }
-      const registryDecision = authorizeToolCall(
-        toolName,
-        input.allowedToolIds,
-        BUILTIN_TOOL_DEFINITIONS,
-        input.toolPolicy,
-        context.agent.parentAgentId,
-        context.agent.agentKind,
-      )
-
-      if (!registryDecision.allowed || !input.resolvedToolIds.has(toolName)) {
-        const message = `Tool "${toolName}" is not allowed for this agent.`
-        await emitWorkerAuditEvent(deps.prisma, toolActorContext, {
-          action: 'policy.evaluated',
-          metadata: {
-            agentId: context.agent.id,
-            runId: context.run.id,
-            source: 'worker_tool_authorization',
-            taskId: context.task.id,
-            toolId: toolName,
-          },
-          outcome: 'denied',
-          reason: registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason,
-          resourceId: toolName,
-          resourceType: 'tool',
-        })
-        return toolDeniedResult(toolName, args, {
-          message,
-          reason: registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason,
-        })
-      }
-
-      const policyDecision = await evaluateToolInvokePolicy(
-        deps.prisma,
-        toolActorContext,
-        context,
-        toolName,
-      )
-      if (!policyDecision.allowed) {
-        const message =
-          policyDecision.reason === 'approval_required'
-            ? `Tool "${toolName}" requires approval before it can run.`
-            : `Tool "${toolName}" was denied by policy.`
-        await emitWorkerAuditEvent(deps.prisma, toolActorContext, {
-          action: 'policy.evaluated',
-          metadata: {
-            agentId: context.agent.id,
-            approvalActionType: policyDecision.approvalActionType,
-            policyRuleId: policyDecision.policyRuleId,
-            policySource: policyDecision.policySource,
-            runId: context.run.id,
-            source: 'worker_tool_policy',
-            taskId: context.task.id,
-            toolId: toolName,
-          },
-          outcome: 'denied',
-          reason: policyDecision.reason,
-          resourceId: toolName,
-          resourceType: 'tool',
-        })
-        return toolDeniedResult(toolName, args, {
-          approvalActionType: policyDecision.approvalActionType,
-          message,
-          policyRuleId: policyDecision.policyRuleId,
-          policySource: policyDecision.policySource,
-          reason: policyDecision.reason,
-        })
-      }
       return executeBuiltinTool(
         toolName,
         args,
-        buildBuiltinCtx(toolActorContext, toolCallId),
+        buildBuiltinCtx(authorization.toolActorContext, toolCallId),
       )
     },
     initialMessages: input.initialMessages,

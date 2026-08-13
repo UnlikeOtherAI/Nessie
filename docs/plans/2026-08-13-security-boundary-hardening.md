@@ -234,6 +234,14 @@ Phase 0 slice.
 **Phase 0 (days, ship independently):**
 1. W0 dispatch-authorization boundary (minimal form: gate-before-dispatch on
    all five paths + context rebuild; refactor to full module later).
+   **(Landed 2026-08-14: `worker/src/run/execute/tool-authorization.ts` owns
+   the shared gate — DeepWater suppression → registry/grant → policy/approval,
+   with the actor context rebuilt per actual tool name. `agent-loop.ts`
+   evaluates it before the delegate/MCP/executor dispatch branches; the
+   delegate sub-loop calls it through `authorizeSubAgentTool`, with sub-agent
+   audit recording deliberately deferred to the full module form.
+   Regression coverage: one deny + one approval-required case per path ×5 in
+   `worker/src/run/execute/tool-authorization.test.ts`.)**
 2. SB-02 ceiling: `isExposed` scope check becomes unconditional for
    non-explicit-grant rows; user-scope credential resolution requires the
    owner expectation. **(Landed 2026-08-13: `worker/src/run/mcp-toolset.ts`
