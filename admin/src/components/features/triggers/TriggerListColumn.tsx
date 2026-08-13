@@ -1,4 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { ReactNode } from 'react'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
 import type {
   TriggerStatusCounts,
@@ -27,6 +28,7 @@ import {
 type TriggerListColumnProps = {
   effectiveTriggerId?: string
   filteredTriggers: AgentTriggerRecord[]
+  leading?: ReactNode
   onCreate: () => void
   onSearchChange: (query: string) => void
   onSelect: (triggerId: string) => void
@@ -104,6 +106,7 @@ const TriggerRow = ({
 export const TriggerListColumn = ({
   effectiveTriggerId,
   filteredTriggers,
+  leading,
   onCreate,
   onSearchChange,
   onSelect,
@@ -117,6 +120,7 @@ export const TriggerListColumn = ({
   typeFilter,
 }: TriggerListColumnProps) => (
   <ColumnBrowserColumn
+    leading={leading}
     headerAction={
       <button
         className="admin-button admin-button-primary"

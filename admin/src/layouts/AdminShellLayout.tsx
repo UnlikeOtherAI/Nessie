@@ -23,7 +23,7 @@ import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
-import { getPhoneNavigationScreen } from './admin-shell/phone-navigation-transition';
+import { getPhoneNavigationScreen } from './admin-shell/phone-navigation';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';

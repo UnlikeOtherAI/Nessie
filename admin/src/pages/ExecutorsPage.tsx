@@ -28,6 +28,7 @@ import { useProjects } from '../facades/projects/hooks'
 import { useUsers } from '../facades/users/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 const statusClass = (status: string): string => status === 'online'
   ? 'text-emerald-600'
@@ -208,13 +209,16 @@ export const ExecutorsPage = () => {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto grid max-w-7xl gap-5 px-6 py-6">
         <header className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">Agents</p>
-            <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Executors</h1>
-            <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx3)]">
-              Pair governed sandboxes and coding sessions. Executors are separate from connectors:
-              connectors provide remote services; executors run approved work on a paired machine or guest runtime.
-            </p>
+          <div className="flex min-w-0 items-start gap-3">
+            <PhoneNavigationButton />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">Agents</p>
+              <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Executors</h1>
+              <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx3)]">
+                Pair governed sandboxes and coding sessions. Executors are separate from connectors:
+                connectors provide remote services; executors run approved work on a paired machine or guest runtime.
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <Link className="admin-button admin-button-secondary" to="/mcp-app-store">Manage connectors</Link>

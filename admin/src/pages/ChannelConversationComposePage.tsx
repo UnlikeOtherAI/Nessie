@@ -9,6 +9,7 @@ import type { AgentRecord, UserRecord } from '../lib/api-client'
 import { agentGradient } from '../lib/avatar'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { usePhoneLayout } from '../lib/mobile-shell'
+import { PhoneBackButton } from '../layouts/admin-shell/PhoneBackButton'
 import { UserAvatar } from '../components/primitives/UserAvatar'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
@@ -237,20 +238,23 @@ export const ChannelConversationComposePage = () => {
         role="dialog"
         tabIndex={phoneLayout ? undefined : -1}
       >
-        <header className="flex h-[58px] flex-shrink-0 items-center justify-between border-b border-[color:var(--sep)] px-5">
-          <h1 className="text-[17px] font-bold text-[color:var(--tx)]" id="channel-conversation-compose-title">
+        <header className="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-[color:var(--sep)] px-5">
+          {phoneLayout ? <PhoneBackButton label="Back to Channels" onBack={close} /> : null}
+          <h1 className="min-w-0 flex-1 text-[17px] font-bold text-[color:var(--tx)]" id="channel-conversation-compose-title">
             New message
           </h1>
-          <button
-            aria-label="Close new message"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
-            onClick={close}
-            type="button"
-          >
-            <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
-            </svg>
-          </button>
+          {!phoneLayout ? (
+            <button
+              aria-label="Close new message"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-[color:var(--tx2)] hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]"
+              onClick={close}
+              type="button"
+            >
+              <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+              </svg>
+            </button>
+          ) : null}
         </header>
 
         <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 py-5">

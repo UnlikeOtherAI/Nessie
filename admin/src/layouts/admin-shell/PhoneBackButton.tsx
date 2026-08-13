@@ -1,18 +1,15 @@
-import { useNativeIOSPhoneApp } from '../../../lib/mobile-shell'
+import { useNativeIOSPhoneApp } from '../../lib/mobile-shell'
 
-type ConversationBackButtonProps = {
-  label?: string
+type PhoneBackButtonProps = {
+  label: string
   onBack: () => void
 }
 
-// The page still owns routing; this is only the phone's in-context doorway
-// back to its tab root. iOS uses a small translucent circle so it belongs with
-// the native glass tab bar, while Android keeps the familiar Material-style
-// arrow button rather than copying iOS decoration into a different platform.
-export const ConversationBackButton = ({
-  label = 'Back to Channels',
-  onBack,
-}: ConversationBackButtonProps) => {
+// The shared mobile Back doorway is intentionally independent of a page's
+// routing. Pages and the shell choose the safe parent route; this component
+// makes that action visually consistent across channel, project, and admin
+// surfaces.
+export const PhoneBackButton = ({ label, onBack }: PhoneBackButtonProps) => {
   const nativeIOSPhone = useNativeIOSPhoneApp()
 
   return (

@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
+  getPhoneNavigationBackTarget,
   getPhoneNavigationDirection,
   getPhoneNavigationScreen,
-} from '../src/layouts/admin-shell/phone-navigation-transition'
+} from '../src/layouts/admin-shell/phone-navigation'
 
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -78,6 +79,70 @@ test('classifies channel project overviews before the generic channel pattern', 
     key: 'channels:project:project_a',
     section: 'channels',
   })
+})
+
+test('gives every phone detail route a deterministic in-app Back destination', () => {
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/channels/projects/project_a'),
+    { label: 'Back to Channels', pathname: '/channels' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/channels/channel_a/info/members'),
+    { label: 'Back to Channels', pathname: '/channels' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/projects/project_a/docs'),
+    { label: 'Back to Projects', pathname: '/projects' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/dashboards/dashboard_a'),
+    { label: 'Back to Dashboards', pathname: '/dashboards' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/agents/activity'),
+    { label: 'Back to Agents', pathname: '/agents' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/settings/security'),
+    { label: 'Back to Admin', pathname: '/settings' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/mcp-app-store'),
+    { label: 'Back to Admin', pathname: '/settings' },
+  )
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/feedback'),
+    { label: 'Back to Channels', pathname: '/channels' },
+  )
+})
+
+test('keeps the drawer control at phone section roots', () => {
+  for (const pathname of [
+    '/channels',
+    '/projects',
+    '/dashboards',
+    '/knowledge-base',
+    '/agents',
+    '/settings',
+    '/search',
+  ]) {
+    assert.equal(getPhoneNavigationBackTarget(pathname), null)
+  }
+})
+
+test('shares the phone Back control across route headers and channel flows', () => {
+  const navigationButton = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
+  const backButton = readSource('../src/layouts/admin-shell/PhoneBackButton.tsx')
+  const channelHeader = readSource('../src/components/features/channels/ChannelHeader.tsx')
+  const composePage = readSource('../src/pages/ChannelConversationComposePage.tsx')
+  const infoFlow = readSource('../src/components/features/channels/ConversationInfoFlow.tsx')
+
+  assert.match(navigationButton, /getPhoneNavigationBackTarget/)
+  assert.match(navigationButton, /<PhoneBackButton/)
+  assert.match(backButton, /useNativeIOSPhoneApp/)
+  assert.match(channelHeader, /<PhoneBackButton label="Back to Channels"/)
+  assert.match(composePage, /<PhoneBackButton label="Back to Channels" onBack=\{close\}/)
+  assert.match(infoFlow, /<PhoneBackButton label="Back"/)
 })
 
 test('mounts the transition viewport only in the shell phone branch', () => {

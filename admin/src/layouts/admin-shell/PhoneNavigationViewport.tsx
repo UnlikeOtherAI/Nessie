@@ -13,7 +13,7 @@ import {
   getPhoneNavigationDirection,
   getPhoneNavigationScreen,
   type PhoneNavigationDirection,
-} from './phone-navigation-transition'
+} from './phone-navigation'
 
 type PhoneNavigationViewportProps = {
   children: ReactNode

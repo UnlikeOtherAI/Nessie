@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 type ColumnBrowserColumnProps = {
   children: ReactNode
   headerAction?: ReactNode
+  leading?: ReactNode
   onBack?: () => void
   showBack?: boolean
   title: string
@@ -11,12 +12,14 @@ type ColumnBrowserColumnProps = {
 export const ColumnBrowserColumn = ({
   children,
   headerAction,
+  leading,
   onBack,
   showBack,
   title,
 }: ColumnBrowserColumnProps) => (
   <div className="flex h-full flex-col border-r border-[color:var(--sep)] bg-[color:var(--main)]">
     <div className="flex h-[50px] flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4">
+      {leading}
       {showBack && onBack ? (
         <button
           className="flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx2)] hover:bg-[color:var(--overlay)]"

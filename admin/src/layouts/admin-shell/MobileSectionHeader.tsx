@@ -1,5 +1,5 @@
 import { usePhoneLayout } from '../../lib/mobile-shell';
-import { MobileMenuButton } from './MobileMenuButton';
+import { PhoneNavigationButton } from './PhoneNavigationButton';
 import { ResponsivePageHeader } from '../../components/shared/ResponsivePageHeader';
 
 // A phone-only top bar (hamburger + section title) for pages that have no header
@@ -10,5 +10,5 @@ export const MobileSectionHeader = ({ title }: { title: string }) => {
   if (!phoneLayout) {
     return null;
   }
-  return <ResponsivePageHeader leading={<MobileMenuButton />} title={title} />;
+  return <ResponsivePageHeader leading={<PhoneNavigationButton />} title={title} />;
 };

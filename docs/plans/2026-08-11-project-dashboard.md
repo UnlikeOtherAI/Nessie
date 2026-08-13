@@ -243,7 +243,7 @@ its own.
 ### Mobile / narrow (<900px content width) — single stack
 
 Order: Work (one thin row — cheapest, highest urgency), Channels, Documents, Members. The
-hosts' existing headers already carry `MobileMenuButton`; nothing extra is needed for phone
+hosts' existing headers already carry `PhoneNavigationButton`; nothing extra is needed for phone
 layouts.
 
 ```
@@ -409,7 +409,7 @@ The only new endpoint this screen needs.
 9. No raw hex, no Tailwind named colours: all colour via `var(--…)` tokens; cards use
    `admin-card`; verified visually in at least the default (nebula) theme in light and dark.
 10. Mobile: at phone width both entry points show the host's existing 50px header with
-    `MobileMenuButton`, and the dashboard stacks in a single scrollable column with no
+    `PhoneNavigationButton`, and the dashboard stacks in a single scrollable column with no
     horizontal overflow.
 11. No owner-only telemetry (tokens, cost, storage, budgets) and no org-wide counters appear
     anywhere on the dashboard.
