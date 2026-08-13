@@ -1823,6 +1823,18 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
+/*
+ * Where an agent is currently writing inside a streamed document. It is an
+ * anchor, not a decoration: the viewport measures it to keep the edit centred.
+ * Deliberately styleless and empty — no glyph, no box, no colour — so it can
+ * never move a character of the document it is measuring. Only pointer events
+ * are taken away, so a text selection dragged across it behaves as if it were
+ * not there.
+ */
+.doc-edit-cursor {
+  pointer-events: none;
+}
+
 .thinking-dots {
   display: inline-flex;
   gap: 4px;

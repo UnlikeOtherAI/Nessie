@@ -29,7 +29,7 @@ import { useChannelComposer } from '../../components/features/channels/useChanne
 import { useFileDrop } from '../../hooks/useFileDrop'
 import type { useShareRestrictedMessage } from '../../facades/messages/hooks'
 import { useStickToBottom } from '../../hooks/useStickToBottom'
-import type { DocumentStreamStore } from '../../facades/threads/document-stream'
+import type { DocumentStreamStore } from '../../facades/threads/document-stream-store'
 import type { DocumentStreamEntry } from '../../facades/threads/document-stream-helpers'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
 import type { ConversationRoute } from '../../lib/conversation-navigation'

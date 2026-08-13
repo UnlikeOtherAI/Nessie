@@ -1,15 +1,18 @@
 import type { PrismaClient } from '@prisma/client'
 import type { PgRealtimeTransport } from '@nessie/runtime'
 import {
+  createPartialJsonEditScanner,
   createPartialJsonScanner,
   parseAgentId,
   parseRunId,
   parseThreadId,
   type DocumentStreamErrorReason,
+  type PartialJsonEditScanner,
   type PartialJsonScanner,
 } from '@nessie/schemas'
-import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
+import { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from '@nessie/runtime'
 import { createDurableLane, createLiveLane } from './document-stream-lanes.js'
+import { createDocumentEditTracker, type DocumentEditTracker } from './document-stream-edit.js'
 
 /** The argument whose value is the document body. */
 const MARKDOWN_ARGUMENT = 'markdown'
@@ -57,6 +60,10 @@ export type DocumentStreamRecorder = {
 }
 
 type TrackedCall = {
+  mode: 'compose' | 'edit'
+  pageId: string | null
+  editScanner: PartialJsonEditScanner | null
+  tracker: DocumentEditTracker | null
   created: Promise<void> | null
   durable: ReturnType<typeof createDurableLane> | null
   live: ReturnType<typeof createLiveLane> | null
@@ -72,6 +79,14 @@ type RecorderInput = {
   prisma: PrismaClient
   realtimeTransport: Pick<PgRealtimeTransport, 'publishSse' | 'publishSseEphemeral'>
   run: RunContext
+  /**
+   * Reads a `.md` document's current text. An edit session needs the document
+   * it is changing before it can locate anything in it, so this is awaited
+   * before the session is announced.
+   */
+  loadDocument?: (pageId: string) => Promise<
+    { content: string; parentPageId: string | null; spaceId: string; title: string } | null
+  >
 }
 
 /**
@@ -91,8 +106,8 @@ export const createDocumentStreamRecorder = (
   let closed = false
 
   const publish = async (
-    event: 'stream.document.start' | 'stream.document.meta'
-      | 'stream.document.done' | 'stream.document.error',
+    event: 'stream.document.start' | 'stream.document.meta' | 'stream.document.done'
+      | 'stream.document.error' | 'stream.document.edit',
     data: Parameters<PgRealtimeTransport['publishSse']>[2],
   ): Promise<void> => {
     try {
@@ -131,13 +146,19 @@ export const createDocumentStreamRecorder = (
     })
   }
 
-  const createSession = async (call: TrackedCall, currentInvocation: string): Promise<void> => {
+  const createSession = async (
+    call: TrackedCall,
+    currentInvocation: string,
+    base: { content: string; parentPageId: string | null; spaceId: string; title: string } | null,
+  ): Promise<void> => {
+    const baseDocument = base?.content ?? null
     try {
       const session = await input.prisma.runDocumentSession.create({
         data: {
           agentId: input.run.agentId,
           invocationId: currentInvocation,
           organizationId: input.run.organizationId,
+          pageId: call.mode === 'edit' ? call.pageId : null,
           runId: input.run.id,
           threadId: input.run.threadId,
           toolCallId: call.toolCallId,
@@ -145,7 +166,22 @@ export const createDocumentStreamRecorder = (
         select: { id: true },
       })
       call.sessionId = session.id
-      call.durable = createDurableLane({ prisma: input.prisma, sessionId: session.id })
+      if (call.mode === 'edit') {
+        call.tracker = createDocumentEditTracker(baseDocument ?? '')
+        // An edit changes text in the middle of a document, which a log of
+        // appends cannot express — so the durable lane stores whole snapshots.
+        call.durable = createDurableLane({
+          mode: 'snapshot',
+          prisma: input.prisma,
+          readSnapshot: () => call.tracker?.composed() ?? '',
+          sessionId: session.id,
+        })
+        await input.prisma.runDocumentChunk.create({
+          data: { content: baseDocument ?? '', offset: 0, sessionId: session.id },
+        })
+      } else {
+        call.durable = createDurableLane({ prisma: input.prisma, sessionId: session.id })
+      }
       call.live = createLiveLane({
         publish: async (fragment) => {
           await input.realtimeTransport.publishSseEphemeral(
@@ -161,13 +197,35 @@ export const createDocumentStreamRecorder = (
           )
         },
       })
+      if (call.mode === 'edit' && base) {
+        call.metaPublished = true
+        await input.prisma.runDocumentSession.update({
+          data: { parentPageId: base.parentPageId, spaceId: base.spaceId, title: base.title },
+          where: { id: session.id },
+        })
+      }
       await publish('stream.document.start', {
         agentId: parseAgentId(input.run.agentId),
+        mode: call.mode,
         runId: parseRunId(input.run.id),
         sessionId: session.id,
         threadId: parseThreadId(input.run.threadId),
         toolCallId: call.toolCallId,
       })
+      if (call.mode === 'edit' && base) {
+        const space = await input.prisma.knowledgeSpace.findFirst({
+          select: { name: true },
+          where: { id: base.spaceId, organizationId: input.run.organizationId },
+        })
+        await publish('stream.document.meta', {
+          parentPageId: base.parentPageId ?? undefined,
+          runId: parseRunId(input.run.id),
+          sessionId: session.id,
+          spaceId: base.spaceId,
+          spaceName: space?.name,
+          title: base.title,
+        })
+      }
     } catch (error) {
       console.warn('[worker] document stream session create failed', error)
     }
@@ -221,7 +279,36 @@ export const createDocumentStreamRecorder = (
     })
   }
 
+  const pumpEdit = (call: TrackedCall): void => {
+    const scanner = call.editScanner
+    const tracker = call.tracker
+    if (!scanner || !tracker) return
+    tracker.pump(scanner.edits(), {
+      beginEdit: ({ editIndex, offset, removeLength }) => {
+        void publish('stream.document.edit', {
+          editIndex,
+          offset,
+          removeLength,
+          runId: parseRunId(input.run.id),
+          sessionId: call.sessionId!,
+        })
+        // The removal alone changes the document, so the snapshot is stale
+        // even before any replacement text arrives.
+        call.durable?.append({ content: '', offset })
+      },
+      insert: ({ content, offset }) => {
+        call.live?.enqueue({ content, offset })
+        call.durable?.append({ content, offset })
+      },
+    })
+  }
+
   const pump = (call: TrackedCall): void => {
+    if (call.mode === 'edit') {
+      const created = call.created
+      if (created) void created.then(() => pumpEdit(call))
+      return
+    }
     const committed = call.scanner.committed()
     if (committed.length <= call.publishedLength) return
     const fragment = {
@@ -258,7 +345,12 @@ export const createDocumentStreamRecorder = (
 
     handleToolCallDelta: (event) => {
       if (closed) return
-      if (event.toolName !== KB_DOCUMENT_COMPOSE_TOOL_ID) return
+      const mode = event.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID
+        ? 'compose'
+        : event.toolName === KB_DOCUMENT_EDIT_TOOL_ID
+          ? 'edit'
+          : null
+      if (!mode) return
       const currentInvocation = event.invocationId
       invocationId = currentInvocation
 
@@ -267,17 +359,23 @@ export const createDocumentStreamRecorder = (
         call = {
           created: null,
           durable: null,
+          editScanner: mode === 'edit' ? createPartialJsonEditScanner() : null,
           live: null,
           metaPublished: false,
+          mode,
+          pageId: null,
           publishedLength: 0,
           scanner: createPartialJsonScanner(MARKDOWN_ARGUMENT),
           sessionId: null,
           terminal: false,
           toolCallId: event.id,
+          tracker: null,
         }
         byIndex.set(event.index, call)
         if (event.id) byToolCallId.set(event.id, call)
-        call.created = createSession(call, currentInvocation)
+        if (mode === 'compose') {
+          call.created = createSession(call, currentInvocation, null)
+        }
       }
       // The id can arrive on a later fragment than the first.
       if (event.id && !byToolCallId.has(event.id)) {
@@ -285,14 +383,34 @@ export const createDocumentStreamRecorder = (
         byToolCallId.set(event.id, call)
       }
 
-      call.scanner.push(event.text)
-      if (call.scanner.error()) {
-        // Duplicate or malformed target key: the document being watched can no
-        // longer be trusted to match what would be saved.
+      const scanner = call.mode === 'edit' ? call.editScanner : call.scanner
+      scanner?.push(event.text)
+      if (scanner?.error()) {
+        // A duplicate or malformed target key means the text being watched can
+        // no longer be trusted to match what would be saved.
         void terminalize(call, 'invalid_args')
         byIndex.delete(event.index)
         return
       }
+
+      // An edit session cannot open until it knows which document it edits —
+      // the base text is what every offset in the stream is relative to.
+      if (call.mode === 'edit' && !call.created) {
+        const pageId = call.editScanner?.fields().pageId
+        if (!pageId) return
+        call.pageId = pageId
+        const tracked = call
+        call.created = (async () => {
+          let base = null as Awaited<ReturnType<NonNullable<typeof input.loadDocument>>>
+          try {
+            base = (await input.loadDocument?.(pageId)) ?? null
+          } catch (error) {
+            console.warn('[worker] document stream base load failed', error)
+          }
+          await createSession(tracked, currentInvocation, base)
+        })()
+      }
+
       pump(call)
     },
 
@@ -303,6 +421,15 @@ export const createDocumentStreamRecorder = (
       await call.live?.settle()
       await call.durable?.settle()
       if (!call.sessionId) return null
+      if (call.mode === 'edit') {
+        return {
+          markdown: call.tracker?.composed() ?? '',
+          parentPageId: null,
+          sessionId: call.sessionId,
+          spaceId: null,
+          title: null,
+        }
+      }
       const fields = call.scanner.fields()
       return {
         markdown: call.scanner.committed(),

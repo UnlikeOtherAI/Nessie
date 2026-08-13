@@ -56,6 +56,7 @@ export {
   runKbSearchTool,
 } from './pa-tools/knowledge.js'
 export { runKbDocumentComposeTool } from './pa-tools/knowledge-compose.js'
+export { runKbDocumentEditTool } from './pa-tools/knowledge-edit.js'
 export {
   runKbDraftWriteTool,
   runKbFileTool,

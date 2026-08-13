@@ -1,7 +1,7 @@
 import {
   useDocumentStreamSnapshot,
   type DocumentStreamStore,
-} from '../../../facades/threads/document-stream'
+} from '../../../facades/threads/document-stream-store'
 import {
   isDocumentStreamActive,
   type DocumentStreamEntry,

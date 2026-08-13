@@ -69,6 +69,10 @@ export type SseEventMap = {
     threadId: ThreadId
     agentId: AgentId
     toolCallId: string
+    // `edit` means the session already has content — the document being
+    // changed — which the client must load before any delta makes sense.
+    // `compose` starts from nothing, so it needs no fetch.
+    mode: 'compose' | 'edit'
   }
   'stream.document.meta': {
     runId: RunId
@@ -112,6 +116,18 @@ export type SseEventMap = {
     spaceName?: string
     parentPageId?: string
     parentTitle?: string
+  }
+  // An edit begins: `removeLength` code units at `offset` are being replaced,
+  // and the write cursor moves there. Sent before the replacement text streams,
+  // so a viewer can move to the edit site before there is anything to show. A
+  // freshly composed document is the degenerate case — one edit at offset 0
+  // removing nothing.
+  'stream.document.edit': {
+    runId: RunId
+    sessionId: string
+    editIndex: number
+    offset: number
+    removeLength: number
   }
 }
 
@@ -165,6 +181,7 @@ const SessionIdSchema = z.string().uuid()
 
 export const StreamDocumentStartEventSchema = z.object({
   agentId: AgentIdSchema,
+  mode: z.enum(['compose', 'edit']).default('compose'),
   runId: RunIdSchema,
   sessionId: SessionIdSchema,
   threadId: ThreadIdSchema,
@@ -222,6 +239,15 @@ export const StreamDocumentTargetEventSchema = z.object({
 })
 export type StreamDocumentTargetEvent = z.infer<typeof StreamDocumentTargetEventSchema>
 
+export const StreamDocumentEditEventSchema = z.object({
+  editIndex: z.number().int().nonnegative(),
+  offset: z.number().int().nonnegative(),
+  removeLength: z.number().int().nonnegative(),
+  runId: RunIdSchema,
+  sessionId: SessionIdSchema,
+})
+export type StreamDocumentEditEvent = z.infer<typeof StreamDocumentEditEventSchema>
+
 export const SseEventNameSchema = z.enum([
   'stream.start',
   'stream.reasoning',
@@ -235,6 +261,7 @@ export const SseEventNameSchema = z.enum([
   'stream.document.done',
   'stream.document.error',
   'stream.document.target',
+  'stream.document.edit',
 ])
 
 /**
@@ -298,6 +325,10 @@ export const SseEventSchema = z.discriminatedUnion('event', [
   z.object({
     event: z.literal('stream.document.target'),
     data: StreamDocumentTargetEventSchema,
+  }),
+  z.object({
+    event: z.literal('stream.document.edit'),
+    data: StreamDocumentEditEventSchema,
   }),
 ])
 export type SseEvent = z.infer<typeof SseEventSchema>
