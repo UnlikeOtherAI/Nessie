@@ -115,6 +115,7 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   const phoneChrome = readSource('../../mobile/src/components/NativePhoneConversationMenuChrome.tsx')
   const ipadWorkspace = readSource('../../mobile/src/components/IpadNativeWorkspaceSwitcher.tsx')
   const nativeWorkspaceAvatar = readSource('../../mobile/src/components/NativeWorkspaceAvatar.tsx')
+  const nativePresentation = readSource('../../mobile/src/components/native-shell-presentation.ts')
   const workspaceSwitcher = readSource('../src/layouts/admin-shell/WorkspaceSwitcher.tsx')
   const nativeApp = readSource('../../mobile/App.tsx')
 
@@ -152,7 +153,7 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneChrome, /Channel/)
   assert.match(phoneChrome, /Message/)
   assert.match(workspaceSwitcher, /workspaceAvatarUrl: active\?\.avatarImageUrl \?\? null/)
-  assert.match(nativeApp, /setNativeWorkspaceAvatarUrl/)
+  assert.match(nativePresentation, /workspaceAvatarUrl: optionalText\(message\.workspaceAvatarUrl\)/)
   assert.match(nativeApp, /workspaceAvatarUrl=\{nativeWorkspaceAvatarUrl\}/)
   assert.match(phoneChrome, /<NativeWorkspaceAvatar/)
   assert.match(ipadWorkspace, /<NativeWorkspaceAvatar/)

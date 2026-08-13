@@ -276,23 +276,24 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     applySession(await authApi.login(input))
   }
 
+  const resetTenantQueries = async (): Promise<void> => {
+    // A cancelled query must never strand the browser on the old access token
+    // after the server has already rotated the session to another workspace.
+    await queryClient.cancelQueries().catch(() => undefined)
+    queryClient.clear()
+  }
+
   const switchContext = async (input: SwitchContextInput): Promise<void> => {
     await sessionMutations.run(
       () => authApi.switchContext(tokenRef.current, input),
-      async () => {
-        await queryClient.cancelQueries()
-        queryClient.clear()
-      },
+      resetTenantQueries,
     )
   }
 
   const switchUoaWorkspace = async (input: SwitchUoaWorkspaceInput): Promise<void> => {
     await sessionMutations.run(
       () => authApi.switchUoaWorkspace(tokenRef.current, input),
-      async () => {
-        await queryClient.cancelQueries()
-        queryClient.clear()
-      },
+      resetTenantQueries,
     )
   }
 

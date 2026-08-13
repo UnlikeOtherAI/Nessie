@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
   AppState,
   Dimensions,
@@ -28,10 +28,9 @@ import {
 } from './src/lib/native-shell'
 import { type NativeShellMessage } from './src/lib/native-shell-message'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
-import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject'
+import { INJECTED, isDark } from './src/lib/webview-inject'
 import {
   statusBarStyleForNativePhoneHomeHeader,
-  statusBarStyleForScheme,
 } from './src/lib/status-bar'
 import {
   createIpadNativeChromeTheme,
@@ -44,10 +43,6 @@ import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
 } from './src/lib/android-tablet-dock'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
-import {
-  DEFAULT_TOOLBAR_STATE,
-  type ToolbarState,
-} from './src/components/IpadNativeToolbar'
 import { IpadNativeChrome } from './src/components/IpadNativeChrome'
 import {
   NativePhoneConversationMenuChrome,
@@ -55,6 +50,12 @@ import {
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
 import { createNativeWebviewActions } from './src/lib/native-webview-actions'
+import {
+  DEFAULT_NATIVE_SHELL_PRESENTATION,
+  isNativeShellPresentationMessage,
+  nativeAttentionTotal,
+  reduceNativeShellPresentation,
+} from './src/components/native-shell-presentation'
 import {
   createNativeTabNavigationState,
   getNativeWebviewFrameInsets,
@@ -66,15 +67,6 @@ import {
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
-const DEFAULT_ACTIVE_TINT = '#7c3aed'
-const DEFAULT_STRONG_ACTIVE_TINT = '#5b21b6'
-const DEFAULT_INACTIVE_TINT = '#8a8f98'
-const DEFAULT_IPAD_CHROME_SURFACE = '#222629'
-const DEFAULT_PHONE_HEADER_SURFACE = '#2b2018'
-const DEFAULT_PHONE_HEADER_TEXT = '#fffdf8'
-const DEFAULT_PHONE_TEXT = '#2b2018'
-const DEFAULT_PHONE_TEXT_MUTED = '#74665b'
-
 // If the admin never reports itself mounted (it posts a `nessie:route` message on
 // boot) within this window after a load finishes, the WebView is blank/white —
 // reload it with a cache-bust. WKWebView can serve a stale cached index.html (e.g.
@@ -87,29 +79,30 @@ const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
   const { height: windowHeight, width: windowWidth } = useWindowDimensions()
-  const [bg, setBg] = useState(DEFAULT_BG)
-  const [statusBarStyle, setStatusBarStyle] = useState<'light' | 'dark'>('light')
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
-  const [accent, setAccent] = useState(DEFAULT_ACTIVE_TINT)
-  const [strongAccent, setStrongAccent] = useState(DEFAULT_STRONG_ACTIVE_TINT)
-  const [inactive, setInactive] = useState(DEFAULT_INACTIVE_TINT)
-  const [ipadChromeSurface, setIpadChromeSurface] = useState(DEFAULT_IPAD_CHROME_SURFACE)
-  const [ipadWorkspaceName, setIpadWorkspaceName] = useState<string | null>(null)
-  const [nativeWorkspaceAvatarUrl, setNativeWorkspaceAvatarUrl] = useState<string | null>(null)
-  const [phoneHeaderSurface, setPhoneHeaderSurface] = useState(DEFAULT_PHONE_HEADER_SURFACE)
-  const [phoneHeaderText, setPhoneHeaderText] = useState(DEFAULT_PHONE_HEADER_TEXT)
-  const [phoneText, setPhoneText] = useState(DEFAULT_PHONE_TEXT)
-  const [phoneTextMuted, setPhoneTextMuted] = useState(DEFAULT_PHONE_TEXT_MUTED)
-  const [phoneOnAccent, setPhoneOnAccent] = useState(DEFAULT_PHONE_HEADER_TEXT)
-  const [nativeAccount, setNativeAccount] = useState({
-    avatarUrl: null as string | null,
-    name: null as string | null,
-    presence: 'offline' as 'away' | 'offline' | 'online',
-    statusEmoji: null as string | null,
-  })
-  const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
-  const [attentionBadges, setAttentionBadges] = useState({ channels: 0, assignedWork: 0, knowledge: 0 })
+  const [presentation, dispatchPresentation] = useReducer(
+    reduceNativeShellPresentation,
+    DEFAULT_NATIVE_SHELL_PRESENTATION,
+  )
+  const {
+    accent,
+    attentionBadges,
+    background: bg,
+    chromeSurface: ipadChromeSurface,
+    inactive,
+    nativeAccount,
+    phoneHeaderSurface,
+    phoneHeaderText,
+    phoneOnAccent,
+    phoneText,
+    phoneTextMuted,
+    statusBarStyle,
+    strongAccent,
+    toolbarState,
+    workspaceAvatarUrl: nativeWorkspaceAvatarUrl,
+    workspaceName: ipadWorkspaceName,
+  } = presentation
   // Bumping this remounts the WebView — used to recover Android after its render
   // process is killed (the instance is unusable until recreated).
   const [webviewKey, setWebviewKey] = useState(0)
@@ -265,32 +258,11 @@ const Shell = (): React.JSX.Element => {
     } catch {
       return
     }
-    if (msg.type === 'bg' && typeof msg.color === 'string') {
-      const rgb = parseRgb(msg.color)
-      if (rgb && rgb[3] !== 0) setBg(msg.color)
-      return
-    }
-    if (msg.type === 'theme') {
-      if (typeof msg.accent === 'string' && msg.accent) setAccent(msg.accent)
-      if (typeof msg.accentStrong === 'string' && msg.accentStrong) setStrongAccent(msg.accentStrong)
-      if (typeof msg.inactive === 'string' && msg.inactive) setInactive(msg.inactive)
-      if (typeof msg.surface === 'string' && msg.surface) setIpadChromeSurface(msg.surface)
-      if (typeof msg.headerSurface === 'string' && msg.headerSurface) setPhoneHeaderSurface(msg.headerSurface)
-      if (typeof msg.headerText === 'string' && msg.headerText) setPhoneHeaderText(msg.headerText)
-      if (typeof msg.text === 'string' && msg.text) setPhoneText(msg.text)
-      if (typeof msg.textMuted === 'string' && msg.textMuted) setPhoneTextMuted(msg.textMuted)
-      if (typeof msg.onAccent === 'string' && msg.onAccent) setPhoneOnAccent(msg.onAccent)
-      const nextStatusBarStyle = statusBarStyleForScheme(msg.scheme)
-      if (nextStatusBarStyle) setStatusBarStyle(nextStatusBarStyle)
-      return
-    }
-    if (msg.type === 'nessie:account') {
-      setNativeAccount({
-        avatarUrl: typeof msg.userAvatarUrl === 'string' && msg.userAvatarUrl ? msg.userAvatarUrl : null,
-        name: typeof msg.userName === 'string' && msg.userName.trim() ? msg.userName : null,
-        presence: msg.userPresence === 'online' || msg.userPresence === 'away' ? msg.userPresence : 'offline',
-        statusEmoji: typeof msg.userStatusEmoji === 'string' && msg.userStatusEmoji ? msg.userStatusEmoji : null,
-      })
+    if (isNativeShellPresentationMessage(msg)) {
+      dispatchPresentation(msg)
+      if (msg.type === 'nessie:attention') {
+        void reconcileNativeAttentionPresentation(nativeAttentionTotal(msg)).catch(() => undefined)
+      }
       return
     }
     if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
@@ -308,18 +280,6 @@ const Shell = (): React.JSX.Element => {
       }
       return
     }
-    if (msg.type === 'nessie:attention') {
-      const channels = typeof msg.channels === 'number' && msg.channels > 0 ? Math.floor(msg.channels) : 0
-      const assignedWork = typeof msg.assignedWork === 'number' && msg.assignedWork > 0
-        ? Math.floor(msg.assignedWork)
-        : 0
-      const knowledge = typeof msg.knowledge === 'number' && msg.knowledge > 0 ? Math.floor(msg.knowledge) : 0
-      setAttentionBadges({ channels, assignedWork, knowledge })
-      void reconcileNativeAttentionPresentation(
-        typeof msg.total === 'number' && msg.total >= 0 ? msg.total : channels + assignedWork + knowledge,
-      ).catch(() => undefined)
-      return
-    }
     if (msg.type === 'nessie:search-overlay') {
       if (msg.active) {
         const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
@@ -327,23 +287,6 @@ const Shell = (): React.JSX.Element => {
       } else {
         setIndex(tabIndexForPath(currentPath ?? '/channels'))
       }
-      return
-    }
-    if (msg.type === 'nessie:toolbar-state') {
-      setToolbarState({
-        canBack: Boolean(msg.canBack),
-        canForward: Boolean(msg.canForward),
-        recentOpen: Boolean(msg.recentOpen),
-      })
-      return
-    }
-    if (msg.type === 'nessie:workspace') {
-      setIpadWorkspaceName(typeof msg.name === 'string' && msg.name.trim() ? msg.name : null)
-      setNativeWorkspaceAvatarUrl(
-        typeof msg.workspaceAvatarUrl === 'string' && msg.workspaceAvatarUrl.trim()
-          ? msg.workspaceAvatarUrl
-          : null,
-      )
       return
     }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
