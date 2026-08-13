@@ -38,7 +38,10 @@ const makeUser = (displayName: string): User => ({
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 })
 
-const makePrisma = (workspaceDirectory?: unknown) => {
+const makePrisma = (
+  workspaceDirectory?: unknown,
+  avatarTeams: Array<{ id: string; externalWorkspaceId: string }> = [],
+) => {
   const updates: Array<{ displayName: string; id: string }> = []
   const prisma = {
     // loadUserMemberships now issues its three membership queries in parallel
@@ -50,6 +53,17 @@ const makePrisma = (workspaceDirectory?: unknown) => {
     teamMember: { findMany: async () => [] },
     productAccountLink: {
       findUnique: async () => workspaceDirectory ? { metadata: { workspaceDirectory } } : null,
+    },
+    team: {
+      findMany: async ({ where }: {
+        where: {
+          externalWorkspaceId: { in: string[] }
+          members: { some: { userId: string } }
+        }
+      }) => {
+        assert.equal(where.members.some.userId, userId)
+        return avatarTeams.filter((team) => where.externalWorkspaceId.in.includes(team.externalWorkspaceId))
+      },
     },
     user: {
       update: async ({ data, where }: { data: { displayName: string }; where: { id: string } }) => {
@@ -89,19 +103,22 @@ test('buildMeResponse leaves a non-email display name untouched', async () => {
 })
 
 test('buildMeResponse exposes the UOA workspace directory with its signed active workspace', async () => {
-  const { prisma } = makePrisma([
-    {
-      organizationId: 'uoa-org-active',
-      teamId: 'uoa-team-active',
-      label: 'Active workspace',
-      orgName: 'Active org',
-    },
-    {
-      organizationId: 'uoa-org-other',
-      teamId: 'uoa-team-other',
-      label: 'Other workspace',
-    },
-  ])
+  const { prisma } = makePrisma(
+    [
+      {
+        organizationId: 'uoa-org-active',
+        teamId: 'uoa-team-active',
+        label: 'Active workspace',
+        orgName: 'Active org',
+      },
+      {
+        organizationId: 'uoa-org-other',
+        teamId: 'uoa-team-other',
+        label: 'Other workspace',
+      },
+    ],
+    [{ id: teamId, externalWorkspaceId: 'uoa-team-active' }],
+  )
   const me = await buildMeResponse(
     prisma,
     makeUser('Ada L.'),
@@ -121,6 +138,7 @@ test('buildMeResponse exposes the UOA workspace directory with its signed active
     {
       organizationId: 'uoa-org-active',
       teamId: 'uoa-team-active',
+      avatarTeamId: teamId,
       label: 'Active workspace',
       orgName: 'Active org',
       active: true,

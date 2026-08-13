@@ -38,6 +38,7 @@ test('workspace menu stays within the right edge of a narrow viewport', () => {
 
 test('workspace pictures use the membership-scoped team relay', () => {
   assert.equal(workspaceAvatarPath(), '/api/workspace/avatar')
+  assert.equal(workspaceAvatarPath(null), null)
   assert.equal(
     workspaceAvatarPath('team/with spaces'),
     '/api/teams/team%2Fwith%20spaces/avatar',

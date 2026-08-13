@@ -115,7 +115,7 @@ const WorkspaceMenu = ({
                 label={workspace.label}
                 revision={isActive ? avatarRevision : 0}
                 size={32}
-                teamId={workspace.uoaWorkspace ? undefined : workspace.teamId}
+                teamId={workspace.uoaWorkspace ? workspace.avatarTeamId ?? null : workspace.teamId}
                 token={token}
               />
               <span className="min-w-0 flex-1">
@@ -280,7 +280,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
             label={active?.label ?? 'Workspace'}
             revision={avatarRevision}
             size={36}
-            teamId={active?.uoaWorkspace ? undefined : active?.teamId}
+            teamId={active?.uoaWorkspace ? active.avatarTeamId ?? null : active?.teamId}
             token={token}
           />
         </button>

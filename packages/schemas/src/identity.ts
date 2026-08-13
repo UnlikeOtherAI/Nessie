@@ -163,6 +163,10 @@ export type MeMembership = z.infer<typeof MeMembershipSchema>
 export const UoaWorkspaceDirectoryEntrySchema = z.object({
   organizationId: z.string().min(1),
   teamId: z.string().min(1),
+  // The local team id is only present when this person belongs to the Nessie
+  // environment that mirrors the UOA workspace. It authorizes the workspace
+  // picker to use the membership-scoped company-avatar relay.
+  avatarTeamId: TeamIdSchema.optional(),
   label: z.string().min(1),
   orgName: z.string().min(1).optional(),
   active: z.boolean(),
