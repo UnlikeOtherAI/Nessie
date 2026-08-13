@@ -1,3 +1,5 @@
+import { safeFetch, type SafeFetchOptions } from '@nessie/runtime'
+
 import type { SsoTheme } from '../contracts/auth.js'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 import {
@@ -259,23 +261,35 @@ const parseWorkspaceDirectory = (
   })
 }
 
+// Both UOA login calls carry credentials and must never follow a redirect: the
+// token exchange POSTs the authorization code + PKCE verifier, and the workspace
+// directory carries the bearer access token. safeFetch validates the URL and
+// pins the socket to the vetted addresses; maxRedirects 0 returns any 3xx raw.
+// The options are injectable so tests can stub DNS resolution at this seam.
+const SAFE_UOA_FETCH_OPTIONS = { maxRedirects: 0 } as const
+const uoaFetchOptions = (options?: SafeFetchOptions): SafeFetchOptions => ({
+  ...options,
+  maxRedirects: 0,
+})
+
 const fetchWorkspaceDirectory = async (
   settings: UoaSettings,
   configUrl: string,
   accessToken: string,
+  options?: SafeFetchOptions,
 ): Promise<UoaWorkspaceDirectoryEntry[]> => {
   try {
     const directoryUrl = new URL(`${settings.baseUrl}/org/me`)
     directoryUrl.searchParams.set('domain', settings.domain)
     directoryUrl.searchParams.set('config_url', configUrl)
-    const response = await fetch(directoryUrl, {
+    const response = await safeFetch(directoryUrl, {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${clientHash(settings)}`,
         'X-UOA-Access-Token': `Bearer ${accessToken}`,
       },
       signal: AbortSignal.timeout(10_000),
-    })
+    }, uoaFetchOptions(options))
     return response.ok
       ? parseWorkspaceDirectory(await response.json(), settings.baseUrl)
       : []
@@ -312,12 +326,15 @@ const ensureStoredConfigUrl = (
  * Exchange the authorization code for tokens and resolve the user identity from
  * the access-token claims.
  */
-export const exchangeUoaSession = async (input: {
-  code: string
-  codeVerifier: string
-  redirectUri: string
-  theme?: SsoTheme
-}): Promise<UoaSessionExchange> => {
+export const exchangeUoaSession = async (
+  input: {
+    code: string
+    codeVerifier: string
+    redirectUri: string
+    theme?: SsoTheme
+  },
+  options?: SafeFetchOptions,
+): Promise<UoaSessionExchange> => {
   const settings = loadUoaSettings()
   ensureAllowedRedirectUrl(settings, input.redirectUri)
 
@@ -329,7 +346,7 @@ export const exchangeUoaSession = async (input: {
   const configUrl = themedConfigUrl(settings, input.theme)
   tokenUrl.searchParams.set('config_url', configUrl)
 
-  const response = await fetch(tokenUrl.toString(), {
+  const response = await safeFetch(tokenUrl.toString(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -341,7 +358,7 @@ export const exchangeUoaSession = async (input: {
       redirect_url: input.redirectUri,
       code_verifier: input.codeVerifier,
     }),
-  })
+  }, uoaFetchOptions(options))
   if (!response.ok) {
     throw new Error(`[uoa] token endpoint returned ${response.status}`)
   }
@@ -349,17 +366,20 @@ export const exchangeUoaSession = async (input: {
   const parsed = parseUoaSessionExchange((await response.json()) as UoaTokenResponse, settings, configUrl)
   return {
     ...parsed.exchange,
-    workspaceDirectory: await fetchWorkspaceDirectory(settings, configUrl, parsed.accessToken),
+    workspaceDirectory: await fetchWorkspaceDirectory(settings, configUrl, parsed.accessToken, options),
   }
 }
 
-export const exchangeUoaCode = async (input: {
-  code: string
-  codeVerifier: string
-  redirectUri: string
-  theme?: SsoTheme
-}): Promise<ExternalAuthIdentity> =>
-  (await exchangeUoaSession(input)).identity
+export const exchangeUoaCode = async (
+  input: {
+    code: string
+    codeVerifier: string
+    redirectUri: string
+    theme?: SsoTheme
+  },
+  options?: SafeFetchOptions,
+): Promise<ExternalAuthIdentity> =>
+  (await exchangeUoaSession(input, options)).identity
 
 export const refreshUoaSession = async (input: {
   configUrl: string

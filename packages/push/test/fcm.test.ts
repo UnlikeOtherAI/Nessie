@@ -194,3 +194,27 @@ test('token exchange failure → ok false, status 0', async () => {
   assert.equal(result.deadToken, false)
   assert.match(result.error ?? '', /token exchange failed/)
 })
+
+test('default transport refuses to follow redirects (a 307 is not replayed)', async () => {
+  // The token exchange POST carries the service-account JWT and the message
+  // POST carries the OAuth bearer — neither may be replayed cross-origin.
+  const calls: string[] = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.redirect, 'manual')
+    calls.push(String(input))
+    return new Response(null, {
+      status: 307,
+      headers: { location: 'https://attacker.example.com/collect' },
+    })
+  }) as typeof globalThis.fetch
+  try {
+    const result = await new FcmClient(creds()).send({ token: 'dev' }, { title: 'T', body: 'B' })
+    assert.equal(result.ok, false)
+    assert.equal(result.status, 0)
+    assert.match(result.error ?? '', /token exchange failed \(307\)/)
+    assert.deepEqual(calls, ['https://oauth2.googleapis.com/token'])
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})

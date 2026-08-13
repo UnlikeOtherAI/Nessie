@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
+import { generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
 import type {
   PushPayload,
@@ -7,7 +8,7 @@ import type {
   WebPushCredentials,
   WebPushTarget,
 } from '@nessie/push'
-import { UrlSafetyError } from '@nessie/runtime'
+import type { SafeFetchOptions } from '@nessie/runtime'
 import {
   deliverWebPush,
   type WebPushDeliveryPrisma,
@@ -92,9 +93,6 @@ const basePayload: PushPayload = {
   collapseId: 'channel-1',
 }
 
-// Passthrough SSRF guard so tests stay hermetic (no real DNS resolution).
-const allowAll = async (_url: string) => undefined
-
 const input = (state: FakeState, sender: WebPushSender) => ({
   prisma: makeFakePrisma(state),
   creds: CREDS,
@@ -104,7 +102,6 @@ const input = (state: FakeState, sender: WebPushSender) => ({
   messageId: 'msg-1',
   deepLinkUrl: '/channels/channel-1/threads/thread-1/replies/msg-1',
   sender,
-  urlGuard: allowAll,
 })
 
 test('delivers to a recipient subscription with a deep-link url', async () => {
@@ -163,18 +160,72 @@ test('a thrown sender is recorded as a non-dead failure, not pruned', async () =
   assert.equal(state.deliveries[0]!.errorCode, 'network down')
 })
 
-test('skips an endpoint the SSRF guard rejects without sending or pruning', async () => {
-  const state: FakeState = { subs: [sub('s1', 'u2')], deleted: [], deliveries: [] }
-  const { sender, calls } = recordingSender()
-  const denyAll = async () => { throw new UrlSafetyError('blocked') }
-  const summary = await deliverWebPush({ ...input(state, sender), urlGuard: denyAll })
+test('a cross-origin 307 redirect is never followed and fails the delivery', async () => {
+  // The default sender dials through safeFetch with redirect following refused:
+  // a push service answering a redirect must not cause the credentialed POST to
+  // be replayed at another origin. Exercise the real seam end-to-end by
+  // omitting `sender` and stubbing the underlying global fetch.
+  const state: FakeState = {
+    subs: [{
+      id: 's1',
+      userId: 'u2',
+      endpoint: 'https://push.example.com/wp/sub-1',
+      p256dh: `p256dh-s1`,
+      auth: `auth-s1`,
+    }],
+    deleted: [],
+    deliveries: [],
+  }
+  // The default sender runs the real WebPushClient, so both the VAPID keys and
+  // the subscription need well-formed P-256 material (any valid pair will do).
+  const vapid = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+  const vapidPubJwk = vapid.publicKey.export({ format: 'jwk' }) as { x: string; y: string }
+  const vapidPrivJwk = vapid.privateKey.export({ format: 'jwk' }) as { d: string }
+  const creds: WebPushCredentials = {
+    publicKey: Buffer.concat([
+      Buffer.from([0x04]),
+      Buffer.from(vapidPubJwk.x, 'base64url'),
+      Buffer.from(vapidPubJwk.y, 'base64url'),
+    ]).toString('base64url'),
+    privateKey: Buffer.from(vapidPrivJwk.d, 'base64url').toString('base64url'),
+    subject: 'mailto:ops@example.com',
+  }
+  const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+  const jwk = publicKey.export({ format: 'jwk' }) as { x: string; y: string }
+  state.subs[0]!.p256dh = Buffer.concat([
+    Buffer.from([0x04]),
+    Buffer.from(jwk.x, 'base64url'),
+    Buffer.from(jwk.y, 'base64url'),
+  ]).toString('base64url')
+  state.subs[0]!.auth = Buffer.from('0123456789abcdef').toString('base64url')
 
-  assert.equal(calls.length, 0, 'must not POST to an unsafe endpoint')
-  // Not pruned: a guard failure (which also covers transient DNS errors) must
-  // not destroy a subscription — it just fails harmlessly this round.
-  assert.deepEqual(summary, { sent: 0, failed: 1, pruned: 0 })
-  assert.deepEqual(state.deleted, [])
-  assert.equal(state.deliveries[0]!.status, 'failed')
+  const fetchCalls: string[] = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.redirect, 'manual', 'the pinned transport must not follow redirects')
+    fetchCalls.push(String(input))
+    return new Response(null, {
+      status: 307,
+      headers: { location: 'https://attacker.example.com/collect' },
+    })
+  }) as typeof globalThis.fetch
+  const options: SafeFetchOptions = { resolveHost: async () => ['93.184.216.34'] }
+
+  try {
+    const { sender: _stub, ...base } = input(state, recordingSender().sender)
+    const summary = await deliverWebPush({ ...base, creds, fetchOptions: options })
+
+    assert.deepEqual(summary, { sent: 0, failed: 1, pruned: 0 })
+    assert.deepEqual(
+      fetchCalls,
+      ['https://push.example.com/wp/sub-1'],
+      'only the original endpoint is dialed — the 307 target is never requested',
+    )
+    assert.deepEqual(state.deleted, [])
+    assert.equal(state.deliveries[0]!.status, 'failed')
+  } finally {
+    globalThis.fetch = realFetch
+  }
 })
 
 test('no-ops when there are no recipients or no subscriptions', async () => {

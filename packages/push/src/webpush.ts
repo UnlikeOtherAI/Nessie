@@ -36,8 +36,10 @@ export interface WebPushSendOptions {
 
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60
 
+// A push delivery POST must never be replayed cross-origin: `redirect: 'manual'`
+// surfaces any 3xx to the caller, which classifies non-2xx as a failed delivery.
 const defaultFetch: WebPushFetch = (url, init) =>
-  fetch(url, init).then((res) => ({
+  fetch(url, { ...init, redirect: 'manual' }).then((res) => ({
     status: res.status,
     text: () => res.text(),
   }))
