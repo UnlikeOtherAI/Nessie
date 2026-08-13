@@ -1,14 +1,15 @@
-// Live document composition, client side: the six `stream.document.*` frames
-// folded into per-session entries, repaired from the bootstrap route whenever a
-// hole appears, and published to React in two lanes.
+// Live document composition and editing, client side: the `stream.document.*`
+// frames folded into per-session entries, repaired from the bootstrap route
+// whenever a hole appears, and published to React in two lanes.
 //
 // The two lanes are the whole point. Structural changes (a session started,
 // was retargeted, saved, failed) go through React state — they are rare. The
 // text does not: a `setState` per provider chunk would re-render the channel
-// feed for every few tokens. Deltas mutate a store the frame handler owns, and
-// only the components that actually paint the document subscribe to it, each
-// committing at most once per animation frame (`useDocumentStreamSnapshot`).
-// The bytes are in the store the moment they come off the wire either way.
+// feed for every few tokens. Deltas and edits mutate a store the frame handler
+// owns, and only the components that actually paint the document subscribe to
+// it, each committing at most once per animation frame — see
+// `document-stream-store.ts`. The bytes are in the store the moment they come
+// off the wire either way.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -30,11 +31,7 @@ import {
   type DocumentFrame,
   type DocumentStreamEntry,
 } from './document-stream-helpers'
-
-export type DocumentStreamStore = {
-  read: (sessionId: string) => DocumentStreamEntry | undefined
-  subscribe: (sessionId: string, listener: () => void) => () => void
-}
+import type { DocumentStreamStore } from './document-stream-store'
 
 export type DocumentStreamController = {
   bootstrapDocuments: () => void
@@ -48,6 +45,8 @@ export type DocumentFrameData = {
   chars?: number
   content?: string
   editIndex?: number
+  /** `edit` sessions open on an existing document that must be loaded first. */
+  mode?: 'compose' | 'edit'
   offset?: number
   removeLength?: number
   pageId?: string
@@ -95,6 +94,9 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
   const detailAttemptsRef = useRef(new Map<string, number>())
   const pendingDetailRef = useRef(new Set<string>())
   const startedAtRef = useRef(new Map<string, number>())
+  // Edit sessions persist a whole-document snapshot rather than an append log,
+  // which changes what a bootstrap may do with buffered frames.
+  const snapshotSessionsRef = useRef(new Set<string>())
   const cancelledRef = useRef(false)
 
   const notify = useCallback((sessionId: string) => {
@@ -181,6 +183,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
             base,
             { lastSeq: detail.lastSeq, markdown: detail.markdown, offset: detail.offset },
             buffered,
+            { snapshot: snapshotSessionsRef.current.has(sessionId) },
           )
           if (merged.needsRefetch) {
             bufferedRef.current.set(sessionId, buffered)
@@ -268,6 +271,13 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
             createDocumentStreamEntry({ runId: data.runId ?? '', sessionId }),
             true,
           )
+        }
+        // An edit session opens on a document that already exists, and every
+        // offset in the deltas that follow is relative to it. Compose starts
+        // from nothing and needs no fetch.
+        if (data.mode === 'edit') {
+          snapshotSessionsRef.current.add(sessionId)
+          requestDetail(sessionId)
         }
         return
       }
@@ -451,54 +461,6 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
   return { bootstrapDocuments, documentSessions, documentStore, handleDocumentFrame }
 }
 
-const scheduleFrame = (callback: () => void): (() => void) => {
-  if (typeof requestAnimationFrame !== 'function') {
-    const timer = setTimeout(callback, 0)
-    return () => clearTimeout(timer)
-  }
-  const handle = requestAnimationFrame(callback)
-  return () => cancelAnimationFrame(handle)
-}
-
-/**
- * The live view of one session, committed at most once per animation frame.
- * Arrival is never delayed by rendering — the store already holds every byte —
- * and a component that paints the document re-renders once per frame instead of
- * once per provider chunk.
- */
-export const useDocumentStreamSnapshot = (
-  store: DocumentStreamStore,
-  entry: DocumentStreamEntry,
-): DocumentStreamEntry => {
-  const [snapshot, setSnapshot] = useState<DocumentStreamEntry>(
-    () => store.read(entry.sessionId) ?? entry,
-  )
-
-  useEffect(() => {
-    let cancelFrame: (() => void) | null = null
-    const commit = () => {
-      cancelFrame = null
-      setSnapshot(store.read(entry.sessionId) ?? entry)
-    }
-    const schedule = () => {
-      if (cancelFrame) {
-        return
-      }
-      cancelFrame = scheduleFrame(commit)
-    }
-
-    schedule()
-    const unsubscribe = store.subscribe(entry.sessionId, schedule)
-    return () => {
-      cancelFrame?.()
-      cancelFrame = null
-      unsubscribe()
-    }
-  }, [entry, store])
-
-  return snapshot
-}
-
 export type RetargetDocumentInput = DocumentStreamRetargetBody & { sessionId: string }
 
 /**
@@ -521,10 +483,3 @@ export const useRetargetDocumentStream = (threadId?: string) => {
     },
   })
 }
-
-// A thread with no document facade (the info drawers render read-only feeds).
-export const emptyDocumentStore: DocumentStreamStore = {
-  read: () => undefined,
-  subscribe: () => () => undefined,
-}
-

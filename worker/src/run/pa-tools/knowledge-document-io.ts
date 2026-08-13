@@ -16,11 +16,19 @@ export const readMarkdownDocument = async (
   fileService: FileService,
   organizationId: string,
   pageId: string,
-): Promise<{ attachmentId: string; content: string; title: string } | null> => {
+): Promise<{
+  attachmentId: string
+  content: string
+  parentPageId: string | null
+  spaceId: string
+  title: string
+} | null> => {
   const page = await prisma.knowledgePage.findFirst({
     select: {
       id: true,
       kind: true,
+      parentPageId: true,
+      spaceId: true,
       publishedVersion: { select: { attachmentId: true } },
       title: true,
       versions: {
@@ -47,6 +55,8 @@ export const readMarkdownDocument = async (
   return {
     attachmentId,
     content: Buffer.concat(chunks).toString('utf8'),
+    parentPageId: page.parentPageId,
+    spaceId: page.spaceId,
     title: page.title,
   }
 }

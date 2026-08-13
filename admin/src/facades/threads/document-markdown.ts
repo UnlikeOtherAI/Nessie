@@ -208,7 +208,7 @@ export const cursorMarkerOffset = (
 
   for (const line of blockText.split('\n')) {
     const lineEnd = lineStart + line.length
-    const opened = fence ? null : openFenceFrom(line)
+    const opened: OpenFence = fence ? null : openFenceFrom(line)
     const insideFence = fence !== null || opened !== null
 
     if (fence) {

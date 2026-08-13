@@ -177,15 +177,12 @@ export const executeRunJob = async (
   // reason: it must exist before the first provider chunk, and every exit path
   // has to settle it.
   const documentStream = createDocumentStreamRecorder({
-    loadDocument: async (pageId) => {
-      const document = await readMarkdownDocument(
-        deps.prisma,
-        fileServiceFor(deps.prisma),
-        String(context.channel.organizationId),
-        pageId,
-      )
-      return document?.content ?? null
-    },
+    loadDocument: async (pageId) => readMarkdownDocument(
+      deps.prisma,
+      fileServiceFor(deps.prisma),
+      String(context.channel.organizationId),
+      pageId,
+    ),
     prisma: deps.prisma,
     realtimeTransport: deps.realtimeTransport,
     run: {

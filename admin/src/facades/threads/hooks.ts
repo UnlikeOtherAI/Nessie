@@ -8,8 +8,8 @@ import {
   useDocumentStreams,
   type DocumentFrameData,
   type DocumentStreamController,
-  type DocumentStreamStore,
 } from './document-stream'
+import type { DocumentStreamStore } from './document-stream-store'
 import type { DocumentStreamEntry } from './document-stream-helpers'
 import {
   classifyStreamResponse,

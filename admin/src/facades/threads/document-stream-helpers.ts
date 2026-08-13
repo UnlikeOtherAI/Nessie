@@ -278,14 +278,37 @@ const applyFrame = (
  * so arrival order *is* the order the server published, and it is the only
  * thing that interleaves seq-carrying deltas with seq-less edits correctly.
  */
+/**
+ * Fold a durable read into an entry.
+ *
+ * The durable lane keeps *appends* for a composed document and a whole
+ * *snapshot* for an edited one — a change in the middle of a document cannot be
+ * expressed as a log. That difference decides what happens to frames buffered
+ * while the read was in flight: an append-log watermark tells us exactly which
+ * ones are already included, but a snapshot silently contains every delta
+ * published before it was read, so replaying the buffer would write that text a
+ * second time. For a snapshot the buffer is therefore dropped and another read
+ * requested; the lane flushes every 250 ms, so it converges immediately and
+ * nothing can be applied twice in the meantime.
+ */
 export const mergeBootstrap = (
   entry: DocumentStreamEntry,
   bootstrap: BootstrapWatermark,
   buffered: DocumentFrame[] = [],
+  options: { snapshot?: boolean } = {},
 ): BootstrapMerge => {
   const watermark = bootstrap.lastSeq ?? 0
+  // An *edit* session opens on a document that already exists, and the base is
+  // published before any delta — so it arrives at seq 0, the same seq a fresh
+  // entry starts at. Comparing watermarks alone would discard it and leave the
+  // viewer watching an empty page while offsets pointed into a document they
+  // could not see. An entry that has applied nothing has nothing to regress,
+  // so adopting is always safe there.
+  const holdsNothing = entry.appliedSeq === 0 && entry.markdown.length === 0
+  const adopt = watermark > entry.appliedSeq
+    || (holdsNothing && bootstrap.markdown.length > 0)
   let merged: DocumentStreamEntry =
-    watermark > entry.appliedSeq
+    adopt
       ? {
           ...entry,
           appliedSeq: watermark,
@@ -294,6 +317,10 @@ export const mergeBootstrap = (
           needsBootstrap: false,
         }
       : { ...entry, needsBootstrap: false }
+
+  if (options.snapshot && adopt) {
+    return { entry: merged, needsRefetch: buffered.length > 0 }
+  }
 
   for (const frame of buffered) {
     const application = applyFrame(merged, frame)

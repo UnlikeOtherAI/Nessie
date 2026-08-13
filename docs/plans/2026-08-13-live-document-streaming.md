@@ -1051,3 +1051,13 @@ choices, because hiding is *not* destructive: **Keep writing** (minimise to the
 chip, generation continues), **Stop and discard** (cancels the run — nothing is
 saved, the established behaviour), **Cancel**. The guard is removed the moment
 no session is active, so it can never block ordinary navigation.
+
+In-app navigation away from the channel asks the same question through the data
+router's `useBlocker` (`admin/src/hooks/useLeaveGuard.ts`), which is the
+router's own seam — no click or history interception. Only a change of path
+blocks; the same screen re-filtering itself does not. The wording differs from
+the close case because the consequence does: leaving the page does not stop the
+run either, so the choices are **Leave — it keeps writing**, **Stop and
+discard**, and **Stay here**. The guard lives with the session list rather than
+with the popup, because the question is whether anything is still being written
+in this thread — minimised chips included — not whether the popup is open.

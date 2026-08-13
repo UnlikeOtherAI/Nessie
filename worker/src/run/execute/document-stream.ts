@@ -84,7 +84,9 @@ type RecorderInput = {
    * it is changing before it can locate anything in it, so this is awaited
    * before the session is announced.
    */
-  loadDocument?: (pageId: string) => Promise<string | null>
+  loadDocument?: (pageId: string) => Promise<
+    { content: string; parentPageId: string | null; spaceId: string; title: string } | null
+  >
 }
 
 /**
@@ -147,8 +149,9 @@ export const createDocumentStreamRecorder = (
   const createSession = async (
     call: TrackedCall,
     currentInvocation: string,
-    baseDocument: string | null,
+    base: { content: string; parentPageId: string | null; spaceId: string; title: string } | null,
   ): Promise<void> => {
+    const baseDocument = base?.content ?? null
     try {
       const session = await input.prisma.runDocumentSession.create({
         data: {
@@ -194,13 +197,35 @@ export const createDocumentStreamRecorder = (
           )
         },
       })
+      if (call.mode === 'edit' && base) {
+        call.metaPublished = true
+        await input.prisma.runDocumentSession.update({
+          data: { parentPageId: base.parentPageId, spaceId: base.spaceId, title: base.title },
+          where: { id: session.id },
+        })
+      }
       await publish('stream.document.start', {
         agentId: parseAgentId(input.run.agentId),
+        mode: call.mode,
         runId: parseRunId(input.run.id),
         sessionId: session.id,
         threadId: parseThreadId(input.run.threadId),
         toolCallId: call.toolCallId,
       })
+      if (call.mode === 'edit' && base) {
+        const space = await input.prisma.knowledgeSpace.findFirst({
+          select: { name: true },
+          where: { id: base.spaceId, organizationId: input.run.organizationId },
+        })
+        await publish('stream.document.meta', {
+          parentPageId: base.parentPageId ?? undefined,
+          runId: parseRunId(input.run.id),
+          sessionId: session.id,
+          spaceId: base.spaceId,
+          spaceName: space?.name,
+          title: base.title,
+        })
+      }
     } catch (error) {
       console.warn('[worker] document stream session create failed', error)
     }
@@ -376,7 +401,7 @@ export const createDocumentStreamRecorder = (
         call.pageId = pageId
         const tracked = call
         call.created = (async () => {
-          let base: string | null = null
+          let base = null as Awaited<ReturnType<NonNullable<typeof input.loadDocument>>>
           try {
             base = (await input.loadDocument?.(pageId)) ?? null
           } catch (error) {

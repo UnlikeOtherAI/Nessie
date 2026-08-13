@@ -69,6 +69,10 @@ export type SseEventMap = {
     threadId: ThreadId
     agentId: AgentId
     toolCallId: string
+    // `edit` means the session already has content — the document being
+    // changed — which the client must load before any delta makes sense.
+    // `compose` starts from nothing, so it needs no fetch.
+    mode: 'compose' | 'edit'
   }
   'stream.document.meta': {
     runId: RunId
@@ -177,6 +181,7 @@ const SessionIdSchema = z.string().uuid()
 
 export const StreamDocumentStartEventSchema = z.object({
   agentId: AgentIdSchema,
+  mode: z.enum(['compose', 'edit']).default('compose'),
   runId: RunIdSchema,
   sessionId: SessionIdSchema,
   threadId: ThreadIdSchema,

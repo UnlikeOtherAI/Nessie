@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react'
-import { useBlocker, type Blocker } from 'react-router-dom'
+import { useBlocker, type Blocker, type BlockerFunction } from 'react-router-dom'
 
 /**
  * Asks before the reader walks away from work that is still in flight.
@@ -35,13 +35,12 @@ export const useLeaveGuard = (active: boolean): Blocker => {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [active])
 
-  const blocker = useBlocker(
-    useCallback(
-      ({ currentLocation, nextLocation }) =>
-        active && currentLocation.pathname !== nextLocation.pathname,
-      [active],
-    ),
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ currentLocation, nextLocation }) =>
+      active && currentLocation.pathname !== nextLocation.pathname,
+    [active],
   )
+  const blocker = useBlocker(shouldBlock)
 
   useEffect(() => {
     if (!active && blocker.state === 'blocked') {

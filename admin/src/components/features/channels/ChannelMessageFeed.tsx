@@ -3,7 +3,7 @@ import type { AgentRecord, MessageReaction, UserRecord } from '../../../lib/api-
 import {
   emptyDocumentStore,
   type DocumentStreamStore,
-} from '../../../facades/threads/document-stream'
+} from '../../../facades/threads/document-stream-store'
 import type { DocumentStreamEntry } from '../../../facades/threads/document-stream-helpers'
 import {
   groupPendingByRoot,

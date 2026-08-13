@@ -87,7 +87,12 @@ export const useCursorFollow = ({
 
   const centreOnCursor = useCallback(
     (force: boolean) => {
-      const anchor = markerNodeRef.current ?? blockNodeRef.current
+      // `isConnected` matters: the cursor moving to another block detaches the
+      // previous marker, and a detached element measures as a zero rect at the
+      // origin — which would read as "centre on the top of the document".
+      const anchor = [markerNodeRef.current, blockNodeRef.current].find(
+        (node) => node?.isConnected,
+      )
       if (!container || !anchor) {
         return
       }
