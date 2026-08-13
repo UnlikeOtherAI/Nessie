@@ -375,7 +375,7 @@ const Shell = (): React.JSX.Element => {
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
-      <StatusBar style={showNativePhoneConversationMenu ? 'light' : statusBarStyle} />
+      <StatusBar style={statusBarStyle} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <IphoneNativeTabBar
