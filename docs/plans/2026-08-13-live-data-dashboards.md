@@ -647,7 +647,12 @@ button).
 
 ### 9.1 The crux — whose entitlement renders the data
 
-**External HTTP sources are always `delegated`.** The external service cannot
+**External HTTP sources are always `delegated`.** Confirmed by the owner on
+2026-08-13, in their words: *"if I put numbers into a dashboard with my API key
+and make it available, then whoever I give access to is going to see the
+numbers — yes."* That is the intended behaviour, not a compromise.
+
+The external service cannot
 evaluate a Nessie viewer, and one-cache scheduling means one fetch under one
 authority; "render with the viewer's entitlement" is not expressible against a
 third-party API. So the authority is explicit, named in the UI ("Data is
@@ -965,17 +970,28 @@ which is a drafting artifact, not a defect in the conclusion.
 
 ## 16. Open questions for the owner
 
+### Resolved
+
+- **Delegated access — settled 2026-08-13, yes.** A dashboard's audience sees the
+  numbers fetched under the source authority's credential. This was the single
+  biggest judgement call in the plan; §9.1 is now confirmed behaviour rather than
+  a proposal. The safeguards around it stay as specified — named authority in the
+  UI, audit on authority and audience change, refreshes stop and the source goes
+  visibly stale if the authority is deactivated or revokes the secret.
+  **Consequence to design against:** because delegation is the intended model,
+  the moment that carries the risk is *granting*, not fetching. The share step is
+  where the audience must be stated in real numbers, and it is the step that must
+  never be reachable by an agent acting alone (§6).
+
+### Still open
+
 1. **`status` as a fifth kind** — included on Fable's argument, cut by Sol as
    unnecessary to prove the product. Cheap to build, easy to drop.
-2. **Is `delegated`-only acceptable for v1?** It means a dashboard's audience can
-   see numbers they could not fetch themselves. It is visible, audited, and
-   revocable, and it is the only coherent model for an external API — but it is
-   the single biggest judgement call in this plan.
-3. **Personal dashboards** — kept as a home. If personal-scope dashboards are not
+2. **Personal dashboards** — kept as a home. If personal-scope dashboards are not
    wanted at v1, dropping them removes a whole entitlement branch.
-4. **Stage 1 without embedding** — Stage 1 is useful and reachable on its own, but
+3. **Stage 1 without embedding** — Stage 1 is useful and reachable on its own, but
    the request that started this was largely about widgets in conversations. If
    chat matters more than the canvas, Stage 2 can be pulled forward at the cost of
    shipping the post flow against a thinner editor.
-5. **CSV export at v1** — included; it is also the easiest way for data to leave
+4. **CSV export at v1** — included; it is also the easiest way for data to leave
    the entitlement model. Worth an explicit yes or no.
