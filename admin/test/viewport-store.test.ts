@@ -90,3 +90,15 @@ test('readBreakpointThresholds reports a missing token as null (dev fails loud)'
 test('the breakpoint scale is exactly the five Tailwind defaults', () => {
   assert.deepEqual([...BREAKPOINT_NAMES], ['sm', 'md', 'lg', 'xl', '2xl'])
 })
+
+test('named one-off media lanes pass through the snapshot untouched', () => {
+  // The 600x600 tablet gate is two-dimensional, so it rides a named lane owned
+  // by lib/mobile-shell.ts rather than the width-only band scale.
+  const snapshot = deriveSnapshot(atWidth(768), NO_CAPABILITIES, { tabletMin: true })
+  assert.equal(snapshot.band, 'md')
+  assert.deepEqual(snapshot.media, { tabletMin: true })
+})
+
+test('media lanes default to an empty record', () => {
+  assert.deepEqual(deriveSnapshot(atWidth(500), NO_CAPABILITIES).media, {})
+})

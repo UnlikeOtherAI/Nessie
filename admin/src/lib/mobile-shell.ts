@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMediaQuery } from '../hooks/useMediaQuery'
+import { registerViewportMediaQuery, useViewport } from '../hooks/useViewport'
 
 type NativeShellInfo = {
   platform?: string
@@ -79,20 +79,24 @@ export const useNativeIOSPhoneApp = (): boolean => {
 // Below Tailwind's `md` breakpoint (768px) we treat the layout as mobile and drive
 // navigation from a tab bar + hamburger drawer instead of the rail + secondary
 // sidebar (the layout decides which to render; the sidebars carry no responsive
-// hiding of their own).
-const MOBILE_MAX_WIDTH_QUERY = '(max-width: 767px)'
+// hiding of their own). "Narrow" is `!atLeast.md` from the viewport store — a
+// minimum-query complement, so there is no 767/768 fractional gap (plan §B).
 
 // A tablet-sized viewport: both dimensions are large enough to keep the secondary
 // sidebar pinned. Phones never satisfy both at once (their short side is ≤ ~440px
 // in any orientation), so this cleanly separates iPad from iPhone — and an iPad in
-// a narrow Split View correctly drops below it and gets the drawer.
+// a narrow Split View correctly drops below it and gets the drawer. This is a
+// two-dimensional device-physics fact the band scale cannot express, so it lives
+// as a named one-off lane on the viewport store, owned by this module (plan:
+// "the 600×600 native-tablet gate ... already a named const").
 const TABLET_MIN_QUERY = '(min-width: 600px) and (min-height: 600px)'
+registerViewportMediaQuery('tabletMin', TABLET_MIN_QUERY)
 
 // True when the UI should use the mobile layout: either a narrow viewport (mobile
 // web) or the native mobile shell (which is always mobile-laid-out regardless of
 // the reported viewport — e.g. iPad).
 export const useMobileLayout = (): boolean => {
-  const narrow = useMediaQuery(MOBILE_MAX_WIDTH_QUERY)
+  const narrow = !useViewport().atLeast.md
   return narrow || isReactNativeWebView()
 }
 
@@ -100,7 +104,7 @@ export const useMobileLayout = (): boolean => {
 // the rail, but the screen is wide enough to keep the secondary sidebar pinned open
 // rather than behind a hamburger drawer.
 export const useTabletShell = (): boolean => {
-  const tablet = useMediaQuery(TABLET_MIN_QUERY)
+  const tablet = useViewport().media?.tabletMin ?? false
   return isReactNativeWebView() && tablet
 }
 
@@ -109,7 +113,7 @@ export const useTabletShell = (): boolean => {
 //
 // Both hooks must be called unconditionally: a `useMobileLayout() && !useTabletShell()`
 // one-liner short-circuits the `useTabletShell()` hook whenever the viewport is wide,
-// so crossing the (max-width: 767px) breakpoint between renders changes the hook count
+// so crossing the md breakpoint between renders changes the hook count
 // and throws React error #310 ("Rendered more hooks than during the previous render").
 export const usePhoneLayout = (): boolean => {
   const mobile = useMobileLayout()

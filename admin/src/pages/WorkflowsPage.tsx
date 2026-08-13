@@ -10,7 +10,7 @@ import {
   useWorkflowInstallations,
   useWorkflowTemplates,
 } from '../facades/workflows/hooks'
-import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useMobileLayout } from '../lib/mobile-shell'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { StatusPill } from '../components/primitives/StatusPill'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
@@ -74,7 +74,7 @@ const summarizeInstallations = (
 export const WorkflowsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const isMobile = useMobileLayout()
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const isWorkflowAdmin =
