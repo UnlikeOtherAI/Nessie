@@ -23,6 +23,7 @@ import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
 import { ProjectsSidebarNav } from './admin-shell/ProjectsSidebarNav';
+import { ResizableSidebar } from './admin-shell/ResizableSidebar';
 import { SidebarDialogs } from './admin-shell/SidebarDialogs';
 import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
@@ -202,7 +203,7 @@ const AuthenticatedAdminShellLayout = () => {
     </>
   ) : (
     <>
-      {secNavElement}
+      {secNavElement ? <ResizableSidebar>{secNavElement}</ResizableSidebar> : null}
       {mainContent}
     </>
   );

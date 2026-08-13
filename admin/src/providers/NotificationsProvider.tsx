@@ -5,6 +5,8 @@ import {
   useMessageNotifications,
   type NotificationToastInput,
 } from '../facades/notifications/useMessageNotifications'
+import { shouldShowInAppMessageBanner } from '../facades/notifications/in-app-message-banner'
+import { isReactNativeWebView } from '../lib/mobile-shell'
 import { useToasts } from './ToastProvider'
 
 /**
@@ -26,6 +28,9 @@ export const NotificationsProvider = ({ children }: PropsWithChildren) => {
   }, [navigate])
 
   const addToast = useCallback((toast: NotificationToastInput) => {
+    if (!shouldShowInAppMessageBanner(isReactNativeWebView())) {
+      return
+    }
     pushToast({
       body: toast.body,
       onOpen: () => openChannel(toast.channelId, toast.threadId, toast.rootMessageId),

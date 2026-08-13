@@ -71,8 +71,10 @@ surface that actually displays the conversation.
    exact feed or reply conversation suppresses delivery to all of that user's
    devices, while a different channel, a different reply conversation, an
    unfocused window, or a background
-   client does not. A foreground client elsewhere in Nessie receives the
-   in-app banner as well as the native delivery to registered devices.
+   client does not. A foreground desktop or browser client elsewhere in Nessie
+   receives the in-app banner as well as the native delivery to registered
+   devices. Native iPhone/iPad/Android clients show only the system push for
+   that event, never a duplicate banner inside their WebView.
    Every terminal route (normal reply, reaction-only answer, cancellation,
    budget stop, error, and external-agent reply) shares one run-scoped queue
    idempotency key. A reply carrying a disclosure basis never exposes its text:
