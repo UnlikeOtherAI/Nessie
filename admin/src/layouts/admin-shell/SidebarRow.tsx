@@ -1,5 +1,5 @@
 export const channelHashClassName =
-  'w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]';
+  'sidebar-row-symbol w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]';
 
 const unreadCountClassName =
   'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +

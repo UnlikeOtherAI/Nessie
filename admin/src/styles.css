@@ -1048,6 +1048,14 @@ a {
   color: var(--on-accent);
 }
 
+/* Several sidebar glyphs carry a dim or accent utility while inactive. Keep
+   every selected navigation symbol on the same high-contrast foreground as
+   its row label instead of letting that inactive colour leak through. */
+.admin-sb-item.active svg,
+.admin-sb-item.active .sidebar-row-symbol {
+  color: var(--on-accent);
+}
+
 .admin-sb-item.active-parent {
   background: color-mix(in srgb, var(--sb-active) 20%, transparent);
   color: var(--tx);

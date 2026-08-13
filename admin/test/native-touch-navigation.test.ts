@@ -36,6 +36,17 @@ test('project folder rows become bold only in the touch sidebar', () => {
   assert.match(starred, /admin-sb-item sidebar-project-tile group/)
 })
 
+test('selected sidebar symbols use the active foreground colour', () => {
+  const styles = readSource('../src/styles.css')
+  const row = readSource('../src/layouts/admin-shell/SidebarRow.tsx')
+
+  assert.match(
+    styles,
+    /\.admin-sb-item\.active svg,[\s\S]*?\.admin-sb-item\.active \.sidebar-row-symbol[\s\S]*?color: var\(--on-accent\)/,
+  )
+  assert.match(row, /sidebar-row-symbol/)
+})
+
 test('secondary sidebar menus do not repeat the active tab title above their items', () => {
   const projects = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
   const knowledge = readSource('../src/layouts/admin-shell/KnowledgeSidebarNav.tsx')
