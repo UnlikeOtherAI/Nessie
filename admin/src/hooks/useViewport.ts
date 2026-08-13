@@ -1,0 +1,172 @@
+import { useSyncExternalStore } from 'react'
+
+// The singleton viewport store from docs/plans/2026-08-13-responsive-coherence.md §B.
+// One MediaQueryList per named minimum breakpoint, with the numeric values read from
+// the `--breakpoint-*` custom properties emitted by the `@theme static` block in
+// styles.css — the stylesheet stays the sole numeric source; TS never restates a
+// pixel value. Bands derive from minimum queries only: "below md" is `!atLeast.md`,
+// never a separately typed `max-width` literal (which is what left the 767/768 gaps).
+
+export const BREAKPOINT_NAMES = ['sm', 'md', 'lg', 'xl', '2xl'] as const
+export type BreakpointName = (typeof BREAKPOINT_NAMES)[number]
+export type ViewportBand = 'base' | BreakpointName
+
+export type ViewportCapabilities = {
+  hover: boolean
+  coarsePointer: boolean
+}
+
+export type ViewportSnapshot = {
+  band: ViewportBand
+  atLeast: Record<BreakpointName, boolean>
+  capabilities: ViewportCapabilities
+}
+
+export type BreakpointThresholds = Record<BreakpointName, number>
+
+export const deriveBand = (atLeast: Record<BreakpointName, boolean>): ViewportBand => {
+  let band: ViewportBand = 'base'
+  for (const name of BREAKPOINT_NAMES) {
+    if (atLeast[name]) band = name
+  }
+  return band
+}
+
+// Pure snapshot derivation, exported for tests: the store below is this logic fed by
+// live MediaQueryLists. `readMinimum(name)` reports whether the viewport is at or
+// above that breakpoint's minimum width.
+export const deriveSnapshot = (
+  readMinimum: (name: BreakpointName) => boolean,
+  capabilities: ViewportCapabilities,
+): ViewportSnapshot => {
+  const atLeast = {} as Record<BreakpointName, boolean>
+  for (const name of BREAKPOINT_NAMES) {
+    atLeast[name] = readMinimum(name)
+  }
+  return { band: deriveBand(atLeast), atLeast, capabilities }
+}
+
+// Exported for tests so the parsing contract (px and rem, root font size 16) is
+// asserted directly.
+export const parseCssLengthToPx = (raw: string): number | null => {
+  const match = /^(\d+(?:\.\d+)?)(px|rem)$/.exec(raw.trim())
+  if (!match) return null
+  const value = Number.parseFloat(match[1] as string)
+  return match[2] === 'rem' ? value * 16 : value
+}
+
+export const readBreakpointThresholds = (
+  readToken: (name: string) => string,
+): BreakpointThresholds | null => {
+  const thresholds = {} as Record<BreakpointName, number>
+  for (const name of BREAKPOINT_NAMES) {
+    const px = parseCssLengthToPx(readToken(`--breakpoint-${name}`))
+    if (px === null) return null
+    thresholds[name] = px
+  }
+  return thresholds
+}
+
+const minimumWidthQuery = (px: number): string => `(min-width: ${px}px)`
+
+// Only `hover: hover` means a precise pointer that can hover; only `pointer: coarse`
+// means the primary pointer is touch-class. Width is never a proxy for either (D3).
+const HOVER_QUERY = '(hover: hover)'
+const COARSE_POINTER_QUERY = '(pointer: coarse)'
+
+const SERVER_SNAPSHOT: ViewportSnapshot = {
+  band: 'base',
+  atLeast: { sm: false, md: false, lg: false, xl: false, '2xl': false },
+  capabilities: { hover: false, coarsePointer: false },
+}
+
+type ViewportStore = {
+  subscribe: (listener: () => void) => () => void
+  getSnapshot: () => ViewportSnapshot
+  getServerSnapshot: () => ViewportSnapshot
+}
+
+const snapshotsEqual = (a: ViewportSnapshot, b: ViewportSnapshot): boolean =>
+  a.band === b.band &&
+  BREAKPOINT_NAMES.every((name) => a.atLeast[name] === b.atLeast[name]) &&
+  a.capabilities.hover === b.capabilities.hover &&
+  a.capabilities.coarsePointer === b.capabilities.coarsePointer
+
+const createViewportStore = (thresholds: BreakpointThresholds): ViewportStore => {
+  type WatchedQuery = { mql: MediaQueryList; read: () => boolean }
+  const watch = (query: string): WatchedQuery => {
+    const mql = window.matchMedia(query)
+    return { mql, read: () => mql.matches }
+  }
+  const minimumQueries = BREAKPOINT_NAMES.map(
+    (name) => [name, watch(minimumWidthQuery(thresholds[name]))] as const,
+  )
+  const hover = watch(HOVER_QUERY)
+  const coarsePointer = watch(COARSE_POINTER_QUERY)
+
+  const readSnapshot = (): ViewportSnapshot =>
+    deriveSnapshot(
+      (name) => minimumQueries.find(([key]) => key === name)?.[1].read() ?? false,
+      { hover: hover.read(), coarsePointer: coarsePointer.read() },
+    )
+
+  let snapshot = readSnapshot()
+
+  return {
+    subscribe: (listener) => {
+      const queries = [...minimumQueries.map(([, query]) => query), hover, coarsePointer]
+      for (const query of queries) {
+        query.mql.addEventListener('change', listener)
+      }
+      return () => {
+        for (const query of queries) {
+          query.mql.removeEventListener('change', listener)
+        }
+      }
+    },
+    // Identity changes only when a value changes, which is what keeps
+    // useSyncExternalStore from re-rendering on every notification.
+    getSnapshot: () => {
+      const next = readSnapshot()
+      if (!snapshotsEqual(snapshot, next)) snapshot = next
+      return snapshot
+    },
+    getServerSnapshot: () => SERVER_SNAPSHOT,
+  }
+}
+
+const createBrowserViewportStore = (): ViewportStore => {
+  const readToken = (name: string): string =>
+    getComputedStyle(document.documentElement).getPropertyValue(name)
+  const thresholds = readBreakpointThresholds(readToken)
+  if (thresholds === null) {
+    // Fail loud in dev: a missing token means styles.css lost its @theme block and
+    // every band would silently derive as 'base'. Production degrades to the base
+    // snapshot instead of throwing mid-render.
+    if (import.meta.env.DEV) {
+      const missing =
+        BREAKPOINT_NAMES.find(
+          (name) => parseCssLengthToPx(readToken(`--breakpoint-${name}`)) === null,
+        ) ?? BREAKPOINT_NAMES[0]
+      throw new Error(
+        `useViewport: styles.css is missing the --breakpoint-${missing} theme token. ` +
+          'The @theme static breakpoint block is the sole numeric source for viewport ' +
+          'breakpoints — restore it (docs/plans/2026-08-13-responsive-coherence.md §A).',
+      )
+    }
+    return serverStore
+  }
+  return createViewportStore(thresholds)
+}
+
+const serverStore: ViewportStore = {
+  subscribe: () => () => {},
+  getSnapshot: () => SERVER_SNAPSHOT,
+  getServerSnapshot: () => SERVER_SNAPSHOT,
+}
+
+// SSR / non-DOM contexts (tests without a window) see the base snapshot.
+const store: ViewportStore = typeof window === 'undefined' ? serverStore : createBrowserViewportStore()
+
+export const useViewport = (): ViewportSnapshot =>
+  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)

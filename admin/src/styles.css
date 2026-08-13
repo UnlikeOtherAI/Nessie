@@ -1,5 +1,19 @@
 @import 'tailwindcss';
 
+/* The sole numeric source for viewport breakpoints (see
+   docs/plans/2026-08-13-responsive-coherence.md §A). Values match Tailwind's
+   defaults, so this is behaviour-preserving for CSS; `static` also emits these
+   as real CSS custom properties so the TS viewport store
+   (hooks/useViewport.ts) reads the same numbers instead of restating them. */
+@theme static {
+  --breakpoint-*: initial;
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
+}
+
 :root {
   color-scheme: dark;
   --rail: #2e1132; --sb: #1e1222; --sb-active: #6d3579; --ink: #2c1832;
