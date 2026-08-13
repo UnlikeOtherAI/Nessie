@@ -32,7 +32,9 @@ import { DEFAULT_BG, INJECTED, isDark, parseRgb } from './src/lib/webview-inject
 import { statusBarStyleForScheme } from './src/lib/status-bar'
 import {
   createIpadNativeChromeTheme,
+  getIpadChromeTop,
   getIpadToolbarLeft,
+  IPAD_NATIVE_CHROME_HEIGHT,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
 import {
@@ -53,8 +55,6 @@ const AUTH_CALLBACK_URL = 'nessie://auth/callback'
 // WebView's own content (e.g. the channel composer) is never hidden. iOS 26 on
 // iPad puts the tab bar at the TOP; iPhone and Android keep it at the bottom.
 const IPHONE_TAB_BAR_HEIGHT = 49
-const IPAD_TAB_BAR_HEIGHT = 50
-const IPAD_INLINE_TOP_CHROME_TOP = 4
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
@@ -80,7 +80,7 @@ const isFullScreenTaskRoute = (path: string): boolean => path === '/channels/new
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
-  const { height: windowHeight, width: windowWidth } = useWindowDimensions()
+  const { width: windowWidth } = useWindowDimensions()
   const [bg, setBg] = useState(DEFAULT_BG)
   const [statusBarStyle, setStatusBarStyle] = useState<'light' | 'dark'>('light')
   const [index, setIndex] = useState(0)
@@ -357,7 +357,12 @@ const Shell = (): React.JSX.Element => {
   // reserves interaction space while the page background and column dividers
   // continue beneath the dock. The iPhone WebView stays edge to edge; INJECTED
   // gives its page content the top safe-area padding.
-  const topInset = IS_IPAD && showBar ? insets.top + IPAD_TAB_BAR_HEIGHT : IS_ANDROID ? insets.top : 0
+  const ipadChromeTop = getIpadChromeTop(insets.top)
+  const topInset = IS_IPAD && showBar
+    ? ipadChromeTop + IPAD_NATIVE_CHROME_HEIGHT
+    : IS_ANDROID
+      ? insets.top
+      : 0
   const bottomInset =
     IS_ANDROID
       ? insets.bottom
@@ -365,7 +370,6 @@ const Shell = (): React.JSX.Element => {
         ? IPHONE_TAB_BAR_HEIGHT + insets.bottom
         : 0
   const webviewLayerStyle = { ...styles.webviewLayer, top: topInset, bottom: bottomInset }
-  const ipadChromeTop = windowWidth >= windowHeight ? IPAD_INLINE_TOP_CHROME_TOP : insets.top + 4
   const ipadChromeTheme = createIpadNativeChromeTheme({
     activeTintColor: accent,
     dark: isDark(bg),

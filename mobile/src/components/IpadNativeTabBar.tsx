@@ -42,7 +42,7 @@ export const IpadNativeTabBar = ({
               accessibilityLabel={tab.title}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              hitSlop={4}
+              hitSlop={tab.key === 'search' ? 5 : 4}
               key={tab.key}
               onAccessibilityTap={() => onIndexChange(index)}
               onPress={() => onIndexChange(index)}
