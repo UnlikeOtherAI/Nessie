@@ -16,6 +16,7 @@ type SidebarStarredSectionProps = {
   onNavigateDm: (userId: string) => void;
   onNavigateProject: (projectId: string) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
+  personalAssistantChannelId?: string;
   starredCollapsed: boolean;
   toggleStarredCollapsed: () => void;
   unreadCountByChannelId: Map<string, number>;
@@ -31,6 +32,7 @@ export const SidebarStarredSection = ({
   onNavigateDm,
   onNavigateProject,
   onToggleStar,
+  personalAssistantChannelId,
   starredCollapsed,
   toggleStarredCollapsed,
   unreadCountByChannelId,
@@ -61,10 +63,12 @@ export const SidebarStarredSection = ({
       {entries.map((item) => {
         if (item.type === 'agent') {
           const { agent } = item;
+          const isActivePersonalAssistant = agent.agentKind === 'personal_assistant'
+            && personalAssistantChannelId === currentChannelId;
           return (
             <button
               key={`starred-agent-${agent.id}`}
-              className="admin-sb-item group"
+              className={`admin-sb-item group ${isActivePersonalAssistant ? 'active' : ''}`}
               onClick={() => onNavigateAgent(agent.id)}
               type="button"
             >

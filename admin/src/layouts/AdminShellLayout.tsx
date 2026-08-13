@@ -147,6 +147,7 @@ const AuthenticatedAdminShellLayout = () => {
       sidebarMenu={shell.sidebarMenu}
       sidebarPeople={shell.sidebarPeople}
       sidebarProductAssistants={shell.sidebarProductAssistants}
+      starredAgentIds={shell.starredAgentIds}
       starredChannelIds={shell.starredChannelIds}
       starredCollapsed={shell.starredCollapsed}
       starredProjectIds={shell.starredProjectIds}

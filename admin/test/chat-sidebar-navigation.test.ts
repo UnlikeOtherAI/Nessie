@@ -22,6 +22,31 @@ test('chat navigation does not duplicate the Agents activity section', () => {
   assert.doesNotMatch(source, /sidebar-nav-agents/)
 })
 
+test('a starred direct-message entry is removed from its original sidebar location', () => {
+  const source = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
+
+  assert.match(source, /starredAgentIds\.has\(personalAssistantAgent\.id\)/)
+  assert.match(source, /starredChannelIds\.has\(personalAssistantChannelId\)/)
+  assert.match(source, /starredAgentIds\.has\(agent\.id\) \|\| starredChannelIds\.has\(agent\.dmChannelId\)/)
+  assert.match(source, /starredChannelIds\.has\(group\.dmChannelId\)/)
+  assert.match(source, /starredUserIds\.has\(person\.id\)/)
+})
+
+test('the starred Personal Assistant follows its active direct-message route', () => {
+  const source = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
+
+  assert.match(source, /agent\.agentKind === 'personal_assistant'/)
+  assert.match(source, /personalAssistantChannelId === currentChannelId/)
+  assert.match(source, /isActivePersonalAssistant \? 'active' : ''/)
+})
+
+test('the Direct-messages Personal Assistant reuses the managed agent avatar record', () => {
+  const source = readSource('../src/layouts/admin-shell/useAdminShell.ts')
+
+  assert.match(source, /personalAssistantState\?\.agent\n      \?\? agents\.find\(\(agent\) => agent\.agentKind === 'personal_assistant'\)/)
+  assert.match(source, /personalAssistantAgent,\n    personalAssistantBootstrapping/)
+})
+
 test('the new-message surface excludes the sender and keeps recipients available after selection', () => {
   const source = readSource('../src/pages/ChannelConversationComposePage.tsx')
 

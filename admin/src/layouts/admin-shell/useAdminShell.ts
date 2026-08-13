@@ -144,6 +144,10 @@ export const useAdminShell = () => {
     () => new Set(starred.filter((item) => item.type === 'channel').map((item) => item.id)),
     [starred],
   );
+  const starredAgentIds = useMemo(
+    () => new Set(starred.filter((item) => item.type === 'agent').map((item) => item.id)),
+    [starred],
+  );
   const starredProjectIds = useMemo(
     () => new Set(starred.filter((item) => item.type === 'project').map((item) => item.id)),
     [starred],
@@ -226,6 +230,17 @@ export const useAdminShell = () => {
 
   const scopedAgents = agents;
 
+  // The general agent list and the PA-state request resolve independently.
+  // Prefer the purpose-built PA state, but retain the managed agent record from
+  // the general list so the Direct-messages entry never falls back to its glyph
+  // while its starred counterpart already has an uploaded/generated avatar.
+  const personalAssistantAgent = useMemo(
+    () => personalAssistantState?.agent
+      ?? agents.find((agent) => agent.agentKind === 'personal_assistant')
+      ?? null,
+    [agents, personalAssistantState?.agent],
+  );
+
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
     [agents, selectedAgentId],
@@ -234,11 +249,11 @@ export const useAdminShell = () => {
   const agentById = useMemo(() => {
     const byId = new Map<string, AgentRecord>();
     agents.forEach((agent) => byId.set(agent.id, agent));
-    if (personalAssistantState?.agent) {
-      byId.set(personalAssistantState.agent.id, personalAssistantState.agent);
+    if (personalAssistantAgent) {
+      byId.set(personalAssistantAgent.id, personalAssistantAgent);
     }
     return byId;
-  }, [agents, personalAssistantState?.agent]);
+  }, [agents, personalAssistantAgent]);
 
   const selectAgent = useCallback((agentId: string) => {
     setSelectedAgentId(agentId);
@@ -374,7 +389,7 @@ export const useAdminShell = () => {
     openPersonalAssistant,
     openRenameProject,
     pathname: location.pathname,
-    personalAssistantAgent: personalAssistantState?.agent ?? null,
+    personalAssistantAgent,
     personalAssistantBootstrapping: personalAssistantBootstrap.isPending,
     personalAssistantChannelId: personalAssistantChannel?.id,
     personalAssistantUnreadCount: personalAssistantChannel?.unreadCount ?? 0,
@@ -392,6 +407,7 @@ export const useAdminShell = () => {
     sidebarGroupDms,
     sidebarPeople,
     sidebarProductAssistants,
+    starredAgentIds,
     starredChannelIds,
     starredCollapsed,
     starredProjectIds,

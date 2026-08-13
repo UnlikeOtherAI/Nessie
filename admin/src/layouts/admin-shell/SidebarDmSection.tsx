@@ -31,6 +31,8 @@ type SidebarDmSectionProps = {
   sidebarGroupDms: SidebarGroupDm[];
   sidebarPeople: SidebarPerson[];
   sidebarProductAssistants: SidebarProductAssistant[];
+  starredAgentIds: Set<string>;
+  starredChannelIds: Set<string>;
   starredUserIds: Set<string>;
   toggleDmCollapsed: () => void;
   unreadCountByChannelId: Map<string, number>;
@@ -53,6 +55,8 @@ export const SidebarDmSection = ({
   sidebarGroupDms,
   sidebarPeople,
   sidebarProductAssistants,
+  starredAgentIds,
+  starredChannelIds,
   starredUserIds,
   toggleDmCollapsed,
   unreadCountByChannelId,
@@ -77,15 +81,22 @@ export const SidebarDmSection = ({
       onToggle={toggleDmCollapsed}
       title="Direct messages"
     >
-      <PersonalAssistantSidebarEntry
-        active={personalAssistantChannelId === currentChannelId}
-        agent={personalAssistantAgent}
-        bootstrapping={personalAssistantBootstrapping}
-        onClick={onOpenPersonalAssistant}
-        token={token}
-        unreadCount={personalAssistantUnreadCount}
-      />
+      {!(
+        (personalAssistantAgent && starredAgentIds.has(personalAssistantAgent.id))
+        || (personalAssistantChannelId && starredChannelIds.has(personalAssistantChannelId))
+      ) ? (
+        <PersonalAssistantSidebarEntry
+          active={personalAssistantChannelId === currentChannelId}
+          agent={personalAssistantAgent}
+          bootstrapping={personalAssistantBootstrapping}
+          onClick={onOpenPersonalAssistant}
+          token={token}
+          unreadCount={personalAssistantUnreadCount}
+        />
+      ) : null}
       {sidebarProductAssistants.map((assistant) => {
+        if (starredChannelIds.has(assistant.dmChannelId)) return null;
+
         const unreadCount = unreadCountByChannelId.get(assistant.dmChannelId) ?? 0;
         return (
           <button
@@ -106,6 +117,8 @@ export const SidebarDmSection = ({
         );
       })}
       {sidebarAgentDms.map((agent) => {
+        if (starredAgentIds.has(agent.id) || starredChannelIds.has(agent.dmChannelId)) return null;
+
         const unreadCount = unreadCountByChannelId.get(agent.dmChannelId) ?? 0;
         return (
           <button
@@ -126,6 +139,8 @@ export const SidebarDmSection = ({
         );
       })}
       {sidebarGroupDms.map((group) => {
+        if (starredChannelIds.has(group.dmChannelId)) return null;
+
         const unreadCount = unreadCountByChannelId.get(group.dmChannelId) ?? 0;
         return (
           <button
@@ -152,7 +167,9 @@ export const SidebarDmSection = ({
         );
       })}
       {sidebarPeople.map((person) => {
-        if (starredUserIds.has(person.id)) return null;
+        if (starredUserIds.has(person.id) || (person.dmChannelId && starredChannelIds.has(person.dmChannelId))) {
+          return null;
+        }
 
         const isStarredUser = starredUserIds.has(person.id);
         const unreadCount = person.dmChannelId
