@@ -5,6 +5,7 @@ import {
 } from '@nessie/schemas'
 import {
   ListThreadMessagesQuerySchema,
+  MarkThreadReadBodySchema,
   RunThinkingLogSchema,
   ThreadMessageRecordSchema,
   ThreadThinkingSchema,
@@ -153,10 +154,20 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    await markThreadRead(prisma, {
+    const body = parseInput(MarkThreadReadBodySchema, request.body ?? {}, reply)
+    if (!body) {
+      return reply
+    }
+
+    const marked = await markThreadRead(prisma, {
+      rootMessageId: body.rootMessageId,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
     })
+    if (!marked) {
+      sendApiError(reply, 404, 'REPLY_ROOT_NOT_FOUND', 'Reply conversation not found')
+      return reply
+    }
 
     return reply.code(200).send(createApiResponse({ ok: true }))
   })

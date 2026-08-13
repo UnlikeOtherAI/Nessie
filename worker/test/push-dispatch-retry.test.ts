@@ -126,6 +126,10 @@ const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
         return { id: crypto.randomUUID(), createdAt: new Date(), ...data }
       },
     },
+    $queryRaw: async () => [{ unread_count: 0 }],
+    userAlert: {
+      count: async () => 0,
+    },
     userPushSurfacePresence: {
       findMany: async () => [],
     },

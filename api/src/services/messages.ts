@@ -323,32 +323,95 @@ export const listThreadMessages = async (
 export const markThreadRead = async (
   prisma: PrismaClient,
   input: {
+    rootMessageId?: string
     threadId: string
     userId: string
   },
-): Promise<void> => {
-  const latestMessage = await prisma.message.findFirst({
-    where: { threadId: input.threadId },
-    orderBy: { createdAt: 'desc' },
-    select: { createdAt: true },
-  })
-
-  await prisma.threadReadState.upsert({
+): Promise<boolean> => {
+  // The original per-container cursor remains a safe baseline while existing
+  // installs migrate. New acknowledgements always write the precise root
+  // cursor instead, so opening reply A cannot make reply B look read.
+  const legacyReadState = await prisma.threadReadState.findUnique({
     where: {
       threadId_userId: {
         threadId: input.threadId,
         userId: input.userId,
       },
     },
-    create: {
-      threadId: input.threadId,
-      userId: input.userId,
-      lastReadAt: latestMessage?.createdAt ?? new Date(),
-    },
-    update: {
-      lastReadAt: latestMessage?.createdAt ?? new Date(),
-    },
+    select: { lastReadAt: true },
   })
+
+  if (input.rootMessageId) {
+    const root = await prisma.message.findFirst({
+      where: {
+        id: input.rootMessageId,
+        rootMessageId: null,
+        threadId: input.threadId,
+      },
+      select: { createdAt: true },
+    })
+    if (!root) return false
+
+    const latestMessage = await prisma.message.findFirst({
+      where: {
+        threadId: input.threadId,
+        OR: [
+          { id: input.rootMessageId },
+          { rootMessageId: input.rootMessageId },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    })
+    const lastReadAt = [root.createdAt, latestMessage?.createdAt, legacyReadState?.lastReadAt]
+      .filter((value): value is Date => Boolean(value))
+      .reduce((latest, value) => value > latest ? value : latest)
+
+    await prisma.messageConversationReadState.upsert({
+      where: {
+        rootMessageId_userId: {
+          rootMessageId: input.rootMessageId,
+          userId: input.userId,
+        },
+      },
+      create: {
+        rootMessageId: input.rootMessageId,
+        userId: input.userId,
+        lastReadAt,
+      },
+      update: {
+        lastReadAt,
+      },
+    })
+    return true
+  }
+
+  // The main feed shows roots but not their replies. Advance every visible
+  // root only to its own creation time (or the old safe baseline), leaving
+  // replies unread until their exact panel is opened.
+  const baseline = legacyReadState?.lastReadAt ?? new Date(0)
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "message_conversation_read_states" (
+      "id", "root_message_id", "user_id", "last_read_at", "created_at", "updated_at"
+    )
+    SELECT
+      gen_random_uuid(),
+      m.id,
+      ${input.userId}::uuid,
+      GREATEST(m.created_at, ${baseline}),
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    FROM "messages" m
+    WHERE m.thread_id = ${input.threadId}::uuid
+      AND m.root_message_id IS NULL
+    ON CONFLICT ("root_message_id", "user_id") DO UPDATE
+      SET "last_read_at" = GREATEST(
+        "message_conversation_read_states"."last_read_at",
+        EXCLUDED."last_read_at"
+      ),
+      "updated_at" = CURRENT_TIMESTAMP
+  `)
+  return true
 }
 
 // ─── sp-messaging slice: edit, soft-delete, full-text search ───────────────

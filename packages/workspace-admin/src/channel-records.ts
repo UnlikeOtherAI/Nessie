@@ -113,15 +113,18 @@ export const loadUnreadCountsByThread = async (
     return new Map()
   }
 
-  // The author and read-cursor predicates live in the JOIN's ON clause, not in a
-  // CASE over the joined rows: that way Postgres walks only the unread tail via
-  // the messages (thread_id, created_at) index instead of joining a thread's
-  // entire history and discarding most of it. This runs on the channel-list hot
-  // path, so the difference is the whole message table on a busy workspace.
+  // A reply panel is an exact conversation, not the container thread. Each
+  // message therefore resolves its root (a top-level post is its own root) and
+  // reads that root's cursor first. The old container cursor remains a
+  // deployment-safe baseline for roots that have not been opened since this
+  // more precise model shipped.
   const rows = await prisma.$queryRaw<ThreadUnreadRow[]>(Prisma.sql`
     SELECT
       t.id AS thread_id,
-      COUNT(m.id) AS unread_count
+      COUNT(m.id) FILTER (
+        WHERE COALESCE(mcrs.last_read_at, trs.last_read_at) IS NULL
+          OR m.created_at > COALESCE(mcrs.last_read_at, trs.last_read_at)
+      ) AS unread_count
     FROM "threads" t
     LEFT JOIN "thread_read_states" trs
       ON trs.thread_id = t.id
@@ -129,7 +132,9 @@ export const loadUnreadCountsByThread = async (
     LEFT JOIN "messages" m
       ON m.thread_id = t.id
       AND (m.user_id IS NULL OR m.user_id <> ${userId}::uuid)
-      AND (trs.last_read_at IS NULL OR m.created_at > trs.last_read_at)
+    LEFT JOIN "message_conversation_read_states" mcrs
+      ON mcrs.user_id = ${userId}::uuid
+      AND mcrs.root_message_id = COALESCE(m.root_message_id, m.id)
     WHERE t.id IN (${Prisma.join(threadIds.map((threadId) => Prisma.sql`${threadId}::uuid`))})
     GROUP BY t.id
   `)

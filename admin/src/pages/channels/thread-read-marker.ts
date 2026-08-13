@@ -13,3 +13,12 @@ export const shouldMarkThreadRead = (input: {
     ? null
     : marker
 }
+
+// A reply conversation is not visible until both its root and reply list have
+// resolved. Marking from the root alone would let the server advance the
+// cursor past replies that are still loading in the panel.
+export const isConversationReadReady = (input: {
+  isReplyConversation: boolean
+  repliesLoaded: boolean
+  rootLoaded: boolean
+}): boolean => !input.isReplyConversation || (input.rootLoaded && input.repliesLoaded)

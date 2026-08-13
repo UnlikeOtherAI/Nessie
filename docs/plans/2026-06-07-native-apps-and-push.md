@@ -190,7 +190,12 @@ device token**, not an Expo push token:
   without replacing a different reply conversation.
 - Carry a **deep link** to the message's reply conversation so a tap opens the
   exact channel feed item or reply thread.
-- **Badge** = unread count; server is source of truth, pushed in the payload.
+- **Badge** = the recipient's authoritative total: unread channel messages
+  plus visible assigned-work and published-knowledge attention. The server is
+  the source of truth and pushes an absolute total in every native/browser
+  payload; a task or knowledge delivery must never overwrite channel unread
+  state with a subtotal. Reply read cursors are per root conversation, not per
+  container thread, so reading one reply panel never clears another.
 - Respect **mute/quiet-hours** (per channel + per user) — evaluated in the
   worker before dispatch.
 - **Silent pushes** to nudge a foregrounded-soon app to refresh unread state.

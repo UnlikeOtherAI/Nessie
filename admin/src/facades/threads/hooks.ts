@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
+import type { ThreadMessageRecord } from '../../lib/api-client'
 import { readSseStream, type SseFrame } from '../../lib/sse'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -84,18 +84,10 @@ export const useMarkThreadRead = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (threadId: string) => apiClient.post(`/api/threads/${threadId}/read`, {}),
-    onMutate: (threadId) => {
-      queryClient.setQueryData<ChannelRecord[] | undefined>(
-        ['channels'],
-        (current) =>
-          current?.map((channel) =>
-            channel.defaultThreadId === threadId
-              ? { ...channel, unreadCount: 0 }
-              : channel,
-          ),
-      )
-    },
+    mutationFn: (input: { rootMessageId?: string; threadId: string }) =>
+      apiClient.post(`/api/threads/${input.threadId}/read`, input.rootMessageId
+        ? { rootMessageId: input.rootMessageId }
+        : {}),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
     },

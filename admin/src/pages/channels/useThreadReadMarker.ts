@@ -10,15 +10,19 @@ export const useThreadReadMarker = (
   threadId: string | undefined,
   threadMessages: ThreadMessageRecord[],
   enabled: boolean,
+  rootMessageId?: string,
 ) => {
   const markThreadRead = useMarkThreadRead()
   const lastReadMarkerRef = useRef<string | null>(null)
   const pendingReadMarkerRef = useRef<string | null>(null)
+  const conversationKey = threadId
+    ? rootMessageId ? `${threadId}:${rootMessageId}` : threadId
+    : undefined
 
   useEffect(() => {
     lastReadMarkerRef.current = null
     pendingReadMarkerRef.current = null
-  }, [threadId])
+  }, [conversationKey])
 
   useEffect(() => {
     const latestMessageId = threadMessages.at(-1)?.id
@@ -27,12 +31,12 @@ export const useThreadReadMarker = (
       lastReadMarker: lastReadMarkerRef.current,
       latestMessageId,
       pendingReadMarker: pendingReadMarkerRef.current,
-      threadId,
+      threadId: conversationKey,
     })
     if (!marker || !threadId) return
 
     pendingReadMarkerRef.current = marker
-    markThreadRead.mutate(threadId, {
+    markThreadRead.mutate({ rootMessageId, threadId }, {
       onError: () => {
         pendingReadMarkerRef.current = null
       },
@@ -41,5 +45,5 @@ export const useThreadReadMarker = (
         pendingReadMarkerRef.current = null
       },
     })
-  }, [enabled, threadId, markThreadRead, threadMessages])
+  }, [conversationKey, enabled, markThreadRead, rootMessageId, threadId, threadMessages])
 }

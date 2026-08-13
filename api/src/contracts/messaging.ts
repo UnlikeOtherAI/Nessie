@@ -250,6 +250,13 @@ export const ListThreadMessagesQuerySchema = z.object({
 })
 export type ListThreadMessagesQuery = z.infer<typeof ListThreadMessagesQuerySchema>
 
+// Omit rootMessageId when the visible surface is the channel feed. Supplying a
+// root acknowledges only that one reply conversation.
+export const MarkThreadReadBodySchema = z.object({
+  rootMessageId: z.string().uuid().optional(),
+})
+export type MarkThreadReadBody = z.infer<typeof MarkThreadReadBodySchema>
+
 // Explicit follow/unfollow of a reply thread (#233).
 export const SetMessageThreadFollowBodySchema = z.object({
   following: z.boolean(),

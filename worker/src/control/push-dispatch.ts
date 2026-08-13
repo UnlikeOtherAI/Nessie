@@ -3,6 +3,7 @@ import { canUserReadDisclosureBasis, type BasisScopeRow } from '@nessie/runtime'
 import { buildChannelMessagePath, type PushDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
+import { loadPushBadgeCount, type PushBadgePrisma } from './push-badge.js'
 import { defaultPushRetryDelayMs } from './push-retry.js'
 import {
   deliverToRecipients,
@@ -28,6 +29,7 @@ export type { PushDispatchSummary, PushSenders } from './push-delivery-core.js'
 
 /** Minimal Prisma surface the dispatch handler touches — keeps tests light. */
 export type PushDispatchPrisma = PushDeliveryPrisma &
+  PushBadgePrisma &
   Pick<PrismaClient,
     | 'channelMember'
     | 'channel'
@@ -179,7 +181,8 @@ export const handlePushDispatch = async (
   // and a reply. Older queued jobs simply use their message as the root.
   const deepLinkUrl = buildChannelMessagePath(payload)
 
-  const buildPayload = (subtitle: string): PushPayload => ({
+  const buildPayload = (subtitle: string, badge: number): PushPayload => ({
+    badge,
     title: authorName,
     subtitle,
     body: protectedReply
@@ -197,29 +200,41 @@ export const handlePushDispatch = async (
     collapseId: payload.rootMessageId ?? payload.threadId,
   })
 
-  // 4. Deliver over native + Web Push through the shared core, once per
-  // framing group.
-  const deliver = (ids: string[], subtitle: string) =>
-    deliverToRecipients({
-      prisma: deps.prisma,
-      apnsCreds,
-      fcmCreds,
-      ...(deps.webPush ? { webPush: deps.webPush } : {}),
-      ...(deps.senders ? { senders: deps.senders } : {}),
-      retryDelayMs,
-      payload: buildPayload(subtitle),
-      recipientIds: ids,
-      organizationId: payload.organizationId,
-      deepLinkUrl,
-      messageId: payload.messageId,
-      surface: {
-        channelId: payload.channelId,
-        kind: 'channel',
-        rootMessageId: payload.rootMessageId ?? null,
-        threadId: payload.threadId,
-      },
-      now: deps.now ?? (() => new Date()),
-    })
+  // 4. Deliver over native + Web Push through the shared core. The framing is
+  // grouped, but each recipient gets their own current icon total.
+  const deliver = async (ids: string[], subtitle: string): Promise<PushDispatchSummary> => {
+    const results = await Promise.all(ids.map(async (userId) => {
+      const badge = await loadPushBadgeCount(deps.prisma, {
+        organizationId: payload.organizationId,
+        userId,
+      })
+      return deliverToRecipients({
+        prisma: deps.prisma,
+        apnsCreds,
+        fcmCreds,
+        ...(deps.webPush ? { webPush: deps.webPush } : {}),
+        ...(deps.senders ? { senders: deps.senders } : {}),
+        retryDelayMs,
+        payload: buildPayload(subtitle, badge),
+        recipientIds: [userId],
+        organizationId: payload.organizationId,
+        deepLinkUrl,
+        messageId: payload.messageId,
+        surface: {
+          channelId: payload.channelId,
+          kind: 'channel',
+          rootMessageId: payload.rootMessageId ?? null,
+          threadId: payload.threadId,
+        },
+        now: deps.now ?? (() => new Date()),
+      })
+    }))
+    return results.reduce<PushDispatchSummary>((combined, result) => ({
+      failed: combined.failed + result.failed,
+      pruned: combined.pruned + result.pruned,
+      sent: combined.sent + result.sent,
+    }), { sent: 0, failed: 0, pruned: 0 })
+  }
 
   if (otherRecipientIds.length > 0) {
     const delivered = await deliver(otherRecipientIds, `# ${channelLabel}`)

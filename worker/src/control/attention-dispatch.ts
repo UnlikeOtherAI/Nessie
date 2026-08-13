@@ -1,10 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
-import { visibleUserAlertWhere } from '@nessie/db'
 import { canReadSpace } from '@nessie/knowledge'
 import { type AttentionDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
 
 import { shouldSuppressPushForPreferences } from './push-preferences.js'
+import { loadPushBadgeCount, type PushBadgePrisma } from './push-badge.js'
 import { defaultPushRetryDelayMs } from './push-retry.js'
 import {
   deliverToRecipients,
@@ -14,7 +14,7 @@ import {
   type PushSenders,
 } from './push-delivery-core.js'
 
-export type AttentionDispatchPrisma = PushDeliveryPrisma & Pick<
+export type AttentionDispatchPrisma = PushDeliveryPrisma & PushBadgePrisma & Pick<
   PrismaClient,
   'organizationMember' | 'projectMember' | 'userAlert'
 >
@@ -145,24 +145,12 @@ export const handleAttentionDispatch = async (
 
   const { apnsCreds, fcmCreds } = await loadPushCredentials(deps)
   if (!apnsCreds && !fcmCreds && !deps.webPush) return summary
-  // This is the current visible project/knowledge attention subtotal. The
-  // native shell folds it into the channel unread total on its next sync; do
-  // not include mention-alert rows here because those are already represented
-  // by the channel counter. Most importantly, reuse the same entitlement and
-  // lifecycle predicate as the API so revoked/superseded rows never inflate a
-  // device badge.
-  const unreadAttentionCount = await deps.prisma.userAlert.count({
-    where: {
-      ...visibleUserAlertWhere({
-        organizationId: resolved.alert.organizationId,
-        userId: resolved.alert.userId,
-      }),
-      kind: { in: ['task_assigned', 'knowledge_published'] },
-      readAt: null,
-    },
+  const badge = await loadPushBadgeCount(deps.prisma, {
+    organizationId: resolved.alert.organizationId,
+    userId: resolved.alert.userId,
   })
   const notification: PushPayload = {
-    badge: unreadAttentionCount,
+    badge,
     body: resolved.body,
     collapseId: resolved.collapseId,
     data: { alertId: resolved.alert.id, kind: resolved.alert.kind, url: resolved.url },

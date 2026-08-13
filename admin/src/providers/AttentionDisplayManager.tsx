@@ -2,10 +2,42 @@ import { useEffect } from 'react'
 
 import { useAttentionSummary } from '../facades/alerts/hooks'
 import { useChannels } from '../facades/channels/hooks'
+import { setDesktopBadgeCount } from '../facades/notifications/desktop-native-notification'
+import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 
 type NativeShellWindow = Window & {
   ReactNativeWebView?: { postMessage: (message: string) => void }
+}
+
+type BadgingNavigator = Navigator & {
+  clearAppBadge?: () => Promise<void>
+  setAppBadge?: (count?: number) => Promise<void>
+}
+
+export const attentionBadgeCounts = (
+  channels: { unreadCount: number }[],
+  attention: { assignedWork: { total: number }; knowledge: { total: number } } | undefined,
+) => {
+  const channelCount = channels.reduce((total, channel) => total + channel.unreadCount, 0)
+  const assignedWork = attention?.assignedWork.total ?? 0
+  const knowledge = attention?.knowledge.total ?? 0
+  return {
+    assignedWork,
+    channels: channelCount,
+    knowledge,
+    total: channelCount + assignedWork + knowledge,
+  }
+}
+
+const setBrowserBadgeCount = (total: number): void => {
+  if (typeof navigator === 'undefined') return
+  const browser = navigator as BadgingNavigator
+  if (total > 0 && typeof browser.setAppBadge === 'function') {
+    void browser.setAppBadge(total).catch(() => undefined)
+  } else if (total === 0 && typeof browser.clearAppBadge === 'function') {
+    void browser.clearAppBadge().catch(() => undefined)
+  }
 }
 
 // Projects and Knowledge do not own another unread store. This presenter
@@ -16,17 +48,16 @@ export const AttentionDisplayManager = () => {
   const { data: attention } = useAttentionSummary()
 
   useEffect(() => {
-    if (!isReactNativeWebView()) return
-    const channelCount = channels.reduce((total, channel) => total + channel.unreadCount, 0)
-    const assignedWork = attention?.assignedWork.total ?? 0
-    const knowledge = attention?.knowledge.total ?? 0
-    ;(window as NativeShellWindow).ReactNativeWebView?.postMessage(JSON.stringify({
-      assignedWork,
-      channels: channelCount,
-      knowledge,
-      total: channelCount + assignedWork + knowledge,
-      type: 'nessie:attention',
-    }))
+    const counts = attentionBadgeCounts(channels, attention)
+    if (isReactNativeWebView()) {
+      ;(window as NativeShellWindow).ReactNativeWebView?.postMessage(JSON.stringify({
+        ...counts,
+        type: 'nessie:attention',
+      }))
+      return
+    }
+    if (isDesktopApp()) setDesktopBadgeCount(counts.total)
+    else setBrowserBadgeCount(counts.total)
   }, [attention, channels])
 
   return null

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { shouldMarkThreadRead } from '../src/pages/channels/thread-read-marker.js'
+import {
+  isConversationReadReady,
+  shouldMarkThreadRead,
+} from '../src/pages/channels/thread-read-marker.js'
 
 test('acknowledges a new message only while the Messages surface is visible', () => {
   const input = {
@@ -24,4 +27,22 @@ test('does not duplicate a pending or acknowledged read marker', () => {
 
   assert.equal(shouldMarkThreadRead({ ...input, lastReadMarker: 'thread-1:message-1', pendingReadMarker: null }), null)
   assert.equal(shouldMarkThreadRead({ ...input, lastReadMarker: null, pendingReadMarker: 'thread-1:message-1' }), null)
+})
+
+test('waits for a complete reply conversation before marking it read', () => {
+  assert.equal(isConversationReadReady({
+    isReplyConversation: true,
+    rootLoaded: true,
+    repliesLoaded: false,
+  }), false)
+  assert.equal(isConversationReadReady({
+    isReplyConversation: true,
+    rootLoaded: true,
+    repliesLoaded: true,
+  }), true)
+  assert.equal(isConversationReadReady({
+    isReplyConversation: false,
+    rootLoaded: false,
+    repliesLoaded: false,
+  }), true)
 })
