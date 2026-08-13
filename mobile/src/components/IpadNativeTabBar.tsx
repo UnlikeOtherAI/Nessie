@@ -146,6 +146,9 @@ const styles = StyleSheet.create({
   },
   searchTab: {
     width: 38,
+    // Override the text-tab minimum width so the magnifier centres in the
+    // visible search capsule, not in an invisible trailing hit area.
+    minWidth: 0,
     paddingHorizontal: 0,
   },
   tab: {
