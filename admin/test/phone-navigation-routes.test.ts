@@ -75,8 +75,12 @@ test('Dashboards are Knowledge-section pages: root depth1, dashboard depth2', ()
   assert.equal(getPhoneNavigationDirection('/dashboards/dash_a', '/dashboards'), 'back')
 })
 
-test('the channel stack walks depth 1 (conversation) through 4 (add-members)', () => {
+test('the channel stack gives a reply thread its own screen depth', () => {
   assert.equal(getPhoneNavigationScreen('/channels/chan_a')?.depth, 1)
+  assert.equal(
+    getPhoneNavigationScreen('/channels/chan_a/threads/thread_a/replies/message_a')?.depth,
+    2,
+  )
   assert.equal(getPhoneNavigationScreen('/channels/chan_a/info')?.depth, 2)
   assert.equal(getPhoneNavigationScreen('/channels/chan_a/info/members')?.depth, 3)
   assert.equal(getPhoneNavigationScreen('/channels/chan_a/info/members/add')?.depth, 4)
@@ -84,6 +88,13 @@ test('the channel stack walks depth 1 (conversation) through 4 (add-members)', (
     label: 'Back to conversation',
     pathname: '/channels/chan_a',
   })
+  assert.deepEqual(
+    getPhoneNavigationBackTarget('/channels/chan_a/threads/thread_a/replies/message_a'),
+    {
+      label: 'Back to conversation',
+      pathname: '/channels/chan_a',
+    },
+  )
   assert.deepEqual(getPhoneNavigationBackTarget('/channels/chan_a/info/members'), {
     label: 'Back to channel info',
     pathname: '/channels/chan_a/info',
@@ -93,6 +104,20 @@ test('the channel stack walks depth 1 (conversation) through 4 (add-members)', (
     pathname: '/channels/chan_a/info/members',
   })
   // Each step deeper animates; stepping back reverses.
+  assert.equal(
+    getPhoneNavigationDirection(
+      '/channels/chan_a',
+      '/channels/chan_a/threads/thread_a/replies/message_a',
+    ),
+    'forward',
+  )
+  assert.equal(
+    getPhoneNavigationDirection(
+      '/channels/chan_a/threads/thread_a/replies/message_a',
+      '/channels/chan_a',
+    ),
+    'back',
+  )
   assert.equal(getPhoneNavigationDirection('/channels/chan_a', '/channels/chan_a/info'), 'forward')
   assert.equal(getPhoneNavigationDirection('/channels/chan_a/info/members/add', '/channels/chan_a/info/members'), 'back')
   assert.equal(getPhoneNavigationDirection('/channels', '/channels/projects/proj_a'), 'forward')

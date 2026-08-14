@@ -121,6 +121,39 @@ test('Back targets the retained layer, refreshes its route payload, and keeps ou
   assert.equal(committedPhoneNavigationRoute(back).pathname, '/channels')
 })
 
+test('thread Back retains the live conversation until its slide-out completes', () => {
+  const thread = stackAt(
+    '/channels',
+    '/channels/channel_a',
+    '/channels/channel_a/threads/thread_a/replies/message_a',
+  )
+  assert.equal(thread.currentIndex, 2)
+  assert.deepEqual(keys(thread), [
+    'root:channels:/channels',
+    'channels:channel',
+    'channels:channel',
+  ])
+  assert.deepEqual(layers(thread), [
+    'channels:0:root:channels:/channels',
+    'channels:1:channels:channel',
+    'channels:2:channels:channel',
+  ])
+
+  const back = advancePhoneNavigationStack(
+    thread,
+    '/channels/channel_a',
+    'payload:conversation-refreshed',
+  )
+  assert.equal(back.currentIndex, 1)
+  assert.equal(back.entries.length, 3)
+  assert.equal(back.entries[1]?.payload, 'payload:conversation-refreshed')
+  assert.equal(back.entries[2]?.pathname, '/channels/channel_a/threads/thread_a/replies/message_a')
+  assert.deepEqual(dropPhoneNavigationEntriesAboveCurrent(back).entries.map((entry) => entry.pathname), [
+    '/channels',
+    '/channels/channel_a',
+  ])
+})
+
 test('Back across levels retains the outgoing chain until cleanup', () => {
   const deep = stackAt(
     '/channels',

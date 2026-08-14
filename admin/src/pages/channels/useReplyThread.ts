@@ -11,6 +11,8 @@ import {
   type ThreadParticipant,
 } from '../../components/features/channels/thread-panel/thread-panel-helpers'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../lib/api-client'
+import { usePhoneLayout } from '../../lib/mobile-shell'
+import { usePhoneNavigation } from '../../layouts/admin-shell/PhoneNavigationProvider'
 
 interface UseReplyThreadParams {
   activeChannel: ChannelRecord | null
@@ -28,6 +30,8 @@ export const useReplyThread = ({
   channelUsers,
 }: UseReplyThreadParams) => {
   const navigate = useNavigate()
+  const phoneLayout = usePhoneLayout()
+  const phoneNavigation = usePhoneNavigation()
   const { channelId, threadId, rootMessageId } = useParams()
   // The route carries the container thread; on plain channel routes the
   // channel's default thread is the container.
@@ -45,11 +49,15 @@ export const useReplyThread = ({
   )
 
   const closeThread = useCallback(() => {
+    if (phoneLayout && phoneNavigation) {
+      phoneNavigation.performBack()
+      return
+    }
     if (!channelId) {
       return
     }
     navigate(`/channels/${channelId}`)
-  }, [channelId, navigate])
+  }, [channelId, navigate, phoneLayout, phoneNavigation])
 
   // Live viewport width drives both the persisted-width clamp below and the
   // panel's aria-valuemax, so neither goes stale on window resize.

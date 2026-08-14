@@ -10,6 +10,7 @@ import {
   isNativePhoneChannelsRootRoute,
   isNativePhoneTabRootRoute,
 } from './native-shell-layout'
+import { getIphoneTabBarHostHeight, IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 
 test('the iPhone native frame keeps page content beneath the translucent tab bar', () => {
   assert.deepEqual(getNativeWebviewFrameInsets({
@@ -20,6 +21,8 @@ test('the iPhone native frame keeps page content beneath the translucent tab bar
     showNativePhoneHomeHeader: false,
     showTabBar: true,
   }), { top: 59, bottom: 0 })
+  assert.equal(getIphoneTabBarHostHeight(34), IPHONE_TAB_BAR_HEIGHT + 34)
+  assert.equal(getIphoneTabBarHostHeight(-2), IPHONE_TAB_BAR_HEIGHT)
 })
 
 test('full-screen iPhone tasks keep the status inset while leaving the home indicator to the web surface', () => {

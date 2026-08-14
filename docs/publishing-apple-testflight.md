@@ -93,6 +93,28 @@ EAS must be authenticated as an account with access to the Nessie App Store
 Connect record. Expo documents the [CI build flow](https://docs.expo.dev/build/building-on-ci/)
 and [automatic submissions](https://docs.expo.dev/build/automate-submissions/).
 
+### Internal development builds
+
+`expo-dev-client` is intentionally installed in `mobile/` so the existing
+`development` EAS profile can produce installable debug clients for physical
+iPads and Android devices. These are not App Store or Play Store releases:
+they open the Expo development menu and load JavaScript from Metro.
+
+```sh
+cd mobile
+EXPO_NO_KEYCHAIN=1 pnpm dlx eas-cli@latest build --platform ios --profile development
+EXPO_NO_KEYCHAIN=1 pnpm dlx eas-cli@latest build --platform android --profile development
+```
+
+An iOS development client requires the target iPad's UDID to be registered on
+the Apple development provisioning profile. Android internal builds are APKs;
+open the EAS download link on the tablet and allow that one install when
+prompted. Start Metro on the development machine before opening either client:
+
+```sh
+pnpm --dir mobile start --dev-client
+```
+
 ### Local Xcode alternative
 
 Use this route when the Apple account is available in Xcode or when EAS has not

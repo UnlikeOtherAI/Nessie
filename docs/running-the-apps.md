@@ -146,7 +146,7 @@ the app was built against the admin web origin instead of the API origin.
 
 The mobile app is a **WebView shell around the admin web UI** wrapped in native
 chrome, mirroring the desktop app. `mobile/App.tsx` renders **one persistent**
-`react-native-webview` that loads the admin, sitting above a **native bottom tab
+`react-native-webview` that loads the admin, passing beneath a **native bottom tab
 bar** (`react-native-bottom-tabs`; iOS 26 Liquid Glass on iPhone, Material on
 Android) with five tabs — Channels · Projects · Knowledge · Admin · Search.
 Agents now live **under Admin** (the Admin section's nav lists Agents/Activity/
@@ -210,8 +210,10 @@ surfaces clear of the home indicator. Status-bar indicators follow the actual
 native header backdrop (rather than WKWebView's optional colour-scheme value),
 using dark icons over the default light workspace surface. The iPhone tab
 controller uses its
-transparent scroll-edge appearance, so the page-matched native root supplies
-the intended backdrop without a second tinted bar beneath the glass controls;
+transparent scroll-edge appearance, and is constrained to the tab-bar overlay,
+so it stays above the WebView without intercepting the page. This lets the
+glass blur the content actually scrolling beneath it without a second tinted
+bar behind the controls;
 iPad and Android reserve their top inset in the native frame. Android's
 floating dock has no independent separator: the shared dock-geometry contract
 adds its exact interaction clearance to the WebView columns, keeping the chat
