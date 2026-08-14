@@ -60,7 +60,9 @@ export const AgentDetailColumn = ({
           <div className="flex flex-wrap items-center gap-2">
             {showBack && onBack
               ? phoneLayout
-                ? <PhoneNavigationButton />
+                ? phoneVisible
+                  ? <PhoneNavigationButton />
+                  : null
                 : <PhoneBackButton label={backLabel} onBack={onBack} />
               : null}
             <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />

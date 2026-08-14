@@ -49,7 +49,9 @@ export const ColumnBrowserColumn = ({
         {leading}
         {showBack && onBack
           ? phoneLayout
-            ? <PhoneNavigationButton />
+            ? phoneVisible
+              ? <PhoneNavigationButton />
+              : null
             : <PhoneBackButton label={backLabel} onBack={onBack} />
           : null}
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[color:var(--tx)]">

@@ -24,6 +24,7 @@ import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
 import { useNativePhoneBack } from './src/lib/use-native-phone-back'
 import { useNativeTheme } from './src/lib/use-native-theme'
 import { nativeSelectTabScript } from './src/lib/native-phone-navigation'
+import { allowsNativeBackForwardGestures } from './src/lib/webview-back-gesture'
 import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
@@ -94,8 +95,15 @@ const Shell = (): React.JSX.Element => {
     webRef.current?.injectJavaScript(`${script} true;`)
   }, [])
 
+  const nativeBackForwardGestures = allowsNativeBackForwardGestures({
+    heightDp: windowHeight,
+    widthDp: windowWidth,
+  })
   const bootRecovery = useNativeBootRecovery(currentPathRef)
-  const phoneBack = useNativePhoneBack(IS_ANDROID && !IS_IPAD, runScript)
+  const phoneBack = useNativePhoneBack(
+    IS_ANDROID && !nativeBackForwardGestures,
+    runScript,
+  )
 
   const cachePushPath = useCallback((path: string): void => {
     runScript(nativePushPathScript(path))
@@ -373,7 +381,7 @@ const Shell = (): React.JSX.Element => {
 
       <View style={webviewLayerStyle}>
         {!initialPushPathResolved ? null : <WebView
-          allowsBackForwardNavigationGestures
+          allowsBackForwardNavigationGestures={nativeBackForwardGestures}
           domStorageEnabled
           injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript({
             clientId: pushSurfaceClientId.current,

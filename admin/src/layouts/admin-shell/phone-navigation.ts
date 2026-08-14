@@ -217,14 +217,12 @@ export const getPhoneTabRootPath = (pathname: string): string => {
   return '/channels'
 }
 
-// Phone navigation is a two-level stack: each section's root is the tab root
-// and its selected destination is the detail. Nested channel inspectors,
-// project sections, and sibling detail selections stay on the same screen, so
-// changing a tab or query does not replay the route-level transition. Detail
-// keys are section-scoped (not entity-scoped) where the screen swaps content
-// in place — channel A → B, Knowledge space A → B, admin detail A → B — so a
-// same-depth sibling switch updates the mounted screen instead of remounting
-// the whole route page.
+// Phone navigation is a per-section stack: each tab starts at depth 0 and
+// nested routes walk deeper where the UI owns another screen. Project tabs and
+// sibling detail selections stay at their current depth, so changing a tab,
+// query, entity, or project section does not replay a route-level transition.
+// Detail keys are section-scoped where one mounted page swaps its content in
+// place — channel A → B, Knowledge space A → B, admin detail A → B.
 export const getPhoneNavigationScreen = (
   pathname: string,
 ): PhoneNavigationScreen | null => {

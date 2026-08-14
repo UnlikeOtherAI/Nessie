@@ -20,8 +20,8 @@ export type ViewportSnapshot = {
   band: ViewportBand
   atLeast: Record<BreakpointName, boolean>
   capabilities: ViewportCapabilities
-  // Named one-off media queries layered onto the band scale for a two-dimensional
-  // fact the band scale cannot express (e.g. mobile-shell's 600x600 tablet gate).
+  // Named one-off media queries layered onto the band scale for facts the band
+  // scale cannot express (e.g. a two-dimensional tablet gate or reduced motion).
   // Absent on the server snapshot; a browser snapshot only carries entries for
   // queries registered before that snapshot was read.
   media?: Record<string, boolean>
@@ -230,11 +230,10 @@ export const useViewport = (): ViewportSnapshot => {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
 }
 
-// Named one-off media queries for facts the band scale cannot express (the
-// two-dimensional tablet gate is the current only consumer, owned by
-// lib/mobile-shell.ts). The name is registered once per store; the lane value
-// is undefined until the browser store has read it, so consumers must treat
-// `undefined` as false (server render / pre-registration render).
+// Named one-off media queries for facts the band scale cannot express. The name
+// is registered once per store; the lane value is undefined until the browser
+// store has read it, so consumers must treat `undefined` as false (server
+// render / pre-registration render).
 export const registerViewportMediaQuery = (name: string, query: string): void => {
   if (lazyStore === null) {
     pendingQueries.push([name, query])
