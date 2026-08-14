@@ -1,6 +1,9 @@
 import { useLocation } from 'react-router-dom';
 import { usePhoneLayout } from '../../lib/mobile-shell';
-import { useLocalBackSnapshot } from './local-back/LocalBackContext';
+import {
+  useColumnBackContext,
+  useLocalBackSnapshot,
+} from './local-back/LocalBackContext';
 import { useMobileNav } from './MobileNavContext';
 import { PhoneBackButton } from './PhoneBackButton';
 import { getPhoneNavigationBackTarget } from './phone-navigation';
@@ -16,9 +19,18 @@ export const PhoneNavigationButton = () => {
   const nav = useMobileNav();
   const history = usePhoneNavigation();
   const localBack = useLocalBackSnapshot()?.active ?? null;
+  const column = useColumnBackContext();
   const backTarget = getPhoneNavigationBackTarget(location.pathname);
 
   if (!phoneLayout || !nav) {
+    return null;
+  }
+
+  // Column browsers retain every column so their track can slide, but only
+  // the column at the viewport origin owns interactive chrome. Without this
+  // guard the off-screen list's route/menu button would re-render as the
+  // active detail's local Back, leaving two Back controls in the DOM.
+  if (column.index !== null && !column.phoneVisible) {
     return null;
   }
 

@@ -60,9 +60,12 @@ export const ColumnBrowserViewport = ({
             index === totalColumns - 1
               ? Math.max(1, visibleColumns - (totalColumns - 1))
               : 1
+          const phoneHidden = isMobile && index !== phoneVisibleIndex
           return (
             <div
+              aria-hidden={phoneHidden || undefined}
               className="h-full w-full flex-shrink-0"
+              inert={phoneHidden || undefined}
               key={index}
               style={{ width: `${(100 / visibleColumns) * slots}%` }}
             >

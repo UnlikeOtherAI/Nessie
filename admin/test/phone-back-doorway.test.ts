@@ -56,6 +56,9 @@ test('only the phone-visible column browser column holds the Back doorway', () =
   const viewport = readSource('../src/components/shared/column-browser/ColumnBrowserViewport.tsx')
   assert.match(viewport, /phoneVisibleIndex/)
   assert.match(viewport, /ColumnBackProvider/)
+  assert.match(viewport, /const phoneHidden = isMobile && index !== phoneVisibleIndex/)
+  assert.match(viewport, /aria-hidden=\{phoneHidden \|\| undefined\}/)
+  assert.match(viewport, /inert=\{phoneHidden \|\| undefined\}/)
 
   const column = readSource('../src/components/shared/column-browser/ColumnBrowserColumn.tsx')
   assert.match(column, /active: phoneLayout && phoneVisible && Boolean\(showBack && onBack\)/)
@@ -63,6 +66,10 @@ test('only the phone-visible column browser column holds the Back doorway', () =
   assert.match(column, /phoneLayout\s*\? phoneVisible\s*\? <PhoneNavigationButton/)
   // Wider layouts keep the shared circular Back beside the column title.
   assert.match(column, /: <PhoneBackButton label=\{backLabel\} onBack=\{onBack\}/)
+
+  const navigation = readSource('../src/layouts/admin-shell/PhoneNavigationButton.tsx')
+  assert.match(navigation, /useColumnBackContext/)
+  assert.match(navigation, /column\.index !== null && !column\.phoneVisible/)
 })
 
 test('every stateful column-browser detail column owns exactly one Back action', () => {

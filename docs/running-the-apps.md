@@ -360,7 +360,10 @@ and leaves page data, URLs, and conversation state in the admin React app.
   control, including project overviews opened from Channels. It returns to the
   route's owning list (Channels, Projects, Dashboards, Knowledge, or Admin), so a
   direct link remains inside Nessie; tab roots retain the navigation-menu
-  control instead.
+  control instead. Stateful nested surfaces (Knowledge documents/history/editor
+  and Admin column-browser details) reuse that one leading slot and unwind one
+  local level before the route. Retained off-screen columns are inert and hidden
+  from accessibility, so only the on-screen Back doorway is interactive.
 - Conversation information is addressable at
   `/channels/:channelId/info`, with nested `/members` and `/members/add`
   destinations. This gives a cold deep link the same deterministic Back path
