@@ -2,6 +2,7 @@
   "expo": {
     "name": "Nessie",
     "slug": "nessie",
+    "owner": "unlikeotherai",
     "version": "0.1.1",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -61,7 +62,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "TODO-run-eas-init"
+        "projectId": "7fdf89c0-9fbc-4ca9-9d01-8eeda3efd62c"
       }
     }
   }
