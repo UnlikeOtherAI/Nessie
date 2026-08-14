@@ -123,13 +123,8 @@ test('iOS phone injection clears the tab overlay inside the WebView', () => {
     css,
     new RegExp(`--nessie-native-phone-tabbar-clearance: ${IPHONE_TAB_BAR_HEIGHT + 34}px`),
   )
-  const phoneTabBarShell =
-    '\\.admin-frame\\.has-native-phone-tabbar \\.admin-shell > aside, ' +
-    '\\.admin-frame\\.has-native-phone-tabbar \\.admin-shell > main'
-  assert.match(css, new RegExp(`${phoneTabBarShell} \\{ padding-bottom: var\\(--nessie-native-phone-tabbar-clearance\\);\\}`))
   const phoneTabBarScrollSurfaces =
-    '\\.admin-frame\\.has-native-phone-tabbar \\.phone-navigation-screen > main, ' +
-    '\\.admin-frame\\.has-native-phone-tabbar \\.touch-sidebar'
+    '\\.admin-frame\\.has-native-phone-tabbar \\.nessie-native-phone-tabbar-scroll'
   assert.match(
     css,
     new RegExp(
@@ -137,6 +132,69 @@ test('iOS phone injection clears the tab overlay inside the WebView', () => {
       ' scroll-padding-bottom: var\\(--nessie-native-phone-tabbar-clearance\\);\\}',
     ),
   )
+  assert.doesNotMatch(css, /phone-navigation-screen > main/)
+  assert.doesNotMatch(css, /touch-sidebar \\{ padding-bottom/)
+})
+
+test('iOS phone injection clears only scroll regions that reach the native tab bar', () => {
+  const applied = new Map<string, boolean>()
+  const scrollerAtBottom = {
+    classList: { toggle: (_name: string, enabled: boolean): void => { applied.set('edge', enabled) } },
+    getBoundingClientRect: () => ({ bottom: 844, top: 100 }),
+  }
+  const fixedMenuAtBottom = {
+    classList: { toggle: (_name: string, enabled: boolean): void => { applied.set('fixed', enabled) } },
+    getBoundingClientRect: () => ({ bottom: 844, top: 200 }),
+  }
+  const shortPopup = {
+    classList: { toggle: (_name: string, enabled: boolean): void => { applied.set('popup', enabled) } },
+    getBoundingClientRect: () => ({ bottom: 600, top: 300 }),
+  }
+  const frame = {
+    querySelectorAll: () => [scrollerAtBottom, fixedMenuAtBottom, shortPopup],
+  }
+  const document = {
+    body: {},
+    documentElement: {},
+    head: { appendChild: (): void => undefined },
+    addEventListener: (): void => undefined,
+    createElement: (): FakeElement => ({}),
+    getElementById: (): null => null,
+    querySelector: (selector: string): typeof frame | null =>
+      selector === '.admin-frame.has-native-phone-tabbar' ? frame : null,
+  }
+  const window = {
+    __nessieNativeShell: { bottomInset: 34, formFactor: 'phone', platform: 'ios' },
+    addEventListener: (): void => undefined,
+    innerHeight: 844,
+    location: { protocol: 'file:' },
+    ReactNativeWebView: { postMessage: (): void => undefined },
+  }
+  class FakeMutationObserver {
+    constructor(_callback: () => void) {}
+
+    observe(): void {}
+  }
+  const getComputedStyle = (element: unknown): {
+    backgroundColor: string
+    colorScheme: string
+    getPropertyValue: () => string
+    overflowY: string
+    position: string
+  } => ({
+    backgroundColor: 'rgb(26, 29, 33)',
+    colorScheme: 'light',
+    getPropertyValue: () => '',
+    overflowY: element === shortPopup ? 'auto' : element === fixedMenuAtBottom ? 'scroll' : 'auto',
+    position: element === fixedMenuAtBottom ? 'fixed' : 'static',
+  })
+
+  const runInjectedScript = new Function('window', 'document', 'MutationObserver', 'getComputedStyle', INJECTED)
+  runInjectedScript(window, document, FakeMutationObserver, getComputedStyle)
+
+  assert.equal(applied.get('edge'), true)
+  assert.equal(applied.get('fixed'), false)
+  assert.equal(applied.get('popup'), false)
 })
 
 test('iPad and Android keep top safe-area ownership in the native frame', () => {

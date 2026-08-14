@@ -459,7 +459,7 @@ export const AdminSidebarNav = ({
   return (
     <aside
       className={[
-        'flex h-full w-full flex-col overflow-y-auto',
+        'flex h-full w-full flex-col overflow-hidden',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
         nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
@@ -475,26 +475,26 @@ export const AdminSidebarNav = ({
             pathname={pathname}
           />
         ))}
+        {isReactNativeWebView() ? (
+          <div className="border-t border-[color:var(--sep)] py-1">
+            <DebugTokenButton variant="sidebar" />
+            <button
+              className="admin-sb-item"
+              onClick={requestNativeFullRefresh}
+              type="button"
+            >
+              {icon(
+                <path
+                  d="M19 8a8 8 0 10.5 7M19 4v4h-4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />,
+              )}
+              <span className="min-w-0 flex-1 truncate">Full refresh</span>
+            </button>
+          </div>
+        ) : null}
       </nav>
-      {isReactNativeWebView() ? (
-        <div className="border-t border-[color:var(--sep)] py-1">
-          <DebugTokenButton variant="sidebar" />
-          <button
-            className="admin-sb-item"
-            onClick={requestNativeFullRefresh}
-            type="button"
-          >
-            {icon(
-              <path
-                d="M19 8a8 8 0 10.5 7M19 4v4h-4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />,
-            )}
-            <span className="min-w-0 flex-1 truncate">Full refresh</span>
-          </button>
-        </div>
-      ) : null}
     </aside>
   );
 };

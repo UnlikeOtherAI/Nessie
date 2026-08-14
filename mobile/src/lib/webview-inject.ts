@@ -37,22 +37,15 @@ export const INJECTED = `
       ? 'body { background: var(--main); }'
       : '';
     // The WebView reaches under the translucent iPhone tab bar so the bar can
-    // blur real page content rather than the native root background. Clear the
-    // exact native overlay within the shell only, keeping the final row usable.
+    // blur real page content rather than a separate native slab. Only the
+    // page-level scroll region receives end clearance; never shrink the screen
+    // or its background above the overlay.
     var iosPhoneTabBarOverlayCss = isIosPhone
       ? [
           ':root { --nessie-native-phone-tabbar-clearance: ' +
             (${IPHONE_TAB_BAR_HEIGHT} + nativeBottomInset) +
             'px; }',
-          '.admin-frame.has-native-phone-tabbar .admin-shell > aside, ' +
-            '.admin-frame.has-native-phone-tabbar .admin-shell > main {' +
-            ' padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
-          '}',
-          // Phone tab roots keep their contextual navigation one level below
-          // the admin shell. The nested scroller needs the same clearance or
-          // its final row can only be reached underneath native glass.
-          '.admin-frame.has-native-phone-tabbar .phone-navigation-screen > main, ' +
-            '.admin-frame.has-native-phone-tabbar .touch-sidebar {' +
+          '.admin-frame.has-native-phone-tabbar .nessie-native-phone-tabbar-scroll {' +
             ' padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
             ' scroll-padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
           '}',
@@ -127,7 +120,29 @@ export const INJECTED = `
       } catch (e) {}
     }
   }
-  function sync() { post(); postTheme(); }
+  function syncNativePhoneTabBarScrollRegions() {
+    if (!isIosPhone || !window.innerHeight) return;
+    var frame = document.querySelector('.admin-frame.has-native-phone-tabbar');
+    if (!frame || !frame.querySelectorAll) return;
+    var viewportBottom = window.innerHeight;
+    var candidates = frame.querySelectorAll('.phone-navigation-screen *');
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = candidates[i];
+      if (!candidate.classList || !candidate.getBoundingClientRect) continue;
+      var candidateStyle = getComputedStyle(candidate);
+      var overflowY = candidateStyle.overflowY;
+      var isScroller = overflowY === 'auto' || overflowY === 'scroll';
+      var rect = candidate.getBoundingClientRect();
+      // Fixed menus own their own placement; only a scroll surface that really
+      // reaches the WebView edge can pass beneath the native glass tab bar.
+      var reachesNativeTabBar =
+        isScroller && candidateStyle.position !== 'fixed' &&
+        rect.top < viewportBottom && rect.bottom >= viewportBottom - 1;
+      candidate.classList.toggle('nessie-native-phone-tabbar-scroll', reachesNativeTabBar);
+    }
+  }
+
+  function sync() { syncNativePhoneTabBarScrollRegions(); post(); postTheme(); }
   sync();
 
   function installBuildFreshnessCheck() {
@@ -203,7 +218,12 @@ export const INJECTED = `
   });
   if (document.body) {
     new MutationObserver(post).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    new MutationObserver(syncNativePhoneTabBarScrollRegions).observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
   }
+  window.addEventListener('resize', syncNativePhoneTabBarScrollRegions);
   window.addEventListener('load', sync);
   true;
 })();
