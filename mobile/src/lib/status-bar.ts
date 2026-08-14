@@ -6,9 +6,14 @@ export const statusBarStyleForScheme = (scheme: unknown): NativeStatusBarStyle |
   return null
 }
 
-// A phone tab-root header owns the status-bar backdrop. Override the page
-// scheme only when that header is actually dark.
+// A phone tab-root header owns the status-bar backdrop, so its actual surface
+// determines indicator contrast. WKWebView's computed color-scheme may be
+// absent even after it has supplied the header colours.
 export const statusBarStyleForNativePhoneHomeHeader = (
-  hasDarkNativePhoneHomeHeader: boolean,
+  hasNativePhoneHomeHeader: boolean,
+  nativePhoneHomeHeaderIsDark: boolean,
   themeStyle: NativeStatusBarStyle,
-): NativeStatusBarStyle => hasDarkNativePhoneHomeHeader ? 'light' : themeStyle
+): NativeStatusBarStyle => {
+  if (!hasNativePhoneHomeHeader) return themeStyle
+  return nativePhoneHomeHeaderIsDark ? 'light' : 'dark'
+}

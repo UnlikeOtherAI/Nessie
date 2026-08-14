@@ -206,9 +206,10 @@ search opens from the native Search tab overlay. Because that web top bar is
 absent on iPhone, the native `App.tsx` frame reserves the status-bar inset for
 every phone route — including tab roots whose content is not a direct admin
 column — while `mobile/src/lib/webview-inject.ts` leaves full-screen web
-surfaces clear of the home indicator. Status-bar indicators follow the active
-Nessie colour scheme, using dark icons over the default light workspace
-surface. The iPhone tab controller uses its
+surfaces clear of the home indicator. Status-bar indicators follow the actual
+native header backdrop (rather than WKWebView's optional colour-scheme value),
+using dark icons over the default light workspace surface. The iPhone tab
+controller uses its
 transparent scroll-edge appearance, so the page-matched native root supplies
 the intended backdrop without a second tinted bar beneath the glass controls;
 iPad and Android reserve their top inset in the native frame. Android's

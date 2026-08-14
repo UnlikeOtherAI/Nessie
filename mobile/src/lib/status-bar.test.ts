@@ -16,8 +16,9 @@ test('keeps the existing status indicator style for an unavailable color scheme'
   assert.equal(statusBarStyleForScheme('unsupported'), null)
 })
 
-test('the dark native phone home header uses light status indicators', () => {
-  assert.equal(statusBarStyleForNativePhoneHomeHeader(true, 'dark'), 'light')
-  assert.equal(statusBarStyleForNativePhoneHomeHeader(true, 'light'), 'light')
-  assert.equal(statusBarStyleForNativePhoneHomeHeader(false, 'dark'), 'dark')
+test('the native phone home header always contrasts with its own surface', () => {
+  assert.equal(statusBarStyleForNativePhoneHomeHeader(true, true, 'dark'), 'light')
+  assert.equal(statusBarStyleForNativePhoneHomeHeader(true, false, 'light'), 'dark')
+  assert.equal(statusBarStyleForNativePhoneHomeHeader(true, false, 'dark'), 'dark')
+  assert.equal(statusBarStyleForNativePhoneHomeHeader(false, true, 'dark'), 'dark')
 })

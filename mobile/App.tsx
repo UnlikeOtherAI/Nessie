@@ -354,7 +354,8 @@ const Shell = (): React.JSX.Element => {
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={statusBarStyleForNativePhoneHomeHeader(
-        showNativePhoneHomeChrome && isDark(phoneHeaderSurface),
+        showNativePhoneHomeChrome,
+        isDark(phoneHeaderSurface),
         statusBarStyle,
       )} />
 
