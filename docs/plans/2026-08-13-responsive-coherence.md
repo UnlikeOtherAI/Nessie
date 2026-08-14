@@ -34,6 +34,25 @@ incoherence is at the seams, and it is countable:
   CSS, unusable UI. `ColumnBrowserViewport` likewise picks pane count from
   `window` width regardless of what the shell left it.
 
+## Delivery status (2026-08-14)
+
+Landed on main, each batch gated and Playwright-verified:
+
+- **Phase 3 foundation** — `@theme static` tokens, the `useViewport`
+  singleton store (lazily initialized on first render — reading tokens at
+  module init raced Vite's stylesheet injection), `ShellEnvironmentProvider`.
+- **Phase 2 correctness** — D1, D2, D3, D5, D15 fixed and visually verified
+  (docked/overlay/full-screen matrix incl. the formerly dead 1279px width;
+  live `aria-valuemax`; selectable chat text at 1024px with a mouse).
+- **Phases 4+6** — the six split-brain pages are shell-aware
+  (`useMobileLayout`), `useMediaQuery` deleted, ESLint restricted-imports/
+  properties + `scripts/lint-breakpoints.mjs` wired into root lint.
+
+Open: D6–D14 (sidebar ARIA, header leading/observation, safe-area depth,
+drag hygiene, popover placement, MCP App Store doorway, cross-file 900px
+comment, notifications boundary follow-ups where not covered), Phase 1 edge
+matrix as durable tests, and Phase 5 per-surface container conversion.
+
 ## Verified defects (fix list)
 
 | # | Defect | Evidence | Found by |

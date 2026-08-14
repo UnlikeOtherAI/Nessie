@@ -229,6 +229,29 @@ Phase 0 slice.
 
 ---
 
+## Delivery status (2026-08-14)
+
+Phase 0 is **fully landed on main**, each batch adversarially reviewed,
+gated with real exit codes, and merged:
+
+1. W0 dispatch gate — landed (`worker/src/run/execute/tool-authorization.ts`;
+   see the annotation in the workstream text; sub-agent audit parity remains
+   deferred to the full module form).
+2. SB-02 ceiling — landed (`isExposed` scope check unconditional;
+   `MCP_CREDENTIAL_USER_SCOPE_MISMATCH` fail-closed owner check).
+3. Egress pinning — landed (webpush/FCM refuse redirects and dial pinned at
+   the delivery seam; OIDC discovery/token/userinfo + UOA fetches through
+   `safeFetch` with issuer-origin validation).
+4. Env-ref rejection — landed (`INFERENCE_ENV_REF_FORBIDDEN` on every new
+   caller-chosen `authSecretRef` write; grandfathered rows unchanged).
+5. Public origin — landed (`api/src/lib/public-origin.ts`; hosted mode
+   requires `api.publicUrl`; `x-forwarded-*` reads lint-banned).
+
+In progress: W5 evaluator unification (semantics-preserving, differential
+suite). Not started: W3 full (typed sensitivity + AST fetch boundary), W1
+(session integrity), W2 store proper, W4 structural consolidation, realtime
+session identity. Everything marked **[access-model]** remains parked.
+
 ## Sequencing (rebuilt: exploit-liveness first — Kimix §6, Sol M-06)
 
 **Phase 0 (days, ship independently):**
