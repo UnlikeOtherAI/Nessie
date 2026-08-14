@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  statusBarStyleForNativePhoneHomeHeader,
+  statusBarStyleForNativeBackdrop,
   statusBarStyleForScheme,
 } from './status-bar'
 
@@ -16,9 +16,9 @@ test('keeps the existing status indicator style for an unavailable color scheme'
   assert.equal(statusBarStyleForScheme('unsupported'), null)
 })
 
-test('the native phone home header always contrasts with its own surface', () => {
-  assert.equal(statusBarStyleForNativePhoneHomeHeader(true, true, 'dark'), 'light')
-  assert.equal(statusBarStyleForNativePhoneHomeHeader(true, false, 'light'), 'dark')
-  assert.equal(statusBarStyleForNativePhoneHomeHeader(true, false, 'dark'), 'dark')
-  assert.equal(statusBarStyleForNativePhoneHomeHeader(false, true, 'dark'), 'dark')
+test('a native status backdrop always determines the indicator contrast', () => {
+  assert.equal(statusBarStyleForNativeBackdrop(true, true, 'dark'), 'light')
+  assert.equal(statusBarStyleForNativeBackdrop(true, false, 'light'), 'dark')
+  assert.equal(statusBarStyleForNativeBackdrop(true, false, 'dark'), 'dark')
+  assert.equal(statusBarStyleForNativeBackdrop(false, true, 'dark'), 'dark')
 })

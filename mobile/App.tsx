@@ -35,7 +35,7 @@ import {
 import { type NativeShellMessage } from './src/lib/native-shell-message'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { INJECTED, isDark } from './src/lib/webview-inject'
-import { statusBarStyleForNativePhoneHomeHeader } from './src/lib/status-bar'
+import { statusBarStyleForNativeBackdrop } from './src/lib/status-bar'
 import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
   createIpadNativeChromeTheme,
@@ -396,12 +396,16 @@ const Shell = (): React.JSX.Element => {
     surfaceColor: ipadChromeSurface,
   })
   const navigationState = createNativeTabNavigationState(index, attentionBadges)
+  const hasNativeStatusBackdrop = showNativePhoneHeader || (IS_IPAD && showBar)
+  const nativeStatusBackdropIsDark = showNativePhoneHeader
+    ? isDark(phoneHeaderSurface)
+    : isDark(bg)
 
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
-      <StatusBar style={statusBarStyleForNativePhoneHomeHeader(
-        showNativePhoneHeader,
-        isDark(phoneHeaderSurface),
+      <StatusBar style={statusBarStyleForNativeBackdrop(
+        hasNativeStatusBackdrop,
+        nativeStatusBackdropIsDark,
         statusBarStyle,
       )} />
 

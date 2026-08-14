@@ -225,9 +225,9 @@ absent on iPhone, the native `App.tsx` frame reserves the status-bar inset for
 every phone route — including tab roots whose content is not a direct admin
 column — while `mobile/src/lib/webview-inject.ts` leaves full-screen web
 surfaces clear of the home indicator. Status-bar indicators follow the actual
-native header backdrop (rather than WKWebView's optional colour-scheme value),
-using dark icons over the default light workspace surface. The iPhone tab
-controller uses its
+native backdrop (rather than WKWebView's optional colour-scheme value): the
+phone header when present and the iPad's native root frame otherwise. Light
+surfaces therefore use dark icons. The iPhone tab controller uses its
 transparent scroll-edge appearance, and is constrained to the tab-bar overlay,
 so it stays above the WebView without intercepting the page. This lets the
 glass blur the content actually scrolling beneath it without a second tinted
