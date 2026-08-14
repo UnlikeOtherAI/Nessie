@@ -202,13 +202,20 @@ export const registerAuthLoginRoute = (
           // subject with a changed email keeps the bearer's exact local user,
           // while a different subject (Alice's bearer, Bob's callback) is an
           // identity refusal. The returned epoch may legitimately be newer
-          // than the bearer's (another device re-authenticated first), so
-          // only the subject must match — the ProductAccountLink sync below
-          // rejects a regressed epoch monotonically.
+          // than the bearer's (another device re-authenticated first), so a
+          // newer returned epoch is accepted — but a REGRESSED epoch is
+          // refused here, before any side effect, rather than being left to
+          // the ProductAccountLink sync below.
           if (recoveryClaims && body.expectedWorkspace) {
             if (
               uoaSession.identity.externalSubject !== recoveryClaims.uoaIdentity?.subject
             ) {
+              rejectWorkspaceIdentity(reply)
+              return reply
+            }
+            const returnedEpoch = uoaSession.identity.uoaTokenVersion
+            const bearerEpoch = recoveryClaims.uoaIdentity?.tokenVersion
+            if (typeof bearerEpoch === 'number' && returnedEpoch < bearerEpoch) {
               rejectWorkspaceIdentity(reply)
               return reply
             }

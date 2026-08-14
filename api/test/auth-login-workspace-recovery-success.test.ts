@@ -68,6 +68,24 @@ test('a wrong team within the same organization is refused BEFORE the billing co
   assertUntouched(response, spy, upstream)
 })
 
+test('same subject and target with a REGRESSED epoch is refused BEFORE any effect', async () => {
+  // The bearer proves epoch 3 while UOA returns epoch 2: the returned session
+  // is stale proof, refused as an identity mismatch even though the subject,
+  // organization, and team all match exactly.
+  const upstream = stubAliceExchange({ tv: 2 })
+  const spy: MutationSpy = { calls: [], cookieIssued: false }
+  const app = await buildApp(spy)
+
+  const response = await recoveryExchange(app, {
+    bearer: aliceBearer(),
+    expectedWorkspace: EXPECTED,
+  })
+
+  assert.equal(response.statusCode, 401)
+  assert.equal(response.json().error.code, 'WORKSPACE_IDENTITY_MISMATCH')
+  assertUntouched(response, spy, upstream)
+})
+
 test('same subject with a newer epoch and an email colliding with another local user succeeds', async () => {
   // The exchanged email belongs to a DIFFERENT local user: an email lookup
   // would resolve (and hijack) that principal. The subject match is the
