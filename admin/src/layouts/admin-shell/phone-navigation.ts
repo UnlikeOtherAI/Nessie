@@ -7,10 +7,22 @@ export type PhoneNavigationBackTarget = {
   pathname: string
 }
 
-type PhoneNavigationScreen = {
-  depth: 0 | 1
+export type PhoneNavigationSection =
+  | 'admin'
+  | 'channels'
+  | 'knowledge'
+  | 'projects'
+  // Unclassified routes: a single-layer section of their own.
+  | 'route'
+
+// Screens classify into a per-section numeric depth. 0 is the section's list
+// root; each further level is one deeper screen. Depths are generic numbers,
+// never a fixed two-level union, so a section can grow deeper screens without
+// re-shaping the model.
+export type PhoneNavigationScreen = {
+  depth: number
   key: string
-  section: 'admin' | 'channels' | 'knowledge' | 'projects'
+  section: PhoneNavigationSection
 }
 
 const normalizePathname = (pathname: string): string => {
@@ -62,14 +74,19 @@ export const getPhoneNavigationBackTarget = (
   return phoneBackTarget('/channels', 'Back to Channels')
 }
 
-// Phone navigation is a two-level stack: each section's contextual list is the
-// root and its selected destination is the detail. Nested channel inspectors,
-// project sections, and sibling detail selections stay on the same screen, so
-// changing a tab or query does not replay the route-level transition.
+// Phone navigation is a per-section stack: the section root at depth 0 and
+// one deeper level per in-section screen. In-channel inspectors and project
+// tabs are screens of the channel or project itself — same screen, new keyed
+// layer at its depth — so changing a tab or inspector updates the layer in
+// place rather than replaying a route transition.
 export const getPhoneNavigationScreen = (
   pathname: string,
 ): PhoneNavigationScreen | null => {
   const normalized = normalizePathname(pathname)
+
+  // Unclassified routes stay single-layer: the viewport shows them with no
+  // retained screens and no gesture, keyed by the exact path.
+  const fallback = { depth: 0, key: `route:${normalized}`, section: 'route' }
 
   if (normalized === '/channels') {
     return { depth: 0, key: 'channels:root', section: 'channels' }
@@ -80,6 +97,15 @@ export const getPhoneNavigationScreen = (
     return {
       depth: 1,
       key: `channels:project:${channelProject[1]}`,
+      section: 'channels',
+    }
+  }
+
+  const channelInspector = normalized.match(/^\/channels\/([^/]+)\/info(?:\/(.*))?$/)
+  if (channelInspector?.[1] && channelInspector[1] !== 'new' && channelInspector[1] !== 'projects') {
+    return {
+      depth: 2,
+      key: `channels:inspector:${channelInspector[1]}:${channelInspector[2] ?? 'index'}`,
       section: 'channels',
     }
   }
@@ -98,12 +124,12 @@ export const getPhoneNavigationScreen = (
   }
 
   const project = normalized.match(
-    /^\/projects\/([^/]+)(?:\/(?:board|backlog|insights|docs|executors|settings))?$/,
+    /^\/projects\/([^/]+)(?:\/(board|backlog|insights|docs|executors|settings))?$/,
   )
   if (project?.[1]) {
     return {
       depth: 1,
-      key: `projects:project:${project[1]}`,
+      key: `projects:project:${project[1]}:${project[2] ?? 'overview'}`,
       section: 'projects',
     }
   }
@@ -142,7 +168,7 @@ export const getPhoneNavigationScreen = (
     }
   }
 
-  return null
+  return fallback
 }
 
 export const getPhoneNavigationDirection = (

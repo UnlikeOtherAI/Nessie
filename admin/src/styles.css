@@ -340,6 +340,31 @@ a {
   animation-name: phone-navigation-back-in;
 }
 
+/* Interactive edge back-swipe. The retained stack renders every layer in a
+   stable keyed sibling; the immediate lower layer rests live beneath the
+   current screen at the -28% parallax offset, and the gesture hook drives
+   both layers' inline transforms with the finger. While the finger is down
+   there is no CSS animation at all; on release the hook settles both layers
+   with Web Animations from exactly the released position (held by the inline
+   transforms) to the rest or revealed transform. The settle's finish — or
+   the hook's timer fallback — closes the lane: a cancel just drops the
+   inline transforms back on the current screen, and only then does a commit
+   fire its single route update, so the revealed layer becomes current
+   without a second animation. The underlay and a Back's outgoing screen stay
+   inert and aria-hidden; deeper retained layers are hidden entirely. */
+.phone-navigation-screen--underlay {
+  z-index: 1;
+  animation: none;
+  transform: translate3d(-28%, 0, 0);
+  will-change: transform;
+}
+
+.phone-navigation-screen--outgoing {
+  z-index: 2;
+  animation: none;
+  pointer-events: none;
+}
+
 @keyframes phone-navigation-forward-out {
   from { transform: translate3d(0, 0, 0); }
   to { transform: translate3d(-28%, 0, 0); }
