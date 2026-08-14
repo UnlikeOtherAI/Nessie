@@ -179,6 +179,15 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   // fresh coordinator. An ordinary refresh that returns null is not terminal
   // and never bumps it.
   const [coordinatorGeneration, setCoordinatorGeneration] = useState(0)
+  // Synchronous ambient gate, outside React state so it is exact even before
+  // a re-render commits: from the terminal notification until a successfully
+  // APPLIED explicit login/bootstrap/dev login or a valid explicit recovery,
+  // the public refresh/reconcile facades refuse and automatic startup
+  // restoration cannot consume an ambient refresh cookie whose logout may
+  // have failed or been swallowed. Explicit run/runGuarded mutations are
+  // never gated, so a later explicit login still works and its apply clears
+  // the gate synchronously — ahead of React's commit.
+  const ambientRefreshBlockedRef = useRef(false)
   // Login, startup restore, every API 401, and workspace switching share this
   // exact coordinator. Both refresh cookies are single-use, so no other path
   // may mutate the session concurrently or apply an older response afterwards.
@@ -195,8 +204,10 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
           await authApi.logout(payload.token)
         },
         onTerminal: () => {
+          ambientRefreshBlockedRef.current = true
           setCoordinatorGeneration((generation) => generation + 1)
         },
+        isAmbientRefreshBlocked: () => ambientRefreshBlockedRef.current,
         refresh: authApi.refresh,
       }),
     // coordinatorGeneration is not read inside the factory; it only re-runs
@@ -204,6 +215,9 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     [applySession, clearSession, coordinatorGeneration, sessionQueryBoundary],
   )
   const reconcileSession = useCallback((): Promise<SessionPayload | null> => {
+    // A terminal fence/logout ends every ambient path at once, synchronously:
+    // no refresh-cookie consumption until an explicit login/recovery applies.
+    if (ambientRefreshBlockedRef.current) return Promise.resolve(null)
     const expected = { mode: sessionMode, token }
     const action = resolveSessionRefreshAction({
       currentImportedToken: importedSessionTokenRef.current,
@@ -220,6 +234,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const refreshAccessToken = useCallback(async (
     expected?: SessionCredentialSnapshot,
   ): Promise<string | null> => {
+    if (ambientRefreshBlockedRef.current) return null
     const currentToken = tokenRef.current
     const action = resolveSessionRefreshAction({
       currentImportedToken: importedSessionTokenRef.current,
@@ -249,6 +264,9 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const refreshSessionFor = useCallback(async (
     expected: SessionCredentialSnapshot,
   ): Promise<void> => {
+    // A terminal fence/logout ends every ambient path at once, synchronously:
+    // no startup-restore fetch, no refresh-cookie consumption.
+    if (ambientRefreshBlockedRef.current) return
     const isCurrent = (): boolean => isSessionCredentialCurrent({
       currentImportedToken: importedSessionTokenRef.current,
       currentToken: tokenRef.current,
@@ -305,7 +323,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     let attempt = 0
 
     const restoreSession = async (): Promise<void> => {
-      if (cancelled || restoring) return
+      if (cancelled || restoring || ambientRefreshBlockedRef.current) return
       restoring = true
       try {
         await refreshSessionFor(expected)
@@ -354,10 +372,13 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const bootstrap = async (input: BootstrapInput): Promise<void> => {
     await sessionMutations.run(() => authApi.bootstrap(input))
+    // Applied explicit session creation reopens ambient refresh.
+    ambientRefreshBlockedRef.current = false
   }
 
   const devLogin = async (): Promise<void> => {
     await sessionMutations.run(() => authApi.devLogin())
+    ambientRefreshBlockedRef.current = false
   }
 
   const importAccessToken = useCallback(async (accessToken: string): Promise<void> => {
@@ -375,6 +396,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const login = async (input: LoginInput): Promise<void> => {
     await sessionMutations.run(() => authApi.login(input))
+    ambientRefreshBlockedRef.current = false
   }
 
   const recoveryExchange = async (
@@ -392,7 +414,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     // opaque-refresh winner, whose raw response carries no request-local
     // proof — nothing is ever attached to the payload itself.
     let capturedSource: ReturnType<typeof captureWorkspaceSessionSource> = null
-    return sessionMutations.runGuarded(
+    const recovered = sessionMutations.runGuarded(
       () => {
         const currentToken = tokenRef.current
         if (typeof currentToken !== 'string' || currentToken.length === 0) {
@@ -432,6 +454,11 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
         return classifyWorkspaceSessionPayload(payload, expectedWorkspace, capturedSource)
       },
     )
+    const payload = await recovered
+    // A valid explicit recovery — exact target applied — reopens ambient
+    // refresh; a rejected non-switch or foreign payload never does.
+    ambientRefreshBlockedRef.current = false
+    return payload
   }
 
   const switchContext = async (input: SwitchContextInput): Promise<void> => {
