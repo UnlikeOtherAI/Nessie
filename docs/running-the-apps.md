@@ -287,6 +287,21 @@ exchange; closing or dismissing the iOS sheet clears the pending PKCE attempt
 and restores the provider button without showing an error. A native session
 failure also restores the button and shows a retryable message.
 
+The installed mobile login also has the authenticated app's bug icon in its
+lower-right safe area. It opens the same Session debug panel with an empty JSON
+textarea. Paste the JSON copied from **Session debug** on another signed-in
+Nessie device and choose **Sign in with session** to use that session's current
+access bearer. The target app checks that the dump names the same configured
+API, validates the bearer with `/api/auth/me`, and trusts only the server's live
+identity response; it never restores or uploads the dump's claims, cookies,
+local storage, or user/context fields. This is temporary debug access: the
+httpOnly refresh credential cannot be copied, the imported bearer is never
+renewed, and the app clears it at JWT expiry. It does not register the device
+for that user's push notifications. Imported access stays in the workspace
+encoded by the copied bearer; copy a new dump from another active workspace
+rather than switching inside the target app. Signing out clears only the
+imported bearer and does not act on an unrelated WebView refresh cookie.
+
 **Lifecycle and session persistence.** Moving the native app to the background
 and foreground again preserves the existing WebView instead of navigating or
 remounting it on a timer. This keeps the current route, DOM storage, and WebKit
