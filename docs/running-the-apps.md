@@ -328,6 +328,21 @@ xcrun devicectl device install app --device <DEVICE-UDID> <path/to/Nessie.app>
 xcrun devicectl device process launch --device <DEVICE-UDID> com.km.nessie
 ```
 
+### Direct device deployment requests
+
+When someone asks to deploy a Nessie build to a named physical phone, tablet,
+or other device, the requested outcome is **build, install, and launch on that
+device**. Uploading an artifact or sending an installation link is not a
+completed deployment.
+
+For a connected iPhone or iPad, build the appropriate signed profile, retrieve
+the resulting archive, install its `.app` through `xcrun devicectl`, and launch
+`com.km.nessie`. Use the equivalent direct installer and launch command for
+Android or desktop targets. Confirm that the exact device is connected and
+provisioned before the build; if it is unavailable or cannot accept the
+signature, report that concrete blocker instead of treating an artifact URL as
+the handoff.
+
 ### Simulators & emulators (headless verification)
 
 ```sh
