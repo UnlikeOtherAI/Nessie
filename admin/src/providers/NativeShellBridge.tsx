@@ -4,9 +4,11 @@ import {
   NATIVE_PUSH_TOKEN_EVENT,
   NATIVE_PUSH_UNREGISTER_EVENT,
   readNativePushRegistration,
+  shouldRegisterNativePush,
 } from '../lib/native-push-registration';
 import { isReactNativeWebView, readNativePendingPushPath } from '../lib/mobile-shell';
 import { useApiClient } from './ApiClientProvider';
+import { useAuthSession } from './AuthSessionProvider';
 import { useShakeFeedback } from './ShakeFeedbackContext';
 
 type RnWindow = Window & {
@@ -49,6 +51,7 @@ export const NativeShellBridge = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const apiClient = useApiClient();
+  const { sessionMode } = useAuthSession();
   const { setScreenshot } = useShakeFeedback();
   const registeredToken = useRef<string | null>(null);
   const registeredApiClient = useRef<typeof apiClient | null>(null);
@@ -71,7 +74,7 @@ export const NativeShellBridge = () => {
   }, [navigate]);
 
   useEffect(() => {
-    if (!isReactNativeWebView()) {
+    if (!shouldRegisterNativePush(isReactNativeWebView(), sessionMode)) {
       return undefined;
     }
     const register = (event: Event): void => {
@@ -118,9 +121,9 @@ export const NativeShellBridge = () => {
     };
     window.addEventListener(NATIVE_PUSH_TOKEN_EVENT, register);
     window.addEventListener(NATIVE_PUSH_UNREGISTER_EVENT, unregister);
-    // A workspace switch changes the authenticated API client without
-    // necessarily changing the pathname. Ask the native shell to repost its
-    // cached installation token for this newly scoped session.
+    // Imported debug access is intentionally ephemeral and never reaches this
+    // branch. Renewable sessions ask the shell to repost its cached token after
+    // every API-client change, including a workspace switch.
     (window as RnWindow).ReactNativeWebView?.postMessage(
       JSON.stringify({ type: 'nessie:request-push-registration' }),
     );
@@ -128,7 +131,7 @@ export const NativeShellBridge = () => {
       window.removeEventListener(NATIVE_PUSH_TOKEN_EVENT, register);
       window.removeEventListener(NATIVE_PUSH_UNREGISTER_EVENT, unregister);
     };
-  }, [apiClient]);
+  }, [apiClient, sessionMode]);
 
   useEffect(() => {
     if (!isReactNativeWebView()) {

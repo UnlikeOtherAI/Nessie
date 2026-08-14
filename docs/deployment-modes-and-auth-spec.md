@@ -257,6 +257,18 @@ Claims:
   rate limits, and server failures preserve the stored access token and retry
   restoration with bounded backoff. Provider discovery belongs to the login
   query, retries independently, and never participates in session state
+- the installed mobile shell exposes an explicit **session debug import** on
+  the unauthenticated login surface. It accepts the JSON produced by the
+  authenticated Session debug panel, compares its `apiBaseUrl` with the
+  configured API, extracts only `tokens.accessToken`, and validates that bearer
+  through the configured API's `GET /api/auth/me`. Dumped claims, identity,
+  context, cookies, and storage are never applied or sent. The validated token
+  is marked imported/nonrenewable, so 401 recovery never tries an unrelated
+  WebView refresh cookie; it is cleared at its JWT expiry. Imported debug
+  sessions also do not create a durable native push-device registration,
+  cannot switch workspace scope, and sign out locally without revoking any
+  ambient refresh family. To inspect another workspace, copy a dump while that
+  workspace is active on the source device
 
 #### Refresh tokens (rotating, server-tracked)
 

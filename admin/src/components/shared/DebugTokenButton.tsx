@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { getBaseUrl } from '../../lib/api-client'
 import { loadStoredToken } from '../../lib/storage'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { SessionDebugDialog, SessionDebugIcon } from './SessionDebugDialog'
 
 // Decode the payload segment of a JWT without verifying it — purely so the
 // claims (org / project / team / exp) are visible in the dump alongside the
@@ -45,32 +46,6 @@ const readCookies = (): Record<string, string> => {
   return entries
 }
 
-const BugIcon = () => (
-  <svg
-    aria-hidden="true"
-    fill="none"
-    height="20"
-    stroke="currentColor"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth="2"
-    viewBox="0 0 24 24"
-    width="20"
-  >
-    <path d="m8 2 1.88 1.88" />
-    <path d="M14.12 3.88 16 2" />
-    <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
-    <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
-    <path d="M12 20v-9" />
-    <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
-    <path d="M6 13H2" />
-    <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
-    <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
-    <path d="M22 13h-4" />
-    <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
-  </svg>
-)
-
 // A rail debug affordance: dumps the signed-in session (token + decoded claims,
 // plus every localStorage and cookie value) as pretty JSON so it can be copied
 // and handed to an assistant for debugging "what I see".
@@ -109,11 +84,7 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
     setOpen(true)
   }
 
-  const handleClose = () => setOpen(false)
-
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) handleClose()
-  }
+  const handleClose = useCallback(() => setOpen(false), [])
 
   const handleCopy = () => {
     void navigator.clipboard
@@ -137,10 +108,10 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
         type="button"
       >
         {variant === 'sidebar' ? (
-          <BugIcon />
+          <SessionDebugIcon />
         ) : (
           <span className="admin-rail-btn-icon">
-            <BugIcon />
+            <SessionDebugIcon />
           </span>
         )}
         <span className={variant === 'sidebar' ? 'min-w-0 flex-1 truncate' : 'admin-rail-btn-label'}>
@@ -148,85 +119,18 @@ export const DebugTokenButton = ({ variant = 'rail' }: DebugTokenButtonProps) =>
         </span>
       </button>
 
-      {open && (
-        <div
-          onClick={handleOverlayClick}
-          role="presentation"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'var(--scrim-strong)',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          <div className="create-channel-panel" style={{ maxWidth: 640 }}>
-            <div className="create-channel-header">
-              <div>
-                <h2 className="text-lg font-bold text-[color:var(--tx)]">
-                  Session debug
-                </h2>
-                <div className="text-xs text-[color:var(--tx3)]">
-                  Token, decoded claims, localStorage and cookies. Sensitive —
-                  only share with people you trust.
-                </div>
-              </div>
-              <button
-                className={[
-                  'flex h-7 w-7 items-center justify-center',
-                  'rounded text-[color:var(--tx3)]',
-                  'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
-                ].join(' ')}
-                onClick={handleClose}
-                type="button"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M6 18L18 6M6 6l12 12"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <textarea
-              className="admin-input admin-input-mono"
-              onFocus={(event) => event.currentTarget.select()}
-              readOnly
-              rows={16}
-              style={{ resize: 'vertical', whiteSpace: 'pre', overflowWrap: 'normal' }}
-              value={dump}
-            />
-
-            <div className="flex justify-end gap-2 pt-4">
-              <button
-                className="admin-button admin-button-secondary"
-                onClick={handleClose}
-                type="button"
-              >
-                Cancel
-              </button>
-              <button
-                className="admin-button admin-button-primary"
-                onClick={handleCopy}
-                type="button"
-              >
-                {copied ? 'Copied' : 'Copy to clipboard'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SessionDebugDialog
+        actionLabel={copied ? 'Copied' : 'Copy to clipboard'}
+        description="Token, decoded claims, localStorage and cookies. Sensitive — only share with people you trust."
+        onAction={handleCopy}
+        onClose={handleClose}
+        open={open}
+        readOnly
+        selectOnFocus
+        textareaLabel="Session debug JSON"
+        title="Session debug"
+        value={dump}
+      />
     </>
   )
 }

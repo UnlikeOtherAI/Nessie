@@ -2,9 +2,15 @@ import {
   RegisterDeviceRequestSchema,
   type RegisterDeviceRequest,
 } from '@nessie/schemas'
+import type { StoredTokenMode } from './storage'
 
 export const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
 export const NATIVE_PUSH_UNREGISTER_EVENT = 'nessie:native-push-unregister'
+
+export const shouldRegisterNativePush = (
+  nativeWebView: boolean,
+  sessionMode: StoredTokenMode,
+): boolean => nativeWebView && sessionMode === 'renewable'
 
 /**
  * Reads only the structural native-token payload injected by the React Native

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { LoginSessionImportButton } from '../components/shared/LoginSessionImportButton'
 import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { isDesktopApp } from '../lib/desktop'
 import { DESKTOP_REDIRECT_URI, startExternalSignIn } from '../lib/external-auth'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
+import { shouldStartAutomaticSignIn } from '../lib/session-debug-import'
 import { subscribeToNativeExternalAuthResults } from '../lib/native-external-auth'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme, type Theme } from '../providers/ThemeProvider'
@@ -71,6 +73,8 @@ export const LoginPage = () => {
   const [password, setPassword] = useState(LOCAL_DEMO_PASSWORD)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [sessionImportOpen, setSessionImportOpen] = useState(false)
+  const showSessionImport = sessionState === 'unauthenticated' && isReactNativeWebView()
 
   // The API only advertises a `local-bootstrap` provider when running in local
   // mode. Internal email/password + dev login are therefore local-only; in
@@ -253,15 +257,12 @@ export const LoginPage = () => {
   }, [completeExternalSignIn, sessionState])
 
   useEffect(() => {
-    if (sessionState !== 'unauthenticated') {
-      return
-    }
-
-    if (window.location.search.includes('code=')) {
-      return
-    }
-
-    if (!autoRedirectProvider) {
+    if (!shouldStartAutomaticSignIn({
+      callbackInUrl: window.location.search.includes('code='),
+      hasAutoRedirectProvider: Boolean(autoRedirectProvider),
+      sessionImportOpen,
+      unauthenticated: sessionState === 'unauthenticated',
+    }) || !autoRedirectProvider) {
       return
     }
 
@@ -273,7 +274,7 @@ export const LoginPage = () => {
         setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
         setIsSubmitting(false)
       })
-  }, [autoRedirectProvider, beginSsoSignIn, sessionState])
+  }, [autoRedirectProvider, beginSsoSignIn, sessionImportOpen, sessionState])
 
   if (sessionState === 'authenticated' && !window.location.search.includes('code=')) {
     return <Navigate to="/channels" replace />
@@ -442,7 +443,12 @@ export const LoginPage = () => {
 
       </div>
 
-      <div className="mx-auto mt-auto flex w-full max-w-6xl items-center justify-end gap-3 pt-8">
+      <div
+        className="mx-auto mt-auto flex w-full max-w-6xl items-center justify-end gap-3 pt-8"
+        style={showSessionImport ? {
+          paddingRight: 'calc(3.5rem + env(safe-area-inset-right, 0px))',
+        } : undefined}
+      >
         <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">
           Theme
         </span>
@@ -459,6 +465,10 @@ export const LoginPage = () => {
           ))}
         </select>
       </div>
+
+      {showSessionImport ? (
+        <LoginSessionImportButton onOpenChange={setSessionImportOpen} />
+      ) : null}
     </main>
   )
 }

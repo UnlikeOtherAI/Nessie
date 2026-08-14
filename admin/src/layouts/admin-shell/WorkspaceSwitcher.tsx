@@ -12,6 +12,7 @@ import { useWorkspaceAvatarRevision } from '../../facades/workspace/hooks'
 import { WorkspaceAvatar } from '../../components/primitives/WorkspaceAvatar'
 import { startExternalSignIn } from '../../lib/external-auth'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
+import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
 import {
@@ -216,6 +217,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const {
     me,
     reconcileSession,
+    sessionMode,
     switchContext,
     switchUoaWorkspace,
     token,
@@ -254,6 +256,10 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const handleSelect = async (workspace: Workspace): Promise<void> => {
     if (workspace.active || workspace.teamId === activeTeamId) {
       close()
+      return
+    }
+    if (sessionMode === 'imported') {
+      setSwitchError(IMPORTED_SESSION_SCOPE_MESSAGE)
       return
     }
     setSwitchError(null)
