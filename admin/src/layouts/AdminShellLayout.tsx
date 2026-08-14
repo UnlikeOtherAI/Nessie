@@ -289,7 +289,12 @@ const AuthenticatedAdminShellLayout = () => {
               {(nativeIPadApp || nativePhoneApp) && <WorkspaceSwitcher variant="native-bridge" />}
               {(nativeIPadApp || nativePhoneApp) && !isComposeRoute && <NativeIPadToolbarBridge />}
               {(nativeIPadApp || nativePhoneApp) ? (
-                <UserMenuTrigger nativeShellBridge onLogout={shell.logoutAndRedirect} placement="topbar" />
+                <UserMenuTrigger
+                  nativeShellBridge
+                  onLogout={shell.logoutAndRedirect}
+                  placement="topbar"
+                  showFeedbackLink
+                />
               ) : null}
               {nativePhoneApp ? (
                 <NativePhoneCreationBridge

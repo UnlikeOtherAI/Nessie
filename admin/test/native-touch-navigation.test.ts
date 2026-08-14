@@ -110,6 +110,7 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
 test('the native phone home chrome delegates workspace, history, account, and Channels creation actions to the web shell', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
   const account = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
+  const accountPopover = readSource('../src/layouts/admin-shell/UserMenuPopover.tsx')
   const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
   const mobileShell = readSource('../src/lib/mobile-shell.ts')
   const phoneChrome = readSource('../../mobile/src/components/NativePhoneConversationMenuChrome.tsx')
@@ -127,8 +128,12 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.ok(phoneNav.includes(String.raw`/^\/search$/`))
   assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
-  assert.match(shell, /<UserMenuTrigger nativeShellBridge/)
+  assert.match(shell, /<UserMenuTrigger\s+nativeShellBridge/)
+  assert.match(shell, /showFeedbackLink/)
   assert.match(account, /__nessieToggleAccountMenu/)
+  assert.match(account, /showFeedbackLink\?: boolean/)
+  assert.match(accountPopover, /to="\/feedback"/)
+  assert.match(accountPopover, /Help &amp; feedback/)
   assert.match(account, /type: 'nessie:account'/)
   assert.match(account, /userPresence: selfPresence\?\.state \?\? 'offline'/)
   assert.match(mobileShell, /requestNativeFullRefresh/)
@@ -161,8 +166,10 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(nativeApp, /workspaceAvatarUrl=\{nativeWorkspaceAvatarUrl\}/)
   assert.match(phoneChrome, /<NativeWorkspaceAvatar/)
   assert.match(ipadWorkspace, /<NativeWorkspaceAvatar/)
-  assert.match(nativeWorkspaceAvatar, /source=\{\{ uri: imageUrl \?\? undefined \}\}/)
-  assert.match(nativeWorkspaceAvatar, /onError=\{\(\) => setFailedUrl\(imageUrl\)\}/)
+  assert.match(nativeWorkspaceAvatar, /const useAvatarImageSource/)
+  assert.match(nativeWorkspaceAvatar, /<SvgXml height=\{size\} width=\{size\} xml=\{source\.xml\} \/>/)
+  assert.match(nativeWorkspaceAvatar, /source=\{\{ uri: source\.uri \}\}/)
+  assert.match(nativeWorkspaceAvatar, /onError=\{\(\) => setFailedRasterUrl\(source\.uri\)\}/)
 })
 
 test('the native Admin actions offer session debugging above a cache-busting full refresh', () => {
@@ -196,6 +203,7 @@ test('Safari and Android browser tab roots reuse the mobile workspace, recents, 
   assert.match(header, /<WorkspaceSwitcher variant="mobile-header" \/>/)
   assert.match(header, /<RecentChannelsControl/)
   assert.match(header, /<UserMenuTrigger/)
+  assert.match(header, /showFeedbackLink/)
   assert.match(workspace, /variant\?: 'mobile-header' \| 'native-bridge' \| 'rail'/)
 })
 

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useState, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import { faArrowRightFromBracket, faGear } from '@fortawesome/free-solid-svg-icons'
+import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MeAuth, MeUser } from '@nessie/schemas'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
@@ -33,6 +33,7 @@ type UserMenuPopoverProps = {
   onClose: () => void
   onLogout: () => void
   placement?: UserMenuPopoverPlacement
+  showFeedbackLink?: boolean
 }
 
 const rowClassName = [
@@ -53,6 +54,7 @@ export const UserMenuPopover = ({
   onClose,
   onLogout,
   placement = 'rail',
+  showFeedbackLink = false,
 }: UserMenuPopoverProps) => {
   const [position, setPosition] = useState<MenuPosition | null>(null)
 
@@ -137,6 +139,15 @@ export const UserMenuPopover = ({
           <span>Account settings</span>
           <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--tx3)]" icon={faGear} />
         </Link>
+        {showFeedbackLink ? (
+          <Link className={rowClassName} onClick={onClose} to="/feedback">
+            <span>Help &amp; feedback</span>
+            <FontAwesomeIcon
+              className="h-3.5 w-3.5 text-[color:var(--tx3)]"
+              icon={faCircleQuestion}
+            />
+          </Link>
+        ) : null}
         <button
           className={rowClassName}
           onClick={() => {

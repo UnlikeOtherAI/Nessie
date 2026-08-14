@@ -256,7 +256,9 @@ presence badges use a three-pixel cutout that matches the sidebar background.
 The same page-rail workspace header appears at the first screen of every tab in
 mobile Safari and Android browsers. Its workspace, Recent Channels, and account
 buttons are the existing shared web controls, not browser-specific copies; the
-mobile browser still owns its own system and address-bar chrome.
+mobile browser still owns its own system and address-bar chrome. Where the
+normal top-bar **Help & feedback** icon is absent, the same **Help & feedback**
+route is available from that right-hand account menu.
 
 The native **Admin** sidebar ends with a native-only **Full refresh** action on
 iPhone, iPad, and Android. It remounts the embedded WebView at the current
