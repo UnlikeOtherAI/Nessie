@@ -1,245 +1,12 @@
 import assert from 'node:assert/strict'
-import { JSDOM } from 'jsdom'
 import test from 'node:test'
+import {
+  mountPhoneNavigationViewport as mount,
+  type PhoneNavigationViewportHarness as Harness,
+} from './support/phone-navigation-viewport-harness'
 
-// Behavioural coverage for the phone's interactive back-swipe: the section
-// root must stay mounted (same component instance, scroll intact) as the
-// live underlay during a drag, a commit must land as exactly one route
-// update after the settle with no replayed animation, and cancellation must
-// leave route and DOM untouched. Rendering runs against jsdom because the
-// interaction is transform/state driven, not paint driven. JSX is avoided so
-// the admin's `test/**/*.test.ts` discovery picks this file up.
-
-const dom = new JSDOM('<!doctype html><html><body></body></html>', {
-  url: 'http://localhost/channels',
-  pretendToBeVisual: true,
-})
-
-const domGlobals = {
-  window: dom.window,
-  document: dom.window.document,
-  navigator: dom.window.navigator,
-  HTMLElement: dom.window.HTMLElement,
-  Element: dom.window.Element,
-  Touch: dom.window.Touch,
-  TouchEvent: dom.window.TouchEvent,
-  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
-  requestAnimationFrame: (callback: FrameRequestCallback) =>
-    setTimeout(() => callback(Date.now()), 0),
-  cancelAnimationFrame: clearTimeout,
-  IS_REACT_ACT_ENVIRONMENT: true,
-}
-
-dom.window.matchMedia ??= ((query: string) => ({
-  matches: false,
-  media: query,
-  addEventListener: () => {},
-  removeEventListener: () => {},
-  addListener: () => {},
-  removeListener: () => {},
-  onchange: null,
-  dispatchEvent: () => false,
-})) as unknown as typeof window.matchMedia
-
-for (const [name, value] of Object.entries({
-  sm: '40rem',
-  md: '48rem',
-  lg: '64rem',
-  xl: '80rem',
-  '2xl': '96rem',
-})) {
-  dom.window.document.documentElement.style.setProperty(`--breakpoint-${name}`, value)
-}
-
-Object.defineProperty(dom.window.HTMLElement.prototype, 'clientWidth', {
-  configurable: true,
-  get: () => 390,
-})
-
-const React = await import('react')
-const { act, createElement: h } = React
-const { createRoot } = await import('react-dom/client')
-const { MemoryRouter, useLocation, useNavigate } = await import('react-router-dom')
-const { PhoneNavigationViewport } = await import(
-  '../src/layouts/admin-shell/PhoneNavigationViewport'
-)
-const { PhoneNavigationProvider } = await import(
-  '../src/layouts/admin-shell/PhoneNavigationProvider'
-)
-
-type Harness = {
-  container: HTMLElement
-  currentPathname: () => HTMLElement | null
-  flush: (ms?: number) => Promise<void>
-  goTo: (pathname: string) => Promise<void>
-  historyBack: () => Promise<void>
-  layer: (name: string) => HTMLElement | null
-  locationLabel: () => string
-  mounts: () => Record<string, number>
-  scrollTops: () => Record<string, number>
-  touch: (type: string, x: number, y: number, target?: Element | null) => void
-  unmount: () => Promise<void>
-}
-
-// One component type renders every route, so its mount/unmount counts prove
-// which instances survive each navigation. The shell re-renders the viewport
-// with the routed pathname on every location change; the host reproduces
-// that subscription.
-const mount = async (initialPathname: string): Promise<Harness> => {
-  const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
-  for (const [key, value] of Object.entries(domGlobals)) {
-    previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key))
-    Object.defineProperty(globalThis, key, { configurable: true, value, writable: true })
-  }
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  let pathname = initialPathname
-  let navigateTo: ((to: string | number) => void) | null = null
-  const mounts: Record<string, number> = {}
-  const scrollTops: Record<string, number> = {}
-
-  const Screen = ({ label }: { label: string }) => {
-    const location = useLocation()
-    return h('div', {
-      'data-screen-label': label,
-      ref: (node: HTMLElement | null) => {
-        if (node) scrollTops[label] = node.scrollTop
-      },
-    }, `screen:${label}@${location.pathname}`)
-  }
-
-  // The identity probe: the root and the detail are different component
-  // types, so a mount count of 1 for each proves the exact instances survive
-  // every navigation — 0-and-remounted would mean recreation.
-  const ScreenForPath = ({ path }: { path: string }) =>
-    path === '/channels' ? h(ChannelsRoot) : h(ChannelsDetail)
-  const ChannelsRoot = () => {
-    React.useEffect(() => {
-      mounts['channels-root'] = (mounts['channels-root'] ?? 0) + 1
-      return () => {
-        mounts['channels-root'] = (mounts['channels-root'] ?? 1) - 1
-      }
-    }, [])
-    return h(Screen, { label: '/channels' })
-  }
-  const ChannelsDetail = () => {
-    React.useEffect(() => {
-      mounts['channels-detail'] = (mounts['channels-detail'] ?? 0) + 1
-      return () => {
-        mounts['channels-detail'] = (mounts['channels-detail'] ?? 1) - 1
-      }
-    }, [])
-    return h(Screen, { label: '/channels/channel_a' })
-  }
-
-  const Host = () => {
-    const location = useLocation()
-    const navigate = useNavigate()
-    pathname = location.pathname
-    navigateTo = (next: string | number) => {
-      if (typeof next === 'number') navigate(next)
-      else navigate(next)
-    }
-    if (!location.pathname.startsWith('/channels')) {
-      return h('div', { 'data-outside-route': location.pathname })
-    }
-    return h(
-      PhoneNavigationViewport,
-      { pathname: location.pathname },
-      h(ScreenForPath, { path: location.pathname }),
-    )
-  }
-
-  const root = createRoot(container)
-  const flush = async (ms = 0) => {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, ms))
-    })
-  }
-
-  await act(async () => {
-    root.render(
-      h(
-        MemoryRouter,
-        { initialEntries: ['/outside', initialPathname], initialIndex: 1 },
-        h(PhoneNavigationProvider, null, h(Host)),
-      ),
-    )
-  })
-  await flush()
-
-  let eventClock = 1000
-  const touch = (
-    type: string,
-    x: number,
-    y: number,
-    target?: Element | null,
-    dt?: number,
-  ) => {
-    const viewport = container.querySelector('[data-phone-navigation-viewport]')
-    assert.ok(viewport, 'viewport mounted')
-    // Synthetic event times feed the release-velocity window: touchend is
-    // stamped 400ms after the last move so an ordinary drag reads a
-    // stationary release; the flick commits below stamp their own fast tail.
-    eventClock += dt ?? (type === 'touchend' ? 400 : 16)
-    const touches = [{
-      identifier: 1,
-      clientX: x,
-      clientY: y,
-      target: viewport,
-    }] as unknown as Touch[] & TouchList
-    const ended = type === 'touchend' || type === 'touchcancel'
-    const event = new dom.window.TouchEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      changedTouches: touches,
-      targetTouches: ended ? [] : touches,
-      touches: ended ? [] : touches,
-    })
-    Object.defineProperty(event, 'timeStamp', { value: eventClock })
-    act(() => {
-      ;(target ?? viewport).dispatchEvent(event)
-    })
-  }
-
-  return {
-    container,
-    currentPathname: () =>
-      container.querySelector(
-        '[data-phone-navigation-layer="current"] [data-screen-label]',
-      ),
-    flush,
-    goTo: async (next: string) => {
-      assert.ok(navigateTo, 'router ready')
-      await act(async () => {
-        navigateTo(next)
-      })
-      await flush()
-    },
-    historyBack: async () => {
-      assert.ok(navigateTo, 'router ready')
-      await act(async () => {
-        navigateTo(-1)
-      })
-      await flush()
-    },
-    layer: (name) => container.querySelector(`[data-phone-navigation-layer="${name}"]`),
-    locationLabel: () => pathname,
-    mounts: () => ({ ...mounts }),
-    scrollTops: () => ({ ...scrollTops }),
-    touch,
-    unmount: async () => {
-      await act(async () => root.unmount())
-      container.remove()
-      for (const key of Object.keys(domGlobals)) {
-        const descriptor = previousGlobals.get(key)
-        if (descriptor) Object.defineProperty(globalThis, key, descriptor)
-        else Reflect.deleteProperty(globalThis, key)
-      }
-    },
-  }
-}
-
+// Behavioural coverage for the phone's live route stack: forward preparation,
+// retained-screen identity, and the interactive edge Back lifecycle.
 const drag = (
   harness: Harness,
   moves: Array<readonly [number, number]>,
@@ -274,6 +41,51 @@ const flick = (
 // hook's fallback timer closes the lane: 220ms settle + 180ms slack.
 const SETTLE_FALLBACK_MS = 500
 
+test('a forward push paints the mounted destination offscreen before motion starts', async () => {
+  const harness = await mount('/channels')
+  await harness.goTo('/channels/channel_a', false)
+
+  const viewport = harness.container.querySelector('[data-phone-navigation-viewport]')
+  assert.equal(viewport?.getAttribute('data-phone-navigation-phase'), 'preparing')
+  assert.match(
+    harness.layer('incoming')?.className ?? '',
+    /phone-navigation-screen--forward-ready/,
+  )
+  assert.match(
+    harness.layer('outgoing')?.className ?? '',
+    /phone-navigation-screen--forward-source-ready/,
+  )
+  assert.equal(
+    harness.layer('incoming')?.textContent,
+    'screen:/channels/channel_a@/channels/channel_a',
+    'the real destination DOM is ready before its first moving frame',
+  )
+  assert.equal(
+    harness.layer('outgoing')?.textContent,
+    'screen:/channels@/channels',
+    'the previous screen remains painted while the destination is prepared',
+  )
+
+  await harness.paintFrame()
+  assert.equal(
+    viewport?.getAttribute('data-phone-navigation-phase'),
+    'preparing',
+    'one complete paint boundary separates mount from motion',
+  )
+
+  await harness.paintFrame()
+  assert.equal(viewport?.getAttribute('data-phone-navigation-phase'), 'running')
+  assert.match(
+    harness.layer('incoming')?.className ?? '',
+    /phone-navigation-screen--forward-in/,
+  )
+  assert.match(
+    harness.layer('outgoing')?.className ?? '',
+    /phone-navigation-screen--forward-out/,
+  )
+  await harness.unmount()
+})
+
 test('the exact root instance stays mounted as the live underlay from root to detail', async () => {
   const harness = await mount('/channels')
   assert.equal(harness.layer('current')?.dataset.phoneNavigationRoute, 'root:channels:/channels')
@@ -290,16 +102,9 @@ test('the exact root instance stays mounted as the live underlay from root to de
   assert.ok(underlay, 'root retained live under the detail')
   assert.equal(underlay.dataset.phoneNavigationRoute, 'root:channels:/channels')
   assert.equal(underlay.getAttribute('aria-hidden'), 'true')
-
-  // The identity proof: the /channels component instance mounted once, at
-  // the initial root render, and was never unmounted across the forward
-  // animation or the detail idle — it is the same instance now revealed as
-  // the underlay, not a recreated element.
   assert.deepEqual(harness.mounts(), { 'channels-root': 1, 'channels-detail': 1 })
   assert.equal(underlay.textContent, 'screen:/channels@/channels')
 
-  // The retained root keeps its own DOM state (scroll position here) while
-  // hidden beneath the detail.
   const rootContent = underlay.querySelector('[data-screen-label]')
   assert.ok(rootContent instanceof HTMLElement)
   Object.defineProperty(rootContent, 'scrollTop', { configurable: true, value: 240 })
@@ -321,7 +126,6 @@ test('an edge drag exposes the live underlay and the detail follows the finger',
   const detail = harness.layer('current')
   assert.match(detail?.style.transform ?? '', /translate3d\(3[0-9]\.\d+%/, 'detail follows the finger')
   assert.match(underlay.style.transform, /translate3d\(-1[0-9]\.\d+%/, 'root parallax follows')
-  // Live content, mid-drag: the underlay is the running root instance.
   assert.equal(underlay.textContent, 'screen:/channels@/channels')
   assert.deepEqual(harness.mounts(), { 'channels-root': 1, 'channels-detail': 1 })
 
@@ -343,7 +147,6 @@ test('a commit keeps the route on the detail through the settle, then updates it
 
   flick(harness, [[6, 300], [120, 302], [260, 303], [330, 304]])
 
-  // During the settle the route is still the detail.
   await harness.flush(20)
   assert.equal(harness.locationLabel(), '/channels/channel_a', 'still detail during settle')
   assert.equal(
@@ -364,7 +167,6 @@ test('a commit keeps the route on the detail through the settle, then updates it
   assert.equal(harness.layer('underlay'), null, 'a root shows no underlay')
   assert.equal(harness.layer('incoming'), null, 'the pop animation must not replay')
   assert.equal(harness.layer('outgoing'), null, 'no outgoing layer replays')
-  // The root instance is still the same one — mounted once, never remounted.
   assert.deepEqual(harness.mounts(), { 'channels-root': 1, 'channels-detail': 0 })
   await harness.unmount()
 })
@@ -414,18 +216,15 @@ test('vertical scrolls, non-edge touches, and text editing never arm the gesture
   await harness.goTo('/channels/channel_a')
   await harness.flush(450)
 
-  // Steep vertical start: the gesture yields to the scroller.
   drag(harness, [[6, 100], [8, 180], [10, 260]])
   await harness.flush()
   assert.equal(harness.locationLabel(), '/channels/channel_a')
   assert.equal(harness.layer('current')?.style.transform ?? '', '')
 
-  // A touch starting away from the edge is ordinary content interaction.
   drag(harness, [[120, 300], [260, 301], [380, 302]])
   await harness.flush()
   assert.equal(harness.locationLabel(), '/channels/channel_a')
 
-  // A touch beginning inside a text input is editing, not navigation.
   const input = document.createElement('input')
   harness.layer('current')?.appendChild(input)
   drag(harness, [[6, 300], [200, 301], [340, 302]], 'touchend', input)
@@ -441,7 +240,6 @@ test('opted-out and horizontally scrollable ancestors keep their horizontal drag
   const current = harness.layer('current')
   assert.ok(current)
 
-  // Explicit opt-out: a marked ancestor disables the gesture inside it.
   const optedOut = document.createElement('div')
   optedOut.setAttribute('data-phone-back-swipe-ignore', '')
   current.appendChild(optedOut)
@@ -450,7 +248,6 @@ test('opted-out and horizontally scrollable ancestors keep their horizontal drag
   assert.equal(harness.locationLabel(), '/channels/channel_a')
   assert.equal(harness.layer('current')?.style.transform ?? '', '')
 
-  // A horizontally scrollable ancestor (a carousel) keeps its pans.
   const carousel = document.createElement('div')
   carousel.style.overflowX = 'auto'
   Object.defineProperty(carousel, 'scrollWidth', { configurable: true, value: 800 })
@@ -467,14 +264,11 @@ test('a leftward reversal past the hysteresis keeps the detail', async () => {
   await harness.goTo('/channels/channel_a')
   await harness.flush(450)
 
-  // Pull past the commit ratio, then drag back left beyond the hysteresis.
-  // The tail samples sit within the 100ms velocity window so the release
-  // reads a leftward flick rather than the earlier rightward pull.
   harness.touch('touchstart', 6, 300)
-  harness.touch('touchmove', 300, 301) // progress ~0.75, commit-worthy
+  harness.touch('touchmove', 300, 301)
   harness.touch('touchmove', 280, 302)
   harness.touch('touchmove', 260, 302)
-  harness.touch('touchmove', 240, 302) // reversed 60px, still above the ratio
+  harness.touch('touchmove', 240, 302)
   harness.touch('touchend', 240, 302, undefined, 30)
   await harness.flush(SETTLE_FALLBACK_MS)
   assert.equal(harness.locationLabel(), '/channels/channel_a', 'reversal cancels the commit')

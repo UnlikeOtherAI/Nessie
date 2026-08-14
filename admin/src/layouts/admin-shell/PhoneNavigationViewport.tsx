@@ -50,6 +50,7 @@ type ActiveTransition = {
   direction: PhoneNavigationDirection
   fromLayerKey: string
   id: number
+  phase: 'preparing' | 'running'
   toLayerKey: string
 }
 
@@ -157,12 +158,48 @@ export const PhoneNavigationViewport = ({
       direction,
       fromLayerKey,
       id: transitionId.current,
+      // Back already has two painted, retained screens. A forward push has
+      // just mounted its destination, so hold it offscreen until the browser
+      // has painted that DOM once before starting either transform.
+      phase: direction === 'forward' && !reducedMotion ? 'preparing' : 'running',
       toLayerKey,
     })
-  }, [children, commitStack, commitTransition, locationContext, pathname])
+  }, [
+    children,
+    commitStack,
+    commitTransition,
+    locationContext,
+    pathname,
+    reducedMotion,
+  ])
 
   useEffect(() => {
-    if (!transition) return undefined
+    if (
+      !transition
+      || transition.direction !== 'forward'
+      || transition.phase !== 'preparing'
+    ) return undefined
+
+    // rAF callbacks run before paint. The first boundary lets the prepared
+    // offscreen layer reach the compositor; changing classes in the second
+    // starts motion only after that prepared state has actually been painted.
+    let secondFrame = 0
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        const current = transitionRef.current
+        if (current?.id !== transition.id || current.phase !== 'preparing') return
+        commitTransition({ ...current, phase: 'running' })
+      })
+    })
+
+    return () => {
+      cancelAnimationFrame(firstFrame)
+      if (secondFrame !== 0) cancelAnimationFrame(secondFrame)
+    }
+  }, [commitTransition, transition])
+
+  useEffect(() => {
+    if (!transition || transition.phase !== 'running') return undefined
     const timer = window.setTimeout(
       () => finishTransition(transition.id),
       TRANSITION_FALLBACK_MS,
@@ -245,7 +282,9 @@ export const PhoneNavigationViewport = ({
       if (transition) {
         classes.push(
           transition.direction === 'forward'
-            ? 'phone-navigation-screen--forward-in'
+            ? transition.phase === 'preparing'
+              ? 'phone-navigation-screen--forward-ready'
+              : 'phone-navigation-screen--forward-in'
             : 'phone-navigation-screen--back-out',
         )
       } else {
@@ -261,7 +300,9 @@ export const PhoneNavigationViewport = ({
       if (transition) {
         classes.push(
           transition.direction === 'forward'
-            ? 'phone-navigation-screen--forward-out'
+            ? transition.phase === 'preparing'
+              ? 'phone-navigation-screen--forward-source-ready'
+              : 'phone-navigation-screen--forward-out'
             : 'phone-navigation-screen--back-in',
         )
       } else {
@@ -297,6 +338,7 @@ export const PhoneNavigationViewport = ({
       className="phone-navigation-viewport"
       data-phone-navigation-direction={transition?.direction}
       data-phone-navigation-gesture={gesture.settle ? 'settling' : 'idle'}
+      data-phone-navigation-phase={transition?.phase}
       data-phone-navigation-viewport
       ref={viewportRef}
     >
