@@ -239,10 +239,56 @@ test('runGuarded serializes behind an in-flight session mutation', async () => {
   assert.deepEqual(applied, ['renewed-token', 'exchanged-token'])
 })
 
+test('a guarded direct payload arriving after terminate begins is handed to logout, never fenced', async () => {
+  // Regression: a guarded mutation that resolves after terminate() started
+  // must terminate — its payload goes to the terminal finalizer as the
+  // winning session — never into foreign fencing/revocation.
+  let resolveExchange: ((payload: SessionPayload) => void) | undefined
+  const exchangeResult = new Promise<SessionPayload>((resolve) => {
+    resolveExchange = resolve
+  })
+  const events: string[] = []
+  const coordinator = createSessionMutationCoordinator({
+    applySession: (payload) => events.push(`apply:${payload.token}`),
+    clearSession: () => events.push('clear'),
+    onForeignSession: (payload) => events.push(`revoke:${payload.token}`),
+    onTerminal: () => events.push('terminal'),
+    refresh: async () => assert.fail('no refresh in this scenario'),
+  })
+
+  const exchanging = coordinator.runGuarded(
+    () => exchangeResult,
+    // The guard would classify this payload foreign — but termination
+    // outranks classification, so it is never even consulted.
+    (payload) =>
+      payload.token === 'targeted-token'
+        ? { kind: 'target' }
+        : { kind: 'foreign', message: 'The renewed session is foreign.' },
+  )
+  const logout = coordinator.terminate(async (latestPayload) => {
+    events.push(`delete:${latestPayload?.token ?? 'none'}`)
+  })
+
+  resolveExchange?.(sessionPayload('foreign-token'))
+  await assert.rejects(exchanging, /session is being terminated/)
+  await logout
+  // The finalizer deletes the winning session's family; no foreign
+  // revocation, no apply, exactly one clear and one terminal notification.
+  assert.deepEqual(events, ['delete:foreign-token', 'clear', 'terminal'])
+})
+
 test('an overlapping foreign fence and terminate notify terminal exactly once', async () => {
-  let releaseForeign: (() => void) | undefined
-  const foreignReleased = new Promise<void>((resolve) => {
-    releaseForeign = resolve
+  let resolveForeignWinner: ((payload: SessionPayload) => void) | undefined
+  const foreignWinnerResult = new Promise<SessionPayload>((resolve) => {
+    resolveForeignWinner = resolve
+  })
+  let releaseRevocation: (() => void) | undefined
+  const revocationHeld = new Promise<void>((resolve) => {
+    releaseRevocation = resolve
+  })
+  let revokeStarted: (() => void) | undefined
+  const revocationBegan = new Promise<void>((resolve) => {
+    revokeStarted = resolve
   })
   const events: string[] = []
   const coordinator = createSessionMutationCoordinator({
@@ -250,27 +296,60 @@ test('an overlapping foreign fence and terminate notify terminal exactly once', 
     clearSession: () => events.push('clear'),
     onForeignSession: async (payload) => {
       events.push(`revoke:${payload.token}`)
-      // Hold the fence open so terminate() begins mid-fence: the two
-      // terminal paths overlap, and still only one notification may fire.
-      await foreignReleased
+      revokeStarted?.()
+      // Hold the caller-owned revocation open: logout MUST wait for the
+      // fence to finish before its own finalization — and the terminal
+      // notification must not fire until after logout's final clear.
+      await revocationHeld
     },
     onTerminal: () => events.push('terminal'),
-    refresh: async () => assert.fail('no refresh in this scenario'),
+    refresh: () => foreignWinnerResult,
   })
 
+  // The foreign classification completes BEFORE terminate(): the fence owns
+  // the foreign payload's own revocation.
   const fenced = coordinator.runGuarded(
-    async () => sessionPayload('foreign-token'),
+    async () => {
+      throw new SessionMutationLoss('The session response body could not be read.')
+    },
     (payload) =>
       payload.token === 'targeted-token'
         ? { kind: 'target' }
         : { kind: 'foreign', message: 'The renewed session is foreign.' },
   )
-  const logout = coordinator.terminate(async () => {
+  resolveForeignWinner?.(sessionPayload('foreign-token'))
+  await revocationBegan
+
+  // Logout begins while the fence is still held open: the two terminal
+  // paths genuinely overlap.
+  const logout = coordinator.terminate(async (latestPayload) => {
+    // The finalizer gets the WINNING payload — the foreign winner the fence
+    // classified — so logout deletes that exact family. A null here means
+    // the fence dropped its payload: fail loudly rather than mask it.
+    if (latestPayload === null) {
+      assert.fail('the terminal finalizer must receive the fenced foreign payload')
+    }
+    events.push(`delete:${latestPayload.token}`)
     events.push('logout-finalize')
   })
 
-  releaseForeign?.()
+  // While the fence revocation is still held, logout has not finalized and
+  // the terminal notification has NOT fired — no early coordinator
+  // generation while the fence is mid-flight.
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(events, ['revoke:foreign-token'])
+
+  // Only now release the revocation: the fence rejects, logout finalizes.
+  releaseRevocation?.()
   await assert.rejects(fenced, /The renewed session is foreign/)
   await logout
-  assert.deepEqual(events, ['revoke:foreign-token', 'clear', 'terminal', 'logout-finalize'])
+  // Revocation finished first, then the finalizer deleted the winning
+  // family, then the single clear, and only then the one notification.
+  assert.deepEqual(events, [
+    'revoke:foreign-token',
+    'delete:foreign-token',
+    'logout-finalize',
+    'clear',
+    'terminal',
+  ])
 })

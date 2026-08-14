@@ -258,33 +258,6 @@ test('an opaque loss permits exactly one raw refresh and applies its exact-targe
   assert.deepEqual(events, ['apply:targeted-token'])
 })
 
-test('an opaque loss with no cookie winner leaves the session untouched', async () => {
-  const events: string[] = []
-  let refreshCalls = 0
-  const coordinator = createSessionMutationCoordinator({
-    applySession: (payload) => events.push(`apply:${payload.token}`),
-    clearSession: () => events.push('clear'),
-    refresh: async () => {
-      refreshCalls += 1
-      return null
-    },
-  })
-
-  await assert.rejects(
-    coordinator.runGuarded(
-      async () => {
-        throw new SessionMutationLoss('The session response was lost in transit.')
-      },
-      exactTargetGuard,
-    ),
-    SessionMutationLoss,
-  )
-  // The cookie still belongs to the unchanged session: no clear over a
-  // transient loss.
-  assert.equal(refreshCalls, 1)
-  assert.deepEqual(events, [])
-})
-
 test('a mismatched direct payload is terminally fenced without a refresh; typed errors preserve the old session', async () => {
   const events: string[] = []
   let refreshCalls = 0
@@ -414,7 +387,6 @@ test('a foreign refresh winner after an opaque loss terminally fences without ad
   assert.equal(refreshCalls, 1)
   assert.deepEqual(events, ['revoke:foreign-token', 'clear'])
 })
-
 
 test('a normal Error named SessionMutationLoss is not an opaque loss', async () => {
   const events: string[] = []

@@ -133,19 +133,27 @@ export const captureWorkspaceSessionSource = (
 /**
  * Three-way classification of a workspace-recovery payload against the exact
  * requested external target and the captured source session. `target` when
- * the active UOA org/team are exactly the requested pair; `source` when the
- * payload is the preserved source session (same local user id, local
- * org/project/team, and UOA provider); `foreign` otherwise.
+ * the payload is the SAME person and provider as the captured source (same
+ * local user id, UOA provider) AND its active UOA org/team are exactly the
+ * requested pair; `source` when the payload is the preserved source session
+ * (same local user id, local org/project/team, and UOA provider); `foreign`
+ * otherwise. A payload that claims the exact requested UOA workspace but
+ * belongs to a different user or a different provider is foreign, never the
+ * target.
  */
 export const classifyWorkspaceSessionPayload = (
   payload: SessionPayload,
   expectedWorkspace: ExpectedWorkspaceTarget,
   source: WorkspaceSessionSource,
 ): SessionMutationOutcome => {
-  if (sessionMatchesExpectedWorkspace(payload, expectedWorkspace)) {
+  const me = payload.me
+  if (
+    sessionMatchesExpectedWorkspace(payload, expectedWorkspace)
+    && me.user.id === source.userId
+    && me.auth.providerId === source.providerId
+  ) {
     return { kind: 'target' }
   }
-  const me = payload.me
   if (
     me.user.id === source.userId
     && me.context.organizationId === source.organizationId

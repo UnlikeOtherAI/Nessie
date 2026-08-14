@@ -53,6 +53,9 @@ export type SessionMutationCoordinator = {
 
 const terminatedError = (): Error => new Error('The session is being terminated.')
 
+const ambientBlockedError = (): Error =>
+  new Error('The ambient refresh is blocked behind a terminal fence or logout.')
+
 const fencedError = (): Error => new Error('The session was fenced over a foreign session.')
 
 /**
@@ -87,6 +90,17 @@ export const createSessionMutationCoordinator = (input: {
   // generation) so a later explicit login/recovery builds a fresh one; this
   // coordinator itself stays permanently fenced/terminated regardless.
   onTerminal?: () => void
+  /**
+   * Synchronous ambient gate, read at call time by the public
+   * `refresh`/`reconcile` facades (never by explicit `run`/`runGuarded`).
+   * The host sets it from `onTerminal` and clears it only after a
+   * successfully applied explicit login/bootstrap/dev login or a valid
+   * explicit recovery, so a coordinator recreated after a terminal
+   * notification cannot let automatic startup restoration consume an
+   * ambient refresh cookie whose logout may have failed or been swallowed.
+   * A run joined before the gate is set is never blocked mid-flight.
+   */
+  isAmbientRefreshBlocked?: () => boolean
 }): SessionMutationCoordinator => {
   // FIFO tail of every queued mutation; resolved tails detach so the chain
   // never grows unbounded.
@@ -132,6 +146,15 @@ export const createSessionMutationCoordinator = (input: {
       try {
         await input.onForeignSession?.(payload)
       } finally {
+        // A fence that resolves after logout began must not clear or notify:
+        // terminate's finalizer revokes the winning family and performs the
+        // single terminal clear itself. But the fence's foreign payload is
+        // still the winning session — record it for that finalizer rather
+        // than losing it (an in-flight mutation may already have set one).
+        if (terminating) {
+          terminalPayload ??= payload
+          return
+        }
         await clearOnce()
         notifyTerminalOnce()
       }
@@ -147,6 +170,13 @@ export const createSessionMutationCoordinator = (input: {
     payload: SessionPayload,
     guard: SessionMutationGuard,
   ): Promise<SessionPayload> => {
+    // Termination outranks classification: a payload decoded after logout
+    // began is handed to the terminal finalizer as the winning session —
+    // never foreign-revoked, never applied.
+    if (terminating) {
+      terminalPayload = payload
+      throw terminatedError()
+    }
     const outcome = guard(payload)
     if (outcome.kind === 'target') {
       return payload
@@ -236,7 +266,14 @@ export const createSessionMutationCoordinator = (input: {
     return run
   }
 
+  // The ambient gate reads at CALL time: a caller that captured this facade
+  // before a terminal fence/logout began (a startup restore scheduled in a
+  // previous render, an in-flight 401 retry) must still be refused the
+  // moment the gate is set.
   const reconcile = (): Promise<SessionPayload | null> => {
+    if (input.isAmbientRefreshBlocked?.() === true) {
+      return Promise.reject(ambientBlockedError())
+    }
     if (terminating) return Promise.reject(terminatedError())
     if (fenced) return Promise.reject(fencedError())
     // A refresh arriving while another session mutation is queued must join
@@ -247,6 +284,9 @@ export const createSessionMutationCoordinator = (input: {
   }
 
   const refresh = (): Promise<string | null> => {
+    if (input.isAmbientRefreshBlocked?.() === true) {
+      return Promise.reject(ambientBlockedError())
+    }
     if (terminating) return Promise.reject(terminatedError())
     if (fenced) return Promise.reject(fencedError())
     if (latestToken) return latestToken
@@ -282,6 +322,14 @@ export const createSessionMutationCoordinator = (input: {
           // a transient loss.
           const winner = await input.refresh()
           if (winner === null) {
+            // A refresh 401 after an opaque loss is an explicit
+            // authentication rejection, not a transient loss: the cookie
+            // family is already gone, so stale local auth must not remain.
+            // Clear exactly once (this is NOT terminal — no onTerminal —
+            // and never a foreign revocation), then rethrow the original
+            // SessionMutationLoss so the picker surfaces the real failure.
+            if (terminating) throw terminatedError()
+            await clearOnce()
             throw error
           }
           if (terminating) {
@@ -311,9 +359,16 @@ export const createSessionMutationCoordinator = (input: {
     if (termination) return termination
     terminating = true
     const pendingQueue = queue
+    // A foreign fence already in flight must finish its caller-owned
+    // revocation before logout finalizes, so the terminal notification never
+    // fires mid-fence and the finalizer can adopt the winning payload.
+    const pendingFence = fenceCompletion
     const ending = (async (): Promise<void> => {
       try {
         await pendingQueue
+        if (pendingFence) {
+          await pendingFence.catch(() => undefined)
+        }
         await finalize(terminalPayload)
       } finally {
         await clearOnce()

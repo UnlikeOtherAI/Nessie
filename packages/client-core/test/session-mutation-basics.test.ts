@@ -308,4 +308,3 @@ test('an authentication rejection clears the session and later mutations still r
   // lives on and no terminal notification ever fires.
   assert.deepEqual(events, ['clear', 'apply:token-after'])
 })
-
