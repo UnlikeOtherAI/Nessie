@@ -2,9 +2,18 @@ import { lookup } from 'node:dns/promises'
 import { connect, isIP, type Socket } from 'node:net'
 import { Agent, type Dispatcher } from 'undici'
 
-export class UrlSafetyError extends Error {
-  override readonly name = 'UrlSafetyError'
-}
+import {
+  isCredentialHeaderName,
+  normalizeFetchHeaders,
+  planRedirect,
+  resolveRedirectPolicy,
+  UrlSafetyError,
+  type RedirectPolicy,
+  type RedirectPolicyOptions,
+} from './redirect-policy.js'
+
+export { UrlSafetyError }
+export type { RedirectPolicy }
 
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
@@ -210,10 +219,10 @@ type DispatcherRequestInit = RequestInit & { dispatcher?: Dispatcher }
 // be exercised without a live public host.
 export type PinnedFetch = (url: URL, init: DispatcherRequestInit) => Promise<Response>
 
-export type SafeFetchOptions = AssertSafeUrlOptions & {
-  fetchImpl?: PinnedFetch
-  maxRedirects?: number
-}
+export type SafeFetchOptions =
+  AssertSafeUrlOptions & RedirectPolicyOptions & {
+    fetchImpl?: PinnedFetch
+  }
 
 /**
  * One SSRF-safe request: validate the URL, then pin the socket to exactly the
@@ -222,15 +231,18 @@ export type SafeFetchOptions = AssertSafeUrlOptions & {
  * just want a safe request end-to-end should use `safeFetch`.
  */
 export const pinnedFetch = async (
-  rawUrl: string | URL,
+  rawUrl: string | URL | Request,
   init?: RequestInit,
   options?: SafeFetchOptions,
 ): Promise<Response> => {
-  const { addresses, url } = await resolveAndValidate(rawUrl, options)
+  const targetUrl = rawUrl instanceof Request ? rawUrl.url : rawUrl
+  const { addresses, url } = await resolveAndValidate(targetUrl, options)
   const fetchImpl: PinnedFetch =
     options?.fetchImpl ?? ((target, requestInit) => fetch(target, requestInit as RequestInit))
+  const headers = normalizeFetchHeaders(rawUrl, init)
   return fetchImpl(url, {
     ...init,
+    headers: [...headers],
     redirect: 'manual',
     dispatcher: cachedPinnedAgent(addresses),
   })
@@ -283,25 +295,64 @@ export const pinnedConnect = async (
 
 // SSRF-safe fetch: validates the URL, pins the connection to the validated IPs,
 // and re-validates + re-pins on every redirect hop (so a public URL cannot 3xx
-// its way to an internal one). Returns the final Response with its body unread.
+// its way to an internal one). Redirects are governed by redirectPolicy:
+// 'none' returns the raw 3xx, 'same-origin' (the default for credentialed
+// requests) refuses cross-origin hops, and explicit 'follow' strips
+// credential-shaped headers on any cross-origin hop and always refuses a
+// 307/308 cross-origin body replay. Returns the final Response with its body
+// unread.
 export const safeFetch = async (
-  rawUrl: string | URL,
+  rawUrl: string | URL | Request,
   init?: RequestInit,
   options?: SafeFetchOptions,
 ): Promise<Response> => {
+  const headers = normalizeFetchHeaders(rawUrl, init)
+  const credentialsPresent =
+    options?.credentialsPresent === true ||
+    [...headers.keys()].some((name) => isCredentialHeaderName(name))
+  const policy = resolveRedirectPolicy(options, headers)
   const maxRedirects = options?.maxRedirects ?? 3
-  let target: string | URL = rawUrl
+
+  let hopState: {
+    body?: RequestInit['body']
+    headers: ReadonlyMap<string, string>
+    method?: string
+    url: URL
+  } = {
+    body: init?.body,
+    headers,
+    method: init?.method ?? (rawUrl instanceof Request ? rawUrl.method : undefined),
+    url: new URL(rawUrl instanceof Request ? rawUrl.url : rawUrl),
+  }
+
   for (let hop = 0; hop <= maxRedirects; hop += 1) {
     // Resolve here as well as inside pinnedFetch so a relative `location` has
     // the absolute URL of the hop it came from as its base.
-    const { url } = await resolveAndValidate(target, options)
-    const response = await pinnedFetch(url, init, options)
+    const { url } = await resolveAndValidate(hopState.url, options)
+    const hopInit: RequestInit = {
+      ...init,
+      body: hopState.body,
+      headers: [...hopState.headers],
+      method: hopState.method,
+    }
+    const response = await pinnedFetch(url, hopInit, options)
     if (response.status >= 300 && response.status < 400) {
+      // Drop the redirect body so its socket returns to the pool.
       const location = response.headers.get('location')
-      if (location) {
-        // Drop the redirect body so its socket returns to the pool.
-        await response.body?.cancel().catch(() => undefined)
-        target = new URL(location, url)
+      if (location) await response.body?.cancel().catch(() => undefined)
+      const decision = planRedirect({
+        body: hopState.body,
+        credentialsPresent,
+        headers: hopState.headers,
+        location,
+        method: hopState.method,
+        policy,
+        status: response.status,
+        url: location ? new URL(location, url) : url,
+        viaUrl: url,
+      })
+      if (decision.type === 'follow') {
+        hopState = decision.hop
         continue
       }
     }
