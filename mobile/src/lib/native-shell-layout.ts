@@ -8,6 +8,9 @@ import { TABS } from './tabs'
 
 export const NATIVE_PHONE_MENU_HEADER_HEIGHT = 64
 export const NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT = 46
+// Align the compact landscape header with the system's floating tab controls,
+// rather than letting its workspace and account actions crowd the corners.
+export const NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER = 32
 
 export type NativePhoneCreationAction = 'project' | 'channel' | 'message'
 

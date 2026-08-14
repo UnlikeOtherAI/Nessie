@@ -167,6 +167,7 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneHeader, /onToolbarAction\('history'\)/)
   assert.match(phoneHeader, /landscape \? \(/)
   assert.match(phoneHeader, /getNativePhoneHeaderHeight\(landscape\)/)
+  assert.match(phoneHeader, /paddingHorizontal: NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER/)
   assert.doesNotMatch(phoneChrome, /openSearchOverlay/)
   assert.match(phoneChrome, /messageActionSlot/)
   assert.doesNotMatch(phoneChrome, /Start a new channel, project, or direct message/)

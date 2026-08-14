@@ -4,7 +4,10 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 import { NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
 import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 import { withOpacity } from '../lib/ipad-native-chrome'
-import { getNativePhoneHeaderHeight } from '../lib/native-shell-layout'
+import {
+  getNativePhoneHeaderHeight,
+  NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER,
+} from '../lib/native-shell-layout'
 
 export type NativePhoneHeaderProps = {
   accentColor: string
@@ -232,7 +235,7 @@ const styles = StyleSheet.create({
     height: '100%',
     paddingHorizontal: 16,
   },
-  headerContentCompact: { gap: 8, paddingHorizontal: 12 },
+  headerContentCompact: { gap: 8, paddingHorizontal: NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER },
   historyButton: { alignItems: 'center', borderRadius: 16, height: 32, justifyContent: 'center', width: 32 },
   presenceCutout: {
     alignItems: 'center',

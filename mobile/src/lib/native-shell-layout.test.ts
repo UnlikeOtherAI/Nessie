@@ -10,6 +10,7 @@ import {
   isAuthGateRoute,
   isNativePhoneChannelsRootRoute,
   isNativePhoneTabRootRoute,
+  NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER,
   shouldShowNativePhoneHeader,
 } from './native-shell-layout'
 import { getIphoneTabBarHostHeight, IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
@@ -110,6 +111,7 @@ test('an admitted phone keeps a shorter native header on every landscape page', 
     showBar: true,
   }), false)
   assert.equal(getNativePhoneHeaderHeight(true) < getNativePhoneHeaderHeight(false), true)
+  assert.equal(NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER, 32)
   assert.deepEqual(getNativeWebviewFrameInsets({
     ipadChromeTop: 0,
     isIpad: false,

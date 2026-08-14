@@ -269,7 +269,9 @@ entitlement-aware switcher, every toolbar button delegates to the existing
 toolbar bridge, and the account control opens the canonical account menu. When
 that landscape layout rotates back to portrait from a detail page, the shell
 returns to that section's menu instead of stranding the user on the former
-right-hand page. The header owns the status-bar backdrop, so its system
+right-hand page. Its compact header uses a 32-point horizontal gutter, matching
+the floating tab controls so neither the workspace nor account action crowds a
+landscape screen corner. The header owns the status-bar backdrop, so its system
 indicators follow the header's actual contrast. Its Slack-positioned
 bottom-right **+** is deliberately limited to the Channels root: it uses the
 theme's darker primary colour (`--accent-strong`) and expands directly into the
