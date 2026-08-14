@@ -259,8 +259,13 @@ gated with real exit codes, and merged:
 5. Public origin — landed (`api/src/lib/public-origin.ts`; hosted mode
    requires `api.publicUrl`; `x-forwarded-*` reads lint-banned).
 
-In progress: W5 evaluator unification (semantics-preserving, differential
-suite). Not started: W3 full (typed sensitivity + AST fetch boundary), W1
+Also landed 2026-08-14: W5 evaluator unification (one shared evaluator in
+`@nessie/workspace-admin` with explicit `defaultVerdict` + `approvalProof`
+options and fail-closed malformed `timeWindow`; the worker's
+`evaluateToolInvokePolicy` is a thin adapter; 489-line differential suite),
+and — outside this plan — the port-safe api `predev` check and the
+`DATABASE_URL=` empty-string config-override fix that had been masquerading
+as the worker test OOM flake. Not started: W3 full (typed sensitivity + AST fetch boundary), W1
 (session integrity), W2 store proper, W4 structural consolidation, realtime
 session identity. Everything marked **[access-model]** remains parked.
 
