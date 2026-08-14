@@ -140,6 +140,10 @@ export const createSessionMutationCoordinator = (input: {
         return null
       }
       await input.beforeApply?.(payload)
+      if (terminating) {
+        terminalPayload = payload
+        throw new Error('The session is being terminated.')
+      }
       input.applySession(payload)
       return payload
     }

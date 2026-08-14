@@ -329,6 +329,39 @@ test('logout still deletes and clears after an in-flight mutation rejects', asyn
   assert.deepEqual(events, ['delete:none', 'clear'])
 })
 
+test('logout suppresses a session waiting at its cache-reset boundary', async () => {
+  let enterBoundary: (() => void) | undefined
+  let releaseBoundary: (() => void) | undefined
+  const boundaryEntered = new Promise<void>((resolve) => {
+    enterBoundary = resolve
+  })
+  const boundaryRelease = new Promise<void>((resolve) => {
+    releaseBoundary = resolve
+  })
+  const events: string[] = []
+  const coordinator = createSessionMutationCoordinator({
+    beforeApply: async () => {
+      events.push('before-apply')
+      enterBoundary?.()
+      await boundaryRelease
+    },
+    applySession: (payload) => events.push(`apply:${payload.token}`),
+    clearSession: () => events.push('clear'),
+    refresh: async () => assert.fail('refresh is not part of logout'),
+  })
+
+  const switching = coordinator.run(async () => sessionPayload('switched-token'))
+  await boundaryEntered
+  const logout = coordinator.terminate(async (latestPayload) => {
+    events.push(`delete:${latestPayload?.token ?? 'none'}`)
+  })
+  releaseBoundary?.()
+
+  await assert.rejects(switching, /session is being terminated/)
+  await logout
+  assert.deepEqual(events, ['before-apply', 'delete:switched-token', 'clear'])
+})
+
 test('session mutation coordinator exposes the refreshed payload and token-only API', async () => {
   let resolveRefresh: ((payload: SessionPayload) => void) | undefined
   let refreshCalls = 0
