@@ -18,9 +18,9 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "TODO-apple-id",
-        "ascAppId": "TODO-app-store-connect-app-id",
-        "appleTeamId": "TODO-apple-team-id"
+        "appleId": "ondrej.rafaj@me.com",
+        "ascAppId": "6801440183",
+        "appleTeamId": "59S95D279D"
       }
     }
   }
