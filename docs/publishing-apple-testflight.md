@@ -90,7 +90,8 @@ pnpm dlx eas-cli@latest submit --platform ios --latest --profile production
 
 Use `--auto-submit` only after the submit profile has been completed and tested.
 EAS must be authenticated as an account with access to the Nessie App Store
-Connect record.
+Connect record. Expo documents the [CI build flow](https://docs.expo.dev/build/building-on-ci/)
+and [automatic submissions](https://docs.expo.dev/build/automate-submissions/).
 
 ### Local Xcode alternative
 
@@ -232,6 +233,63 @@ following on **TestFlight → iOS** or **TestFlight → macOS**:
 The most recent verified release was iOS `0.1.1 (3)` and macOS `0.1.1 (1)`.
 Those numbers are historical only; the next release must use higher build
 numbers.
+
+## GitHub Actions automation
+
+`.github/workflows/publish-apple-testflight.yml` is a manually triggered
+release workflow. It always runs the source preflight first. With **Publish**
+left false, it performs only that safe validation. With **Publish** enabled, it
+builds the selected platform and submits it to App Store Connect.
+
+The macOS job builds a signed installer package and uploads it with `altool`.
+Apple documents `altool` and Transporter as supported Mac App Store upload
+tools in its [macOS packaging guide](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution).
+
+The workflow only releases `main` and serializes Apple submissions, so two
+builds cannot race for the same version. Protect the `app-store-production`
+GitHub Actions environment with the release approvers before enabling
+publishing.
+
+### Configure the `app-store-production` environment
+
+Add these environment **secrets**:
+
+| Secret | Value |
+| --- | --- |
+| `EXPO_TOKEN` | Expo access token that can build and submit the linked Nessie iOS project |
+| `MACOS_APP_CERTIFICATE_P12_BASE64` | Base64 of the Mac App Store application-signing `.p12`, including its private key |
+| `MACOS_APP_CERTIFICATE_PASSWORD` | Password for that `.p12` |
+| `MACOS_INSTALLER_CERTIFICATE_P12_BASE64` | Base64 of the Mac Installer Distribution `.p12`, including its private key |
+| `MACOS_INSTALLER_CERTIFICATE_PASSWORD` | Password for that `.p12` |
+| `MACOS_PROVISIONING_PROFILE_BASE64` | Base64 of the macOS `com.km.nessie` distribution profile |
+| `APP_STORE_CONNECT_API_KEY_P8_BASE64` | Base64 of a least-privilege App Store Connect API key `.p8` |
+
+Add these environment **variables**:
+
+| Variable | Value |
+| --- | --- |
+| `MACOS_APPLICATION_SIGNING_IDENTITY` | Exact output from `security find-identity` for the Mac App Store application identity |
+| `MACOS_INSTALLER_SIGNING_IDENTITY` | Exact output from `security find-identity` for the Mac Installer Distribution identity |
+| `APP_STORE_CONNECT_API_KEY_ID` | App Store Connect API key identifier |
+| `APP_STORE_CONNECT_API_ISSUER_ID` | App Store Connect API issuer identifier |
+
+A `.cer` file alone cannot sign on Actions: export the identity and its private
+key as a password-protected `.p12`. The hosted macOS runner creates a temporary
+keychain, imports both identities and the provisioning profile, and is then
+destroyed when the job finishes.
+
+To create each Base64 secret on macOS:
+
+```sh
+base64 -i Nessie-distribution.p12 | pbcopy
+base64 -i Nessie.provisionprofile | pbcopy
+base64 -i AuthKey_ABCDEFGHIJ.p8 | pbcopy
+```
+
+After the one-time EAS setup described above, open **Actions → Publish Apple
+TestFlight**, select `ios`, `macos`, or `both`, and set **Publish** to true.
+Apple still processes the upload asynchronously; check the TestFlight platform
+page and attach the intended internal group if it is not already present.
 
 ## Common failures
 
