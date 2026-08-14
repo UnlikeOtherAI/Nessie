@@ -52,6 +52,7 @@ import {
 } from './src/components/NativePhoneConversationMenuChrome'
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
+import { nativeExternalAuthResultScript } from './src/lib/external-auth-bridge'
 import { createNativeWebviewActions } from './src/lib/native-webview-actions'
 import {
   DEFAULT_NATIVE_SHELL_PRESENTATION,
@@ -217,11 +218,8 @@ const Shell = (): React.JSX.Element => {
   const nativeActions = createNativeWebviewActions(runScript)
 
   const runExternalAuth = async (authorizeUrl: string): Promise<void> => {
-    const callbackUrl = await completeExternalAuth(authorizeUrl)
-    if (callbackUrl) {
-      const payload = JSON.stringify(callbackUrl)
-      runScript(`window.__nessieExternalAuthCallback && window.__nessieExternalAuthCallback(${payload});`)
-    }
+    const result = await completeExternalAuth(authorizeUrl)
+    runScript(nativeExternalAuthResultScript(result))
   }
 
   const onMessage = (event: WebViewMessageEvent): void => {

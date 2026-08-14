@@ -279,6 +279,11 @@ The login route is its own full-height touch-scroll container because the page
 root remains fixed for the authenticated shell. On phone widths it presents the
 sign-in panel before the welcome panel, keeping hosted SSO visible without an
 initial scroll; desktop keeps the two-column welcome/sign-in order.
+Native SSO reports every terminal `ASWebAuthenticationSession` result back to
+that login surface. A successful deep link continues through the existing PKCE
+exchange; closing or dismissing the iOS sheet clears the pending PKCE attempt
+and restores the provider button without showing an error. A native session
+failure also restores the button and shows a retryable message.
 
 **Lifecycle and session persistence.** Moving the native app to the background
 and foreground again preserves the existing WebView instead of navigating or

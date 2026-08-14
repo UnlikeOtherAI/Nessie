@@ -6,6 +6,7 @@ import { isDesktopApp } from '../lib/desktop'
 import { DESKTOP_REDIRECT_URI, startExternalSignIn } from '../lib/external-auth'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
+import { subscribeToNativeExternalAuthResults } from '../lib/native-external-auth'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { resolveAppliedTheme, useTheme, type Theme } from '../providers/ThemeProvider'
 
@@ -91,11 +92,13 @@ export const LoginPage = () => {
       if (!pendingExternalAuth) {
         // No sign-in is in progress (e.g. a stale deep link replayed after a
         // logout/relaunch) — nothing to verify, so ignore quietly.
+        setIsSubmitting(false)
         return
       }
       if (state !== null && pendingExternalAuth.state !== state) {
         clearPendingExternalAuth()
         setError('The external sign-in callback could not be verified.')
+        setIsSubmitting(false)
         return
       }
 
@@ -157,15 +160,26 @@ export const LoginPage = () => {
     }
 
     const target = window as Window & { __nessieExternalAuthCallback?: (url: string) => void }
+    const unsubscribeNativeResults = subscribeToNativeExternalAuthResults(window, {
+      clearPendingAuth: clearPendingExternalAuth,
+      setError,
+      setSubmitting: setIsSubmitting,
+    })
     target.__nessieExternalAuthCallback = (url: string) => {
       let parsed: URL
       try {
         parsed = new URL(url)
       } catch {
+        clearPendingExternalAuth()
+        setError('The external sign-in callback was invalid.')
+        setIsSubmitting(false)
         return
       }
       const code = parsed.searchParams.get('code')
       if (!code) {
+        clearPendingExternalAuth()
+        setError('The external sign-in callback was invalid.')
+        setIsSubmitting(false)
         return
       }
       void completeExternalSignIn({
@@ -177,6 +191,7 @@ export const LoginPage = () => {
 
     return () => {
       delete target.__nessieExternalAuthCallback
+      unsubscribeNativeResults()
     }
   }, [completeExternalSignIn, sessionState])
 
@@ -254,6 +269,7 @@ export const LoginPage = () => {
     setError(null)
     void beginSsoSignIn(autoRedirectProvider.providerId)
       .catch((submitError) => {
+        clearPendingExternalAuth()
         setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
         setIsSubmitting(false)
       })
@@ -303,6 +319,7 @@ export const LoginPage = () => {
     try {
       await beginSsoSignIn(providerId)
     } catch (submitError) {
+      clearPendingExternalAuth()
       setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
       setIsSubmitting(false)
     }
