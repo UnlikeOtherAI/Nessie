@@ -14,7 +14,7 @@
     "dev": "tsx watch --env-file=../.env src/index.ts",
     "lint": "eslint src --max-warnings 0",
     "test": "pnpm run test:unit && pnpm run test:db",
-    "test:unit": "node --test --import tsx 'test/*.test.ts' 'src/**/*.test.ts'",
+    "test:unit": "node --test --test-concurrency=4 --import tsx 'test/*.test.ts' 'src/**/*.test.ts'",
     "test:db": "node --test --test-concurrency=1 --import tsx 'test/db/*.test.ts'",
     "test:load": "tsx test-harness/load.ts",
     "test:smoke": "tsx test-harness/smoke.ts",
