@@ -374,9 +374,12 @@ Claims:
   its adoption and exact-intent cancellation are one transaction. Safe target
   refusals (`WORKSPACE_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, or
   `WORKSPACE_SWITCH_CONFLICT`) never revoke the source family; only
-  `INVALID_REFRESH_TOKEN` and invalid/tampered source proof force re-login,
-  surfaced to the browser as `WORKSPACE_SWITCH_REAUTH_REQUIRED` so it clears
-  stale local session state instead of treating the result as a safe 2FA step-up.
+  proof-gap answers (`INTERACTION_REQUIRED`, `NO_REFRESH_TOKEN`,
+  `INVALID_REFRESH_TOKEN`, and `WORKSPACE_SWITCH_REAUTH_REQUIRED`) enter the
+  same exact-target in-app reauthorization flow. The current Nessie session is
+  retained: only the UOA proof step opens the system browser, and its callback
+  returns to the route where switching began. Cancellation, provider failure,
+  or a target mismatch never logs out or applies a different workspace.
   After UOA accepts a switch, transient local materialization failures retain
   the intent for exact replay, while a permanent local binding collision
   revokes the now-unrecoverable source family rather than retaining a consumed
@@ -470,6 +473,12 @@ For SSO providers, the flow is:
    `nessie://auth/callback?code=...`
 4. frontend calls `POST /api/auth/session` with `{ providerId, code, codeVerifier, redirectUri }`
 5. API exchanges code for user info, creates or matches the user, issues JWT
+
+The always-mounted callback owner handles web `/login`, Tauri deep links, and
+the iOS/Android WebView bridge through the same single-claim completion path.
+Callbacks wait for startup session restoration when they carry an authenticated
+workspace target; a target callback can only call the bearer-authenticated
+recovery exchange and can never fall back to ordinary login.
 
 #### Authenticated workspace-switch recovery (`expectedWorkspace`)
 

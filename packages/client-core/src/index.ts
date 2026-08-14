@@ -143,11 +143,14 @@ export {
 // PKCE / external-auth helpers (framework-neutral; storage + base URL injected).
 export {
   beginExternalAuth,
+  claimPendingExternalAuth,
   clearPendingExternalAuth,
+  clearPendingExternalAuthMatching,
   createMemoryPkceStorage,
   readPendingExternalAuth,
   type BeginExternalAuthInput,
   type PendingExternalAuth,
+  type PendingExternalAuthClaim,
   type PendingExternalAuthTarget,
   type PkceStorage,
 } from './pkce.js'

@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom';
+import { ExternalAuthRouterBridge } from '../providers/ExternalAuthRouterBridge';
 import { NativeShellBridge } from '../providers/NativeShellBridge';
 import { ShakeFeedbackProvider } from '../providers/ShakeFeedbackContext';
 
@@ -8,6 +9,7 @@ import { ShakeFeedbackProvider } from '../providers/ShakeFeedbackContext';
 export const RootLayout = () => (
   <ShakeFeedbackProvider>
     <NativeShellBridge />
+    <ExternalAuthRouterBridge />
     <Outlet />
   </ShakeFeedbackProvider>
 );

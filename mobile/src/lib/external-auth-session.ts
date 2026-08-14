@@ -1,14 +1,21 @@
 import * as WebBrowser from 'expo-web-browser'
 import {
-  runExternalAuthSession,
-  type NativeExternalAuthResult,
-} from './external-auth-bridge'
+  externalAuthErrorResult,
+  mapExternalAuthSessionResult,
+  type ExternalAuthTerminalResult,
+} from './external-auth-delivery'
 
-// Deep-link callback the OS browser redirects to after external sign-in. Must
-// match the admin's externalAuthRedirectUri and the API's allow-listed URL.
 const AUTH_CALLBACK_URL = 'nessie://auth/callback'
-
 export const completeExternalAuth = async (
   authorizeUrl: string,
-): Promise<NativeExternalAuthResult> =>
-  runExternalAuthSession(authorizeUrl, AUTH_CALLBACK_URL, WebBrowser.openAuthSessionAsync)
+  state?: string,
+): Promise<ExternalAuthTerminalResult> => {
+  try {
+    return mapExternalAuthSessionResult(
+      await WebBrowser.openAuthSessionAsync(authorizeUrl, AUTH_CALLBACK_URL),
+      state,
+    )
+  } catch {
+    return externalAuthErrorResult(state)
+  }
+}

@@ -110,7 +110,7 @@ test('session ownership wraps the app inside the shared tenant query cache', () 
   const appProvider = readFileSync(`${sourceRoot}/providers/AppProvider.tsx`, 'utf8')
   assert.match(
     appProvider,
-    /<QueryProvider>\s*<AuthSessionProvider>\s*<ApiClientProvider>/,
+    /<QueryProvider>\s*<AuthSessionProvider>\s*<ExternalAuthProvider>\s*<ApiClientProvider>/,
   )
   const authProvider = readFileSync(`${sourceRoot}/providers/AuthSessionProvider.tsx`, 'utf8')
   assert.match(authProvider, /await queryClient\.cancelQueries\(\)\.catch\(\(\) => undefined\)/)

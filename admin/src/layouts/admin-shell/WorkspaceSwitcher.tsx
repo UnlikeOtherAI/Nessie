@@ -10,7 +10,7 @@ import {
 } from '../../lib/workspaces'
 import { useWorkspaceAvatarRevision } from '../../facades/workspace/hooks'
 import { WorkspaceAvatar } from '../../components/primitives/WorkspaceAvatar'
-import { startExternalSignIn } from '../../lib/external-auth'
+import { startExternalSignIn, startWorkspaceSwitchReauthorization } from '../../lib/external-auth'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { IMPORTED_SESSION_SCOPE_MESSAGE } from '../../lib/imported-session-policy'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
@@ -20,6 +20,7 @@ import {
   type WorkspaceMenuPosition,
 } from './workspace-menu-position'
 import { recoverWorkspaceSwitchFailure } from './workspace-switch-recovery'
+import { workspaceSwitchFailureMessage } from './workspace-switch-message'
 import { useTransientMenu } from './TransientMenuContext'
 
 type NativeWorkspaceWindow = Window & {
@@ -289,6 +290,34 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
       if (recovery.outcome === 'switched') {
         close()
         void navigate('/channels', { replace: true })
+      } else if (recovery.outcome === 'reauthorize') {
+        // Target proof is missing/non-renewable: re-enter SSO hinted at the
+        // exact target. The current session is untouched; the always-mounted
+        // external-auth bridge completes the callback in place.
+        const providerId = me?.auth.providerId
+        if (providerId) {
+          try {
+            await startWorkspaceSwitchReauthorization({
+              providerId,
+              targetWorkspace: {
+                organizationId: workspace.organizationId,
+                teamId: workspace.teamId,
+              },
+              theme: resolveAppliedTheme(theme),
+            })
+            close()
+          } catch {
+            setSwitchError(workspaceSwitchFailureMessage({
+              state: 'reauthenticate',
+              targetWorkspace: workspace.label,
+            }))
+          }
+        } else {
+          setSwitchError(workspaceSwitchFailureMessage({
+            state: 'reauthenticate',
+            targetWorkspace: workspace.label,
+          }))
+        }
       } else {
         setSwitchError(recovery.message)
       }
