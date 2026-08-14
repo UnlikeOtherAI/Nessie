@@ -1,71 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Animated, Easing, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Animated, Easing, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
-import { NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
-import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
+import { NativePhoneHeader, type NativePhoneHeaderProps } from './NativePhoneHeader'
 import { withOpacity } from '../lib/ipad-native-chrome'
 import { shouldDismissNativeCreationMenu } from '../lib/native-creation-menu'
 import {
   getNativePhoneBottomChromeClearance,
   getNativePhoneComposeBottom,
-  NATIVE_PHONE_MENU_HEADER_HEIGHT,
   type NativePhoneCreationAction,
 } from '../lib/native-shell-layout'
 
-type NativePhoneConversationMenuChromeProps = {
-  accentColor: string
-  accountAvatarUrl: string | null
-  accountName: string | null
-  accountPresence: 'away' | 'offline' | 'online'
+type NativePhoneConversationMenuChromeProps = NativePhoneHeaderProps & {
   bottomInset: number
   creationAccentColor: string
   dismissCreationMenuVersion: number
-  headerSurface: string
-  headerText: string
   onAccentColor: string
-  onAccountPress: () => void
   onCreationMenuOpen: () => void
-  onToolbarAction: (action: ToolbarAction) => void
   onCreateAction: (action: NativePhoneCreationAction) => void
-  safeTop: number
   sheetMutedText: string
   sheetSurface: string
   sheetText: string
   showCreationActions: boolean
-  toolbarState: ToolbarState
   platform: 'android' | 'ios'
-  onWorkspacePress: () => void
-  workspaceAvatarUrl: string | null
-  workspaceName: string | null
 }
-
-const initial = (label: string | null, fallback: string): string =>
-  [...(label?.trim() ?? '')][0]?.toUpperCase() ?? fallback
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
-
-const AccountPresenceIndicator = ({
-  headerSurface,
-  headerText,
-  state,
-}: {
-  headerSurface: string
-  headerText: string
-  state: 'away' | 'offline' | 'online'
-}): React.JSX.Element => {
-  const dotStyle = state === 'online'
-    ? { backgroundColor: '#20a86b' }
-    : state === 'away'
-      ? { backgroundColor: '#e6a323' }
-      : { backgroundColor: headerSurface, borderColor: withOpacity(headerText, 0.62), borderWidth: 1.5 }
-
-  return (
-    <View style={[styles.presenceCutout, { backgroundColor: headerSurface }]}>
-      <View style={[styles.presenceDot, dotStyle]} />
-    </View>
-  )
-}
 
 /**
  * Native phone shell chrome for every tab's first screen. The controls are
@@ -82,6 +42,7 @@ export const NativePhoneConversationMenuChrome = ({
   dismissCreationMenuVersion,
   headerSurface,
   headerText,
+  landscape,
   onAccentColor,
   onAccountPress,
   onCreationMenuOpen,
@@ -173,110 +134,24 @@ export const NativePhoneConversationMenuChrome = ({
 
   return (
     <>
-    <View
-      pointerEvents="box-none"
-      style={[styles.header, { backgroundColor: headerSurface, height: safeTop + NATIVE_PHONE_MENU_HEADER_HEIGHT }]}
-    >
-      <View style={[styles.headerContent, { paddingTop: safeTop }]}>
-        <Pressable
-          accessibilityLabel="Account menu"
-          accessibilityRole="button"
-          hitSlop={6}
-          onPress={onAccountPress}
-          style={({ pressed }) => [
-            styles.accountButton,
-            { borderColor: withOpacity(headerText, 0.38) },
-            pressed ? { opacity: 0.8 } : null,
-          ]}
-        >
-          {accountAvatarUrl ? (
-            <Image source={{ uri: accountAvatarUrl }} style={styles.accountAvatar} />
-          ) : (
-            <View style={[styles.accountFallback, { backgroundColor: withOpacity(headerText, 0.18) }]}>
-              <Text style={[styles.accountInitial, { color: headerText }]}>{initial(accountName, 'U')}</Text>
-            </View>
-          )}
-          <AccountPresenceIndicator
-            headerSurface={headerSurface}
-            headerText={headerText}
-            state={accountPresence}
-          />
-        </Pressable>
+      <NativePhoneHeader
+        accentColor={accentColor}
+        accountAvatarUrl={accountAvatarUrl}
+        accountName={accountName}
+        accountPresence={accountPresence}
+        headerSurface={headerSurface}
+        headerText={headerText}
+        landscape={landscape}
+        onAccountPress={onAccountPress}
+        onToolbarAction={onToolbarAction}
+        onWorkspacePress={onWorkspacePress}
+        safeTop={safeTop}
+        toolbarState={toolbarState}
+        workspaceAvatarUrl={workspaceAvatarUrl}
+        workspaceName={workspaceName}
+      />
 
-        <View style={styles.toolbarControls}>
-          <Pressable
-            accessibilityLabel="Back"
-            accessibilityRole="button"
-            disabled={!toolbarState.canBack}
-            hitSlop={6}
-            onPress={() => onToolbarAction('back')}
-            style={({ pressed }) => [
-              styles.toolbarButton,
-              { backgroundColor: withOpacity(headerText, 0.12) },
-              !toolbarState.canBack ? styles.toolbarButtonDisabled : null,
-              pressed && toolbarState.canBack ? { backgroundColor: withOpacity(headerText, 0.22) } : null,
-            ]}
-          >
-            <MaterialIcons color={headerText} name="arrow-back-ios-new" size={18} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Forward"
-            accessibilityRole="button"
-            disabled={!toolbarState.canForward}
-            hitSlop={6}
-            onPress={() => onToolbarAction('forward')}
-            style={({ pressed }) => [
-              styles.toolbarButton,
-              { backgroundColor: withOpacity(headerText, 0.12) },
-              !toolbarState.canForward ? styles.toolbarButtonDisabled : null,
-              pressed && toolbarState.canForward ? { backgroundColor: withOpacity(headerText, 0.22) } : null,
-            ]}
-          >
-            <MaterialIcons color={headerText} name="arrow-forward-ios" size={18} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Recent channels"
-            accessibilityRole="button"
-            hitSlop={6}
-            onPress={() => onToolbarAction('history')}
-            style={({ pressed }) => [
-              styles.historyButton,
-              { backgroundColor: withOpacity(headerText, 0.12) },
-              toolbarState.recentOpen ? { backgroundColor: withOpacity(headerText, 0.22) } : null,
-              pressed ? { backgroundColor: withOpacity(headerText, 0.3) } : null,
-            ]}
-          >
-            <MaterialIcons color={headerText} name="history" size={25} />
-          </Pressable>
-        </View>
-
-        <Pressable
-          accessibilityLabel={`Switch workspace, ${workspaceName ?? 'Workspace'}`}
-          accessibilityRole="button"
-          hitSlop={6}
-          onPress={onWorkspacePress}
-          style={({ pressed }) => [
-            styles.workspace,
-            pressed ? { backgroundColor: withOpacity(headerText, 0.14) } : null,
-          ]}
-        >
-          <NativeWorkspaceAvatar
-            backgroundColor={withOpacity(accentColor, 0.45)}
-            imageUrl={workspaceAvatarUrl}
-            label={workspaceName ?? 'Workspace'}
-            size={30}
-            textColor={headerText}
-          />
-          <Text numberOfLines={1} style={[styles.workspaceName, { color: headerText }]}>
-            {workspaceName ?? 'Workspace'}
-          </Text>
-          <MaterialIcons color={headerText} name="keyboard-arrow-down" size={24} />
-        </Pressable>
-
-      </View>
-    </View>
-
-    {showCreationActions ? (
+      {showCreationActions ? (
       <AnimatedPressable
         accessibilityLabel={creationOpen ? 'Start a direct message' : 'Open creation menu'}
         accessibilityRole="button"
@@ -391,24 +266,6 @@ export const NativePhoneConversationMenuChrome = ({
 }
 
 const styles = StyleSheet.create({
-  accountAvatar: { borderRadius: 19, height: 38, width: 38 },
-  accountButton: {
-    height: 42,
-    width: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-    borderRadius: 21,
-    borderWidth: 1,
-  },
-  accountFallback: {
-    height: 38,
-    width: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 19,
-  },
-  accountInitial: { fontSize: 16, fontWeight: '700' },
   morphingMessageAction: {
     position: 'absolute',
     alignItems: 'center',
@@ -443,44 +300,6 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
   },
   createTitle: { fontSize: 14, fontWeight: '700', lineHeight: 17 },
-  header: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 30 },
-  headerContent: {
-    height: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  historyButton: { alignItems: 'center', borderRadius: 21, height: 42, justifyContent: 'center', width: 42 },
   messageActionSlot: { height: 38 },
   messageActionText: { fontSize: 15, fontWeight: '700', lineHeight: 18 },
-  presenceCutout: {
-    position: 'absolute',
-    bottom: -1,
-    right: -1,
-    height: 13,
-    width: 13,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  presenceDot: {
-    height: 7,
-    width: 7,
-    borderRadius: 4,
-  },
-  toolbarButton: { alignItems: 'center', borderRadius: 18, height: 36, justifyContent: 'center', width: 36 },
-  toolbarButtonDisabled: { opacity: 0.3 },
-  toolbarControls: { alignItems: 'center', flexDirection: 'row', gap: 4 },
-  workspace: {
-    alignItems: 'center',
-    borderRadius: 22,
-    flexDirection: 'row',
-    gap: 8,
-    flex: 1,
-    justifyContent: 'flex-end',
-    minWidth: 0,
-    paddingHorizontal: 4,
-  },
-  workspaceName: { flexShrink: 1, fontSize: 21, fontWeight: '700' },
 })

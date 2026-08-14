@@ -258,15 +258,19 @@ Projects, Knowledge, Admin, and Search, including ordinary query-string state),
 WebView. Its surface is the same `--rail` backing surface visible beneath the
 transparent iPad tab controls, and its controls use the theme's `--tx` colour;
 in particular, the default Sandstone header is the same warm light beige as
-that iPad background. The signed-in user's avatar is at the leading edge, the
-Back, Forward, and prominent Recent Channels controls sit between it and the
-workspace switcher, and the workspace control is pinned to the trailing edge.
-There is deliberately no duplicate Search button: Search remains the dedicated
-bottom-tab destination. The workspace control opens the existing
+that iPad background. On a portrait phone, the team/workspace switcher is at
+the leading edge and the signed-in account is pinned at the trailing edge;
+navigation controls stay out of that constrained header. An eligible Max-class
+iPhone in landscape shows a shorter 46-point header on **every** page, including
+detail pages alongside the fixed menu: workspace, Back, Forward, Recent Channels,
+then account. Search is still deliberately not duplicated there: it remains the
+dedicated bottom-tab destination. The workspace control opens the existing
 entitlement-aware switcher, every toolbar button delegates to the existing
-toolbar bridge, and the account control opens the canonical account menu. The header
-owns the status-bar backdrop, so its system indicators follow the header's
-actual contrast. Its Slack-positioned
+toolbar bridge, and the account control opens the canonical account menu. When
+that landscape layout rotates back to portrait from a detail page, the shell
+returns to that section's menu instead of stranding the user on the former
+right-hand page. The header owns the status-bar backdrop, so its system
+indicators follow the header's actual contrast. Its Slack-positioned
 bottom-right **+** is deliberately limited to the Channels root: it uses the
 theme's darker primary colour (`--accent-strong`) and expands directly into the
 highlighted **Message** action. The surrounding native sheet and its compact

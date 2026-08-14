@@ -64,11 +64,13 @@ import {
 } from './src/components/native-shell-presentation'
 import {
   createNativeTabNavigationState,
+  getNativePhoneHeaderHeight,
   getNativeWebviewFrameInsets,
   isAuthGateRoute,
   isFullScreenTaskRoute,
   isNativePhoneChannelsRootRoute,
   isNativePhoneTabRootRoute,
+  shouldShowNativePhoneHeader,
 } from './src/lib/native-shell-layout'
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
@@ -351,8 +353,15 @@ const Shell = (): React.JSX.Element => {
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
   const showBar = currentPath != null && !isAuthGateRoute(currentPath) && !isFullScreenTaskRoute(currentPath)
-  const showNativePhoneHomeChrome = showBar && !IS_IPAD && isNativePhoneTabRootRoute(currentPath)
-  const showNativePhoneCreationActions = showNativePhoneHomeChrome && isNativePhoneChannelsRootRoute(currentPath)
+  const showNativePhoneHeader = shouldShowNativePhoneHeader({
+    isIpad: IS_IPAD,
+    largePhoneLandscape,
+    path: currentPath,
+    showBar,
+  })
+  const showNativePhoneCreationActions = showNativePhoneHeader
+    && isNativePhoneTabRootRoute(currentPath)
+    && isNativePhoneChannelsRootRoute(currentPath)
 
   // The native frame owns all unsafe edges. In particular, a phone tab root is
   // not always a direct aside/main child in the web DOM, so relying on injected
@@ -371,7 +380,8 @@ const Shell = (): React.JSX.Element => {
     isIpad: IS_IPAD,
     platform: Platform.OS,
     safeArea: insets,
-    showNativePhoneHomeHeader: showNativePhoneHomeChrome,
+    nativePhoneHeaderHeight: getNativePhoneHeaderHeight(largePhoneLandscape),
+    showNativePhoneHeader,
     showTabBar: showBar,
   })
   const webviewLayerStyle = {
@@ -390,7 +400,7 @@ const Shell = (): React.JSX.Element => {
   return (
     <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={statusBarStyleForNativePhoneHomeHeader(
-        showNativePhoneHomeChrome,
+        showNativePhoneHeader,
         isDark(phoneHeaderSurface),
         statusBarStyle,
       )} />
@@ -458,7 +468,7 @@ const Shell = (): React.JSX.Element => {
         />
       ) : null}
 
-      {showNativePhoneHomeChrome ? (
+      {showNativePhoneHeader ? (
         <NativePhoneConversationMenuChrome
           accentColor={accent}
           accountAvatarUrl={nativeAccount.avatarUrl}
@@ -469,6 +479,7 @@ const Shell = (): React.JSX.Element => {
           dismissCreationMenuVersion={dismissCreationMenuVersion}
           headerSurface={phoneHeaderSurface}
           headerText={phoneHeaderText}
+          landscape={largePhoneLandscape}
           onAccentColor={phoneOnAccent}
           onAccountPress={nativeActions.toggleAccountMenu}
           onCreationMenuOpen={nativeActions.closeTransientMenus}

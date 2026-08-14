@@ -7,6 +7,7 @@ import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 import { TABS } from './tabs'
 
 export const NATIVE_PHONE_MENU_HEADER_HEIGHT = 64
+export const NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT = 46
 
 export type NativePhoneCreationAction = 'project' | 'channel' | 'message'
 
@@ -54,6 +55,21 @@ export const isNativePhoneTabRootRoute = (path: string | null): boolean => {
 export const isNativePhoneChannelsRootRoute = (path: string | null): boolean =>
   nativePhonePathname(path) === '/channels'
 
+// Portrait only needs the workspace and account controls at a tab root. The
+// admitted large-phone landscape lane has room for its compact toolbar on any
+// page, so it retains the header while a detail is shown beside the menu.
+export const shouldShowNativePhoneHeader = (input: {
+  isIpad: boolean
+  largePhoneLandscape: boolean
+  path: string | null
+  showBar: boolean
+}): boolean => input.showBar
+  && !input.isIpad
+  && (input.largePhoneLandscape || isNativePhoneTabRootRoute(input.path))
+
+export const getNativePhoneHeaderHeight = (landscape: boolean): number =>
+  landscape ? NATIVE_PHONE_LANDSCAPE_HEADER_HEIGHT : NATIVE_PHONE_MENU_HEADER_HEIGHT
+
 // Android's dock is taller and raised above the safe area, so its native phone
 // actions need their own exact bottom-chrome clearance.
 export const getNativePhoneBottomChromeClearance = (platform: 'android' | 'ios'): number =>
@@ -72,15 +88,16 @@ export const getNativePhoneComposeBottom = (bottomInset: number, platform: 'andr
 export const getNativeWebviewFrameInsets = (input: {
   ipadChromeTop: number
   isIpad: boolean
+  nativePhoneHeaderHeight: number
   platform: string
   safeArea: NativeSafeAreaInsets
-  showNativePhoneHomeHeader: boolean
+  showNativePhoneHeader: boolean
   showTabBar: boolean
 }): NativeSafeAreaInsets => {
   const top = input.isIpad && input.showTabBar
     ? getIpadContentTop(input.ipadChromeTop)
     : input.platform === 'ios' || input.platform === 'android'
-      ? input.safeArea.top + (input.showNativePhoneHomeHeader ? NATIVE_PHONE_MENU_HEADER_HEIGHT : 0)
+      ? input.safeArea.top + (input.showNativePhoneHeader ? input.nativePhoneHeaderHeight : 0)
       : 0
   const bottom = input.platform === 'android' ? input.safeArea.bottom : 0
 

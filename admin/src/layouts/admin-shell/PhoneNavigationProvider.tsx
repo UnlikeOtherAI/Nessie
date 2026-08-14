@@ -20,10 +20,12 @@ import {
 } from './phone-navigation-ledger'
 import {
   getPhoneNavigationBackTarget,
+  getPhoneTabRootPath,
   type PhoneNavigationBackAction,
 } from './phone-navigation'
 import { NativePhoneNavigationBridge } from './NativePhoneNavigationBridge'
 import { useLocalBackSnapshot } from './local-back/LocalBackContext'
+import { useNativeLargePhoneLandscapeApp } from '../../lib/mobile-shell'
 
 export type PhoneNavigationApi = {
   // Run the route-level Back for the CURRENT location: ledger-aware
@@ -56,6 +58,7 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
   const location = useLocation()
   const navigationType = useNavigationType()
   const localBack = useLocalBackSnapshot()?.active ?? null
+  const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp()
   const ledgerRef = useRef<PhoneHistoryLedger | null>(null)
   if (ledgerRef.current === null) {
     ledgerRef.current = createPhoneHistoryLedger(
@@ -81,6 +84,22 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
       `${location.pathname}${location.search}${location.hash}`,
     )
   })
+
+  // Landscape has a menu and detail in adjacent columns. Once that extra
+  // column disappears, showing the retained detail alone is a dead end: land
+  // on the section's menu instead. The ref makes this a true rotation
+  // transition, never a redirect for an ordinary portrait deep link.
+  const wasNativeLargePhoneLandscape = useRef(nativeLargePhoneLandscape)
+  useLayoutEffect(() => {
+    const returnedToPortrait = wasNativeLargePhoneLandscape.current && !nativeLargePhoneLandscape
+    wasNativeLargePhoneLandscape.current = nativeLargePhoneLandscape
+    if (!returnedToPortrait) return
+
+    const menuPath = getPhoneTabRootPath(location.pathname)
+    if (location.pathname !== menuPath) {
+      void navigate(menuPath, { replace: true })
+    }
+  }, [location.pathname, nativeLargePhoneLandscape, navigate])
 
   // Stable outward API: the ledger and the latest navigate/location live on
   // refs, so consumers and the native bridge never resubscribe per location
