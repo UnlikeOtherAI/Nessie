@@ -1,5 +1,7 @@
 import { Children, type ReactNode, useMemo } from 'react'
 import { useMediaQuery } from '../../../hooks/useMediaQuery'
+import { usePhoneLayout } from '../../../lib/mobile-shell'
+import { ColumnBackProvider } from '../../../layouts/admin-shell/local-back/LocalBackContext'
 
 type ColumnBrowserViewportProps = {
   activeColumn: number
@@ -10,14 +12,23 @@ export const ColumnBrowserViewport = ({
   activeColumn,
   columns,
 }: ColumnBrowserViewportProps) => {
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  // A phone shell (including the native WebView, whose viewport need not be
+  // narrow) shows exactly one column; viewport width alone only classifies
+  // mobile-web vs tablet vs desktop.
+  const phoneLayout = usePhoneLayout()
   const isTablet = useMediaQuery(
     '(min-width: 768px) and (max-width: 1023px)',
   )
+  const isMobile = phoneLayout
 
   const visibleColumns = isMobile ? 1 : isTablet ? 2 : 3
   const normalizedColumns = Children.toArray(columns)
   const totalColumns = normalizedColumns.length
+  // A phone shows exactly one column at a time; the column at the translation
+  // origin owns the phone Back doorway. Off-screen columns stay mounted for
+  // the slide transition but report phoneVisible: false so their Back
+  // registrations deactivate instead of competing for the shell control.
+  const phoneVisibleIndex = isMobile ? Math.max(0, Math.min(activeColumn, totalColumns - 1)) : -1
 
   const translateX = useMemo(() => {
     const columnWidthPercent = 100 / visibleColumns
@@ -56,7 +67,11 @@ export const ColumnBrowserViewport = ({
               key={index}
               style={{ width: `${(100 / visibleColumns) * slots}%` }}
             >
-              {column}
+              <ColumnBackProvider
+                value={{ index, phoneVisible: index === phoneVisibleIndex }}
+              >
+                {column}
+              </ColumnBackProvider>
             </div>
           )
         })}

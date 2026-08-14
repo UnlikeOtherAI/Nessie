@@ -19,7 +19,7 @@ import {
   useIntegrationPluginManifest,
   useSetProductTeamEnablement,
 } from '../facades/integrations/hooks'
-import { useMediaQuery } from '../hooks/useMediaQuery'
+import { usePhoneLayout } from '../lib/mobile-shell'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
@@ -401,7 +401,7 @@ const ProductDetail = ({
 
 export const IntegrationsPage = () => {
   const productsQuery = useIntegratedProducts()
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const phoneLayout = usePhoneLayout()
   const [selectedSlug, setSelectedSlug] = useState<string>()
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
 
@@ -454,14 +454,14 @@ export const IntegrationsPage = () => {
         key={selectedProduct.slug}
         onBack={() => setMobileDetailOpen(false)}
         product={selectedProduct}
-        showBack={isMobile}
+        showBack
       />,
     )
   }
 
   return (
     <ColumnBrowserViewport
-      activeColumn={isMobile && mobileDetailOpen ? 1 : 0}
+      activeColumn={phoneLayout && mobileDetailOpen ? 1 : 0}
       columns={columns}
     />
   )

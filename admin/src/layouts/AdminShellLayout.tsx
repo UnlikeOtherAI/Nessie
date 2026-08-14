@@ -19,6 +19,7 @@ import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { AccountMenuProvider } from './admin-shell/AccountMenuContext';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
+import { LocalBackProvider } from './admin-shell/local-back/LocalBackContext';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
@@ -245,6 +246,7 @@ const AuthenticatedAdminShellLayout = () => {
             onLogout={shell.logoutAndRedirect}
             showHeaderAccountMenu={hideTopBar && mobileLayout && !nativeIPadApp && !nativePhoneApp}
           >
+            <LocalBackProvider>
             <MobileNavProvider value={{ openDrawer: shell.openMobileDrawer }}>
               <div className={frameClassName}>
                 {showMobileWebHomeHeader ? <MobileWebHomeHeader onLogout={shell.logoutAndRedirect} /> : null}
@@ -299,6 +301,7 @@ const AuthenticatedAdminShellLayout = () => {
                 onSelectAgent={shell.selectAgent}
               />
             </MobileNavProvider>
+            </LocalBackProvider>
           </AccountMenuProvider>
         </NotificationsProvider>
       </ToastProvider>
