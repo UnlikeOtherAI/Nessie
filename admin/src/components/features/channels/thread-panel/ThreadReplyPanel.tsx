@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
@@ -18,6 +19,7 @@ import { DropZoneOverlay } from '../../../shared/DropZoneOverlay'
 import { OversizePasteDialog } from '../../../shared/OversizePasteDialog'
 import type { MentionEntity } from '../../../shared/MentionInput'
 import type { AvatarSources } from '../../../primitives/UserAvatar'
+import { THREAD_PANEL_MIN_WIDTH } from './thread-panel-helpers'
 import { usePhoneLayout } from '../../../../lib/mobile-shell'
 import { PhoneBackButton } from '../../../../layouts/admin-shell/PhoneBackButton'
 import { ChannelComposer } from '../ChannelComposer'
@@ -49,6 +51,10 @@ interface ThreadReplyPanelProps {
   thread: ReturnType<typeof useReplyThread>
   token: string | null
 }
+
+// One arrow-key press on the thread separator steps the width by this much;
+// Home/End jump to the widest/narrowest allowed widths.
+const KEYBOARD_RESIZE_STEP = 16
 
 const channelLabel = (channel: ChannelRecord): string =>
   channel.type === 'dm' ? channel.label : `#${channel.label}`
@@ -94,8 +100,10 @@ export const ThreadReplyPanel = ({
     closeThread,
     openRootMessageId,
     panelWidth,
+    persistPanelWidth,
     repliesQuery,
     resizePanel,
+    resizePanelWithKeyboard,
     rootQuery,
     viewportWidth,
   } = thread
@@ -194,23 +202,64 @@ export const ThreadReplyPanel = ({
     event.preventDefault()
     const startX = event.clientX
     const startWidth = panelWidth
+    let cancelled = false
 
-    const move = (moveEvent: PointerEvent) => {
-      resizePanel(startWidth + (startX - moveEvent.clientX))
+    // Coalesce each burst of pointermoves into one resize per frame, and
+    // write localStorage once at interaction end instead of per move.
+    let frame: number | undefined
+    let pendingClientX: number | null = null
+    const flush = () => {
+      frame = undefined
+      if (pendingClientX === null) return
+      const clientX = pendingClientX
+      pendingClientX = null
+      resizePanel(startWidth + (startX - clientX))
     }
+    const move = (moveEvent: PointerEvent) => {
+      pendingClientX = moveEvent.clientX
+      if (frame === undefined) frame = requestAnimationFrame(flush)
+    }
+    // Runs for every termination — pointerup, pointercancel, window blur,
+    // unmount mid-drag — so the body cursor/userSelect can never stick.
+    // A cancel drops the pending frame and keeps the last applied width.
     const stop = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('blur', cancel)
+      if (frame !== undefined) cancelAnimationFrame(frame)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      if (!cancelled) flush()
+      persistPanelWidth()
       resizeCleanup.current = null
+    }
+    const cancel = () => {
+      cancelled = true
+      stop()
     }
 
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
-    resizeCleanup.current = stop
+    window.addEventListener('pointercancel', cancel)
+    window.addEventListener('blur', cancel)
+    resizeCleanup.current = cancel
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+  }
+
+  // The separator exposes an ARIA separator role, so it owes the same
+  // keyboard path the sidebar separator has: arrows step, Home/End jump.
+  const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    let nextWidth: number | null = null
+    if (event.key === 'ArrowLeft') nextWidth = panelWidth + KEYBOARD_RESIZE_STEP
+    if (event.key === 'ArrowRight') nextWidth = panelWidth - KEYBOARD_RESIZE_STEP
+    if (event.key === 'Home') nextWidth = viewportWidth / 2
+    if (event.key === 'End') nextWidth = THREAD_PANEL_MIN_WIDTH
+    if (nextWidth === null) return
+
+    event.preventDefault()
+    resizePanelWithKeyboard(nextWidth)
   }
 
   const rootDeleted = Boolean(root?.deletedAt)
@@ -243,15 +292,17 @@ export const ThreadReplyPanel = ({
         <div
           aria-label="Resize thread panel"
           aria-orientation="vertical"
-          aria-valuemax={Math.floor(viewportWidth / 2)}
-          aria-valuemin={320}
+          aria-valuemax={Math.floor(Math.max(viewportWidth / 2, THREAD_PANEL_MIN_WIDTH))}
+          aria-valuemin={THREAD_PANEL_MIN_WIDTH}
           aria-valuenow={panelWidth}
           className={[
             'absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize touch-none',
-            'hover:bg-[var(--accent-soft)] xl:block',
+            'hover:bg-[var(--accent-soft)] focus-visible:bg-[var(--accent-soft)] xl:block',
           ].join(' ')}
+          onKeyDown={resizeWithKeyboard}
           onPointerDown={startResize}
           role="separator"
+          tabIndex={0}
         />
         <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
           {phoneLayout ? (

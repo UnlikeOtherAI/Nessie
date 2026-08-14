@@ -59,37 +59,43 @@ export const useReplyThread = ({
     navigate(`/channels/${channelId}`)
   }, [channelId, navigate, phoneLayout, phoneNavigation])
 
-  // Live viewport width drives both the persisted-width clamp below and the
-  // panel's aria-valuemax, so neither goes stale on window resize.
+  // Continuous drag geometry is on the plan's geometry allowlist
+  // (docs/plans/2026-08-13-responsive-coherence.md §C.5): the 50vw maximum
+  // moves continuously with the window, so the band store cannot carry it.
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
-  const [panelWidth, setPanelWidth] = useState(() =>
+  // The stored value is the person's *preferred* width; the rendered width is
+  // that preference derived against the current bounds, so a temporary
+  // viewport shrink never destroys what they chose.
+  const [preferredWidth, setPreferredWidth] = useState(() =>
     readThreadPanelWidth(
       window.localStorage.getItem(THREAD_PANEL_WIDTH_STORAGE_KEY),
-      viewportWidth,
+      window.innerWidth,
     ),
   )
+  const panelWidth = clampThreadPanelWidth(preferredWidth, viewportWidth)
 
   useEffect(() => {
-    const onResize = () => {
-      setViewportWidth(window.innerWidth)
-      // Re-clamp the persisted width against the shrunk/grown viewport and
-      // persist the correction, so a wide drag on a large window does not
-      // leave the panel oversized on a small one.
-      setPanelWidth((width) => {
-        const clamped = clampThreadPanelWidth(width, window.innerWidth)
-        if (clamped !== width) {
-          window.localStorage.setItem(THREAD_PANEL_WIDTH_STORAGE_KEY, String(clamped))
-        }
-        return clamped
-      })
-    }
+    const onResize = () => setViewportWidth(window.innerWidth)
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // Mid-gesture updates only move the preference; persistence happens once,
+  // when the interaction ends (persistPanelWidth / resizePanelWithKeyboard).
   const resizePanel = useCallback((next: number) => {
+    setPreferredWidth(clampThreadPanelWidth(next, window.innerWidth))
+  }, [])
+
+  const persistPanelWidth = useCallback(() => {
+    setPreferredWidth((current) => {
+      window.localStorage.setItem(THREAD_PANEL_WIDTH_STORAGE_KEY, String(current))
+      return current
+    })
+  }, [])
+
+  const resizePanelWithKeyboard = useCallback((next: number) => {
     const clamped = clampThreadPanelWidth(next, window.innerWidth)
-    setPanelWidth(clamped)
+    setPreferredWidth(clamped)
     window.localStorage.setItem(THREAD_PANEL_WIDTH_STORAGE_KEY, String(clamped))
   }, [])
 
@@ -128,8 +134,10 @@ export const useReplyThread = ({
     openRootMessageId,
     openThread,
     panelWidth,
+    persistPanelWidth,
     repliesQuery,
     resizePanel,
+    resizePanelWithKeyboard,
     resolveThreadParticipant,
     rootQuery,
     viewportWidth,

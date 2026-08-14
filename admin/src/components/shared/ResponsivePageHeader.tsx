@@ -83,9 +83,8 @@ type HeaderMenuProps = {
 
 const ACTION_GAP = 8
 const ACCOUNT_MENU_WIDTH = 40
+// Minimum title lane when the header carries no measured extras at all.
 const MIN_LEADING_WIDTH = 152
-const MIN_LEADING_WIDTH_WITH_LEADING = 200
-const MIN_LEADING_WIDTH_WITH_BACK = 210
 const MORE_ACTION_ID = '__page-header-more'
 const moreAction: PageHeaderButtonAction = {
   compact: true,
@@ -168,6 +167,7 @@ export const ResponsivePageHeader = ({
   const showHeaderAccountMenu = useHeaderAccountMenuVisible()
   const headerRef = useRef<HTMLElement>(null)
   const measurementRef = useRef<HTMLDivElement>(null)
+  const leadingMeasureRef = useRef<HTMLDivElement>(null)
   const actionMeasureRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const moreMeasureRef = useRef<HTMLDivElement>(null)
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -176,7 +176,6 @@ export const ResponsivePageHeader = ({
   const [overflowIds, setOverflowIds] = useState<string[]>([])
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const menuIdPrefix = useId().replaceAll(':', '')
-  const hasLeading = Boolean(leading)
 
   const actionById = useMemo(
     () => new Map(actions.map((action) => [action.id, action])),
@@ -206,17 +205,21 @@ export const ResponsivePageHeader = ({
       }))
       if (moreWidth === 0 || layouts.some((action) => action.width === 0)) return
 
+      // The leading lane reserve is measured, never element-truthiness:
+      // leading can be a conditional doorway (the phone navigation button)
+      // that renders null on desktop, where `Boolean(leading)` would still
+      // reserve ~48px and collapse the actions early (D7). The intrinsic row
+      // holds whatever leading/onBack actually rendered this pass; only the
+      // title lane's minimum width stays a constant.
+      const leadingReserve = Math.max(
+        leadingMeasureRef.current?.getBoundingClientRect().width ?? 0,
+        MIN_LEADING_WIDTH,
+      )
       const next = partitionPageHeaderActions(
         layouts,
         Math.max(
           0,
-          header.clientWidth - (
-            onBack
-              ? MIN_LEADING_WIDTH_WITH_BACK
-              : hasLeading
-                ? MIN_LEADING_WIDTH_WITH_LEADING
-                : MIN_LEADING_WIDTH
-          ) - (showHeaderAccountMenu ? ACCOUNT_MENU_WIDTH : 0),
+          header.clientWidth - leadingReserve - (showHeaderAccountMenu ? ACCOUNT_MENU_WIDTH : 0),
         ),
         moreWidth,
         ACTION_GAP,
@@ -232,11 +235,17 @@ export const ResponsivePageHeader = ({
     schedule()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule)
     observer?.observe(header)
+    // The hidden intrinsic row holds the measured content: observing it keeps
+    // the partition honest when the intrinsics change without a header resize
+    // — font-scale/zoom, a doorway appearing on phone, late-loaded controls
+    // (D8).
+    const measurement = measurementRef.current
+    if (measurement) observer?.observe(measurement)
     return () => {
       if (frame !== undefined) cancelAnimationFrame(frame)
       observer?.disconnect()
     }
-  }, [actions, hasLeading, onBack, showHeaderAccountMenu])
+  }, [actions, onBack, showHeaderAccountMenu])
 
   useEffect(() => {
     if (!openMenu) return undefined
@@ -334,9 +343,13 @@ export const ResponsivePageHeader = ({
       ref={headerRef}
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        {leading}
-        {onBack ? (
-          <PhoneBackButton label={`Back from ${title}`} onBack={onBack} />
+        {leading || onBack ? (
+          <div className="flex flex-shrink-0 items-center gap-3">
+            {leading}
+            {onBack ? (
+              <PhoneBackButton label={`Back from ${title}`} onBack={onBack} />
+            ) : null}
+          </div>
         ) : null}
         <div className="min-w-0 flex-1">
           {eyebrow ? (
@@ -422,6 +435,16 @@ export const ResponsivePageHeader = ({
         className="pointer-events-none invisible absolute left-0 top-0 flex items-center gap-2 whitespace-nowrap"
         ref={measurementRef}
       >
+        {/* Mirrors the visible leading lane (leading + Back with the same
+            gap-3 rhythm) so the reserve below is the measured intrinsic
+            width of what actually rendered — including the case where a
+            conditional doorway rendered nothing at all. */}
+        <div className="flex items-center gap-3" ref={leadingMeasureRef}>
+          {leading}
+          {onBack ? (
+            <PhoneBackButton label={`Back from ${title}`} onBack={onBack} />
+          ) : null}
+        </div>
         {actions.map((action) => (
           <div key={action.id} ref={(element) => { actionMeasureRefs.current[action.id] = element }}>
             {renderAction(action, true)}

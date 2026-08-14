@@ -1268,9 +1268,12 @@ a {
 }
 
 /* The emoji button sits at the left of the toolbar, but its popover is
-   anchored to the composer itself so it stays inside narrow hosts (the reply
-   panel at its minimum width, the full-screen thread panel below 900px)
-   instead of overflowing like the right-aligned message-reaction picker. */
+   anchored to the composer itself so it stays inside narrow hosts instead of
+   overflowing like the right-aligned message-reaction picker. Those narrow
+   hosts come from the thread panel family in ThreadReplyPanel.tsx: the
+   docked panel near its 320px minimum, and the `max-[900px]` full-screen
+   variant of the same panel — one private component scale, not a breakpoint
+   this file owns. */
 .admin-compose-emoji {
   position: static;
 }
