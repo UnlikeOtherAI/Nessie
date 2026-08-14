@@ -81,6 +81,10 @@ const Shell = (): React.JSX.Element => {
     reduceNativeShellPresentation,
     DEFAULT_NATIVE_SHELL_PRESENTATION,
   )
+  const [dismissCreationMenuVersion, dismissNativeMenus] = useReducer(
+    (version: number) => version + 1,
+    0,
+  )
   const {
     accent,
     attentionBadges,
@@ -258,6 +262,10 @@ const Shell = (): React.JSX.Element => {
       }
       return
     }
+    if (msg.type === 'nessie:transient-menu' && msg.active) {
+      dismissNativeMenus()
+      return
+    }
     if (msg.type === 'nessie:back-state') {
       // The admin's phone navigation bridge reports whether the current route
       // has an in-app parent; Android hardware Back consults the latest value.
@@ -285,6 +293,8 @@ const Shell = (): React.JSX.Element => {
   }
 
   const onIndexChange = (next: number): void => {
+    dismissNativeMenus()
+    nativeActions.closeTransientMenus()
     setIndex(next)
     if (IS_IPAD && TABS[next]?.key === 'search') {
       nativeActions.openSearchOverlay()
@@ -418,10 +428,12 @@ const Shell = (): React.JSX.Element => {
           accountPresence={nativeAccount.presence}
           bottomInset={insets.bottom}
           creationAccentColor={strongAccent}
+          dismissCreationMenuVersion={dismissCreationMenuVersion}
           headerSurface={phoneHeaderSurface}
           headerText={phoneHeaderText}
           onAccentColor={phoneOnAccent}
           onAccountPress={nativeActions.toggleAccountMenu}
+          onCreationMenuOpen={nativeActions.closeTransientMenus}
           onCreateAction={nativeActions.createFromPhoneMenu}
           onHistoryPress={() => nativeActions.runToolbarAction('history')}
           onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}

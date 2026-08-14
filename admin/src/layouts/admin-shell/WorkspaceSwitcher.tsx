@@ -19,6 +19,7 @@ import {
   type WorkspaceMenuPosition,
 } from './workspace-menu-position'
 import { recoverWorkspaceSwitchFailure } from './workspace-switch-recovery'
+import { useTransientMenu } from './TransientMenuContext'
 
 type NativeWorkspaceWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
@@ -225,7 +226,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const navigate = useNavigate()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const nativeAnchorRef = useRef<HTMLDivElement>(null)
-  const [open, setOpen] = useState(false)
+  const { close, isOpen: open, toggle } = useTransientMenu()
   const [busyTeamId, setBusyTeamId] = useState<string | null>(null)
   const [switchError, setSwitchError] = useState<string | null>(null)
   const [nativeAnchorLeft, setNativeAnchorLeft] = useState(8)
@@ -243,16 +244,16 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const toggleMenu = (): void => {
     if (busyTeamId !== null) return
     setSwitchError(null)
-    setOpen((value) => !value)
+    toggle()
   }
 
   const closeMenu = (): void => {
-    if (busyTeamId === null) setOpen(false)
+    if (busyTeamId === null) close()
   }
 
   const handleSelect = async (workspace: Workspace): Promise<void> => {
     if (workspace.active || workspace.teamId === activeTeamId) {
-      setOpen(false)
+      close()
       return
     }
     setSwitchError(null)
@@ -270,7 +271,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
           teamId: workspace.teamId,
         })
       }
-      setOpen(false)
+      close()
       void navigate('/channels', { replace: true })
     } catch (error) {
       const recovery = await recoverWorkspaceSwitchFailure({
@@ -280,7 +281,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
         targetWorkspace: workspace,
       })
       if (recovery.outcome === 'switched') {
-        setOpen(false)
+        close()
         void navigate('/channels', { replace: true })
       } else {
         setSwitchError(recovery.message)
@@ -291,7 +292,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   }
 
   const handleAddWorkspace = (providerId: string): void => {
-    setOpen(false)
+    close()
     void startExternalSignIn(providerId, resolveAppliedTheme(theme))
   }
 

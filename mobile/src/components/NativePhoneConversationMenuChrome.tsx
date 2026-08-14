@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
@@ -18,10 +18,12 @@ type NativePhoneConversationMenuChromeProps = {
   accountPresence: 'away' | 'offline' | 'online'
   bottomInset: number
   creationAccentColor: string
+  dismissCreationMenuVersion: number
   headerSurface: string
   headerText: string
   onAccentColor: string
   onAccountPress: () => void
+  onCreationMenuOpen: () => void
   onHistoryPress: () => void
   onCreateAction: (action: NativePhoneCreationAction) => void
   safeTop: number
@@ -74,10 +76,12 @@ export const NativePhoneConversationMenuChrome = ({
   accountPresence,
   bottomInset,
   creationAccentColor,
+  dismissCreationMenuVersion,
   headerSurface,
   headerText,
   onAccentColor,
   onAccountPress,
+  onCreationMenuOpen,
   onHistoryPress,
   onCreateAction,
   safeTop,
@@ -102,6 +106,7 @@ export const NativePhoneConversationMenuChrome = ({
   }, [creationProgress, showCreationActions])
 
   const openCreationMenu = (): void => {
+    onCreationMenuOpen()
     creationProgress.stopAnimation()
     creationProgress.setValue(0)
     setCreationOpen(true)
@@ -115,7 +120,7 @@ export const NativePhoneConversationMenuChrome = ({
     })
   }
 
-  const closeCreationMenu = (): void => {
+  const closeCreationMenu = useCallback((): void => {
     Animated.timing(creationProgress, {
       duration: 180,
       easing: Easing.in(Easing.cubic),
@@ -124,7 +129,12 @@ export const NativePhoneConversationMenuChrome = ({
     }).start(({ finished }) => {
       if (finished) setCreationOpen(false)
     })
-  }
+  }, [creationProgress])
+
+  useEffect(() => {
+    if (!creationOpen) return
+    closeCreationMenu()
+  }, [closeCreationMenu, creationOpen, dismissCreationMenuVersion])
 
   const selectCreationAction = (action: NativePhoneCreationAction): void => {
     creationProgress.stopAnimation()

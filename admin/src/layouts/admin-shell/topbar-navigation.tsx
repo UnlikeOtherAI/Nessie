@@ -1,7 +1,8 @@
-import { useEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useReducer, useRef, type CSSProperties, type ReactNode } from 'react'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { useChannels } from '../../facades/channels/hooks'
 import { recordRecentChannel, useRecentChannels } from './useRecentChannels'
+import { useTransientMenu } from './TransientMenuContext'
 
 // Tracks position in the SPA history so the back/forward buttons can disable at
 // the ends. New navigations (PUSH) advance the cursor and clear the forward
@@ -65,24 +66,24 @@ type RecentChannelsControlProps = {
 export const RecentChannelsControl = ({
   buttonClassName = 'admin-topbar-btn',
 }: RecentChannelsControlProps): React.JSX.Element => {
-  const [open, setOpen] = useState(false)
+  const { close, isOpen: open, toggle } = useTransientMenu()
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
     const onClick = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false)
+      if (!ref.current?.contains(event.target as Node)) close()
     }
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
-  }, [open])
+  }, [close, open])
 
   return (
     <div className="relative" ref={ref}>
       <button
         aria-label="Recent channels"
         className={buttonClassName}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
         title="Recent channels"
         type="button"
       >
@@ -91,7 +92,7 @@ export const RecentChannelsControl = ({
           <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-      {open ? <RecentChannelsMenu onSelect={() => setOpen(false)} /> : null}
+      {open ? <RecentChannelsMenu onSelect={close} /> : null}
     </div>
   )
 }

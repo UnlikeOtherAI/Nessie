@@ -4,6 +4,9 @@ import type { NativePhoneCreationAction } from './native-shell-layout'
 type RunScript = (script: string) => void
 
 export const createNativeWebviewActions = (runScript: RunScript) => ({
+  closeTransientMenus: (): void => {
+    runScript('window.__nessieCloseTransientMenus && window.__nessieCloseTransientMenus();')
+  },
   closeSearchOverlay: (): void => {
     runScript("window.dispatchEvent(new Event('nessie:close-search-overlay'));")
   },

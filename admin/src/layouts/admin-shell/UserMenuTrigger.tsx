@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useUserPresence } from '../../providers/PresenceProvider'
 import { UserMenuPopover, type UserMenuPopoverPlacement } from './UserMenuPopover'
+import { useTransientMenu } from './TransientMenuContext'
 
 type UserMenuTriggerProps = {
   className?: string
@@ -32,16 +33,16 @@ export const UserMenuTrigger = ({
   const { me, token } = useAuthSession()
   const selfPresence = useUserPresence(me?.user.id)
   const avatarButtonRef = useRef<HTMLButtonElement>(null)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const { close, isOpen: menuOpen, toggle } = useTransientMenu()
 
   useEffect(() => {
     if (!nativeShellBridge || !isReactNativeWebView()) return undefined
     const target = window as NativePhoneAccountWindow
-    target.__nessieToggleAccountMenu = () => setMenuOpen((open) => !open)
+    target.__nessieToggleAccountMenu = toggle
     return () => {
       delete target.__nessieToggleAccountMenu
     }
-  }, [nativeShellBridge])
+  }, [nativeShellBridge, toggle])
 
   useEffect(() => {
     if (!nativeShellBridge || !isReactNativeWebView() || !me) return
@@ -71,7 +72,7 @@ export const UserMenuTrigger = ({
             ? 'ring-2 ring-[color:var(--accent)]'
             : 'hover:ring-2 hover:ring-[color:var(--overlay)]',
         ].join(' ')}
-        onClick={() => setMenuOpen((open) => !open)}
+        onClick={toggle}
         ref={avatarButtonRef}
         title={me.user.displayName}
         type="button"
@@ -92,7 +93,7 @@ export const UserMenuTrigger = ({
       {menuOpen ? (
         <UserMenuPopover
           anchorRef={avatarButtonRef}
-          onClose={() => setMenuOpen(false)}
+          onClose={close}
           onLogout={onLogout}
           placement={placement}
           showFeedbackLink={showFeedbackLink}

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { isReactNativeWebView, useNativeIPadApp } from '../../lib/mobile-shell'
 import { TopBarSearch } from './TopBarSearch'
+import { useTransientMenu } from './TransientMenuContext'
 
 type RnWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
@@ -21,21 +22,21 @@ const postOverlayState = (active: boolean) => {
 export const NativeSearchOverlay = () => {
   const location = useLocation()
   const nativeIPadApp = useNativeIPadApp()
-  const [open, setOpen] = useState(false)
+  const { close, isOpen: open, open: openMenu } = useTransientMenu()
 
   useEffect(() => {
-    const openOverlay = () => setOpen(true)
-    const closeOverlay = () => setOpen(false)
+    const openOverlay = () => openMenu()
+    const closeOverlay = () => close()
     window.addEventListener(OPEN_EVENT, openOverlay)
     window.addEventListener(CLOSE_EVENT, closeOverlay)
     return () => {
       window.removeEventListener(OPEN_EVENT, openOverlay)
       window.removeEventListener(CLOSE_EVENT, closeOverlay)
     }
-  }, [])
+  }, [close, openMenu])
 
   useEffect(() => {
-    if (open) setOpen(false)
+    if (open) close()
   }, [location.pathname])
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export const NativeSearchOverlay = () => {
       <button
         aria-label="Close search"
         className="native-search-overlay-backdrop"
-        onClick={() => setOpen(false)}
+        onClick={close}
         type="button"
       />
       <div
@@ -59,7 +60,7 @@ export const NativeSearchOverlay = () => {
         role="dialog"
         style={nativeIPadApp ? { marginTop: 12 } : undefined}
       >
-        <TopBarSearch autoFocus onDismiss={() => setOpen(false)} variant="overlay" />
+        <TopBarSearch autoFocus onDismiss={close} variant="overlay" />
       </div>
     </div>
   )
