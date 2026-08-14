@@ -359,15 +359,6 @@ const Shell = (): React.JSX.Element => {
         statusBarStyle,
       )} />
 
-      {showBar && !IS_IPAD && !IS_ANDROID ? (
-        <IphoneNativeTabBar
-          activeTintColor={accent}
-          inactiveTintColor={inactive}
-          navigationState={navigationState}
-          onIndexChange={onIndexChange}
-        />
-      ) : null}
-
       {showBar && IS_ANDROID ? (
         <AndroidTabletTabBar
           activeIndex={index}
@@ -420,6 +411,16 @@ const Shell = (): React.JSX.Element => {
           style={[styles.fill, { backgroundColor: bg }]}
         />}
       </View>
+
+      {showBar && !IS_IPAD && !IS_ANDROID ? (
+        <IphoneNativeTabBar
+          activeTintColor={accent}
+          bottomInset={insets.bottom}
+          inactiveTintColor={inactive}
+          navigationState={navigationState}
+          onIndexChange={onIndexChange}
+        />
+      ) : null}
 
       {showNativePhoneHomeChrome ? (
         <NativePhoneConversationMenuChrome

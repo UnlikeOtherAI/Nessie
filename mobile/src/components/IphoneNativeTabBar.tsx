@@ -1,11 +1,13 @@
 import { StyleSheet, View } from 'react-native'
 import TabView from 'react-native-bottom-tabs'
 
+import { getIphoneTabBarHostHeight } from '../lib/iphone-tab-bar'
 import { type NativeTabNavigationState } from '../lib/native-shell-layout'
 import { TABS } from '../lib/tabs'
 
 type IphoneNativeTabBarProps = {
   activeTintColor: string
+  bottomInset: number
   inactiveTintColor: string
   navigationState: NativeTabNavigationState
   onIndexChange: (index: number) => void
@@ -18,11 +20,12 @@ type IphoneNativeTabBarProps = {
  */
 export const IphoneNativeTabBar = ({
   activeTintColor,
+  bottomInset,
   inactiveTintColor,
   navigationState,
   onIndexChange,
 }: IphoneNativeTabBarProps): React.JSX.Element => (
-  <View style={StyleSheet.absoluteFill}>
+  <View style={[styles.host, { height: getIphoneTabBarHostHeight(bottomInset) }]}>
     <TabView
       getIcon={({ route }) => {
         const tab = TABS.find((item) => item.key === route.key)
@@ -40,5 +43,12 @@ export const IphoneNativeTabBar = ({
 )
 
 const styles = StyleSheet.create({
+  host: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    zIndex: 20,
+  },
   scene: { flex: 1 },
 })
