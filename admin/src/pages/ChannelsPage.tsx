@@ -19,7 +19,6 @@ import type { AdminShellOutletContext } from '../layouts/AdminShellLayout'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { parseChannelIdFromPath } from '../lib/channel-route'
-import { conversationParentPath, getConversationRoute } from '../lib/conversation-navigation'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { reportPushSurface } from '../lib/push-surface'
 import { ConversationInfoFlow } from '../components/features/channels/ConversationInfoFlow'
@@ -54,7 +53,6 @@ export const ChannelsPage = () => {
   const { data: allUsers = [] } = useUsers(isOwner)
 
   const isComposeRoute = location.pathname === '/channels/new'
-  const conversationRoute = getConversationRoute(location.pathname)
   const composeReturnTo = readChannelComposeReturnTo(location.state)
   const backgroundChannelId = isComposeRoute
     ? parseChannelIdFromPath(composeReturnTo)
@@ -370,7 +368,6 @@ export const ChannelsPage = () => {
           setMessage,
           setOversizePaste,
         }}
-        conversationRoute={conversationRoute}
         deepWaterLauncher={deepWaterLauncher}
         documentSessions={documentSessions}
         documentStore={documentStore}
@@ -417,9 +414,6 @@ export const ChannelsPage = () => {
         token={token}
         toolsCount={tools.length}
         visibleActiveTab={visibleActiveTab}
-        onBack={() => {
-          if (conversationRoute) void navigate(conversationParentPath(conversationRoute))
-        }}
         onBannerJoin={onBannerJoin}
         onCallButton={onCallButton}
         onCreateAgent={() => void navigate('/agents/designer')}

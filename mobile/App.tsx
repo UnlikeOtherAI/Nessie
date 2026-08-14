@@ -20,6 +20,10 @@ import {
   type NativePushRegistration,
 } from './src/lib/push-notifications'
 import { useNativePushNavigation } from './src/lib/native-push-navigation'
+import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
+import { useNativePhoneBack } from './src/lib/use-native-phone-back'
+import { nativeSelectTabScript } from './src/lib/native-phone-navigation'
+import { allowsNativeBackForwardGestures } from './src/lib/webview-back-gesture'
 import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
@@ -29,9 +33,7 @@ import {
 import { type NativeShellMessage } from './src/lib/native-shell-message'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { INJECTED, isDark } from './src/lib/webview-inject'
-import {
-  statusBarStyleForNativePhoneHomeHeader,
-} from './src/lib/status-bar'
+import { statusBarStyleForNativePhoneHomeHeader } from './src/lib/status-bar'
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
@@ -67,13 +69,6 @@ import {
 const IS_IPAD = Platform.OS === 'ios' && Platform.isPad
 const IS_ANDROID = Platform.OS === 'android'
 const NATIVE_PUSH_TOKEN_EVENT = 'nessie:native-push-token'
-// If the admin never reports itself mounted (it posts a `nessie:route` message on
-// boot) within this window after a load finishes, the WebView is blank/white —
-// reload it with a cache-bust. WKWebView can serve a stale cached index.html (e.g.
-// one referencing a JS bundle that 404s after a deploy), which boots to white; a
-// changed URL forces a fresh fetch. Capped so a genuinely broken page can't loop.
-const BOOT_TIMEOUT_MS = 9000
-const MAX_BOOT_RETRIES = 4
 
 const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
@@ -103,32 +98,25 @@ const Shell = (): React.JSX.Element => {
     workspaceAvatarUrl: nativeWorkspaceAvatarUrl,
     workspaceName: ipadWorkspaceName,
   } = presentation
-  // Bumping this remounts the WebView — used to recover Android after its render
-  // process is killed (the instance is unusable until recreated).
-  const [webviewKey, setWebviewKey] = useState(0)
-  // Changing the loaded URL forces WKWebView to fetch a fresh index.html instead of
-  // a cached (possibly stale, asset-404ing) one that boots to a blank white screen.
-  const [reloadNonce, setReloadNonce] = useState(0)
-  const [reloadPath, setReloadPath] = useState<string | null>(null)
-  const adminBooted = useRef(false)
-  const bootRetries = useRef(0)
-  const bootTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const currentPathRef = useRef<string | null>(null)
   const pushSurfaceClientId = useRef(createNativePushSurfaceClientId())
   const nativeAppForeground = useRef(AppState.currentState === 'active')
   const nativePushRegistration = useRef<NativePushRegistration | null>(null)
   const nativePushRegistrationPromise = useRef<Promise<NativePushRegistration | null> | null>(null)
 
-  const clearBootTimer = useCallback((): void => {
-    if (bootTimer.current) {
-      clearTimeout(bootTimer.current)
-      bootTimer.current = null
-    }
-  }, [])
-
   const runScript = useCallback((script: string): void => {
     webRef.current?.injectJavaScript(`${script} true;`)
   }, [])
+
+  const nativeBackForwardGestures = allowsNativeBackForwardGestures({
+    heightDp: windowHeight,
+    widthDp: windowWidth,
+  })
+  const bootRecovery = useNativeBootRecovery(currentPathRef)
+  const phoneBack = useNativePhoneBack(
+    IS_ANDROID && !nativeBackForwardGestures,
+    runScript,
+  )
 
   const cachePushPath = useCallback((path: string): void => {
     runScript(nativePushPathScript(path))
@@ -141,11 +129,11 @@ const Shell = (): React.JSX.Element => {
   } = useNativePushNavigation({
     cachePushPath,
   })
-  const sourceUri = reloadNonce === 0
+  const sourceUri = bootRecovery.reloadNonce === 0
     ? ADMIN_URL
     : (() => {
-      const url = new URL(reloadPath ?? '/', ADMIN_URL)
-      url.searchParams.set('__boot', String(reloadNonce))
+      const url = new URL(bootRecovery.reloadPath ?? '/', ADMIN_URL)
+      url.searchParams.set('__boot', String(bootRecovery.reloadNonce))
       return url.toString()
     })()
 
@@ -192,34 +180,9 @@ const Shell = (): React.JSX.Element => {
       })
   }
 
-  const loadFreshWebView = useCallback((): void => {
-    clearBootTimer()
-    setReloadNonce((nonce) => nonce + 1)
-  }, [clearBootTimer])
-
-  const fullRefreshWebView = useCallback((): void => {
-    adminBooted.current = false
-    bootRetries.current = 0
-    setReloadPath(currentPathRef.current)
-    loadFreshWebView()
-    setWebviewKey((key) => key + 1)
-  }, [loadFreshWebView])
-
-  // Reload the WebView fresh after a blank/failed load, capped so a persistently
-  // broken page doesn't loop forever.
-  const recoverBlankWebView = (): void => {
-    if (adminBooted.current || bootRetries.current >= MAX_BOOT_RETRIES) return
-    bootRetries.current += 1
-    loadFreshWebView()
-    setWebviewKey((key) => key + 1)
-  }
-
   useEffect(() => {
     // Dev-only: expose the AppReveal debug server for on-device inspection.
     startDevInspector()
-    return () => {
-      if (bootTimer.current) clearTimeout(bootTimer.current)
-    }
   }, [])
 
   useEffect(
@@ -270,7 +233,7 @@ const Shell = (): React.JSX.Element => {
       return
     }
     if (msg.type === 'nessie:full-refresh') {
-      fullRefreshWebView()
+      bootRecovery.fullRefreshWebView()
       return
     }
     if (msg.type === 'nessie:request-push-registration') {
@@ -289,12 +252,16 @@ const Shell = (): React.JSX.Element => {
       }
       return
     }
+    if (msg.type === 'nessie:back-state') {
+      // The admin's phone navigation bridge reports whether the current route
+      // has an in-app parent; Android hardware Back consults the latest value.
+      phoneBack.noteBackState(Boolean(msg.hasBackDepth))
+      return
+    }
     if (msg.type === 'nessie:route' && typeof msg.path === 'string') {
       // The admin only emits this once React has mounted, so it doubles as the
       // "booted" signal that defuses the blank-screen watchdog.
-      adminBooted.current = true
-      bootRetries.current = 0
-      clearBootTimer()
+      bootRecovery.markBooted()
       currentPathRef.current = msg.path
       void dismissNativeNotificationCards().catch(() => undefined)
       setCurrentPath(msg.path)
@@ -318,7 +285,15 @@ const Shell = (): React.JSX.Element => {
       return
     }
     nativeActions.closeSearchOverlay()
-    navigateTo(TABS[next].path)
+    const tab = TABS[next]
+    if (!tab) return
+    if (IS_IPAD) {
+      // Tablets keep their existing push navigation; only the phone shell
+      // shares the admin's tab select/reselect ledger.
+      navigateTo(tab.path)
+      return
+    }
+    runScript(nativeSelectTabScript(tab.path))
   }
 
   // Hide the tab bar until we know the user is past the login/bootstrap gate.
@@ -392,7 +367,7 @@ const Shell = (): React.JSX.Element => {
 
       <View style={webviewLayerStyle}>
         {!initialPushPathResolved ? null : <WebView
-          allowsBackForwardNavigationGestures
+          allowsBackForwardNavigationGestures={nativeBackForwardGestures}
           domStorageEnabled
           injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript({
             clientId: pushSurfaceClientId.current,
@@ -406,25 +381,18 @@ const Shell = (): React.JSX.Element => {
             pendingPushPath,
             platform: Platform.OS,
           })}\n${INJECTED}\ntrue;`}
-          key={webviewKey}
+          key={bootRecovery.webviewKey}
           mediaPlaybackRequiresUserAction={false}
           onContentProcessDidTerminate={() => webRef.current?.reload()}
-          onError={recoverBlankWebView}
-          onHttpError={recoverBlankWebView}
+          onError={bootRecovery.recoverBlankWebView}
+          onHttpError={bootRecovery.recoverBlankWebView}
           onLoadEnd={() => {
             runScript(nativeAppForegroundScript(nativeAppForeground.current))
-            // Page finished loading; give the admin a window to report itself
-            // mounted before assuming the WebView is blank/white.
-            clearBootTimer()
-            if (!adminBooted.current) {
-              bootTimer.current = setTimeout(recoverBlankWebView, BOOT_TIMEOUT_MS)
-            }
+            bootRecovery.noteLoadEnd()
           }}
-          onLoadStart={() => {
-            adminBooted.current = false
-          }}
+          onLoadStart={bootRecovery.noteLoadStart}
           onMessage={onMessage}
-          onRenderProcessGone={() => setWebviewKey((value) => value + 1)}
+          onRenderProcessGone={bootRecovery.remountWebView}
           originWhitelist={['*']}
           pullToRefreshEnabled
           ref={webRef}

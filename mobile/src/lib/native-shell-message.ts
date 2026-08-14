@@ -6,6 +6,7 @@ export type NativeShellMessage = {
   assignedWork?: number
   canBack?: boolean
   canForward?: boolean
+  hasBackDepth?: boolean
   channels?: number
   color?: string
   headerSurface?: string

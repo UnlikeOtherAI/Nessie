@@ -27,7 +27,7 @@ import {
   useMcpToolRegistry,
 } from '../facades/tool-grants/hooks'
 import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
-import { useMobileLayout } from '../lib/mobile-shell'
+import { usePhoneLayout } from '../lib/mobile-shell'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
@@ -43,7 +43,7 @@ import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationBut
  */
 export const ToolsPage = () => {
   const { me } = useAuthSession()
-  const isMobile = useMobileLayout()
+  const phoneLayout = usePhoneLayout()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const [searchParams] = useSearchParams()
   const deepWaterInstanceId = readDeepWaterInstanceFilter(searchParams)
@@ -227,7 +227,7 @@ export const ToolsPage = () => {
       <ColumnBrowserColumn
         key={`detail-${selectedTool.id}`}
         onBack={() => setSelectedToolId(undefined)}
-        showBack={isMobile}
+        showBack
         title={selectedTool.label}
       >
         <div className="grid max-w-3xl gap-6">
@@ -285,7 +285,7 @@ export const ToolsPage = () => {
   return (
     <div className="h-full w-full">
       <ColumnBrowserViewport
-        activeColumn={selectedToolId && selectedTool ? 1 : 0}
+        activeColumn={phoneLayout && selectedToolId && selectedTool ? 1 : 0}
         columns={columns}
       />
     </div>

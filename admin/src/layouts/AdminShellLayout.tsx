@@ -19,11 +19,17 @@ import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { AccountMenuProvider } from './admin-shell/AccountMenuContext';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
+import { LocalBackProvider } from './admin-shell/local-back/LocalBackContext';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
 import { PhoneNavigationViewport } from './admin-shell/PhoneNavigationViewport';
-import { getPhoneNavigationScreen } from './admin-shell/phone-navigation';
+import {
+  getPhoneNavigationScreen,
+  isPhoneTabRoot,
+  phoneTabRootHasContextualList,
+} from './admin-shell/phone-navigation';
+import { PhoneNavigationProvider } from './admin-shell/PhoneNavigationProvider';
 import { NativeIPadToolbarBridge } from './admin-shell/NativeIPadToolbarBridge';
 import { NativePhoneCreationBridge } from './admin-shell/NativePhoneCreationBridge';
 import { NativeSearchOverlay } from './admin-shell/NativeSearchOverlay';
@@ -43,13 +49,9 @@ export type { AdminShellOutletContext } from './admin-shell/types';
 
 // A phone has room for one primary decision at a time. Its tab root therefore
 // renders the tab's existing contextual navigation as the page, while tablet
-// and desktop keep that navigation beside the selected detail.
-const isPhoneTabRoot = (pathname: string): boolean =>
-  pathname === '/channels'
-  || pathname === '/projects'
-  || pathname === '/knowledge-base'
-  || pathname === '/settings'
-  || pathname === '/search';
+// and desktop keep that navigation beside the selected detail. The root set
+// lives in phone-navigation (isPhoneTabRoot) next to the transition screen
+// model and Back destinations so the three cannot drift.
 
 export const AdminShellLayout = () => {
   const { me, sessionState } = useAuthSession();
@@ -75,7 +77,16 @@ export const AdminShellLayout = () => {
     return <Navigate to="/login" replace />;
   }
 
-  return <AuthenticatedAdminShellLayout />;
+  return (
+    <LocalBackProvider>
+      {/* One persistent provider for the whole authenticated shell: its
+          route-history ledger, the shared Back doorway, the web tab bar, and
+          the native phone bridge must never fork per-route state. */}
+      <PhoneNavigationProvider>
+        <AuthenticatedAdminShellLayout />
+      </PhoneNavigationProvider>
+    </LocalBackProvider>
+  );
 };
 
 // Keep authenticated data hooks out of the loading tree. In particular,
@@ -103,6 +114,7 @@ const AuthenticatedAdminShellLayout = () => {
   useEffect(() => {
     if (showPhoneTabRoot) shell.closeMobileDrawer();
   }, [shell.closeMobileDrawer, showPhoneTabRoot]);
+
   const isComposeRoute = shell.pathname === '/channels/new';
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
@@ -200,7 +212,11 @@ const AuthenticatedAdminShellLayout = () => {
   // hamburger is never a dead button.
   const drawerNavElement = secNavElement ?? sidebarNavElement;
 
-  const phonePageContent = showPhoneTabRoot ? (
+  // Root content is the section's contextual list when one exists; /search
+  // and /dashboards are full outlet pages with no secondary sidebar, so their
+  // root page is the outlet itself rather than the channels fallback.
+  const rootHasContextualList = phoneTabRootHasContextualList(shell.pathname);
+  const phonePageContent = showPhoneTabRoot && rootHasContextualList ? (
     <div
       className={[
         'flex min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',

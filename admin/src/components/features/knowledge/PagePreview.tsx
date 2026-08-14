@@ -14,7 +14,9 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 type PagePreviewProps = {
   // True while the page body is still being fetched on demand (the list omits it).
   bodyPending?: boolean
-  onBack: () => void
+  // On a phone the workspace owns the doorway through the local-back
+  // registry and passes no onBack; wider layouts keep the pane's own Back.
+  onBack?: () => void
   onCreateChild: () => void
   onDrill: (childPageId: string) => void
   onEdit: () => void

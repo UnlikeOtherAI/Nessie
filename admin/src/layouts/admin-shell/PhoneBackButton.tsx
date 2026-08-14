@@ -1,14 +1,14 @@
 import { useNativeIOSPhoneApp } from '../../lib/mobile-shell'
 
-type PhoneBackButtonProps = {
+export type PhoneBackButtonProps = {
   label: string
   onBack: () => void
 }
 
-// The shared mobile Back doorway is intentionally independent of a page's
-// routing. Pages and the shell choose the safe parent route; this component
-// makes that action visually consistent across channel, project, and admin
-// surfaces.
+// The single phone Back doorway visual. Every leading Back on a phone —
+// the shell's route Back and any in-page local Back surfaced through the
+// local-back registry — renders through this one circular icon treatment,
+// with the label naming the destination for assistive technology.
 export const PhoneBackButton = ({ label, onBack }: PhoneBackButtonProps) => {
   const nativeIOSPhone = useNativeIOSPhoneApp()
 

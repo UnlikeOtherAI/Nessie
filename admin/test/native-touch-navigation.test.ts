@@ -120,7 +120,11 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   const nativeApp = readSource('../../mobile/App.tsx')
 
   assert.match(shell, /useNativePhoneApp/)
-  assert.match(shell, /\|\| pathname === '\/search'/)
+  // The tab-root set (channels/projects/knowledge/settings/search) lives in
+  // the shared phone-navigation module so shell, tab bar, and Back agree.
+  assert.match(shell, /isPhoneTabRoot,/)
+  const phoneNav = readSource('../src/layouts/admin-shell/phone-navigation.ts')
+  assert.ok(phoneNav.includes(String.raw`/^\/search$/`))
   assert.match(shell, /<WorkspaceSwitcher variant="native-bridge" \/>/)
   assert.match(shell, /<NativeIPadToolbarBridge \/>/)
   assert.match(shell, /<UserMenuTrigger nativeShellBridge/)
@@ -165,6 +169,9 @@ test('the native Admin actions offer session debugging above a cache-busting ful
   const adminNav = readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx')
   const debugButton = readSource('../src/components/shared/DebugTokenButton.tsx')
   const nativeApp = readSource('../../mobile/App.tsx')
+  // The boot-recovery state machine moved into its own hook; App.tsx wires the
+  // `nessie:full-refresh` message to it.
+  const bootRecovery = readSource('../../mobile/src/lib/use-native-boot-recovery.ts')
 
   assert.match(adminNav, /isReactNativeWebView\(\) \? \(/)
   assert.match(adminNav, /<DebugTokenButton variant="sidebar" \/>/)
@@ -174,8 +181,9 @@ test('the native Admin actions offer session debugging above a cache-busting ful
   assert.match(debugButton, /Session debug/)
   assert.match(adminNav, /Full refresh/)
   assert.match(nativeApp, /msg.type === 'nessie:full-refresh'/)
-  assert.match(nativeApp, /setReloadPath\(currentPathRef.current\)/)
-  assert.match(nativeApp, /setWebviewKey\(\(key\) => key \+ 1\)/)
+  assert.match(nativeApp, /bootRecovery\.fullRefreshWebView\(\)/)
+  assert.match(bootRecovery, /setReloadPath\(currentPathRef.current\)/)
+  assert.match(bootRecovery, /setWebviewKey\(\(key\) => key \+ 1\)/)
 })
 
 test('Safari and Android browser tab roots reuse the mobile workspace, recents, and account controls', () => {

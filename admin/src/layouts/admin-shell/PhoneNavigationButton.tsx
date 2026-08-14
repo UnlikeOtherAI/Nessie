@@ -1,28 +1,48 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { usePhoneLayout } from '../../lib/mobile-shell';
+import {
+  useColumnBackContext,
+  useLocalBackSnapshot,
+} from './local-back/LocalBackContext';
 import { useMobileNav } from './MobileNavContext';
 import { PhoneBackButton } from './PhoneBackButton';
 import { getPhoneNavigationBackTarget } from './phone-navigation';
+import { usePhoneNavigation } from './PhoneNavigationProvider';
 
-// The phone's leading control mirrors a native navigation controller: section
-// roots open their contextual drawer, while every routed child receives an
-// in-context Back action. Desktop and tablet keep their pinned sidebar.
+// The phone's single leading doorway, with an explicit ownership order:
+// an in-page local Back (deepest registered active action) > the route's
+// deterministic Back > the section menu at tab roots. Desktop and tablet
+// keep their pinned sidebar and per-column controls.
 export const PhoneNavigationButton = () => {
   const phoneLayout = usePhoneLayout();
   const location = useLocation();
-  const navigate = useNavigate();
   const nav = useMobileNav();
+  const history = usePhoneNavigation();
+  const localBack = useLocalBackSnapshot()?.active ?? null;
+  const column = useColumnBackContext();
   const backTarget = getPhoneNavigationBackTarget(location.pathname);
 
   if (!phoneLayout || !nav) {
     return null;
   }
 
+  // Column browsers retain every column so their track can slide, but only
+  // the column at the viewport origin owns interactive chrome. Without this
+  // guard the off-screen list's route/menu button would re-render as the
+  // active detail's local Back, leaving two Back controls in the DOM.
+  if (column.index !== null && !column.phoneVisible) {
+    return null;
+  }
+
+  if (localBack) {
+    return <PhoneBackButton label={localBack.label} onBack={localBack.onBack} />;
+  }
+
   if (backTarget) {
     return (
       <PhoneBackButton
         label={backTarget.label}
-        onBack={() => void navigate(backTarget.pathname)}
+        onBack={() => history?.performBack()}
       />
     );
   }
@@ -38,6 +58,7 @@ export const PhoneNavigationButton = () => {
       type="button"
     >
       <svg
+        aria-hidden="true"
         className="h-5 w-5"
         fill="none"
         stroke="currentColor"

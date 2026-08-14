@@ -3,12 +3,12 @@ import { TriggerEditorDialog } from '../components/features/triggers/TriggerEdit
 import { TriggerListColumn } from '../components/features/triggers/TriggerListColumn'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
-import { useMobileLayout } from '../lib/mobile-shell'
+import { usePhoneLayout } from '../lib/mobile-shell'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { useTriggersPageState } from './triggers/useTriggersPageState'
 
 export const TriggersPage = () => {
-  const isMobile = useMobileLayout()
+  const phoneLayout = usePhoneLayout()
   const state = useTriggersPageState()
 
   if (!state.isOwner) {
@@ -46,7 +46,7 @@ export const TriggersPage = () => {
       <ColumnBrowserColumn
         key={`trigger-${selectedTrigger.id}`}
         onBack={() => state.setSelectedTriggerId(undefined)}
-        showBack={isMobile}
+        showBack
         title={selectedTrigger.name ?? selectedTrigger.type}
       >
         <TriggerDetail
@@ -62,7 +62,7 @@ export const TriggersPage = () => {
   return (
     <div className="h-full w-full">
       <ColumnBrowserViewport
-        activeColumn={state.selectedTriggerId && selectedTrigger ? 1 : 0}
+        activeColumn={phoneLayout && state.selectedTriggerId && selectedTrigger ? 1 : 0}
         columns={columns}
       />
       <TriggerEditorDialog

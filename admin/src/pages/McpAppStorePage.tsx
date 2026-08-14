@@ -280,6 +280,8 @@ export const McpAppStorePage = () => {
     columns.push(
       <ColumnBrowserColumn
         key={`library-${selectedLibraryEntry.key}`}
+        onBack={() => setSelectedLibraryEntry(null)}
+        showBack
         title={selectedLibraryEntry.label}
       >
         <LibraryDetailPanel
@@ -292,7 +294,12 @@ export const McpAppStorePage = () => {
 
   if (view !== 'library' && selectedCatalog) {
     columns.push(
-      <ColumnBrowserColumn key={`detail-${selectedCatalog.id}`} title={selectedCatalog.label}>
+      <ColumnBrowserColumn
+        key={`detail-${selectedCatalog.id}`}
+        onBack={() => setSelectedCatalogId(undefined)}
+        showBack
+        title={selectedCatalog.label}
+      >
         <CatalogDetailPanel
           busy={busy}
           entry={selectedCatalog}
