@@ -792,6 +792,7 @@ model User {
   feedback                            Feedback[]
   refreshTokens                       RefreshToken[]
   uoaSessionCredentials               UoaSessionCredential[]
+  uoaWorkspaceSwitchIntents           UoaWorkspaceSwitchIntent[]
   productAccountLinks                 ProductAccountLink[]
   productTeamEnablements              ProductTeamEnablement[]
   productIntegrationRuns              ProductIntegrationRun[]
@@ -872,9 +873,37 @@ model UoaSessionCredential {
   updatedAt              DateTime     @updatedAt @map("updated_at")
   user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   lastLocalToken         RefreshToken @relation("UoaSessionLocalToken", fields: [lastLocalTokenId], references: [id], onDelete: Cascade)
+  workspaceSwitchIntent  UoaWorkspaceSwitchIntent?
 
   @@index([userId])
   @@map("uoa_session_credentials")
+}
+
+/// One crash-recoverable workspace rescope request for a UOA refresh family.
+/// Its source fields bind the requested target to the exact encrypted upstream
+/// credential and local cookie that authorized it. The row is deleted only by
+/// the atomic rescope commit, an explicit safe upstream refusal, or family
+/// revocation.
+model UoaWorkspaceSwitchIntent {
+  familyId                 String               @id @map("family_id") @db.Uuid
+  userId                   String               @map("user_id") @db.Uuid
+  providerId               String               @map("provider_id")
+  subject                  String
+  sourceOrganizationId     String               @map("source_organization_id")
+  sourceTeamId             String               @map("source_team_id")
+  sourceTokenVersion       Int                  @map("source_token_version")
+  sourceGeneration         Int                  @map("source_generation")
+  sourceLocalTokenId       String               @map("source_local_token_id") @db.Uuid
+  sourceUpstreamTokenHash  String               @map("source_upstream_token_hash")
+  targetOrganizationId     String               @map("target_organization_id")
+  targetTeamId             String               @map("target_team_id")
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+  user                     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credential               UoaSessionCredential @relation(fields: [familyId], references: [familyId], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("uoa_workspace_switch_intents")
 }
 
 model Organization {

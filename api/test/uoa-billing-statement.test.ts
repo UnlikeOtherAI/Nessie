@@ -54,7 +54,7 @@ test('binds billing to the signed team despite different last-seen link metadata
   )
 
   assert.equal(result.statement_id, 'bst_nessie_july')
-  assert.equal(requestUrl, 'https://uoa.example/billing/v2/customer-statement')
+  assert.equal(requestUrl, 'https://1.1.1.1/billing/v2/customer-statement')
   assert.equal(
     requestHeaders.get('x-uoa-app-key'),
     env[NESSIE_UOA_BILLING_APP_KEY_ENV],
@@ -72,7 +72,7 @@ test('binds billing to the signed team despite different last-seen link metadata
   })
   assert.deepEqual(decodeJwtPart(encodedPayload), {
     iss: 'https://api.nessie.example',
-    aud: 'https://uoa.example/billing/v1/effective-tariff',
+    aud: 'https://1.1.1.1/billing/v1/effective-tariff',
     sub: 'uoa-user',
     product: 'nessie',
     organisation_id: 'uoa-org',

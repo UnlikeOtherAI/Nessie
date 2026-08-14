@@ -10,15 +10,18 @@ import {
 } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
-  createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
+  createSessionMutationCoordinator,
   getAccessTokenRenewalDelayMs,
   type AuthSessionState,
   type BootstrapInput,
   type BootstrapModeResponse,
   type LoginInput,
+  type SessionPayload,
   type SwitchContextInput,
+  type SwitchUoaWorkspaceInput,
 } from '@nessie/client-core'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   clearStoredToken,
   loadStoredToken,
@@ -29,6 +32,11 @@ import {
   NATIVE_PUSH_UNREGISTER_EVENT,
 } from '../lib/native-push-registration'
 import { isReactNativeWebView } from '../lib/mobile-shell'
+import {
+  createSessionQueryBoundary,
+  fetchCurrentSessionSnapshot,
+  isCurrentSessionResponse,
+} from './auth-session-query-reset'
 
 type AuthSessionContextValue = {
   applyMeResponse: (nextMe: MeResponse) => void
@@ -38,10 +46,12 @@ type AuthSessionContextValue = {
   login: (input: LoginInput) => Promise<void>
   logout: () => Promise<void>
   me: MeResponse | null
+  reconcileSession: () => Promise<SessionPayload | null>
   refreshAccessToken: () => Promise<string | null>
   refreshSession: () => Promise<void>
   sessionState: AuthSessionState
   switchContext: (input: SwitchContextInput) => Promise<void>
+  switchUoaWorkspace: (input: SwitchUoaWorkspaceInput) => Promise<void>
   token: string | null
 }
 
@@ -66,6 +76,7 @@ const unregisterNativePushDevice = (): Promise<void> =>
 const authApi = createAuthSessionApi(getBaseUrl())
 
 export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
+  const queryClient = useQueryClient()
   const [sessionState, setSessionState] = useState<AuthSessionState>('loading')
   const [token, setToken] = useState<string | null>(() => loadStoredToken())
   // Session restoration is one lifecycle, not a side effect of token changes:
@@ -73,41 +84,67 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const tokenRef = useRef(token)
   tokenRef.current = token
   const [me, setMe] = useState<MeResponse | null>(null)
+  const meRef = useRef(me)
+  meRef.current = me
   const [bootstrapState, setBootstrapState] = useState<BootstrapModeResponse | null>(null)
+
+  const resetTenantQueries = useCallback(async (): Promise<void> => {
+    await queryClient.cancelQueries().catch(() => undefined)
+    queryClient.clear()
+  }, [queryClient])
+
+  const sessionQueryBoundary = useMemo(
+    () => createSessionQueryBoundary({
+      readCurrentMe: () => meRef.current,
+      resetTenantQueries,
+    }),
+    [resetTenantQueries],
+  )
 
   const applySession = useCallback((payload: { me: MeResponse; token: string }): void => {
     storeToken(payload.token)
+    tokenRef.current = payload.token
+    meRef.current = payload.me
     setToken(payload.token)
     setMe(payload.me)
     setBootstrapState(null)
     setSessionState('authenticated')
   }, [])
 
-  const clearSession = useCallback((): void => {
+  const clearSession = useCallback(async (): Promise<void> => {
+    await sessionQueryBoundary.clear()
     clearStoredToken()
+    tokenRef.current = null
+    meRef.current = null
     setToken(null)
     setMe(null)
     setBootstrapState(null)
     setSessionState('unauthenticated')
-  }, [])
+  }, [sessionQueryBoundary])
 
-  // Startup restore and every API 401 share this exact coordinator. A refresh
-  // cookie is single-use, so no other path may call authApi.refresh directly.
-  // Only an explicit refresh 401 clears credentials; transient errors reject,
-  // leaving the stored token intact for the retry effects below.
-  const refreshAccessToken = useMemo(
+  // Login, startup restore, every API 401, and workspace switching share this
+  // exact coordinator. Both refresh cookies are single-use, so no other path
+  // may mutate the session concurrently or apply an older response afterwards.
+  const sessionMutations = useMemo(
     () =>
-      createAccessTokenRefreshCoordinator({
+      createSessionMutationCoordinator({
         applySession,
+        beforeApply: sessionQueryBoundary.beforeApply,
         clearSession,
         refresh: authApi.refresh,
       }),
-    [applySession, clearSession],
+    [applySession, clearSession, sessionQueryBoundary],
   )
+  const reconcileSession = sessionMutations.reconcile
+  const refreshAccessToken = sessionMutations.refresh
 
   const refreshSession = useCallback(async (): Promise<void> => {
     setSessionState((current) => current === 'authenticated' ? current : 'loading')
-    const snapshot = await authApi.fetchSession(tokenRef.current)
+    const snapshot = await fetchCurrentSessionSnapshot({
+      fetchSession: authApi.fetchSession,
+      readCurrentToken: () => tokenRef.current,
+    })
+    if (!snapshot) return
 
     if (snapshot.kind === 'unauthenticated') {
       // The access token may simply have expired — try the refresh cookie before
@@ -117,16 +154,19 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     }
 
     if (snapshot.kind === 'bootstrap') {
+      await sessionQueryBoundary.clear()
       setBootstrapState(snapshot.bootstrap)
+      meRef.current = null
       setMe(null)
       setSessionState('bootstrap')
       return
     }
 
     setBootstrapState(null)
+    meRef.current = snapshot.me
     setMe(snapshot.me)
     setSessionState('authenticated')
-  }, [refreshAccessToken])
+  }, [refreshAccessToken, sessionQueryBoundary])
 
   // A network outage, rate limit, or server error during restore is not a
   // logout. Keep the bearer token in localStorage and retry until the API is
@@ -253,33 +293,40 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   }, [refreshAccessToken, token])
 
   const applyMeResponse = (nextMe: MeResponse): void => {
+    if (!isCurrentSessionResponse(meRef.current, nextMe)) return
+    meRef.current = nextMe
     setMe(nextMe)
     setBootstrapState(null)
     setSessionState('authenticated')
   }
 
   const bootstrap = async (input: BootstrapInput): Promise<void> => {
-    applySession(await authApi.bootstrap(input))
+    await sessionMutations.run(() => authApi.bootstrap(input))
   }
 
   const devLogin = async (): Promise<void> => {
-    applySession(await authApi.devLogin())
+    await sessionMutations.run(() => authApi.devLogin())
   }
 
   const login = async (input: LoginInput): Promise<void> => {
-    applySession(await authApi.login(input))
+    await sessionMutations.run(() => authApi.login(input))
   }
 
   const switchContext = async (input: SwitchContextInput): Promise<void> => {
-    applySession(await authApi.switchContext(token, input))
+    await sessionMutations.run(() => authApi.switchContext(tokenRef.current, input))
+  }
+
+  const switchUoaWorkspace = async (input: SwitchUoaWorkspaceInput): Promise<void> => {
+    await sessionMutations.run(() => authApi.switchUoaWorkspace(tokenRef.current, input))
   }
 
   const logout = async (): Promise<void> => {
-    if (isReactNativeWebView()) {
-      await unregisterNativePushDevice()
-    }
-    await authApi.logout(token)
-    clearSession()
+    await sessionMutations.terminate(async (latestPayload) => {
+      if (isReactNativeWebView()) {
+        await unregisterNativePushDevice()
+      }
+      await authApi.logout(latestPayload?.token ?? tokenRef.current)
+    })
   }
 
   const value = useMemo<AuthSessionContextValue>(
@@ -291,13 +338,15 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       login,
       logout,
       me,
+      reconcileSession,
       refreshAccessToken,
       refreshSession,
       sessionState,
       switchContext,
+      switchUoaWorkspace,
       token,
     }),
-    [bootstrapState, me, refreshAccessToken, refreshSession, sessionState, token],
+    [bootstrapState, me, reconcileSession, refreshAccessToken, refreshSession, sessionState, token],
   )
 
   return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>

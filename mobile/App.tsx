@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
   AppState,
   Dimensions,
@@ -22,7 +22,6 @@ import {
 import { useNativePushNavigation } from './src/lib/native-push-navigation'
 import { useNativeBootRecovery } from './src/lib/use-native-boot-recovery'
 import { useNativePhoneBack } from './src/lib/use-native-phone-back'
-import { useNativeTheme } from './src/lib/use-native-theme'
 import { nativeSelectTabScript } from './src/lib/native-phone-navigation'
 import { allowsNativeBackForwardGestures } from './src/lib/webview-back-gesture'
 import {
@@ -46,10 +45,6 @@ import {
   ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
 } from './src/lib/android-tablet-dock'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
-import {
-  DEFAULT_TOOLBAR_STATE,
-  type ToolbarState,
-} from './src/components/IpadNativeToolbar'
 import { IpadNativeChrome } from './src/components/IpadNativeChrome'
 import {
   NativePhoneConversationMenuChrome,
@@ -57,6 +52,12 @@ import {
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
 import { createNativeWebviewActions } from './src/lib/native-webview-actions'
+import {
+  DEFAULT_NATIVE_SHELL_PRESENTATION,
+  isNativeShellPresentationMessage,
+  nativeAttentionTotal,
+  reduceNativeShellPresentation,
+} from './src/components/native-shell-presentation'
 import {
   createNativeTabNavigationState,
   getNativeWebviewFrameInsets,
@@ -73,18 +74,30 @@ const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
   const { height: windowHeight, width: windowWidth } = useWindowDimensions()
-  const theme = useNativeTheme()
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
-  const [ipadWorkspaceName, setIpadWorkspaceName] = useState<string | null>(null)
-  const [nativeAccount, setNativeAccount] = useState({
-    avatarUrl: null as string | null,
-    name: null as string | null,
-    presence: 'offline' as 'away' | 'offline' | 'online',
-    statusEmoji: null as string | null,
-  })
-  const [toolbarState, setToolbarState] = useState<ToolbarState>(DEFAULT_TOOLBAR_STATE)
-  const [attentionBadges, setAttentionBadges] = useState({ channels: 0, assignedWork: 0, knowledge: 0 })
+  const [presentation, dispatchPresentation] = useReducer(
+    reduceNativeShellPresentation,
+    DEFAULT_NATIVE_SHELL_PRESENTATION,
+  )
+  const {
+    accent,
+    attentionBadges,
+    background: bg,
+    chromeSurface: ipadChromeSurface,
+    inactive,
+    nativeAccount,
+    phoneHeaderSurface,
+    phoneHeaderText,
+    phoneOnAccent,
+    phoneText,
+    phoneTextMuted,
+    statusBarStyle,
+    strongAccent,
+    toolbarState,
+    workspaceAvatarUrl: nativeWorkspaceAvatarUrl,
+    workspaceName: ipadWorkspaceName,
+  } = presentation
   const currentPathRef = useRef<string | null>(null)
   const pushSurfaceClientId = useRef(createNativePushSurfaceClientId())
   const nativeAppForeground = useRef(AppState.currentState === 'active')
@@ -208,14 +221,11 @@ const Shell = (): React.JSX.Element => {
     } catch {
       return
     }
-    if (theme.applyMessage(msg)) return
-    if (msg.type === 'nessie:account') {
-      setNativeAccount({
-        avatarUrl: typeof msg.userAvatarUrl === 'string' && msg.userAvatarUrl ? msg.userAvatarUrl : null,
-        name: typeof msg.userName === 'string' && msg.userName.trim() ? msg.userName : null,
-        presence: msg.userPresence === 'online' || msg.userPresence === 'away' ? msg.userPresence : 'offline',
-        statusEmoji: typeof msg.userStatusEmoji === 'string' && msg.userStatusEmoji ? msg.userStatusEmoji : null,
-      })
+    if (isNativeShellPresentationMessage(msg)) {
+      dispatchPresentation(msg)
+      if (msg.type === 'nessie:attention') {
+        void reconcileNativeAttentionPresentation(nativeAttentionTotal(msg)).catch(() => undefined)
+      }
       return
     }
     if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
@@ -233,18 +243,6 @@ const Shell = (): React.JSX.Element => {
       }
       return
     }
-    if (msg.type === 'nessie:attention') {
-      const channels = typeof msg.channels === 'number' && msg.channels > 0 ? Math.floor(msg.channels) : 0
-      const assignedWork = typeof msg.assignedWork === 'number' && msg.assignedWork > 0
-        ? Math.floor(msg.assignedWork)
-        : 0
-      const knowledge = typeof msg.knowledge === 'number' && msg.knowledge > 0 ? Math.floor(msg.knowledge) : 0
-      setAttentionBadges({ channels, assignedWork, knowledge })
-      void reconcileNativeAttentionPresentation(
-        typeof msg.total === 'number' && msg.total >= 0 ? msg.total : channels + assignedWork + knowledge,
-      ).catch(() => undefined)
-      return
-    }
     if (msg.type === 'nessie:search-overlay') {
       if (msg.active) {
         const searchIndex = TABS.findIndex((tab) => tab.key === 'search')
@@ -252,18 +250,6 @@ const Shell = (): React.JSX.Element => {
       } else {
         setIndex(tabIndexForPath(currentPath ?? '/channels'))
       }
-      return
-    }
-    if (msg.type === 'nessie:toolbar-state') {
-      setToolbarState({
-        canBack: Boolean(msg.canBack),
-        canForward: Boolean(msg.canForward),
-        recentOpen: Boolean(msg.recentOpen),
-      })
-      return
-    }
-    if (msg.type === 'nessie:workspace') {
-      setIpadWorkspaceName(typeof msg.name === 'string' && msg.name.trim() ? msg.name : null)
       return
     }
     if (msg.type === 'nessie:back-state') {
@@ -342,24 +328,24 @@ const Shell = (): React.JSX.Element => {
     bottom: webviewInsets.bottom,
   }
   const ipadChromeTheme = createIpadNativeChromeTheme({
-    activeTintColor: theme.accent,
-    dark: theme.dark,
-    inactiveTintColor: theme.inactive,
-    surfaceColor: theme.ipadChromeSurface,
+    activeTintColor: accent,
+    dark: isDark(bg),
+    inactiveTintColor: inactive,
+    surfaceColor: ipadChromeSurface,
   })
   const navigationState = createNativeTabNavigationState(index, attentionBadges)
 
   return (
-    <View style={[styles.fill, { backgroundColor: theme.bg }]}>
+    <View style={[styles.fill, { backgroundColor: bg }]}>
       <StatusBar style={statusBarStyleForNativePhoneHomeHeader(
-        showNativePhoneHomeChrome && isDark(theme.phoneHeaderSurface),
-        theme.statusBarStyle,
+        showNativePhoneHomeChrome && isDark(phoneHeaderSurface),
+        statusBarStyle,
       )} />
 
       {showBar && !IS_IPAD && !IS_ANDROID ? (
         <IphoneNativeTabBar
-          activeTintColor={theme.accent}
-          inactiveTintColor={theme.inactive}
+          activeTintColor={accent}
+          inactiveTintColor={inactive}
           navigationState={navigationState}
           onIndexChange={onIndexChange}
         />
@@ -369,13 +355,13 @@ const Shell = (): React.JSX.Element => {
         <AndroidTabletTabBar
           activeIndex={index}
           badgeCounts={attentionBadges}
-          activeIndicatorColor={withOpacity(theme.accent, 0.14)}
-          activeTintColor={theme.accent}
+          activeIndicatorColor={withOpacity(accent, 0.14)}
+          activeTintColor={accent}
           bottom={insets.bottom + ANDROID_TABLET_TAB_BAR_BOTTOM_GAP}
-          dark={theme.dark}
-          inactiveTintColor={theme.inactive}
+          dark={isDark(bg)}
+          inactiveTintColor={inactive}
           onIndexChange={onIndexChange}
-          rippleColor={withOpacity(theme.accent, 0.18)}
+          rippleColor={withOpacity(accent, 0.18)}
         />
       ) : null}
 
@@ -412,31 +398,32 @@ const Shell = (): React.JSX.Element => {
           ref={webRef}
           sharedCookiesEnabled
           source={{ uri: sourceUri }}
-          style={[styles.fill, { backgroundColor: theme.bg }]}
+          style={[styles.fill, { backgroundColor: bg }]}
         />}
       </View>
 
       {showNativePhoneHomeChrome ? (
         <NativePhoneConversationMenuChrome
-          accentColor={theme.accent}
+          accentColor={accent}
           accountAvatarUrl={nativeAccount.avatarUrl}
           accountName={nativeAccount.name}
           accountPresence={nativeAccount.presence}
           bottomInset={insets.bottom}
-          creationAccentColor={theme.strongAccent}
-          headerSurface={theme.phoneHeaderSurface}
-          headerText={theme.phoneHeaderText}
-          onAccentColor={theme.phoneOnAccent}
+          creationAccentColor={strongAccent}
+          headerSurface={phoneHeaderSurface}
+          headerText={phoneHeaderText}
+          onAccentColor={phoneOnAccent}
           onAccountPress={nativeActions.toggleAccountMenu}
           onCreateAction={nativeActions.createFromPhoneMenu}
           onHistoryPress={() => nativeActions.runToolbarAction('history')}
           onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}
           safeTop={insets.top}
-          sheetMutedText={theme.phoneTextMuted}
-          sheetText={theme.phoneText}
-          sheetSurface={theme.ipadChromeSurface}
+          sheetMutedText={phoneTextMuted}
+          sheetText={phoneText}
+          sheetSurface={ipadChromeSurface}
           platform={IS_ANDROID ? 'android' : 'ios'}
           showCreationActions={showNativePhoneCreationActions}
+          workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
           workspaceName={ipadWorkspaceName}
         />
       ) : null}
@@ -457,6 +444,7 @@ const Shell = (): React.JSX.Element => {
           toolbarState={toolbarState}
           top={ipadChromeTop}
           windowWidth={windowWidth}
+          workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
           workspaceName={ipadWorkspaceName}
         />
       ) : null}

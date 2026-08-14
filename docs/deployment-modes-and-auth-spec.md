@@ -241,7 +241,7 @@ Claims:
 #### Token lifecycle
 
 - the access JWT is **short-lived**: default 30 minutes, configurable via `NESSIE_AUTH_TOKEN_TTL`
-- issued by `POST /api/auth/session` (login), `POST /api/auth/bootstrap` (first user), `GET /api/auth/dev-login`, `POST /api/auth/switch-context`, and `POST /api/auth/refresh`
+- issued by `POST /api/auth/session` (login), `POST /api/auth/bootstrap` (first user), `GET /api/auth/dev-login`, `POST /api/auth/switch-context`, `POST /api/auth/uoa/workspace`, and `POST /api/auth/refresh`
 - sent by the client as `Authorization: Bearer <token>` header on every request
 - alongside the access token, every minting route sets a **rotating refresh token** in an httpOnly cookie (`nessie_refresh`, scoped to `/api/auth`); the client silently renews via `POST /api/auth/refresh` on app start, before the access JWT expires, when a request receives a 401, and when a resumed app is already within its renewal window
 - app startup and API 401 recovery use one in-process single-flight coordinator,
@@ -290,6 +290,44 @@ Claims:
   second UOA call. Transient UOA/network failures preserve the family and return
   `503`; definitive revocation, tuple drift, or malformed family proof returns
   `401` and erases it. Legacy UOA families without encrypted proof reauthenticate.
+- **UOA workspace rescoping:** authenticated UOA sessions switch without a
+  browser login through `POST /api/auth/uoa/workspace` with external
+  `{ organizationId, teamId }`. The access bearer and httpOnly cookie must bind
+  to the same user, provider, session id, and exact encrypted source
+  `{sub, org, team, tv}`. Under the family lock, Nessie creates one
+  `uoa_workspace_switch_intents` row bound to the source credential generation,
+  current local-token id, and upstream-token hash before any external call.
+  After direct Nessie access is confirmed, Nessie calls UOA's existing token
+  endpoint with
+  `grant_type=urn:unlikeotherai:params:oauth:grant-type:workspace-switch`, the
+  opaque refresh token, and the exact target. The authoritative switched
+  identity then idempotently materializes the target local workspace, including
+  its claimed team role. The intent/source is rechecked immediately before
+  every credential-bearing call. Finalization uses the same
+  deterministic local rotation funnel as ordinary refresh and atomically
+  rescope-updates the family proof, first-party link epoch/last-seen workspace,
+  local cookie successor, and intent deletion. An ordinary refresh that finds a
+  live intent resumes that exact switch; without one it accepts only UOA's
+  same-scope immediate child. If an ordinary same-scope rotation already won,
+  its adoption and exact-intent cancellation are one transaction. Safe target
+  refusals (`WORKSPACE_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, or
+  `WORKSPACE_SWITCH_CONFLICT`) never revoke the source family; only
+  `INVALID_REFRESH_TOKEN` and invalid/tampered source proof force re-login,
+  surfaced to the browser as `WORKSPACE_SWITCH_REAUTH_REQUIRED` so it clears
+  stale local session state instead of treating the result as a safe 2FA step-up.
+  After UOA accepts a switch, transient local materialization failures retain
+  the intent for exact replay, while a permanent local binding collision
+  revokes the now-unrecoverable source family rather than retaining a consumed
+  upstream credential.
+  Every successful UOA renewal also reads `/org/me` with the fresh access token
+  and transactionally replaces the cached workspace directory used by the
+  switcher, so membership removals and avatar/name changes appear without a new
+  login. That directory is display-only and never authorizes a switch. If the
+  optional directory read is unavailable, Nessie retains the last verified
+  copy while continuing the independently authorized token rotation.
+  UOA session and billing requests use IP-pinned `safeFetch` and allow zero
+  redirects, so refresh credentials, domain hashes, app keys, and signed actor
+  assertions are never forwarded to a redirect target.
 - **workspace binding:** refreshed UOA access sessions resolve the exact local
   team mapped to the signed external org/team and require live user, project,
   team, organization, and Nessie product-link membership. They never fall back
@@ -310,7 +348,8 @@ Claims:
 #### Active project/team
 
 - `proj` and `team` claims are the user's **active** project and team, not their only one
-- project/team switching: `POST /api/auth/switch-context` with `{ organizationId, projectId, teamId }` → issues a new JWT with updated claims (and rotates the refresh cookie)
+- local/non-UOA project/team switching: `POST /api/auth/switch-context` with `{ organizationId, projectId, teamId }` → issues a new JWT with updated claims (and rotates the refresh cookie)
+- UOA workspace switching: `POST /api/auth/uoa/workspace` with external `{ organizationId, teamId }` → rescope-rotates the bound UOA/local refresh family and issues the corresponding JWT without leaving the app
 - the active project/team determines the default scope for channel listing, agent discovery, and policy evaluation
 
 #### Server-side signing secret
@@ -354,12 +393,12 @@ exchange, `POST /api/auth/session` routes
 the session to that workspace instead of the first org's default team: the
 selected UOA workspace maps to a Nessie **Team** inside the one shared
 Organization (auto-provisioned — project + team + `#general` — on first entry;
-the first person owns it). Users switch between the workspaces they belong to via
-`POST /api/auth/switch-context` (surfaced by the sidebar workspace switcher).
-An existing UOA session may mint only the same externally bound local team;
-switching to another UOA workspace requires a new hosted UOA login. The signed
-session/family proof, rather than `ProductAccountLink`, is authoritative for
-billing actors and delegated calls.
+the first person owns it). Users switch between workspaces they belong to via
+the authenticated `POST /api/auth/uoa/workspace` rescope route; the browser does
+not leave Nessie or repeat hosted login. `POST /api/auth/switch-context` remains
+the local/non-UOA context route and still refuses to mint a UOA token for a
+different external tuple. The signed session/family proof, rather than
+`ProductAccountLink`, is authoritative for billing actors and delegated calls.
 Before provisioning a local workspace, mutating product links, or issuing a
 Nessie session, login confirms exact direct `nessie` access through UOA using
 the signed `{sub, org, team, tv}` subject. Product-link upserts are one atomic,

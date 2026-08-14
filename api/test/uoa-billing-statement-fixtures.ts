@@ -40,7 +40,7 @@ const privateJwk = {
 
 export const env = {
   NODE_ENV: 'test',
-  UOA_BASE_URL: 'https://uoa.example',
+  UOA_BASE_URL: 'https://1.1.1.1',
   NESSIE_API_PUBLIC_URL: 'https://api.nessie.example',
   [NESSIE_UOA_BILLING_APP_KEY_ENV]: `uoa_app_${'n'.repeat(32)}`,
   [NESSIE_UOA_BILLING_ACTOR_KEY_ENV]: JSON.stringify(privateJwk),

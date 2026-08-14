@@ -4,6 +4,7 @@ import {
   deriveRefreshTokenSuccessor,
   hashRefreshToken,
 } from './refresh-token-crypto.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 const MAX_REFRESH_REPLAY_CHAIN_DEPTH = 32
 
@@ -82,6 +83,17 @@ export const revokeRefreshFamilyRows = async (
     data: { revokedAt: now },
   })
   await tx.uoaSessionCredential.deleteMany({ where: { familyId } })
+}
+
+/** Revoke every still-live token and upstream credential in one family. */
+export const revokeRefreshFamily = async (
+  prisma: PrismaClient,
+  familyId: string,
+): Promise<void> => {
+  await prisma.$transaction(async (tx) => {
+    await lockRefreshFamily(tx, familyId)
+    await revokeRefreshFamilyRows(tx, familyId, new Date())
+  }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 
 const rejectReuse = async (

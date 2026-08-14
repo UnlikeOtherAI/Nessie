@@ -43,6 +43,23 @@ type StoredUoaCredential = {
   updatedAt: Date
 }
 
+export type StoredUoaWorkspaceSwitchIntent = {
+  familyId: string
+  userId: string
+  providerId: string
+  subject: string
+  sourceOrganizationId: string
+  sourceTeamId: string
+  sourceTokenVersion: number
+  sourceGeneration: number
+  sourceLocalTokenId: string
+  sourceUpstreamTokenHash: string
+  targetOrganizationId: string
+  targetTeamId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
 type RefreshCreateInput = {
   data: {
     id?: string
@@ -90,10 +107,17 @@ const cloneToken = (token: StoredRefreshToken): StoredRefreshToken => ({ ...toke
 const cloneCredential = (
   credential: StoredUoaCredential,
 ): StoredUoaCredential => ({ ...credential })
+const cloneIntent = (
+  intent: StoredUoaWorkspaceSwitchIntent,
+): StoredUoaWorkspaceSwitchIntent => ({ ...intent })
 
 export class FakeRefreshTokenPrisma {
   readonly records = new Map<string, StoredRefreshToken>()
   readonly uoaCredentials = new Map<string, StoredUoaCredential>()
+  readonly uoaWorkspaceSwitchIntents = new Map<
+    string,
+    StoredUoaWorkspaceSwitchIntent
+  >()
   failNextTransaction = false
   activeTransactions = 0
   private nextId = 1
@@ -187,9 +211,45 @@ export class FakeRefreshTokenPrisma {
         : input.where.familyId.in
       let count = 0
       for (const familyId of familyIds) {
-        if (this.uoaCredentials.delete(familyId)) count += 1
+        if (this.uoaCredentials.delete(familyId)) {
+          this.uoaWorkspaceSwitchIntents.delete(familyId)
+          count += 1
+        }
       }
       return { count }
+    },
+  }
+
+  readonly uoaWorkspaceSwitchIntent = {
+    create: async (input: {
+      data: Omit<StoredUoaWorkspaceSwitchIntent, 'createdAt' | 'updatedAt'>
+    }) => {
+      if (this.uoaWorkspaceSwitchIntents.has(input.data.familyId)) {
+        throw new Error('duplicate UOA workspace switch intent')
+      }
+      const now = new Date()
+      const intent = { ...input.data, createdAt: now, updatedAt: now }
+      this.uoaWorkspaceSwitchIntents.set(intent.familyId, intent)
+      return cloneIntent(intent)
+    },
+    findUnique: async (input: { where: { familyId: string } }) => {
+      const intent = this.uoaWorkspaceSwitchIntents.get(input.where.familyId)
+      return intent ? cloneIntent(intent) : null
+    },
+    deleteMany: async (input: {
+      where: Partial<StoredUoaWorkspaceSwitchIntent>
+    }) => {
+      const intent = input.where.familyId
+        ? this.uoaWorkspaceSwitchIntents.get(input.where.familyId)
+        : undefined
+      if (!intent) return { count: 0 }
+      for (const [key, value] of Object.entries(input.where)) {
+        if (intent[key as keyof StoredUoaWorkspaceSwitchIntent] !== value) {
+          return { count: 0 }
+        }
+      }
+      this.uoaWorkspaceSwitchIntents.delete(intent.familyId)
+      return { count: 1 }
     },
   }
 
@@ -209,6 +269,11 @@ export class FakeRefreshTokenPrisma {
         ([id, record]) => [id, cloneCredential(record)],
       ),
     )
+    const intentSnapshot = new Map(
+      Array.from(this.uoaWorkspaceSwitchIntents.entries()).map(
+        ([id, intent]) => [id, cloneIntent(intent)],
+      ),
+    )
     try {
       const failAfterOperation = this.failNextTransaction
       this.failNextTransaction = false
@@ -218,8 +283,12 @@ export class FakeRefreshTokenPrisma {
     } catch (error) {
       this.records.clear()
       this.uoaCredentials.clear()
+      this.uoaWorkspaceSwitchIntents.clear()
       for (const [id, record] of tokenSnapshot) this.records.set(id, record)
       for (const [id, record] of credentialSnapshot) this.uoaCredentials.set(id, record)
+      for (const [id, intent] of intentSnapshot) {
+        this.uoaWorkspaceSwitchIntents.set(id, intent)
+      }
       throw error
     } finally {
       this.activeTransactions -= 1
@@ -281,7 +350,9 @@ export type RefreshCallback = NonNullable<
 >
 
 export const defaultUoaRefresh = (now: Date): RefreshCallback => async (input) => ({
-  identity: input.expectedIdentity,
+  identity: input.workspaceSwitch
+    ? { ...input.expectedIdentity, ...input.workspaceSwitch }
+    : input.expectedIdentity,
   refreshToken: `${input.refreshToken}.next`,
   refreshTokenExpiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000),
 })
@@ -294,7 +365,9 @@ export const consume = (
 ) => consumeRefreshToken(fake.asClient(), {
   authSecret: AUTH_SECRET,
   advanceUoaSessionBinding: async () => undefined,
+  beforeUoaWorkspaceSwitch: async () => undefined,
   rawToken,
+  rescopeUoaSessionBinding: async () => undefined,
   ttlSeconds: TTL_SECONDS,
   refreshUoaSession,
   userAgent: 'Nessie test',

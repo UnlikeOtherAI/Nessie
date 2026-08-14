@@ -3,23 +3,12 @@ import { Pressable, StyleSheet } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
+import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
 
+export { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
+
 type MaterialIconName = ComponentProps<typeof MaterialIcons>['name']
-
-export type ToolbarAction = 'back' | 'forward' | 'history' | 'help'
-
-export type ToolbarState = {
-  canBack: boolean
-  canForward: boolean
-  recentOpen: boolean
-}
-
-export const DEFAULT_TOOLBAR_STATE: ToolbarState = {
-  canBack: false,
-  canForward: false,
-  recentOpen: false,
-}
 
 type IpadToolbarButtonProps = {
   active?: boolean

@@ -162,7 +162,7 @@ export const exchangeExternalAuthCode = async (
   options?: SafeFetchOptions,
 ): Promise<ExternalAuthExchangeResult> => {
   if (provider.type === 'uoa') {
-    const uoaSession = await exchangeUoaSession(input)
+    const uoaSession = await exchangeUoaSession(input, options)
     return { identity: uoaSession.identity, uoaSession }
   }
 

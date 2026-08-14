@@ -113,6 +113,10 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   const creation = readSource('../src/layouts/admin-shell/NativePhoneCreationBridge.tsx')
   const mobileShell = readSource('../src/lib/mobile-shell.ts')
   const phoneChrome = readSource('../../mobile/src/components/NativePhoneConversationMenuChrome.tsx')
+  const ipadWorkspace = readSource('../../mobile/src/components/IpadNativeWorkspaceSwitcher.tsx')
+  const nativeWorkspaceAvatar = readSource('../../mobile/src/components/NativeWorkspaceAvatar.tsx')
+  const nativePresentation = readSource('../../mobile/src/components/native-shell-presentation.ts')
+  const workspaceSwitcher = readSource('../src/layouts/admin-shell/WorkspaceSwitcher.tsx')
   const nativeApp = readSource('../../mobile/App.tsx')
 
   assert.match(shell, /useNativePhoneApp/)
@@ -137,7 +141,7 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
     nativeApp,
     /showNativePhoneCreationActions = showNativePhoneHomeChrome && isNativePhoneChannelsRootRoute\(currentPath\)/,
   )
-  assert.match(nativeApp, /creationAccentColor=\{theme\.strongAccent\}/)
+  assert.match(nativeApp, /creationAccentColor=\{strongAccent\}/)
   assert.match(nativeApp, /showCreationActions=\{showNativePhoneCreationActions\}/)
   assert.match(phoneChrome, /const AnimatedPressable = Animated\.createAnimatedComponent\(Pressable\)/)
   assert.match(phoneChrome, /Animated\.timing\(creationProgress,/)
@@ -152,6 +156,13 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneChrome, /Project/)
   assert.match(phoneChrome, /Channel/)
   assert.match(phoneChrome, /Message/)
+  assert.match(workspaceSwitcher, /workspaceAvatarUrl: active\?\.avatarImageUrl \?\? null/)
+  assert.match(nativePresentation, /workspaceAvatarUrl: optionalText\(message\.workspaceAvatarUrl\)/)
+  assert.match(nativeApp, /workspaceAvatarUrl=\{nativeWorkspaceAvatarUrl\}/)
+  assert.match(phoneChrome, /<NativeWorkspaceAvatar/)
+  assert.match(ipadWorkspace, /<NativeWorkspaceAvatar/)
+  assert.match(nativeWorkspaceAvatar, /source=\{\{ uri: imageUrl \?\? undefined \}\}/)
+  assert.match(nativeWorkspaceAvatar, /onError=\{\(\) => setFailedUrl\(imageUrl\)\}/)
 })
 
 test('the native Admin actions offer session debugging above a cache-busting full refresh', () => {

@@ -6,6 +6,11 @@ import {
 } from 'node:crypto'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
+  safeFetch,
+  type PinnedFetch,
+  type ResolveHost,
+} from '@nessie/runtime'
+import {
   BillingWorkspaceError,
   resolveBillingWorkspace,
   type BillingWorkspacePrisma,
@@ -48,7 +53,8 @@ export type UoaBillingSubject = {
 
 export type UoaBillingClientDeps = {
   env?: NodeJS.ProcessEnv
-  fetchImpl?: typeof fetch
+  fetchImpl?: PinnedFetch
+  resolveHost?: ResolveHost
   now?: () => number
   randomId?: () => string
 }
@@ -293,7 +299,7 @@ const requestBilling = async (
   )
   let response: Response
   try {
-    response = await (deps.fetchImpl ?? fetch)(
+    response = await safeFetch(
       billingUrl(settings, path),
       {
         method: 'POST',
@@ -305,6 +311,11 @@ const requestBilling = async (
           'X-UOA-App-Key': settings.appKey,
         },
         body: JSON.stringify(body),
+      },
+      {
+        fetchImpl: deps.fetchImpl,
+        maxRedirects: 0,
+        resolveHost: deps.resolveHost,
       },
     )
   } catch (error) {

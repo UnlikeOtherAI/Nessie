@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { workspaceAvatarPath } from '../src/components/primitives/WorkspaceAvatar.js'
 import { resolveWorkspaceMenuPosition } from '../src/layouts/admin-shell/workspace-menu-position.js'
+import { workspaceSwitchFailureMessage } from '../src/layouts/admin-shell/workspace-switch-message.js'
 
 const sourceRoot = fileURLToPath(new URL('../src', import.meta.url))
 
@@ -60,6 +61,60 @@ test('workspace pictures prefer the team relay and accept the UOA public fallbac
   const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceSwitcher.tsx`, 'utf8')
   assert.match(avatar, /relayedUrl \?\? imageUrl \?\? null/)
   assert.match(switcher, /imageUrl=\{workspace\.avatarImageUrl\}/)
+  assert.ok(
+    switcher.match(/imageUrl=\{active\?\.avatarImageUrl\}/g)?.length === 2,
+    'both web workspace triggers must render the public avatar fallback',
+  )
+})
+
+test('UOA workspace rows switch inside Nessie while Add Workspace keeps hosted sign-in', () => {
+  const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceSwitcher.tsx`, 'utf8')
+  assert.match(
+    switcher,
+    /switchUoaWorkspace\(\{\s*organizationId: workspace\.organizationId,\s*teamId: workspace\.teamId,/,
+  )
+  assert.match(
+    switcher,
+    /startExternalSignIn\(providerId, resolveAppliedTheme\(theme\)\)/,
+  )
+  assert.doesNotMatch(switcher, /startExternalSignIn\([\s\S]{0,200}workspace\.teamId/)
+  assert.match(switcher, /role="alert"/)
+  assert.match(switcher, /busyTeamId=\{busyTeamId\}/)
+})
+
+test('workspace-switch errors make the retained workspace explicit', () => {
+  const base = workspaceSwitchFailureMessage({
+    currentWorkspace: 'Alpha',
+    targetWorkspace: 'Beta',
+  })
+  assert.equal(base, 'Couldn’t switch to Beta. You’re still in Alpha.')
+  assert.match(
+    workspaceSwitchFailureMessage({
+      code: 'INTERACTION_REQUIRED',
+      currentWorkspace: 'Alpha',
+      targetWorkspace: 'Beta',
+    }),
+    /requires another sign-in verification/,
+  )
+  assert.match(
+    workspaceSwitchFailureMessage({
+      code: 'WORKSPACE_SWITCH_CONFLICT',
+      currentWorkspace: 'Alpha',
+      targetWorkspace: 'Beta',
+    }),
+    /Try again/,
+  )
+})
+
+test('session ownership wraps the app inside the shared tenant query cache', () => {
+  const appProvider = readFileSync(`${sourceRoot}/providers/AppProvider.tsx`, 'utf8')
+  assert.match(
+    appProvider,
+    /<QueryProvider>\s*<AuthSessionProvider>\s*<ApiClientProvider>/,
+  )
+  const authProvider = readFileSync(`${sourceRoot}/providers/AuthSessionProvider.tsx`, 'utf8')
+  assert.match(authProvider, /await queryClient\.cancelQueries\(\)\.catch\(\(\) => undefined\)/)
+  assert.match(authProvider, /queryClient\.clear\(\)/)
 })
 
 test('every shared UserAvatar usage supplies the SSO user identity source', () => {

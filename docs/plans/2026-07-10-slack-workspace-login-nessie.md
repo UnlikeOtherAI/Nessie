@@ -2,7 +2,8 @@
 
 > **Status:** Implemented (2026-07-10).
 > **Scope:** `api/` (auth routing, workspace provisioning, UOA config JWT, schema),
-> `admin/` (workspace switcher), `packages/client-core` (switch-context).
+> `admin/` (workspace switcher), `packages/client-core` (serialized session
+> mutation and workspace-switch clients).
 > **Companion:** UnlikeOtherAuthenticator (UOA)
 > `Docs/plans/2026-07-07-slack-style-login-and-membership.md` — the auth-side
 > Slack-style login/workspace chooser this consumes.
@@ -44,12 +45,14 @@ Chosen mapping (product decision, 2026-07-10):
   `owner`. Everyone shares the org as `member` (the very first bootstrap user is
   the org `owner`).
 
-Local sessions may reuse `POST /api/auth/switch-context` after it validates the
-full org/project/team triple. UOA sessions must instead use UOA's authoritative
-workspace directory and re-enter through its `team_hint` flow: a local context
-switch cannot change the signed UOA organisation/team proof. This makes every
-workspace in UOA's directory selectable without allowing the local and external
-session scopes to drift.
+Local sessions use `POST /api/auth/switch-context` after it validates the full
+org/project/team triple. Renewable UOA sessions use Nessie's dedicated
+`POST /api/auth/uoa/workspace` route: Nessie presents its server-held upstream
+refresh proof to UOA's explicit workspace-switch grant, and both services
+atomically rotate their session families to the exact authorized external
+organisation/team. The directory is only a list of choices, never authority.
+This makes every authorized workspace selectable without a hosted-login detour
+or allowing the local and external session scopes to drift.
 
 The same `/auth/me` hydration reconstructs a workspace's credential-free UOA avatar URL from its
 external team id when older link metadata predates the directory's `avatarImageUrl` field. It uses
@@ -89,13 +92,25 @@ project** would leak agents/policies across workspaces (both scope by project).
   shows the chooser and issues the `active` claim.
 
 ### Admin
-- `packages/client-core` `auth-session.ts` — `switchContext({ organizationId,
-  projectId, teamId })` (POST `/api/auth/switch-context`, bearer + cookie).
-- `AuthSessionProvider` exposes `switchContext`.
+- `packages/client-core` `auth-session.ts` — local `switchContext({
+  organizationId, projectId, teamId })` and UOA `switchUoaWorkspace({
+  organizationId, teamId })`, both with bearer + cookie. Refresh and switching
+  share one session-mutation coordinator so a delayed response cannot restore
+  an older access token.
+- `AuthSessionProvider` exposes both switch operations and a payload-aware
+  reconciliation refresh. Before any mutation applies a replacement session,
+  it cancels and clears tenant queries when the user or active
+  organisation/project/team changed; an ordinary refresh therefore handles a
+  shared-cookie switch made in another tab. Clearing authentication also clears
+  the cache.
 - `layouts/admin-shell/WorkspaceSwitcher.tsx` — a rail control. Local sessions
   list `me.memberships` and switch context; UOA sessions list the named UOA
-  directory saved at authentication and select an entry through `team_hint`.
-  "Add a workspace" still opens the full UOA chooser.
+  directory saved at authentication and switch directly inside Nessie. The menu
+  remains open with a row spinner during the request. After an ambiguous error
+  it reconciles through ordinary refresh: a recovered target completes the
+  navigation, a recovered source is named accurately, and an unconfirmed state
+  never claims the source was retained. "Add a workspace" still opens the full
+  UOA chooser.
 - `LoginPage` processes an OAuth `code` even when already authenticated (so
   "add a workspace" re-scopes the session).
 
@@ -103,8 +118,10 @@ project** would leak agents/policies across workspaces (both scope by project).
 - Non-UOA providers are unaffected. Single-workspace UOA users are routed and
   projected from their sole active membership even when UOA auto-skips the
   chooser and omits `active`.
-- `switch-context` still authorises membership server-side; `team_hint`/UI is a
-  shortcut, never a trust boundary.
+- Both switch routes authorize server-side. A UOA target is accepted only after
+  UOA validates the rotating source session, product workspace policy, current
+  membership, and any target 2FA requirement; the directory/UI is never a trust
+  boundary.
 - Additive migration; existing installs keep their default org/team.
 
 ## Follow-ups
@@ -113,4 +130,7 @@ project** would leak agents/policies across workspaces (both scope by project).
   `GET /org/me` directory at interactive login, retains the organisation and
   team names plus public workspace-avatar URLs, and renders teams grouped under
   their organisation in the shared desktop/iPad/phone switcher.
+- **Completed 2026-08-13:** Selecting an existing UOA workspace rotates the
+  signed UOA and Nessie sessions in place. Only adding a workspace or satisfying
+  an exceptional stronger sign-in requirement leaves the app for hosted UOA.
 - Reflecting UOA membership **removal/deactivation** back onto Nessie memberships.

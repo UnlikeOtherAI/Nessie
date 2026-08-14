@@ -68,3 +68,8 @@ export const ChangePasswordRequestSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8),
 })
+
+export const UoaWorkspaceSwitchRequestSchema = z.object({
+  organizationId: z.string().trim().min(1).max(256),
+  teamId: z.string().trim().min(1).max(256),
+})
