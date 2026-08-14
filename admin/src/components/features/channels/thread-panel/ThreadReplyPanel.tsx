@@ -18,6 +18,8 @@ import { DropZoneOverlay } from '../../../shared/DropZoneOverlay'
 import { OversizePasteDialog } from '../../../shared/OversizePasteDialog'
 import type { MentionEntity } from '../../../shared/MentionInput'
 import type { AvatarSources } from '../../../primitives/UserAvatar'
+import { usePhoneLayout } from '../../../../lib/mobile-shell'
+import { PhoneBackButton } from '../../../../layouts/admin-shell/PhoneBackButton'
 import { ChannelComposer } from '../ChannelComposer'
 import { ChannelMessageFeed } from '../ChannelMessageFeed'
 import { buildFeedItems } from '../channel-helpers'
@@ -86,6 +88,7 @@ export const ThreadReplyPanel = ({
   thread,
   token,
 }: ThreadReplyPanelProps) => {
+  const phoneLayout = usePhoneLayout()
   const {
     activeThreadId,
     closeThread,
@@ -251,15 +254,21 @@ export const ThreadReplyPanel = ({
           role="separator"
         />
         <header className="flex flex-shrink-0 items-center gap-2 border-b border-[color:var(--sep)] px-4 py-3">
-          <button
-            aria-label="Back to channel"
-            className="admin-button admin-button-secondary flex h-8 w-8 shrink-0 items-center justify-center px-0"
-            onClick={closeThread}
-            title="Back to channel"
-            type="button"
-          >
-            <BackArrow />
-          </button>
+          {phoneLayout ? (
+            // The route-level control sits behind this full-screen overlay, so
+            // the thread itself owns the shared phone Back doorway.
+            <PhoneBackButton label="Back to channel" onBack={closeThread} />
+          ) : (
+            <button
+              aria-label="Back to channel"
+              className="admin-button admin-button-secondary flex h-8 w-8 shrink-0 items-center justify-center px-0"
+              onClick={closeThread}
+              title="Back to channel"
+              type="button"
+            >
+              <BackArrow />
+            </button>
+          )}
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-[var(--tx)]">Thread</h2>
             <div className="truncate text-xs text-[color:var(--tx3)]">

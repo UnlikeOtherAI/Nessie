@@ -23,6 +23,23 @@ test('pushes channel and channel-project details forward from the Channels root'
   )
 })
 
+test('the full-screen phone thread owns the shared Back doorway', () => {
+  const threadPanel = readSource(
+    '../src/components/features/channels/thread-panel/ThreadReplyPanel.tsx',
+  )
+
+  assert.match(threadPanel, /import \{ usePhoneLayout \} from '[^']*mobile-shell'/)
+  assert.match(
+    threadPanel,
+    /import \{ PhoneBackButton \} from '[^']*layouts\/admin-shell\/PhoneBackButton'/,
+  )
+  assert.match(threadPanel, /const phoneLayout = usePhoneLayout\(\)/)
+  assert.match(
+    threadPanel,
+    /phoneLayout \? \([\s\S]*?<PhoneBackButton label="Back to channel" onBack=\{closeThread\} \/>/,
+  )
+})
+
 test('pops channel details back even when Back navigates to an explicit URL', () => {
   assert.equal(
     getPhoneNavigationDirection('/channels/channel_a', '/channels'),
