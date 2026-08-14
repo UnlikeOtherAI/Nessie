@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { nativePushPathScript, nativeShellInfoScript } from './native-shell'
+import {
+  nativePhoneTabBarClearanceScript,
+  nativePushPathScript,
+  nativeShellInfoScript,
+} from './native-shell'
 
 type NativeEvent = {
   detail?: unknown
@@ -40,6 +44,7 @@ const runShellScript = (
 
 test('caches a cold-start push path before the WebView application mounts', () => {
   const { events, window } = runShellScript(nativeShellInfoScript({
+    bottomInset: 34,
     clientId: 'client-id',
     formFactor: 'phone',
     pendingPushPath: '/channels/channel-a/threads/thread-a/replies/root-a',
@@ -47,8 +52,27 @@ test('caches a cold-start push path before the WebView application mounts', () =
   }))
 
   assert.equal(window.__nessiePendingPushPath, '/channels/channel-a/threads/thread-a/replies/root-a')
+  assert.deepEqual(window.__nessieNativeShell, { bottomInset: 34, formFactor: 'phone', platform: 'ios' })
   assert.equal(events.at(-1)?.type, 'nessie:native-push-path')
   assert.equal(events.at(-1)?.detail, '/channels/channel-a/threads/thread-a/replies/root-a')
+})
+
+test('updates the iPhone WebView clearance when its safe-area inset changes', () => {
+  const values = new Map<string, string>()
+  const document = {
+    documentElement: {
+      style: {
+        setProperty: (name: string, value: string): void => {
+          values.set(name, value)
+        },
+      },
+    },
+  }
+  const execute = new Function('document', nativePhoneTabBarClearanceScript(34))
+
+  execute(document)
+
+  assert.equal(values.get('--nessie-native-phone-tabbar-clearance'), '83px')
 })
 
 test('retains a new push target until the React bridge acknowledges it', () => {

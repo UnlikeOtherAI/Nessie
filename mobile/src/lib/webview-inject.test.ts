@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE } from './android-tablet-dock'
+import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 import { INJECTED, isDark, parseRgb } from './webview-inject'
 
 type FakeElement = {
@@ -71,7 +72,7 @@ const injectedThemeMessage = (
   return messages.find((message) => message.type === 'theme')
 }
 
-const injectedSafeAreaCss = (platform: string, formFactor: string): string => {
+const injectedSafeAreaCss = (platform: string, formFactor: string, bottomInset = 0): string => {
   const elements = new Map<string, FakeElement>()
   const capture: { safeAreaStyle?: FakeElement } = {}
 
@@ -91,7 +92,7 @@ const injectedSafeAreaCss = (platform: string, formFactor: string): string => {
     querySelector: (): FakeElement | null => null,
   }
   const window = {
-    __nessieNativeShell: { formFactor, platform },
+    __nessieNativeShell: { bottomInset, formFactor, platform },
     addEventListener: (): void => undefined,
     location: { protocol: 'file:' },
     ReactNativeWebView: { postMessage: (): void => undefined },
@@ -112,12 +113,20 @@ const injectedSafeAreaCss = (platform: string, formFactor: string): string => {
   return capture.safeAreaStyle?.textContent ?? ''
 }
 
-test('iOS phone injection leaves the status bar to the native frame and clears the home indicator', () => {
-  const css = injectedSafeAreaCss('ios', 'phone')
+test('iOS phone injection clears the tab overlay inside the WebView', () => {
+  const css = injectedSafeAreaCss('ios', 'phone', 34)
 
   assert.doesNotMatch(css, /padding-top: env\(safe-area-inset-top\)/)
   assert.match(css, /padding-bottom: env\(safe-area-inset-bottom\)/)
   assert.match(css, /body \{ background: var\(--main\); \}/)
+  assert.match(
+    css,
+    new RegExp(`--nessie-native-phone-tabbar-clearance: ${IPHONE_TAB_BAR_HEIGHT + 34}px`),
+  )
+  const phoneTabBarShell =
+    '\\.admin-frame\\.has-native-phone-tabbar \\.admin-shell > aside, ' +
+    '\\.admin-frame\\.has-native-phone-tabbar \\.admin-shell > main'
+  assert.match(css, new RegExp(`${phoneTabBarShell} \\{ padding-bottom: var\\(--nessie-native-phone-tabbar-clearance\\);\\}`))
 })
 
 test('iPad and Android keep top safe-area ownership in the native frame', () => {

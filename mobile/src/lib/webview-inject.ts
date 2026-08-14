@@ -1,4 +1,5 @@
 import { ANDROID_TABLET_TAB_BAR_CONTENT_CLEARANCE } from './android-tablet-dock'
+import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 
 // Injected into the admin page. The Android WebView continues beneath its
 // floating dock so full-height columns and dividers do not stop at a detached
@@ -24,12 +25,30 @@ export const INJECTED = `
     var shell = window.__nessieNativeShell;
     var isIosPhone =
       shell && shell.platform === 'ios' && shell.formFactor === 'phone';
+    var nativeBottomInset =
+      shell && typeof shell.bottomInset === 'number' && isFinite(shell.bottomInset)
+        ? Math.max(0, shell.bottomInset)
+        : 0;
     // The native frame owns the iPhone status-bar inset: phone tab roots can
     // place their aside below an intermediate DOM wrapper, so a selector-based
     // top inset is not reliable. Keep the surface behind native chrome aligned
     // with the page itself.
     var iosPhoneBackgroundCss = isIosPhone
       ? 'body { background: var(--main); }'
+      : '';
+    // The WebView reaches under the translucent iPhone tab bar so the bar can
+    // blur real page content rather than the native root background. Clear the
+    // exact native overlay within the shell only, keeping the final row usable.
+    var iosPhoneTabBarOverlayCss = isIosPhone
+      ? [
+          ':root { --nessie-native-phone-tabbar-clearance: ' +
+            (${IPHONE_TAB_BAR_HEIGHT} + nativeBottomInset) +
+            'px; }',
+          '.admin-frame.has-native-phone-tabbar .admin-shell > aside, ' +
+            '.admin-frame.has-native-phone-tabbar .admin-shell > main {' +
+            ' padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
+          '}',
+        ].join('')
       : '';
     var nativeTopbarOwnsSafeArea = shell && shell.platform === 'android';
     var androidNativeFrameCss = nativeTopbarOwnsSafeArea
@@ -50,6 +69,7 @@ export const INJECTED = `
       '  padding-bottom: env(safe-area-inset-bottom);' +
       '}' +
       iosPhoneBackgroundCss +
+      iosPhoneTabBarOverlayCss +
       androidNativeFrameCss;
     (document.head || document.documentElement).appendChild(st);
   }

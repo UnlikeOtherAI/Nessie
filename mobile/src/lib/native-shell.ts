@@ -1,4 +1,7 @@
+import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
+
 type NativeShellInfo = {
+  bottomInset: number
   clientId: string
   formFactor: 'ipad' | 'phone'
   platform: string
@@ -14,9 +17,9 @@ export const createNativePushSurfaceClientId = (): string => {
 }
 
 export const nativeShellInfoScript = (info: NativeShellInfo): string => `
-window.__nessieNativeShell = { platform: ${JSON.stringify(info.platform)}, formFactor: ${
-  JSON.stringify(info.formFactor)
-} };
+window.__nessieNativeShell = { bottomInset: ${JSON.stringify(info.bottomInset)}, platform: ${
+  JSON.stringify(info.platform)
+}, formFactor: ${JSON.stringify(info.formFactor)} };
 window.__nessieNativeAppForeground = true;
 window.__nessiePushSurfaceClientId = ${JSON.stringify(info.clientId)};
 ${info.pendingPushPath ? `window.__nessiePendingPushPath = ${JSON.stringify(info.pendingPushPath)};` : ''}
@@ -28,6 +31,18 @@ ${info.pendingPushPath ? `try {
 } catch (e) {}` : ''}
 true;
 `
+
+export const nativePhoneTabBarClearanceScript = (bottomInset: number): string => {
+  const safeBottomInset = Number.isFinite(bottomInset) ? Math.max(0, bottomInset) : 0
+  return `
+try {
+  document.documentElement.style.setProperty(
+    '--nessie-native-phone-tabbar-clearance',
+    ${JSON.stringify(`${IPHONE_TAB_BAR_HEIGHT + safeBottomInset}px`)},
+  );
+} catch (e) {}
+`
+}
 
 /**
  * The WebView can be alive while its React application is still mounting. Keep

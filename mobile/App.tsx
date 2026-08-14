@@ -27,6 +27,7 @@ import { allowsNativeBackForwardGestures } from './src/lib/webview-back-gesture'
 import {
   createNativePushSurfaceClientId,
   nativeAppForegroundScript,
+  nativePhoneTabBarClearanceScript,
   nativePushPathScript,
   nativeShellInfoScript,
 } from './src/lib/native-shell'
@@ -107,6 +108,11 @@ const Shell = (): React.JSX.Element => {
   const runScript = useCallback((script: string): void => {
     webRef.current?.injectJavaScript(`${script} true;`)
   }, [])
+
+  useEffect(() => {
+    if (IS_IPAD || Platform.OS !== 'ios') return
+    runScript(nativePhoneTabBarClearanceScript(insets.bottom))
+  }, [insets.bottom, runScript])
 
   const nativeBackForwardGestures = allowsNativeBackForwardGestures({
     heightDp: windowHeight,
@@ -370,12 +376,14 @@ const Shell = (): React.JSX.Element => {
           allowsBackForwardNavigationGestures={nativeBackForwardGestures}
           domStorageEnabled
           injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript({
+            bottomInset: insets.bottom,
             clientId: pushSurfaceClientId.current,
             formFactor: IS_IPAD ? 'ipad' : 'phone',
             pendingPushPath,
             platform: Platform.OS,
           })}
           injectedJavaScript={`${nativeShellInfoScript({
+            bottomInset: insets.bottom,
             clientId: pushSurfaceClientId.current,
             formFactor: IS_IPAD ? 'ipad' : 'phone',
             pendingPushPath,

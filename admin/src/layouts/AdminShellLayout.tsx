@@ -119,6 +119,7 @@ const AuthenticatedAdminShellLayout = () => {
   // The web tab bar is only for mobile *web*; the native app draws its own
   // native glass tab bar around the WebView.
   const showWebTabBar = mobileLayout && !nativeShell && !isComposeRoute;
+  const showNativePhoneTabBar = nativePhoneApp && !isComposeRoute;
   const showMobileWebHomeHeader = showWebTabBar && showPhoneTabRoot;
   // Whenever a bottom tab bar is present — the web tab bar on mobile web, or the
   // native app's own tab bar on phone/iPad — drop the entire top bar. Navigation
@@ -247,7 +248,11 @@ const AuthenticatedAdminShellLayout = () => {
     </>
   );
 
-  const frameClassName = ['admin-frame', showWebTabBar ? 'has-mobile-tabbar' : '']
+  const frameClassName = [
+    'admin-frame',
+    showWebTabBar ? 'has-mobile-tabbar' : '',
+    showNativePhoneTabBar ? 'has-native-phone-tabbar' : '',
+  ]
     .filter(Boolean)
     .join(' ');
 

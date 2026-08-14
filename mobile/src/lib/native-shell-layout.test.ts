@@ -11,7 +11,7 @@ import {
   isNativePhoneTabRootRoute,
 } from './native-shell-layout'
 
-test('the iPhone native frame always owns the status and tab-bar safe areas', () => {
+test('the iPhone native frame keeps page content beneath the translucent tab bar', () => {
   assert.deepEqual(getNativeWebviewFrameInsets({
     ipadChromeTop: 0,
     isIpad: false,
@@ -19,7 +19,7 @@ test('the iPhone native frame always owns the status and tab-bar safe areas', ()
     safeArea: { top: 59, bottom: 34 },
     showNativePhoneHomeHeader: false,
     showTabBar: true,
-  }), { top: 59, bottom: 83 })
+  }), { top: 59, bottom: 0 })
 })
 
 test('full-screen iPhone tasks keep the status inset while leaving the home indicator to the web surface', () => {
@@ -60,7 +60,7 @@ test('every native phone tab root reserves the workspace header on iPhone and An
     safeArea: { top: 59, bottom: 34 },
     showNativePhoneHomeHeader: true,
     showTabBar: true,
-  }), { top: 123, bottom: 83 })
+  }), { top: 123, bottom: 0 })
   assert.equal(isNativePhoneTabRootRoute('/channels'), true)
   assert.equal(isNativePhoneTabRootRoute('/channels?source=tab'), true)
   assert.equal(isNativePhoneTabRootRoute('/channels/'), true)

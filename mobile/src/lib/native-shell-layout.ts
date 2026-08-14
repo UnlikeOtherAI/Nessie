@@ -3,9 +3,9 @@ import {
   ANDROID_TABLET_TAB_BAR_HEIGHT,
 } from './android-tablet-dock'
 import { getIpadContentTop } from './ipad-native-chrome'
+import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 import { TABS } from './tabs'
 
-export const IPHONE_TAB_BAR_HEIGHT = 49
 export const NATIVE_PHONE_MENU_HEADER_HEIGHT = 64
 
 export type NativePhoneCreationAction = 'project' | 'channel' | 'message'
@@ -65,9 +65,9 @@ export const getNativePhoneComposeBottom = (bottomInset: number, platform: 'andr
   bottomInset + getNativePhoneBottomChromeClearance(platform) + 18
 
 /**
- * The native frame, not a DOM selector, owns unsafe screen edges. Phone pages
- * have several valid DOM shapes (notably the tab-root sidebars), so CSS alone
- * can miss a route and leave it under the status bar.
+ * The native frame, not a DOM selector, owns the top unsafe edge. The iPhone
+ * WebView deliberately reaches beneath the translucent native tab bar; the
+ * injected web CSS clears the last scrollable item above that overlay.
  */
 export const getNativeWebviewFrameInsets = (input: {
   ipadChromeTop: number
@@ -82,11 +82,7 @@ export const getNativeWebviewFrameInsets = (input: {
     : input.platform === 'ios' || input.platform === 'android'
       ? input.safeArea.top + (input.showNativePhoneHomeHeader ? NATIVE_PHONE_MENU_HEADER_HEIGHT : 0)
       : 0
-  const bottom = input.platform === 'android'
-    ? input.safeArea.bottom
-    : input.showTabBar && !input.isIpad
-      ? IPHONE_TAB_BAR_HEIGHT + input.safeArea.bottom
-      : 0
+  const bottom = input.platform === 'android' ? input.safeArea.bottom : 0
 
   return { top, bottom }
 }
