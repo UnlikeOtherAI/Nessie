@@ -50,6 +50,11 @@ import {
 } from '../lib/native-push-registration'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import {
+  blockAmbientRefresh,
+  isAmbientRefreshBlocked,
+  unblockAmbientRefresh,
+} from './ambient-refresh-gate'
+import {
   createSessionQueryBoundary,
   isCurrentSessionResponse,
 } from './auth-session-query-reset'
@@ -186,8 +191,11 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   // restoration cannot consume an ambient refresh cookie whose logout may
   // have failed or been swallowed. Explicit run/runGuarded mutations are
   // never gated, so a later explicit login still works and its apply clears
-  // the gate synchronously — ahead of React's commit.
-  const ambientRefreshBlockedRef = useRef(false)
+  // the gate synchronously — ahead of React's commit. The gate also persists
+  // beside the token store and initializes from that marker, so a full
+  // remount (web page, Tauri, mobile WebView) of a terminated-but-not-revoked
+  // session starts blocked instead of consuming the still-live cookie.
+  const ambientRefreshBlockedRef = useRef(isAmbientRefreshBlocked())
   // Login, startup restore, every API 401, and workspace switching share this
   // exact coordinator. Both refresh cookies are single-use, so no other path
   // may mutate the session concurrently or apply an older response afterwards.
@@ -204,6 +212,9 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
           await authApi.logout(payload.token)
         },
         onTerminal: () => {
+          // Persist FIRST, synchronously, before the generation bump can let
+          // any recreation restore: the marker is the cross-remount fence.
+          blockAmbientRefresh()
           ambientRefreshBlockedRef.current = true
           setCoordinatorGeneration((generation) => generation + 1)
         },
@@ -374,11 +385,13 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     await sessionMutations.run(() => authApi.bootstrap(input))
     // Applied explicit session creation reopens ambient refresh.
     ambientRefreshBlockedRef.current = false
+    unblockAmbientRefresh()
   }
 
   const devLogin = async (): Promise<void> => {
     await sessionMutations.run(() => authApi.devLogin())
     ambientRefreshBlockedRef.current = false
+    unblockAmbientRefresh()
   }
 
   const importAccessToken = useCallback(async (accessToken: string): Promise<void> => {
@@ -397,6 +410,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const login = async (input: LoginInput): Promise<void> => {
     await sessionMutations.run(() => authApi.login(input))
     ambientRefreshBlockedRef.current = false
+    unblockAmbientRefresh()
   }
 
   const recoveryExchange = async (
@@ -458,6 +472,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     // A valid explicit recovery — exact target applied — reopens ambient
     // refresh; a rejected non-switch or foreign payload never does.
     ambientRefreshBlockedRef.current = false
+    unblockAmbientRefresh()
     return payload
   }
 
