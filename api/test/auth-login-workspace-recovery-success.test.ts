@@ -96,6 +96,18 @@ test('same subject with a newer epoch and an email colliding with another local 
   const projectId = randomUUID()
   const app = await buildApp(spy, {
     organizationId,
+    // The exact, linked Nessie account link the recovery fence claims: this
+    // org, Alice, the nessie product, linked, bearer epoch 3 <= returned 4.
+    productAccountLinkRows: [{
+      activeOrgId: ORG,
+      activeTeamId: TEAM,
+      organizationId,
+      productSlug: 'nessie',
+      status: 'linked',
+      uoaSub: 'uoa-subject-alice',
+      uoaTokenVersion: 3,
+      userId: ALICE.id,
+    }],
     projectRows: [{ id: projectId, organizationId }],
     teamRows: [
       {
@@ -112,7 +124,9 @@ test('same subject with a newer epoch and an email colliding with another local 
   })
 
   const response = await recoveryExchange(app, {
-    bearer: aliceBearer(),
+    // The bearer's local organization claim IS the recovery's org scope: it
+    // must be the seeded organization holding the exact link.
+    bearer: aliceBearer({ org: organizationId }),
     expectedWorkspace: EXPECTED,
   })
 

@@ -1,16 +1,23 @@
-import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
+import type { MemberRole, Prisma, PrismaClient } from '@prisma/client'
 
-import { defaultColumnCreateData } from './board.js'
 import {
   resolveExternalWorkspaceSelection,
   type ExternalAuthWorkspace,
 } from './identity-display.js'
-import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS, lockUserSessions } from './user-session-lock.js'
 import {
-  ensureExistingWorkspacePrincipal,
+  ensureWorkspaceMemberships,
   ensureWorkspacePrincipal,
   findExistingPrincipal,
+  readOrgRole,
 } from './workspace-principal.js'
+import {
+  lockExternalWorkspace,
+  materializeWorkspaceTargetInTransaction,
+  resolveDefaultTarget,
+  resolveWorkspaceTarget,
+  WorkspaceExternalBindingConflictError,
+} from './workspace-target.js'
 import {
   lockBootstrapInitialization,
   seedBootstrapRecordsInTransaction,
@@ -18,8 +25,12 @@ import {
 
 const CREATED_AT_ASC = { createdAt: 'asc' } as const
 
-// The Nessie environment a UOA login resolves to: one shared organization, and a
-// project+team representing the selected UOA workspace. `orgRole` is the org
+// Kept importable from here: uoa-workspace-switch.ts catches this exact class
+// to map binding conflicts to its switch refusal.
+export { WorkspaceExternalBindingConflictError }
+
+// The Nessie environment a UOA login resolves to: one shared organization, and
+// a project+team representing the selected UOA workspace. `orgRole` is the org
 // membership role the access token is scoped to (RBAC is org-role driven).
 export type WorkspaceContext = {
   userId: string
@@ -34,6 +45,14 @@ export type WorkspaceIdentityInput = {
   displayName: string
   avatarUrl?: string
   /**
+   * Account-bound recovery seam (paired with `existingUserId`): the exact
+   * local organization the bearer's session holds. Recovery is scoped by
+   * this claim, never by an ambient "oldest organization" lookup — if the
+   * org this resolver would use differs, the recovery rejects before any
+   * target or team provisioning.
+   */
+  expectedLocalOrganizationId?: string
+  /**
    * Account-bound recovery seam: when set, this exact local principal is the
    * login's identity. The resolver never looks up, creates, or remaps a user
    * by email — it locks and reuses this row, and only materializes the target
@@ -41,6 +60,18 @@ export type WorkspaceIdentityInput = {
    * reauthorization path, which has already proven the caller is this user.
    */
   existingUserId?: string
+  /**
+   * Account-bound recovery fence: conditionally claims the exact Nessie
+   * ProductAccountLink row the pre-billing check read. Recovery runs ONE
+   * transaction with a stable lock order — the exact external-workspace
+   * advisory lock, then this claim (whose row lock is held to commit), then
+   * the target existing-or-create branch and the principal memberships — so
+   * a refusal aborts before ANY local write, target materialization
+   * included.
+   */
+  recoveryLinkClaim?: (
+    transaction: Prisma.TransactionClient,
+  ) => Promise<void>
   workspace?: ExternalAuthWorkspace
   // Stable UOA subject (`sub`). Present on the UOA provider path only —
   // principal resolution then keys on it (workspace-principal.ts); generic
@@ -48,88 +79,74 @@ export type WorkspaceIdentityInput = {
   uoaSub?: string
 }
 
-export class WorkspaceExternalBindingConflictError extends Error {
-  constructor() {
-    super('The selected external organization and team conflict with an existing workspace binding.')
-    this.name = 'WorkspaceExternalBindingConflictError'
+// The single account-bound recovery transaction. Stable lock order:
+//   1. exact external-workspace advisory lock (target serialization),
+//   2. user-session lock + conditional account-link claim (the fence; its
+//      row lock is held to commit),
+//   3. target existing-or-create + the exact principal's memberships.
+// A fence refusal at step 2 rolls back before ANY local write; every write
+// below commits only while the claimed link row lock is still held, so no
+// concurrent epoch advance can interleave after the claim. Identity is the
+// bearer-proven user id — recovery never resolves, adopts, or creates a
+// principal by email or subject claim.
+const resolveRecoveryContext = async (
+  prisma: PrismaClient,
+  input: {
+    organizationId: string
+    recoveryLinkClaim?: (
+      transaction: Prisma.TransactionClient,
+    ) => Promise<void>
+    userId: string
+    workspace?: ExternalAuthWorkspace
+    workspaceId?: string
+  },
+): Promise<WorkspaceContext | null> => prisma.$transaction(async (tx) => {
+  if (input.workspaceId) {
+    await lockExternalWorkspace(
+      tx,
+      resolveExternalWorkspaceSelection(input.workspace).organizationId,
+      input.workspaceId,
+    )
   }
-}
-
-// UOA team roles (`owner | admin | member`, plus legacy `lead`) → Nessie MemberRole.
-const mapUoaTeamRole = (role: string | undefined): MemberRole => {
-  switch ((role ?? '').trim().toLowerCase()) {
-    case 'owner':
-      return 'owner'
-    case 'admin':
-    case 'lead':
-      return 'admin'
-    default:
-      return 'member'
-  }
-}
-
-// A friendly-enough placeholder name; the UOA access token carries workspace ids
-// only, so owners rename via team settings (see the plan doc's follow-ups).
-const workspaceDisplayName = (workspaceId: string): string =>
-  `Workspace ${workspaceId.slice(0, 8)}`
-
-// Create the project + team + #general channel for a brand-new workspace inside
-// the shared org, bound to the UOA workspace id. The first person in owns it.
-const createWorkspaceEnvironment = async (
-  transaction: Prisma.TransactionClient,
-  input: { organizationId: string; workspaceId: string; externalOrgId: string | null },
-): Promise<{ projectId: string; teamId: string; channelId: string }> => {
-  const name = workspaceDisplayName(input.workspaceId)
-  const project = await transaction.project.create({
-    data: { name, organizationId: input.organizationId },
-  })
-  await transaction.boardColumn.createMany({
-    data: defaultColumnCreateData(input.organizationId).map((column) => ({
-      ...column,
-      projectId: project.id,
-    })),
-  })
-  const team = await transaction.team.create({
-    data: {
-      name,
-      projectId: project.id,
-      externalWorkspaceId: input.workspaceId,
-      externalOrgId: input.externalOrgId,
-    },
-  })
-  const channel = await transaction.channel.create({
-    data: {
-      label: 'General',
-      slug: 'general',
-      organizationId: input.organizationId,
-      projectId: project.id,
-      teamId: team.id,
-      visibility: 'public',
-    },
-  })
-  return { projectId: project.id, teamId: team.id, channelId: channel.id }
-}
-
-// The environment a login resolves to: the project/team plus its #general
-// channel and the role the joining user should get in that team.
-type WorkspaceTarget = {
-  projectId: string
-  teamId: string
-  channelId: string | null
-  teamRole: MemberRole
-}
-
-const publicChannelId = async (
-  prisma: Pick<PrismaClient, 'channel'>,
-  teamId: string,
-): Promise<string | null> => {
-  const channel = await prisma.channel.findFirst({
-    where: { teamId, visibility: 'public' },
-    orderBy: CREATED_AT_ASC,
+  await lockUserSessions(tx, input.userId)
+  const existing = await tx.user.findUnique({
+    where: { id: input.userId },
     select: { id: true },
   })
-  return channel?.id ?? null
-}
+  if (!existing) {
+    return null
+  }
+  if (input.recoveryLinkClaim) {
+    await input.recoveryLinkClaim(tx)
+  }
+  const target = input.workspaceId
+    ? await materializeWorkspaceTargetInTransaction(
+        tx,
+        input.organizationId,
+        input.workspaceId,
+        input.workspace,
+      )
+    : await resolveDefaultTarget(tx, input.organizationId, existing.id)
+  if (!target) {
+    return null
+  }
+  await ensureWorkspaceMemberships(tx, {
+    userId: existing.id,
+    organizationId: input.organizationId,
+    projectId: target.projectId,
+    teamId: target.teamId,
+    channelId: target.channelId,
+    orgRole: 'member',
+    teamRole: target.teamRole,
+  })
+  return {
+    userId: existing.id,
+    organizationId: input.organizationId,
+    projectId: target.projectId,
+    teamId: target.teamId,
+    orgRole: await readOrgRole(tx, input.organizationId, existing.id),
+  }
+}, AUTH_LOCK_TRANSACTION_OPTIONS)
 
 const initializeSharedOrganization = async (
   prisma: PrismaClient,
@@ -144,7 +161,7 @@ const initializeSharedOrganization = async (
       orderBy: CREATED_AT_ASC,
       select: { id: true },
     }),
-    findExistingPrincipal(transaction, input),
+    findExistingPrincipal(transaction, { email: input.email, uoaSub: input.uoaSub }),
   ])
   if (sharedOrg) {
     return { sharedOrg, user }
@@ -163,115 +180,15 @@ const initializeSharedOrganization = async (
   }
 }, AUTH_LOCK_TRANSACTION_OPTIONS)
 
-// Resolve the target team for the selected UOA workspace: an existing bound team
-// (join it), or a freshly provisioned one (the first person owns it).
-const resolveWorkspaceTarget = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  workspaceId: string,
-  workspace: ExternalAuthWorkspace | undefined,
-): Promise<WorkspaceTarget> => {
-  const externalOrgId = resolveExternalWorkspaceSelection(workspace).organizationId
-  return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw(Prisma.sql`
-      SELECT 1
-      FROM (
-        SELECT pg_advisory_xact_lock(
-          hashtextextended(
-            ${`nessie:external-workspace:${externalOrgId ?? 'none'}:${workspaceId}`},
-            0
-          )
-        )
-      ) AS acquired
-    `)
-    const existing = await tx.team.findUnique({
-      where: { externalWorkspaceId: workspaceId },
-      select: {
-        externalOrgId: true,
-        externalWorkspaceId: true,
-        id: true,
-        projectId: true,
-        project: { select: { organizationId: true } },
-      },
-    })
-
-    if (existing) {
-      if (
-        existing.project.organizationId !== organizationId
-        || existing.externalWorkspaceId !== workspaceId
-        || existing.externalOrgId !== externalOrgId
-      ) {
-        throw new WorkspaceExternalBindingConflictError()
-      }
-      return {
-        projectId: existing.projectId,
-        teamId: existing.id,
-        channelId: await publicChannelId(tx, existing.id),
-        teamRole: mapUoaTeamRole(workspace?.teamRoles?.[workspaceId]),
-      }
-    }
-
-    const created = await createWorkspaceEnvironment(tx, {
-      organizationId,
-      workspaceId,
-      externalOrgId,
-    })
-    return {
-      projectId: created.projectId,
-      teamId: created.teamId,
-      channelId: created.channelId,
-      teamRole: 'owner',
-    }
-  }, AUTH_LOCK_TRANSACTION_OPTIONS)
-}
-
-// The environment when no workspace was selected (non-UOA OIDC, single-env, or a
-// magic-link that skipped the chooser): the user's existing team, else the shared
-// org's default team — preserving pre-workspace auto-provisioning.
-const resolveDefaultTarget = async (
-  prisma: PrismaClient,
-  organizationId: string,
-  userId: string | undefined,
-): Promise<WorkspaceTarget | null> => {
-  if (userId) {
-    const membership = await prisma.teamMember.findFirst({
-      where: { userId, team: { project: { organizationId } } },
-      orderBy: CREATED_AT_ASC,
-      select: { teamId: true, team: { select: { projectId: true } } },
-    })
-    if (membership) {
-      return {
-        projectId: membership.team.projectId,
-        teamId: membership.teamId,
-        channelId: await publicChannelId(prisma, membership.teamId),
-        teamRole: 'member',
-      }
-    }
-  }
-
-  const defaultTeam = await prisma.team.findFirst({
-    where: { project: { organizationId } },
-    orderBy: CREATED_AT_ASC,
-    select: { id: true, projectId: true },
-  })
-  if (!defaultTeam) {
-    return null
-  }
-  return {
-    projectId: defaultTeam.projectId,
-    teamId: defaultTeam.id,
-    channelId: await publicChannelId(prisma, defaultTeam.id),
-    teamRole: 'member',
-  }
-}
 /**
  * Resolve the Nessie environment a UOA login lands in (Slack-style workspace →
- * team). Ensures the shared org + user exist, then resolves-or-creates the
- * project/team/#general for the selected UOA workspace and the user's
- * memberships. Returns the org/project/team the session is scoped to.
+ * team). Returns the org/project/team the session is scoped to.
  *
- * - `existingUserId` set (account-bound recovery) → lock and reuse exactly
- *   that principal; never resolve or create a user by email.
+ * - `existingUserId` set (account-bound recovery) → ONE transaction:
+ *   external-workspace lock, conditional account-link claim, target
+ *   existing-or-create, and exact-principal memberships. The local org comes
+ *   only from the bearer's claim; recovery never bootstraps an org and never
+ *   resolves, creates, or remaps a user by email.
  * - No workspace selection → the user's existing/default team (legacy behaviour).
  * - Known workspace, team exists → join it (create-only role, never downgraded).
  * - Known workspace, no team yet → auto-provision it; the first person owns it.
@@ -280,6 +197,25 @@ export const resolveUoaWorkspaceContext = async (
   prisma: PrismaClient,
   input: WorkspaceIdentityInput,
 ): Promise<WorkspaceContext | null> => {
+  // Recovery is scoped by the bearer's exact local organization claim, never
+  // by an ambient organization lookup: no shared-org probe, no bootstrap —
+  // the org exists for any account holding a renewable session, and the
+  // single recovery transaction below materializes the target under the
+  // claimed account-link row lock.
+  if (input.existingUserId) {
+    if (!input.expectedLocalOrganizationId) {
+      return null
+    }
+    return resolveRecoveryContext(prisma, {
+      organizationId: input.expectedLocalOrganizationId,
+      recoveryLinkClaim: input.recoveryLinkClaim,
+      userId: input.existingUserId,
+      workspace: input.workspace,
+      workspaceId:
+        resolveExternalWorkspaceSelection(input.workspace).teamId ?? undefined,
+    })
+  }
+
   const email = input.email.trim().toLowerCase()
 
   // 1. Ensure the shared org exists (bootstrap the first user), and get the
@@ -288,20 +224,14 @@ export const resolveUoaWorkspaceContext = async (
     orderBy: CREATED_AT_ASC,
     select: { id: true },
   })
-  let user = input.existingUserId
-    ? { id: input.existingUserId }
-    : await findExistingPrincipal(prisma, { email, uoaSub: input.uoaSub })
+  let user = await findExistingPrincipal(prisma, { email, uoaSub: input.uoaSub })
 
   if (!sharedOrg) {
-    if (input.existingUserId) {
-      // Recovery never bootstraps: the shared org already exists for any
-      // account that holds a renewable session.
-      return null
-    }
     const initialized = await initializeSharedOrganization(prisma, {
       avatarUrl: input.avatarUrl,
       displayName: input.displayName,
       email,
+      uoaSub: input.uoaSub,
       workspace: input.workspace,
     })
     if (!initialized) {
@@ -330,33 +260,18 @@ export const resolveUoaWorkspaceContext = async (
   // 3. Resolve one stable local principal after validating the target. The
   // advisory locks (subject + email) close same-principal callback races
   // across devices/replicas; a UOA email row bound to a different subject
-  // fails closed here with UoaSubjectConflictError before any write. Recovery
-  // instead locks and re-reads the exact bearer-proven user under
-  // `lockUserSessions` before any membership write — never resolving, adopting,
-  // or creating a principal by email or subject claim.
-  const principal = input.existingUserId
-    ? await ensureExistingWorkspacePrincipal(prisma, {
-        channelId: target.channelId,
-        organizationId,
-        projectId: target.projectId,
-        teamId: target.teamId,
-        teamRole: target.teamRole,
-        userId: input.existingUserId,
-      })
-    : await ensureWorkspacePrincipal(prisma, {
-        avatarUrl: input.avatarUrl,
-        channelId: target.channelId,
-        displayName: input.displayName,
-        email,
-        organizationId,
-        projectId: target.projectId,
-        teamId: target.teamId,
-        teamRole: target.teamRole,
-        uoaSub: input.uoaSub,
-      })
-  if (!principal) {
-    return null
-  }
+  // fails closed here with UoaSubjectConflictError before any write.
+  const principal = await ensureWorkspacePrincipal(prisma, {
+    avatarUrl: input.avatarUrl,
+    channelId: target.channelId,
+    displayName: input.displayName,
+    email,
+    organizationId,
+    projectId: target.projectId,
+    teamId: target.teamId,
+    teamRole: target.teamRole,
+    uoaSub: input.uoaSub,
+  })
 
   return {
     userId: principal.id,

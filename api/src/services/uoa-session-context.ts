@@ -22,14 +22,26 @@ export class UoaLocalSessionBindingError extends Error {
   }
 }
 
-const requireTokenVersion = (identity: UoaSessionIdentity): number => {
-  if (identity.tokenVersion === null) {
-    throw new UoaLocalSessionBindingError(
-      'The UnlikeOtherAI session is missing its revocation epoch.',
-    )
+const requireValidTokenVersion = (
+  tokenVersion: number | null | undefined,
+  message: string,
+): number => {
+  if (
+    tokenVersion === null
+    || tokenVersion === undefined
+    || !Number.isSafeInteger(tokenVersion)
+    || tokenVersion < 0
+  ) {
+    throw new UoaLocalSessionBindingError(message)
   }
-  return identity.tokenVersion
+  return tokenVersion
 }
+
+const requireTokenVersion = (identity: UoaSessionIdentity): number =>
+  requireValidTokenVersion(
+    identity.tokenVersion,
+    'The UnlikeOtherAI session is missing its revocation epoch.',
+  )
 
 const FIRST_PARTY_UOA_AUTH_MODES = [
   'uoa_sso',

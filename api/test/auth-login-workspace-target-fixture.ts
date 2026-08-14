@@ -166,6 +166,7 @@ const { createSessionIssuers } = await import('../src/services/session-issuers.j
 
 /** Mint the current Nessie bearer Alice holds while switching workspaces. */
 export const aliceBearer = (overrides?: {
+  org?: string
   providerId?: string
   providerType?: string
   subject?: string
@@ -173,7 +174,7 @@ export const aliceBearer = (overrides?: {
   uoaIdentity?: Record<string, unknown> | false
 }): string => issueSessionToken(
   {
-    org: randomUUID(),
+    org: overrides?.org ?? randomUUID(),
     proj: randomUUID(),
     providerId: overrides?.providerId ?? 'uoa',
     providerType: (overrides?.providerType ?? 'uoa') as never,
@@ -184,12 +185,15 @@ export const aliceBearer = (overrides?: {
     ...(overrides?.uoaIdentity === false
       ? {}
       : {
-          uoaIdentity: {
+          // A provided identity REPLACES the default wholesale — a partial
+          // override like { tokenVersion: null } must mint a genuinely
+          // malformed bearer, not silently keep the default epoch.
+          uoaIdentity: (overrides?.uoaIdentity ?? {
             organizationId: ORG,
             subject: 'uoa-subject-alice',
             teamId: TEAM,
             tokenVersion: 3,
-          },
+          }) as never,
         }),
   },
   AUTH_SECRET,

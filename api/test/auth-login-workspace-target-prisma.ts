@@ -15,6 +15,17 @@ type Row = Record<string, unknown>
 export type FakeInput = {
   users?: Row[]
   organizationId?: string
+  productAccountLinkRows?: Row[]
+  /**
+   * Race seam: fires once, at the START of the authoritative claim — after
+   * the pre-billing proof (and billing) but before the claim's own read and
+   * conditional update. A test mutating the seeded link rows here models an
+   * interleaving renewal landing between the pre-billing proof and the
+   * final claim. Subsequent claim-time reads do NOT re-fire it, so a test
+   * tampering during the claim itself (under the row lock in production)
+   * proves the conditional update still refuses.
+   */
+  onRecoveryLinkClaim?: (claimReads: number, rows: Row[]) => void
   teamRows?: Row[]
   projectRows?: Row[]
   channelRows?: Row[]
@@ -36,6 +47,9 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
   const teamMembers = [...(input.teamMembers ?? [])]
   const projectMembers = [...(input.projectMembers ?? [])]
   const channelMembers = [...(input.channelMembers ?? [])]
+  const productAccountLinks = [...(input.productAccountLinkRows ?? [])]
+  let claimFired = false
+  let claimReads = 0
 
   // Included-relation lookups for the membership findMany below. Production
   // `loadUserMemberships` (services/auth.ts) reads `organization.name`,
@@ -67,6 +81,25 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
 
   // sessionUserInclude (services/users.ts): memberships plus statuses, so
   // loadSessionUserById/buildSessionForUser hydrate from the same rows.
+  // Session/user hydrations read memberships through the user include. Rows
+  // seeded explicitly win; absent any, every seeded user is a member of the
+  // fake's single org and every seeded project/team — a recovery principal is
+  // provisioned into its target by definition of the shared workspace.
+  const membershipsFor = (rows: Row[], scopeKey: string, user: Row): Row[] => {
+    const seeded = rows.filter((m) => m.userId === user.id)
+    if (seeded.length > 0) return seeded
+    const scopeRows =
+      scopeKey === 'organizationId' ? orgs
+      : scopeKey === 'projectId' ? projects
+      : teams
+    return scopeRows.map((scope) => ({
+      organizationId: orgs[0]?.id,
+      projectId: scopeKey === 'projectId' ? scope.id : scope.projectId,
+      teamId: scopeKey === 'teamId' ? scope.id : undefined,
+      role: 'owner',
+      userId: user.id,
+    }))
+  }
   const userInclude = (user: Row): Row => ({
     avatarUrl: null,
     avatarAttachmentId: null,
@@ -74,9 +107,9 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
     pronouns: null,
     superAdmin: false,
     ...user,
-    organizationMembers: organizationMembers.filter((m) => m.userId === user.id),
-    projectMembers: projectMembers.filter((m) => m.userId === user.id),
-    teamMembers: teamMembers.filter((m) => m.userId === user.id),
+    organizationMembers: membershipsFor(organizationMembers, 'organizationId', user),
+    projectMembers: membershipsFor(projectMembers, 'projectId', user),
+    teamMembers: membershipsFor(teamMembers, 'teamId', user),
     statuses: [],
   })
 
@@ -114,7 +147,11 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
     },
   })
 
+  // services/integrations.ts syncUoaProductAccountLinks: one
+  // INSERT ... ON CONFLICT per first-party product, refusing (count 0) when
+  // the stored row carries a different subject or a NEWER epoch. The fake
   const prisma = {
+    // Advisory locks and the workspace/org bootstrap probes.
     $queryRaw: async () => [{ count: 0, slug: 'nessie' }],
     $executeRaw: async () => 1,
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
@@ -140,6 +177,7 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
     },
     organizationMember: {
       ...genericModel('organizationMember', organizationMembers),
+      findFirst: async () => (record('organizationMember.findFirst'), null),
       findMany: async ({ where }: { where?: Row } = {}) => (
         record('organizationMember.findMany'),
         organizationMembers
@@ -153,6 +191,15 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
         record('organizationMember.findUnique'),
         findMembership('organizationMember', where)
       ),
+      upsert: async ({ where, create }: { where: Row; create: Row }) => {
+        record('organizationMember.upsert')
+        const existing = findMembership('organizationMember', where)
+        if (existing) return existing
+        // Mirror the readOrgRole `role` select that follows the upserts.
+        const row = { ...create, role: create.role ?? 'member' }
+        organizationMembers.push(row)
+        return row
+      },
     },
     projectMember: {
       ...genericModel('projectMember', projectMembers),
@@ -278,7 +325,68 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
       upsert: async () => (record('agentBinding.upsert'), { id: randomUUID() }),
     },
     productAccountLink: {
-      findUnique: async () => (record('productAccountLink.findUnique'), null),
+      findUnique: async ({ where, select }: { where: Row; select?: Row }) => {
+        record('productAccountLink.findUnique')
+        const key = where.organizationId_userId_productSlug as Row | undefined
+        const found = productAccountLinks.find((link) =>
+          key !== undefined
+          && link.organizationId === key.organizationId
+          && link.userId === key.userId
+          && link.productSlug === key.productSlug) ?? null
+        // The claim's own pre-read selects ONLY `metadata`; the pre-billing
+        // proof selects status/uoaSub/uoaTokenVersion. The race seam fires at
+        // the START of the claim — after the pre-billing proof (and billing)
+        // but before the claim's read + conditional update — so a mutation
+        // lands exactly between preflight and the final claim. It never
+        // re-fires during the claim itself.
+        if (!claimFired && select?.metadata !== undefined) {
+          claimFired = true
+          claimReads += 1
+          input.onRecoveryLinkClaim?.(claimReads, productAccountLinks)
+        }
+        // Honor the select projection like Prisma does: the fence reads
+        // status/uoaSub/uoaTokenVersion and the claim reads metadata only.
+        if (found && select) {
+          const projected: Row = {}
+          for (const field of Object.keys(select)) {
+            if (select[field]) projected[field] = found[field]
+          }
+          return projected
+        }
+        return found
+      },
+      // Kept alongside the seeded rows so tests can model the race honestly:
+      // advance (or null) the exact stored link BEHIND the pre-billing read
+      // and prove the conditional claim then refuses.
+      __rows: productAccountLinks,
+      // uoa-recovery-link.ts claimUoaRecoveryAccountLink: the conditional row
+      // claim inside the resolver transaction. The fake applies the same
+      // WHERE preconditions Prisma would (org + user + slug + linked + same
+      // subject + a NON-NULL epoch within the [gte, lte] bound — a null
+      // stored epoch never matches) so a test can advance or null the row
+      // behind the pre-billing check and prove the claim refuses — a blind
+      // `{ count: 1 }` would test nothing.
+      updateMany: async ({ where, data }: { where: Row; data: Row }) => {
+        record('productAccountLink.updateMany')
+        const epoch = where.uoaTokenVersion as
+          | { gte?: number; lte?: number; not?: unknown }
+          | undefined
+        const matches = productAccountLinks.filter((link) =>
+          link.organizationId === where.organizationId
+          && link.userId === where.userId
+          && link.productSlug === where.productSlug
+          && link.status === where.status
+          && link.uoaSub === where.uoaSub
+          && link.uoaTokenVersion !== null
+          && (epoch?.gte === undefined
+            || (link.uoaTokenVersion as number) >= epoch.gte)
+          && (epoch?.lte === undefined
+            || (link.uoaTokenVersion as number) <= epoch.lte))
+        for (const link of matches) {
+          Object.assign(link, data)
+        }
+        return { count: matches.length }
+      },
     },
     pushRegistrationGeneration: {
       upsert: async () => (record('pushRegistrationGeneration.upsert'), { value: 1n }),

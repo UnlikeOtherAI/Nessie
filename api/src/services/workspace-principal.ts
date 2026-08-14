@@ -1,6 +1,6 @@
 import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
 
-import { AUTH_LOCK_TRANSACTION_OPTIONS, lockUserSessions } from './user-session-lock.js'
+import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 // Local principal resolution for SSO logins. UOA principals are keyed by the
 // stable UOA subject (`User.uoaSub`); email is only a one-time adoption bridge
@@ -113,7 +113,10 @@ const resolvePrincipalUser = async (
 // Ensure a user has org/project/team/channel membership for a workspace without
 // clobbering an existing (possibly higher) role or resurrecting a deactivated
 // org membership: create-with-role on first join, leave untouched thereafter.
-const ensureWorkspaceMemberships = async (
+// Exported for the account-bound recovery transaction in workspace-context.ts,
+// which writes memberships for an already-proven principal inside its own
+// locked transaction.
+export const ensureWorkspaceMemberships = async (
   prisma: Prisma.TransactionClient,
   input: {
     userId: string
@@ -151,7 +154,7 @@ const ensureWorkspaceMemberships = async (
 
 // Read the user's org role after membership was ensured (owner for the bootstrap
 // user, member otherwise) — the role the access token is scoped to.
-const readOrgRole = async (
+export const readOrgRole = async (
   prisma: Prisma.TransactionClient,
   organizationId: string,
   userId: string,
@@ -214,43 +217,5 @@ export const ensureWorkspacePrincipal = async (
   return {
     id: user.id,
     orgRole: await readOrgRole(transaction, input.organizationId, user.id),
-  }
-}, AUTH_LOCK_TRANSACTION_OPTIONS)
-
-// Account-bound recovery principal resolution: lock the session-locked user
-// row the bearer already proved, and add the target workspace's memberships
-// for exactly that id. Identity is the proven principal, never the exchanged
-// email — recovery must not resolve, adopt, or create a user by email.
-export const ensureExistingWorkspacePrincipal = async (
-  prisma: PrismaClient,
-  input: {
-    channelId: string | null
-    organizationId: string
-    projectId: string
-    teamId: string
-    teamRole: MemberRole
-    userId: string
-  },
-): Promise<{ id: string; orgRole: MemberRole } | null> => prisma.$transaction(async (tx) => {
-  await lockUserSessions(tx, input.userId)
-  const existing = await tx.user.findUnique({
-    where: { id: input.userId },
-    select: { id: true },
-  })
-  if (!existing) {
-    return null
-  }
-  await ensureWorkspaceMemberships(tx, {
-    userId: existing.id,
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    teamId: input.teamId,
-    channelId: input.channelId,
-    orgRole: 'member',
-    teamRole: input.teamRole,
-  })
-  return {
-    id: existing.id,
-    orgRole: await readOrgRole(tx, input.organizationId, existing.id),
   }
 }, AUTH_LOCK_TRANSACTION_OPTIONS)

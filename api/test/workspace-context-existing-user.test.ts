@@ -5,6 +5,7 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 
 import type { ExternalAuthWorkspace } from '../src/services/identity-display.js'
+import { UoaRecoveryAccountLinkError } from '../src/services/uoa-recovery-link.js'
 import { resolveUoaWorkspaceContext } from '../src/services/workspace-context.js'
 
 /**
@@ -188,6 +189,7 @@ test('recovery reuses the exact existing principal without any email lookup', as
     // touch it.
     email: 'alice-renamed@example.com',
     existingUserId: aliceId,
+    expectedLocalOrganizationId: orgId,
     workspace: workspace('ws-target'),
   })
 
@@ -229,6 +231,7 @@ test('recovery fails closed for a missing principal with zero membership writes'
     displayName: 'Ghost User',
     email: 'ghost@example.com',
     existingUserId: randomUUID(),
+    expectedLocalOrganizationId: orgId,
     workspace: workspace('ws-target'),
   })
 
@@ -248,11 +251,151 @@ test('recovery never bootstraps when the shared organization is missing', async 
     displayName: 'Alice Example',
     email: 'alice@example.com',
     existingUserId: randomUUID(),
+    expectedLocalOrganizationId: randomUUID(),
     workspace: workspace('ws-target'),
   })
 
   assert.equal(context, null)
+  // No ambient organization probe at all: recovery's org comes only from the
+  // bearer's claim, so a missing-organization database is never consulted.
+  assert.equal(state.calls.includes('organization.findFirst'), false)
   assert.equal(state.calls.includes('user.findUnique:email'), false)
   assert.equal(state.calls.includes('user.create'), false)
   assert.equal(state.calls.includes('team.create'), false)
+})
+
+test('the conditional claim runs BEFORE the target existing-or-create branch', async () => {
+  // The fence is the seam between the workspace advisory lock and any
+  // target materialization: a refusing claim must abort before even the
+  // bound-team probe runs, so a racy recovery leaves zero shared rows. The
+  // claim fails with the REAL fence error contract — the same
+  // UoaRecoveryAccountLinkError the route maps to a 401 identity refusal.
+  const orgId = randomUUID()
+  const aliceId = randomUUID()
+  const { client, state } = makeFake({
+    organizationId: orgId,
+    users: [{
+      id: aliceId,
+      email: 'alice@example.com',
+      displayName: 'Alice Example',
+      avatarUrl: null,
+    }],
+  })
+
+  const refusal = new UoaRecoveryAccountLinkError(
+    'The Nessie account link changed while the recovery was completing.',
+  )
+  await assert.rejects(
+    resolveUoaWorkspaceContext(client, {
+      displayName: 'Alice Example',
+      email: 'alice@example.com',
+      existingUserId: aliceId,
+      expectedLocalOrganizationId: orgId,
+      recoveryLinkClaim: async () => {
+        throw refusal
+      },
+      workspace: workspace('ws-target'),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof UoaRecoveryAccountLinkError)
+      assert.equal(error, refusal)
+      assert.equal(
+        (error as Error).message,
+        'The Nessie account link changed while the recovery was completing.',
+      )
+      return true
+    },
+  )
+
+  // The workspace advisory lock and the exact-principal read happened; the
+  // target branch and every write model never ran.
+  assert.equal(state.calls.includes('$queryRaw'), true)
+  assert.equal(state.calls.includes('user.findUnique:id'), true)
+  assert.equal(state.calls.includes('team.findUnique'), false)
+  assert.equal(state.calls.includes('team.create'), false)
+  assert.equal(state.calls.includes('project.create'), false)
+  assert.equal(state.calls.includes('boardColumn.createMany'), false)
+  assert.equal(state.calls.includes('channel.create'), false)
+  assert.equal(state.orgMembers.length, 0)
+  assert.equal(state.teamMembers.length, 0)
+  assert.equal(state.projectMembers.length, 0)
+  assert.equal(state.channelMembers.length, 0)
+})
+
+test('a refusing claim leaves no shared target rows behind for a NEW workspace', async () => {
+  // Regression for the pre-refactor shape, where resolveWorkspaceTarget ran
+  // in its own transaction BEFORE the principal fence: a refused claim would
+  // have left the auto-provisioned project/team/channel committed. Now the
+  // claim precedes that branch inside the one recovery transaction.
+  const orgId = randomUUID()
+  const aliceId = randomUUID()
+  const { client, state } = makeFake({
+    organizationId: orgId,
+    users: [{
+      id: aliceId,
+      email: 'alice@example.com',
+      displayName: 'Alice Example',
+      avatarUrl: null,
+    }],
+  })
+
+  await assert.rejects(
+    resolveUoaWorkspaceContext(client, {
+      displayName: 'Alice Example',
+      email: 'alice@example.com',
+      existingUserId: aliceId,
+      expectedLocalOrganizationId: orgId,
+      recoveryLinkClaim: async () => {
+        throw new Error('claim refused')
+      },
+      workspace: workspace('ws-new'),
+    }),
+    /claim refused/,
+  )
+  assert.equal(state.projects.length, 0)
+  assert.equal(state.teams.length, 0)
+  assert.equal(state.channels.length, 0)
+})
+
+test('a mismatch between the claim org and the resolved org is impossible by construction', async () => {
+  // There is no ambient org resolution on the recovery path: the context's
+  // organizationId is exactly the bearer's claim, so the successful context
+  // can never report a different org than the fence claimed under.
+  const orgId = randomUUID()
+  const aliceId = randomUUID()
+  const projectId = randomUUID()
+  const teamId = randomUUID()
+  const { client, state } = makeFake({
+    organizationId: orgId,
+    teams: [{
+      id: teamId,
+      externalOrgId: 'uoa-org-1',
+      externalWorkspaceId: 'ws-target',
+      projectId,
+    }],
+    users: [{
+      id: aliceId,
+      email: 'alice@example.com',
+      displayName: 'Alice Example',
+      avatarUrl: null,
+    }],
+  })
+  state.projects.push({ id: projectId, organizationId: orgId })
+  let claimedOrg: string | null = null
+
+  const context = await resolveUoaWorkspaceContext(client, {
+    displayName: 'Alice Example',
+    email: 'alice@example.com',
+    existingUserId: aliceId,
+    expectedLocalOrganizationId: orgId,
+    recoveryLinkClaim: async () => {
+      claimedOrg = orgId
+    },
+    workspace: workspace('ws-target'),
+  })
+
+  assert.ok(context)
+  assert.equal(claimedOrg, orgId)
+  assert.equal(context.organizationId, orgId)
+  assert.equal(state.calls.includes('organization.findFirst'), false)
 })
