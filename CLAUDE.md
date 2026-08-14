@@ -22,6 +22,7 @@ Multi-tenant, self-hosted agentic work platform. Organisations host their own Ne
 - **API** (`api/`, port 5454) — multi-tenant REST control plane: auth (OIDC/session), channels, tasks, approvals, triggers, MCP connector management, token ledger, audit log
 - **Worker** (`worker/`) — async execution service: agentic loop, task scheduling, trigger delivery, mailbox processing
 - **Admin** (`admin/`, port 5455) — full product interface for operators and knowledge workers
+- **Desktop** (`desktop/`) — Tauri shell for the hosted admin. Developer ID releases include the local executor; the sandboxed Mac App Store/TestFlight variant deliberately does not.
 - **Web** (`web/`) — public landing page only
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
 - **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
