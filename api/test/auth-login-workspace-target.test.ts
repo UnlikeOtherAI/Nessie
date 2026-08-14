@@ -121,6 +121,20 @@ test('a revoked bearer (stale tokenVersion) is refused before the upstream excha
   assertUntouched(response, spy, upstream)
 })
 
+test('a bearer whose exact session was revoked is refused before the upstream exchange', async () => {
+  const upstream = stubAliceExchange()
+  const spy: MutationSpy = { calls: [], cookieIssued: false }
+  const app = await buildApp(spy, { activeSession: false })
+
+  const response = await recoveryExchange(app, {
+    bearer: aliceBearer(),
+    expectedWorkspace: EXPECTED,
+  })
+
+  assert.equal(response.json().error.code, 'WORKSPACE_IDENTITY_MISMATCH')
+  assertUntouched(response, spy, upstream)
+})
+
 test('a local (non-UOA) bearer is refused before the upstream exchange', async () => {
   const upstream = stubAliceExchange()
   const spy: MutationSpy = { calls: [], cookieIssued: false }

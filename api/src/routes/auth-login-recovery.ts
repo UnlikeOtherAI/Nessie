@@ -4,6 +4,7 @@ import {
   type SessionTokenClaims,
 } from '../auth/session.js'
 import { sendApiError } from '../lib/api.js'
+import { hasActiveUserSession } from '../services/refresh-session-management.js'
 import type { RouteDeps } from './types.js'
 
 // Workspace-switch recovery refusal helpers. Each preserves the exact response
@@ -71,7 +72,15 @@ export const verifyRecoveryBearer = async (
     where: { id: verification.claims.sub },
     select: { tokenVersion: true },
   })
-  if (!sessionUser || isSessionTokenRevoked(verification.claims, sessionUser.tokenVersion)) {
+  if (
+    !sessionUser
+    || isSessionTokenRevoked(verification.claims, sessionUser.tokenVersion)
+    || !(await hasActiveUserSession(
+      prisma,
+      verification.claims.sub,
+      verification.claims.sid,
+    ))
+  ) {
     return null
   }
   return verification.claims

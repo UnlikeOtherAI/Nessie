@@ -68,19 +68,20 @@ export const issueSessionToken = (
 /**
  * True when this token predates the user's current revocation generation.
  *
- * A logout (or forced sign-out) bumps `User.tokenVersion`; every access token
- * minted at an older generation must stop working immediately rather than
- * lingering for the rest of its TTL. Tokens issued before the claim existed
- * carry no `tv` and read as generation 0, which matches the column default.
+ * A user-wide forced sign-out bumps `User.tokenVersion`; every access token
+ * minted at an older generation must stop working immediately. Exact-session
+ * logout is enforced separately by the live refresh-session `sid` check.
+ * Tokens issued before this claim carry no `tv` and read as generation 0.
  */
 export const isSessionTokenRevoked = (
   claims: Pick<SessionTokenClaims, 'tv'>,
   currentTokenVersion: number,
 ): boolean => (claims.tv ?? 0) !== currentTokenVersion
 
-export const verifySessionToken = (
+const verifySessionTokenValue = (
   token: string,
   secret: string,
+  allowExpired: boolean,
 ): VerificationResult => {
   const [header, payload, signature] = token.split('.')
 
@@ -101,7 +102,7 @@ export const verifySessionToken = (
 
   try {
     const claims = JSON.parse(decodeBase64Url(payload)) as SessionTokenClaims
-    if (claims.exp <= Math.floor(Date.now() / 1000)) {
+    if (!allowExpired && claims.exp <= Math.floor(Date.now() / 1000)) {
       return { ok: false, code: 'TOKEN_EXPIRED', message: 'Session expired' }
     }
     if (
@@ -119,3 +120,14 @@ export const verifySessionToken = (
     return { ok: false, code: 'TOKEN_INVALID', message: 'Invalid session token' }
   }
 }
+
+export const verifySessionToken = (
+  token: string,
+  secret: string,
+): VerificationResult => verifySessionTokenValue(token, secret, false)
+
+/** Logout authenticates an exact old session even after its access TTL ends. */
+export const verifySessionTokenForLogout = (
+  token: string,
+  secret: string,
+): VerificationResult => verifySessionTokenValue(token, secret, true)

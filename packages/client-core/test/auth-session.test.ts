@@ -287,7 +287,6 @@ test('recoverWorkspaceSession refuses a missing or empty bearer locally', async 
         redirectUri: 'https://app.example.test/callback',
       }
       await assert.rejects(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         api.recoverWorkspaceSession(null as unknown as string, input),
         /requires an authenticated bearer token/,
       )
@@ -321,6 +320,24 @@ test('ordinary login stays bearer-free even on the same session route', async ()
         }),
         sessionPayload('login-token'),
       )
+    },
+  )
+})
+
+test('logout is bound to the bearer and never sends the ambient refresh cookie', async () => {
+  await withMockFetch(
+    async (input, init) => {
+      assert.equal(input, 'https://api.example.test/api/auth/session')
+      assert.equal(init?.method, 'DELETE')
+      assert.equal(init?.credentials, 'omit')
+      assert.equal(
+        new Headers(init?.headers).get('authorization'),
+        'Bearer old-access-token',
+      )
+      return new Response(null, { status: 204 })
+    },
+    async () => {
+      await createAuthSessionApi('https://api.example.test').logout('old-access-token')
     },
   )
 })

@@ -337,9 +337,13 @@ export const assertUntouched = (
   assert.equal(response.headers['set-cookie'], undefined)
   assert.equal(spy.cookieIssued, false)
   assert.equal(upstream.billingConfirms, 0)
-  // The only permitted database traffic is reading the bearer's own user row
-  // (by id) for the live tokenVersion check.
-  assert.deepEqual(spy.calls.filter((call) => call !== 'user.findUnique:id'), [])
+  // The only permitted database traffic is proving the bearer user and exact
+  // session are both still live.
+  assert.deepEqual(
+    spy.calls.filter((call) =>
+      call !== 'user.findUnique:id' && call !== 'refreshToken.findFirst'),
+    [],
+  )
 }
 
 /** Recovery never touches identity by email and never creates/updates a user. */

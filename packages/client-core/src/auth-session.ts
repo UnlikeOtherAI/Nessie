@@ -407,8 +407,9 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
       await fetch(`${resolvedBaseUrl}/api/auth/session`, {
         method: 'DELETE',
         headers: token ? { authorization: `Bearer ${token}` } : undefined,
-        // Send the refresh cookie so the server can revoke the token family.
-        credentials: 'include',
+        // Bind logout to this exact signed session. Ambient cookies are omitted
+        // so a delayed old logout cannot revoke a newly signed-in session.
+        credentials: 'omit',
       }).catch(() => undefined)
     },
     // Workspace-switch reauthorization goes to the same session route but is

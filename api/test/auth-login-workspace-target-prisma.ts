@@ -13,6 +13,7 @@ import type { Spy } from './auth-login-workspace-target-fixture.js'
 type Row = Record<string, unknown>
 
 export type FakeInput = {
+  activeSession?: boolean
   users?: Row[]
   organizationId?: string
   productAccountLinkRows?: Row[]
@@ -174,6 +175,12 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
         const found = findUser(where)
         return found ? userInclude(found) : null
       },
+    },
+    refreshToken: {
+      findFirst: async () => (
+        record('refreshToken.findFirst'),
+        input.activeSession === false ? null : { id: randomUUID() }
+      ),
     },
     organizationMember: {
       ...genericModel('organizationMember', organizationMembers),

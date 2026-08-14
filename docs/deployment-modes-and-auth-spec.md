@@ -415,7 +415,19 @@ Claims:
   never supplies session identity. Billing, delegated calls, activation, team
   enablement, and webhook routing all derive workspace authority from the signed
   family plus the exact Team mapping.
-- **revocation:** `DELETE /api/auth/session` (logout) is now **public** and cookie-driven — it revokes the token family server-side and clears the cookie, so a session can be killed even after the access token has expired. Password change, user deactivation, explicit session revocation, expiry, and reuse detection erase both matching local families and encrypted UOA credentials atomically. The access JWT itself remains stateless (verified by signature + `exp`); UOA sessions additionally carry immutable `uoaIdentity { subject, organizationId, teamId, tokenVersion }` proof
+- **revocation:** `DELETE /api/auth/session` (logout) is public but requires a
+  authentic signed Bearer session to revoke exactly that session's `{sub,
+  sid}`; an expired access TTL does not prevent this exact revocation.
+  It ignores the ambient refresh cookie and deliberately sends no generic
+  cookie-clear header: a delayed logout response from an older app instance
+  must never revoke or erase a newer login's same-name cookie. The frontend
+  clears its local session immediately, while every authenticated request also
+  requires a live, unrevoked, unexpired refresh row for the Bearer `sid`, so the
+  logged-out access JWT stops working without changing another session's user
+  generation. Password change, user deactivation, explicit session revocation,
+  expiry, and reuse detection erase matching local families and encrypted UOA
+  credentials atomically. UOA sessions additionally carry immutable
+  `uoaIdentity { subject, organizationId, teamId, tokenVersion }` proof.
 - **credential retention:** startup and five-minute bounded sweeps take each
   candidate's family lock, retain hash-only local token history, revoke any
   remaining live row, and erase encrypted UOA state once either the upstream
@@ -605,7 +617,8 @@ On every request:
 - `POST /api/auth/bootstrap`
 - `POST /api/auth/session`
 - `POST /api/auth/refresh` (identity comes from the httpOnly refresh cookie, not a Bearer token)
-- `DELETE /api/auth/session` (logout; revokes the refresh-token family via the cookie)
+- `DELETE /api/auth/session` (logout; exact signed Bearer `{sub, sid}`
+  revocation, with the ambient cookie ignored)
 
 Mark public routes with a Fastify route option:
 

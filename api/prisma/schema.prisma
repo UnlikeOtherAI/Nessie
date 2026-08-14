@@ -849,6 +849,7 @@ model RefreshToken {
   uoaSessionCredential UoaSessionCredential? @relation("UoaSessionLocalToken")
 
   @@index([userId])
+  @@index([userId, sessionId])
   @@index([familyId])
   @@map("refresh_tokens")
 }
