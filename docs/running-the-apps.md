@@ -2,6 +2,24 @@
 
 This guide gives copy-paste paths for running Nessie's desktop and mobile apps. The desktop shell works without an Apple Developer account; production executor controls require a signed macOS desktop release. The mobile WebView shell needs Apple Developer signing to run on a physical device.
 
+## Default physical-device delivery
+
+**“Put the latest build on my phone/tablet” means a self-contained, direct
+device deployment.** Build the `mobile` `preview` profile, install that exact
+IPA on each named physical device with `xcrun devicectl`, launch it, and verify
+that it remains running. Do not treat an EAS download link as delivery.
+
+This is the default unless the request explicitly names TestFlight, a store
+release, Metro hot reload, or an Expo development client. The resulting app
+embeds its JavaScript, loads the hosted Nessie service, and does not need the
+developer Mac or its local network after installation. It does still need normal
+internet access for `https://app.nessie.works`.
+
+Apple labels the required direct iOS installation signature **Ad Hoc**. That is
+only the provisioning method: it is a normal standalone app, not the Expo
+development launcher and not TestFlight. A true Expo debug client is for
+developer work and requires Metro, so it is not a substitute for this request.
+
 ## Prerequisites
 
 - Work from the Nessie repository root.
@@ -347,7 +365,8 @@ Unless the request explicitly asks for Metro hot reload or an Expo development
 client, an internal physical-device deployment uses the `preview` EAS profile.
 It launches the normal Nessie WebView shell directly. The `development` profile
 opens the Expo development launcher and is not a substitute for a usable app
-deployment.
+deployment. This is the default physical-device delivery policy stated at the
+top of this guide.
 
 Treat the deployment as complete only after verifying all of the following:
 
