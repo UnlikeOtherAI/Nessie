@@ -19,7 +19,6 @@ import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunD
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
 import { WorkflowImportButton } from '../components/features/workflows/WorkflowImportButton'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
-import { usePhoneLayout } from '../lib/mobile-shell'
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -74,7 +73,6 @@ const summarizeInstallations = (
 export const WorkflowsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const isMobile = usePhoneLayout()
   const { me } = useAuthSession()
   const isOwner = me?.user.roleIds.includes('owner') ?? false
   const isWorkflowAdmin =
@@ -342,7 +340,7 @@ export const WorkflowsPage = () => {
       <ColumnBrowserColumn
         key={`template-${selectedTemplate.id}`}
         onBack={() => setSelectedTemplateId(undefined)}
-        showBack={isMobile}
+        showBack
         title={selectedTemplate.name}
       >
         <WorkflowTemplateDetail
@@ -390,7 +388,7 @@ export const WorkflowsPage = () => {
           setSelectedInstallationId(undefined)
           setSelectedRunId(undefined)
         }}
-        showBack={isMobile}
+        showBack
         title={`Installation ${selectedInstallation.id.slice(0, 8)}`}
       >
         <WorkflowInstallationDetail
@@ -411,7 +409,7 @@ export const WorkflowsPage = () => {
       <ColumnBrowserColumn
         key={`run-${selectedRunId}`}
         onBack={() => setSelectedRunId(undefined)}
-        showBack={isMobile}
+        showBack
         title={`Run ${selectedRunId.slice(0, 8)}`}
       >
         <WorkflowRunDetail workflowRunId={selectedRunId} />

@@ -2,7 +2,6 @@ import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import type { AgentChild } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
 import { useAgentChildren, useAgents } from '../../../facades/agents/hooks'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
 import type { AgentRecord } from '../../../lib/api-client'
 import { ColumnBrowserViewport } from '../../shared/column-browser/ColumnBrowserViewport'
 import { AgentColumn } from './AgentColumn'
@@ -142,7 +141,6 @@ export const AgentColumnBrowser = () => {
   const [subAgentPopupAgentId, setSubAgentPopupAgentId] = useState<
     string | null
   >(null)
-  const isMobile = usePhoneLayout()
 
   const rootAgents = useMemo(
     () =>
@@ -241,7 +239,7 @@ export const AgentColumnBrowser = () => {
             setSelectionPath((prev) => prev.slice(0, depth))
             setActiveColumn(depth)
           }}
-          showBack={isMobile}
+          showBack
           title={parentAgent?.name ?? 'Children'}
         >
           {parentAgent ? (
@@ -272,7 +270,7 @@ export const AgentColumnBrowser = () => {
           agent={deepestSelected}
           key={`detail-${deepestSelected.id}`}
           onBack={() => setActiveColumn(detailBackColumn)}
-          showBack={isMobile}
+          showBack
         />,
       )
     }
@@ -283,7 +281,6 @@ export const AgentColumnBrowser = () => {
     childCountByParentId,
     deepestSelected,
     getChildCount,
-    isMobile,
     navigate,
     rootAgents,
     selectAgentAtDepth,

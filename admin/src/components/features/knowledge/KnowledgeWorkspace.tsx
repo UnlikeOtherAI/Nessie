@@ -12,6 +12,11 @@ import {
   type KnowledgePageRecord,
 } from '../../../facades/knowledge/hooks'
 import { getCookie, setCookie } from '../../../lib/storage'
+import { usePhoneLayout } from '../../../lib/mobile-shell'
+import {
+  LOCAL_BACK_PRIORITY,
+  useLocalBack,
+} from '../../../layouts/admin-shell/local-back/LocalBackContext'
 import type { UploadProgress } from '../../../lib/upload-xhr'
 import { AttachmentsDrawer } from './AttachmentsDrawer'
 import { DropZoneOverlay } from '../../shared/DropZoneOverlay'
@@ -37,11 +42,14 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 const VIEW_MODE_COOKIE = 'knowledgeViewMode'
 
-// `backVariant` selects the Back doorway owner: 'standalone' for the Knowledge
-// section's own routes (the pane owns the local Back; the shell adds the
-// route-level one in a separate header), 'embedded' for Project Docs, where
-// the project route header already carries the only leading doorway.
-export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant?: 'embedded' | 'standalone' }) => {
+// On a phone the outer route header (KnowledgeBasePage's MobileSectionHeader,
+// ProjectView's own header) stays painted above every pane and owns the single
+// doorway, so the workspace registers one unwind action with the shell's
+// local-back registry and passes onBack to its inner panes only on wider
+// layouts. Priority: editor > history > open document/file > folder depth —
+// exactly one level per press; at the space base nothing is active and the
+// route Back owns the doorway again.
+export const KnowledgeWorkspace = () => {
   const {
     activeProductView,
     selectedSpace,
@@ -77,6 +85,7 @@ export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant
     updateSpace,
     updateSpacePending,
   } = useKnowledge()
+  const phoneLayout = usePhoneLayout()
   const [viewMode, setViewMode] = useState<KnowledgeViewMode>(() => {
     const stored = getCookie(VIEW_MODE_COOKIE)
     return isKnowledgeViewMode(stored) ? stored : 'column'
@@ -121,6 +130,40 @@ export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant
   const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
   const currentFolder = openPageId ? null : pathPages.at(-1)
 
+  const localBackLabel = editor
+    ? 'Back from page editor'
+    : historyPageId
+      ? 'Back from version history'
+      : current
+        ? depth > 0
+          ? 'Back to parent page'
+          : 'Back to space'
+        : 'Back to parent folder'
+  const localBackPriority = editor
+    ? LOCAL_BACK_PRIORITY.knowledgeEditor
+    : historyPageId
+      ? LOCAL_BACK_PRIORITY.knowledgeHistory
+      : current
+        ? LOCAL_BACK_PRIORITY.knowledgeDocument
+        : LOCAL_BACK_PRIORITY.knowledgeFolder
+  // browseTo takes the path's string ids, never page records.
+  const localBackAction = editor
+    ? closeEditor
+    : historyPageId
+      ? closeHistory
+      : current
+        ? () => popTo(depth)
+        : pathPages.length > 0
+          ? () => browseTo(pathPages.slice(0, -1).map((page) => page.id))
+          : null
+  useLocalBack({
+    active: phoneLayout && localBackAction !== null,
+    id: 'knowledge-workspace',
+    label: localBackLabel,
+    onBack: localBackAction ?? (() => undefined),
+    priority: localBackPriority,
+  })
+
   // The space-pages list omits page bodies (they're large and the tree/column
   // views never show them). Fetch the full body on demand for whichever page
   // actually needs it — the editor is gated on this so it never opens, and
@@ -128,14 +171,73 @@ export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant
   const fullBodyPageId =
     editor?.mode === 'edit'
       ? editor.page.id
-      : historyPageId
-        ? historyPageId
-        : current && current.kind !== 'file'
-          ? current.id
-          : undefined
+      : historyPageId ?? (current && current.kind !== 'file' ? current.id : undefined)
   const fullPageQuery = useKnowledgePage(fullBodyPageId)
   const fullPage =
     fullPageQuery.data && fullPageQuery.data.id === fullBodyPageId ? fullPageQuery.data : undefined
+
+  // ─── Workspace header actions (the space-base pane's own header) ────────────
+  const selectedView = knowledgeViewOptions.find((option) => option.value === viewMode)
+  const workspaceActions: PageHeaderAction[] | undefined = selectedSpaceId
+    ? [
+        {
+          icon: selectedView?.icon,
+          id: 'view-mode',
+          items: knowledgeViewOptions.map((option) => ({
+            checked: option.value === viewMode,
+            icon: option.icon,
+            id: option.value,
+            label: option.label,
+            onSelect: () => updateViewMode(option.value),
+            title: option.title,
+          })),
+          kind: 'menu',
+          label: `View: ${selectedView?.label ?? 'Column'}`,
+          priority: 80,
+          title: 'Choose knowledge view',
+        },
+        ...(agentDraftCount > 0 || needsReviewOnly
+          ? [{
+              id: 'needs-review',
+              label: `Needs review (${agentDraftCount})`,
+              onSelect: () => setNeedsReviewOnly((value) => !value),
+              priority: 60,
+              selected: needsReviewOnly,
+            } satisfies PageHeaderAction]
+          : []),
+        {
+          id: 'upload-file',
+          label: 'Upload file',
+          onSelect: () => fileInputRef.current?.click(),
+          priority: 40,
+        },
+        {
+          icon: faFolderPlus,
+          id: 'new-folder',
+          label: 'New folder',
+          onSelect: () => {
+            updateViewMode('column')
+            setCreatingFolder(true)
+          },
+          priority: 30,
+        },
+        {
+          compact: true,
+          icon: faGear,
+          id: 'space-settings',
+          label: 'Space settings',
+          onSelect: openSpaceSettings,
+          priority: 10,
+        },
+        {
+          id: 'new-page',
+          label: 'New page',
+          onSelect: () => openCreate(currentFolder?.id ?? null),
+          primary: true,
+          priority: 100,
+        },
+      ]
+    : undefined
 
   // ─── File upload wiring (file nodes, page attachments, new versions) ───────
   const [attachmentsPageId, setAttachmentsPageId] = useState<string | null>(null)
@@ -227,7 +329,10 @@ export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant
   if (editor) {
     const editLoading = editor.mode === 'edit' && !fullPage
     return (
-      <KnowledgePane onBack={closeEditor} title={editor.mode === 'edit' ? 'Edit page' : 'Create page'} variant={backVariant}>
+      <KnowledgePane
+        onBack={phoneLayout ? undefined : closeEditor}
+        title={editor.mode === 'edit' ? 'Edit page' : 'Create page'}
+      >
         <div className="flex h-full w-full flex-col">
           {editLoading ? (
             <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
@@ -253,7 +358,10 @@ export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant
   const historyPage = historyPageId ? pageById(historyPageId) : undefined
   if (historyPage) {
     return (
-      <KnowledgePane onBack={closeHistory} title={`History — ${historyPage.title}`} variant={backVariant}>
+      <KnowledgePane
+        onBack={phoneLayout ? undefined : closeHistory}
+        title={`History — ${historyPage.title}`}
+      >
         <div className="mx-auto w-full max-w-3xl px-6 py-6">
           <VersionHistory
             onRestore={(versionId) => restoreVersion({ pageId: historyPage.id, versionId })}
@@ -272,14 +380,17 @@ export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant
     return (
       <div className="relative h-full w-full" {...attachmentDrop.dropHandlers}>
         {isMarkdownFileNode && !convertToDocument.isError ? (
-          <KnowledgePane onBack={() => popTo(depth)} title={current.title} variant={backVariant}>
+          <KnowledgePane
+            onBack={phoneLayout ? undefined : () => popTo(depth)}
+            title={current.title}
+          >
             <div className="flex h-full items-center justify-center text-sm text-[color:var(--tx3)]">
               Opening as document…
             </div>
           </KnowledgePane>
         ) : current.kind === 'file' ? (
           <FileNodeViewer
-            onBack={() => popTo(depth)}
+            onBack={phoneLayout ? undefined : () => popTo(depth)}
             onOpenHistory={() => openHistory(current.id)}
             onToggleAttachments={() => setAttachmentsPageId(current.id)}
             onUploadVersion={() => setVersionDialogFor(current)}
@@ -288,7 +399,7 @@ export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant
         ) : (
           <PagePreview
             bodyPending={!fullPage}
-            onBack={() => popTo(depth)}
+            onBack={phoneLayout ? undefined : () => popTo(depth)}
             onCreateChild={() => openCreate(current.id)}
             onDrill={(childPageId) => drillTo(depth, childPageId)}
             onEdit={() => openEdit(current)}
@@ -320,74 +431,11 @@ export const KnowledgeWorkspace = ({ backVariant = 'standalone' }: { backVariant
 
   // No document open → the selected space's filesystem browser. Dropping a file
   // here uploads it as a new file node in the current folder.
-  const selectedView = knowledgeViewOptions.find((option) => option.value === viewMode)
-  const workspaceActions: PageHeaderAction[] | undefined = selectedSpaceId
-    ? [
-        {
-          icon: selectedView?.icon,
-          id: 'view-mode',
-          items: knowledgeViewOptions.map((option) => ({
-            checked: option.value === viewMode,
-            icon: option.icon,
-            id: option.value,
-            label: option.label,
-            onSelect: () => updateViewMode(option.value),
-            title: option.title,
-          })),
-          kind: 'menu',
-          label: `View: ${selectedView?.label ?? 'Column'}`,
-          priority: 80,
-          title: 'Choose knowledge view',
-        },
-        ...(agentDraftCount > 0 || needsReviewOnly
-          ? [{
-              id: 'needs-review',
-              label: `Needs review (${agentDraftCount})`,
-              onSelect: () => setNeedsReviewOnly((value) => !value),
-              priority: 60,
-              selected: needsReviewOnly,
-            } satisfies PageHeaderAction]
-          : []),
-        {
-          id: 'upload-file',
-          label: 'Upload file',
-          onSelect: () => fileInputRef.current?.click(),
-          priority: 40,
-        },
-        {
-          icon: faFolderPlus,
-          id: 'new-folder',
-          label: 'New folder',
-          onSelect: () => {
-            updateViewMode('column')
-            setCreatingFolder(true)
-          },
-          priority: 30,
-        },
-        {
-          compact: true,
-          icon: faGear,
-          id: 'space-settings',
-          label: 'Space settings',
-          onSelect: openSpaceSettings,
-          priority: 10,
-        },
-        {
-          id: 'new-page',
-          label: 'New page',
-          onSelect: () => openCreate(currentFolder?.id ?? null),
-          primary: true,
-          priority: 100,
-        },
-      ]
-    : undefined
-
   return (
     <div className="relative h-full w-full" {...fileNodeDrop.dropHandlers}>
       <KnowledgePane
         actions={workspaceActions}
         title={selectedSpace?.name ?? 'Pages'}
-        variant={backVariant}
       >
         <div className="h-full w-full">
           {!selectedSpaceId ? (

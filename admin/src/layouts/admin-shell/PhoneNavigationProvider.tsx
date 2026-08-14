@@ -23,6 +23,7 @@ import {
   type PhoneNavigationBackAction,
 } from './phone-navigation'
 import { NativePhoneNavigationBridge } from './NativePhoneNavigationBridge'
+import { useLocalBackSnapshot } from './local-back/LocalBackContext'
 
 export type PhoneNavigationApi = {
   // Run the route-level Back for the CURRENT location: ledger-aware
@@ -54,6 +55,7 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
   const navigate = useNavigate()
   const location = useLocation()
   const navigationType = useNavigationType()
+  const localBack = useLocalBackSnapshot()?.active ?? null
   const ledgerRef = useRef<PhoneHistoryLedger | null>(null)
   if (ledgerRef.current === null) {
     ledgerRef.current = createPhoneHistoryLedger(
@@ -83,10 +85,10 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
   // Stable outward API: the ledger and the latest navigate/location live on
   // refs, so consumers and the native bridge never resubscribe per location
   // while their actions still see the post-commit state.
-  const stateRef = useRef({ location, navigate })
+  const stateRef = useRef({ localBack, location, navigate })
   useLayoutEffect(() => {
-    stateRef.current = { location, navigate }
-  })
+    stateRef.current = { localBack, location, navigate }
+  }, [localBack, location, navigate])
 
   const value = useMemo<PhoneNavigationApi>(() => {
     const currentLedger = (): PhoneHistoryLedger => {
@@ -124,6 +126,11 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
     }
     return {
       performBack: () => {
+        const activeLocalBack = stateRef.current.localBack
+        if (activeLocalBack) {
+          activeLocalBack.onBack()
+          return
+        }
         const action = resolveBackAction(stateRef.current.location.pathname)
         if (action) performBackAction(action)
       },

@@ -19,6 +19,7 @@ import { AdminSidebarNav } from './admin-shell/AdminSidebarNav';
 import { AccountMenuProvider } from './admin-shell/AccountMenuContext';
 import { KnowledgeSidebarNav } from './admin-shell/KnowledgeSidebarNav';
 import { MobileNavDrawer } from './admin-shell/MobileNavDrawer';
+import { LocalBackProvider } from './admin-shell/local-back/LocalBackContext';
 import { MobileNavProvider } from './admin-shell/MobileNavContext';
 import { MobileTabBar } from './admin-shell/MobileTabBar';
 import { MobileWebHomeHeader } from './admin-shell/MobileWebHomeHeader';
@@ -77,12 +78,14 @@ export const AdminShellLayout = () => {
   }
 
   return (
-    // One persistent provider for the whole authenticated shell: its
-    // route-history ledger, the shared Back doorway, the web tab bar, and the
-    // native phone bridge must never fork per-route state.
-    <PhoneNavigationProvider>
-      <AuthenticatedAdminShellLayout />
-    </PhoneNavigationProvider>
+    <LocalBackProvider>
+      {/* One persistent provider for the whole authenticated shell: its
+          route-history ledger, the shared Back doorway, the web tab bar, and
+          the native phone bridge must never fork per-route state. */}
+      <PhoneNavigationProvider>
+        <AuthenticatedAdminShellLayout />
+      </PhoneNavigationProvider>
+    </LocalBackProvider>
   );
 };
 

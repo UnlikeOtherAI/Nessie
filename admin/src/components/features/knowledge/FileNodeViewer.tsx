@@ -22,7 +22,9 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type FileNodeViewerProps = {
   page: KnowledgePageRecord
-  onBack: () => void
+  // On a phone the workspace owns the doorway through the local-back
+  // registry and passes no onBack; wider layouts keep the pane's own Back.
+  onBack?: () => void
   onOpenHistory: () => void
   onUploadVersion: () => void
   onToggleAttachments: () => void

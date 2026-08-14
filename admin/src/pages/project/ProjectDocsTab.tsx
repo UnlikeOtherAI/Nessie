@@ -58,9 +58,7 @@ const ProjectDocsLayout = ({ projectId }: { projectId: string }) => {
 
       <div className="min-w-0 flex-1">
         {selectedSpaceId ? (
-          // On a phone the project route header (AdminPageHeader) owns the only
-          // Back doorway, so the workspace must not stack a second one.
-          <KnowledgeWorkspace backVariant="embedded" />
+          <KnowledgeWorkspace />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-sm text-[color:var(--tx3)]">
             {spaces.length === 0

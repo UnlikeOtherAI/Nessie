@@ -336,7 +336,7 @@ export const ResponsivePageHeader = ({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {leading}
         {onBack ? (
-          <PhoneBackButton label={`Back from ${title}`} onBack={onBack} variant="labelled" />
+          <PhoneBackButton label={`Back from ${title}`} onBack={onBack} />
         ) : null}
         <div className="min-w-0 flex-1">
           {eyebrow ? (

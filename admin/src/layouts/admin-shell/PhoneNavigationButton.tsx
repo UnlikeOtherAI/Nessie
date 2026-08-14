@@ -1,23 +1,29 @@
 import { useLocation } from 'react-router-dom';
 import { usePhoneLayout } from '../../lib/mobile-shell';
+import { useLocalBackSnapshot } from './local-back/LocalBackContext';
 import { useMobileNav } from './MobileNavContext';
 import { PhoneBackButton } from './PhoneBackButton';
 import { getPhoneNavigationBackTarget } from './phone-navigation';
 import { usePhoneNavigation } from './PhoneNavigationProvider';
 
-// The phone's leading doorway mirrors a native navigation controller: exactly
-// one control per screen. A local/nested Back (an open in-page stack) is owned
-// by the page itself and wins; this route-level control shows Back at detail
-// routes and Menu at section roots. Desktop and tablet keep the pinned sidebar.
+// The phone's single leading doorway, with an explicit ownership order:
+// an in-page local Back (deepest registered active action) > the route's
+// deterministic Back > the section menu at tab roots. Desktop and tablet
+// keep their pinned sidebar and per-column controls.
 export const PhoneNavigationButton = () => {
   const phoneLayout = usePhoneLayout();
   const location = useLocation();
   const nav = useMobileNav();
   const history = usePhoneNavigation();
+  const localBack = useLocalBackSnapshot()?.active ?? null;
   const backTarget = getPhoneNavigationBackTarget(location.pathname);
 
   if (!phoneLayout || !nav) {
     return null;
+  }
+
+  if (localBack) {
+    return <PhoneBackButton label={localBack.label} onBack={localBack.onBack} />;
   }
 
   if (backTarget) {
