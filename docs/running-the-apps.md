@@ -128,47 +128,9 @@ Mac TestFlight uses a separate, sandboxed build configuration. It loads the
 same hosted Nessie product and retains desktop SSO and notifications, but it
 does not bundle the local executor runtime: that helper currently depends on a
 Developer ID signature and user-selected workspace access that has not yet
-been redesigned for App Sandbox inheritance.
-
-Create a `Mac App Store Connect` provisioning profile for `com.km.nessie`.
-This App Store-only override connects the desktop shell to Nessie's existing
-macOS App Store Connect platform; the Developer ID desktop bundle remains
-`com.unlikeotherai.nessie.desktop`. Then build version `0.1.1 (1)` with:
-
-```sh
-NESSIE_DESKTOP_APPSTORE_PROFILE=/absolute/path/to/Nessie.provisionprofile \
-NESSIE_DESKTOP_SIGNING_TEAM_ID=59S95D279D \
-APPLE_SIGNING_IDENTITY='Apple Distribution: KiloMayo s.r.o. (59S95D279D)' \
-pnpm --dir desktop run tauri:build:appstore
-```
-
-The script stages the profile in an ignored directory and the App Store config
-embeds it at `Contents/embedded.provisionprofile`. Inspect the final bundle
-before packaging:
-
-```sh
-codesign --verify --deep --strict \
-  desktop/src-tauri/target/release/bundle/macos/Nessie.app
-codesign -d --entitlements :- \
-  desktop/src-tauri/target/release/bundle/macos/Nessie.app
-```
-
-The main executable must have the KiloMayo application/team identifiers,
-`com.apple.security.app-sandbox=true`, and outbound network access. The bundle
-must not contain `Contents/Resources/executor-runtime`.
-
-Package with a Mac Installer Distribution identity and upload the resulting
-package to the existing Nessie App Store Connect record's macOS platform:
-
-```sh
-xcrun productbuild \
-  --sign 'Mac Installer Distribution: KiloMayo s.r.o. (59S95D279D)' \
-  --component desktop/src-tauri/target/release/bundle/macos/Nessie.app \
-  /Applications Nessie.pkg
-
-xcrun altool --upload-app --type macos --file Nessie.pkg \
-  --apiKey "$APPLE_API_KEY_ID" --apiIssuer "$APPLE_API_ISSUER"
-```
+been redesigned for App Sandbox inheritance. Follow the canonical
+[Apple TestFlight publishing guide](publishing-apple-testflight.md) for its
+versioning, signing, validation, Xcode Organizer upload, and tester steps.
 
 If the installed app gets stuck at **Loading providers...**, check the API
 origin first:
@@ -610,15 +572,9 @@ unread items.
 
 ## iOS TestFlight
 
-After the Apple Developer account, App Store Connect app record, and internal testers are ready:
-
-```sh
-cd mobile
-eas build -p ios --profile production
-eas submit -p ios
-```
-
-The `production` submit profile contains App Store placeholder values. Replace them before submitting.
+Follow the canonical [Apple TestFlight publishing guide](publishing-apple-testflight.md)
+for EAS setup, the local Xcode alternative, versioning, signing checks, and
+internal TestFlight distribution.
 
 ## Android
 
