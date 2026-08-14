@@ -37,7 +37,6 @@ import { getBaseUrl } from '../lib/api-client'
 import {
   clearSessionIfCurrent,
   createImportedSessionApplyTracker,
-  finalizeSessionLogout,
   IMPORTED_SESSION_SCOPE_MESSAGE,
   isSessionCredentialCurrent,
   resolveSessionRefreshAction,
@@ -54,6 +53,7 @@ import {
   createSessionQueryBoundary,
   isCurrentSessionResponse,
 } from './auth-session-query-reset'
+import { performTerminalSessionLogout } from './terminal-session-logout'
 import { useAccessTokenRenewal } from './useAccessTokenRenewal'
 
 type AuthSessionContextValue = {
@@ -504,21 +504,26 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const logout = async (): Promise<void> => {
     // Capture the ending credential before terminate synchronously clears
-    // tokenRef; the terminal payload's bearer (if any) still wins.
+    // tokenRef; the terminal payload's bearer (if any) still wins. Native
+    // cleanup must start while the authenticated bridge is still mounted, so
+    // its gate reads the initiating snapshot (an imported bearer never
+    // registered native push and never revokes a remote session).
     const initiating = readSessionCredential()
     const pendingImportedTokens = importedApplyTracker.tokens()
-    await sessionMutations.terminate(async (latestPayload) => {
-      const ending = resolveTerminatingSessionCredential({
-        initiating,
-        pendingImportedTokens,
-        terminalToken: latestPayload?.token ?? null,
-      })
-      await finalizeSessionLogout({
-        mode: ending.mode,
-        nativeWebView: isReactNativeWebView(),
-        revokeRemoteSession: () => authApi.logout(ending.token),
-        unregisterNativePush: unregisterNativePushDevice,
-      })
+    await performTerminalSessionLogout({
+      currentBearer: initiating.token,
+      isNative: isReactNativeWebView() && initiating.mode !== 'imported',
+      logout: async (bearer) => {
+        const ending = resolveTerminatingSessionCredential({
+          initiating,
+          pendingImportedTokens,
+          terminalToken: bearer,
+        })
+        if (ending.mode === 'imported') return
+        await authApi.logout(ending.token)
+      },
+      terminate: (finalize) => sessionMutations.terminate(finalize),
+      unregisterNative: unregisterNativePushDevice,
     })
   }
 
