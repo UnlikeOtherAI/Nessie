@@ -36,7 +36,6 @@ registerViewportMediaQuery('reducedMotion', REDUCED_MOTION_QUERY)
 
 type PhoneNavigationViewportProps = {
   children: ReactNode
-  onBack?: () => void
   pathname: string
 }
 
@@ -71,7 +70,6 @@ const percent = (value: number): string => `${value.toFixed(2)}%`
 // mount this component because AdminShellLayout keeps their columns adjacent.
 export const PhoneNavigationViewport = ({
   children,
-  onBack,
   pathname,
 }: PhoneNavigationViewportProps) => {
   const navigate = useNavigate()
@@ -93,7 +91,11 @@ export const PhoneNavigationViewport = ({
   const [transition, setTransition] = useState<ActiveTransition | null>(null)
   const transitionRef = useRef<ActiveTransition | null>(null)
   const transitionId = useRef(0)
-  const suppressNextRouteAnimation = useRef(false)
+  // A committed interactive swipe has already animated one exact target into
+  // place. Remember that pathname (rather than a loose boolean) so an
+  // unrelated navigation that wins the same event turn can never have its
+  // own transition suppressed.
+  const suppressNextRouteAnimation = useRef<string | null>(null)
 
   const commitStack = useCallback((next: Stack): void => {
     stackRef.current = next
@@ -126,8 +128,8 @@ export const PhoneNavigationViewport = ({
 
     const direction = getPhoneNavigationDirection(committed.pathname, pathname)
     let next = advancePhoneNavigationStack(current, pathname, payload)
-    const suppressed = suppressNextRouteAnimation.current
-    suppressNextRouteAnimation.current = false
+    const suppressed = suppressNextRouteAnimation.current === pathname
+    suppressNextRouteAnimation.current = null
 
     if (!direction || suppressed) {
       // The interactive gesture already animated a Back before changing the
@@ -173,18 +175,23 @@ export const PhoneNavigationViewport = ({
   const performGestureBack = useCallback(() => {
     const activeTransition = transitionRef.current
     if (activeTransition) finishTransition(activeTransition.id)
-    suppressNextRouteAnimation.current = true
-    if (onBack) {
-      onBack()
-      return
-    }
     if (navigation) {
-      navigation.performBack()
+      // Resolve while the gesture is still armed (and therefore while no
+      // local Back action is active), then execute that immutable route
+      // action. Re-resolving through performBack after the settle could let a
+      // newly mounted local action consume the swipe and leave the route
+      // suppression marker attached to the wrong future navigation.
+      const action = navigation.resolveBackAction(pathname)
+      if (!action) return
+      suppressNextRouteAnimation.current = action.to
+      navigation.performBackAction(action)
       return
     }
     const target = getPhoneNavigationBackTarget(pathname)
-    if (target) void navigate(target.pathname)
-  }, [finishTransition, navigate, navigation, onBack, pathname])
+    if (!target) return
+    suppressNextRouteAnimation.current = target.pathname
+    void navigate(target.pathname)
+  }, [finishTransition, navigate, navigation, pathname])
 
   const gesture = usePhoneBackSwipeGesture({
     enabled: stack.currentIndex > 0 && transition === null && !localBackActive,

@@ -39,10 +39,9 @@ type UsePhoneBackSwipeGestureOptions = {
   // One cohesive seam for the gesture's Back action: the release decision
   // calls this at most once, the viewport waits for the settle animation to
   // finish (animationend plus a timer fallback), and only then commits
-  // exactly one route update through this callback. The viewport wires it to
-  // the same deterministic parent-path navigate the shared Back button uses
-  // today; integration can swap in the shared Back handler without touching
-  // the gesture, keeping one Back policy for both entry points.
+  // exactly one route update through this callback. The viewport resolves and
+  // executes the same immutable route Back action as the shared button, so a
+  // local action mounting during the settle cannot steal the gesture.
   onCommit: () => void
   reducedMotion: boolean
   viewportRef: RefObject<HTMLDivElement | null>

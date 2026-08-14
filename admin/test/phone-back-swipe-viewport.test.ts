@@ -63,12 +63,16 @@ const { MemoryRouter, useLocation, useNavigate } = await import('react-router-do
 const { PhoneNavigationViewport } = await import(
   '../src/layouts/admin-shell/PhoneNavigationViewport'
 )
+const { PhoneNavigationProvider } = await import(
+  '../src/layouts/admin-shell/PhoneNavigationProvider'
+)
 
 type Harness = {
   container: HTMLElement
   currentPathname: () => HTMLElement | null
   flush: (ms?: number) => Promise<void>
   goTo: (pathname: string) => Promise<void>
+  historyBack: () => Promise<void>
   layer: (name: string) => HTMLElement | null
   locationLabel: () => string
   mounts: () => Record<string, number>
@@ -90,7 +94,7 @@ const mount = async (initialPathname: string): Promise<Harness> => {
   const container = document.createElement('div')
   document.body.appendChild(container)
   let pathname = initialPathname
-  let navigateTo: ((pathname: string) => void) | null = null
+  let navigateTo: ((to: string | number) => void) | null = null
   const mounts: Record<string, number> = {}
   const scrollTops: Record<string, number> = {}
 
@@ -132,7 +136,13 @@ const mount = async (initialPathname: string): Promise<Harness> => {
     const location = useLocation()
     const navigate = useNavigate()
     pathname = location.pathname
-    navigateTo = (next: string) => navigate(next)
+    navigateTo = (next: string | number) => {
+      if (typeof next === 'number') navigate(next)
+      else navigate(next)
+    }
+    if (!location.pathname.startsWith('/channels')) {
+      return h('div', { 'data-outside-route': location.pathname })
+    }
     return h(
       PhoneNavigationViewport,
       { pathname: location.pathname },
@@ -149,7 +159,11 @@ const mount = async (initialPathname: string): Promise<Harness> => {
 
   await act(async () => {
     root.render(
-      h(MemoryRouter, { initialEntries: [initialPathname] }, h(Host)),
+      h(
+        MemoryRouter,
+        { initialEntries: ['/outside', initialPathname], initialIndex: 1 },
+        h(PhoneNavigationProvider, null, h(Host)),
+      ),
     )
   })
   await flush()
@@ -199,6 +213,13 @@ const mount = async (initialPathname: string): Promise<Harness> => {
       assert.ok(navigateTo, 'router ready')
       await act(async () => {
         navigateTo(next)
+      })
+      await flush()
+    },
+    historyBack: async () => {
+      assert.ok(navigateTo, 'router ready')
+      await act(async () => {
+        navigateTo(-1)
       })
       await flush()
     },
@@ -345,6 +366,24 @@ test('a commit keeps the route on the detail through the settle, then updates it
   assert.equal(harness.layer('outgoing'), null, 'no outgoing layer replays')
   // The root instance is still the same one — mounted once, never remounted.
   assert.deepEqual(harness.mounts(), { 'channels-root': 1, 'channels-detail': 0 })
+  await harness.unmount()
+})
+
+test('a committed swipe pops history once and never leaves the departed detail behind', async () => {
+  const harness = await mount('/channels')
+  await harness.goTo('/channels/channel_a')
+  await harness.flush(450)
+
+  flick(harness, [[6, 300], [120, 302], [260, 303], [330, 304]])
+  await harness.flush(SETTLE_FALLBACK_MS)
+  assert.equal(harness.locationLabel(), '/channels')
+
+  await harness.historyBack()
+  assert.equal(
+    harness.locationLabel(),
+    '/outside',
+    'the next Back crosses the root instead of reopening the departed detail',
+  )
   await harness.unmount()
 })
 
