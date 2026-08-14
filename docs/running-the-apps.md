@@ -231,10 +231,11 @@ controller uses its
 transparent scroll-edge appearance, and is constrained to the tab-bar overlay,
 so it stays above the WebView without intercepting the page. This lets the
 glass blur the content actually scrolling beneath it without a second tinted
-bar behind the controls. The native shell applies the tab-bar height plus the
-home-indicator inset only to a page-level scroll region that reaches the bottom
-of the WebView. It never shortens the page or sidebar surface: content continues
-behind the glass while the final row can scroll above it. iPad and Android
+bar behind the controls. Every phone route has a page-shell end spacer equal to
+the tab-bar height plus the home-indicator inset; nested vertical scrollers
+receive the same internal inset. This covers full-height and horizontal layouts
+as well as ordinary lists. It never shortens the page or sidebar surface:
+content continues behind the glass while the final row can scroll above it. iPad and Android
 reserve their top inset in the native frame. Android's
 floating dock has no independent separator: the shared dock-geometry contract
 adds its exact interaction clearance to the WebView columns, keeping the chat

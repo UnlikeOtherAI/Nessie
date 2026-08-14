@@ -212,9 +212,17 @@ test('the native Admin actions offer session debugging above a cache-busting ful
 
 test('the native phone shell clears the glass tab bar within the WebView content', () => {
   const shell = readSource('../src/layouts/AdminShellLayout.tsx')
+  const phoneViewport = readSource('../src/layouts/admin-shell/PhoneNavigationViewport.tsx')
+  const styles = readSource('../src/styles.css')
 
   assert.match(shell, /showNativePhoneTabBar = nativePhoneApp && !isComposeRoute/)
   assert.match(shell, /showNativePhoneTabBar \? 'has-native-phone-tabbar' : ''/)
+  assert.match(phoneViewport, /className="phone-navigation-page"/)
+  assert.match(phoneViewport, /data-phone-navigation-page/)
+  assert.match(
+    styles,
+    /\.phone-navigation-page\s*\{[\s\S]*?overflow-y: auto[\s\S]*?overscroll-behavior-y: contain/,
+  )
 })
 
 test('Safari and Android browser tab roots reuse the mobile workspace, recents, and account controls', () => {

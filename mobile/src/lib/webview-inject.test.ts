@@ -125,6 +125,15 @@ test('iOS phone injection clears the tab overlay inside the WebView', () => {
   )
   const phoneTabBarScrollSurfaces =
     '\\.admin-frame\\.has-native-phone-tabbar \\.nessie-native-phone-tabbar-scroll'
+  const phoneTabBarPageShell =
+    '\\.admin-frame\\.has-native-phone-tabbar \\.phone-navigation-page::after'
+  assert.match(
+    css,
+    new RegExp(
+      `${phoneTabBarPageShell} \\{ content: ""; display: block;` +
+      ' height: var\\(--nessie-native-phone-tabbar-clearance\\); pointer-events: none;\\}',
+    ),
+  )
   assert.match(
     css,
     new RegExp(
@@ -132,6 +141,7 @@ test('iOS phone injection clears the tab overlay inside the WebView', () => {
       ' scroll-padding-bottom: var\\(--nessie-native-phone-tabbar-clearance\\);\\}',
     ),
   )
+  assert.doesNotMatch(css, /phone-navigation-page \{ padding-bottom/)
   assert.doesNotMatch(css, /phone-navigation-screen > main/)
   assert.doesNotMatch(css, /touch-sidebar \\{ padding-bottom/)
 })

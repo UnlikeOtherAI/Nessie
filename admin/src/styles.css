@@ -326,6 +326,21 @@ a {
   will-change: transform;
 }
 
+/* Every phone route gets one page-level scrolling owner. Most detail pages
+   keep their own inner content scroller so their header stays fixed; this
+   shell is the fallback for full-height or horizontal surfaces such as the
+   project board. Native iPhone chrome appends its end spacer here, allowing
+   those surfaces to reveal their final row without shortening the background
+   that continues beneath the translucent tab bar. */
+.phone-navigation-page {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
 .phone-navigation-screen--current {
   z-index: 1;
   animation: none;

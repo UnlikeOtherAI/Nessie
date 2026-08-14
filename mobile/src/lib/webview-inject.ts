@@ -45,6 +45,18 @@ export const INJECTED = `
           ':root { --nessie-native-phone-tabbar-clearance: ' +
             (${IPHONE_TAB_BAR_HEIGHT} + nativeBottomInset) +
             'px; }',
+          // Every phone-navigation route has this outer scroll owner. Its
+          // spacer covers full-height and horizontal layouts (such as the
+          // project board) that deliberately do not own a vertical scroller.
+          // A spacer, rather than padding, preserves the route's full-height
+          // background beneath the native glass while making its final row
+          // reachable above the tab bar.
+          '.admin-frame.has-native-phone-tabbar .phone-navigation-page::after {' +
+            ' content: "";' +
+            ' display: block;' +
+            ' height: var(--nessie-native-phone-tabbar-clearance);' +
+            ' pointer-events: none;' +
+          '}',
           '.admin-frame.has-native-phone-tabbar .nessie-native-phone-tabbar-scroll {' +
             ' padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
             ' scroll-padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
@@ -125,7 +137,10 @@ export const INJECTED = `
     var frame = document.querySelector('.admin-frame.has-native-phone-tabbar');
     if (!frame || !frame.querySelectorAll) return;
     var viewportBottom = window.innerHeight;
-    var candidates = frame.querySelectorAll('.phone-navigation-screen *');
+    // The page shell itself owns the universal end spacer above. Nested,
+    // vertical scrollers still need an internal end inset so their final item
+    // can scroll above the glass rather than stopping below it.
+    var candidates = frame.querySelectorAll('.phone-navigation-page *');
     for (var i = 0; i < candidates.length; i++) {
       var candidate = candidates[i];
       if (!candidate.classList || !candidate.getBoundingClientRect) continue;

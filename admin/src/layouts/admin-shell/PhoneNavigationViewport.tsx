@@ -58,7 +58,9 @@ const TRANSITION_FALLBACK_MS = 400
 
 const NavigationScreen = ({ payload }: { payload: ScreenPayload }) => (
   <UNSAFE_LocationContext.Provider value={payload.locationContext}>
-    {payload.screen}
+    <div className="phone-navigation-page" data-phone-navigation-page>
+      {payload.screen}
+    </div>
   </UNSAFE_LocationContext.Provider>
 )
 

@@ -41,6 +41,23 @@ const flick = (
 // hook's fallback timer closes the lane: 220ms settle + 180ms slack.
 const SETTLE_FALLBACK_MS = 500
 
+test('every phone screen carries the shared page scroll shell', async () => {
+  const harness = await mount('/channels')
+  const current = harness.layer('current')
+
+  assert.ok(current)
+  const page = current.querySelector('[data-phone-navigation-page]')
+  assert.ok(page, 'the page shell owns end clearance for full-height screens')
+  assert.equal(page?.textContent, 'screen:/channels@/channels')
+
+  await harness.goTo('/channels/channel_a')
+  assert.ok(
+    harness.layer('incoming')?.querySelector('[data-phone-navigation-page]'),
+    'a destination receives the same shell before its transition starts',
+  )
+  await harness.unmount()
+})
+
 test('a forward push paints the mounted destination offscreen before motion starts', async () => {
   const harness = await mount('/channels')
   await harness.goTo('/channels/channel_a', false)
