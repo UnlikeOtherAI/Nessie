@@ -208,7 +208,19 @@ access-model decision.
   approval-proof handling moves *into* the shared evaluator; malformed
   `timeWindow` fails closed (today the shared copy `.includes` over an
   uncast shape); a differential corpus runs both implementations to
-  equivalence before the worker copy is deleted (Sol CB-03). Whether the
+  equivalence before the worker copy is deleted (Sol CB-03). **(Landed
+  2026-08-14: `packages/workspace-admin/src/policy-check.ts` is the one
+  evaluator — `resolveDecision`/`checkPolicy` take
+  `PolicyEvaluationOptions` (`defaultVerdict`, `approvalProof`), conditions
+  evaluation fails closed on a malformed `timeWindow` in every mode, and
+  `worker/src/run/execute/policy.ts` `evaluateToolInvokePolicy` is now a
+  thin adapter that keeps its prisma-model fetch, normalizes bindings to the
+  shared row shape, builds the scope chain through the shared
+  `buildScopeChain` with channel/agent/tool as additional scope ids, and
+  evaluates with `{ defaultVerdict: 'allow', approvalProof }`. The
+  differential corpus is `packages/workspace-admin/test/policy-check.test.ts`,
+  running every case under both the API and worker configurations. API
+  callers keep deny-by-default and interactive approval semantics.)** Whether the
   policy vocabulary's unenforced surfaces (tasks, sessions, secrets…) become
   load-bearing is **[access-model]** — until then the vocabulary/coverage
   matrix is documented so a deny rule is never silently advisory (CB-02).

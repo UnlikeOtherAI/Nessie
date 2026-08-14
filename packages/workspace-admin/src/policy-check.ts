@@ -11,6 +11,13 @@ import type {
 // ask the same question the routes ask — `agent`/`bind` is checked before a
 // binding is written, whether the request came from a button or from chat.
 // Policy authoring (CRUD, defaults seeding) stays in the API.
+//
+// There is exactly one evaluator: the worker's tool-invoke gate resolves its
+// prisma-model rows through the same `resolveDecision` core below, passing
+// `defaultVerdict: 'allow'` plus the run's approval proof; API routes resolve
+// flattened `$queryRaw` rows with the deny default. Only the row-fetch and
+// verdict mapping differ, never the policy semantics (security boundary
+// hardening, Workstream 5 / Sol CB-03).
 
 // Scope weight: org=0, project=1, team=2, channel=3, agent=4, tool=5, user=6
 const SCOPE_WEIGHT: Record<string, number> = {
@@ -36,16 +43,45 @@ export type PolicyRuleRow = {
   scopeId: string
 }
 
+export type PolicyEvaluationOptions = {
+  /**
+   * Approval proof supplied by the caller (the worker passes the run's
+   * `actorContext.approval?.approvalProof`). When set, a rule's
+   * `requiresApproval` condition is satisfied. When omitted or empty, every
+   * `requiresApproval` allow rule returns APPROVAL_REQUIRED without any
+   * proof being consulted — the API's interactive flow.
+   */
+  approvalProof?: string | null
+  /**
+   * Verdict when no rule matches. API routes deny by default
+   * (`NO_MATCHING_ALLOW`); the worker's tool-invoke gate allows by default
+   * (`policySource: 'none'`), because the registry/grant gate that runs
+   * before policy is its primary allowlist.
+   */
+  defaultVerdict?: 'deny' | 'allow'
+}
+
+// A malformed `timeWindow` fails closed (the rule never matches) in every
+// mode: a caller who cannot spell the shape cannot satisfy it either.
 const evaluateConditions = (
   conditions: Record<string, unknown> | null,
 ): boolean => {
   if (!conditions) return true
 
-  if (conditions['timeWindow']) {
-    const tw = conditions['timeWindow'] as {
-      startHour: number
-      endHour: number
-      daysOfWeek: number[]
+  const timeWindow = conditions['timeWindow']
+  if (timeWindow) {
+    if (typeof timeWindow !== 'object' || Array.isArray(timeWindow)) return false
+    const tw = timeWindow as {
+      daysOfWeek?: unknown
+      endHour?: unknown
+      startHour?: unknown
+    }
+    if (
+      typeof tw.startHour !== 'number'
+      || typeof tw.endHour !== 'number'
+      || !Array.isArray(tw.daysOfWeek)
+    ) {
+      return false
     }
     const now = new Date()
     const hour = now.getUTCHours()
@@ -92,22 +128,33 @@ export const buildScopeChain = (
   return { actorId, actorRoles, agentId, scopeIds }
 }
 
-// Evaluate pre-fetched rules (already filtered to the org + scope chain) for one
-// resourceType/action pair using the deny-overrides resolution.
-export const resolveDecision = (
+// Whether one rule's binding targets this actor. The rule is already
+// normalized to a single binding shape by the caller (flattened `$queryRaw`
+// rows for the API, one resolution per prisma-model binding for the worker);
+// the matching semantics are identical either way.
+const bindingMatchesActor = (
+  rule: Pick<PolicyRuleRow, 'actorId' | 'actorType'>,
+  chain: PolicyScopeChain,
+): boolean => {
+  if (rule.actorId === '*') return true
+  if (rule.actorType === 'user' && rule.actorId === chain.actorId) return true
+  if (rule.actorType === 'role' && chain.actorRoles.includes(rule.actorId)) return true
+  if (rule.actorType === 'agent' && rule.actorId === chain.agentId) return true
+  return false
+}
+
+// The shared deny-overrides resolution over normalized rows. Both callers —
+// the API's `resolveDecision` and the worker's tool-invoke adapter — run
+// exactly this loop; the evaluation options carry the only intentional
+// differences (default verdict and approval proof).
+const resolveRules = (
   rules: PolicyRuleRow[],
   chain: PolicyScopeChain,
+  options?: PolicyEvaluationOptions,
 ): PolicyDecision => {
-  const { actorId, actorRoles, agentId } = chain
+  const approvalProof = options?.approvalProof
 
-  // Filter by actor match
-  const matchingRules = rules.filter((rule) => {
-    if (rule.actorId === '*') return true
-    if (rule.actorType === 'user' && rule.actorId === actorId) return true
-    if (rule.actorType === 'role' && actorRoles.includes(rule.actorId)) return true
-    if (rule.actorType === 'agent' && rule.actorId === agentId) return true
-    return false
-  })
+  const matchingRules = rules.filter((rule) => bindingMatchesActor(rule, chain))
 
   // Sort by scope weight then priority
   matchingRules.sort((a, b) => {
@@ -121,11 +168,8 @@ export const resolveDecision = (
   let lastAllow: PolicyRuleRow | null = null
 
   for (const rule of matchingRules) {
-    const conditionsPass = evaluateConditions(
-      rule.conditions as Record<string, unknown> | null,
-    )
-
-    if (!conditionsPass) continue
+    const conditions = rule.conditions as Record<string, unknown> | null
+    if (!evaluateConditions(conditions)) continue
 
     if (rule.effect === 'deny') {
       return {
@@ -137,16 +181,17 @@ export const resolveDecision = (
     }
 
     if (rule.effect === 'allow') {
-      // Check if approval is required
-      const conditions = rule.conditions as Record<string, unknown> | null
-      if (conditions?.['requiresApproval']) {
+      if (conditions?.['requiresApproval'] && !approvalProof) {
         return {
           allowed: false,
           policyRuleId: rule.id,
           policySource: `${rule.scope}:${rule.scopeId}/allow`,
           reasonCode: 'APPROVAL_REQUIRED',
           requiresApproval: true,
-          approvalActionType: (conditions['approvalActionType'] as string) ?? undefined,
+          approvalActionType:
+            typeof conditions['approvalActionType'] === 'string'
+              ? conditions['approvalActionType']
+              : undefined,
         }
       }
       lastAllow = rule
@@ -162,6 +207,10 @@ export const resolveDecision = (
     }
   }
 
+  if (options?.defaultVerdict === 'allow') {
+    return { allowed: true, policySource: 'none', reasonCode: 'ALLOWED' }
+  }
+
   return {
     allowed: false,
     policySource: 'none',
@@ -169,12 +218,21 @@ export const resolveDecision = (
   }
 }
 
+// Evaluate pre-fetched rules (already filtered to the org + scope chain) for one
+// resourceType/action pair using the deny-overrides resolution.
+export const resolveDecision = (
+  rules: PolicyRuleRow[],
+  chain: PolicyScopeChain,
+  options?: PolicyEvaluationOptions,
+): PolicyDecision => resolveRules(rules, chain, options)
+
 export const checkPolicy = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   resourceType: PolicyResourceType,
   action: PolicyAction,
   additionalScopeIds?: { agentId?: string; channelId?: string; toolId?: string },
+  options?: PolicyEvaluationOptions,
 ): Promise<PolicyDecision> => {
   const orgId = actorContext.tenant.organizationId
   const chain = buildScopeChain(actorContext, additionalScopeIds)
@@ -193,7 +251,7 @@ export const checkPolicy = async (
     ORDER BY pr.priority ASC
   `)
 
-  return resolveDecision(rules, chain)
+  return resolveRules(rules, chain, options)
 }
 
 // Load every rule for the org that matches the scope chain and the requested

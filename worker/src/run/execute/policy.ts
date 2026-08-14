@@ -8,19 +8,24 @@ import {
   withActionContext,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
+import {
+  buildScopeChain,
+  resolveDecision,
+  type PolicyRuleRow,
+} from '@nessie/workspace-admin'
 import { summarizeToolInput } from '../tool-util.js'
 import type { ToolDenialReason } from '../tool-policy.js'
 import type { RunContext } from './types.js'
 
-const POLICY_SCOPE_WEIGHT: Record<string, number> = {
-  organization: 0,
-  project: 1,
-  team: 2,
-  channel: 3,
-  agent: 4,
-  tool: 5,
-  user: 6,
-}
+// The worker's tool-invoke gate shares the one policy evaluator in
+// `@nessie/workspace-admin` (security boundary hardening, Workstream 5).
+// What stays here is only the adapter: the prisma-model fetch, the
+// per-binding row normalization, and the verdict mapping into the worker's
+// denial vocabulary. The scope chain comes from the shared `buildScopeChain`
+// with the run's channel/agent/tool ids passed as additional scope ids, and
+// the evaluation runs with the worker's options — allow-by-default plus the
+// run's approval proof — so every behavioural difference from the API's
+// interactive check is a stated option, not a forked loop.
 
 type WorkerPolicyRule = {
   action: string
@@ -69,77 +74,23 @@ export const buildToolActorContext = (
     toolId: toolName,
   })
 
-const evaluatePolicyConditions = (conditions: Record<string, unknown> | null): boolean => {
-  if (!conditions) {
-    return true
-  }
-
-  const timeWindow = conditions['timeWindow']
-  if (timeWindow && typeof timeWindow === 'object' && !Array.isArray(timeWindow)) {
-    const candidate = timeWindow as {
-      daysOfWeek?: unknown
-      endHour?: unknown
-      startHour?: unknown
-    }
-    if (
-      typeof candidate.startHour !== 'number'
-      || typeof candidate.endHour !== 'number'
-      || !Array.isArray(candidate.daysOfWeek)
-    ) {
-      return false
-    }
-
-    const now = new Date()
-    const hour = now.getUTCHours()
-    const day = now.getUTCDay()
-    if (!candidate.daysOfWeek.includes(day)) {
-      return false
-    }
-    if (candidate.startHour <= candidate.endHour) {
-      return hour >= candidate.startHour && hour < candidate.endHour
-    }
-    return hour >= candidate.startHour || hour < candidate.endHour
-  }
-
-  return true
-}
-
-const actorMatchesPolicyBinding = (
-  actorContext: AuthorizedActionContext,
-  context: RunContext,
-  binding: WorkerPolicyRule['bindings'][number],
-): boolean => {
-  if (binding.actorId === '*') {
-    return true
-  }
-  if (
-    binding.actorType === actorContext.actor.actorType
-    && binding.actorId === actorContext.actor.actorId
-  ) {
-    return true
-  }
-  if (binding.actorType === 'role' && actorContext.actor.roles?.includes(binding.actorId)) {
-    return true
-  }
-  if (binding.actorType === 'agent' && binding.actorId === context.agent.id) {
-    return true
-  }
-  return false
-}
-
-const buildPolicyScopeIds = (
-  actorContext: AuthorizedActionContext,
-  context: RunContext,
-  toolName: string,
-): string[] => [
-  actorContext.tenant.organizationId,
-  ...(actorContext.tenant.projectId ? [actorContext.tenant.projectId] : []),
-  ...(actorContext.tenant.teamId ? [actorContext.tenant.teamId] : []),
-  context.channel.id,
-  context.agent.id,
-  toolName,
-  actorContext.actor.actorId,
-]
+// One resolution per binding, matching the flattened `$queryRaw` rows the
+// API evaluator consumes.
+const toPolicyRuleRows = (rules: WorkerPolicyRule[]): PolicyRuleRow[] =>
+  rules.flatMap((rule) =>
+    rule.bindings.map((binding) => ({
+      action: rule.action,
+      actorId: binding.actorId,
+      actorType: binding.actorType,
+      conditions: rule.conditions,
+      effect: rule.effect,
+      id: rule.id,
+      priority: rule.priority,
+      resourceType: rule.resourceType,
+      scope: rule.scope,
+      scopeId: rule.scopeId,
+    })),
+  )
 
 export const evaluateToolInvokePolicy = async (
   prisma: PrismaClient,
@@ -147,72 +98,46 @@ export const evaluateToolInvokePolicy = async (
   context: RunContext,
   toolName: string,
 ): Promise<ToolPolicyEvaluation> => {
-  const rules = await prisma.policyRule.findMany({
+  const chain = buildScopeChain(actorContext, {
+    agentId: context.agent.id,
+    channelId: context.channel.id,
+    toolId: toolName,
+  })
+
+  const rules = (await prisma.policyRule.findMany({
     where: {
       action: 'invoke',
       organizationId: context.channel.organizationId,
       resourceType: 'tool',
-      scopeId: { in: buildPolicyScopeIds(actorContext, context, toolName) },
+      scopeId: { in: chain.scopeIds },
     },
     include: { bindings: true },
     orderBy: [{ priority: 'asc' }],
-  }) as WorkerPolicyRule[]
+  })) as WorkerPolicyRule[]
 
-  const matchingRules = rules
-    .filter((rule) =>
-      rule.bindings.some((binding) => actorMatchesPolicyBinding(actorContext, context, binding)),
-    )
-    .sort((left, right) => {
-      const leftWeight = POLICY_SCOPE_WEIGHT[left.scope] ?? 99
-      const rightWeight = POLICY_SCOPE_WEIGHT[right.scope] ?? 99
-      if (leftWeight !== rightWeight) {
-        return leftWeight - rightWeight
-      }
-      return left.priority - right.priority
-    })
+  const decision = resolveDecision(toPolicyRuleRows(rules), chain, {
+    approvalProof: actorContext.approval?.approvalProof ?? null,
+    defaultVerdict: 'allow',
+  })
 
-  let lastAllow: WorkerPolicyRule | null = null
-  for (const rule of matchingRules) {
-    const conditions = rule.conditions as Record<string, unknown> | null
-    if (!evaluatePolicyConditions(conditions)) {
-      continue
-    }
-
-    if (rule.effect === 'deny') {
-      return {
-        allowed: false,
-        policyRuleId: rule.id,
-        policySource: `${rule.scope}:${rule.scopeId}/deny`,
-        reason: 'explicit_policy_deny',
-      }
-    }
-
-    if (rule.effect === 'allow') {
-      if (conditions?.['requiresApproval'] && !actorContext.approval?.approvalProof) {
-        return {
-          allowed: false,
-          approvalActionType:
-            typeof conditions['approvalActionType'] === 'string'
-              ? conditions['approvalActionType']
-              : undefined,
-          policyRuleId: rule.id,
-          policySource: `${rule.scope}:${rule.scopeId}/allow`,
-          reason: 'approval_required',
-        }
-      }
-      lastAllow = rule
-    }
-  }
-
-  if (lastAllow) {
+  if (decision.allowed) {
     return {
       allowed: true,
-      policyRuleId: lastAllow.id,
-      policySource: `${lastAllow.scope}:${lastAllow.scopeId}/allow`,
+      policyRuleId: decision.policyRuleId,
+      policySource: decision.policySource,
     }
   }
 
-  return { allowed: true, policySource: 'none' }
+  return {
+    allowed: false,
+    approvalActionType: decision.approvalActionType,
+    policyRuleId: decision.policyRuleId,
+    policySource: decision.policySource,
+    reason:
+      decision.reasonCode === 'APPROVAL_REQUIRED'
+        ? 'approval_required'
+        : 'explicit_policy_deny',
+  }
 }
 
 export const emitWorkerAuditEvent = async (
@@ -287,7 +212,10 @@ export const validateRunActorContext = async (
   ) {
     mismatches.push('actionContext.agentId')
   }
-  if (actorContext.actionContext.taskId && actorContext.actionContext.taskId !== context.task.id) {
+  if (
+    actorContext.actionContext.taskId
+    && actorContext.actionContext.taskId !== context.task.id
+  ) {
     mismatches.push('actionContext.taskId')
   }
   if (
