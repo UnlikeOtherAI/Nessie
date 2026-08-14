@@ -11,6 +11,9 @@ macos/.build/
 macos/**/xcshareddata/
 .playwright-mcp/
 *.png
+# EAS uses this ignore file when creating its upload archive. The mobile icons
+# are release inputs and must reach Expo Prebuild.
+!mobile/assets/*.png
 tmp/
 coverage/
 *.tsbuildinfo

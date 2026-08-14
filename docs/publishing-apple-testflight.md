@@ -299,4 +299,5 @@ page and attach the intended internal group if it is not already present.
 | Mac build says the profile is invalid | Confirm its `OSX` platform, team, app identifier, expiration, and distribution `get-task-allow` state. Pass its absolute path in `NESSIE_DESKTOP_APPSTORE_PROFILE`. |
 | Xcode validation reports a missing dSYM | Run `dsymutil`, compare UUIDs with `dwarfdump`, restage the archive, and validate again. |
 | Mac build shows the wrong bundle identifier or executor controls | Rebuild with `tauri:build:appstore`; do not upload the normal Tauri configuration. |
+| iOS EAS Prebuild cannot open `assets/icon.png` | Do not exclude `mobile/assets/*.png` in `.gitignore` or `.easignore`. EAS uses these files to generate the iOS app icons. |
 | iOS EAS submit cannot find the project or App Store record | Complete the one-time `eas init` and `eas.json` submit configuration, then verify the Expo/Apple account access. |
