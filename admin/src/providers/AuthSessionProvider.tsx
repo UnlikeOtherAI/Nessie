@@ -10,12 +10,17 @@ import {
 } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
+  captureWorkspaceSessionSource,
+  classifyWorkspaceSessionPayload,
   createAuthSessionApi,
   createSessionMutationCoordinator,
   type AuthSessionState,
   type BootstrapInput,
   type BootstrapModeResponse,
+  type ExpectedWorkspaceTarget,
+  type ExternalLoginInput,
   type LoginInput,
+  type RecoverWorkspaceSessionInput,
   type SessionPayload,
   type SwitchContextInput,
   type SwitchUoaWorkspaceInput,
@@ -60,6 +65,17 @@ type AuthSessionContextValue = {
   logout: () => Promise<void>
   me: MeResponse | null
   reconcileSession: () => Promise<SessionPayload | null>
+  /**
+   * Complete an external-auth code exchange for a workspace-switch
+   * reauthorization. Unlike `login` this never applies the exchanged session
+   * until the payload proves it is scoped to exactly `expectedWorkspace`; a
+   * mismatch leaves the current session, token, and query cache untouched.
+   * Returns the applied payload.
+   */
+  recoveryExchange: (
+    input: ExternalLoginInput,
+    expectedWorkspace: ExpectedWorkspaceTarget,
+  ) => Promise<SessionPayload>
   refreshAccessToken: (expected?: SessionCredentialSnapshot) => Promise<string | null>
   refreshSession: () => Promise<void>
   sessionMode: StoredTokenMode
@@ -156,6 +172,13 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     })
   }, [commitSessionClear, sessionQueryBoundary])
 
+  // A foreign-session fence or logout permanently terminates its coordinator.
+  // That coordinator stays fenced forever, but the PROVIDER is not dead: once
+  // the terminal clear completes, the generation bumps so a later explicit
+  // login or workspace recovery — after React re-renders — runs against a
+  // fresh coordinator. An ordinary refresh that returns null is not terminal
+  // and never bumps it.
+  const [coordinatorGeneration, setCoordinatorGeneration] = useState(0)
   // Login, startup restore, every API 401, and workspace switching share this
   // exact coordinator. Both refresh cookies are single-use, so no other path
   // may mutate the session concurrently or apply an older response afterwards.
@@ -165,9 +188,20 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
         applySession,
         beforeApply: sessionQueryBoundary.beforeApply,
         clearSession,
+        // A foreign session that missed its guarded target must never live on
+        // beside the rotated HTTP-only cookie family: revoke that exact family
+        // using the foreign payload's own bearer as the proof.
+        onForeignSession: async (payload) => {
+          await authApi.logout(payload.token)
+        },
+        onTerminal: () => {
+          setCoordinatorGeneration((generation) => generation + 1)
+        },
         refresh: authApi.refresh,
       }),
-    [applySession, clearSession, sessionQueryBoundary],
+    // coordinatorGeneration is not read inside the factory; it only re-runs
+    // the memo after the previous coordinator went terminal.
+    [applySession, clearSession, coordinatorGeneration, sessionQueryBoundary],
   )
   const reconcileSession = useCallback((): Promise<SessionPayload | null> => {
     const expected = { mode: sessionMode, token }
@@ -343,6 +377,63 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     await sessionMutations.run(() => authApi.login(input))
   }
 
+  const recoveryExchange = async (
+    input: ExternalLoginInput,
+    expectedWorkspace: ExpectedWorkspaceTarget,
+  ): Promise<SessionPayload> => {
+    if (input.providerId !== 'uoa') {
+      throw new Error('Workspace session recovery is only supported for the UOA provider.')
+    }
+    // The bearer AND the source session are captured lexically inside the
+    // queued thunk — immediately before the request is sent — so the
+    // classification compares against the session that is current when the
+    // mutation actually runs, not when it was enqueued. The guard closure
+    // reads that same lexical binding for BOTH the direct payload and the one
+    // opaque-refresh winner, whose raw response carries no request-local
+    // proof — nothing is ever attached to the payload itself.
+    let capturedSource: ReturnType<typeof captureWorkspaceSessionSource> = null
+    return sessionMutations.runGuarded(
+      () => {
+        const currentToken = tokenRef.current
+        if (typeof currentToken !== 'string' || currentToken.length === 0) {
+          throw new Error('Workspace session recovery requires an active session.')
+        }
+        const currentMe = meRef.current
+        if (!currentMe) {
+          throw new Error('Workspace session recovery requires an active session.')
+        }
+        const source = captureWorkspaceSessionSource(currentMe)
+        if (!source) {
+          throw new Error('Workspace session recovery is only supported for the UOA provider.')
+        }
+        capturedSource = source
+        const recoveryInput: RecoverWorkspaceSessionInput = {
+          code: input.code,
+          codeVerifier: input.codeVerifier,
+          expectedWorkspace,
+          providerId: 'uoa',
+          redirectUri: input.redirectUri,
+          ...(input.theme === undefined ? {} : { theme: input.theme }),
+        }
+        return authApi.recoverWorkspaceSession(currentToken, recoveryInput)
+      },
+      (payload) => {
+        // Defense in depth behind the API's pre-issuance rejection, as a
+        // three-way classification against the lexically captured source:
+        // exact target succeeds; the preserved source session is applied but
+        // the recovery rejects as a non-switch; anything else is foreign. If
+        // the thunk never captured a source the guard fails closed (foreign).
+        if (!capturedSource) {
+          return {
+            kind: 'foreign',
+            message: 'The renewed session could not be verified. Try switching again.',
+          }
+        }
+        return classifyWorkspaceSessionPayload(payload, expectedWorkspace, capturedSource)
+      },
+    )
+  }
+
   const switchContext = async (input: SwitchContextInput): Promise<void> => {
     if (
       tokenRef.current
@@ -392,6 +483,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       logout,
       me,
       reconcileSession,
+      recoveryExchange,
       refreshAccessToken,
       refreshSession,
       sessionMode,

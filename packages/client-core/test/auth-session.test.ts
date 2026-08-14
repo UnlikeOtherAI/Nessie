@@ -3,11 +3,11 @@ import test from 'node:test'
 
 import {
   AuthSessionApiError,
-  createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
-  createSessionMutationCoordinator,
+  SessionMutationLoss,
   getAccessTokenExpiresAtMs,
   getAccessTokenRenewalDelayMs,
+  sessionMatchesExpectedWorkspace,
   type SessionPayload,
 } from '../src/auth-session.js'
 
@@ -175,273 +175,227 @@ test('UOA workspace switching preserves the server error code and status', async
   )
 })
 
-test('access-token refresh coordinator is single-flight', async () => {
-  let resolveRefresh: ((payload: SessionPayload) => void) | undefined
-  let refreshCalls = 0
-  let applyCalls = 0
-  let clearCalls = 0
-  const refreshResult = new Promise<SessionPayload>((resolve) => {
-    resolveRefresh = resolve
-  })
-  const refresh = createAccessTokenRefreshCoordinator({
-    applySession: () => {
-      applyCalls += 1
+test('sessionMatchesExpectedWorkspace requires the exact active UOA org and team', () => {
+  const targeted = {
+    me: {
+      uoaWorkspaces: [
+        { active: false, organizationId: 'org-a', teamId: 'team-a' },
+        { active: true, organizationId: 'org-b', teamId: 'team-b' },
+      ],
     },
-    clearSession: () => {
-      clearCalls += 1
-    },
-    refresh: () => {
-      refreshCalls += 1
-      return refreshResult
-    },
-  })
+    token: 'token',
+  } as unknown as SessionPayload
 
-  const startupRenewal = refresh()
-  const api401Renewal = refresh()
-  assert.strictEqual(startupRenewal, api401Renewal)
-  assert.equal(refreshCalls, 1)
-
-  resolveRefresh?.(sessionPayload('renewed-token'))
-  assert.deepEqual(
-    await Promise.all([startupRenewal, api401Renewal]),
-    ['renewed-token', 'renewed-token'],
+  assert.equal(
+    sessionMatchesExpectedWorkspace(targeted, { organizationId: 'org-b', teamId: 'team-b' }),
+    true,
   )
-  assert.equal(applyCalls, 1)
-  assert.equal(clearCalls, 0)
+  assert.equal(
+    sessionMatchesExpectedWorkspace(targeted, { organizationId: 'org-a', teamId: 'team-a' }),
+    false,
+  )
+  assert.equal(
+    sessionMatchesExpectedWorkspace(targeted, { organizationId: 'org-b', teamId: 'team-c' }),
+    false,
+  )
+  assert.equal(
+    sessionMatchesExpectedWorkspace(
+      sessionPayload('no-directory'),
+      { organizationId: 'org-b', teamId: 'team-b' },
+    ),
+    false,
+  )
+
+  // Ambiguous multiple-active responses are rejected, even when one matches.
+  const ambiguous = {
+    me: {
+      uoaWorkspaces: [
+        { active: true, organizationId: 'org-b', teamId: 'team-b' },
+        { active: true, organizationId: 'org-a', teamId: 'team-a' },
+      ],
+    },
+    token: 'token',
+  } as unknown as SessionPayload
+  assert.equal(
+    sessionMatchesExpectedWorkspace(ambiguous, { organizationId: 'org-b', teamId: 'team-b' }),
+    false,
+  )
+
+  // An empty active set never matches.
+  const noneActive = {
+    me: {
+      uoaWorkspaces: [{ active: false, organizationId: 'org-b', teamId: 'team-b' }],
+    },
+    token: 'token',
+  } as unknown as SessionPayload
+  assert.equal(
+    sessionMatchesExpectedWorkspace(noneActive, { organizationId: 'org-b', teamId: 'team-b' }),
+    false,
+  )
 })
 
-test('coordinator clears only on explicit rejection and retries transient failures', async () => {
-  let refreshCalls = 0
-  let applyCalls = 0
-  let clearCalls = 0
-  const refresh = createAccessTokenRefreshCoordinator({
-    applySession: () => {
-      applyCalls += 1
+test('recoverWorkspaceSession sends the bearer proof and exact expected workspace to POST /api/auth/session', async () => {
+  await withMockFetch(
+    async (input, init) => {
+      assert.equal(input, 'https://api.example.test/api/auth/session')
+      assert.equal(init?.method, 'POST')
+      assert.equal(init?.credentials, 'include')
+      const headers = new Headers(init?.headers)
+      assert.equal(headers.get('authorization'), 'Bearer current-access-token')
+      assert.equal(headers.get('content-type'), 'application/json')
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        code: 'auth-code',
+        codeVerifier: 'pkce-verifier',
+        expectedWorkspace: { organizationId: 'external-org', teamId: 'external-team' },
+        providerId: 'uoa',
+        redirectUri: 'https://app.example.test/callback',
+      })
+      return Response.json({ data: sessionPayload('recovered-token') })
     },
-    clearSession: () => {
-      clearCalls += 1
+    async () => {
+      assert.deepEqual(
+        await createAuthSessionApi('https://api.example.test/').recoverWorkspaceSession(
+          'current-access-token',
+          {
+            code: 'auth-code',
+            codeVerifier: 'pkce-verifier',
+            expectedWorkspace: { organizationId: 'external-org', teamId: 'external-team' },
+            providerId: 'uoa',
+            redirectUri: 'https://app.example.test/callback',
+          },
+        ),
+        sessionPayload('recovered-token'),
+      )
     },
-    refresh: async () => {
-      refreshCalls += 1
-      if (refreshCalls === 1) {
-        throw new Error('Temporary outage')
+  )
+})
+
+test('recoverWorkspaceSession refuses a missing or empty bearer locally', async () => {
+  let fetchCalls = 0
+  await withMockFetch(
+    async () => {
+      fetchCalls += 1
+      return Response.json({ data: sessionPayload('unreached') })
+    },
+    async () => {
+      const api = createAuthSessionApi('https://api.example.test')
+      const input = {
+        code: 'auth-code',
+        codeVerifier: 'pkce-verifier',
+        expectedWorkspace: { organizationId: 'external-org', teamId: 'external-team' },
+        providerId: 'uoa' as const,
+        redirectUri: 'https://app.example.test/callback',
       }
-      return sessionPayload('recovered-token')
+      await assert.rejects(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        api.recoverWorkspaceSession(null as unknown as string, input),
+        /requires an authenticated bearer token/,
+      )
+      await assert.rejects(
+        api.recoverWorkspaceSession('', input),
+        /requires an authenticated bearer token/,
+      )
+      assert.equal(fetchCalls, 0)
     },
-  })
-
-  await assert.rejects(refresh(), /Temporary outage/)
-  assert.equal(clearCalls, 0)
-  assert.equal(await refresh(), 'recovered-token')
-  assert.equal(refreshCalls, 2)
-  assert.equal(applyCalls, 1)
-  assert.equal(clearCalls, 0)
-
-  const rejectRefresh = createAccessTokenRefreshCoordinator({
-    applySession: () => {
-      applyCalls += 1
-    },
-    clearSession: () => {
-      clearCalls += 1
-    },
-    refresh: async () => null,
-  })
-  assert.equal(await rejectRefresh(), null)
-  assert.equal(clearCalls, 1)
-})
-
-test('session mutation coordinator makes refresh join an in-flight workspace switch', async () => {
-  let resolveSwitch: ((payload: SessionPayload) => void) | undefined
-  let refreshCalls = 0
-  const applied: string[] = []
-  const switchResult = new Promise<SessionPayload>((resolve) => {
-    resolveSwitch = resolve
-  })
-  const coordinator = createSessionMutationCoordinator({
-    applySession: (payload) => applied.push(payload.token),
-    clearSession: () => assert.fail('session must remain authenticated'),
-    refresh: async () => {
-      refreshCalls += 1
-      return sessionPayload('unexpected-refresh')
-    },
-  })
-
-  const switching = coordinator.run(() => switchResult)
-  const renewing = coordinator.refresh()
-  assert.equal(refreshCalls, 0)
-
-  resolveSwitch?.(sessionPayload('switched-token'))
-  assert.equal((await switching).token, 'switched-token')
-  assert.equal(await renewing, 'switched-token')
-  assert.deepEqual(applied, ['switched-token'])
-})
-
-test('logout suppresses an in-flight switch and deletes its winning session', async () => {
-  let resolveSwitch: ((payload: SessionPayload) => void) | undefined
-  const switchResult = new Promise<SessionPayload>((resolve) => {
-    resolveSwitch = resolve
-  })
-  const events: string[] = []
-  const coordinator = createSessionMutationCoordinator({
-    applySession: (payload) => events.push(`apply:${payload.token}`),
-    clearSession: () => events.push('clear'),
-    refresh: async () => assert.fail('refresh is not part of logout'),
-  })
-
-  const switching = coordinator.run(() => switchResult)
-  const logout = coordinator.terminate(async (latestPayload) => {
-    events.push(`delete:${latestPayload?.token ?? 'none'}`)
-  })
-  const blockedMutation = coordinator.run(async () => {
-    events.push('unexpected-mutation')
-    return sessionPayload('unexpected-token')
-  })
-
-  await assert.rejects(blockedMutation, /session is being terminated/)
-  assert.deepEqual(events, [])
-  resolveSwitch?.(sessionPayload('switched-token'))
-
-  await assert.rejects(switching, /session is being terminated/)
-  await logout
-  assert.deepEqual(events, ['delete:switched-token', 'clear'])
-})
-
-test('logout still deletes and clears after an in-flight mutation rejects', async () => {
-  let rejectSwitch: ((error: Error) => void) | undefined
-  const switchResult = new Promise<SessionPayload>((_resolve, reject) => {
-    rejectSwitch = reject
-  })
-  const events: string[] = []
-  const coordinator = createSessionMutationCoordinator({
-    applySession: (payload) => events.push(`apply:${payload.token}`),
-    clearSession: () => events.push('clear'),
-    refresh: async () => assert.fail('refresh is not part of logout'),
-  })
-
-  const switching = coordinator.run(() => switchResult)
-  const logout = coordinator.terminate(async (latestPayload) => {
-    events.push(`delete:${latestPayload?.token ?? 'none'}`)
-  })
-  rejectSwitch?.(new Error('switch failed'))
-
-  await assert.rejects(switching, /switch failed/)
-  await logout
-  assert.deepEqual(events, ['delete:none', 'clear'])
-})
-
-test('logout suppresses a session waiting at its cache-reset boundary', async () => {
-  let enterBoundary: (() => void) | undefined
-  let releaseBoundary: (() => void) | undefined
-  const boundaryEntered = new Promise<void>((resolve) => {
-    enterBoundary = resolve
-  })
-  const boundaryRelease = new Promise<void>((resolve) => {
-    releaseBoundary = resolve
-  })
-  const events: string[] = []
-  const coordinator = createSessionMutationCoordinator({
-    beforeApply: async () => {
-      events.push('before-apply')
-      enterBoundary?.()
-      await boundaryRelease
-    },
-    applySession: (payload) => events.push(`apply:${payload.token}`),
-    clearSession: () => events.push('clear'),
-    refresh: async () => assert.fail('refresh is not part of logout'),
-  })
-
-  const switching = coordinator.run(async () => sessionPayload('switched-token'))
-  await boundaryEntered
-  const logout = coordinator.terminate(async (latestPayload) => {
-    events.push(`delete:${latestPayload?.token ?? 'none'}`)
-  })
-  releaseBoundary?.()
-
-  await assert.rejects(switching, /session is being terminated/)
-  await logout
-  assert.deepEqual(events, ['before-apply', 'delete:switched-token', 'clear'])
-})
-
-test('session mutation coordinator exposes the refreshed payload and token-only API', async () => {
-  let resolveRefresh: ((payload: SessionPayload) => void) | undefined
-  let refreshCalls = 0
-  const refreshResult = new Promise<SessionPayload>((resolve) => {
-    resolveRefresh = resolve
-  })
-  const coordinator = createSessionMutationCoordinator({
-    applySession: () => undefined,
-    clearSession: () => assert.fail('session must remain authenticated'),
-    refresh: () => {
-      refreshCalls += 1
-      return refreshResult
-    },
-  })
-
-  const reconciling = coordinator.reconcile()
-  const refreshing = coordinator.refresh()
-  assert.equal(refreshCalls, 1)
-
-  const payload = sessionPayload('renewed-token')
-  resolveRefresh?.(payload)
-  assert.equal(await reconciling, payload)
-  assert.equal(await refreshing, 'renewed-token')
-})
-
-test('payload reconciliation refreshes after a failed explicit mutation', async () => {
-  let refreshCalls = 0
-  const coordinator = createSessionMutationCoordinator({
-    applySession: () => undefined,
-    clearSession: () => assert.fail('session must remain authenticated'),
-    refresh: async () => {
-      refreshCalls += 1
-      return sessionPayload('reconciled-token')
-    },
-  })
-
-  await assert.rejects(
-    coordinator.run(async () => {
-      throw new TypeError('response body was lost')
-    }),
-    /response body was lost/,
   )
-
-  assert.equal((await coordinator.reconcile())?.token, 'reconciled-token')
-  assert.equal(refreshCalls, 1)
 })
 
-test('session mutation coordinator runs its global before-apply for every mutation', async () => {
-  let resolveRefresh: ((payload: SessionPayload) => void) | undefined
-  let currentToken = 'old-token'
-  const events: string[] = []
-  const refreshResult = new Promise<SessionPayload>((resolve) => {
-    resolveRefresh = resolve
-  })
-  const coordinator = createSessionMutationCoordinator({
-    beforeApply: (payload) => {
-      events.push(`before:${payload.token}`)
+test('ordinary login stays bearer-free even on the same session route', async () => {
+  await withMockFetch(
+    async (input, init) => {
+      assert.equal(input, 'https://api.example.test/api/auth/session')
+      assert.equal(init?.method, 'POST')
+      const headers = new Headers(init?.headers)
+      assert.equal(headers.get('authorization'), null)
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        email: 'person@example.test',
+        password: 'secret',
+      })
+      return Response.json({ data: sessionPayload('login-token') })
     },
-    applySession: (payload) => {
-      currentToken = payload.token
-      events.push(`apply:${payload.token}`)
+    async () => {
+      assert.deepEqual(
+        await createAuthSessionApi('https://api.example.test').login({
+          email: 'person@example.test',
+          password: 'secret',
+        }),
+        sessionPayload('login-token'),
+      )
     },
-    clearSession: () => assert.fail('session must remain authenticated'),
-    refresh: () => refreshResult,
+  )
+})
+
+test('a lost session response surfaces as an opaque SessionMutationLoss, never a status error', async (t) => {
+  await t.test('transport failure', async () => {
+    await withMockFetch(
+      async () => {
+        throw new TypeError('Network unavailable')
+      },
+      async () => {
+        await assert.rejects(
+          createAuthSessionApi('https://api.example.test').login({
+            email: 'person@example.test',
+            password: 'secret',
+          }),
+          (error: unknown) => {
+            assert.ok(error instanceof SessionMutationLoss)
+            assert.match(error.message, /lost in transit/)
+            return true
+          },
+        )
+      },
+    )
   })
 
-  const renewing = coordinator.refresh()
-  const switching = coordinator.run(async () => {
-    events.push(`switch:${currentToken}`)
-    return sessionPayload('switched-token')
+  await t.test('unreadable success body', async () => {
+    await withMockFetch(
+      async () =>
+        new Response('not-json', {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        }),
+      async () => {
+        await assert.rejects(
+          createAuthSessionApi('https://api.example.test').recoverWorkspaceSession(
+            'current-access-token',
+            {
+              code: 'auth-code',
+              codeVerifier: 'pkce-verifier',
+              expectedWorkspace: { organizationId: 'external-org', teamId: 'external-team' },
+              providerId: 'uoa',
+              redirectUri: 'https://app.example.test/callback',
+            },
+          ),
+          (error: unknown) => {
+            assert.ok(error instanceof SessionMutationLoss)
+            assert.match(error.message, /could not be read/)
+            return true
+          },
+        )
+      },
+    )
   })
 
-  resolveRefresh?.(sessionPayload('renewed-token'))
-  assert.equal(await renewing, 'renewed-token')
-  assert.equal((await switching).token, 'switched-token')
-  assert.deepEqual(events, [
-    'before:renewed-token',
-    'apply:renewed-token',
-    'switch:renewed-token',
-    'before:switched-token',
-    'apply:switched-token',
-  ])
+  await t.test('a delivered HTTP status stays typed and is never opaque', async () => {
+    await withMockFetch(
+      async () => Response.json(
+        { error: { code: 'WORKSPACE_MISMATCH', message: 'Wrong workspace' } },
+        { status: 409 },
+      ),
+      async () => {
+        await assert.rejects(
+          createAuthSessionApi('https://api.example.test').login({
+            email: 'person@example.test',
+            password: 'secret',
+          }),
+          (error: unknown) => {
+            assert.ok(error instanceof AuthSessionApiError)
+            assert.equal(error.code, 'WORKSPACE_MISMATCH')
+            assert.equal(error.status, 409)
+            return true
+          },
+        )
+      },
+    )
+  })
 })

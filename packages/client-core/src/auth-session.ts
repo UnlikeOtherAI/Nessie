@@ -1,5 +1,23 @@
 import type { MeResponse } from '@nessie/schemas'
 import type { AuthProviderDescriptor, BootstrapModeResponse } from './api-types.js'
+export {
+  ForeignSessionDetected,
+  SessionMutationLoss,
+  SessionMutationRejection,
+  SessionSourcePreserved,
+} from './session-mutation-errors.js'
+import { SessionMutationLoss } from './session-mutation-errors.js'
+import type { SessionMutationOutcome } from './session-mutation-coordinator.js'
+
+export {
+  createAccessTokenRefreshCoordinator,
+  createSessionMutationCoordinator,
+  type AccessTokenRefreshCoordinator,
+  type SessionMutationCoordinator,
+  type SessionMutationGuard,
+  type SessionMutationOutcome,
+  type SessionReconcileCoordinator,
+} from './session-mutation-coordinator.js'
 
 export type AuthSessionState = 'authenticated' | 'bootstrap' | 'loading' | 'unauthenticated'
 
@@ -10,18 +28,42 @@ export type BootstrapInput = {
   password: string
 }
 
+// An external identity-provider code exchange (PKCE) for session creation.
+export type ExternalLoginInput = {
+  code: string
+  codeVerifier: string
+  providerId: string
+  redirectUri: string
+  theme?: string
+}
+
 export type LoginInput =
   | {
       email: string
       password: string
     }
-  | {
-      code: string
-      codeVerifier: string
-      providerId: string
-      redirectUri: string
-      theme?: string
-    }
+  | ExternalLoginInput
+
+// Exact external (UOA) workspace a session must be scoped to.
+export type ExpectedWorkspaceTarget = {
+  organizationId: string
+  teamId: string
+}
+
+// An authenticated workspace-switch reauthorization: the external-auth code
+// exchange plus the exact external workspace the renewed session must land
+// on. The API rejects the exchange before any local mutation or Set-Cookie
+// when the provider's active org/team differ.
+export type RecoverWorkspaceSessionInput = {
+  code: string
+  codeVerifier: string
+  expectedWorkspace: ExpectedWorkspaceTarget
+  // Workspace recovery is UOA-only: the expectedWorkspace discriminant is
+  // defined against the identity provider's own active selection.
+  providerId: 'uoa'
+  redirectUri: string
+  theme?: string
+}
 
 // Persists the bearer token across reloads. On web this is backed by
 // `localStorage`; on React Native the host injects an equivalent.
@@ -36,17 +78,90 @@ export type SessionPayload = {
   token: string
 }
 
-export type AccessTokenRefreshCoordinator = () => Promise<string | null>
+/**
+ * True when an exchanged session is scoped to exactly the expected external
+ * workspace. The session claims the active UOA org/team through
+ * `me.uoaWorkspaces` (the identity provider's own active selection).
+ */
+export const sessionMatchesExpectedWorkspace = (
+  payload: SessionPayload,
+  expected: ExpectedWorkspaceTarget,
+): boolean => {
+  // Exactly one active UOA workspace may exist; an ambiguous multiple-active
+  // response is rejected outright rather than pattern-matched.
+  const active = (payload.me.uoaWorkspaces ?? []).filter((workspace) => workspace.active)
+  if (active.length !== 1) return false
+  const [workspace] = active
+  return workspace?.organizationId === expected.organizationId
+    && workspace?.teamId === expected.teamId
+}
 
-export type SessionReconcileCoordinator = () => Promise<SessionPayload | null>
+/**
+ * The preserved source session a workspace recovery starts from, captured by
+ * the caller immediately inside the queued mutation thunk — never at enqueue
+ * time, so it is the session that is current when the request is actually
+ * sent. A decoded payload that misses the exact target is only the *source*
+ * (applied but a rejected non-switch) when every one of these fields matches;
+ * anything else is foreign.
+ */
+export type WorkspaceSessionSource = {
+  userId: string
+  organizationId: string
+  projectId: string
+  teamId: string
+  providerId: 'uoa'
+}
 
-export type SessionMutationCoordinator = {
-  refresh: AccessTokenRefreshCoordinator
-  reconcile: SessionReconcileCoordinator
-  run: (mutation: () => Promise<SessionPayload>) => Promise<SessionPayload>
-  terminate: (
-    finalize: (latestPayload: SessionPayload | null) => Promise<void> | void,
-  ) => Promise<void>
+/**
+ * Capture the source session a guarded workspace recovery must preserve. Only
+ * a UOA-authenticated session can recover onto a UOA workspace; any other
+ * provider yields null and the recovery must refuse before it sends.
+ */
+export const captureWorkspaceSessionSource = (
+  me: MeResponse,
+): WorkspaceSessionSource | null => {
+  if (me.auth.providerId !== 'uoa') return null
+  return {
+    userId: me.user.id,
+    organizationId: me.context.organizationId,
+    projectId: me.context.projectId,
+    teamId: me.context.teamId,
+    providerId: 'uoa',
+  }
+}
+
+/**
+ * Three-way classification of a workspace-recovery payload against the exact
+ * requested external target and the captured source session. `target` when
+ * the active UOA org/team are exactly the requested pair; `source` when the
+ * payload is the preserved source session (same local user id, local
+ * org/project/team, and UOA provider); `foreign` otherwise.
+ */
+export const classifyWorkspaceSessionPayload = (
+  payload: SessionPayload,
+  expectedWorkspace: ExpectedWorkspaceTarget,
+  source: WorkspaceSessionSource,
+): SessionMutationOutcome => {
+  if (sessionMatchesExpectedWorkspace(payload, expectedWorkspace)) {
+    return { kind: 'target' }
+  }
+  const me = payload.me
+  if (
+    me.user.id === source.userId
+    && me.context.organizationId === source.organizationId
+    && me.context.projectId === source.projectId
+    && me.context.teamId === source.teamId
+    && me.auth.providerId === source.providerId
+  ) {
+    return {
+      kind: 'source',
+      message: 'The session was renewed on the current workspace, but the switch did not complete. Try switching again.',
+    }
+  }
+  return {
+    kind: 'foreign',
+    message: 'The renewed session did not land on the requested workspace. Try switching again.',
+  }
 }
 
 const MAX_SAFE_JWT_EXPIRY_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1_000)
@@ -102,134 +217,6 @@ export const getAccessTokenRenewalDelayMs = (
   return Math.max(0, expiresAtMs - nowMs - Math.max(0, renewalLeewayMs))
 }
 
-/**
- * Serialize every mutation of the renewable session — startup restoration,
- * proactive renewal, API 401 recovery, and workspace switching. A rotating
- * refresh cookie is single-use, so a refresh joins any in-flight mutation and
- * explicit mutations wait their turn. A null payload is an authentication
- * rejection; thrown errors deliberately leave the current session untouched.
- */
-export const createSessionMutationCoordinator = (input: {
-  applySession: (payload: SessionPayload) => void
-  beforeApply?: (payload: SessionPayload) => Promise<void> | void
-  clearSession: () => Promise<void> | void
-  refresh: () => Promise<SessionPayload | null>
-}): SessionMutationCoordinator => {
-  let queue: Promise<void> | null = null
-  let latest: Promise<SessionPayload | null> | null = null
-  let latestToken: Promise<string | null> | null = null
-  let terminating = false
-  let termination: Promise<void> | null = null
-  let terminalPayload: SessionPayload | null = null
-
-  const enqueue = (
-    mutation: () => Promise<SessionPayload | null>,
-  ): Promise<SessionPayload | null> => {
-    if (terminating) {
-      return Promise.reject(new Error('The session is being terminated.'))
-    }
-    const execute = async (): Promise<SessionPayload | null> => {
-      if (terminating) throw new Error('The session is being terminated.')
-      const payload = await mutation()
-      if (terminating) {
-        terminalPayload = payload
-        throw new Error('The session is being terminated.')
-      }
-      if (payload === null) {
-        await input.clearSession()
-        return null
-      }
-      await input.beforeApply?.(payload)
-      if (terminating) {
-        terminalPayload = payload
-        throw new Error('The session is being terminated.')
-      }
-      input.applySession(payload)
-      return payload
-    }
-    const run = queue ? queue.then(execute) : execute()
-    const nextQueue = run.then(() => undefined, () => undefined)
-    queue = nextQueue
-    latest = run
-    latestToken = run.then(
-      (payload) => payload?.token ?? null,
-      (error: unknown) => { throw error },
-    )
-    // Payload-aware callers may own `run` directly. Attach a rejection handler
-    // to the token projection as well so that unused compatibility projections
-    // never become unhandled rejections.
-    void latestToken.catch(() => undefined)
-
-    const clearLatest = (): void => {
-      if (queue === nextQueue) queue = null
-      if (latest === run) {
-        latest = null
-        latestToken = null
-      }
-    }
-    void run.then(clearLatest, clearLatest)
-    return run
-  }
-
-  const reconcile = (): Promise<SessionPayload | null> => {
-    if (terminating) {
-      return Promise.reject(new Error('The session is being terminated.'))
-    }
-    // A refresh arriving while another session mutation is queued must join
-    // that mutation. Issuing a second request could otherwise apply an older
-    // access token after a workspace switch or race two single-use cookies.
-    if (latest) return latest
-    return enqueue(input.refresh)
-  }
-
-  const refresh = (): Promise<string | null> => {
-    if (terminating) {
-      return Promise.reject(new Error('The session is being terminated.'))
-    }
-    if (latestToken) return latestToken
-    const pending = reconcile()
-    return latestToken ?? pending.then((payload) => payload?.token ?? null)
-  }
-
-  const run = async (
-    mutation: () => Promise<SessionPayload>,
-  ): Promise<SessionPayload> => {
-    const payload = await enqueue(mutation)
-    if (!payload) throw new Error('Session mutation returned no session.')
-    return payload
-  }
-
-  const terminate = (
-    finalize: (latestPayload: SessionPayload | null) => Promise<void> | void,
-  ): Promise<void> => {
-    if (termination) return termination
-    terminating = true
-    const pendingQueue = queue
-    const ending = (async (): Promise<void> => {
-      try {
-        await pendingQueue
-        await finalize(terminalPayload)
-      } finally {
-        await input.clearSession()
-        terminalPayload = null
-        terminating = false
-        termination = null
-      }
-    })()
-    termination = ending
-    return ending
-  }
-
-  return { reconcile, refresh, run, terminate }
-}
-
-export const createAccessTokenRefreshCoordinator = (input: {
-  applySession: (payload: SessionPayload) => void
-  beforeApply?: (payload: SessionPayload) => Promise<void> | void
-  clearSession: () => Promise<void> | void
-  refresh: () => Promise<SessionPayload | null>
-}): AccessTokenRefreshCoordinator => createSessionMutationCoordinator(input).refresh
-
 // Re-scope the session to another workspace the user already belongs to. The
 // server re-validates membership of the full org/project/team triple.
 export type SwitchContextInput = {
@@ -268,6 +255,16 @@ export type AuthSessionApi = {
   fetchSession: (token: string | null) => Promise<SessionSnapshot>
   login: (input: LoginInput) => Promise<SessionPayload>
   logout: (token: string | null) => Promise<void>
+  // Reauthorize an already-authenticated session onto an exact external
+  // workspace. `token` is read at call time and sent as the current Bearer
+  // proof beside the PKCE exchange. An HTTP refusal is typed
+  // (AuthSessionApiError); a transport failure or unreadable body is opaque
+  // (SessionMutationLoss) so the guarded coordinator can decide whether one
+  // refresh winner is warranted.
+  recoverWorkspaceSession: (
+    token: string,
+    input: RecoverWorkspaceSessionInput,
+  ) => Promise<SessionPayload>
   // Renew the access token from the httpOnly refresh cookie. Returns the new
   // session, or null when there is no valid refresh cookie.
   refresh: () => Promise<SessionPayload | null>
@@ -344,21 +341,43 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
     return { kind: 'authenticated', me: payload.data }
   }
 
-  const postSession = async (path: string, body: unknown): Promise<SessionPayload> => {
-    const response = await fetch(`${resolvedBaseUrl}${path}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      // Required so the browser stores the httpOnly refresh cookie returned by
-      // a cross-origin login.
-      credentials: 'include',
-    })
+  // Bearer-free session creation (login/bootstrap). The response may already
+  // have Set-Cookie'd the renewed family even when the body never arrives, so
+  // opaque failures — transport errors, unreadable bodies — surface as
+  // SessionMutationLoss; the guarded coordinator then lets one refresh winner
+  // decide. A delivered HTTP status is a typed AuthSessionApiError and never
+  // triggers that refresh.
+  const postSession = async (
+    path: string,
+    body: unknown,
+    token?: string | null,
+  ): Promise<SessionPayload> => {
+    let response: Response
+    try {
+      response = await fetch(`${resolvedBaseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+        // Required so the browser stores the httpOnly refresh cookie returned
+        // by a cross-origin login.
+        credentials: 'include',
+      })
+    } catch (error: unknown) {
+      throw new SessionMutationLoss('The session response was lost in transit.', error)
+    }
 
     if (!response.ok) {
       throw await parseApiError(response)
     }
 
-    return parseResponse<SessionPayload>(response)
+    try {
+      return await parseResponse<SessionPayload>(response)
+    } catch (error: unknown) {
+      throw new SessionMutationLoss('The session response body could not be read.', error)
+    }
   }
 
   return {
@@ -374,6 +393,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
     },
     fetchProviders,
     fetchSession,
+    // Ordinary login stays bearer-free: the caller has no session to prove.
     login: (input) => postSession('/api/auth/session', input),
     logout: async (token) => {
       await fetch(`${resolvedBaseUrl}/api/auth/session`, {
@@ -382,6 +402,16 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
         // Send the refresh cookie so the server can revoke the token family.
         credentials: 'include',
       }).catch(() => undefined)
+    },
+    // Workspace-switch reauthorization goes to the same session route but is
+    // a distinct, authenticated operation: the expectedWorkspace discriminant
+    // is valid only beside the current Bearer proof, and the exchange is
+    // fenced by the guarded coordinator's exact-target check.
+    recoverWorkspaceSession: async (token, input) => {
+      if (typeof token !== 'string' || token.length === 0) {
+        throw new Error('Workspace session recovery requires an authenticated bearer token.')
+      }
+      return postSession('/api/auth/session', input, token)
     },
     refresh: async () => {
       const response = await fetch(`${resolvedBaseUrl}/api/auth/refresh`, {

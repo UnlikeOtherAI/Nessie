@@ -144,15 +144,27 @@ export {
 export {
   beginExternalAuth,
   clearPendingExternalAuth,
+  createMemoryPkceStorage,
   readPendingExternalAuth,
   type BeginExternalAuthInput,
   type PendingExternalAuth,
+  type PendingExternalAuthTarget,
   type PkceStorage,
 } from './pkce.js'
+
+// Guarded-mutation error types shared by auth-session and the coordinator.
+export {
+  ForeignSessionDetected,
+  SessionMutationLoss,
+  SessionMutationRejection,
+  SessionSourcePreserved,
+} from './session-mutation-errors.js'
 
 // Framework-neutral auth/session flows (token exchange, session shape).
 export {
   AuthSessionApiError,
+  captureWorkspaceSessionSource,
+  classifyWorkspaceSessionPayload,
   createAccessTokenRefreshCoordinator,
   createAuthSessionApi,
   createSessionMutationCoordinator,
@@ -162,12 +174,19 @@ export {
   type AuthSessionApi,
   type AuthSessionState,
   type BootstrapInput,
+  type ExpectedWorkspaceTarget,
+  type ExternalLoginInput,
   type LoginInput,
+  type RecoverWorkspaceSessionInput,
+  sessionMatchesExpectedWorkspace,
   type SessionPayload,
   type SessionMutationCoordinator,
+  type SessionMutationGuard,
+  type SessionMutationOutcome,
   type SessionReconcileCoordinator,
   type SessionSnapshot,
   type SwitchContextInput,
   type SwitchUoaWorkspaceInput,
   type TokenStore,
+  type WorkspaceSessionSource,
 } from './auth-session.js'
