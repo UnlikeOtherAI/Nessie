@@ -43,10 +43,10 @@ try {
   }
   const applicationIdentifier = await readValue(':Entitlements:com.apple.application-identifier')
     .catch(() => readValue(':Entitlements:application-identifier'))
-  const [platform, profileTeamIdentifier, getTaskAllow, expirationDate] = await Promise.all([
+  const getTaskAllow = await readValue(':Entitlements:get-task-allow').catch(() => 'false')
+  const [platform, profileTeamIdentifier, expirationDate] = await Promise.all([
     readValue(':Platform:0'),
     readValue(':TeamIdentifier:0'),
-    readValue(':Entitlements:get-task-allow'),
     readValue(':ExpirationDate'),
   ])
   metadata = {
