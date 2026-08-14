@@ -343,6 +343,23 @@ provisioned before the build; if it is unavailable or cannot accept the
 signature, report that concrete blocker instead of treating an artifact URL as
 the handoff.
 
+Unless the request explicitly asks for Metro hot reload or an Expo development
+client, an internal physical-device deployment uses the `preview` EAS profile.
+It launches the normal Nessie WebView shell directly. The `development` profile
+opens the Expo development launcher and is not a substitute for a usable app
+deployment.
+
+Treat the deployment as complete only after verifying all of the following:
+
+1. The target is the intended physical device (match its hardware UDID and
+   model, not only its friendly name) and the signing profile includes it.
+2. The installed app is the build just produced, then it is terminated,
+   launched in the foreground, and remains running.
+3. A device screenshot shows the requested Nessie application screen. A
+   successful install/launch command, a shared bundle ID, a TestFlight screen,
+   or the Expo development launcher is not visual confirmation of the deployed
+   app.
+
 ### Simulators & emulators (headless verification)
 
 ```sh
