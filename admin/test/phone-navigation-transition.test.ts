@@ -262,6 +262,8 @@ test('defines paired push and pop animations under the global reduced-motion rul
   const styles = readSource('../src/styles.css')
 
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/)
+  assert.match(styles, /\.phone-navigation-screen--forward-ready/)
+  assert.match(styles, /transform: translate3d\(100%, 0, 0\)/)
   assert.match(styles, /@keyframes phone-navigation-forward-out/)
   assert.match(styles, /@keyframes phone-navigation-forward-in/)
   assert.match(styles, /@keyframes phone-navigation-back-out/)

@@ -359,7 +359,11 @@ and leaves page data, URLs, and conversation state in the admin React app.
   conversation's Back control, browser/WebView Back, or tab-root navigation
   reverses that motion. This shared admin transition runs in both the iPhone
   and Android WebView shells (and narrow mobile web), and follows the system's
-  reduced-motion preference.
+  reduced-motion preference. A forward push mounts its destination fully
+  offscreen, gives the browser one painted frame to lay out and composite it,
+  and only then starts the paired transforms. Navigation does not wait for
+  network data: the destination's own loading state is prepainted instead of
+  flashing into existence during its first moving frame.
 - A phone edge-swipe is owned by that same admin stack. The prior React screen
   remains mounted underneath the current one, so it is visible continuously
   under the finger with its scroll and component state intact. Native WebView
