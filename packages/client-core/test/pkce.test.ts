@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   beginExternalAuth,
   claimPendingExternalAuth,
+  clearPendingExternalAuthMatching,
   readPendingExternalAuth,
   type PkceStorage,
 } from '../src/pkce.js'
@@ -138,5 +139,39 @@ test('a stale mismatched callback preserves the newer pending intent', async () 
 
   const matching = claimPendingExternalAuth(storage, newer.state)
   assert.equal(matching.kind, 'claimed')
+  assert.equal(readPendingExternalAuth(storage)?.claimed, true)
+  clearPendingExternalAuthMatching(storage, newer.state)
   assert.equal(readPendingExternalAuth(storage), null)
+})
+
+test('concurrent begins reserve one exact flow before the first await', async () => {
+  const storage = memoryStorage()
+  await withMockFetch(
+    (async () => Response.json({ data: { authorizeUrl: 'https://idp.example/auth' } })) as typeof fetch,
+    async () => {
+      const first = beginExternalAuth({ ...beginInput(storage), teamHint: 'team-a' })
+      await assert.rejects(
+        beginExternalAuth({ ...beginInput(storage), teamHint: 'team-b' }),
+        /already in progress/,
+      )
+      const result = await first
+      const pending = readPendingExternalAuth(storage)
+      assert.equal(result.state, pending?.state)
+      assert.equal(pending?.teamHint, 'team-a')
+    },
+  )
+})
+
+test('a claimed state-less flow remains single-flight until exact completion clears it', async () => {
+  const storage = memoryStorage()
+  await withMockFetch(
+    (async () => Response.json({ data: { authorizeUrl: 'https://idp.example/auth' } })) as typeof fetch,
+    async () => {
+      const first = await beginExternalAuth({ ...beginInput(storage), teamHint: 'team-a' })
+      assert.equal(claimPendingExternalAuth(storage, null).kind, 'claimed')
+      assert.equal(claimPendingExternalAuth(storage, null).kind, 'absent')
+      await assert.rejects(beginExternalAuth(beginInput(storage)), /already in progress/)
+      assert.equal(readPendingExternalAuth(storage)?.state, first.state)
+    },
+  )
 })

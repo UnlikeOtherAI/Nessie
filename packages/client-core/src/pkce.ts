@@ -62,6 +62,7 @@ export type PkceStorage = {
 export type PendingExternalAuthTarget = ExpectedWorkspaceTarget
 
 export type PendingExternalAuth = {
+  claimed?: boolean
   codeVerifier: string
   providerId: string
   // App route to land on after the exchange completes (defaults to /channels).
@@ -70,6 +71,11 @@ export type PendingExternalAuth = {
   targetWorkspace?: PendingExternalAuthTarget
   teamHint?: string
   theme?: string
+}
+
+export type BeginExternalAuthResult = {
+  authorizeUrl: string
+  state: string
 }
 
 export type PendingExternalAuthClaim =
@@ -123,10 +129,12 @@ export const beginExternalAuth = async ({
   targetWorkspace,
   teamHint,
   theme,
-}: BeginExternalAuthInput): Promise<string> => {
+}: BeginExternalAuthInput): Promise<BeginExternalAuthResult> => {
+  if (readPendingExternalAuth(storage)) {
+    throw new Error('An external sign-in is already in progress.')
+  }
   const codeVerifier = randomString()
   const state = randomString()
-  const codeChallenge = await createCodeChallenge(codeVerifier)
 
   // providerId names the authorize endpoint; it must be bounded before it is
   // persisted with the exchange entry.
@@ -159,28 +167,27 @@ export const beginExternalAuth = async ({
     } satisfies PendingExternalAuth),
   )
 
-  const authorizeUrl = new URL(
-    `${baseUrl}/api/auth/providers/${encodeURIComponent(providerId)}/authorize`,
-    origin,
-  )
-  authorizeUrl.searchParams.set('codeChallenge', codeChallenge)
-  authorizeUrl.searchParams.set('redirectUri', redirectUri)
-  authorizeUrl.searchParams.set('state', state)
-  if (sanitizedTheme) {
-    authorizeUrl.searchParams.set('theme', sanitizedTheme)
-  }
-  if (sanitizedTeamHint) {
-    authorizeUrl.searchParams.set('teamHint', sanitizedTeamHint)
-  }
-
   try {
+    // The pending record is reserved before the first await. Two callers in
+    // the same turn therefore cannot both create usable state-less UOA flows.
+    const codeChallenge = await createCodeChallenge(codeVerifier)
+    const authorizeUrl = new URL(
+      `${baseUrl}/api/auth/providers/${encodeURIComponent(providerId)}/authorize`,
+      origin,
+    )
+    authorizeUrl.searchParams.set('codeChallenge', codeChallenge)
+    authorizeUrl.searchParams.set('redirectUri', redirectUri)
+    authorizeUrl.searchParams.set('state', state)
+    if (sanitizedTheme) authorizeUrl.searchParams.set('theme', sanitizedTheme)
+    if (sanitizedTeamHint) authorizeUrl.searchParams.set('teamHint', sanitizedTeamHint)
+
     const response = await fetch(authorizeUrl.toString())
     if (!response.ok) {
       throw new Error(await response.text())
     }
 
     const payload = (await response.json()) as { data: { authorizeUrl: string } }
-    return payload.data.authorizeUrl
+    return { authorizeUrl: payload.data.authorizeUrl, state }
   } catch (error) {
     // A second deliberate launch may replace this intent while the authorize
     // request is in flight. Retire only the record this request created.
@@ -226,6 +233,8 @@ const isUsablePending = (value: unknown): value is PendingExternalAuth => {
   if (typeof value !== 'object' || value === null) return false
   const pending = value as Partial<PendingExternalAuth>
   if (
+    (pending.claimed !== undefined && typeof pending.claimed !== 'boolean')
+    ||
     !isBoundedSecret(pending.codeVerifier)
     || !isBoundedId(pending.providerId)
     || !isBoundedState(pending.state)
@@ -285,9 +294,10 @@ export const claimPendingExternalAuth = (
 ): PendingExternalAuthClaim => {
   const pending = readPendingExternalAuth(storage)
   if (!pending) return { kind: 'absent' }
+  if (pending.claimed) return { kind: 'absent' }
   if (state !== null && state !== pending.state) {
     return { kind: 'state-mismatch', pending }
   }
-  clearPendingExternalAuth(storage)
+  storage.setItem(PENDING_EXTERNAL_AUTH_KEY, JSON.stringify({ ...pending, claimed: true }))
   return { kind: 'claimed', pending }
 }

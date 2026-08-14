@@ -6,6 +6,7 @@ import {
   createMemoryPkceStorage,
   readPendingExternalAuth as coreReadPendingExternalAuth,
   type PendingExternalAuth,
+  type BeginExternalAuthResult,
   type PendingExternalAuthClaim,
   type PendingExternalAuthTarget,
   type PkceStorage,
@@ -29,7 +30,7 @@ export const beginExternalAuth = (input: {
   targetWorkspace?: PendingExternalAuthTarget
   teamHint?: string
   theme: AppliedTheme
-}): Promise<string> => {
+}): Promise<BeginExternalAuthResult> => {
   const origin = input.origin
     ?? (typeof window === 'undefined' ? undefined : window.location.origin)
   return coreBeginExternalAuth({

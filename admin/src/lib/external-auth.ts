@@ -5,7 +5,6 @@ import { isReactNativeWebView } from './mobile-shell'
 import {
   beginExternalAuth,
   clearPendingExternalAuthMatching,
-  readPendingExternalAuth,
 } from './pkce'
 
 // Embedded webviews (Tauri desktop + React Native mobile) cannot run Google
@@ -64,7 +63,7 @@ export const startExternalSignIn = async (
   options: ExternalSignInOptions = {},
 ): Promise<void> => {
   const redirectUri = externalAuthRedirectUri()
-  const authorizeUrl = await beginExternalAuth({
+  const { authorizeUrl, state: launchedState } = await beginExternalAuth({
     providerId,
     redirectUri,
     ...(options.returnPath ? { returnPath: options.returnPath } : {}),
@@ -72,7 +71,6 @@ export const startExternalSignIn = async (
     ...(options.teamHint ? { teamHint: options.teamHint } : {}),
     theme,
   })
-  const launchedState = readPendingExternalAuth()?.state
   try {
     await openAuthorizeUrl(authorizeUrl, launchedState)
   } catch (error) {

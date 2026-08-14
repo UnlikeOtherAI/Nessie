@@ -3,6 +3,7 @@ import test, { afterEach, beforeEach } from 'node:test'
 
 import type { AuthSessionState, SessionPayload } from '@nessie/client-core'
 import { completeExternalAuthCallback } from '../src/lib/external-auth-completion.js'
+import { createExternalAuthCallbackHub } from '../src/providers/external-auth-callback.js'
 import {
   beginExternalAuth,
   clearPendingExternalAuth,
@@ -176,4 +177,30 @@ test('duplicate callbacks exchange the claimed intent once', async () => {
   const results = await Promise.all([run(), run()])
   assert.equal(calls, 1)
   assert.deepEqual(results.map((result) => result.outcome).sort(), ['completed', 'ignored'])
+})
+
+test('a remembered state-less UOA callback cannot claim a later flow', async () => {
+  let logins = 0
+  const hub = createExternalAuthCallbackHub(async (callbackEnvelope) => {
+    const result = await completeExternalAuthCallback({
+      envelope: callbackEnvelope,
+      login: async () => { logins += 1 },
+      recoveryExchange: async () => payload(),
+      waitForSessionReady: async () => 'authenticated',
+    })
+    return result.claimed
+  })
+  hub.setReady(true)
+  await seedPending({})
+  hub.handleNativeUrl('nessie://auth/callback?code=flow-a')
+  await new Promise((resolve) => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(logins, 1)
+
+  await seedPending({ targetWorkspace: { organizationId: 'org', teamId: 'team-b' } })
+  const flowB = readPendingExternalAuth()
+  hub.handleNativeUrl('nessie://auth/callback?code=flow-a')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(logins, 1)
+  assert.deepEqual(readPendingExternalAuth(), flowB)
 })

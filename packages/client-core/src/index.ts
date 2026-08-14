@@ -149,6 +149,7 @@ export {
   createMemoryPkceStorage,
   readPendingExternalAuth,
   type BeginExternalAuthInput,
+  type BeginExternalAuthResult,
   type PendingExternalAuth,
   type PendingExternalAuthClaim,
   type PendingExternalAuthTarget,

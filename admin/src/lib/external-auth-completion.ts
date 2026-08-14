@@ -1,5 +1,5 @@
 import type { AuthSessionState, SessionPayload } from '@nessie/client-core'
-import { claimPendingExternalAuth } from './pkce'
+import { claimPendingExternalAuth, clearPendingExternalAuthMatching } from './pkce'
 import type {
   ExternalAuthCallbackEnvelope,
 } from '../providers/external-auth-callback'
@@ -70,16 +70,23 @@ export const completeExternalAuthCallback = async (input: {
     }
   }
 
+  const finish = <T extends ExternalAuthCompletionResult>(result: T): T => {
+    clearPendingExternalAuthMatching(claim.pending.state)
+    return result
+  }
+
   if (callback.kind === 'cancelled') {
-    return {
+    return finish({
       claimed: true,
       message: 'Sign-in was cancelled.',
       outcome: 'cancelled',
       returnPath: failurePath,
-    }
+    })
   }
   if (callback.kind === 'provider-error') {
-    return { claimed: true, message: FAILURE_MESSAGE, outcome: 'failed', returnPath: failurePath }
+    return finish({
+      claimed: true, message: FAILURE_MESSAGE, outcome: 'failed', returnPath: failurePath,
+    })
   }
 
   const pending = claim.pending
@@ -97,15 +104,19 @@ export const completeExternalAuthCallback = async (input: {
       // callback into an ordinary login while that proof is still loading or
       // after it has resolved unauthenticated.
       if (await input.waitForSessionReady() !== 'authenticated') {
-        return { claimed: true, message: FAILURE_MESSAGE, outcome: 'failed', returnPath: failurePath }
+        return finish({
+          claimed: true, message: FAILURE_MESSAGE, outcome: 'failed', returnPath: failurePath,
+        })
       }
       await input.recoveryExchange(exchangeInput, pending.targetWorkspace)
     } else {
       await input.login(exchangeInput)
     }
   } catch {
-    return { claimed: true, message: FAILURE_MESSAGE, outcome: 'failed', returnPath: failurePath }
+    return finish({
+      claimed: true, message: FAILURE_MESSAGE, outcome: 'failed', returnPath: failurePath,
+    })
   }
 
-  return { claimed: true, outcome: 'completed', returnPath: successPath }
+  return finish({ claimed: true, outcome: 'completed', returnPath: successPath })
 }

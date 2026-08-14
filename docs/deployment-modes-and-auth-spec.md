@@ -476,6 +476,8 @@ For SSO providers, the flow is:
 
 The always-mounted callback owner handles web `/login`, Tauri deep links, and
 the iOS/Android WebView bridge through the same single-claim completion path.
+External authorization is single-flight until that claim completes; a second
+launch cannot replace the verifier for a state-less UOA callback.
 Callbacks wait for startup session restoration when they carry an authenticated
 workspace target; a target callback can only call the bearer-authenticated
 recovery exchange and can never fall back to ordinary login.
