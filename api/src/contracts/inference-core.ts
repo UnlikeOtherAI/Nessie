@@ -1,8 +1,31 @@
 import { z } from 'zod'
 
-import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
+import {
+  ProviderInvocationRequestSchema as SharedProviderInvocationRequestSchema,
+  ProviderInvocationResultSchema as SharedProviderInvocationResultSchema,
+  ProviderMessageSchema,
+  ProviderToolCallSchema,
+  ToolCallingModeSchema,
+  ToolCallIntentSchema,
+  ToolSchemaDescriptorSchema as SharedToolSchemaDescriptorSchema,
+} from '@nessie/schemas'
+import {
+  InvocationRecordSchema,
+  NormalizedFinishReasonSchema,
+} from '@nessie/schemas'
+
+import { NonEmptyStringSchema } from './shared.js'
 
 // ─── Inference control plane ──────────────────────────────────────────────
+//
+// These contracts describe the same provider/inference wire shapes as
+// `packages/schemas/src/inference-core.ts`. Where the api layer has no
+// stricter requirement of its own the shared schema is re-exported directly;
+// api-only tightening (a uuid invocation id, defaulted tool-call arrays, a
+// non-empty tool description) is expressed as a composition over the shared
+// pieces, never as a second hand-written copy. The conformance test
+// `api/test/inference-core-contract-conformance.test.ts` asserts the api
+// surface stays at least as strict as the shared one.
 
 export const InferenceConnectorKindSchema = z.enum(['compiled', 'openai-compatible'])
 export type InferenceConnectorKind = z.infer<typeof InferenceConnectorKindSchema>
@@ -54,257 +77,69 @@ export const InferenceEvalStatusSchema = z.enum([
 ])
 export type InferenceEvalStatus = z.infer<typeof InferenceEvalStatusSchema>
 
-export const NormalizedFinishReasonSchema = z.enum([
-  'stop',
-  'length',
-  'tool-call',
-  'content-filter',
-  'error',
-  'other',
-])
-export type NormalizedFinishReason = z.infer<typeof NormalizedFinishReasonSchema>
+export {
+  NormalizedFinishReasonSchema,
+  type NormalizedFinishReason,
+  ProviderHealthStatusSchema,
+  type ProviderHealthStatus,
+  ProviderMessageContentPartSchema,
+  type ProviderMessageContentPart,
+  ProviderMessageSchema,
+  type ProviderMessage,
+  ProviderStreamEventSchema,
+  type ProviderStreamEvent,
+  ProviderToolCallSchema,
+  type ProviderToolCall,
+  StructuredOutputDescriptorSchema,
+  type StructuredOutputDescriptor,
+  StructuredOutputModeSchema,
+  type StructuredOutputMode,
+  SystemPromptModeSchema,
+  type SystemPromptMode,
+  ToolCallingModeSchema,
+  type ToolCallingMode,
+  ToolCallIntentSchema,
+  type ToolCallIntent,
+  ToolChoiceSchema,
+  type ToolChoice,
+  ToolResultModeSchema,
+  type ToolResultMode,
+  JsonObjectResponseFormatSchema,
+  type JsonObjectResponseFormat,
+  ModelCapabilityUsageReportingSchema,
+  type ModelCapabilityUsageReporting,
+  ModelCapabilitySnapshotSchema,
+  type ModelCapabilitySnapshot,
+  CapabilityResolutionSourceSchema,
+  type CapabilityResolutionSource,
+  CapabilityResolutionSchema,
+  type CapabilityResolution,
+  InvocationUsageSchema,
+  type InvocationUsage,
+  InvocationRecordSchema,
+  type InvocationRecord,
+} from '@nessie/schemas'
 
-export const ToolCallingModeSchema = z.enum(['native', 'prompt-translated', 'disabled'])
-export type ToolCallingMode = z.infer<typeof ToolCallingModeSchema>
-
-export const StructuredOutputModeSchema = z.enum([
-  'native-json',
-  'prompt-json',
-  'text-only',
-])
-export type StructuredOutputMode = z.infer<typeof StructuredOutputModeSchema>
-
-export const SystemPromptModeSchema = z.enum(['native', 'fold-into-user'])
-export type SystemPromptMode = z.infer<typeof SystemPromptModeSchema>
-
-export const ToolResultModeSchema = z.enum(['native-tool-message', 'context-block'])
-export type ToolResultMode = z.infer<typeof ToolResultModeSchema>
-
-export const ProviderHealthStatusSchema = z.enum([
-  'healthy',
-  'degraded',
-  'unreachable',
-  'unknown',
-])
-export type ProviderHealthStatus = z.infer<typeof ProviderHealthStatusSchema>
-
-export const ProviderMessageContentPartSchema = z.union([
-  z.object({
-    type: z.literal('text'),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal('image'),
-    imageUrl: z.string().min(1),
-  }),
-])
-export type ProviderMessageContentPart = z.infer<typeof ProviderMessageContentPartSchema>
-
-const ProviderMessageContentSchema = z.union([
-  z.string(),
-  ProviderMessageContentPartSchema.array(),
-])
-
-export const ProviderToolCallSchema = z.object({
-  toolCallId: z.string().min(1),
-  toolName: NonEmptyStringSchema,
-  arguments: z.record(z.unknown()),
-  reason: z.string().optional(),
-})
-export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>
-
-export const ProviderMessageSchema = z.discriminatedUnion('role', [
-  z.object({
-    role: z.literal('system'),
-    content: ProviderMessageContentSchema,
-  }),
-  z.object({
-    role: z.literal('user'),
-    content: ProviderMessageContentSchema,
-  }),
-  z.object({
-    role: z.literal('assistant'),
-    content: ProviderMessageContentSchema.nullable(),
-    toolCalls: ProviderToolCallSchema.array().optional(),
-  }),
-  z.object({
-    role: z.literal('tool'),
-    content: z.string(),
-    toolCallId: z.string().min(1),
-  }),
-])
-export type ProviderMessage = z.infer<typeof ProviderMessageSchema>
-
-export const ToolSchemaDescriptorSchema = z.object({
-  toolName: NonEmptyStringSchema,
+// The api surface requires a human-readable, non-empty tool description where
+// the shared schema admits any string; everything else is the shared shape.
+export const ToolSchemaDescriptorSchema = SharedToolSchemaDescriptorSchema.extend({
   description: NonEmptyStringSchema,
-  inputSchema: z.record(z.unknown()),
 })
 export type ToolSchemaDescriptor = z.infer<typeof ToolSchemaDescriptorSchema>
 
-export const ToolCallIntentSchema = z.object({
-  toolName: NonEmptyStringSchema,
-  arguments: z.record(z.unknown()),
-  reason: z.string().optional(),
-})
-export type ToolCallIntent = z.infer<typeof ToolCallIntentSchema>
-
-export const StructuredOutputDescriptorSchema = z.object({
-  name: NonEmptyStringSchema,
-  jsonSchema: z.record(z.unknown()),
-})
-export type StructuredOutputDescriptor = z.infer<typeof StructuredOutputDescriptorSchema>
-
-export const JsonObjectResponseFormatSchema = z.object({
-  type: z.literal('json_object'),
-})
-export type JsonObjectResponseFormat = z.infer<
-  typeof JsonObjectResponseFormatSchema
->
-
-export const ToolChoiceSchema = z.union([
-  z.enum(['auto', 'none', 'required']),
-  z.object({
-    type: z.literal('function'),
-    function: z.object({
-      name: NonEmptyStringSchema,
-    }),
-  }),
-])
-export type ToolChoice = z.infer<typeof ToolChoiceSchema>
-
-export const ModelCapabilityUsageReportingSchema = z.object({
-  inputTokens: z.boolean(),
-  outputTokens: z.boolean(),
-  cachedInputTokens: z.boolean(),
-  cachedOutputTokens: z.boolean(),
-  cacheReadTokens: z.boolean(),
-  cacheWriteTokens: z.boolean(),
-  providerReportedCost: z.boolean(),
-})
-export type ModelCapabilityUsageReporting = z.infer<
-  typeof ModelCapabilityUsageReportingSchema
->
-
-export const ModelCapabilitySnapshotSchema = z.object({
-  provider: NonEmptyStringSchema,
-  model: NonEmptyStringSchema,
-  displayName: z.string().optional(),
-  supportsModelDiscovery: z.boolean(),
-  supportsChat: z.boolean(),
-  supportsStreaming: z.boolean(),
-  supportsEmbeddings: z.boolean(),
-  supportsVision: z.boolean(),
-  toolCallingMode: ToolCallingModeSchema,
-  structuredOutputMode: StructuredOutputModeSchema,
-  systemPromptMode: SystemPromptModeSchema,
-  toolResultMode: ToolResultModeSchema,
-  usageReporting: ModelCapabilityUsageReportingSchema,
-  maxInputTokens: z.number().int().positive().optional(),
-  maxOutputTokens: z.number().int().positive().optional(),
-  source: InferenceCapabilitySourceSchema,
-  discoveredAt: TimestampSchema,
-  lastVerifiedAt: TimestampSchema.optional(),
-})
-export type ModelCapabilitySnapshot = z.infer<typeof ModelCapabilitySnapshotSchema>
-
-export const CapabilityResolutionSourceSchema = z.enum([
-  'override',
-  'static',
-  'live',
-  'manual',
-])
-export type CapabilityResolutionSource = z.infer<typeof CapabilityResolutionSourceSchema>
-
-export const CapabilityResolutionSchema = z.object({
-  effectiveSnapshot: ModelCapabilitySnapshotSchema,
-  effectiveSource: CapabilityResolutionSourceSchema,
-  overrideActive: z.boolean(),
-})
-export type CapabilityResolution = z.infer<typeof CapabilityResolutionSchema>
-
-export const InvocationUsageSchema = z.object({
-  inputTokens: z.number().int().nonnegative().optional(),
-  outputTokens: z.number().int().nonnegative().optional(),
-  cachedInputTokens: z.number().int().nonnegative().optional(),
-  cachedOutputTokens: z.number().int().nonnegative().optional(),
-  cacheReadTokens: z.number().int().nonnegative().optional(),
-  cacheWriteTokens: z.number().int().nonnegative().optional(),
-  totalTokens: z.number().int().nonnegative().optional(),
-})
-export type InvocationUsage = z.infer<typeof InvocationUsageSchema>
-
-export const InvocationRecordSchema = z.object({
-  invocationId: z.string().uuid(),
-  requestId: NonEmptyStringSchema,
-  correlationId: NonEmptyStringSchema.optional(),
-  provider: NonEmptyStringSchema,
-  model: NonEmptyStringSchema,
-  operationType: z.enum([
-    'chat',
-    'completion',
-    'embedding',
-    'translation',
-    'reasoning',
-    'tool-translation',
-    'other',
-  ]),
-  usage: InvocationUsageSchema,
-  providerReportedCost: z
-    .object({
-      amount: z.number().nonnegative(),
-      currency: NonEmptyStringSchema,
-    })
-    .optional(),
-  latencyMs: z.number().int().nonnegative(),
-  finishReason: NormalizedFinishReasonSchema.optional(),
-  metadata: z.record(z.unknown()).optional(),
-})
-export type InvocationRecord = z.infer<typeof InvocationRecordSchema>
-
-export const ProviderInvocationRequestSchema = z.object({
-  requestId: NonEmptyStringSchema,
-  correlationId: NonEmptyStringSchema.optional(),
-  model: NonEmptyStringSchema,
-  messages: ProviderMessageSchema.array(),
+// The api invocation envelope adds a uuid invocation id and defaults the
+// tool-call array for response parsing; both are compositions over the
+// shared request/result envelopes, not parallel copies.
+export const ProviderInvocationRequestSchema = SharedProviderInvocationRequestSchema.extend({
   tools: ToolSchemaDescriptorSchema.array().optional(),
-  toolChoice: ToolChoiceSchema.optional(),
-  responseFormat: JsonObjectResponseFormatSchema.optional(),
-  expectedStructuredOutput: StructuredOutputDescriptorSchema.optional(),
-  maxOutputTokens: z.number().int().positive().optional(),
-  temperature: z.number().optional(),
-  metadata: z.record(z.unknown()).optional(),
 })
 export type ProviderInvocationRequest = z.infer<typeof ProviderInvocationRequestSchema>
 
-export const ProviderInvocationResultSchema = z.object({
-  outputText: z.string(),
+export const ProviderInvocationResultSchema = SharedProviderInvocationResultSchema.extend({
   toolCalls: ProviderToolCallSchema.array().default([]),
-  structuredOutput: z.unknown().optional(),
-  finishReason: NormalizedFinishReasonSchema.optional(),
   invocation: InvocationRecordSchema,
 })
 export type ProviderInvocationResult = z.infer<typeof ProviderInvocationResultSchema>
-
-export const ProviderStreamEventSchema = z.union([
-  z.object({
-    type: z.literal('output_text.delta'),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal('tool_call.delta'),
-    index: z.number().int().nonnegative(),
-    id: z.string(),
-    toolName: z.string(),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal('response.error'),
-    message: z.string(),
-    retryable: z.boolean(),
-  }),
-])
-export type ProviderStreamEvent = z.infer<typeof ProviderStreamEventSchema>
 
 export const MultiProviderResultSchema = z.object({
   requestId: NonEmptyStringSchema,

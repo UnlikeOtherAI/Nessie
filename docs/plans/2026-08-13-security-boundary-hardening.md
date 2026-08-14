@@ -265,7 +265,13 @@ options and fail-closed malformed `timeWindow`; the worker's
 `evaluateToolInvokePolicy` is a thin adapter; 489-line differential suite),
 and — outside this plan — the port-safe api `predev` check and the
 `DATABASE_URL=` empty-string config-override fix that had been masquerading
-as the worker test OOM flake. Not started: W3 full (typed sensitivity + AST fetch boundary), W1
+as the worker test OOM flake. Also landed 2026-08-14: W6 contract authority
+(`api/src/contracts/inference-core.ts` now derives from `@nessie/schemas` —
+direct re-export where the shapes are identical, `.extend()` compositions for
+the api-only tightening — so the `imageUrl` `.url()` and `reasoning_text.delta`
+divergences are gone; strength-not-identity conformance suite in
+`api/test/inference-core-contract-conformance.test.ts`; `authSecretRef` remains
+Workstream 2's). Not started: W3 full (typed sensitivity + AST fetch boundary), W1
 (session integrity), W2 store proper, W4 structural consolidation, realtime
 session identity. Everything marked **[access-model]** remains parked.
 
