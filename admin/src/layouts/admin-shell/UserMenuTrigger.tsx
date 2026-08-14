@@ -92,7 +92,6 @@ export const UserMenuTrigger = ({
       {menuOpen ? (
         <UserMenuPopover
           anchorRef={avatarButtonRef}
-          auth={me.auth}
           onClose={() => setMenuOpen(false)}
           onLogout={onLogout}
           placement={placement}

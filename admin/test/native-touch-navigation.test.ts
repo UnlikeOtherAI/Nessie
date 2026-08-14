@@ -172,6 +172,23 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(nativeWorkspaceAvatar, /onError=\{\(\) => setFailedRasterUrl\(source\.uri\)\}/)
 })
 
+test('the account popover keeps one boundary between status controls and account actions', () => {
+  const popover = readSource('../src/layouts/admin-shell/UserMenuPopover.tsx')
+  const trigger = readSource('../src/layouts/admin-shell/UserMenuTrigger.tsx')
+
+  assert.doesNotMatch(popover, /MeAuth|providerLabel|account\)\}/)
+  assert.doesNotMatch(trigger, /auth=\{me\.auth\}/)
+  const statusToAccountActions = [
+    '<StatusSection onClose=\\{onClose\\} />',
+    '<div className="my-1 h-px bg-\\[color:var\\(--sep\\)\\]" />',
+    '<Link className=\\{rowClassName\\} onClick=\\{onClose\\} to="\\/settings\\/profile">',
+  ].join('\\s*')
+  assert.match(
+    popover,
+    new RegExp(statusToAccountActions),
+  )
+})
+
 test('the native Admin actions offer session debugging above a cache-busting full refresh', () => {
   const adminNav = readSource('../src/layouts/admin-shell/AdminSidebarNav.tsx')
   const debugButton = readSource('../src/components/shared/DebugTokenButton.tsx')

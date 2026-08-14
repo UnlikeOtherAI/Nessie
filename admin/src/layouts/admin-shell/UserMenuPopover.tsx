@@ -2,19 +2,10 @@ import { useEffect, useLayoutEffect, useState, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { MeAuth, MeUser } from '@nessie/schemas'
+import type { MeUser } from '@nessie/schemas'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
 import { PresenceControl } from './user-menu/PresenceControl'
 import { StatusSection } from './user-menu/StatusSection'
-
-// Friendly one-line description of how the user signs in.
-const providerLabel = (auth: MeAuth): string => {
-  if (auth.providerType === 'local-bootstrap' || auth.providerId === 'local') {
-    return 'Email & password'
-  }
-  const name = auth.providerId.charAt(0).toUpperCase() + auth.providerId.slice(1)
-  return `${name} account`
-}
 
 const MENU_GAP = 8
 const MENU_WIDTH = 252
@@ -28,7 +19,6 @@ type MenuPosition =
 type UserMenuPopoverProps = {
   anchorRef: RefObject<HTMLElement | null>
   user: MeUser
-  auth: MeAuth
   token: string | null
   onClose: () => void
   onLogout: () => void
@@ -49,7 +39,6 @@ const clampMenuLeft = (left: number): number =>
 export const UserMenuPopover = ({
   anchorRef,
   user,
-  auth,
   token,
   onClose,
   onLogout,
@@ -128,10 +117,6 @@ export const UserMenuPopover = ({
         <div className="my-1 h-px bg-[color:var(--sep)]" />
 
         <StatusSection onClose={onClose} />
-
-        <div className="my-1 h-px bg-[color:var(--sep)]" />
-
-        <div className="px-2 py-1 text-xs text-[color:var(--tx3)]">{providerLabel(auth)}</div>
 
         <div className="my-1 h-px bg-[color:var(--sep)]" />
 
