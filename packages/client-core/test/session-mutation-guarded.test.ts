@@ -63,12 +63,12 @@ test('termination fences a late apply and logout deletes the winning session', a
   })
 
   await assert.rejects(blockedMutation, /session is being terminated/)
-  assert.deepEqual(events, [])
+  assert.deepEqual(events, ['clear'])
   resolveSwitch?.(sessionPayload('switched-token'))
 
   await assert.rejects(switching, /session is being terminated/)
   await logout
-  assert.deepEqual(events, ['delete:switched-token', 'clear'])
+  assert.deepEqual(events, ['clear', 'delete:switched-token'])
 })
 
 test('logout still deletes and clears after an in-flight mutation rejects', async () => {
@@ -91,7 +91,7 @@ test('logout still deletes and clears after an in-flight mutation rejects', asyn
 
   await assert.rejects(switching, /switch failed/)
   await logout
-  assert.deepEqual(events, ['delete:none', 'clear'])
+  assert.deepEqual(events, ['clear', 'delete:none'])
 })
 
 test('logout suppresses a session waiting at its cache-reset boundary', async () => {
@@ -124,7 +124,7 @@ test('logout suppresses a session waiting at its cache-reset boundary', async ()
 
   await assert.rejects(switching, /session is being terminated/)
   await logout
-  assert.deepEqual(events, ['before-apply', 'delete:switched-token', 'clear'])
+  assert.deepEqual(events, ['before-apply', 'clear', 'delete:switched-token'])
 })
 
 test('terminate is idempotent and permanently terminal', async () => {
@@ -186,7 +186,7 @@ test('a late apply during the terminate drain is fenced and handed to logout', a
   resolveSwitch?.(sessionPayload('switched-token'))
   await assert.rejects(switching, /session is being terminated/)
   await logout
-  assert.deepEqual(events, ['delete:switched-token', 'clear'])
+  assert.deepEqual(events, ['clear', 'delete:switched-token'])
 })
 
 test('an in-flight guarded loss plus terminate clears exactly once', async () => {
@@ -224,14 +224,13 @@ test('an in-flight guarded loss plus terminate clears exactly once', async () =>
   }))
   await assert.rejects(exchanging, /session is being terminated/)
   await logout
-  // Exactly one clear: the guarded path does not clear on a terminated
-  // winner, so terminate's own clear is the only one. The finalizer deletes
-  // the winning session's family, and no foreign revocation ever ran.
-  assert.deepEqual(events, ['delete:foreign-token', 'clear'])
+  // Exactly one clear at terminate begin. The finalizer later deletes the
+  // winning session's family, and no foreign revocation ever ran.
+  assert.deepEqual(events, ['clear', 'delete:foreign-token'])
   // Termination is permanent: no later mutation, refresh, or reconcile.
   await assert.rejects(coordinator.reconcile(), /session is being terminated/)
   await assert.rejects(coordinator.refresh(), /session is being terminated/)
-  assert.deepEqual(events, ['delete:foreign-token', 'clear'])
+  assert.deepEqual(events, ['clear', 'delete:foreign-token'])
 })
 
 test('an opaque loss permits exactly one raw refresh and applies its exact-target winner', async () => {
@@ -288,13 +287,13 @@ test('a mismatched direct payload is terminally fenced without a refresh; typed 
     /missed the requested workspace/,
   )
   assert.equal(refreshCalls, 0)
-  assert.deepEqual(events, ['revoke:foreign-token', 'clear'])
+  assert.deepEqual(events, ['clear', 'revoke:foreign-token'])
 
   // The fence is permanent: later reconcile/refresh can never adopt it.
   await assert.rejects(coordinator.reconcile(), /fenced over a foreign session/)
   await assert.rejects(coordinator.refresh(), /fenced over a foreign session/)
   assert.equal(refreshCalls, 0)
-  assert.deepEqual(events, ['revoke:foreign-token', 'clear'])
+  assert.deepEqual(events, ['clear', 'revoke:foreign-token'])
 })
 
 test('a typed server refusal (HTTP status) never refreshes, clears, or fences', async () => {
@@ -381,11 +380,11 @@ test('a foreign refresh winner after an opaque loss terminally fences without ad
   // Never clear-then-adopt the unvalidated winner: the foreign session is
   // fenced out of apply, its cookie family revoked, and the stale local
   // session cleared exactly once — permanently.
-  assert.deepEqual(events, ['revoke:foreign-token', 'clear'])
+  assert.deepEqual(events, ['clear', 'revoke:foreign-token'])
   await assert.rejects(coordinator.refresh(), /fenced over a foreign session/)
   await assert.rejects(coordinator.reconcile(), /fenced over a foreign session/)
   assert.equal(refreshCalls, 1)
-  assert.deepEqual(events, ['revoke:foreign-token', 'clear'])
+  assert.deepEqual(events, ['clear', 'revoke:foreign-token'])
 })
 
 test('a normal Error named SessionMutationLoss is not an opaque loss', async () => {

@@ -77,6 +77,13 @@ const fencedError = (): Error => new Error('The session was fenced over a foreig
 export const createSessionMutationCoordinator = (input: {
   applySession: (payload: SessionPayload) => void
   beforeApply?: (payload: SessionPayload) => Promise<void> | void
+  /**
+   * Optional fail-closed clear used instead of `clearSession`. It is invoked
+   * synchronously when a terminal event begins; any returned work is awaited
+   * only after remote revocation/finalization has started. Hosts must clear
+   * bearer-visible local state before returning.
+   */
+  clearLocal?: () => Promise<void> | void
   clearSession: () => Promise<void> | void
   refresh: () => Promise<SessionPayload | null>
   // Caller-owned revocation of the cookie family behind a foreign session.
@@ -133,6 +140,7 @@ export const createSessionMutationCoordinator = (input: {
   // Consecutive clears collapse into one: an in-flight guarded loss that
   // cleared on a foreign winner must not be cleared again by terminate.
   let cleared = false
+  let clearCompletion: Promise<void> | null = null
   // The terminal notification fires at most once even when a foreign fence
   // and terminate overlap; whichever finishes its clear first owns it.
   let terminalNotified = false
@@ -143,19 +151,41 @@ export const createSessionMutationCoordinator = (input: {
   const notifyTerminalStartOnce = (): void => {
     if (terminalStartNotified) return
     terminalStartNotified = true
-    input.onTerminalStart?.()
+    try {
+      input.onTerminalStart?.()
+    } catch {
+      // The durable marker is defense in depth. A denied storage API must not
+      // abort local clearing or the exact-session remote revocation.
+    }
   }
 
   const notifyTerminalOnce = (): void => {
     if (terminalNotified) return
     terminalNotified = true
-    input.onTerminal?.()
+    try {
+      input.onTerminal?.()
+    } catch {
+      // Terminal completion remains complete even if host notification fails.
+    }
   }
 
-  const clearOnce = async (): Promise<void> => {
-    if (cleared) return
-    await input.clearSession()
+  const clearOnce = (): Promise<void> => {
+    if (cleared) return clearCompletion ?? Promise.resolve()
     cleared = true
+    try {
+      clearCompletion = Promise.resolve(
+        input.clearLocal ? input.clearLocal() : input.clearSession(),
+      ).catch(() => undefined)
+    } catch {
+      clearCompletion = Promise.resolve()
+    }
+    return clearCompletion
+  }
+
+  const resetClearAfterApply = (): void => {
+    if (terminating || fenced) return
+    cleared = false
+    clearCompletion = null
   }
 
   // Permanently fence this coordinator over a foreign payload: hand it to the
@@ -164,23 +194,27 @@ export const createSessionMutationCoordinator = (input: {
   const fenceForeign = (payload: SessionPayload): Promise<void> => {
     if (fenceCompletion) return fenceCompletion
     fenced = true
-    // Fence the ambient gate before awaiting the caller-owned revocation:
-    // a remount during that await must already find the marker persisted.
+    // Fence the ambient gate AND fail closed locally before awaiting the
+    // caller-owned revocation: a remount during that await must already find
+    // the marker persisted, and a held revocation must leave no
+    // bearer-authenticated traffic possible.
     notifyTerminalStartOnce()
+    const terminalClear = clearOnce()
     fenceCompletion = (async () => {
       try {
         await input.onForeignSession?.(payload)
       } finally {
-        // A fence that resolves after logout began must not clear or notify:
-        // terminate's finalizer revokes the winning family and performs the
-        // single terminal clear itself. But the fence's foreign payload is
-        // still the winning session — record it for that finalizer rather
-        // than losing it (an in-flight mutation may already have set one).
+        // A fence that resolves after logout began must not notify: the
+        // termination finalizer revokes the winning family and owns the
+        // single terminal notification itself. But the fence's foreign
+        // payload is still the winning session — record it for that
+        // finalizer rather than losing it (an in-flight mutation may already
+        // have set one).
         if (terminating) {
           terminalPayload ??= payload
           return
         }
-        await clearOnce()
+        await terminalClear
         notifyTerminalOnce()
       }
     })()
@@ -216,8 +250,8 @@ export const createSessionMutationCoordinator = (input: {
         terminalPayload = payload
         throw terminatedError()
       }
-      cleared = false
       input.applySession(payload)
+      resetClearAfterApply()
       throw new SessionSourcePreserved(outcome.message)
     }
     // Foreign: never adopt a session that is neither the target nor the
@@ -255,8 +289,8 @@ export const createSessionMutationCoordinator = (input: {
         terminalPayload = payload
         throw terminatedError()
       }
-      cleared = false
       input.applySession(payload)
+      resetClearAfterApply()
       return payload
     }
     // Chain onto the tail; a settled predecessor still lets its successor run.
@@ -383,10 +417,22 @@ export const createSessionMutationCoordinator = (input: {
     // flags deliberately never reset — logout ends this coordinator's life.
     if (termination) return termination
     terminating = true
-    // Set the terminal-start marker synchronously, BEFORE any await: while
-    // the finalizer's DELETE is still pending, a reloaded/remounted page
-    // must already read the fence and refuse every ambient refresh.
+    // The begin lane is fully synchronous and strictly ordered:
+    //  1. Capture the pending mutation chain NOW so its settled payload —
+    //     the old bearer proof the caller's finalizer (push unregister,
+    //     remote revoke, DELETE) still needs after local state is gone —
+    //     is adopted below before the finalizer runs.
+    //  2. Set the terminal-start marker: while the finalizer's DELETE is
+    //     still pending, a reloaded/remounted page must already read the
+    //     fence and refuse every ambient refresh.
+    //  3. Fail closed locally: clear the token, user/me, query boundary, and
+    //     authenticated API client state ONCE, before ANY await. A held
+    //     finalizer must leave no bearer-authenticated traffic possible.
+    // The post-terminal notification and coordinator retirement stay on the
+    // completion lane — they must not fire while the finalizer is pending.
+    const pendingLatest = latest
     notifyTerminalStartOnce()
+    const terminalClear = clearOnce()
     const pendingQueue = queue
     // A foreign fence already in flight must finish its caller-owned
     // revocation before logout finalizes, so the terminal notification never
@@ -395,12 +441,22 @@ export const createSessionMutationCoordinator = (input: {
     const ending = (async (): Promise<void> => {
       try {
         await pendingQueue
+        if (pendingLatest) {
+          // Adopt the pending mutation's settled payload as the winning
+          // session for the finalizer; an in-flight mutation that already
+          // recorded one (or a settled fence's foreign payload) keeps it.
+          try {
+            terminalPayload ??= await pendingLatest
+          } catch {
+            terminalPayload ??= null
+          }
+        }
         if (pendingFence) {
           await pendingFence.catch(() => undefined)
         }
         await finalize(terminalPayload)
       } finally {
-        await clearOnce()
+        await terminalClear
         terminalPayload = null
         notifyTerminalOnce()
       }
@@ -415,6 +471,7 @@ export const createSessionMutationCoordinator = (input: {
 export const createAccessTokenRefreshCoordinator = (input: {
   applySession: (payload: SessionPayload) => void
   beforeApply?: (payload: SessionPayload) => Promise<void> | void
+  clearLocal?: () => Promise<void> | void
   clearSession: () => Promise<void> | void
   refresh: () => Promise<SessionPayload | null>
   onForeignSession?: (payload: SessionPayload) => Promise<void> | void

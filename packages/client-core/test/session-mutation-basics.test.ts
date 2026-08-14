@@ -304,7 +304,9 @@ test('an authentication rejection clears the session and later mutations still r
   assert.equal(await coordinator.refresh(), null)
   const after = await coordinator.run(async () => sessionPayload('token-after'))
   assert.equal(after.token, 'token-after')
+  assert.equal(await coordinator.refresh(), null)
   // An ordinary refresh null clears but is NOT terminal: the coordinator
-  // lives on and no terminal notification ever fires.
-  assert.deepEqual(events, ['clear', 'apply:token-after'])
+  // lives on, a successful apply resets the clear latch, and the next
+  // rejection clears the newly applied session exactly once.
+  assert.deepEqual(events, ['clear', 'apply:token-after', 'clear'])
 })

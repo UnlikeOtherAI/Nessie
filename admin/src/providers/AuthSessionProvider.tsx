@@ -148,8 +148,9 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setSessionState('authenticated')
   }, [importedApplyTracker])
 
+  // Synchronously remove every local bearer/auth reference; safe to call
+  // before returning control to a remote finalizer.
   const commitSessionClear = useCallback((): void => {
-    clearStoredToken()
     tokenRef.current = null
     importedSessionTokenRef.current = null
     meRef.current = null
@@ -157,11 +158,19 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setMe(null)
     setBootstrapState(null)
     setSessionState('unauthenticated')
+    try {
+      clearStoredToken()
+    } catch {
+      // In-memory auth is already gone when browser storage is unavailable.
+    }
   }, [])
 
-  const clearSession = useCallback(async (): Promise<void> => {
-    await sessionQueryBoundary.clear()
+  const clearSession = useCallback((): Promise<void> => {
+    // Start cancelling tenant work, then synchronously remove every local
+    // bearer/auth reference before returning control to a remote finalizer.
+    const clearingQueries = sessionQueryBoundary.clear().catch(() => undefined)
     commitSessionClear()
+    return clearingQueries
   }, [commitSessionClear, sessionQueryBoundary])
 
   const clearImportedSession = useCallback(async (expectedToken: string): Promise<void> => {
@@ -193,7 +202,6 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   // so a full remount (web page, Tauri, mobile WebView) of a terminated-
   // but-not-revoked session starts blocked.
   const ambientRefreshGate = useMemo(() => createAmbientRefreshGateHost(), [])
-  const ambientRefreshBlockedRef = ambientRefreshGate.ref
   // Login, startup restore, every API 401, and workspace switching share this
   // exact coordinator. Both refresh cookies are single-use, so no other path
   // may mutate the session concurrently or apply an older response afterwards.
@@ -202,6 +210,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       createSessionMutationCoordinator({
         applySession,
         beforeApply: sessionQueryBoundary.beforeApply,
+        clearLocal: clearSession,
         clearSession,
         // A foreign session that missed its guarded target must never live on
         // beside the rotated HTTP-only cookie family: revoke that exact family
@@ -229,7 +238,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const reconcileSession = useCallback((): Promise<SessionPayload | null> => {
     // A terminal fence/logout ends every ambient path at once, synchronously:
     // no refresh-cookie consumption until an explicit login/recovery applies.
-    if (ambientRefreshBlockedRef.current) return Promise.resolve(null)
+    if (ambientRefreshGate.isBlocked()) return Promise.resolve(null)
     const expected = { mode: sessionMode, token }
     const action = resolveSessionRefreshAction({
       currentImportedToken: importedSessionTokenRef.current,
@@ -246,7 +255,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const refreshAccessToken = useCallback(async (
     expected?: SessionCredentialSnapshot,
   ): Promise<string | null> => {
-    if (ambientRefreshBlockedRef.current) return null
+    if (ambientRefreshGate.isBlocked()) return null
     const currentToken = tokenRef.current
     const action = resolveSessionRefreshAction({
       currentImportedToken: importedSessionTokenRef.current,
@@ -278,7 +287,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   ): Promise<void> => {
     // A terminal fence/logout ends every ambient path at once, synchronously:
     // no startup-restore fetch, no refresh-cookie consumption.
-    if (ambientRefreshBlockedRef.current) return
+    if (ambientRefreshGate.isBlocked()) return
     const isCurrent = (): boolean => isSessionCredentialCurrent({
       currentImportedToken: importedSessionTokenRef.current,
       currentToken: tokenRef.current,
@@ -316,7 +325,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     meRef.current = snapshot.me
     setMe(snapshot.me)
     setSessionState('authenticated')
-  }, [refreshAccessToken, sessionQueryBoundary])
+  }, [ambientRefreshGate, refreshAccessToken, sessionQueryBoundary])
 
   const refreshSession = useCallback(
     (): Promise<void> => refreshSessionFor(readSessionCredential()),
@@ -335,7 +344,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     let attempt = 0
 
     const restoreSession = async (): Promise<void> => {
-      if (cancelled || restoring || ambientRefreshBlockedRef.current) return
+      if (cancelled || restoring || ambientRefreshGate.isBlocked()) return
       restoring = true
       try {
         await refreshSessionFor(expected)
@@ -494,6 +503,8 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   }
 
   const logout = async (): Promise<void> => {
+    // Capture the ending credential before terminate synchronously clears
+    // tokenRef; the terminal payload's bearer (if any) still wins.
     const initiating = readSessionCredential()
     const pendingImportedTokens = importedApplyTracker.tokens()
     await sessionMutations.terminate(async (latestPayload) => {

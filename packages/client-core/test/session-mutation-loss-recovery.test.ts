@@ -74,7 +74,7 @@ test('a same-team different-person refresh winner is foreign, never the target',
     /did not land on the requested workspace/,
   )
   assert.equal(refreshCalls, 1)
-  assert.deepEqual(events, ['revoke:foreign-winner', 'clear'])
+  assert.deepEqual(events, ['clear', 'revoke:foreign-winner'])
 })
 
 test('an opaque loss whose refresh is an explicit 401 clears once without fencing', async () => {

@@ -38,12 +38,17 @@ export const createAmbientRefreshGateHost = (): AmbientRefreshGateHost => {
   return {
     ref,
     onTerminalStart: () => {
-      // Persist FIRST, synchronously: the marker is the cross-remount fence.
-      blockAmbientRefresh()
+      // Fail closed in memory even when browser storage is denied.
       ref.current = true
+      blockAmbientRefresh()
     },
     onTerminal: () => undefined,
-    isBlocked: () => ref.current,
+    isBlocked: () => {
+      if (ref.current) return true
+      const persisted = isAmbientRefreshBlocked()
+      if (persisted) ref.current = true
+      return persisted
+    },
     reopen: () => {
       ref.current = false
       unblockAmbientRefresh()

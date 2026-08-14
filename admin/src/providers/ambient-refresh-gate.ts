@@ -22,14 +22,23 @@ const readLocalStorage = (): Storage | null => {
   }
 }
 
-export const isAmbientRefreshBlocked = (): boolean =>
-  readLocalStorage()?.getItem(AMBIENT_REFRESH_BLOCKED_KEY) === BLOCKED_VALUE
+export const isAmbientRefreshBlocked = (): boolean => {
+  try {
+    return readLocalStorage()?.getItem(AMBIENT_REFRESH_BLOCKED_KEY) === BLOCKED_VALUE
+  } catch {
+    return false
+  }
+}
 
 // Synchronous by design: the coordinator's onTerminalStart hook calls this
 // at the exact moment a logout or foreign fence begins — before any awaited
 // DELETE/revocation — so a remount mid-finalization already reads the fence.
 export const blockAmbientRefresh = (): void => {
-  readLocalStorage()?.setItem(AMBIENT_REFRESH_BLOCKED_KEY, BLOCKED_VALUE)
+  try {
+    readLocalStorage()?.setItem(AMBIENT_REFRESH_BLOCKED_KEY, BLOCKED_VALUE)
+  } catch {
+    // The in-memory host gate remains authoritative for this mount.
+  }
 }
 
 // Called only after a successfully APPLIED explicit login, bootstrap,
@@ -37,5 +46,9 @@ export const blockAmbientRefresh = (): void => {
 // ordinary unauthenticated refresh deliberately never call it: they are
 // terminal aftermath, not proof of a new explicit session.
 export const unblockAmbientRefresh = (): void => {
-  readLocalStorage()?.removeItem(AMBIENT_REFRESH_BLOCKED_KEY)
+  try {
+    readLocalStorage()?.removeItem(AMBIENT_REFRESH_BLOCKED_KEY)
+  } catch {
+    // Explicit login still reopens the in-memory host gate.
+  }
 }

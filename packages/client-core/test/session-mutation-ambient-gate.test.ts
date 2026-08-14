@@ -207,12 +207,12 @@ test('the terminal-start hook fires synchronously at terminate begin, before a s
   // The start hook already fired, synchronously, before ANY awaited work:
   // the gate is set before the finalizer even runs.
   assert.equal(host.blocked, true)
-  assert.deepEqual(host.events, ['terminal-start'])
+  assert.deepEqual(host.events, ['terminal-start', 'clear'])
 
   // Deterministic: hold until the finalizer is actually in flight — the gate
   // was still set first.
   await began
-  assert.deepEqual(host.events, ['terminal-start'])
+  assert.deepEqual(host.events, ['terminal-start', 'clear'])
 
   settleFinalizer()
   await termination
@@ -244,8 +244,67 @@ test('the terminal-start hook fires before a stalled foreign revocation settles'
   // then prove the gate was already set before that awaited work began.
   await began
   assert.equal(host.blocked, true)
-  assert.deepEqual(host.events, ['terminal-start', 'revoke'])
+  assert.deepEqual(host.events, ['terminal-start', 'clear', 'revoke'])
 
   settleRevocation()
   await assert.rejects(fenced, ForeignSessionDetected)
+})
+
+test('throwing terminal hooks and local clear cannot abort finalization', async () => {
+  const events: string[] = []
+  const coordinator = createSessionMutationCoordinator({
+    applySession: () => assert.fail('a terminal coordinator never applies'),
+    clearLocal: () => {
+      events.push('clear')
+      throw new Error('local storage denied')
+    },
+    clearSession: () => assert.fail('clearLocal supersedes the fallback clear'),
+    onTerminalStart: () => {
+      events.push('terminal-start')
+      throw new Error('marker write denied')
+    },
+    onTerminal: () => {
+      events.push('terminal')
+      throw new Error('host already unmounted')
+    },
+    refresh: async () => assert.fail('refresh is not part of logout'),
+  })
+
+  await coordinator.terminate(async () => {
+    events.push('finalize')
+  })
+  assert.deepEqual(events, ['terminal-start', 'clear', 'finalize', 'terminal'])
+  await assert.rejects(coordinator.refresh(), /session is being terminated/)
+})
+
+test('logout captures the old bearer before its held finalizer clears local auth', async () => {
+  let localBearer: string | null = 'old-bearer'
+  let releaseFinalizer!: () => void
+  let finalizerBegan!: () => void
+  const began = new Promise<void>((resolve) => {
+    finalizerBegan = resolve
+  })
+  const coordinator = createSessionMutationCoordinator({
+    applySession: () => assert.fail('a terminal coordinator never applies'),
+    clearLocal: () => {
+      localBearer = null
+    },
+    clearSession: () => assert.fail('clearLocal supersedes the fallback clear'),
+    refresh: async () => assert.fail('refresh is not part of logout'),
+  })
+
+  const capturedBearer = localBearer
+  const termination = coordinator.terminate(async (latestPayload) => {
+    assert.equal(localBearer, null)
+    assert.equal(latestPayload?.token ?? capturedBearer, 'old-bearer')
+    finalizerBegan()
+    await new Promise<void>((resolve) => {
+      releaseFinalizer = resolve
+    })
+  })
+
+  assert.equal(localBearer, null)
+  await began
+  releaseFinalizer()
+  await termination
 })

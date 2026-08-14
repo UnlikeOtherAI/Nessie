@@ -9,12 +9,19 @@ import {
 // Minimal localStorage stub so the persisted gate seam runs under node --test
 // without a browser; mirrors admin/test/workflow-draft-storage.test.ts.
 const store = new Map<string, string>()
+let throwOnRead = false
+let throwOnWrite = false
 ;(globalThis as { localStorage?: unknown }).localStorage = {
-  getItem: (key: string) => store.get(key) ?? null,
+  getItem: (key: string) => {
+    if (throwOnRead) throw new Error('storage read denied')
+    return store.get(key) ?? null
+  },
   removeItem: (key: string) => {
+    if (throwOnWrite) throw new Error('storage write denied')
     store.delete(key)
   },
   setItem: (key: string, value: string) => {
+    if (throwOnWrite) throw new Error('storage write denied')
     store.set(key, value)
   },
 }
@@ -66,6 +73,8 @@ const createMountedProvider = (input?: {
 
 test.beforeEach(() => {
   store.clear()
+  throwOnRead = false
+  throwOnWrite = false
 })
 
 test('the marker exists at terminate begin: a remount during a stalled DELETE makes zero refresh calls', async () => {
@@ -136,6 +145,23 @@ test('a failed logout terminal marker blocks all ambient refresh after a provide
   await assert.rejects(remounted.coordinator.refresh(), /ambient refresh is blocked/)
   await assert.rejects(remounted.coordinator.reconcile(), /ambient refresh is blocked/)
   assert.equal(remounted.refreshCalls, 0)
+})
+
+test('a peer mounted before logout dynamically observes the persisted terminal marker', async () => {
+  const first = createMountedProvider()
+  const alreadyMountedPeer = createMountedProvider()
+
+  await first.coordinator.terminate(async () => undefined)
+
+  await assert.rejects(
+    alreadyMountedPeer.coordinator.refresh(),
+    /ambient refresh is blocked/,
+  )
+  await assert.rejects(
+    alreadyMountedPeer.coordinator.reconcile(),
+    /ambient refresh is blocked/,
+  )
+  assert.equal(alreadyMountedPeer.refreshCalls, 0)
 })
 
 test('the marker exists at foreign-fence begin: a remount during a stalled revocation makes zero refresh calls', async () => {
@@ -226,4 +252,18 @@ test('the persisted gate module alone: block survives a reload, unblock clears i
   unblockAmbientRefresh()
   assert.equal(isAmbientRefreshBlocked(), false)
   assert.equal(store.has('nessie.admin.ambient-refresh-blocked'), false)
+})
+
+test('denied storage never defeats the in-memory terminal gate', () => {
+  const host = createAmbientRefreshGateHost()
+  throwOnWrite = true
+
+  assert.doesNotThrow(host.onTerminalStart)
+  assert.equal(host.ref.current, true)
+  assert.equal(host.isBlocked(), true)
+
+  assert.doesNotThrow(host.reopen)
+  assert.equal(host.ref.current, false)
+  throwOnRead = true
+  assert.equal(host.isBlocked(), false)
 })

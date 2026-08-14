@@ -83,7 +83,7 @@ test('a decoded direct mismatch terminally fences the coordinator without any re
   // cleared exactly once, and no blind refresh ran.
   assert.equal(refreshCalls, 0)
   assert.equal(foreignRevocations, 1)
-  assert.deepEqual(events, ['revoke:foreign-token', 'clear', 'terminal'])
+  assert.deepEqual(events, ['clear', 'revoke:foreign-token', 'terminal'])
 
   // The fence is permanent: no later reconcile or refresh can ever apply the
   // foreign session.
@@ -96,7 +96,7 @@ test('a decoded direct mismatch terminally fences the coordinator without any re
   assert.equal(refreshCalls, 0)
   assert.equal(foreignRevocations, 1)
   // Exactly one terminal notification even across the repeated fence probes.
-  assert.deepEqual(events, ['revoke:foreign-token', 'clear', 'terminal'])
+  assert.deepEqual(events, ['clear', 'revoke:foreign-token', 'terminal'])
 })
 
 test('runGuarded accepts the exact-target refresh winner after an opaque loss', async () => {
@@ -274,7 +274,7 @@ test('a guarded direct payload arriving after terminate begins is handed to logo
   await logout
   // The finalizer deletes the winning session's family; no foreign
   // revocation, no apply, exactly one clear and one terminal notification.
-  assert.deepEqual(events, ['delete:foreign-token', 'clear', 'terminal'])
+  assert.deepEqual(events, ['clear', 'delete:foreign-token', 'terminal'])
 })
 
 test('an overlapping foreign fence and terminate notify terminal exactly once', async () => {
@@ -337,19 +337,19 @@ test('an overlapping foreign fence and terminate notify terminal exactly once', 
   // the terminal notification has NOT fired — no early coordinator
   // generation while the fence is mid-flight.
   await new Promise((resolve) => setImmediate(resolve))
-  assert.deepEqual(events, ['revoke:foreign-token'])
+  assert.deepEqual(events, ['clear', 'revoke:foreign-token'])
 
   // Only now release the revocation: the fence rejects, logout finalizes.
   releaseRevocation?.()
   await assert.rejects(fenced, /The renewed session is foreign/)
   await logout
-  // Revocation finished first, then the finalizer deleted the winning
-  // family, then the single clear, and only then the one notification.
+  // Local auth cleared first, then revocation and finalization completed,
+  // followed by the one terminal notification.
   assert.deepEqual(events, [
+    'clear',
     'revoke:foreign-token',
     'delete:foreign-token',
     'logout-finalize',
-    'clear',
     'terminal',
   ])
 })
