@@ -321,11 +321,12 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   }
 
   const logout = async (): Promise<void> => {
-    if (isReactNativeWebView()) {
-      await unregisterNativePushDevice()
-    }
-    await authApi.logout(token)
-    await clearSession()
+    await sessionMutations.terminate(async (latestPayload) => {
+      if (isReactNativeWebView()) {
+        await unregisterNativePushDevice()
+      }
+      await authApi.logout(latestPayload?.token ?? tokenRef.current)
+    })
   }
 
   const value = useMemo<AuthSessionContextValue>(

@@ -44,6 +44,9 @@ export type SessionMutationCoordinator = {
   refresh: AccessTokenRefreshCoordinator
   reconcile: SessionReconcileCoordinator
   run: (mutation: () => Promise<SessionPayload>) => Promise<SessionPayload>
+  terminate: (
+    finalize: (latestPayload: SessionPayload | null) => Promise<void> | void,
+  ) => Promise<void>
 }
 
 const MAX_SAFE_JWT_EXPIRY_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1_000)
@@ -115,12 +118,23 @@ export const createSessionMutationCoordinator = (input: {
   let queue: Promise<void> | null = null
   let latest: Promise<SessionPayload | null> | null = null
   let latestToken: Promise<string | null> | null = null
+  let terminating = false
+  let termination: Promise<void> | null = null
+  let terminalPayload: SessionPayload | null = null
 
   const enqueue = (
     mutation: () => Promise<SessionPayload | null>,
   ): Promise<SessionPayload | null> => {
+    if (terminating) {
+      return Promise.reject(new Error('The session is being terminated.'))
+    }
     const execute = async (): Promise<SessionPayload | null> => {
+      if (terminating) throw new Error('The session is being terminated.')
       const payload = await mutation()
+      if (terminating) {
+        terminalPayload = payload
+        throw new Error('The session is being terminated.')
+      }
       if (payload === null) {
         await input.clearSession()
         return null
@@ -154,6 +168,9 @@ export const createSessionMutationCoordinator = (input: {
   }
 
   const reconcile = (): Promise<SessionPayload | null> => {
+    if (terminating) {
+      return Promise.reject(new Error('The session is being terminated.'))
+    }
     // A refresh arriving while another session mutation is queued must join
     // that mutation. Issuing a second request could otherwise apply an older
     // access token after a workspace switch or race two single-use cookies.
@@ -162,6 +179,9 @@ export const createSessionMutationCoordinator = (input: {
   }
 
   const refresh = (): Promise<string | null> => {
+    if (terminating) {
+      return Promise.reject(new Error('The session is being terminated.'))
+    }
     if (latestToken) return latestToken
     const pending = reconcile()
     return latestToken ?? pending.then((payload) => payload?.token ?? null)
@@ -175,7 +195,28 @@ export const createSessionMutationCoordinator = (input: {
     return payload
   }
 
-  return { reconcile, refresh, run }
+  const terminate = (
+    finalize: (latestPayload: SessionPayload | null) => Promise<void> | void,
+  ): Promise<void> => {
+    if (termination) return termination
+    terminating = true
+    const pendingQueue = queue
+    const ending = (async (): Promise<void> => {
+      try {
+        await pendingQueue
+        await finalize(terminalPayload)
+      } finally {
+        await input.clearSession()
+        terminalPayload = null
+        terminating = false
+        termination = null
+      }
+    })()
+    termination = ending
+    return ending
+  }
+
+  return { reconcile, refresh, run, terminate }
 }
 
 export const createAccessTokenRefreshCoordinator = (input: {

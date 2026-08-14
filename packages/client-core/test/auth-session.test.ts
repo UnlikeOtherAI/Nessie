@@ -276,6 +276,59 @@ test('session mutation coordinator makes refresh join an in-flight workspace swi
   assert.deepEqual(applied, ['switched-token'])
 })
 
+test('logout suppresses an in-flight switch and deletes its winning session', async () => {
+  let resolveSwitch: ((payload: SessionPayload) => void) | undefined
+  const switchResult = new Promise<SessionPayload>((resolve) => {
+    resolveSwitch = resolve
+  })
+  const events: string[] = []
+  const coordinator = createSessionMutationCoordinator({
+    applySession: (payload) => events.push(`apply:${payload.token}`),
+    clearSession: () => events.push('clear'),
+    refresh: async () => assert.fail('refresh is not part of logout'),
+  })
+
+  const switching = coordinator.run(() => switchResult)
+  const logout = coordinator.terminate(async (latestPayload) => {
+    events.push(`delete:${latestPayload?.token ?? 'none'}`)
+  })
+  const blockedMutation = coordinator.run(async () => {
+    events.push('unexpected-mutation')
+    return sessionPayload('unexpected-token')
+  })
+
+  await assert.rejects(blockedMutation, /session is being terminated/)
+  assert.deepEqual(events, [])
+  resolveSwitch?.(sessionPayload('switched-token'))
+
+  await assert.rejects(switching, /session is being terminated/)
+  await logout
+  assert.deepEqual(events, ['delete:switched-token', 'clear'])
+})
+
+test('logout still deletes and clears after an in-flight mutation rejects', async () => {
+  let rejectSwitch: ((error: Error) => void) | undefined
+  const switchResult = new Promise<SessionPayload>((_resolve, reject) => {
+    rejectSwitch = reject
+  })
+  const events: string[] = []
+  const coordinator = createSessionMutationCoordinator({
+    applySession: (payload) => events.push(`apply:${payload.token}`),
+    clearSession: () => events.push('clear'),
+    refresh: async () => assert.fail('refresh is not part of logout'),
+  })
+
+  const switching = coordinator.run(() => switchResult)
+  const logout = coordinator.terminate(async (latestPayload) => {
+    events.push(`delete:${latestPayload?.token ?? 'none'}`)
+  })
+  rejectSwitch?.(new Error('switch failed'))
+
+  await assert.rejects(switching, /switch failed/)
+  await logout
+  assert.deepEqual(events, ['delete:none', 'clear'])
+})
+
 test('session mutation coordinator exposes the refreshed payload and token-only API', async () => {
   let resolveRefresh: ((payload: SessionPayload) => void) | undefined
   let refreshCalls = 0
