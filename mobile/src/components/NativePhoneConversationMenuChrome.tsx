@@ -4,6 +4,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
 import { withOpacity } from '../lib/ipad-native-chrome'
+import { shouldDismissNativeCreationMenu } from '../lib/native-creation-menu'
 import {
   getNativePhoneBottomChromeClearance,
   getNativePhoneComposeBottom,
@@ -96,6 +97,7 @@ export const NativePhoneConversationMenuChrome = ({
 }: NativePhoneConversationMenuChromeProps): React.JSX.Element => {
   const [creationOpen, setCreationOpen] = useState(false)
   const creationProgress = useRef(new Animated.Value(0)).current
+  const dismissedCreationMenuVersion = useRef(dismissCreationMenuVersion)
   const { width: windowWidth } = useWindowDimensions()
 
   useEffect(() => {
@@ -132,8 +134,13 @@ export const NativePhoneConversationMenuChrome = ({
   }, [creationProgress])
 
   useEffect(() => {
-    if (!creationOpen) return
-    closeCreationMenu()
+    const shouldClose = shouldDismissNativeCreationMenu({
+      creationOpen,
+      dismissVersion: dismissCreationMenuVersion,
+      previousDismissVersion: dismissedCreationMenuVersion.current,
+    })
+    dismissedCreationMenuVersion.current = dismissCreationMenuVersion
+    if (shouldClose) closeCreationMenu()
   }, [closeCreationMenu, creationOpen, dismissCreationMenuVersion])
 
   const selectCreationAction = (action: NativePhoneCreationAction): void => {
