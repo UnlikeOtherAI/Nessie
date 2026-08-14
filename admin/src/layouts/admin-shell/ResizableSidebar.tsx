@@ -9,6 +9,7 @@ const KEYBOARD_STEP_PERCENT = 1
 
 type ResizableSidebarProps = {
   children: ReactNode
+  fixed?: boolean
 }
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
@@ -50,7 +51,7 @@ const initialSidebarWidthPercent = (): number => {
  * value is deliberately viewport-relative so a device resize retains the
  * proportion a person chose, rather than a stale pixel width.
  */
-export const ResizableSidebar = ({ children }: ResizableSidebarProps) => {
+export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarProps) => {
   const sidebarRef = useRef<HTMLDivElement>(null)
   const [isResizing, setIsResizing] = useState(false)
   const [isHandleRevealed, setIsHandleRevealed] = useState(false)
@@ -107,40 +108,46 @@ export const ResizableSidebar = ({ children }: ResizableSidebarProps) => {
 
   return (
     <div
-      className="resizable-sidebar"
+      className={fixed ? 'resizable-sidebar fixed-sidebar' : 'resizable-sidebar'}
       ref={sidebarRef}
-      style={{ flexBasis: `clamp(${MIN_SIDEBAR_WIDTH_PX}px, ${widthPercent}vw, ${MAX_SIDEBAR_WIDTH_PERCENT}vw)` }}
+      style={{
+        flexBasis: fixed
+          ? `${DEFAULT_SIDEBAR_WIDTH_PX}px`
+          : `clamp(${MIN_SIDEBAR_WIDTH_PX}px, ${widthPercent}vw, ${MAX_SIDEBAR_WIDTH_PERCENT}vw)`,
+      }}
     >
       {children}
-      <div
-        aria-label="Resize sidebar"
-        aria-orientation="vertical"
-        aria-valuemax={MAX_SIDEBAR_WIDTH_PERCENT}
-        aria-valuemin={Math.ceil(minimumSidebarWidthPercent(window.innerWidth))}
-        aria-valuenow={Math.round(widthPercent)}
-        className={[
-          'resizable-sidebar-control',
-          isResizing ? 'is-resizing' : '',
-          isHandleRevealed ? 'is-revealed' : '',
-        ].filter(Boolean).join(' ')}
-        onBlur={() => !isResizing && setIsHandleRevealed(false)}
-        onFocus={() => setIsHandleRevealed(true)}
-        onKeyDown={resizeWithKeyboard}
-        onPointerDown={startResize}
-        onPointerEnter={() => setIsHandleRevealed(true)}
-        onPointerLeave={() => !isResizing && setIsHandleRevealed(false)}
-        onPointerMove={(event) => isResizing && setSidebarWidthFromClientX(event.clientX)}
-        onPointerCancel={finishResize}
-        onPointerUp={finishResize}
-        role="separator"
-        tabIndex={0}
-      >
-        <span aria-hidden="true" className="resizable-sidebar-handle">
-          <span />
-          <span />
-          <span />
-        </span>
-      </div>
+      {!fixed ? (
+        <div
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          aria-valuemax={MAX_SIDEBAR_WIDTH_PERCENT}
+          aria-valuemin={Math.ceil(minimumSidebarWidthPercent(window.innerWidth))}
+          aria-valuenow={Math.round(widthPercent)}
+          className={[
+            'resizable-sidebar-control',
+            isResizing ? 'is-resizing' : '',
+            isHandleRevealed ? 'is-revealed' : '',
+          ].filter(Boolean).join(' ')}
+          onBlur={() => !isResizing && setIsHandleRevealed(false)}
+          onFocus={() => setIsHandleRevealed(true)}
+          onKeyDown={resizeWithKeyboard}
+          onPointerDown={startResize}
+          onPointerEnter={() => setIsHandleRevealed(true)}
+          onPointerLeave={() => !isResizing && setIsHandleRevealed(false)}
+          onPointerMove={(event) => isResizing && setSidebarWidthFromClientX(event.clientX)}
+          onPointerCancel={finishResize}
+          onPointerUp={finishResize}
+          role="separator"
+          tabIndex={0}
+        >
+          <span aria-hidden="true" className="resizable-sidebar-handle">
+            <span />
+            <span />
+            <span />
+          </span>
+        </div>
+      ) : null}
     </div>
   )
 }

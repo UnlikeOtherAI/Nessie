@@ -121,6 +121,8 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   const nativeApp = readSource('../../mobile/App.tsx')
 
   assert.match(shell, /useNativePhoneApp/)
+  assert.match(shell, /useNativeLargePhoneLandscapeApp/)
+  assert.match(shell, /ResizableSidebar fixed=\{nativeLargePhoneLandscape\}/)
   // The tab-root set (channels/projects/knowledge/settings/search) lives in
   // the shared phone-navigation module so shell, tab bar, and Back agree.
   assert.match(shell, /isPhoneTabRoot,/)
@@ -142,6 +144,8 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(creation, /onCreateChannel\(\)/)
   assert.match(creation, /onCreateMessage\(\)/)
   assert.match(nativeApp, /showNativePhoneHomeChrome = showBar && !IS_IPAD && isNativePhoneTabRootRoute\(currentPath\)/)
+  assert.match(nativeApp, /largePhoneLandscapeCapable/)
+  assert.match(nativeApp, /large-phone-landscape/)
   assert.match(
     nativeApp,
     /showNativePhoneCreationActions = showNativePhoneHomeChrome && isNativePhoneChannelsRootRoute\(currentPath\)/,
@@ -152,6 +156,10 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(phoneChrome, /Animated\.timing\(creationProgress,/)
   assert.match(phoneChrome, /styles\.morphingMessageAction/)
   assert.match(phoneChrome, /Open creation menu/)
+  assert.match(phoneChrome, /accessibilityLabel="Back"/)
+  assert.match(phoneChrome, /accessibilityLabel="Forward"/)
+  assert.match(phoneChrome, /onToolbarAction\('history'\)/)
+  assert.doesNotMatch(phoneChrome, /openSearchOverlay/)
   assert.match(phoneChrome, /messageActionSlot/)
   assert.doesNotMatch(phoneChrome, /Start a new channel, project, or direct message/)
   assert.match(phoneChrome, /createDescription: \{ fontSize: 10, lineHeight: 13 \}/)

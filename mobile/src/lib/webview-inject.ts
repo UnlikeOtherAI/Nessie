@@ -23,8 +23,9 @@ export const INJECTED = `
   if (!document.getElementById(styleId)) {
     var st = document.createElement('style');
     var shell = window.__nessieNativeShell;
-    var isIosPhone =
-      shell && shell.platform === 'ios' && shell.formFactor === 'phone';
+    var isIosPhone = shell && shell.platform === 'ios' && (
+      shell.formFactor === 'phone' || shell.formFactor === 'large-phone-landscape'
+    );
     var nativeBottomInset =
       shell && typeof shell.bottomInset === 'number' && isFinite(shell.bottomInset)
         ? Math.max(0, shell.bottomInset)

@@ -258,9 +258,13 @@ Projects, Knowledge, Admin, and Search, including ordinary query-string state),
 WebView. Its surface is the same `--rail` backing surface visible beneath the
 transparent iPad tab controls, and its controls use the theme's `--tx` colour;
 in particular, the default Sandstone header is the same warm light beige as
-that iPad background. The workspace control opens the existing
-entitlement-aware switcher, Recent Channels delegates to the existing toolbar
-bridge, and the account control opens the canonical account menu. The header
+that iPad background. The signed-in user's avatar is at the leading edge, the
+Back, Forward, and prominent Recent Channels controls sit between it and the
+workspace switcher, and the workspace control is pinned to the trailing edge.
+There is deliberately no duplicate Search button: Search remains the dedicated
+bottom-tab destination. The workspace control opens the existing
+entitlement-aware switcher, every toolbar button delegates to the existing
+toolbar bridge, and the account control opens the canonical account menu. The header
 owns the status-bar backdrop, so its system indicators follow the header's
 actual contrast. Its Slack-positioned
 bottom-right **+** is deliberately limited to the Channels root: it uses the
@@ -444,6 +448,13 @@ and leaves page data, URLs, and conversation state in the admin React app.
   and only then starts the paired transforms. Navigation does not wait for
   network data: the destination's own loading state is prepainted instead of
   flashing into existence during its first moving frame.
+- **Max-class iPhones** (a screen long edge of at least 900dp, such as iPhone
+  16 Pro Max) permit landscape. While rotated, the native shell reports a
+  dedicated large-phone landscape form factor: it retains the phone's bottom
+  tab bar and Search destination, but the web workspace uses the adjacent
+  iPad-style secondary menu and page columns. That secondary menu is a fixed
+  260px column with no resize affordance. Smaller iPhones are locked to upright
+  portrait, so they never enter a cramped two-column layout.
 - A phone edge-swipe is owned by that same admin stack. The prior React screen
   remains mounted underneath the current one, so it is visible continuously
   under the finger with its scroll and component state intact. Native WebView
@@ -472,7 +483,8 @@ and leaves page data, URLs, and conversation state in the admin React app.
   the system Liquid Glass tab bar. **Android** uses the same routes and
   hierarchy, but keeps its normal Material-style Back affordance rather than
   imitating iOS glass.
-- **iPad, Android tablets with a multi-column viewport, and desktop** retain
+- **iPad, Max-class iPhones in landscape, Android tablets with a multi-column
+  viewport, and desktop** retain
   their side navigation beside the selected detail and never mount the phone
   transition viewport; conversation information is an inspector, not a
   phone-style replacement.

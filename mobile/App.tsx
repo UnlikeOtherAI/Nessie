@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
 } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
+import * as ScreenOrientation from 'expo-screen-orientation'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 import { ADMIN_URL } from './src/config'
@@ -35,6 +36,7 @@ import { type NativeShellMessage } from './src/lib/native-shell-message'
 import { TABS, tabIndexForPath } from './src/lib/tabs'
 import { INJECTED, isDark } from './src/lib/webview-inject'
 import { statusBarStyleForNativePhoneHomeHeader } from './src/lib/status-bar'
+import { isLandscape, supportsLargePhoneLandscape } from './src/lib/phone-orientation'
 import {
   createIpadNativeChromeTheme,
   getIpadChromeTop,
@@ -76,6 +78,22 @@ const Shell = (): React.JSX.Element => {
   const webRef = useRef<WebView>(null)
   const insets = useSafeAreaInsets()
   const { height: windowHeight, width: windowWidth } = useWindowDimensions()
+  const screenDimensions = Dimensions.get('screen')
+  const largePhoneLandscapeCapable = supportsLargePhoneLandscape({
+    height: screenDimensions.height,
+    isPad: IS_IPAD,
+    platform: Platform.OS,
+    width: screenDimensions.width,
+  })
+  const largePhoneLandscape = largePhoneLandscapeCapable && isLandscape({
+    height: windowHeight,
+    width: windowWidth,
+  })
+  const nativeFormFactor = IS_IPAD
+    ? 'ipad'
+    : largePhoneLandscape
+      ? 'large-phone-landscape'
+      : 'phone'
   const [index, setIndex] = useState(0)
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [presentation, dispatchPresentation] = useReducer(
@@ -116,10 +134,18 @@ const Shell = (): React.JSX.Element => {
 
   useEffect(() => {
     if (IS_IPAD || Platform.OS !== 'ios') return
+    const orientation = largePhoneLandscapeCapable
+      ? ScreenOrientation.unlockAsync()
+      : ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
+    void orientation.catch(() => undefined)
+  }, [largePhoneLandscapeCapable])
+
+  useEffect(() => {
+    if (IS_IPAD || Platform.OS !== 'ios') return
     runScript(nativePhoneTabBarClearanceScript(insets.bottom))
   }, [insets.bottom, runScript])
 
-  const nativeBackForwardGestures = allowsNativeBackForwardGestures({
+  const nativeBackForwardGestures = largePhoneLandscape || allowsNativeBackForwardGestures({
     heightDp: windowHeight,
     widthDp: windowWidth,
   })
@@ -140,6 +166,19 @@ const Shell = (): React.JSX.Element => {
   } = useNativePushNavigation({
     cachePushPath,
   })
+
+  // Orientation changes keep the WebView mounted. Re-publish the shell shape
+  // so the hosted admin switches between the phone stack and fixed two-column
+  // layout without relying on a reload.
+  useEffect(() => {
+    runScript(nativeShellInfoScript({
+      bottomInset: insets.bottom,
+      clientId: pushSurfaceClientId.current,
+      formFactor: nativeFormFactor,
+      pendingPushPath,
+      platform: Platform.OS,
+    }))
+  }, [insets.bottom, nativeFormFactor, pendingPushPath, runScript])
   const sourceUri = bootRecovery.reloadNonce === 0
     ? ADMIN_URL
     : (() => {
@@ -319,7 +358,6 @@ const Shell = (): React.JSX.Element => {
   // not always a direct aside/main child in the web DOM, so relying on injected
   // CSS can leave its first row beneath the status bar.
   const ipadChromeTop = getIpadChromeTop(insets.top)
-  const screenDimensions = Dimensions.get('screen')
   const ipadLeadingControlsClearance = getIpadWindowedLeadingControlsClearance(
     IS_IPAD && isIpadWindowed({
       screenHeight: screenDimensions.height,
@@ -378,14 +416,14 @@ const Shell = (): React.JSX.Element => {
           injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript({
             bottomInset: insets.bottom,
             clientId: pushSurfaceClientId.current,
-            formFactor: IS_IPAD ? 'ipad' : 'phone',
+            formFactor: nativeFormFactor,
             pendingPushPath,
             platform: Platform.OS,
           })}
           injectedJavaScript={`${nativeShellInfoScript({
             bottomInset: insets.bottom,
             clientId: pushSurfaceClientId.current,
-            formFactor: IS_IPAD ? 'ipad' : 'phone',
+            formFactor: nativeFormFactor,
             pendingPushPath,
             platform: Platform.OS,
           })}\n${INJECTED}\ntrue;`}
@@ -435,7 +473,7 @@ const Shell = (): React.JSX.Element => {
           onAccountPress={nativeActions.toggleAccountMenu}
           onCreationMenuOpen={nativeActions.closeTransientMenus}
           onCreateAction={nativeActions.createFromPhoneMenu}
-          onHistoryPress={() => nativeActions.runToolbarAction('history')}
+          onToolbarAction={nativeActions.runToolbarAction}
           onWorkspacePress={() => nativeActions.toggleWorkspaceMenu(insets.left + 16)}
           safeTop={insets.top}
           sheetMutedText={phoneTextMuted}
@@ -443,6 +481,7 @@ const Shell = (): React.JSX.Element => {
           sheetSurface={ipadChromeSurface}
           platform={IS_ANDROID ? 'android' : 'ios'}
           showCreationActions={showNativePhoneCreationActions}
+          toolbarState={toolbarState}
           workspaceAvatarUrl={nativeWorkspaceAvatarUrl}
           workspaceName={ipadWorkspaceName}
         />

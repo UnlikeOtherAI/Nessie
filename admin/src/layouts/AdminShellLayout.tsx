@@ -5,6 +5,7 @@ import { KnowledgeProvider } from '../components/features/knowledge/KnowledgePro
 import {
   isReactNativeWebView,
   useMobileLayout,
+  useNativeLargePhoneLandscapeApp,
   useNativeIPadApp,
   useNativePhoneApp,
   usePhoneLayout,
@@ -110,6 +111,7 @@ const AuthenticatedAdminShellLayout = () => {
   const phoneLayout = usePhoneLayout();
   const nativeShell = isReactNativeWebView();
   const nativeIPadApp = useNativeIPadApp();
+  const nativeLargePhoneLandscape = useNativeLargePhoneLandscapeApp();
   const nativePhoneApp = useNativePhoneApp();
   const showPhoneTabRoot = phoneLayout && isPhoneTabRoot(shell.pathname);
   useEffect(() => {
@@ -126,7 +128,7 @@ const AuthenticatedAdminShellLayout = () => {
   // native app's own tab bar on phone/iPad — drop the entire top bar. Navigation
   // lives in the bottom bar (which carries its own Search tab) and each page
   // supplies its own mobile header (hamburger + title).
-  const hideTopBar = isComposeRoute || showWebTabBar || (nativeShell && (phoneLayout || nativeIPadApp));
+  const hideTopBar = isComposeRoute || showWebTabBar || (nativeShell && (nativePhoneApp || nativeIPadApp));
 
   // Capture the matched route as a concrete element. The phone transition
   // keeps that element mounted while it leaves; retaining a live <Outlet>
@@ -244,7 +246,9 @@ const AuthenticatedAdminShellLayout = () => {
     </>
   ) : (
     <>
-      {secNavElement ? <ResizableSidebar>{secNavElement}</ResizableSidebar> : null}
+      {secNavElement ? (
+        <ResizableSidebar fixed={nativeLargePhoneLandscape}>{secNavElement}</ResizableSidebar>
+      ) : null}
       {mainContent}
     </>
   );

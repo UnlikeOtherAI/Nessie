@@ -3,7 +3,7 @@ import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 type NativeShellInfo = {
   bottomInset: number
   clientId: string
-  formFactor: 'ipad' | 'phone'
+  formFactor: 'ipad' | 'large-phone-landscape' | 'phone'
   platform: string
   pendingPushPath: string | null
 }

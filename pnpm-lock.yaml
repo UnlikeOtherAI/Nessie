@@ -338,6 +338,9 @@ importers:
       expo-notifications:
         specifier: ~0.32.17
         version: 0.32.17(expo@54.0.35)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
+      expo-screen-orientation:
+        specifier: ~9.0.9
+        version: 9.0.9(expo@54.0.35)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4))
       expo-splash-screen:
         specifier: ~31.0.13
         version: 31.0.13(expo@54.0.35)(typescript@5.9.3)
@@ -4475,6 +4478,12 @@ packages:
         optional: true
       react-server-dom-webpack:
         optional: true
+
+  expo-screen-orientation@9.0.9:
+    resolution: {integrity: sha512-UTU745XoqBvQJkZ820GTfMuOxlkppYqaeQ+x0wdu44cyrZiZugqe+egFF2+zC+SaxgAltU5EuO8GIj9xSF+YMw==}
+    peerDependencies:
+      expo: '*'
+      react-native: '*'
 
   expo-server@1.0.7:
     resolution: {integrity: sha512-mcmyML3oXcqFUXUxtdtCL1O00ztNI2v76d+MdniXRUgHNxIcHZ05zo+DqBaOOT6LQnPk4vA4YHqQl7iGUfRb3g==}
@@ -11513,6 +11522,11 @@ snapshots:
       - '@types/react-dom'
       - supports-color
     optional: true
+
+  expo-screen-orientation@9.0.9(expo@54.0.35)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4)):
+    dependencies:
+      expo: 54.0.35(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native-webview@13.15.0(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4))(react@19.2.4))(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
+      react-native: 0.81.4(@babel/core@7.29.0)(@types/react@19.2.17)(react@19.2.4)
 
   expo-server@1.0.7: {}
 

@@ -61,19 +61,32 @@ export const useNativeIPadApp = (): boolean => {
   return isReactNativeWebView() && info?.platform === 'ios' && info.formFactor === 'ipad'
 }
 
+// A Max-class iPhone gets the tablet-style adjacent navigation only while it
+// is actually in landscape. It remains a phone native shell, including its
+// bottom tab bar and Search destination, rather than becoming an iPad shell.
+export const useNativeLargePhoneLandscapeApp = (): boolean => {
+  const info = useNativeShellInfo()
+  return isReactNativeWebView()
+    && info?.platform === 'ios'
+    && info.formFactor === 'large-phone-landscape'
+}
+
 // A phone WebView uses native home controls on both iOS and Android. Keep this
 // form-factor distinction here rather than scattering shell checks through page
 // components.
 export const useNativePhoneApp = (): boolean => {
   const info = useNativeShellInfo()
-  return isReactNativeWebView() && info?.formFactor === 'phone'
+  return isReactNativeWebView()
+    && (info?.formFactor === 'phone' || info?.formFactor === 'large-phone-landscape')
 }
 
 // iOS-only controls (such as its glass conversation Back affordance) still
 // need to distinguish an iPhone from an Android handset.
 export const useNativeIOSPhoneApp = (): boolean => {
   const info = useNativeShellInfo()
-  return isReactNativeWebView() && info?.platform === 'ios' && info.formFactor === 'phone'
+  return isReactNativeWebView()
+    && info?.platform === 'ios'
+    && (info.formFactor === 'phone' || info.formFactor === 'large-phone-landscape')
 }
 
 // Below Tailwind's `md` breakpoint (768px) we treat the layout as mobile and drive
@@ -83,12 +96,12 @@ export const useNativeIOSPhoneApp = (): boolean => {
 // minimum-query complement, so there is no 767/768 fractional gap (plan §B).
 
 // A tablet-sized viewport: both dimensions are large enough to keep the secondary
-// sidebar pinned. Phones never satisfy both at once (their short side is ≤ ~440px
-// in any orientation), so this cleanly separates iPad from iPhone — and an iPad in
-// a narrow Split View correctly drops below it and gets the drawer. This is a
-// two-dimensional device-physics fact the band scale cannot express, so it lives
-// as a named one-off lane on the viewport store, owned by this module (plan:
-// "the 600×600 native-tablet gate ... already a named const").
+// sidebar pinned. The explicit Max-iPhone landscape shell is the only exception:
+// its native frame names the form factor, so ordinary phones still cannot become
+// multi-column merely by rotating. An iPad in a narrow Split View correctly drops
+// below this query and gets the drawer. This is a two-dimensional device-physics
+// fact the band scale cannot express, so it lives as a named one-off lane on the
+// viewport store.
 const TABLET_MIN_QUERY = '(min-width: 600px) and (min-height: 600px)'
 registerViewportMediaQuery('tabletMin', TABLET_MIN_QUERY)
 
@@ -105,7 +118,8 @@ export const useMobileLayout = (): boolean => {
 // rather than behind a hamburger drawer.
 export const useTabletShell = (): boolean => {
   const tablet = useViewport().media?.tabletMin ?? false
-  return isReactNativeWebView() && tablet
+  const largePhoneLandscape = useNativeLargePhoneLandscapeApp()
+  return isReactNativeWebView() && (tablet || largePhoneLandscape)
 }
 
 // Phone layout: the narrow hamburger-drawer experience. Tablets keep the sidebar

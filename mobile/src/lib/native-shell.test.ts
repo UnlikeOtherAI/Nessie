@@ -57,6 +57,23 @@ test('caches a cold-start push path before the WebView application mounts', () =
   assert.equal(events.at(-1)?.detail, '/channels/channel-a/threads/thread-a/replies/root-a')
 })
 
+test('publishes the large-phone landscape form factor after rotation', () => {
+  const { events, window } = runShellScript(nativeShellInfoScript({
+    bottomInset: 21,
+    clientId: 'client-id',
+    formFactor: 'large-phone-landscape',
+    pendingPushPath: null,
+    platform: 'ios',
+  }))
+
+  assert.deepEqual(window.__nessieNativeShell, {
+    bottomInset: 21,
+    formFactor: 'large-phone-landscape',
+    platform: 'ios',
+  })
+  assert.equal(events.at(-1)?.type, 'nessie:native-shell-info')
+})
+
 test('updates the iPhone WebView clearance when its safe-area inset changes', () => {
   const values = new Map<string, string>()
   const document = {

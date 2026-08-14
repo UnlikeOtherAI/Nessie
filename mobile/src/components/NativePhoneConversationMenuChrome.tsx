@@ -3,6 +3,7 @@ import { Animated, Easing, Image, Pressable, StyleSheet, Text, useWindowDimensio
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 import { NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
+import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 import { withOpacity } from '../lib/ipad-native-chrome'
 import { shouldDismissNativeCreationMenu } from '../lib/native-creation-menu'
 import {
@@ -25,13 +26,14 @@ type NativePhoneConversationMenuChromeProps = {
   onAccentColor: string
   onAccountPress: () => void
   onCreationMenuOpen: () => void
-  onHistoryPress: () => void
+  onToolbarAction: (action: ToolbarAction) => void
   onCreateAction: (action: NativePhoneCreationAction) => void
   safeTop: number
   sheetMutedText: string
   sheetSurface: string
   sheetText: string
   showCreationActions: boolean
+  toolbarState: ToolbarState
   platform: 'android' | 'ios'
   onWorkspacePress: () => void
   workspaceAvatarUrl: string | null
@@ -83,13 +85,14 @@ export const NativePhoneConversationMenuChrome = ({
   onAccentColor,
   onAccountPress,
   onCreationMenuOpen,
-  onHistoryPress,
+  onToolbarAction,
   onCreateAction,
   safeTop,
   sheetMutedText,
   sheetSurface,
   sheetText,
   showCreationActions,
+  toolbarState,
   platform,
   onWorkspacePress,
   workspaceAvatarUrl,
@@ -176,6 +179,78 @@ export const NativePhoneConversationMenuChrome = ({
     >
       <View style={[styles.headerContent, { paddingTop: safeTop }]}>
         <Pressable
+          accessibilityLabel="Account menu"
+          accessibilityRole="button"
+          hitSlop={6}
+          onPress={onAccountPress}
+          style={({ pressed }) => [
+            styles.accountButton,
+            { borderColor: withOpacity(headerText, 0.38) },
+            pressed ? { opacity: 0.8 } : null,
+          ]}
+        >
+          {accountAvatarUrl ? (
+            <Image source={{ uri: accountAvatarUrl }} style={styles.accountAvatar} />
+          ) : (
+            <View style={[styles.accountFallback, { backgroundColor: withOpacity(headerText, 0.18) }]}>
+              <Text style={[styles.accountInitial, { color: headerText }]}>{initial(accountName, 'U')}</Text>
+            </View>
+          )}
+          <AccountPresenceIndicator
+            headerSurface={headerSurface}
+            headerText={headerText}
+            state={accountPresence}
+          />
+        </Pressable>
+
+        <View style={styles.toolbarControls}>
+          <Pressable
+            accessibilityLabel="Back"
+            accessibilityRole="button"
+            disabled={!toolbarState.canBack}
+            hitSlop={6}
+            onPress={() => onToolbarAction('back')}
+            style={({ pressed }) => [
+              styles.toolbarButton,
+              { backgroundColor: withOpacity(headerText, 0.12) },
+              !toolbarState.canBack ? styles.toolbarButtonDisabled : null,
+              pressed && toolbarState.canBack ? { backgroundColor: withOpacity(headerText, 0.22) } : null,
+            ]}
+          >
+            <MaterialIcons color={headerText} name="arrow-back-ios-new" size={18} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Forward"
+            accessibilityRole="button"
+            disabled={!toolbarState.canForward}
+            hitSlop={6}
+            onPress={() => onToolbarAction('forward')}
+            style={({ pressed }) => [
+              styles.toolbarButton,
+              { backgroundColor: withOpacity(headerText, 0.12) },
+              !toolbarState.canForward ? styles.toolbarButtonDisabled : null,
+              pressed && toolbarState.canForward ? { backgroundColor: withOpacity(headerText, 0.22) } : null,
+            ]}
+          >
+            <MaterialIcons color={headerText} name="arrow-forward-ios" size={18} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Recent channels"
+            accessibilityRole="button"
+            hitSlop={6}
+            onPress={() => onToolbarAction('history')}
+            style={({ pressed }) => [
+              styles.historyButton,
+              { backgroundColor: withOpacity(headerText, 0.12) },
+              toolbarState.recentOpen ? { backgroundColor: withOpacity(headerText, 0.22) } : null,
+              pressed ? { backgroundColor: withOpacity(headerText, 0.3) } : null,
+            ]}
+          >
+            <MaterialIcons color={headerText} name="history" size={25} />
+          </Pressable>
+        </View>
+
+        <Pressable
           accessibilityLabel={`Switch workspace, ${workspaceName ?? 'Workspace'}`}
           accessibilityRole="button"
           hitSlop={6}
@@ -198,45 +273,6 @@ export const NativePhoneConversationMenuChrome = ({
           <MaterialIcons color={headerText} name="keyboard-arrow-down" size={24} />
         </Pressable>
 
-        <View style={styles.headerActions}>
-          <Pressable
-            accessibilityLabel="Recent channels"
-            accessibilityRole="button"
-            hitSlop={6}
-            onPress={onHistoryPress}
-            style={({ pressed }) => [
-              styles.historyButton,
-              { backgroundColor: withOpacity(headerText, 0.12) },
-              pressed ? { backgroundColor: withOpacity(headerText, 0.22) } : null,
-            ]}
-          >
-            <MaterialIcons color={headerText} name="history" size={25} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Account menu"
-            accessibilityRole="button"
-            hitSlop={6}
-            onPress={onAccountPress}
-            style={({ pressed }) => [
-              styles.accountButton,
-              { borderColor: withOpacity(headerText, 0.38) },
-              pressed ? { opacity: 0.8 } : null,
-            ]}
-          >
-            {accountAvatarUrl ? (
-              <Image source={{ uri: accountAvatarUrl }} style={styles.accountAvatar} />
-            ) : (
-              <View style={[styles.accountFallback, { backgroundColor: withOpacity(headerText, 0.18) }]}>
-                <Text style={[styles.accountInitial, { color: headerText }]}>{initial(accountName, 'U')}</Text>
-              </View>
-            )}
-            <AccountPresenceIndicator
-              headerSurface={headerSurface}
-              headerText={headerText}
-              state={accountPresence}
-            />
-          </Pressable>
-        </View>
       </View>
     </View>
 
@@ -408,12 +444,11 @@ const styles = StyleSheet.create({
   },
   createTitle: { fontSize: 14, fontWeight: '700', lineHeight: 17 },
   header: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 30 },
-  headerActions: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   headerContent: {
     height: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
     paddingHorizontal: 16,
   },
   historyButton: { alignItems: 'center', borderRadius: 21, height: 42, justifyContent: 'center', width: 42 },
@@ -434,12 +469,17 @@ const styles = StyleSheet.create({
     width: 7,
     borderRadius: 4,
   },
+  toolbarButton: { alignItems: 'center', borderRadius: 18, height: 36, justifyContent: 'center', width: 36 },
+  toolbarButtonDisabled: { opacity: 0.3 },
+  toolbarControls: { alignItems: 'center', flexDirection: 'row', gap: 4 },
   workspace: {
     alignItems: 'center',
     borderRadius: 22,
     flexDirection: 'row',
     gap: 8,
-    maxWidth: '58%',
+    flex: 1,
+    justifyContent: 'flex-end',
+    minWidth: 0,
     paddingHorizontal: 4,
   },
   workspaceName: { flexShrink: 1, fontSize: 21, fontWeight: '700' },

@@ -5,6 +5,8 @@ import {
   minimumSidebarWidthPercent,
   parseStoredSidebarWidthPercent,
 } from '../src/layouts/admin-shell/ResizableSidebar'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 test('sidebar width is capped at 35% of the viewport', () => {
   assert.equal(clampSidebarWidthPercent(42, 1_440), 35)
@@ -22,4 +24,15 @@ test('a stored viewport-relative width remains proportional when it is in bounds
 test('an absent device preference uses the current sidebar width as its baseline', () => {
   assert.equal(parseStoredSidebarWidthPercent(null), null)
   assert.equal(parseStoredSidebarWidthPercent('30'), 30)
+})
+
+test('the large-phone landscape sidebar is fixed and exposes no resize control', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('../src/layouts/admin-shell/ResizableSidebar.tsx', import.meta.url)),
+    'utf8',
+  )
+
+  assert.match(source, /fixed\?: boolean/)
+  assert.match(source, /fixed\s*\? `\$\{DEFAULT_SIDEBAR_WIDTH_PX\}px`/)
+  assert.match(source, /\{!fixed \? \(/)
 })
