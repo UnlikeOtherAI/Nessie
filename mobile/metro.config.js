@@ -18,6 +18,26 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(monorepoRoot, 'node_modules'),
 ]
+// Expo's URL polyfill requires webidl-conversions v5, which is nested below
+// whatwg-url-without-unicode. In the hoisted workspace, Metro otherwise picks
+// an unrelated root v8 package that assumes SharedArrayBuffer exists; Hermes
+// on iOS does not expose that global and the application crashes at boot.
+const expoWebIdlConversions = path.resolve(
+  monorepoRoot,
+  'node_modules/whatwg-url-without-unicode/node_modules/webidl-conversions/lib/index.js',
+)
+const defaultResolveRequest = config.resolver.resolveRequest
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    moduleName === 'webidl-conversions' &&
+    context.originModulePath.includes(`${path.sep}whatwg-url-without-unicode${path.sep}`)
+  ) {
+    return { filePath: expoWebIdlConversions, type: 'sourceFile' }
+  }
+  return defaultResolveRequest
+    ? defaultResolveRequest(context, moduleName, platform)
+    : context.resolveRequest(context, moduleName, platform)
+}
 config.resolver.unstable_enableSymlinks = true
 config.resolver.disableHierarchicalLookup = true
 
