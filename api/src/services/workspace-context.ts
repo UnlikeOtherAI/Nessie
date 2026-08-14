@@ -7,6 +7,7 @@ import {
 } from './identity-display.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import {
+  ensureExistingWorkspacePrincipal,
   ensureWorkspacePrincipal,
   findExistingPrincipal,
 } from './workspace-principal.js'
@@ -32,6 +33,14 @@ export type WorkspaceIdentityInput = {
   email: string
   displayName: string
   avatarUrl?: string
+  /**
+   * Account-bound recovery seam: when set, this exact local principal is the
+   * login's identity. The resolver never looks up, creates, or remaps a user
+   * by email — it locks and reuses this row, and only materializes the target
+   * workspace plus its memberships for this id. Used by the workspace-switch
+   * reauthorization path, which has already proven the caller is this user.
+   */
+  existingUserId?: string
   workspace?: ExternalAuthWorkspace
   // Stable UOA subject (`sub`). Present on the UOA provider path only —
   // principal resolution then keys on it (workspace-principal.ts); generic
@@ -124,7 +133,7 @@ const publicChannelId = async (
 
 const initializeSharedOrganization = async (
   prisma: PrismaClient,
-  input: WorkspaceIdentityInput & { email: string },
+  input: WorkspaceIdentityInput & { email: string; existingUserId?: undefined },
 ): Promise<{
   sharedOrg: { id: string }
   user: { id: string } | null
@@ -255,13 +264,14 @@ const resolveDefaultTarget = async (
     teamRole: 'member',
   }
 }
-
 /**
  * Resolve the Nessie environment a UOA login lands in (Slack-style workspace →
  * team). Ensures the shared org + user exist, then resolves-or-creates the
  * project/team/#general for the selected UOA workspace and the user's
  * memberships. Returns the org/project/team the session is scoped to.
  *
+ * - `existingUserId` set (account-bound recovery) → lock and reuse exactly
+ *   that principal; never resolve or create a user by email.
  * - No workspace selection → the user's existing/default team (legacy behaviour).
  * - Known workspace, team exists → join it (create-only role, never downgraded).
  * - Known workspace, no team yet → auto-provision it; the first person owns it.
@@ -278,12 +288,21 @@ export const resolveUoaWorkspaceContext = async (
     orderBy: CREATED_AT_ASC,
     select: { id: true },
   })
-  let user = await findExistingPrincipal(prisma, { email, uoaSub: input.uoaSub })
+  let user = input.existingUserId
+    ? { id: input.existingUserId }
+    : await findExistingPrincipal(prisma, { email, uoaSub: input.uoaSub })
 
   if (!sharedOrg) {
+    if (input.existingUserId) {
+      // Recovery never bootstraps: the shared org already exists for any
+      // account that holds a renewable session.
+      return null
+    }
     const initialized = await initializeSharedOrganization(prisma, {
-      ...input,
+      avatarUrl: input.avatarUrl,
+      displayName: input.displayName,
       email,
+      workspace: input.workspace,
     })
     if (!initialized) {
       // Users exist but no organization — a corrupt/misconfigured instance.
@@ -311,18 +330,33 @@ export const resolveUoaWorkspaceContext = async (
   // 3. Resolve one stable local principal after validating the target. The
   // advisory locks (subject + email) close same-principal callback races
   // across devices/replicas; a UOA email row bound to a different subject
-  // fails closed here with UoaSubjectConflictError before any write.
-  const principal = await ensureWorkspacePrincipal(prisma, {
-    avatarUrl: input.avatarUrl,
-    channelId: target.channelId,
-    displayName: input.displayName,
-    email,
-    organizationId,
-    projectId: target.projectId,
-    teamId: target.teamId,
-    teamRole: target.teamRole,
-    uoaSub: input.uoaSub,
-  })
+  // fails closed here with UoaSubjectConflictError before any write. Recovery
+  // instead locks and re-reads the exact bearer-proven user under
+  // `lockUserSessions` before any membership write — never resolving, adopting,
+  // or creating a principal by email or subject claim.
+  const principal = input.existingUserId
+    ? await ensureExistingWorkspacePrincipal(prisma, {
+        channelId: target.channelId,
+        organizationId,
+        projectId: target.projectId,
+        teamId: target.teamId,
+        teamRole: target.teamRole,
+        userId: input.existingUserId,
+      })
+    : await ensureWorkspacePrincipal(prisma, {
+        avatarUrl: input.avatarUrl,
+        channelId: target.channelId,
+        displayName: input.displayName,
+        email,
+        organizationId,
+        projectId: target.projectId,
+        teamId: target.teamId,
+        teamRole: target.teamRole,
+        uoaSub: input.uoaSub,
+      })
+  if (!principal) {
+    return null
+  }
 
   return {
     userId: principal.id,

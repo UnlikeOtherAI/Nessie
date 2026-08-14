@@ -2,7 +2,11 @@ import type { FastifyInstance } from 'fastify'
 import { MeResponseSchema, type UoaSessionIdentity } from '@nessie/schemas'
 
 import { verifyPassword } from '../auth/password.js'
-import { verifySessionToken } from '../auth/session.js'
+import {
+  isSessionTokenRevoked,
+  verifySessionToken,
+  type SessionTokenClaims,
+} from '../auth/session.js'
 import { LoginRequestSchema } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
@@ -30,11 +34,101 @@ export const registerAuthLoginRoute = (
   deps: RouteDeps,
   issueRefreshCookie: IssueRefreshCookie,
 ): void => {
-  const { authSecret, config, prisma, buildLocalSession, buildSessionForUser, rateLimiter } = deps
+  const {
+    authSecret,
+    config,
+    prisma,
+    buildLocalSession,
+    buildSessionForUser,
+    getAuthorizationToken,
+    rateLimiter,
+  } = deps
+
+  const rejectWorkspaceTarget = (
+    reply: Parameters<typeof sendApiError>[0],
+  ): void => {
+    sendApiError(
+      reply,
+      401,
+      'WORKSPACE_TARGET_MISMATCH',
+      'The renewed session is not on the requested workspace. Try switching again.',
+    )
+  }
+
+  const rejectWorkspaceIdentity = (
+    reply: Parameters<typeof sendApiError>[0],
+  ): void => {
+    sendApiError(
+      reply,
+      401,
+      'WORKSPACE_IDENTITY_MISMATCH',
+      'This sign-in belongs to a different account. Try switching again.',
+    )
+  }
+
+  const rejectWorkspaceRecovery = rejectWorkspaceIdentity
+
+  // Verify the Bearer Nessie session an expectedWorkspace discriminant must
+  // accompany: a live, unrevoked UOA access token for an existing local user
+  // with an immutable UOA identity bound. Returns null on any refusal — every
+  // caller rejects before any upstream exchange or local write.
+  const verifyRecoveryBearer = async (
+    request: Parameters<typeof getAuthorizationToken>[0],
+  ): Promise<SessionTokenClaims | null> => {
+    const bearer = getAuthorizationToken(request)
+    if (!bearer) {
+      return null
+    }
+    const verification = verifySessionToken(bearer, authSecret)
+    if (!verification.ok) {
+      return null
+    }
+    if (verification.claims.providerType !== 'uoa' || !verification.claims.uoaIdentity) {
+      return null
+    }
+    if (verification.claims.providerId !== 'uoa') {
+      return null
+    }
+    const sessionUser = await prisma.user.findUnique({
+      where: { id: verification.claims.sub },
+      select: { tokenVersion: true },
+    })
+    if (!sessionUser || isSessionTokenRevoked(verification.claims, sessionUser.tokenVersion)) {
+      return null
+    }
+    return verification.claims
+  }
 
   app.post('/api/auth/session', { config: { public: true } }, async (request, reply) => {
     const body = parseInput(LoginRequestSchema, request.body, reply)
     if (!body) return reply
+    // expectedWorkspace is a strict AUTHENTICATED discriminant for
+    // workspace-switch reauthorization, never an extra claim of an ordinary
+    // login. It is valid ONLY as a complete providerId=uoa code exchange
+    // accompanied by a current Bearer Nessie session, so every other shape —
+    // password login, a local provider, an incomplete exchange — is refused
+    // at the top, before any password verification or upstream path runs.
+    let recoveryClaims: SessionTokenClaims | null = null
+    if (body.expectedWorkspace) {
+      const isUoaExchange = Boolean(
+        body.providerId === 'uoa'
+        && body.code
+        && body.codeVerifier
+        && body.redirectUri
+      )
+      const provider = isUoaExchange
+        ? resolveConfiguredAuthProvider(config, body.providerId as string)
+        : null
+      if (!provider || provider.type !== 'uoa') {
+        rejectWorkspaceRecovery(reply)
+        return reply
+      }
+      recoveryClaims = await verifyRecoveryBearer(request)
+      if (!recoveryClaims) {
+        rejectWorkspaceRecovery(reply)
+        return reply
+      }
+    }
     // Brute-force guard: per-IP always, per-account (email, hashed) for the
     // password path. SSO code exchanges key only off the client IP — the
     // upstream identity is not known until the exchange succeeds.
@@ -100,6 +194,32 @@ export const registerAuthLoginRoute = (
           )
         }
         if (uoaSession && verifiedUoaWorkspace?.organizationId && verifiedUoaWorkspace.teamId) {
+          // Recovery discriminants run FIRST — immediately after parsing the
+          // returned identity/workspace and before the billing confirm (a
+          // POST side effect) or any local mutation (provisioning,
+          // ProductAccountLink sync, session/family issuance, Set-Cookie).
+          // Identity is the UOA SUBJECT, never the exchanged email: the same
+          // subject with a changed email keeps the bearer's exact local user,
+          // while a different subject (Alice's bearer, Bob's callback) is an
+          // identity refusal. The returned epoch may legitimately be newer
+          // than the bearer's (another device re-authenticated first), so
+          // only the subject must match — the ProductAccountLink sync below
+          // rejects a regressed epoch monotonically.
+          if (recoveryClaims && body.expectedWorkspace) {
+            if (
+              uoaSession.identity.externalSubject !== recoveryClaims.uoaIdentity?.subject
+            ) {
+              rejectWorkspaceIdentity(reply)
+              return reply
+            }
+            if (
+              verifiedUoaWorkspace.organizationId !== body.expectedWorkspace.organizationId
+              || verifiedUoaWorkspace.teamId !== body.expectedWorkspace.teamId
+            ) {
+              rejectWorkspaceTarget(reply)
+              return reply
+            }
+          }
           await confirmUoaDirectServiceAccess({
             organizationId: verifiedUoaWorkspace.organizationId,
             teamId: verifiedUoaWorkspace.teamId,
@@ -115,20 +235,33 @@ export const registerAuthLoginRoute = (
           // UOA principals are keyed by the stable subject; generic OIDC
           // providers carry no uoaSession and keep email keying.
           uoaSub: uoaSession?.identity.externalSubject,
+          // Recovery binds the context to the exact principal the bearer
+          // proved: the resolver never looks up, remaps, or creates a user by
+          // email (or subject claim) for this call.
+          ...(recoveryClaims ? { existingUserId: recoveryClaims.sub } : {}),
           workspace: identity.workspace,
         })
         if (!context) {
           sendApiError(reply, 500, 'NO_DEFAULT_ORG', 'No organization configured for SSO provisioning')
           return reply
         }
+        if (recoveryClaims && context.userId !== recoveryClaims.sub) {
+          // Unreachable by construction (the recovery seam resolves exactly
+          // that id); fail closed rather than ever issue for another user.
+          rejectWorkspaceIdentity(reply)
+          return reply
+        }
         // The workspace context already resolved the one principal (by subject
-        // on the UOA path) — load the session user by that id, never by email.
+        // on the UOA path, by the proven bearer on recovery) — load the
+        // session user by that id, never by email.
         let sessionUser = await loadSessionUserById(prisma, context.userId)
         if (!sessionUser) {
           sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
           return reply
         }
         if (
+          !recoveryClaims
+          &&
           sessionUser.displayName === sessionUser.email
           && identity.displayName !== sessionUser.displayName
         ) {
