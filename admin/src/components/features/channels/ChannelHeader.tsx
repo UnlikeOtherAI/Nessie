@@ -9,8 +9,6 @@ import {
 import type { ExternalAgentIdentity } from '../../../facades/integrations/hooks'
 import type { AgentRecord, ChannelRecord, UserRecord } from '../../../lib/api-client'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
-import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
-import { usePhoneLayout } from '../../../lib/mobile-shell'
 import {
   ResponsivePageHeader,
   type PageHeaderAction,
@@ -26,11 +24,9 @@ interface ChannelHeaderProps {
   externalAgentIdentity: ExternalAgentIdentity | null
   isExternalAgentConversation: boolean
   isInCall: boolean
-  isConversationDetail: boolean
   isPersonalAssistantConversation: boolean
   joinPending: boolean
   onCallButton: () => void
-  onBack: () => void
   onOpenInfo: () => void
   onJoin: () => void
   onOpenMembers: () => void
@@ -52,11 +48,9 @@ export const ChannelHeader = ({
   externalAgentIdentity,
   isExternalAgentConversation,
   isInCall,
-  isConversationDetail,
   isPersonalAssistantConversation,
   joinPending,
   onCallButton,
-  onBack,
   onJoin,
   onOpenInfo,
   onOpenMembers,
@@ -65,7 +59,6 @@ export const ChannelHeader = ({
   searchOpen,
   titleFavorite,
 }: ChannelHeaderProps) => {
-  const phoneLayout = usePhoneLayout()
   const title = isPersonalAssistantConversation
     ? 'Personal Assistant'
     : isExternalAgentConversation
@@ -162,11 +155,7 @@ export const ChannelHeader = ({
             ? externalAgentIdentity?.description ?? undefined
             : undefined
       }
-      leading={
-        phoneLayout && isConversationDetail
-          ? <PhoneBackButton label="Back to Channels" onBack={onBack} />
-          : <PhoneNavigationButton />
-      }
+      leading={<PhoneNavigationButton />}
       title={title}
     />
   )

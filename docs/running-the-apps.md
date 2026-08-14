@@ -344,6 +344,13 @@ and leaves page data, URLs, and conversation state in the admin React app.
   reverses that motion. This shared admin transition runs in both the iPhone
   and Android WebView shells (and narrow mobile web), and follows the system's
   reduced-motion preference.
+- A phone edge-swipe is owned by that same admin stack. The prior React screen
+  remains mounted underneath the current one, so it is visible continuously
+  under the finger with its scroll and component state intact. Native WebView
+  history swiping is disabled on phone geometry to prevent the whole SPA from
+  sliding over an empty host; tablet geometry keeps native history gestures
+  because it never mounts the phone stack. Android hardware Back, the circular
+  on-screen Back, and a completed edge-swipe all use the same history decision.
 - A project selected from the phone **Projects** list opens its PM **Board**
   columns by default. A project selected from the **Channels** list still opens
   the project overview because that entry point supplies conversation context.

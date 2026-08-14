@@ -1,9 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { ChannelRecord, MeResponse, UserRecord } from '../../../lib/api-client'
-import { conversationParentPath, getConversationRoute } from '../../../lib/conversation-navigation'
+import { getConversationRoute } from '../../../lib/conversation-navigation'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
-import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
+import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
 import { useAddChannelMember, useRemoveChannelMember, useSetChannelMute } from '../../../facades/channels/hooks'
 import { AvailableUserRow, CurrentUserRow } from '../../shared/channel-members/MemberUserRow'
 import { UserAvatar } from '../../primitives/UserAvatar'
@@ -25,15 +25,13 @@ const matchPerson = (person: UserRecord, query: string): boolean => {
 
 const FlowHeader = ({
   action,
-  onBack,
   title,
 }: {
   action?: ReactNode
-  onBack: () => void
   title: string
 }) => (
   <header className="flex h-[58px] flex-shrink-0 items-center gap-3 border-b border-[color:var(--sep)] px-4">
-    <PhoneBackButton label="Back" onBack={onBack} />
+    <PhoneNavigationButton />
     <h1 className="min-w-0 flex-1 truncate text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
     {action ? <div className="flex flex-shrink-0 items-center">{action}</div> : null}
   </header>
@@ -273,7 +271,6 @@ export const ConversationInfoFlow = ({
 
   if (!route || route.channelId !== activeChannel.id || route.step === 'conversation') return null
 
-  const back = () => void navigate(conversationParentPath(route))
   const members = channelUsers
   const memberCount = members.length
   const title = route.step === 'info'
@@ -299,7 +296,6 @@ export const ConversationInfoFlow = ({
             </button>
           ) : undefined
         }
-        onBack={back}
         title={title}
       />
 

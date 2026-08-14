@@ -32,7 +32,6 @@ import { useStickToBottom } from '../../hooks/useStickToBottom'
 import type { DocumentStreamStore } from '../../facades/threads/document-stream-store'
 import type { DocumentStreamEntry } from '../../facades/threads/document-stream-helpers'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
-import type { ConversationRoute } from '../../lib/conversation-navigation'
 import type { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
 import type { useChannelMentions } from './useChannelMentions'
 import type { useChannelMessageSearch } from './useChannelMessageSearch'
@@ -69,7 +68,6 @@ interface ChannelConversationSurfaceProps {
     | 'setMessage'
     | 'setOversizePaste'
   >
-  conversationRoute: ConversationRoute | null
   deepWaterLauncher: ReturnType<typeof useDeepWaterResearchLauncher>
   // Live document composition for this conversation; the feed owns the popup.
   documentSessions: DocumentStreamEntry[]
@@ -97,7 +95,6 @@ interface ChannelConversationSurfaceProps {
     | 'updatePending'
   >
   me: MeResponse
-  onBack: () => void
   onBannerJoin: () => void
   onCallButton: () => void
   onCreateAgent: () => void
@@ -142,7 +139,6 @@ export const ChannelConversationSurface = ({
   chatDrop,
   composePlaceholder,
   composer,
-  conversationRoute,
   deepWaterLauncher,
   documentSessions,
   documentStore,
@@ -158,7 +154,6 @@ export const ChannelConversationSurface = ({
   mentionEntities,
   messageActions,
   me,
-  onBack,
   onBannerJoin,
   onCallButton,
   onCreateAgent,
@@ -209,14 +204,12 @@ export const ChannelConversationSurface = ({
         callEligible={callEligible}
         channelUsers={channelUsers}
         externalAgentIdentity={externalAgentIdentity}
-        isConversationDetail={conversationRoute !== null}
         isExternalAgentConversation={isExternalAgentConversation}
         isInCall={isInCall}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         joinPending={joinPending}
         searchOpen={search.searchOpen}
         titleFavorite={titleFavorite}
-        onBack={onBack}
         onCallButton={onCallButton}
         onJoin={onJoin}
         onOpenInfo={onOpenInfo}
