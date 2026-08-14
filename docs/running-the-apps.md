@@ -122,6 +122,16 @@ final application has a matching Developer ID signature, including the packaged
 executor runtime. Do not replace the app with an ad-hoc-signed copy after this
 step: its executor controls will intentionally remain unavailable.
 
+### Mac TestFlight
+
+Mac TestFlight uses a separate, sandboxed build configuration. It loads the
+same hosted Nessie product and retains desktop SSO and notifications, but it
+does not bundle the local executor runtime: that helper currently depends on a
+Developer ID signature and user-selected workspace access that has not yet
+been redesigned for App Sandbox inheritance. Follow the canonical
+[Apple TestFlight publishing guide](publishing-apple-testflight.md) for its
+versioning, signing, validation, Xcode Organizer upload, and tester steps.
+
 If the installed app gets stuck at **Loading providers...**, check the API
 origin first:
 
@@ -564,17 +574,11 @@ acknowledging their replies. Existing thread-wide read cursors remain a safe
 baseline during the rollout, so deployment never reintroduces historical
 unread items.
 
-## TestFlight
+## iOS TestFlight
 
-After the Apple Developer account, App Store Connect app record, and internal testers are ready:
-
-```sh
-cd mobile
-eas build -p ios --profile production
-eas submit -p ios
-```
-
-The `production` submit profile contains App Store placeholder values. Replace them before submitting.
+Follow the canonical [Apple TestFlight publishing guide](publishing-apple-testflight.md)
+for EAS setup, the local Xcode alternative, versioning, signing checks, and
+internal TestFlight distribution.
 
 ## Android
 
@@ -598,12 +602,14 @@ Tauri uses the Windows bundle settings in `desktop/src-tauri/tauri.conf.json` fo
 
 ## Status And Caveats
 
-The current `com.km.nessie` release is `0.1.1 (2)`, freshly compiled and
-installed on paired physical iPhone, iPad, and Android devices. The iOS
-launches registered active sandbox APNs tokens, and the in-house APNs test
-action has been accepted by Apple for the configured production credential.
-This proves registration and provider acceptance; it does not substitute for a
-TestFlight/App Store production-token test.
+The current `com.km.nessie` TestFlight upload is `0.1.1 (3)`. App Store Connect
+accepted the upload on 2026-08-14; the exported archive was independently
+verified as an Apple Distribution build for team `59S95D279D` with the
+production APNs entitlement, beta reporting enabled, and export compliance
+declared. The previously installed `0.1.1 (2)` development build registered
+active sandbox APNs tokens, and the in-house APNs test action was accepted by
+Apple for the configured production credential. Actual delivery to a
+TestFlight-installed production token remains the final device check.
 
 The Android app loads its authenticated workspace successfully, but it has no
 active FCM registration until the matching Firebase `google-services.json` and

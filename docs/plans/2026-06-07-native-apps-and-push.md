@@ -406,8 +406,10 @@ stream directly:
       key, TestFlight.
 - [ ] Google Play ($25 once) + **Firebase project**: FCM v1 + `google-services.json`.
 - [ ] Expo / **EAS** account: cloud builds + store submission.
-- [ ] Tauri signing: Apple Developer ID cert + notarization; Windows
-      Authenticode cert.
+- [ ] Tauri signing: Apple Developer ID cert + notarization for the
+      executor-capable direct build; Apple Distribution + Mac Installer
+      Distribution credentials and a Mac App Store Connect profile for the
+      sandboxed TestFlight build; Windows Authenticode cert.
 - [ ] Host the **push-gateway** (small always-on service alongside the Hetzner
       stack) + secret storage for `.p8` / FCM service account.
 - [ ] Custom URL scheme `nessie://` + universal links / app links.
@@ -427,7 +429,10 @@ stream directly:
      "send test push" button. This is buildable early (independent of the RN
      app) and is what makes the gateway configurable.
 3. **Desktop (Tauri)** — shell over the `admin/` build, OS notifications from
-   SSE, signed mac + win builds.
+   SSE, signed mac + win builds. The Mac App Store/TestFlight configuration is
+   a sandboxed shell build; it omits the packaged executor until that child
+   process and its user-selected workspace access have a reviewed sandbox
+   design. Developer ID distribution remains the executor-capable build.
 4. **Polish** — badges, notification UX controls, coalescing, unread sync, store
    submission (TestFlight / Play internal), auto-update.
 

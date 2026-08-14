@@ -8,6 +8,7 @@
     "prepare:executor-runtime": "node scripts/prepare-executor-runtime.mjs",
     "tauri:build": "pnpm prepare:executor-runtime && tauri build",
     "tauri:build:executor": "pnpm prepare:executor-runtime && node scripts/require-signing-team.mjs && tauri build",
+    "tauri:build:appstore": "node scripts/require-signing-team.mjs && node scripts/prepare-appstore-profile.mjs && tauri build --bundles app --config src-tauri/tauri.appstore.conf.json",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
