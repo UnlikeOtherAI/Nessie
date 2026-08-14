@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { performTerminalSessionLogout } from '../src/providers/terminal-session-logout.js'
+import {
+  NATIVE_CLEANUP_LOGOUT_TIMEOUT_MS,
+  performTerminalSessionLogout,
+} from '../src/providers/terminal-session-logout.js'
 
 const deferred = (): {
   promise: Promise<void>
@@ -65,6 +68,34 @@ test('a rejected native unregister still calls logout', async () => {
   await result
 
   assert.deepEqual(logoutBearers, ['captured-bearer'])
+})
+
+test('a never-settling native unregister cannot block remote logout', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const events: string[] = []
+
+  const result = performTerminalSessionLogout({
+    currentBearer: 'captured-bearer',
+    isNative: true,
+    unregisterNative: () => new Promise(() => undefined),
+    terminate: async (finalize) => {
+      events.push('terminate')
+      events.push('local-clear')
+      await finalize(null)
+    },
+    logout: async () => { events.push('logout') },
+  })
+
+  assert.deepEqual(events, ['terminate', 'local-clear'])
+
+  t.mock.timers.tick(NATIVE_CLEANUP_LOGOUT_TIMEOUT_MS - 1)
+  await Promise.resolve()
+  assert.deepEqual(events, ['terminate', 'local-clear'])
+
+  t.mock.timers.tick(1)
+  await result
+
+  assert.deepEqual(events, ['terminate', 'local-clear', 'logout'])
 })
 
 test('the latest winning payload overrides the bearer captured at logout start', async () => {

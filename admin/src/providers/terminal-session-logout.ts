@@ -1,5 +1,9 @@
 type TerminalPayload = { token: string }
 
+// Native bridge events normally settle immediately. Keep the remote session
+// revocation independent from a bridge that never sends its completion event.
+export const NATIVE_CLEANUP_LOGOUT_TIMEOUT_MS = 1_000
+
 type TerminalSessionLogoutInput = {
   currentBearer: string | null
   isNative: boolean
@@ -8,6 +12,18 @@ type TerminalSessionLogoutInput = {
     finalize: (latestPayload: TerminalPayload | null) => Promise<void>,
   ) => Promise<void>
   unregisterNative: () => Promise<void>
+}
+
+const waitForNativeCleanup = (nativeCleanup: Promise<void> | null): Promise<void> => {
+  if (!nativeCleanup) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(resolve, NATIVE_CLEANUP_LOGOUT_TIMEOUT_MS)
+    void nativeCleanup.then(() => {
+      clearTimeout(timeout)
+      resolve()
+    })
+  })
 }
 
 /**
@@ -32,7 +48,7 @@ export const performTerminalSessionLogout = ({
   }
 
   return terminate(async (latestPayload) => {
-    await nativeCleanup
+    await waitForNativeCleanup(nativeCleanup)
     await logout(latestPayload?.token ?? currentBearer)
   })
 }
