@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test, { afterEach, beforeEach } from 'node:test'
 
-import type { AuthSessionState, SessionPayload } from '@nessie/client-core'
+import {
+  createCompletedExternalAuthCallbackCache,
+  type AuthSessionState,
+  type PkceStorage,
+  type SessionPayload,
+} from '@nessie/client-core'
 import { completeExternalAuthCallback } from '../src/lib/external-auth-completion.js'
 import { createExternalAuthCallbackHub } from '../src/providers/external-auth-callback.js'
 import {
@@ -164,19 +169,30 @@ test('exchange errors are bounded and unsafe return paths fall back safely', asy
   }
 })
 
-test('duplicate callbacks exchange the claimed intent once', async () => {
+test('callback hub serializes duplicate callbacks and exchanges once', async () => {
   const state = await seedPending({})
   let calls = 0
-  const run = () => complete({
-    callback: envelope('code', state).callback,
-    login: async () => {
-      calls += 1
-      await new Promise((resolve) => setImmediate(resolve))
-    },
+  const outcomes: string[] = []
+  const hub = createExternalAuthCallbackHub(async (callbackEnvelope) => {
+    const result = await completeExternalAuthCallback({
+      envelope: callbackEnvelope,
+      login: async () => {
+        calls += 1
+        await new Promise((resolve) => setImmediate(resolve))
+      },
+      recoveryExchange: async () => payload(),
+      waitForSessionReady: async () => 'authenticated',
+    })
+    outcomes.push(result.outcome)
+    return result.claimed
   })
-  const results = await Promise.all([run(), run()])
+  hub.setReady(true)
+  await Promise.all([
+    hub.handleNativeUrl(`nessie://auth/callback?code=flow&state=${state}`),
+    hub.handleNativeUrl(`nessie://auth/callback?code=flow&state=${state}`),
+  ])
   assert.equal(calls, 1)
-  assert.deepEqual(results.map((result) => result.outcome).sort(), ['completed', 'ignored'])
+  assert.deepEqual(outcomes, ['completed'])
 })
 
 test('a remembered state-less UOA callback cannot claim a later flow', async () => {
@@ -192,15 +208,95 @@ test('a remembered state-less UOA callback cannot claim a later flow', async () 
   })
   hub.setReady(true)
   await seedPending({})
-  hub.handleNativeUrl('nessie://auth/callback?code=flow-a')
-  await new Promise((resolve) => setImmediate(resolve))
-  await new Promise((resolve) => setImmediate(resolve))
+  await hub.handleNativeUrl('nessie://auth/callback?code=flow-a')
   assert.equal(logins, 1)
 
   await seedPending({ targetWorkspace: { organizationId: 'org', teamId: 'team-b' } })
   const flowB = readPendingExternalAuth()
-  hub.handleNativeUrl('nessie://auth/callback?code=flow-a')
-  await new Promise((resolve) => setImmediate(resolve))
+  await hub.handleNativeUrl('nessie://auth/callback?code=flow-a')
   assert.equal(logins, 1)
   assert.deepEqual(readPendingExternalAuth(), flowB)
+})
+
+test('lost native ack cannot let a completed state-less callback claim the next flow after remount', async () => {
+  const sessionEntries = new Map<string, string>()
+  const recreateSessionStorage = (): PkceStorage => ({
+    getItem: (key) => sessionEntries.get(key) ?? null,
+    removeItem: (key) => { sessionEntries.delete(key) },
+    setItem: (key, value) => { sessionEntries.set(key, value) },
+  })
+  let logins = 0
+  const completeEnvelope = async (callbackEnvelope: ReturnType<typeof envelope>): Promise<boolean> => {
+    const result = await completeExternalAuthCallback({
+      envelope: callbackEnvelope,
+      login: async () => { logins += 1 },
+      recoveryExchange: async () => payload(),
+      waitForSessionReady: async () => 'authenticated',
+    })
+    return result.claimed
+  }
+
+  await seedPending({})
+  const callbackA = 'nessie://auth/callback?code=flow-a'
+  const firstHub = createExternalAuthCallbackHub(
+    completeEnvelope,
+    createCompletedExternalAuthCallbackCache(recreateSessionStorage()),
+  )
+  firstHub.setReady(true)
+  await firstHub.handleNativeUrl(callbackA)
+  assert.equal(logins, 1)
+  assert.equal(readPendingExternalAuth(), null)
+
+  // The native delivery ack is lost while the WebView remounts. B may now
+  // begin, but the retained state-less A callback is delivered again first.
+  const stateB = await seedPending({})
+  const pendingB = readPendingExternalAuth()
+  const recreatedHub = createExternalAuthCallbackHub(
+    completeEnvelope,
+    createCompletedExternalAuthCallbackCache(recreateSessionStorage()),
+  )
+  recreatedHub.setReady(true)
+  await recreatedHub.handleNativeUrl(callbackA)
+  assert.equal(logins, 1)
+  assert.deepEqual(readPendingExternalAuth(), pendingB)
+
+  await recreatedHub.handleNativeUrl(`nessie://auth/callback?code=flow-b&state=${stateB}`)
+  assert.equal(logins, 2)
+  assert.equal(readPendingExternalAuth(), null)
+})
+
+test('a recreated hub can finish an interrupted web callback without wedging the intent', async () => {
+  const state = await seedPending({})
+  let releaseInterrupted: (() => void) | undefined
+  const interrupted = new Promise<boolean>((resolve) => { releaseInterrupted = () => resolve(true) })
+  const firstHub = createExternalAuthCallbackHub(() => interrupted)
+  firstHub.setReady(true)
+  void firstHub.handleWebUrl(
+    `https://app.example/login?code=flow-a&state=${state}`,
+    'https://app.example',
+  )
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(readPendingExternalAuth()?.state, state)
+  await assert.rejects(seedPending({}), /already in progress/)
+
+  let logins = 0
+  const recreatedHub = createExternalAuthCallbackHub(async (callbackEnvelope) => {
+    const result = await completeExternalAuthCallback({
+      envelope: callbackEnvelope,
+      login: async () => { logins += 1 },
+      recoveryExchange: async () => payload(),
+      waitForSessionReady: async () => 'authenticated',
+    })
+    return result.claimed
+  })
+  recreatedHub.setReady(true)
+  await recreatedHub.handleWebUrl(
+    `https://app.example/login?code=flow-a&state=${state}`,
+    'https://app.example',
+  )
+  assert.equal(logins, 1)
+  assert.equal(readPendingExternalAuth(), null)
+  await seedPending({})
+  assert.ok(readPendingExternalAuth())
+  releaseInterrupted?.()
 })

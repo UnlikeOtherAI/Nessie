@@ -58,8 +58,8 @@ test('hub buffers until ready and serializes completions', async () => {
     events.push(`end:${code}`)
     return true
   })
-  hub.handleNativeUrl('nessie://auth/callback?code=one&state=s1')
-  hub.handleNativeUrl('nessie://auth/callback?code=two&state=s2')
+  const first = hub.handleNativeUrl('nessie://auth/callback?code=one&state=s1')
+  const second = hub.handleNativeUrl('nessie://auth/callback?code=two&state=s2')
   await new Promise((resolve) => setImmediate(resolve))
   assert.deepEqual(events, [])
 
@@ -67,8 +67,7 @@ test('hub buffers until ready and serializes completions', async () => {
   await new Promise((resolve) => setImmediate(resolve))
   assert.deepEqual(events, ['start:one'])
   releaseFirst?.()
-  await new Promise((resolve) => setImmediate(resolve))
-  await new Promise((resolve) => setImmediate(resolve))
+  await Promise.all([first, second])
   assert.deepEqual(events, ['start:one', 'end:one', 'start:two', 'end:two'])
 })
 
@@ -79,10 +78,10 @@ test('hub dedupes only after the first completion claims the intent', async () =
     return true
   })
   hub.setReady(true)
-  hub.handleNativeUrl('nessie://auth/callback?code=one&state=s1')
-  hub.handleNativeUrl('nessie://auth/callback?code=one&state=s1')
-  await new Promise((resolve) => setImmediate(resolve))
-  await new Promise((resolve) => setImmediate(resolve))
+  await Promise.all([
+    hub.handleNativeUrl('nessie://auth/callback?code=one&state=s1'),
+    hub.handleNativeUrl('nessie://auth/callback?code=one&state=s1'),
+  ])
   assert.equal(calls, 1)
 
   const notClaimedHub = createExternalAuthCallbackHub(async () => {
@@ -90,9 +89,39 @@ test('hub dedupes only after the first completion claims the intent', async () =
     return false
   })
   notClaimedHub.setReady(true)
-  notClaimedHub.handleNativeUrl('nessie://auth/callback?code=stale&state=old')
-  notClaimedHub.handleNativeUrl('nessie://auth/callback?code=stale&state=old')
-  await new Promise((resolve) => setImmediate(resolve))
-  await new Promise((resolve) => setImmediate(resolve))
+  await Promise.all([
+    notClaimedHub.handleNativeUrl('nessie://auth/callback?code=stale&state=old'),
+    notClaimedHub.handleNativeUrl('nessie://auth/callback?code=stale&state=old'),
+  ])
   assert.equal(calls, 3)
+})
+
+test('hub rejects an uncompleted delivery so native transport can redeliver it', async () => {
+  const hub = createExternalAuthCallbackHub(async () => {
+    throw new Error('page unloaded')
+  })
+  hub.setReady(true)
+  await assert.rejects(
+    hub.handleNativeUrl('nessie://auth/callback?code=one&state=s1'),
+    /page unloaded/,
+  )
+})
+
+test('queue overflow rejects the incoming delivery without acknowledging queued callbacks', async () => {
+  const completed: string[] = []
+  const hub = createExternalAuthCallbackHub(async (envelope) => {
+    if (envelope.callback.kind === 'code') completed.push(envelope.callback.code)
+    return true
+  })
+  const queued = ['one', 'two', 'three', 'four'].map((code) =>
+    hub.handleNativeUrl(`nessie://auth/callback?code=${code}&state=${code}`))
+  await assert.rejects(
+    hub.handleNativeUrl('nessie://auth/callback?code=overflow&state=overflow'),
+    /queue is full/,
+  )
+  assert.deepEqual(completed, [])
+
+  hub.setReady(true)
+  await Promise.all(queued)
+  assert.deepEqual(completed, ['one', 'two', 'three', 'four'])
 })

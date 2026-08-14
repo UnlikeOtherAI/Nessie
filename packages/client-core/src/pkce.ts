@@ -1,6 +1,9 @@
 import type { ExpectedWorkspaceTarget } from './auth-session.js'
 
 const PENDING_EXTERNAL_AUTH_KEY = 'nessie.pendingExternalAuth'
+const COMPLETED_EXTERNAL_AUTH_CALLBACKS_KEY = 'nessie.completedExternalAuthCallbacks'
+const MAX_COMPLETED_EXTERNAL_AUTH_CALLBACKS = 16
+const MAX_CALLBACK_SEMANTIC_KEY_LENGTH = 2_048
 
 // Bounds for every caller-influenced string persisted in the pending record.
 // UOA org/team ids, provider ids, team hints, and return paths are all
@@ -56,13 +59,17 @@ export type PkceStorage = {
   setItem: (key: string, value: string) => void
 }
 
+export type CompletedExternalAuthCallbackCache = {
+  has: (semanticKey: string) => boolean
+  remember: (semanticKey: string) => void
+}
+
 // Exact external (UOA) workspace a reauthorization flow must land on. Stored
 // with the PKCE entry so an authenticated recovery can verify the exchanged
 // session before applying it, and a plain login can refuse a mismatched one.
 export type PendingExternalAuthTarget = ExpectedWorkspaceTarget
 
 export type PendingExternalAuth = {
-  claimed?: boolean
   codeVerifier: string
   providerId: string
   // App route to land on after the exchange completes (defaults to /channels).
@@ -226,6 +233,72 @@ export const createMemoryPkceStorage = (): PkceStorage => {
   }
 }
 
+const isUsableCallbackSemanticKey = (value: unknown): value is string =>
+  typeof value === 'string'
+  && value.length > 0
+  && value.length <= MAX_CALLBACK_SEMANTIC_KEY_LENGTH
+  && isCleanText(value)
+
+/**
+ * Session-scoped replay suppression for terminal external-auth callbacks.
+ * The short FIFO survives an SPA/WebView remount without becoming a durable
+ * identity store or a permanent claimed-intent tombstone.
+ */
+export const createCompletedExternalAuthCallbackCache = (
+  storage: PkceStorage,
+): CompletedExternalAuthCallbackCache => {
+  const read = (): string[] => {
+    let value: string | null
+    try {
+      value = storage.getItem(COMPLETED_EXTERNAL_AUTH_CALLBACKS_KEY)
+    } catch {
+      return []
+    }
+    if (!value) return []
+    try {
+      const parsed: unknown = JSON.parse(value)
+      if (
+        !Array.isArray(parsed)
+        || parsed.length > MAX_COMPLETED_EXTERNAL_AUTH_CALLBACKS
+        || !parsed.every(isUsableCallbackSemanticKey)
+      ) {
+        try {
+          storage.removeItem(COMPLETED_EXTERNAL_AUTH_CALLBACKS_KEY)
+        } catch {
+          // A disabled Web Storage implementation remains a safe cache miss.
+        }
+        return []
+      }
+      return parsed
+    } catch {
+      try {
+        storage.removeItem(COMPLETED_EXTERNAL_AUTH_CALLBACKS_KEY)
+      } catch {
+        // A disabled Web Storage implementation remains a safe cache miss.
+      }
+      return []
+    }
+  }
+
+  return {
+    has: (semanticKey) => isUsableCallbackSemanticKey(semanticKey)
+      && read().includes(semanticKey),
+    remember: (semanticKey) => {
+      if (!isUsableCallbackSemanticKey(semanticKey)) return
+      const callbacks = read().filter((entry) => entry !== semanticKey)
+      callbacks.push(semanticKey)
+      try {
+        storage.setItem(
+          COMPLETED_EXTERNAL_AUTH_CALLBACKS_KEY,
+          JSON.stringify(callbacks.slice(-MAX_COMPLETED_EXTERNAL_AUTH_CALLBACKS)),
+        )
+      } catch {
+        // Replay suppression degrades to the hub's process-local cache.
+      }
+    },
+  }
+}
+
 // A stored entry is usable only when every field is present and bounded; a
 // malformed record is discarded and reported as absent so a callback never
 // exchanges against a tampered intent.
@@ -233,8 +306,6 @@ const isUsablePending = (value: unknown): value is PendingExternalAuth => {
   if (typeof value !== 'object' || value === null) return false
   const pending = value as Partial<PendingExternalAuth>
   if (
-    (pending.claimed !== undefined && typeof pending.claimed !== 'boolean')
-    ||
     !isBoundedSecret(pending.codeVerifier)
     || !isBoundedId(pending.providerId)
     || !isBoundedState(pending.state)
@@ -294,10 +365,8 @@ export const claimPendingExternalAuth = (
 ): PendingExternalAuthClaim => {
   const pending = readPendingExternalAuth(storage)
   if (!pending) return { kind: 'absent' }
-  if (pending.claimed) return { kind: 'absent' }
   if (state !== null && state !== pending.state) {
     return { kind: 'state-mismatch', pending }
   }
-  storage.setItem(PENDING_EXTERNAL_AUTH_KEY, JSON.stringify({ ...pending, claimed: true }))
   return { kind: 'claimed', pending }
 }

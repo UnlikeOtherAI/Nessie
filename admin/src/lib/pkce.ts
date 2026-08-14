@@ -3,6 +3,7 @@ import {
   claimPendingExternalAuth as coreClaimPendingExternalAuth,
   clearPendingExternalAuth as coreClearPendingExternalAuth,
   clearPendingExternalAuthMatching as coreClearPendingExternalAuthMatching,
+  createCompletedExternalAuthCallbackCache,
   createMemoryPkceStorage,
   readPendingExternalAuth as coreReadPendingExternalAuth,
   type PendingExternalAuth,
@@ -21,6 +22,9 @@ import { getBaseUrl } from './api-client'
 const storage: PkceStorage = typeof window === 'undefined'
   ? createMemoryPkceStorage()
   : window.sessionStorage
+
+export const completedExternalAuthCallbackCache =
+  createCompletedExternalAuthCallbackCache(storage)
 
 export const beginExternalAuth = (input: {
   origin?: string

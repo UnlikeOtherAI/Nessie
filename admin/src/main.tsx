@@ -2,7 +2,6 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { AppProvider } from './providers/AppProvider'
 import { installBuildFreshnessCheck } from './lib/build-freshness'
-import { installEarlyNativeCallbackCollector } from './providers/external-auth-callback'
 import { disableWebviewZoom } from './lib/disable-zoom'
 import { installReloadShortcut } from './lib/reload-shortcut'
 import './styles.css'
@@ -12,10 +11,6 @@ import './styles.css'
 installReloadShortcut()
 disableWebviewZoom()
 installBuildFreshnessCheck()
-// Collect a native OAuth callback that lands before React mounts so the
-// external-auth bridge can still complete it once installed.
-installEarlyNativeCallbackCollector()
-
 // Register the service worker (web push + notification clicks). Guarded for
 // browsers / webviews without service-worker support; failures are non-fatal.
 if ('serviceWorker' in navigator) {

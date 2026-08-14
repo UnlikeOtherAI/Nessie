@@ -73,31 +73,6 @@ export const parseWebAuthCallbackUrl = (
   return callback ? { callback, redirectUri: `${expectedOrigin}/login` } : null
 }
 
-type NativeCallbackWindow = Window & {
-  ReactNativeWebView?: { postMessage: (data: string) => void }
-  __nessieExternalAuthCallback?: (url: string) => void
-  __nessiePendingExternalAuthCallbacks?: string[]
-}
-
-const readEarlyCallbacks = (): string[] => {
-  if (typeof window === 'undefined') return []
-  const target = window as NativeCallbackWindow
-  return Array.isArray(target.__nessiePendingExternalAuthCallbacks)
-    ? target.__nessiePendingExternalAuthCallbacks.splice(0)
-    : []
-}
-
-export const installEarlyNativeCallbackCollector = (): void => {
-  if (typeof window === 'undefined') return
-  const target = window as NativeCallbackWindow
-  if (!target.ReactNativeWebView || target.__nessieExternalAuthCallback) return
-  target.__nessieExternalAuthCallback = (url) => {
-    const callbacks = target.__nessiePendingExternalAuthCallbacks
-      ?? (target.__nessiePendingExternalAuthCallbacks = [])
-    if (callbacks.length < MAX_PENDING_CALLBACKS && !callbacks.includes(url)) callbacks.push(url)
-  }
-}
-
 const semanticKey = (envelope: ExternalAuthCallbackEnvelope): string => {
   const { callback } = envelope
   const values = callback.kind === 'code'
@@ -109,24 +84,36 @@ const semanticKey = (envelope: ExternalAuthCallbackEnvelope): string => {
 }
 
 export type ExternalAuthCallbackHub = {
-  drainEarlyCallbacks: () => void
-  handleNativeUrl: (url: string) => void
-  handleWebUrl: (url: string, origin: string) => void
+  handleNativeUrl: (url: string) => Promise<void>
+  handleWebUrl: (url: string, origin: string) => Promise<void>
   setReady: (ready: boolean) => void
-  submit: (envelope: ExternalAuthCallbackEnvelope) => void
+  submit: (envelope: ExternalAuthCallbackEnvelope) => Promise<void>
 }
 
-/** Serial delivery with replay suppression only after completion claimed an intent. */
+export type ExternalAuthCallbackReplayCache = {
+  has: (semanticKey: string) => boolean
+  remember: (semanticKey: string) => void
+}
+
+type QueuedCallback = {
+  envelope: ExternalAuthCallbackEnvelope
+  reject: (error: unknown) => void
+  resolve: () => void
+}
+
+/** Process-local serialization; durable intent stays pending until completion. */
 export const createExternalAuthCallbackHub = (
   onCallback: (envelope: ExternalAuthCallbackEnvelope) => Promise<boolean>,
+  replayCache?: ExternalAuthCallbackReplayCache,
 ): ExternalAuthCallbackHub => {
-  const queued: ExternalAuthCallbackEnvelope[] = []
+  const queued: QueuedCallback[] = []
   const handled = new Map<string, true>()
   let ready = false
   let chain = Promise.resolve()
 
   const remember = (key: string): void => {
     handled.set(key, true)
+    replayCache?.remember(key)
     if (handled.size > MAX_HANDLED_CALLBACKS) {
       const oldest = handled.keys().next().value
       if (oldest) handled.delete(oldest)
@@ -135,31 +122,43 @@ export const createExternalAuthCallbackHub = (
   const flush = (): void => {
     if (!ready) return
     while (queued.length > 0) {
-      const envelope = queued.shift()
-      if (!envelope) continue
+      const delivery = queued.shift()
+      if (!delivery) continue
       chain = chain.then(async () => {
-        const key = semanticKey(envelope)
-        if (handled.has(key)) return
-        if (await onCallback(envelope)) remember(key)
-      }).catch(() => undefined)
+        const key = semanticKey(delivery.envelope)
+        if (
+          !handled.has(key)
+          && !replayCache?.has(key)
+          && await onCallback(delivery.envelope)
+        ) remember(key)
+        delivery.resolve()
+      }, () => undefined).catch((error: unknown) => {
+        delivery.reject(error)
+      })
     }
   }
-  const submit = (envelope: ExternalAuthCallbackEnvelope): void => {
-    if (queued.length >= MAX_PENDING_CALLBACKS) queued.shift()
-    queued.push(envelope)
-    flush()
+  const submit = (envelope: ExternalAuthCallbackEnvelope): Promise<void> => {
+    return new Promise<void>((resolve, reject) => {
+      if (queued.length >= MAX_PENDING_CALLBACKS) {
+        reject(new Error('The external-auth callback queue is full.'))
+        return
+      }
+      queued.push({ envelope, reject, resolve })
+      flush()
+    })
   }
-  const handleNativeUrl = (url: string): void => {
+  const handleNativeUrl = (url: string): Promise<void> => {
     const callback = parseNativeAuthCallbackUrl(url)
-    if (callback) submit({ callback, redirectUri: 'nessie://auth/callback' })
+    return callback
+      ? submit({ callback, redirectUri: 'nessie://auth/callback' })
+      : Promise.resolve()
   }
 
   return {
-    drainEarlyCallbacks: () => readEarlyCallbacks().forEach(handleNativeUrl),
     handleNativeUrl,
     handleWebUrl: (url, origin) => {
       const envelope = parseWebAuthCallbackUrl(url, origin)
-      if (envelope) submit(envelope)
+      return envelope ? submit(envelope) : Promise.resolve()
     },
     setReady: (nextReady) => {
       ready = nextReady

@@ -7,12 +7,23 @@ export type ExternalAuthTerminalResult =
   | { callbackUrl: string; kind: 'cancelled' }
   | { callbackUrl: string; kind: 'error' }
 
+const withLaunchState = (value: string, state?: string): string => {
+  if (!state) return value
+  try {
+    const url = new URL(value)
+    if (!url.searchParams.has('state')) url.searchParams.set('state', state)
+    return url.toString()
+  } catch {
+    return value
+  }
+}
+
 export const mapExternalAuthSessionResult = (
   result: { type: string; url?: string },
   state?: string,
 ): ExternalAuthTerminalResult => {
   if (result.type === 'success' && result.url) {
-    return { callbackUrl: result.url, kind: 'callback' }
+    return { callbackUrl: withLaunchState(result.url, state), kind: 'callback' }
   }
   if (result.type === 'cancel' || result.type === 'dismiss') {
     const suffix = state ? `&state=${encodeURIComponent(state)}` : ''
@@ -52,16 +63,16 @@ export const createNativeExternalAuthDeliveryQueue = (
   }
 }
 
-/** Invoke the SPA handler directly; retain natively when it is not installed. */
+/** Acknowledge only after SPA completion; reloads retain and redeliver the result. */
 export const nativeExternalAuthDeliveryScript = (
   delivery: NativeExternalAuthDelivery,
 ): string => {
   const id = JSON.stringify(delivery.id)
   const url = JSON.stringify(delivery.url)
   return `(function(){var w=window;if(typeof w.__nessieExternalAuthCallback!=='function')return;`
-    + `w.__nessieExternalAuthCallback(${url});`
-    + `try{w.ReactNativeWebView.postMessage(JSON.stringify({type:'nessie:external-auth-delivered',id:${id}}));}`
-    + `catch(e){}})();`
+    + `var p;try{p=w.__nessieExternalAuthCallback(${url});}catch(e){return;}`
+    + `Promise.resolve(p).then(function(){try{w.ReactNativeWebView.postMessage(JSON.stringify(`
+    + `{type:'nessie:external-auth-delivered',id:${id}}));}catch(e){}}).catch(function(){});})()`
 }
 
 export const externalAuthErrorResult = (state?: string): ExternalAuthTerminalResult =>

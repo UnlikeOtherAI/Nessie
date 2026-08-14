@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { AuthSessionState } from '@nessie/client-core'
 import { completeExternalAuthCallback } from '../lib/external-auth-completion'
+import { completedExternalAuthCallbackCache } from '../lib/pkce'
 import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { NATIVE_EXTERNAL_AUTH_EVENT } from '../lib/native-external-auth'
@@ -27,7 +28,7 @@ const noticeClass = [
 
 type NativeCallbackWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
-  __nessieExternalAuthCallback?: (url: string) => void
+  __nessieExternalAuthCallback?: (url: string) => Promise<void>
 }
 
 export const ExternalAuthProvider = ({ children }: PropsWithChildren) => {
@@ -78,12 +79,11 @@ export const ExternalAuthProvider = ({ children }: PropsWithChildren) => {
       navigateRef.current(result.returnPath)
     }
     return result.claimed
-  }), [])
+  }, completedExternalAuthCallbackCache), [])
 
   const registerNavigate = useCallback((navigate: (path: string) => void): (() => void) => {
     navigateRef.current = navigate
     hub.setReady(true)
-    hub.drainEarlyCallbacks()
     const native = window as NativeCallbackWindow
     native.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'nessie:external-auth-ready' }))
     return () => {
@@ -93,7 +93,9 @@ export const ExternalAuthProvider = ({ children }: PropsWithChildren) => {
   }, [hub])
 
   const handleWebLocation = useCallback((url: string, origin: string) => {
-    hub.handleWebUrl(url, origin)
+    void hub.handleWebUrl(url, origin).catch(() => {
+      setNotice('The external sign-in could not be completed.')
+    })
   }, [hub])
 
   const value = useMemo<ExternalAuthNavigation>(
@@ -105,7 +107,6 @@ export const ExternalAuthProvider = ({ children }: PropsWithChildren) => {
     if (isReactNativeWebView()) {
       const target = window as NativeCallbackWindow
       target.__nessieExternalAuthCallback = hub.handleNativeUrl
-      hub.drainEarlyCallbacks()
       target.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'nessie:external-auth-ready' }))
     }
 
@@ -116,8 +117,10 @@ export const ExternalAuthProvider = ({ children }: PropsWithChildren) => {
         const { getCurrent, onOpenUrl } = await import('@tauri-apps/plugin-deep-link')
         const currentUrls = await getCurrent()
         if (disposed) return
-        currentUrls?.forEach(hub.handleNativeUrl)
-        unlisten = await onOpenUrl((urls) => urls.forEach(hub.handleNativeUrl))
+        currentUrls?.forEach((url) => void hub.handleNativeUrl(url).catch(() => undefined))
+        unlisten = await onOpenUrl((urls) => {
+          urls.forEach((url) => void hub.handleNativeUrl(url).catch(() => undefined))
+        })
         if (disposed) unlisten()
       })().catch(() => {
         if (!disposed) setNotice('The external sign-in could not be completed.')

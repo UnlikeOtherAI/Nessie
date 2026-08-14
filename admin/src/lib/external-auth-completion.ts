@@ -38,10 +38,9 @@ export type ExternalAuthRecoveryExchange = (
 ) => Promise<SessionPayload>
 
 /**
- * One terminal callback path for web, Tauri, iOS and Android. Claiming the
- * matching pending record happens synchronously before any exchange, so an OS
- * replay cannot exchange the same code twice. A stale state does not consume a
- * newer launch.
+ * One terminal callback path for web, Tauri, iOS and Android. The callback hub
+ * serializes process-local replays, while the pending record remains durable
+ * until this completion clears it. A stale state does not consume a newer launch.
  */
 export const completeExternalAuthCallback = async (input: {
   envelope: ExternalAuthCallbackEnvelope

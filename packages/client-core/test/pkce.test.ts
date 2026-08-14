@@ -5,6 +5,7 @@ import {
   beginExternalAuth,
   claimPendingExternalAuth,
   clearPendingExternalAuthMatching,
+  createCompletedExternalAuthCallbackCache,
   readPendingExternalAuth,
   type PkceStorage,
 } from '../src/pkce.js'
@@ -139,7 +140,7 @@ test('a stale mismatched callback preserves the newer pending intent', async () 
 
   const matching = claimPendingExternalAuth(storage, newer.state)
   assert.equal(matching.kind, 'claimed')
-  assert.equal(readPendingExternalAuth(storage)?.claimed, true)
+  assert.deepEqual(readPendingExternalAuth(storage), newer)
   clearPendingExternalAuthMatching(storage, newer.state)
   assert.equal(readPendingExternalAuth(storage), null)
 })
@@ -162,16 +163,48 @@ test('concurrent begins reserve one exact flow before the first await', async ()
   )
 })
 
-test('a claimed state-less flow remains single-flight until exact completion clears it', async () => {
+test('a matched state-less flow remains single-flight until exact completion clears it', async () => {
   const storage = memoryStorage()
   await withMockFetch(
     (async () => Response.json({ data: { authorizeUrl: 'https://idp.example/auth' } })) as typeof fetch,
     async () => {
       const first = await beginExternalAuth({ ...beginInput(storage), teamHint: 'team-a' })
       assert.equal(claimPendingExternalAuth(storage, null).kind, 'claimed')
-      assert.equal(claimPendingExternalAuth(storage, null).kind, 'absent')
       await assert.rejects(beginExternalAuth(beginInput(storage)), /already in progress/)
       assert.equal(readPendingExternalAuth(storage)?.state, first.state)
+      clearPendingExternalAuthMatching(storage, first.state)
+      const second = await beginExternalAuth({ ...beginInput(storage), teamHint: 'team-b' })
+      assert.notEqual(second.state, first.state)
     },
   )
+})
+
+test('completed callback replay cache survives adapter recreation and stays bounded', () => {
+  const stored = memoryStorage()
+  const first = createCompletedExternalAuthCallbackCache(stored)
+  for (let index = 0; index < 17; index += 1) first.remember(`callback-${index}`)
+
+  const recreatedAdapter: PkceStorage = {
+    getItem: stored.getItem,
+    removeItem: stored.removeItem,
+    setItem: stored.setItem,
+  }
+  const recreated = createCompletedExternalAuthCallbackCache(recreatedAdapter)
+  assert.equal(recreated.has('callback-0'), false)
+  assert.equal(recreated.has('callback-1'), true)
+  assert.equal(recreated.has('callback-16'), true)
+})
+
+test('completed callback replay cache discards malformed data without touching pending auth', async () => {
+  const storage = memoryStorage()
+  await withMockFetch(
+    (async () => Response.json({ data: { authorizeUrl: 'https://idp.example/auth' } })) as typeof fetch,
+    async () => beginExternalAuth(beginInput(storage)),
+  )
+  const pending = readPendingExternalAuth(storage)
+  storage.setItem('nessie.completedExternalAuthCallbacks', JSON.stringify(['valid', 42]))
+
+  const cache = createCompletedExternalAuthCallbackCache(storage)
+  assert.equal(cache.has('valid'), false)
+  assert.deepEqual(readPendingExternalAuth(storage), pending)
 })

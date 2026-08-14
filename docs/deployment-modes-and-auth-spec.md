@@ -476,8 +476,12 @@ For SSO providers, the flow is:
 
 The always-mounted callback owner handles web `/login`, Tauri deep links, and
 the iOS/Android WebView bridge through the same single-claim completion path.
-External authorization is single-flight until that claim completes; a second
-launch cannot replace the verifier for a state-less UOA callback.
+External authorization is single-flight until callback completion conclusively
+clears the pending intent. The intent survives an app or WebView reload, and a
+native callback is retained and redelivered until the SPA acknowledges completed
+handling. A bounded session-scoped cache of completed callback proofs suppresses
+a redelivery after a lost native acknowledgement before it can claim a newer
+intent; a second launch cannot replace the verifier for a state-less UOA callback.
 Callbacks wait for startup session restoration when they carry an authenticated
 workspace target; a target callback can only call the bearer-authenticated
 recovery exchange and can never fall back to ordinary login.
