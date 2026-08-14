@@ -113,6 +113,21 @@ const PHONE_ROUTES: PhoneRouteRow[] = [
     keyScope: () => 'channel',
   },
   {
+    // A reply thread is a full phone screen over its conversation. Giving it
+    // its own depth lets the retained conversation slide back into view when
+    // its local Back control closes the panel.
+    pattern: /^\/channels\/(?!new(?:\/|$))([^/]+)\/threads\/([^/]+)\/replies\/([^/]+)\/?$/,
+    root: '/channels',
+    section: 'channels',
+    depth: 2,
+    backTo: (match) => ({
+      label: 'Back to conversation',
+      pathname: `/channels/${match[1]}`,
+    }),
+    identityOf: (match) => `channel:${match[1]}`,
+    keyScope: () => 'channel',
+  },
+  {
     pattern: /^\/channels\/(?!new(?:\/|$))([^/]+)(?:\/.*)?$/,
     root: '/channels',
     section: 'channels',
