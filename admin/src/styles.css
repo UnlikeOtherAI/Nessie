@@ -763,7 +763,8 @@ a {
 
 .admin-topbar-menu {
   left: 0;
-  min-width: 220px;
+  width: min(320px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
 }
 
 .admin-topbar-result,

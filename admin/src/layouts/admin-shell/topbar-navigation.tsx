@@ -128,7 +128,7 @@ export const RecentChannelsMenu = ({
             type="button"
           >
             <span className="text-[color:var(--tx3)]">#</span>
-            <span className="truncate">{channel.label}</span>
+            <span className="min-w-0 flex-1 truncate">{channel.label}</span>
           </button>
         ))
       )}
