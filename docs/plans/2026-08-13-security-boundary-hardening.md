@@ -271,7 +271,7 @@ direct re-export where the shapes are identical, `.extend()` compositions for
 the api-only tightening — so the `imageUrl` `.url()` and `reasoning_text.delta`
 divergences are gone; strength-not-identity conformance suite in
 `api/test/inference-core-contract-conformance.test.ts`; `authSecretRef` remains
-Workstream 2's). Not started: W3 full (typed sensitivity + AST fetch boundary), W1
+Workstream 2's). Also landed 2026-08-14: **W3a** (typed redirect policy in `safeFetch` — header normalization across all init shapes + `Request` input, `redirectPolicy` defaulting to same-origin under credential-shaped headers, cross-origin credential stripping, 307/308-with-body refused; `redirect-policy.ts`) and **W6** (api inference contracts derive from `@nessie/schemas` with a strength-conformance test — the `imageUrl`/`reasoning_text.delta` divergences are gone). Not started: the W3 AST fetch-boundary lint + remaining call-site migration, W1
 (session integrity), W2 store proper, W4 structural consolidation, realtime
 session identity. Everything marked **[access-model]** remains parked.
 

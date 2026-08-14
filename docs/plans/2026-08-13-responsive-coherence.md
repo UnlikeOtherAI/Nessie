@@ -48,10 +48,7 @@ Landed on main, each batch gated and Playwright-verified:
   (`useMobileLayout`), `useMediaQuery` deleted, ESLint restricted-imports/
   properties + `scripts/lint-breakpoints.mjs` wired into root lint.
 
-Open: D6–D14 (sidebar ARIA, header leading/observation, safe-area depth,
-drag hygiene, popover placement, MCP App Store doorway, cross-file 900px
-comment, notifications boundary follow-ups where not covered), Phase 1 edge
-matrix as durable tests, and Phase 5 per-surface container conversion.
+Also landed 2026-08-14: D6 (sidebar ARIA live-clamp within [min,max]), D7/D8 (measured header leading from observed content + intrinsic-row observation), D10 (drag hygiene: pointercancel/blur, frame coalescing, persist-on-end, thread-separator keyboard path), D14 (stale 900px comment) — Playwright-verified. Open: D9 (safe-area DOM depth), D11 (popover clipping-ancestor placement), D12 (useMediaQuery is deleted, so moot), D13 (MCP App Store doorway), Phase 1 edge matrix as durable tests, and Phase 5 per-surface container conversion.
 
 ## Verified defects (fix list)
 
