@@ -91,9 +91,22 @@ export const createSessionMutationCoordinator = (input: {
   // coordinator itself stays permanently fenced/terminated regardless.
   onTerminal?: () => void
   /**
+   * Synchronous one-time hook fired at the exact moment a terminal event
+   * BEGINS — the first line of `terminate` and the first line of a foreign
+   * fence — strictly before any awaited work (revocation, finalization,
+   * clearing). `onTerminal` alone is too late for the cross-remount fence:
+   * while a logout DELETE or foreign revocation is still pending, a page,
+   * Tauri window, or mobile WebView can reload and remount before the
+   * completion notification exists, and the remount's startup restore would
+   * consume the still-live cookie. Hosts persist their ambient-refresh
+   * marker here; `onTerminal` remains only for post-clear coordinator
+   * retirement.
+   */
+  onTerminalStart?: () => void
+  /**
    * Synchronous ambient gate, read at call time by the public
    * `refresh`/`reconcile` facades (never by explicit `run`/`runGuarded`).
-   * The host sets it from `onTerminal` and clears it only after a
+   * The host sets it from `onTerminalStart` and clears it only after a
    * successfully applied explicit login/bootstrap/dev login or a valid
    * explicit recovery, so a coordinator recreated after a terminal
    * notification cannot let automatic startup restoration consume an
@@ -123,6 +136,15 @@ export const createSessionMutationCoordinator = (input: {
   // The terminal notification fires at most once even when a foreign fence
   // and terminate overlap; whichever finishes its clear first owns it.
   let terminalNotified = false
+  // The terminal-START hook likewise fires at most once, from whichever of
+  // terminate/fenceForeign begins first.
+  let terminalStartNotified = false
+
+  const notifyTerminalStartOnce = (): void => {
+    if (terminalStartNotified) return
+    terminalStartNotified = true
+    input.onTerminalStart?.()
+  }
 
   const notifyTerminalOnce = (): void => {
     if (terminalNotified) return
@@ -142,6 +164,9 @@ export const createSessionMutationCoordinator = (input: {
   const fenceForeign = (payload: SessionPayload): Promise<void> => {
     if (fenceCompletion) return fenceCompletion
     fenced = true
+    // Fence the ambient gate before awaiting the caller-owned revocation:
+    // a remount during that await must already find the marker persisted.
+    notifyTerminalStartOnce()
     fenceCompletion = (async () => {
       try {
         await input.onForeignSession?.(payload)
@@ -358,6 +383,10 @@ export const createSessionMutationCoordinator = (input: {
     // flags deliberately never reset — logout ends this coordinator's life.
     if (termination) return termination
     terminating = true
+    // Set the terminal-start marker synchronously, BEFORE any await: while
+    // the finalizer's DELETE is still pending, a reloaded/remounted page
+    // must already read the fence and refuse every ambient refresh.
+    notifyTerminalStartOnce()
     const pendingQueue = queue
     // A foreign fence already in flight must finish its caller-owned
     // revocation before logout finalizes, so the terminal notification never

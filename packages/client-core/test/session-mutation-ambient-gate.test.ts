@@ -14,10 +14,12 @@ const sessionPayload = (token: string): SessionPayload => ({
 })
 
 // Mirrors the provider wiring: the host sets the synchronous gate from
-// onTerminal, hands the reader to every coordinator generation, and clears
-// it only after a successfully applied explicit login.
+// onTerminalStart (the moment terminate or a foreign fence begins), hands
+// the reader to every coordinator generation, and clears it only after a
+// successfully applied explicit login.
 const createGatedHost = (input: {
   onClear?: () => void
+  onForeignSession?: () => Promise<void>
   onRefresh?: () => Promise<SessionPayload | null>
 }) => {
   let blocked = false
@@ -30,9 +32,16 @@ const createGatedHost = (input: {
       input.onClear?.()
     },
     isAmbientRefreshBlocked: () => blocked,
+    onForeignSession: async () => {
+      events.push('revoke')
+      await input.onForeignSession?.()
+    },
     onTerminal: () => {
-      blocked = true
       events.push('terminal')
+    },
+    onTerminalStart: () => {
+      blocked = true
+      events.push('terminal-start')
     },
     refresh: () => {
       refreshCalls += 1
@@ -54,7 +63,7 @@ test('a terminal logout blocks ambient refresh on the SAME coordinator and every
 
   await first.terminate(async () => undefined)
   assert.equal(host.blocked, true)
-  assert.deepEqual(host.events, ['clear', 'terminal'])
+  assert.deepEqual(host.events, ['terminal-start', 'clear', 'terminal'])
 
   // A stale caller holding the retired coordinator's facade is refused
   // before any refresh request — even though terminate alone would only
@@ -105,6 +114,7 @@ test('an applied explicit login reopens ambient refresh on the recreated coordin
   assert.equal(await recreated.refresh(), 'renewed-token')
   assert.equal(host.refreshCalls, 1)
   assert.deepEqual(host.events, [
+    'terminal-start',
     'clear',
     'terminal',
     'apply:login-token',
@@ -136,7 +146,7 @@ test('the ambient gate never blocks explicit run/runGuarded mutations', async ()
     () => ({ kind: 'target' }),
   )
   assert.equal(guarded.token, 'recovered-token')
-  assert.deepEqual(host.events, ['clear', 'terminal', 'apply:recovered-token'])
+  assert.deepEqual(host.events, ['terminal-start', 'clear', 'terminal', 'apply:recovered-token'])
 })
 
 test('a refresh winner after an opaque loss is internal and never gated', async () => {
@@ -173,4 +183,69 @@ test('a run joined before the gate is set is never blocked mid-flight', async ()
   resolveRefresh?.(sessionPayload('joined-token'))
   assert.equal(await refreshing, 'joined-token')
   assert.equal(host.refreshCalls, 1)
+})
+
+test('the terminal-start hook fires synchronously at terminate begin, before a stalled finalizer settles', async () => {
+  let finalizerBegan!: () => void
+  let settleFinalizer!: () => void
+  const began = new Promise<void>((resolve) => {
+    finalizerBegan = resolve
+  })
+  const host = createGatedHost({})
+  const coordinator = host.build()
+
+  // Begin terminate with a finalizer that stays unresolved — the shape of a
+  // stalled or slowly-failing logout DELETE.
+  const termination = coordinator.terminate(
+    () => {
+      finalizerBegan()
+      return new Promise<void>((resolve) => {
+        settleFinalizer = resolve
+      })
+    },
+  )
+  // The start hook already fired, synchronously, before ANY awaited work:
+  // the gate is set before the finalizer even runs.
+  assert.equal(host.blocked, true)
+  assert.deepEqual(host.events, ['terminal-start'])
+
+  // Deterministic: hold until the finalizer is actually in flight — the gate
+  // was still set first.
+  await began
+  assert.deepEqual(host.events, ['terminal-start'])
+
+  settleFinalizer()
+  await termination
+  assert.deepEqual(host.events, ['terminal-start', 'clear', 'terminal'])
+})
+
+test('the terminal-start hook fires before a stalled foreign revocation settles', async () => {
+  let revocationBegan!: () => void
+  let settleRevocation!: () => void
+  const began = new Promise<void>((resolve) => {
+    revocationBegan = resolve
+  })
+  const pending = new Promise<void>((resolve) => {
+    settleRevocation = resolve
+  })
+  const host = createGatedHost({
+    onForeignSession: () => {
+      revocationBegan()
+      return pending
+    },
+  })
+  const coordinator = host.build()
+
+  const fenced = coordinator.runGuarded(
+    async () => sessionPayload('foreign-token'),
+    () => ({ kind: 'foreign', message: 'The renewed session is foreign.' }),
+  )
+  // Deterministic: wait until the fence's revocation is actually in flight,
+  // then prove the gate was already set before that awaited work began.
+  await began
+  assert.equal(host.blocked, true)
+  assert.deepEqual(host.events, ['terminal-start', 'revoke'])
+
+  settleRevocation()
+  await assert.rejects(fenced, ForeignSessionDetected)
 })

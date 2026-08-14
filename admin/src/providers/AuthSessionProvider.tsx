@@ -49,11 +49,7 @@ import {
   NATIVE_PUSH_UNREGISTER_EVENT,
 } from '../lib/native-push-registration'
 import { isReactNativeWebView } from '../lib/mobile-shell'
-import {
-  blockAmbientRefresh,
-  isAmbientRefreshBlocked,
-  unblockAmbientRefresh,
-} from './ambient-refresh-gate'
+import { createAmbientRefreshGateHost } from './ambient-refresh-gate-host'
 import {
   createSessionQueryBoundary,
   isCurrentSessionResponse,
@@ -184,18 +180,20 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   // fresh coordinator. An ordinary refresh that returns null is not terminal
   // and never bumps it.
   const [coordinatorGeneration, setCoordinatorGeneration] = useState(0)
-  // Synchronous ambient gate, outside React state so it is exact even before
-  // a re-render commits: from the terminal notification until a successfully
-  // APPLIED explicit login/bootstrap/dev login or a valid explicit recovery,
-  // the public refresh/reconcile facades refuse and automatic startup
-  // restoration cannot consume an ambient refresh cookie whose logout may
-  // have failed or been swallowed. Explicit run/runGuarded mutations are
-  // never gated, so a later explicit login still works and its apply clears
-  // the gate synchronously — ahead of React's commit. The gate also persists
-  // beside the token store and initializes from that marker, so a full
-  // remount (web page, Tauri, mobile WebView) of a terminated-but-not-revoked
-  // session starts blocked instead of consuming the still-live cookie.
-  const ambientRefreshBlockedRef = useRef(isAmbientRefreshBlocked())
+  // Synchronous ambient gate host, outside React state so it is exact even
+  // before a re-render commits. From the terminal-START hook (the moment a
+  // logout or foreign fence begins — before its awaited DELETE/revocation)
+  // until a successfully APPLIED explicit login/bootstrap/dev login or valid
+  // explicit recovery, the public refresh/reconcile facades refuse, so a
+  // remount mid-finalization cannot consume an ambient refresh cookie whose
+  // logout may still be pending or may have failed. Explicit run/runGuarded
+  // mutations are never gated, so a later explicit login still works and its
+  // apply reopens the gate synchronously — ahead of React's commit. The gate
+  // also persists beside the token store and initializes from that marker,
+  // so a full remount (web page, Tauri, mobile WebView) of a terminated-
+  // but-not-revoked session starts blocked.
+  const ambientRefreshGate = useMemo(() => createAmbientRefreshGateHost(), [])
+  const ambientRefreshBlockedRef = ambientRefreshGate.ref
   // Login, startup restore, every API 401, and workspace switching share this
   // exact coordinator. Both refresh cookies are single-use, so no other path
   // may mutate the session concurrently or apply an older response afterwards.
@@ -211,19 +209,22 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
         onForeignSession: async (payload) => {
           await authApi.logout(payload.token)
         },
+        // The ambient gate is set by onTerminalStart, the moment terminate
+        // or a foreign fence begins — before any awaited DELETE/revocation —
+        // so a remount during that pending work already reads the persisted
+        // fence. This post-clear notification only retires the coordinator:
+        // bump the generation so a later explicit login/recovery, after
+        // React re-renders, builds a fresh one.
+        onTerminalStart: ambientRefreshGate.onTerminalStart,
         onTerminal: () => {
-          // Persist FIRST, synchronously, before the generation bump can let
-          // any recreation restore: the marker is the cross-remount fence.
-          blockAmbientRefresh()
-          ambientRefreshBlockedRef.current = true
           setCoordinatorGeneration((generation) => generation + 1)
         },
-        isAmbientRefreshBlocked: () => ambientRefreshBlockedRef.current,
+        isAmbientRefreshBlocked: ambientRefreshGate.isBlocked,
         refresh: authApi.refresh,
       }),
     // coordinatorGeneration is not read inside the factory; it only re-runs
     // the memo after the previous coordinator went terminal.
-    [applySession, clearSession, coordinatorGeneration, sessionQueryBoundary],
+    [ambientRefreshGate, applySession, clearSession, coordinatorGeneration, sessionQueryBoundary],
   )
   const reconcileSession = useCallback((): Promise<SessionPayload | null> => {
     // A terminal fence/logout ends every ambient path at once, synchronously:
@@ -384,14 +385,12 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const bootstrap = async (input: BootstrapInput): Promise<void> => {
     await sessionMutations.run(() => authApi.bootstrap(input))
     // Applied explicit session creation reopens ambient refresh.
-    ambientRefreshBlockedRef.current = false
-    unblockAmbientRefresh()
+    ambientRefreshGate.reopen()
   }
 
   const devLogin = async (): Promise<void> => {
     await sessionMutations.run(() => authApi.devLogin())
-    ambientRefreshBlockedRef.current = false
-    unblockAmbientRefresh()
+    ambientRefreshGate.reopen()
   }
 
   const importAccessToken = useCallback(async (accessToken: string): Promise<void> => {
@@ -409,8 +408,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const login = async (input: LoginInput): Promise<void> => {
     await sessionMutations.run(() => authApi.login(input))
-    ambientRefreshBlockedRef.current = false
-    unblockAmbientRefresh()
+    ambientRefreshGate.reopen()
   }
 
   const recoveryExchange = async (
@@ -471,8 +469,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     const payload = await recovered
     // A valid explicit recovery — exact target applied — reopens ambient
     // refresh; a rejected non-switch or foreign payload never does.
-    ambientRefreshBlockedRef.current = false
-    unblockAmbientRefresh()
+    ambientRefreshGate.reopen()
     return payload
   }
 

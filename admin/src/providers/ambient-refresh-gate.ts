@@ -25,9 +25,9 @@ const readLocalStorage = (): Storage | null => {
 export const isAmbientRefreshBlocked = (): boolean =>
   readLocalStorage()?.getItem(AMBIENT_REFRESH_BLOCKED_KEY) === BLOCKED_VALUE
 
-// Synchronous by design: onTerminal calls this before any coordinator
-// generation bump or re-render could run a restore, so the persisted fence
-// is exact even inside the same task.
+// Synchronous by design: the coordinator's onTerminalStart hook calls this
+// at the exact moment a logout or foreign fence begins — before any awaited
+// DELETE/revocation — so a remount mid-finalization already reads the fence.
 export const blockAmbientRefresh = (): void => {
   readLocalStorage()?.setItem(AMBIENT_REFRESH_BLOCKED_KEY, BLOCKED_VALUE)
 }

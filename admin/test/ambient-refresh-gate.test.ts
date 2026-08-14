@@ -24,6 +24,9 @@ const {
   isAmbientRefreshBlocked,
   unblockAmbientRefresh,
 } = await import('../src/providers/ambient-refresh-gate')
+const { createAmbientRefreshGateHost } = await import(
+  '../src/providers/ambient-refresh-gate-host'
+)
 
 const sessionPayload = (token: string): SessionPayload => ({
   me: {} as SessionPayload['me'],
@@ -31,31 +34,32 @@ const sessionPayload = (token: string): SessionPayload => ({
 })
 
 // Mirrors the AuthSessionProvider wiring across a provider remount: each
-// "mount" initializes its gate from the persisted marker and hands the
-// ref-backed reader to a fresh coordinator generation; onTerminal sets the
-// ref AND the persisted marker synchronously, and only a successfully applied
-// explicit login clears both.
-const createMountedProvider = (onRefresh?: () => Promise<SessionPayload | null>) => {
+// "mount" builds a fresh gate host that initializes its ref from the
+// persisted marker and hands the ref-backed reader to a fresh coordinator
+// generation; the coordinator's onTerminalStart hook sets the ref AND the
+// persisted marker synchronously at terminal begin, and only a successfully
+// applied explicit login reopens both.
+const createMountedProvider = (input?: {
+  onForeignSession?: () => Promise<void>
+  onRefresh?: () => Promise<SessionPayload | null>
+}) => {
   let refreshCalls = 0
-  const ambientRefreshBlocked = isAmbientRefreshBlocked()
-  const gateRef = { current: ambientRefreshBlocked }
+  const gate = createAmbientRefreshGateHost()
   const coordinator = createSessionMutationCoordinator({
     applySession: () => undefined,
     clearSession: () => undefined,
-    isAmbientRefreshBlocked: () => gateRef.current,
-    onTerminal: () => {
-      blockAmbientRefresh()
-      gateRef.current = true
-    },
+    isAmbientRefreshBlocked: gate.isBlocked,
+    onForeignSession: input?.onForeignSession,
+    onTerminal: gate.onTerminal,
+    onTerminalStart: gate.onTerminalStart,
     refresh: () => {
       refreshCalls += 1
-      return onRefresh?.() ?? Promise.resolve(sessionPayload('renewed-token'))
+      return input?.onRefresh?.() ?? Promise.resolve(sessionPayload('renewed-token'))
     },
   })
   const login = async (): Promise<void> => {
     await coordinator.run(async () => sessionPayload('login-token'))
-    gateRef.current = false
-    unblockAmbientRefresh()
+    gate.reopen()
   }
   return { coordinator, login, get refreshCalls() { return refreshCalls } }
 }
@@ -64,12 +68,55 @@ test.beforeEach(() => {
   store.clear()
 })
 
+test('the marker exists at terminate begin: a remount during a stalled DELETE makes zero refresh calls', async () => {
+  // The actual race: logout's server DELETE is still in flight (stalled or
+  // failing slowly) when the page, Tauri window, or mobile WebView reloads.
+  // The post-terminal notification has NOT fired yet — only the synchronous
+  // terminal-start hook may have persisted the fence.
+  const first = createMountedProvider()
+  let finalizerBegan!: () => void
+  let settleFinalizer!: () => void
+  const began = new Promise<void>((resolve) => {
+    finalizerBegan = resolve
+  })
+  const termination = first.coordinator.terminate(
+    () => {
+      finalizerBegan()
+      return new Promise<void>((resolve) => {
+        settleFinalizer = resolve
+      })
+    },
+  )
+  // Without awaiting terminate: the persisted marker must ALREADY exist,
+  // before the finalizer is allowed to settle.
+  assert.equal(isAmbientRefreshBlocked(), true)
+  assert.equal(store.get('nessie.admin.ambient-refresh-blocked'), '1')
+  // Deterministic: hold until the stalled DELETE is actually in flight —
+  // the marker was persisted before it even started.
+  await began
+
+  // Simulate the remount while the DELETE is still pending: a fresh provider
+  // sharing the same storage initializes blocked from the marker, so its
+  // startup restore/proactive renewal/401 reconcile can never consume the
+  // still-live refresh cookie — zero refresh calls.
+  const remounted = createMountedProvider()
+  await assert.rejects(remounted.coordinator.refresh(), /ambient refresh is blocked/)
+  await assert.rejects(remounted.coordinator.reconcile(), /ambient refresh is blocked/)
+  assert.equal(remounted.refreshCalls, 0)
+
+  // Only now let the finalizer settle; a stale caller holding the retired
+  // generation's facade stays refused after completion too.
+  settleFinalizer()
+  await termination
+  await assert.rejects(first.coordinator.refresh(), /ambient refresh is blocked/)
+  assert.equal(first.refreshCalls, 0)
+  assert.equal(remounted.refreshCalls, 0)
+})
+
 test('a failed logout terminal marker blocks all ambient refresh after a provider remount', async () => {
   // First mount: logout's server DELETE fails (swallowed) — the refresh
-  // cookie family stays live, but the terminal notification still fires and
-  // persists the fence.
+  // cookie family stays live, but the terminal completion still fires.
   const first = createMountedProvider()
-  // terminate's finally still fires onTerminal after the finalizer throws.
   await assert.rejects(
     first.coordinator.terminate(async () => {
       throw new Error('DELETE failed')
@@ -88,6 +135,43 @@ test('a failed logout terminal marker blocks all ambient refresh after a provide
   const remounted = createMountedProvider()
   await assert.rejects(remounted.coordinator.refresh(), /ambient refresh is blocked/)
   await assert.rejects(remounted.coordinator.reconcile(), /ambient refresh is blocked/)
+  assert.equal(remounted.refreshCalls, 0)
+})
+
+test('the marker exists at foreign-fence begin: a remount during a stalled revocation makes zero refresh calls', async () => {
+  // The analogous foreign-fence timing, deterministic: the fence's
+  // caller-owned revocation is deliberately left pending when the remount
+  // happens.
+  let revocationBegan!: () => void
+  let settleRevocation!: () => void
+  const began = new Promise<void>((resolve) => {
+    revocationBegan = resolve
+  })
+  const first = createMountedProvider({
+    onForeignSession: () => {
+      revocationBegan()
+      return new Promise<void>((resolve) => {
+        settleRevocation = resolve
+      })
+    },
+  })
+  const fenced = first.coordinator.runGuarded(
+    async () => sessionPayload('foreign-token'),
+    () => ({ kind: 'foreign', message: 'The renewed session is foreign.' }),
+  )
+  // Wait until the revocation is actually in flight, then prove the fence
+  // was already persisted before that awaited work began.
+  await began
+  assert.equal(isAmbientRefreshBlocked(), true)
+  assert.equal(store.get('nessie.admin.ambient-refresh-blocked'), '1')
+
+  const remounted = createMountedProvider()
+  await assert.rejects(remounted.coordinator.refresh(), /ambient refresh is blocked/)
+  await assert.rejects(remounted.coordinator.reconcile(), /ambient refresh is blocked/)
+  assert.equal(remounted.refreshCalls, 0)
+
+  settleRevocation()
+  await assert.rejects(fenced, /foreign/)
   assert.equal(remounted.refreshCalls, 0)
 })
 
