@@ -190,7 +190,15 @@ export const ResizableSidebar = ({ children, fixed = false }: ResizableSidebarPr
           aria-orientation="vertical"
           aria-valuemax={MAX_SIDEBAR_WIDTH_PERCENT}
           aria-valuemin={Math.ceil(minimumSidebarWidthPercent(viewportWidth))}
-          aria-valuenow={Math.round(widthPercent)}
+          // Announce a value within [ceil(min), max]: the min rounds up while
+          // widthPercent rounds to nearest, so a value clamped exactly to the
+          // fractional minimum could otherwise be announced one below the
+          // announced min (e.g. now 24 < min 25 at 820px).
+          aria-valuenow={clamp(
+            Math.round(widthPercent),
+            Math.ceil(minimumSidebarWidthPercent(viewportWidth)),
+            MAX_SIDEBAR_WIDTH_PERCENT,
+          )}
           className={[
             'resizable-sidebar-control',
             isResizing ? 'is-resizing' : '',
