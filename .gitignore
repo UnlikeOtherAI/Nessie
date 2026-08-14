@@ -25,3 +25,6 @@ packages/billing-statement-protocol/src/*.js
 .worktrees/
 executor/native/target/
 executor/vm/.build/
+
+# Provisioning profiles are release inputs, never repository content.
+desktop/src-tauri/appstore/
