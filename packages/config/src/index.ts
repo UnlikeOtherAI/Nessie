@@ -413,18 +413,28 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
 
   for (const [envKey, configPath] of Object.entries(ConfigEnvMap)) {
     const value = env[envKey]
-    if (value !== undefined) {
+    // An explicitly emptied variable (`DATABASE_URL= pnpm test` unsets the
+    // database for a run) means "no override", not the empty string — only
+    // `undefined` marks a variable unset, and an empty string would fail the
+    // schema's `min(1)` checks and crash every process that loads config.
+    if (value !== undefined && value !== '') {
       setByPath(overrides, configPath, coerceScalar(value))
     }
   }
 
-  if (env.NESSIE_DB_URL === undefined && env.DATABASE_URL !== undefined) {
+  if (
+    (env.NESSIE_DB_URL === undefined || env.NESSIE_DB_URL === '') &&
+    env.DATABASE_URL !== undefined &&
+    env.DATABASE_URL !== ''
+  ) {
     setByPath(overrides, 'database.url', env.DATABASE_URL)
   }
 
+  const firstNonEmpty = (...values: Array<string | undefined>): string | undefined =>
+    values.find((value) => value !== undefined && value !== '')
+
   const modelProvider =
-    env.NESSIE_MODEL_PROVIDER ??
-    env.LLM_PROVIDER ??
+    firstNonEmpty(env.NESSIE_MODEL_PROVIDER, env.LLM_PROVIDER) ??
     (env.KIMI_API_KEY !== undefined
       ? 'kimi'
       : env.MINIMAX_API_KEY !== undefined
@@ -439,12 +449,13 @@ const loadEnvOverrides = (env: NodeJS.ProcessEnv): JsonObject => {
     setByPath(overrides, 'model.provider', modelProvider)
   }
 
-  if (env.NESSIE_MODEL_NAME !== undefined) {
-    setByPath(overrides, 'model.modelName', env.NESSIE_MODEL_NAME)
+  const modelName = firstNonEmpty(env.NESSIE_MODEL_NAME)
+  if (modelName !== undefined) {
+    setByPath(overrides, 'model.modelName', modelName)
   }
 
   const modelApiKey =
-    env.NESSIE_MODEL_API_KEY ??
+    firstNonEmpty(env.NESSIE_MODEL_API_KEY) ??
     (modelProvider === 'kimi'
       ? env.KIMI_API_KEY
       : modelProvider === 'minimax'
