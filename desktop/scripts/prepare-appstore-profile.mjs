@@ -5,7 +5,7 @@ import { isAbsolute, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 const executeFile = promisify(execFile)
-const bundleIdentifier = 'com.unlikeotherai.nessie.desktop'
+const bundleIdentifier = 'com.km.nessie'
 
 const configuredProfile = process.env.NESSIE_DESKTOP_APPSTORE_PROFILE
 const teamIdentifier = process.env.NESSIE_DESKTOP_SIGNING_TEAM_ID

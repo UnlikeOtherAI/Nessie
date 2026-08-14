@@ -130,8 +130,10 @@ does not bundle the local executor runtime: that helper currently depends on a
 Developer ID signature and user-selected workspace access that has not yet
 been redesigned for App Sandbox inheritance.
 
-Create a `Mac App Store Connect` provisioning profile for
-`com.unlikeotherai.nessie.desktop`, then build version `0.1.1 (1)` with:
+Create a `Mac App Store Connect` provisioning profile for `com.km.nessie`.
+This App Store-only override connects the desktop shell to Nessie's existing
+macOS App Store Connect platform; the Developer ID desktop bundle remains
+`com.unlikeotherai.nessie.desktop`. Then build version `0.1.1 (1)` with:
 
 ```sh
 NESSIE_DESKTOP_APPSTORE_PROFILE=/absolute/path/to/Nessie.provisionprofile \
