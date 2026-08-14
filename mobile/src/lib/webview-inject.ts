@@ -48,6 +48,14 @@ export const INJECTED = `
             '.admin-frame.has-native-phone-tabbar .admin-shell > main {' +
             ' padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
           '}',
+          // Phone tab roots keep their contextual navigation one level below
+          // the admin shell. The nested scroller needs the same clearance or
+          // its final row can only be reached underneath native glass.
+          '.admin-frame.has-native-phone-tabbar .phone-navigation-screen > main, ' +
+            '.admin-frame.has-native-phone-tabbar .touch-sidebar {' +
+            ' padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
+            ' scroll-padding-bottom: var(--nessie-native-phone-tabbar-clearance);' +
+          '}',
         ].join('')
       : '';
     var nativeTopbarOwnsSafeArea = shell && shell.platform === 'android';

@@ -127,6 +127,16 @@ test('iOS phone injection clears the tab overlay inside the WebView', () => {
     '\\.admin-frame\\.has-native-phone-tabbar \\.admin-shell > aside, ' +
     '\\.admin-frame\\.has-native-phone-tabbar \\.admin-shell > main'
   assert.match(css, new RegExp(`${phoneTabBarShell} \\{ padding-bottom: var\\(--nessie-native-phone-tabbar-clearance\\);\\}`))
+  const phoneTabBarScrollSurfaces =
+    '\\.admin-frame\\.has-native-phone-tabbar \\.phone-navigation-screen > main, ' +
+    '\\.admin-frame\\.has-native-phone-tabbar \\.touch-sidebar'
+  assert.match(
+    css,
+    new RegExp(
+      `${phoneTabBarScrollSurfaces} \\{ padding-bottom: var\\(--nessie-native-phone-tabbar-clearance\\);` +
+      ' scroll-padding-bottom: var\\(--nessie-native-phone-tabbar-clearance\\);\\}',
+    ),
+  )
 })
 
 test('iPad and Android keep top safe-area ownership in the native frame', () => {
