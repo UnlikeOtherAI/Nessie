@@ -1,5 +1,7 @@
 import crypto from 'node:crypto'
 
+import { loadUoaSettings, type UoaSettings } from '@nessie/workspace-admin'
+
 import type { SsoTheme } from '../contracts/auth.js'
 
 /**
@@ -25,17 +27,15 @@ import type { SsoTheme } from '../contracts/auth.js'
  *      the authenticated backend channel).
  */
 
-export type UoaSettings = {
-  baseUrl: string
-  domain: string
-  configUrl: string
-  jwksUrl: string
-  redirectUrl: string
-  contactEmail: string
-  privateKeyPem: string
-  kid: string
-  clientSecret: string
-}
+// Settings resolution and the domain-hash bearer moved to
+// `@nessie/workspace-admin` (`uoa-settings.ts`) so the worker's roster reads
+// resolve the same environment; everything else about the login flow stays here.
+export {
+  clientHash,
+  isUoaConfigured,
+  loadUoaSettings,
+  type UoaSettings,
+} from '@nessie/workspace-admin'
 
 export const DESKTOP_REDIRECT_URL = 'nessie://auth/callback'
 
@@ -200,41 +200,6 @@ export const themedConfigUrl = (settings: UoaSettings, theme?: SsoTheme): string
   return configUrl.toString()
 }
 
-const requireEnv = (name: string): string => {
-  const value = process.env[name]
-  if (!value || value.trim().length === 0) {
-    throw new Error(`[uoa] ${name} is not set`)
-  }
-  return value
-}
-
-/**
- * Load UOA settings from the environment. The private key is provided base64 to
- * keep the PEM on a single line (docker compose env_file cannot carry multiline
- * values). `UOA_CLIENT_SECRET` may be empty until the integration is approved —
- * the authorize step (onboarding) does not need it; only token exchange does.
- */
-export const loadUoaSettings = (): UoaSettings => ({
-  baseUrl: (process.env.UOA_BASE_URL ?? 'https://authentication.unlikeotherai.com').replace(/\/$/, ''),
-  domain: requireEnv('UOA_DOMAIN'),
-  configUrl: requireEnv('UOA_CONFIG_URL'),
-  jwksUrl: requireEnv('UOA_JWKS_URL'),
-  redirectUrl: requireEnv('UOA_REDIRECT_URL'),
-  contactEmail: process.env.UOA_CONTACT_EMAIL ?? '',
-  privateKeyPem: Buffer.from(requireEnv('UOA_CONFIG_JWT_PRIVATE_KEY_B64'), 'base64').toString('utf8'),
-  kid: requireEnv('UOA_CONFIG_JWT_KID'),
-  clientSecret: process.env.UOA_CLIENT_SECRET ?? '',
-})
-
-export const isUoaConfigured = (): boolean => {
-  try {
-    loadUoaSettings()
-    return true
-  } catch {
-    return false
-  }
-}
-
 const base64UrlJson = (value: unknown): string =>
   Buffer.from(JSON.stringify(value)).toString('base64url')
 
@@ -323,10 +288,6 @@ export const buildPublicJwks = (settings: UoaSettings): { keys: Record<string, u
     keys: [{ ...jwk, kid: settings.kid, alg: 'RS256', use: 'sig' }],
   }
 }
-
-/** SHA256(domain + clientSecret) hex — UOA's bearer credential for token exchange. */
-export const clientHash = (settings: UoaSettings): string =>
-  crypto.createHash('sha256').update(settings.domain + settings.clientSecret).digest('hex')
 
 /**
  * Build the UOA authorization URL. The config-JWT flow identifies the client via
