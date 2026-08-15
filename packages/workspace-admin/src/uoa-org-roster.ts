@@ -64,6 +64,19 @@ export class UoaRosterRejectedError extends Error {
   }
 }
 
+/**
+ * The invitation was already accepted, so there is nothing left to revoke — the
+ * person is a member and removal is the operation that applies. Distinct from
+ * `UoaRosterRejectedError` because "too late" is a different answer from "that
+ * invitation does not exist", and the route says so.
+ */
+export class UoaInvitationAlreadyAcceptedError extends Error {
+  constructor() {
+    super('[uoa] this invitation has already been accepted')
+    this.name = 'UoaInvitationAlreadyAcceptedError'
+  }
+}
+
 export type UoaRosterDeps = {
   fetchImpl?: PinnedFetch
   resolveHost?: ResolveHost
@@ -409,9 +422,53 @@ export const resendWorkspaceInvitation = async (
 }
 
 /**
+ * Withdraw an invitation that has already been sent. The link stops working and
+ * the row leaves the team's pending list.
+ *
+ * UOA answers `200 { ok: true }` for a live invitation **and** for one that was
+ * already revoked — revoking twice is the same outcome as revoking once, so the
+ * second click is a success, not an error. An invitation that has already been
+ * accepted is a `409`: the person is a member now, and removing them is a
+ * different operation with different consequences, so it is refused in words
+ * rather than quietly reinterpreted. An unknown or foreign invite id is a
+ * generic `404`, which tells a caller nothing about other workspaces.
+ *
+ * A 200 body that is not the agreed success shape is treated as an outage:
+ * "revoked" is a claim about the upstream's state, and a body we cannot read is
+ * no evidence for it.
+ */
+export const revokeTeamInvitation = async (
+  workspace: UoaRosterWorkspace,
+  inviteId: string,
+  deps: UoaRosterDeps = {},
+): Promise<void> => {
+  let payload: unknown
+  try {
+    payload = await rosterRequest(
+      requireSettings(),
+      `${teamPath(workspace)}/invitations/${encodeURIComponent(inviteId)}`,
+      { method: 'DELETE' },
+      deps,
+    )
+  } catch (error) {
+    if (error instanceof UoaRosterRejectedError && error.statusCode === 409) {
+      throw new UoaInvitationAlreadyAcceptedError()
+    }
+    throw error
+  }
+
+  // An empty 200 is still a success; only a body that contradicts one is not.
+  if (payload === null) return
+  const body = asRecord(payload)
+  if (!body || body.ok !== true) {
+    throw new UoaRosterUnavailableError('[uoa] the org API returned an unusable revoke result')
+  }
+}
+
+/**
  * Approve or deny an invitation a plain member raised while the organisation
- * requires admin approval. Deny is UOA's only "make this invitation stop" verb:
- * there is no cancel or delete for an invitation that was already sent.
+ * requires admin approval. Deny is UOA's review verb for an invitation that was
+ * never sent; `revokeTeamInvitation` withdraws one that was.
  */
 export const reviewWorkspaceInvitation = async (
   workspace: UoaRosterWorkspace,

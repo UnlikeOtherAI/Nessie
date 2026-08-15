@@ -94,9 +94,21 @@ export const useResendWorkspaceInvitation = () =>
     ))
 
 /**
+ * Withdraw an invitation that was already sent. Idempotent upstream, so a
+ * second click is still a success; an invitation that was already accepted
+ * answers `409 INVITATION_ALREADY_ACCEPTED` and the row says so.
+ */
+export const useRevokeWorkspaceInvitation = () =>
+  useWorkspaceMutation<{ inviteId: string }>((apiClient, input) =>
+    apiClient.post(
+      `/api/workspace/invitations/${encodeURIComponent(input.inviteId)}/revoke`,
+      {},
+    ))
+
+/**
  * Approve or deny an invitation raised by a member while the organisation
- * requires review. Deny is UOA's only stop verb — an invitation that has
- * already been sent cannot be cancelled through the UOA API.
+ * requires review. Deny is the review verb for an invitation that was never
+ * sent; `useRevokeWorkspaceInvitation` withdraws one that was.
  */
 export const useReviewWorkspaceInvitation = () =>
   useWorkspaceMutation<{ inviteId: string; action: 'approve' | 'deny' }>((apiClient, input) =>

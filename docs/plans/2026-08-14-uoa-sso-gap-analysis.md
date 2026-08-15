@@ -84,7 +84,7 @@ handling is duplicated per platform and only works while logged out.
 | 2d | Never apply a returned session unless same subject/provider + exact requested org/team | **Implemented** | Layered: pre-flight `confirmUoaDirectServiceAccess` for the target (`api/src/services/uoa-workspace-switch.ts:49-71`); upstream response check (`uoa-session.ts:405-418`); `validateUoaRefresh` (`api/src/services/refresh-token-uoa.ts:167-182`); materialization re-check (`uoa-workspace-switch.ts:88-95`). Caveat: the materialization guard compares **email**, not sub (`uoa-workspace-switch.ts:96-107`) — see V1 |
 | 2e | One shared PKCE/callback lifecycle across platforms | **Implemented 2026-08-15** | PKCE generation shared (`packages/client-core/src/pkce.ts`); callback handling is now ONE always-mounted `ExternalAuthProvider` (`admin/src/providers/ExternalAuthProvider.tsx` + `external-auth-callback.ts`), installed above the router with no session-state gate, so authenticated round-trips work on web, Tauri, and native; native results ride a retained delivery queue with ready/delivered acks (`mobile/src/lib/external-auth-delivery.ts`) — the old swallowed-catch bridge is deleted. Still open: UOA authorize carries no `state` param (CSRF rides sessionStorage PKCE, `uoa-auth.ts:322-326`) — sign-off item |
 | 3a | Rosters are SSO API features | **Implemented for the workspace roster (2026-08-15)** | `GET /api/workspace/members` (`api/src/routes/workspace-members.ts`) serves the roster live from UOA in backend mode — `GET /org/organisations/:orgId/teams/:teamId` joined with `GET /org/organisations/:orgId/members?status=all` (`api/src/services/uoa-org-roster.ts`), keyed on the UOA subject, nothing persisted; role change / team removal / deactivate / reactivate relay the matching `/org/*` mutations behind Nessie's owner/admin gate (UOA applies none in backend mode). Enabled by `org_features.backend_org_management: true` in the config JWT (`uoa-auth.ts`). PA `people_search` answers from the same seam since 2026-08-15 (moved to `@nessie/workspace-admin`; item 7). **Still local:** `GET /api/users`, `POST /api/teams/:teamId/members`, and project member CRUD — previously: No UOA member-roster call exists anywhere; `/org/me` returns only the signed-in user's own workspaces (`api/src/services/uoa-workspace-directory.ts`). Local substitutes: `GET /api/users` from local rows; `POST /api/teams/:teamId/members` (`api/src/routes/teams.ts:81-130`); project member CRUD (`api/src/routes/projects.ts:240-311`); PA `people_search` reads local users by name/email substring (`worker/src/run/pa-tools/people.ts:17-46`) |
-| 3b | Invitations created/resent/revoked/approved/declined/accepted via SSO; acceptance hosted by SSO | **Implemented (2026-08-15), one gap owned by UOA** | `GET/POST /api/workspace/invitations`, `POST /api/workspace/invitations/:inviteId/resend\|approve\|deny` relay UOA's team-invitation contract; acceptance is hosted by UOA and Nessie mints/stores/renders no invitation token. **Revoke does not exist upstream**: UOA's API has no cancel or delete for an invitation already sent — `deny` covers only the member-initiated invites awaiting approval (verified against `/llm` §4.6b/§4.7a and the `/api` endpoint list, 2026-08-15). Shareable invite links are deliberately not surfaced. The admin Members page renders the UOA branch on a UOA session and keeps the local list otherwise. **Not yet removed:** `POST /api/users` and its local Add-member form, which Phase 1 already refuses outside `local` mode (`403 LOCAL_USER_CREATION_DISABLED`) and the Members page no longer reaches on a UOA session — previously: No invitation model, token, email, or endpoint exists (grep-clean; only agent-mention invites and executor pairing use the word). The substitute is worse: admin Members page submits `{displayName, email, password, role}` to `POST /api/users` (`admin/src/pages/settings/SettingsMembersPage.tsx:141-153`) — account + credential + roster placement with zero UOA involvement and no consent flow |
+| 3b | Invitations created/resent/revoked/approved/declined/accepted via SSO; acceptance hosted by SSO | **Implemented (2026-08-15)** | `GET/POST /api/workspace/invitations`, `POST /api/workspace/invitations/:inviteId/resend\|revoke\|approve\|deny` relay UOA's team-invitation contract; acceptance is hosted by UOA and Nessie mints/stores/renders no invitation token. **Revoke landed both sides 2026-08-15**: UOA added `DELETE .../teams/:teamId/invitations/:inviteId` in backend mode and Nessie relays it — idempotent, `409 INVITATION_ALREADY_ACCEPTED` once accepted, generic `404` for an unknown or foreign id; `deny` keeps its own meaning for an invitation still awaiting approval. Shareable invite links are deliberately not surfaced. The admin Members page renders the UOA branch on a UOA session and keeps the local list otherwise. **Not yet removed:** `POST /api/users` and its local Add-member form, which Phase 1 already refuses outside `local` mode (`403 LOCAL_USER_CREATION_DISABLED`) and the Members page no longer reaches on a UOA session — previously: No invitation model, token, email, or endpoint exists (grep-clean; only agent-mention invites and executor pairing use the word). The substitute is worse: admin Members page submits `{displayName, email, password, role}` to `POST /api/users` (`admin/src/pages/settings/SettingsMembersPage.tsx:141-153`) — account + credential + roster placement with zero UOA involvement and no consent flow |
 | 3c | Match by UOA subject + org/team ids, never local email rows | **Largely fixed 2026-08-15** | Phase 2 keyed principals on `User.uoaSub` (`api/src/services/workspace-principal.ts`, email kept only as the one-time adoption bridge), and the roster and invitation routes added the same day take the UOA subject in the path and resolve the workspace from `Team.externalOrgId`/`externalWorkspaceId` only. Remaining email-keyed paths are the adoption bridge itself and the CLI super-admin grant. Originally: principal resolution was `user.findUnique({ where: { email } })` (`api/src/services/workspace-context.ts:379`, `:194-205`); the per-principal advisory lock is keyed on the **email string** (`:190`); `auth-login.ts:120,134` (`loadSessionUserByEmail`); switch guard compares emails (`uoa-workspace-switch.ts:96-107`); super-admin grant by email (`cli/src/super-admin.ts:56-66`). Self-documented takeover risk at `api/src/services/external-auth.ts:209-217`. Correct sub-matching exists only in session/billing paths (`uoa-session-context.ts:102-106`, `packages/runtime/src/uoa-delegated-identity.ts:293-301`) |
 
 ## Flagged local copies of UOA-owned data (the non-negotiable)
@@ -373,7 +373,7 @@ projection of the session's signed claims, not an authority.
 `api/src/routes/workspace-members.ts`, `admin/src/pages/settings/WorkspaceMembersSection.tsx`,
 `docs/deployment-modes-and-auth-spec/overview.md` §4.6): the UOA client calls exist for
 the roster read, team role change, team removal, organisation
-deactivate/reactivate, and invitation create/list/resend/approve/deny, all in
+deactivate/reactivate, and invitation create/list/resend/revoke/approve/deny, all in
 UOA **backend mode** (domain-hash bearer, no access token, gated by
 `org_features.backend_org_management`), all keyed on the UOA subject, with
 acceptance hosted by UOA. Ambiguity 2 is therefore resolved: the UOA-side
@@ -381,10 +381,33 @@ contract *is* available to RP backends.
 
 Remaining in this phase:
 
-- **Revoke is not available upstream.** UOA exposes no cancel/delete for an
-  invitation that was already sent; only `deny` on a member-initiated invite
-  awaiting approval. Raise it with the UOA team rather than building a local
-  substitute.
+- ✅ **Invitation revoke — landed both sides 2026-08-15.** Raising it with the
+  UOA team was the right move rather than building a local substitute: UOA now
+  exposes
+  `DELETE /org/organisations/:orgId/teams/:teamId/invitations/:inviteId` in
+  backend mode (domain-hash bearer, no `X-UOA-Access-Token`, gated by the same
+  `org_features.backend_org_management` flag Nessie already sends). Nessie's
+  side is `revokeTeamInvitation` (`packages/workspace-admin/src/uoa-org-roster.ts`,
+  re-exported by `api/src/services/uoa-org-roster.ts`),
+  `POST /api/workspace/invitations/:inviteId/revoke`
+  (`api/src/routes/workspace-members.ts`, owner/admin-gated exactly like the
+  sibling invitation mutations), and a Revoke button beside Resend on each sent
+  invitation (`admin/src/pages/settings/WorkspaceMembersSection.tsx`). Three
+  outcomes, three different answers: revoking twice is a success because UOA's
+  delete is idempotent, an **already accepted** invitation is a `409` mapped to
+  its own `UoaInvitationAlreadyAcceptedError` → `409
+  INVITATION_ALREADY_ACCEPTED` ("remove the member instead" is a different
+  decision, so it is refused in words rather than reinterpreted), and an
+  unknown or foreign invite id stays a generic `404` that reveals nothing about
+  other workspaces. A `200` whose body is not the agreed `{ ok: true }` is an
+  outage, not a silent revoke. `deny` keeps its own meaning — the review verb
+  for an invitation that was never sent.
+  **Activation is a UOA deployment matter:** the relay is live in Nessie from
+  this change, and starts working against a given UOA instance once that
+  instance ships the endpoint (and, where the config JWT is cached, once the
+  domain's config is re-read/redeployed — a UOA-side coupling, not a Nessie
+  one). Until then the button reports UOA's own refusal; nothing else in the
+  page changes.
 - ✅ **Member avatars in the roster** — *landed 2026-08-15.* UOA's `/org/*`
   member records carry an `avatarImageUrl` in the `/domain/users/:userId/avatar`
   form, which needs the domain-hash bearer — there is no public user-avatar
