@@ -297,9 +297,13 @@ Remaining in this phase:
 - **Replace `POST /api/users` outright**, together with the remaining local
   membership mutations (`POST /api/teams/:teamId/members`, project member CRUD)
   and the Members page's local branch.
-- **A member-facing doorway.** `GET /api/workspace/members` is entitlement-scoped
-  to any member, but the only surface today is Settings → Members, whose nav
-  entry stays owner-only; the read-only roster still needs its own entry point.
+- **Doorways.** `GET /api/workspace/members` is entitlement-scoped to any
+  member and the mutations to owner **and** admin, but the only surface today is
+  Settings → Members, whose sidebar entry is still `ownerOnly`
+  (`admin/src/layouts/admin-shell/AdminSidebarNav.tsx`). An admin can use the
+  page by URL and an ordinary member cannot see the roster at all; the nav gate
+  needs to follow the entitlement, and the read-only roster wants an in-context
+  entry point of its own.
 
 **Phase 6 — cache hygiene.** ✅ **Workspace directory landed 2026-08-15.** The
 directory now lives only in a bounded in-memory cache
