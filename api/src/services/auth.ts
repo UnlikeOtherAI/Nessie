@@ -12,8 +12,6 @@ import {
 } from '@nessie/schemas'
 import type { SessionTokenClaims } from '../auth/session.js'
 import type { AuthProviderDescriptor } from '../contracts.js'
-import { buildGravatarUrl } from '../lib/gravatar.js'
-import { resolveStoredDisplayName } from './identity-display.js'
 import {
   deriveUoaWorkspaceDirectoryFromTeams,
   readUoaWorkspaceDirectory,
@@ -247,14 +245,12 @@ export const buildMeResponse = async (
   claims: SessionTokenClaims,
   config: NessieConfig,
 ): Promise<MeResponse> => {
-  const displayName = resolveStoredDisplayName(user.email, user.displayName)
-  if (displayName !== user.displayName) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { displayName },
-    })
-  }
-
+  // The profile is read straight off the mirror. This used to manufacture a
+  // display name from the email local part and persist it on every call, which
+  // made Nessie a second profile authority; the mirror is now re-synced from
+  // the provider's verified claims at login/switch/refresh instead
+  // (`uoa-profile-mirror.ts`), and a row still named by its email address
+  // renders that way until the provider supplies a name.
   const [memberships, uoaWorkspaces] = await Promise.all([
     loadUserMemberships(prisma, user.id),
     loadUoaWorkspaceDirectory(prisma, user.id, claims),
@@ -274,10 +270,9 @@ export const buildMeResponse = async (
     user: {
       id: parseUserId(user.id),
       email: user.email,
-      displayName,
+      displayName: user.displayName,
       avatarUrl: user.avatarUrl ?? undefined,
       avatarAttachmentId: user.avatarAttachmentId ?? undefined,
-      gravatarUrl: buildGravatarUrl(user.email),
       pronouns: user.pronouns ?? undefined,
       roleIds: activeRole ? [activeRole] : claims.roles,
       superAdmin: user.superAdmin,

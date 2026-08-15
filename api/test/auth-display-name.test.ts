@@ -62,7 +62,10 @@ const makePrisma = () => {
   return { prisma, updates }
 }
 
-test('buildMeResponse repairs a legacy email display name during session hydration', async () => {
+test('buildMeResponse no longer manufactures a display name from the email', async () => {
+  // The synthesizer is gone: the profile is UOA's, and a row still named by its
+  // address renders that way until UOA supplies a name (the mirror is re-synced
+  // from verified claims at login/switch/refresh, never here).
   const { prisma, updates } = makePrisma()
   const me = await buildMeResponse(
     prisma,
@@ -71,11 +74,11 @@ test('buildMeResponse repairs a legacy email display name during session hydrati
     { auth: { autoRedirectToSso: true }, mode: 'hosted' } as Parameters<typeof buildMeResponse>[3],
   )
 
-  assert.equal(me.user.displayName, 'Ada Lovelace')
-  assert.deepEqual(updates, [{ displayName: 'Ada Lovelace', id: userId }])
+  assert.equal(me.user.displayName, 'ada.lovelace@example.com')
+  assert.deepEqual(updates, [])
 })
 
-test('buildMeResponse leaves a non-email display name untouched', async () => {
+test('buildMeResponse writes nothing while hydrating a session', async () => {
   const { prisma, updates } = makePrisma()
   const me = await buildMeResponse(
     prisma,

@@ -32,7 +32,6 @@ export const OptimisticMessageRow = ({
       avatarAttachmentId={meAvatar.avatarAttachmentId}
       avatarUrl={meAvatar.avatarUrl}
       displayName={meDisplayName}
-      gravatarUrl={meAvatar.gravatarUrl}
       size={36}
       token={token}
       userId={meUserId}

@@ -54,7 +54,6 @@ export const useSidebarDms = ({
         label: me.user.displayName,
         avatarUrl: currentUser?.avatarUrl ?? me.user.avatarUrl ?? null,
         avatarAttachmentId: currentUser?.avatarAttachmentId ?? me.user.avatarAttachmentId ?? null,
-        gravatarUrl: currentUser?.gravatarUrl ?? me.user.gravatarUrl ?? null,
         channelIds: currentUser?.channelIds ?? [],
       },
       ...users
@@ -64,7 +63,6 @@ export const useSidebarDms = ({
           label: user.displayName,
           avatarUrl: user.avatarUrl,
           avatarAttachmentId: user.avatarAttachmentId,
-          gravatarUrl: user.gravatarUrl,
           channelIds: user.channelIds,
         })),
     ];
@@ -75,7 +73,6 @@ export const useSidebarDms = ({
       style: getDmStyle(index),
       avatarUrl: person.avatarUrl,
       avatarAttachmentId: person.avatarAttachmentId,
-      gravatarUrl: person.gravatarUrl,
       dmChannelId: person.id === me.user.id
         ? undefined
         : channels.find(

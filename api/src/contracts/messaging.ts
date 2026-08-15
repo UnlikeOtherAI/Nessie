@@ -31,7 +31,6 @@ export const MessageAuthorSchema = z.object({
   displayName: z.string(),
   avatarUrl: z.string().nullish(),
   avatarAttachmentId: z.string().uuid().nullish(),
-  gravatarUrl: z.string().nullish(),
 })
 export type MessageAuthor = z.infer<typeof MessageAuthorSchema>
 

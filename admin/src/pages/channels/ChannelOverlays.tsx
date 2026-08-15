@@ -124,7 +124,6 @@ export const ChannelOverlays = ({
         meAvatar={{
           avatarUrl: me.user.avatarUrl,
           avatarAttachmentId: me.user.avatarAttachmentId,
-          gravatarUrl: me.user.gravatarUrl,
         }}
         meDisplayName={me.user.displayName}
         meUserId={me.user.id}

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto'
 import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
 import type { UserRecord } from '../contracts.js'
-import { buildGravatarUrl } from '../lib/gravatar.js'
 import { assertNotLastOwner } from './organization-owner-lock.js'
 import { revokeUserRefreshFamilies } from './refresh-session-management.js'
 import {
@@ -32,7 +31,6 @@ const mapUserRecord = (record: {
   activeStatus: resolveActiveStatus(record.statuses),
   avatarUrl: record.avatarUrl ?? undefined,
   avatarAttachmentId: record.avatarAttachmentId ?? undefined,
-  gravatarUrl: buildGravatarUrl(record.email),
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
 })

@@ -51,7 +51,6 @@ export const ChannelInfoDrawers = ({
   const meAvatar: AvatarSources = {
     avatarUrl: me.user.avatarUrl,
     avatarAttachmentId: me.user.avatarAttachmentId,
-    gravatarUrl: me.user.gravatarUrl,
   }
 
   return (

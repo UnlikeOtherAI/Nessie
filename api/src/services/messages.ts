@@ -10,7 +10,6 @@ import {
   parseUserId,
 } from '@nessie/schemas'
 import type { MessageSearchResult, ThreadMessageRecord } from '../contracts.js'
-import { buildGravatarUrl } from '../lib/gravatar.js'
 
 export type { ChannelAgent, CreateThreadMessageResult } from './message-create.js'
 
@@ -99,7 +98,6 @@ const mapThreadMessageRecord = (
         displayName: message.user.displayName,
         avatarUrl: message.user.avatarUrl ?? undefined,
         avatarAttachmentId: message.user.avatarAttachmentId ?? undefined,
-        gravatarUrl: buildGravatarUrl(message.user.email),
       }
     : undefined,
   role: message.role,

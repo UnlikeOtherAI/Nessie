@@ -42,6 +42,5 @@ export type ThreadParticipant =
       avatarAttachmentId?: string | null
       avatarUrl?: string | null
       displayName: string
-      gravatarUrl?: string | null
     }
   | { kind: 'agent'; agent: AgentRecord }

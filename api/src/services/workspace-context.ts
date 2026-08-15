@@ -42,7 +42,9 @@ export type WorkspaceContext = {
 
 export type WorkspaceIdentityInput = {
   email: string
-  displayName: string
+  // Only what the provider asserted; absent when it asserted no name. The
+  // profile columns are a mirror of those claims, never Nessie's own record.
+  displayName?: string
   avatarUrl?: string
   /**
    * Account-bound recovery seam (paired with `existingUserId`): the exact
@@ -175,7 +177,10 @@ const initializeSharedOrganization = async (
   }
   const seeded = await seedBootstrapRecordsInTransaction(transaction, {
     avatarUrl: input.avatarUrl,
-    displayName: input.displayName,
+    // The seed row needs a name; the address is the honest placeholder when the
+    // provider asserted none. `ensureWorkspacePrincipal` re-syncs the mirror
+    // from the claims immediately afterwards.
+    displayName: input.displayName ?? input.email,
     email: input.email,
   })
   return {

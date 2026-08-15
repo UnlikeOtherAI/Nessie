@@ -199,6 +199,20 @@ export const registerAuthCoreRoutes = (
   app.patch('/api/auth/me/avatar', async (request, reply) => {
     const authenticatedState = await authenticateRequest(request, reply)
     if (!authenticatedState) return reply
+    // UnlikeOtherAI owns the profile of everyone who signs in through it, so a
+    // UOA session cannot keep a local picture that would override the one UOA
+    // holds. Those sessions change it at the source through the relay
+    // (PUT/DELETE /api/auth/me/avatar/uoa); the local attachment path stays for
+    // deployments with no UOA.
+    if (authenticatedState.claims.providerType === 'uoa') {
+      sendApiError(
+        reply,
+        403,
+        'PROFILE_MANAGED_BY_SSO',
+        'Your profile photo is managed in UnlikeOtherAI. Change it there or from this page, which updates UnlikeOtherAI directly.',
+      )
+      return reply
+    }
     const body = parseInput(UpdateMyAvatarRequestSchema, request.body, reply)
     if (!body) return reply
     if (body.avatarAttachmentId) {

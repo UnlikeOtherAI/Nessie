@@ -3,6 +3,7 @@ import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import { UoaRefreshBindingError } from './refresh-token-uoa.js'
 import { resolveExternalWorkspaceSelection } from './identity-display.js'
+import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
 import {
   advanceUoaLocalSessionBindingInTransaction,
   rescopeUoaLocalSessionBindingInTransaction,
@@ -69,6 +70,19 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
       throw new UoaRefreshBindingError(
         'UnlikeOtherAI did not return the bound session workspace.',
       )
+    }
+    // The renewed access token carries the same verified profile claims a
+    // login does, and the binding checks above have already proven it belongs
+    // to this user, so a UOA rename reaches Nessie within a refresh rather
+    // than waiting for the next interactive sign-in. The mirror is display
+    // data: a write failure must never break session renewal.
+    try {
+      await syncProfileMirrorFromClaims(prisma, upstream.userId, {
+        avatarUrl: refreshed.identity.avatarUrl,
+        displayName: refreshed.identity.displayName,
+      })
+    } catch {
+      // Intentionally ignored — see above.
     }
     return {
       identity: {

@@ -7,7 +7,6 @@ export type AnnotationAuthor = {
   isAgent: boolean
   avatarUrl?: string
   avatarAttachmentId?: string
-  gravatarUrl?: string
   // Set for human authors only; resolves their UnlikeOtherAI avatar.
   userId?: string
 }
@@ -33,7 +32,6 @@ export const useAnnotationAuthors = (): AuthorResolver => {
         isAgent: false,
         avatarUrl: user?.avatarUrl ?? undefined,
         avatarAttachmentId: user?.avatarAttachmentId ?? undefined,
-        gravatarUrl: user?.gravatarUrl ?? undefined,
         userId: user?.id,
       }
     }
