@@ -7,6 +7,7 @@ import {
   useRemoveWorkspaceMember,
   useResendWorkspaceInvitation,
   useReviewWorkspaceInvitation,
+  useRevokeWorkspaceInvitation,
   useSetWorkspaceMemberActivation,
   useUpdateWorkspaceMemberRole,
   useWorkspaceInvitations,
@@ -156,10 +157,11 @@ const MemberRow = ({
 const InvitationRow = ({ invitation }: { invitation: WorkspaceInvitationRecord }) => {
   const resend = useResendWorkspaceInvitation()
   const review = useReviewWorkspaceInvitation()
+  const revoke = useRevokeWorkspaceInvitation()
   const [error, setError] = useState<string | null>(null)
 
   const awaitingApproval = invitation.approvalStatus === 'pending'
-  const busy = resend.isPending || review.isPending
+  const busy = resend.isPending || review.isPending || revoke.isPending
 
   const act = async (run: () => Promise<unknown>, fallback: string) => {
     setError(null)
@@ -222,18 +224,37 @@ const InvitationRow = ({ invitation }: { invitation: WorkspaceInvitationRecord }
             </button>
           </>
         ) : (
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            disabled={busy}
-            onClick={() =>
-              void act(
-                () => resend.mutateAsync({ inviteId: invitation.inviteId }),
-                'Failed to resend invitation',
-              )}
-            type="button"
-          >
-            Resend
-          </button>
+          <>
+            <button
+              className="admin-button admin-button-secondary admin-button-compact"
+              disabled={busy}
+              onClick={() =>
+                void act(
+                  () => resend.mutateAsync({ inviteId: invitation.inviteId }),
+                  'Failed to resend invitation',
+                )}
+              type="button"
+            >
+              Resend
+            </button>
+            {/*
+              Withdraw an invitation that is out in the world — the counterpart
+              to Resend, and the only stop verb for an invite past the approval
+              queue. Revoking twice is fine; an accepted one is refused in words.
+            */}
+            <button
+              className="admin-button admin-button-secondary admin-button-compact"
+              disabled={busy}
+              onClick={() =>
+                void act(
+                  () => revoke.mutateAsync({ inviteId: invitation.inviteId }),
+                  'Failed to revoke invitation',
+                )}
+              type="button"
+            >
+              Revoke
+            </button>
+          </>
         )}
       </div>
 

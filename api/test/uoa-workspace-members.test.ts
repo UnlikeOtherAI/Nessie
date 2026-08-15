@@ -367,6 +367,7 @@ test('a team with no UOA workspace 404s and never reaches UOA', async () => {
         { method: 'GET' as const, url: '/api/workspace/members' },
         { method: 'GET' as const, url: '/api/workspace/invitations' },
         { method: 'DELETE' as const, url: '/api/workspace/members/usr_ada' },
+        { method: 'POST' as const, url: '/api/workspace/invitations/inv_1/revoke' },
       ]) {
         const response = await app.inject(request)
         assert.equal(response.statusCode, 404, request.url)
@@ -420,6 +421,7 @@ test('every mutation and the invitation list refuse a non-admin before any relay
           payload: { invites: [{ email: 'not-an-email' }] },
         },
         { method: 'POST' as const, url: '/api/workspace/invitations/inv_1/resend' },
+        { method: 'POST' as const, url: '/api/workspace/invitations/inv_1/revoke' },
         { method: 'POST' as const, url: '/api/workspace/invitations/inv_1/approve' },
         { method: 'POST' as const, url: '/api/workspace/invitations/inv_1/deny' },
         {
@@ -451,10 +453,15 @@ test('owners and admins drive the member and invitation mutations', async () => 
       const calls: StubCall[] = []
       const app = await makeApp(
         actorContextFor([role]),
-        rosterDeps(calls, (call) =>
-          call.method === 'GET'
-            ? json({ data: [{ inviteId: 'inv_1', email: 'new@acme.test', status: 'pending' }] })
-            : json({ results: [{ email: 'new@acme.test', status: 'invited' }] })),
+        rosterDeps(calls, (call) => {
+          if (call.method === 'GET') {
+            return json({ data: [{ inviteId: 'inv_1', email: 'new@acme.test', status: 'pending' }] })
+          }
+          // UOA's revoke answers the agreed `{ ok: true }`; the member DELETE
+          // ignores its body, so one shape serves both.
+          if (call.method === 'DELETE') return json({ ok: true })
+          return json({ results: [{ email: 'new@acme.test', status: 'invited' }] })
+        }),
       )
 
       const base = `https://uoa.test/org/organisations/${externalOrgId}`
@@ -486,6 +493,13 @@ test('owners and admins drive the member and invitation mutations', async () => 
           upstream: {
             method: 'POST',
             url: `${base}/teams/${externalTeamId}/invitations/inv_1/resend${query}`,
+          },
+        },
+        {
+          request: { method: 'POST', url: '/api/workspace/invitations/inv_1/revoke' },
+          upstream: {
+            method: 'DELETE',
+            url: `${base}/teams/${externalTeamId}/invitations/inv_1${query}`,
           },
         },
         {
@@ -547,6 +561,37 @@ test('owners and admins drive the member and invitation mutations', async () => 
       }
     })
   }
+})
+
+test('revoking an accepted invitation answers 409, not the generic refusal', async () => {
+  await withUoaEnv(async () => {
+    const calls: StubCall[] = []
+    const app = await makeApp(
+      actorContextFor(['admin']),
+      rosterDeps(calls, () => json({ error: 'invitation_already_accepted' }, 409)),
+    )
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/workspace/invitations/inv_taken/revoke',
+      })
+      // "Too late, they are a member now" is a different answer from "no such
+      // invitation", and the person is told which one it is.
+      assert.equal(response.statusCode, 409)
+      assert.equal(response.json().error.code, 'INVITATION_ALREADY_ACCEPTED')
+
+      // Every other relay keeps mapping a 409 to the generic client error.
+      const generic = await app.inject({
+        method: 'POST',
+        url: '/api/workspace/invitations/inv_1/resend',
+      })
+      assert.equal(generic.statusCode, 400)
+      assert.equal(generic.json().error.code, 'WORKSPACE_MEMBERS_REJECTED')
+    } finally {
+      await app.close()
+    }
+  })
 })
 
 test('an invitation request with no usable email is refused before any relay', async () => {

@@ -793,10 +793,15 @@ persists none of it and offers no local substitute:
   + `Team.externalWorkspaceId` are the only mapping; a team without both, or a
   deployment with no UOA credentials, answers `404 WORKSPACE_NOT_LINKED`.
 - **Invitation acceptance is hosted by UOA.** Nessie creates, lists, resends,
-  approves, and denies invitations; it never mints, stores, or renders an
-  invitation token and has no accept page. UOA's API exposes no cancel/delete
-  for an invitation that has already been sent — `deny` covers only the
-  member-initiated invites still awaiting approval.
+  revokes, approves, and denies invitations; it never mints, stores, or renders
+  an invitation token and has no accept page. `deny` covers the
+  member-initiated invites still awaiting approval; **revoke**
+  (`POST /api/workspace/invitations/:inviteId/revoke` →
+  `DELETE /org/organisations/:orgId/teams/:teamId/invitations/:inviteId`)
+  withdraws one that was already sent — idempotent, so revoking twice is still a
+  success, while an invitation that has already been accepted answers
+  `409 INVITATION_ALREADY_ACCEPTED` (that person is a member now; removal is a
+  different operation) and an unknown or foreign invite id a generic `404`.
 - **Local-mode deployments are unchanged.** Without a UOA session the Members
   page keeps the local list and `POST /api/users`; §4.3a's password bootstrap
   still applies to installs with no IdP.

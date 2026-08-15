@@ -17,9 +17,11 @@ import {
   removeWorkspaceMember,
   resendWorkspaceInvitation,
   resolveUoaRosterWorkspace,
+  revokeTeamInvitation,
   reviewWorkspaceInvitation,
   setWorkspaceMemberActivation,
   updateWorkspaceMemberRole,
+  UoaInvitationAlreadyAcceptedError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
   type UoaRosterDeps,
@@ -120,6 +122,15 @@ const sendRelayError = (
   reply: FastifyReply,
   error: unknown,
 ): boolean => {
+  if (error instanceof UoaInvitationAlreadyAcceptedError) {
+    sendApiError(
+      reply,
+      409,
+      'INVITATION_ALREADY_ACCEPTED',
+      'This invitation was already accepted. Remove the member instead.',
+    )
+    return true
+  }
   if (error instanceof UoaRosterRejectedError) {
     sendApiError(
       reply,
@@ -309,8 +320,23 @@ export const registerWorkspaceMembersRoutes = (
       }),
   )
 
-  // approve sends the invitation email; deny is UOA's only stop verb — there is
-  // no cancel or delete for an invitation that has already been sent.
+  /**
+   * Withdraw an invitation that was already sent. Revoking twice succeeds —
+   * UOA's delete is idempotent — but an invitation that has already been
+   * accepted answers `409 INVITATION_ALREADY_ACCEPTED`: that person is a member
+   * now, and removing them is a different decision.
+   */
+  app.post<{ Params: { inviteId: string } }>(
+    '/api/workspace/invitations/:inviteId/revoke',
+    async (request, reply) =>
+      relay(request, reply, { admin: true }, async (workspace) => {
+        await revokeTeamInvitation(workspace, request.params.inviteId, rosterDeps)
+        return { ok: true }
+      }),
+  )
+
+  // approve sends the invitation email; deny is the review verb for an invite
+  // that was never sent. Withdrawing a sent one is `/revoke`, above.
   for (const action of ['approve', 'deny'] as const) {
     app.post<{ Params: { inviteId: string } }>(
       `/api/workspace/invitations/:inviteId/${action}`,
