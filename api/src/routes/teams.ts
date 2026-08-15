@@ -2,10 +2,18 @@ import type { FastifyInstance } from 'fastify'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
 export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
+  const {
+    config,
+    prisma,
+    requireActorContext,
+    requireOwner,
+    resolveMembershipRole,
+    MEMBERSHIP_ROLES,
+  } = deps
 
   app.get('/api/teams', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -82,6 +90,7 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { teamId } = request.params as { teamId: string }
     const body = request.body as { userId?: string; role?: string } | undefined

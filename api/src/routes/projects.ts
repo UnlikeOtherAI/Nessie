@@ -8,6 +8,7 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { defaultColumnCreateData } from '../services/board.js'
+import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
 const projectCountsInclude = {
@@ -36,6 +37,7 @@ const toProjectRecord = (project: ProjectWithCounts) => ({
 
 export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
+    config,
     prisma,
     requireActorContext,
     requireOwner,
@@ -241,6 +243,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { projectId } = request.params as { projectId: string }
     const body = request.body as { userId?: string; role?: string } | undefined
@@ -289,6 +292,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { projectId, userId } = request.params as { projectId: string; userId: string }
     const project = await prisma.project.findFirst({

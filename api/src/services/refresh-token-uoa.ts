@@ -9,6 +9,7 @@ import {
   type UoaSessionIdentity,
 } from '@nessie/schemas'
 
+import type { ExternalAuthWorkspace } from './identity-display.js'
 import { hashRefreshToken } from './refresh-token-crypto.js'
 import type { RefreshTokenRecord } from './refresh-token-family.js'
 import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
@@ -37,6 +38,9 @@ export type RotatedUoaCredential = {
   identity: UoaSessionIdentity
   refreshTokenExpiresAt: Date
   refreshTokenHash: string
+  // The refreshed token's verified `org` claim, carried through to the local
+  // role projection in `uoa-session-context.ts`.
+  workspace?: ExternalAuthWorkspace
   workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
 }
 
@@ -162,6 +166,7 @@ export const validateUoaRefresh = (input: {
   refreshToken: string
   refreshTokenExpiresAt: Date
   targetIdentity?: Pick<UoaSessionIdentity, 'organizationId' | 'teamId'>
+  workspace?: ExternalAuthWorkspace
   workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
 }): RotatedUoaCredential => {
   const parsedIdentity = UoaSessionIdentitySchema.safeParse(input.identity)
@@ -195,6 +200,7 @@ export const validateUoaRefresh = (input: {
     identity: parsedIdentity.data,
     refreshTokenExpiresAt: input.refreshTokenExpiresAt,
     refreshTokenHash: nextRefreshTokenHash,
+    ...(input.workspace ? { workspace: input.workspace } : {}),
     ...(input.workspaceDirectory
       ? { workspaceDirectory: input.workspaceDirectory }
       : {}),

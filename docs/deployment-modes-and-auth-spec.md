@@ -266,6 +266,40 @@ passwords to `local` mode; an install that wants a durable password login is a
 `local` install. Resolved as ambiguity 1 of
 [the UOA SSO gap analysis](plans/2026-08-14-uoa-sso-gap-analysis.md).
 
+#### Membership and roles are gated to `local` mode
+
+Same reasoning, one level up: outside `local` mode the identity provider owns
+org/team membership and roles, and the local rows are a **projection** of the
+verified session claims (next section). A local write would therefore be
+reverted at the next login or token rotation, so the server refuses it rather
+than pretending it took. When `config.mode !== 'local'`, each of these answers
+`403 LOCAL_MEMBERSHIP_MANAGEMENT_DISABLED` ("Membership and roles are managed
+in your identity provider."):
+
+| Route | What it mutated locally |
+|---|---|
+| `PATCH /api/users/:userId` | organization role |
+| `POST /api/users/:userId/deactivate` | membership kill-switch |
+| `POST /api/users/:userId/reactivate` | membership kill-switch |
+| `POST /api/teams/:teamId/members` | team roster + role |
+| `POST /api/projects/:projectId/members` | project roster + role |
+| `DELETE /api/projects/:projectId/members/:userId` | project roster |
+
+The gate sits after the owner check and before any body parse or database read
+(`api/src/routes/membership-mode-gate.ts`), matching the password gates above.
+Consequences worth stating:
+
+- The **last-active-owner invariant** (`LAST_OWNER`, enforced atomically under
+  a `FOR UPDATE` lock on the org's owner rows) is now a `local`-mode rule for
+  these routes. The service functions are untouched, and the same owner lock is
+  reused as a floor by the UOA role projection (see below).
+- **`ChannelMember` is deliberately not covered.** A channel is a Nessie
+  product concept, not a UOA roster, and stays mutable in every mode. So do
+  knowledge-space and dashboard grants.
+- Reads are untouched: `GET /api/users` and the team/project listings still
+  work, because a non-local deployment still has to *show* its roster (phase 5
+  re-points that read at the UOA roster API).
+
 ### 4.3b Session token contract (JWT)
 
 All deployment modes use JWT for session tokens.
@@ -511,6 +545,41 @@ subject fails closed to reauthentication). Existing rows were backfilled from
 `linked` `nessie` product-account links
 (`20260815090000_user_uoa_subject_keying`); a subject mapping to two users was
 left NULL on both rather than guessed.
+**Org and team roles are a projection of the verified UOA claims, re-applied on
+every session.** UOA's access token carries `org.org_role` and
+`org.team_roles[workspaceId]`; both map through one function
+(`api/src/services/uoa-roles.ts` `mapUoaMemberRole`: `owner → owner`,
+`admin`/legacy `lead` → `admin`, anything else → `member`) onto the local
+`organization_members`, `project_members`, and `team_members` rows. Three paths
+carry those claims and all three re-project them, so a UOA promotion or
+demotion propagates instead of freezing at first join:
+
+| Path | Claims come from | Effect |
+|---|---|---|
+| Login (`POST /api/auth/session`, `uoa` branch) | the exchanged access token | `resolveUoaWorkspaceContext` → `ensureWorkspacePrincipal` → `projectUoaRoles` |
+| Workspace switch (`POST /api/auth/uoa/workspace`) | the **target** token UOA returned | `materializeUoaWorkspaceSwitch` runs the same login path against the target claims |
+| Refresh / rotation (`POST /api/auth/refresh`) | the refreshed access token, threaded through the rotation as `workspace` | `advanceUoaLocalSessionBinding` re-projects inside the family transaction, so the reissued token carries the new role |
+
+Rules that make this safe to run on every session:
+
+- **Only a present claim projects.** An absent `org_role` or a workspace with
+  no `team_roles` entry leaves the local row exactly as it was. That is what
+  keeps generic (non-UOA) OIDC providers, `local` mode, and the legacy
+  no-workspace login byte-identical, and it is the sole surviving case of the
+  **first-materializer team-`owner`** rule: whoever first materializes a
+  workspace owns its team *only* when UOA sent no role for that workspace — a
+  verified claim always wins, including `member`.
+- **The projection never removes the last active owner of the shared local
+  organization.** Every UOA workspace maps to a Team inside one local
+  `Organization`, so a per-UOA-org `org_role` is not a complete statement about
+  who administers this Nessie instance — and without the floor the SSO-first
+  bootstrap owner would be demoted by their own first login, leaving nobody who
+  can administer it. The check runs under the same `FOR UPDATE` owner-row lock
+  the local mutators take (`api/src/services/organization-owner-lock.ts`), so
+  concurrent demotions serialize. Team roles are not floored.
+- Memberships are still **created** create-only (an upsert never resurrects a
+  deactivated org membership); role changes come from the projection alone.
+
 Non-UOA OIDC providers keep email keying unchanged, and they plus
 single-workspace users carry no `active` claim and
 land in their existing/default team, unchanged. See

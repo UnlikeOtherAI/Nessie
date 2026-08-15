@@ -231,6 +231,19 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         )
         return found ? { role: found.role } : null
       },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { organizationId: string; userId: string }
+        data: { role: string }
+      }) => {
+        const rows = orgMembers.filter(
+          (m) => m.organizationId === where.organizationId && m.userId === where.userId,
+        )
+        for (const row of rows) row.role = data.role
+        return { count: rows.length }
+      },
     },
     projectMember: {
       upsert: async ({
@@ -245,6 +258,19 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
           projectMembers.push({ ...create })
         }
         return {}
+      },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { projectId: string; userId: string }
+        data: { role: string }
+      }) => {
+        const rows = projectMembers.filter(
+          (m) => m.projectId === where.projectId && m.userId === where.userId,
+        )
+        for (const row of rows) row.role = data.role
+        return { count: rows.length }
       },
     },
     teamMember: {
@@ -269,6 +295,19 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         const team = teams.find((t) => t.id === found.teamId)!
         return { teamId: found.teamId, team: { projectId: team.projectId } }
       },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { teamId: string; userId: string }
+        data: { role: string }
+      }) => {
+        const rows = teamMembers.filter(
+          (m) => m.teamId === where.teamId && m.userId === where.userId,
+        )
+        for (const row of rows) row.role = data.role
+        return { count: rows.length }
+      },
     },
     channelMember: {
       upsert: async ({
@@ -285,14 +324,37 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         return {}
       },
     },
-    $queryRaw: async () => [],
+    // Two raw callers reach this fake. `pg_advisory_xact_lock` arrives as a
+    // Prisma.Sql object (no template strings) and is a no-op here; the active
+    // owner lock arrives as a tagged template and must answer truthfully, or
+    // the last-owner floor in the role projection is never exercised.
+    $queryRaw: async (strings: unknown, ...values: unknown[]) => {
+      const sql = Array.isArray(strings) ? (strings as string[]).join('?') : ''
+      if (!sql.includes('organization_members')) {
+        return []
+      }
+      const organizationId = values[0] as string
+      return orgMembers
+        .filter((m) => m.organizationId === organizationId && m.role === 'owner')
+        .map((m) => ({ user_id: m.userId }))
+    },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
   }
 
   return {
     client: client as unknown as PrismaClient,
     defaultTeamId,
-    state: { orgs, users, projects, teams, channels, orgMembers, teamMembers, channelMembers },
+    state: {
+      orgs,
+      users,
+      projects,
+      teams,
+      channels,
+      orgMembers,
+      projectMembers,
+      teamMembers,
+      channelMembers,
+    },
   }
 }
 
@@ -321,8 +383,9 @@ test('auto-provisions a new team bound to the selected UOA workspace', async () 
   const team = state.teams.find((t) => t.id === ctx!.teamId)
   assert.equal(team?.externalWorkspaceId, 'ws-backend')
   assert.equal(team?.externalOrgId, 'uoa-org-1')
-  // The person who first materialises a workspace owns that team.
-  assert.equal(state.teamMembers.find((m) => m.teamId === ctx!.teamId)?.role, 'owner')
+  // UOA said `member` for this workspace, and a verified claim outranks the
+  // first-materializer rule — the local row is a projection, not a local grant.
+  assert.equal(state.teamMembers.find((m) => m.teamId === ctx!.teamId)?.role, 'member')
   // A #general channel is created and the user joins it.
   assert.equal(state.channels.length, 1)
   assert.equal(state.channelMembers.length, 1)
@@ -584,5 +647,149 @@ test('workspace switch materialization refuses a user bound to a different subje
       userId: source!.userId,
     }),
     /no longer matches this UnlikeOtherAI session/,
+  )
+})
+
+// --- UOA is the authority for org/team roles (gap analysis, phase 4) ---------
+
+test('the first materializer still owns a workspace UOA sent no role for', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+  const roleless: ExternalAuthWorkspace = {
+    activeOrgId: 'uoa-org-1',
+    activeTeamId: 'ws-silent',
+    teamIds: ['ws-silent'],
+    teamRoles: {},
+  }
+
+  const ctx = await resolveUoaWorkspaceContext(client, identityFor('a@x.com', roleless))
+
+  assert.ok(ctx)
+  assert.equal(state.teamMembers.find((m) => m.teamId === ctx!.teamId)?.role, 'owner')
+})
+
+test('the org_role claim decides the org membership at first login', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+  const asAdmin: ExternalAuthWorkspace = {
+    ...workspace('ws-eng', 'member'),
+    orgRole: 'admin',
+  }
+
+  const ctx = await resolveUoaWorkspaceContext(client, identityFor('a@x.com', asAdmin))
+
+  assert.ok(ctx)
+  assert.equal(ctx!.orgRole, 'admin')
+  assert.equal(
+    state.orgMembers.find((m) => m.userId === ctx!.userId)?.role,
+    'admin',
+  )
+})
+
+test('a login with no org_role claim keeps the member default', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+
+  const ctx = await resolveUoaWorkspaceContext(client, identityFor('a@x.com', workspace('ws-eng')))
+
+  assert.ok(ctx)
+  assert.equal(ctx!.orgRole, 'member')
+  assert.equal(state.orgMembers.find((m) => m.userId === ctx!.userId)?.role, 'member')
+})
+
+test('a UOA promotion propagates at the next login', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+  const login = (orgRole: string, teamRole: string) =>
+    resolveUoaWorkspaceContext(client, identityFor('a@x.com', {
+      ...workspace('ws-eng', teamRole),
+      orgRole,
+    }, 'uoa-sub-1'))
+
+  const first = await login('member', 'member')
+  const second = await login('admin', 'admin')
+
+  assert.ok(first && second)
+  assert.equal(second!.userId, first!.userId)
+  assert.equal(second!.orgRole, 'admin')
+  assert.equal(state.orgMembers.find((m) => m.userId === second!.userId)?.role, 'admin')
+  assert.equal(
+    state.teamMembers.find((m) => m.teamId === second!.teamId)?.role,
+    'admin',
+  )
+  assert.equal(
+    state.projectMembers.find((m) => m.projectId === second!.projectId)?.role,
+    'admin',
+  )
+})
+
+test('a UOA demotion propagates at the next login', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+  const login = (email: string, sub: string, orgRole: string, teamRole: string) =>
+    resolveUoaWorkspaceContext(client, identityFor(email, {
+      ...workspace('ws-eng', teamRole),
+      orgRole,
+    }, sub))
+
+  // Somebody else holds org ownership, so the last-owner floor is not in play.
+  await login('boss@x.com', 'uoa-sub-boss', 'owner', 'owner')
+  const first = await login('a@x.com', 'uoa-sub-1', 'admin', 'admin')
+  const second = await login('a@x.com', 'uoa-sub-1', 'member', 'member')
+
+  assert.ok(first && second)
+  assert.equal(second!.userId, first!.userId)
+  assert.equal(second!.orgRole, 'member')
+  assert.equal(state.orgMembers.find((m) => m.userId === second!.userId)?.role, 'member')
+  assert.equal(
+    state.teamMembers.find(
+      (m) => m.teamId === second!.teamId && m.userId === second!.userId,
+    )?.role,
+    'member',
+  )
+})
+
+test('the projection never demotes the last active org owner', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+  const login = (orgRole: string) =>
+    resolveUoaWorkspaceContext(client, identityFor('solo@x.com', {
+      ...workspace('ws-eng', 'owner'),
+      orgRole,
+    }, 'uoa-sub-solo'))
+
+  const first = await login('owner')
+  // All UOA workspaces share one local Organization, so a per-UOA-org demotion
+  // must not be able to leave this instance with nobody who can administer it.
+  const second = await login('member')
+
+  assert.ok(first && second)
+  assert.equal(second!.orgRole, 'owner')
+  assert.equal(state.orgMembers.find((m) => m.userId === second!.userId)?.role, 'owner')
+  // The team role is not owner-floored: only the org invariant is.
+  assert.equal(
+    state.teamMembers.find((m) => m.userId === second!.userId)?.role,
+    'owner',
+  )
+})
+
+test('a login with no UOA claims leaves an existing role untouched', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+
+  const first = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('a@x.com', { ...workspace('ws-eng', 'admin'), orgRole: 'admin' }, 'uoa-sub-1'),
+  )
+  assert.ok(first)
+  // A generic (non-UOA) OIDC login: no workspace claim at all.
+  const again = await resolveUoaWorkspaceContext(client, identityFor('a@x.com', undefined))
+
+  assert.ok(again)
+  assert.equal(again!.orgRole, 'admin')
+  assert.equal(state.orgMembers.find((m) => m.userId === again!.userId)?.role, 'admin')
+  assert.equal(
+    state.teamMembers.find((m) => m.teamId === first!.teamId)?.role,
+    'admin',
   )
 })

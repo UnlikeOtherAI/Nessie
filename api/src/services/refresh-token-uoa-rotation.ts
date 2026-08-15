@@ -23,6 +23,7 @@ import {
   refreshTokenSelect,
   type RefreshTokenRecord,
 } from './refresh-token-family.js'
+import type { ExternalAuthWorkspace } from './identity-display.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 
@@ -31,12 +32,14 @@ export type UoaRotationCallbacks = {
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
+    workspace?: ExternalAuthWorkspace
     workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   }, transaction: Prisma.TransactionClient) => Promise<void>
   rescopeUoaSessionBinding?: (input: {
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
+    workspace?: ExternalAuthWorkspace
     workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   }, transaction: Prisma.TransactionClient) => Promise<void>
 }
@@ -190,6 +193,7 @@ export const commitUoaRotation = async (
       nextIdentity: rotated.identity,
       previousIdentity: identityFromCredential(rotated.credential),
       userId: presented.userId,
+      workspace: rotated.workspace,
       workspaceDirectory: rotated.workspaceDirectory,
     }, transaction)
   } else {
@@ -202,6 +206,7 @@ export const commitUoaRotation = async (
       nextIdentity: rotated.identity,
       previousIdentity: identityFromCredential(rotated.credential),
       userId: presented.userId,
+      workspace: rotated.workspace,
       workspaceDirectory: rotated.workspaceDirectory,
     }, transaction)
   }

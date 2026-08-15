@@ -4,10 +4,11 @@
 > tree at `7dd1de9e` (main). Three deep sweeps (server auth flow, local
 > identity data model, per-platform clients) plus direct spot-verification of
 > every load-bearing claim.
-> **Update 2026-08-15:** the assessment stands as written; the server half of
-> **Phase 1** has since landed (local-password stack hard-gated to `local`
-> mode — see requirement 0.1 and the Phase 1 entry). Everything else below is
-> still unimplemented.
+> **Update 2026-08-15:** the assessment stands as written; **Phase 1** (local
+> password stack hard-gated to `local` mode — requirement 0.1), **Phase 2**
+> (subject keying — requirement 3c), and **Phase 4** (roles and membership
+> projected from UOA's verified claims — flagged copy 4) have since landed; see
+> each phase entry. Everything else below is still unimplemented.
 > **Note:** worktrees `.worktrees/sso-invites-team-switch/`,
 > `.worktrees/switch-integration-prepare/`, and
 > `.worktrees/native-logout-timeout/` contain in-flight work directly relevant
@@ -53,7 +54,7 @@ handling is duplicated per platform and only works while logged out.
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
 | 0.1 | No local-password accounts | **VIOLATES → mode-gated 2026-08-15** | `User.passwordHash` (`api/prisma/schema.prisma:747`, scrypt in `api/src/auth/password.ts`) and the whole password stack still exist, but are now refused server-side outside `local` mode (phase 1 below): password login branch `api/src/routes/auth-login.ts` → `403 PASSWORD_AUTH_DISABLED`, `POST /api/users` (`api/src/routes/users.ts`) → `403 LOCAL_USER_CREATION_DISABLED`, `POST /api/auth/password` (`api/src/routes/auth-security.ts`) → `403 PASSWORD_AUTH_DISABLED`. Bootstrap owner with password (`api/src/routes/auth-core.ts:235-319`) remains, and needs no gate: it is disarmed whenever an SSO provider is enabled. Login UI was already gated to local mode (`admin/src/pages/LoginPage.tsx:82,400-439`) |
-| 0.2 | No duplicate SSO-owned data (email, name, avatar, memberships, roles, invitations) | **VIOLATES** | `User.email/displayName/avatarUrl/avatarAttachmentId/pronouns` (`schema.prisma:745-753`); roles owned + mutated locally (`api/src/services/users.ts:182-187,205-210`). The UOA workspace directory was persisted durably in `ProductAccountLink.metadata.workspaceDirectory`; **fixed 2026-08-15** — it is now the bounded in-memory cache the brief allows (`api/src/services/uoa-directory-cache.ts`, phase 6) |
+| 0.2 | No duplicate SSO-owned data (email, name, avatar, memberships, roles, invitations) | **VIOLATES → roles + directory fixed 2026-08-15** | `User.email/displayName/avatarUrl/avatarAttachmentId/pronouns` (`schema.prisma:745-753`) still local (phase 3). **Roles/memberships no longer duplicated**: they are a projection of the verified `org_role`/`team_roles` claims re-applied at login, refresh, and workspace switch (`api/src/services/uoa-roles.ts`), and the local mutators are refused outside `local` mode (phase 4 below). **Workspace directory fixed**: no longer persisted — bounded in-memory cache (`api/src/services/uoa-directory-cache.ts`, phase 6) |
 | 0.3 | Retain only UOA subject + extension data + encrypted refresh material | **Implemented (for what it covers)** | `UoaSessionCredential` AES-256-GCM (`schema.prisma:854-885`, `packages/runtime/src/secret-crypto.ts`); `ProductAccountLink.uoaSub/uoaTokenVersion` (`schema.prisma:1036-1037`); `Team.externalWorkspaceId/externalOrgId` (`schema.prisma:1234-1235`); `User.preferences/tokenVersion` legitimately local. But the subject is **not** on `User` — it lives only org-scoped on the link row, which is why email became the join key |
 | 1 | One shared switcher, all platforms, grouped by UOA org id, UOA-backed avatars, active state | **Implemented** (one ambiguity) | One shared component with render variants (`admin/src/layouts/admin-shell/WorkspaceSwitcher.tsx:212-214`); native iPhone/iPad controls are trigger-only chrome calling into the same web menu (`mobile/src/lib/native-webview-actions.ts:25-27`, `mobile/src/components/NativePhoneHeader.tsx:140-161`, `IpadNativeWorkspaceSwitcher.tsx:29-51`); Tauri loads the hosted admin (`desktop/src-tauri/src/lib.rs:14-30`). Grouped by raw UOA org id (`admin/src/lib/workspaces.ts:62-79`); avatars via authed relay `/api/teams/:teamId/avatar` → UOA directory `avatarImageUrl` → initials (`admin/src/components/primitives/WorkspaceAvatar.tsx:53-59`); active state `WorkspaceSwitcher.tsx:124`. **Ambiguity:** the Swift app in `macos/` has no workspace/auth concept at all — if "Mac" means it rather than the Tauri desktop, that platform is a no-op |
 | 2a | Silent switch on valid renewable proof | **Implemented** | `POST /api/auth/uoa/workspace` (`api/src/routes/auth-uoa-workspace.ts:48`) via UOA grant `urn:unlikeotherai:params:oauth:grant-type:workspace-switch` (`api/src/services/uoa-session.ts:66-67,343-370`); crash-safe `UoaWorkspaceSwitchIntent` (`schema.prisma:887-907`, 13-field source match); client branch `WorkspaceSwitcher.tsx:256-298` |
@@ -92,16 +93,19 @@ API-backed refactor + migration (sequence below).
    local part and persists it on every `/api/auth/me`
    (`api/src/services/auth.ts:252-258`,
    `api/src/services/identity-display.ts:43-64`).
-4. **Locally-owned roles and membership lifecycle** — org/project/team roles
-   in local rows, mutated by `PATCH /api/users/:userId`,
-   `POST /api/teams/:teamId/members`, project member CRUD;
-   `OrganizationMember.deactivatedAt` as a local membership kill-switch
-   (`api/src/routes/users.ts:162-211`). UOA's `org_role` claim is parsed then
-   **discarded** — org role is hardcoded `'member'` (`uoa-session.ts:126` →
-   `workspace-context.ts:212`); the team role is mapped once at first join and
-   never re-synced (`workspace-context.ts:42-52,74-95`, upserts with
-   `update: {}`), so a UOA demotion never propagates. The last-owner
-   invariant is enforced locally (`api/src/services/users.ts:147-170`).
+4. **Locally-owned roles and membership lifecycle** — **RESOLVED 2026-08-15**
+   (phase 4 below). Was: org/project/team roles in local rows, mutated by
+   `PATCH /api/users/:userId`, `POST /api/teams/:teamId/members`, project member
+   CRUD; `OrganizationMember.deactivatedAt` as a local membership kill-switch;
+   UOA's `org_role` claim parsed then **discarded** (org role hardcoded
+   `'member'`) and the team role mapped once at first join and never re-synced
+   (upserts with `update: {}`), so a UOA demotion never propagated. Now: roles
+   are a projection of the verified claims re-applied at login, refresh, and
+   workspace switch (`api/src/services/uoa-roles.ts`), and the six local
+   membership mutators answer `403 LOCAL_MEMBERSHIP_MANAGEMENT_DISABLED`
+   outside `local` mode. The last-owner invariant
+   (`api/src/services/organization-owner-lock.ts`) survives as a `local`-mode
+   route rule and as a floor on the projection.
 5. **`POST /api/users` — the invitation-system-shaped hole** — creates the
    human, the credential, and full roster placement in one local call, exposed
    in the admin UI. This is the "proposed local copy" case the rule exists
@@ -266,6 +270,41 @@ path already re-resolves membership — swap its source to the signed UOA
 claims); remove local role-mutation and deactivation routes in UOA mode
 (deactivation and last-owner invariants become UOA's); memberships become a
 projection of the session's signed claims, not an authority.
+
+> **Status (2026-08-15): landed** on branch `task/uoa-role-authority`.
+> One projection function (`api/src/services/uoa-roles.ts`) maps the verified
+> `org.org_role` and `org.team_roles[workspaceId]` claims onto
+> `organization_members` / `project_members` / `team_members`, and all three
+> claim-carrying paths re-apply it: **login** (`resolveUoaWorkspaceContext` →
+> `ensureWorkspacePrincipal`), **workspace switch** (`materializeUoaWorkspaceSwitch`
+> runs the same path against UOA's target claims), and **refresh** — the
+> refreshed access token's `org` claim is threaded through the rotation
+> (`uoa-refresh-coordinator` → `refresh-token` → `refresh-token-uoa`
+> `RotatedUoaCredential.workspace` → `refresh-token-uoa-rotation`) and projected
+> inside the family transaction by `advanceUoaBindingInTransaction`, so the
+> reissued token already carries the new role. The membership upserts stay
+> create-only; role changes come from the projection alone. Two deliberate
+> carve-outs, both documented in the spec: **an absent claim projects nothing**
+> (generic OIDC, `local` mode, and the legacy no-workspace login are unchanged,
+> and the first-materializer team-`owner` rule survives only for a workspace UOA
+> sent no role for), and **the projection never removes the last active owner of
+> the shared local organization** (all UOA orgs share one local `Organization`,
+> and the SSO-first bootstrap owner would otherwise demote themselves on their
+> own first login) — checked under the same `FOR UPDATE` owner lock the local
+> mutators take, now shared from `api/src/services/organization-owner-lock.ts`.
+> The six local membership mutators (`PATCH /api/users/:userId`,
+> `POST /api/users/:userId/deactivate|reactivate`,
+> `POST /api/teams/:teamId/members`, `POST|DELETE /api/projects/:projectId/members…`)
+> answer `403 LOCAL_MEMBERSHIP_MANAGEMENT_DISABLED` outside `local` mode, gated
+> after the owner check and before any body parse or DB read
+> (`api/src/routes/membership-mode-gate.ts`), so the last-owner invariant is now
+> a local-mode rule for those routes and the service functions are untouched.
+> Tests: `api/test/workspace-context.test.ts`,
+> `api/test/uoa-session-context.test.ts`,
+> `api/test/local-membership-mode-gate.test.ts`. Deliberately **not** done here:
+> `ChannelMember` and knowledge/dashboard grants stay product-local and mutable;
+> `GET /api/users` and the roster reads still come from local rows (phase 5);
+> profile fields and the workspace-directory cache are phases 3 and 6.
 
 **Phase 5 — rosters + invitations on the UOA API.** Build the UOA client
 calls for roster list and invitation create/resend/revoke/approve/decline

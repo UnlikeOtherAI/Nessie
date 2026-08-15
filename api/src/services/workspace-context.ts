@@ -5,6 +5,11 @@ import {
   resolveExternalWorkspaceSelection,
   type ExternalAuthWorkspace,
 } from './identity-display.js'
+import {
+  NO_UOA_ROLE_CLAIMS,
+  resolveUoaRoleClaims,
+  type UoaRoleClaims,
+} from './uoa-roles.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import {
   ensureWorkspacePrincipal,
@@ -43,19 +48,6 @@ export class WorkspaceExternalBindingConflictError extends Error {
   constructor() {
     super('The selected external organization and team conflict with an existing workspace binding.')
     this.name = 'WorkspaceExternalBindingConflictError'
-  }
-}
-
-// UOA team roles (`owner | admin | member`, plus legacy `lead`) → Nessie MemberRole.
-const mapUoaTeamRole = (role: string | undefined): MemberRole => {
-  switch ((role ?? '').trim().toLowerCase()) {
-    case 'owner':
-      return 'owner'
-    case 'admin':
-    case 'lead':
-      return 'admin'
-    default:
-      return 'member'
   }
 }
 
@@ -102,12 +94,14 @@ const createWorkspaceEnvironment = async (
 }
 
 // The environment a login resolves to: the project/team plus its #general
-// channel and the role the joining user should get in that team.
+// channel, the role the joining user should get in that team, and the verified
+// UOA claims that are re-projected onto the memberships on every login.
 type WorkspaceTarget = {
   projectId: string
   teamId: string
   channelId: string | null
   teamRole: MemberRole
+  claims: UoaRoleClaims
 }
 
 const publicChannelId = async (
@@ -163,6 +157,7 @@ const resolveWorkspaceTarget = async (
   workspace: ExternalAuthWorkspace | undefined,
 ): Promise<WorkspaceTarget> => {
   const externalOrgId = resolveExternalWorkspaceSelection(workspace).organizationId
+  const claims = resolveUoaRoleClaims(workspace, workspaceId)
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw(Prisma.sql`
       SELECT 1
@@ -198,7 +193,8 @@ const resolveWorkspaceTarget = async (
         projectId: existing.projectId,
         teamId: existing.id,
         channelId: await publicChannelId(tx, existing.id),
-        teamRole: mapUoaTeamRole(workspace?.teamRoles?.[workspaceId]),
+        teamRole: claims.teamRole ?? 'member',
+        claims,
       }
     }
 
@@ -211,7 +207,10 @@ const resolveWorkspaceTarget = async (
       projectId: created.projectId,
       teamId: created.teamId,
       channelId: created.channelId,
-      teamRole: 'owner',
+      // The first person to materialize a workspace owns its team — but only
+      // when UOA sent no role for it. A verified claim is the authority.
+      teamRole: claims.teamRole ?? 'owner',
+      claims,
     }
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
@@ -236,6 +235,7 @@ const resolveDefaultTarget = async (
         teamId: membership.teamId,
         channelId: await publicChannelId(prisma, membership.teamId),
         teamRole: 'member',
+        claims: NO_UOA_ROLE_CLAIMS,
       }
     }
   }
@@ -253,6 +253,7 @@ const resolveDefaultTarget = async (
     teamId: defaultTeam.id,
     channelId: await publicChannelId(prisma, defaultTeam.id),
     teamRole: 'member',
+    claims: NO_UOA_ROLE_CLAIMS,
   }
 }
 
@@ -263,8 +264,14 @@ const resolveDefaultTarget = async (
  * memberships. Returns the org/project/team the session is scoped to.
  *
  * - No workspace selection → the user's existing/default team (legacy behaviour).
- * - Known workspace, team exists → join it (create-only role, never downgraded).
- * - Known workspace, no team yet → auto-provision it; the first person owns it.
+ * - Known workspace, team exists → join it.
+ * - Known workspace, no team yet → auto-provision it; the first person owns it
+ *   unless UOA sent a role for that workspace, which wins.
+ *
+ * Roles are a projection of the verified UOA claims, re-applied on every login
+ * (`uoa-roles.ts`), so a UOA promotion or demotion propagates. Dimensions UOA
+ * did not claim — every non-UOA provider, and any workspace with no
+ * `team_roles` entry — are left exactly as they were.
  */
 export const resolveUoaWorkspaceContext = async (
   prisma: PrismaClient,
@@ -315,6 +322,7 @@ export const resolveUoaWorkspaceContext = async (
   const principal = await ensureWorkspacePrincipal(prisma, {
     avatarUrl: input.avatarUrl,
     channelId: target.channelId,
+    claims: target.claims,
     displayName: input.displayName,
     email,
     organizationId,

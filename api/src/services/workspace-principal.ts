@@ -1,5 +1,6 @@
 import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
 
+import { projectUoaRoles, type UoaRoleClaims } from './uoa-roles.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 // Local principal resolution for SSO logins. UOA principals are keyed by the
@@ -110,9 +111,11 @@ const resolvePrincipalUser = async (
   })
 }
 
-// Ensure a user has org/project/team/channel membership for a workspace without
-// clobbering an existing (possibly higher) role or resurrecting a deactivated
-// org membership: create-with-role on first join, leave untouched thereafter.
+// Ensure a user has org/project/team/channel membership for a workspace. The
+// upserts are create-only — they never resurrect a deactivated org membership
+// or rewrite a role behind UOA's back. Role *changes* come from exactly one
+// place afterwards: `projectUoaRoles`, replaying the verified claims, so a
+// dimension UOA did not claim keeps whatever the row already held.
 const ensureWorkspaceMemberships = async (
   prisma: Prisma.TransactionClient,
   input: {
@@ -121,6 +124,7 @@ const ensureWorkspaceMemberships = async (
     projectId: string
     teamId: string
     channelId: string | null
+    claims: UoaRoleClaims
     orgRole: MemberRole
     teamRole: MemberRole
   },
@@ -147,10 +151,17 @@ const ensureWorkspaceMemberships = async (
       create: { channelId: input.channelId, userId: input.userId },
     })
   }
+  await projectUoaRoles(prisma, {
+    claims: input.claims,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    teamId: input.teamId,
+    userId: input.userId,
+  })
 }
 
-// Read the user's org role after membership was ensured (owner for the bootstrap
-// user, member otherwise) — the role the access token is scoped to.
+// Read the user's org role after membership was ensured and UOA's claims were
+// projected — the role the access token is scoped to.
 const readOrgRole = async (
   prisma: Prisma.TransactionClient,
   organizationId: string,
@@ -184,6 +195,7 @@ export const ensureWorkspacePrincipal = async (
   prisma: PrismaClient,
   input: PrincipalIdentityInput & {
     channelId: string | null
+    claims: UoaRoleClaims
     organizationId: string
     projectId: string
     teamId: string
@@ -208,7 +220,10 @@ export const ensureWorkspacePrincipal = async (
     projectId: input.projectId,
     teamId: input.teamId,
     channelId: input.channelId,
-    orgRole: 'member',
+    claims: input.claims,
+    // UOA's verified `org_role` decides the org membership; `member` is only
+    // the default for a login that carried no such claim.
+    orgRole: input.claims.orgRole ?? 'member',
     teamRole: input.teamRole,
   })
   return {

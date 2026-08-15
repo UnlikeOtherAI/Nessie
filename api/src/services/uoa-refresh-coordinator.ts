@@ -81,6 +81,9 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
       refreshTokenExpiresAt: new Date(
         Date.now() + refreshed.refreshTokenExpiresInSeconds * 1_000,
       ),
+      // The verified `org` claim travels with the rotation so the binding
+      // commit can re-project UOA's roles onto the local membership rows.
+      workspace: refreshed.identity.workspace,
       workspaceDirectory: refreshed.workspaceDirectory,
     }
   },
