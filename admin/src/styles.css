@@ -1866,6 +1866,16 @@ button.reaction-pill-active:focus-visible {
     user-select: none;
   }
 
+  /* The left navigation menu is a list of tap targets on touch — nothing in it
+     should ever enter text-selection or fire the iOS touch callout on long
+     press. user-select inherits, so this one rule on the container covers every
+     row type (section headers, channels, DMs, project tiles). */
+  .admin-sidebar-nav {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
   .admin-chat-surface :is(input, textarea, [contenteditable='true']),
   .admin-chat-feed :is(input, textarea, [contenteditable='true']) {
     -webkit-user-select: text;

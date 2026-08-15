@@ -223,7 +223,7 @@ const AuthenticatedAdminShellLayout = () => {
   const phonePageContent = showPhoneTabRoot && rootHasContextualList ? (
     <div
       className={[
-        'flex min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
+        'flex h-full min-w-0 flex-1 overflow-hidden bg-[color:var(--main)]',
         '[&>aside]:w-full [&>aside]:border-r-0',
       ].join(' ')}
     >

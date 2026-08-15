@@ -47,7 +47,11 @@ test('group participant labels compact in every sidebar location without consumi
   assert.match(label, /new ResizeObserver\(updateWidth\)/)
   assert.match(label, /selectGroupDmSidebarLabel/)
   assert.match(label, /createPortal\(/)
-  assert.match(label, /onMouseEnter=\{candidates\.length > 1 \? showTooltip : undefined\}/)
+  assert.match(label, /onMouseEnter=\{candidates\.length > 1 && hoverCapable \? showTooltip : undefined\}/)
+  // The recipient tooltip is a mouse affordance only: on touch a tap fires
+  // mouseenter with no mouseleave, so the handlers must be gated on a
+  // hover-capable pointer or the tooltip sticks until an unrelated re-render.
+  assert.match(label, /window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)/)
   assert.match(label, /role="tooltip"/)
   assert.match(label, /pointer-events-none/)
   assert.match(styles, /\.group-dm-sidebar-tooltip\s*\{[\s\S]*?position: fixed/)
