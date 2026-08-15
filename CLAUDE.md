@@ -27,6 +27,26 @@ Multi-tenant, self-hosted agentic work platform. Organisations host their own Ne
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
 - **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
 
+## UOA identity and organisation structure — no local duplicates
+
+Where UOA SSO is configured, UOA is the sole authority for human identity,
+profiles, and organisation/team membership — for the **shape** of that
+structure as much as its contents. UOA's organisation and team hierarchy maps
+**1:1** into Nessie: one UOA organisation is one Nessie `Organization`, bound
+by the stable UOA organisation id (`Organization.externalOrgId`, unique), and
+one UOA workspace is one `Team` (with its Project and `#general`) inside that
+organisation. Flattening several UOA organisations into one local container —
+the pre-2026-08-15 shared-org model — or keeping any second local copy of the
+org hierarchy is the same violation as duplicating identity rows, and gets the
+same remedy: an API-backed refactor plus a data migration, never a
+compatibility copy. The org name is a non-authoritative mirror of UOA's, and a
+local install with no IdP keeps one unbound organisation (`externalOrgId`
+null). Budgets, policies, audit, the member directory, and org settings
+therefore scope per UOA organisation. Model, migration, and verification:
+[docs/plans/2026-08-15-uoa-org-tenancy.md](docs/plans/2026-08-15-uoa-org-tenancy.md);
+the rule itself lives in [docs/brief.md](docs/brief.md) → "Current SSO identity
+invariant".
+
 ## Agent voice and reactions
 
 Agents answer at colleague length by default. The base system prompt

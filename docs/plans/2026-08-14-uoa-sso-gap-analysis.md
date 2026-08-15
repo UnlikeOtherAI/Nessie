@@ -15,7 +15,11 @@
 > synthesizer and Gravatar deleted, claim-synced profile mirror, UOA-relayed
 > avatar uploads), and most of **Phase 5** (rosters + invitations on the UOA
 > org API in backend mode). The rows and phase entries carry what shipped and
-> what is left.
+> what is left. **Ambiguity 5 ("One shared local Organization") is resolved as
+> of 2026-08-15** in favour of per-UOA-org tenancy — one Nessie `Organization`
+> per UOA organisation — which also removes the last-owner projection floor
+> phase 4 introduced. Design and migration:
+> [2026-08-15-uoa-org-tenancy.md](2026-08-15-uoa-org-tenancy.md).
 > **Note:** worktrees `.worktrees/sso-invites-team-switch/`,
 > `.worktrees/switch-integration-prepare/`, and
 > `.worktrees/native-logout-timeout/` contain in-flight work directly relevant
@@ -216,12 +220,24 @@ flagged only for a written decision.
    grants (channel member, knowledge space, dashboard, `superAdmin`)? The
    deny-overrides policy engine can stay, but its subject facts must come
    from UOA.
-5. **One shared local Organization.** All UOA workspaces map to Teams inside
-   a single local org
+5. **One shared local Organization.** ✅ **Resolved 2026-08-15 — per-UOA-org
+   tenancy.** All UOA workspaces mapped to Teams inside a single local org
    (`docs/plans/2026-07-10-slack-workspace-login-nessie.md`); the switcher's
-   org grouping comes from directory data, and the local `Organization` row
-   has no UOA org id. Compatible with the brief's UI requirement, but the
-   model decision should be restated as deliberate.
+   org grouping came from directory data, and the local `Organization` row
+   carried no UOA org id. UOA has since made organisations first-class
+   (multi-org per user, workspaces created within an organisation), which
+   removes the constraint the flattening was built around and turns it into a
+   second local copy of UOA-owned structure. The decision is therefore **not**
+   to restate the flattening as deliberate but to undo it: one Nessie
+   `Organization` per UOA organisation, keyed on
+   `Organization.externalOrgId @unique`, with the existing shared org adopting
+   the plurality external org id and the rest splitting out by migration.
+   Consequence: budgets, policies, audit, the member directory, and org
+   settings scope per UOA organisation, and the last-owner projection floor
+   (phase 4 below) is removed for UOA orgs because a per-org `org_role` claim
+   is now a complete statement. Design, migration, and verification:
+   `docs/plans/2026-08-15-uoa-org-tenancy.md`; the rule is in
+   `docs/brief.md` → "Current SSO identity invariant".
 6. **`pronouns` and the local avatar upload** — extension data or profile
    data? UOA owns profiles; if UOA has no pronoun/avatar-override field,
    either drop them or record a written decision that they are Nessie
@@ -367,6 +383,12 @@ projection of the session's signed claims, not an authority.
 > `ChannelMember` and knowledge/dashboard grants stay product-local and mutable;
 > `GET /api/users` and the roster reads still come from local rows (phase 5);
 > profile fields and the workspace-directory cache are phases 3 and 6.
+>
+> **Amended 2026-08-15:** the shared-organization last-owner floor is removed
+> for UOA organisations by the per-UOA-org tenancy change (ambiguity 5), since
+> a per-org `org_role` claim is then a complete statement about who
+> administers that organisation; the floor stays on the local-mode mutation
+> routes. See `docs/plans/2026-08-15-uoa-org-tenancy.md`.
 
 **Phase 5 — rosters + invitations on the UOA API.** *Largely landed
 2026-08-15* (`api/src/services/uoa-org-roster.ts`,

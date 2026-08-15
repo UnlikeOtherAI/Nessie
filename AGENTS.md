@@ -122,6 +122,21 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Follow the architecture guardrails and anti-pattern list in `docs/architecture.md` before creating files, reorganizing code, or reusing logic.
 - Follow the provider system and frontend architecture in `docs/provider-system-and-frontend-architecture.md`.
 - Follow the implementation phases in `docs/implementation-phases.md`.
+- **UOA owns the org structure, not just the people in it.** Where UOA SSO is
+  configured, its organisation and team hierarchy maps **1:1** into Nessie: one
+  UOA organisation is one Nessie `Organization`, bound by the stable UOA
+  organisation id (`Organization.externalOrgId`, unique), and one UOA workspace
+  is one `Team` (with its Project and `#general`) inside that organisation.
+  Flattening several UOA organisations into one local container — the
+  pre-2026-08-15 shared-org model — or keeping any second local copy of the org
+  hierarchy is the same violation as duplicating identity rows, and gets the
+  same remedy: an API-backed refactor plus a data migration, never a
+  compatibility copy. The org name is a non-authoritative mirror of UOA's, and
+  a local install with no IdP keeps one unbound organisation (`externalOrgId`
+  null). Budgets, policies, audit, the member directory, and org settings
+  therefore scope per UOA organisation. Model, migration, and verification:
+  `docs/plans/2026-08-15-uoa-org-tenancy.md`; the rule itself lives in
+  `docs/brief.md` → "Current SSO identity invariant".
 - **A personal-assistant tool that does what a person does by clicking calls
   the same function that person's button calls, and mirrors that route's
   authorization exactly — no weaker, no stronger.** The five provisioning

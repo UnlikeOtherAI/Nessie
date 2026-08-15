@@ -27,6 +27,19 @@ On top of that, Nessie's **config JWT never enabled the workspace chooser**
 
 ## Model decision
 
+> **Superseded 2026-08-15 — the org half only.** UOA's move to a
+> relationship-based access model made organisations first-class (a user can
+> belong to several; a workspace is created *inside* one), so the
+> "one shared Nessie Organization" flattening below no longer holds: there is
+> now **one Nessie `Organization` per UOA organisation**, keyed on
+> `Organization.externalOrgId`. Everything below the org level in this section
+> is unchanged — a workspace is still its own Project + Team + `#general`,
+> bound by `Team.externalWorkspaceId`, and the switch routes and directory
+> behaviour described here still apply. The record below is kept as written
+> (including the "why not the alternatives" reasoning, which was correct for
+> the UOA model of the time). New model, migration, and verification:
+> [2026-08-15-uoa-org-tenancy.md](2026-08-15-uoa-org-tenancy.md).
+
 UOA gives each user **one org but many teams (workspaces) per domain**
 (UOA design §9.1). Nessie's isolation boundary is the **Organization**; a Team is
 a sub-unit inside a Project inside an Organization.
