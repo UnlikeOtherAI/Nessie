@@ -112,7 +112,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
   return (
     <aside
       className={[
-        'flex h-full w-full flex-col overflow-hidden',
+        'admin-sidebar-nav flex h-full w-full flex-col overflow-hidden',
         'border-r border-[color:var(--sep)] bg-[color:var(--sb)]',
         nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}

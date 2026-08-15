@@ -15,6 +15,15 @@ export const GroupDmSidebarLabel = ({ label }: GroupDmSidebarLabelProps) => {
   const [displayLabel, setDisplayLabel] = useState(() => candidates[0]?.text ?? label)
   const [tooltipOpen, setTooltipOpen] = useState(false)
   const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0 })
+  // A hover tooltip is a mouse affordance. On touch, tap synthesises a
+  // mouseenter with no matching mouseleave, so an unguarded tooltip would open
+  // and never dismiss. Only wire the hover handlers on a hover-capable pointer.
+  const [hoverCapable] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+  )
 
   const placeTooltip = (): void => {
     const element = labelRef.current
@@ -68,8 +77,8 @@ export const GroupDmSidebarLabel = ({ label }: GroupDmSidebarLabelProps) => {
       <span
         aria-label={label}
         className="group-dm-sidebar-label relative min-w-0 flex-1 truncate"
-        onMouseEnter={candidates.length > 1 ? showTooltip : undefined}
-        onMouseLeave={candidates.length > 1 ? () => setTooltipOpen(false) : undefined}
+        onMouseEnter={candidates.length > 1 && hoverCapable ? showTooltip : undefined}
+        onMouseLeave={candidates.length > 1 && hoverCapable ? () => setTooltipOpen(false) : undefined}
         ref={labelRef}
       >
         {displayLabel}
