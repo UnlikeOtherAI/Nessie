@@ -16,6 +16,12 @@ export type FakeInput = {
   activeSession?: boolean
   users?: Row[]
   organizationId?: string
+  /**
+   * The UOA organisation id mirrored by the seeded Organization
+   * (`Organization.externalOrgId`, the 1:1 model). The fixture defaults it to
+   * the exchange's ORG so recovery resolves the seeded org as its target.
+   */
+  organizationExternalOrgId?: string | null
   productAccountLinkRows?: Row[]
   /**
    * Race seam: fires once, at the START of the authoritative claim — after
@@ -40,7 +46,10 @@ export type SeedInput = FakeInput & { organizationId: string }
 
 export const makePrisma = (spy: Spy, input: SeedInput) => {
   const users = [...(input.users ?? [])]
-  const orgs = [{ id: input.organizationId }]
+  const orgs: Row[] = [{
+    id: input.organizationId,
+    externalOrgId: input.organizationExternalOrgId ?? null,
+  }]
   const teams = [...(input.teamRows ?? [])]
   const projects = [...(input.projectRows ?? [])]
   const channels = [...(input.channelRows ?? [])]
@@ -158,6 +167,37 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
     organization: {
       findFirst: async () => (record('organization.findFirst'), orgs[0] ?? null),
+      findUnique: async ({ where }: { where: Row }) => {
+        record('organization.findUnique')
+        return orgs.find((org) =>
+          (where.id !== undefined && org.id === where.id)
+          || (where.externalOrgId !== undefined
+            && org.externalOrgId === where.externalOrgId)) ?? null
+      },
+      create: async ({ data }: { data: Row }) => {
+        record('organization.create')
+        const row = { id: randomUUID(), ...data }
+        orgs.push(row)
+        return { id: row.id }
+      },
+    },
+    policyRule: {
+      count: async () => (record('policyRule.count'), 0),
+      findFirst: async () => (record('policyRule.findFirst'), null),
+      create: async ({ data }: { data: Row }) => {
+        record('policyRule.create')
+        const bindings = (data.bindings as
+          | { create: Row[] }
+          | undefined)?.create ?? []
+        return {
+          id: randomUUID(),
+          ...data,
+          conditions: data.conditions ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          bindings: bindings.map((b) => ({ id: randomUUID(), ...b })),
+        }
+      },
     },
     user: {
       count: async () => (record('user.count'), users.length),
@@ -207,6 +247,10 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
         organizationMembers.push(row)
         return row
       },
+      count: async ({ where }: { where: Row }) => (
+        record('organizationMember.count'),
+        organizationMembers.filter((m) => m.organizationId === where.organizationId).length
+      ),
     },
     projectMember: {
       ...genericModel('projectMember', projectMembers),
@@ -361,6 +405,11 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
           return projected
         }
         return found
+      },
+      create: async ({ data }: { data: Row }) => {
+        record('productAccountLink.create')
+        productAccountLinks.push({ ...data })
+        return { ...data }
       },
       // Kept alongside the seeded rows so tests can model the race honestly:
       // advance (or null) the exact stored link BEHIND the pre-billing read

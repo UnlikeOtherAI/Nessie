@@ -7,6 +7,7 @@ import {
   UoaBillingError,
 } from './uoa-billing-client.js'
 import { resolveExternalWorkspaceSelection } from './identity-display.js'
+import { syncUoaProductAccountLinks } from './integrations.js'
 import {
   UoaSessionRefreshError,
   type UoaSessionExchange,
@@ -136,6 +137,27 @@ export const materializeUoaWorkspaceSwitch = async (
     )
   }
   if (!context || context.userId !== input.userId) {
+    throw new UoaSessionRefreshError(
+      'The target Nessie workspace is temporarily unavailable.',
+      false,
+    )
+  }
+  // Organizations map 1:1 to UOA organisations, so a cross-org switch can land
+  // in an Organization this user has never signed into interactively — its
+  // first-party account links (which the rescope binding advance requires) do
+  // not exist yet. Run the same link sync a login runs, scoped to the TARGET
+  // org. Retryable on failure: the rotation has not consumed anything local
+  // yet, and the binding advance would fail closed without the link anyway.
+  try {
+    await syncUoaProductAccountLinks(prisma, {
+      email: input.identity.email,
+      externalSubject: input.identity.externalSubject,
+      organizationId: context.organizationId,
+      uoaTokenVersion: input.identity.uoaTokenVersion,
+      userId: input.userId,
+      workspace: input.identity.workspace,
+    })
+  } catch {
     throw new UoaSessionRefreshError(
       'The target Nessie workspace is temporarily unavailable.',
       false,

@@ -55,14 +55,16 @@ export const resolveUoaRoleClaims = (
 /**
  * Project the org role onto the local membership.
  *
- * One floor, deliberate: the projection never removes the **last active owner**
- * of the shared local organization. All UOA workspaces map to teams inside a
- * single local `Organization` (the Slack-style model), so a per-UOA-org
- * `org_role` is not a complete statement about who administers this Nessie
- * instance — and the SSO-first bootstrap owner would otherwise be demoted by
- * their own first login, leaving the instance with nobody who can administer
- * it. The check runs under the same `FOR UPDATE` owner-row lock the local
- * mutators take, so concurrent demotions serialize.
+ * A per-UOA-org Organization (`externalOrgId` set — the 1:1 model) takes the
+ * verified `org_role` claim as a COMPLETE statement: UOA owns that org's
+ * membership outright, so a UOA demotion of the last local owner applies —
+ * there is no last-owner floor. The floor survives only for a
+ * null-`externalOrgId` organization (the legacy shared org before the data
+ * partition), where a per-UOA-org claim was never a complete statement about
+ * who administers the instance; the local-mode mutation routes keep their own
+ * independent last-owner guard either way. The check runs under the same
+ * `FOR UPDATE` owner-row lock the local mutators take, so concurrent
+ * demotions serialize.
  */
 const projectOrgRole = async (
   tx: Prisma.TransactionClient,
@@ -83,11 +85,17 @@ const projectOrgRole = async (
   if (current.role === input.role) {
     return current.role
   }
-  if (
-    current.role === 'owner'
-    && await wouldRemoveLastOwner(tx, input.organizationId, input.userId)
-  ) {
-    return current.role
+  if (current.role === 'owner') {
+    const organization = await tx.organization.findUnique({
+      where: { id: input.organizationId },
+      select: { externalOrgId: true },
+    })
+    if (
+      organization?.externalOrgId == null
+      && await wouldRemoveLastOwner(tx, input.organizationId, input.userId)
+    ) {
+      return current.role
+    }
   }
   await tx.organizationMember.updateMany({
     where: { organizationId: input.organizationId, userId: input.userId },

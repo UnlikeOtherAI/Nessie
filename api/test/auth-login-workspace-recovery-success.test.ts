@@ -86,6 +86,50 @@ test('same subject and target with a REGRESSED epoch is refused BEFORE any effec
   assertUntouched(response, spy, upstream)
 })
 
+test('a cross-org reauthorization lands in the freshly materialized TARGET org', async () => {
+  // Alice's bearer is scoped to org A; UOA returns a valid session for org B
+  // (a workspace she is entitled to but has never entered locally). Under the
+  // per-UOA-org model that is a legitimate switch: the recovery materializes
+  // org B, creates ITS `nessie` account link (there is no older state to fence
+  // against — same as first login), and issues the session scoped there.
+  const upstream = stubAliceExchange({
+    activeOrgId: 'uoa-org-b',
+    activeTeamId: 'uoa-team-b',
+    tv: 4,
+  })
+  const spy: MutationSpy = { calls: [], cookieIssued: false }
+  const organizationId = randomUUID()
+  const app = await buildApp(spy, {
+    organizationId,
+    // The SOURCE org's link backs the pre-billing proof of Alice's credential.
+    productAccountLinkRows: [{
+      activeOrgId: ORG,
+      activeTeamId: TEAM,
+      organizationId,
+      productSlug: 'nessie',
+      status: 'linked',
+      uoaSub: 'uoa-subject-alice',
+      uoaTokenVersion: 3,
+      userId: ALICE.id,
+    }],
+  })
+
+  const response = await recoveryExchange(app, {
+    bearer: aliceBearer({ org: organizationId }),
+    expectedWorkspace: { organizationId: 'uoa-org-b', teamId: 'uoa-team-b' },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.equal(spy.cookieIssued, true)
+  assert.equal(upstream.billingConfirms, 1)
+  assert.equal(response.json().data.me.user.id, ALICE.id)
+  // The target Organization was materialized and its link CREATED (the claim's
+  // first-entry branch), rather than the source link being reused cross-org.
+  assert.equal(spy.calls.includes('organization.create'), true)
+  assert.equal(spy.calls.includes('productAccountLink.create'), true)
+  assertNoEmailIdentityTraffic(spy)
+})
+
 test('same subject with a newer epoch and an email colliding with another local user succeeds', async () => {
   // The exchanged email belongs to a DIFFERENT local user: an email lookup
   // would resolve (and hijack) that principal. The subject match is the

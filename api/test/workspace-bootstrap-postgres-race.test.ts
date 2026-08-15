@@ -6,12 +6,13 @@ import { PrismaClient } from '@prisma/client'
 
 import { resolveUoaWorkspaceContext } from '../src/services/workspace-context.js'
 
-// This suite has the same global-scope dependency as its sibling
-// (`workspace-context-postgres-race.test.ts`), but it cannot be anchored the
-// same way: its subject IS the first-ever login, so it asserts that the
-// database holds no organization and no user at all, and it leaves behind the
-// bootstrap records it creates. It therefore needs a database of its own, and
-// stays opt-in rather than flaking against the shared one — an unset
+// The first-ever logins into a fresh instance. A UOA login now materializes
+// its per-UOA-org Organization directly (1:1 by `Organization.externalOrgId`)
+// — the legacy shared-org bootstrap seed runs only for logins with no
+// workspace claim. This suite's subject IS the first-ever login, so it asserts
+// the database holds no organization and no user at all, and it leaves behind
+// the records it creates. It therefore needs a database of its own, and stays
+// opt-in rather than flaking against the shared one — an unset
 // NESSIE_TEST_PRISTINE_DATABASE skips it, which is why it does not run in CI's
 // shared-database test job.
 //
@@ -24,7 +25,7 @@ const runPristineDatabaseTest =
     : test.skip
 
 runPristineDatabaseTest(
-  'concurrent first-ever UOA callbacks atomically bootstrap one shared organization',
+  'concurrent first-ever UOA callbacks atomically materialize one per-UOA-org organization',
   async (t) => {
     const prisma = new PrismaClient()
     t.after(() => prisma.$disconnect())
@@ -57,7 +58,14 @@ runPristineDatabaseTest(
     assert.equal(left.organizationId, right.organizationId)
     assert.equal(left.projectId, right.projectId)
     assert.equal(left.teamId, right.teamId)
+    // Exactly ONE organization exists — the per-UOA-org one; the legacy
+    // shared-org bootstrap seed never ran for these workspace-claim logins.
     assert.equal(await prisma.organization.count(), 1)
+    const organization = await prisma.organization.findUnique({
+      where: { externalOrgId },
+      select: { id: true },
+    })
+    assert.equal(organization?.id, left.organizationId)
     assert.equal(await prisma.user.count({ where: { email: { in: emails } } }), 2)
     assert.equal(await prisma.team.count({
       where: {
@@ -71,5 +79,12 @@ runPristineDatabaseTest(
     assert.ok(await prisma.policyRule.count({
       where: { organizationId: left.organizationId },
     }) > 0)
+    // With no org_role claim, exactly ONE of the two racers became the org's
+    // first materializer and owns it; the other joined as member.
+    const roles = (await prisma.organizationMember.findMany({
+      where: { organizationId: left.organizationId },
+      select: { role: true },
+    })).map((member) => member.role).sort()
+    assert.deepEqual(roles, ['member', 'owner'])
   },
 )

@@ -195,12 +195,14 @@ export const registerAuthLoginRoute = (
             return reply
           }
           // Pre-billing fence: the durable first-party Nessie account link
-          // in the bearer's EXACT local organization (never an ambient org
-          // lookup) must still be linked to the returned subject with a
-          // valid epoch no newer than the returned one. This is a read-only
-          // proof under the user-session lock; the authoritative fence is
-          // the conditional claim inside the single recovery transaction
-          // below.
+          // in the bearer's EXACT SOURCE organization claim (never an
+          // ambient org lookup) must still be linked to the returned subject
+          // with a valid epoch no newer than the returned one — a statement
+          // about the bearer's own credential, valid even when the recovery
+          // targets a DIFFERENT org (cross-org reauthorization). This is a
+          // read-only proof under the user-session lock; the authoritative
+          // fence is the conditional claim on the TARGET org's link inside
+          // the single recovery transaction below.
           try {
             await assertUoaRecoveryAccountLink(prisma, {
               identity: {
@@ -252,7 +254,16 @@ export const registerAuthLoginRoute = (
             // context, or cookie write.
             ...(recoveryClaims && uoaSession
               ? {
-                  recoveryLinkClaim: (transaction: Prisma.TransactionClient) =>
+                  // The claim fences the TARGET organization's link (created
+                  // there on a first entry — a cross-org reauthorization is
+                  // legitimate under the per-UOA-org model); the resolver
+                  // passes the org it resolved from the verified workspace
+                  // claim. The bearer's own org claim below is only the
+                  // legacy fallback scope and the pre-billing assert's home.
+                  recoveryLinkClaim: (
+                    transaction: Prisma.TransactionClient,
+                    targetOrganizationId: string,
+                  ) =>
                     claimUoaRecoveryAccountLink(transaction, {
                       identity: {
                         organizationId: verifiedUoaWorkspace!.organizationId!,
@@ -260,7 +271,7 @@ export const registerAuthLoginRoute = (
                         teamId: verifiedUoaWorkspace!.teamId!,
                         tokenVersion: uoaSession.identity.uoaTokenVersion,
                       },
-                      localOrganizationId: recoveryClaims.org,
+                      localOrganizationId: targetOrganizationId,
                       returnedTokenVersion: uoaSession.identity.uoaTokenVersion,
                       subject: uoaSession.identity.externalSubject,
                       userId: recoveryClaims.sub,

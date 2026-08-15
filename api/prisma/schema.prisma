@@ -925,7 +925,15 @@ model UoaWorkspaceSwitchIntent {
 
 model Organization {
   id                     String                  @id @default(uuid()) @db.Uuid
+  // For a UOA-provisioned organization, `name` is a NON-authoritative mirror of
+  // UOA's `orgName` (same doctrine as the user profile mirror): synced wherever
+  // the workspace directory carries it, placeholder
+  // `Organisation ${externalOrgId.slice(0, 8)}` at first provisioning.
   name                   String
+  // Stable UnlikeOtherAI organisation id this Organization mirrors 1:1.
+  // Null = a local-mode organization (bootstrap / no-SSO installs, and the
+  // generic-OIDC shared organization).
+  externalOrgId          String?                 @unique @map("external_org_id")
   logoAttachmentId       String?                 @map("logo_attachment_id") @db.Uuid
   // Owner/admin opt-out for EXIF/GPS metadata stripping on image uploads at
   // the FileService chokepoint. Defaults to stripping (true); set false to

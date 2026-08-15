@@ -240,6 +240,10 @@ export const buildApp = async (
   const app = Fastify({ logger: false })
   const prisma = makePrisma(spy, {
     users: [ALICE],
+    // Organizations map 1:1 to UOA organisations: the seeded org mirrors the
+    // exchange's UOA org by default, so recovery's target-org resolution finds
+    // it rather than materializing a sibling.
+    organizationExternalOrgId: ORG,
     ...options,
     organizationId: options.organizationId ?? randomUUID(),
   })

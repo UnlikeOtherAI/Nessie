@@ -68,14 +68,22 @@ export const assertUoaRecoveryAccountLink = async (
 
 /**
  * Authoritative recovery fence, run INSIDE the single recovery transaction
- * after the exact external-workspace lock and before the target
- * existing-or-create branch and every project/team/channel/membership write:
- * conditionally claim the exact Nessie link row (this local org, this user,
- * this product, linked, same subject, and a NON-NULL safe nonnegative epoch
- * no newer than the returned one — a null stored epoch never claims),
- * advancing its epoch and refreshing the non-authoritative current UOA
- * directory + active tuple. The claim's row lock is held through every
- * write below it in the transaction; zero rows claimed aborts it all.
+ * after the exact external-org + external-workspace locks and before the
+ * target existing-or-create branch and every project/team/channel/membership
+ * write. `localOrganizationId` is the resolved TARGET organization (per-UOA-org
+ * model — for a cross-org reauthorization it differs from the bearer's source
+ * org, whose link the read-only pre-billing assert checked). Two shapes:
+ *
+ * - A link row exists in the target org → conditionally claim it (linked, same
+ *   subject, NON-NULL safe nonnegative epoch no newer than the returned one —
+ *   a null stored epoch never claims), advancing its epoch and refreshing the
+ *   non-authoritative directory + active tuple. Zero rows claimed aborts the
+ *   whole transaction; the claimed row lock is held through every write below.
+ * - No row exists (first entry into the target org — possibly materialized by
+ *   this very recovery) → CREATE it linked at the returned epoch, exactly as a
+ *   first login's link sync would. There is no older state to fence against,
+ *   and the unique (org, user, product) key turns a concurrent duplicate
+ *   create into a transaction abort rather than a second row.
  */
 export const claimUoaRecoveryAccountLink = async (
   transaction: Prisma.TransactionClient,
@@ -91,7 +99,30 @@ export const claimUoaRecoveryAccountLink = async (
     },
     select: { metadata: true },
   })
-  const metadata = existing?.metadata
+  if (!existing) {
+    await transaction.productAccountLink.create({
+      data: {
+        organizationId: input.localOrganizationId,
+        userId: input.userId,
+        productSlug: 'nessie',
+        status: 'linked',
+        uoaSub: input.subject,
+        uoaTokenVersion: input.returnedTokenVersion,
+        externalAccountId: input.subject,
+        activeOrgId: input.identity.organizationId,
+        activeTeamId: input.identity.teamId,
+        lastVerifiedAt: new Date(),
+        metadata: {
+          provider: 'uoa',
+          ...(input.workspaceDirectory
+            ? { workspaceDirectory: input.workspaceDirectory }
+            : {}),
+        },
+      },
+    })
+    return
+  }
+  const metadata = existing.metadata
     && typeof existing.metadata === 'object'
     && !Array.isArray(existing.metadata)
     ? existing.metadata as Prisma.JsonObject
