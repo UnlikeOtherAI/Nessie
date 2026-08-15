@@ -926,6 +926,10 @@ model UoaWorkspaceSwitchIntent {
 model Organization {
   id                     String                  @id @default(uuid()) @db.Uuid
   name                   String
+  // UOA org binding: when this Nessie organization is the tenant for one UOA
+  // organization, this is that UOA org's opaque id. Null on local-mode
+  // (non-UOA) organizations. One Nessie organization per UOA org.
+  externalOrgId          String?                 @unique @map("external_org_id")
   logoAttachmentId       String?                 @map("logo_attachment_id") @db.Uuid
   // Owner/admin opt-out for EXIF/GPS metadata stripping on image uploads at
   // the FileService chokepoint. Defaults to stripping (true); set false to
