@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { WorkspaceInvitationRecord, WorkspaceMemberRecord } from '@nessie/schemas'
-import { Avatar } from '../../components/primitives/Avatar'
+import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   useCreateWorkspaceInvitations,
   useRemoveWorkspaceMember,
@@ -49,6 +50,7 @@ const MemberRow = ({
   canManage: boolean
   member: WorkspaceMemberRecord
 }) => {
+  const { token } = useAuthSession()
   const updateRole = useUpdateWorkspaceMemberRole()
   const removeMember = useRemoveWorkspaceMember()
   const setActivation = useSetWorkspaceMemberActivation()
@@ -72,15 +74,18 @@ const MemberRow = ({
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {/*
-            Initials, not `UserAvatar`. That component resolves the UOA picture
-            through `GET /api/users/:userId/avatar`, which is keyed on a Nessie
-            user id — a roster row has only a UOA subject, and UOA publishes no
-            credential-free user-avatar URL a browser could load. Showing real
-            pictures here needs a relay keyed by subject (gap analysis, Phase 5).
+            A roster row is named only by its UOA subject, so the picture comes
+            from the subject-keyed relay rather than the user-id one. The same
+            `UserAvatar` as everywhere else: it falls back to initials for an
+            unlinked person, an unlinked workspace, or a deployment with no UOA.
           */}
-          <div className={deactivated ? 'opacity-60' : undefined}>
-            <Avatar label={label} />
-          </div>
+          <UserAvatar
+            className={deactivated ? 'opacity-60' : undefined}
+            displayName={label}
+            size={40}
+            token={token}
+            uoaSub={member.uoaSub}
+          />
           <div className="min-w-0">
             <div className="truncate font-semibold text-[color:var(--tx)]">{label}</div>
             {member.email ? (

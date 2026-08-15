@@ -3,6 +3,13 @@ import { z } from 'zod'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { AVATAR_CACHE_CONTROL, sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
+import {
+  fetchUoaUserAvatar,
+  UoaAvatarUnavailableError,
+  type UoaAvatarImage,
+} from '../services/uoa-avatar.js'
+import { isWorkspaceRosterSubject } from '../services/uoa-roster-subjects.js'
 import {
   createWorkspaceInvitations,
   listWorkspaceInvitations,
@@ -31,6 +38,11 @@ import type { RouteDeps } from './types.js'
  * identifier, and matching on an email an IdP asserts is the documented
  * account-takeover shape.
  *
+ * Their pictures are relayed here too (`/members/:uoaSub/avatar`), for the same
+ * reason: UOA's member records carry an avatar URL that needs the domain-hash
+ * bearer, and the user-id-keyed relay in `routes/users.ts` cannot name somebody
+ * who has no local row.
+ *
  * `/org/*` in backend mode carries no acting user, so UOA applies **no** role
  * check and records the mutation as `via: "domain_backend"`. The owner/admin
  * gate below is therefore load-bearing, exactly as on the workspace avatar
@@ -42,6 +54,9 @@ const ADMIN_ROLES = new Set(['owner', 'admin'])
 
 const NOT_LINKED_MESSAGE =
   'This workspace is not linked to an UnlikeOtherAI workspace'
+
+const NOT_IN_WORKSPACE_MESSAGE =
+  'This person has no UnlikeOtherAI avatar in this workspace'
 
 // UOA's own vocabulary for a team role. "owner" is a transfer-ownership
 // operation upstream, not a role write, so it is not offered here.
@@ -66,12 +81,16 @@ const requireWorkspace = async (
   deps: RouteDeps,
   actorContext: AuthorizedActionContext,
   reply: FastifyReply,
+  options: { cacheableMiss?: boolean } = {},
 ): Promise<UoaRosterWorkspace | null> => {
   const workspace = await resolveUoaRosterWorkspace(deps.prisma, {
     organizationId: actorContext.tenant.organizationId,
     teamId: actorContext.tenant.teamId ?? actorContext.actionContext.teamId,
   })
   if (!workspace) {
+    // The avatar relay's misses are cacheable like every other avatar relay's:
+    // the browser re-asks on each mount and the answer will not change soon.
+    if (options.cacheableMiss) reply.header('cache-control', AVATAR_CACHE_CONTROL)
     sendApiError(reply, 404, 'WORKSPACE_NOT_LINKED', NOT_LINKED_MESSAGE)
     return null
   }
@@ -170,6 +189,60 @@ export const registerWorkspaceMembersRoutes = (
     relay(request, reply, { admin: false }, async (workspace) => ({
       members: await listWorkspaceMembers(workspace, rosterDeps),
     })))
+
+  /**
+   * The picture UOA holds for one person in this workspace's roster. Same
+   * entitlement as the roster read itself — a roster row is only a UOA subject,
+   * so `GET /api/users/:userId/avatar` (keyed by a Nessie user id) cannot serve
+   * people who have no local row.
+   *
+   * The roster-membership check is load-bearing, not a formality: UOA's
+   * `/domain/users/:sub/avatar` answers for **any** subject the domain hash can
+   * see, so relaying without it would hand any member the picture of anybody in
+   * the whole UOA domain, one guessed subject at a time. It reuses the roster
+   * read the Members page is served from, briefly cached per workspace.
+   */
+  app.get<{ Params: { uoaSub: string } }>(
+    '/api/workspace/members/:uoaSub/avatar',
+    async (request, reply) => {
+      const actorContext = requireActorContext(request, reply)
+      if (!actorContext) return reply
+
+      const workspace = await requireWorkspace(deps, actorContext, reply, {
+        cacheableMiss: true,
+      })
+      if (!workspace) return reply
+
+      const { uoaSub } = request.params
+      let image: UoaAvatarImage | null = null
+      try {
+        if (!(await isWorkspaceRosterSubject(workspace, uoaSub, rosterDeps))) {
+          // Deliberately the same answer as "this person has no picture": a
+          // caller learns nothing about subjects outside their workspace.
+          return sendAvatarNotFound(reply, NOT_IN_WORKSPACE_MESSAGE)
+        }
+        image = await fetchUoaUserAvatar(uoaSub, rosterDeps)
+      } catch (error) {
+        if (sendRelayError(request, reply, error)) return reply
+        if (error instanceof UoaAvatarUnavailableError) {
+          request.log.warn({ err: error }, 'uoa workspace member avatar relay failed')
+          sendApiError(
+            reply,
+            502,
+            'UOA_AVATAR_UNAVAILABLE',
+            'The UnlikeOtherAI avatar service is temporarily unavailable',
+          )
+          return reply
+        }
+        throw error
+      }
+
+      if (!image) {
+        return sendAvatarNotFound(reply, NOT_IN_WORKSPACE_MESSAGE)
+      }
+      return sendAvatarImage(reply, image)
+    },
+  )
 
   app.put<{ Params: { uoaSub: string } }>(
     '/api/workspace/members/:uoaSub/role',

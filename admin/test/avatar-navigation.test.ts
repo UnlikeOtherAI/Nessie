@@ -130,10 +130,14 @@ test('every shared UserAvatar usage supplies the SSO user identity source', () =
 
   assert.ok(usages.length >= 15, 'expected every human-avatar surface to use UserAvatar')
   for (const { path, usage } of usages) {
+    // Either identifier reaches the same UnlikeOtherAI picture: a Nessie user id
+    // through the organisation-scoped relay, a UOA subject through the
+    // roster-scoped one (for a workspace roster row with no local user row).
+    // What is refused is a surface that renders a person with neither.
     assert.match(
       usage,
-      /(?:\buserId=|\{\.\.\.toAvatarSources\()/,
-      `${path} must pass the SSO-backed user id to UserAvatar`,
+      /(?:\buserId=|\buoaSub=|\{\.\.\.toAvatarSources\()/,
+      `${path} must pass an SSO-backed identity (userId or uoaSub) to UserAvatar`,
     )
   }
 })

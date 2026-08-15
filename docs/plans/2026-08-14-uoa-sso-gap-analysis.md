@@ -362,11 +362,22 @@ Remaining in this phase:
   invitation that was already sent; only `deny` on a member-initiated invite
   awaiting approval. Raise it with the UOA team rather than building a local
   substitute.
-- **Member avatars in the roster.** UOA's `/org/*` member records carry an
-  `avatarImageUrl` in the `/domain/users/:userId/avatar` form, which needs the
-  domain-hash bearer — there is no public user-avatar route to hand a browser.
-  A relay keyed by UOA subject (mirroring `GET /api/users/:userId/avatar`) is
-  the fix; the roster renders initials until then.
+- ✅ **Member avatars in the roster** — *landed 2026-08-15.* UOA's `/org/*`
+  member records carry an `avatarImageUrl` in the `/domain/users/:userId/avatar`
+  form, which needs the domain-hash bearer — there is no public user-avatar
+  route to hand a browser, and `GET /api/users/:userId/avatar` is keyed by a
+  *Nessie* user id a roster member may not have. `GET
+  /api/workspace/members/:uoaSub/avatar`
+  (`api/src/routes/workspace-members.ts`) relays it under the roster read's own
+  entitlement, and **verifies the subject is in that workspace's roster before
+  relaying** (`api/src/services/uoa-roster-subjects.ts` — the same
+  `listWorkspaceMembers` read, cached in-memory per workspace for 30 s so a
+  roster of N rows asks UOA once, not N times). The domain-hash path is full
+  trust: without that check any member could read any domain user's picture by
+  guessing subjects. A foreign subject and a subject with no picture are the
+  same cacheable 404. The roster renders it through the shared `UserAvatar`
+  (`uoaSub` prop → this relay; `userId` → the organisation-scoped one), falling
+  back to initials exactly as before.
 - **Re-point PA `people_search`** (`worker/src/run/pa-tools/people.ts`) at the
   same service function, following the pa-tools mirror-the-route pattern.
 - **Replace `POST /api/users` outright**, together with the remaining local
