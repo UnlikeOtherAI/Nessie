@@ -412,6 +412,13 @@ test('every mutation and the invitation list refuse a non-admin before any relay
           url: '/api/workspace/invitations',
           payload: { invites: [{ email: 'new@acme.test' }] },
         },
+        // Authorization is decided before the body is read, so a non-admin
+        // learns "no", never "your payload is malformed".
+        {
+          method: 'POST' as const,
+          url: '/api/workspace/invitations',
+          payload: { invites: [{ email: 'not-an-email' }] },
+        },
         { method: 'POST' as const, url: '/api/workspace/invitations/inv_1/resend' },
         { method: 'POST' as const, url: '/api/workspace/invitations/inv_1/approve' },
         { method: 'POST' as const, url: '/api/workspace/invitations/inv_1/deny' },

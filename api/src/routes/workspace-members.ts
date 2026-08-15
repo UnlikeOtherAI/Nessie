@@ -135,25 +135,31 @@ export const registerWorkspaceMembersRoutes = (
   const { requireActorContext } = deps
 
   /**
-   * Run one relayed operation behind the shared preconditions. `admin` picks
-   * the gate: the roster read is visible to any member of the workspace,
-   * everything else is owner/admin.
+   * Run one relayed operation behind the shared preconditions, in order:
+   * authorization, then body validation, then the workspace lookup, then the
+   * relay. `admin` picks the gate — the roster read is visible to any member of
+   * the workspace, everything else is owner/admin — and `parse` is the route's
+   * body schema, applied after the gate so an unauthorized caller learns
+   * nothing about the payload.
    */
-  const relay = async <TResult>(
+  const relay = async <TResult, TBody = undefined>(
     request: FastifyRequest,
     reply: FastifyReply,
-    options: { admin: boolean },
-    run: (workspace: UoaRosterWorkspace) => Promise<TResult>,
+    options: { admin: boolean; parse?: () => TBody | null },
+    run: (workspace: UoaRosterWorkspace, body: TBody) => Promise<TResult>,
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (options.admin && !requireWorkspaceAdmin(actorContext, reply)) return reply
 
+    const body = options.parse ? options.parse() : (undefined as TBody)
+    if (body === null) return reply
+
     const workspace = await requireWorkspace(deps, actorContext, reply)
     if (!workspace) return reply
 
     try {
-      return createApiResponse(await run(workspace))
+      return createApiResponse(await run(workspace, body as TBody))
     } catch (error) {
       if (sendRelayError(request, reply, error)) return reply
       throw error
@@ -167,19 +173,16 @@ export const registerWorkspaceMembersRoutes = (
 
   app.put<{ Params: { uoaSub: string } }>(
     '/api/workspace/members/:uoaSub/role',
-    async (request, reply) => {
-      const body = parseInput(TeamRoleBodySchema, request.body, reply)
-      if (!body) return reply
-      return relay(request, reply, { admin: true }, async (workspace) => {
-        await updateWorkspaceMemberRole(
-          workspace,
-          request.params.uoaSub,
-          body.role,
-          rosterDeps,
-        )
-        return { ok: true }
-      })
-    },
+    async (request, reply) =>
+      relay(
+        request,
+        reply,
+        { admin: true, parse: () => parseInput(TeamRoleBodySchema, request.body, reply) },
+        async (workspace, body) => {
+          await updateWorkspaceMemberRole(workspace, request.params.uoaSub, body.role, rosterDeps)
+          return { ok: true }
+        },
+      ),
   )
 
   app.delete<{ Params: { uoaSub: string } }>(
@@ -214,13 +217,15 @@ export const registerWorkspaceMembersRoutes = (
       invitations: await listWorkspaceInvitations(workspace, rosterDeps),
     })))
 
-  app.post('/api/workspace/invitations', async (request, reply) => {
-    const body = parseInput(CreateInvitationsBodySchema, request.body, reply)
-    if (!body) return reply
-    return relay(request, reply, { admin: true }, async (workspace) => ({
-      results: await createWorkspaceInvitations(workspace, body, rosterDeps),
-    }))
-  })
+  app.post('/api/workspace/invitations', async (request, reply) =>
+    relay(
+      request,
+      reply,
+      { admin: true, parse: () => parseInput(CreateInvitationsBodySchema, request.body, reply) },
+      async (workspace, body) => ({
+        results: await createWorkspaceInvitations(workspace, body, rosterDeps),
+      }),
+    ))
 
   app.post<{ Params: { inviteId: string } }>(
     '/api/workspace/invitations/:inviteId/resend',
