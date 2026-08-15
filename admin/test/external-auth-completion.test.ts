@@ -91,9 +91,24 @@ test('ordinary callback uses login and returns the clean login landing', async (
   assert.equal(logins, 1)
 })
 
+test('a completed switch lands on the home every workspace has', async () => {
+  const state = await seedPending({
+    returnPath: '/channels/chan-from-old-workspace',
+    targetWorkspace: { organizationId: 'org', teamId: 'team' },
+  })
+  const result = await complete({ callback: envelope('code', state).callback })
+  assert.deepEqual(result, { claimed: true, outcome: 'completed', returnPath: '/channels' })
+})
+
+test('a plain re-login still honours its own landing route', async () => {
+  const state = await seedPending({ returnPath: '/projects/p1' })
+  const result = await complete({ callback: envelope('code', state).callback })
+  assert.deepEqual(result, { claimed: true, outcome: 'completed', returnPath: '/projects/p1' })
+})
+
 test('target recovery waits for source restoration and never calls login', async () => {
   const state = await seedPending({
-    returnPath: '/channels?filter=mine',
+    returnPath: '/channels/chan-a',
     targetWorkspace: { organizationId: 'org', teamId: 'team' },
   })
   let resolveReady: ((state: AuthSessionState) => void) | undefined
@@ -114,7 +129,7 @@ test('target recovery waits for source restoration and never calls login', async
   assert.deepEqual(await completion, {
     claimed: true,
     outcome: 'completed',
-    returnPath: '/channels?filter=mine',
+    returnPath: '/channels',
   })
   assert.deepEqual(events, ['recovery'])
 })
@@ -147,10 +162,36 @@ test('target cancellation and provider error preserve the stored route', async (
       returnPath: '/knowledge-base',
       targetWorkspace: { organizationId: 'org', teamId: 'team' },
     })
-    const result = await complete({ callback })
+    let exchanges = 0
+    const result = await complete({
+      callback,
+      login: async () => { exchanges += 1 },
+      recovery: async () => {
+        exchanges += 1
+        return payload()
+      },
+    })
+    // Nothing changed, so the person stays exactly where they were standing.
     assert.equal(result.returnPath, '/knowledge-base')
+    assert.equal(exchanges, 0)
     assert.equal(readPendingExternalAuth(), null)
   }
+})
+
+test('a failed targeted exchange returns to the originating route', async () => {
+  const state = await seedPending({
+    returnPath: '/channels/chan-a/threads/t-1',
+    targetWorkspace: { organizationId: 'org', teamId: 'team' },
+  })
+  const result = await complete({
+    callback: envelope('code', state).callback,
+    recovery: async () => { throw new Error('upstream refused') },
+  })
+  assert.equal(result.outcome, 'failed')
+  assert.equal(
+    result.outcome === 'failed' ? result.returnPath : null,
+    '/channels/chan-a/threads/t-1',
+  )
 })
 
 test('exchange errors are bounded and unsafe return paths fall back safely', async () => {

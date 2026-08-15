@@ -58,8 +58,14 @@ export const completeExternalAuthCallback = async (input: {
   const claim = claimPendingExternalAuth(callback.state)
   if (claim.kind === 'absent') return { claimed: false, outcome: 'ignored' }
 
-  const successPath = safeReturnPath(claim.pending.returnPath, DEFAULT_RETURN_PATH)
-  const failurePath = claim.pending.targetWorkspace ? successPath : LOGIN_PATH
+  // The captured route is where switching began. A *successful* switch rescopes
+  // the session, and the old workspace's channels, threads and documents do not
+  // exist in the new one — returning there lands on not-found, so a completed
+  // switch goes to the home every workspace has. Cancel or failure changed
+  // nothing, so the person stays exactly where they were standing.
+  const capturedPath = safeReturnPath(claim.pending.returnPath, DEFAULT_RETURN_PATH)
+  const successPath = claim.pending.targetWorkspace ? DEFAULT_RETURN_PATH : capturedPath
+  const failurePath = claim.pending.targetWorkspace ? capturedPath : LOGIN_PATH
   if (claim.kind === 'state-mismatch') {
     return {
       claimed: false,

@@ -346,9 +346,13 @@ Claims:
   proof-gap answers (`INTERACTION_REQUIRED`, `NO_REFRESH_TOKEN`,
   `INVALID_REFRESH_TOKEN`, and `WORKSPACE_SWITCH_REAUTH_REQUIRED`) enter the
   same exact-target in-app reauthorization flow. The current Nessie session is
-  retained: only the UOA proof step opens the system browser, and its callback
-  returns to the route where switching began. Cancellation, provider failure,
-  or a target mismatch never logs out or applies a different workspace.
+  retained: only the UOA proof step opens the system browser. A **successful**
+  reauthorized switch lands on `/channels`, exactly as a silent switch does —
+  the session is now scoped to the target workspace, where the originating
+  channel, thread, or document route does not exist. The route where switching
+  began is captured for the unhappy path only: cancellation, provider failure,
+  or a target mismatch returns there with the session untouched, because
+  nothing changed. None of them ever logs out or applies a different workspace.
   After UOA accepts a switch, transient local materialization failures retain
   the intent for exact replay, while a permanent local binding collision
   revokes the now-unrecoverable source family rather than retaining a consumed
