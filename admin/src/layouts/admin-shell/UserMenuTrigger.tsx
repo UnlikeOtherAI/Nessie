@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { useMyAvatarRevision } from '../../facades/auth/hooks'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useUserPresence } from '../../providers/PresenceProvider'
@@ -31,6 +32,9 @@ export const UserMenuTrigger = ({
   showFeedbackLink = false,
 }: UserMenuTriggerProps) => {
   const { me, token } = useAuthSession()
+  // Follows a profile-photo change made on the settings page: the relay URL is
+  // fixed, so without this the account button keeps the browser-cached image.
+  const avatarRevision = useMyAvatarRevision()
   const selfPresence = useUserPresence(me?.user.id)
   const avatarButtonRef = useRef<HTMLButtonElement>(null)
   const { close, isOpen: menuOpen, toggle } = useTransientMenu()
@@ -49,7 +53,7 @@ export const UserMenuTrigger = ({
     ;(window as NativePhoneAccountWindow).ReactNativeWebView?.postMessage(
       JSON.stringify({
         type: 'nessie:account',
-        userAvatarUrl: me.user.avatarUrl ?? me.user.gravatarUrl ?? null,
+        userAvatarUrl: me.user.avatarUrl ?? null,
         userName: me.user.displayName,
         userPresence: selfPresence?.state ?? 'offline',
         userStatusEmoji: selfPresence?.statusEmoji ?? null,
@@ -81,7 +85,7 @@ export const UserMenuTrigger = ({
           avatarAttachmentId={me.user.avatarAttachmentId}
           avatarUrl={me.user.avatarUrl}
           displayName={me.user.displayName}
-          gravatarUrl={me.user.gravatarUrl}
+          revision={avatarRevision}
           ringColor={ringColor}
           showPresence
           showStatus

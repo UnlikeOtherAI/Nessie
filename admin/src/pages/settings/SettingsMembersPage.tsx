@@ -58,7 +58,6 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
             avatarUrl={user.avatarUrl ?? undefined}
             className={deactivated ? 'opacity-60' : undefined}
             displayName={user.displayName}
-            gravatarUrl={user.gravatarUrl ?? undefined}
             size={40}
             token={token}
             userId={user.id}

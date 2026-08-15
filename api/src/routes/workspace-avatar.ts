@@ -2,16 +2,13 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
+import { readAvatarUpload, sendAvatarRelayError } from './avatar-upload.js'
 import { sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
 import {
-  ALLOWED_AVATAR_UPLOAD_TYPES,
   deleteUoaWorkspaceAvatar,
   fetchUoaWorkspaceAvatar,
-  MAX_AVATAR_UPLOAD_BYTES,
   putUoaWorkspaceAvatar,
   resolveUoaWorkspace,
-  UoaAvatarRejectedError,
-  UoaAvatarUnavailableError,
   type UoaWorkspace,
 } from '../services/uoa-avatar.js'
 import type { RouteDeps } from './types.js'
@@ -75,34 +72,12 @@ const requireWorkspaceAdmin = (
   return allowed
 }
 
-/** @fastify/multipart's over-the-limit signal from `toBuffer()`. */
-const isFileTooLargeError = (error: unknown): boolean =>
-  typeof error === 'object'
-  && error !== null
-  && (error as { code?: unknown }).code === 'FST_REQ_FILE_TOO_LARGE'
-
-/** Map a relay failure onto the API's error envelope. Returns true if handled. */
 const sendRelayError = (
   request: FastifyRequest,
   reply: FastifyReply,
   error: unknown,
-): boolean => {
-  if (error instanceof UoaAvatarRejectedError) {
-    sendApiError(reply, error.statusCode, 'WORKSPACE_AVATAR_REJECTED', error.message)
-    return true
-  }
-  if (error instanceof UoaAvatarUnavailableError) {
-    request.log.warn({ err: error }, 'uoa workspace avatar relay failed')
-    sendApiError(
-      reply,
-      502,
-      'UOA_AVATAR_UNAVAILABLE',
-      'The UnlikeOtherAI avatar service is temporarily unavailable',
-    )
-    return true
-  }
-  return false
-}
+): boolean =>
+  sendAvatarRelayError(request, reply, error, 'WORKSPACE_AVATAR_REJECTED')
 
 const relayWorkspaceAvatar = async (
   request: FastifyRequest,
@@ -164,53 +139,11 @@ export const registerWorkspaceAvatarRoutes = (
     const workspace = await requireWorkspace(deps, actorContext, reply)
     if (!workspace) return reply
 
-    const file = await request.file({ limits: { fileSize: MAX_AVATAR_UPLOAD_BYTES } })
-    if (!file) {
-      sendApiError(reply, 400, 'NO_FILE', 'No file part found in the upload')
-      return reply
-    }
-
-    const mime = (file.mimetype || '').split(';')[0]?.trim().toLowerCase() ?? ''
-    if (!ALLOWED_AVATAR_UPLOAD_TYPES.has(mime)) {
-      sendApiError(
-        reply,
-        415,
-        'UNSUPPORTED_IMAGE_TYPE',
-        'The workspace avatar must be a PNG, JPEG or WebP image',
-      )
-      return reply
-    }
-
-    // Bounded by the multipart limit above, so this buffers at most 1 MiB —
-    // UOA's own ceiling. Nothing is stored on the Nessie side.
-    let body: Buffer | null = null
-    try {
-      body = await file.toBuffer()
-    } catch (error) {
-      // Past the limit the plugin throws rather than returning a truncated
-      // buffer; `truncated` covers the configurations where it does not.
-      if (!isFileTooLargeError(error)) throw error
-    }
-    if (!body || file.file.truncated) {
-      sendApiError(
-        reply,
-        413,
-        'FILE_TOO_LARGE',
-        `The workspace avatar must be under ${MAX_AVATAR_UPLOAD_BYTES} bytes`,
-      )
-      return reply
-    }
-    if (body.byteLength === 0) {
-      sendApiError(reply, 400, 'EMPTY_FILE', 'The uploaded image is empty')
-      return reply
-    }
+    const image = await readAvatarUpload(request, reply, 'workspace avatar')
+    if (!image) return reply
 
     try {
-      const written = await putUoaWorkspaceAvatar(workspace.externalTeamId, {
-        body,
-        contentType: mime,
-        filename: file.filename || 'avatar',
-      })
+      const written = await putUoaWorkspaceAvatar(workspace.externalTeamId, image)
       if (!written) {
         return sendAvatarNotFound(reply, NO_WORKSPACE_MESSAGE)
       }

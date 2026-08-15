@@ -122,25 +122,13 @@ export const registerAuthLoginRoute = (
           return reply
         }
         // The workspace context already resolved the one principal (by subject
-        // on the UOA path) — load the session user by that id, never by email.
-        let sessionUser = await loadSessionUserById(prisma, context.userId)
+        // on the UOA path) and re-synced the profile mirror from this
+        // exchange's verified claims — load the session user by that id, never
+        // by email, and never repair the stored name here.
+        const sessionUser = await loadSessionUserById(prisma, context.userId)
         if (!sessionUser) {
           sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
           return reply
-        }
-        if (
-          sessionUser.displayName === sessionUser.email
-          && identity.displayName !== sessionUser.displayName
-        ) {
-          await prisma.user.update({
-            where: { id: sessionUser.id },
-            data: { displayName: identity.displayName },
-          })
-          sessionUser = await loadSessionUserById(prisma, context.userId)
-          if (!sessionUser) {
-            sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
-            return reply
-          }
         }
 
         let uoaSessionIdentity: UoaSessionIdentity | undefined

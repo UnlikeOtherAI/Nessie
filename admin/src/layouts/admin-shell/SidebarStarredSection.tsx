@@ -205,7 +205,6 @@ export const SidebarStarredSection = ({
               avatarAttachmentId={person.avatarAttachmentId ?? undefined}
               avatarUrl={person.avatarUrl ?? undefined}
               displayName={person.label}
-              gravatarUrl={person.gravatarUrl ?? undefined}
               presenceRingWidth={nativeTouchShell ? 3 : undefined}
               ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
               showPresence={nativeTouchShell}

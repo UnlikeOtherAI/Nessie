@@ -1,5 +1,6 @@
 import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
 
+import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 // Local principal resolution for SSO logins. UOA principals are keyed by the
@@ -20,10 +21,18 @@ export class UoaSubjectConflictError extends Error {
 
 export type PrincipalIdentityInput = {
   avatarUrl?: string
-  displayName: string
+  // What the provider asserted, if anything. A row created without one is named
+  // by its email address until the provider supplies a name — Nessie does not
+  // manufacture one (see `identity-display.ts`).
+  displayName?: string
   email: string
   uoaSub?: string
 }
+
+// A brand-new row still needs a value in the non-null column. The email address
+// is the honest placeholder: it is what we actually know about the person.
+const initialDisplayName = (input: PrincipalIdentityInput): string =>
+  input.displayName?.trim() || input.email
 
 /**
  * Read-only principal lookup: by stable subject first (UOA path), then by
@@ -69,7 +78,7 @@ const resolvePrincipalUser = async (
     return existing ?? transaction.user.create({
       data: {
         avatarUrl: input.avatarUrl,
-        displayName: input.displayName,
+        displayName: initialDisplayName(input),
         email: input.email,
       },
       select: { id: true },
@@ -102,7 +111,7 @@ const resolvePrincipalUser = async (
   return transaction.user.create({
     data: {
       avatarUrl: input.avatarUrl,
-      displayName: input.displayName,
+      displayName: initialDisplayName(input),
       email: input.email,
       uoaSub: input.uoaSub,
     },
@@ -202,6 +211,13 @@ export const ensureWorkspacePrincipal = async (
   }
   await advisoryLock(transaction, `nessie:uoa-principal:${input.email}`)
   const user = await resolvePrincipalUser(transaction, input)
+  // The profile columns are a mirror of the provider's claims, not a Nessie
+  // record: re-sync them from this exchange's verified assertions so a rename
+  // or a new picture in UOA propagates instead of being frozen at provisioning.
+  await syncProfileMirrorFromClaims(transaction, user.id, {
+    avatarUrl: input.avatarUrl,
+    displayName: input.displayName,
+  })
   await ensureWorkspaceMemberships(transaction, {
     userId: user.id,
     organizationId: input.organizationId,

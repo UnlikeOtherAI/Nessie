@@ -61,7 +61,6 @@ const CommentRow = ({
         avatarAttachmentId={author.avatarAttachmentId}
         avatarUrl={author.avatarUrl}
         displayName={author.displayName}
-        gravatarUrl={author.gravatarUrl}
         size={36}
         token={token}
         userId={author.userId}

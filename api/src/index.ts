@@ -98,6 +98,7 @@ import { registerBoardRoutes } from './routes/board.js'
 import { registerBillingRoutes } from './routes/billing.js'
 import { registerIterationRoutes } from './routes/iterations.js'
 import { registerPresenceRoutes } from './routes/presence.js'
+import { registerProfileAvatarRoutes } from './routes/profile-avatar.js'
 import { registerProjectRoutes } from './routes/projects.js'
 import { registerResourceLockRoutes } from './routes/resource-locks.js'
 import { registerRunRoutes } from './routes/runs.js'
@@ -417,6 +418,7 @@ export const buildApp = async () => {
   registerAlertRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
   registerWorkspaceAvatarRoutes(app, deps)
+  registerProfileAvatarRoutes(app, deps)
   registerFeedbackRoutes(app, deps)
   registerIntegrationRoutes(app, deps)
   registerExternalAgentRoutes(app, deps)

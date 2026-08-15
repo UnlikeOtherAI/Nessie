@@ -163,8 +163,6 @@ export const ChannelMessageRow = ({
           avatarUrl: message.author?.avatarUrl
             ?? (message.userId === meUserId ? meAvatar.avatarUrl : undefined),
           displayName,
-          gravatarUrl: message.author?.gravatarUrl
-            ?? (message.userId === meUserId ? meAvatar.gravatarUrl : undefined),
           id: message.userId,
         }
       : null
@@ -237,7 +235,6 @@ export const ChannelMessageRow = ({
             avatarAttachmentId={message.author?.avatarAttachmentId ?? undefined}
             avatarUrl={message.author?.avatarUrl ?? undefined}
             displayName={displayName}
-            gravatarUrl={message.author?.gravatarUrl ?? undefined}
             size={36}
             token={token}
             userId={message.author?.id}
@@ -248,7 +245,6 @@ export const ChannelMessageRow = ({
           avatarAttachmentId={message.author?.avatarAttachmentId ?? undefined}
           avatarUrl={message.author?.avatarUrl ?? undefined}
           displayName={displayName}
-          gravatarUrl={message.author?.gravatarUrl ?? undefined}
           size={36}
           token={token}
           userId={message.author?.id}

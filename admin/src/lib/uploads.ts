@@ -56,10 +56,12 @@ export const uploadAttachment = async (
   return payload.data
 }
 
-// Multipart PUT of the workspace ("company") avatar. Like uploadAttachment this
-// bypasses the JSON ApiClient because it cannot send FormData; unlike it, the
-// bytes are relayed straight to UnlikeOtherAI and never stored by Nessie.
-export const uploadWorkspaceAvatar = async (
+// Multipart PUT of an UnlikeOtherAI-hosted avatar — the workspace ("company")
+// picture or the signed-in person's own profile photo. Like uploadAttachment
+// this bypasses the JSON ApiClient because it cannot send FormData; unlike it,
+// the bytes are relayed straight to UnlikeOtherAI and never stored by Nessie.
+const uploadRelayedAvatar = async (
+  path: string,
   file: File,
   token: string | null,
 ): Promise<void> => {
@@ -71,7 +73,7 @@ export const uploadWorkspaceAvatar = async (
     headers.set('authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(`${getBaseUrl()}/api/workspace/avatar`, {
+  const response = await fetch(`${getBaseUrl()}${path}`, {
     body: form,
     headers,
     method: 'PUT',
@@ -86,6 +88,13 @@ export const uploadWorkspaceAvatar = async (
     )
   }
 }
+
+export const uploadWorkspaceAvatar = (file: File, token: string | null): Promise<void> =>
+  uploadRelayedAvatar('/api/workspace/avatar', file, token)
+
+/** Replace the signed-in person's UnlikeOtherAI-hosted profile photo. */
+export const uploadMyUoaAvatar = (file: File, token: string | null): Promise<void> =>
+  uploadRelayedAvatar('/api/auth/me/avatar/uoa', file, token)
 
 // URL the browser can use to fetch attachment bytes (image preview / download).
 export const attachmentUrl = (id: string): string => `${getBaseUrl()}/api/attachments/${id}`

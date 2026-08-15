@@ -12,7 +12,6 @@ export type MessageUserIdentity = {
   avatarAttachmentId?: string | null
   avatarUrl?: string | null
   displayName: string
-  gravatarUrl?: string | null
   id: string
 }
 

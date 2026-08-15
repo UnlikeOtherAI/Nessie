@@ -107,7 +107,6 @@ const ConversationOverview = ({
                 avatarUrl={person.avatarUrl ?? undefined}
                 className="ring-2 ring-[color:var(--main)]"
                 displayName={person.displayName}
-                gravatarUrl={person.gravatarUrl ?? undefined}
                 key={person.id}
                 size={28}
                 token={null}

@@ -18,7 +18,6 @@ export type SidebarPerson = {
   style: CSSProperties
   avatarUrl?: string | null
   avatarAttachmentId?: string | null
-  gravatarUrl?: string | null
 }
 export type SidebarAgentDm = {
   dmChannelId: string

@@ -94,7 +94,6 @@ export const UserMenuPopover = ({
             avatarAttachmentId={user.avatarAttachmentId}
             avatarUrl={user.avatarUrl}
             displayName={user.displayName}
-            gravatarUrl={user.gravatarUrl}
             ringColor="var(--panel)"
             showPresence
             showStatus

@@ -41,7 +41,6 @@ const toAvatarSources = (
 ): AvatarSources => ({
   avatarAttachmentId: user.avatarAttachmentId ?? undefined,
   avatarUrl: user.avatarUrl ?? undefined,
-  gravatarUrl: user.gravatarUrl ?? undefined,
   userId: user.id,
 })
 
@@ -72,7 +71,6 @@ export const ChannelUserInfoDrawer = ({
       avatarAttachmentId: fullUser?.avatarAttachmentId ?? target.avatarAttachmentId,
       avatarUrl: fullUser?.avatarUrl ?? target.avatarUrl,
       email: fullUser?.email,
-      gravatarUrl: fullUser?.gravatarUrl ?? target.gravatarUrl,
       role: fullUser?.role,
       displayName: fullUser?.displayName ?? target.displayName,
     }

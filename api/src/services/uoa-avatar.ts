@@ -63,6 +63,8 @@ export const ALLOWED_AVATAR_UPLOAD_TYPES = new Set([
 
 export type UoaAvatarPrisma = Pick<PrismaClient, 'productAccountLink'>
 
+export type UoaUserPrisma = Pick<PrismaClient, 'user'>
+
 export type UoaWorkspacePrisma = Pick<PrismaClient, 'team'>
 
 export type UoaAvatarImage = {
@@ -131,6 +133,24 @@ export const resolveUoaAvatarSubject = async (
     select: { status: true, uoaSub: true },
   })
   return link?.status === 'linked' && link.uoaSub ? link.uoaSub : null
+}
+
+/**
+ * The acting user's OWN stable UOA subject, or null when this account is not a
+ * UOA principal. Read from `User.uoaSub` — the subject a UOA login is keyed by
+ * — and never from anything in the request: the `/domain/*` mutations apply no
+ * check of their own, so a caller-supplied subject would let anyone rewrite any
+ * person's picture in the whole UOA domain.
+ */
+export const resolveOwnUoaSubject = async (
+  prisma: UoaUserPrisma,
+  userId: string,
+): Promise<string | null> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { uoaSub: true },
+  })
+  return user?.uoaSub ?? null
 }
 
 /**
@@ -329,53 +349,81 @@ export const fetchUoaWorkspaceAvatar = async (
   )
 }
 
-/**
- * Replace a workspace's uploaded avatar. UOA decides the stored type by
- * magic-byte sniffing, so the declared type here is a hint, not a promise.
- * Returns false when UOA is not configured (nothing to write to).
- */
-export const putUoaWorkspaceAvatar = async (
-  externalTeamId: string,
-  image: { body: Buffer; contentType: string; filename: string },
-  deps: UoaAvatarDeps = {},
-): Promise<boolean> => {
-  const settings = avatarSettings()
-  if (!settings) {
-    return false
-  }
+export type UoaAvatarUpload = { body: Buffer; contentType: string; filename: string }
+
+/** UOA wants exactly one multipart part, named `file`. */
+const avatarUploadForm = (image: UoaAvatarUpload): FormData => {
   const form = new FormData()
   form.append(
     'file',
     new Blob([image.body], { type: image.contentType }),
     image.filename,
   )
-  await mutateAvatar(
-    settings,
-    `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`,
-    { method: 'PUT', body: form },
-    deps,
-  )
-  return true
+  return form
 }
 
 /**
- * Clear a workspace's uploaded avatar; UOA falls resolution back to the team's
- * `iconUrl` or the generated image. Idempotent. Returns false when UOA is not
- * configured.
+ * Replace an uploaded avatar. UOA decides the stored type by magic-byte
+ * sniffing, so the declared type here is a hint, not a promise. Returns false
+ * when UOA is not configured (nothing to write to).
  */
-export const deleteUoaWorkspaceAvatar = async (
-  externalTeamId: string,
-  deps: UoaAvatarDeps = {},
+const putAvatar = async (
+  path: string,
+  image: UoaAvatarUpload,
+  deps: UoaAvatarDeps,
 ): Promise<boolean> => {
   const settings = avatarSettings()
   if (!settings) {
     return false
   }
-  await mutateAvatar(
-    settings,
-    `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`,
-    { method: 'DELETE' },
-    deps,
-  )
+  await mutateAvatar(settings, path, { method: 'PUT', body: avatarUploadForm(image) }, deps)
   return true
 }
+
+/**
+ * Clear an uploaded avatar; UOA falls resolution back to the provider picture /
+ * team icon or its generated image. Idempotent. Returns false when UOA is not
+ * configured.
+ */
+const deleteAvatar = async (path: string, deps: UoaAvatarDeps): Promise<boolean> => {
+  const settings = avatarSettings()
+  if (!settings) {
+    return false
+  }
+  await mutateAvatar(settings, path, { method: 'DELETE' }, deps)
+  return true
+}
+
+const workspaceAvatarPath = (externalTeamId: string): string =>
+  `/domain/teams/${encodeURIComponent(externalTeamId)}/avatar`
+
+const userAvatarPath = (uoaSub: string): string =>
+  `/domain/users/${encodeURIComponent(uoaSub)}/avatar`
+
+export const putUoaWorkspaceAvatar = (
+  externalTeamId: string,
+  image: UoaAvatarUpload,
+  deps: UoaAvatarDeps = {},
+): Promise<boolean> => putAvatar(workspaceAvatarPath(externalTeamId), image, deps)
+
+export const deleteUoaWorkspaceAvatar = (
+  externalTeamId: string,
+  deps: UoaAvatarDeps = {},
+): Promise<boolean> => deleteAvatar(workspaceAvatarPath(externalTeamId), deps)
+
+/**
+ * Replace the UOA-hosted picture for one person. The subject must be the acting
+ * user's own (`resolveOwnUoaSubject`): this is the full-trust domain-hash path,
+ * so Nessie's own gate is the only thing scoping the write to that person.
+ */
+export const putUoaUserAvatar = (
+  uoaSub: string,
+  image: UoaAvatarUpload,
+  deps: UoaAvatarDeps = {},
+): Promise<boolean> => putAvatar(userAvatarPath(uoaSub), image, deps)
+
+/** Clear one person's uploaded UOA picture; UOA falls back to its own chain. */
+export const deleteUoaUserAvatar = (
+  uoaSub: string,
+  deps: UoaAvatarDeps = {},
+): Promise<boolean> => deleteAvatar(userAvatarPath(uoaSub), deps)

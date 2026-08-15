@@ -264,7 +264,6 @@ export const ChannelConversationSurface = ({
               meAvatar={{
                 avatarAttachmentId: me.user.avatarAttachmentId,
                 avatarUrl: me.user.avatarUrl,
-                gravatarUrl: me.user.gravatarUrl,
               }}
               meDisplayName={me.user.displayName}
               meUserId={me.user.id}

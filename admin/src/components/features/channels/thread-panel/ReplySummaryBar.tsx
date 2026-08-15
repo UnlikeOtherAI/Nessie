@@ -60,7 +60,6 @@ export const ReplySummaryBar = ({
                   avatarUrl={participant.avatarUrl ?? undefined}
                   className="ring-2 ring-[color:var(--main)]"
                   displayName={participant.displayName}
-                  gravatarUrl={participant.gravatarUrl ?? undefined}
                   size={20}
                   token={token}
                   userId={participant.userId}

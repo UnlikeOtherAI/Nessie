@@ -336,7 +336,6 @@ export const ChannelConversationComposePage = () => {
                       avatarAttachmentId={option.user.avatarAttachmentId ?? undefined}
                       avatarUrl={option.user.avatarUrl ?? undefined}
                       displayName={option.user.displayName}
-                      gravatarUrl={option.user.gravatarUrl ?? undefined}
                       size={24}
                       token={token}
                       userId={option.user.id}

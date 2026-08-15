@@ -119,7 +119,6 @@ export const useReplyThread = ({
           avatarAttachmentId: user.avatarAttachmentId,
           avatarUrl: user.avatarUrl,
           displayName: user.displayName,
-          gravatarUrl: user.gravatarUrl,
         }
       }
       const agent = agentMap.get(participantId)

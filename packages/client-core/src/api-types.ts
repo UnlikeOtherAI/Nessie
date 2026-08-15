@@ -141,7 +141,6 @@ export type UserRecord = {
   activeStatus?: UserActiveStatus | null
   avatarUrl?: string | null
   avatarAttachmentId?: string | null
-  gravatarUrl?: string | null
   updatedAt: string
 }
 
@@ -243,7 +242,6 @@ export type MessageAuthor = {
   displayName: string
   avatarUrl?: string | null
   avatarAttachmentId?: string | null
-  gravatarUrl?: string | null
 }
 
 export type ThreadMessageRecord = {

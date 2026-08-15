@@ -179,7 +179,9 @@ const withTokenResponse = async <T>(
   }
 }
 
-test('exchangeUoaCode humanizes email-only identities', async () => {
+test('exchangeUoaCode reports no name when UOA asserted none', async () => {
+  // Nothing is manufactured from the address any more: UOA owns the profile,
+  // so an absent name claim leaves the local mirror alone.
   await withUoaEnv(async () => {
     await withTokenResponse({ email: 'ada.lovelace@example.com' }, async () => {
       const identity = await exchangeUoaCode({
@@ -188,7 +190,7 @@ test('exchangeUoaCode humanizes email-only identities', async () => {
         redirectUri: uoaEnv.UOA_REDIRECT_URL,
       }, safeFetchTestOptions)
 
-      assert.equal(identity.displayName, 'Ada Lovelace')
+      assert.equal(identity.displayName, undefined)
       assert.equal(identity.email, 'ada.lovelace@example.com')
     })
   })
@@ -411,6 +413,8 @@ test('multi-team UOA sessions require an explicit active team', () => {
 })
 
 test('exchangeUoaCode ignores a name claim that is just the email address', async () => {
+  // Echoing the address is not an assertion about the person's name, so it
+  // must not overwrite a real name on the next profile sync.
   await withUoaEnv(async () => {
     await withTokenResponse({
       email: 'ada.lovelace@example.com',
@@ -422,7 +426,7 @@ test('exchangeUoaCode ignores a name claim that is just the email address', asyn
         redirectUri: uoaEnv.UOA_REDIRECT_URL,
       }, safeFetchTestOptions)
 
-      assert.equal(identity.displayName, 'Ada Lovelace')
+      assert.equal(identity.displayName, undefined)
     })
   })
 })

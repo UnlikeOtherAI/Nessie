@@ -501,6 +501,44 @@ single-workspace users carry no `active` claim and
 land in their existing/default team, unchanged. See
 [docs/plans/2026-07-10-slack-workspace-login-nessie.md](plans/2026-07-10-slack-workspace-login-nessie.md).
 
+**The profile columns are a non-authoritative mirror, re-synced from verified
+claims.** UOA owns the profile of every principal that signs in through it;
+`User.displayName` and `User.avatarUrl` exist only so a name and a picture can
+be rendered without a round trip per row. Three consequences:
+
+- **Nothing manufactures a profile.** `resolveIdentityDisplayName` returns the
+  name the provider actually asserted or nothing at all — a candidate that
+  merely echoes the email address is not an assertion — and a brand-new row is
+  named by its email address until the provider supplies a name. The old
+  `/api/auth/me` synthesizer, which derived "Ada Lovelace" from
+  `ada.lovelace@example.com` and persisted it on **every** call, is deleted;
+  `buildMeResponse` now writes nothing at all.
+- **Every exchange that carries verified claims re-syncs the mirror**
+  (`api/src/services/uoa-profile-mirror.ts` `syncProfileMirrorFromClaims`):
+  SSO login and workspace-switch materialization through
+  `ensureWorkspacePrincipal`, and ordinary session refresh through the UOA
+  refresh coordinator (best-effort there — a display-data write must never
+  break session renewal). Only fields the provider asserted are written, and
+  only when they differ, so a provider that sends no picture claim leaves the
+  mirror alone rather than blanking it. The narrow "stored name equals the
+  email" repair in `auth-login.ts` is replaced by this general sync.
+- **The picture follows the same authority.** Client precedence is UOA relay →
+  local upload → provider `picture` → initials, and Gravatar is gone from the
+  chain and from the API contract entirely (it was derived from the email —
+  UOA's data — and leaked a hash of every member's address to a third party for
+  a fallback initials already cover). A UOA session's
+  `PATCH /api/auth/me/avatar` is refused with `403 PROFILE_MANAGED_BY_SSO`; it
+  changes the photo at the source through
+  `PUT`/`DELETE /api/auth/me/avatar/uoa`, which relays multipart bytes to UOA
+  `/domain/users/:uoaSub/avatar` using the acting user's own `User.uoaSub` —
+  never a subject from the request, because the domain-hash bearer is full
+  system trust and applies no per-person check upstream. The local-attachment
+  path is unchanged for deployments with no UOA.
+
+Dropping the columns outright (and serving the profile from a bounded in-memory
+UOA-backed read) is the remaining step of Phase 3 in
+[docs/plans/2026-08-14-uoa-sso-gap-analysis.md](plans/2026-08-14-uoa-sso-gap-analysis.md).
+
 UOA billing may return `401` when the actor epoch has advanced. The API
 preserves that status, and the shared browser client performs exactly one
 single-flight cookie renewal and one request retry. A second `401` or a rejected

@@ -749,11 +749,21 @@ model User {
   // until the next login adopts it (or fails closed on a conflict). Email
   // remains unique but is no longer an identity join key on the UOA path.
   uoaSub                              String?                         @unique @map("uoa_sub")
+  // NON-AUTHORITATIVE MIRROR of the identity provider's profile. UOA owns the
+  // profile of every SSO principal; these columns exist only so a name and a
+  // picture can be rendered without a round trip per row, and they are re-synced
+  // from the provider's verified claims at login, workspace switch, and session
+  // refresh (`api/src/services/uoa-profile-mirror.ts`). Nothing manufactures a
+  // value: a row the provider has not named carries its email address until it
+  // does. Dropping the columns for UOA deployments is Phase 3's later step (see
+  // docs/plans/2026-08-14-uoa-sso-gap-analysis.md).
   displayName                         String                          @map("display_name")
   passwordHash                        String?                         @map("password_hash")
-  // Provider-supplied avatar (e.g. the Google OIDC `picture` claim), captured at
-  // provisioning. `avatarAttachmentId` is a user-uploaded custom avatar that, when
-  // present, overrides this. Gravatar (derived from `email`) is the next fallback.
+  // Provider-supplied avatar (e.g. the Google OIDC `picture` claim) — part of the
+  // same mirror. `avatarAttachmentId` is a locally uploaded picture, reachable
+  // only in deployments with no UOA (a UOA session's `PATCH /api/auth/me/avatar`
+  // is refused and its picture lives in UOA). Client precedence: UOA relay >
+  // local attachment > this > initials.
   avatarUrl                           String?                         @map("avatar_url")
   avatarAttachmentId                  String?                         @map("avatar_attachment_id") @db.Uuid
   pronouns                            String?

@@ -260,6 +260,38 @@ avatar-relay pattern) behind a **bounded in-memory TTL cache**. Decide
 `pronouns`/avatar upload per ambiguity 6. Migration drops the columns for
 UOA deployments (local mode keeps them per the Phase 0 decision).
 
+> **Status (2026-08-15): step 1 landed, column drop pending** on branch
+> `task/uoa-profile-authority`. Local profile *authority* is gone while the
+> columns remain, now documented in `schema.prisma` as a non-authoritative
+> mirror:
+> - **The synthesizer is deleted.** `buildMeResponse` no longer manufactures a
+>   name from the email local part (nor persists one on every `/api/auth/me` —
+>   it now writes nothing), and `resolveIdentityDisplayName` returns only what
+>   the provider asserted, `undefined` otherwise. `humanizeEmailLocalPart`,
+>   `isEmailLikeDisplayName`, and `resolveStoredDisplayName` are gone. A row
+>   the provider has not named carries its email address.
+> - **The mirror re-syncs from verified claims** — one function
+>   (`api/src/services/uoa-profile-mirror.ts`), called from
+>   `ensureWorkspacePrincipal` (SSO login **and** workspace-switch
+>   materialization) and from the UOA refresh coordinator (best-effort; a
+>   display-data write must never break renewal). Only asserted fields, only
+>   when they differ. The narrow "stored name equals the email" repair in
+>   `auth-login.ts` is replaced by it.
+> - **Avatar authority moved.** Client precedence is UOA relay → local upload →
+>   provider `picture` → initials; **Gravatar is removed entirely** (chain,
+>   `buildGravatarUrl`, and the `gravatarUrl` field on every API record). A UOA
+>   session's `PATCH /api/auth/me/avatar` answers `403 PROFILE_MANAGED_BY_SSO`,
+>   and `PUT`/`DELETE /api/auth/me/avatar/uoa` relay to
+>   `/domain/users/:uoaSub/avatar` using the actor's own `User.uoaSub` (never a
+>   request-supplied subject), reusing the `uoa-avatar.ts` transport and a
+>   shared multipart/relay-error module with the workspace-avatar route. The
+>   profile panel routes by `me.auth.providerType`.
+>
+> Deliberately **not** done here: the columns still exist and `email` is
+> unchanged, there is no in-memory profile directory or UOA-backed profile
+> read, `pronouns` is untouched (ambiguity 6 still open for it), and roles /
+> rosters / the workspace-directory cache belong to phases 4–6.
+
 **Phase 4 — roles and membership from UOA.** Map the (currently discarded)
 `org_role` claim; re-resolve team role at every session refresh (the refresh
 path already re-resolves membership — swap its source to the signed UOA

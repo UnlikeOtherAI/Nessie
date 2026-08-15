@@ -237,10 +237,10 @@ export const UserRecordSchema = z.object({
   channelIds: z.array(ChannelIdSchema),
   activeStatus: UserActiveStatusSchema.nullable().optional(),
   // Avatar sources so member/people lists can render real profile pictures
-  // (same precedence as MessageAuthor: custom attachment > provider > Gravatar).
+  // (same precedence as MessageAuthor: UnlikeOtherAI > custom attachment >
+  // provider picture > initials).
   avatarUrl: z.string().nullish(),
   avatarAttachmentId: z.string().uuid().nullish(),
-  gravatarUrl: z.string().nullish(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
