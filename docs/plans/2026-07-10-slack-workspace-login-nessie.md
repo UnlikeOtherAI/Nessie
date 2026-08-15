@@ -1,6 +1,16 @@
 # Slack-style workspace login → Nessie environments
 
-> **Status:** Implemented (2026-07-10).
+> **Status:** Implemented (2026-07-10). **Model decision superseded
+> 2026-08-15:** the "one shared Nessie Organization" mapping below is retired —
+> each UOA organisation now maps 1:1 to its own local `Organization`
+> (`Organization.externalOrgId`), with the workspace Project/Team materialized
+> inside it. The decision below was made when UOA was one-org-per-user; UOA's
+> ReBAC model made organisations first-class and multi-per-user. Current
+> authoritative description:
+> `docs/deployment-modes-and-auth-spec/authentication.md` → "UOA organisations
+> → Nessie Organizations, workspaces → Teams". The workspace-chooser flow,
+> `Team.externalWorkspaceId` binding, switch routes, and directory-cache notes
+> below remain accurate.
 > **Scope:** `api/` (auth routing, workspace provisioning, UOA config JWT, schema),
 > `admin/` (workspace switcher), `packages/client-core` (serialized session
 > mutation and workspace-switch clients).

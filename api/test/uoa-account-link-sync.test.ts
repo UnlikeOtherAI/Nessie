@@ -79,8 +79,15 @@ test('account-link sync updates every first-party product under one transaction'
   clearUoaWorkspaceDirectoryCache()
   const persistedMetadata: Array<Record<string, unknown>> = []
   const statements: string[] = []
+  const orgNameWrites: Array<{ where: unknown; data: unknown }> = []
   let transactionCalls = 0
   const prisma = {
+    organization: {
+      updateMany: async (input: { where: unknown; data: unknown }) => {
+        orgNameWrites.push(input)
+        return { count: 1 }
+      },
+    },
     $queryRaw: async (query: unknown) => {
       assert.match(sqlText(query), /ORDER BY "slug" ASC/)
       return [{ slug: 'deep-water' }, { slug: 'nessie' }]
@@ -116,6 +123,12 @@ test('account-link sync updates every first-party product under one transaction'
     readUoaWorkspaceDirectory(syncInput.userId),
     syncInput.workspaceDirectory,
   )
+  // Organization.name is a non-authoritative mirror of UOA's orgName: the
+  // directory-carried name is written onto the matching externalOrgId row.
+  assert.deepEqual(orgNameWrites, [{
+    where: { externalOrgId: 'uoa-org', name: { not: 'Example organization' } },
+    data: { name: 'Example organization' },
+  }])
   clearUoaWorkspaceDirectoryCache()
   for (const statement of statements) {
     assert.match(statement, /"uoa_sub" = EXCLUDED\."uoa_sub"/)
