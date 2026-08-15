@@ -8,16 +8,17 @@ import {
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
+import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import {
   fetchUoaUserAvatar,
   resolveUoaAvatarSubject,
   UoaAvatarUnavailableError,
 } from '../services/uoa-avatar.js'
+import { LAST_OWNER_ERROR } from '../services/organization-owner-lock.js'
 import {
   createUserForOrganization,
   getOrganizationMembership,
   getOrganizationUserRecord,
-  LAST_OWNER_ERROR,
   listUsersForOrganization,
   setOrganizationMemberDeactivated,
   updateOrganizationMemberRole,
@@ -139,6 +140,7 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const body = parseInput(UpdateUserRoleBodySchema, request.body, reply)
     if (!body) return reply
@@ -183,6 +185,7 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { userId } = request.params as { userId: string }
     const organizationId = actorContext.tenant.organizationId
@@ -216,6 +219,7 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireOwner(actorContext, reply)) return reply
+    if (!requireLocalMembershipManagement(config.mode, reply)) return reply
 
     const { userId } = request.params as { userId: string }
     const organizationId = actorContext.tenant.organizationId

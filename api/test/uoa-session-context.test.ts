@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 
+import type { ExternalAuthWorkspace } from '../src/services/identity-display.js'
 import {
   advanceUoaLocalSessionBinding,
   rescopeUoaLocalSessionBindingInTransaction,
@@ -46,6 +47,12 @@ class FakeBindingPrisma {
     },
   ]
 
+  // Local membership rows, so the UOA role projection can be observed.
+  orgRole = 'owner'
+  projectRole = 'member'
+  teamRole = 'member'
+  otherActiveOwnerIds: string[] = []
+
   readonly team = {
     findFirst: async (input: {
       where: {
@@ -63,10 +70,40 @@ class FakeBindingPrisma {
         projectId: '00000000-0000-4000-8000-000000000030',
         project: {
           organizationId: '00000000-0000-4000-8000-000000000040',
-          organization: { members: [{ role: 'owner' }] },
+          organization: { members: [{ role: this.orgRole }] },
         },
       }
     },
+  }
+
+  readonly organizationMember = {
+    findUnique: async () => ({ role: this.orgRole }),
+    updateMany: async (input: { data: { role: string } }) => {
+      this.orgRole = input.data.role
+      return { count: 1 }
+    },
+  }
+
+  readonly projectMember = {
+    updateMany: async (input: { data: { role: string } }) => {
+      this.projectRole = input.data.role
+      return { count: 1 }
+    },
+  }
+
+  readonly teamMember = {
+    updateMany: async (input: { data: { role: string } }) => {
+      this.teamRole = input.data.role
+      return { count: 1 }
+    },
+  }
+
+  // The active-owner FOR UPDATE lock behind the projection's last-owner floor.
+  async $queryRaw(): Promise<Array<{ user_id: string }>> {
+    return [
+      ...(this.orgRole === 'owner' ? [{ user_id: USER_ID }] : []),
+      ...this.otherActiveOwnerIds.map((user_id) => ({ user_id })),
+    ]
   }
 
   readonly productAccountLink = {
@@ -269,4 +306,85 @@ test('refresh atomically replaces a verified directory and retains unrelated met
       { retained: 'sibling-two', workspaceDirectory },
     ],
   )
+})
+
+// --- UOA roles are re-projected on every rotation (gap analysis, phase 4) ----
+
+const claimsFor = (orgRole: string, teamRole: string): ExternalAuthWorkspace => ({
+  activeOrgId: IDENTITY.organizationId,
+  activeTeamId: IDENTITY.teamId,
+  orgRole,
+  teamIds: [IDENTITY.teamId],
+  teamRoles: { [IDENTITY.teamId]: teamRole },
+})
+
+test('a refresh projects a UOA demotion onto the local membership', async () => {
+  const fake = new FakeBindingPrisma()
+  // Somebody else still owns the org, so the last-owner floor is not in play.
+  fake.otherActiveOwnerIds = ['00000000-0000-4000-8000-0000000000ff']
+
+  const context = await advanceUoaLocalSessionBinding(fake.asClient(), {
+    nextIdentity: { ...IDENTITY, tokenVersion: 8 },
+    previousIdentity: IDENTITY,
+    userId: USER_ID,
+    workspace: claimsFor('member', 'member'),
+  })
+
+  assert.equal(fake.orgRole, 'member')
+  assert.equal(context.role, 'member')
+})
+
+test('a refresh projects a UOA promotion onto org, project, and team rows', async () => {
+  const fake = new FakeBindingPrisma()
+  fake.orgRole = 'member'
+
+  const context = await advanceUoaLocalSessionBinding(fake.asClient(), {
+    nextIdentity: { ...IDENTITY, tokenVersion: 8 },
+    previousIdentity: IDENTITY,
+    userId: USER_ID,
+    workspace: claimsFor('admin', 'admin'),
+  })
+
+  assert.equal(context.role, 'admin')
+  assert.equal(fake.orgRole, 'admin')
+  assert.equal(fake.projectRole, 'admin')
+  assert.equal(fake.teamRole, 'admin')
+})
+
+test('a refresh never demotes the last active org owner', async () => {
+  const fake = new FakeBindingPrisma()
+
+  const context = await advanceUoaLocalSessionBinding(fake.asClient(), {
+    nextIdentity: { ...IDENTITY, tokenVersion: 8 },
+    previousIdentity: IDENTITY,
+    userId: USER_ID,
+    workspace: claimsFor('member', 'member'),
+  })
+
+  assert.equal(fake.orgRole, 'owner')
+  assert.equal(context.role, 'owner')
+  // Only the org role is floored; the team role still follows UOA.
+  assert.equal(fake.teamRole, 'member')
+})
+
+test('a refresh that carries no role claims changes no local role', async () => {
+  const fake = new FakeBindingPrisma()
+  fake.orgRole = 'admin'
+  fake.teamRole = 'admin'
+
+  const context = await advanceUoaLocalSessionBinding(fake.asClient(), {
+    nextIdentity: { ...IDENTITY, tokenVersion: 8 },
+    previousIdentity: IDENTITY,
+    userId: USER_ID,
+    workspace: {
+      activeOrgId: IDENTITY.organizationId,
+      activeTeamId: IDENTITY.teamId,
+      teamIds: [IDENTITY.teamId],
+      teamRoles: {},
+    },
+  })
+
+  assert.equal(context.role, 'admin')
+  assert.equal(fake.orgRole, 'admin')
+  assert.equal(fake.teamRole, 'admin')
 })

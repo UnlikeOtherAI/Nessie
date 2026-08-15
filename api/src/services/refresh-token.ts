@@ -33,6 +33,7 @@ import {
   type UoaWorkspaceSwitchIntentRecord,
 } from './uoa-workspace-switch-intent.js'
 import type { UoaWorkspaceSwitchTarget } from './uoa-session.js'
+import type { ExternalAuthWorkspace } from './identity-display.js'
 import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 import type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 import {
@@ -69,6 +70,7 @@ type ConsumeInput = UoaRotationCallbacks & {
     identity: UoaSessionIdentity
     refreshToken: string
     refreshTokenExpiresAt: Date
+    workspace?: ExternalAuthWorkspace
     workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   }>
   beforeUoaWorkspaceSwitch?: (input: {
@@ -330,6 +332,7 @@ export const consumeRefreshToken = async (
         now: readClock(),
         refreshToken: refreshed.refreshToken,
         refreshTokenExpiresAt: refreshed.refreshTokenExpiresAt,
+        workspace: refreshed.workspace,
         workspaceDirectory: refreshed.workspaceDirectory,
         ...(workspaceSwitch ? { targetIdentity: workspaceSwitch } : {}),
       })

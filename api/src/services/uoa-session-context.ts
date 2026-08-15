@@ -1,5 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
+import type { ExternalAuthWorkspace } from './identity-display.js'
+import { projectUoaRoles, resolveUoaRoleClaims } from './uoa-roles.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 
@@ -150,6 +152,7 @@ const advanceUoaBindingInTransaction = async (
     nextIdentity: UoaSessionIdentity
     previousIdentity: UoaSessionIdentity
     userId: string
+    workspace?: ExternalAuthWorkspace
     workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   },
   allowWorkspaceRescope: boolean,
@@ -172,7 +175,7 @@ const advanceUoaBindingInTransaction = async (
     )
   }
 
-  const { linkId, ...context } = await loadBinding(
+  const { linkId, ...binding } = await loadBinding(
     transaction as unknown as UoaSessionContextPrisma,
     {
       identity: input.nextIdentity,
@@ -182,6 +185,22 @@ const advanceUoaBindingInTransaction = async (
       userId: input.userId,
     },
   )
+  // The refreshed access token carries the same verified `org_role` /
+  // `team_roles` claims the login exchange did, so a renewal re-projects them
+  // onto the local membership: a UOA demotion lands within one token rotation
+  // instead of waiting for the next interactive sign-in. Claims UOA did not
+  // send project nothing (`uoa-roles.ts`).
+  const projected = await projectUoaRoles(transaction, {
+    claims: resolveUoaRoleClaims(input.workspace, input.nextIdentity.teamId),
+    organizationId: binding.organizationId,
+    projectId: binding.projectId,
+    teamId: binding.teamId,
+    userId: input.userId,
+  })
+  const context: UoaLocalSessionContext = {
+    ...binding,
+    role: projected.orgRole ?? binding.role,
+  }
   const exactFirstPartyLinks = await transaction.productAccountLink.findMany({
     where: {
       organizationId: context.organizationId,
