@@ -4,11 +4,18 @@
 > tree at `7dd1de9e` (main). Three deep sweeps (server auth flow, local
 > identity data model, per-platform clients) plus direct spot-verification of
 > every load-bearing claim.
-> **Update 2026-08-15:** the assessment stands as written; **Phase 1** (local
-> password stack hard-gated to `local` mode — requirement 0.1), **Phase 2**
-> (subject keying — requirement 3c), and **Phase 4** (roles and membership
-> projected from UOA's verified claims — flagged copy 4) have since landed; see
-> each phase entry. Everything else below is still unimplemented.
+> **Update 2026-08-15:** the assessment stands as written except where a row
+> or phase entry says otherwise. Landed since, in merge order: **Phase 1**
+> (local-password stack hard-gated to `local` mode), **Phase 2** (principals
+> keyed by UOA subject), **Phase 6** (directory cache in-memory + avatar-client
+> egress pin), **Phase 4** (roles projected from verified claims; local
+> membership mutators gated), **Phase 7** (targeted workspace reauthorization +
+> one always-mounted callback lifecycle, from the parked
+> `codex/sso-invites-team-switch` series), **Phase 3 step 1** (display-name
+> synthesizer and Gravatar deleted, claim-synced profile mirror, UOA-relayed
+> avatar uploads), and most of **Phase 5** (rosters + invitations on the UOA
+> org API in backend mode). The rows and phase entries carry what shipped and
+> what is left.
 > **Note:** worktrees `.worktrees/sso-invites-team-switch/`,
 > `.worktrees/switch-integration-prepare/`, and
 > `.worktrees/native-logout-timeout/` contain in-flight work directly relevant
@@ -62,9 +69,9 @@ handling is duplicated per platform and only works while logged out.
 | 2c | Never log out on failed/cancelled/unavailable switch | **Implemented (one edge)** | Safe refusals (`WORKSPACE_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, `WORKSPACE_SWITCH_CONFLICT`) preserve the session (`auth-uoa-workspace.ts:21-33`, `uoa-session.ts:327-333`); native cancel normalizes to a benign state (`mobile/src/lib/external-auth-bridge.ts:35-37`); ambiguous failures reconcile through the refresh funnel and can be detected as success (`workspace-switch-recovery.ts:21-25,70-73`). One real logout path: a definitive upstream error revokes the family server-side (`auth-uoa-workspace.ts:126-133` → 401 `WORKSPACE_SWITCH_REAUTH_REQUIRED`) and the client's reconcile then clears the session (`packages/client-core/src/auth-session.ts:138-141`) — defensible (the credential is genuinely dead) but a literal-reading violation to sign off on |
 | 2d | Never apply a returned session unless same subject/provider + exact requested org/team | **Implemented** | Layered: pre-flight `confirmUoaDirectServiceAccess` for the target (`api/src/services/uoa-workspace-switch.ts:49-71`); upstream response check (`uoa-session.ts:405-418`); `validateUoaRefresh` (`api/src/services/refresh-token-uoa.ts:167-182`); materialization re-check (`uoa-workspace-switch.ts:88-95`). Caveat: the materialization guard compares **email**, not sub (`uoa-workspace-switch.ts:96-107`) — see V1 |
 | 2e | One shared PKCE/callback lifecycle across platforms | **Partial → VIOLATES in practice** | PKCE *generation* is genuinely shared (`packages/client-core/src/pkce.ts:5-9,51-95`); redirect URIs allowlisted to exactly two values (`api/src/services/uoa-auth.ts:255-264`). But *callback handling* is three separate listeners in `LoginPage.tsx` (web `:148-157`, RN `:161-200`, Tauri `:202-257`), and the native two bail unless `sessionState === 'unauthenticated'` — so an authenticated "Add a workspace" round-trip works **on web only**; on desktop/native the `nessie://auth/callback` returns to no handler and is silently swallowed (`external-auth-bridge.ts:53-57`). Also: UOA authorize carries no `state` param (CSRF via sessionStorage PKCE, `uoa-auth.ts:322-326`) |
-| 3a | Rosters are SSO API features | **Missing + VIOLATES** | No UOA member-roster call exists anywhere; `/org/me` returns only the signed-in user's own workspaces (`api/src/services/uoa-workspace-directory.ts`). Local substitutes: `GET /api/users` from local rows; `POST /api/teams/:teamId/members` (`api/src/routes/teams.ts:81-130`); project member CRUD (`api/src/routes/projects.ts:240-311`); PA `people_search` reads local users by name/email substring (`worker/src/run/pa-tools/people.ts:17-46`) |
-| 3b | Invitations created/resent/revoked/approved/declined/accepted via SSO; acceptance hosted by SSO | **Missing + VIOLATES** | No invitation model, token, email, or endpoint exists (grep-clean; only agent-mention invites and executor pairing use the word). The substitute is worse: admin Members page submits `{displayName, email, password, role}` to `POST /api/users` (`admin/src/pages/settings/SettingsMembersPage.tsx:141-153`) — account + credential + roster placement with zero UOA involvement and no consent flow |
-| 3c | Match by UOA subject + org/team ids, never local email rows | **VIOLATES** | Principal resolution is `user.findUnique({ where: { email } })` (`api/src/services/workspace-context.ts:379`, `:194-205`); the per-principal advisory lock is keyed on the **email string** (`:190`); `auth-login.ts:120,134` (`loadSessionUserByEmail`); switch guard compares emails (`uoa-workspace-switch.ts:96-107`); super-admin grant by email (`cli/src/super-admin.ts:56-66`). Self-documented takeover risk at `api/src/services/external-auth.ts:209-217`. Correct sub-matching exists only in session/billing paths (`uoa-session-context.ts:102-106`, `packages/runtime/src/uoa-delegated-identity.ts:293-301`) |
+| 3a | Rosters are SSO API features | **Implemented for the workspace roster (2026-08-15)** | `GET /api/workspace/members` (`api/src/routes/workspace-members.ts`) serves the roster live from UOA in backend mode — `GET /org/organisations/:orgId/teams/:teamId` joined with `GET /org/organisations/:orgId/members?status=all` (`api/src/services/uoa-org-roster.ts`), keyed on the UOA subject, nothing persisted; role change / team removal / deactivate / reactivate relay the matching `/org/*` mutations behind Nessie's owner/admin gate (UOA applies none in backend mode). Enabled by `org_features.backend_org_management: true` in the config JWT (`uoa-auth.ts`). **Still local:** `GET /api/users`, `POST /api/teams/:teamId/members`, project member CRUD, and PA `people_search` (`worker/src/run/pa-tools/people.ts`) — previously: No UOA member-roster call exists anywhere; `/org/me` returns only the signed-in user's own workspaces (`api/src/services/uoa-workspace-directory.ts`). Local substitutes: `GET /api/users` from local rows; `POST /api/teams/:teamId/members` (`api/src/routes/teams.ts:81-130`); project member CRUD (`api/src/routes/projects.ts:240-311`); PA `people_search` reads local users by name/email substring (`worker/src/run/pa-tools/people.ts:17-46`) |
+| 3b | Invitations created/resent/revoked/approved/declined/accepted via SSO; acceptance hosted by SSO | **Implemented (2026-08-15), one gap owned by UOA** | `GET/POST /api/workspace/invitations`, `POST /api/workspace/invitations/:inviteId/resend\|approve\|deny` relay UOA's team-invitation contract; acceptance is hosted by UOA and Nessie mints/stores/renders no invitation token. **Revoke does not exist upstream**: UOA's API has no cancel or delete for an invitation already sent — `deny` covers only the member-initiated invites awaiting approval (verified against `/llm` §4.6b/§4.7a and the `/api` endpoint list, 2026-08-15). Shareable invite links are deliberately not surfaced. The admin Members page renders the UOA branch on a UOA session and keeps the local list otherwise. **Not yet removed:** `POST /api/users` and its local Add-member form, which Phase 1 already refuses outside `local` mode (`403 LOCAL_USER_CREATION_DISABLED`) and the Members page no longer reaches on a UOA session — previously: No invitation model, token, email, or endpoint exists (grep-clean; only agent-mention invites and executor pairing use the word). The substitute is worse: admin Members page submits `{displayName, email, password, role}` to `POST /api/users` (`admin/src/pages/settings/SettingsMembersPage.tsx:141-153`) — account + credential + roster placement with zero UOA involvement and no consent flow |
+| 3c | Match by UOA subject + org/team ids, never local email rows | **Largely fixed 2026-08-15** | Phase 2 keyed principals on `User.uoaSub` (`api/src/services/workspace-principal.ts`, email kept only as the one-time adoption bridge), and the roster and invitation routes added the same day take the UOA subject in the path and resolve the workspace from `Team.externalOrgId`/`externalWorkspaceId` only. Remaining email-keyed paths are the adoption bridge itself and the CLI super-admin grant. Originally: principal resolution was `user.findUnique({ where: { email } })` (`api/src/services/workspace-context.ts:379`, `:194-205`); the per-principal advisory lock is keyed on the **email string** (`:190`); `auth-login.ts:120,134` (`loadSessionUserByEmail`); switch guard compares emails (`uoa-workspace-switch.ts:96-107`); super-admin grant by email (`cli/src/super-admin.ts:56-66`). Self-documented takeover risk at `api/src/services/external-auth.ts:209-217`. Correct sub-matching exists only in session/billing paths (`uoa-session-context.ts:102-106`, `packages/runtime/src/uoa-delegated-identity.ts:293-301`) |
 
 ## Flagged local copies of UOA-owned data (the non-negotiable)
 
@@ -338,12 +345,40 @@ projection of the session's signed claims, not an authority.
 > `GET /api/users` and the roster reads still come from local rows (phase 5);
 > profile fields and the workspace-directory cache are phases 3 and 6.
 
-**Phase 5 — rosters + invitations on the UOA API.** Build the UOA client
-calls for roster list and invitation create/resend/revoke/approve/decline
-(acceptance stays hosted by UOA); rebuild the Members surface on them, per
-rule zero with its in-context entry points; re-point the PA `people_search`
-tool at the same service function (the pa-tools mirror-the-route pattern).
-This replaces `POST /api/users` outright.
+**Phase 5 — rosters + invitations on the UOA API.** *Largely landed
+2026-08-15* (`api/src/services/uoa-org-roster.ts`,
+`api/src/routes/workspace-members.ts`, `admin/src/pages/settings/WorkspaceMembersSection.tsx`,
+`docs/deployment-modes-and-auth-spec.md` §4.6): the UOA client calls exist for
+the roster read, team role change, team removal, organisation
+deactivate/reactivate, and invitation create/list/resend/approve/deny, all in
+UOA **backend mode** (domain-hash bearer, no access token, gated by
+`org_features.backend_org_management`), all keyed on the UOA subject, with
+acceptance hosted by UOA. Ambiguity 2 is therefore resolved: the UOA-side
+contract *is* available to RP backends.
+
+Remaining in this phase:
+
+- **Revoke is not available upstream.** UOA exposes no cancel/delete for an
+  invitation that was already sent; only `deny` on a member-initiated invite
+  awaiting approval. Raise it with the UOA team rather than building a local
+  substitute.
+- **Member avatars in the roster.** UOA's `/org/*` member records carry an
+  `avatarImageUrl` in the `/domain/users/:userId/avatar` form, which needs the
+  domain-hash bearer — there is no public user-avatar route to hand a browser.
+  A relay keyed by UOA subject (mirroring `GET /api/users/:userId/avatar`) is
+  the fix; the roster renders initials until then.
+- **Re-point PA `people_search`** (`worker/src/run/pa-tools/people.ts`) at the
+  same service function, following the pa-tools mirror-the-route pattern.
+- **Replace `POST /api/users` outright**, together with the remaining local
+  membership mutations (`POST /api/teams/:teamId/members`, project member CRUD)
+  and the Members page's local branch.
+- **Doorways.** `GET /api/workspace/members` is entitlement-scoped to any
+  member and the mutations to owner **and** admin, but the only surface today is
+  Settings → Members, whose sidebar entry is still `ownerOnly`
+  (`admin/src/layouts/admin-shell/AdminSidebarNav.tsx`). An admin can use the
+  page by URL and an ordinary member cannot see the roster at all; the nav gate
+  needs to follow the entitlement, and the read-only roster wants an in-context
+  entry point of its own.
 
 **Phase 6 — cache hygiene.** ✅ **Workspace directory landed 2026-08-15.** The
 directory now lives only in a bounded in-memory cache

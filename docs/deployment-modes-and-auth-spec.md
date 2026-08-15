@@ -834,6 +834,54 @@ Required Phase 1 contract shape:
 - one canonical actor context passed to agent/runtime calls
 - `GET /api/auth/me` returns `ApiResponse<MeResponse>` from [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
 
+### 4.6 Rosters and invitations are UOA API features in UOA deployments
+
+In a deployment whose provider is UnlikeOtherAI, UOA is the authority for human
+identity, organisation/team membership, team rosters, and invitations. Nessie
+persists none of it and offers no local substitute:
+
+- **The roster is a live read.** `GET /api/workspace/members` joins UOA's team
+  detail (`GET /org/organisations/:orgId/teams/:teamId`, which carries the team
+  roles) with the organisation membership list
+  (`GET /org/organisations/:orgId/members?status=all`, which carries names,
+  emails, and lifecycle status). Every field is display-only; nothing is
+  written to a local table.
+- **People are matched by UOA subject.** Every route takes the subject in the
+  path (`/api/workspace/members/:uoaSub/...`). Never a local user id, never an
+  email lookup against local rows — an IdP-asserted email is the documented
+  account-takeover shape.
+- **The UOA workspace comes from the actor's own session team.** `Team.externalOrgId`
+  + `Team.externalWorkspaceId` are the only mapping; a team without both, or a
+  deployment with no UOA credentials, answers `404 WORKSPACE_NOT_LINKED`.
+- **Invitation acceptance is hosted by UOA.** Nessie creates, lists, resends,
+  approves, and denies invitations; it never mints, stores, or renders an
+  invitation token and has no accept page. UOA's API exposes no cancel/delete
+  for an invitation that has already been sent — `deny` covers only the
+  member-initiated invites still awaiting approval.
+- **Local-mode deployments are unchanged.** Without a UOA session the Members
+  page keeps the local list and `POST /api/users`; §4.3a's password bootstrap
+  still applies to installs with no IdP.
+
+**Backend mode, and why the local gate is load-bearing.** Nessie holds a bound
+UOA refresh credential and deliberately never a spendable end-user access
+token, so these `/org/*` calls run in UOA's *backend mode*: the domain-hash
+bearer alone, with `X-UOA-Access-Token` **omitted entirely** — a present but
+blank header is a malformed credential and answers `401 MISSING_ACCESS_TOKEN`.
+Backend mode is opt-in per domain through `org_features.backend_org_management:
+true` in the signed config JWT (`api/src/services/uoa-auth.ts`), which is a
+second secret in the path: stealing the domain-hash bearer does not turn the
+flag on. Backend mode has **no acting user**, so UOA applies no owner/admin
+check of its own and records the mutation as `actor_user_id: null` with
+`uoa_actor: { via: "domain_backend" }`. Nessie's own owner/admin gate in
+`api/src/routes/workspace-members.ts` is therefore the only authorization on
+every mutation, exactly as with the workspace avatar relay (§ `docs/done/2026-07-25-uoa-workspace-avatar.md`).
+The roster read itself is open to any member of the workspace.
+
+Egress follows the standard rule: `safeFetch` with `maxRedirects: 0` and a
+10-second timeout (`api/src/services/uoa-org-roster.ts`). Upstream 4xx becomes
+`WORKSPACE_MEMBERS_REJECTED`; a transport failure, 5xx, or unparseable body
+becomes `502 UOA_DIRECTORY_UNAVAILABLE` — never a silently empty roster.
+
 ## 5) Local deployment and startup
 
 ### 5.1 Docker-first local install

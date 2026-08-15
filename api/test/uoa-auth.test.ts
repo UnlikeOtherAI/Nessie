@@ -293,6 +293,9 @@ test('buildConfigJwt requests UOA workspace features', async () => {
     assert.deepEqual(payload.org_features, {
       allow_user_create_org: true,
       allow_user_create_team: true,
+      // Backend mode for the roster/invitation relay: without it UOA answers
+      // 401 MISSING_ACCESS_TOKEN to every `/org/*` call Nessie makes.
+      backend_org_management: true,
       enabled: true,
     })
     // Slack-style workspace chooser must be requested so UOA issues the

@@ -284,6 +284,15 @@ export const buildConfigJwt = (settings: UoaSettings, theme?: SsoTheme): string 
       // in the SSO workspace chooser to ACTIVE org owners/admins. Without this,
       // anyone who already belongs to a workspace sees no create option.
       allow_user_create_team: true,
+      // Let the Nessie backend drive the `/org/*` roster and invitation routes
+      // with the domain-hash bearer alone (UOA "backend mode" — the
+      // `X-UOA-Access-Token` header is omitted entirely; Nessie holds a bound
+      // refresh credential, never a spendable user access token). UOA defaults
+      // this to false, and while it is false a missing access token stays
+      // `401 MISSING_ACCESS_TOKEN`. Backend mode has no acting user, so UOA
+      // applies no per-member role check: the owner/admin gate in
+      // `routes/workspace-members.ts` is what authorises every mutation.
+      backend_org_management: true,
     },
     // Slack-style workspace login: ask UOA to show the workspace chooser (and to
     // offer email sign-in codes) so a user picks the workspace they're entering.
