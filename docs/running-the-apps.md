@@ -69,8 +69,9 @@ app verifies its own signature before exposing the companion IPC.
 
 Desktop SSO uses the user's default browser instead of the Tauri webview. The
 desktop bundle declares the `nessie` URL scheme; after UOA redirects to
-`nessie://auth/callback`, macOS focuses the running app and the admin login page
-finishes the PKCE exchange from the deep link.
+`nessie://auth/callback`, macOS focuses the running app and the always-mounted
+callback bridge finishes the PKCE exchange from the deep link, including while
+an authenticated workspace screen remains open.
 
 ### Desktop notifications
 
@@ -196,8 +197,12 @@ entitlement-aware web actions.
 Selecting an existing workspace stays inside the persistent WebView: the shared
 menu calls Nessie's server-authorized UOA workspace-switch route and atomically
 replaces the session. It does not open `ASWebAuthenticationSession`. Only
-**Add a workspace** (and an exceptional target that requires stronger sign-in
-verification) opens hosted UOA.
+**Add a workspace** (and an exceptional target whose renewable proof is missing)
+opens hosted UOA. For the exceptional switch, only the proof step leaves the
+WebView: every terminal browser result is retained in a bounded native queue
+until the web callback handler is ready, then the exact target is recovered and
+the original in-app route is restored. Cancellation or failure keeps the
+current session and workspace; it never sends the person through logout.
 The duplicate web header trigger is omitted on native iPad and iPhone shells.
 Tapping **Search** opens the full `/search` page
 on iPhone and Android; on iPad it opens the native search overlay. The URL split

@@ -116,6 +116,22 @@ export const listUserSessions = async (
     .sort((left, right) => right.lastUsedAt.getTime() - left.lastUsedAt.getTime())
 }
 
+/** Prove that this exact bearer session still has a live refresh row. */
+export const hasActiveUserSession = async (
+  prisma: PrismaClient,
+  userId: string,
+  sessionId: string,
+  now = new Date(),
+): Promise<boolean> => Boolean(await prisma.refreshToken.findFirst({
+  where: {
+    userId,
+    sessionId,
+    revokedAt: null,
+    expiresAt: { gt: now },
+  },
+  select: { id: true },
+}))
+
 /** Revoke one local session and erase any bound encrypted UOA credentials. */
 export const revokeUserSession = async (
   prisma: PrismaClient,
@@ -132,10 +148,15 @@ export const revokeUserSession = async (
   for (const familyId of familyIds) {
     await lockRefreshFamily(tx, familyId)
   }
-  const activeCount = await tx.refreshToken.count({
-    where: { familyId: { in: familyIds }, revokedAt: null, userId },
-  })
   const now = new Date()
+  const activeCount = await tx.refreshToken.count({
+    where: {
+      expiresAt: { gt: now },
+      familyId: { in: familyIds },
+      revokedAt: null,
+      userId,
+    },
+  })
   for (const familyId of familyIds) {
     await revokeRefreshFamilyRows(tx, familyId, now)
   }

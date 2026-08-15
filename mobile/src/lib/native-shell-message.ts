@@ -12,11 +12,13 @@ export type NativeShellMessage = {
   headerSurface?: string
   headerText?: string
   inactive?: string
+  id?: number
   knowledge?: number
   name?: string
   path?: string
   recentOpen?: boolean
   scheme?: string
+  state?: string
   surface?: string
   text?: string
   textMuted?: string

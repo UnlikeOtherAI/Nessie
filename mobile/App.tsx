@@ -44,9 +44,7 @@ import {
   isIpadWindowed,
   withOpacity,
 } from './src/lib/ipad-native-chrome'
-import {
-  ANDROID_TABLET_TAB_BAR_BOTTOM_GAP,
-} from './src/lib/android-tablet-dock'
+import { ANDROID_TABLET_TAB_BAR_BOTTOM_GAP } from './src/lib/android-tablet-dock'
 import { AndroidTabletTabBar } from './src/components/AndroidTabletTabBar'
 import { IpadNativeChrome } from './src/components/IpadNativeChrome'
 import {
@@ -54,7 +52,7 @@ import {
 } from './src/components/NativePhoneConversationMenuChrome'
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
-import { nativeExternalAuthResultScript } from './src/lib/external-auth-bridge'
+import { createNativeExternalAuthDeliveryQueue, nativeExternalAuthDeliveryScript } from './src/lib/external-auth-delivery'
 import { createNativeWebviewActions } from './src/lib/native-webview-actions'
 import {
   DEFAULT_NATIVE_SHELL_PRESENTATION,
@@ -129,6 +127,7 @@ const Shell = (): React.JSX.Element => {
   const nativeAppForeground = useRef(AppState.currentState === 'active')
   const nativePushRegistration = useRef<NativePushRegistration | null>(null)
   const nativePushRegistrationPromise = useRef<Promise<NativePushRegistration | null> | null>(null)
+  const externalAuthDeliveries = useRef(createNativeExternalAuthDeliveryQueue())
 
   const runScript = useCallback((script: string): void => {
     webRef.current?.injectJavaScript(`${script} true;`)
@@ -258,9 +257,15 @@ const Shell = (): React.JSX.Element => {
 
   const nativeActions = createNativeWebviewActions(runScript)
 
-  const runExternalAuth = async (authorizeUrl: string): Promise<void> => {
-    const result = await completeExternalAuth(authorizeUrl)
-    runScript(nativeExternalAuthResultScript(result))
+  const flushExternalAuthDelivery = (): void => {
+    const delivery = externalAuthDeliveries.current.head()
+    if (delivery) runScript(nativeExternalAuthDeliveryScript(delivery))
+  }
+
+  const runExternalAuth = async (authorizeUrl: string, state?: string): Promise<void> => {
+    const terminal = await completeExternalAuth(authorizeUrl, state)
+    externalAuthDeliveries.current.enqueue(terminal.callbackUrl)
+    flushExternalAuthDelivery()
   }
 
   const onMessage = (event: WebViewMessageEvent): void => {
@@ -278,7 +283,16 @@ const Shell = (): React.JSX.Element => {
       return
     }
     if (msg.type === 'nessie:external-auth' && typeof msg.url === 'string') {
-      void runExternalAuth(msg.url)
+      void runExternalAuth(msg.url, typeof msg.state === 'string' ? msg.state : undefined)
+      return
+    }
+    if (msg.type === 'nessie:external-auth-ready') {
+      flushExternalAuthDelivery()
+      return
+    }
+    if (msg.type === 'nessie:external-auth-delivered' && typeof msg.id === 'number') {
+      externalAuthDeliveries.current.acknowledge(msg.id)
+      flushExternalAuthDelivery()
       return
     }
     if (msg.type === 'nessie:full-refresh') {
@@ -448,6 +462,7 @@ const Shell = (): React.JSX.Element => {
           onHttpError={bootRecovery.recoverBlankWebView}
           onLoadEnd={() => {
             runScript(nativeAppForegroundScript(nativeAppForeground.current))
+            flushExternalAuthDelivery()
             bootRecovery.noteLoadEnd()
           }}
           onLoadStart={bootRecovery.noteLoadStart}

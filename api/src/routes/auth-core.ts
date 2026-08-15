@@ -24,7 +24,6 @@ import {
   seedBootstrapRecords,
 } from '../db/seed.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { clearRefreshCookie, readRefreshCookie } from '../lib/refresh-cookie.js'
 import {
   buildMeResponse,
   createActorContextFromClaims,
@@ -35,8 +34,6 @@ import { canAccessAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl } from '../services/external-auth.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
-import { revokeRefreshTokenByRaw } from '../services/refresh-token.js'
-import { clearPushSurfacePresenceForUser } from '../services/push-surface-presence.js'
 import {
   buildConfigJwt,
   buildPublicJwks,
@@ -44,6 +41,7 @@ import {
   loadUoaSettings,
 } from '../services/uoa-auth.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
+import { registerAuthLogoutRoute } from './auth-logout.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
 
@@ -361,24 +359,5 @@ export const registerAuthCoreRoutes = (
     })
   })
 
-  app.delete('/api/auth/session', { config: { public: true } }, async (request, reply) => {
-    const rawToken = readRefreshCookie(request)
-    if (rawToken) {
-      const revoked = await revokeRefreshTokenByRaw(prisma, rawToken)
-      // Revoking the refresh family alone leaves the access token valid for the
-      // rest of its TTL. Bumping tokenVersion rejects it on the very next
-      // request; other devices re-authenticate silently with their own refresh
-      // token, which mints a session carrying the new generation.
-      if (revoked) {
-        await prisma.user.update({
-          where: { id: revoked.userId },
-          data: { tokenVersion: { increment: 1 } },
-        })
-        await clearPushSurfacePresenceForUser(prisma, revoked.userId)
-      }
-    }
-    clearRefreshCookie(reply, config)
-    reply.code(204)
-    return null
-  })
+  registerAuthLogoutRoute(app, { authSecret, getAuthorizationToken, prisma })
 }

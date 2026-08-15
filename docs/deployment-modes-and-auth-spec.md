@@ -408,9 +408,12 @@ Claims:
   its adoption and exact-intent cancellation are one transaction. Safe target
   refusals (`WORKSPACE_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, or
   `WORKSPACE_SWITCH_CONFLICT`) never revoke the source family; only
-  `INVALID_REFRESH_TOKEN` and invalid/tampered source proof force re-login,
-  surfaced to the browser as `WORKSPACE_SWITCH_REAUTH_REQUIRED` so it clears
-  stale local session state instead of treating the result as a safe 2FA step-up.
+  proof-gap answers (`INTERACTION_REQUIRED`, `NO_REFRESH_TOKEN`,
+  `INVALID_REFRESH_TOKEN`, and `WORKSPACE_SWITCH_REAUTH_REQUIRED`) enter the
+  same exact-target in-app reauthorization flow. The current Nessie session is
+  retained: only the UOA proof step opens the system browser, and its callback
+  returns to the route where switching began. Cancellation, provider failure,
+  or a target mismatch never logs out or applies a different workspace.
   After UOA accepts a switch, transient local materialization failures retain
   the intent for exact replay, while a permanent local binding collision
   revokes the now-unrecoverable source family rather than retaining a consumed
@@ -449,7 +452,19 @@ Claims:
   never supplies session identity. Billing, delegated calls, activation, team
   enablement, and webhook routing all derive workspace authority from the signed
   family plus the exact Team mapping.
-- **revocation:** `DELETE /api/auth/session` (logout) is now **public** and cookie-driven — it revokes the token family server-side and clears the cookie, so a session can be killed even after the access token has expired. Password change, user deactivation, explicit session revocation, expiry, and reuse detection erase both matching local families and encrypted UOA credentials atomically. The access JWT itself remains stateless (verified by signature + `exp`); UOA sessions additionally carry immutable `uoaIdentity { subject, organizationId, teamId, tokenVersion }` proof
+- **revocation:** `DELETE /api/auth/session` (logout) is public but requires a
+  authentic signed Bearer session to revoke exactly that session's `{sub,
+  sid}`; an expired access TTL does not prevent this exact revocation.
+  It ignores the ambient refresh cookie and deliberately sends no generic
+  cookie-clear header: a delayed logout response from an older app instance
+  must never revoke or erase a newer login's same-name cookie. The frontend
+  clears its local session immediately, while every authenticated request also
+  requires a live, unrevoked, unexpired refresh row for the Bearer `sid`, so the
+  logged-out access JWT stops working without changing another session's user
+  generation. Password change, user deactivation, explicit session revocation,
+  expiry, and reuse detection erase matching local families and encrypted UOA
+  credentials atomically. UOA sessions additionally carry immutable
+  `uoaIdentity { subject, organizationId, teamId, tokenVersion }` proof.
 - **credential retention:** startup and five-minute bounded sweeps take each
   candidate's family lock, retain hash-only local token history, revoke any
   remaining live row, and erase encrypted UOA state once either the upstream
@@ -492,6 +507,61 @@ For SSO providers, the flow is:
    `nessie://auth/callback?code=...`
 4. frontend calls `POST /api/auth/session` with `{ providerId, code, codeVerifier, redirectUri }`
 5. API exchanges code for user info, creates or matches the user, issues JWT
+
+The always-mounted callback owner handles web `/login`, Tauri deep links, and
+the iOS/Android WebView bridge through the same single-claim completion path.
+External authorization is single-flight until callback completion conclusively
+clears the pending intent. The intent survives an app or WebView reload, and a
+native callback is retained and redelivered until the SPA acknowledges completed
+handling. A bounded session-scoped cache of completed callback proofs suppresses
+a redelivery after a lost native acknowledgement before it can claim a newer
+intent; a second launch cannot replace the verifier for a state-less UOA callback.
+Callbacks wait for startup session restoration when they carry an authenticated
+workspace target; a target callback can only call the bearer-authenticated
+recovery exchange and can never fall back to ordinary login.
+
+#### Authenticated workspace-switch recovery (`expectedWorkspace`)
+
+`POST /api/auth/session` also accepts an `expectedWorkspace { organizationId,
+teamId }` discriminant for **workspace-switch reauthorization** — the browser
+re-runs hosted UOA login for the target workspace while holding a current
+Nessie session. It is valid ONLY as a complete `providerId: "uoa"` code
+exchange accompanied by a live `Bearer` Nessie access token; every other shape
+(password login, local provider, incomplete tuple) is refused before any
+upstream exchange or local write. The invariant, in order:
+
+1. **Bearer shape, before any DB traffic:** the bearer must be a live,
+   unrevoked `uoa` session whose `uoaIdentity.tokenVersion` is a NON-NULL safe
+   nonnegative integer; anything else is refused before the user-row read.
+2. **Exchange discriminants, before billing:** the exchanged identity must
+   match the bearer on the immutable UOA **subject** (never the possibly
+   changed email), return a valid epoch no OLDER than the bearer's (a newer
+   returned epoch from a concurrent device renewal is accepted; a regressed
+   epoch is refused), and land on exactly the expected organization/team.
+3. **Pre-billing fence (read-only):** under the user-session lock, the exact
+   first-party Nessie `ProductAccountLink` in the bearer's EXACT local
+   organization claim — never an ambient "shared organization" lookup and
+   never an email lookup — must still be `linked` to the same subject with a
+   non-null safe epoch no newer than the returned one. This read only spares
+   a billing POST; it is not the authority.
+4. **Billing confirm** (the one network side effect) runs once the fence
+   passes.
+5. **Authoritative claim, inside the single recovery transaction:** after the
+   exact external-workspace advisory lock, the transaction conditionally
+   claims that exact link row (`organizationId + userId + productSlug +
+   linked + same subject + non-null epoch <= returned`) with `updateMany`,
+   advancing its epoch and refreshing the last-seen directory/active tuple.
+   The claimed row lock is held to commit; a concurrent epoch advance landing
+   between the pre-billing read and the claim makes the claim match zero
+   rows and aborts the whole transaction. Only after the claim does the
+   transaction read-or-create the target project/team/channel and upsert the
+   principal's memberships. A refusal therefore persists NO target,
+   membership, session, context, or cookie write — billing alone may already
+   have run, which is safe because it is idempotent per exact subject tuple.
+
+Recovery resolves the principal exclusively by the bearer's user id: it never
+looks up, creates, or remaps a user by email, and the generic multi-product
+link sync is skipped (the in-transaction claim is the only link mutation).
 
 #### UOA workspaces → Nessie environments (Slack-style login)
 
@@ -631,7 +701,8 @@ On every request:
 - `POST /api/auth/bootstrap`
 - `POST /api/auth/session`
 - `POST /api/auth/refresh` (identity comes from the httpOnly refresh cookie, not a Bearer token)
-- `DELETE /api/auth/session` (logout; revokes the refresh-token family via the cookie)
+- `DELETE /api/auth/session` (logout; exact signed Bearer `{sub, sid}`
+  revocation, with the ambient cookie ignored)
 
 Mark public routes with a Fastify route option:
 

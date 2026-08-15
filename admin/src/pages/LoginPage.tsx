@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { LoginSessionImportButton } from '../components/shared/LoginSessionImportButton'
 import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
-import { isDesktopApp } from '../lib/desktop'
-import { DESKTOP_REDIRECT_URI, startExternalSignIn } from '../lib/external-auth'
+import { startExternalSignIn } from '../lib/external-auth'
 import { isReactNativeWebView } from '../lib/mobile-shell'
-import { clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
+import { clearPendingExternalAuth } from '../lib/pkce'
 import { shouldStartAutomaticSignIn } from '../lib/session-debug-import'
 import { subscribeToNativeExternalAuthResults } from '../lib/native-external-auth'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -34,40 +33,11 @@ const errorBoxClass = [
   'text-[color:var(--danger-text)]',
 ].join(' ')
 
-type ExternalSignInCallback = {
-  code: string
-  redirectUri: string
-  state: string | null
-}
-
-const webRedirectUri = (): string => `${window.location.origin}/login`
-
-const parseDesktopAuthCallback = (value: string): Omit<ExternalSignInCallback, 'redirectUri'> | null => {
-  let url: URL
-  try {
-    url = new URL(value)
-  } catch {
-    return null
-  }
-
-  if (url.protocol !== 'nessie:' || url.hostname !== 'auth' || url.pathname !== '/callback') {
-    return null
-  }
-
-  const code = url.searchParams.get('code')
-  if (!code) {
-    return null
-  }
-
-  return { code, state: url.searchParams.get('state') }
-}
-
 export const LoginPage = () => {
   const navigate = useNavigate()
   const { devLogin, login, sessionState } = useAuthSession()
   const { setTheme, theme, themes } = useTheme()
   const { data: providers = [] } = useAuthProviders()
-  const handledDesktopCallbackUrls = useRef(new Set<string>())
   // Pre-filled dev credentials for convenience (local mode only).
   const [email, setEmail] = useState(LOCAL_DEMO_EMAIL)
   const [password, setPassword] = useState(LOCAL_DEMO_PASSWORD)
@@ -86,48 +56,8 @@ export const LoginPage = () => {
   const singleSsoProvider = ssoProviders.length === 1 ? ssoProviders[0] : null
   const autoRedirectProvider =
     singleSsoProvider && singleSsoProvider.autoRedirect ? singleSsoProvider : null
-
-  const completeExternalSignIn = useCallback(
-    async ({ code, redirectUri, state }: ExternalSignInCallback): Promise<void> => {
-      // Some providers (e.g. UOA) do not echo `state` on the callback — PKCE plus
-      // the sessionStorage entry already bind this exchange. Only enforce a
-      // state match when the provider actually returned one.
-      const pendingExternalAuth = readPendingExternalAuth()
-      if (!pendingExternalAuth) {
-        // No sign-in is in progress (e.g. a stale deep link replayed after a
-        // logout/relaunch) — nothing to verify, so ignore quietly.
-        setIsSubmitting(false)
-        return
-      }
-      if (state !== null && pendingExternalAuth.state !== state) {
-        clearPendingExternalAuth()
-        setError('The external sign-in callback could not be verified.')
-        setIsSubmitting(false)
-        return
-      }
-
-      setIsSubmitting(true)
-      setError(null)
-
-      try {
-        await login({
-          code,
-          codeVerifier: pendingExternalAuth.codeVerifier,
-          providerId: pendingExternalAuth.providerId,
-          redirectUri,
-          theme: pendingExternalAuth.theme,
-        })
-        clearPendingExternalAuth()
-        void navigate('/channels', { replace: true })
-      } catch (submitError) {
-        clearPendingExternalAuth()
-        setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
-      } finally {
-        setIsSubmitting(false)
-      }
-    },
-    [login, navigate],
-  )
+  const callbackParams = new URLSearchParams(window.location.search)
+  const hasExternalCallback = callbackParams.has('code') || callbackParams.has('error')
 
   const beginSsoSignIn = useCallback(
     (providerId: string): Promise<void> => startExternalSignIn(providerId, resolveAppliedTheme(theme)),
@@ -140,125 +70,29 @@ export const LoginPage = () => {
     // SSO from the "add a workspace" action re-scopes the session. `code=` in the
     // URL also suppresses the authenticated→/channels redirects below until the
     // exchange completes.
-    if (sessionState === 'authenticated' && !window.location.search.includes('code=')) {
+    if (sessionState === 'authenticated' && !hasExternalCallback) {
       void navigate('/channels', { replace: true })
     }
-  }, [navigate, sessionState])
+  }, [hasExternalCallback, navigate, sessionState])
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
-    const state = params.get('state')
-    if (!code || !readPendingExternalAuth()) {
-      return
-    }
-
-    void completeExternalSignIn({ code, redirectUri: webRedirectUri(), state })
-  }, [completeExternalSignIn, sessionState])
-
-  // Mobile shell delivers the OS-browser OAuth callback URL here — the analogue
-  // of the desktop deep-link listener below.
+  // Native cancel/failure results settle this screen's submitting state; the
+  // successful callback URL continues through the always-mounted external-auth
+  // provider instead.
   useEffect(() => {
     if (sessionState !== 'unauthenticated' || !isReactNativeWebView()) {
       return undefined
     }
 
-    const target = window as Window & { __nessieExternalAuthCallback?: (url: string) => void }
-    const unsubscribeNativeResults = subscribeToNativeExternalAuthResults(window, {
+    return subscribeToNativeExternalAuthResults(window, {
       clearPendingAuth: clearPendingExternalAuth,
       setError,
       setSubmitting: setIsSubmitting,
     })
-    target.__nessieExternalAuthCallback = (url: string) => {
-      let parsed: URL
-      try {
-        parsed = new URL(url)
-      } catch {
-        clearPendingExternalAuth()
-        setError('The external sign-in callback was invalid.')
-        setIsSubmitting(false)
-        return
-      }
-      const code = parsed.searchParams.get('code')
-      if (!code) {
-        clearPendingExternalAuth()
-        setError('The external sign-in callback was invalid.')
-        setIsSubmitting(false)
-        return
-      }
-      void completeExternalSignIn({
-        code,
-        redirectUri: DESKTOP_REDIRECT_URI,
-        state: parsed.searchParams.get('state'),
-      })
-    }
-
-    return () => {
-      delete target.__nessieExternalAuthCallback
-      unsubscribeNativeResults()
-    }
-  }, [completeExternalSignIn, sessionState])
-
-  useEffect(() => {
-    if (sessionState !== 'unauthenticated' || !isDesktopApp()) {
-      return undefined
-    }
-
-    let disposed = false
-    let unlisten: (() => void) | undefined
-    const handleUrl = (url: string): void => {
-      if (handledDesktopCallbackUrls.current.has(url)) {
-        return
-      }
-
-      const callback = parseDesktopAuthCallback(url)
-      if (!callback) {
-        return
-      }
-
-      handledDesktopCallbackUrls.current.add(url)
-      void completeExternalSignIn({
-        code: callback.code,
-        redirectUri: DESKTOP_REDIRECT_URI,
-        state: callback.state,
-      })
-    }
-
-    const readDeepLinks = async (): Promise<void> => {
-      const { getCurrent, onOpenUrl } = await import('@tauri-apps/plugin-deep-link')
-      const currentUrls = await getCurrent()
-      if (disposed) {
-        return
-      }
-
-      for (const url of currentUrls ?? []) {
-        handleUrl(url)
-      }
-
-      unlisten = await onOpenUrl((urls) => {
-        for (const url of urls) {
-          handleUrl(url)
-        }
-      })
-
-      if (disposed) {
-        unlisten()
-      }
-    }
-
-    void readDeepLinks().catch((submitError) => {
-      setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
-    })
-
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
-  }, [completeExternalSignIn, sessionState])
+  }, [sessionState])
 
   useEffect(() => {
     if (!shouldStartAutomaticSignIn({
-      callbackInUrl: window.location.search.includes('code='),
+      callbackInUrl: hasExternalCallback,
       hasAutoRedirectProvider: Boolean(autoRedirectProvider),
       sessionImportOpen,
       unauthenticated: sessionState === 'unauthenticated',
@@ -274,9 +108,9 @@ export const LoginPage = () => {
         setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
         setIsSubmitting(false)
       })
-  }, [autoRedirectProvider, beginSsoSignIn, sessionImportOpen, sessionState])
+  }, [autoRedirectProvider, beginSsoSignIn, hasExternalCallback, sessionImportOpen, sessionState])
 
-  if (sessionState === 'authenticated' && !window.location.search.includes('code=')) {
+  if (sessionState === 'authenticated' && !hasExternalCallback) {
     return <Navigate to="/channels" replace />
   }
 
@@ -320,7 +154,6 @@ export const LoginPage = () => {
     try {
       await beginSsoSignIn(providerId)
     } catch (submitError) {
-      clearPendingExternalAuth()
       setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
       setIsSubmitting(false)
     }

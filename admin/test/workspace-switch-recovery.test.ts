@@ -12,21 +12,12 @@ import type { Workspace } from '../src/lib/workspaces.js'
 import { createSessionQueryBoundary } from '../src/providers/auth-session-query-reset.js'
 
 const source: Workspace = {
-  active: true,
-  label: 'Alpha',
-  organizationId: 'org-a',
-  projectId: '',
-  teamId: 'team-a',
-  uoaWorkspace: true,
+  active: true, label: 'Alpha', organizationId: 'org-a', projectId: '',
+  teamId: 'team-a', uoaWorkspace: true,
 }
-
 const target: Workspace = {
-  active: false,
-  label: 'Beta',
-  organizationId: 'org-b',
-  projectId: '',
-  teamId: 'team-b',
-  uoaWorkspace: true,
+  active: false, label: 'Beta', organizationId: 'org-b', projectId: '',
+  teamId: 'team-b', uoaWorkspace: true,
 }
 
 const payload = (active: Workspace): SessionPayload => ({
@@ -54,10 +45,7 @@ test('lost switch response reconciles the committed target as success', async ()
   const events: string[] = []
   const boundary = createSessionQueryBoundary({
     readCurrentMe: () => currentMe,
-    resetTenantQueries: async () => {
-      events.push('cancel')
-      events.push('clear')
-    },
+    resetTenantQueries: async () => events.push('cancel', 'clear'),
   })
   const coordinator = createSessionMutationCoordinator({
     applySession: (session) => {
@@ -74,7 +62,6 @@ test('lost switch response reconciles the committed target as success', async ()
     reconcileSession: coordinator.reconcile,
     targetWorkspace: target,
   })
-
   assert.deepEqual(result, { outcome: 'switched' })
   assert.deepEqual(events, ['cancel', 'clear', 'apply'])
 })
@@ -86,26 +73,22 @@ test('ambiguous conflict reports the workspace returned by reconciliation', asyn
     reconcileSession: async () => payload(source),
     targetWorkspace: target,
   })
-
   assert.equal(result.outcome, 'failed')
-  if (result.outcome === 'failed') {
-    assert.match(result.message, /still in Alpha/)
-  }
+  if (result.outcome === 'failed') assert.match(result.message, /still in Alpha/)
 })
 
-test('unavailable target refreshes the directory and reports its current workspace', async () => {
-  let reconcileCalls = 0
+test('unavailable target refreshes the directory and reports the current workspace', async () => {
+  let calls = 0
   const result = await recoverWorkspaceSwitchFailure({
     currentWorkspace: target,
     error: new AuthSessionApiError('revoked', 'WORKSPACE_NOT_AVAILABLE', 403),
     reconcileSession: async () => {
-      reconcileCalls += 1
+      calls += 1
       return payload(source)
     },
     targetWorkspace: target,
   })
-
-  assert.equal(reconcileCalls, 1)
+  assert.equal(calls, 1)
   assert.equal(result.outcome, 'failed')
   if (result.outcome === 'failed') {
     assert.match(result.message, /still in Alpha/)
@@ -117,12 +100,9 @@ test('failed reconciliation never claims that the source was retained', async ()
   const result = await recoverWorkspaceSwitchFailure({
     currentWorkspace: source,
     error: new TypeError('network failed'),
-    reconcileSession: async () => {
-      throw new TypeError('still offline')
-    },
+    reconcileSession: async () => { throw new TypeError('still offline') },
     targetWorkspace: target,
   })
-
   assert.equal(result.outcome, 'failed')
   if (result.outcome === 'failed') {
     assert.match(result.message, /Couldn’t confirm whether the switch to Beta completed/)
@@ -130,41 +110,24 @@ test('failed reconciliation never claims that the source was retained', async ()
   }
 })
 
-test('interaction-required remains explicit and does not consume another refresh', async () => {
-  let reconcileCalls = 0
-  const result = await recoverWorkspaceSwitchFailure({
-    currentWorkspace: source,
-    error: new AuthSessionApiError('verify', 'INTERACTION_REQUIRED', 403),
-    reconcileSession: async () => {
-      reconcileCalls += 1
-      return payload(source)
-    },
-    targetWorkspace: target,
-  })
-
-  assert.equal(reconcileCalls, 0)
-  assert.equal(result.outcome, 'failed')
-  if (result.outcome === 'failed') {
-    assert.match(result.message, /requires another sign-in verification/)
-  }
-})
-
-test('authentication loss during reconciliation asks for sign-in', async () => {
-  let reconcileCalls = 0
-  const result = await recoverWorkspaceSwitchFailure({
-    currentWorkspace: source,
-    error: new AuthSessionApiError('expired', 'INVALID_REFRESH_TOKEN', 401),
-    reconcileSession: async () => {
-      reconcileCalls += 1
-      return null
-    },
-    targetWorkspace: target,
-  })
-
-  assert.equal(reconcileCalls, 1)
-  assert.equal(result.outcome, 'failed')
-  if (result.outcome === 'failed') {
-    assert.match(result.message, /Sign in again/)
-    assert.doesNotMatch(result.message, /still in Alpha/)
+test('all proof-gap codes reauthorize before reconciliation', async () => {
+  for (const code of [
+    'INTERACTION_REQUIRED',
+    'INVALID_REFRESH_TOKEN',
+    'NO_REFRESH_TOKEN',
+    'WORKSPACE_SWITCH_REAUTH_REQUIRED',
+  ]) {
+    let calls = 0
+    const result = await recoverWorkspaceSwitchFailure({
+      currentWorkspace: source,
+      error: new AuthSessionApiError('renew proof', code, 401),
+      reconcileSession: async () => {
+        calls += 1
+        return payload(source)
+      },
+      targetWorkspace: target,
+    })
+    assert.deepEqual(result, { outcome: 'reauthorize' }, code)
+    assert.equal(calls, 0, code)
   }
 })

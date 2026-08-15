@@ -110,14 +110,3 @@ export const clearSessionIfCurrent = async (input: {
   return true
 }
 
-/** Imported logout is local-only: its bearer has no refresh family to revoke. */
-export const finalizeSessionLogout = async (input: {
-  mode: StoredTokenMode
-  nativeWebView: boolean
-  revokeRemoteSession: () => Promise<void>
-  unregisterNativePush: () => Promise<void>
-}): Promise<void> => {
-  if (input.mode === 'imported') return
-  if (input.nativeWebView) await input.unregisterNativePush()
-  await input.revokeRemoteSession()
-}

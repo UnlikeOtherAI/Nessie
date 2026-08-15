@@ -116,7 +116,10 @@ const resolvePrincipalUser = async (
 // or rewrite a role behind UOA's back. Role *changes* come from exactly one
 // place afterwards: `projectUoaRoles`, replaying the verified claims, so a
 // dimension UOA did not claim keeps whatever the row already held.
-const ensureWorkspaceMemberships = async (
+// Exported for the account-bound recovery transaction in workspace-context.ts,
+// which writes memberships for an already-proven principal inside its own
+// locked transaction.
+export const ensureWorkspaceMemberships = async (
   prisma: Prisma.TransactionClient,
   input: {
     userId: string
@@ -161,8 +164,9 @@ const ensureWorkspaceMemberships = async (
 }
 
 // Read the user's org role after membership was ensured and UOA's claims were
-// projected — the role the access token is scoped to.
-const readOrgRole = async (
+// projected — the role the access token is scoped to. Exported for the
+// account-bound recovery transaction in workspace-context.ts.
+export const readOrgRole = async (
   prisma: Prisma.TransactionClient,
   organizationId: string,
   userId: string,

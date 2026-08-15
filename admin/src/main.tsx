@@ -11,7 +11,6 @@ import './styles.css'
 installReloadShortcut()
 disableWebviewZoom()
 installBuildFreshnessCheck()
-
 // Register the service worker (web push + notification clicks). Guarded for
 // browsers / webviews without service-worker support; failures are non-fatal.
 if ('serviceWorker' in navigator) {

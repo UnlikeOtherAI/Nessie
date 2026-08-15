@@ -10,12 +10,17 @@ import {
 } from 'react'
 import type { MeResponse } from '@nessie/schemas'
 import {
+  captureWorkspaceSessionSource,
+  classifyWorkspaceSessionPayload,
   createAuthSessionApi,
   createSessionMutationCoordinator,
   type AuthSessionState,
   type BootstrapInput,
   type BootstrapModeResponse,
+  type ExpectedWorkspaceTarget,
+  type ExternalLoginInput,
   type LoginInput,
+  type RecoverWorkspaceSessionInput,
   type SessionPayload,
   type SwitchContextInput,
   type SwitchUoaWorkspaceInput,
@@ -32,7 +37,6 @@ import { getBaseUrl } from '../lib/api-client'
 import {
   clearSessionIfCurrent,
   createImportedSessionApplyTracker,
-  finalizeSessionLogout,
   IMPORTED_SESSION_SCOPE_MESSAGE,
   isSessionCredentialCurrent,
   resolveSessionRefreshAction,
@@ -44,10 +48,12 @@ import {
   NATIVE_PUSH_UNREGISTER_EVENT,
 } from '../lib/native-push-registration'
 import { isReactNativeWebView } from '../lib/mobile-shell'
+import { createAmbientRefreshGateHost } from './ambient-refresh-gate-host'
 import {
   createSessionQueryBoundary,
   isCurrentSessionResponse,
 } from './auth-session-query-reset'
+import { performTerminalSessionLogout } from './terminal-session-logout'
 import { useAccessTokenRenewal } from './useAccessTokenRenewal'
 
 type AuthSessionContextValue = {
@@ -60,6 +66,17 @@ type AuthSessionContextValue = {
   logout: () => Promise<void>
   me: MeResponse | null
   reconcileSession: () => Promise<SessionPayload | null>
+  /**
+   * Complete an external-auth code exchange for a workspace-switch
+   * reauthorization. Unlike `login` this never applies the exchanged session
+   * until the payload proves it is scoped to exactly `expectedWorkspace`; a
+   * mismatch leaves the current session, token, and query cache untouched.
+   * Returns the applied payload.
+   */
+  recoveryExchange: (
+    input: ExternalLoginInput,
+    expectedWorkspace: ExpectedWorkspaceTarget,
+  ) => Promise<SessionPayload>
   refreshAccessToken: (expected?: SessionCredentialSnapshot) => Promise<string | null>
   refreshSession: () => Promise<void>
   sessionMode: StoredTokenMode
@@ -131,8 +148,9 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setSessionState('authenticated')
   }, [importedApplyTracker])
 
+  // Synchronously remove every local bearer/auth reference; safe to call
+  // before returning control to a remote finalizer.
   const commitSessionClear = useCallback((): void => {
-    clearStoredToken()
     tokenRef.current = null
     importedSessionTokenRef.current = null
     meRef.current = null
@@ -140,11 +158,19 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     setMe(null)
     setBootstrapState(null)
     setSessionState('unauthenticated')
+    try {
+      clearStoredToken()
+    } catch {
+      // In-memory auth is already gone when browser storage is unavailable.
+    }
   }, [])
 
-  const clearSession = useCallback(async (): Promise<void> => {
-    await sessionQueryBoundary.clear()
+  const clearSession = useCallback((): Promise<void> => {
+    // Start cancelling tenant work, then synchronously remove every local
+    // bearer/auth reference before returning control to a remote finalizer.
+    const clearingQueries = sessionQueryBoundary.clear().catch(() => undefined)
     commitSessionClear()
+    return clearingQueries
   }, [commitSessionClear, sessionQueryBoundary])
 
   const clearImportedSession = useCallback(async (expectedToken: string): Promise<void> => {
@@ -156,6 +182,26 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     })
   }, [commitSessionClear, sessionQueryBoundary])
 
+  // A foreign-session fence or logout permanently terminates its coordinator.
+  // That coordinator stays fenced forever, but the PROVIDER is not dead: once
+  // the terminal clear completes, the generation bumps so a later explicit
+  // login or workspace recovery — after React re-renders — runs against a
+  // fresh coordinator. An ordinary refresh that returns null is not terminal
+  // and never bumps it.
+  const [coordinatorGeneration, setCoordinatorGeneration] = useState(0)
+  // Synchronous ambient gate host, outside React state so it is exact even
+  // before a re-render commits. From the terminal-START hook (the moment a
+  // logout or foreign fence begins — before its awaited DELETE/revocation)
+  // until a successfully APPLIED explicit login/bootstrap/dev login or valid
+  // explicit recovery, the public refresh/reconcile facades refuse, so a
+  // remount mid-finalization cannot consume an ambient refresh cookie whose
+  // logout may still be pending or may have failed. Explicit run/runGuarded
+  // mutations are never gated, so a later explicit login still works and its
+  // apply reopens the gate synchronously — ahead of React's commit. The gate
+  // also persists beside the token store and initializes from that marker,
+  // so a full remount (web page, Tauri, mobile WebView) of a terminated-
+  // but-not-revoked session starts blocked.
+  const ambientRefreshGate = useMemo(() => createAmbientRefreshGateHost(), [])
   // Login, startup restore, every API 401, and workspace switching share this
   // exact coordinator. Both refresh cookies are single-use, so no other path
   // may mutate the session concurrently or apply an older response afterwards.
@@ -164,12 +210,35 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       createSessionMutationCoordinator({
         applySession,
         beforeApply: sessionQueryBoundary.beforeApply,
+        clearLocal: clearSession,
         clearSession,
+        // A foreign session that missed its guarded target must never live on
+        // beside the rotated HTTP-only cookie family: revoke that exact family
+        // using the foreign payload's own bearer as the proof.
+        onForeignSession: async (payload) => {
+          await authApi.logout(payload.token)
+        },
+        // The ambient gate is set by onTerminalStart, the moment terminate
+        // or a foreign fence begins — before any awaited DELETE/revocation —
+        // so a remount during that pending work already reads the persisted
+        // fence. This post-clear notification only retires the coordinator:
+        // bump the generation so a later explicit login/recovery, after
+        // React re-renders, builds a fresh one.
+        onTerminalStart: ambientRefreshGate.onTerminalStart,
+        onTerminal: () => {
+          setCoordinatorGeneration((generation) => generation + 1)
+        },
+        isAmbientRefreshBlocked: ambientRefreshGate.isBlocked,
         refresh: authApi.refresh,
       }),
-    [applySession, clearSession, sessionQueryBoundary],
+    // coordinatorGeneration is not read inside the factory; it only re-runs
+    // the memo after the previous coordinator went terminal.
+    [ambientRefreshGate, applySession, clearSession, coordinatorGeneration, sessionQueryBoundary],
   )
   const reconcileSession = useCallback((): Promise<SessionPayload | null> => {
+    // A terminal fence/logout ends every ambient path at once, synchronously:
+    // no refresh-cookie consumption until an explicit login/recovery applies.
+    if (ambientRefreshGate.isBlocked()) return Promise.resolve(null)
     const expected = { mode: sessionMode, token }
     const action = resolveSessionRefreshAction({
       currentImportedToken: importedSessionTokenRef.current,
@@ -186,6 +255,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const refreshAccessToken = useCallback(async (
     expected?: SessionCredentialSnapshot,
   ): Promise<string | null> => {
+    if (ambientRefreshGate.isBlocked()) return null
     const currentToken = tokenRef.current
     const action = resolveSessionRefreshAction({
       currentImportedToken: importedSessionTokenRef.current,
@@ -215,6 +285,9 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const refreshSessionFor = useCallback(async (
     expected: SessionCredentialSnapshot,
   ): Promise<void> => {
+    // A terminal fence/logout ends every ambient path at once, synchronously:
+    // no startup-restore fetch, no refresh-cookie consumption.
+    if (ambientRefreshGate.isBlocked()) return
     const isCurrent = (): boolean => isSessionCredentialCurrent({
       currentImportedToken: importedSessionTokenRef.current,
       currentToken: tokenRef.current,
@@ -252,7 +325,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     meRef.current = snapshot.me
     setMe(snapshot.me)
     setSessionState('authenticated')
-  }, [refreshAccessToken, sessionQueryBoundary])
+  }, [ambientRefreshGate, refreshAccessToken, sessionQueryBoundary])
 
   const refreshSession = useCallback(
     (): Promise<void> => refreshSessionFor(readSessionCredential()),
@@ -271,7 +344,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     let attempt = 0
 
     const restoreSession = async (): Promise<void> => {
-      if (cancelled || restoring) return
+      if (cancelled || restoring || ambientRefreshGate.isBlocked()) return
       restoring = true
       try {
         await refreshSessionFor(expected)
@@ -320,10 +393,13 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const bootstrap = async (input: BootstrapInput): Promise<void> => {
     await sessionMutations.run(() => authApi.bootstrap(input))
+    // Applied explicit session creation reopens ambient refresh.
+    ambientRefreshGate.reopen()
   }
 
   const devLogin = async (): Promise<void> => {
     await sessionMutations.run(() => authApi.devLogin())
+    ambientRefreshGate.reopen()
   }
 
   const importAccessToken = useCallback(async (accessToken: string): Promise<void> => {
@@ -341,6 +417,69 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
 
   const login = async (input: LoginInput): Promise<void> => {
     await sessionMutations.run(() => authApi.login(input))
+    ambientRefreshGate.reopen()
+  }
+
+  const recoveryExchange = async (
+    input: ExternalLoginInput,
+    expectedWorkspace: ExpectedWorkspaceTarget,
+  ): Promise<SessionPayload> => {
+    if (input.providerId !== 'uoa') {
+      throw new Error('Workspace session recovery is only supported for the UOA provider.')
+    }
+    // The bearer AND the source session are captured lexically inside the
+    // queued thunk — immediately before the request is sent — so the
+    // classification compares against the session that is current when the
+    // mutation actually runs, not when it was enqueued. The guard closure
+    // reads that same lexical binding for BOTH the direct payload and the one
+    // opaque-refresh winner, whose raw response carries no request-local
+    // proof — nothing is ever attached to the payload itself.
+    let capturedSource: ReturnType<typeof captureWorkspaceSessionSource> = null
+    const recovered = sessionMutations.runGuarded(
+      () => {
+        const currentToken = tokenRef.current
+        if (typeof currentToken !== 'string' || currentToken.length === 0) {
+          throw new Error('Workspace session recovery requires an active session.')
+        }
+        const currentMe = meRef.current
+        if (!currentMe) {
+          throw new Error('Workspace session recovery requires an active session.')
+        }
+        const source = captureWorkspaceSessionSource(currentMe)
+        if (!source) {
+          throw new Error('Workspace session recovery is only supported for the UOA provider.')
+        }
+        capturedSource = source
+        const recoveryInput: RecoverWorkspaceSessionInput = {
+          code: input.code,
+          codeVerifier: input.codeVerifier,
+          expectedWorkspace,
+          providerId: 'uoa',
+          redirectUri: input.redirectUri,
+          ...(input.theme === undefined ? {} : { theme: input.theme }),
+        }
+        return authApi.recoverWorkspaceSession(currentToken, recoveryInput)
+      },
+      (payload) => {
+        // Defense in depth behind the API's pre-issuance rejection, as a
+        // three-way classification against the lexically captured source:
+        // exact target succeeds; the preserved source session is applied but
+        // the recovery rejects as a non-switch; anything else is foreign. If
+        // the thunk never captured a source the guard fails closed (foreign).
+        if (!capturedSource) {
+          return {
+            kind: 'foreign',
+            message: 'The renewed session could not be verified. Try switching again.',
+          }
+        }
+        return classifyWorkspaceSessionPayload(payload, expectedWorkspace, capturedSource)
+      },
+    )
+    const payload = await recovered
+    // A valid explicit recovery — exact target applied — reopens ambient
+    // refresh; a rejected non-switch or foreign payload never does.
+    ambientRefreshGate.reopen()
+    return payload
   }
 
   const switchContext = async (input: SwitchContextInput): Promise<void> => {
@@ -364,20 +503,27 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   }
 
   const logout = async (): Promise<void> => {
+    // Capture the ending credential before terminate synchronously clears
+    // tokenRef; the terminal payload's bearer (if any) still wins. Native
+    // cleanup must start while the authenticated bridge is still mounted, so
+    // its gate reads the initiating snapshot (an imported bearer never
+    // registered native push and never revokes a remote session).
     const initiating = readSessionCredential()
     const pendingImportedTokens = importedApplyTracker.tokens()
-    await sessionMutations.terminate(async (latestPayload) => {
-      const ending = resolveTerminatingSessionCredential({
-        initiating,
-        pendingImportedTokens,
-        terminalToken: latestPayload?.token ?? null,
-      })
-      await finalizeSessionLogout({
-        mode: ending.mode,
-        nativeWebView: isReactNativeWebView(),
-        revokeRemoteSession: () => authApi.logout(ending.token),
-        unregisterNativePush: unregisterNativePushDevice,
-      })
+    await performTerminalSessionLogout({
+      currentBearer: initiating.token,
+      isNative: isReactNativeWebView() && initiating.mode !== 'imported',
+      logout: async (bearer) => {
+        const ending = resolveTerminatingSessionCredential({
+          initiating,
+          pendingImportedTokens,
+          terminalToken: bearer,
+        })
+        if (ending.mode === 'imported') return
+        await authApi.logout(ending.token)
+      },
+      terminate: (finalize) => sessionMutations.terminate(finalize),
+      unregisterNative: unregisterNativePushDevice,
     })
   }
 
@@ -392,6 +538,7 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
       logout,
       me,
       reconcileSession,
+      recoveryExchange,
       refreshAccessToken,
       refreshSession,
       sessionMode,

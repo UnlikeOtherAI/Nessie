@@ -3,11 +3,20 @@ import { activeWorkspace, type Workspace } from '../../lib/workspaces'
 import { workspaceSwitchFailureMessage } from './workspace-switch-message'
 
 export type WorkspaceSwitchRecoveryResult =
+  // Proof of the target workspace is missing or no longer renewable — the
+  // caller must re-enter SSO for the exact target. The current session is
+  // retained; reconcileSession is never consulted for this outcome.
+  | { outcome: 'reauthorize' }
   | { outcome: 'switched' }
   | { message: string; outcome: 'failed' }
 
-const REAUTHENTICATION_CODES = new Set([
+// Definitive "renew the proof in person" answers. Unlike a network failure or
+// a switch conflict, these can never resolve through refresh reconciliation:
+// the source refresh credential is absent, revoked, or upstream-refused.
+const REAUTHORIZATION_CODES = new Set([
+  'INTERACTION_REQUIRED',
   'INVALID_REFRESH_TOKEN',
+  'NO_REFRESH_TOKEN',
   'WORKSPACE_SWITCH_REAUTH_REQUIRED',
 ])
 
@@ -17,6 +26,22 @@ const matchesWorkspace = (current: Workspace | null, target: Workspace): boolean
   && current.projectId === target.projectId
   && current.teamId === target.teamId
 )
+
+/**
+ * Classify a workspace-switch failure before touching the session. Missing or
+ * non-renewable target proof is a dedicated reauthorization outcome — the
+ * current UI/session stays exactly as it is (a session must never be cleared
+ * merely because the refresh cookie is absent). Anything ambiguous still
+ * reconciles through the ordinary refresh funnel.
+ */
+export const classifyWorkspaceSwitchFailure = (
+  error: unknown,
+): 'ambiguous' | 'reauthorize' =>
+  error instanceof AuthSessionApiError
+    && error.code !== undefined
+    && REAUTHORIZATION_CODES.has(error.code)
+    ? 'reauthorize'
+    : 'ambiguous'
 
 /**
  * A workspace-switch response can be lost after its rotated cookie is stored.
@@ -33,15 +58,8 @@ export const recoverWorkspaceSwitchFailure = async (input: {
     ? input.error.code
     : undefined
 
-  if (code === 'INTERACTION_REQUIRED') {
-    return {
-      message: workspaceSwitchFailureMessage({
-        code,
-        currentWorkspace: input.currentWorkspace?.label,
-        targetWorkspace: input.targetWorkspace.label,
-      }),
-      outcome: 'failed',
-    }
+  if (classifyWorkspaceSwitchFailure(input.error) === 'reauthorize') {
+    return { outcome: 'reauthorize' }
   }
 
   let payload: SessionPayload | null
@@ -50,7 +68,7 @@ export const recoverWorkspaceSwitchFailure = async (input: {
   } catch {
     return {
       message: workspaceSwitchFailureMessage({
-        state: code && REAUTHENTICATION_CODES.has(code) ? 'reauthenticate' : 'unknown',
+        state: 'unknown',
         targetWorkspace: input.targetWorkspace.label,
       }),
       outcome: 'failed',

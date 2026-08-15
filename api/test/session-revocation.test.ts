@@ -35,8 +35,8 @@ test('a token minted at the current generation is accepted', () => {
   assert.equal(isSessionTokenRevoked(result.claims, 4), false)
 })
 
-test('a token minted before a logout is rejected even though it has not expired', () => {
-  // Logout bumps User.tokenVersion 0 -> 1. The access token is still
+test('a token minted before user-wide revocation is rejected before expiry', () => {
+  // User-wide revocation bumps User.tokenVersion 0 -> 1. The access token is still
   // cryptographically valid and unexpired, which is exactly the window that
   // revoking only the refresh family left open.
   const { token } = issueSessionToken({ ...BASE, tv: 0 }, SECRET, 3600)
@@ -56,7 +56,7 @@ test('a token predating the tv claim reads as generation zero', () => {
   assert.equal(isSessionTokenRevoked(result.claims, 1), true)
 })
 
-// ─── Logout reports whose generation to bump ────────────────────────────────
+// ─── Raw refresh-family revocation reports its owner ────────────────────────
 
 const makePrisma = (
   rows: Array<{ tokenHash: string; familyId: string; userId: string }>,
@@ -84,7 +84,7 @@ const makePrisma = (
   return { prisma, revokedFamilies }
 }
 
-test('logout reports the owning user so their generation can be bumped', async () => {
+test('raw family revocation reports the owning user', async () => {
   const { createHash } = await import('node:crypto')
   const raw = 'refresh-token-value'
   const tokenHash = createHash('sha256').update(raw).digest('hex')
@@ -96,7 +96,7 @@ test('logout reports the owning user so their generation can be bumped', async (
   assert.deepEqual(result, { userId: BASE.sub })
 })
 
-test('logout with an unknown token stays a no-op', async () => {
+test('raw family revocation with an unknown token stays a no-op', async () => {
   const { prisma } = makePrisma([])
   assert.equal(await revokeRefreshTokenByRaw(prisma, 'nope'), null)
 })

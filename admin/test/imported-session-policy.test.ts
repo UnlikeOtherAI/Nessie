@@ -4,7 +4,6 @@ import {
   canUseRefreshCookie,
   clearSessionIfCurrent,
   createImportedSessionApplyTracker,
-  finalizeSessionLogout,
   isSessionCredentialCurrent,
   resolveSessionRefreshAction,
   resolveTerminatingSessionCredential,
@@ -112,26 +111,6 @@ test('an imported clear cannot erase a replacement session applied during query 
   assert.equal(cleared, false)
   assert.equal(committed, false)
   assert.equal(currentToken, 'replacement-token')
-})
-
-test('an imported logout is local-only while renewable native logout unregisters then revokes', async () => {
-  const importedActions: string[] = []
-  await finalizeSessionLogout({
-    mode: 'imported',
-    nativeWebView: true,
-    revokeRemoteSession: async () => { importedActions.push('revoke') },
-    unregisterNativePush: async () => { importedActions.push('unregister') },
-  })
-  assert.deepEqual(importedActions, [])
-
-  const renewableActions: string[] = []
-  await finalizeSessionLogout({
-    mode: 'renewable',
-    nativeWebView: true,
-    revokeRemoteSession: async () => { renewableActions.push('revoke') },
-    unregisterNativePush: async () => { renewableActions.push('unregister') },
-  })
-  assert.deepEqual(renewableActions, ['unregister', 'revoke'])
 })
 
 test('logout keeps imported ownership when expiry clears refs during termination', () => {

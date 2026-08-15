@@ -1,6 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 
-import type { FastifyCorsOptions } from '@fastify/cors'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { loadConfig } from '@nessie/config'
 import {
@@ -23,15 +22,22 @@ import {
   buildMeResponse,
   createActorContextFromClaims,
 } from '../services/auth.js'
+import { hasActiveUserSession } from '../services/refresh-session-management.js'
 import { createSessionIssuers } from '../services/session-issuers.js'
 import { createRequestRateLimitChecker } from './rate-limit.js'
 import { createRequestHelpers } from './request-helpers.js'
 import { createRateLimiter } from '../services/rate-limit.js'
+import { parseOriginList } from './server-origin-policy.js'
 
 export {
   createFastifyTrustProxyConfig,
   getRateLimitClientId,
 } from './rate-limit.js'
+export {
+  buildStreamCorsHeaders,
+  createCorsOriginChecker,
+  isOriginAllowed,
+} from './server-origin-policy.js'
 
 export type AppConfig = ReturnType<typeof loadConfig>
 
@@ -46,90 +52,6 @@ export type RequestWithRawBody = FastifyRequest & {
 }
 
 const DEFAULT_LOCAL_PROVIDER_TYPE = 'local-bootstrap'
-
-const parseOriginList = (...values: Array<string | undefined>): Set<string> => {
-  const origins = new Set<string>()
-  for (const value of values) {
-    for (const origin of value?.split(',') ?? []) {
-      const trimmed = origin.trim().replace(/\/$/, '')
-      if (trimmed) {
-        origins.add(trimmed)
-      }
-    }
-  }
-  return origins
-}
-
-const localCorsOrigins = new Set([
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:5455',
-  'http://localhost:3000',
-  'http://localhost:5455',
-])
-
-// Fixed Tauri WKWebView/WebView2 origins for the Nessie desktop app.
-const desktopAppCorsOrigins = new Set([
-  'tauri://localhost',
-  'http://tauri.localhost',
-])
-
-type OriginPolicy = {
-  origin: string | undefined
-  allowedOrigins: Set<string>
-  mode: AppConfig['mode']
-}
-
-/**
- * Single source of truth for "may this Origin make a credentialed request?".
- * A missing Origin (same-origin / non-browser caller) is always allowed.
- * Used by both the `@fastify/cors` origin checker and the SSE header builder so
- * the streaming endpoints can never drift from the normal CORS policy.
- */
-export const isOriginAllowed = (input: OriginPolicy): boolean => {
-  if (!input.origin) {
-    return true
-  }
-  const normalizedOrigin = input.origin.replace(/\/$/, '')
-  return (
-    input.allowedOrigins.has(normalizedOrigin)
-    || desktopAppCorsOrigins.has(normalizedOrigin)
-    || (input.mode === 'local' && localCorsOrigins.has(normalizedOrigin))
-  )
-}
-
-export const createCorsOriginChecker = (input: {
-  allowedOrigins: Set<string>
-  mode: AppConfig['mode']
-}): NonNullable<FastifyCorsOptions['origin']> =>
-  (origin, callback) => {
-    callback(
-      null,
-      isOriginAllowed({
-        origin: origin ?? undefined,
-        allowedOrigins: input.allowedOrigins,
-        mode: input.mode,
-      }),
-    )
-  }
-
-/**
- * CORS headers for hijacked SSE responses. `reply.hijack()` takes the response
- * out of Fastify's lifecycle, so `@fastify/cors` never runs and the manual
- * `reply.raw.writeHead` would otherwise ship no `Access-Control-Allow-Origin` —
- * silently breaking every cross-origin EventSource. Spread the result into the
- * handler's `writeHead`. Returns `{}` when the origin is absent or not allowed,
- * matching `@fastify/cors`, which then emits no allow-origin header.
- */
-export const buildStreamCorsHeaders = (input: OriginPolicy): Record<string, string> => {
-  if (!input.origin || !isOriginAllowed(input)) {
-    return {}
-  }
-  return {
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Origin': input.origin,
-    Vary: 'Origin',
-  }
-}
 
 const MEMBERSHIP_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
 type MembershipRole = (typeof MEMBERSHIP_ROLES)[number]
@@ -273,11 +195,24 @@ export const createServerContext = () => {
       return null
     }
 
-    // Revocation: logout (and any forced sign-out) bumps User.tokenVersion,
-    // which invalidates every access token minted at an older generation.
-    // Without this, revoking the refresh family still left the already-issued
-    // access token usable for the remainder of its TTL.
+    // Revocation: a forced sign-out bumps User.tokenVersion, which
+    // invalidates every access token minted at an older generation.
     if (isSessionTokenRevoked(verification.claims, user.tokenVersion)) {
+      sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
+      return null
+    }
+
+    // Exact-session revocation: logout revokes only the bearer's `sid`, never
+    // the whole user generation, so the live check must be per-session. With
+    // no unrevoked, unexpired refresh row for this exact `sid`, the session
+    // was logged out and its access token stops working now, not at expiry.
+    if (
+      !(await hasActiveUserSession(
+        prisma,
+        verification.claims.sub,
+        verification.claims.sid,
+      ))
+    ) {
       sendApiError(reply, 401, 'TOKEN_REVOKED', 'Session has been revoked')
       return null
     }
