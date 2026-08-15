@@ -11,7 +11,7 @@ export const deepWaterIntegrationPluginManifest = {
   manifestRef: 'first-party/deep-water',
   productSlug: 'deep-water',
   name: 'Deep Water',
-  version: '0.2.1',
+  version: '0.2.2',
   vendor: 'UnlikeOtherAI',
   install: [
     {
@@ -55,7 +55,15 @@ export const deepWaterIntegrationPluginManifest = {
             context: {
               type: 'string',
               maxLength: 50_000,
-              description: 'Optional constraints and background for the research.',
+              description:
+                'Optional constraints and background for the research. Ledger accepts no '
+                + 'other research options, so every further choice belongs here as a labelled '
+                + 'line — the same lines Nessie\'s research launcher sends, so a request you '
+                + 'compose by hand behaves like one a person launched. Supported lines and '
+                + 'their values: "Chapter depth: brief|standard|detailed|exhaustive", '
+                + '"Output tier: summary|full", "Output language: <ISO 639-1 code>", '
+                + '"Search quality: standard|premium", "Sections: 3-20", '
+                + '"Searches per pillar: 1-20". Omit a line to accept the pipeline default.',
             },
             depth: {
               type: 'string',

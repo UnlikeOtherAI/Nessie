@@ -17,7 +17,6 @@ import {
   removeMemberFromChannel,
 } from '../services/channel-members.js'
 import {
-  createGroupFromDm,
   findOrCreatePrivateConversationChannel,
   findOrCreateDmChannel,
 } from '../services/channel-dms.js'
@@ -374,27 +373,18 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    // If the channel is a DM, create a new group channel instead of mutating the DM
+    // A DM is a fixed pair. Adding a third participant would either mutate a
+    // private two-person history into something its participants never agreed
+    // to, or silently fork it into a different channel; both are surprises. Use
+    // a channel instead.
     if (channel.type === 'dm') {
-      let group
-      try {
-        group = await createGroupFromDm(prisma, {
-          dmChannelId: channelId,
-          newUserId: body.userId,
-          currentUserId: actorContext.actor.actorId,
-        })
-      } catch (error) {
-        if (error instanceof ChannelSlugConflictError) {
-          sendApiError(reply, 409, 'CHANNEL_SLUG_CONFLICT', error.message)
-          return reply
-        }
-        throw error
-      }
-      if (!group) {
-        sendApiError(reply, 403, 'USER_NOT_IN_ORGANIZATION', 'Target user is not a member of this organization')
-        return reply
-      }
-      return reply.code(201).send(createApiResponse(ChannelRecordSchema.parse(group)))
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_DM_MEMBERS_FIXED',
+        'Direct messages are between two participants. Create a channel to include more people.',
+      )
+      return reply
     }
 
     const added = await addMemberToChannel(prisma, channelId, body.userId)
@@ -427,6 +417,17 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         403,
         'CHANNEL_SYSTEM_MANAGED',
         'Personal Assistant DMs cannot be modified',
+      )
+      return reply
+    }
+    // Symmetrical to the add path: removing either half of a pair would leave a
+    // conversation with one participant and no way back.
+    if (channel.type === 'dm') {
+      sendApiError(
+        reply,
+        403,
+        'CHANNEL_DM_MEMBERS_FIXED',
+        'Direct messages are between two participants and cannot be changed.',
       )
       return reply
     }

@@ -5,6 +5,7 @@ import type {
 } from '../../../lib/api-client'
 import { useDeepWaterAgentAccess } from '../../../facades/integrations/hooks'
 import { useModalA11y } from '../../shared/useModalA11y'
+import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 
 type DeepWaterResearchLauncherDialogProps = {
@@ -45,6 +46,7 @@ export const DeepWaterResearchLauncherDialog = ({
   const dialogRef = useRef<HTMLDivElement | null>(null)
   const close = useCallback(() => onClose(), [onClose])
   useModalA11y(dialogRef, close)
+  const overlayDismiss = useOverlayDismiss(close)
   const accessQuery = useDeepWaterAgentAccess(open)
   const teamReady = product.teamEnablement?.enabled === true
   const connectorReady = product.mcpInstallation?.lifecycleState === 'active'
@@ -58,10 +60,7 @@ export const DeepWaterResearchLauncherDialog = ({
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close()
-      }}
-      role="presentation"
+      {...overlayDismiss}
     >
       <div
         aria-describedby="deep-water-launcher-description"
@@ -78,7 +77,8 @@ export const DeepWaterResearchLauncherDialog = ({
               New Deep Water research
             </h2>
             <p className="mt-1 text-sm leading-6 text-[var(--tx2)]" id="deep-water-launcher-description">
-              Review the template and controls before a research run is sent to Ledger.
+              Ask the question, choose how deep to go, and review it before the run is sent
+              to Ledger.
             </p>
           </div>
           <button

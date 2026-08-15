@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useCreateProject, useCreateTeam } from '../../facades/projects/hooks'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 type CreateProjectDialogProps = {
   onClose: () => void
@@ -23,6 +24,8 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
     onClose()
   }
 
+  const overlayDismiss = useOverlayDismiss(handleClose)
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmedName = name.trim()
@@ -40,12 +43,7 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
 
   return (
     <div
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          handleClose()
-        }
-      }}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useRenameProject } from '../../facades/projects/hooks'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 type RenameProjectDialogProps = {
   currentName: string
@@ -27,6 +28,8 @@ export const RenameProjectDialog = (
     onClose()
   }
 
+  const overlayDismiss = useOverlayDismiss(handleClose)
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmedName = name.trim()
@@ -43,12 +46,7 @@ export const RenameProjectDialog = (
 
   return (
     <div
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          handleClose()
-        }
-      }}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',

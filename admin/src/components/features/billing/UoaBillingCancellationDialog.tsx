@@ -9,6 +9,7 @@ import type {
   BillingCancellationSelection,
 } from '@unlikeotherai/billing-statement-protocol'
 import { useModalA11y } from '../../shared/useModalA11y'
+import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 
 type UoaBillingCancellationDialogProps = {
   confirmation: BillingCancellationConfirmationV1 | null
@@ -63,6 +64,10 @@ export const UoaBillingCancellationDialog = ({
 }: UoaBillingCancellationDialogProps) => {
   const dialogRef = useRef<HTMLDivElement | null>(null)
   useModalA11y(dialogRef, onClose)
+  const overlayDismiss = useOverlayDismiss(() => {
+    if (pending) return
+    onClose()
+  })
   const [selection, setSelection] =
     useState<BillingCancellationSelection | null>(null)
 
@@ -79,10 +84,7 @@ export const UoaBillingCancellationDialog = ({
         'fixed inset-0 z-[9999] flex items-center justify-center',
         'bg-[var(--scrim-strong)] px-4 backdrop-blur-sm',
       ].join(' ')}
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !pending) onClose()
-      }}
-      role="presentation"
+      {...overlayDismiss}
     >
       <div
         aria-labelledby="uoa-billing-cancellation-title"

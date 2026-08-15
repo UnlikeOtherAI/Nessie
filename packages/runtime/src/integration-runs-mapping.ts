@@ -83,7 +83,6 @@ export const deepWaterInputJson = (
   searchQuality: input.searchQuality,
   searchesPerPillar: input.searchesPerPillar,
   sections: input.sections,
-  title: input.title ?? null,
 })
 
 export const mapDeepWaterRunRow = (row: DeepWaterRunRow): DeepWaterResearchRunRecord => {
@@ -127,6 +126,8 @@ export const mapDeepWaterRunRow = (row: DeepWaterRunRow): DeepWaterResearchRunRe
     statusDetail: pickNullableString(result.statusDetail),
     teamId: row.team_id,
     threadId: row.thread_id,
+    // Only runs launched while the launcher still asked for a title carry one.
+    // Newer runs are null here and read as their query preview.
     title: row.title,
     updatedAt: toIsoString(row.updated_at),
   })

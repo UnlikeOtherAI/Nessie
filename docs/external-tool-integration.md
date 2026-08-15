@@ -589,6 +589,48 @@ There is deliberately no direct-provider fallback.
   The Integrations link filters Tools by both the exact provisioned instance and
   its first-party `deep-water` product binding, never by a caller-controlled
   name alone.
+- **The launcher asks one question and offers one choice.** "What do you want
+  to research?" is the whole ask — no title is collected, because a report's
+  name belongs to Deep Water rather than to whoever typed the prompt. Depth is
+  chosen as **Light · Standard · Heavy · Custom**
+  (`admin/src/components/features/integrations/deep-water-research-options.ts`).
+  Each preset carries a complete set of Ledger/Deep Water-accepted values
+  (depth, chapter detail, output tier, search quality, sections, searches per
+  pillar, recency, destination), so choosing one answers every question the
+  form used to ask; **Custom** reveals the full historical control set
+  unchanged, including the six-way depth grid
+  (`DeepWaterResearchCustomControls.tsx`). Which mode is active is *derived*
+  from the values, never stored, so a chat card whose preset matches a mode
+  exactly opens on that mode and any other preset opens on Custom with its
+  settings visible. `DeepWaterResearchLaunchRequest` no longer carries `title`;
+  a chat card is named by its query, the run history falls back to
+  `queryPreview`, and rows launched before the change keep the title they were
+  launched with. `DeepWaterResearchLauncherPreset` still *tolerates* a `title`
+  key, because that schema is strict and stored card metadata from before the
+  change would otherwise fail to render.
+- **Ledger's MCP `research_start` is the ceiling on what any of this can send.**
+  It accepts exactly `query`, `context`, `depth`
+  (`light|standard|deep|heavy`), and `recency` (`any|recent`); the rich
+  `deepwater.research-config.v1` envelope — which carries a typed `languages`
+  set, `output_language`, `chapter_depth`, `sections`, `searches_per_pillar`,
+  and `search_quality` — exists only on Ledger's REST `POST /v1/research`
+  direct-application path, which Nessie does not use. Every launcher control
+  beyond depth and recency therefore travels as a labelled line inside
+  `context` (`api/src/routes/integrations/handoff-builders.ts`), which Ledger
+  forwards to the research pipeline verbatim. Those lines are also documented in
+  the projected `research_start` tool description
+  (`api/src/services/integration-plugin-manifests/deep-water.ts`), so a granted
+  agent — the Personal Assistant or any shared agent holding the explicit grant
+  — composes the same instructions by hand that the launcher composes for it.
+  Keep the two lists in step. A multi-select **search language** control is
+  deliberately *not* built: until `research_start` accepts the typed set, it
+  would be a control for something the API cannot receive.
+  `DeepWaterResearchCustomControls` is where it lands when that contract
+  arrives. Two known gaps live in the same place: Nessie's `thesis` and
+  `dissertation` depths both collapse to `heavy` at the Ledger boundary (they
+  remain in Custom, but they are not distinct tiers), and the finer
+  `day|week|month|year` recency collapses to `recent` without stating the
+  window.
 - **Launch authorization is one serialized boundary.** The launch transaction
   takes the org/team transition lock, resolves the exact first-party active
   instance, then takes the PA policy lock. It repeats the 6/6 check and inserts

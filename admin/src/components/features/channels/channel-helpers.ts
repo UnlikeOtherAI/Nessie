@@ -15,7 +15,7 @@ export type MessageUserIdentity = {
   id: string
 }
 
-export type ChannelTab = 'agents' | 'automations' | 'files' | 'info' | 'messages' | 'runs'
+export type ChannelTab = 'agents' | 'automations' | 'files' | 'messages'
 
 export type FeedItem =
   | { kind: 'date'; key: string; label: string }
@@ -26,13 +26,19 @@ export const toolbarButtonClass = [
   'hover:bg-[var(--overlay)]',
 ].join(' ')
 
-export const runsCardClass = [
-  'admin-card flex items-start gap-3 p-3 text-left',
-  'hover:bg-[color:var(--main-hover)]',
-].join(' ')
-
-export const isOperationsTab = (tab: ChannelTab): boolean =>
-  tab === 'agents' || tab === 'automations' || tab === 'runs'
+// The Agents tab only exists where it has something to say: any ordinary
+// channel, or a conversation surface that carries the Personal Assistant config
+// or at least one bound agent. A person-to-person DM shows Messages + Files
+// only. One predicate drives both the tab button and the fallback to Messages,
+// so a tab can never be selected without a panel behind it.
+export const isAgentsTabAvailable = (input: {
+  boundAgentCount: number
+  isConversationSurface: boolean
+  isPersonalAssistantConversation: boolean
+}): boolean =>
+  !input.isConversationSurface ||
+  input.isPersonalAssistantConversation ||
+  input.boundAgentCount > 0
 
 const formatDayLabel = (value: string): string => {
   const date = new Date(value)

@@ -1,3 +1,4 @@
+import { toChannelNameInput, toChannelSlug } from '@nessie/schemas'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ChannelRecord } from '../../lib/api-client'
@@ -6,6 +7,7 @@ import {
   useUpdateChannel,
 } from '../../facades/channels/hooks'
 import { useModalA11y } from './useModalA11y'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 type ChannelSettingsDialogProps = {
   channel: ChannelRecord
@@ -42,20 +44,18 @@ export const ChannelSettingsDialog = (
     }
   }, [open, channel])
 
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose()
-    }
-  }
+  const overlayDismiss = useOverlayDismiss(onClose)
+  const confirmArchiveDismiss = useOverlayDismiss(() => setConfirmArchive(false))
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!label.trim()) return
+    const nextLabel = toChannelSlug(label)
+    if (!nextLabel) return
 
     try {
       await updateChannel.mutateAsync({
         channelId: channel.id,
-        label: label.trim(),
+        label: nextLabel,
         topic: topic.trim() ? topic.trim() : null,
         description: description.trim() ? description.trim() : null,
       })
@@ -87,8 +87,7 @@ export const ChannelSettingsDialog = (
 
   return (
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         position: 'fixed',
         inset: 0,
@@ -159,11 +158,15 @@ export const ChannelSettingsDialog = (
               className="admin-input"
               id="channel-settings-name"
               onChange={(e) => {
-                setLabel(e.target.value)
+                setLabel(toChannelNameInput(e.target.value))
                 setFormError(null)
               }}
+              onBlur={() => setLabel(toChannelSlug(label))}
               value={label}
             />
+            <div className="text-xs text-[color:var(--tx3)]">
+              Lowercase letters, numbers and hyphens. Spaces become hyphens.
+            </div>
             {formError ? (
               <div className="text-xs text-[color:var(--danger-text)]">{formError}</div>
             ) : null}
@@ -244,7 +247,7 @@ export const ChannelSettingsDialog = (
               </button>
               <button
                 className="admin-button admin-button-primary"
-                disabled={!label.trim() || updateChannel.isPending}
+                disabled={!toChannelSlug(label) || updateChannel.isPending}
                 type="submit"
               >
                 Save
@@ -256,10 +259,7 @@ export const ChannelSettingsDialog = (
 
       {confirmArchive ? (
         <div
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setConfirmArchive(false)
-          }}
-          role="presentation"
+          {...confirmArchiveDismiss}
           style={{
             position: 'fixed',
             inset: 0,

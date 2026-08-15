@@ -6,6 +6,7 @@ import {
   type AttachmentRecord,
 } from '../../lib/uploads'
 import { useModalA11y } from './useModalA11y'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 /**
  * Full-size view of one attachment: the ORIGINAL bytes, not the feed's
@@ -43,6 +44,7 @@ const AttachmentViewerDialog = ({
   const panelRef = useRef<HTMLDivElement | null>(null)
   const close = useCallback(() => onClose(), [onClose])
   useModalA11y(panelRef, close)
+  const overlayDismiss = useOverlayDismiss(close)
   const [downloading, setDownloading] = useState(false)
 
   const pdf = isViewablePdf(attachment)
@@ -75,6 +77,7 @@ const AttachmentViewerDialog = ({
         'fixed inset-0 z-[110] flex items-center justify-center p-4',
         'bg-[var(--scrim-strong)] backdrop-blur-sm',
       ].join(' ')}
+      {...overlayDismiss}
       onKeyDown={(event) => {
         // Openable from inside the reply panel, which closes itself on a
         // window-level Escape. One keypress must not dismiss both.
@@ -82,12 +85,6 @@ const AttachmentViewerDialog = ({
           event.stopPropagation()
         }
       }}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          close()
-        }
-      }}
-      role="presentation"
     >
       <div
         aria-labelledby="attachment-viewer-title"

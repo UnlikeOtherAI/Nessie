@@ -291,6 +291,10 @@ export const DeepWaterResearchDepthSchema = z.enum([
 export type DeepWaterResearchDepth =
   z.infer<typeof DeepWaterResearchDepthSchema>
 
+// No title is asked for or accepted: the research question is the whole ask,
+// and a report's own name belongs to DeepWater rather than to whoever typed the
+// prompt. Existing rows keep the titles they were launched with; new runs are
+// identified by their query preview until DeepWater supplies a report title.
 export const DeepWaterResearchLaunchRequestSchema = z.object({
   artifactDestination: z.enum(['knowledge_draft', 'chat_only']).default('knowledge_draft'),
   chapterDepth: z.enum(['brief', 'standard', 'detailed', 'exhaustive']).default('standard'),
@@ -302,7 +306,6 @@ export const DeepWaterResearchLaunchRequestSchema = z.object({
   searchQuality: z.enum(['standard', 'premium']).default('standard'),
   searchesPerPillar: z.number().int().min(1).max(20).default(4),
   sections: z.number().int().min(3).max(20).default(8),
-  title: z.string().trim().max(200).optional(),
 })
 export type DeepWaterResearchLaunchRequest =
   z.infer<typeof DeepWaterResearchLaunchRequestSchema>
@@ -322,6 +325,10 @@ export const DeepWaterResearchLauncherPresetSchema = z.object({
   searchQuality: z.enum(['standard', 'premium']).optional(),
   searchesPerPillar: z.number().int().min(1).max(20).optional(),
   sections: z.number().int().min(3).max(20).optional(),
+  // Tolerated, never used. Cards authored before titles were dropped carry one
+  // in their stored message metadata, and this schema is strict — rejecting the
+  // key would stop those older chat cards rendering at all. New cards omit it
+  // and the launcher ignores it.
   title: z.string().trim().max(200).optional(),
 }).strict()
 export type DeepWaterResearchLauncherPreset =

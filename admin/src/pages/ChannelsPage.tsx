@@ -11,7 +11,6 @@ import {
 } from '../facades/personal-assistant/hooks'
 import { useThreadMessages, useThreadStream } from '../facades/threads/hooks'
 import { selectPendingForRoot } from '../facades/threads/thinking'
-import { useTools } from '../facades/tools/hooks'
 import { useUsers } from '../facades/users/hooks'
 import { useFileDrop } from '../hooks/useFileDrop'
 import { useStickToBottom } from '../hooks/useStickToBottom'
@@ -22,7 +21,12 @@ import { parseChannelIdFromPath } from '../lib/channel-route'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { reportPushSurface } from '../lib/push-surface'
 import { ConversationInfoFlow } from '../components/features/channels/ConversationInfoFlow'
-import { buildFeedItems, isOperationsTab, type ChannelTab, type MessageUserIdentity } from '../components/features/channels/channel-helpers'
+import {
+  buildFeedItems,
+  isAgentsTabAvailable,
+  type ChannelTab,
+  type MessageUserIdentity,
+} from '../components/features/channels/channel-helpers'
 import { useAgentLivenessHint } from '../components/features/channels/useAgentLivenessHint'
 import { useChannelComposer } from '../components/features/channels/useChannelComposer'
 import { useChannelMessageActions } from '../components/features/channels/useChannelMessageActions'
@@ -45,10 +49,9 @@ export const ChannelsPage = () => {
   const phoneLayout = usePhoneLayout()
   const { channelId } = useParams()
   const { me, token } = useAuthSession()
-  const { onSelectAgent, scopedAgents } = useOutletContext<AdminShellOutletContext>()
+  const { onSelectAgent } = useOutletContext<AdminShellOutletContext>()
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
-  const { data: tools = [] } = useTools()
   const isOwner = me?.user.roleIds?.includes('owner') ?? false
   const { data: allUsers = [] } = useUsers(isOwner)
 
@@ -98,12 +101,20 @@ export const ChannelsPage = () => {
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
   const isConversationSurface =
     activeChannel?.type === 'dm' || isPersonalAssistantConversation
+  const agentsTabAvailable = isAgentsTabAvailable({
+    boundAgentCount: boundAgents.length,
+    isConversationSurface,
+    isPersonalAssistantConversation,
+  })
   const visibleActiveTab =
-    isConversationSurface && isOperationsTab(activeTab) ? 'messages' : activeTab
+    (activeTab === 'agents' && !agentsTabAvailable) ||
+    (activeTab === 'automations' && isConversationSurface)
+      ? 'messages'
+      : activeTab
 
   useEffect(() => {
     const requestedTab = new URLSearchParams(location.search).get('tab')
-    if (requestedTab === 'files' || requestedTab === 'info' || requestedTab === 'messages') {
+    if (requestedTab === 'files' || requestedTab === 'messages') {
       setActiveTab(requestedTab)
     }
   }, [location.search])
@@ -254,10 +265,10 @@ export const ChannelsPage = () => {
   const joinChannel = useJoinChannel()
 
   useEffect(() => {
-    if (isConversationSurface && isOperationsTab(activeTab)) {
+    if (activeTab === 'agents' && !agentsTabAvailable) {
       setActiveTab('messages')
     }
-  }, [activeTab, isConversationSurface])
+  }, [activeTab, agentsTabAvailable])
 
   useEffect(() => {
     cancelEdit()
@@ -368,6 +379,7 @@ export const ChannelsPage = () => {
           setMessage,
           setOversizePaste,
         }}
+        agentsTabAvailable={agentsTabAvailable}
         deepWaterLauncher={deepWaterLauncher}
         documentSessions={documentSessions}
         documentStore={documentStore}
@@ -399,7 +411,6 @@ export const ChannelsPage = () => {
         personalAssistantState={personalAssistantState}
         renderContent={renderContent}
         replyThread={replyThread}
-        scopedAgents={scopedAgents}
         search={{
           closeSearch,
           jumpToMessage,
@@ -412,7 +423,6 @@ export const ChannelsPage = () => {
         shareRestricted={shareRestricted}
         titleFavorite={titleFavorite}
         token={token}
-        toolsCount={tools.length}
         visibleActiveTab={visibleActiveTab}
         onBannerJoin={onBannerJoin}
         onCallButton={onCallButton}
@@ -484,7 +494,7 @@ export const ChannelsPage = () => {
         <ConversationInfoFlow
           activeChannel={activeChannel}
           allUsers={allUsers}
-          canAddPeople={isOwner}
+          canAddPeople={isOwner && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}

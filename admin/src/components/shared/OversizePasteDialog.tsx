@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 type Props = {
   limit: number
@@ -37,13 +38,9 @@ export const OversizePasteDialog = ({
     return () => window.removeEventListener('keydown', handler)
   }, [open, onCancel])
 
-  if (!open) return null
+  const overlayDismiss = useOverlayDismiss(onCancel)
 
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onCancel()
-    }
-  }
+  if (!open) return null
 
   const preview = pastedText.length > 2000
     ? `${pastedText.slice(0, 2000)}\n\n…(${pastedText.length - 2000} more characters)`
@@ -51,8 +48,7 @@ export const OversizePasteDialog = ({
 
   return (
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         alignItems: 'center',
         backdropFilter: 'blur(4px)',

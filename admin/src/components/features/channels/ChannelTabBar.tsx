@@ -2,13 +2,15 @@ import type { ChannelTab } from './channel-helpers'
 
 interface ChannelTabBarProps {
   visibleActiveTab: ChannelTab
-  isConversationSurface: boolean
+  showAgentsTab: boolean
+  showAutomationsTab: boolean
   onSelectTab: (tab: ChannelTab) => void
 }
 
 export const ChannelTabBar = ({
   visibleActiveTab,
-  isConversationSurface,
+  showAgentsTab,
+  showAutomationsTab,
   onSelectTab,
 }: ChannelTabBarProps) => (
   <div className="flex h-9 items-center border-b border-[color:var(--sep)] px-3">
@@ -56,52 +58,7 @@ export const ChannelTabBar = ({
       </svg>
       Files
     </button>
-    <button
-      className={`admin-tab ${visibleActiveTab === 'info' ? 'active' : ''}`}
-      onClick={() => onSelectTab('info')}
-      type="button"
-    >
-      <svg
-        className="h-4 w-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        viewBox="0 0 24 24"
-      >
-        <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M12 11v5" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="12" cy="8" fill="currentColor" r="0.5" stroke="none" />
-      </svg>
-      Info
-    </button>
-    {!isConversationSurface ? (
-      <button
-        className={`admin-tab ${visibleActiveTab === 'runs' ? 'active' : ''}`}
-        onClick={() => onSelectTab('runs')}
-        type="button"
-      >
-        <svg
-          className="h-4 w-4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          viewBox="0 0 24 24"
-        >
-          <path
-            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 9l2 2 4-4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        Runs
-      </button>
-    ) : null}
-    {!isConversationSurface ? (
+    {showAutomationsTab ? (
       <button
         className={`admin-tab ${visibleActiveTab === 'automations' ? 'active' : ''}`}
         data-testid="channel-tab-automations"
@@ -124,7 +81,7 @@ export const ChannelTabBar = ({
         Automations
       </button>
     ) : null}
-    {!isConversationSurface ? (
+    {showAgentsTab ? (
       <button
         className={`admin-tab ${visibleActiveTab === 'agents' ? 'active' : ''}`}
         onClick={() => onSelectTab('agents')}

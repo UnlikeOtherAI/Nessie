@@ -15,11 +15,31 @@ const ledgerResearchRecency = (
   recency: DeepWaterLaunchInput['recency'],
 ): 'any' | 'recent' => recency === 'any' ? 'any' : 'recent'
 
+const CARD_TITLE_MAX = 80
+
+/**
+ * A research card is named by the question it asks. Nothing invents a title:
+ * DeepWater owns the report's own name, and until it returns one the question
+ * is the most honest label a card can carry.
+ */
+const researchCardTitle = (query: string): string => {
+  const compact = query.replace(/\s+/gu, ' ').trim()
+  if (!compact) return 'Deep Water research'
+  return compact.length > CARD_TITLE_MAX
+    ? `${compact.slice(0, CARD_TITLE_MAX - 1).trimEnd()}…`
+    : compact
+}
+
+// Ledger's MCP `research_start` takes only query, context, depth, and recency.
+// Every other launcher choice therefore travels as a labelled line inside the
+// optional `context` string, which Ledger forwards to the research pipeline
+// verbatim. Keep this list and the tool description in
+// `integration-plugin-manifests/deep-water.ts` in step, so an agent composing a
+// research request by hand produces the same instructions the launcher does.
 export const buildDeepWaterLaunchMessage = (
   input: DeepWaterLaunchInput,
   context: { runId: string },
 ): string => {
-  const title = input.title?.trim()
   const depth = ledgerResearchDepth(input.depth)
   const recency = ledgerResearchRecency(input.recency)
   const destination =
@@ -47,7 +67,6 @@ export const buildDeepWaterLaunchMessage = (
     `Recency: ${recency}`,
     '',
     'Pass this launcher detail as the optional context string (not as extra top-level tool arguments):',
-    title ? `Title: ${title}` : null,
     `Chapter depth: ${input.chapterDepth}`,
     `Output tier: ${input.outputTier}`,
     `Output language: ${input.outputLanguage}`,
@@ -71,7 +90,7 @@ export const buildDeepWaterLaunchMessage = (
     'When reporting back, include the Nessie run id, Ledger research job id, status, source count, and native Knowledge link when one was created.',
     'If you set knowledgePageId, also tell the user the report now lives as a native Knowledge document and link it as /knowledge-base?pageId=<knowledgePageId> so they can open it without leaving Nessie.',
     destination,
-  ].filter((line): line is string => line !== null).join('\n')
+  ].join('\n')
 }
 
 export const buildDeepWaterLaunchMetadata = (
@@ -103,7 +122,6 @@ export const buildDeepWaterLaunchMetadata = (
             searchQuality: input.searchQuality,
             searchesPerPillar: input.searchesPerPillar,
             sections: input.sections,
-            title: input.title,
           },
           type: 'open_deep_water_research_launcher',
           variant: 'secondary',
@@ -123,7 +141,9 @@ export const buildDeepWaterLaunchMetadata = (
       productSlug: 'deep-water',
       status: 'queued',
       summary: 'Personal Assistant will start this through Ledger MCP; Ledger records the raw research usage for UOA.',
-      title: input.title?.trim() || 'Deep Water research',
+      // Nobody types a title any more, so the card is named by the question it
+      // asks — the same fallback the run history already uses.
+      title: researchCardTitle(input.query),
     }),
   ],
 })

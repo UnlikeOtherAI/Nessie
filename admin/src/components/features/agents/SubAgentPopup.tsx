@@ -3,6 +3,7 @@ import type { AgentChild } from '@nessie/schemas'
 import { useAgentChildren, useCreateAgent } from '../../../facades/agents/hooks'
 import { AgentStatusDot } from './AgentStatusDot'
 import { agentGradient } from '../../../lib/avatar'
+import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 
 type SubAgentPopupProps = {
   onClose: () => void
@@ -32,11 +33,7 @@ export const SubAgentPopup = ({
   const [name, setName] = useState('')
   const [role, setRole] = useState('')
 
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose()
-    }
-  }
+  const overlayDismiss = useOverlayDismiss(onClose)
 
   const handleCreate = () => {
     const trimmedName = name.trim()
@@ -65,8 +62,7 @@ export const SubAgentPopup = ({
 
   return (
     <div
-      onClick={handleOverlayClick}
-      role="presentation"
+      {...overlayDismiss}
       style={{
         position: 'fixed',
         inset: 0,

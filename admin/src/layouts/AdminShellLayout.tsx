@@ -138,7 +138,6 @@ const AuthenticatedAdminShellLayout = () => {
     onCreateAgent: shell.navigateToAgentDesigner,
     onCreateChannel: shell.openCreateChannel,
     onSelectAgent: shell.selectAgent,
-    scopedAgents: shell.scopedAgents,
   });
 
   const mainContent = (
