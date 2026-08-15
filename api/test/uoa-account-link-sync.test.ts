@@ -5,6 +5,10 @@ import {
   setProductTeamEnablement,
   syncUoaProductAccountLinks,
 } from '../src/services/integrations.js'
+import {
+  clearUoaWorkspaceDirectoryCache,
+  readUoaWorkspaceDirectory,
+} from '../src/services/uoa-directory-cache.js'
 
 const syncInput = {
   email: 'person@example.com',
@@ -72,7 +76,8 @@ test('account-link sync fails closed without the canonical Nessie product', asyn
 })
 
 test('account-link sync updates every first-party product under one transaction', async () => {
-  const persistedDirectories: unknown[] = []
+  clearUoaWorkspaceDirectoryCache()
+  const persistedMetadata: Array<Record<string, unknown>> = []
   const statements: string[] = []
   let transactionCalls = 0
   const prisma = {
@@ -86,11 +91,11 @@ test('account-link sync updates every first-party product under one transaction'
         $executeRaw: async (query: unknown) => {
           statements.push(sqlText(query))
           const metadataJson = sqlValues(query).find(
-            (value) => typeof value === 'string' && value.includes('"workspaceDirectory"'),
+            (value) => typeof value === 'string' && value.includes('"provider"'),
           )
           assert.equal(typeof metadataJson, 'string')
-          persistedDirectories.push(
-            (JSON.parse(metadataJson as string) as { workspaceDirectory?: unknown }).workspaceDirectory,
+          persistedMetadata.push(
+            JSON.parse(metadataJson as string) as Record<string, unknown>,
           )
           return 1
         },
@@ -101,7 +106,17 @@ test('account-link sync updates every first-party product under one transaction'
   await syncUoaProductAccountLinks(prisma as never, syncInput)
   assert.equal(transactionCalls, 1)
   assert.equal(statements.length, 2)
-  assert.deepEqual(persistedDirectories, [syncInput.workspaceDirectory, syncInput.workspaceDirectory])
+  // The UOA-owned directory is cached in memory, never mirrored into the link.
+  for (const metadata of persistedMetadata) {
+    assert.equal('workspaceDirectory' in metadata, false)
+    assert.equal(metadata.provider, 'uoa')
+    assert.deepEqual(metadata.teamIds, syncInput.workspace.teamIds)
+  }
+  assert.deepEqual(
+    readUoaWorkspaceDirectory(syncInput.userId),
+    syncInput.workspaceDirectory,
+  )
+  clearUoaWorkspaceDirectoryCache()
   for (const statement of statements) {
     assert.match(statement, /"uoa_sub" = EXCLUDED\."uoa_sub"/)
     assert.match(

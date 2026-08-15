@@ -382,11 +382,26 @@ Claims:
   revokes the now-unrecoverable source family rather than retaining a consumed
   upstream credential.
   Every successful UOA renewal also reads `/org/me` with the fresh access token
-  and transactionally replaces the cached workspace directory used by the
-  switcher, so membership removals and avatar/name changes appear without a new
-  login. That directory is display-only and never authorizes a switch. If the
-  optional directory read is unavailable, Nessie retains the last verified
-  copy while continuing the independently authorized token rotation.
+  and replaces the cached workspace directory used by the switcher, so
+  membership removals and avatar/name changes appear without a new login. That
+  directory is display-only and never authorizes a switch. If the optional
+  directory read is unavailable, Nessie retains the last verified copy while
+  continuing the independently authorized token rotation.
+  **The directory is UOA-owned data, so it lives only in a bounded in-memory
+  cache** (`api/src/services/uoa-directory-cache.ts`: per user, 30-minute TTL,
+  LRU-bounded at 10,000 users), written at login and at every rotation
+  — including a workspace switch — and read by `GET /api/auth/me`. It is never
+  persisted; migration
+  `20260815120000_drop_uoa_workspace_directory_mirror` removed the former
+  `ProductAccountLink.metadata.workspaceDirectory` mirror.
+  The cache is per process: each API replica repopulates from its own logins and
+  rotations, and a replica that has not yet served one for a user answers from a
+  **degraded fallback** derived only from data Nessie owns — the user's own
+  `TeamMember` rows joined to `Team.externalWorkspaceId` / `externalOrgId`, with
+  the local team name as the label and UOA's deterministic per-team image URL as
+  the avatar. A workspace the person is entitled to in UOA but has never opened
+  in Nessie has no local Team row and therefore appears only once a rotation
+  refreshes the real directory.
   UOA session and billing requests use IP-pinned `safeFetch` and allow zero
   redirects, so refresh credentials, domain hashes, app keys, and signed actor
   assertions are never forwarded to a redirect target.
