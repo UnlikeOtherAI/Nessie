@@ -67,8 +67,9 @@ Do not abstract prematurely:
 - task/session/run lifecycle,
 - policy model.
 
-## Chapters
+## Table of Contents
 
+- [Objective, deployment modes, architecture rule](#1-objective)
 - [Authentication](authentication.md) — auth modes, bootstrap, session/JWT
   contract, refresh families, UOA renewal/workspace switching, profile mirror,
   rosters and invitations, middleware.
