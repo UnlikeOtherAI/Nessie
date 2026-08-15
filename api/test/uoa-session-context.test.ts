@@ -4,6 +4,10 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 
 import {
+  clearUoaWorkspaceDirectoryCache,
+  readUoaWorkspaceDirectory,
+} from '../src/services/uoa-directory-cache.js'
+import {
   advanceUoaLocalSessionBinding,
   rescopeUoaLocalSessionBindingInTransaction,
   resolveUoaLocalSessionContext,
@@ -240,7 +244,8 @@ test('rescope advances the stable epoch and last-seen workspace to the exact tar
   assert.equal(context.teamId, '00000000-0000-4000-8000-000000000020')
 })
 
-test('refresh atomically replaces a verified directory and retains unrelated metadata', async () => {
+test('a rotation caches the refreshed directory and never persists it', async () => {
+  clearUoaWorkspaceDirectoryCache()
   const fake = new FakeBindingPrisma()
   const workspaceDirectory = [{
     organizationId: IDENTITY.organizationId,
@@ -258,15 +263,11 @@ test('refresh atomically replaces a verified directory and retains unrelated met
     },
   )
 
-  assert.deepEqual(fake.link.metadata, {
-    retained: 'value',
-    workspaceDirectory,
-  })
+  assert.deepEqual(readUoaWorkspaceDirectory(USER_ID), workspaceDirectory)
+  assert.deepEqual(fake.link.metadata, { retained: 'value' })
   assert.deepEqual(
     fake.siblingLinks.map((link) => link.metadata),
-    [
-      { retained: 'sibling-one', workspaceDirectory },
-      { retained: 'sibling-two', workspaceDirectory },
-    ],
+    [{ retained: 'sibling-one' }, { retained: 'sibling-two' }],
   )
+  clearUoaWorkspaceDirectoryCache()
 })

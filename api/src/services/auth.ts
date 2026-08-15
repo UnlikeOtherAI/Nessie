@@ -14,6 +14,10 @@ import type { SessionTokenClaims } from '../auth/session.js'
 import type { AuthProviderDescriptor } from '../contracts.js'
 import { buildGravatarUrl } from '../lib/gravatar.js'
 import { resolveStoredDisplayName } from './identity-display.js'
+import {
+  deriveUoaWorkspaceDirectoryFromTeams,
+  readUoaWorkspaceDirectory,
+} from './uoa-directory-cache.js'
 
 export const LOCAL_AUTH_PROVIDER_ID = 'local'
 
@@ -163,13 +167,10 @@ const uoaWorkspaceAvatarImageUrl = (teamId: string, value: unknown): string | un
   return url.toString()
 }
 
-const uoaWorkspaceDirectoryFromMetadata = (
-  metadata: unknown,
+const uoaWorkspaceDirectoryFromEntries = (
+  entries: readonly unknown[],
   activeTeamId: string | undefined,
 ): MeResponse['uoaWorkspaces'] => {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined
-  const entries = (metadata as Record<string, unknown>).workspaceDirectory
-  if (!Array.isArray(entries)) return undefined
   const workspaces = entries.flatMap((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
     const values = entry as Record<string, unknown>
@@ -220,24 +221,21 @@ const addWorkspaceAvatarTeamIds = async (
   })
 }
 
+// UOA owns the directory, so Nessie holds it only in the bounded in-memory
+// cache written at login and at every UOA token rotation. A cold cache (fresh
+// process, or another replica that has not rotated this session yet) degrades
+// to the local Team → UOA workspace mapping rather than to nothing, so the
+// switcher keeps working until the next rotation restores the real thing.
 const loadUoaWorkspaceDirectory = async (
   prisma: PrismaClient,
   userId: string,
   claims: SessionTokenClaims,
 ): Promise<MeResponse['uoaWorkspaces']> => {
   if (claims.providerType !== 'uoa') return undefined
-  const link = await prisma.productAccountLink.findUnique({
-    where: {
-      organizationId_userId_productSlug: {
-        organizationId: claims.org,
-        userId,
-        productSlug: 'nessie',
-      },
-    },
-    select: { metadata: true },
-  })
-  const workspaces = uoaWorkspaceDirectoryFromMetadata(
-    link?.metadata,
+  const entries = readUoaWorkspaceDirectory(userId)
+    ?? await deriveUoaWorkspaceDirectoryFromTeams(prisma, userId)
+  const workspaces = uoaWorkspaceDirectoryFromEntries(
+    entries,
     claims.uoaIdentity?.teamId,
   )
   return workspaces ? addWorkspaceAvatarTeamIds(prisma, userId, workspaces) : undefined

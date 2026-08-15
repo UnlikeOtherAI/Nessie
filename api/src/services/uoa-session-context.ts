@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
+import { rememberUoaWorkspaceDirectory } from './uoa-directory-cache.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
 
@@ -195,7 +196,6 @@ const advanceUoaBindingInTransaction = async (
     },
     select: {
       id: true,
-      metadata: true,
       productSlug: true,
       uoaTokenVersion: true,
     },
@@ -216,11 +216,6 @@ const advanceUoaBindingInTransaction = async (
 
   const now = new Date()
   for (const link of exactFirstPartyLinks) {
-    const metadata = link.metadata
-      && typeof link.metadata === 'object'
-      && !Array.isArray(link.metadata)
-      ? link.metadata as Prisma.JsonObject
-      : {}
     const updated = await transaction.productAccountLink.updateMany({
       where: {
         id: link.id,
@@ -236,14 +231,6 @@ const advanceUoaBindingInTransaction = async (
       data: {
         lastVerifiedAt: now,
         uoaTokenVersion: nextVersion,
-        ...(input.workspaceDirectory
-          ? {
-              metadata: {
-                ...metadata,
-                workspaceDirectory: input.workspaceDirectory,
-              },
-            }
-          : {}),
         ...(allowWorkspaceRescope
           ? {
               activeOrgId: input.nextIdentity.organizationId,
@@ -258,6 +245,12 @@ const advanceUoaBindingInTransaction = async (
       )
     }
   }
+  // The refreshed directory is UOA-owned display data: it belongs in the
+  // bounded in-memory cache, not in the link row. Written here, inside the
+  // rotation transaction, because this is where the rotation's verified
+  // directory arrives; a transaction that later rolls back leaves at worst a
+  // fresh copy of this same user's own workspaces in a non-authoritative cache.
+  rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
   return context
 }
 

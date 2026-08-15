@@ -38,10 +38,7 @@ const makeUser = (displayName: string): User => ({
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 })
 
-const makePrisma = (
-  workspaceDirectory?: unknown,
-  avatarTeams: Array<{ id: string; externalWorkspaceId: string }> = [],
-) => {
+const makePrisma = () => {
   const updates: Array<{ displayName: string; id: string }> = []
   const prisma = {
     // loadUserMemberships now issues its three membership queries in parallel
@@ -51,20 +48,9 @@ const makePrisma = (
     },
     projectMember: { findMany: async () => [] },
     teamMember: { findMany: async () => [] },
-    productAccountLink: {
-      findUnique: async () => workspaceDirectory ? { metadata: { workspaceDirectory } } : null,
-    },
-    team: {
-      findMany: async ({ where }: {
-        where: {
-          externalWorkspaceId: { in: string[] }
-          members: { some: { userId: string } }
-        }
-      }) => {
-        assert.equal(where.members.some.userId, userId)
-        return avatarTeams.filter((team) => where.externalWorkspaceId.in.includes(team.externalWorkspaceId))
-      },
-    },
+    // The UOA directory is served from the in-memory cache with a local
+    // Team-mapping fallback; neither is seeded here, so this person has none.
+    team: { findMany: async () => [] },
     user: {
       update: async ({ data, where }: { data: { displayName: string }; where: { id: string } }) => {
         updates.push({ displayName: data.displayName, id: where.id })
@@ -100,72 +86,4 @@ test('buildMeResponse leaves a non-email display name untouched', async () => {
 
   assert.equal(me.user.displayName, 'Ada L.')
   assert.deepEqual(updates, [])
-})
-
-test('buildMeResponse exposes UOA workspace avatars without requiring a fresh login', async () => {
-  const { prisma } = makePrisma(
-    [
-      {
-        organizationId: 'uoa-org-active',
-        teamId: 'uoa-team-active',
-        avatarImageUrl: 'https://authentication.example.com/teams/uoa-team-active/avatar',
-        label: 'Active workspace',
-        orgName: 'Active org',
-      },
-      {
-        organizationId: 'uoa-org-other',
-        teamId: 'uoa-team-other',
-        avatarImageUrl: 'javascript:alert(1)',
-        label: 'Other workspace',
-      },
-      {
-        organizationId: 'uoa-org-legacy',
-        teamId: 'uoa-team-legacy',
-        label: 'Legacy workspace',
-      },
-    ],
-    [{ id: teamId, externalWorkspaceId: 'uoa-team-active' }],
-  )
-  const me = await buildMeResponse(
-    prisma,
-    makeUser('Ada L.'),
-    {
-      ...claims,
-      uoaIdentity: {
-        organizationId: 'uoa-org-active',
-        subject: 'uoa-subject',
-        teamId: 'uoa-team-active',
-        tokenVersion: 3,
-      },
-    },
-    { auth: { autoRedirectToSso: true }, mode: 'hosted' } as Parameters<typeof buildMeResponse>[3],
-  )
-
-  assert.deepEqual(me.uoaWorkspaces, [
-    {
-      organizationId: 'uoa-org-active',
-      teamId: 'uoa-team-active',
-      avatarTeamId: teamId,
-      avatarImageUrl: 'https://authentication.example.com/teams/uoa-team-active/avatar?size=128',
-      label: 'Active workspace',
-      orgName: 'Active org',
-      active: true,
-    },
-    {
-      organizationId: 'uoa-org-other',
-      teamId: 'uoa-team-other',
-      avatarImageUrl:
-        'https://authentication.unlikeotherai.com/teams/uoa-team-other/avatar?size=128',
-      label: 'Other workspace',
-      active: false,
-    },
-    {
-      organizationId: 'uoa-org-legacy',
-      teamId: 'uoa-team-legacy',
-      avatarImageUrl:
-        'https://authentication.unlikeotherai.com/teams/uoa-team-legacy/avatar?size=128',
-      label: 'Legacy workspace',
-      active: false,
-    },
-  ])
 })

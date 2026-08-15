@@ -53,7 +53,7 @@ handling is duplicated per platform and only works while logged out.
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
 | 0.1 | No local-password accounts | **VIOLATES → mode-gated 2026-08-15** | `User.passwordHash` (`api/prisma/schema.prisma:747`, scrypt in `api/src/auth/password.ts`) and the whole password stack still exist, but are now refused server-side outside `local` mode (phase 1 below): password login branch `api/src/routes/auth-login.ts` → `403 PASSWORD_AUTH_DISABLED`, `POST /api/users` (`api/src/routes/users.ts`) → `403 LOCAL_USER_CREATION_DISABLED`, `POST /api/auth/password` (`api/src/routes/auth-security.ts`) → `403 PASSWORD_AUTH_DISABLED`. Bootstrap owner with password (`api/src/routes/auth-core.ts:235-319`) remains, and needs no gate: it is disarmed whenever an SSO provider is enabled. Login UI was already gated to local mode (`admin/src/pages/LoginPage.tsx:82,400-439`) |
-| 0.2 | No duplicate SSO-owned data (email, name, avatar, memberships, roles, invitations) | **VIOLATES** | `User.email/displayName/avatarUrl/avatarAttachmentId/pronouns` (`schema.prisma:745-753`); roles owned + mutated locally (`api/src/services/users.ts:182-187,205-210`); UOA workspace directory persisted durably in `ProductAccountLink.metadata.workspaceDirectory` (`api/src/services/uoa-session-context.ts:239-247`) — brief allows in-memory cache only |
+| 0.2 | No duplicate SSO-owned data (email, name, avatar, memberships, roles, invitations) | **VIOLATES** | `User.email/displayName/avatarUrl/avatarAttachmentId/pronouns` (`schema.prisma:745-753`); roles owned + mutated locally (`api/src/services/users.ts:182-187,205-210`). The UOA workspace directory was persisted durably in `ProductAccountLink.metadata.workspaceDirectory`; **fixed 2026-08-15** — it is now the bounded in-memory cache the brief allows (`api/src/services/uoa-directory-cache.ts`, phase 6) |
 | 0.3 | Retain only UOA subject + extension data + encrypted refresh material | **Implemented (for what it covers)** | `UoaSessionCredential` AES-256-GCM (`schema.prisma:854-885`, `packages/runtime/src/secret-crypto.ts`); `ProductAccountLink.uoaSub/uoaTokenVersion` (`schema.prisma:1036-1037`); `Team.externalWorkspaceId/externalOrgId` (`schema.prisma:1234-1235`); `User.preferences/tokenVersion` legitimately local. But the subject is **not** on `User` — it lives only org-scoped on the link row, which is why email became the join key |
 | 1 | One shared switcher, all platforms, grouped by UOA org id, UOA-backed avatars, active state | **Implemented** (one ambiguity) | One shared component with render variants (`admin/src/layouts/admin-shell/WorkspaceSwitcher.tsx:212-214`); native iPhone/iPad controls are trigger-only chrome calling into the same web menu (`mobile/src/lib/native-webview-actions.ts:25-27`, `mobile/src/components/NativePhoneHeader.tsx:140-161`, `IpadNativeWorkspaceSwitcher.tsx:29-51`); Tauri loads the hosted admin (`desktop/src-tauri/src/lib.rs:14-30`). Grouped by raw UOA org id (`admin/src/lib/workspaces.ts:62-79`); avatars via authed relay `/api/teams/:teamId/avatar` → UOA directory `avatarImageUrl` → initials (`admin/src/components/primitives/WorkspaceAvatar.tsx:53-59`); active state `WorkspaceSwitcher.tsx:124`. **Ambiguity:** the Swift app in `macos/` has no workspace/auth concept at all — if "Mac" means it rather than the Tauri desktop, that platform is a no-op |
 | 2a | Silent switch on valid renewable proof | **Implemented** | `POST /api/auth/uoa/workspace` (`api/src/routes/auth-uoa-workspace.ts:48`) via UOA grant `urn:unlikeotherai:params:oauth:grant-type:workspace-switch` (`api/src/services/uoa-session.ts:66-67,343-370`); crash-safe `UoaWorkspaceSwitchIntent` (`schema.prisma:887-907`, 13-field source match); client branch `WorkspaceSwitcher.tsx:256-298` |
@@ -106,14 +106,14 @@ API-backed refactor + migration (sequence below).
    human, the credential, and full roster placement in one local call, exposed
    in the admin UI. This is the "proposed local copy" case the rule exists
    for: do not extend it; replace it with the UOA invitation API.
-6. **Durable caches of UOA data** — the workspace directory (labels, org
-   names, avatar URLs) persisted in `ProductAccountLink.metadata`
-   (`uoa-session-context.ts:239-247`; written via `syncUoaProductAccountLinks`,
-   `api/src/services/integrations.ts:86-150`; served from Postgres on every
-   `/api/auth/me`, `api/src/services/auth.ts:223-244` — UOA is only consulted
-   at login/rotation). Documented as non-authoritative and rotation-refreshed
-   — but the brief allows an **in-memory** cache only.
-   `activeOrgId`/`activeTeamId` last-seen columns are borderline
+6. **Durable caches of UOA data** — *fixed 2026-08-15 (phase 6)*. The workspace
+   directory (labels, org names, avatar URLs) was persisted in
+   `ProductAccountLink.metadata` and served from Postgres on every
+   `/api/auth/me`; it now lives only in the bounded in-memory cache
+   `api/src/services/uoa-directory-cache.ts`, with a Nessie-owned
+   `Team`-mapping fallback for a cold cache, and migration
+   `20260815120000_drop_uoa_workspace_directory_mirror` strips the old key.
+   `activeOrgId`/`activeTeamId` last-seen columns remain borderline
    (session-handle-adjacent, explicitly non-authoritative).
 7. **PA people directory** — the agent tool answers "who is X" from the local
    user table by name/email substring (`worker/src/run/pa-tools/people.ts`),
@@ -274,10 +274,21 @@ rule zero with its in-context entry points; re-point the PA `people_search`
 tool at the same service function (the pa-tools mirror-the-route pattern).
 This replaces `POST /api/users` outright.
 
-**Phase 6 — cache hygiene.** Move the workspace directory cache from
-`ProductAccountLink.metadata` to the bounded in-memory cache (or record a
-written waiver: durable, display-only, rotation-refreshed). Sweep the
-remaining plain-`fetch` UOA avatar client onto `safeFetch`.
+**Phase 6 — cache hygiene.** ✅ **Workspace directory landed 2026-08-15.** The
+directory now lives only in a bounded in-memory cache
+(`api/src/services/uoa-directory-cache.ts`: keyed per user, 30-minute TTL,
+LRU-bounded at 10,000 users), written wherever `fetchUoaWorkspaceDirectory`
+succeeds — login (`syncUoaProductAccountLinks`) and every rotation including a
+workspace switch (`advanceUoaBindingInTransaction`) — and read by
+`buildMeResponse`. The durable mirror is gone from both writers and from
+existing rows (`20260815120000_drop_uoa_workspace_directory_mirror`). A cold
+cache (fresh process, other replica) degrades to a directory derived only from
+Nessie-owned data — the user's `TeamMember` rows joined to
+`Team.externalWorkspaceId`/`externalOrgId`, local team name as the label, UOA's
+deterministic per-team avatar URL — so the switcher keeps working across a
+restart; workspaces never materialized locally reappear at the next rotation.
+Still open in this phase: sweep the remaining plain-`fetch` UOA avatar client
+onto `safeFetch`.
 
 **Phase 7 — switching UX.** Wire `teamHint` into the `INTERACTION_REQUIRED`
 recovery path so a refused switch launches SSO for the **exact** org/team;

@@ -9,6 +9,7 @@ import {
   type IntegratedProductRow,
   type ProductTeamEnablementRow,
 } from './integration-product-rows.js'
+import { rememberUoaWorkspaceDirectory } from './uoa-directory-cache.js'
 import type { UoaWorkspaceDirectoryEntry } from './uoa-session.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
@@ -34,7 +35,6 @@ const FIRST_PARTY_PLUGIN_MANIFEST_PREFIX = 'first-party/'
 
 const uoaLinkMetadata = (
   workspace?: ExternalAuthWorkspace,
-  workspaceDirectory?: UoaProductAccountLinkSyncInput['workspaceDirectory'],
 ): Prisma.InputJsonObject => {
   const metadata = {
     provider: 'uoa',
@@ -44,7 +44,6 @@ const uoaLinkMetadata = (
   return {
     ...metadata,
     ...(workspace?.orgRole ? { orgRole: workspace.orgRole } : {}),
-    ...(workspaceDirectory && workspaceDirectory.length > 0 ? { workspaceDirectory } : {}),
   }
 }
 
@@ -74,7 +73,7 @@ export const syncUoaProductAccountLinks = async (
   }
 
   const now = new Date()
-  const metadata = uoaLinkMetadata(input.workspace, input.workspaceDirectory)
+  const metadata = uoaLinkMetadata(input.workspace)
   const externalAccountId = input.externalSubject
   const {
     organizationId: activeOrgId,
@@ -126,9 +125,8 @@ export const syncUoaProductAccountLinks = async (
           "active_team_id" = EXCLUDED."active_team_id",
           "status" = EXCLUDED."status",
           "last_verified_at" = EXCLUDED."last_verified_at",
-          -- The directory is refreshed opportunistically from UOA. Retain the
-          -- last verified directory if that non-essential read is unavailable
-          -- while the account-link proof itself is being renewed.
+          -- Merge rather than replace so unrelated per-product metadata written
+          -- elsewhere (integration link state) survives a login.
           "metadata_json" = "product_account_links"."metadata_json" || EXCLUDED."metadata_json",
           "updated_at" = CURRENT_TIMESTAMP
         WHERE (
@@ -148,6 +146,10 @@ export const syncUoaProductAccountLinks = async (
       }
     }
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
+
+  // The directory UOA returned with this login is display-only, UOA-owned data:
+  // it goes to the bounded in-memory cache, never into the link row.
+  rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
 }
 
 /**

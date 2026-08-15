@@ -54,8 +54,11 @@ organisation/team. The directory is only a list of choices, never authority.
 This makes every authorized workspace selectable without a hosted-login detour
 or allowing the local and external session scopes to drift.
 
-The same `/auth/me` hydration reconstructs a workspace's credential-free UOA avatar URL from its
-external team id when older link metadata predates the directory's `avatarImageUrl` field. It uses
+The directory itself is UOA-owned data and is held only in the API's bounded in-memory cache
+(`api/src/services/uoa-directory-cache.ts`, 30-minute TTL, 10,000-user LRU), written at login and
+at every rotation and never persisted; a cold cache degrades to the local `Team` → UOA workspace
+mapping. The same `/auth/me` hydration reconstructs a workspace's credential-free UOA avatar URL
+from its external team id whenever an entry carries no `avatarImageUrl`. It uses
 UOA's supported `size=128` image parameter so clients do not reuse a cached response from before
 cross-origin embedding was enabled; the shared workspace menu rows use that fallback directly.
 
@@ -105,7 +108,7 @@ project** would leak agents/policies across workspaces (both scope by project).
   the cache.
 - `layouts/admin-shell/WorkspaceSwitcher.tsx` — a rail control. Local sessions
   list `me.memberships` and switch context; UOA sessions list the named UOA
-  directory saved at authentication and switch directly inside Nessie. The menu
+  directory cached at authentication and switch directly inside Nessie. The menu
   remains open with a row spinner during the request. After an ambiguous error
   it reconciles through ordinary refresh: a recovered target completes the
   navigation, a recovered source is named accurately, and an unconfirmed state
