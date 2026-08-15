@@ -33,6 +33,8 @@ type FakeState = {
 
 const makeFake = (seed: {
   organizationId: string
+  organizationExternalOrgId?: string | null
+  orgMembers?: Row[]
   teams?: Row[]
   users?: Row[]
 }): { client: PrismaClient; state: FakeState } => {
@@ -40,8 +42,11 @@ const makeFake = (seed: {
     calls: [],
     channels: [],
     channelMembers: [],
-    orgMembers: [],
-    orgs: [{ id: seed.organizationId }],
+    orgMembers: [...(seed.orgMembers ?? [])],
+    orgs: [{
+      id: seed.organizationId,
+      externalOrgId: seed.organizationExternalOrgId ?? null,
+    }],
     projectMembers: [],
     projects: [],
     teamMembers: [],
@@ -64,6 +69,38 @@ const makeFake = (seed: {
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(client),
     organization: {
       findFirst: async () => (record('organization.findFirst'), state.orgs[0] ?? null),
+      findUnique: async ({ where }: { where: Row }) => {
+        record('organization.findUnique')
+        return state.orgs.find((org) =>
+          (where.id !== undefined && org.id === where.id)
+          || (where.externalOrgId !== undefined
+            && org.externalOrgId === where.externalOrgId)) ?? null
+      },
+      create: async ({ data }: { data: Row }) => {
+        record('organization.create')
+        const row = { id: randomUUID(), ...data }
+        state.orgs.push(row)
+        return { id: row.id }
+      },
+    },
+    policyRule: {
+      count: async () => (record('policyRule.count'),
+        0),
+      findFirst: async () => (record('policyRule.findFirst'), null),
+      create: async ({ data }: { data: Row }) => {
+        record('policyRule.create')
+        const bindings = (data.bindings as
+          | { create: Row[] }
+          | undefined)?.create ?? []
+        return {
+          id: randomUUID(),
+          ...data,
+          conditions: data.conditions ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          bindings: bindings.map((b) => ({ id: randomUUID(), ...b })),
+        }
+      },
     },
     user: {
       count: async () => (record('user.count'), state.users.length),
@@ -137,6 +174,10 @@ const makeFake = (seed: {
         for (const row of rows) Object.assign(row, data)
         return { count: rows.length }
       },
+      count: async ({ where }: { where: Row }) => (
+        record('organizationMember.count'),
+        state.orgMembers.filter((m) => m.organizationId === where.organizationId).length
+      ),
     },
     projectMember: {
       upsert: async (args: { where: Row; create: Row }) => {
@@ -189,6 +230,9 @@ test('recovery reuses the exact existing principal without any email lookup', as
   const teamId = randomUUID()
   const { client, state } = makeFake({
     organizationId: orgId,
+    // The target org mirrors the workspace claim's UOA organisation.
+    organizationExternalOrgId: 'uoa-org-1',
+    orgMembers: [{ organizationId: orgId, userId: aliceId, role: 'member' }],
     teams: [{
       id: teamId,
       externalOrgId: 'uoa-org-1',
@@ -216,6 +260,7 @@ test('recovery reuses the exact existing principal without any email lookup', as
 
   assert.ok(context)
   assert.equal(context.userId, aliceId)
+  // The target org resolved by the claim's external org id IS the seeded org.
   assert.equal(context.organizationId, orgId)
   assert.equal(context.teamId, teamId)
   assert.equal(context.orgRole, 'member')
@@ -225,11 +270,63 @@ test('recovery reuses the exact existing principal without any email lookup', as
   // The user row was resolved by exact id, under the session lock ($queryRaw).
   assert.equal(state.calls.includes('user.findUnique:id'), true)
   assert.ok(state.calls.includes('$queryRaw'))
+  // The org was resolved, never created.
+  assert.equal(state.calls.includes('organization.create'), false)
   // Memberships were materialized for exactly the existing principal.
   assert.equal(state.orgMembers.length, 1)
   assert.equal(state.orgMembers[0]?.userId, aliceId)
   assert.equal(state.teamMembers.length, 1)
   assert.equal(state.teamMembers[0]?.userId, aliceId)
+})
+
+test('a cross-org recovery materializes the TARGET org and claims ITS link', async () => {
+  // A workspace-switch reauthorization can legitimately land in a UOA
+  // organisation the user has never entered locally: the recovery creates the
+  // Organization, hands ITS id to the link claim (which creates the link
+  // there, like a first login), and the first materializer owns the new org.
+  const bearerOrgId = randomUUID()
+  const aliceId = randomUUID()
+  const { client, state } = makeFake({
+    organizationId: bearerOrgId,
+    organizationExternalOrgId: 'uoa-org-source',
+    users: [{
+      id: aliceId,
+      email: 'alice@example.com',
+      displayName: 'Alice Example',
+      avatarUrl: null,
+    }],
+  })
+  const claimedOrgIds: string[] = []
+
+  const context = await resolveUoaWorkspaceContext(client, {
+    displayName: 'Alice Example',
+    email: 'alice@example.com',
+    existingUserId: aliceId,
+    expectedLocalOrganizationId: bearerOrgId,
+    recoveryLinkClaim: async (_tx, targetOrganizationId) => {
+      claimedOrgIds.push(targetOrganizationId)
+    },
+    workspace: {
+      activeOrgId: 'uoa-org-target',
+      activeTeamId: 'ws-target',
+      teamIds: ['ws-target'],
+      teamRoles: {},
+    },
+  })
+
+  assert.ok(context)
+  assert.equal(context.userId, aliceId)
+  // The context is scoped to the freshly materialized TARGET org, not the
+  // bearer's source-org claim.
+  assert.notEqual(context.organizationId, bearerOrgId)
+  const targetOrg = state.orgs.find((org) => org.externalOrgId === 'uoa-org-target')
+  assert.ok(targetOrg)
+  assert.equal(context.organizationId, targetOrg!.id)
+  assert.deepEqual(claimedOrgIds, [targetOrg!.id])
+  // First materializer of the brand-new org owns it (UOA sent no org_role),
+  // and the org's default policies were seeded.
+  assert.equal(context.orgRole, 'owner')
+  assert.equal(state.calls.includes('policyRule.create'), true)
 })
 
 test('recovery fails closed for a missing principal with zero membership writes', async () => {
@@ -295,6 +392,7 @@ test('the conditional claim runs BEFORE the target existing-or-create branch', a
   const aliceId = randomUUID()
   const { client, state } = makeFake({
     organizationId: orgId,
+    organizationExternalOrgId: 'uoa-org-1',
     users: [{
       id: aliceId,
       email: 'alice@example.com',
@@ -352,6 +450,7 @@ test('a refusing claim leaves no shared target rows behind for a NEW workspace',
   const aliceId = randomUUID()
   const { client, state } = makeFake({
     organizationId: orgId,
+    organizationExternalOrgId: 'uoa-org-1',
     users: [{
       id: aliceId,
       email: 'alice@example.com',
@@ -379,15 +478,17 @@ test('a refusing claim leaves no shared target rows behind for a NEW workspace',
 })
 
 test('a mismatch between the claim org and the resolved org is impossible by construction', async () => {
-  // There is no ambient org resolution on the recovery path: the context's
-  // organizationId is exactly the bearer's claim, so the successful context
-  // can never report a different org than the fence claimed under.
+  // There is no ambient org resolution on the recovery path: the resolver
+  // hands the claim the exact TARGET org it resolved from the workspace
+  // claim's external org id, so the successful context can never report a
+  // different org than the fence claimed under.
   const orgId = randomUUID()
   const aliceId = randomUUID()
   const projectId = randomUUID()
   const teamId = randomUUID()
   const { client, state } = makeFake({
     organizationId: orgId,
+    organizationExternalOrgId: 'uoa-org-1',
     teams: [{
       id: teamId,
       externalOrgId: 'uoa-org-1',
@@ -409,8 +510,8 @@ test('a mismatch between the claim org and the resolved org is impossible by con
     email: 'alice@example.com',
     existingUserId: aliceId,
     expectedLocalOrganizationId: orgId,
-    recoveryLinkClaim: async () => {
-      claimedOrg = orgId
+    recoveryLinkClaim: async (_tx, targetOrganizationId) => {
+      claimedOrg = targetOrganizationId
     },
     workspace: workspace('ws-target'),
   })

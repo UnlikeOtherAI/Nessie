@@ -67,6 +67,12 @@ const loadBinding = async (
       project: {
         members: { some: { userId: input.userId } },
         organization: {
+          // Organizations map 1:1 to UOA organisations: the team must live in
+          // the Organization carrying this session's external org id. A team
+          // reachable only through a foreign org — or a legacy team left in a
+          // null-externalOrgId org — fails closed here rather than scoping the
+          // session to an organization the UOA proof does not name.
+          externalOrgId: input.identity.organizationId,
           members: {
             some: { deactivatedAt: null, userId: input.userId },
           },

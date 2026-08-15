@@ -1,5 +1,7 @@
 import { Prisma, type MemberRole, type PrismaClient } from '@prisma/client'
 
+import { lockExternalOrganization } from './external-organization.js'
+import { seedDefaultPolicies } from './policy.js'
 import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
 import { projectUoaRoles, type UoaRoleClaims } from './uoa-roles.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
@@ -172,6 +174,23 @@ export const ensureWorkspaceMemberships = async (
   })
 }
 
+/**
+ * First entry into a brand-new UOA organization: with no verified `org_role`
+ * claim, the first materializer of the ORG becomes its owner — the exact
+ * mirror of the first-materializer team rule, for the same reason (somebody
+ * must be able to administer what was just created; a verified claim always
+ * wins). Evaluated as "no organization member exists yet" under the
+ * per-external-org advisory lock rather than as a created-this-call flag, so
+ * an org row orphaned by a failed first login still gets an owner on the next
+ * one. Exported for the account-bound recovery transaction, which holds the
+ * same lock.
+ */
+export const isFirstOrganizationMember = async (
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+): Promise<boolean> =>
+  (await tx.organizationMember.count({ where: { organizationId } })) === 0
+
 // Read the user's org role after membership was ensured and UOA's claims were
 // projected — the role the access token is scoped to. Exported for the
 // account-bound recovery transaction in workspace-context.ts.
@@ -209,19 +228,31 @@ export const ensureWorkspacePrincipal = async (
   input: PrincipalIdentityInput & {
     channelId: string | null
     claims: UoaRoleClaims
+    /**
+     * The UOA organisation id when `organizationId` is a per-UOA-org
+     * Organization (the 1:1 model). Enables the first-org-materializer owner
+     * rule and default-policy seeding under the external-org advisory lock.
+     * Absent on the legacy shared-org / generic-OIDC path, which keeps its
+     * behaviour byte-for-byte.
+     */
+    externalOrgId?: string
     organizationId: string
     projectId: string
     teamId: string
     teamRole: MemberRole
   },
 ): Promise<{ id: string; orgRole: MemberRole }> => prisma.$transaction(async (transaction) => {
-  // UOA logins serialize on the stable subject — the principal key. The email
-  // lock is STILL taken (second, always in this order, so the pair cannot
-  // deadlock): the adoption path resolves and claims rows through the unique
-  // `email` column, and non-UOA logins keep email keying entirely, so two
-  // different subjects racing one email address — or a UOA login racing a
-  // generic OIDC login for the same address — must meet on a common lock
-  // rather than on the read-then-create window.
+  // Lock order: external-org first (when this is a per-UOA-org login — the
+  // first-member decision below must serialize org-wide), then the stable
+  // subject — the principal key — then the email. Always in this order, so
+  // the set cannot deadlock: the adoption path resolves and claims rows
+  // through the unique `email` column, and non-UOA logins keep email keying
+  // entirely, so two different subjects racing one email address — or a UOA
+  // login racing a generic OIDC login for the same address — must meet on a
+  // common lock rather than on the read-then-create window.
+  if (input.externalOrgId) {
+    await lockExternalOrganization(transaction, input.externalOrgId)
+  }
   if (input.uoaSub) {
     await advisoryLock(transaction, `nessie:uoa-principal-sub:${input.uoaSub}`)
   }
@@ -234,6 +265,9 @@ export const ensureWorkspacePrincipal = async (
     avatarUrl: input.avatarUrl,
     displayName: input.displayName,
   })
+  const firstOrgMember = input.externalOrgId
+    ? await isFirstOrganizationMember(transaction, input.organizationId)
+    : false
   await ensureWorkspaceMemberships(transaction, {
     userId: user.id,
     organizationId: input.organizationId,
@@ -241,11 +275,18 @@ export const ensureWorkspacePrincipal = async (
     teamId: input.teamId,
     channelId: input.channelId,
     claims: input.claims,
-    // UOA's verified `org_role` decides the org membership; `member` is only
-    // the default for a login that carried no such claim.
-    orgRole: input.claims.orgRole ?? 'member',
+    // UOA's verified `org_role` decides the org membership. With no claim,
+    // the first materializer of a brand-new UOA organization owns it (mirror
+    // of the team rule); everyone else defaults to `member`.
+    orgRole: input.claims.orgRole ?? (firstOrgMember ? 'owner' : 'member'),
     teamRole: input.teamRole,
   })
+  if (firstOrgMember) {
+    // A freshly materialized organization has no policy rules, and the engine
+    // denies by default — seed the same defaults the bootstrap org gets, once,
+    // attributed to the first member (idempotent; also self-healed at startup).
+    await seedDefaultPolicies(transaction, input.organizationId, user.id)
+  }
   return {
     id: user.id,
     orgRole: await readOrgRole(transaction, input.organizationId, user.id),

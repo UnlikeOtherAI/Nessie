@@ -187,7 +187,10 @@ Notes on the shape of each refusal:
 Bootstrap itself needs no mode gate and does not have one: `resolveBootstrapState`
 already returns `null` (disarming bootstrap mode entirely) whenever any
 non-`local-bootstrap` auth provider is enabled, and first SSO login provisions
-the owner instead (`initializeSharedOrganization`). Every SSO-configured
+the owner instead — a first UOA login materializes its per-UOA-org
+Organization with the first materializer as owner, and a first workspace-less
+SSO login seeds the shared bootstrap org (`initializeSharedOrganization`).
+Every SSO-configured
 deployment — including production, which is `selfHosted` with UOA — therefore
 never reaches the bootstrap password at all.
 
@@ -478,23 +481,37 @@ upstream exchange or local write. The invariant, in order:
    returned epoch from a concurrent device renewal is accepted; a regressed
    epoch is refused), and land on exactly the expected organization/team.
 3. **Pre-billing fence (read-only):** under the user-session lock, the exact
-   first-party Nessie `ProductAccountLink` in the bearer's EXACT local
-   organization claim — never an ambient "shared organization" lookup and
+   first-party Nessie `ProductAccountLink` in the bearer's EXACT **source**
+   organization claim — never an ambient organization lookup and
    never an email lookup — must still be `linked` to the same subject with a
-   non-null safe epoch no newer than the returned one. This read only spares
-   a billing POST; it is not the authority.
+   non-null safe epoch no newer than the returned one. This is a statement
+   about the bearer's own credential, valid even when the recovery targets a
+   different org; it only spares a billing POST and is not the authority.
 4. **Billing confirm** (the one network side effect) runs once the fence
    passes.
 5. **Authoritative claim, inside the single recovery transaction:** after the
-   exact external-workspace advisory lock, the transaction conditionally
-   claims that exact link row (`organizationId + userId + productSlug +
-   linked + same subject + non-null epoch <= returned`) with `updateMany`,
-   advancing its epoch and refreshing the last-seen directory/active tuple.
+   exact external-org + external-workspace advisory locks, the transaction
+   resolves the **TARGET** Organization from the verified workspace claim's
+   external org id (creating it on a first entry — a cross-org
+   reauthorization is legitimate under the per-UOA-org model; the bearer's
+   own org claim is only the fallback scope for a claim with no external org
+   id), then conditionally claims THAT org's link row (`organizationId +
+   userId + productSlug + linked + same subject + non-null epoch <=
+   returned`) with `updateMany`, advancing its epoch and refreshing the
+   last-seen directory/active tuple. When no link row exists in the target
+   org (first entry — possibly into the Organization this very recovery just
+   materialized), the claim CREATES it linked at the returned epoch, exactly
+   as a first login's link sync would: there is no older state to fence
+   against, and the unique (org, user, product) key turns a concurrent
+   duplicate create into a transaction abort.
    The claimed row lock is held to commit; a concurrent epoch advance landing
    between the pre-billing read and the claim makes the claim match zero
-   rows and aborts the whole transaction. Only after the claim does the
+   rows and aborts the whole transaction — organization materialization
+   included. Only after the claim does the
    transaction read-or-create the target project/team/channel and upsert the
-   principal's memberships. A refusal therefore persists NO target,
+   principal's memberships (first org member → org owner when UOA sent no
+   `org_role`, plus default-policy seeding, exactly as login). A refusal
+   therefore persists NO organization, target,
    membership, session, context, or cookie write — billing alone may already
    have run, which is safe because it is idempotent per exact subject tuple.
 
@@ -502,7 +519,7 @@ Recovery resolves the principal exclusively by the bearer's user id: it never
 looks up, creates, or remaps a user by email, and the generic multi-product
 link sync is skipped (the in-transaction claim is the only link mutation).
 
-#### UOA workspaces → Nessie environments (Slack-style login)
+#### UOA organisations → Nessie Organizations, workspaces → Teams
 
 For the `uoa` provider, Nessie's config JWT enables UOA's workspace chooser
 (`login_flow.workspace_selection: "auto"`), so the user picks a **workspace**
@@ -513,24 +530,57 @@ config JWT sets `org_features.allow_user_create_org` **and**
 both to a user with no organisation yet (`_org`, their first one) and to an
 ACTIVE owner/admin of an organisation they already run (`_team`, a further
 workspace via UOA's `POST /auth/create-team`). Without the `_team` flag the
-chooser shows no create option to anyone who already belongs to a workspace. On
-exchange, `POST /api/auth/session` routes
-the session to that workspace instead of the first org's default team: the
-selected UOA workspace maps to a Nessie **Team** inside the one shared
-Organization (auto-provisioned — project + team + `#general` — on first entry;
-the first person owns it). Users switch between workspaces they belong to via
+chooser shows no create option to anyone who already belongs to a workspace.
+
+**Model (revised 2026-08-15): each UOA organisation maps 1:1 to its own local
+`Organization`**, keyed by `Organization.externalOrgId` (the stable UOA org id;
+unique, null for local-mode orgs), and the selected UOA workspace maps to a
+Nessie **Team** (project + team + `#general`, auto-provisioned on first entry)
+INSIDE that Organization. The original 2026-07-10 decision flattened every
+workspace into the one shared bootstrap Organization — chosen when UOA was
+one-org-per-user; UOA's ReBAC model made organisations first-class and
+multi-per-user, so per-org tenancy (budgets, policies, member directory,
+settings) now follows the UOA organisation. On exchange,
+`POST /api/auth/session` resolves-or-creates the Organization under a
+per-external-org advisory lock (`api/src/services/external-organization.ts`) —
+never the old "oldest organization" lookup — then materializes the workspace
+target inside it. `Organization.name` is a non-authoritative mirror of UOA's
+`orgName` (profile-mirror doctrine): synced best-effort wherever the verified
+workspace directory arrives (login link sync + the refresh coordinator), with
+the placeholder `Organisation ${externalOrgId.slice(0, 8)}` at first
+provisioning. First entry into a brand-new org: the verified `org_role` claim
+decides the local role; with no claim, the **first materializer of the org owns
+it** (the exact mirror of the first-materializer team rule, evaluated as "no
+organization member exists yet" under the org lock) and the org's default
+policy rules are seeded in the same transaction. Logins with **no workspace
+claim** (generic OIDC, the legacy no-workspace UOA login) keep the shared-org
+behaviour byte-for-byte, including the bootstrap seed, which creates a
+null-`externalOrgId` org.
+
+Users switch between workspaces they belong to via
 the authenticated `POST /api/auth/uoa/workspace` rescope route; the browser does
-not leave Nessie or repeat hosted login. `POST /api/auth/switch-context` remains
+not leave Nessie or repeat hosted login. A **cross-org** switch is legitimate
+and lands in the target org's Organization — materializing it, and syncing its
+first-party account links, when the user has never entered it before
+(`materializeUoaWorkspaceSwitch` runs the same login path plus
+`syncUoaProductAccountLinks` scoped to the target org, which the rescope
+binding advance requires). `POST /api/auth/switch-context` remains
 the local/non-UOA context route and still refuses to mint a UOA token for a
 different external tuple. The signed session/family proof, rather than
-`ProductAccountLink`, is authoritative for billing actors and delegated calls.
+`ProductAccountLink`, is authoritative for billing actors and delegated calls;
+the refreshed binding additionally requires the resolved team's Organization to
+carry the session's external org id, so a team can never be reached through a
+foreign org (`uoa-session-context.ts` `loadBinding`).
 Before provisioning a local workspace, mutating product links, or issuing a
 Nessie session, login confirms exact direct `nessie` access through UOA using
 the signed `{sub, org, team, tv}` subject. Product-link upserts are one atomic,
 slug-ordered transaction: an existing subject cannot be replaced and an older
-epoch cannot overwrite a newer one. First-time workspace creation is likewise
-serialized by an advisory lock over the exact external organization/team, so
-simultaneous first logins converge on one project and team.
+epoch cannot overwrite a newer one — per (organization, user, product), so a
+login or switch into an org creates/updates exactly that org's links.
+First-time organization and workspace creation are likewise
+serialized by advisory locks over the exact external organization and
+organization/team pair, so simultaneous first logins converge on one
+Organization, project, and team.
 
 **UOA principals are matched by the stable UOA subject, never by email.**
 `User.uoaSub` (unique, nullable) is the principal key: login and workspace
@@ -578,14 +628,17 @@ Rules that make this safe to run on every session:
   **first-materializer team-`owner`** rule: whoever first materializes a
   workspace owns its team *only* when UOA sent no role for that workspace — a
   verified claim always wins, including `member`.
-- **The projection never removes the last active owner of the shared local
-  organization.** Every UOA workspace maps to a Team inside one local
-  `Organization`, so a per-UOA-org `org_role` is not a complete statement about
-  who administers this Nessie instance — and without the floor the SSO-first
-  bootstrap owner would be demoted by their own first login, leaving nobody who
-  can administer it. The check runs under the same `FOR UPDATE` owner-row lock
-  the local mutators take (`api/src/services/organization-owner-lock.ts`), so
-  concurrent demotions serialize. Team roles are not floored.
+- **A per-UOA-org Organization takes the `org_role` claim as a COMPLETE
+  statement — there is no last-owner floor** (revised 2026-08-15). With
+  Organizations mapped 1:1 to UOA organisations, UOA owns that org's membership
+  outright, so a UOA demotion of the org's only local owner applies. The floor
+  survives solely for a null-`externalOrgId` organization (the legacy shared
+  org before the data partition), where a per-UOA-org claim was never a
+  complete statement about who administers the instance; that residual check
+  still runs under the same `FOR UPDATE` owner-row lock the local mutators take
+  (`api/src/services/organization-owner-lock.ts`). The local-mode mutation
+  routes keep their own independent last-owner guard either way. Team roles are
+  never floored.
 - Memberships are still **created** create-only (an upsert never resurrects a
   deactivated org membership); role changes come from the projection alone.
 

@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import type { UoaSessionIdentity } from '@nessie/schemas'
 
 import { UoaRefreshBindingError } from './refresh-token-uoa.js'
+import { syncExternalOrganizationNames } from './external-organization.js'
 import { resolveExternalWorkspaceSelection } from './identity-display.js'
 import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
 import {
@@ -81,6 +82,14 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
         avatarUrl: refreshed.identity.avatarUrl,
         displayName: refreshed.identity.displayName,
       })
+    } catch {
+      // Intentionally ignored — see above.
+    }
+    // Same doctrine for `Organization.name`: a non-authoritative mirror of
+    // UOA's `orgName` (per-UOA-org model), refreshed where the verified
+    // directory arrives — never allowed to break session renewal.
+    try {
+      await syncExternalOrganizationNames(prisma, refreshed.workspaceDirectory)
     } catch {
       // Intentionally ignored — see above.
     }

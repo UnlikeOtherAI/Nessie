@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { IntegratedProductResponse } from '@nessie/schemas'
+import { syncExternalOrganizationNames } from './external-organization.js'
 import {
   resolveExternalWorkspaceSelection,
   type ExternalAuthWorkspace,
@@ -150,6 +151,14 @@ export const syncUoaProductAccountLinks = async (
   // The directory UOA returned with this login is display-only, UOA-owned data:
   // it goes to the bounded in-memory cache, never into the link row.
   rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
+  // `Organization.name` is a non-authoritative mirror of UOA's `orgName`
+  // (per-UOA-org model): refresh it wherever the verified directory arrives.
+  // Display data — a failure must never fail the login.
+  try {
+    await syncExternalOrganizationNames(prisma, input.workspaceDirectory)
+  } catch {
+    // Intentionally ignored — see above.
+  }
 }
 
 /**

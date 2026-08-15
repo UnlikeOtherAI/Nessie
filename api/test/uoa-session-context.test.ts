@@ -57,17 +57,34 @@ class FakeBindingPrisma {
   teamRole = 'member'
   otherActiveOwnerIds: string[] = []
 
+  // The org row backing the projection's floor decision: per-UOA-org
+  // Organizations (externalOrgId set) take the claim as complete; a legacy
+  // null-externalOrgId org keeps the last-owner floor.
+  organizationExternalOrgId: string | null = IDENTITY.organizationId
+
+  readonly organization = {
+    findUnique: async () => ({ externalOrgId: this.organizationExternalOrgId }),
+  }
+
   readonly team = {
     findFirst: async (input: {
       where: {
         externalOrgId: string
         externalWorkspaceId: string
         members: { some: { userId: string } }
+        project: { organization: { externalOrgId: string } }
       }
     }) => {
       assert.equal(input.where.externalOrgId, this.expectedOrganizationId)
       assert.equal(input.where.externalWorkspaceId, this.expectedTeamId)
       assert.equal(input.where.members.some.userId, USER_ID)
+      // Organizations map 1:1 to UOA organisations: the binding must require
+      // the team's Organization to carry the session's external org id, so a
+      // team is never reachable through a foreign org.
+      assert.equal(
+        input.where.project.organization.externalOrgId,
+        this.expectedOrganizationId,
+      )
       if (!this.teamAvailable) return null
       return {
         id: '00000000-0000-4000-8000-000000000020',
@@ -352,8 +369,26 @@ test('a refresh projects a UOA promotion onto org, project, and team rows', asyn
   assert.equal(fake.teamRole, 'admin')
 })
 
-test('a refresh never demotes the last active org owner', async () => {
+test('a refresh applies a UOA demotion even to the LAST owner of a per-UOA-org org', async () => {
   const fake = new FakeBindingPrisma()
+
+  const context = await advanceUoaLocalSessionBinding(fake.asClient(), {
+    nextIdentity: { ...IDENTITY, tokenVersion: 8 },
+    previousIdentity: IDENTITY,
+    userId: USER_ID,
+    workspace: claimsFor('member', 'member'),
+  })
+
+  // Organizations map 1:1 to UOA organisations, so the verified claim is a
+  // complete statement: no last-owner floor for an externalOrgId org.
+  assert.equal(fake.orgRole, 'member')
+  assert.equal(context.role, 'member')
+  assert.equal(fake.teamRole, 'member')
+})
+
+test('a refresh keeps the last-owner floor for a legacy null-externalOrgId org', async () => {
+  const fake = new FakeBindingPrisma()
+  fake.organizationExternalOrgId = null
 
   const context = await advanceUoaLocalSessionBinding(fake.asClient(), {
     nextIdentity: { ...IDENTITY, tokenVersion: 8 },
