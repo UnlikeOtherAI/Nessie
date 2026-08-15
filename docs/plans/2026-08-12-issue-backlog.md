@@ -9,13 +9,13 @@ Status: `todo` · `design` (proposal round out) · `doing` · `blocked` · `done
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 1 | Archive/unarchive for channels + projects at every level | doing | Model decided (see Decisions); writing consolidated spec |
-| 2 | Channel names always lowercase-hyphenated, no special chars | doing | chokepoint + both dialogs done; verification pending |
-| 3 | No member selector in a 1:1 DM (API + UI) | doing | API done; UI pending. See conflict note under task 4 |
+| 2 | Channel names always lowercase-hyphenated, no special chars | done | chokepoint + both dialogs; landed on main 2026-08-15 |
+| 3 | No member selector in a 1:1 DM (API + UI) | done | API 403 + UI hidden (header and conversation-info Add people). See conflict note under task 4 |
 | 4 | `+` on Direct Messages opens a compose screen, not "Invite a user" | design | Kimix design consult running |
-| 5 | Dialog dismisses when a drag started inside ends on the scrim | doing | Shared hook written; applying across 18 dialogs |
+| 5 | Dialog dismisses when a drag started inside ends on the scrim | done | `useOverlayDismiss` across the legacy `onClick` scrims; dialogs added since use an equivalent `onMouseDown` guard |
 | 6 | Starred section: self-DM star state, agent DM shown as `#`, two rows active | todo | Three defects, one sidebar surface |
-| 7 | Channel tabs: drop Runs, drop Info, composer only on Messages | doing | Delegated |
-| 8 | Deep Water launcher: Light/Standard/Heavy/Custom + language multi-select | blocked | Blocked on task 9 (Ledger parity) for the language set |
+| 7 | Channel tabs: drop Runs, drop Info, composer only on Messages | done | Runs/Info removed; Automations kept; composer gated to Messages |
+| 8 | Deep Water launcher: Light/Standard/Heavy/Custom + language multi-select | done (modes) | Modes/title/question-first shipped; language multi-select waits on task 10 |
 | 9 | **Ledger**: bring MCP `research_start` to parity with DeepWater's REST config | done (unmerged) | `claude/deepwater-mcp-parity` @ `1f6d8f6`, pushed, NOT merged |
 | 10 | Nessie consumes Ledger parity: languages, real tiers, recency, report title | todo | Blocked until task 9 merges + deploys |
 
@@ -115,9 +115,11 @@ Done: `POST /api/channels/:id/members` and
 `DELETE /api/channels/:id/members/:userId` now answer 403
 `CHANNEL_DM_MEMBERS_FIXED` for `channel.type === 'dm'`.
 
-Pending: hide the Members header action for DMs in
-`admin/src/components/features/channels/ChannelHeader.tsx` (it is already hidden
-for Personal Assistant conversations — same shape).
+Landed: the header shows "Conversation info" instead of Members for DMs
+(`ChannelHeader.tsx` `canOpenConversationInfo`), and the conversation-info
+flow's "Add people" affordance is hidden for 1:1 DMs (`ChannelsPage.tsx`
+`canAddPeople`), so no control remains that the API's 403 would kill. Group
+conversations are `type: 'standard'` and keep their add-people path.
 
 **Conflict to resolve with task 4.** The add-member path for a DM used to call
 `createGroupFromDm`, which forked the pair into a new group channel. I removed

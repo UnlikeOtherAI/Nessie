@@ -494,7 +494,7 @@ export const ChannelsPage = () => {
         <ConversationInfoFlow
           activeChannel={activeChannel}
           allUsers={allUsers}
-          canAddPeople={isOwner}
+          canAddPeople={isOwner && activeChannel.type !== 'dm'}
           channelUsers={channelUsers}
           me={me}
           onGroupCreated={(newChannelId) => void navigate(`/channels/${newChannelId}`)}

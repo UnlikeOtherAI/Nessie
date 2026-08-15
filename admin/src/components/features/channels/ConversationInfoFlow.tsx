@@ -331,7 +331,9 @@ export const ConversationInfoFlow = ({
 
       {route.step === 'add-members' && !canAddPeople ? (
         <p className="px-6 py-8 text-center text-sm text-[color:var(--tx3)]">
-          Ask a workspace owner to add people to this conversation.
+          {activeChannel.type === 'dm'
+            ? 'Direct messages are between two participants. Start a channel to include more people.'
+            : 'Ask a workspace owner to add people to this conversation.'}
         </p>
       ) : null}
     </section>
