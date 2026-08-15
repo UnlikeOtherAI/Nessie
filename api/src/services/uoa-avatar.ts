@@ -1,4 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
+import {
+  safeFetch,
+  type PinnedFetch,
+  type ResolveHost,
+} from '@nessie/runtime'
 
 import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from './uoa-auth.js'
 
@@ -74,7 +79,10 @@ export type UoaWorkspace = {
   name: string
 }
 
-export type UoaAvatarDeps = { fetchImpl?: typeof fetch }
+export type UoaAvatarDeps = {
+  fetchImpl?: PinnedFetch
+  resolveHost?: ResolveHost
+}
 
 /**
  * The upstream could not be consulted, or answered with something unusable.
@@ -184,6 +192,15 @@ const unavailable = (message: string): never => {
   throw new UoaAvatarUnavailableError(message)
 }
 
+// Egress is IP-pinned, never a bare fetch: `safeFetch` resolves the UOA host
+// once and dials only those addresses. Redirects are refused outright — the
+// domain-hash bearer must never be replayed to a hop UOA points at.
+const avatarFetchOptions = (deps: UoaAvatarDeps) => ({
+  ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+  ...(deps.resolveHost ? { resolveHost: deps.resolveHost } : {}),
+  maxRedirects: 0,
+})
+
 /**
  * Fetch avatar bytes from a `/domain/*` GET endpoint. Returns null when the
  * subject is unknown to the domain, and throws when the upstream is unreachable
@@ -196,13 +213,13 @@ const fetchAvatarImage = async (
 ): Promise<UoaAvatarImage | null> => {
   let response: Response
   try {
-    response = await (deps.fetchImpl ?? fetch)(avatarUrl(settings, path), {
+    response = await safeFetch(avatarUrl(settings, path), {
       headers: {
         Accept: 'image/*',
         Authorization: authorization(settings),
       },
       signal: AbortSignal.timeout(AVATAR_TIMEOUT_MS),
-    })
+    }, avatarFetchOptions(deps))
   } catch {
     return unavailable('[uoa] the avatar endpoint is temporarily unavailable')
   }
@@ -241,7 +258,7 @@ const mutateAvatar = async (
 ): Promise<void> => {
   let response: Response
   try {
-    response = await (deps.fetchImpl ?? fetch)(avatarUrl(settings, path), {
+    response = await safeFetch(avatarUrl(settings, path), {
       method: init.method,
       headers: {
         Accept: 'application/json',
@@ -249,7 +266,7 @@ const mutateAvatar = async (
       },
       body: init.body,
       signal: AbortSignal.timeout(AVATAR_TIMEOUT_MS),
-    })
+    }, avatarFetchOptions(deps))
   } catch {
     return unavailable('[uoa] the avatar endpoint is temporarily unavailable')
   }

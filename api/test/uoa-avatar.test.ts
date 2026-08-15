@@ -26,10 +26,18 @@ const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 // The service is only exercised through injected settings, so tests never need
 // real UOA credentials — but the route path does read process.env through
 // isUoaConfigured(). Set the minimum the loader requires.
+//
+// The base URL is a public IP literal rather than a hostname because the relay
+// now goes through safeFetch, which resolves the host before dialling. A
+// literal is validated without DNS, so the route tests below (which have no
+// dependency seam of their own and stub globalThis.fetch) reach the stub
+// instead of dying on a lookup for a name that does not exist.
+const UOA_TEST_BASE_URL = 'https://93.184.216.34'
+
 const withUoaEnv = async (run: () => Promise<void>): Promise<void> => {
   const previous = { ...process.env }
   Object.assign(process.env, {
-    UOA_BASE_URL: 'https://uoa.test',
+    UOA_BASE_URL: UOA_TEST_BASE_URL,
     UOA_CLIENT_SECRET: 'test-client-secret',
     UOA_CONFIG_JWT_KID: 'test-kid',
     // Any base64 blob: clientHash() only hashes domain + secret, and no test
@@ -160,7 +168,7 @@ test('fetchUoaUserAvatar calls the domain-hash avatar endpoint and returns the b
     assert.equal(calls.length, 1)
     assert.equal(
       calls[0]?.url,
-      `https://uoa.test/domain/users/${linkedUoaSub}/avatar?domain=nessie.test`,
+      `${UOA_TEST_BASE_URL}/domain/users/${linkedUoaSub}/avatar?domain=nessie.test`,
     )
     assert.match(calls[0]?.authorization ?? '', /^Bearer [0-9a-f]{64}$/)
     assert.equal(image?.contentType, 'image/png')
