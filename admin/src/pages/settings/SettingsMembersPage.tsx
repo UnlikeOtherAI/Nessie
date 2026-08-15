@@ -15,6 +15,7 @@ import {
   SettingsPanel,
   type SettingsFeedback,
 } from './settings-shared'
+import { WorkspaceMembersSection } from './WorkspaceMembersSection'
 
 const ROLE_OPTIONS = [
   { value: 'owner', label: 'Owner' },
@@ -120,8 +121,13 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
 
 export const SettingsMembersPage = () => {
   const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
-  const { data: users = [] } = useUsers(isOwner)
+  const roleIds = me?.user.roleIds ?? []
+  const isOwner = roleIds.includes('owner')
+  // On an UnlikeOtherAI session the roster and its invitations are UOA API
+  // features: UOA owns membership, and Nessie holds no list to show.
+  const isUoaSession = me?.auth.providerType === 'uoa'
+  const canManageWorkspace = isOwner || roleIds.includes('admin')
+  const { data: users = [] } = useUsers(isOwner && !isUoaSession)
   const createUser = useCreateUser()
 
   const [userDisplayName, setUserDisplayName] = useState('')
@@ -132,6 +138,19 @@ export const SettingsMembersPage = () => {
 
   if (!me) {
     return null
+  }
+
+  if (isUoaSession) {
+    // UOA manages membership for organisation owners and admins alike; anyone
+    // else is routed back to their profile, as on the local branch.
+    if (!canManageWorkspace) {
+      return <Navigate to="/settings/profile" replace />
+    }
+    return (
+      <SettingsPanel eyebrow="Organization" title="Members">
+        <WorkspaceMembersSection canManage />
+      </SettingsPanel>
+    )
   }
 
   // Members management is owner-only; non-owners are routed back to their profile.

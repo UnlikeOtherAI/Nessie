@@ -91,6 +91,7 @@ import { registerFeedbackRoutes } from './routes/feedback.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerWorkspaceAvatarRoutes } from './routes/workspace-avatar.js'
+import { registerWorkspaceMembersRoutes } from './routes/workspace-members.js'
 import { registerPlatformPushRoutes } from './routes/platform-push.js'
 import { registerPlanRoutes } from './routes/plans.js'
 import { registerPolicyRoutes } from './routes/policy.js'
@@ -417,6 +418,7 @@ export const buildApp = async () => {
   registerAlertRoutes(app, deps)
   registerOrganizationRoutes(app, deps)
   registerWorkspaceAvatarRoutes(app, deps)
+  registerWorkspaceMembersRoutes(app, deps)
   registerFeedbackRoutes(app, deps)
   registerIntegrationRoutes(app, deps)
   registerExternalAgentRoutes(app, deps)
