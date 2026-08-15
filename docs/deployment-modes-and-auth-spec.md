@@ -472,12 +472,32 @@ the signed `{sub, org, team, tv}` subject. Product-link upserts are one atomic,
 slug-ordered transaction: an existing subject cannot be replaced and an older
 epoch cannot overwrite a newer one. First-time workspace creation is likewise
 serialized by an advisory lock over the exact external organization/team, so
-simultaneous first logins converge on one project and team. A separate advisory
-lock over the normalized email serializes local user lookup/creation and every
-membership write after the workspace is validated, so concurrent device
-callbacks for the same principal converge without a unique-index failure or
-creating a user for an invalid team.
-Non-UOA OIDC providers and single-workspace users carry no `active` claim and
+simultaneous first logins converge on one project and team.
+
+**UOA principals are matched by the stable UOA subject, never by email.**
+`User.uoaSub` (unique, nullable) is the principal key: login and workspace
+materialization resolve `where: { uoaSub }` first
+(`api/src/services/workspace-principal.ts`). On a subject miss, a **one-time
+adoption** claims an email-matching row only while that row is unbound
+(`uoaSub IS NULL` — a pre-subject account, a bootstrap-seeded owner, or a row
+the backfill migration deliberately left NULL as ambiguous), setting the
+subject inside the same transaction. An email row already bound to a
+*different* subject fails the login closed with `409 UOA_IDENTITY_CONFLICT`
+(`UoaSubjectConflictError`) — the account is never taken over and no duplicate
+is created (email stays unique; a later phase de-duplicates profile data).
+Principal resolution and every membership write are serialized by advisory
+locks keyed on the subject and — second, always in that order — the normalized
+email; the email lock remains because the adoption path and non-UOA logins
+resolve rows through the unique email column, so concurrent device callbacks
+for one principal, or two subjects racing one address, meet on a common lock
+instead of the read-then-create window. The workspace-switch materialization
+guard compares the session's verified subject against `User.uoaSub` (a NULL
+subject fails closed to reauthentication). Existing rows were backfilled from
+`linked` `nessie` product-account links
+(`20260815090000_user_uoa_subject_keying`); a subject mapping to two users was
+left NULL on both rather than guessed.
+Non-UOA OIDC providers keep email keying unchanged, and they plus
+single-workspace users carry no `active` claim and
 land in their existing/default team, unchanged. See
 [docs/plans/2026-07-10-slack-workspace-login-nessie.md](plans/2026-07-10-slack-workspace-login-nessie.md).
 

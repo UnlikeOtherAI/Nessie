@@ -122,15 +122,21 @@ runDatabaseTest('concurrent callbacks for one UOA principal create one local use
     teamRoles: { [externalTeamId]: 'member' },
   }
 
+  // The same UOA principal (one stable subject) completing the callback on two
+  // devices at once — the production shape of this race, serialized by the
+  // subject advisory lock.
+  const uoaSub = `uoa-sub-principal-${suffix}`
   const [left, right] = await Promise.all([
     resolveUoaWorkspaceContext(prisma, {
       displayName: 'Same Principal',
       email,
+      uoaSub,
       workspace,
     }),
     resolveUoaWorkspaceContext(prisma, {
       displayName: 'Same Principal',
       email,
+      uoaSub,
       workspace,
     }),
   ])
@@ -142,6 +148,11 @@ runDatabaseTest('concurrent callbacks for one UOA principal create one local use
   assert.equal(left.userId, right.userId)
   assert.equal(left.teamId, right.teamId)
   assert.equal(await prisma.user.count({ where: { email } }), 1)
+  const principal = await prisma.user.findUnique({
+    where: { email },
+    select: { uoaSub: true },
+  })
+  assert.equal(principal?.uoaSub, uoaSub)
   assert.equal(await prisma.teamMember.count({
     where: { teamId: left.teamId, userId: left.userId },
   }), 1)

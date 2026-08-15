@@ -14,7 +14,13 @@ import type { ExternalAuthWorkspace } from '../src/services/identity-display.js'
 // Stateful so "same workspace → same team" / "different workspace → different
 // team" are meaningful assertions.
 type Org = { id: string; createdAt: number }
-type User = { id: string; email: string; displayName: string; avatarUrl: string | null }
+type User = {
+  id: string
+  email: string
+  uoaSub: string | null
+  displayName: string
+  avatarUrl: string | null
+}
 type Project = { id: string; name: string; organizationId: string; createdAt: number }
 type Team = {
   id: string
@@ -80,20 +86,47 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
         orgs.find((o) => o.id === where.id) ?? null,
     },
     user: {
-      findUnique: async ({ where }: { where: { email?: string; id?: string } }) => {
+      findUnique: async ({
+        where,
+      }: {
+        where: { email?: string; id?: string; uoaSub?: string }
+      }) => {
         const found = users.find(
-          (u) => (where.email && u.email === where.email) || (where.id && u.id === where.id),
+          (u) =>
+            (where.email !== undefined && u.email === where.email)
+            || (where.id !== undefined && u.id === where.id)
+            || (where.uoaSub !== undefined && u.uoaSub === where.uoaSub),
         )
         return found ? { ...found } : null
       },
-      create: async ({ data }: { data: { email: string; displayName: string; avatarUrl?: string } }) => {
+      create: async ({
+        data,
+      }: {
+        data: { email: string; displayName: string; avatarUrl?: string; uoaSub?: string }
+      }) => {
         const row: User = {
           id: randomUUID(),
           email: data.email,
+          uoaSub: data.uoaSub ?? null,
           displayName: data.displayName,
           avatarUrl: data.avatarUrl ?? null,
         }
         users.push(row)
+        return { id: row.id }
+      },
+      update: async ({
+        where,
+        data,
+      }: {
+        where: { id: string }
+        data: { uoaSub?: string; displayName?: string }
+      }) => {
+        const row = users.find((u) => u.id === where.id)
+        if (!row) {
+          throw new Error('user.update: no row')
+        }
+        if (data.uoaSub !== undefined) row.uoaSub = data.uoaSub
+        if (data.displayName !== undefined) row.displayName = data.displayName
         return { id: row.id }
       },
       count: async () => users.length,
@@ -263,10 +296,11 @@ const makeFake = (seed?: { organizationId?: string; withDefaultTeam?: boolean })
   }
 }
 
-const identityFor = (email: string, workspace?: ExternalAuthWorkspace) => ({
+const identityFor = (email: string, workspace?: ExternalAuthWorkspace, uoaSub?: string) => ({
   email,
   displayName: 'Test User',
   workspace,
+  ...(uoaSub ? { uoaSub } : {}),
 })
 
 const workspace = (activeTeamId: string, role = 'member'): ExternalAuthWorkspace => ({
@@ -415,7 +449,7 @@ test('workspace switch materialization uses the authoritative target role and is
   )
   const source = await resolveUoaWorkspaceContext(
     client,
-    identityFor('switcher@x.com', workspace('ws-source', 'member')),
+    identityFor('switcher@x.com', workspace('ws-source', 'member'), 'uoa-user-switcher'),
   )
   assert.ok(source)
 
@@ -442,4 +476,113 @@ test('workspace switch materialization uses the authoritative target role and is
   )
   assert.equal(memberships.length, 1)
   assert.equal(memberships[0]?.role, 'admin')
+})
+
+test('a UOA login resolves the principal by subject even after an email change', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+
+  const first = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('old@x.com', workspace('ws-eng'), 'uoa-sub-stable'),
+  )
+  // UOA renamed the address; the stable subject still finds the same person.
+  const second = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('renamed@x.com', workspace('ws-eng'), 'uoa-sub-stable'),
+  )
+
+  assert.ok(first && second)
+  assert.equal(second!.userId, first!.userId)
+  assert.equal(state.users.length, 1)
+})
+
+test('a UOA login adopts a pre-subject email row exactly once', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+
+  // A row created before subject keying (or by a generic OIDC login).
+  const legacy = await resolveUoaWorkspaceContext(client, identityFor('a@x.com', workspace('ws-eng')))
+  assert.ok(legacy)
+  assert.equal(state.users[0]?.uoaSub, null)
+
+  const adopted = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('a@x.com', workspace('ws-eng'), 'uoa-sub-adopted'),
+  )
+
+  assert.ok(adopted)
+  assert.equal(adopted!.userId, legacy!.userId)
+  assert.equal(state.users.length, 1)
+  assert.equal(state.users[0]?.uoaSub, 'uoa-sub-adopted')
+})
+
+test('a UOA login for an email bound to a different subject fails closed', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId })
+
+  const bound = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('a@x.com', workspace('ws-eng'), 'uoa-sub-original'),
+  )
+  assert.ok(bound)
+  const membershipCount = state.teamMembers.length
+
+  await assert.rejects(
+    resolveUoaWorkspaceContext(
+      client,
+      identityFor('a@x.com', workspace('ws-eng'), 'uoa-sub-impostor'),
+    ),
+    (error: Error) => error.name === 'UoaSubjectConflictError',
+  )
+  // Never taken over, never duplicated, no membership writes for the impostor.
+  assert.equal(state.users.length, 1)
+  assert.equal(state.users[0]?.uoaSub, 'uoa-sub-original')
+  assert.equal(state.teamMembers.length, membershipCount)
+})
+
+test('a non-UOA login keeps email keying and never claims a subject', async () => {
+  const orgId = randomUUID()
+  const { client, state } = makeFake({ organizationId: orgId, withDefaultTeam: true })
+
+  const uoaCtx = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('a@x.com', workspace('ws-eng'), 'uoa-sub-1'),
+  )
+  // A generic OIDC login for the same address still resolves by email
+  // (unchanged behaviour) and does not touch the stored subject.
+  const genericCtx = await resolveUoaWorkspaceContext(client, identityFor('a@x.com', undefined))
+
+  assert.ok(uoaCtx && genericCtx)
+  assert.equal(genericCtx!.userId, uoaCtx!.userId)
+  assert.equal(state.users[0]?.uoaSub, 'uoa-sub-1')
+
+  const fresh = await resolveUoaWorkspaceContext(client, identityFor('fresh@x.com', undefined))
+  assert.ok(fresh)
+  assert.equal(state.users.find((u) => u.email === 'fresh@x.com')?.uoaSub, null)
+})
+
+test('workspace switch materialization refuses a user bound to a different subject', async () => {
+  const orgId = randomUUID()
+  const { client } = makeFake({ organizationId: orgId })
+  const source = await resolveUoaWorkspaceContext(
+    client,
+    identityFor('switcher@x.com', workspace('ws-source', 'member'), 'uoa-sub-real'),
+  )
+  assert.ok(source)
+
+  await assert.rejects(
+    materializeUoaWorkspaceSwitch(client, {
+      identity: {
+        displayName: 'Switching Admin',
+        email: 'switcher@x.com',
+        externalSubject: 'uoa-sub-other',
+        uoaTokenVersion: 4,
+        workspace: workspace('ws-target', 'admin'),
+      },
+      target: { organizationId: 'uoa-org-1', teamId: 'ws-target' },
+      userId: source!.userId,
+    }),
+    /no longer matches this UnlikeOtherAI session/,
+  )
 })

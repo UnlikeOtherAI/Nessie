@@ -743,6 +743,12 @@ enum ProductIntegrationRunStatus {
 model User {
   id                                  String                          @id @default(uuid()) @db.Uuid
   email                               String                          @unique
+  // Stable UnlikeOtherAI subject (`sub`) — THE principal key for UOA SSO
+  // resolution. Nullable: local/password accounts and generic OIDC principals
+  // never carry one, and a UOA row whose backfill was ambiguous stays NULL
+  // until the next login adopts it (or fails closed on a conflict). Email
+  // remains unique but is no longer an identity join key on the UOA path.
+  uoaSub                              String?                         @unique @map("uoa_sub")
   displayName                         String                          @map("display_name")
   passwordHash                        String?                         @map("password_hash")
   // Provider-supplied avatar (e.g. the Google OIDC `picture` claim), captured at

@@ -233,6 +233,26 @@ resolution, the advisory lock, login matching, and the workspace-switch
 binding guard from email to subject. Email leaves the unique constraint and
 stops being a key.
 
+> **Status (2026-08-15): landed** on branch `task/uoa-subject-keying`.
+> `User.uoaSub` (unique, nullable) added and backfilled from `linked`
+> `nessie` `product_account_links`
+> (`20260815090000_user_uoa_subject_keying`; a subject mapping to two users
+> was left NULL on both — operator resolution, never a guess). UOA principal
+> resolution is subject-first with a one-time email **adoption** limited to
+> unbound rows (`uoaSub IS NULL`), and an email row bound to a different
+> subject fails login closed with `409 UOA_IDENTITY_CONFLICT`
+> (`api/src/services/workspace-principal.ts`). The per-principal advisory
+> lock is keyed on the subject with the email lock retained second (the
+> adoption path and non-UOA logins still resolve through the unique email
+> column). The switch materialization guard now compares `User.uoaSub`
+> against the verified session subject (`uoa-workspace-switch.ts`), and the
+> SSO login path loads the session user by resolved id, not email
+> (`auth-login.ts`). Generic (non-UOA) OIDC providers keep email keying
+> unchanged. Deliberately **not** done here: email keeps its unique
+> constraint and profile fields stay local (Phase 3), the password branch
+> and `POST /api/users` are untouched (Phase 1 owns the mode gating), and
+> `cli/src/super-admin.ts` still grants by email.
+
 **Phase 3 — profile de-duplication.** Stop persisting `email`,
 `displayName`, `avatarUrl`; delete the email→display-name synthesizer; serve
 profile fields through a UOA-backed read (extending the existing
