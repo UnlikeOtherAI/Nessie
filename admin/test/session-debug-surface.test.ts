@@ -47,7 +47,8 @@ test('imported bearer sessions stay nonrenewable and never register native push'
   assert.match(authProvider, /storeToken\(payload\.token, imported \? 'imported' : 'renewable'\)/)
   assert.match(authProvider, /resolveSessionRefreshAction\(/)
   assert.match(authProvider, /importedMutationsInFlightRef\.current > 0/)
-  assert.match(authProvider, /finalizeSessionLogout\(/)
+  assert.match(authProvider, /performTerminalSessionLogout\(/)
+  assert.match(authProvider, /ending\.mode === 'imported'/)
   assert.match(authProvider, /IMPORTED_SESSION_SCOPE_MESSAGE/)
   assert.match(renewal, /getAccessTokenExpiresAtMs\(token\)/)
   assert.match(
