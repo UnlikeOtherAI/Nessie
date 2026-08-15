@@ -813,6 +813,18 @@ every mutation, exactly as with the workspace avatar relay (§ `docs/done/2026-0
 The roster read itself is open to any member of the workspace.
 
 Egress follows the standard rule: `safeFetch` with `maxRedirects: 0` and a
-10-second timeout (`api/src/services/uoa-org-roster.ts`). Upstream 4xx becomes
+10-second timeout (`@nessie/workspace-admin` `uoa-org-roster.ts`, re-exported
+by `api/src/services/uoa-org-roster.ts`). Upstream 4xx becomes
 `WORKSPACE_MEMBERS_REJECTED`; a transport failure, 5xx, or unparseable body
 becomes `502 UOA_DIRECTORY_UNAVAILABLE` — never a silently empty roster.
+
+**Agents read the same roster.** The personal assistant's `people_search`
+(`worker/src/run/pa-tools/people.ts`) calls the same
+`resolveUoaRosterWorkspace` + `listWorkspaceMembers` seam — the roster module
+lives in `@nessie/workspace-admin` precisely because the worker cannot import
+`api/src/services/*`. On a UOA-linked team the tool filters the live roster
+(bounded 60-second in-memory cache per org/team) and keys results on the UOA
+subject, joining `User.uoaSub` only to surface the local `userId` other tools
+take; a failed UOA read is reported in words and never silently answered from
+local rows. The local user search remains only for teams that are not
+UOA-linked (local mode).
