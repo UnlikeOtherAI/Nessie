@@ -46,6 +46,9 @@ export const useAdminShell = () => {
   const isAdmin = me?.user.roleIds.includes('admin') ?? false;
   const isOwner = me?.user.roleIds.includes('owner') ?? false;
   const isSuperAdmin = me?.user.superAdmin ?? false;
+  // UOA owns membership on an UnlikeOtherAI session, which changes who the
+  // Members doorway belongs to (any active member reads the roster).
+  const isUoaSession = me?.auth.providerType === 'uoa';
   const { data: users = [] } = useUsers(isOwner);
   const isAgentsRoute = location.pathname.startsWith('/agents');
   // Dashboards render inside the Knowledge section (they are filed between
@@ -376,6 +379,7 @@ export const useAdminShell = () => {
     isOwner,
     isAdmin,
     isSuperAdmin,
+    isUoaSession,
     logoutAndRedirect,
     me,
     mobileDrawerOpen,

@@ -206,6 +206,7 @@ const AuthenticatedAdminShellLayout = () => {
     <AdminSidebarNav
       isOwner={shell.isOwner}
       isSuperAdmin={shell.isSuperAdmin}
+      isUoaSession={shell.isUoaSession}
       pathname={shell.pathname}
     />
   ) : shell.isFeedbackRoute || shell.isProductPageRoute ? null : (

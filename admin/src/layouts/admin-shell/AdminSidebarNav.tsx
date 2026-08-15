@@ -6,10 +6,23 @@ import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
 import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/mobile-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
 
-type AdminSidebarNavProps = {
-  pathname: string;
+/**
+ * What the nav knows about the person reading it. Visibility is decided from
+ * this alone — entitlement, never ambient route or session context.
+ */
+export type AdminNavViewer = {
   isOwner: boolean;
   isSuperAdmin: boolean;
+  /**
+   * An UnlikeOtherAI session: UOA owns membership, and the workspace roster
+   * (`GET /api/workspace/members`) is entitlement-scoped to any active member
+   * rather than to owners.
+   */
+  isUoaSession: boolean;
+};
+
+type AdminSidebarNavProps = AdminNavViewer & {
+  pathname: string;
 };
 
 type AdminNavItem = {
@@ -17,6 +30,12 @@ type AdminNavItem = {
   label: string;
   icon: ReactNode;
   ownerOnly?: boolean;
+  /**
+   * The item's own entitlement rule, for the few pages whose audience is not
+   * "owner" or "everybody". Replaces `ownerOnly` when present; `ownerOnly` is
+   * the shorthand for the common case.
+   */
+  visibleTo?: (viewer: AdminNavViewer) => boolean;
   exact?: boolean;
   /** W29: live count badge rendered beside the label (failed-runs triage). */
   badgeCount?: number;
@@ -265,7 +284,11 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/settings/members',
         label: 'Members',
-        ownerOnly: true,
+        // On a UOA session the roster read is entitlement-scoped to any active
+        // member, so everyone gets the doorway and the page renders the
+        // mutation controls for owners/admins only. A local session keeps the
+        // owner-only page (local create/role controls), so the nav follows.
+        visibleTo: ({ isOwner, isUoaSession }) => isUoaSession || isOwner,
         icon: icon(
           <>
             <circle cx="9" cy="8" r="3.2" />
@@ -367,20 +390,24 @@ export const ADMIN_NAV: AdminNavGroup[] = [
 
 const adminNavCookieName = (id: AdminNavGroupId) => `adminNavCollapsed-${id}`;
 
+/** One gate for every item: its own rule when it has one, else `ownerOnly`. */
+export const isAdminNavItemVisible = (item: AdminNavItem, viewer: AdminNavViewer): boolean =>
+  item.visibleTo ? item.visibleTo(viewer) : !item.ownerOnly || viewer.isOwner;
+
 type AdminNavSectionProps = {
   group: AdminNavGroup;
   isCollapsed: boolean;
-  isOwner: boolean;
   onToggle: (id: AdminNavGroupId) => void;
   pathname: string;
+  viewer: AdminNavViewer;
 };
 
 const AdminNavSection = ({
   group,
   isCollapsed,
-  isOwner,
   onToggle,
   pathname,
+  viewer,
 }: AdminNavSectionProps) => {
   const sectionId = `admin-nav-${group.id}`;
 
@@ -392,10 +419,7 @@ const AdminNavSection = ({
       title={group.heading}
     >
       {group.items
-        .filter(
-          (item) =>
-            !item.ownerOnly || isOwner,
-        )
+        .filter((item) => isAdminNavItemVisible(item, viewer))
         .map((item) => {
           const isActive = item.exact
             ? pathname === item.path
@@ -427,8 +451,13 @@ export const AdminSidebarNav = ({
   pathname,
   isOwner,
   isSuperAdmin,
+  isUoaSession,
 }: AdminSidebarNavProps) => {
   const nativeTouchShell = isReactNativeWebView();
+  const viewer = useMemo<AdminNavViewer>(
+    () => ({ isOwner, isSuperAdmin, isUoaSession }),
+    [isOwner, isSuperAdmin, isUoaSession],
+  );
   const visibleGroups = useMemo(
     () =>
       ADMIN_NAV.filter(
@@ -469,10 +498,10 @@ export const AdminSidebarNav = ({
           <AdminNavSection
             group={group}
             isCollapsed={collapsedSections[group.id] ?? false}
-            isOwner={isOwner}
             key={group.id}
             onToggle={toggleSection}
             pathname={pathname}
+            viewer={viewer}
           />
         ))}
         {isReactNativeWebView() ? (
