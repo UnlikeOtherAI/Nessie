@@ -1147,7 +1147,7 @@ type ControlCommandDefinition = {
   - missing dependency detection,
   - degraded mode explanation when optional services are absent.
 - Cross-link:
-  - [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md).
+  - [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md).
 
 ## 13.6) Secret storage and retrieval (encrypted, scoped, policy-gated)
 

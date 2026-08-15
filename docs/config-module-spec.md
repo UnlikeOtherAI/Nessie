@@ -258,7 +258,7 @@ hasTranslation: boolean;        // true when translation.enabled === true
 ## 6) Cross-links
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 - [implementation-phases.md](./implementation-phases.md)
 - [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)
 - [tool-registry-spec.md](./tool-registry-spec.md)

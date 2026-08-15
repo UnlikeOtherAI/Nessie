@@ -108,7 +108,7 @@ Why this stack:
 - much simpler than jumping to microservices or a second primary language immediately.
 
 Cross-link:
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 - [implementation-phases.md](./implementation-phases.md)
 - [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md)
 - [phase2-gcp-deployment-spec.md](./phase2-gcp-deployment-spec.md)

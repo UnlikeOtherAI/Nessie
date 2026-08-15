@@ -76,7 +76,7 @@ Ship the first version that feels like a real product:
   - Docker mode
   - non-Docker mode with `nessie local doctor`
 - JWT-based auth with:
-  - local bootstrap path for first-user creation (see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3a)
+  - local bootstrap path for first-user creation (see [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) section 4.3a)
   - Fastify `preHandler` auth middleware producing `AuthorizedActionContext` (see section 4.3c)
   - hosted default path
   - self-hosted/local configurable providers
@@ -281,7 +281,7 @@ These are Phase 1 code assumptions that **must be fixed** before or during Phase
 
 #### High — architectural prerequisites
 
-5. **Auth/session contract cannot represent multi-membership users.** `TenantContext` holds one org/project/team. `users.ts` hard-selects first membership. Phase 2 must evolve JWT and `/me` to support project/team switching (see JWT evolution in deployment-modes-and-auth-spec.md). **Status: NOT FIXED.**
+5. **Auth/session contract cannot represent multi-membership users.** `TenantContext` holds one org/project/team. `users.ts` hard-selects first membership. Phase 2 must evolve JWT and `/me` to support project/team switching (see JWT evolution in deployment-modes-and-auth-spec/overview.md). **Status: NOT FIXED.**
 6. **Login and SSO auto-provision hardcode bootstrap org/project/team IDs.** All auth paths issue reserved bootstrap container IDs. Phase 2 must resolve user's actual memberships from DB. **Status: NOT FIXED.**
 7. **Worker ignores `actorContext`.** Jobs carry context (`packages/schemas`) but `executeRunJob` only unpacks `sessionId`/`userId` (`worker/src/run/execute.ts:532–571`) — never uses it for policy, approval, audit, or ledger. Phase 2 must propagate and enforce. **Status: PARTIAL — carried but unused.**
 8. **Run execution is not idempotent.** `QueueJob.idempotencyKey` field exists in Prisma schema but no "already completed" guard in worker. At-least-once queue retries can duplicate output. Phase 2 must add idempotency boundaries per control-plane invariant #2. **Status: PARTIAL — schema field exists, enforcement missing.**
@@ -325,7 +325,7 @@ Schema partially done: `Project`, `Team`, `ProjectMember`, `TeamMember` models e
 - Identity Platform integration for hosted auth default
 - Fix `NESSIE_AUTH_SECRET` random fallback (prerequisite #4): require persistent shared secret or Cloud KMS
 - Fix bootstrap org/project/team ID hardcoding in login/SSO paths (prerequisite #6)
-- See [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- See [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 
 #### Step 2: Channel privacy and membership-aware discovery
 
@@ -438,7 +438,7 @@ The agent column browser, agent designer studio, and agent categories UI are alr
 - [model-provider-connector-spec.md](./model-provider-connector-spec.md) — inference connectors, routing, mediation, and evals
 - [organization-governance-spec.md](./organization-governance-spec.md) — multi-tenant governance model
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) — shared type contracts (Phase 2 additions)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) — auth modes and deployment modes
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) — auth modes and deployment modes
 
 ## Phase 3: Tooling and Knowledge Platform MVP
 
@@ -819,7 +819,7 @@ This must be built first. Nothing else can import types or config until this exi
 ### Step 2: API service
 
 - `/api` on Fastify
-- Fastify auth middleware with JWT validation (see [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) section 4.3c)
+- Fastify auth middleware with JWT validation (see [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) section 4.3c)
 - bootstrap endpoint: `POST /api/auth/bootstrap`
 - auth endpoints: `GET /api/auth/providers`, `POST /api/auth/session`, `DELETE /api/auth/session`, `GET /api/auth/me`
 - CRUD endpoints:
@@ -900,7 +900,7 @@ Minimum gate set:
 ## 6) Cross-links
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 - [provider-system-and-frontend-architecture.md](./provider-system-and-frontend-architecture.md)
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
 - [phase1-prisma-schema.md](./phase1-prisma-schema.md)

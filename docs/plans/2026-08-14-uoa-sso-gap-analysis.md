@@ -168,7 +168,7 @@ flagged only for a written decision.
 
 ## Ambiguities to resolve before the refactor (decisions, not code)
 
-1. **Brief vs deployment modes.** `docs/deployment-modes-and-auth-spec.md`
+1. **Brief vs deployment modes.** `docs/deployment-modes-and-auth-spec/overview.md`
    deliberately supports `local`/`selfHosted` installs with **no** UOA and a
    password bootstrap (§4.3a). The brief's "never create local-password
    accounts" cannot hold verbatim for a no-IdP local install. Decision
@@ -226,7 +226,7 @@ answer `403 PASSWORD_AUTH_DISABLED`, and `POST /api/users` answers
 `403 LOCAL_USER_CREATION_DISABLED` (`api/src/routes/auth-login.ts`,
 `auth-security.ts`, `users.ts`; tests in
 `api/test/local-auth-mode-gate.test.ts`; contract written up in
-`docs/deployment-modes-and-auth-spec.md` §4.3a). The login gate is scoped to
+`docs/deployment-modes-and-auth-spec/overview.md` §4.3a). The login gate is scoped to
 the password branch — the SSO exchange is untouched — and refuses before the
 account lookup, so it is not an account-existence oracle. Password bootstrap
 needed no gate: `resolveBootstrapState` already disarms bootstrap mode
@@ -348,7 +348,7 @@ projection of the session's signed claims, not an authority.
 **Phase 5 — rosters + invitations on the UOA API.** *Largely landed
 2026-08-15* (`api/src/services/uoa-org-roster.ts`,
 `api/src/routes/workspace-members.ts`, `admin/src/pages/settings/WorkspaceMembersSection.tsx`,
-`docs/deployment-modes-and-auth-spec.md` §4.6): the UOA client calls exist for
+`docs/deployment-modes-and-auth-spec/overview.md` §4.6): the UOA client calls exist for
 the roster read, team role change, team removal, organisation
 deactivate/reactivate, and invitation create/list/resend/approve/deny, all in
 UOA **backend mode** (domain-hash bearer, no access token, gated by

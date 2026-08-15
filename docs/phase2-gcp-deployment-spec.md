@@ -612,7 +612,7 @@ Notes:
 ## 17) Cross-links
 
 - [hosted-app-architecture.md](./hosted-app-architecture.md) -- physical deployment topology, stack decisions, queue abstraction
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md) -- deployment modes, auth modes
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md) -- deployment modes, auth modes
 - [implementation-phases.md](./implementation-phases.md) -- Phase 2 scope and exit criteria
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md) -- canonical event types and API contracts
 - [config-module-spec.md](./config-module-spec.md) -- auth mode configuration, runtime capabilities

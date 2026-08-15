@@ -470,7 +470,7 @@ The right model is:
 
 - [implementation-phases.md](./implementation-phases.md)
 - [hosted-app-architecture.md](./hosted-app-architecture.md)
-- [deployment-modes-and-auth-spec.md](./deployment-modes-and-auth-spec.md)
+- [deployment-modes-and-auth-spec/overview.md](./deployment-modes-and-auth-spec/overview.md)
 - [functionality.md](./functionality.md)
 - [model-provider-connector-spec.md](./model-provider-connector-spec.md)
 - [shared-type-contracts-spec.md](./shared-type-contracts-spec.md)
