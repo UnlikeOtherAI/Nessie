@@ -140,14 +140,13 @@ export const SettingsMembersPage = () => {
   }
 
   if (isUoaSession) {
-    // UOA manages membership for organisation owners and admins alike; anyone
-    // else is routed back to their profile, as on the local branch.
-    if (!canManageWorkspace) {
-      return <Navigate to="/settings/profile" replace />
-    }
+    // The roster is entitlement-scoped the way `GET /api/workspace/members` is:
+    // any active member reads it, and only owners and admins get the controls
+    // that mutate it (role, activation, removal, invitations) — the API refuses
+    // those for anyone else, so rendering them would only produce 403s.
     return (
       <SettingsPanel eyebrow="Organization" title="Members">
-        <WorkspaceMembersSection canManage />
+        <WorkspaceMembersSection canManage={canManageWorkspace} />
       </SettingsPanel>
     )
   }

@@ -372,13 +372,21 @@ Remaining in this phase:
 - **Replace `POST /api/users` outright**, together with the remaining local
   membership mutations (`POST /api/teams/:teamId/members`, project member CRUD)
   and the Members page's local branch.
-- **Doorways.** `GET /api/workspace/members` is entitlement-scoped to any
-  member and the mutations to owner **and** admin, but the only surface today is
-  Settings → Members, whose sidebar entry is still `ownerOnly`
-  (`admin/src/layouts/admin-shell/AdminSidebarNav.tsx`). An admin can use the
-  page by URL and an ordinary member cannot see the roster at all; the nav gate
-  needs to follow the entitlement, and the read-only roster wants an in-context
-  entry point of its own.
+- **Doorways.** ✅ **Nav gate landed 2026-08-15.** The sidebar entry now follows
+  the API's entitlement instead of `ownerOnly`: an item may carry its own
+  `visibleTo(viewer)` rule (`ownerOnly` stays the shorthand for the common
+  case), and Settings → Members uses `isUoaSession || isOwner`
+  (`admin/src/layouts/admin-shell/AdminSidebarNav.tsx`, viewer assembled from
+  `useAdminShell`'s `isOwner`/`isSuperAdmin`/`isUoaSession`). The UOA branch of
+  `SettingsMembersPage.tsx` no longer redirects a non-admin to the profile: it
+  renders `WorkspaceMembersSection` with `canManage={isOwner || isAdmin}`, so a
+  member sees the read-only roster and the mutation controls (role, activation,
+  removal, invite form, invitation actions) appear only for the roles
+  `/api/workspace/members` would accept. A local session is untouched —
+  owner-only nav, owner-only page. Test:
+  `admin/test/members-nav-doorway.test.ts`. Still open: the read-only roster
+  wants an in-context entry point of its own (a people surface reachable from
+  where the question arises, not only from Settings).
 
 **Phase 6 — cache hygiene.** ✅ **Workspace directory landed 2026-08-15.** The
 directory now lives only in a bounded in-memory cache
