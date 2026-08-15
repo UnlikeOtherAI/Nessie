@@ -12,6 +12,11 @@ export type AvatarSources = {
   // Nessie user id. It resolves the UnlikeOtherAI-hosted avatar through the API
   // relay, so passing it upgrades the picture wherever it is available.
   userId?: string
+  // UOA subject, for people named only by UOA — a workspace roster row may have
+  // no local user row at all. It resolves the same picture through the
+  // roster-scoped relay, which is why the two are alternatives, never a chain:
+  // both end at the one image UOA holds for that person.
+  uoaSub?: string
   // Bumping this refetches the relay after the signed-in person changes their
   // UOA picture, which lives at the same URL and would otherwise be served from
   // the browser cache. Only surfaces that can trigger that change pass it.
@@ -35,6 +40,23 @@ export const resolveAvatarSource = (
 ): string | null =>
   resolved.uoaUrl ?? resolved.customUrl ?? sources.avatarUrl ?? null
 
+/**
+ * Which authenticated relay serves this person's UnlikeOtherAI picture. A
+ * Nessie user id goes through the organization-scoped relay; a person known
+ * only by UOA subject (a workspace roster row with no local user) goes through
+ * the roster-scoped one, which checks the subject against the same roster the
+ * Members page is served from before relaying any bytes.
+ */
+export const uoaAvatarPath = (
+  sources: Pick<AvatarSources, 'userId' | 'uoaSub'>,
+): string | null => {
+  if (sources.userId) return `/api/users/${sources.userId}/avatar`
+  if (sources.uoaSub) {
+    return `/api/workspace/members/${encodeURIComponent(sources.uoaSub)}/avatar`
+  }
+  return null
+}
+
 // Resolve the best avatar URL. The first two sources are authenticated byte
 // endpoints fetched as object URLs; until one resolves (or if it fails — an
 // unlinked user answers 404) the next source is used, and ultimately `null`
@@ -48,7 +70,7 @@ export const useResolvedAvatarUrl = (
   // avatars) image/svg+xml, so the blob type is not pinned — it is rendered in
   // an <img>, which never runs scripts in an SVG, and the API allowlists the
   // upstream content type before any bytes reach the browser.
-  const relayPath = sources.userId ? `/api/users/${sources.userId}/avatar` : null
+  const relayPath = uoaAvatarPath(sources)
   const uoaUrl = useAuthedObjectUrlFromPath(
     relayPath && sources.revision ? `${relayPath}?v=${sources.revision}` : relayPath,
     token,
