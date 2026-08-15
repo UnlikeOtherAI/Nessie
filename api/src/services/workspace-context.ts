@@ -7,6 +7,10 @@ import {
 } from './identity-display.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 import {
+  ensureWorkspacePrincipal,
+  findExistingPrincipal,
+} from './workspace-principal.js'
+import {
   lockBootstrapInitialization,
   seedBootstrapRecordsInTransaction,
 } from '../db/seed.js'
@@ -29,6 +33,10 @@ export type WorkspaceIdentityInput = {
   displayName: string
   avatarUrl?: string
   workspace?: ExternalAuthWorkspace
+  // Stable UOA subject (`sub`). Present on the UOA provider path only —
+  // principal resolution then keys on it (workspace-principal.ts); generic
+  // OIDC providers omit it and keep email keying unchanged.
+  uoaSub?: string
 }
 
 export class WorkspaceExternalBindingConflictError extends Error {
@@ -55,45 +63,6 @@ const mapUoaTeamRole = (role: string | undefined): MemberRole => {
 // only, so owners rename via team settings (see the plan doc's follow-ups).
 const workspaceDisplayName = (workspaceId: string): string =>
   `Workspace ${workspaceId.slice(0, 8)}`
-
-// Ensure a user has org/project/team/channel membership for a workspace without
-// clobbering an existing (possibly higher) role or resurrecting a deactivated
-// org membership: create-with-role on first join, leave untouched thereafter.
-const ensureWorkspaceMemberships = async (
-  prisma: Prisma.TransactionClient,
-  input: {
-    userId: string
-    organizationId: string
-    projectId: string
-    teamId: string
-    channelId: string | null
-    orgRole: MemberRole
-    teamRole: MemberRole
-  },
-): Promise<void> => {
-  await prisma.organizationMember.upsert({
-    where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
-    update: {},
-    create: { organizationId: input.organizationId, userId: input.userId, role: input.orgRole },
-  })
-  await prisma.projectMember.upsert({
-    where: { projectId_userId: { projectId: input.projectId, userId: input.userId } },
-    update: {},
-    create: { projectId: input.projectId, userId: input.userId, role: input.teamRole },
-  })
-  await prisma.teamMember.upsert({
-    where: { teamId_userId: { teamId: input.teamId, userId: input.userId } },
-    update: {},
-    create: { teamId: input.teamId, userId: input.userId, role: input.teamRole },
-  })
-  if (input.channelId) {
-    await prisma.channelMember.upsert({
-      where: { channelId_userId: { channelId: input.channelId, userId: input.userId } },
-      update: {},
-      create: { channelId: input.channelId, userId: input.userId },
-    })
-  }
-}
 
 // Create the project + team + #general channel for a brand-new workspace inside
 // the shared org, bound to the UOA workspace id. The first person in owns it.
@@ -132,20 +101,6 @@ const createWorkspaceEnvironment = async (
   return { projectId: project.id, teamId: team.id, channelId: channel.id }
 }
 
-// Read the user's org role after membership was ensured (owner for the bootstrap
-// user, member otherwise) — the role the access token is scoped to.
-const readOrgRole = async (
-  prisma: Prisma.TransactionClient,
-  organizationId: string,
-  userId: string,
-): Promise<MemberRole> => {
-  const member = await prisma.organizationMember.findUnique({
-    where: { organizationId_userId: { organizationId, userId } },
-    select: { role: true },
-  })
-  return member?.role ?? 'member'
-}
-
 // The environment a login resolves to: the project/team plus its #general
 // channel and the role the joining user should get in that team.
 type WorkspaceTarget = {
@@ -167,57 +122,6 @@ const publicChannelId = async (
   return channel?.id ?? null
 }
 
-// UOA can complete the same principal's callback concurrently on multiple
-// devices. Serialize user creation and every membership write across replicas;
-// Prisma's upsert alone does not make concurrent create branches conflict-safe.
-const ensureWorkspacePrincipal = async (
-  prisma: PrismaClient,
-  input: {
-    avatarUrl?: string
-    channelId: string | null
-    displayName: string
-    email: string
-    organizationId: string
-    projectId: string
-    teamId: string
-    teamRole: MemberRole
-  },
-): Promise<{ id: string; orgRole: MemberRole }> => prisma.$transaction(async (transaction) => {
-  await transaction.$queryRaw(Prisma.sql`
-    SELECT 1
-    FROM (
-      SELECT pg_advisory_xact_lock(
-        hashtextextended(${`nessie:uoa-principal:${input.email}`}, 0)
-      )
-    ) AS acquired
-  `)
-  const existing = await transaction.user.findUnique({
-    where: { email: input.email },
-    select: { id: true },
-  })
-  const user = existing ?? await transaction.user.create({
-    data: {
-      avatarUrl: input.avatarUrl,
-      displayName: input.displayName,
-      email: input.email,
-    },
-    select: { id: true },
-  })
-  await ensureWorkspaceMemberships(transaction, {
-    userId: user.id,
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    teamId: input.teamId,
-    channelId: input.channelId,
-    orgRole: 'member',
-    teamRole: input.teamRole,
-  })
-  return {
-    id: user.id,
-    orgRole: await readOrgRole(transaction, input.organizationId, user.id),
-  }
-}, AUTH_LOCK_TRANSACTION_OPTIONS)
-
 const initializeSharedOrganization = async (
   prisma: PrismaClient,
   input: WorkspaceIdentityInput & { email: string },
@@ -231,10 +135,7 @@ const initializeSharedOrganization = async (
       orderBy: CREATED_AT_ASC,
       select: { id: true },
     }),
-    transaction.user.findUnique({
-      where: { email: input.email },
-      select: { id: true },
-    }),
+    findExistingPrincipal(transaction, input),
   ])
   if (sharedOrg) {
     return { sharedOrg, user }
@@ -371,12 +272,13 @@ export const resolveUoaWorkspaceContext = async (
 ): Promise<WorkspaceContext | null> => {
   const email = input.email.trim().toLowerCase()
 
-  // 1. Ensure the shared org exists (bootstrap the first user), and get the user.
+  // 1. Ensure the shared org exists (bootstrap the first user), and get the
+  // user — by stable UOA subject first, by email only as the adoption bridge.
   let sharedOrg = await prisma.organization.findFirst({
     orderBy: CREATED_AT_ASC,
     select: { id: true },
   })
-  let user = await prisma.user.findUnique({ where: { email }, select: { id: true } })
+  let user = await findExistingPrincipal(prisma, { email, uoaSub: input.uoaSub })
 
   if (!sharedOrg) {
     const initialized = await initializeSharedOrganization(prisma, {
@@ -407,7 +309,9 @@ export const resolveUoaWorkspaceContext = async (
   }
 
   // 3. Resolve one stable local principal after validating the target. The
-  // advisory lock closes same-email callback races across devices/replicas.
+  // advisory locks (subject + email) close same-principal callback races
+  // across devices/replicas; a UOA email row bound to a different subject
+  // fails closed here with UoaSubjectConflictError before any write.
   const principal = await ensureWorkspacePrincipal(prisma, {
     avatarUrl: input.avatarUrl,
     channelId: target.channelId,
@@ -417,6 +321,7 @@ export const resolveUoaWorkspaceContext = async (
     projectId: target.projectId,
     teamId: target.teamId,
     teamRole: target.teamRole,
+    uoaSub: input.uoaSub,
   })
 
   return {

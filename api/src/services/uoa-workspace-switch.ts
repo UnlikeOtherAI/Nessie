@@ -17,6 +17,7 @@ import {
   resolveUoaWorkspaceContext,
   WorkspaceExternalBindingConflictError,
 } from './workspace-context.js'
+import { UoaSubjectConflictError } from './workspace-principal.js'
 
 const mapDirectAccessFailure = (error: UoaBillingError): never => {
   if (
@@ -93,14 +94,16 @@ export const materializeUoaWorkspaceSwitch = async (
       'UnlikeOtherAI returned a different workspace while materializing the switch.',
     )
   }
+  // The switch rebinds only the exact person UOA re-authenticated: compare the
+  // stable UOA subject, never the email (UOA may change or reassign an
+  // address). A user row with no subject yet — a backfill the migration left
+  // NULL as ambiguous — also fails closed here; a fresh login either adopts
+  // the subject or surfaces the identity conflict for operator resolution.
   const user = await prisma.user.findUnique({
     where: { id: input.userId },
-    select: { email: true },
+    select: { uoaSub: true },
   })
-  if (
-    !user
-    || user.email.trim().toLowerCase() !== input.identity.email.trim().toLowerCase()
-  ) {
+  if (!user || user.uoaSub === null || user.uoaSub !== input.identity.externalSubject) {
     throw new UoaRefreshBindingError(
       'The Nessie user no longer matches this UnlikeOtherAI session.',
     )
@@ -111,9 +114,16 @@ export const materializeUoaWorkspaceSwitch = async (
       avatarUrl: input.identity.avatarUrl,
       displayName: input.identity.displayName,
       email: input.identity.email,
+      uoaSub: input.identity.externalSubject,
       workspace: input.identity.workspace,
     })
   } catch (error) {
+    if (error instanceof UoaSubjectConflictError) {
+      // A subject conflict during materialization is as permanent as a
+      // binding conflict: the source credential is already consumed upstream,
+      // so force a clean reauthentication rather than retaining a dead family.
+      throw new UoaRefreshBindingError(error.message)
+    }
     if (error instanceof WorkspaceExternalBindingConflictError) {
       // UOA has already consumed the source credential at this point. Keeping
       // the old local family would retain an unusable upstream secret, so a

@@ -18,9 +18,10 @@ import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-a
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
 import { RefreshTokenIssuanceError } from '../services/refresh-token.js'
 import { confirmUoaDirectServiceAccess } from '../services/uoa-billing-client.js'
-import { loadSessionUserByEmail } from '../services/users.js'
+import { loadSessionUserByEmail, loadSessionUserById } from '../services/users.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import { resolveUoaWorkspaceContext } from '../services/workspace-context.js'
+import { UoaSubjectConflictError } from '../services/workspace-principal.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
 import type { RouteDeps } from './types.js'
 
@@ -111,13 +112,18 @@ export const registerAuthLoginRoute = (
           avatarUrl: identity.avatarUrl,
           displayName: identity.displayName,
           email: identity.email,
+          // UOA principals are keyed by the stable subject; generic OIDC
+          // providers carry no uoaSession and keep email keying.
+          uoaSub: uoaSession?.identity.externalSubject,
           workspace: identity.workspace,
         })
         if (!context) {
           sendApiError(reply, 500, 'NO_DEFAULT_ORG', 'No organization configured for SSO provisioning')
           return reply
         }
-        let sessionUser = await loadSessionUserByEmail(prisma, identity.email)
+        // The workspace context already resolved the one principal (by subject
+        // on the UOA path) — load the session user by that id, never by email.
+        let sessionUser = await loadSessionUserById(prisma, context.userId)
         if (!sessionUser) {
           sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
           return reply
@@ -130,7 +136,7 @@ export const registerAuthLoginRoute = (
             where: { id: sessionUser.id },
             data: { displayName: identity.displayName },
           })
-          sessionUser = await loadSessionUserByEmail(prisma, identity.email)
+          sessionUser = await loadSessionUserById(prisma, context.userId)
           if (!sessionUser) {
             sendApiError(reply, 500, 'USER_NOT_FOUND', 'Failed to load authenticated user')
             return reply
@@ -209,6 +215,13 @@ export const registerAuthLoginRoute = (
           ),
         })
       } catch (error) {
+        if (error instanceof UoaSubjectConflictError) {
+          // Identity conflict: the asserted email belongs to a Nessie account
+          // bound to a different UOA subject. Fail closed — never take the
+          // account over, never create a duplicate. Operator resolution only.
+          sendApiError(reply, 409, 'UOA_IDENTITY_CONFLICT', error.message)
+          return reply
+        }
         sendApiError(
           reply,
           401,
