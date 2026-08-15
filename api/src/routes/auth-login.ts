@@ -219,6 +219,19 @@ export const registerAuthLoginRoute = (
       }
     }
 
+    // Local-password authentication exists only for `local` installs (the
+    // bootstrap owner + `nessie local up`). Anywhere else identity belongs to
+    // the configured SSO provider, so the password branch is refused
+    // server-side rather than merely hidden from the login screen.
+    if (config.mode !== 'local') {
+      sendApiError(
+        reply,
+        403,
+        'PASSWORD_AUTH_DISABLED',
+        'Password sign-in is disabled on this deployment. Sign in with your identity provider.',
+      )
+      return reply
+    }
     if (!body.email || !body.password) {
       sendApiError(reply, 400, 'PASSWORD_REQUIRED', 'Password is required', 'password')
       return reply

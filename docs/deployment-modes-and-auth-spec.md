@@ -212,9 +212,59 @@ This is the only case where `GET /api/auth/me` returns a non-error response with
 #### Post-bootstrap
 
 After bootstrap, the install can:
-- keep using local auth (email + password login via `POST /api/auth/session`),
+- keep using local auth (email + password login via `POST /api/auth/session`)
+  — **`local` mode only**, see below,
 - switch to configured SSO providers,
 - or expose both according to policy.
+
+#### The local-password stack is gated to `local` mode
+
+Local passwords exist for one reason: a fresh machine with no identity
+provider has to be able to create its first human. Anywhere else the
+authenticator owns identity, so the whole password stack is refused by the
+**server**, not merely hidden from the login screen (which it already was —
+the admin only offers the password form when the `local-bootstrap` provider is
+advertised, and it is advertised in `local` mode only). When
+`config.mode !== 'local'`:
+
+| Route | Response |
+|---|---|
+| `POST /api/auth/session` (password branch) | `403 PASSWORD_AUTH_DISABLED` |
+| `POST /api/users` (creates an account **with** a password) | `403 LOCAL_USER_CREATION_DISABLED` |
+| `POST /api/auth/password` (password change) | `403 PASSWORD_AUTH_DISABLED` |
+
+Notes on the shape of each refusal:
+
+- The login gate is scoped to the **password branch** — a request carrying a
+  `providerId` still runs the SSO code exchange unchanged. It refuses before
+  the account is looked up, so it is not an account-existence oracle, and it
+  refuses a request with no credentials at all rather than answering
+  `400 PASSWORD_REQUIRED`, which would advertise a prompt the deployment will
+  never honour.
+- `POST /api/users` is refused after the owner check and before the body is
+  parsed: members join a non-local install through SSO or an invitation, never
+  by an owner typing somebody a password. (Replacing this route with the UOA
+  invitation API is phase 5 of the gap analysis; the gate is what stops the
+  bleeding meanwhile.)
+- `POST /api/auth/password` is refused before the body is read and before an
+  attempt is metered — there is no local password to change.
+
+Bootstrap itself needs no mode gate and does not have one: `resolveBootstrapState`
+already returns `null` (disarming bootstrap mode entirely) whenever any
+non-`local-bootstrap` auth provider is enabled, and first SSO login provisions
+the owner instead (`initializeSharedOrganization`). Every SSO-configured
+deployment — including production, which is `selfHosted` with UOA — therefore
+never reaches the bootstrap password at all.
+
+The one combination the gate changes in practice is a `selfHosted`/`hosted`
+install with **no** SSO provider configured: it still bootstraps an owner with
+a password (bootstrap is armed, because no external provider is enabled), but
+that password can never be used to sign in again — the owner rides the session
+and refresh cookie the bootstrap exchange issued, and must configure an SSO
+provider before it lapses. That is the deliberate consequence of scoping local
+passwords to `local` mode; an install that wants a durable password login is a
+`local` install. Resolved as ambiguity 1 of
+[the UOA SSO gap analysis](plans/2026-08-14-uoa-sso-gap-analysis.md).
 
 ### 4.3b Session token contract (JWT)
 
@@ -380,6 +430,11 @@ Claims:
 
 // Response — ApiResponse<{ token: string; me: MeResponse }>
 ```
+
+The email + password shape above is **`local`-mode only**. On any other mode
+the route answers `403 PASSWORD_AUTH_DISABLED` before looking the account up
+(§4.3a, "The local-password stack is gated to `local` mode"); the SSO branch
+below is unaffected and is the only way into a hosted or self-hosted install.
 
 For SSO providers, the flow is:
 1. frontend requests an authorize URL with PKCE and an explicit redirect URI
