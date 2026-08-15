@@ -68,10 +68,16 @@ const prisma = {
   },
 } as unknown as PrismaClient
 
+// A public IP literal, not a hostname: the relay goes through safeFetch, which
+// resolves the host before dialling, and a literal is validated without DNS —
+// so this route test (which stubs globalThis.fetch) reaches the stub instead of
+// failing a lookup for a name that does not exist.
+const UOA_TEST_BASE_URL = 'https://93.184.216.34'
+
 const withUoaEnv = async (run: () => Promise<void>): Promise<void> => {
   const previous = { ...process.env }
   Object.assign(process.env, {
-    UOA_BASE_URL: 'https://uoa.test',
+    UOA_BASE_URL: UOA_TEST_BASE_URL,
     UOA_CLIENT_SECRET: 'test-client-secret',
     UOA_CONFIG_JWT_KID: 'test-kid',
     UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from('unused').toString('base64'),
@@ -116,7 +122,7 @@ test('workspace picker relays only team pictures the signed-in user may access',
       assert.equal(memberResponse.statusCode, 200)
       assert.equal(
         calls[0],
-        `https://uoa.test/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
+        `${UOA_TEST_BASE_URL}/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
       )
 
       const crossOrgMemberResponse = await app.inject({
@@ -126,7 +132,7 @@ test('workspace picker relays only team pictures the signed-in user may access',
       assert.equal(crossOrgMemberResponse.statusCode, 200)
       assert.equal(
         calls[1],
-        'https://uoa.test/domain/teams/uoa-team-other-org/avatar?domain=nessie.test',
+        `${UOA_TEST_BASE_URL}/domain/teams/uoa-team-other-org/avatar?domain=nessie.test`,
       )
 
       const nonMemberResponse = await app.inject({

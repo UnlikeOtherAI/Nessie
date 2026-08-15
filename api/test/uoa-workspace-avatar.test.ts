@@ -19,10 +19,16 @@ const externalTeamId = 'uoa-team-42'
 
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
+// A public IP literal, not a hostname: the relay goes through safeFetch, which
+// resolves the host before dialling, and a literal is validated without DNS —
+// so these route tests (which stub globalThis.fetch) reach the stub instead of
+// failing a lookup for a name that does not exist.
+const UOA_TEST_BASE_URL = 'https://93.184.216.34'
+
 const withUoaEnv = async (run: () => Promise<void>): Promise<void> => {
   const previous = { ...process.env }
   Object.assign(process.env, {
-    UOA_BASE_URL: 'https://uoa.test',
+    UOA_BASE_URL: UOA_TEST_BASE_URL,
     UOA_CLIENT_SECRET: 'test-client-secret',
     UOA_CONFIG_JWT_KID: 'test-kid',
     UOA_CONFIG_JWT_PRIVATE_KEY_B64: Buffer.from('unused').toString('base64'),
@@ -174,7 +180,7 @@ test('GET /api/workspace/avatar relays the company image for any member', async 
       assert.equal(response.statusCode, 200)
       assert.equal(
         calls[0]?.url,
-        `https://uoa.test/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
+        `${UOA_TEST_BASE_URL}/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
       )
       assert.match(calls[0]?.authorization ?? '', /^Bearer [0-9a-f]{64}$/)
       assert.equal(response.headers['content-type'], 'image/png')
@@ -244,7 +250,7 @@ test('PUT /api/workspace/avatar relays an owner or admin upload as multipart', a
         assert.equal(calls[0]?.method, 'PUT')
         assert.equal(
           calls[0]?.url,
-          `https://uoa.test/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
+          `${UOA_TEST_BASE_URL}/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
         )
         // UOA wants exactly one part named "file".
         assert.match(relayedBody ?? '', /name="file"/)
@@ -399,7 +405,7 @@ test('DELETE /api/workspace/avatar clears the image for an owner', async () => {
       assert.equal(calls[0]?.method, 'DELETE')
       assert.equal(
         calls[0]?.url,
-        `https://uoa.test/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
+        `${UOA_TEST_BASE_URL}/domain/teams/${externalTeamId}/avatar?domain=nessie.test`,
       )
     } finally {
       globalThis.fetch = originalFetch
