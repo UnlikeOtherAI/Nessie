@@ -115,8 +115,8 @@ export const DeepWaterResearchPanel = ({
           role="tabpanel"
         >
           <div className="mb-4 rounded border border-[var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-sm leading-6 text-[var(--tx2)]">
-            This starts a real Deep Water research job. Choose a template to set the controls,
-            then review or adjust every value before submitting.
+            This starts a real Deep Water research job. Pick Light, Standard or Heavy to
+            assume the settings, or Custom to review every value before submitting.
           </div>
           <DeepWaterResearchLauncher
             canLaunch={canLaunch}

@@ -3,8 +3,10 @@ import test from 'node:test'
 
 import {
   deepWaterResearchLanguages,
-  deepWaterResearchPresets,
+  deepWaterResearchModes,
+  deepWaterResearchValuesFromPreset,
   defaultDeepWaterResearchValues,
+  resolveDeepWaterResearchMode,
 } from '../src/components/features/integrations/deep-water-research-options.js'
 import {
   deepWaterResearchLauncherNavigationState,
@@ -21,12 +23,27 @@ test('Deep Water offers a complete unique ISO language selector', () => {
   assert.ok(codes.includes('zh'))
 })
 
-test('Deep Water templates configure the launcher without replacing its prompt', () => {
-  const balanced = deepWaterResearchPresets.find((preset) => preset.id === 'balanced-research')
+test('Deep Water modes carry complete values and derive rather than store', () => {
+  const ids = deepWaterResearchModes.map((mode) => mode.id)
+  assert.deepEqual(ids, ['light', 'standard', 'heavy'])
 
-  assert.equal(balanced?.values.depth, 'standard')
-  assert.equal(balanced?.values.sections, 8)
-  assert.equal('query' in (balanced?.values ?? {}), false)
+  // The default form is Standard, so the dialog opens on that mode.
+  assert.equal(resolveDeepWaterResearchMode(defaultDeepWaterResearchValues), 'standard')
+
+  // Every mode's values resolve back to that mode — the selector is derived
+  // from the values, never stored beside them.
+  for (const mode of deepWaterResearchModes) {
+    assert.equal(
+      resolveDeepWaterResearchMode({ ...defaultDeepWaterResearchValues, ...mode.values }),
+      mode.id,
+    )
+  }
+
+  // Any deviation from a preset opens on Custom with the values intact.
+  assert.equal(
+    resolveDeepWaterResearchMode({ ...defaultDeepWaterResearchValues, sections: 9 }),
+    'custom',
+  )
   assert.equal(defaultDeepWaterResearchValues.outputLanguage, 'en')
 })
 
@@ -44,4 +61,10 @@ test('chat launcher navigation accepts only a bounded research preset', () => {
   assert.equal(readDeepWaterResearchLauncherPreset({ deepWaterResearchLauncher: { preset: {
     sections: 100,
   } } }), null)
+
+  // A card preset that deviates from every mode opens the dialog on Custom.
+  assert.equal(
+    resolveDeepWaterResearchMode(deepWaterResearchValuesFromPreset(preset ?? undefined)),
+    'custom',
+  )
 })
