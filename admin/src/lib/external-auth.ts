@@ -81,8 +81,10 @@ export const startExternalSignIn = async (
 
 /**
  * Workspace-switch reauthorization: SSO pre-hinted at the exact workspace the
- * switch targeted, preserving the return path so the recovered session lands
- * back where the person was standing.
+ * switch targeted. The captured route is kept for the *unhappy* path only — a
+ * cancelled or failed flow changed nothing, so the person stays where they
+ * were. A completed switch lands on `/channels`, because the old workspace's
+ * routes do not resolve in the new one.
  */
 export const startWorkspaceSwitchReauthorization = async (input: {
   providerId: string
