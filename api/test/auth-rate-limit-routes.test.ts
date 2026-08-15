@@ -73,6 +73,9 @@ const buildLoginApp = async (input: {
   })
   const rateLimiter = new RateLimiter(input.store.prisma as never, noopLogger)
   const config = {
+    // The password branch is gated to `local` mode; these tests exercise the
+    // limiter on that branch, so the fixture must be a local install.
+    mode: 'local' as const,
     api: {
       rateLimit: {
         loginIp: { max: input.loginIpMax ?? 2, windowMs: 10 * 60_000 },

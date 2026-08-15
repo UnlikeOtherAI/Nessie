@@ -4,6 +4,10 @@
 > tree at `7dd1de9e` (main). Three deep sweeps (server auth flow, local
 > identity data model, per-platform clients) plus direct spot-verification of
 > every load-bearing claim.
+> **Update 2026-08-15:** the assessment stands as written; the server half of
+> **Phase 1** has since landed (local-password stack hard-gated to `local`
+> mode — see requirement 0.1 and the Phase 1 entry). Everything else below is
+> still unimplemented.
 > **Note:** worktrees `.worktrees/sso-invites-team-switch/`,
 > `.worktrees/switch-integration-prepare/`, and
 > `.worktrees/native-logout-timeout/` contain in-flight work directly relevant
@@ -48,7 +52,7 @@ handling is duplicated per platform and only works while logged out.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| 0.1 | No local-password accounts | **VIOLATES** | `User.passwordHash` (`api/prisma/schema.prisma:747`, scrypt in `api/src/auth/password.ts`); password login branch `api/src/routes/auth-login.ts:222-278` — **not mode-gated**, runs even in hosted (the `local` provider is only *advertised* in local mode, `api/src/services/auth.ts:58`); `POST /api/users` creates accounts with passwords (`api/src/routes/users.ts:51-116`, hash at `:73`); `POST /api/auth/password` (`api/src/routes/auth-security.ts:74-147`); bootstrap owner with password (`api/src/routes/auth-core.ts:235-319`). Login UI for it exists but is gated to local mode (`admin/src/pages/LoginPage.tsx:82,400-439`) |
+| 0.1 | No local-password accounts | **VIOLATES → mode-gated 2026-08-15** | `User.passwordHash` (`api/prisma/schema.prisma:747`, scrypt in `api/src/auth/password.ts`) and the whole password stack still exist, but are now refused server-side outside `local` mode (phase 1 below): password login branch `api/src/routes/auth-login.ts` → `403 PASSWORD_AUTH_DISABLED`, `POST /api/users` (`api/src/routes/users.ts`) → `403 LOCAL_USER_CREATION_DISABLED`, `POST /api/auth/password` (`api/src/routes/auth-security.ts`) → `403 PASSWORD_AUTH_DISABLED`. Bootstrap owner with password (`api/src/routes/auth-core.ts:235-319`) remains, and needs no gate: it is disarmed whenever an SSO provider is enabled. Login UI was already gated to local mode (`admin/src/pages/LoginPage.tsx:82,400-439`) |
 | 0.2 | No duplicate SSO-owned data (email, name, avatar, memberships, roles, invitations) | **VIOLATES** | `User.email/displayName/avatarUrl/avatarAttachmentId/pronouns` (`schema.prisma:745-753`); roles owned + mutated locally (`api/src/services/users.ts:182-187,205-210`); UOA workspace directory persisted durably in `ProductAccountLink.metadata.workspaceDirectory` (`api/src/services/uoa-session-context.ts:239-247`) — brief allows in-memory cache only |
 | 0.3 | Retain only UOA subject + extension data + encrypted refresh material | **Implemented (for what it covers)** | `UoaSessionCredential` AES-256-GCM (`schema.prisma:854-885`, `packages/runtime/src/secret-crypto.ts`); `ProductAccountLink.uoaSub/uoaTokenVersion` (`schema.prisma:1036-1037`); `Team.externalWorkspaceId/externalOrgId` (`schema.prisma:1234-1235`); `User.preferences/tokenVersion` legitimately local. But the subject is **not** on `User` — it lives only org-scoped on the link row, which is why email became the join key |
 | 1 | One shared switcher, all platforms, grouped by UOA org id, UOA-backed avatars, active state | **Implemented** (one ambiguity) | One shared component with render variants (`admin/src/layouts/admin-shell/WorkspaceSwitcher.tsx:212-214`); native iPhone/iPad controls are trigger-only chrome calling into the same web menu (`mobile/src/lib/native-webview-actions.ts:25-27`, `mobile/src/components/NativePhoneHeader.tsx:140-161`, `IpadNativeWorkspaceSwitcher.tsx:29-51`); Tauri loads the hosted admin (`desktop/src-tauri/src/lib.rs:14-30`). Grouped by raw UOA org id (`admin/src/lib/workspaces.ts:62-79`); avatars via authed relay `/api/teams/:teamId/avatar` → UOA directory `avatarImageUrl` → initials (`admin/src/components/primitives/WorkspaceAvatar.tsx:53-59`); active state `WorkspaceSwitcher.tsx:124`. **Ambiguity:** the Swift app in `macos/` has no workspace/auth concept at all — if "Mac" means it rather than the Tauri desktop, that platform is a no-op |
@@ -204,11 +208,23 @@ roster/invitation contract, "Mac", role boundary). Everything else sequences
 off these. Check the in-flight `.worktrees/sso-invites-team-switch/` work
 before starting — it appears to target this exact area.
 
-**Phase 1 — stop the bleeding (small, immediate).** Mode-gate the local
-identity stack: in UOA deployments refuse the password branch of
-`POST /api/auth/session`, `POST /api/users`, `POST /api/auth/password`, and
-password bootstrap (SSO-first bootstrap already covers first login). Point
-the admin Members page at read-only data meanwhile. No schema change yet.
+**Phase 1 — stop the bleeding (small, immediate).** ✅ **Server gate landed
+2026-08-15.** Mode-gate the local identity stack: outside `local` mode the
+password branch of `POST /api/auth/session` and `POST /api/auth/password`
+answer `403 PASSWORD_AUTH_DISABLED`, and `POST /api/users` answers
+`403 LOCAL_USER_CREATION_DISABLED` (`api/src/routes/auth-login.ts`,
+`auth-security.ts`, `users.ts`; tests in
+`api/test/local-auth-mode-gate.test.ts`; contract written up in
+`docs/deployment-modes-and-auth-spec.md` §4.3a). The login gate is scoped to
+the password branch — the SSO exchange is untouched — and refuses before the
+account lookup, so it is not an account-existence oracle. Password bootstrap
+needed no gate: `resolveBootstrapState` already disarms bootstrap mode
+whenever a non-`local-bootstrap` provider is enabled, so every SSO deployment
+provisions its owner through first SSO login (verified, unchanged). This
+resolves ambiguity 1 in favour of scoping the brief to UOA-configured
+deployments rather than dropping local-password mode. Still open in this
+phase: point the admin Members page at read-only data (tracked separately).
+No schema change yet.
 
 **Phase 2 — subject keying.** Add `User.uoaSub` (unique, nullable for
 non-UOA modes); backfill from linked `ProductAccountLink` rows in one

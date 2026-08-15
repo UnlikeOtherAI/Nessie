@@ -74,6 +74,17 @@ export const registerAuthSecurityRoutes = (
   app.post('/api/auth/password', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    // No local passwords outside `local` mode, so there is nothing to change:
+    // refuse before the body is read or an attempt is metered.
+    if (config.mode !== 'local') {
+      sendApiError(
+        reply,
+        403,
+        'PASSWORD_AUTH_DISABLED',
+        'Password sign-in is disabled on this deployment. Manage your credentials with your identity provider.',
+      )
+      return reply
+    }
     const body = parseInput(ChangePasswordRequestSchema, request.body, reply)
     if (!body) return reply
     const userId = actorContext.actor.actorId

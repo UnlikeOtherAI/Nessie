@@ -32,7 +32,14 @@ const isLastOwnerError = (error: unknown): boolean =>
   error instanceof Error && error.message === LAST_OWNER_ERROR
 
 export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner, resolveMembershipRole, MEMBERSHIP_ROLES } = deps
+  const {
+    config,
+    prisma,
+    requireActorContext,
+    requireOwner,
+    resolveMembershipRole,
+    MEMBERSHIP_ROLES,
+  } = deps
 
   app.get('/api/users', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -55,6 +62,19 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     }
 
     if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    // Creating a human here also mints a local password credential, which only
+    // a `local` install may own. On every other mode the identity provider is
+    // the authority for who exists: people arrive through SSO/invitations.
+    if (config.mode !== 'local') {
+      sendApiError(
+        reply,
+        403,
+        'LOCAL_USER_CREATION_DISABLED',
+        'Local accounts are disabled on this deployment. Members join through SSO or an invitation.',
+      )
       return reply
     }
 
