@@ -249,6 +249,30 @@ take — a database sitting on an older schema, not a fresh dev database:
   `task_events`, `runs`, `audit_logs`; on a large install those lock the
   table for the duration of the build, so review them before release.
 
+### One-time: per-UOA-organisation tenancy (2026-08-15)
+
+Nessie now keeps **one `Organization` per UOA organisation**
+(`Organization.externalOrgId`) instead of one shared local organisation holding
+every workspace. The partition migration runs with the others at deploy
+(`prisma migrate deploy`, i.e. `redeploy.sh`) and needs no operator action, but
+two things are worth knowing before you run it:
+
+- **What it does.** The existing organisation adopts the UOA organisation most
+  of its teams belong to (ties go to the oldest team's), so nothing moves for
+  the common single-organisation install. Any *other* UOA organisation present
+  splits into its own `Organization`, taking its workspaces' project/team
+  subtrees and per-user memberships with it. Org-global rows — settings, logo,
+  audit rows that cannot be attributed to a moved subtree — stay with the
+  adopting organisation.
+- **Split-org users sign in once after the deploy.** A session is bound to the
+  local organisation it was issued for, so users whose workspaces moved into a
+  newly split organisation are asked to log in again on their next visit; their
+  refresh family re-homes at that login. Users in the adopting organisation are
+  unaffected and stay signed in. Plan the deploy accordingly if you host more
+  than one UOA organisation.
+
+Background, migration rules, and verification:
+[plans/2026-08-15-uoa-org-tenancy.md](plans/2026-08-15-uoa-org-tenancy.md).
 
 ### Host disk / Docker build cache (operational)
 
