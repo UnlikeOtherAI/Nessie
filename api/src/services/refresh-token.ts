@@ -275,7 +275,7 @@ export const consumeRefreshToken = async (
         result: await successResult(tx, presented, input.rawToken, true),
       }
     }
-    if (intent && (!input.beforeUoaWorkspaceSwitch || !input.rescopeUoaSessionBinding)) {
+    if (intent && !input.beforeUoaWorkspaceSwitch) {
       throw new UoaRefreshBindingError(
         'UnlikeOtherAI workspace switching is not configured for this session.',
       )

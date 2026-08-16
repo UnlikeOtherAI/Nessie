@@ -340,19 +340,47 @@ test('transient UOA failure leaves the presented family active for retry', async
   assert.equal((await consume(fake, rawToken, now)).ok, true)
 })
 
-test('rejects a changed UOA binding before any local rotation', async () => {
+// Estate rule: a successor proving the same subject and a non-regressed epoch
+// is adopted even when its workspace drifted, because a silent switch makes
+// drift the ordinary way a committed switch reaches the next refresh.
+test('adopts a UOA successor whose workspace drifted', async () => {
   const { fake, rawToken } = await createFixture()
   const now = new Date()
 
-  await assert.rejects(
-    consume(fake, rawToken, now, async (input) => ({
-      identity: { ...input.expectedIdentity, teamId: 'different-team' },
-      refreshToken: `${input.refreshToken}.next`,
-      refreshTokenExpiresAt: new Date(now.getTime() + 60_000),
-    })),
-    UoaRefreshBindingError,
-  )
-  assert.equal(fake.findByHash(hashRefreshToken(rawToken))?.revokedAt, null)
+  const rotated = await consume(fake, rawToken, now, async (input) => ({
+    identity: { ...input.expectedIdentity, teamId: 'different-team' },
+    refreshToken: `${input.refreshToken}.next`,
+    refreshTokenExpiresAt: new Date(now.getTime() + 60_000),
+  }))
+
+  assert.equal(rotated.ok, true)
+  if (!rotated.ok) return
+  assert.equal(rotated.uoaIdentity?.teamId, 'different-team')
+  // The encrypted family proof follows the workspace UOA proved.
+  assert.equal(fake.uoaCredentials.get(rotated.familyId)?.teamId, 'different-team')
+})
+
+// The two checks that actually prove identity are unchanged: either violation
+// still refuses before any local rotation.
+test('rejects a changed subject or a regressed epoch before any local rotation', async () => {
+  for (const drift of [
+    { subject: 'someone-else' },
+    { tokenVersion: UOA_IDENTITY.tokenVersion - 1 },
+  ]) {
+    const { fake, rawToken } = await createFixture()
+    const now = new Date()
+
+    await assert.rejects(
+      consume(fake, rawToken, now, async (input) => ({
+        identity: { ...input.expectedIdentity, ...drift },
+        refreshToken: `${input.refreshToken}.next`,
+        refreshTokenExpiresAt: new Date(now.getTime() + 60_000),
+      })),
+      UoaRefreshBindingError,
+    )
+    assert.equal(fake.findByHash(hashRefreshToken(rawToken))?.revokedAt, null)
+    assert.equal(fake.uoaCredentials.size, 1)
+  }
 })
 
 test('rejects issuing a UOA family without its encrypted immutable proof', async () => {

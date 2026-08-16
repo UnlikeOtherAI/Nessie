@@ -367,7 +367,6 @@ export const consume = (
   advanceUoaSessionBinding: async () => undefined,
   beforeUoaWorkspaceSwitch: async () => undefined,
   rawToken,
-  rescopeUoaSessionBinding: async () => undefined,
   ttlSeconds: TTL_SECONDS,
   refreshUoaSession,
   userAgent: 'Nessie test',

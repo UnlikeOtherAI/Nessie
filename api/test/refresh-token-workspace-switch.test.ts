@@ -39,7 +39,6 @@ const switchWorkspace = (
   beforeUoaWorkspaceSwitch: async () => undefined,
   rawToken,
   refreshUoaSession,
-  rescopeUoaSessionBinding: async () => undefined,
   ttlSeconds: TTL_SECONDS,
   uoaWorkspaceSwitch: {
     sourceIdentity: UOA_IDENTITY,
@@ -56,20 +55,19 @@ test('workspace switch binds one durable intent and atomically rescope-rotates b
   const { fake, rawToken } = await createFixture()
   const now = new Date()
   let sawIntentBeforeIo = false
-  let rescopeRanInTransaction = false
+  let bindingAdvancedInTransaction = false
 
   const result = await consumeRefreshToken(fake.asClient(), {
     authSecret: AUTH_SECRET,
-    advanceUoaSessionBinding: async () => undefined,
+    advanceUoaSessionBinding: async () => {
+      bindingAdvancedInTransaction = fake.activeTransactions === 1
+    },
     beforeUoaWorkspaceSwitch: async () => {
       sawIntentBeforeIo = fake.uoaWorkspaceSwitchIntents.size === 1
         && fake.activeTransactions === 0
     },
     rawToken,
     refreshUoaSession: defaultUoaRefresh(now),
-    rescopeUoaSessionBinding: async () => {
-      rescopeRanInTransaction = fake.activeTransactions === 1
-    },
     ttlSeconds: TTL_SECONDS,
     uoaWorkspaceSwitch: {
       sourceIdentity: UOA_IDENTITY,
@@ -84,7 +82,7 @@ test('workspace switch binds one durable intent and atomically rescope-rotates b
   assert.equal(result.ok, true)
   if (!result.ok) return
   assert.equal(sawIntentBeforeIo, true)
-  assert.equal(rescopeRanInTransaction, true)
+  assert.equal(bindingAdvancedInTransaction, true)
   assert.deepEqual(result.uoaIdentity, { ...UOA_IDENTITY, ...SWITCH_TARGET })
   assert.equal(fake.uoaWorkspaceSwitchIntents.size, 0)
   const credential = fake.uoaCredentials.get(result.familyId)
@@ -190,7 +188,6 @@ test('a resumed switch refusal is definitive because its upstream edge may be co
       },
       rawToken,
       refreshUoaSession: refresh,
-      rescopeUoaSessionBinding: async () => undefined,
       ttlSeconds: TTL_SECONDS,
     }),
     UoaRefreshBindingError,
@@ -264,7 +261,6 @@ test('workspace switch preserves a healthy cookie when the bearer source is stal
         upstreamCalls += 1
         return defaultUoaRefresh(new Date())(input)
       },
-      rescopeUoaSessionBinding: async () => undefined,
       ttlSeconds: TTL_SECONDS,
       uoaWorkspaceSwitch: {
         sourceIdentity: UOA_IDENTITY,
@@ -375,7 +371,6 @@ test('workspace switch revalidates its exact source after access confirmation', 
         upstreamCalls += 1
         return defaultUoaRefresh(new Date())(input)
       },
-      rescopeUoaSessionBinding: async () => undefined,
       ttlSeconds: TTL_SECONDS,
       uoaWorkspaceSwitch: {
         sourceIdentity: UOA_IDENTITY,

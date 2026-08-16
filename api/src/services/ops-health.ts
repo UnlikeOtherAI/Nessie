@@ -77,10 +77,11 @@ const getQueueCounts = async (prisma: PrismaClient) => {
 
 // NOTE ON TENANCY: queue_jobs and execution_runners have no per-tenant column —
 // they are deployment-wide infrastructure. The queue counts, worker health, and
-// dead-job rows below are therefore deployment-global (surfaced to org owners as an
-// operations view), while dead-letter mailbox data IS org-scoped. A future
-// platform-admin role should gate the deployment-global parts; until then we cap the
-// dead-job error text so it cannot dump arbitrary cross-tenant payload data.
+// dead-job rows below are therefore deployment-global, while dead-letter mailbox
+// data IS org-scoped. The platform-admin role this note used to ask for now
+// exists and gates the route: `GET /api/ops/health` requires `User.superAdmin`
+// (`routes/health.ts`), not an org owner. The dead-job error text stays capped
+// regardless, so one caller's view can never dump arbitrary payload data.
 export const getOpsHealth = async (
   prisma: PrismaClient,
   organizationId: string,

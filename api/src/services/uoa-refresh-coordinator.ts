@@ -5,19 +5,28 @@ import { UoaRefreshBindingError } from './refresh-token-uoa.js'
 import { syncExternalOrganizationNames } from './external-organization.js'
 import { resolveExternalWorkspaceSelection } from './identity-display.js'
 import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
-import {
-  advanceUoaLocalSessionBindingInTransaction,
-  rescopeUoaLocalSessionBindingInTransaction,
-} from './uoa-session-context.js'
+import { advanceUoaLocalSessionBindingInTransaction } from './uoa-session-context.js'
 import {
   refreshUoaSession,
   UoaSessionRefreshError,
+  type UoaSessionExchange,
 } from './uoa-session.js'
 import {
   confirmUoaWorkspaceSwitchAccess,
+  materializeUoaWorkspace,
   materializeUoaWorkspaceSwitch,
 } from './uoa-workspace-switch.js'
 import { UoaWorkspaceSwitchError } from './uoa-workspace-switch-intent.js'
+
+/** Did UOA answer this refresh with a workspace other than the bound one? */
+const workspaceDrifted = (
+  expected: UoaSessionIdentity,
+  identity: UoaSessionExchange['identity'],
+): boolean => {
+  const selected = resolveExternalWorkspaceSelection(identity.workspace)
+  return selected.organizationId !== expected.organizationId
+    || selected.teamId !== expected.teamId
+}
 
 const safeSwitchCode = (
   error: UoaSessionRefreshError,
@@ -48,6 +57,20 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
         await materializeUoaWorkspaceSwitch(prisma, {
           identity: refreshed.identity,
           target: upstream.workspaceSwitch,
+          userId: upstream.userId,
+        })
+      } else if (
+        workspaceDrifted(upstream.expectedIdentity, refreshed.identity)
+      ) {
+        // An ordinary refresh whose successor names a different workspace is
+        // adopted, not refused (see `refreshUoaSession`). Adoption has to land
+        // on a real local org/project/team, so it materializes the successor's
+        // own workspace exactly as a switch materializes its target — and the
+        // binding advance then fails closed if it still does not resolve.
+        // Same-workspace refreshes — every ordinary rotation — skip this
+        // entirely and are byte-identical to before.
+        await materializeUoaWorkspace(prisma, {
+          identity: refreshed.identity,
           userId: upstream.userId,
         })
       }
@@ -115,12 +138,6 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
     transaction: Parameters<typeof advanceUoaLocalSessionBindingInTransaction>[0],
   ) => {
     await advanceUoaLocalSessionBindingInTransaction(transaction, input)
-  },
-  rescopeUoaSessionBinding: async (
-    input: Parameters<typeof rescopeUoaLocalSessionBindingInTransaction>[1],
-    transaction: Parameters<typeof rescopeUoaLocalSessionBindingInTransaction>[0],
-  ) => {
-    await rescopeUoaLocalSessionBindingInTransaction(transaction, input)
   },
   beforeUoaWorkspaceSwitch: async (input: {
     sourceIdentity: UoaSessionIdentity

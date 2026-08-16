@@ -168,9 +168,16 @@ const matchesWhere = (row: McpCatalogEntryRow, where: Record<string, unknown>): 
 
 type CatalogStub = { prisma: PrismaClient; rows: Map<string, McpCatalogEntryRow> }
 
-const makeStub = (initial: McpCatalogEntryRow[]): CatalogStub => {
+const makeStub = (
+  initial: McpCatalogEntryRow[],
+  superAdminIds: string[] = [],
+): CatalogStub => {
   const rows = new Map(initial.map((row) => [row.id, row]))
   const prisma = {
+    user: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        ({ superAdmin: superAdminIds.includes(where.id) }),
+    },
     mcpCatalogEntry: {
       findFirst: async ({ where }: { where: Record<string, unknown> }) =>
         [...rows.values()].find((row) => matchesWhere(row, where)) ?? null,
@@ -296,12 +303,12 @@ test('submitForReview rejects submitting an already-published entry', async () =
   )
 })
 
-// ─── approve / reject (superuser) ───────────────────────────────────────────
+// ─── approve / reject (instance super-admin) ────────────────────────────────
 
 test('approveSubmission publishes a pending submission', async () => {
   const { prisma } = makeStub([
     makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
-  ])
+  ], [ADMIN])
   const result = await approveSubmission(prisma, actorCtx(ADMIN, ['owner']), 'entry-1')
   assert.equal(result?.status, 'published')
   assert.equal(result?.visibility, 'public')
@@ -320,8 +327,22 @@ test('approveSubmission forbids non-superusers (even the submitter)', async () =
   )
 })
 
+// Publishing shows a connector to every organisation on the deployment, so the
+// reviewer is the instance super-admin — not whoever owns one organisation.
+test('approveSubmission forbids an org owner who is not the instance super-admin', async () => {
+  const { prisma } = makeStub([
+    makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
+  ])
+  await assert.rejects(
+    () => approveSubmission(prisma, actorCtx(ADMIN, ['owner']), 'entry-1'),
+    (error: unknown) =>
+      error instanceof McpCatalogError
+      && error.code === MCP_CATALOG_ERROR_CODES.FORBIDDEN,
+  )
+})
+
 test('approveSubmission rejects entries that are not awaiting approval', async () => {
-  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })])
+  const { prisma } = makeStub([makeRow({ status: 'draft', ownerUserId: USER_A })], [ADMIN])
   await assert.rejects(
     () => approveSubmission(prisma, actorCtx(ADMIN, ['owner']), 'entry-1'),
     (error: unknown) =>
@@ -333,7 +354,7 @@ test('approveSubmission rejects entries that are not awaiting approval', async (
 test('rejectSubmission reverts to a private rejected draft with the reason', async () => {
   const { prisma } = makeStub([
     makeRow({ status: 'pending_approval', visibility: 'public', ownerUserId: USER_A }),
-  ])
+  ], [ADMIN])
   const result = await rejectSubmission(
     prisma,
     actorCtx(ADMIN, ['owner']),
@@ -511,17 +532,39 @@ test('the public store never returns another tenant published entries', async ()
   assert.deepEqual(entries.map((entry) => entry.id), ['mine-pub'])
 })
 
-test('canManageEntry refuses an owner acting on another tenant entry', () => {
+test('canManageEntry refuses an owner acting on another tenant entry', async () => {
+  const { prisma } = makeStub([])
   assert.equal(
-    canManageEntry(actorCtx(ADMIN, ['owner']), makeRow({ organizationId: ORG_B })),
+    await canManageEntry(prisma, actorCtx(ADMIN, ['owner']), makeRow({ organizationId: ORG_B })),
     false,
   )
   assert.equal(
-    canManageEntry(actorCtx(ADMIN, ['owner']), makeRow({ organizationId: ORG_A })),
+    await canManageEntry(prisma, actorCtx(ADMIN, ['owner']), makeRow({ organizationId: ORG_A })),
     true,
   )
+})
+
+// Instance-global (`organizationId: null`) rows are the deployment's own
+// first-party entries and every tenant reads them, so rewriting one is
+// instance administration. Being an owner of one organisation among many is
+// not that; `User.superAdmin` is.
+test('canManageEntry gates an instance-global entry on superAdmin, not org owner', async () => {
+  // `makeRow` coalesces, so build the instance-global row explicitly.
+  const globalRow: McpCatalogEntryRow = {
+    ...makeRow(),
+    organizationId: null,
+    ownerUserId: null,
+  }
+
+  const orgOwnerOnly = makeStub([])
   assert.equal(
-    canManageEntry(actorCtx(ADMIN, ['owner']), makeRow({ organizationId: null })),
+    await canManageEntry(orgOwnerOnly.prisma, actorCtx(ADMIN, ['owner']), globalRow),
+    false,
+  )
+
+  const superAdmin = makeStub([], [ADMIN])
+  assert.equal(
+    await canManageEntry(superAdmin.prisma, actorCtx(ADMIN, ['owner']), globalRow),
     true,
   )
 })

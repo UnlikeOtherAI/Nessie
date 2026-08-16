@@ -20,6 +20,12 @@
 > per UOA organisation — which also removes the last-owner projection floor
 > phase 4 introduced. Design and migration:
 > [2026-08-15-uoa-org-tenancy.md](2026-08-15-uoa-org-tenancy.md).
+> **Update 2026-08-16:** two estate-alignment items landed (owner decision,
+> "make it best for user and security"). **Refresh drift is now adopted, not
+> refused** — see the new ambiguity 9 and row 2d. **Instance administration is
+> now named** rather than inherited from the flattened model: the surfaces that
+> were using "owner of the shared organization" as a stand-in for "administers
+> this Nessie instance" moved to `User.superAdmin` — see ambiguity 4.
 > **Note:** worktrees `.worktrees/sso-invites-team-switch/`,
 > `.worktrees/switch-integration-prepare/`, and
 > `.worktrees/native-logout-timeout/` contain in-flight work directly relevant
@@ -85,7 +91,7 @@ handling is duplicated per platform and only works while logged out.
 | 2a | Silent switch on valid renewable proof | **Implemented** | `POST /api/auth/uoa/workspace` (`api/src/routes/auth-uoa-workspace.ts:48`) via UOA grant `urn:unlikeotherai:params:oauth:grant-type:workspace-switch` (`api/src/services/uoa-session.ts:66-67,343-370`); crash-safe `UoaWorkspaceSwitchIntent` (`schema.prisma:887-907`, 13-field source match); client branch `WorkspaceSwitcher.tsx:256-298` |
 | 2b | Fresh-proof/2FA path opens SSO for the **exact** org/team, returns to the **same screen** | **Implemented 2026-08-15** | Landed from the parked `codex/sso-invites-team-switch` series: a refused switch classifies as a dedicated `reauthorize` outcome (`admin/src/layouts/admin-shell/workspace-switch-recovery.ts`) and `startWorkspaceSwitchReauthorization` (`admin/src/lib/external-auth.ts`) launches SSO with `teamHint` for the exact target; the pending PKCE record captures `returnPath` + `targetWorkspace` (`admin/src/lib/external-auth-completion.ts`), session untouched. **Revised 2026-08-15:** a *successful* switch now navigates to `/channels` like the silent path, because old-workspace entity routes do not resolve after rescoping; cancel/failure still returns to the originating route, which is still correct there since nothing changed |
 | 2c | Never log out on failed/cancelled/unavailable switch | **Implemented (one edge)** | Safe refusals (`WORKSPACE_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, `WORKSPACE_SWITCH_CONFLICT`) preserve the session (`auth-uoa-workspace.ts:21-33`, `uoa-session.ts:327-333`); native cancel normalizes to a benign state (`mobile/src/lib/external-auth-bridge.ts:35-37`); ambiguous failures reconcile through the refresh funnel and can be detected as success (`workspace-switch-recovery.ts:21-25,70-73`). One real logout path: a definitive upstream error revokes the family server-side (`auth-uoa-workspace.ts:126-133` → 401 `WORKSPACE_SWITCH_REAUTH_REQUIRED`) and the client's reconcile then clears the session (`packages/client-core/src/auth-session.ts:138-141`) — defensible (the credential is genuinely dead) but a literal-reading violation to sign off on |
-| 2d | Never apply a returned session unless same subject/provider + exact requested org/team | **Implemented** | Layered: pre-flight `confirmUoaDirectServiceAccess` for the target (`api/src/services/uoa-workspace-switch.ts:49-71`); upstream response check (`uoa-session.ts:405-418`); `validateUoaRefresh` (`api/src/services/refresh-token-uoa.ts:167-182`); materialization re-check (`uoa-workspace-switch.ts:88-95`). Caveat: the materialization guard compares **email**, not sub (`uoa-workspace-switch.ts:96-107`) — see V1 |
+| 2d | Never apply a returned session unless same subject/provider + exact requested org/team | **Implemented (switch); refresh drift adopted 2026-08-16** | An **explicit switch** is still layered exact-target: pre-flight `confirmUoaDirectServiceAccess` (`api/src/services/uoa-workspace-switch.ts` `confirmUoaWorkspaceSwitchAccess`); upstream response check (`uoa-session.ts` `refreshUoaSession`, `workspaceSwitch` arm); the `targetIdentity` arm of `validateUoaRefresh` (`api/src/services/refresh-token-uoa.ts`); materialization re-check (`materializeUoaWorkspaceSwitch`); and `commitUoaRotation`'s `identityMatchesTarget` against the durable intent. An **ordinary refresh** no longer compares the workspace at all — a drifted successor proving the same subject and a non-regressed epoch is adopted (ambiguity 9). The materialization guard compares the **UOA subject**, not email (`materializeUoaWorkspace`) |
 | 2e | One shared PKCE/callback lifecycle across platforms | **Implemented 2026-08-15** | PKCE generation shared (`packages/client-core/src/pkce.ts`); callback handling is now ONE always-mounted `ExternalAuthProvider` (`admin/src/providers/ExternalAuthProvider.tsx` + `external-auth-callback.ts`), installed above the router with no session-state gate, so authenticated round-trips work on web, Tauri, and native; native results ride a retained delivery queue with ready/delivered acks (`mobile/src/lib/external-auth-delivery.ts`) — the old swallowed-catch bridge is deleted. Still open: UOA authorize carries no `state` param (CSRF rides sessionStorage PKCE, `uoa-auth.ts:322-326`) — sign-off item |
 | 3a | Rosters are SSO API features | **Implemented for the workspace roster (2026-08-15)** | `GET /api/workspace/members` (`api/src/routes/workspace-members.ts`) serves the roster live from UOA in backend mode — `GET /org/organisations/:orgId/teams/:teamId` joined with `GET /org/organisations/:orgId/members?status=all` (`api/src/services/uoa-org-roster.ts`), keyed on the UOA subject, nothing persisted; role change / team removal / deactivate / reactivate relay the matching `/org/*` mutations behind Nessie's owner/admin gate (UOA applies none in backend mode). Enabled by `org_features.backend_org_management: true` in the config JWT (`uoa-auth.ts`). PA `people_search` answers from the same seam since 2026-08-15 (moved to `@nessie/workspace-admin`; item 7). **Still local:** `GET /api/users`, `POST /api/teams/:teamId/members`, and project member CRUD — previously: No UOA member-roster call exists anywhere; `/org/me` returns only the signed-in user's own workspaces (`api/src/services/uoa-workspace-directory.ts`). Local substitutes: `GET /api/users` from local rows; `POST /api/teams/:teamId/members` (`api/src/routes/teams.ts:81-130`); project member CRUD (`api/src/routes/projects.ts:240-311`); PA `people_search` reads local users by name/email substring (`worker/src/run/pa-tools/people.ts:17-46`) |
 | 3b | Invitations created/resent/revoked/approved/declined/accepted via SSO; acceptance hosted by SSO | **Implemented (2026-08-15)** | `GET/POST /api/workspace/invitations`, `POST /api/workspace/invitations/:inviteId/resend\|revoke\|approve\|deny` relay UOA's team-invitation contract; acceptance is hosted by UOA and Nessie mints/stores/renders no invitation token. **Revoke landed both sides 2026-08-15**: UOA added `DELETE .../teams/:teamId/invitations/:inviteId` in backend mode and Nessie relays it — idempotent, `409 INVITATION_ALREADY_ACCEPTED` once accepted, generic `404` for an unknown or foreign id; `deny` keeps its own meaning for an invitation still awaiting approval. Shareable invite links are deliberately not surfaced. The admin Members page renders the UOA branch on a UOA session and keeps the local list otherwise. **Not yet removed:** `POST /api/users` and its local Add-member form, which Phase 1 already refuses outside `local` mode (`403 LOCAL_USER_CREATION_DISABLED`) and the Members page no longer reaches on a UOA session — previously: No invitation model, token, email, or endpoint exists (grep-clean; only agent-mention invites and executor pairing use the word). The substitute is worse: admin Members page submits `{displayName, email, password, role}` to `POST /api/users` (`admin/src/pages/settings/SettingsMembersPage.tsx:141-153`) — account + credential + roster placement with zero UOA involvement and no consent flow |
@@ -215,11 +221,76 @@ flagged only for a written decision.
    `macos/` is an unrelated local voice client with no auth or workspace
    concept at all. If the brief's "Mac" includes it, that platform is a
    complete no-op today.
-4. **Role boundary.** Nessie needs RBAC over product resources. Which roles
-   are UOA-owned (org/team membership + org/team role) vs product-specific
-   grants (channel member, knowledge space, dashboard, `superAdmin`)? The
-   deny-overrides policy engine can stay, but its subject facts must come
-   from UOA.
+4. **Role boundary.** ✅ **Instance vs organisation resolved 2026-08-16.**
+   Nessie needs RBAC over product resources. UOA owns org/team membership and
+   the org/team role; product-specific grants (channel member, knowledge space,
+   dashboard) stay local; the deny-overrides policy engine stays, with its
+   subject facts from UOA. The part that was actually wrong was the *third*
+   level: under the flattened single-organisation model, "owner of the shared
+   organization" was the only thing resembling an instance administrator, and
+   several deployment-wide surfaces quietly leaned on it. With one
+   `Organization` per UOA organisation an org owner administers exactly one
+   tenant, so those moved to `User.superAdmin` — a `User` flag, not an org
+   membership, read from the database rather than from tenant-scoped session
+   roles:
+   - `GET /api/ops/health` (`api/src/routes/health.ts`) — worker heartbeat,
+     queue counts, dead jobs and the rate-limiter snapshot have no tenant
+     column. `services/ops-health.ts` said so in its own tenancy note and asked
+     for exactly this role. Admin nav item and `OpsHealthPage` follow.
+   - MCP public-store review — `POST /api/mcp/catalog/:id/approve|reject` and
+     the `queue`/`all` management views (`api/src/routes/mcp/catalog.ts`,
+     `packages/mcp-manage/src/mcp-catalog-review.ts`). Publishing puts a
+     connector in front of every organisation on the deployment; the code
+     already called the reviewer a "superuser" while checking the `owner` role.
+     Admin: the "Approval queue" tab and the approve/reject buttons.
+   - `canManageEntry`'s instance-global arm
+     (`packages/mcp-manage/src/mcp-catalog.ts`) — `organizationId: null`
+     catalog rows are the instance's own first-party entries and every tenant
+     reads them (`catalogTenancyWhere`), so any tenant owner rewriting their
+     transport URL or auth config was cross-tenant escalation. An owner still
+     manages their **own** organisation's entries; only the `null` arm needs
+     `superAdmin`.
+
+   The shared DB-authoritative check is `isSuperAdminUser`
+   (`packages/mcp-manage/src/mcp-catalog.ts`), a sibling of the existing
+   `isAdminUser`; the API's own `requireSuperAdmin` (`lib/server-context.ts`,
+   already gating platform push credentials) is unchanged. `superAdmin` is
+   still granted only out of band by `cli/src/super-admin.ts` — worth noting
+   that it has no API surface and no audit event.
+
+   Deliberately left as owner after review — genuinely organisation-scoped, all
+   `organizationId`-filtered at the service boundary: users, policy rules,
+   projects/board/iterations/teams, agents/bindings/triggers, plans, mailbox,
+   capability sessions, resource locks, tool registry and bundles, execution
+   environment templates/instances/leases, MCP instance credentials and install
+   scopes, integration product agent-access and team-enablement, ledger
+   telemetry, pricing profiles and budgets, and audit-log list/summary/verify
+   (`verifyAuditChain` takes the organization id, so the chain a caller
+   verifies is their own).
+
+   Still open, reported not changed — each is a distinct problem rather than an
+   owner→superAdmin rename:
+   - `GET /api/execution-runners` (`api/src/routes/execution-environments.ts`)
+     returns shared host runners (`organizationId: null`) alongside the org's
+     own. Defensible — an org owner needs to know which runners can serve their
+     environments — but it does expose instance fleet status. Decide whether to
+     narrow the projection or move the endpoint.
+   - Grandfathered `authSecretRef` environment references
+     (`api/src/services/inference-control-plane.ts` `resolveBoundApiKey`). New
+     writes are already refused and base URLs are SSRF-checked, but
+     pre-existing rows still dereference an arbitrary host env var. That is
+     instance-scoped state under org-owner control; it wants a migration, not a
+     guard swap.
+   - `GET /api/brand/logo` (`api/src/routes/organizations.ts`) 404s unless the
+     instance holds exactly one organisation. Under per-UOA-org tenancy that is
+     now routinely false, so instance login branding silently stops working —
+     and while it does work, one org's admin controls the unauthenticated login
+     screen for everybody.
+   - `POST|DELETE /api/integrations/products/:productSlug/activate|deactivate`
+     (`api/src/routes/integrations/external-agent.ts`) carries no role guard at
+     all beyond `requireUserActor`: any member can activate or deactivate an
+     external-agent product for the whole organisation. Org-scoped, so out of
+     scope here, but it is a missing gate rather than a misplaced one.
 5. **One shared local Organization.** ✅ **Resolved 2026-08-15 — per-UOA-org
    tenancy.** All UOA workspaces mapped to Teams inside a single local org
    (`docs/plans/2026-07-10-slack-workspace-login-nessie.md`); the switcher's
@@ -250,6 +321,37 @@ flagged only for a written decision.
    verified — per UOA's own contract, trust derives from the
    `clientHash`-authenticated backchannel; `uoa-auth.ts:22-25`). Same:
    explicit sign-off.
+9. **Refresh-token workspace drift.** ✅ **Resolved 2026-08-16 — adopt the
+   proven successor.** Nessie was the estate outlier: given a successor proving
+   the same subject and a non-regressed `tv` but a different workspace, water,
+   DeepSignal and DeepTest all adopt it, while Nessie refused and forced
+   reauthentication. Adoption is now the rule here too, for two reasons kept in
+   the code comments so they survive the next reader:
+   - With a **silent workspace switch** in the product, drift is the ordinary
+     way a committed switch (or a UOA-side workspace change) surfaces on the
+     next refresh. Refusing made a *successful* switch look like a logout.
+   - **Workspace is not an identity claim.** Substitution is still caught by
+     the two checks that actually prove identity — subject equality and epoch
+     non-regression — which remain strictly enforced and still revoke the
+     family.
+
+   Adoption re-derives the local binding exactly as a switch does: the
+   successor's workspace is materialized through the shared
+   `materializeUoaWorkspace` (`api/src/services/uoa-workspace-switch.ts`) and
+   `advanceUoaLocalSessionBindingInTransaction`
+   (`api/src/services/uoa-session-context.ts`) then resolves the local
+   organization/project/team through `Team.externalOrgId`/`externalWorkspaceId`
+   and `Organization.externalOrgId`, or fails closed with
+   `UoaLocalSessionBindingError`. A same-workspace renewal — every ordinary
+   rotation — skips materialization and is unchanged. Because the plain-refresh
+   and rescope paths now differ in nothing, the vacuous
+   `rescopeUoaLocalSessionBinding*` / `rescopeUoaSessionBinding` split was
+   removed rather than kept as a synonym; the explicit switch's exact-target
+   check stays where the target is actually known (`refreshUoaSession`,
+   `validateUoaRefresh`, and `commitUoaRotation`'s intent check). Prose:
+   `docs/deployment-modes-and-auth-spec/authentication.md` → "UOA renewal" and
+   "Workspace drift on renewal is adopted, not refused". Tests:
+   `api/test/uoa-session-context.test.ts`, `api/test/uoa-session-refresh.test.ts`.
 
 ## Recommended sequence (API-backed refactor + migration; no compat copies)
 

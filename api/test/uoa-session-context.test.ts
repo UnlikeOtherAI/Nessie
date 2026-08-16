@@ -10,7 +10,7 @@ import {
 } from '../src/services/uoa-directory-cache.js'
 import {
   advanceUoaLocalSessionBinding,
-  rescopeUoaLocalSessionBindingInTransaction,
+  advanceUoaLocalSessionBindingInTransaction,
   resolveUoaLocalSessionContext,
   UoaLocalSessionBindingError,
 } from '../src/services/uoa-session-context.js'
@@ -257,45 +257,111 @@ test('advances every exact first-party link to the same monotonic epoch', async 
   )
 })
 
-test('concurrent replay accepts an already-advanced epoch but rejects a changed tuple', async () => {
+test('concurrent replay accepts an already-advanced epoch', async () => {
   const fake = new FakeBindingPrisma()
   fake.link.uoaTokenVersion = 8
-  await advanceUoaLocalSessionBinding(fake.asClient(), {
+  const context = await advanceUoaLocalSessionBinding(fake.asClient(), {
     nextIdentity: { ...IDENTITY, tokenVersion: 8 },
     previousIdentity: IDENTITY,
     userId: USER_ID,
   })
 
-  await assert.rejects(
-    advanceUoaLocalSessionBinding(fake.asClient(), {
-      nextIdentity: { ...IDENTITY, teamId: 'different-team', tokenVersion: 8 },
-      previousIdentity: IDENTITY,
-      userId: USER_ID,
-    }),
-    UoaLocalSessionBindingError,
-  )
+  assert.equal(context.teamId, '00000000-0000-4000-8000-000000000020')
 })
 
-test('rescope advances the stable epoch and last-seen workspace to the exact target', async () => {
+// Estate rule: a successor proving the same subject and a non-regressed epoch
+// is ADOPTED even when it names a different workspace, because a drift is how
+// a committed switch (or a UOA-side workspace change) surfaces on the next
+// refresh. Refusing made a successful switch look like a logout.
+test('an ordinary refresh adopts a successor that drifted to another workspace', async () => {
   const fake = new FakeBindingPrisma()
   const nextIdentity = {
     ...IDENTITY,
-    organizationId: 'uoa-org-target',
-    teamId: 'uoa-team-target',
+    organizationId: 'uoa-org-drifted',
+    teamId: 'uoa-team-drifted',
     tokenVersion: 8,
   }
   fake.expectedOrganizationId = nextIdentity.organizationId
   fake.expectedTeamId = nextIdentity.teamId
 
-  const context = await rescopeUoaLocalSessionBindingInTransaction(
+  const context = await advanceUoaLocalSessionBindingInTransaction(
     fake.asClient() as never,
     { nextIdentity, previousIdentity: IDENTITY, userId: USER_ID },
   )
 
+  // The local binding is re-derived from the successor's own workspace and the
+  // last-seen metadata follows it.
   assert.equal(fake.link.uoaTokenVersion, 8)
   assert.equal(fake.link.activeOrgId, nextIdentity.organizationId)
   assert.equal(fake.link.activeTeamId, nextIdentity.teamId)
   assert.equal(context.teamId, '00000000-0000-4000-8000-000000000020')
+})
+
+test('an adopted workspace that maps to no local team still fails closed', async () => {
+  const fake = new FakeBindingPrisma()
+  const nextIdentity = {
+    ...IDENTITY,
+    organizationId: 'uoa-org-unmapped',
+    teamId: 'uoa-team-unmapped',
+    tokenVersion: 8,
+  }
+  fake.expectedOrganizationId = nextIdentity.organizationId
+  fake.expectedTeamId = nextIdentity.teamId
+  fake.teamAvailable = false
+
+  await assert.rejects(
+    advanceUoaLocalSessionBindingInTransaction(
+      fake.asClient() as never,
+      { nextIdentity, previousIdentity: IDENTITY, userId: USER_ID },
+    ),
+    UoaLocalSessionBindingError,
+  )
+})
+
+// The two checks that actually prove identity stay strictly enforced: a
+// changed subject or a regressed authentication epoch is never adopted.
+test('a changed subject or a regressed epoch is still refused', async () => {
+  const changedSubject = new FakeBindingPrisma()
+  await assert.rejects(
+    advanceUoaLocalSessionBinding(changedSubject.asClient(), {
+      nextIdentity: { ...IDENTITY, subject: 'someone-else', tokenVersion: 8 },
+      previousIdentity: IDENTITY,
+      userId: USER_ID,
+    }),
+    UoaLocalSessionBindingError,
+  )
+  assert.equal(changedSubject.link.uoaTokenVersion, IDENTITY.tokenVersion)
+
+  const regressedEpoch = new FakeBindingPrisma()
+  await assert.rejects(
+    advanceUoaLocalSessionBinding(regressedEpoch.asClient(), {
+      nextIdentity: { ...IDENTITY, tokenVersion: 6 },
+      previousIdentity: IDENTITY,
+      userId: USER_ID,
+    }),
+    UoaLocalSessionBindingError,
+  )
+  assert.equal(regressedEpoch.link.uoaTokenVersion, IDENTITY.tokenVersion)
+
+  // A drift carrying either violation is refused for that reason, never
+  // adopted because the workspace check is gone.
+  const both = new FakeBindingPrisma()
+  both.expectedOrganizationId = 'uoa-org-drifted'
+  both.expectedTeamId = 'uoa-team-drifted'
+  await assert.rejects(
+    advanceUoaLocalSessionBinding(both.asClient(), {
+      nextIdentity: {
+        organizationId: 'uoa-org-drifted',
+        subject: 'someone-else',
+        teamId: 'uoa-team-drifted',
+        tokenVersion: 8,
+      },
+      previousIdentity: IDENTITY,
+      userId: USER_ID,
+    }),
+    UoaLocalSessionBindingError,
+  )
+  assert.equal(both.link.uoaTokenVersion, IDENTITY.tokenVersion)
 })
 
 test('a rotation caches the refreshed directory and never persists it', async () => {
@@ -307,7 +373,7 @@ test('a rotation caches the refreshed directory and never persists it', async ()
     label: 'Fresh workspace',
   }]
 
-  await rescopeUoaLocalSessionBindingInTransaction(
+  await advanceUoaLocalSessionBindingInTransaction(
     fake.asClient() as never,
     {
       nextIdentity: IDENTITY,
