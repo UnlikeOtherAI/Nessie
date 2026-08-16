@@ -128,8 +128,15 @@ export const resolveStageProviderConfig = async (
         p.base_url AS "baseUrl",
         b.auth_secret_ref AS "authSecretRef"
       FROM inference_providers p
+      -- A revoked binding is a withdrawn credential. The control plane detaches
+      -- one when it revokes it, and migration
+      -- 20260816090000_retire_grandfathered_inference_env_refs retired every
+      -- grandfathered env ref the same way; this join states the invariant on
+      -- the reading side too, so revocation can never be undone by a stray
+      -- active_credential_binding_id.
       LEFT JOIN inference_credential_bindings b
         ON b.id = p.active_credential_binding_id
+       AND b.revoked_at IS NULL
       WHERE p.organization_id = ${input.organizationId}::uuid
         AND p.provider_key = ${input.providerKey}
         AND p.enabled = true

@@ -178,8 +178,12 @@ unchanged), midnight (neutral slate/blue dark), daylight (light content).
   opens `appearance/CircleLogoCropper.tsx` (square stage, masked edges, circular
   crop, pan/zoom → 512×512 circular PNG); the crop uploads via `/api/uploads`
   and is set as the org's `logoAttachmentId` (`facades/organization/hooks.ts`).
-  The logo replaces the workspace mark in `SidebarRail` and brands the login
-  screen via the public `GET /api/brand/logo`.
+  The logo replaces the workspace mark in `SidebarRail`, and brands the login
+  screen via the public `GET /api/brand/logo` **only for the organisation the
+  instance operator designated** (`Organization.instanceBrand`, set by
+  `nessie set-instance-brand`; see `docs/deployment.md` → "Branding the sign-in
+  screen"). The unauthenticated screen is instance state, so no org admin can
+  claim it by uploading a logo.
 - Review pass: remaining component CSS and `.ts` style-helper color escapes are
   tokenized; `admin/index.html` applies the saved theme before first paint;
   dark/light `color-scheme` is set per theme; daylight and sandstone

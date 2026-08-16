@@ -644,7 +644,7 @@ test('defaultTokenExchange POSTs client_id + client_secret in the form body', as
   // case providers that reject Basic).
   const originalFetch = globalThis.fetch
   let capturedBody: string | undefined
-  let capturedHeaders: Record<string, string> | undefined
+  let capturedHeaders: Headers | undefined
   globalThis.fetch = (async (
     _url: RequestInfo | URL,
     init?: RequestInit,
@@ -654,7 +654,13 @@ test('defaultTokenExchange POSTs client_id + client_secret in the form body', as
       : typeof init?.body === 'string'
         ? init.body
         : ''
-    capturedHeaders = (init?.headers ?? {}) as Record<string, string>
+    // The exchange goes out through `pinnedFetch`, which normalizes headers
+    // (`normalizeFetchHeaders`) into lowercase `[name, value]` entries before
+    // handing them to the platform fetch — a valid `HeadersInit`, but not the
+    // plain object the caller wrote. Read them back through `Headers` so the
+    // assertion is about the header being sent, not about which shape the
+    // transport happened to pass it in.
+    capturedHeaders = new Headers(init?.headers)
     return new Response(
       JSON.stringify({
         access_token: 'ya29.fake',
@@ -686,7 +692,7 @@ test('defaultTokenExchange POSTs client_id + client_secret in the form body', as
   assert.equal(parsedBody.get('client_id'), 'client-abc')
   assert.equal(parsedBody.get('client_secret'), 'shh-secret')
   assert.equal(
-    capturedHeaders?.['Content-Type'],
+    capturedHeaders?.get('content-type'),
     'application/x-www-form-urlencoded',
   )
 })

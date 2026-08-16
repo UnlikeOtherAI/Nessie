@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { isSuperAdminUser } from '@nessie/mcp-manage'
 
 import {
   CreateExecutionEnvironmentTemplateBodySchema,
@@ -226,7 +227,11 @@ export const registerExecutionEnvironmentRoutes = (app: FastifyInstance, deps: R
       return reply
     }
 
-    const runners = await listExecutionRunners(prisma, actorContext.tenant.organizationId)
+    // Shared host runners carry no tenant, so only the instance administrator
+    // sees the fleet; an org owner sees their own organisation's runners.
+    const runners = await listExecutionRunners(prisma, actorContext.tenant.organizationId, {
+      includeInstanceFleet: await isSuperAdminUser(prisma, actorContext),
+    })
     return createApiResponse(ExecutionRunnerRecordSchema.array().parse(runners))
   })
 

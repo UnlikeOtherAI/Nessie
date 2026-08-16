@@ -935,6 +935,12 @@ model Organization {
   // generic-OIDC shared organization).
   externalOrgId          String?                 @unique @map("external_org_id")
   logoAttachmentId       String?                 @map("logo_attachment_id") @db.Uuid
+  // Instance-level login branding. The unauthenticated sign-in screen belongs
+  // to the instance, not to any one tenant, so which organisation's logo it
+  // carries is an instance-operator decision (`nessie set-instance-brand`),
+  // never an org admin's. At most one organisation carries it; unset on every
+  // organisation means the sign-in screen shows Nessie's own mark.
+  instanceBrand          Boolean                 @default(false) @map("instance_brand")
   // Owner/admin opt-out for EXIF/GPS metadata stripping on image uploads at
   // the FileService chokepoint. Defaults to stripping (true); set false to
   // preserve original metadata.

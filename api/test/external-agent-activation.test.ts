@@ -506,3 +506,112 @@ test('canonical catalog cannot target a non-DeepSignal origin', async () => {
   )
   assert.equal(fake.instances.length, 0)
 })
+
+/**
+ * Activation/deactivation authority is per-user, not organisation-wide, so
+ * neither carries an owner gate: the button says "Activate for me" and every
+ * write is keyed on the calling user (the user-scoped MCP instance, that
+ * user's `ProductAccountLink`, and that user's own DM channel). The
+ * organisation-wide decision — whether the product is available to the team at
+ * all — is the separate owner-only `PATCH .../team-enablement` toggle, which
+ * activation checks first and cannot bypass ("activation is blocked before
+ * provisioning when the team is disabled", above). These two tests hold that
+ * boundary in place.
+ */
+test('one member deactivating does not turn the product off for another member', async () => {
+  const seed = buildSeed()
+  const firstUserId = randomUUID()
+  const secondUserId = randomUUID()
+  const catalogId = randomUUID()
+  const firstInstanceId = randomUUID()
+  const fake = makeExternalAgentPrismaFake({
+    ...seed,
+    accountLinks: [linkedAccount(seed, firstUserId), linkedAccount(seed, secondUserId)],
+    catalogEntries: [{
+      authMethod: 'bearer',
+      defaultTransportConfig: {
+        transport: 'http',
+        url: 'https://api.deepsignal.live/mcp',
+      },
+      id: catalogId,
+      integratedProductSlugs: ['deepsignal'],
+      name: 'deepsignal',
+      status: 'published',
+      visibility: 'public',
+    }],
+    instances: [{
+      catalogEntryId: catalogId,
+      credentialRef: 'DEEPSIGNAL_MCP_APP_KEY',
+      id: firstInstanceId,
+      lifecycleState: 'active',
+      organizationId: seed.organizationId,
+      scopeId: firstUserId,
+      scopeType: 'user',
+    }],
+    teamEnablements: [{
+      teamId: seed.teamId,
+      productSlug: 'deepsignal',
+      enabled: true,
+    }],
+  })
+
+  await activateExternalAgentProduct(asPrisma(fake), 'deepsignal', buildCtx(seed, firstUserId))
+  await activateExternalAgentProduct(asPrisma(fake), 'deepsignal', buildCtx(seed, secondUserId))
+  assert.equal(fake.instances.length, 2)
+
+  await deactivateExternalAgentProduct(asPrisma(fake), 'deepsignal', {
+    organizationId: seed.organizationId,
+    userId: secondUserId,
+  })
+
+  // Only the caller's own install, link and channel are torn down.
+  assert.deepEqual(fake.instances.map((instance) => instance.scopeId), [firstUserId])
+  const statusByUser = new Map(
+    fake.accountLinks.map((link) => [link.userId, link.status]),
+  )
+  assert.equal(statusByUser.get(firstUserId), 'linked')
+  assert.equal(statusByUser.get(secondUserId), 'revoked')
+  const liveChannelKeys = [...fake.channelsById.values()]
+    .filter((channel) => !channel.archivedAt)
+    .map((channel) => channel.dmKey)
+  assert.deepEqual(
+    liveChannelKeys,
+    [`extagent:deepsignal:${seed.organizationId}:${firstUserId}:uoa-team`],
+  )
+})
+
+test('activation provisions only the calling user, never another member', async () => {
+  const seed = buildSeed()
+  const userId = randomUUID()
+  const otherUserId = randomUUID()
+  const catalogId = randomUUID()
+  const fake = makeExternalAgentPrismaFake({
+    ...seed,
+    accountLinks: [linkedAccount(seed, userId)],
+    catalogEntries: [{
+      authMethod: 'bearer',
+      defaultTransportConfig: {
+        transport: 'http',
+        url: 'https://api.deepsignal.live/mcp',
+      },
+      id: catalogId,
+      integratedProductSlugs: ['deepsignal'],
+      name: 'deepsignal',
+      status: 'published',
+      visibility: 'public',
+    }],
+    teamEnablements: [{
+      teamId: seed.teamId,
+      productSlug: 'deepsignal',
+      enabled: true,
+    }],
+  })
+
+  await activateExternalAgentProduct(asPrisma(fake), 'deepsignal', buildCtx(seed, userId))
+
+  assert.deepEqual(fake.instances.map((instance) => instance.scopeId), [userId])
+  assert.deepEqual(fake.accountLinks.map((link) => link.userId), [userId])
+  const memberIds = [...new Set(fake.channelMembers.map((member) => member.userId))]
+  assert.deepEqual(memberIds, [userId])
+  assert.equal(memberIds.includes(otherUserId), false)
+})

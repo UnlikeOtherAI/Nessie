@@ -169,6 +169,63 @@ docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
   pnpm --filter @nessie/cli exec tsx src/index.ts revoke-super-admin owner@example.com
 ```
 
+### Branding the sign-in screen
+
+`GET /api/brand/logo` is public and unauthenticated: it paints the sign-in
+screen for everybody reaching the instance, whatever organisation they belong
+to. That makes it **instance** state, so the organisation whose logo it carries
+is designated out of band by the instance operator — the same reasoning, and
+the same CLI, as the super-admin tier above. Deliberately no API or admin-UI
+surface: an org admin who could set it would be choosing the login screen for
+every other tenant on the deployment.
+
+```sh
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+  pnpm --filter @nessie/cli exec tsx src/index.ts show-instance-brand
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+  pnpm --filter @nessie/cli exec tsx src/index.ts set-instance-brand <organizationId>
+docker compose -f infrastructure/compose/docker-compose.prod.yml run --rm api \
+  pnpm --filter @nessie/cli exec tsx src/index.ts clear-instance-brand
+```
+
+At most one organisation is designated (`Organization.instanceBrand`; setting
+one clears the rest). With none designated — or when the designated
+organisation has uploaded no logo — the endpoint 404s and the sign-in screen
+falls back to the static Nessie mark. The designated organisation still uploads
+and changes its own logo the ordinary way, at Settings → Appearance.
+
+This replaced an implicit rule: the endpoint used to serve "the organisation's
+logo, if the instance holds exactly one organisation". Under one `Organization`
+per UOA organisation that is routinely false, so branding silently stopped
+working, and while it held it handed one tenant's admins the login screen
+everybody sees. Migration
+`20260816100000_organization_instance_brand` backfills the designation on a
+single-organisation instance, so existing local/self-hosted installs are
+unchanged.
+
+### Retired inference credential env references
+
+Migration `20260816090000_retire_grandfathered_inference_env_refs` revokes every
+`inference_credential_bindings` row and detaches it from its provider. Those
+rows named a host environment variable that the worker dereferenced
+(`process.env[auth_secret_ref]`) and sent as a bearer token to the provider's
+own base URL — an arbitrary deployment secret under an organisation owner's
+control. New writes have been refused since the phase-0 secret-custody gate
+(`INFERENCE_ENV_REF_FORBIDDEN`); this retires the rows written before it.
+
+After deploying:
+
+* **Compiled providers** (`openai`, `deepseek`, `kimi`, `minimax`) keep working
+  on the deployment-level credential (`NESSIE_MODEL_API_KEY` and the
+  provider-specific fallbacks). Nothing to do.
+* **OpenAI-compatible providers** that were running on such a binding are
+  disabled, marked `unreachable`, and reset to `draft`, restoring the invariant
+  that they must hold a credential binding before being enabled. Their owner
+  sees a disabled provider on the inference control-plane screen instead of runs
+  failing later with "Missing API key for provider …". Restore one by
+  configuring its credential at the deployment level; the control plane will not
+  accept a new env reference.
+
 ## Redeploying a new version
 
 **Automatic (default):** every push to `main` triggers
