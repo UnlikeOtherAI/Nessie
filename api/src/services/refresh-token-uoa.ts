@@ -170,13 +170,23 @@ export const validateUoaRefresh = (input: {
   workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
 }): RotatedUoaCredential => {
   const parsedIdentity = UoaSessionIdentitySchema.safeParse(input.identity)
-  const expectedWorkspace = input.targetIdentity ?? input.expectedIdentity
+  // Same subject, non-regressing epoch: strictly enforced, because those two
+  // checks are what prove this credential still belongs to the same person.
+  // A drifted workspace on an ordinary refresh is adopted rather than refused
+  // (see `refreshUoaSession`); `targetIdentity` is present only for an explicit
+  // workspace switch, where the requested tuple must match exactly.
+  const expectedWorkspace = input.targetIdentity
   if (
     !parsedIdentity.success
     || parsedIdentity.data.tokenVersion === null
     || parsedIdentity.data.subject !== input.expectedIdentity.subject
-    || parsedIdentity.data.organizationId !== expectedWorkspace.organizationId
-    || parsedIdentity.data.teamId !== expectedWorkspace.teamId
+    || (
+      expectedWorkspace
+      && (
+        parsedIdentity.data.organizationId !== expectedWorkspace.organizationId
+        || parsedIdentity.data.teamId !== expectedWorkspace.teamId
+      )
+    )
     || input.expectedIdentity.tokenVersion === null
     || parsedIdentity.data.tokenVersion < input.expectedIdentity.tokenVersion
     || input.refreshTokenExpiresAt.getTime() <= input.now.getTime()

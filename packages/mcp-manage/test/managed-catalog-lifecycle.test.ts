@@ -66,6 +66,10 @@ const managedError = (error: unknown): boolean =>
 test('managed DeepSignal rejects every generic catalog mutation before write', async () => {
   const mutations = { delete: 0, update: 0, updateMany: 0 }
   const prisma = {
+    // The actor is otherwise fully authorized — instance super-admin on an
+    // instance-global row — so the only thing that can refuse here is the
+    // managed-integration fence this test is about.
+    user: { findUnique: async () => ({ superAdmin: true }) },
     mcpCatalogEntry: {
       findFirst: async (args: { select?: unknown }) =>
         args.select

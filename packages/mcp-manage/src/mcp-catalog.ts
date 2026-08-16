@@ -145,6 +145,30 @@ export const isAdminUser = async (
   return membership.role === 'owner' || membership.role === 'admin'
 }
 
+/**
+ * The instance-wide administrator. `User.superAdmin` is a flag on the user row,
+ * deliberately not an organisation membership and not a session claim, so it is
+ * read from the database exactly like `isAdminUser` above.
+ *
+ * This exists because "owner of the shared organisation" used to be the only
+ * thing in Nessie resembling an instance administrator. With one Organization
+ * per UOA organisation an org owner administers exactly one tenant, so the two
+ * catalog decisions that are genuinely instance-wide — mutating an
+ * `organizationId: null` row, and publishing into the shared store — name this
+ * role instead of inheriting one from the old flattened model.
+ */
+export const isSuperAdminUser = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+): Promise<boolean> => {
+  if (actorContext.actor.actorType !== 'user') return false
+  const user = await prisma.user.findUnique({
+    where: { id: actorContext.actor.actorId },
+    select: { superAdmin: true },
+  })
+  return user?.superAdmin ?? false
+}
+
 export const ensureAuthConfigMatchesMethod = (
   authMethod: McpCatalogAuthMethod,
   authConfig: unknown,
@@ -256,20 +280,34 @@ export const getAccessibleCatalogEntry = async (
 }
 
 /**
- * True when `actorContext` may mutate the entry: its author, or an org owner
- * acting on an entry inside their own tenant (or on an instance-global one,
- * whose real gate is `assertCatalogLifecycleIsUserManaged`). An org owner is NOT
- * a superuser, so ownership of one tenant must never confer management of
- * another tenant's connector — those rows hold plaintext OAuth client secrets.
+ * True when `actorContext` may mutate the entry: its author, an org owner
+ * acting on an entry inside their own tenant, or the instance super-admin on an
+ * instance-global row.
+ *
+ * An org owner is NOT a superuser, so ownership of one tenant must never confer
+ * management of another tenant's connector — those rows hold plaintext OAuth
+ * client secrets. The `organizationId: null` rows are the instance's own
+ * first-party/integration entries, readable by *every* tenant
+ * (`catalogTenancyWhere`), so letting any tenant's owner rewrite their
+ * transport URL or auth config is the same cross-tenant escalation in a
+ * different shape. That arm used to lean on `organizationId: null` meaning "the
+ * one shared org's rows"; under per-UOA-org tenancy it names `User.superAdmin`
+ * — the real instance-wide administrator — instead. `assertCatalogLifecycleIsUserManaged`
+ * still fences the managed product slugs on top of this.
  */
-export const canManageEntry = (
+export const canManageEntry = async (
+  prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   entry: McpCatalogEntryRow,
-): boolean =>
-  (isOwnerRole(actorContext)
-    && (entry.organizationId === null
-      || entry.organizationId === actorContext.tenant.organizationId))
-  || (entry.ownerUserId !== null && entry.ownerUserId === actorContext.actor.actorId)
+): Promise<boolean> => {
+  if (entry.ownerUserId !== null && entry.ownerUserId === actorContext.actor.actorId) {
+    return true
+  }
+  if (!isOwnerRole(actorContext)) return false
+  if (entry.organizationId === actorContext.tenant.organizationId) return true
+  if (entry.organizationId !== null) return false
+  return isSuperAdminUser(prisma, actorContext)
+}
 
 const requireManageable = async (
   prisma: PrismaClient,
@@ -278,7 +316,7 @@ const requireManageable = async (
 ): Promise<McpCatalogEntryRow | null> => {
   const entry = await getAccessibleCatalogEntry(prisma, actorContext, id)
   if (!entry) return null
-  if (!canManageEntry(actorContext, entry)) {
+  if (!(await canManageEntry(prisma, actorContext, entry))) {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.FORBIDDEN,
       'You do not have permission to modify this catalog entry',

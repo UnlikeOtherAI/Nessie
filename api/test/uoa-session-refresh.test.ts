@@ -307,13 +307,55 @@ test('credential-bearing UOA session calls never follow redirects', async () => 
   })
 })
 
-test('refreshUoaSession rejects changed identity and regressed epochs definitively', async () => {
+// Estate rule: an ordinary refresh adopts a successor whose workspace drifted,
+// because with a silent switch in the product that is how a committed switch
+// surfaces on the next refresh — refusing made a success look like a logout.
+// Workspace is not an identity claim; subject and epoch still are, and those
+// two checks below remain strict.
+test('refreshUoaSession adopts a successor that drifted to another workspace', async () => {
+  await withUoaEnv(async () => {
+    for (const active of [
+      { orgId: 'different-org', teamId: 'different-team' },
+      { orgId: 'org-active', teamId: 'different-team' },
+    ]) {
+      const refreshed = await refreshUoaSession({
+        configUrl: uoaEnv.UOA_CONFIG_URL,
+        expectedIdentity: {
+          organizationId: 'org-active',
+          subject: 'uoa-user-123',
+          teamId: 'team-active',
+          tokenVersion: 7,
+        },
+        refreshToken: 'uoa-refresh-1',
+        fetchImpl: async () => new Response(JSON.stringify({
+          access_token: jwtForClaims({
+            ...completeSessionClaims,
+            active,
+            org: { ...completeSessionClaims.org, org_id: active.orgId },
+          }),
+          expires_in: 1_800,
+          refresh_token: 'uoa-refresh-2',
+          refresh_token_expires_in: 2_592_000,
+          token_type: 'Bearer',
+        }), { status: 200 }),
+      })
+
+      assert.deepEqual(
+        resolveExternalWorkspaceSelection(refreshed.identity.workspace),
+        { organizationId: active.orgId, teamId: active.teamId },
+      )
+    }
+  })
+})
+
+test('refreshUoaSession rejects changed subjects and regressed epochs definitively', async () => {
   await withUoaEnv(async () => {
     for (const claims of [
       { sub: 'different-user' },
-      { active: { orgId: 'different-org', teamId: 'team-active' } },
-      { active: { orgId: 'org-active', teamId: 'different-team' } },
       { tv: 6 },
+      // A drift carrying either violation is refused for that reason.
+      { active: { orgId: 'different-org', teamId: 'different-team' }, sub: 'different-user' },
+      { active: { orgId: 'different-org', teamId: 'different-team' }, tv: 6 },
     ]) {
       await assert.rejects(
         refreshUoaSession({

@@ -5,12 +5,17 @@ import type { McpCatalogEntryRecord } from '../../../facades/mcp-catalog/hooks'
  * page owns mutations and passes typed callbacks. Which actions render depends
  * on the viewer's relationship to the entry:
  * - `isMine` — the viewer authored it (private self-serve actions);
- * - `isOwner` — the viewer is a superuser (review-queue decisions).
+ * - `isOwner` — an owner of this organisation (manages its own entries);
+ * - `isSuperAdmin` — administers this Nessie instance, so decides what enters
+ *   the shared public store (review-queue decisions). Publishing shows a
+ *   connector to every organisation on the deployment, which is why that is a
+ *   separate role from owning one of them.
  */
 
 type CatalogDetailPanelProps = {
   entry: McpCatalogEntryRecord
   isOwner: boolean
+  isSuperAdmin: boolean
   /** Owner or org admin — may lock/unlock and install despite a lock. */
   isElevated: boolean
   isMine: boolean
@@ -46,6 +51,7 @@ const dangerButton = [
 export const CatalogDetailPanel = ({
   entry,
   isOwner,
+  isSuperAdmin,
   isElevated,
   isMine,
   managedByIntegration = false,
@@ -106,9 +112,9 @@ export const CatalogDetailPanel = ({
 
         {inReview ? (
           <div className="mt-3 rounded-md border border-[color:var(--sep)] bg-[var(--overlay-weak)] px-3 py-2 text-xs text-[color:var(--tx2)]">
-            {isOwner
+            {isSuperAdmin
               ? 'Awaiting your review. Approve to publish it to the public store, or reject with a reason.'
-              : 'Submitted to the public store. Awaiting a superuser review.'}
+              : 'Submitted to the public store. Awaiting an instance super-admin review.'}
           </div>
         ) : null}
 
@@ -172,7 +178,7 @@ export const CatalogDetailPanel = ({
             </button>
           ) : null}
 
-          {isOwner && inReview ? (
+          {isSuperAdmin && inReview ? (
             <>
               <button
                 className={primaryButton}

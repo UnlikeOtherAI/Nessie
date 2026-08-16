@@ -62,7 +62,11 @@ persisted primitive that every later call re-aims at.
   `canManageEntry` and every `listCatalogEntries` view (including `all` and
   `queue`) are now floored to the actor's organisation plus instance-global
   rows. An org owner is not a superuser, and private catalog rows hold plaintext
-  OAuth client secrets.
+  OAuth client secrets. **Follow-up landed 2026-08-16:** reads were floored but
+  *writes* to the instance-global (`organizationId: null`) rows were still open
+  to any tenant's owner, and public-store review still called `isOwnerRole` a
+  "superuser". Both now require `User.superAdmin` (`canManageEntry`,
+  `mcp-catalog-review.ts`).
 - The API stripped `authConfig.clientSecret` on the way out but left
   `defaultTransportConfig` intact, so an API key or `Authorization` header
   parked there went to every viewer of the published store. Both are redacted,

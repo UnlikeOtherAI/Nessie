@@ -221,8 +221,12 @@ The gateway needs Apple/Google credentials. These are **platform-global** — on
 Apple key + one FCM project for the single published app — so they are NOT a
 per-tenant setting. They are managed by a **platform operator** through a
 dedicated super-user surface, gated to a new **super-admin** role that sits
-*above* the per-organization `owner` role (today "superuser" === org `owner`,
-which is per-tenant and therefore the wrong gate for global creds).
+*above* the per-organization `owner` role (when this was written "superuser"
+=== org `owner`, which is per-tenant and therefore the wrong gate for global
+creds). **2026-08-16:** `User.superAdmin` is now the named instance-wide role
+generally, not only for push credentials — the other deployment-wide surfaces
+that were leaning on org `owner` (ops health, MCP public-store review,
+instance-global catalog rows) moved onto it.
 
 ### What the operator uploads — "exactly what Apple/Google give you"
 

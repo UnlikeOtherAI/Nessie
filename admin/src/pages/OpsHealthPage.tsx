@@ -55,12 +55,15 @@ export const OpsHealthPage = () => {
   const { me } = useAuthSession()
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  // Instance administration: this page reads deployment-wide worker, queue and
+  // dead-job state that has no tenant column, so it is gated on the named
+  // instance-wide role rather than on being an owner of some organisation.
+  const isSuperAdmin = me?.user.superAdmin ?? false
 
   const { data, isError, error } = useQuery<OpsHealth>({
     queryKey: ['ops-health'],
     queryFn: () => apiClient.get('/api/ops/health'),
-    enabled: isOwner,
+    enabled: isSuperAdmin,
     refetchInterval: 10_000,
   })
 
@@ -81,10 +84,10 @@ export const OpsHealthPage = () => {
     },
   ]
 
-  if (!isOwner) {
+  if (!isSuperAdmin) {
     return (
       <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Owner access required
+        Instance super-admin access required
       </section>
     )
   }

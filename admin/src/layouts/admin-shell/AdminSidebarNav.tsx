@@ -358,7 +358,10 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         path: '/ops',
         label: 'Health',
         exact: true,
-        ownerOnly: true,
+        // Deployment-wide infrastructure (worker heartbeat, queue, dead jobs),
+        // so instance administration rather than organisation administration.
+        // `GET /api/ops/health` requires `User.superAdmin`.
+        visibleTo: (viewer) => viewer.isSuperAdmin,
         icon: icon(
           <path d="M3 12h4l2 6 4-12 2 6h6" strokeLinecap="round" strokeLinejoin="round" />,
         ),

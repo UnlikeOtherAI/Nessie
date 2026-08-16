@@ -84,6 +84,14 @@ stat with no way to see what is behind the number.
 
 No sidebar badge, no member-visible surface anywhere: this is deployment telemetry.
 
+**Amended 2026-08-16:** and not org-owner-visible either. `/ops` and
+`GET /api/ops/health` now require `User.superAdmin` — worker heartbeat, queue
+counts, dead jobs and the rate-limiter snapshot have no tenant column, so under
+per-UOA-org tenancy an org owner is the wrong audience for them. The `/ops`
+sidebar item follows the same rule (`AdminSidebarNav` `visibleTo`), so the entry
+points above are super-admin entry points. `/ops/usage` (org-filtered spend
+telemetry) is unaffected and stays owner-only.
+
 ### 2.2 Audit summary + verify — on `/audit`
 
 *Fix first:* `getAuditLogSummary` (`api/src/services/audit.ts:206`) builds

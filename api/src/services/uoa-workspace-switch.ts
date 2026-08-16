@@ -73,29 +73,23 @@ export const confirmUoaWorkspaceSwitchAccess = async (
 }
 
 /**
- * Idempotently materialize the exact target proven by UOA's successful switch
- * response. This deliberately runs after UOA returns so existing-workspace
- * role mapping uses the authoritative target claims rather than fabricated
- * source-session data.
+ * Idempotently materialize the local org/project/team for the workspace UOA
+ * itself proved in an authenticated response, so the session binding can then
+ * resolve it. Two callers, one implementation: an explicit switch (through
+ * `materializeUoaWorkspaceSwitch`, which first pins the response to the
+ * requested target) and an ordinary refresh whose successor carries a drifted
+ * workspace — adopting that drift has to land somewhere real or fail closed,
+ * exactly as a switch does. This deliberately runs after UOA returns so role
+ * mapping uses the authoritative claims rather than fabricated source data.
  */
-export const materializeUoaWorkspaceSwitch = async (
+export const materializeUoaWorkspace = async (
   prisma: PrismaClient,
   input: {
     identity: UoaSessionExchange['identity']
-    target: UoaWorkspaceSwitchTarget
     userId: string
   },
 ): Promise<void> => {
-  const selected = resolveExternalWorkspaceSelection(input.identity.workspace)
-  if (
-    selected.organizationId !== input.target.organizationId
-    || selected.teamId !== input.target.teamId
-  ) {
-    throw new UoaRefreshBindingError(
-      'UnlikeOtherAI returned a different workspace while materializing the switch.',
-    )
-  }
-  // The switch rebinds only the exact person UOA re-authenticated: compare the
+  // The rebind covers only the exact person UOA re-authenticated: compare the
   // stable UOA subject, never the email (UOA may change or reassign an
   // address). A user row with no subject yet — a backfill the migration left
   // NULL as ambiguous — also fails closed here; a fresh login either adopts
@@ -142,12 +136,13 @@ export const materializeUoaWorkspaceSwitch = async (
       false,
     )
   }
-  // Organizations map 1:1 to UOA organisations, so a cross-org switch can land
-  // in an Organization this user has never signed into interactively — its
-  // first-party account links (which the rescope binding advance requires) do
-  // not exist yet. Run the same link sync a login runs, scoped to the TARGET
-  // org. Retryable on failure: the rotation has not consumed anything local
-  // yet, and the binding advance would fail closed without the link anyway.
+  // Organizations map 1:1 to UOA organisations, so a cross-org switch or an
+  // adopted drift can land in an Organization this user has never signed into
+  // interactively — its first-party account links (which the binding advance
+  // requires) do not exist yet. Run the same link sync a login runs, scoped to
+  // the resolved org. Retryable on failure: the rotation has not consumed
+  // anything local yet, and the binding advance would fail closed without the
+  // link anyway.
   try {
     await syncUoaProductAccountLinks(prisma, {
       email: input.identity.email,
@@ -163,4 +158,31 @@ export const materializeUoaWorkspaceSwitch = async (
       false,
     )
   }
+}
+
+/**
+ * Materialize an explicit switch: the response must prove the exact workspace
+ * the caller requested (requirement 2d) before anything local is touched.
+ */
+export const materializeUoaWorkspaceSwitch = async (
+  prisma: PrismaClient,
+  input: {
+    identity: UoaSessionExchange['identity']
+    target: UoaWorkspaceSwitchTarget
+    userId: string
+  },
+): Promise<void> => {
+  const selected = resolveExternalWorkspaceSelection(input.identity.workspace)
+  if (
+    selected.organizationId !== input.target.organizationId
+    || selected.teamId !== input.target.teamId
+  ) {
+    throw new UoaRefreshBindingError(
+      'UnlikeOtherAI returned a different workspace while materializing the switch.',
+    )
+  }
+  await materializeUoaWorkspace(prisma, {
+    identity: input.identity,
+    userId: input.userId,
+  })
 }

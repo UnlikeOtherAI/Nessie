@@ -46,8 +46,10 @@ import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationBut
  * - "Store" lists approved public connectors anyone can install;
  * - "My connectors" holds the viewer's own private connectors (self-publish,
  *   install, or submit for public review);
- * - "Approval queue" (superusers only) is the pending-review queue where public
- *   submissions are approved or rejected.
+ * - "Approval queue" (instance super-admins only) is the pending-review queue
+ *   where public submissions are approved or rejected — publishing puts a
+ *   connector in front of every organisation on this deployment, so it is
+ *   instance administration rather than organisation administration.
  */
 
 type PageView = CatalogView | 'library'
@@ -68,6 +70,7 @@ export const McpAppStorePage = () => {
   const action = searchParams.get('action')
   const catalogEntryIdParam = searchParams.get('catalogEntryId') ?? undefined
   const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isSuperAdmin = me?.user.superAdmin ?? false
   const isElevated = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const currentUserId = me?.user.id ?? ''
   const currentUserLabel = me?.user.displayName ?? 'You'
@@ -116,7 +119,7 @@ export const McpAppStorePage = () => {
     { view: 'store', label: 'Store' },
     { view: 'library', label: 'Library' },
     { view: 'mine', label: 'My connectors' },
-    ...(isOwner ? [{ view: 'queue' as const, label: 'Approval queue' }] : []),
+    ...(isSuperAdmin ? [{ view: 'queue' as const, label: 'Approval queue' }] : []),
   ]
 
   const catalogEntries = useMemo(
@@ -306,6 +309,7 @@ export const McpAppStorePage = () => {
           isElevated={isElevated}
           isMine={selectedCatalog.ownerUserId === currentUserId}
           isOwner={isOwner}
+          isSuperAdmin={isSuperAdmin}
           managedByIntegration={selectedCatalogManaged}
           onLockToggle={() =>
             void (selectedCatalog.locked

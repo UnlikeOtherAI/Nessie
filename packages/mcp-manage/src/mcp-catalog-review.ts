@@ -4,7 +4,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   canManageEntry,
   getAccessibleCatalogEntry,
-  isOwnerRole,
+  isSuperAdminUser,
   isUniqueViolation,
   McpCatalogError,
   MCP_CATALOG_ERROR_CODES,
@@ -18,16 +18,26 @@ import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
  *
  * A connector reaches the shared store by being submitted for review by its
  * owner (`draft`/`rejected` → `pending_approval`, visibility flips to `public`)
- * and then approved by a superuser (the `owner` role) → `published`. Rejection
+ * and then approved by the instance super-admin → `published`. Rejection
  * reverts the entry to a `private` `rejected` draft so the owner keeps using it
  * personally and can edit + resubmit; reverting also frees the public name.
+ *
+ * "Superuser" here has always meant the person who administers this Nessie
+ * instance — publishing puts a connector in front of every organisation on it.
+ * The check used to be the `owner` role because under the old single shared
+ * organisation that was the closest thing available. It is now `User.superAdmin`,
+ * the role that actually names instance administration; an org owner reviewing
+ * submissions on behalf of every other tenant was never the intent.
  */
 
-const requireSuperuser = (actorContext: AuthorizedActionContext): void => {
-  if (!isOwnerRole(actorContext)) {
+const requireSuperAdmin = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+): Promise<void> => {
+  if (!(await isSuperAdminUser(prisma, actorContext))) {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.FORBIDDEN,
-      'Only a superuser can review public connector submissions',
+      'Only an instance super-admin can review public connector submissions',
     )
   }
 }
@@ -46,7 +56,7 @@ export const submitForReview = async (
   const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
   if (!existing) return null
   await assertCatalogLifecycleIsUserManaged(prisma, id)
-  if (!canManageEntry(actorContext, existing)) {
+  if (!(await canManageEntry(prisma, actorContext, existing))) {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.FORBIDDEN,
       'You do not have permission to submit this catalog entry',
@@ -94,7 +104,7 @@ export const approveSubmission = async (
   actorContext: AuthorizedActionContext,
   id: string,
 ): Promise<McpCatalogEntryRow | null> => {
-  requireSuperuser(actorContext)
+  await requireSuperAdmin(prisma, actorContext)
   const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
   if (!existing) return null
   await assertCatalogLifecycleIsUserManaged(prisma, id)
@@ -138,7 +148,7 @@ export const rejectSubmission = async (
   id: string,
   reason: string,
 ): Promise<McpCatalogEntryRow | null> => {
-  requireSuperuser(actorContext)
+  await requireSuperAdmin(prisma, actorContext)
   const existing = await getAccessibleCatalogEntry(prisma, actorContext, id)
   if (!existing) return null
   await assertCatalogLifecycleIsUserManaged(prisma, id)

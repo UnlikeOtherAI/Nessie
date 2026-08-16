@@ -311,8 +311,8 @@ Claims:
   `uoa_session_credentials`, coupled to one local family and its current local
   token; it never enters the browser. Each active local rotation uses one short
   family-locked preflight, obtains UOA's exact-context replay-safe successor
-  **outside every database transaction**, validates the immutable
-  `{sub, org, team}` tuple and monotonic epoch, then uses a second short locked
+  **outside every database transaction**, validates the immutable `sub` and the
+  monotonic `tv` epoch, then uses a second short locked
   compare-and-swap to atomically advance the stable product-link epoch,
   encrypted credential, and deterministic Nessie successor. If an ancestor
   replay installs the local cookie barrier while renewal is in flight, finalize
@@ -322,8 +322,35 @@ Claims:
   database pool. A replay of the
   local predecessor returns the already-committed local successor without a
   second UOA call. Transient UOA/network failures preserve the family and return
-  `503`; definitive revocation, tuple drift, or malformed family proof returns
-  `401` and erases it. Legacy UOA families without encrypted proof reauthenticate.
+  `503`; a changed subject, a regressed epoch, or a malformed family proof
+  returns `401` and erases it. Legacy UOA families without encrypted proof
+  reauthenticate.
+- **Workspace drift on renewal is adopted, not refused** (estate-wide rule;
+  water, DeepSignal and DeepTest behave the same way). When the successor
+  proves the **same subject** and a **non-regressed epoch** but carries a
+  **different `org`/`team`**, Nessie adopts it and the session converges on the
+  workspace UOA just proved. Two reasons, both load-bearing:
+  - Nessie has a silent workspace switch, so drift is the *ordinary* way a
+    committed switch — or a UOA-side workspace change — surfaces on the next
+    refresh. Refusing turned a **successful** switch into a logout.
+  - The workspace is not an identity claim. Substitution is caught by the two
+    checks that actually prove identity — subject equality and epoch
+    non-regression — and those remain strictly enforced at every layer
+    (`uoa-session.ts` `refreshUoaSession`, `refresh-token-uoa.ts`
+    `validateUoaRefresh`, `uoa-session-context.ts`
+    `advanceUoaLocalSessionBindingInTransaction`). Either violation still
+    revokes the family and returns `401`.
+
+  Adoption is not a relaxation of local tenancy: it re-derives the local
+  binding the same way an explicit switch does. The successor's workspace is
+  materialized through `materializeUoaWorkspace` (the exact
+  `Team.externalWorkspaceId`/`externalOrgId` and `Organization.externalOrgId`
+  mapping, plus the login's first-party account-link sync), and the binding
+  advance then resolves the local organization/project/team or **fails closed**
+  with `UoaLocalSessionBindingError`. A same-workspace renewal — every ordinary
+  rotation — skips materialization entirely and is unchanged. An **explicit**
+  workspace switch keeps exact-target equality (requirement 2d below): that
+  request named a workspace, so anything else is still a refusal.
 - **UOA workspace rescoping:** authenticated UOA sessions switch without a
   browser login through `POST /api/auth/uoa/workspace` with external
   `{ organizationId, teamId }`. The access bearer and httpOnly cookie must bind
@@ -341,8 +368,9 @@ Claims:
   deterministic local rotation funnel as ordinary refresh and atomically
   rescope-updates the family proof, first-party link epoch/last-seen workspace,
   local cookie successor, and intent deletion. An ordinary refresh that finds a
-  live intent resumes that exact switch; without one it accepts only UOA's
-  same-scope immediate child. If an ordinary same-scope rotation already won,
+  live intent resumes that exact switch; without one it adopts whatever
+  immediate child UOA proves for the same subject and epoch (drift rule above).
+  If an ordinary same-scope rotation already won,
   its adoption and exact-intent cancellation are one transaction. Safe target
   refusals (`WORKSPACE_NOT_AVAILABLE`, `INTERACTION_REQUIRED`, or
   `WORKSPACE_SWITCH_CONFLICT`) never revoke the source family; only

@@ -35,13 +35,6 @@ export type UoaRotationCallbacks = {
     workspace?: ExternalAuthWorkspace
     workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
   }, transaction: Prisma.TransactionClient) => Promise<void>
-  rescopeUoaSessionBinding?: (input: {
-    nextIdentity: UoaSessionIdentity
-    previousIdentity: UoaSessionIdentity
-    userId: string
-    workspace?: ExternalAuthWorkspace
-    workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
-  }, transaction: Prisma.TransactionClient) => Promise<void>
 }
 
 const sameSwitchIntent = (
@@ -174,6 +167,10 @@ export const commitUoaRotation = async (
     credential: current,
     presented,
   })
+  // A pending switch keeps its own exactness check: that request named a
+  // workspace, so the rotation may only commit the workspace it asked for.
+  // Beyond that the binding advance is one path — it adopts whatever workspace
+  // UOA proved, for a switch and for an ordinary refresh alike.
   if (switchIntent) {
     if (
       !currentIntent
@@ -184,32 +181,19 @@ export const commitUoaRotation = async (
         'The pending UnlikeOtherAI workspace switch changed during rotation.',
       )
     }
-    if (!callbacks.rescopeUoaSessionBinding) {
-      throw new UoaRefreshBindingError(
-        'UnlikeOtherAI workspace rescoping is not configured.',
-      )
-    }
-    await callbacks.rescopeUoaSessionBinding({
-      nextIdentity: rotated.identity,
-      previousIdentity: identityFromCredential(rotated.credential),
-      userId: presented.userId,
-      workspace: rotated.workspace,
-      workspaceDirectory: rotated.workspaceDirectory,
-    }, transaction)
-  } else {
-    if (!callbacks.advanceUoaSessionBinding) {
-      throw new UoaRefreshBindingError(
-        'UnlikeOtherAI session binding is not configured.',
-      )
-    }
-    await callbacks.advanceUoaSessionBinding({
-      nextIdentity: rotated.identity,
-      previousIdentity: identityFromCredential(rotated.credential),
-      userId: presented.userId,
-      workspace: rotated.workspace,
-      workspaceDirectory: rotated.workspaceDirectory,
-    }, transaction)
   }
+  if (!callbacks.advanceUoaSessionBinding) {
+    throw new UoaRefreshBindingError(
+      'UnlikeOtherAI session binding is not configured.',
+    )
+  }
+  await callbacks.advanceUoaSessionBinding({
+    nextIdentity: rotated.identity,
+    previousIdentity: identityFromCredential(rotated.credential),
+    userId: presented.userId,
+    workspace: rotated.workspace,
+    workspaceDirectory: rotated.workspaceDirectory,
+  }, transaction)
   await persistUoaRotation(transaction, { lastLocalTokenId, rotated })
   if (currentIntent) {
     await deleteExactUoaWorkspaceSwitchIntent(transaction, currentIntent)

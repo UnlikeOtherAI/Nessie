@@ -403,13 +403,30 @@ export const refreshUoaSession = async (input: {
   }
   const refreshed = parsedRefresh.exchange
   const selected = resolveExternalWorkspaceSelection(refreshed.identity.workspace)
-  const expectedWorkspace = input.workspaceSwitch ?? input.expectedIdentity
+  // Subject equality and a non-regressing epoch are the two facts that prove
+  // the successor is the same person's credential; both stay strict.
+  //
+  // The successor's WORKSPACE is deliberately not compared on an ordinary
+  // refresh. UOA can commit a workspace change on its own side, and with a
+  // silent switch in the product a drifted workspace is the ordinary way a
+  // committed switch surfaces on the next refresh — refusing it would make a
+  // *successful* switch look like a logout. Workspace is not an identity
+  // claim, so adopting it substitutes nothing: the caller re-derives the local
+  // binding from the successor's own workspace and fails closed if it does not
+  // map. An explicit switch keeps exact-target equality (requirement 2d): that
+  // request named a workspace, so anything else is a refusal.
+  const expectedWorkspace = input.workspaceSwitch
   if (
     input.expectedIdentity.tokenVersion === null
     || refreshed.identity.externalSubject !== input.expectedIdentity.subject
-    || selected.organizationId !== expectedWorkspace.organizationId
-    || selected.teamId !== expectedWorkspace.teamId
     || refreshed.identity.uoaTokenVersion < input.expectedIdentity.tokenVersion
+    || (
+      expectedWorkspace
+      && (
+        selected.organizationId !== expectedWorkspace.organizationId
+        || selected.teamId !== expectedWorkspace.teamId
+      )
+    )
   ) {
     throw new UoaSessionRefreshError(
       '[uoa] refresh response changed the bound session identity',
