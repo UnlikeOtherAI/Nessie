@@ -8,6 +8,7 @@ import {
   UoaRefreshBindingError,
   UoaWorkspaceSwitchError,
 } from '../services/refresh-token.js'
+import { UoaUnrecognizedRoleError } from '../services/uoa-roles.js'
 import {
   UoaLocalSessionBindingError,
 } from '../services/uoa-session-context.js'
@@ -97,9 +98,13 @@ export const registerAuthRefreshRoute = (
         )
         return reply
       }
+      // An unrecognised role claim is definitive, not transient: renewing the
+      // session would have to project a standing Nessie cannot express, so the
+      // family is revoked and the person re-authenticates instead.
       const definitive =
         error instanceof UoaRefreshBindingError
         || error instanceof UoaLocalSessionBindingError
+        || error instanceof UoaUnrecognizedRoleError
         || (error instanceof UoaSessionRefreshError && error.definitive)
       if (definitive) {
         await revokeRefreshTokenByRaw(prisma, rawToken)

@@ -32,6 +32,7 @@ import {
   claimUoaRecoveryAccountLink,
   UoaRecoveryAccountLinkError,
 } from '../services/uoa-recovery-link.js'
+import { UoaUnrecognizedRoleError } from '../services/uoa-roles.js'
 import { resolveUoaWorkspaceContext } from '../services/workspace-context.js'
 import { UoaSubjectConflictError } from '../services/workspace-principal.js'
 import type { IssueRefreshCookie } from './auth-shared.js'
@@ -402,6 +403,13 @@ export const registerAuthLoginRoute = (
           // bound to a different UOA subject. Fail closed — never take the
           // account over, never create a duplicate. Operator resolution only.
           sendApiError(reply, 409, 'UOA_IDENTITY_CONFLICT', error.message)
+          return reply
+        }
+        if (error instanceof UoaUnrecognizedRoleError) {
+          // UOA claimed a role this deployment does not model. There is no
+          // local membership row that grants nothing, so the only fail-closed
+          // answer is no session at all — never a coerced `member`.
+          sendApiError(reply, 403, 'UOA_ROLE_UNRECOGNIZED', error.message)
           return reply
         }
         sendApiError(
