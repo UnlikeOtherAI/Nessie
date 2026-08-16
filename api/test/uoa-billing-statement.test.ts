@@ -32,6 +32,12 @@ const decodeJwtPart = (value: string): Record<string, unknown> =>
     unknown
   >
 
+const requestAudience = (input: unknown, init: RequestInit | undefined): string => {
+  const actor = new Headers(init?.headers).get('x-uoa-actor')
+  assert.ok(actor)
+  return String(decodeJwtPart(actor.split('.')[1] as string).aud)
+}
+
 test('binds billing to the signed team despite different last-seen link metadata', async () => {
   let requestUrl = ''
   let requestHeaders = new Headers()
@@ -72,7 +78,7 @@ test('binds billing to the signed team despite different last-seen link metadata
   })
   assert.deepEqual(decodeJwtPart(encodedPayload), {
     iss: 'https://api.nessie.example',
-    aud: 'https://1.1.1.1/billing/v1/effective-tariff',
+    aud: 'https://1.1.1.1/billing/v2/customer-statement',
     sub: 'uoa-user',
     product: 'nessie',
     organisation_id: 'uoa-org',
@@ -94,7 +100,7 @@ test('binds billing to the signed team despite different last-seen link metadata
 })
 
 test('proxies only the frozen enabled action and preserves its UOA body', async () => {
-  const requests: Array<{ body: unknown; path: string }> = []
+  const requests: Array<{ audience: string; body: unknown; path: string }> = []
   const result = await executeUoaBillingHostedAction(
     prisma() as never,
     actorContext as never,
@@ -103,7 +109,11 @@ test('proxies only the frozen enabled action and preserves its UOA body', async 
       env,
       fetchImpl: (async (input, init) => {
         const path = new URL(input.toString()).pathname
+        const actor = new Headers(init?.headers).get('x-uoa-actor')
+        assert.ok(actor)
+        const payload = decodeJwtPart(actor.split('.')[1] as string)
         requests.push({
+          audience: String(payload.aud),
           body: JSON.parse(String(init?.body)) as unknown,
           path,
         })
@@ -124,8 +134,14 @@ test('proxies only the frozen enabled action and preserves its UOA body', async 
     redirect_url: 'https://checkout.stripe.com/c/pay/test',
   })
   assert.deepEqual(requests, [
-    { body: subjectBody, path: '/billing/v2/customer-statement' },
     {
+      audience: 'https://1.1.1.1/billing/v2/customer-statement',
+      body: subjectBody,
+      path: '/billing/v2/customer-statement',
+    },
+    {
+      // The frozen action's relay is asserted for its own endpoint.
+      audience: 'https://1.1.1.1/billing/v1/stripe/checkout-session',
       body: actionBody,
       path: '/billing/v1/stripe/checkout-session',
     },
@@ -221,6 +237,7 @@ test('renders cancellation choices from UOA and sends only opaque confirmation',
   assert.equal(previewResult.choices[1]?.label, preview.choices[1]?.label)
 
   let confirmationBody: unknown
+  let confirmationAudience: string | undefined
   const confirmation = await confirmUoaBillingCancellation(
     prisma() as never,
     actorContext as never,
@@ -231,7 +248,8 @@ test('renders cancellation choices from UOA and sends only opaque confirmation',
     },
     {
       env,
-      fetchImpl: (async (_input, init) => {
+      fetchImpl: (async (input, init) => {
+        confirmationAudience = requestAudience(input, init)
         confirmationBody = JSON.parse(String(init?.body)) as unknown
         return new Response(JSON.stringify({
           schema_version: 1,
@@ -255,6 +273,10 @@ test('renders cancellation choices from UOA and sends only opaque confirmation',
   )
 
   assert.equal(confirmation.title, 'Cancellation scheduled')
+  assert.equal(
+    confirmationAudience,
+    'https://1.1.1.1/billing/v1/cancellation/confirm',
+  )
   assert.deepEqual(confirmationBody, {
     ...subjectBody,
     preview_token: preview.preview_token,

@@ -271,21 +271,21 @@ never fed to UOA) is defensible but is an interpretation.
 
 ## 6. Consistency gaps vs the contract, prioritized
 
-### P1 — Actor-assertion audience is pinned to a single endpoint
+### P1 — Actor-assertion audience is pinned to a single endpoint — RESOLVED
 
-`aud` is fixed to `${UOA_BASE_URL}/billing/v1/effective-tariff`
-(`api/src/services/uoa-billing-client.ts:199,224`) yet the same assertion is
+`aud` was fixed to `${UOA_BASE_URL}/billing/v1/effective-tariff`
+(`api/src/services/uoa-billing-client.ts:199,224`) yet the same assertion was
 sent to `/billing/v2/customer-statement`, the credits and recurring-addons
-paths, the Stripe session paths, and cancellation paths
-(`uoa-billing-statement.ts:33-48`, `uoa-billing-funding.ts:65-101`). If UOA
-verifies `aud` per-endpoint (standard RS256 audience semantics), every call
-except `effective-tariff` (which Nessie never calls) should be rejected; if
-UOA accepts it, the assertion is effectively unscoped and a captured token is
-replayable across the whole billing API within its 45-second TTL — contrary
-to the "fresh short-lived actor assertion" intent. Either way the audience is
-wrong or meaningless. **Impact is mitigated** by the 45 s TTL, per-call `jti`,
-IP-pinned egress, and UOA-side membership recheck, but this is the one place
-where the implementation visibly diverges from the assertion contract.
+paths, the Stripe session paths, and cancellation paths. UOA validates the
+audience per endpoint (`BILLING_ACTOR_ENDPOINTS` in UOA's
+`billing-actor-audience.service.ts`), so a captured token would otherwise be
+replayable across the whole billing API within its 45-second TTL. **Fixed
+2026-08-16:** `aud` is now derived as `${UOA_BASE_URL}${endpointPath}` from
+the validated request path at the single point where the request is built
+(`requestBilling`), after `billingUrl` has allow-listed the path, so a
+rejected action is never signed and frozen-action relays carry the frozen
+action's own endpoint as their audience. The remaining claims and the
+45-second lifetime are unchanged.
 
 ### P2 — Interpretation risks worth a deliberate, written decision
 
