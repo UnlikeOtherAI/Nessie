@@ -636,8 +636,9 @@ left NULL on both rather than guessed.
 every session.** UOA's access token carries `org.org_role` and
 `org.team_roles[workspaceId]`; both map through one function
 (`api/src/services/uoa-roles.ts` `mapUoaMemberRole`: `owner → owner`,
-`admin`/legacy `lead` → `admin`, anything else → `member`) onto the local
-`organization_members`, `project_members`, and `team_members` rows. Three paths
+`admin`/legacy `lead` → `admin`, `member → member`, **anything else → no role
+at all**) onto the local `organization_members`, `project_members`, and
+`team_members` rows. Three paths
 carry those claims and all three re-project them, so a UOA promotion or
 demotion propagates instead of freezing at first join:
 
@@ -656,6 +657,23 @@ Rules that make this safe to run on every session:
   **first-materializer team-`owner`** rule: whoever first materializes a
   workspace owns its team *only* when UOA sent no role for that workspace — a
   verified claim always wins, including `member`.
+- **A role Nessie does not model is refused, never coerced.** `org_roles` is
+  per-domain configurable in UOA, so a domain can mint `auditor` — or `viewer`,
+  the obvious first custom role — into these claims at any time. Mapping an
+  unrecognised string to `member` handed it *write* capability, and Nessie has
+  no local role that grants nothing (route gates read `owner` or bare
+  membership, so `viewer` writes exactly as `member` does). `resolveUoaRoleClaims`
+  therefore throws `UoaUnrecognizedRoleError` **before the materializer's first
+  query**, and each auth boundary answers it as a refusal: login →
+  `403 UOA_ROLE_UNRECOGNIZED`; refresh → definitive, family revoked,
+  `401 REFRESH_REAUTH_REQUIRED`; workspace switch →
+  `UoaWorkspaceSwitchError('WORKSPACE_NOT_AVAILABLE')` with the intent cleared.
+  A person whose standing Nessie cannot express gets no session rather than the
+  wrong one. This is wave 0 of `UnlikeOtherAuthenticator`
+  `Docs/plans/2026-08-16-configurable-roles-and-capabilities.md`; wave 3
+  replaces the refusal with a resolved capability set, at which point `viewer`
+  becomes a real read-only grant. Behaviour-neutral until a domain configures
+  its first custom role — which is exactly why it lands first.
 - **A per-UOA-org Organization takes the `org_role` claim as a COMPLETE
   statement — there is no last-owner floor** (revised 2026-08-15). With
   Organizations mapped 1:1 to UOA organisations, UOA owns that org's membership

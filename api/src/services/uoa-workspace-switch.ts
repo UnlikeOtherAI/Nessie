@@ -13,6 +13,7 @@ import {
   type UoaSessionExchange,
   type UoaWorkspaceSwitchTarget,
 } from './uoa-session.js'
+import { UoaUnrecognizedRoleError } from './uoa-roles.js'
 import { UoaWorkspaceSwitchError } from './uoa-workspace-switch-intent.js'
 import {
   resolveUoaWorkspaceContext,
@@ -118,6 +119,17 @@ export const materializeUoaWorkspace = async (
       // binding conflict: the source credential is already consumed upstream,
       // so force a clean reauthentication rather than retaining a dead family.
       throw new UoaRefreshBindingError(error.message)
+    }
+    if (error instanceof UoaUnrecognizedRoleError) {
+      // The target workspace claims a role this deployment cannot express as a
+      // local standing. Refuse the switch outright — a coerced standing is the
+      // bug this fixes — and clear the intent, since retrying cannot help until
+      // the domain's role vocabulary changes.
+      throw new UoaWorkspaceSwitchError(
+        'WORKSPACE_NOT_AVAILABLE',
+        error.message,
+        true,
+      )
     }
     if (error instanceof WorkspaceExternalBindingConflictError) {
       // UOA has already consumed the source credential at this point. Keeping
