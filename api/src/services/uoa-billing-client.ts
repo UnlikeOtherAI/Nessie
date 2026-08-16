@@ -36,7 +36,6 @@ type PrivateActorJwk = {
 }
 
 type BillingSettings = {
-  actorAudience: string
   actorIssuer: string
   actorKey: KeyObject
   actorKeyId: string
@@ -196,7 +195,6 @@ const loadBillingSettings = (
   )
   const actor = parsePrivateActorKey(privateJwk)
   return {
-    actorAudience: `${baseUrl}/billing/v1/effective-tariff`,
     actorIssuer,
     actorKey: actor.key,
     actorKeyId: actor.keyId,
@@ -211,6 +209,7 @@ const encodeJson = (value: unknown): string =>
 const signBillingActor = (
   settings: BillingSettings,
   subject: UoaBillingSubject,
+  audience: string,
   nowSeconds: number,
   jti: string,
 ): string => {
@@ -221,7 +220,7 @@ const signBillingActor = (
   })
   const payload = encodeJson({
     iss: settings.actorIssuer,
-    aud: settings.actorAudience,
+    aud: audience,
     sub: subject.userId,
     product: NESSIE_PRODUCT,
     organisation_id: subject.organizationId,
@@ -290,17 +289,21 @@ const requestBilling = async (
   body: Readonly<Record<string, unknown>>,
   deps: UoaBillingClientDeps,
 ): Promise<Response> => {
+  // Validate the path first: the assertion's audience is exactly the
+  // endpoint this request hits, and a rejected action must never be signed.
+  const url = billingUrl(settings, path)
   const nowSeconds = deps.now?.() ?? Math.floor(Date.now() / 1000)
   const actor = signBillingActor(
     settings,
     subject,
+    `${settings.baseUrl}${path}`,
     nowSeconds,
     deps.randomId?.() ?? randomUUID(),
   )
   let response: Response
   try {
     response = await safeFetch(
-      billingUrl(settings, path),
+      url,
       {
         method: 'POST',
         headers: {
