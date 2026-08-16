@@ -125,20 +125,19 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
     )
   })
 
-  // Public branding endpoint: the login screen runs unauthenticated, so for a
-  // single-organisation (self-hosted) instance we surface that org's logo here.
-  // Multi-org instances and unset logos return 404 so the client falls back to
-  // the static Nessie brand icon (an `<img onError>`), mirroring GET /icon.png.
+  // Public branding endpoint: the sign-in screen runs unauthenticated and is
+  // instance state, not tenant state, so the organisation whose mark it carries
+  // is designated by the instance operator (`nessie set-instance-brand`) — never
+  // by an org admin, and never inferred from "the instance happens to hold one
+  // organisation" (routinely false under per-UOA-org tenancy, and it handed one
+  // tenant control of everybody's login screen). No designation and unset logos
+  // return 404 so the client falls back to the static Nessie brand icon (an
+  // `<img onError>`), mirroring GET /icon.png.
   app.get('/api/brand/logo', { config: { public: true } }, async (_request, reply) => {
     const startedAt = Date.now()
-    const orgCount = await prisma.organization.count()
-    if (orgCount !== 1) {
-      sendApiError(reply, 404, 'BRAND_LOGO_NOT_FOUND', 'No brand logo configured')
-      return reply
-    }
-
     const organization = await prisma.organization.findFirst({
-      where: { logoAttachmentId: { not: null } },
+      where: { instanceBrand: true, logoAttachmentId: { not: null } },
+      orderBy: { createdAt: 'asc' },
     })
     if (!organization?.logoAttachmentId) {
       sendApiError(reply, 404, 'BRAND_LOGO_NOT_FOUND', 'No brand logo configured')

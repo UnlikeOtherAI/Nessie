@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+import {
+  instanceBrandHelpLines,
+  isInstanceBrandCommand,
+  runInstanceBrandCommand,
+} from './instance-brand.js'
 import { runLocalCommand } from './local.js'
 import {
   isSuperAdminCommand,
@@ -16,6 +21,7 @@ const printHelp = (): void => {
     'nessie local doctor',
     'nessie local reset --yes',
     ...superAdminHelpLines,
+    ...instanceBrandHelpLines,
   ].join('\n'))
 }
 
@@ -29,6 +35,11 @@ const main = async (): Promise<void> => {
 
   if (isSuperAdminCommand(scope)) {
     await runSuperAdminCommand(scope, rest)
+    return
+  }
+
+  if (isInstanceBrandCommand(scope)) {
+    await runInstanceBrandCommand(scope, rest)
     return
   }
 

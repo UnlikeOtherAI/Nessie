@@ -221,7 +221,9 @@ flagged only for a written decision.
    `macos/` is an unrelated local voice client with no auth or workspace
    concept at all. If the brief's "Mac" includes it, that platform is a
    complete no-op today.
-4. **Role boundary.** ✅ **Instance vs organisation resolved 2026-08-16.**
+4. **Role boundary.** ✅ **Instance vs organisation resolved 2026-08-16**
+   (including the four follow-ups at the end of this entry, landed the same
+   day).
    Nessie needs RBAC over product resources. UOA owns org/team membership and
    the org/team role; product-specific grants (channel member, knowledge space,
    dashboard) stay local; the deny-overrides policy engine stays, with its
@@ -268,29 +270,86 @@ flagged only for a written decision.
    (`verifyAuditChain` takes the organization id, so the chain a caller
    verifies is their own).
 
-   Still open, reported not changed — each is a distinct problem rather than an
-   owner→superAdmin rename:
+   The four remaining items were each a distinct problem rather than an
+   owner→superAdmin rename. **All four resolved 2026-08-16:**
    - `GET /api/execution-runners` (`api/src/routes/execution-environments.ts`)
-     returns shared host runners (`organizationId: null`) alongside the org's
-     own. Defensible — an org owner needs to know which runners can serve their
-     environments — but it does expose instance fleet status. Decide whether to
-     narrow the projection or move the endpoint.
-   - Grandfathered `authSecretRef` environment references
-     (`api/src/services/inference-control-plane.ts` `resolveBoundApiKey`). New
-     writes are already refused and base URLs are SSRF-checked, but
-     pre-existing rows still dereference an arbitrary host env var. That is
-     instance-scoped state under org-owner control; it wants a migration, not a
-     guard swap.
-   - `GET /api/brand/logo` (`api/src/routes/organizations.ts`) 404s unless the
-     instance holds exactly one organisation. Under per-UOA-org tenancy that is
-     now routinely false, so instance login branding silently stops working —
-     and while it does work, one org's admin controls the unauthenticated login
-     screen for everybody.
+     returned shared host runners (`organizationId: null`) alongside the org's
+     own, exposing instance fleet status to any org owner. ✅ **Narrowed, with
+     the fleet behind superAdmin.** `listExecutionRunners` now takes
+     `{ includeInstanceFleet }` and the route resolves it from the same
+     DB-authoritative `isSuperAdminUser`: an owner reads their own
+     organisation's runners, and only the instance administrator reads the
+     `organizationId: null` fleet — the boundary `GET /api/ops/health` and the
+     `organizationId: null` catalog arm already draw, for the same reason
+     (hostnames, capacity and heartbeats have no tenant column). The narrowing
+     is in the `where`, not a post-filter, so a foreign runner is never read.
+     No UI depended on it (the whole execution-runner subsystem is still
+     unsurfaced — `docs/plans/2026-08-11-unsurfaced-capabilities.md` item 1).
+     Tests: `api/test/execution-runner-scope.test.ts`.
+   - Grandfathered `authSecretRef` environment references (worker
+     `resolveBoundApiKey`, written through
+     `api/src/services/inference-control-plane.ts`). ✅ **Retired by
+     migration**, not guarded again:
+     `20260816090000_retire_grandfathered_inference_env_refs` revokes every
+     surviving binding and detaches it from its provider — exactly what the
+     control plane's own `revokeInferenceCredentialBinding` does, applied in
+     bulk — so nothing can dereference `process.env[ref]` again (re-attaching a
+     revoked binding is already refused, and creating a new env ref is already
+     refused). `auth_secret_ref` itself is a variable *name*, not a secret, and
+     stays so an operator can see what to migrate. An `openai-compatible`
+     provider left with no credential is disabled / `unreachable` / `draft`,
+     restoring `INFERENCE_PROVIDER_OPENAI_COMPATIBLE_REQUIRES_BINDING` and
+     failing loudly on the control-plane screen instead of at the next run;
+     compiled providers keep working on deployment-level credentials. The
+     worker's provider join also gained `AND b.revoked_at IS NULL`, so
+     revocation holds on the reading side independently. Operator impact is
+     written into the migration comment and `docs/deployment.md` → "Retired
+     inference credential env references". Tests:
+     `api/test/inference-env-ref-retirement-migration.test.ts`; replayed
+     against a throwaway pgvector database (both bindings revoked+detached,
+     the openai-compatible provider disabled, the compiled one untouched).
+   - `GET /api/brand/logo` (`api/src/routes/organizations.ts`) 404'd unless the
+     instance held exactly one organisation — routinely false under per-UOA-org
+     tenancy, so login branding silently stopped working, and while it worked
+     one org's admin controlled the unauthenticated screen for everybody.
+     ✅ **The sign-in screen is instance state, so the instance operator owns
+     it.** New `Organization.instanceBrand` (migration
+     `20260816100000_organization_instance_brand`, backfilled on a
+     single-organisation instance so existing local installs are unchanged);
+     the endpoint serves the designated organisation's logo and 404s to the
+     static Nessie mark otherwise — it no longer counts organisations, so N
+     organisations is sane rather than silently broken. Designation is set out
+     of band by `nessie set-instance-brand <orgId>` /
+     `clear-instance-brand` / `show-instance-brand`, deliberately with no API
+     or admin-UI surface (rule zero's written machine-level decision): this is
+     the same class of instance-operator action as `grant-super-admin`, which
+     is CLI-only for the same reason, and an org admin who could set it would
+     be choosing the login screen for every other tenant. `PATCH
+     /api/organizations/current` cannot reach the flag. The designated
+     organisation still edits its own logo at Settings → Appearance, the
+     in-context doorway. Tests: `api/test/brand-logo-instance.test.ts`.
    - `POST|DELETE /api/integrations/products/:productSlug/activate|deactivate`
-     (`api/src/routes/integrations/external-agent.ts`) carries no role guard at
-     all beyond `requireUserActor`: any member can activate or deactivate an
-     external-agent product for the whole organisation. Org-scoped, so out of
-     scope here, but it is a missing gate rather than a misplaced one.
+     (`api/src/routes/integrations/external-agent.ts`) was reported as an
+     org-wide toggle with no role guard. ✅ **Re-read as a mis-diagnosis; no
+     gate added, invariant tested instead.** The endpoints are *per-user
+     self-service*: the button is literally "Activate for me"
+     (`ExternalAgentActivationSection.tsx`) and every write is keyed on the
+     calling user — the user-scoped `McpServerInstance`
+     (`scopeType: 'user', scopeId: userId`), that user's `ProductAccountLink`,
+     and that user's own DM channel (`extagent:<slug>:<org>:<user>:<team>`).
+     They are already fenced by three checks a member cannot bypass: the
+     owner-only `PATCH .../team-enablement` toggle must have enabled the
+     product for the team, the caller must be a member of that team, and the
+     caller's own UOA link/session must match it exactly. The only org-level
+     writes are the idempotent system-managed bootstrap rows (one
+     `External Agent System` team, one `external_mcp` agent) that the owner's
+     enablement decision implies. Adding `requireOwner` would break the
+     product's documented per-user model — members could never activate their
+     own DeepSignal DM. Two regression tests now hold the boundary so it cannot
+     silently become org-wide: one member deactivating leaves another member's
+     instance, link and channel intact, and activation provisions only the
+     calling user (`api/test/external-agent-activation.test.ts`, alongside the
+     existing "blocked before provisioning when the team is disabled").
 5. **One shared local Organization.** ✅ **Resolved 2026-08-15 — per-UOA-org
    tenancy.** All UOA workspaces mapped to Teams inside a single local org
    (`docs/plans/2026-07-10-slack-workspace-login-nessie.md`); the switcher's
