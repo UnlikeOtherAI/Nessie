@@ -153,8 +153,6 @@ const AuthenticatedAdminShellLayout = () => {
       channelsCollapsed={shell.channelsCollapsed}
       currentChannelId={shell.currentChannelId}
       currentProjectId={shell.currentProjectId}
-      defaultProjectChannels={shell.defaultProjectChannels}
-      defaultProjectTeamId={shell.defaultProjectTeamId}
       dmCollapsed={shell.dmCollapsed}
       onNavigateAgent={shell.navigateToAgent}
       onNavigateChannel={shell.navigateToChannel}
@@ -190,6 +188,9 @@ const AuthenticatedAdminShellLayout = () => {
       unreadCountByChannelId={shell.unreadCountByChannelId}
       visibleSidebarProjects={shell.visibleSidebarProjects}
       visibleStarredEntries={shell.visibleStarredEntries}
+      workspaceProjectChannels={shell.workspaceProjectChannels}
+      workspaceProjectName={shell.workspaceProjectName}
+      workspaceProjectTeamId={shell.workspaceProjectTeamId}
     />
   );
 

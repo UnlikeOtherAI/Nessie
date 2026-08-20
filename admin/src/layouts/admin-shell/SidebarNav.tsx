@@ -23,8 +23,6 @@ type SidebarNavProps = {
   channelsCollapsed: boolean;
   currentChannelId?: string;
   currentProjectId?: string;
-  defaultProjectChannels: ChannelRecord[];
-  defaultProjectTeamId?: string;
   dmCollapsed: boolean;
   onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
@@ -60,6 +58,9 @@ type SidebarNavProps = {
   unreadCountByChannelId: Map<string, number>;
   visibleSidebarProjects: SidebarProject[];
   visibleStarredEntries: VisibleStarredEntry[];
+  workspaceProjectChannels: ChannelRecord[];
+  workspaceProjectName?: string;
+  workspaceProjectTeamId?: string;
 };
 
 export const SidebarNav = (props: SidebarNavProps) => {
@@ -69,8 +70,6 @@ export const SidebarNav = (props: SidebarNavProps) => {
     channelsCollapsed,
     currentChannelId,
     currentProjectId,
-    defaultProjectChannels,
-    defaultProjectTeamId,
     dmCollapsed,
     onNavigateAgent,
     onNavigateChannel,
@@ -106,6 +105,9 @@ export const SidebarNav = (props: SidebarNavProps) => {
     unreadCountByChannelId,
     visibleSidebarProjects,
     visibleStarredEntries,
+    workspaceProjectChannels,
+    workspaceProjectName,
+    workspaceProjectTeamId,
   } = props;
   const nativeTouchShell = isReactNativeWebView();
 
@@ -157,13 +159,14 @@ export const SidebarNav = (props: SidebarNavProps) => {
         <SidebarChannelsSection
           channelsCollapsed={channelsCollapsed}
           currentChannelId={currentChannelId}
-          defaultProjectChannels={defaultProjectChannels}
-          defaultProjectTeamId={defaultProjectTeamId}
           onNavigateChannel={onNavigateChannel}
           onOpenCreateChannel={onOpenCreateChannel}
           onToggleStar={onToggleStar}
           starredChannelIds={starredChannelIds}
           toggleChannelsCollapsed={toggleChannelsCollapsed}
+          workspaceProjectChannels={workspaceProjectChannels}
+          workspaceProjectName={workspaceProjectName}
+          workspaceProjectTeamId={workspaceProjectTeamId}
         />
 
         <SidebarDmSection
