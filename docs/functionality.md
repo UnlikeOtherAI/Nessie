@@ -204,6 +204,20 @@ Root app layout:
   the API routes and the worker; `api/src/services/*` re-exports them so route
   code is unchanged.
 
+### 2.0d Channel scopes
+
+- A channel belongs either to a visible project or to the organisation's
+  standalone **Channels** section. Project channels always render beneath their
+  project; standalone channels never impersonate a project or a UOA workspace.
+- The database keeps standalone channels in one hidden, system-managed channel
+  root per organisation because a channel requires a project and team foreign
+  key. That root is an internal container, not a second copy of UOA's
+  organisation or workspace hierarchy, and it is excluded from project APIs and
+  navigation.
+- Slugs are unique within their owning project. Therefore `#general` may exist
+  once in the standalone section and once in each project; the channel creation
+  surface selects the scope explicitly.
+
 ### 2.1 Server bootstrap (`src/index.ts`)
 
 > **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5454) + `worker/` + `admin/` (port 5455), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.

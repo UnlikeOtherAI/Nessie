@@ -65,6 +65,7 @@ export const useCreateChannel = () => {
   return useMutation({
     mutationFn: (input: {
       label: string
+      scope?: 'standalone'
       teamId?: string
       visibility?: ChannelRecord['visibility']
     }) =>

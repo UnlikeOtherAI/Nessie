@@ -8,11 +8,12 @@ type CreateChannelDialogProps = {
   onClose: () => void
   open: boolean
   projectName?: string
+  scope?: 'standalone'
   teamId?: string
 }
 
 export const CreateChannelDialog = (
-  { onClose, open, projectName, teamId }: CreateChannelDialogProps,
+  { onClose, open, projectName, scope, teamId }: CreateChannelDialogProps,
 ) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
@@ -49,6 +50,7 @@ export const CreateChannelDialog = (
     try {
       const created = await createChannel.mutateAsync({
         label,
+        scope,
         teamId,
         visibility,
       })

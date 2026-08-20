@@ -156,11 +156,15 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         label: body.label,
         visibility: body.visibility ?? 'public',
         organizationId: actorContext.tenant.organizationId,
-        teamId:
-          body.teamId
-          ?? actorContext.tenant.teamId
-          ?? actorContext.actionContext.teamId
-          ?? '00000000-0000-4000-8000-000000000003',
+        ...(body.scope === 'standalone'
+          ? { scope: 'standalone' as const }
+          : {
+              teamId:
+                body.teamId
+                ?? actorContext.tenant.teamId
+                ?? actorContext.actionContext.teamId
+                ?? '00000000-0000-4000-8000-000000000003',
+            }),
         userId: actorContext.actor.actorId,
       })
     } catch (error) {

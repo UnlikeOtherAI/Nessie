@@ -5,7 +5,11 @@ export type FavoriteStarredItem = { type: 'agent' | 'channel' | 'user'; id: stri
 export type PreferenceStarredItem = { type: 'channel' | 'project' | 'user'; id: string }
 export type StarredItem = FavoriteStarredItem | { type: 'project'; id: string }
 export type SidebarProject = ProjectRecord & { channels: ChannelRecord[] }
-export type CreateChannelTarget = { projectName?: string; teamId?: string }
+export type CreateChannelTarget = {
+  projectName?: string
+  scope?: 'standalone'
+  teamId?: string
+}
 export type RenameProjectTarget = { id: string; name: string }
 export type SidebarMenu =
   | { type: 'channels' }
@@ -48,5 +52,3 @@ export type AdminShellOutletContext = {
   onCreateChannel: (target?: CreateChannelTarget) => void
   onSelectAgent: (agentId: string) => void
 }
-
-export const DEFAULT_BOOTSTRAP_PROJECT_ID = '00000000-0000-4000-8000-000000000002'

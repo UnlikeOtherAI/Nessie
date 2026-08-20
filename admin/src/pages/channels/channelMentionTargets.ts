@@ -10,11 +10,16 @@ export type ChannelMentionTarget = {
 }
 
 export const getChannelScopeLabel = (channel: ChannelRecord): string =>
-  `${channel.projectName} / ${channel.teamName}`
+  channel.scope === 'standalone'
+    ? 'Channels'
+    : `${channel.projectName} / ${channel.teamName}`
 
 export const normalizeChannelLabel = (label: string): string => label.trim().toLowerCase()
 
 const getScopedChannelSlug = (channel: ChannelRecord): string => {
+  if (channel.scope === 'standalone') {
+    return channel.slug ?? toChannelSlug(channel.label)
+  }
   const projectSlug = toChannelSlug(channel.projectName)
   const channelSlug = channel.slug ?? toChannelSlug(channel.label)
   return projectSlug ? `${projectSlug}/${channelSlug}` : channelSlug

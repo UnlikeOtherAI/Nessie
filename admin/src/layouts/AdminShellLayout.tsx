@@ -188,9 +188,7 @@ const AuthenticatedAdminShellLayout = () => {
       unreadCountByChannelId={shell.unreadCountByChannelId}
       visibleSidebarProjects={shell.visibleSidebarProjects}
       visibleStarredEntries={shell.visibleStarredEntries}
-      workspaceProjectChannels={shell.workspaceProjectChannels}
-      workspaceProjectName={shell.workspaceProjectName}
-      workspaceProjectTeamId={shell.workspaceProjectTeamId}
+      standaloneChannels={shell.standaloneChannels}
     />
   );
 

@@ -55,6 +55,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const accessible = await listAccessibleProjectIds(actorContext)
     const projects = await prisma.project.findMany({
       where: {
+        channelRoot: false,
         organizationId: actorContext.tenant.organizationId,
         ...(accessible === 'all' ? {} : { id: { in: accessible } }),
       },
@@ -77,7 +78,11 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       include: projectCountsInclude,
     })
     if (!project) {
@@ -98,7 +103,11 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       include: {
         members: {
           include: { user: { select: { id: true, displayName: true, email: true } } },
@@ -173,6 +182,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const project = await prisma.project.findFirst({
       where: {
+        channelRoot: false,
         id: projectId,
         organizationId: actorContext.tenant.organizationId,
       },
@@ -207,7 +217,11 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const { projectId } = request.params as { projectId: string }
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       include: projectCountsInclude,
     })
     if (!project) {
@@ -258,8 +272,14 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const project = await prisma.project.findUnique({ where: { id: projectId } })
-    if (!project || project.organizationId !== actorContext.tenant.organizationId) {
+    const project = await prisma.project.findFirst({
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+    })
+    if (!project) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
       return reply
     }
@@ -296,7 +316,11 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const { projectId, userId } = request.params as { projectId: string; userId: string }
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: actorContext.tenant.organizationId },
+      where: {
+        channelRoot: false,
+        id: projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
       select: { id: true },
     })
     if (!project) {

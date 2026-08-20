@@ -72,6 +72,10 @@ export const EmptyBodySchema = z.object({})
 
 export const CreateChannelBodySchema = z.object({
   label: NonEmptyStringSchema,
+  // An organization-wide channel is explicitly requested by the standalone
+  // Channels surface. Omitting it preserves the existing current-team default
+  // for project-scoped creation and personal-assistant tools.
+  scope: z.enum(['standalone']).optional(),
   teamId: TeamIdSchema.optional(),
   visibility: z.enum(['public', 'protected', 'private']).optional(),
 })

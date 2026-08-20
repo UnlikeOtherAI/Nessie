@@ -32,6 +32,7 @@ export type ChannelRecord = {
   label: string
   metadata?: ChannelMetadataRecord
   organizationId: string
+  scope?: 'project' | 'standalone'
   projectId: string
   projectName: string
   slug?: string | null

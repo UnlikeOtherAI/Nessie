@@ -10,11 +10,9 @@ type SidebarChannelsSectionProps = {
   onNavigateChannel: (channelId: string) => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
+  standaloneChannels: ChannelRecord[];
   starredChannelIds: Set<string>;
   toggleChannelsCollapsed: () => void;
-  workspaceProjectChannels: ChannelRecord[];
-  workspaceProjectName?: string;
-  workspaceProjectTeamId?: string;
 };
 
 export const SidebarChannelsSection = ({
@@ -23,11 +21,9 @@ export const SidebarChannelsSection = ({
   onNavigateChannel,
   onOpenCreateChannel,
   onToggleStar,
+  standaloneChannels,
   starredChannelIds,
   toggleChannelsCollapsed,
-  workspaceProjectChannels,
-  workspaceProjectName,
-  workspaceProjectTeamId,
 }: SidebarChannelsSectionProps) => {
   return (
     <SidebarMenuSection
@@ -35,10 +31,7 @@ export const SidebarChannelsSection = ({
         <button
           aria-label="Create channel"
           className="admin-sidebar-plus"
-          onClick={() => onOpenCreateChannel({
-            projectName: workspaceProjectName,
-            teamId: workspaceProjectTeamId,
-          })}
+          onClick={() => onOpenCreateChannel({ scope: 'standalone' })}
           type="button"
         >
           +
@@ -49,7 +42,7 @@ export const SidebarChannelsSection = ({
       onToggle={toggleChannelsCollapsed}
       title="Channels"
     >
-      {workspaceProjectChannels.map((channel) => {
+      {standaloneChannels.map((channel) => {
         const isStarredChannel = starredChannelIds.has(channel.id);
         return (
           <button

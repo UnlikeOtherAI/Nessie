@@ -43,6 +43,10 @@ export const ChannelRecordSchema = z.object({
   isGroupDm: z.boolean().optional(),
   visibility: z.enum(['public', 'protected', 'private']),
   organizationId: OrganizationIdSchema,
+  // Standalone channels are organization-wide. Their hidden system container
+  // exists only to preserve the channel/team relational model; it is never a
+  // user-visible project.
+  scope: z.enum(['project', 'standalone']).optional(),
   projectId: ProjectIdSchema,
   projectName: NonEmptyStringSchema,
   teamId: TeamIdSchema,

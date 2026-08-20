@@ -196,17 +196,13 @@ export const useAdminShell = () => {
     standardChannels,
     teamIdByProjectId,
     visibleSidebarProjects,
-    workspaceProjectChannels,
-    workspaceProjectName,
-    workspaceProjectTeamId,
+    standaloneChannels,
   } = useSidebarTree({
     channels,
     projects,
     starredChannelIds,
     starredProjectIds,
     teams,
-    workspaceProjectId: me?.context.projectId,
-    workspaceTeamId: me?.context.teamId,
   });
 
   const currentProjectId = useMemo(
@@ -218,11 +214,8 @@ export const useAdminShell = () => {
 
   const openCreateChannel = useCallback((target?: CreateChannelTarget) => {
     setSidebarMenu(null);
-    setCreateChannelTarget(target ?? {
-      projectName: workspaceProjectName,
-      teamId: workspaceProjectTeamId,
-    });
-  }, [workspaceProjectName, workspaceProjectTeamId]);
+    setCreateChannelTarget(target ?? { scope: 'standalone' });
+  }, []);
   const closeCreateChannel = useCallback(() => setCreateChannelTarget(null), []);
   const openCreateProject = useCallback(() => {
     setSidebarMenu(null);
@@ -433,8 +426,6 @@ export const useAdminShell = () => {
     unreadCountByChannelId,
     visibleSidebarProjects,
     visibleStarredEntries,
-    workspaceProjectChannels,
-    workspaceProjectName,
-    workspaceProjectTeamId,
+    standaloneChannels,
   };
 };

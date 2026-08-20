@@ -26,6 +26,7 @@ export const SidebarDialogs = ({
         onClose={onCloseCreateChannel}
         open={createChannelTarget !== null}
         projectName={createChannelTarget?.projectName}
+        scope={createChannelTarget?.scope}
         teamId={createChannelTarget?.teamId}
       />
       <CreateProjectDialog onClose={onCloseCreateProject} open={createProjectOpen} />

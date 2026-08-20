@@ -54,8 +54,14 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    const project = await prisma.project.findUnique({ where: { id: body.projectId } })
-    if (!project || project.organizationId !== actorContext.tenant.organizationId) {
+    const project = await prisma.project.findFirst({
+      where: {
+        channelRoot: false,
+        id: body.projectId,
+        organizationId: actorContext.tenant.organizationId,
+      },
+    })
+    if (!project) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Project not found')
       return reply
     }
@@ -109,7 +115,12 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       where: { id: teamId },
       include: { project: true },
     })
-    if (!team || team.project.organizationId !== actorContext.tenant.organizationId) {
+    if (
+      !team
+      || team.systemManaged
+      || team.project.channelRoot
+      || team.project.organizationId !== actorContext.tenant.organizationId
+    ) {
       sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
       return reply
     }

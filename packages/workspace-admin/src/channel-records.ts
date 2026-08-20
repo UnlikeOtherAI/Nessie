@@ -14,6 +14,7 @@ type ChannelWithProject = Channel & {
   team?: {
     name: string
     project: {
+      channelRoot: boolean
       id: string
       name: string
     }
@@ -66,7 +67,7 @@ export const channelTeamInclude = {
     select: {
       name: true,
       project: {
-        select: { id: true, name: true },
+        select: { channelRoot: true, id: true, name: true },
       },
     },
   },
@@ -85,6 +86,7 @@ export const loadTeamProjectScope = async (
       name: true,
       project: {
         select: {
+          channelRoot: true,
           id: true,
           name: true,
           organizationId: true,
@@ -236,7 +238,7 @@ export const mapChannelRecord = async (
     select: {
       name: true,
       project: {
-        select: { id: true, name: true },
+        select: { channelRoot: true, id: true, name: true },
       },
     },
   })
@@ -252,6 +254,7 @@ export const mapChannelRecord = async (
     isGroupDm: isGroupDm(channel),
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
+    scope: team.project.channelRoot ? 'standalone' : 'project',
     projectId: parseProjectId(team.project.id),
     projectName: team.project.name,
     teamId: parseTeamId(channel.teamId),

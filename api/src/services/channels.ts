@@ -70,7 +70,7 @@ export const listChannelsForUser = async (
         select: {
           name: true,
           project: {
-            select: { id: true, name: true },
+            select: { channelRoot: true, id: true, name: true },
           },
         },
       },
@@ -116,6 +116,7 @@ export const listChannelsForUser = async (
     dmUserId: resolveDmUserId(channel, userId),
     visibility: channel.visibility,
     organizationId: parseOrganizationId(channel.organizationId),
+    scope: channel.team.project.channelRoot ? 'standalone' : 'project',
     projectId: parseProjectId(channel.team.project.id),
     projectName: channel.team.project.name,
     teamId: parseTeamId(channel.teamId),

@@ -58,9 +58,7 @@ type SidebarNavProps = {
   unreadCountByChannelId: Map<string, number>;
   visibleSidebarProjects: SidebarProject[];
   visibleStarredEntries: VisibleStarredEntry[];
-  workspaceProjectChannels: ChannelRecord[];
-  workspaceProjectName?: string;
-  workspaceProjectTeamId?: string;
+  standaloneChannels: ChannelRecord[];
 };
 
 export const SidebarNav = (props: SidebarNavProps) => {
@@ -105,9 +103,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     unreadCountByChannelId,
     visibleSidebarProjects,
     visibleStarredEntries,
-    workspaceProjectChannels,
-    workspaceProjectName,
-    workspaceProjectTeamId,
+    standaloneChannels,
   } = props;
   const nativeTouchShell = isReactNativeWebView();
 
@@ -162,11 +158,9 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onNavigateChannel={onNavigateChannel}
           onOpenCreateChannel={onOpenCreateChannel}
           onToggleStar={onToggleStar}
+          standaloneChannels={standaloneChannels}
           starredChannelIds={starredChannelIds}
           toggleChannelsCollapsed={toggleChannelsCollapsed}
-          workspaceProjectChannels={workspaceProjectChannels}
-          workspaceProjectName={workspaceProjectName}
-          workspaceProjectTeamId={workspaceProjectTeamId}
         />
 
         <SidebarDmSection

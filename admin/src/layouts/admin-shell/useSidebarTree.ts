@@ -12,8 +12,6 @@ type UseSidebarTreeArgs = {
   starredChannelIds: Set<string>
   starredProjectIds: Set<string>
   teams: TeamRecord[]
-  workspaceProjectId?: string
-  workspaceTeamId?: string
 }
 
 /**
@@ -26,10 +24,10 @@ export const buildSidebarTree = ({
   starredChannelIds,
   starredProjectIds,
   teams,
-  workspaceProjectId,
-  workspaceTeamId,
 }: UseSidebarTreeArgs) => {
   const standardChannels = channels.filter((channel) => channel.type !== 'dm')
+  const standaloneChannels = standardChannels.filter((channel) => channel.scope === 'standalone')
+  const projectChannels = standardChannels.filter((channel) => channel.scope !== 'standalone')
   const channelsByProject = new Map<string, ChannelRecord[]>()
   const sourceProjectsById = new Map<string, ProjectRecord>()
 
@@ -37,7 +35,7 @@ export const buildSidebarTree = ({
     sourceProjectsById.set(project.id, project)
   }
 
-  for (const channel of standardChannels) {
+  for (const channel of projectChannels) {
     const projectChannels = channelsByProject.get(channel.projectId) ?? []
     projectChannels.push(channel)
     channelsByProject.set(channel.projectId, projectChannels)
@@ -71,39 +69,28 @@ export const buildSidebarTree = ({
     }
   }
 
-  for (const channel of standardChannels) {
+  for (const channel of projectChannels) {
     if (!teamIdByProjectId.has(channel.projectId)) {
       teamIdByProjectId.set(channel.projectId, channel.teamId)
     }
   }
 
-  // The old bootstrap UUID is not present in UOA-provisioned workspaces. The
-  // session's exact workspace is therefore the Channels section's home. This
-  // changes only where authorized rows appear: every other project remains in
-  // the Projects section below rather than being filtered out of the list.
-  const workspaceProject = workspaceProjectId
-    ? projectById.get(workspaceProjectId)
-    : undefined
-  const workspaceProjectChannels = workspaceProject?.channels.filter(
+  // Standalone channels live in one hidden, system-owned project per
+  // organization. They are deliberately rendered here rather than under that
+  // implementation container; every other channel remains under its real
+  // project, including the active UOA workspace.
+  const visibleStandaloneChannels = standaloneChannels.filter(
     (channel) => !starredChannelIds.has(channel.id),
-  ) ?? []
-  const workspaceProjectTeamId = workspaceTeamId
-    ?? (workspaceProjectId ? teamIdByProjectId.get(workspaceProjectId) : undefined)
+  )
   const visibleSidebarProjects = sidebarProjects
     .filter((project) => !starredProjectIds.has(project.id))
     .map((project) => ({
       ...project,
-      // A channel has one sidebar home. The current workspace's channels are
-      // in Channels, while its project row remains the in-context doorway to
-      // the project dashboard and its channel creation action.
-      channels: project.id === workspaceProjectId
-        ? []
-        : project.channels.filter((channel) => !starredChannelIds.has(channel.id)),
+      channels: project.channels.filter((channel) => !starredChannelIds.has(channel.id)),
     }))
     .filter(
       (project) =>
-        project.id === workspaceProjectId
-        || project.channels.length > 0
+        project.channels.length > 0
         || projectById.get(project.id)?.channels.length === 0,
     )
 
@@ -114,9 +101,7 @@ export const buildSidebarTree = ({
     standardChannels,
     teamIdByProjectId,
     visibleSidebarProjects,
-    workspaceProjectChannels,
-    workspaceProjectName: workspaceProject?.name,
-    workspaceProjectTeamId,
+    standaloneChannels: visibleStandaloneChannels,
   }
 }
 
@@ -128,7 +113,5 @@ export const useSidebarTree = (args: UseSidebarTreeArgs) => useMemo(
     args.starredChannelIds,
     args.starredProjectIds,
     args.teams,
-    args.workspaceProjectId,
-    args.workspaceTeamId,
   ],
 )

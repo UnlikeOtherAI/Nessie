@@ -9,13 +9,20 @@ export type ChannelLabelParts = {
 export type ChannelTeamProject = {
   organizationId: string
   projectId: string
+  teamId: string
 }
 
 export class ChannelValidationError extends Error {}
 
+export type ChannelSlugScope = 'project' | 'standalone'
+
 export class ChannelSlugConflictError extends Error {
-  constructor(slug: string) {
-    super(`A channel with slug "${slug}" already exists in this project`)
+  constructor(slug: string, scope: ChannelSlugScope = 'project') {
+    super(
+      scope === 'standalone'
+        ? `A standalone channel with slug "${slug}" already exists`
+        : `A channel with slug "${slug}" already exists in this project`,
+    )
   }
 }
 
@@ -58,6 +65,7 @@ export const loadChannelTeamProject = async (
   return {
     organizationId: team.project.organizationId,
     projectId: team.project.id,
+    teamId: input.teamId,
   }
 }
 
@@ -66,6 +74,7 @@ export const ensureChannelSlugAvailable = async (
   input: {
     excludeChannelId?: string
     projectId: string
+    scope?: ChannelSlugScope
     slug: string
   },
 ): Promise<void> => {
@@ -79,13 +88,14 @@ export const ensureChannelSlugAvailable = async (
     select: { id: true },
   })
   if (existing) {
-    throw new ChannelSlugConflictError(input.slug)
+    throw new ChannelSlugConflictError(input.slug, input.scope)
   }
 }
 
 export const throwIfChannelSlugConflict = (
   error: unknown,
   slug: string,
+  scope: ChannelSlugScope = 'project',
 ): never => {
   const target = error instanceof Prisma.PrismaClientKnownRequestError
     ? error.meta?.['target']
@@ -99,7 +109,7 @@ export const throwIfChannelSlugConflict = (
       || (Array.isArray(target) && target.includes('project_id') && target.includes('slug'))
     )
   ) {
-    throw new ChannelSlugConflictError(slug)
+    throw new ChannelSlugConflictError(slug, scope)
   }
   throw error
 }
