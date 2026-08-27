@@ -14,6 +14,9 @@ macos/**/xcshareddata/
 # EAS uses this ignore file when creating its upload archive. The mobile icons
 # are release inputs and must reach Expo Prebuild.
 !mobile/assets/*.png
+# The public site ships these as build inputs (Dockerfile.web copies web/) and
+# the README embeds the same files, so they are release artifacts, not scratch.
+!web/public/**/*.png
 tmp/
 coverage/
 *.tsbuildinfo

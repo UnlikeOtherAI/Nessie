@@ -5,8 +5,8 @@
 <h1 align="center">Nessie</h1>
 
 <p align="center">
-  Voice-first personal AI agent for macOS.<br>
-  Local orchestrator, macOS app, MCP surface, and an early remote control-plane scaffold.
+  The Slack alternative for an AI world.<br>
+  Channels, threads and DMs your team already knows &mdash; with agents that do the work in them.
 </p>
 
 <p align="center">
@@ -17,6 +17,15 @@
 </p>
 
 ---
+
+## Screenshots
+
+| Ask in a thread | It follows through | The team reads it |
+|---|---|---|
+| [<img src="web/public/screenshots/nessie-assistant.png" alt="A Nessie thread where the assistant drafts an all-team note about a new expense policy" width="280">](web/public/screenshots/nessie-assistant.png) | [<img src="web/public/screenshots/nessie-actions.png" alt="The assistant confirming it posted the note to #General and scheduled a follow-up check" width="280">](web/public/screenshots/nessie-actions.png) | [<img src="web/public/screenshots/nessie-channel.png" alt="The #General channel in Nessie showing the published expense policy note" width="280">](web/public/screenshots/nessie-channel.png) |
+| The assistant drafts the note in the reply thread where it was asked. | It posts to `#General` and schedules the Monday follow-up itself. | Channels, threads and DMs, exactly where the team already looks. |
+
+These are the same images the public site (`web/`) shows at [nessie.works](https://nessie.works).
 
 ## What it is
 
