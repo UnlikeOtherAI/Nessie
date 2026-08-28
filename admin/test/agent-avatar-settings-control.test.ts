@@ -6,14 +6,11 @@ import { fileURLToPath } from 'node:url'
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
-test('agent details put the avatar editor at the first agent surface for owners only', () => {
-  const column = readSource('../src/components/features/agents/AgentDetailColumn.tsx')
+test('agent details put the avatar editor at the agent detail surface for owners only', () => {
   const drawer = readSource('../src/components/features/agents/AgentDetailDrawer.tsx')
 
-  for (const source of [column, drawer]) {
-    assert.match(source, /const isOwner = me\?\.user\.roleIds\.includes\('owner'\) \?\? false/)
-    assert.match(source, /<AgentAvatarQuickEdit agent=\{agent\} canEdit=\{isOwner\} \/>/)
-  }
+  assert.match(drawer, /const isOwner = me\?\.user\.roleIds\.includes\('owner'\) \?\? false/)
+  assert.match(drawer, /<AgentAvatarQuickEdit agent=\{agent\} canEdit=\{isOwner\} \/>/)
 })
 
 test('the avatar pencil offers AI generation and a dashed file drop zone before crop/save', () => {

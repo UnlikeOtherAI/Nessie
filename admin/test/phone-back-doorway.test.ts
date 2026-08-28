@@ -19,11 +19,8 @@ test('every phone Back doorway renders through the one shared PhoneBackButton', 
   )
 
   const column = readSource('../src/components/shared/column-browser/ColumnBrowserColumn.tsx')
-  const detail = readSource('../src/components/features/agents/AgentDetailColumn.tsx')
-  for (const source of [column, detail]) {
-    assert.match(source, /PhoneBackButton/)
-    assert.doesNotMatch(source, /<svg/, 'no second hand-drawn Back icon')
-  }
+  assert.match(column, /PhoneBackButton/)
+  assert.doesNotMatch(column, /<svg/, 'no second hand-drawn Back icon')
 })
 
 test('registrations use explicit numeric priority, never mount order', () => {
@@ -78,7 +75,6 @@ test('every stateful column-browser detail column owns exactly one Back action',
     ['../src/pages/TriggersPage.tsx', /onBack=\{\(\) => state\.setSelectedTriggerId\(undefined\)\}[\s\S]*?showBack/],
     ['../src/pages/McpAppStorePage.tsx', /onBack=\{\(\) => setSelectedCatalogId\(undefined\)\}[\s\S]*?showBack/],
     ['../src/pages/McpAppStorePage.tsx', /onBack=\{\(\) => setSelectedLibraryEntry\(null\)\}[\s\S]*?showBack/],
-    ['../src/components/features/agents/AgentDetailColumn.tsx', /useLocalBack\(\{[\s\S]*?phoneVisible/],
   ]
   for (const [path, pattern] of expectations) {
     assert.match(readSource(path), pattern, path)

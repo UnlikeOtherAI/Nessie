@@ -90,11 +90,18 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     }
 
     const isOwner = actorContext.actor.roles?.includes('owner') ?? false
+    // `?scope=all` opts the Agents page into the read-only system tier (the
+    // Personal Assistant and other `systemManaged` agents) so it can group them
+    // under its Personal / Global tabs. Every other caller omits it and gets the
+    // unchanged non-system list.
+    const includeSystemManaged =
+      (request.query as { scope?: string }).scope === 'all'
     const agents = await listAgentsForUser(
       prisma,
       actorContext.actor.actorId,
       actorContext.tenant.organizationId,
       isOwner,
+      includeSystemManaged,
     )
     return createApiResponse(AgentRecordSchema.array().parse(agents))
   })

@@ -15,12 +15,20 @@ import { buildAccessibleChannelWhere, mapAgentRecord } from './agent-record.js'
  * Shared with the assistant's `agent_list` tool, which is how it resolves the
  * `agentId` that `agent_bind_channel` / `agent_trigger_create` demand — the
  * same list the owner picks from in the UI, so the two can never disagree.
+ *
+ * `includeSystemManaged` opts the Agents page into the read-only system tier
+ * (the Personal Assistant and other `systemManaged` agents) so it can group
+ * them under Personal / Global tabs. It is off by default, keeping the shape
+ * every other caller — the `agent_list` tool included — already relies on. The
+ * same channel-visibility filter still applies, so a member sees a system
+ * agent only through a channel it can already reach (e.g. their own PA DM).
  */
 export const listAgentsForUser = async (
   prisma: PrismaClient,
   userId: string,
   organizationId: string,
   includeUnbound: boolean,
+  includeSystemManaged = false,
 ): Promise<AgentRecord[]> => {
   const visibleChannelWhere = buildAccessibleChannelWhere({
     includeAllOrgChannels: includeUnbound,
@@ -48,7 +56,7 @@ export const listAgentsForUser = async (
   const agents = await prisma.agent.findMany({
     where: {
       organizationId,
-      systemManaged: false,
+      ...(includeSystemManaged ? {} : { systemManaged: false }),
       OR: visibilityFilters,
     },
     include: {
