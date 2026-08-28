@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, type CSSProperties, type ReactNode } fro
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { useChannels } from '../../facades/channels/hooks'
 import { recordRecentChannel, useRecentChannels } from './useRecentChannels'
+import { recordSectionRoute } from './section-route-memory'
 import { useTransientMenu } from './TransientMenuContext'
 
 // Tracks position in the SPA history so the back/forward buttons can disable at
@@ -43,6 +44,20 @@ export const useHistoryNav = () => {
   }
 
   return { goBack, goForward, canBack: posRef.current > 0, canForward: fwdRef.current > 0 }
+}
+
+// Remember the reader's place in each top-level section so its rail tab returns
+// there instead of the section root. Runs once at the shell so every route
+// change is recorded, whichever section it belongs to.
+export const useRecordSectionRoute = () => {
+  const location = useLocation()
+
+  useEffect(() => {
+    recordSectionRoute(
+      location.pathname,
+      `${location.pathname}${location.search}${location.hash}`,
+    )
+  }, [location.pathname, location.search, location.hash])
 }
 
 export const useRecordRecentChannelVisits = () => {

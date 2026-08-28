@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import { usePhoneLayout } from '../../../lib/mobile-shell'
 import { PhoneBackButton } from '../../../layouts/admin-shell/PhoneBackButton'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
@@ -22,6 +23,10 @@ type ColumnBrowserColumnProps = {
   // their viewport index, so Back always unwinds exactly one level.
   showBack?: boolean
   title: string
+  // When set, the column's scroll position is remembered under this key and
+  // restored when the column remounts (e.g. after leaving and returning to the
+  // section's tab). Must be stable and unique per scroll region.
+  scrollKey?: string
 }
 
 export const ColumnBrowserColumn = ({
@@ -31,8 +36,10 @@ export const ColumnBrowserColumn = ({
   onBack,
   showBack,
   title,
+  scrollKey,
 }: ColumnBrowserColumnProps) => {
   const phoneLayout = usePhoneLayout()
+  const scroll = useScrollMemory(scrollKey)
   const { index, phoneVisible } = useColumnBackContext()
   const backLabel = `Back from ${title}`
   useLocalBack({
@@ -59,7 +66,13 @@ export const ColumnBrowserColumn = ({
         </h3>
         {headerAction}
       </div>
-      <div className="flex-1 overflow-y-auto p-3">{children}</div>
+      <div
+        className="flex-1 overflow-y-auto p-3"
+        onScroll={scroll.onScroll}
+        ref={scroll.ref}
+      >
+        {children}
+      </div>
     </div>
   )
 }

@@ -41,7 +41,7 @@ import { SidebarNav } from './admin-shell/SidebarNav';
 import { SidebarRail } from './admin-shell/SidebarRail';
 import { TopBar } from './admin-shell/TopBar';
 import { TransientMenuProvider } from './admin-shell/TransientMenuContext';
-import { useRecordRecentChannelVisits } from './admin-shell/topbar-navigation';
+import { useRecordRecentChannelVisits, useRecordSectionRoute } from './admin-shell/topbar-navigation';
 import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
@@ -97,6 +97,7 @@ export const AdminShellLayout = () => {
 const AuthenticatedAdminShellLayout = () => {
   const shell = useAdminShell();
   useRecordRecentChannelVisits();
+  useRecordSectionRoute();
   const attention = useAttentionSummary();
   const attentionCountByProjectId = new Map<string, number>();
   for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
