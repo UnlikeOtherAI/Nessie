@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
 import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces';
 import { NAV_ITEMS } from './nav-items';
+import { resolveSectionNavTarget } from './section-route-memory';
 import { UserMenuTrigger } from './UserMenuTrigger';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
@@ -26,11 +27,15 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
 
       {SIDEBAR_RAIL_ITEMS.map((item) => {
         const Icon = item.icon;
+        // Return to where the reader last stood in this section rather than its
+        // root, so switching tabs and coming back restores the exact page and
+        // its URL state. The active section's own button resolves to the
+        // current location, which is a harmless no-op navigation.
         return (
           <Link
             className={`admin-rail-btn ${item.isActive(pathname) ? 'active' : ''}`}
             key={item.id}
-            to={item.to}
+            to={resolveSectionNavTarget(item.id, item.to)}
           >
             <span className="admin-rail-btn-icon">
               <Icon />

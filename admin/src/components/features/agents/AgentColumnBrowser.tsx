@@ -1,6 +1,7 @@
-import { type ReactNode, useCallback, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import type { AgentChild } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
+import { loadAgentBrowserState, saveAgentBrowserState } from './agent-browser-state'
 import { useAgentChildren, useAgents } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
 import { ColumnBrowserViewport } from '../../shared/column-browser/ColumnBrowserViewport'
@@ -136,11 +137,20 @@ export const AgentColumnBrowser = () => {
   const navigate = useNavigate()
   const { data: agents = [] } = useAgents()
 
-  const [selectionPath, setSelectionPath] = useState<string[]>([])
-  const [activeColumn, setActiveColumn] = useState(0)
+  // Seed from the session ledger so returning to the tab restores the columns
+  // the reader left open, then keep the ledger in step with local state.
+  const [initialBrowserState] = useState(loadAgentBrowserState)
+  const [selectionPath, setSelectionPath] = useState<string[]>(
+    initialBrowserState.selectionPath,
+  )
+  const [activeColumn, setActiveColumn] = useState(initialBrowserState.activeColumn)
   const [subAgentPopupAgentId, setSubAgentPopupAgentId] = useState<
     string | null
   >(null)
+
+  useEffect(() => {
+    saveAgentBrowserState({ selectionPath, activeColumn })
+  }, [selectionPath, activeColumn])
 
   const rootAgents = useMemo(
     () =>
@@ -194,6 +204,7 @@ export const AgentColumnBrowser = () => {
           />
         }
         key="agents"
+        scrollKey="agents:root"
         showBack={false}
         title="All agents"
       >
@@ -239,6 +250,7 @@ export const AgentColumnBrowser = () => {
             setSelectionPath((prev) => prev.slice(0, depth))
             setActiveColumn(depth)
           }}
+          scrollKey={`agents:children:${parentId}`}
           showBack
           title={parentAgent?.name ?? 'Children'}
         >
