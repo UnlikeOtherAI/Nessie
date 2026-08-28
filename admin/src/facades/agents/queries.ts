@@ -10,12 +10,24 @@ import type {
 import type { AgentRecord } from '../../lib/api-client'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export const useAgents = () => {
+export type AgentListScope = 'all' | 'visible'
+
+/**
+ * The agents the caller is entitled to see. Default (`visible`) is the
+ * non-system list every surface has always used. `all` additionally pulls the
+ * read-only system tier (Personal Assistant + `systemManaged` agents) via
+ * `?scope=all`, for the Agents page's Personal / Global tabs; it is cached
+ * under its own key so it never overwrites the default list the rest of the app
+ * reads.
+ */
+export const useAgents = (options?: { scope?: AgentListScope }) => {
   const apiClient = useApiClient()
+  const scope = options?.scope ?? 'visible'
 
   return useQuery<AgentRecord[]>({
-    queryKey: ['agents'],
-    queryFn: () => apiClient.get('/api/agents'),
+    queryKey: scope === 'all' ? ['agents', 'all'] : ['agents'],
+    queryFn: () =>
+      apiClient.get(scope === 'all' ? '/api/agents?scope=all' : '/api/agents'),
   })
 }
 

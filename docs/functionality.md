@@ -178,6 +178,17 @@ Root app layout:
   returns only what the caller needs to act: name, role, `agentId`, and the
   channels the agent is bound to. An optional `query` narrows that
   already-authorized list by name or role.
+- The admin **Agents page** (`/agents`) groups the same entitlement-scoped list
+  into three tabs — **Personal** (`agentKind === 'personal_assistant'`), **Team**
+  (ordinary shared agents), and **Global** (system-provided `systemManaged`
+  agents, read-only, no edit menu) — over a paginated, zebra-striped table with a
+  reused agent detail drawer (`admin/src/components/features/agents/AgentsList.tsx`).
+  The scope is derived from `agentKind`/`systemManaged`, not a stored column. To
+  populate the Personal and Global tabs, `GET /api/agents` accepts `?scope=all`,
+  which includes the read-only system tier under the *same* channel-visibility
+  filter (`listAgentsForUser(..., includeSystemManaged)`); every other caller,
+  the `agent_list` tool included, omits the param and gets the unchanged
+  non-system list.
 - `agent_list`, `channel_create` (`POST /api/channels`) and `agent_create`
   (`POST /api/agents`)
   are open to any active member, because those routes carry only
