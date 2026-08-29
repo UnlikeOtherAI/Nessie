@@ -82,17 +82,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
-        path: '/agents/activity',
-        label: 'Activity',
-        icon: icon(
-          <path
-            d="M4 12h3l2 6 4-14 2 8h5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />,
-        ),
-      },
-      {
         path: '/agents/workflows',
         label: 'Workflows',
         icon: icon(

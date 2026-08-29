@@ -397,10 +397,13 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   `research_cancel`; the
   handoff invariants are never touched. `Run.triggerMessageId` (populated by the
   chat orchestrator + integration handoffs) backs both the guard and the replay.
-  Admin surfaces cancel/restart/continue on the Agents → Activity page
-  (`admin/src/components/features/runs/RunLifecyclePanel.tsx`; recently-ended
-  runs expose `checkpointId`) and a Continue button on budget-stop notices
-  (`admin/src/components/features/channels/RunStopContinue.tsx`).
+  Admin cancel is surfaced on the live document-stream dialog
+  (`useCancelRun`) and Continue on budget-stop notices
+  (`admin/src/components/features/channels/RunStopContinue.tsx`, `useContinueRun`);
+  the standalone Agents → Activity page and its `RunLifecyclePanel` were removed,
+  so the org-wide active-run list and the restart control have no admin surface
+  (the `GET /api/runs/active` and `POST /api/runs/:id/restart` endpoints remain,
+  API-only).
 - MCP connector management (REST, not JSON-RPC): `api/src/routes/mcp.ts`
 - MDNS/Bonjour — backend advertises `_nessie._tcp` for local network discovery
 

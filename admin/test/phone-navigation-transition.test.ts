@@ -97,7 +97,7 @@ test('pushes Admin destinations from the Admin menu and returns to it', () => {
     'forward',
   )
   assert.equal(
-    getPhoneNavigationDirection('/agents/activity', '/settings'),
+    getPhoneNavigationDirection('/agents/triggers', '/settings'),
     'back',
   )
 })
@@ -188,7 +188,7 @@ test('gives every phone detail route a deterministic in-app Back destination', (
     { label: 'Back to Dashboards', pathname: '/dashboards' },
   )
   assert.deepEqual(
-    getPhoneNavigationBackTarget('/agents/activity'),
+    getPhoneNavigationBackTarget('/agents/triggers'),
     { label: 'Back to Admin', pathname: '/settings' },
   )
   assert.deepEqual(
