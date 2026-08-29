@@ -360,7 +360,14 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const record = await mapMessageRecordWithAttachments(prisma, result.message)
+    // A channel manager may delete a message they were never entitled to read,
+    // so the record echoed back to them goes through the disclosure predicate
+    // like any other read.
+    const record = await mapMessageRecordWithAttachments(prisma, result.message, {
+      channelId: thread.channel.id,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
     await realtimeHub.publishWs(
       buildChannelRealtimeScopes({
         channelId: thread.channel.id,

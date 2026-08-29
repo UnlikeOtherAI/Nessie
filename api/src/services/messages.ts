@@ -1,6 +1,11 @@
 import { Prisma } from '@prisma/client'
 import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
-import { buildPrefixTsQuery, partitionByDisclosure, viewerSatisfiesBasis } from '@nessie/runtime'
+import {
+  buildPrefixTsQuery,
+  canUserReadDisclosureBasis,
+  partitionByDisclosure,
+  viewerSatisfiesBasis,
+} from '@nessie/runtime'
 import { resolveMessageViewer } from './disclosure-viewer.js'
 import { resolveGrantedScopeKeys } from './disclosure-grants.js'
 import {
@@ -488,9 +493,30 @@ export const mapMessageRecord = (
 export const mapMessageRecordWithAttachments = async (
   prisma: PrismaClient,
   message: MessageWithReactions,
+  // Who is reading, for the disclosure predicate. The list endpoint has always
+  // withheld restricted content; this single-message read did not, because the
+  // mapper was called with two arguments and `withheld` fell to its `false`
+  // default — handing the caller the verbatim content of a reply they are not
+  // entitled to, plus the share affordance for it. The admin hits this route on
+  // a cold deep-link into a reply thread, so it was reachable from the product.
+  // Omitting `viewer` keeps the unrestricted behaviour for internal callers that
+  // have already authorized the read.
+  viewer?: { channelId: string; organizationId: string; userId: string },
 ): Promise<ThreadMessageRecord> => {
   const counts = await loadAttachmentCounts(prisma, [message.id])
-  return mapThreadMessageRecord(message, counts.get(message.id) ?? 0)
+  const count = counts.get(message.id) ?? 0
+  if (!viewer || message.basisScopes.length === 0) {
+    return mapThreadMessageRecord(message, count)
+  }
+  const readable = await canUserReadDisclosureBasis(prisma, {
+    agentId: message.agentId,
+    basis: message.basisScopes,
+    channelId: viewer.channelId,
+    messageId: message.id,
+    organizationId: viewer.organizationId,
+    userId: viewer.userId,
+  })
+  return mapThreadMessageRecord(message, count, !readable)
 }
 
 type MessageSearchRow = {
