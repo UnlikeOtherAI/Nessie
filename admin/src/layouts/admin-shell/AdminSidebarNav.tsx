@@ -37,6 +37,13 @@ type AdminNavItem = {
    */
   visibleTo?: (viewer: AdminNavViewer) => boolean;
   exact?: boolean;
+  /**
+   * Extra route prefixes that also light this item up. The Agents entry owns
+   * the agent designer (`/agents/designer[/:id]`) — reached by New agent / Edit
+   * — so editing an agent keeps "Agents" active rather than lighting a separate
+   * item. Each entry matches its own path or `${path}/…`.
+   */
+  alsoActiveFor?: string[];
   /** W29: live count badge rendered beside the label (failed-runs triage). */
   badgeCount?: number;
 };
@@ -66,6 +73,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         path: '/agents',
         label: 'Agents',
         exact: true,
+        alsoActiveFor: ['/agents/designer'],
         icon: icon(
           <>
             <circle cx="12" cy="8" r="4" />
@@ -82,20 +90,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
             strokeLinecap="round"
             strokeLinejoin="round"
           />,
-        ),
-      },
-      {
-        path: '/agents/designer',
-        label: 'Designer',
-        icon: icon(
-          <>
-            <path
-              d="M14.7 6.3a4 4 0 105 5l-6.9 6.9a2 2 0 11-2.8-2.8l6.9-6.9z"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path d="M7 17l-1.5 1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </>,
         ),
       },
       {
@@ -397,6 +391,18 @@ const adminNavCookieName = (id: AdminNavGroupId) => `adminNavCollapsed-${id}`;
 export const isAdminNavItemVisible = (item: AdminNavItem, viewer: AdminNavViewer): boolean =>
   item.visibleTo ? item.visibleTo(viewer) : !item.ownerOnly || viewer.isOwner;
 
+/**
+ * Whether `pathname` lights up this item: its own path (exact or prefix) or any
+ * of its `alsoActiveFor` prefixes. So `/agents/designer/:id` keeps "Agents"
+ * active rather than a separate Designer entry.
+ */
+export const isAdminNavItemActive = (item: AdminNavItem, pathname: string): boolean => {
+  const matchesPrefix = (path: string) =>
+    pathname === path || pathname.startsWith(`${path}/`);
+  const ownMatch = item.exact ? pathname === item.path : matchesPrefix(item.path);
+  return ownMatch || (item.alsoActiveFor ?? []).some(matchesPrefix);
+};
+
 type AdminNavSectionProps = {
   group: AdminNavGroup;
   isCollapsed: boolean;
@@ -424,9 +430,7 @@ const AdminNavSection = ({
       {group.items
         .filter((item) => isAdminNavItemVisible(item, viewer))
         .map((item) => {
-          const isActive = item.exact
-            ? pathname === item.path
-            : pathname === item.path || pathname.startsWith(`${item.path}/`);
+          const isActive = isAdminNavItemActive(item, pathname);
           return (
             <Link
               key={item.path}
