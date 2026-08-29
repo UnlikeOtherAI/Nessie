@@ -7,6 +7,7 @@ export const ADMIN_ROUTE_PREFIXES = [
   '/settings',
   '/agents',
   '/workflows',
+  '/apps',
   '/mcp-app-store',
   '/approvals',
   '/audit',
