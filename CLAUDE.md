@@ -47,43 +47,6 @@ therefore scope per UOA organisation. Model, migration, and verification:
 the rule itself lives in [docs/brief.md](docs/brief.md) → "Current SSO identity
 invariant".
 
-## People and their agents — stewardship, and the tree as a read-time JOIN
-
-An agent belongs to a person: `Agent.ownerUserId` is their "virtual employee",
-and the **only** stored fact behind the org tree — people, roles, teams and
-lifecycle come from UOA live on every read. There is deliberately **no human
-reporting edge**: UOA's roster has no manager field, and an authority-deciding
-edge is the forbidden duplicate whatever table it sits in. Spec:
-[docs/plans/2026-08-29-people-and-their-agents.md](docs/plans/2026-08-29-people-and-their-agents.md).
-
-- **Tenancy is a database guarantee; liveness is not.** A composite FK
-  `(organization_id, owner_user_id) → organization_members` makes a cross-tenant
-  owner impossible, because `spawn_subtask` writes agents outside the
-  `createAgentRecord` chokepoint. `ON DELETE NO ACTION`, never Prisma's default
-  `SetNull` — on a composite key that blanks *every* referencing column. A CHECK
-  keeps ownership off system-managed and org-less agents. The FK proves the row
-  *exists*; deactivated rows are retained, so reads re-derive `deactivatedAt`.
-- **One predicate, two callers.** `buildOwnedAgentWhere` is shared by
-  `listAgentsForUser` and `isAgentVisibleToUser`. Both its conditions are
-  load-bearing: the live-membership join (the
-  branch widens by pointer equality, so without it a deactivated member keeps
-  seeing their agents) and `parentAgentId: null` (else owning one agent pours
-  every unreaped `spawn_subtask` child into that list forever). It also fixes an
-  existing hole: `includeUnbound` is owner-only, so a member could not see an
-  unbound agent they just created. `loadAgentChildren` likewise now takes the
-  viewer's scope. No backfill: nothing recorded who created an agent, so old
-  rows read `Unowned`; `agent.created`/`agent.owner_changed` now emit.
-- **The tree is `buildPeopleAgentsTree`** — a pure join of the live roster and
-  the entitlement-scoped agent list, on `/settings/members`, not a new page.
-  *Unowned* and *owned outside this workspace* stay separate buckets: the roster
-  is team-keyed, so a colleague on another team is indistinguishable from
-  someone who left. No hidden counts (they leak private-channel shape).
-  `WorkspaceMemberRecord.userId` resolves org-scoped
-  (`resolveLocalUserIdsByUoaSub`) — `User.uoaSub` is globally unique. Transfer
-  is org-owner-only on the existing `PUT /api/agents/:agentId` (not widened: it
-  also mutates prompt/tool policy/run limits), and needs target acceptance
-  once escalation delivery ships.
-
 ## Agent voice and reactions
 
 Agents answer at colleague length by default. The base system prompt
