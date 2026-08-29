@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import {
   useAgentActivity,
   useAgentChildren,
@@ -14,9 +14,9 @@ import { AgentTriggerPanel } from './AgentTriggerPanel'
 import { SubAgentTree } from './SubAgentTree'
 import { ToolExecutionLog } from './ToolExecutionLog'
 
-type Tab = 'activity' | 'sub-agents' | 'tools' | 'messages'
+type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages'
 
-const TABS: { id: Tab; label: string }[] = [
+const DETAIL_TABS: { id: Tab; label: string }[] = [
   { id: 'activity', label: 'Activity' },
   { id: 'sub-agents', label: 'Sub-Agents' },
   { id: 'tools', label: 'Tools' },
@@ -27,11 +27,18 @@ const PAGE_SIZE = 10
 
 type AgentDetailTabsProps = {
   agent: AgentRecord
+  // When provided, an "Edit" tab is prepended and selected first, so the agent
+  // detail page leads with editing and keeps the read-only panels behind it.
+  editSlot?: ReactNode
   onSelectAgent?: (agentId: string) => void
 }
 
-export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) => {
-  const [activeTab, setActiveTab] = useState<Tab>('activity')
+export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailTabsProps) => {
+  const tabs = useMemo(
+    () => (editSlot ? [{ id: 'edit' as Tab, label: 'Edit' }, ...DETAIL_TABS] : DETAIL_TABS),
+    [editSlot],
+  )
+  const [activeTab, setActiveTab] = useState<Tab>(editSlot ? 'edit' : 'activity')
   const [messagePage, setMessagePage] = useState(0)
 
   const { data: status } = useAgentStatus(agent.id)
@@ -59,13 +66,13 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
     setMessagePage(0)
   }
 
-  const activeIndex = TABS.findIndex((t) => t.id === activeTab)
+  const activeIndex = tabs.findIndex((t) => t.id === activeTab)
 
   return (
     <div className="flex h-full flex-col">
       <div className="relative flex-shrink-0 border-b border-[color:var(--sep)]">
         <div className="flex">
-          {TABS.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.id}
               className={[
@@ -84,7 +91,7 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
         <div
           className="absolute bottom-0 left-0 flex transition-transform duration-200 ease-out"
           style={{
-            width: `${100 / TABS.length}%`,
+            width: `${100 / tabs.length}%`,
             transform: `translateX(${activeIndex * 100}%)`,
           }}
         >
@@ -92,7 +99,21 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      {/* Kept mounted (hidden when inactive) so switching tabs never discards
+          in-progress edits or the design-assistant conversation. */}
+      {editSlot ? (
+        <div className={activeTab === 'edit' ? 'min-h-0 flex-1' : 'hidden'}>
+          {editSlot}
+        </div>
+      ) : null}
+
+      <div
+        className={
+          activeTab === 'edit'
+            ? 'hidden'
+            : 'flex-1 overflow-y-auto px-6 py-5'
+        }
+      >
         {activeTab === 'activity' && (
           <div className="grid gap-6">
             <section className="admin-card p-4">
