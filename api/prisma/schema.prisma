@@ -3020,6 +3020,13 @@ model McpServerInstance {
   credentialRef       String?                 @map("credential_ref")
   transportConfig     Json                    @default("{}") @map("transport_config")
   discoveredTools     Json                    @default("[]") @map("discovered_tools")
+  /// This connection's tools are default-OFF and need an explicit per-agent
+  /// grant (`worker` `isExposed`). Set when the App Store creates the
+  /// connection, because installing an app and letting an agent use it are two
+  /// decisions. A durable column rather than a stamp at the projection call
+  /// site: the OAuth callback and the generic refresh both re-project, and
+  /// would otherwise quietly widen the app on the next probe.
+  requiresExplicitToolGrant Boolean             @default(false) @map("requires_explicit_tool_grant")
   lifecycleState      McpServerLifecycleState @default(pending_setup) @map("lifecycle_state")
   healthLastCheckedAt DateTime?               @map("health_last_checked_at")
   healthFailureCount  Int                     @default(0) @map("health_failure_count")

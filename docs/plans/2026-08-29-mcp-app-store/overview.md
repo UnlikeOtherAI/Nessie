@@ -153,11 +153,57 @@ What the design turns on:
   the schema, rejected at ingest, and sanitised again on the way out; the same
   gate was applied to `library.ts`, where the identical vector was still open.
 
+## The connect flow (Phases 4–8)
+
+**Connect orchestrates what already existed; it is not a second stack.** Nessie
+had RFC 9728 / RFC 8414 / OIDC discovery, PKCE, RFC 8707 resource indicators,
+RFC 7591 dynamic registration, an AES-256-GCM token vault with refresh inside
+the resolver, and `createInstance` with every scope, lock and SSRF guard.
+`POST /api/apps/:slug/connect` sequences them: create the instance → probe → on
+a 401 with OAuth, `startOAuth`. Three genuine gaps were closed:
+
+- **Static-mode OAuth had no PKCE and no resource indicator.** It now mints a
+  verifier, sends `code_challenge`/S256, and — the half that was missed first
+  time — `completeOAuth` sends the verifier back. Without that, RFC 7636 §4.6
+  says a server that recorded the challenge MUST reject the exchange, so every
+  static-mode connector would have failed at the last step. The old completion
+  tests used a stub that ignored its arguments, which is why nothing caught it;
+  the new test asserts the verifier's SHA-256 equals the challenge.
+- **No CIMD.** `GET /.well-known/oauth-client` publishes an OAuth Client ID
+  Metadata Document, and client resolution now follows the spec's preference:
+  pre-registered → CIMD (only when the AS advertises it) → DCR → operator.
+- **A successful sign-in read as a failure.** Nothing probed after the callback
+  stored the credential, so the instance stayed `pending_setup` and the client's
+  poll timed out. `completeOAuth` now probes; a probe failure is deliberately
+  not fatal, because the authorization really did succeed.
+
+**The callback is still a constant HTML page.** No redirect back to the SPA: a
+caller-supplied return URL is an open-redirect surface this feature does not
+need. The page posts a fixed message to its opener with the target origin
+resolved server-side from configuration, and the popup is opened with
+`noopener` — its first navigation is the *third-party* authorize URL, so an
+opener handle is a reverse-tabnabbing vector. Completion is therefore detected
+by the status poll on focus, with the message as the fast path.
+
+**Installing an app is not the same decision as letting an agent use it.**
+`McpServerInstance.requiresExplicitToolGrant` is set when the App Store creates
+a connection, and carried into `projectMcpToolDescriptors` — on both the create
+and update branches, or a capability discovered by a later refresh would project
+open and quietly widen the app. The worker's existing `isExposed` then keeps
+those tools invisible until an agent's `toolPolicy` carries an explicit allow.
+No new grant table: `ToolGrant` rows exist but the worker never reads them.
+Default `false`, so every connector that predates this keeps exactly the
+exposure it has.
+
+Verified against the live Context7 MCP server: connect created the instance,
+probed, discovered 2 capabilities, and both projected rows carry
+`requiresExplicitGrant`. Resource and prompt counts read 0 there because the
+server does not advertise those capabilities — the gate answers from the
+handshake rather than sending a request that would error.
+
 ## Not built yet
 
-No connect flow. The detail CTA links to the existing install path on
-`/mcp-app-store`, which already works. The universal OAuth flow, per-agent
-grants, and custom-server addition are Phases 4–8. Icon caching is also
-outstanding — `iconsCached` is always 0, because a cached icon has to go
+Icon caching — `iconsCached` is always 0, because a cached icon has to go
 through the `FileService` chokepoint and a raw upstream icon URL must never
-reach a browser.
+reach a browser. Resource and prompt counts are `null` (undetermined, never
+guessed as 0) for any server whose listings could not be read.

@@ -1,5 +1,3 @@
-import crypto from 'node:crypto'
-
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type {
   AuthorizedActionContext,
@@ -7,22 +5,47 @@ import type {
 } from '@nessie/schemas'
 
 import { getCatalogEntry, ensureAuthConfigMatchesMethod } from './mcp-catalog.js'
-import { getInstance } from './mcp-instances.js'
+import { getInstance, type McpInstanceRow } from './mcp-instances.js'
 import { isManagedIntegrationCatalogEntry } from './managed-products.js'
 import { resolveInstanceTransport } from './mcp-instance-probe.js'
 import {
-  McpSecurityError,
   assertMcpAuthUrlsSafe,
   assertMcpUrlSafe,
   type McpUrlSafetyOptions,
 } from './mcp-security.js'
 import {
+  canonicalResource,
   discoverOAuthServerConfig,
   generatePkcePair,
   registerDynamicClient,
   type OAuthDiscoveryOptions,
   type OAuthServerConfig,
 } from './oauth-discovery.js'
+import {
+  resolveOAuthClientStrategy,
+  type OAuthClientResolutionConfig,
+  type OAuthClientStrategy,
+} from './oauth-client-resolution.js'
+import {
+  MCP_OAUTH_ERROR_CODES,
+  McpOAuthError,
+  mapOAuthSecurityError,
+} from './mcp-oauth-errors.js'
+import {
+  STATE_TTL_MS,
+  defaultOAuthStateStore,
+  generateState,
+  type OAuthStateStore,
+} from './mcp-oauth-state.js'
+
+/**
+ * Client selection and state persistence are halves of starting a flow, so the
+ * package barrel reaches both through this module — one export path each, no
+ * second star export to keep in step.
+ */
+export * from './mcp-oauth-errors.js'
+export * from './oauth-client-resolution.js'
+export * from './mcp-oauth-state.js'
 
 /**
  * OAuth handshake for MCP server instances. Two modes share one entry point:
@@ -32,11 +55,15 @@ import {
  *   The original flow, kept for vendors without dynamic registration.
  * - **Dynamic** (MCP authorization spec 2025-06-18) — the config carries only
  *   `{ method: "oauth2" }`. We discover the protected-resource + authorization
- *   -server metadata from the instance's endpoint (RFC 9728 / RFC 8414),
- *   register a public client on the fly when the server supports RFC 7591
- *   (one per organization × issuer, persisted in `mcp_oauth_clients`), and run
- *   authorization-code **with PKCE (S256)** and the RFC 8707 `resource`
- *   indicator.
+ *   -server metadata from the instance's endpoint (RFC 9728 / RFC 8414), then
+ *   pick a client through the one preference order in
+ *   `oauth-client-resolution.ts` (pre-registered → client-ID metadata document
+ *   → RFC 7591 registration → operator-supplied).
+ *
+ * Both modes run authorization-code **with PKCE (S256)** and the RFC 8707
+ * `resource` indicator. Static mode had neither until the App Store connect
+ * flow; a pre-registered client is not a reason to redeem a stolen code
+ * without proof of possession.
  *
  * State is one-shot and Postgres-backed (`mcp_oauth_states`) so a flow minted
  * by one process (e.g. the worker's personal assistant) can be completed by
@@ -46,139 +73,6 @@ import {
  *
  * The service NEVER returns or logs raw access/refresh tokens.
  */
-
-export const MCP_OAUTH_ERROR_CODES = {
-  INSTANCE_NOT_FOUND: 'MCP_OAUTH_INSTANCE_NOT_FOUND',
-  CATALOG_ENTRY_NOT_FOUND: 'MCP_OAUTH_CATALOG_ENTRY_NOT_FOUND',
-  NOT_OAUTH2: 'MCP_OAUTH_NOT_OAUTH2',
-  DISCOVERY_FAILED: 'MCP_OAUTH_DISCOVERY_FAILED',
-  REGISTRATION_FAILED: 'MCP_OAUTH_REGISTRATION_FAILED',
-  STATE_INVALID: 'MCP_OAUTH_STATE_INVALID',
-  STATE_EXPIRED: 'MCP_OAUTH_STATE_EXPIRED',
-  URL_UNSAFE: 'MCP_OAUTH_URL_UNSAFE',
-  TOKEN_EXCHANGE_FAILED: 'MCP_OAUTH_TOKEN_EXCHANGE_FAILED',
-  TOKEN_RESPONSE_INVALID: 'MCP_OAUTH_TOKEN_RESPONSE_INVALID',
-} as const
-
-export class McpOAuthError extends Error {
-  override readonly name = 'McpOAuthError'
-
-  constructor(public readonly code: string, message: string) {
-    super(message)
-  }
-}
-
-/**
- * One-shot authorization state. Carries everything the callback needs so the
- * dynamic flow never has to re-discover metadata (which could have changed
- * between start and callback — TOCTOU on the token endpoint).
- */
-export type OAuthStateRecord = {
-  instanceId: string
-  organizationId: string
-  actorId: string
-  /** epoch ms when this state token expires */
-  expiresAt: number
-  mode: 'static' | 'dynamic'
-  redirectUri: string
-  /** PKCE verifier (dynamic mode always; static mode never — back-compat). */
-  codeVerifier?: string
-  /** Dynamic-mode client + endpoints resolved at start time. */
-  clientId?: string
-  clientSecretRef?: string
-  tokenEndpoint?: string
-  resource?: string
-}
-
-export type OAuthStateStore = {
-  put: (token: string, record: OAuthStateRecord) => Promise<void>
-  take: (token: string) => Promise<OAuthStateRecord | null>
-}
-
-/** In-memory state store for unit tests / single-process fallbacks. */
-export const createInMemoryStateStore = (): OAuthStateStore => {
-  const map = new Map<string, OAuthStateRecord>()
-
-  const purgeExpired = (now: number): void => {
-    for (const [token, record] of map.entries()) {
-      if (record.expiresAt <= now) {
-        map.delete(token)
-      }
-    }
-  }
-
-  return {
-    put: async (token, record) => {
-      purgeExpired(Date.now())
-      map.set(token, record)
-    },
-    take: async (token) => {
-      const now = Date.now()
-      purgeExpired(now)
-      const record = map.get(token)
-      if (!record) return null
-      // Tokens are one-shot — delete on read regardless of expiry verdict.
-      map.delete(token)
-      if (record.expiresAt <= now) return null
-      return record
-    },
-  }
-}
-
-/**
- * Postgres-backed state store (`mcp_oauth_states`) — the production default.
- * Works across processes: the worker's personal assistant can mint a flow the
- * API's callback completes. Rows are deleted on first read (one-shot) and
- * expired rows are purged opportunistically on every write.
- */
-export const createPgOAuthStateStore = (prisma: PrismaClient): OAuthStateStore => ({
-  put: async (token, record) => {
-    await prisma.mcpOAuthState.deleteMany({
-      where: { expiresAt: { lte: new Date() } },
-    })
-    const { expiresAt, ...payload } = record
-    await prisma.mcpOAuthState.create({
-      data: {
-        token,
-        payload: payload as unknown as Prisma.InputJsonValue,
-        expiresAt: new Date(expiresAt),
-      },
-    })
-  },
-  take: async (token) => {
-    let row: { payload: unknown; expiresAt: Date }
-    try {
-      row = await prisma.mcpOAuthState.delete({ where: { token } })
-    } catch {
-      return null
-    }
-    if (row.expiresAt.getTime() <= Date.now()) return null
-    const payload = row.payload as Omit<OAuthStateRecord, 'expiresAt'>
-    return { ...payload, expiresAt: row.expiresAt.getTime() }
-  },
-})
-
-/**
- * Per-process singleton in-memory store, kept as the zero-config default for
- * tests. Routes and the worker wire `createPgOAuthStateStore` explicitly.
- */
-export const defaultOAuthStateStore = createInMemoryStateStore()
-
-const STATE_TTL_MS = 10 * 60 * 1000 // 10 minutes per task #20 spec.
-
-export const mapOAuthSecurityError = (error: unknown): never => {
-  if (error instanceof McpSecurityError) {
-    throw new McpOAuthError(MCP_OAUTH_ERROR_CODES.URL_UNSAFE, error.message)
-  }
-  throw error
-}
-
-/**
- * Mint a cryptographically random `state` parameter. `base64url` keeps the
- * token URL-safe so providers don't mangle it in redirects.
- */
-export const generateState = (): string =>
-  crypto.randomBytes(32).toString('base64url')
 
 /**
  * Contract for persisting raw token material behind an opaque ref. The
@@ -304,6 +198,72 @@ export const ensureDynamicClient = async (
   return { clientId: row.clientId, clientSecretRef: row.clientSecretRef }
 }
 
+/**
+ * Turn a resolved strategy into the (clientId, clientSecretRef) pair the state
+ * record carries. A secret we are handed in plaintext goes into the encrypted
+ * vault first: `mcp_oauth_states.payload` is ordinary application data and
+ * must never hold credential material.
+ */
+const clientForStrategy = async (
+  prisma: PrismaClient,
+  strategy: OAuthClientStrategy,
+  context: {
+    organizationId: string
+    config: OAuthServerConfig
+    redirectUri: string
+    secretStore?: SecretStore
+    discovery?: OAuthDiscoveryOptions
+  },
+): Promise<{ clientId: string; clientSecretRef: string | null }> => {
+  switch (strategy.source) {
+    case 'dynamic_registration':
+      return ensureDynamicClient(prisma, context)
+    case 'client_id_metadata_document':
+      // The document's URL is the whole identity — nothing registered, no secret.
+      return { clientId: strategy.clientId, clientSecretRef: null }
+    case 'pre_registered':
+    case 'operator': {
+      if (!strategy.clientSecret) {
+        return { clientId: strategy.clientId, clientSecretRef: null }
+      }
+      if (!context.secretStore) {
+        throw new McpOAuthError(
+          MCP_OAUTH_ERROR_CODES.REGISTRATION_FAILED,
+          'A client secret is configured for this authorization server but no '
+            + 'secret store is available to hold it',
+        )
+      }
+      return {
+        clientId: strategy.clientId,
+        clientSecretRef: await context.secretStore.put({
+          accessToken: strategy.clientSecret,
+        }),
+      }
+    }
+  }
+}
+
+/**
+ * RFC 8707 resource indicator for the static path, taken from the instance's
+ * own transport. Omitted rather than fatal when that transport is not an
+ * HTTP/SSE remote or does not parse: a malformed transport is the probe's
+ * error to report, and an authorize URL is not where a person should meet it.
+ */
+const staticResourceIndicator = (
+  instance: McpInstanceRow,
+  catalogEntry: { defaultTransportConfig: unknown },
+): string | undefined => {
+  try {
+    const transport = resolveInstanceTransport(instance, catalogEntry)
+    if (transport.transport !== 'http' && transport.transport !== 'sse') {
+      return undefined
+    }
+    return canonicalResource(transport.url)
+  } catch {
+    return undefined
+  }
+}
+
 // ─── start ──────────────────────────────────────────────────────────────────
 
 export type StartOAuthInput = {
@@ -321,6 +281,12 @@ export type StartOAuthInput = {
   secretStore?: SecretStore
   discovery?: OAuthDiscoveryOptions
   resolveHost?: McpUrlSafetyOptions['resolveHost']
+  /**
+   * Deployment client configuration (published CIMD document, operator-named
+   * clients). Omitted, resolution falls through to dynamic registration —
+   * exactly what every existing caller already gets.
+   */
+  clientResolution?: OAuthClientResolutionConfig
 }
 
 export type StartOAuthResult = {
@@ -401,6 +367,25 @@ export const startOAuth = async (
       mapOAuthSecurityError(error)
     }
 
+    // Tier 1 of the one preference order: a client registered for this app by
+    // a human, so no discovered mechanism can outrank it.
+    const strategy = resolveOAuthClientStrategy({
+      preRegistered: { clientId: parsed.clientId, clientSecret: parsed.clientSecret },
+      config: input.clientResolution,
+    })
+    if (strategy.source !== 'pre_registered') {
+      throw new McpOAuthError(
+        MCP_OAUTH_ERROR_CODES.REGISTRATION_FAILED,
+        'Static OAuth client could not be resolved for this catalog entry',
+      )
+    }
+
+    // PKCE (RFC 7636) is not optional here just because the client was
+    // pre-registered: without it a stolen authorization code is redeemable by
+    // anyone who reaches the token endpoint.
+    const pkce = generatePkcePair()
+    const resource = staticResourceIndicator(instance, catalogEntry)
+
     await store.put(token, {
       instanceId,
       organizationId,
@@ -408,14 +393,24 @@ export const startOAuth = async (
       expiresAt: Date.now() + STATE_TTL_MS,
       mode: 'static',
       redirectUri: callbackUrl,
+      codeVerifier: pkce.verifier,
+      ...(resource ? { resource } : {}),
     })
 
     // Per RFC 6749 §4.1.1 the authorization request MUST carry `client_id`.
     const authUrl = new URL(parsed.authorizationUrl)
     authUrl.searchParams.set('response_type', 'code')
-    authUrl.searchParams.set('client_id', parsed.clientId)
+    authUrl.searchParams.set('client_id', strategy.clientId)
     authUrl.searchParams.set('state', token)
     authUrl.searchParams.set('redirect_uri', callbackUrl)
+    authUrl.searchParams.set('code_challenge', pkce.challenge)
+    authUrl.searchParams.set('code_challenge_method', 'S256')
+    // RFC 8707: bind the token to this MCP server. An authorization server
+    // that has never heard of the parameter MUST ignore it (RFC 6749 §3.1),
+    // so this is safe against the vendors that predate the indicator.
+    if (resource) {
+      authUrl.searchParams.set('resource', resource)
+    }
     if (parsed.scopes.length > 0) {
       authUrl.searchParams.set('scope', parsed.scopes.join(' '))
     }
@@ -448,7 +443,16 @@ export const startOAuth = async (
     mapOAuthSecurityError(error)
   }
 
-  const client = await ensureDynamicClient(prisma, {
+  // Tiers 2–4: only now do we know what this authorization server supports.
+  const strategy = resolveOAuthClientStrategy({
+    server: {
+      issuer: config.issuer,
+      registrationEndpoint: config.registrationEndpoint,
+      supportsClientIdMetadataDocument: config.supportsClientIdMetadataDocument,
+    },
+    config: input.clientResolution,
+  })
+  const client = await clientForStrategy(prisma, strategy, {
     organizationId,
     config,
     redirectUri: callbackUrl,

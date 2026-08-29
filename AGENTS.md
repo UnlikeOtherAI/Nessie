@@ -288,6 +288,22 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   restating it, so a member-readable surface can never name an agent
   `GET /api/agents` would withhold. Spec:
   `docs/plans/2026-08-29-mcp-app-store/overview.md`.
+- **App Store connect orchestrates the existing OAuth/instance machinery; it is
+  never a second stack.** `POST /api/apps/:slug/connect` sequences
+  `createInstance` → probe → `startOAuth`. PKCE must be present on BOTH legs —
+  sending `code_challenge` without returning `code_verifier` makes any RFC 7636
+  §4.6 server reject the exchange, and the completion tests that used an
+  argument-ignoring stub are why that shipped unnoticed once. The OAuth callback
+  stays a **constant HTML page that never redirects** (a caller-supplied return
+  URL is an open redirect); it posts a fixed message to its opener at a
+  server-resolved origin, and the popup carries `noopener` because its first
+  navigation is the third-party authorize URL, not ours. **Installing an app is
+  not granting it**: `McpServerInstance.requiresExplicitToolGrant` (default
+  false) is carried into `projectMcpToolDescriptors` on both the create and
+  update branches — update too, or a capability discovered by a later refresh
+  projects open and silently widens the app — and the worker's existing
+  `isExposed` enforces default-OFF. Never add a grant table: `ToolGrant` rows
+  exist and the worker never reads them.
 - MCP connector management logic (catalog, instances, probe, projection,
   credentials, secret store, library, discovery, OAuth) lives in
   `@nessie/mcp-manage` and is shared by the API routes and the worker's

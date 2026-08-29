@@ -548,60 +548,36 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 ## MCP App Store — `/apps`
 
 Installing an integration should feel like installing an app in Slack, not like
-configuring a server. `/apps` is that surface, and it is **a second face on
-`McpCatalogEntry`, never a second catalogue**: one row is one app, so `/apps`
-and the existing `/mcp-app-store` "Connectors" page (which stays, as the
-governance surface for review, install scopes, credentials, and the approval
-queue) cannot drift into two sources of truth. Product vocabulary on `/apps`:
-MCP server → **App**, connection → **Connected account**, `tools/list` →
-**Capabilities**.
-
-Migration `20260829090000_mcp_app_store_catalogue` adds the store dimension to
-`mcp_catalog_entries` (curated copy, icon reference, category/tags/aliases,
-trust, moderation state, source, distribution, featured order, registry
-provenance, cached capability counts) plus `mcp_registry_sync_runs` and
-`mcp_server_health`. Additive only — installed connectors are untouched.
-
-- **`slug` is the immutable identity behind `/apps/:slug`.** `name` is mutable
-  and unique only among public entries. The backfill trims separators *inside*
-  the expression its duplicate count reads (trimming afterwards makes
-  `"Notion (dev)"` and `"Notion dev"` collide only after de-duplication and
-  aborts the migration), and nulls any residual duplicate rather than failing;
-  the store resolves an app by slug **or** id, so a null slug stays reachable.
-- **`search_vector` is trigger-maintained, not a generated column** — Postgres
-  refuses the generation expression (`42P17`) because `array_to_string` is only
-  STABLE. The trigger keeps the property that mattered: no write path can
-  forget it.
-- **Ranking is Postgres's job**, weighted name/aliases A, publisher B, tags C,
-  prose D, with a `pg_trgm` typo fallback. This is what makes "pentest" find
-  DeepTest. **The client filters nothing and re-sorts nothing** — re-scoring in
-  the browser drops the fuzzy matches only the database can find.
-- **Store visibility** is `moderationState IN ('curated','approved')` and
-  `trustLevel <> 'blocked'`, composed with `catalogTenancyWhere`. `curated`
-  additionally requires public+published or caller-owned, because the migration
-  backfills `curated` onto every pre-existing non-public row and a bare `IN`
-  would list one member's private draft to the whole organisation. A
-  human-authored entry is created `curated` with a resolved slug so the page's
-  own "Add a custom app" produces something the page can show.
-- **The store reads a decision; it never re-derives one from `status`.**
-  Approval writes `moderationState: 'approved'`, rejection and deprecation write
-  `'hidden'` (`mcp-catalog-review.ts`, `deprecateCatalogEntry`). Submission
-  deliberately writes nothing — a submission is a request, not a decision, and
-  laundering the state on submit would let an owner re-list an entry a reviewer
-  had removed. Without those writes the two surfaces drift: a *rejected*
-  connector kept `curated` and went on rendering as a normal app card to its
-  owner, and a *deprecated* one kept an enabled Connect button pointing at an
-  install that no longer existed. Legacy rows are repaired by
-  `20260829140000_app_store_rejected_moderation_state`.
-
-Service in `packages/mcp-manage/src/apps/` (shared, because `api/src/services/*`
-is unreachable from the worker); routes `GET /api/apps`, `/api/apps/:slug`,
-`/api/apps/categories` (member-level, not owner-gated); seed
-`pnpm --filter @nessie/api seed:apps`. Every response goes through a presenter
-that cannot emit a `credentialRef`, auth/transport config, endpoint URL, or a
-raw upstream icon URL. No connect flow yet — the detail CTA links to the
-existing install path. Spec:
+configuring a server. `/apps` is that surface, filled from the official MCP
+Registry (~5,500 apps). Full spec, and the reasoning behind each rule:
 [docs/plans/2026-08-29-mcp-app-store/overview.md](docs/plans/2026-08-29-mcp-app-store/overview.md).
+
+The invariants worth knowing before touching it:
+
+- **A second face on `McpCatalogEntry`, never a second catalogue.** One row is
+  one app, so `/apps` and the `/mcp-app-store` governance page cannot drift.
+- **The store reads a decision, never re-derives one from `status`.** Approval
+  writes `approved`; rejection and deprecation write `hidden`; submission writes
+  nothing. Skipping those writes let a rejected connector keep rendering to its
+  owner and a deprecated one keep an enabled Connect button.
+- **Ranking is Postgres's job** (name/aliases A, publisher B, tags C, prose D,
+  plus a `pg_trgm` typo fallback). **The client filters nothing and re-sorts
+  nothing** — re-scoring in the browser drops the fuzzy matches only the index
+  can find. `search_vector` is trigger-maintained, not generated (`42P17`).
+- **Ingested rows are always `community`.** Trust decided from the advertised
+  endpoint was forgeable: the record author picks that URL.
+- **Connect orchestrates existing machinery, never a second stack** —
+  `createInstance` → probe → `startOAuth`. PKCE must be on BOTH legs; the
+  callback stays a constant page that never redirects, posting a fixed message
+  to its opener at a server-resolved origin, and the popup carries `noopener`.
+- **Installing is not granting.** `requiresExplicitToolGrant` flows into
+  `projectMcpToolDescriptors` on create *and* update, so the worker's
+  `isExposed` keeps those tools off until an agent's `toolPolicy` allows them.
+  Never add a grant table — `ToolGrant` exists and the worker never reads it.
+- Every `/api/apps` response goes through a presenter that cannot emit a
+  `credentialRef`, auth/transport config, endpoint URL, or a raw upstream icon
+  URL. Service in `packages/mcp-manage/src/apps/`; seeds
+  `pnpm --filter @nessie/api seed:apps` and `sync:registry`.
 
 ## MCP Integration
 

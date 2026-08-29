@@ -14,6 +14,7 @@ export type {
   McpStdioSpec,
   McpHttpSpec,
   McpSseSpec,
+  McpServerCapabilities,
   McpToolDescriptor,
   McpToolResult,
   McpHealth,

@@ -6,12 +6,15 @@ import {
   getCatalogEntry,
 } from './mcp-catalog.js'
 import { getInstance, resolveMcpUserAccess } from './mcp-instances.js'
+import type { ManagerFactory } from './mcp-instance-probe.js'
+import { testInstance } from './mcp-instance-testing.js'
 import {
   assertMcpAuthUrlsSafe,
   mcpSafeFetch,
   type McpUrlSafetyOptions,
 } from './mcp-security.js'
 import { isManagedIntegrationCatalogEntry } from './managed-products.js'
+import type { SecretResolver } from './secret-resolver.js'
 import {
   MCP_OAUTH_ERROR_CODES,
   McpOAuthError,
@@ -123,9 +126,17 @@ export type CompleteOAuthInput = {
   prisma: PrismaClient
   store?: OAuthStateStore
   secretStore: SecretStore
-  /** Resolves a dynamic client's secret ref, when one was issued. */
-  secretResolver?: { resolve: (ref: string) => Promise<string | null> }
+  /**
+   * Resolves a dynamic client's secret ref during the exchange, and the token
+   * this callback just stored during the probe that follows it.
+   */
+  secretResolver?: SecretResolver
   tokenExchange?: TokenExchangeFn
+  /**
+   * Probe seam, exactly as `testInstance` takes it — so the post-exchange
+   * handshake is exercisable offline instead of only in production.
+   */
+  managerFactory?: ManagerFactory
   state: string
   code: string
   callbackUrl: string
@@ -138,9 +149,48 @@ export type CompleteOAuthResult = {
 }
 
 /**
- * Consume one-shot state, exchange the code, and persist the resulting token
- * bundle. Managed first-party products reject old OAuth callbacks before any
- * exchange, keeping their deployment app credentials authoritative.
+ * Finish the connection now that a credential exists: probe the server with
+ * it, which is what moves the instance off `pending_setup` and projects its
+ * tools. Without this the App Store reads the row as `connecting` forever, so
+ * a person who has just signed in successfully watches their verification poll
+ * exhaust and is told nothing was saved — while Capabilities and Agents stay
+ * empty because nothing was ever projected.
+ *
+ * This calls `testInstance` directly rather than a hook the caller supplies.
+ * An optional hook would fail open and silently — a caller that forgot to pass
+ * one reproduces exactly the defect being fixed here, on a path where the
+ * symptom is a false failure message rather than an exception. The import is
+ * also not a dependency inversion: `mcp-instance-testing` imports nothing from
+ * the OAuth layer, so the edge is acyclic and runs the same direction as this
+ * module's existing `mcp-instances` / `mcp-catalog` imports.
+ *
+ * A probe failure is deliberately swallowed. The authorization really did
+ * succeed and the token really is stored, so failing the callback would tell
+ * the person the opposite of what happened; `testInstance` has already written
+ * the failure and its reason onto the instance row, which is where the
+ * connections surface reads it from. Writing a second lifecycle state here
+ * would fork that one writer.
+ */
+const probeStoredCredential = async (
+  input: Pick<CompleteOAuthInput, 'prisma' | 'secretResolver' | 'managerFactory'>,
+  target: { organizationId: string; instanceId: string; probeUserId: string },
+): Promise<void> => {
+  try {
+    await testInstance(input.prisma, target.organizationId, target.instanceId, {
+      probeUserId: target.probeUserId,
+      secretResolver: input.secretResolver,
+      managerFactory: input.managerFactory,
+    })
+  } catch {
+    // Intentionally terminal — see the doc comment above.
+  }
+}
+
+/**
+ * Consume one-shot state, exchange the code, persist the resulting token
+ * bundle, and probe the instance with it so the connection ends in a state a
+ * person can act on. Managed first-party products reject old OAuth callbacks
+ * before any exchange, keeping their deployment app credentials authoritative.
  */
 export const completeOAuth = async (
   input: CompleteOAuthInput,
@@ -246,6 +296,16 @@ export const completeOAuth = async (
       redirectUri: record.redirectUri,
       clientId: parsed.clientId,
       clientSecret: parsed.clientSecret,
+      // `startOAuth` authorizes static mode with a PKCE challenge too, and per
+      // RFC 7636 §4.6 a server that recorded one MUST reject a token request
+      // that omits its verifier. Sending the challenge and then withholding
+      // the verifier fails every static-mode connector at the last step — and
+      // proves nothing on a server lenient enough to let it through.
+      codeVerifier: record.codeVerifier,
+      // RFC 8707: the token request repeats the resource the authorization
+      // request was bound to, or the server may mint a token for a different
+      // audience than the one the person approved.
+      resource: record.resource,
       resolveHost: input.resolveHost,
     }
   }
@@ -285,6 +345,12 @@ export const completeOAuth = async (
       update: { credentialRef },
     })
   }
+
+  await probeStoredCredential(input, {
+    organizationId: record.organizationId,
+    instanceId: record.instanceId,
+    probeUserId: record.actorId,
+  })
   return { instanceId: record.instanceId }
 }
 
