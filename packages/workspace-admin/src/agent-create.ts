@@ -116,7 +116,7 @@ export type CreateAgentRecordInput = {
  * and to catch deactivation, rather than to be the only line of defence.
  */
 export const assertAgentOwnerIsActiveMember = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
   ownerUserId: string | undefined,
 ): Promise<void> => {

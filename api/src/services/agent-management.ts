@@ -47,6 +47,8 @@ export const updateAgentRecord = async (
     effort?: AgentEffort
     model?: string
     name?: string
+    /** undefined = leave stewardship alone; null = return to the unowned pool. */
+    ownerUserId?: string | null
     provider?: string
     role?: string
     runLimits?: AgentRunLimits | null
@@ -84,6 +86,18 @@ export const updateAgentRecord = async (
           existing.toolPolicy,
           input.toolPolicy,
         )
+
+    // A system-managed agent has no steward by construction (the CHECK would
+    // refuse), and a transfer target must be an active member of THIS agent's
+    // organization — refused in words here rather than as a raw constraint
+    // violation.
+    if (input.ownerUserId !== undefined && !existing.systemManaged) {
+      await assertAgentOwnerIsActiveMember(
+        tx,
+        input.organizationId,
+        input.ownerUserId ?? undefined,
+      )
+    }
     const agent = await tx.agent.update({
       where: { id: agentId },
       data: {
@@ -94,6 +108,11 @@ export const updateAgentRecord = async (
         name: existing.systemManaged
           ? existing.name
           : input.name ?? existing.name,
+        ownerUserId: existing.systemManaged
+          ? existing.ownerUserId
+          : input.ownerUserId === undefined
+            ? existing.ownerUserId
+            : input.ownerUserId,
         provider: input.provider ?? existing.provider,
         role: input.role ?? existing.role,
         runLimits: runLimitsWriteValue(input.runLimits),

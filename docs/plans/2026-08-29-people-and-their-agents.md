@@ -1,6 +1,7 @@
 # People and their agents
 
-**Status:** design — approved direction, not yet started
+**Status:** phases 1–2 **implemented** (2026-08-29). Phase 3 blocked on an
+entitlement decision; phase 4 not scheduled — see "What is missing".
 **Date:** 2026-08-29
 **Supersedes:** [docs/done/2026-08-29-org-chain-of-command-superseded.md](../done/2026-08-29-org-chain-of-command-superseded.md)
 (the rejected "chain of command" plan and its invented manager edge)
@@ -610,6 +611,24 @@ escalation delivery ships**, not filed alongside the cosmetic defects.
   constraint spans lines 57-63 of the 20260415110000 migration.
 
 ## Phases
+
+> **Status (2026-08-29): phases 1 and 2 landed** on `feat/people-and-their-agents`.
+> Migration `20260829170000_agent_owner_stewardship`; `Agent.ownerUserId` with
+> the composite tenancy FK and the CHECK; all four writers; the owner projection
+> on `AgentRecord`; `buildOwnedAgentWhere` shared by `listAgentsForUser` and
+> `isAgentVisibleToUser`; the `loadAgentChildren` visibility scope;
+> `agent.created` / `agent.owner_changed` audit plus the `agent.updated`
+> realtime event; org-scoped `WorkspaceMemberRecord.userId`; owner-gated
+> transfer on the existing `PUT`; the owner cell on `/agents`; and the tree on
+> `/settings/members`.
+>
+> Two deviations from the text below, both deliberate:
+> **transfer is org-owner-only and has no acceptance step**, because the route's
+> existing `requireOwner` was not widened (widening it would hand every steward
+> the config mutations that share the endpoint) and because ownership currently
+> decides visibility and attribution only — the coercion vector it guards
+> against arrives with escalation delivery, which is not built. Acceptance
+> becomes mandatory at that point, not before.
 
 1. **Ownership exists** — migration (column, composite FK, CHECK, index), the
    four writers, the owner projection with a phase-1-honest `ownerState`, the

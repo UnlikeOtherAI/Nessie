@@ -10,6 +10,7 @@ import {
   UpdateAgentBodySchema,
   UpdateAgentAvatarBodySchema,
 } from '../contracts.js'
+import { parseAgentId } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import {
@@ -77,6 +78,7 @@ const validateAgentAvatarAttachment = async (input: {
 export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
     prisma,
+    realtimeHub,
     requireActorContext,
     requireOwner,
     getChannelIfMember,
@@ -253,6 +255,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       },
       select: {
         model: true,
+        ownerUserId: true,
         provider: true,
         systemManaged: true,
       },
@@ -298,6 +301,31 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
+    }
+
+    // A transfer changes who can see this agent at all, so it is recorded in
+    // the tamper-evident chain (a column overwrite keeps no history of its own)
+    // and broadcast, so a newly-owned agent appears without a manual refresh.
+    const nextOwnerUserId = agent.ownerUserId ?? null
+    if (body.ownerUserId !== undefined && nextOwnerUserId !== existingAgent.ownerUserId) {
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'agent.owner_changed',
+        metadata: {
+          nextOwnerUserId,
+          previousOwnerUserId: existingAgent.ownerUserId,
+        },
+        outcome: 'success',
+        resourceId: agentId,
+        resourceType: 'agent',
+      })
+      await realtimeHub.publishWs(
+        [
+          { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+          { kind: 'agent', agentId: parseAgentId(agentId) },
+        ],
+        { data: { agentId: parseAgentId(agentId) }, event: 'agent.updated' },
+      )
     }
 
     return createApiResponse(AgentRecordSchema.parse(agent))

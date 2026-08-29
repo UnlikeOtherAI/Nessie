@@ -59,6 +59,13 @@ const teams: TeamRow[] = [
 
 const makePrisma = (): PrismaClient =>
   ({
+    // The roster response attaches each person's local principal id, resolved
+    // org-scoped. Nobody in this fixture has ever signed in locally, so the
+    // lookup finds nothing and every row keeps only its UOA subject — which is
+    // exactly the shape these assertions expect.
+    user: {
+      findMany: async () => [],
+    },
     team: {
       findFirst: async ({
         where,

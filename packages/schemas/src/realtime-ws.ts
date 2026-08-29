@@ -55,6 +55,13 @@ export type WsEventMap = {
     success: boolean
   }
   'agent.spawned': { parentId: AgentId; childId: AgentId; taskId: TaskId }
+  /**
+   * Cache invalidation for a change to the agent record itself. Emitted on a
+   * stewardship transfer, which alters *who can see the agent at all* — without
+   * it a newly-owned agent stays invisible to its new steward until an
+   * incidental refetch.
+   */
+  'agent.updated': { agentId: AgentId }
   'run.updated': { runId: RunId; agentId: AgentId; status: RunStatus }
   'task.updated': { taskId: TaskId; status: TaskStatus }
   'approval.needed': {
@@ -266,6 +273,7 @@ export const WsEventNameSchema = z.enum([
   'agent.tool.start',
   'agent.tool.end',
   'agent.spawned',
+  'agent.updated',
   'run.updated',
   'task.updated',
   'approval.needed',

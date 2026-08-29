@@ -1,6 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import type { WorkspaceInvitationRecord, WorkspaceMemberRecord } from '@nessie/schemas'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
+import {
+  PersonAgents,
+  UnassignedAgents,
+} from '../../components/features/members/PersonAgents'
+import {
+  buildPeopleAgentsTree,
+  type PeopleAgentsTree,
+} from '../../components/features/members/people-agents-tree'
+import { useAgents } from '../../facades/agents/queries'
+import type { AgentRecord } from '../../lib/api-client'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   useCreateWorkspaceInvitations,
@@ -47,9 +57,11 @@ const memberLabel = (member: WorkspaceMemberRecord): string =>
 const MemberRow = ({
   canManage,
   member,
+  ownedAgents,
 }: {
   canManage: boolean
   member: WorkspaceMemberRecord
+  ownedAgents: AgentRecord[]
 }) => {
   const { token } = useAuthSession()
   const updateRole = useUpdateWorkspaceMemberRole()
@@ -97,6 +109,13 @@ const MemberRow = ({
         {deactivated ? <span className={badgeClass('warning')}>Deactivated</span> : null}
         {member.teamRole === 'owner' ? <span className={badgeClass('muted')}>Owner</span> : null}
       </div>
+
+      {/*
+        This person's agents — their virtual employees. Nested here rather than
+        on a separate org-chart page: the roster row is where somebody already
+        stands when the question "what does this person run?" arises.
+      */}
+      <PersonAgents agents={ownedAgents} token={token} />
 
       {canManage && member.teamRole !== 'owner' ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -338,12 +357,58 @@ const InviteForm = () => {
   )
 }
 
+/**
+ * Agents nobody in this workspace stewards. Split out so it — and not the whole
+ * section — owns the auth-session read its avatars need, keeping the section
+ * renderable without an AuthSessionProvider.
+ */
+const UnassignedAgentsPanel = ({ tree }: { tree: PeopleAgentsTree }) => {
+  const { token } = useAuthSession()
+  return (
+    <div
+      className="mt-5 grid gap-4 border-t border-[color:var(--sep)] pt-4"
+      data-testid="workspace-unassigned-agents"
+    >
+      {tree.unowned.length > 0 ? (
+        <UnassignedAgents
+          agents={tree.unowned}
+          emptyLabel="None"
+          title="Unowned agents"
+          token={token}
+        />
+      ) : null}
+      {tree.ownedOutsideWorkspace.length > 0 ? (
+        <UnassignedAgents
+          agents={tree.ownedOutsideWorkspace}
+          emptyLabel="None"
+          title="Owned outside this workspace"
+          token={token}
+        />
+      ) : null}
+    </div>
+  )
+}
+
 export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) => {
   const members = useWorkspaceMembers()
   // Invitation emails are PII; the API serves this list to owners and admins only.
   const invitations = useWorkspaceInvitations(canManage)
+  // `scope: 'all'` so the system tier is classified into its own bucket rather
+  // than silently missing from the tree. Entitlement is unchanged — the system
+  // tier is still only reachable through a channel the viewer can already see.
+  const agents = useAgents({ scope: 'all' })
 
   const memberRows = members.data?.members ?? []
+  // Array-guarded: this is the boundary where a query result enters the pure
+  // tree builder, and a client that is loading, errored, or stubbed can hand
+  // back something that is not a list.
+  const tree = buildPeopleAgentsTree(
+    memberRows,
+    Array.isArray(agents.data) ? agents.data : [],
+  )
+  const agentsBySub = new Map(
+    tree.people.map((person) => [person.member.uoaSub, person.agents]),
+  )
   const invitationRows = (invitations.data?.invitations ?? []).filter(
     (invitation) => (invitation.status ?? 'pending') === 'pending',
   )
@@ -362,7 +427,12 @@ export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) =
             />
           ) : null}
           {memberRows.map((member) => (
-            <MemberRow canManage={canManage} key={member.uoaSub} member={member} />
+            <MemberRow
+              canManage={canManage}
+              key={member.uoaSub}
+              member={member}
+              ownedAgents={agentsBySub.get(member.uoaSub) ?? []}
+            />
           ))}
           {!members.isLoading && !members.isError && memberRows.length === 0 ? (
             <div className="text-sm text-[color:var(--tx2)]">
@@ -370,6 +440,16 @@ export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) =
             </div>
           ) : null}
         </div>
+
+        {/*
+          Agents belonging to nobody in this workspace. Two groups, never one:
+          "unowned" predates stewardship, while an owner the *team* roster does
+          not list is equally an active colleague on another team — so this
+          bucket describes what is known rather than declaring anyone departed.
+        */}
+        {tree.unowned.length > 0 || tree.ownedOutsideWorkspace.length > 0 ? (
+          <UnassignedAgentsPanel tree={tree} />
+        ) : null}
       </section>
 
       {canManage ? (

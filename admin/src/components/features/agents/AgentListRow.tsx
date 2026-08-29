@@ -2,6 +2,7 @@ import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentRecord } from '../../../lib/api-client'
 import { AgentAvatar } from '../../shared/AgentAvatar'
+import { AgentOwnerCell } from './AgentOwnerCell'
 import { AgentRowMenu } from './AgentRowMenu'
 
 type AgentListRowProps = {
@@ -45,6 +46,9 @@ export const AgentListRow = ({
       <div className="truncate text-xs text-[color:var(--tx3)]">
         {agent.role}
       </div>
+    </td>
+    <td className="hidden w-44 px-3 py-2.5 align-middle sm:table-cell">
+      <AgentOwnerCell owner={agent.owner} token={token} />
     </td>
     <td className="w-10 px-1 py-2.5 text-right align-middle">
       {showMenu ? (
