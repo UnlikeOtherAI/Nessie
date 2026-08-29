@@ -62,9 +62,19 @@ export const AgentDesignerPage = () => {
 type AgentDesignerContentProps = {
   agents: AgentRecord[]
   editingAgent?: AgentRecord
+  // `embedded` renders the editor as a panel (no page header, an inline Save
+  // bar, no navigation on save) so it can live as the Edit tab inside the agent
+  // detail page. `onDone` fires after a successful embedded save.
+  embedded?: boolean
+  onDone?: () => void
 }
 
-const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProps) => {
+export const AgentDesignerContent = ({
+  agents,
+  editingAgent,
+  embedded = false,
+  onDone,
+}: AgentDesignerContentProps) => {
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -193,6 +203,10 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
       })
     }
 
+    if (embedded) {
+      onDone?.()
+      return
+    }
     void navigate('/agents')
   }
   const headerActions: PageHeaderAction[] = [
@@ -217,11 +231,25 @@ const AgentDesignerContent = ({ agents, editingAgent }: AgentDesignerContentProp
 
   return (
     <div className="flex h-full flex-col">
-      <ResponsivePageHeader
-        actions={headerActions}
-        onBack={handleBack}
-        title={isEditMode ? 'Edit Agent' : 'Agent Designer'}
-      />
+      {embedded ? (
+        <div className="flex flex-shrink-0 items-center justify-end gap-3 border-b border-[color:var(--sep)] px-5 py-2.5">
+          <button
+            className="admin-button admin-button-primary"
+            disabled={!canSave}
+            onClick={() => void handleSave()}
+            title={saveBlocker ?? undefined}
+            type="button"
+          >
+            {isSaving ? 'Saving...' : 'Save changes'}
+          </button>
+        </div>
+      ) : (
+        <ResponsivePageHeader
+          actions={headerActions}
+          onBack={handleBack}
+          title={isEditMode ? 'Edit Agent' : 'Agent Designer'}
+        />
+      )}
 
       {/* The disabled save button is in the header, so its reason sits directly
           under it — a tooltip would leave the dead button unexplained. */}

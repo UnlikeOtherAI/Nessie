@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentDetailTabs } from '../components/features/agents/AgentDetailTabs'
 import { AgentStatusDot } from '../components/features/agents/AgentStatusDot'
+import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents, useAgentStatus } from '../facades/agents/hooks'
 import type { AgentRecord } from '../lib/api-client'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
@@ -17,9 +18,10 @@ const getStatusTone = (status: AgentRecord['status']) => {
   return 'accent'
 }
 
-// The agent detail surface. Tapping an agents-list row lands here — the same
-// Activity / Sub-Agents / Tools / Messages tabs the old floating drawer showed,
-// now rendered inline as a full page inside the Agents section (no drawer).
+// The agent detail surface. Tapping an agents-list row lands here. For an owner
+// it opens on an inline **Edit** tab (the full Agent Designer, embedded), with
+// the Activity / Sub-Agents / Tools / Messages panels behind it; a non-owner,
+// who cannot edit, gets those read-only panels only. No floating drawer.
 export const AgentDetailPage = () => {
   const navigate = useNavigate()
   const { agentId } = useParams<{ agentId?: string }>()
@@ -84,20 +86,16 @@ export const AgentDetailPage = () => {
             </div>
           </div>
         </div>
-        {isOwner ? (
-          <button
-            className="admin-button admin-button-secondary"
-            onClick={() => void navigate(`/agents/designer/${agent.id}`)}
-            type="button"
-          >
-            Edit details
-          </button>
-        ) : null}
       </header>
 
       <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
         <AgentDetailTabs
           agent={agent}
+          editSlot={
+            isOwner ? (
+              <AgentDesignerContent agents={agents} editingAgent={agent} embedded />
+            ) : undefined
+          }
           key={agent.id}
           onSelectAgent={(nextAgentId) => void navigate(`/agents/${nextAgentId}`)}
         />
