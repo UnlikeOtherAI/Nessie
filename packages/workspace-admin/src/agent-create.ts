@@ -10,7 +10,7 @@ import {
 } from '@nessie/schemas'
 
 import { assertGenericAgentToolPolicyInput } from './agent-tool-policy-core.js'
-import { mapAgentRecord } from './agent-record.js'
+import { AGENT_OWNER_MEMBERSHIP_SELECT, mapAgentRecord } from './agent-record.js'
 
 // `Agent.runLimits` write value. `undefined` leaves the stored limits alone
 // (the ordinary "field omitted" carry-forward), an explicit `null` clears them,
@@ -33,6 +33,7 @@ export const randomAgentAvatarBackgroundColor = (): AgentAvatarBackgroundColor =
 
 export const AGENT_MANAGEMENT_ERROR_CODES = {
   ORGANIZATION_REQUIRED: 'AGENT_ORGANIZATION_REQUIRED',
+  OWNER_NOT_A_MEMBER: 'AGENT_OWNER_NOT_A_MEMBER',
   PARENT_NOT_FOUND: 'AGENT_PARENT_NOT_FOUND',
 } as const
 
@@ -50,6 +51,7 @@ export const agentRecordInclude = {
   bindings: {
     select: { channelId: true },
   },
+  ownerMembership: AGENT_OWNER_MEMBERSHIP_SELECT,
   messages: {
     orderBy: { createdAt: 'desc' },
     select: { createdAt: true },
@@ -86,6 +88,14 @@ export type CreateAgentRecordInput = {
   model?: string
   name: string
   organizationId: string
+  /**
+   * The person this agent belongs to. Every human-initiated path supplies it —
+   * `POST /api/agents` from the session actor, the assistant's `agent_create`
+   * from the live acting member — so a member never loses sight of an agent
+   * they just made. Omitted only where no acting person exists (seeds,
+   * bootstraps), which leaves the agent unowned rather than mis-attributed.
+   */
+  ownerUserId?: string
   parentAgentId?: string
   projectId?: string
   provider?: string
@@ -99,10 +109,37 @@ export type CreateAgentRecordInput = {
   toolPolicy?: Record<string, boolean>
 }
 
+/**
+ * The owner must be an active member of the agent's organization. The composite
+ * foreign key already makes a cross-tenant owner impossible, and the retained
+ * deactivated row would satisfy it — so this check exists to refuse in words,
+ * and to catch deactivation, rather than to be the only line of defence.
+ */
+export const assertAgentOwnerIsActiveMember = async (
+  prisma: PrismaClient,
+  organizationId: string,
+  ownerUserId: string | undefined,
+): Promise<void> => {
+  if (!ownerUserId) return
+  const membership = await prisma.organizationMember.findFirst({
+    where: { deactivatedAt: null, organizationId, userId: ownerUserId },
+    select: { id: true },
+  })
+  if (!membership) {
+    throw new AgentManagementError(
+      AGENT_MANAGEMENT_ERROR_CODES.OWNER_NOT_A_MEMBER,
+      'An agent can only be owned by an active member of its organization.',
+    )
+  }
+}
+
 /** Validate creation before a route spends on optional follow-on work. */
 export const validateAgentCreateInput = async (
   prisma: PrismaClient,
-  input: Pick<CreateAgentRecordInput, 'organizationId' | 'parentAgentId' | 'toolPolicy'>,
+  input: Pick<
+    CreateAgentRecordInput,
+    'organizationId' | 'ownerUserId' | 'parentAgentId' | 'toolPolicy'
+  >,
 ): Promise<void> => {
   if (!input.organizationId) {
     throw new AgentManagementError(
@@ -110,6 +147,8 @@ export const validateAgentCreateInput = async (
       'Shared agents require an organization.',
     )
   }
+
+  await assertAgentOwnerIsActiveMember(prisma, input.organizationId, input.ownerUserId)
 
   if (input.parentAgentId) {
     const parent = await prisma.agent.findFirst({
@@ -156,6 +195,7 @@ export const createAgentRecord = async (
       model: input.model,
       name: input.name,
       organizationId: input.organizationId,
+      ownerUserId: input.ownerUserId,
       parentAgentId: input.parentAgentId,
       projectId: input.projectId,
       provider: input.provider,

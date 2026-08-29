@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { parseUserId, type WorkspaceMemberRecord } from '@nessie/schemas'
 import {
   listWorkspaceMembers,
+  resolveLocalUserIdsByUoaSub,
   resolveUoaRosterWorkspace,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,
@@ -91,13 +92,15 @@ const searchUoaRoster = async (
   // Local rows keyed on the stable UOA subject (never email) so results carry
   // the `userId` that `send_message` and mentions take, when a linked row
   // exists — and so the caller's own row can say "(you)".
-  const localUsers = matched.length > 0
-    ? await context.prisma.user.findMany({
-      where: { uoaSub: { in: matched.map((member) => member.uoaSub) } },
-      select: { id: true, uoaSub: true },
-    })
-    : []
-  const localIdBySub = new Map(localUsers.map((user) => [user.uoaSub, user.id]))
+  //
+  // Scoped to this organization by the shared resolver: `User.uoaSub` is
+  // globally unique, so an unscoped lookup would hand this workspace a local
+  // principal id for someone who only ever signed into a different one.
+  const localIdBySub = await resolveLocalUserIdsByUoaSub(
+    context.prisma,
+    context.channel.organizationId,
+    matched.map((member) => member.uoaSub),
+  )
   const actingUserId = matched.length > 0 ? requireActingUserId(context) : null
 
   const lines = matched.map((member, index) => {

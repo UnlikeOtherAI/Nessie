@@ -11,6 +11,7 @@ import {
   UpdateAgentAvatarBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import {
   AgentAvatarGenerationError,
   generateAgentAvatar,
@@ -156,6 +157,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       // Validate before a missing avatar triggers billed prompt/image calls.
       await validateAgentCreateInput(prisma, {
         organizationId: actorContext.tenant.organizationId,
+        ownerUserId: actorContext.actor.actorId,
         parentAgentId: body.parentAgentId,
         toolPolicy: body.toolPolicy,
       })
@@ -196,6 +198,9 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         model: body.model,
         name: body.name,
         organizationId: actorContext.tenant.organizationId,
+        // The person clicking "create" is this agent's steward, so a member
+        // keeps sight of it before it is bound to any channel.
+        ownerUserId: actorContext.actor.actorId,
         parentAgentId: body.parentAgentId,
         projectId: actorContext.tenant.projectId,
         provider: body.provider,
@@ -212,6 +217,19 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       if (sendAgentAvatarGenerationError(reply, error)) return reply
       throw error
     }
+
+    // Provenance: a column transfer overwrites the current steward, so who
+    // originally created an agent survives only in the tamper-evident chain.
+    // Nothing emitted this before, which is exactly why no honest ownership
+    // backfill was possible for existing rows.
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'agent.created',
+      metadata: { ownerUserId: actorContext.actor.actorId },
+      outcome: 'success',
+      resourceId: agent.id,
+      resourceType: 'agent',
+    })
 
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(agent)))
   })
@@ -511,6 +529,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       prisma,
       agentId,
       actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
     )
     if (!cloned) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
@@ -599,7 +618,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       await loadAgentChildren(
         prisma,
         agentId,
-        actorContext.tenant.organizationId,
+        createAgentVisibilityScope(actorContext),
       ),
     )
   })

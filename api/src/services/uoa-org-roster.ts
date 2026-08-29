@@ -8,6 +8,7 @@ export {
   listWorkspaceMembers,
   removeWorkspaceMember,
   resendWorkspaceInvitation,
+  resolveLocalUserIdsByUoaSub,
   resolveUoaRosterWorkspace,
   revokeTeamInvitation,
   reviewWorkspaceInvitation,

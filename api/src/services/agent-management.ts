@@ -6,8 +6,10 @@ import type {
 import {
   acquireAgentToolPolicyLock,
   AGENT_MANAGEMENT_ERROR_CODES,
+  AGENT_OWNER_MEMBERSHIP_SELECT,
   AgentManagementError,
   agentRecordInclude,
+  assertAgentOwnerIsActiveMember,
   createAgentRecord,
   isSystemManagedAgent,
   listAgentsForUser,
@@ -101,6 +103,7 @@ export const updateAgentRecord = async (
         toolPolicy: toolPolicy ?? undefined,
       },
       include: {
+        ownerMembership: AGENT_OWNER_MEMBERSHIP_SELECT,
         bindings: {
           orderBy: { createdAt: 'asc' },
           select: { channelId: true },
@@ -131,10 +134,18 @@ export const updateAgentRecord = async (
     return mapAgentRecord(agent)
   })
 
+/**
+ * A clone belongs to whoever cloned it, not to the source's steward: the copy
+ * is that person's to configure and run, and inheriting someone else's
+ * ownership would hand them an agent they never asked for (ownership is also
+ * the escalation anchor). Consistent with the existing decision that a clone
+ * drops `parentAgentId` and is always a root.
+ */
 export const cloneAgentRecord = async (
   prisma: PrismaClient,
   sourceAgentId: string,
   organizationId: string,
+  clonedByUserId?: string,
 ): Promise<AgentRecord | null> => {
   const source = await prisma.agent.findFirst({
     where: {
@@ -165,6 +176,9 @@ export const cloneAgentRecord = async (
     prisma,
     source.toolPolicy,
   )
+  if (source.organizationId) {
+    await assertAgentOwnerIsActiveMember(prisma, source.organizationId, clonedByUserId)
+  }
   const agent = await prisma.agent.create({
     data: {
       agentKind: 'shared',
@@ -174,6 +188,7 @@ export const cloneAgentRecord = async (
       model: source.model,
       name: `${source.name} (copy)`,
       organizationId: source.organizationId,
+      ownerUserId: clonedByUserId,
       provider: source.provider,
       projectId: source.projectId,
       role: source.role,

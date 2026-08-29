@@ -1224,6 +1224,9 @@ model OrganizationMember {
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Agents this member stewards. Tenancy only — a retained deactivated row
+  /// still satisfies the FK, so readers re-derive liveness.
+  ownedAgents    Agent[]      @relation("AgentOwner")
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -1880,6 +1883,18 @@ model Agent {
   avatarAttachmentId             String?                         @map("avatar_attachment_id") @db.Uuid
   avatarBackgroundColor          String?                         @map("avatar_background_color")
   parentAgentId                  String?                         @map("parent_agent_id") @db.Uuid
+  /// Stewardship — the person this agent belongs to, their "virtual employee".
+  /// NOT the same concept as `Task.ownerUserId`, which is work assignment.
+  /// NULL means unowned (org-level), which is a rendered category, not an error.
+  ///
+  /// The composite relation to OrganizationMember enforces TENANCY at the
+  /// storage boundary: the owner must be a member of THIS agent's organization,
+  /// which a bare User FK cannot express and which matters because
+  /// `spawn_subtask` writes agents outside the shared creation chokepoint.
+  /// It does NOT prove the membership is live — deactivated rows are retained
+  /// deliberately — so every read re-derives `deactivatedAt: null` instead of
+  /// trusting the pointer. See docs/plans/2026-08-29-people-and-their-agents.md.
+  ownerUserId                    String?                         @map("owner_user_id") @db.Uuid
   /// Intentionally nullable and without an Organization FK: system / personal-
   /// assistant agents may be global (no owning org). Do not "fix" to required.
   organizationId                 String?                         @map("organization_id") @db.Uuid
@@ -1913,12 +1928,20 @@ model Agent {
   userAlertActivity              UserAlert[]
   runThreadPendingMessages       RunThreadPendingMessage[]
   organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // NoAction, not the Prisma default SetNull: on a COMPOSITE foreign key
+  // SET NULL blanks every referencing column, which would wipe the agent's
+  // organizationId along with its owner. organization_members rows are never
+  // deleted (deactivation is a reversible flag), so this never fires.
+  ownerMembership                OrganizationMember?             @relation("AgentOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId])
   @@index([organizationId, projectId])
   @@index([avatarAttachmentId])
   @@index([organizationId, agentKind, systemManaged])
   @@index([routingProfileId])
+  // "which agents does this person steward" — the first non-channel-derived
+  // agent read, and the tree's level-3 query.
+  @@index([organizationId, ownerUserId])
   @@map("agents")
 }
 
