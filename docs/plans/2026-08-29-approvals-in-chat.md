@@ -23,14 +23,24 @@ This plan adds a **consent-to-disclose approval** flow:
 2. The info **owner is alerted**: a `UserAlert` row + web push — "This needs
    your approval — can I share X with \<asker\>?" (never containing the private
    content itself).
-3. In the channel, an **Accept/Decline card** renders only for the owner
-   (following the `RunStopContinue` metadata pattern). Everyone else sees a
-   "Waiting for \<owner\>'s approval…" placeholder naming who was notified —
-   never the private content.
-4. On decision, a **group-visible system message** records the outcome
-   ("\<Owner\> approved sharing this information" / "\<Owner\> declined to
-   share this information"), the run resumes from its `waiting_approval`
-   suspension, and realtime events flip every open client.
+3. An **owner-only decision card** renders for the owner (following the
+   `RunStopContinue` metadata pattern) with a **"See the answer first"** option
+   that reveals the drafted answer before deciding, then **Share it** /
+   **Keep it private**. Everyone else sees an **anonymous** placeholder —
+   "Waiting for approval to share information" — that names **no one**: not the
+   owner, not who was notified, never the private content.
+4. On decision the run resumes from its `waiting_approval` suspension and
+   realtime flips every client. The group message is **anonymous and passive**:
+   on decline, "Sharing this information was declined"; on approve, the agent
+   simply posts the answer (the answer *is* the outcome — no separate "so-and-so
+   approved" notice). No participant's name is ever attached to the act of
+   approving or declining.
+
+**Guiding principle (per direction): the safest, easiest, most helpful
+experience for the whole team.** Bystanders never learn *who* holds a secret or
+*that* a specific person was asked — anonymity protects the owner; the owner
+sees exactly what would be shared before consenting; nothing strands the asker
+or the room. Every ambiguous choice below resolves toward that.
 
 ## Data model — reuse `ApprovalRequest`, extend; add one `UserAlertKind`
 
@@ -53,7 +63,7 @@ Additive migration (never edit a committed migration folder):
   context is at stake, distinct from `requesterId` (the asker) and from
   `requiredApproverRole` (role-gated tool approvals).
 - `ApprovalRequest.messageId String? @map("message_id") @db.Uuid` — the chat
-  message carrying the Accept/Decline card, so realtime `message.updated`
+  message carrying the decision card, so realtime `message.updated`
   reconciliation and the card's disabled-after-acting state can join
   request ↔ message in both directions without a scan.
 - New `action` discriminator value used conventionally: consent requests are
@@ -147,55 +157,104 @@ only**, never a standing grant:
   slice owned by someone else still raises a `request_disclosure_approval` for
   that other owner. The agent answers with the owner's own material and withholds
   the rest pending approval.
+- **Provenance, so the shortcut never surprises.** Because "my info" is not the
+  same as "publish my info to this room", when the self-disclosure answer lands
+  in a group channel the agent tags where it came from — e.g. "From our DM: …" —
+  so the owner realises, in the moment, that private context just crossed into a
+  shared room and can course-correct. The shortcut keeps its speed; the owner
+  keeps their awareness.
 
-## The owner-only Accept/Decline card
+## The owner's decision card — "See the answer first", then Share / Keep private
 
-Reuse-not-fork: this is `admin/src/components/features/channels/RunStopContinue.tsx`
-generalised, not a sibling look-alike (AGENTS.md rule 4 — one control,
-parameterised). Extract the metadata-gated inline action-button pattern into
-the card component and add:
+Reuse-not-fork, honestly scoped: `RunStopContinue.tsx` is a 79-line one-button
+affordance, so we reuse its **conventions** — a zod-read metadata stamp, the
+disabled-after-acting state, and API-authored refusal copy repeated verbatim —
+by extracting a small shared **action-card primitive**, and build the two-role
+card on top of it. This is the "extract now that a second real case exists"
+reading of rule 4, not forcing a one-button control and a multi-state card into
+one abstraction. (The existing `approval_required` tool-gate card is the third
+case the same primitive serves — see "Disposition".)
 
-- New `DisclosureApprovalCard` reading `metadata.disclosureApproval` through a
-  zod schema (same `readRunStop` shape), rendered by the message feed where
-  `RunStopContinue` is rendered today.
-- The card calls `POST /api/approvals/:approvalId/resolve`
-  (`api/src/routes/approvals.ts`) — **the existing resolve route**, extended:
-  when `action === 'disclose_information'`, the caller must be
-  `approval.ownerId` (structural entitlement — the live
-  `OrganizationMember`/user id comparison, no role inference). Non-owners get
-  the same refusal wording the route already uses for unauthorized resolves.
-- **Rendering entitlement is client-cosmetic, server-enforced**: the card's
-  buttons render enabled only when the session user id ===
-  `metadata.disclosureApproval.ownerId`; other members see the disabled/
-  waiting treatment (below). The server check is the real gate.
-- After resolution, `message.updated` carries `status: 'approved' | 'declined'`
-  in the metadata and every client disables the card (the `RunStopContinue`
-  "already continued" toast precedent: every refusal is authored by the API and
-  repeated verbatim).
+The owner's card (owner-only view — it is their information, so this is safe):
 
-## The pending "waiting + notified" view for others
+- Shows the model's share-safe `summary` and a **"See the answer first"**
+  control that reveals the **drafted answer** the agent would post if approved.
+  This closes the "approve a label, not the contents" gap: the owner consents to
+  what will actually be said. The draft is generated for the owner's eyes only
+  and never leaves this card until approval.
+- Two actions, labelled by **consequence, not verdict**: **Share it** and
+  **Keep it private**.
+- Calls `POST /api/approvals/:approvalId/resolve` (`api/src/routes/approvals.ts`)
+  — **the existing resolve route**, extended: for `disclose_information` the
+  caller must equal `approval.ownerId` (structural entitlement, live user-id
+  comparison, no role inference, **not** channel membership — the owner may not
+  be in the channel). Non-owners get the route's existing unauthorized-resolve
+  refusal.
+- **Rendering is client-cosmetic; the server is the gate.** Buttons enable only
+  when the session user is the owner; everyone else sees the anonymous waiting
+  view below.
+- **Post-approval answer is scope-bound.** The agent is instructed that the
+  approved answer must not exceed what the owner saw — the draft they approved
+  *is* the commitment, so consent means what it said.
+- After resolution, `message.updated` flips the card to its terminal state for
+  every client, refusal copy authored by the API and repeated verbatim.
 
-While `status === 'pending'` and the viewer is not the owner, the card renders:
-"Waiting for \<owner display name\>'s approval…" plus "Notified \<owner\> via
-alerts and push." It shows the `summary` (model-written, share-safe) and the
-asker; it never shows source-channel excerpts, quoted private text, or the
-owner's private-context content. The agent's own run output for the suspended
-turn is withheld from the feed exactly as `waiting_approval` runs already are.
+## The anonymous waiting view for everyone else
 
-## The group-visible outcome message
+While pending and the viewer is not the owner, the card shows a single
+anonymous line — **"Waiting for approval to share information"** — and nothing
+else: no owner name, no "who was notified", no asker call-out, no `summary`, no
+source excerpt. Naming a person tied to a pending secret can itself answer the
+question ("who's leaving?" → "waiting for Sarah's approval"), so bystanders see
+only that *some* answer is awaiting a private OK. The suspended turn's agent
+output is withheld exactly as `waiting_approval` runs already are.
 
-On resolve (both outcomes), the API — inside the same transaction as the
-`ApprovalRequest` status flip, following the `requestRunCancellation`
-transaction pattern in `api/src/services/runs.ts`:
+**Escape hatch — when even the anonymous wait would leak.** If revealing that an
+approval is pending *at all* would answer the question, the model's judgement can
+choose to decline quietly in-channel ("I can't help with that here") and still
+alert the owner privately — no public waiting card. This is part of the same
+model-judged decision, never a keyword rule.
 
-1. updates the card message metadata to the terminal `status`;
-2. inserts a channel system message: "\<Owner\> approved sharing this
-   information" / "\<Owner\> declined to share this information"
-   (agent-attributed system notice, no private content — the *fact* of consent,
-   not the consented material);
-3. resumes the run through the existing `waiting_approval` continuation path:
-   on approve, the model is told consent was granted and answers; on decline,
-   it is told consent was refused and refuses in words.
+## The group outcome — anonymous, and quiet on approve
+
+On resolve, in the same transaction as the `ApprovalRequest` status flip
+(following the `requestRunCancellation` pattern in `api/src/services/runs.ts`):
+
+1. the card message metadata flips to the terminal `status`;
+2. **approve:** no separate notice — the run resumes and the agent posts the
+   answer, which is the only new message the room needs. **Decline:** an
+   anonymous, passive system line — **"Sharing this information was declined"** —
+   no name, no finger-pointing, so saying no carries no social tax that would
+   pressure owners toward yes;
+3. the run resumes through the existing `waiting_approval` continuation path: on
+   approve the model answers within the approved scope; on decline it declines
+   politely, and a recent decline visible in the transcript short-circuits a
+   re-ask to a refusal **without re-pinging the owner** (anti-nag).
+
+## Time, withdrawal, and not stranding anyone
+
+A "Waiting…" that never ends is a broken experience for all three parties, so
+the flow is bounded:
+
+- **Expiry.** The request uses `ApprovalRequest.expiresAt` with a sensible
+  default window (proposed 24h, deployment-tunable). On expiry the run resumes
+  with a polite non-answer ("I wasn't able to get the OK to share that"), the
+  card flips to a neutral **"This request expired"** (never "so-and-so ignored
+  it"), and the owner's pending alert is cleared.
+- **"Ask me later" / snooze.** Because a hard Decline is often not what an owner
+  means in the moment, the owner's card offers a third, low-cost action that
+  re-notifies them after a short delay and, in the meantime, resumes the run
+  with "I'll check and follow up" rather than blocking. (If simpler to ship,
+  land expiry + re-raise first and add snooze as a fast follow — but the
+  design target is that no owner is forced into a binary yes/no under time
+  pressure.)
+- **The asker can withdraw.** The asker who triggered the question gets a
+  **"Never mind / withdraw"** affordance that cancels the pending request, clears
+  the owner's alert, and resumes with "the question was withdrawn" — reusing
+  `requestRunCancellation`, which already handles a `waiting_approval` run. It is
+  unkind to pin someone's name to an interrupt they can't take back.
+- **One pending consent suspends only that thread's run**, never the agent in
+  the whole channel — a room must not gridlock behind one unanswered ping.
 
 ## Alert + push to the owner
 
@@ -312,11 +371,15 @@ parameterised by the request's `action`, not two.
    A worker test asserts self-disclosure persists **no** `ApprovalRequest` row
    and that a second, differently-owned ask still raises one.
 4. **Chat card** — extract/generalise the `RunStopContinue` pattern into one
-   approval card parameterised by the request's `action`. Render **both** kinds:
-   the `disclose_information` request (owner-enabled Accept/Decline, non-owner
-   waiting view) and the existing `approval_required` tool-gate request (its
-   own approver rule). Wire into the message feed for every approval-carrying
-   channel/thread.
+   approval card parameterised by the request's `action`. For
+   `disclose_information`: the owner-only view with **"See the answer first"**
+   (reveals the draft) and **Share it / Keep it private**; the anonymous
+   "Waiting for approval to share information" view for everyone else; the
+   asker's **withdraw** affordance; the neutral expired/terminal states. Also
+   render the existing `approval_required` tool-gate request with its own
+   approver rule. Wire into the message feed for every approval-carrying
+   channel/thread, and mount the same card standalone off the owner's alert so a
+   non-member owner can act without entering the channel.
 5. **Remove the `/approvals` page** — delete `admin/src/pages/ApprovalsPage.tsx`,
    its `/approvals` route, the "Approvals" nav item, and its now-unused data
    hooks; keep the resolve route/service and `approval.resolved`. Backfill a
