@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import {
   useAgentActivity,
   useAgentChildren,
@@ -6,7 +6,7 @@ import {
   useAgentStatus,
 } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
-import { TabBar } from '../../primitives/TabBar'
+import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
 import { AgentAvailableTools } from './AgentAvailableTools'
 import { AgentMessagePreview } from './AgentMessagePreview'
@@ -15,24 +15,31 @@ import { AgentTriggerPanel } from './AgentTriggerPanel'
 import { SubAgentTree } from './SubAgentTree'
 import { ToolExecutionLog } from './ToolExecutionLog'
 
-type Tab = 'activity' | 'sub-agents' | 'tools' | 'messages'
+type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages'
 
-const TABS = [
+const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
   { label: 'Activity', value: 'activity' },
   { label: 'Sub-Agents', value: 'sub-agents' },
   { label: 'Tools', value: 'tools' },
   { label: 'Messages', value: 'messages' },
-] as const satisfies ReadonlyArray<{ label: string; value: Tab }>
+]
 
 const PAGE_SIZE = 10
 
 type AgentDetailTabsProps = {
   agent: AgentRecord
+  // When provided, an "Edit" tab is prepended and selected first, so the agent
+  // detail page leads with editing and keeps the read-only panels behind it.
+  editSlot?: ReactNode
   onSelectAgent?: (agentId: string) => void
 }
 
-export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) => {
-  const [activeTab, setActiveTab] = useState<Tab>('activity')
+export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailTabsProps) => {
+  const tabs = useMemo(
+    () => (editSlot ? [{ label: 'Edit', value: 'edit' as Tab }, ...DETAIL_TABS] : DETAIL_TABS),
+    [editSlot],
+  )
+  const [activeTab, setActiveTab] = useState<Tab>(editSlot ? 'edit' : 'activity')
   const [messagePage, setMessagePage] = useState(0)
 
   const { data: status } = useAgentStatus(agent.id)
@@ -66,13 +73,27 @@ export const AgentDetailTabs = ({ agent, onSelectAgent }: AgentDetailTabsProps) 
         <TabBar
           ariaLabel="Agent sections"
           fullWidth
-          items={TABS}
+          items={tabs}
           onChange={handleTabChange}
           value={activeTab}
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      {/* Kept mounted (hidden when inactive) so switching tabs never discards
+          in-progress edits or the design-assistant conversation. */}
+      {editSlot ? (
+        <div className={activeTab === 'edit' ? 'min-h-0 flex-1' : 'hidden'}>
+          {editSlot}
+        </div>
+      ) : null}
+
+      <div
+        className={
+          activeTab === 'edit'
+            ? 'hidden'
+            : 'flex-1 overflow-y-auto px-6 py-5'
+        }
+      >
         {activeTab === 'activity' && (
           <div className="grid gap-6">
             <section className="admin-card p-4">
