@@ -85,6 +85,7 @@ export const useGenerateAgentAvatar = () => {
       name?: string
       role?: string
       systemPrompt?: string
+      instructions?: string
     }) => {
       const { agentId, ...body } = input
       return apiClient.post<{

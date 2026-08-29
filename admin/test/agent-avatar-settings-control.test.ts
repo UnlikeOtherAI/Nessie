@@ -13,33 +13,42 @@ test('agent details put the avatar editor at the agent detail surface for owners
   assert.match(drawer, /<AgentAvatarQuickEdit agent=\{agent\} canEdit=\{isOwner\} \/>/)
 })
 
-test('the avatar pencil offers AI generation and a dashed file drop zone before crop/save', () => {
+test('the avatar pencil opens a modal with a prompt, AI generation, upload, remove, and close', () => {
   const source = readSource('../src/components/features/agents/AgentAvatarQuickEdit.tsx')
 
+  // Pencil on the avatar itself opens the modal.
   assert.match(source, /aria-label=\{`Edit \$\{agent\.name\} avatar`\}/)
+  assert.match(source, /<PencilIcon \/>/)
+  // Generate with a free-text prompt.
   assert.match(source, /Generate with AI/)
-  assert.match(source, /border-2 border-dashed/)
-  assert.match(source, /onDrop=\{handleDrop\}/)
-  assert.match(source, /fileInputRef\.current\?\.click\(\)/)
+  assert.match(source, /placeholder="Describe the look you want \(optional\)"/)
+  assert.match(source, /avatarChanges\.generate\(prompt\)/)
+  // Upload path still routes through the cropper.
+  assert.match(source, /Upload/)
   assert.match(source, /<CircleImageCropper/)
-  assert.match(source, /Replace this agent’s avatar\?/)
+  // A single close control (top-right) and a remove control (only with a custom image).
+  assert.match(source, /aria-label="Close"/)
+  assert.match(source, /Remove image/)
+  assert.match(source, /hasCustom && !generated/)
 })
 
-test('full designer and quick settings avatar edits share the same mutation flow', () => {
-  const panel = readSource('../src/components/features/agents/AgentAvatarPanel.tsx')
+test('the designer edit form and the detail header share the one avatar editor + mutation flow', () => {
+  const designer = readSource('../src/pages/AgentDesignerPage.tsx')
   const quickEdit = readSource('../src/components/features/agents/AgentAvatarQuickEdit.tsx')
 
-  assert.match(panel, /useAgentAvatarChanges\(agent\.id, avatarContext\)/)
-  assert.match(quickEdit, /useAgentAvatarChanges\(agent\.id, \{/)
+  // The designer's edit-mode avatar is the same pencil-modal component, not a
+  // second panel implementation, fed the live draft context.
+  assert.match(designer, /<AgentAvatarQuickEdit/)
+  assert.match(designer, /avatarContext=\{\{/)
+  // Both doorways go through the shared mutation hook.
+  assert.match(quickEdit, /useAgentAvatarChanges\(\n {4}agent\.id,/)
 })
 
-test('agent avatar generation has an announced spinning progress indicator in both doorways', () => {
+test('agent avatar generation has an announced spinning progress indicator', () => {
   const quickEdit = readSource('../src/components/features/agents/AgentAvatarQuickEdit.tsx')
-  const panel = readSource('../src/components/features/agents/AgentAvatarPanel.tsx')
   const indicator = readSource('../src/components/features/agents/AgentAvatarGenerationIndicator.tsx')
 
-  assert.match(quickEdit, /avatarChanges\.isGenerating \? \(\n              <AgentAvatarGenerationIndicator/)
-  assert.match(panel, /avatarChanges\.isGenerating \? \(\n          <AgentAvatarGenerationIndicator/)
+  assert.match(quickEdit, /avatarChanges\.isGenerating \? \(\s*<AgentAvatarGenerationIndicator/)
   assert.match(indicator, /animate-spin/)
   assert.match(indicator, /role="status"/)
 })
