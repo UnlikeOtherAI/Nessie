@@ -78,47 +78,54 @@ export const AgentsList = () => {
     ? agentsById.get(selectedAgentId) ?? null
     : null
 
+  const rangeStart = scopeAgents.length === 0 ? 0 : page * PAGE_SIZE + 1
+  const rangeEnd = Math.min((page + 1) * PAGE_SIZE, scopeAgents.length)
+
   return (
-    <div className="h-full overflow-y-auto" onScroll={scroll.onScroll} ref={scroll.ref}>
-      <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-6">
-        <header className="flex items-start gap-3">
-          <PhoneNavigationButton />
-          <div className="min-w-0 flex-1 space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-              Agents
-            </p>
-            <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Agents</h1>
-            <p className="max-w-2xl text-sm text-[color:var(--tx3)]">
-              {AGENT_SCOPE_META[activeScope].description}
-            </p>
-          </div>
-          <AgentCreateButton
-            label="New agent"
-            onClick={() => void navigate('/agents/designer')}
-          />
-        </header>
-
-        <div
-          className="flex items-center gap-1 border-b border-[color:var(--sep)]"
-          role="tablist"
-        >
-          {AGENT_SCOPES.map((scope) => (
-            <button
-              aria-selected={activeScope === scope}
-              className={`admin-tab ${activeScope === scope ? 'active' : ''}`}
-              key={scope}
-              onClick={() => setActiveScope(scope)}
-              role="tab"
-              type="button"
-            >
-              {AGENT_SCOPE_META[scope].label}
-              <span className="text-[color:var(--tx3)]">
-                {buckets[scope].length}
-              </span>
-            </button>
-          ))}
+    <div className="flex h-full flex-col">
+      <header className="flex items-start gap-3 px-6 pt-6 pb-4">
+        <PhoneNavigationButton />
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
+            Agents
+          </p>
+          <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Agents</h1>
+          <p className="text-sm text-[color:var(--tx3)]">
+            {AGENT_SCOPE_META[activeScope].description}
+          </p>
         </div>
+        <AgentCreateButton
+          label="New agent"
+          onClick={() => void navigate('/agents/designer')}
+        />
+      </header>
 
+      <div
+        className="flex items-center gap-1 border-b border-[color:var(--sep)] px-6"
+        role="tablist"
+      >
+        {AGENT_SCOPES.map((scope) => (
+          <button
+            aria-selected={activeScope === scope}
+            className={`admin-tab ${activeScope === scope ? 'active' : ''}`}
+            key={scope}
+            onClick={() => setActiveScope(scope)}
+            role="tab"
+            type="button"
+          >
+            {AGENT_SCOPE_META[scope].label}
+            <span className="text-[color:var(--tx3)]">
+              {buckets[scope].length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-6 py-4"
+        onScroll={scroll.onScroll}
+        ref={scroll.ref}
+      >
         <AgentsTable
           agents={pageAgents}
           emptyMessage={AGENT_SCOPE_META[activeScope].empty}
@@ -128,30 +135,30 @@ export const AgentsList = () => {
           showMenu={isAgentScopeEditable(activeScope) && isOwner}
           token={token}
         />
+      </div>
 
-        {totalPages > 1 ? (
-          <div className="flex items-center justify-between border-t border-[color:var(--sep)] pt-4">
-            <button
-              className="admin-button admin-button-secondary"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
-              type="button"
-            >
-              Previous
-            </button>
-            <span className="text-xs text-[color:var(--tx3)]">
-              Page {page + 1} of {totalPages}
-            </span>
-            <button
-              className="admin-button admin-button-secondary"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage(page + 1)}
-              type="button"
-            >
-              Next
-            </button>
-          </div>
-        ) : null}
+      <div className="flex items-center justify-between border-t border-[color:var(--sep)] px-6 py-3">
+        <button
+          className="admin-button admin-button-secondary"
+          disabled={page === 0}
+          onClick={() => setPage(page - 1)}
+          type="button"
+        >
+          Previous
+        </button>
+        <span className="text-xs text-[color:var(--tx3)]">
+          {scopeAgents.length === 0
+            ? 'No agents'
+            : `${rangeStart}–${rangeEnd} of ${scopeAgents.length} · Page ${page + 1} of ${totalPages}`}
+        </span>
+        <button
+          className="admin-button admin-button-secondary"
+          disabled={page >= totalPages - 1}
+          onClick={() => setPage(page + 1)}
+          type="button"
+        >
+          Next
+        </button>
       </div>
 
       <AgentDetailDrawer
