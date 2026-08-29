@@ -18,6 +18,31 @@ import type { RunContext } from './types.js'
 
 type Tx = Prisma.TransactionClient | PrismaClient
 
+/**
+ * The scope chain of the surface a run is replying into. Both write paths below
+ * and the live-stream gate must ask the same question of the same destination,
+ * so the chain is built once rather than restated at each call.
+ */
+const destinationFor = (context: RunContext) => ({
+  channelId: context.channel.id,
+  organizationId: context.channel.organizationId,
+  projectId: context.channel.projectId,
+  teamId: context.channel.teamId,
+})
+
+/**
+ * Whether what this run has consumed *so far* would restrict its reply.
+ *
+ * The sink is additive and the destination is fixed, so this is monotone: once
+ * true it stays true for the life of the run. That is what makes it usable as a
+ * live-stream gate — text already published was produced before any restricted
+ * source entered the context and therefore cannot be derived from one, while
+ * everything after the flip is withheld until the finished message is read
+ * through the disclosure predicate.
+ */
+export const runReplyIsRestricted = (context: RunContext): boolean =>
+  computeReplyBasis(context.consumedSources.list(), destinationFor(context)).length > 0
+
 export type AgentMessageDraft = {
   content: string
   threadId: string
@@ -94,12 +119,7 @@ export const createAgentMessage = async (
   context: RunContext,
   draft: AgentMessageDraft,
 ): Promise<StampedMessage> => {
-  const basis = computeReplyBasis(context.consumedSources.list(), {
-    channelId: context.channel.id,
-    organizationId: context.channel.organizationId,
-    projectId: context.channel.projectId,
-    teamId: context.channel.teamId,
-  })
+  const basis = computeReplyBasis(context.consumedSources.list(), destinationFor(context))
 
   const message = await tx.message.create({
     data: {
@@ -142,12 +162,7 @@ export const replaceAgentMessageContent = async (
   context: RunContext,
   input: { messageId: string; content: string },
 ): Promise<BasisScope[]> => {
-  const basis = computeReplyBasis(context.consumedSources.list(), {
-    channelId: context.channel.id,
-    organizationId: context.channel.organizationId,
-    projectId: context.channel.projectId,
-    teamId: context.channel.teamId,
-  })
+  const basis = computeReplyBasis(context.consumedSources.list(), destinationFor(context))
 
   await tx.message.update({
     data: { content: input.content, editedAt: new Date() },

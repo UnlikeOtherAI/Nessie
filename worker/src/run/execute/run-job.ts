@@ -69,6 +69,7 @@ import { createDocumentStreamRecorder } from './document-stream.js'
 import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
+import { runReplyIsRestricted } from './agent-message.js'
 
 export const executeRunJob = async (
   deps: ExecutionDependencies,
@@ -167,6 +168,7 @@ export const executeRunJob = async (
   // loop so every reasoning delta and tool line is captured; closed in the
   // `finally` below so a crash, cancel, or budget stop still flushes it.
   const thinkingRecorder: ThinkingRecorder = createThinkingRecorder({
+    isRestricted: () => runReplyIsRestricted(context),
     prisma: deps.prisma,
     realtimeTransport: deps.realtimeTransport,
     runId: context.run.id,

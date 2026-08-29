@@ -21,6 +21,7 @@ import { createProviderRequestHeadersResolver } from '../inference-identity.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { UtilityModel } from './utility-model.js'
 import type { BudgetModelOverride, ExecutionDependencies, RunContext } from './types.js'
+import { runReplyIsRestricted } from './agent-message.js'
 
 const runtimeModelConfig = loadConfig().model
 
@@ -128,6 +129,12 @@ export const createRunInference = (
         onVisibleTextDelta: async (chunk) => {
           if (!streaming) return
           currentTurnStreamed = true
+          // The SSE stream is one broadcast to everyone watching the thread, so
+          // it cannot be filtered per viewer the way the finished message is.
+          // Once this run has consumed a source the room does not already imply,
+          // its remaining text is withheld from the live lane entirely and read
+          // back through the disclosure predicate instead.
+          if (runReplyIsRestricted(context)) return
           await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {
             content: chunk,
             runId: parseRunId(context.run.id),
