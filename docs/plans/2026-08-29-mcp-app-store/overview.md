@@ -3,11 +3,17 @@
 Browsing and installing an integration should feel like installing an app in
 Slack or Notion, not like configuring a server. `/apps` is that surface.
 
-**Status:** Phase 2 (catalogue foundation) shipped. Phases 3–8 — registry
-ingestion, the generic MCP runtime, universal OAuth, platform auth UX, agent
-grants, and custom servers — are still to come. The design for all of it is in
-[ux-design-catalogue.md](ux-design-catalogue.md) and
-[ux-design-detail-and-connect.md](ux-design-detail-and-connect.md).
+**Status:** Phases 2 and 3 shipped — the catalogue, and the registry ingestion
+that fills it. Phases 4–8 (the generic MCP runtime, universal OAuth, platform
+auth UX, agent grants, custom servers) are still to come.
+
+## Table of Contents
+
+- [ux-design-catalogue.md](ux-design-catalogue.md) — the catalogue page, the
+  app card and its eight states, categories, search, responsive behaviour.
+- [ux-design-detail-and-connect.md](ux-design-detail-and-connect.md) — the app
+  detail view, the universal Connect flow, connection management, agent access,
+  custom servers, trust badges, and the component reuse map.
 
 ## One catalogue, two faces
 
@@ -99,8 +105,59 @@ the rule has to move in one place.
 Every response goes through a presenter that cannot emit a `credentialRef`,
 auth config, transport config, endpoint URL, or a raw upstream icon URL.
 
+## Registry ingestion (Phase 3)
+
+The catalogue is filled from the official MCP Registry — a measured ~5,500
+installable apps, against the 5 first-party connectors it launched with.
+`packages/mcp-manage/src/registry/` holds the client, mapper, categoriser,
+merge policy and importer; `POST /api/admin/mcp-registry/sync` (owner-only) and
+`pnpm --filter @nessie/api sync:registry` are the two doorways.
+
+What the design turns on:
+
+- **Only `isLatest` + `active` + an HTTP/SSE remote is installable.** Everything
+  else is counted as skipped, not imported — a package-only server is not
+  something Nessie's remote-only connector model can reach.
+- **Ingest as `discovered`; auto-promote to `curated` on objective gates only**
+  (https endpoint past the SSRF guard, a description of real length, a
+  resolvable name). Never auto-`approved`: that state means a human decided.
+- **An ingested row is always `community`.** The first mapper granted
+  `verified` when the advertised endpoint matched Nessie's curated library, and
+  the record author chooses that endpoint — so publishing
+  `io.github.attacker/notion-official` pointing at Notion's real URL minted a
+  store card carrying the attacker's own copy under a badge saying Nessie had
+  confirmed it with the publisher. `verified` is a human judgement again;
+  `20260829160000_demote_ingested_trust` clears rows written before the fix.
+- **One server is one app.** A record with no `registryName` match adopts an
+  existing row with the same canonical endpoint — stamping provenance onto it —
+  rather than inserting a rival `context7-2` beside the seeded Context7.
+  `registry_name` carries a partial unique index so two concurrent sweeps
+  cannot both insert.
+- **The persisted endpoint is canonical** (lower-cased host, default port and
+  trailing slash dropped), and `findApplicableLock` now canonicalises both
+  sides. Otherwise a registry row advertising `https://API.Example.com:443/mcp`
+  walks straight past an admin lock recorded on `https://api.example.com/mcp`.
+- **Curation is never overwritten.** A column is rewritten only when it still
+  holds what the last sync wrote, or is unset — with the two NOT NULL defaults
+  (`primaryCategory: 'other'`, `trustLevel: 'unknown'`) tested *before* the
+  generic empty-string check, or an untouched column reads as curator-owned and
+  no adopted row is ever categorised.
+- **Categorisation is deterministic rules, not a model.** These are
+  machine-authored records written to a published schema by publishers who
+  chose their words; sending thousands through a model would cost real money to
+  produce an answer nobody could reproduce or correct. The rule table was
+  extended against the actual ingested corpus rather than guessed, which took
+  uncategorised apps from 74% to ~48%. A rule matching nothing leaves the app
+  in `other` — a wrong shelf is worse than no shelf.
+- **Untrusted text and URLs.** Every URL-shaped field is http(s)-constrained at
+  the schema, rejected at ingest, and sanitised again on the way out; the same
+  gate was applied to `library.ts`, where the identical vector was still open.
+
 ## Not built yet
 
 No connect flow. The detail CTA links to the existing install path on
-`/mcp-app-store`, which already works. Registry ingestion, the universal OAuth
-flow, per-agent grants, and custom-server addition are Phases 3–8.
+`/mcp-app-store`, which already works. The universal OAuth flow, per-agent
+grants, and custom-server addition are Phases 4–8. Icon caching is also
+outstanding — `iconsCached` is always 0, because a cached icon has to go
+through the `FileService` chokepoint and a raw upstream icon URL must never
+reach a browser.

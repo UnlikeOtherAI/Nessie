@@ -1,5 +1,11 @@
 import { AppCategorySchema } from '@nessie/schemas'
-import { getStoreApp, listStoreAppCategories, listStoreApps } from '@nessie/mcp-manage'
+import {
+  CATEGORY_PAGE_LIMIT,
+  CATEGORY_PAGE_LIMIT_MAX,
+  getStoreApp,
+  listStoreAppCategories,
+  listStoreApps,
+} from '@nessie/mcp-manage'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -24,6 +30,14 @@ import type { RouteDeps } from './types.js'
  * entitlement-scoped connection counts all live in that shared package so the
  * worker's assistant tools can answer the same questions from the same rows.
  * These handlers validate input and pick a status code; nothing else.
+ *
+ * **`GET /api/apps` is bounded and always has been counted separately.** The
+ * registry puts thousands of apps in this catalogue, so the response body is a
+ * slice — the featured strip plus a shelf per category, one category's page, or
+ * a search's top results — while `totalCount`, `installedCount`, and every
+ * `categories[].count` remain SQL aggregates over the whole set. A client that
+ * needs more of one category asks for the next page; it never infers a total
+ * from what it was handed.
  */
 
 const AppListQuerySchema = z.object({
@@ -32,6 +46,14 @@ const AppListQuerySchema = z.object({
   // A query string carries no booleans, and the catalogue's filter control has
   // exactly one narrowing today ("Installed"), so the enum is the vocabulary.
   installed: z.enum(['true', 'false']).optional(),
+  // Paging is a property of a category page. The default shelf and a search
+  // have fixed sizes the server owns, so `limit`/`offset` are simply ignored
+  // there rather than quietly resizing a view the client did not ask to page.
+  limit: z.coerce.number().int().min(1).max(CATEGORY_PAGE_LIMIT_MAX).optional(),
+  // Offset rather than an opaque cursor: `SHELF_ORDER` is a total order on
+  // (label, id), so a page boundary is stable without one, and a deep link to
+  // "the third page of Development" stays a readable URL.
+  offset: z.coerce.number().int().min(0).max(100_000).optional(),
 })
 
 const AppSlugParamsSchema = z.object({
@@ -59,6 +81,8 @@ export const registerAppRoutes = (app: FastifyInstance, deps: RouteDeps): void =
       // no narrowing, while `false` would ask for the apps I have *not*
       // connected — a filter nobody offered.
       installed: query.installed === undefined ? undefined : query.installed === 'true',
+      limit: query.limit ?? CATEGORY_PAGE_LIMIT,
+      offset: query.offset,
     })
     return createApiResponse(result)
   })

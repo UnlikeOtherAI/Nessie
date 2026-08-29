@@ -84,13 +84,13 @@ export const resolveAppDetailTab = (
 // ─── Hero ───────────────────────────────────────────────────────────────────
 
 /**
- * The full sentence names both parties, which is the whole point of the
- * button — you are connecting *Nessie* to something of yours. There is no room
- * for it on a phone, and "Connect" alone is unambiguous next to the app's name
- * and icon.
+ * The connect button's label: just "Connect".
+ *
+ * It used to read "Connect Nessie to GitHub" on wide screens. The person is
+ * already on GitHub's page, under GitHub's name and icon, having clicked
+ * GitHub's card — restating both parties is words, not information.
  */
-export const appConnectCtaLabel = (displayName: string, compact: boolean): string =>
-  compact ? 'Connect' : `Connect Nessie to ${displayName}`
+export const appConnectCtaLabel = (): string => 'Connect'
 
 /**
  * The hero's primary control. It is the card's decision — the same eight states
@@ -98,10 +98,10 @@ export const appConnectCtaLabel = (displayName: string, compact: boolean): strin
  * connect label names both parties, and the destination is the server's own
  * `installHref` rather than one this client assembled.
  */
-export const appDetailCta = (app: AppDetailRecord, compact: boolean): AppCardAction => {
+export const appDetailCta = (app: AppDetailRecord): AppCardAction => {
   const action = appCardAction(app)
   if (action.kind === 'none' || action.label !== 'Connect') return action
-  const label = appConnectCtaLabel(app.displayName, compact)
+  const label = appConnectCtaLabel()
   return action.kind === 'link'
     ? { ...action, href: app.installHref, label }
     : { ...action, label }

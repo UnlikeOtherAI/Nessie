@@ -1,3 +1,4 @@
+import { sanitizeHttpUrl } from '@nessie/schemas'
 import { z } from 'zod'
 
 /**
@@ -32,9 +33,9 @@ export type McpLibraryEntry = {
   label: string
   description: string
   vendor: string | null
-  /** Homepage / repository, for humans. */
+  /** Homepage / repository, for humans. An `href`, so http(s) or null. */
   sourceUrl: string | null
-  /** Remote MCP endpoint. */
+  /** Remote MCP endpoint. Always http(s). */
   url: string
   transport: McpLibraryTransport
   authMethod: McpLibraryAuthMethod
@@ -328,6 +329,15 @@ const registryNameToCatalogName = (name: string): string => {
   return cleaned.replace(/^-|-$/g, '') || 'mcp-server'
 }
 
+/**
+ * One registry record → one library entry, or nothing. Every URL here was
+ * written by a stranger, so both pass `sanitizeHttpUrl` — http(s) or nothing,
+ * exactly as ingestion does in `registry/registry-mapper.ts`. `sourceUrl` is an
+ * `href` in the admin Library panel, where a `javascript:` value in
+ * `websiteUrl` is stored XSS in the authenticated admin origin; `websiteUrl`
+ * and `repository.url` are judged independently so a hostile site cannot shadow
+ * a usable repository link. A `url` Nessie could never dial drops the entry.
+ */
 const registryServerToEntry = (server: RegistryServer): McpLibraryEntry | null => {
   const remotes = server.remotes ?? []
   // Prefer streamable HTTP over legacy SSE when a server publishes both.
@@ -337,6 +347,8 @@ const registryServerToEntry = (server: RegistryServer): McpLibraryEntry | null =
   if (!remote) return null
   const transport = remoteTransport(remote)
   if (!transport) return null
+  const url = sanitizeHttpUrl(remote.url)
+  if (!url) return null
   const { authMethod, authHint } = classifyRemoteAuth(remote)
   const vendor = server.name.includes('/') ? server.name.split('/')[0] ?? null : null
   return {
@@ -346,8 +358,8 @@ const registryServerToEntry = (server: RegistryServer): McpLibraryEntry | null =
     label: server.title ?? server.name,
     description: server.description ?? '',
     vendor,
-    sourceUrl: server.websiteUrl ?? server.repository?.url ?? null,
-    url: remote.url,
+    sourceUrl: sanitizeHttpUrl(server.websiteUrl) ?? sanitizeHttpUrl(server.repository?.url),
+    url,
     transport,
     authMethod,
     authHint,

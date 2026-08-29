@@ -545,7 +545,17 @@ provenance, cached capability counts) plus `mcp_registry_sync_runs` and
   backfills `curated` onto every pre-existing non-public row and a bare `IN`
   would list one member's private draft to the whole organisation. A
   human-authored entry is created `curated` with a resolved slug so the page's
-  own "Add custom MCP server" produces something the page can show.
+  own "Add a custom app" produces something the page can show.
+- **The store reads a decision; it never re-derives one from `status`.**
+  Approval writes `moderationState: 'approved'`, rejection and deprecation write
+  `'hidden'` (`mcp-catalog-review.ts`, `deprecateCatalogEntry`). Submission
+  deliberately writes nothing — a submission is a request, not a decision, and
+  laundering the state on submit would let an owner re-list an entry a reviewer
+  had removed. Without those writes the two surfaces drift: a *rejected*
+  connector kept `curated` and went on rendering as a normal app card to its
+  owner, and a *deprecated* one kept an enabled Connect button pointing at an
+  install that no longer existed. Legacy rows are repaired by
+  `20260829140000_app_store_rejected_moderation_state`.
 
 Service in `packages/mcp-manage/src/apps/` (shared, because `api/src/services/*`
 is unreachable from the worker); routes `GET /api/apps`, `/api/apps/:slug`,

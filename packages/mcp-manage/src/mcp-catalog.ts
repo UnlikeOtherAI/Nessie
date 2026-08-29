@@ -365,9 +365,25 @@ export const publishCatalogEntry = async (
 }
 
 /**
- * Mark a published entry `deprecated`. Non-destructive: existing
- * `McpServerInstance` rows that point at this catalog id keep working; the flag
- * just hides the entry from new-install pickers. Idempotent.
+ * Retire a published entry: `deprecated` on the connector lifecycle, `hidden`
+ * on the store. Non-destructive — existing `McpServerInstance` rows pointing at
+ * this catalog id keep working — but it is no longer offered anywhere: not in
+ * the new-install pickers, and not as an app card. Idempotent.
+ *
+ * Writing the store state is the fix, rather than teaching `storeCatalogWhere`
+ * to filter `status: 'deprecated'`, for three reasons. The store migration
+ * already maps `deprecated` → `hidden`, so writing it keeps rows retired after
+ * this change identical to rows retired before it, instead of leaving two
+ * populations that differ in the column the store actually reads. The store
+ * asks one question — what did a human decide about listing this? — and a
+ * second lifecycle column in that predicate is precisely the drift the "one
+ * catalogue, two faces" rule forbids: the write path records the decision, the
+ * read path does not re-derive it. And it leaves `approved` admitted
+ * unconditionally, which a top-level status filter would silently qualify.
+ *
+ * Deprecation had previously moved `status` alone, so the store's owner arm
+ * (`curated` + caller-owned) kept listing a retired connector to its owner with
+ * a live Connect action — an install path for something just withdrawn.
  */
 export const deprecateCatalogEntry = async (
   prisma: PrismaClient,
@@ -388,6 +404,6 @@ export const deprecateCatalogEntry = async (
   }
   return prisma.mcpCatalogEntry.update({
     where: { id },
-    data: { status: 'deprecated' },
+    data: { status: 'deprecated', moderationState: 'hidden' },
   })
 }
