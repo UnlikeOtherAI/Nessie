@@ -197,6 +197,37 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   this, but it constrains **memory recall only** — never treat it as "nothing
   crosses". Details: `CLAUDE.md` → "Disclosure boundaries"; spec and build status:
   `docs/plans/2026-08-11-disclosure-boundaries-build.md`.
+- **An agent belongs to a person, and the org tree is a read-time JOIN — never
+  a stored hierarchy.** `Agent.ownerUserId` (stewardship: their "virtual
+  employee") is the only local fact behind it; people, roles, teams and
+  lifecycle come from UOA live on every read. There is deliberately **no human
+  reporting edge**: UOA's roster carries no manager field, and an edge that
+  decided authority would be the second org hierarchy the SSO invariant forbids
+  whatever table it sat in. Tenancy is enforced in the database — a composite FK
+  `(organization_id, owner_user_id) → organization_members`, because
+  `spawn_subtask` writes agents outside the `createAgentRecord` chokepoint, with
+  `ON DELETE NO ACTION` since on a composite key `SET NULL` blanks *every*
+  referencing column including `organization_id`; a CHECK keeps ownership off
+  system-managed and org-less agents (the PA is one org-singleton row serving
+  everyone). The FK proves the membership row *exists*, never that it is live:
+  deactivated rows are retained deliberately, so **every read re-derives
+  `deactivatedAt: null`**. One predicate, `buildOwnedAgentWhere`, is shared by
+  `listAgentsForUser` and `isAgentVisibleToUser` so list and detail cannot
+  disagree, and both of its conditions are load-bearing — the live-membership
+  join (the branch widens by pointer equality, so without it a deactivated
+  member keeps seeing their agents) and `parentAgentId: null` (else owning one
+  agent pours every unreaped `spawn_subtask` child into that list forever).
+  `loadAgentChildren` takes the viewer's scope for the same reason. Never
+  backfill ownership: nothing recorded who created an agent, so old rows read
+  `Unowned` and `agent.created`/`agent.owner_changed` now emit instead. The tree
+  itself is one `buildPeopleAgentsTree` rendered on `/settings/members` with the
+  people source parameterised (UOA roster, or local `User` rows on a no-IdP
+  install) — *unowned* and *owned outside this workspace* stay separate buckets,
+  because the roster is team-keyed and a colleague on another team is otherwise
+  indistinguishable from someone who left. `resolveLocalUserIdsByUoaSub` is
+  org-scoped: `User.uoaSub` is globally unique, so the naive lookup hands this
+  organisation a principal id for a stranger. Spec:
+  `docs/plans/2026-08-29-people-and-their-agents.md`.
 - **Live document streaming taps the model's own tool-call arguments, and its
   live path never touches durable storage.** `kb_document_compose` emits the
   document as its `markdown` argument; the enriched `tool_call.delta` events

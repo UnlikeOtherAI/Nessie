@@ -101,6 +101,19 @@ export type CallRecord = {
   status: 'active' | 'ended'
 }
 
+/**
+ * The resolved steward of an agent. `ownerState` is re-derived server-side on
+ * every read rather than implied by the stored pointer, because a deactivated
+ * membership row is retained deliberately and would otherwise still read as a
+ * present colleague.
+ */
+export type AgentOwner = {
+  avatarAttachmentId?: string | null
+  displayName?: string
+  ownerState: 'active' | 'deactivated' | 'unknown'
+  userId: string
+}
+
 export type AgentRecord = {
   avatarAttachmentId?: string | null
   avatarBackgroundColor?: AgentAvatarBackgroundColor | null
@@ -118,6 +131,7 @@ export type AgentRecord = {
   provider?: string
   agentKind?: 'shared' | 'personal_assistant'
   delegationMode?: 'none' | 'act_as_requesting_user'
+  owner?: AgentOwner | null
   ownerUserId?: string | null
   role: string
   runLimits?: AgentRunLimits | null

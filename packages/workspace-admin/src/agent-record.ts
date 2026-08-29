@@ -2,6 +2,8 @@ import type { Prisma } from '@prisma/client'
 import type {
   AgentAvatarBackgroundColor,
   AgentEffort,
+  AgentOwner,
+  AgentOwnerState,
   AgentRecord,
   AgentRunLimits,
 } from '@nessie/schemas'
@@ -42,11 +44,76 @@ export const buildAccessibleThreadWhere = (
   channel: buildAccessibleChannelWhere(visibility),
 })
 
+/**
+ * "An agent I steward" as a visibility rule.
+ *
+ * Two conditions are load-bearing and neither is optional:
+ *
+ * - `ownerMembership.deactivatedAt: null` — the branch widens by pointer
+ *   equality to a user id, so on its own a member deactivated in this
+ *   organization would keep seeing their agents. Liveness is re-derived here,
+ *   never implied by the stored pointer or by the foreign key (which a retained
+ *   deactivated row still satisfies).
+ * - `parentAgentId: null` — `spawn_subtask` mints a permanent Agent row per
+ *   delegation, inheriting its parent's owner, and nothing reaps them. Without
+ *   this, owning one agent would pour every subtask child it has ever spawned
+ *   into that person's agent list, forever.
+ */
+export const buildOwnedAgentWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.AgentWhereInput => ({
+  ownerMembership: { deactivatedAt: null },
+  ownerUserId: visibility.userId,
+  parentAgentId: null,
+})
+
 export const isSystemManagedAgent = (agent: {
   agentKind: string
   systemManaged: boolean
 }): boolean =>
   agent.systemManaged || agent.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
+
+/**
+ * A stored `ownerUserId` names a membership row that exists — the composite
+ * foreign key guarantees that much — but not one that is still entitled:
+ * deactivated memberships are retained deliberately for audit history. So the
+ * steward is resolved from the live row on every read, the same way
+ * `resolveDisclosureViewer` refuses to trust retained channel/team rows.
+ */
+export const AGENT_OWNER_MEMBERSHIP_SELECT = {
+  select: {
+    deactivatedAt: true,
+    userId: true,
+    user: { select: { avatarAttachmentId: true, displayName: true } },
+  },
+} as const
+
+type AgentOwnerMembershipRow = {
+  deactivatedAt: Date | null
+  userId: string
+  user?: { avatarAttachmentId?: string | null; displayName?: string | null } | null
+} | null
+
+export const resolveAgentOwner = (
+  ownerUserId: string | null | undefined,
+  membership: AgentOwnerMembershipRow | undefined,
+): AgentOwner | null => {
+  if (!ownerUserId) return null
+  // The pointer is set but no membership row came back — either the caller did
+  // not include it or the row is unreachable. Say `unknown` rather than
+  // inventing a lifecycle claim.
+  const ownerState: AgentOwnerState = membership
+    ? (membership.deactivatedAt === null ? 'active' : 'deactivated')
+    : 'unknown'
+  return {
+    userId: ownerUserId,
+    ownerState,
+    ...(membership?.user?.displayName ? { displayName: membership.user.displayName } : {}),
+    ...(membership?.user?.avatarAttachmentId
+      ? { avatarAttachmentId: membership.user.avatarAttachmentId }
+      : {}),
+  }
+}
 
 const toTimestamp = (value: Date | null | undefined): string | undefined =>
   value ? value.toISOString() : undefined
@@ -86,6 +153,8 @@ export const mapAgentRecord = (agent: {
   avatarBackgroundColor?: string | null
   messages?: Array<{ createdAt: Date }>
   name: string
+  ownerUserId?: string | null
+  ownerMembership?: AgentOwnerMembershipRow
   parentAgentId: string | null
   role: string
   runs?: Array<{
@@ -121,11 +190,15 @@ export const mapAgentRecord = (agent: {
     ?? latestRun?.createdAt
     ?? agent.updatedAt
 
+  const owner = resolveAgentOwner(agent.ownerUserId, agent.ownerMembership)
+
   return {
     id: parseAgentId(agent.id),
     name: agent.name,
     role: agent.role,
     status: agent.status,
+    ownerUserId: agent.ownerUserId ?? null,
+    owner,
     agentKind: agent.agentKind,
     systemManaged: agent.systemManaged,
     surfacePolicy: agent.surfacePolicy,

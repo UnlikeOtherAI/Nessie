@@ -23,6 +23,7 @@ export type {
   AgentActivityResponse,
   AgentChild,
   AgentMessage,
+  AgentOwner,
   AgentRecord,
   AgentStatusResponse,
   AgentTriggerDeliveryRecord,

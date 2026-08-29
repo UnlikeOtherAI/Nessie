@@ -127,6 +127,18 @@ const makeApp = (
         return row
       },
     },
+    // Agent creation now stamps the acting user as the agent's steward, which
+    // first checks they are an active member of the agent's organization.
+    organizationMember: {
+      findFirst: async ({
+        where,
+      }: {
+        where: { organizationId: string; userId: string }
+      }) =>
+        where.organizationId === organizationId && where.userId === userId
+          ? { id: '00000000-0000-4000-8000-000000000099' }
+          : null,
+    },
     toolRegistryEntry: {
       findMany: async ({
         where,
