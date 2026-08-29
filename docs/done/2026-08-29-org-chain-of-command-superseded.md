@@ -1,5 +1,32 @@
 # Chain of command — one org tree for people and agents
 
+> ## ⚠️ SUPERSEDED (2026-08-29, same day). Do not implement.
+>
+> Replaced by **[docs/plans/2026-08-29-people-and-their-agents.md](../plans/2026-08-29-people-and-their-agents.md)**.
+>
+> This plan proposed a full organisational hierarchy including an invented
+> human reporting edge (`OrganizationMember.managerUserId`). Rejected on two
+> grounds:
+>
+> - **Product owner (the deciding reason):** "that's definitely not, like, an
+>   organisational hierarchy — maybe just users with agents." The tree people
+>   actually want is *people and the agents they own*, not a reporting chain.
+> - **Cross-model review (Codex Sol, blocking):** the manager edge is the
+>   forbidden second org hierarchy, because it decides approval authority and
+>   escalation routing and would keep routing work after UOA changed or revoked
+>   the real relationship. "Moving the same manager fact to a separate table
+>   does not cure the authority violation; changing its semantics does."
+>   Confirmed by code: UOA's roster contract carries no manager, deputy, or
+>   title field anywhere (`packages/schemas/src/uoa-roster.ts:11-22`).
+>
+> Its **discovery sections were verified accurate** by both reviewers and are
+> carried forward into the replacement, with two corrections: the live approval
+> expiry is 7 days (`PENDING_APPROVAL_EXPIRY_MS`), not the service default of
+> 30 minutes; and the `/agents` owner doorway needs a display projection
+> because no member-level user-id-to-name read exists. Retained as the record
+> of the rejected approach.
+
+
 **Status:** discovery + design — no code in this change
 **Date:** 2026-08-29
 **Related:** docs/plans/2026-08-29-approvals-in-chat.md (the card + suspension
