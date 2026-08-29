@@ -6,6 +6,7 @@ import {
   recordMessageChannelRead,
   UNRESTRICTED_MESSAGES_ONLY,
 } from './message-search-basis.js'
+import { insertMessageBasis, resolveToolPostBasis } from './tool-message-basis.js'
 import {
   buildSnippet,
   clampLimit,
@@ -136,15 +137,28 @@ export const runMessageEditTool = async (
   // Agents may only edit messages they authored themselves.
   const existing = await context.prisma.message.findFirst({
     where: { id: input.messageId, agentId: context.agentId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, thread: { select: { channelId: true } } },
   })
   if (!existing) {
     throw new Error('Message not found or not authored by this agent.')
   }
 
-  await context.prisma.message.update({
-    where: { id: input.messageId },
-    data: { content, editedAt: new Date() },
+  // An edit is a second write path into an existing row, and swapping
+  // unrestricted text for privileged text must not inherit the original's empty
+  // basis. Resolved against the edited message's own channel, not the run's:
+  // the edit may target a message in another thread.
+  const basis = await resolveToolPostBasis(context, existing.thread.channelId)
+
+  await context.prisma.$transaction(async (tx) => {
+    await tx.message.update({
+      where: { id: input.messageId },
+      data: { content, editedAt: new Date() },
+    })
+    await insertMessageBasis(tx, {
+      basis,
+      messageId: input.messageId,
+      organizationId: String(context.channel.organizationId),
+    })
   })
 
   return {

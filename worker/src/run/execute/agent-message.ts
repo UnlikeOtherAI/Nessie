@@ -3,20 +3,59 @@ import { computeReplyBasis, type BasisScope } from './disclosure-basis.js'
 import type { RunContext } from './types.js'
 
 /**
- * The one place an agent-originated message is written.
+ * The one place a message carrying a *run's own words* is written.
  *
- * Nessie creates agent-originated messages from nine call sites — the normal
- * reply and its delegated-PA branch, cancellation partial text, failure notices,
- * budget notices, `send_message`, external-conversation replies, comms cards, and
- * agent-to-agent mailbox delivery. Stamping only the first would close the front
- * door and leave eight side doors emitting content drawn from the identical
- * context, so every one of them routes through here.
+ * This docstring used to claim nine call sites all routed through here, and none
+ * of them audited it; four did not. The scope is narrower than "every agent
+ * message" and stating it precisely is the point, because the boundary only
+ * holds where content actually derives from a run's context:
  *
- * The message row and its basis rows commit together: a message can never exist
- * unstamped, not even for the width of a transaction.
+ * **Routes through here** — the normal reply and its delegated-PA branch
+ * (`completion.ts`), cancellation partial text (`cancel-stop.ts`), failure
+ * notices (`failure.ts`), budget notices (`budget-gate.ts`), and the rolling
+ * watch status (`watch-status.ts`, both its create and its in-place edit).
+ * These are the paths where the model's words leave a run.
+ *
+ * **Deliberately outside, because there is nothing to stamp** — server-authored
+ * fixed copy that no model produced and no context informed: the pre-run budget
+ * block notice (`orchestrate.ts`), the comms connect card (`comms-card.ts`), the
+ * trigger kickoff directive (`trigger-run.ts`, a `system` row excluded from the
+ * feed), and workflow run-status cards (`workflow-run-events.ts`, template copy
+ * keyed by status). An empty basis is the correct answer for these, not a
+ * missing one.
+ *
+ * **Outside and correct for its own reason** — external-agent replies
+ * (`external-conversation.ts`) run no Nessie inference, so the content never
+ * passed through a run's context and consumed nothing. `send_message`
+ * (`pa-tools/message-delivery.ts`) computes its own destination-specific basis
+ * because it posts into a *different* surface than the run is replying to.
+ *
+ * **Known gaps, not yet closed** — agent-to-agent mailbox delivery
+ * (`control/mailbox.ts`) and workflow step messages
+ * (`control/workflow-message-send.ts`) carry content authored by *another* run
+ * and do not propagate that run's basis, because neither the mailbox row nor the
+ * workflow step carries one to propagate.
+ *
+ * A message and its basis rows commit together — `inTransaction` guarantees that
+ * here rather than relying on each caller to pass a transaction, which is how it
+ * came to be false for four of them.
  */
 
 type Tx = Prisma.TransactionClient | PrismaClient
+
+/**
+ * Run `work` inside a transaction, opening one if the caller did not.
+ *
+ * The atomicity this file promises was only ever true for the callers that
+ * happened to pass a transaction — four of the five passed `deps.prisma`, so the
+ * message row and its basis rows were two independent writes. A crash between
+ * them leaves a message with no basis, and no basis means *unrestricted*: the
+ * failure mode of a half-written stamp is publication, not an error. The
+ * guarantee therefore belongs to the chokepoint rather than to each caller
+ * remembering.
+ */
+const inTransaction = async <T>(tx: Tx, work: (inner: Tx) => Promise<T>): Promise<T> =>
+  '$transaction' in tx ? tx.$transaction((inner) => work(inner)) : work(tx)
 
 /**
  * The scope chain of the surface a run is replying into. Both write paths below
@@ -121,31 +160,33 @@ export const createAgentMessage = async (
 ): Promise<StampedMessage> => {
   const basis = computeReplyBasis(context.consumedSources.list(), destinationFor(context))
 
-  const message = await tx.message.create({
-    data: {
-      content: draft.content,
-      role: draft.role,
-      threadId: draft.threadId,
-      ...(draft.agentId ? { agentId: draft.agentId } : {}),
-      ...(draft.userId ? { userId: draft.userId } : {}),
-      ...(draft.rootMessageId ? { rootMessageId: draft.rootMessageId } : {}),
-      ...(draft.metadata === undefined ? {} : { metadata: draft.metadata }),
-    },
-    select: { id: true, createdAt: true, threadId: true, content: true, role: true },
-  })
+  return inTransaction(tx, async (inner) => {
+    const message = await inner.message.create({
+      data: {
+        content: draft.content,
+        role: draft.role,
+        threadId: draft.threadId,
+        ...(draft.agentId ? { agentId: draft.agentId } : {}),
+        ...(draft.userId ? { userId: draft.userId } : {}),
+        ...(draft.rootMessageId ? { rootMessageId: draft.rootMessageId } : {}),
+        ...(draft.metadata === undefined ? {} : { metadata: draft.metadata }),
+      },
+      select: { id: true, createdAt: true, threadId: true, content: true, role: true },
+    })
 
-  await insertBasisScopes(tx, {
-    basis,
-    messageId: message.id,
-    organizationId: context.channel.organizationId,
-  })
-  await persistRunBasis(tx, {
-    basis,
-    organizationId: context.channel.organizationId,
-    runId: context.run.id,
-  })
+    await insertBasisScopes(inner, {
+      basis,
+      messageId: message.id,
+      organizationId: context.channel.organizationId,
+    })
+    await persistRunBasis(inner, {
+      basis,
+      organizationId: context.channel.organizationId,
+      runId: context.run.id,
+    })
 
-  return { ...message, basis }
+    return { ...message, basis }
+  })
 }
 
 /**
@@ -171,25 +212,27 @@ export const replaceAgentMessageContent = async (
 ): Promise<BasisScope[]> => {
   const basis = computeReplyBasis(context.consumedSources.list(), destinationFor(context))
 
-  await tx.message.update({
-    data: {
-      content: input.content,
-      editedAt: input.editedAt ?? new Date(),
-      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
-    },
-    where: { id: input.messageId },
-  })
+  return inTransaction(tx, async (inner) => {
+    await inner.message.update({
+      data: {
+        content: input.content,
+        editedAt: input.editedAt ?? new Date(),
+        ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+      },
+      where: { id: input.messageId },
+    })
 
-  await insertBasisScopes(tx, {
-    basis,
-    messageId: input.messageId,
-    organizationId: context.channel.organizationId,
-  })
-  await persistRunBasis(tx, {
-    basis,
-    organizationId: context.channel.organizationId,
-    runId: context.run.id,
-  })
+    await insertBasisScopes(inner, {
+      basis,
+      messageId: input.messageId,
+      organizationId: context.channel.organizationId,
+    })
+    await persistRunBasis(inner, {
+      basis,
+      organizationId: context.channel.organizationId,
+      runId: context.run.id,
+    })
 
-  return basis
+    return basis
+  })
 }
