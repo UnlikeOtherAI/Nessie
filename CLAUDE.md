@@ -82,6 +82,60 @@ the model: removal is fused to the terminal status transition in
 cancellation all clear it without having to remember, and a crashed run clears
 it when the queue re-delivers it to a terminal state.
 
+## Disclosure boundaries — what an agent read decides who may read its answer
+
+An agent reaches material its whole audience cannot. The boundary that keeps it
+from laundering that material into a shared room is **provenance, not
+redaction**: a run accumulates the scoped sources it consumed, and the reply
+inherits them.
+
+- **The sink is the whole mechanism.** `ConsumedSourceSink`
+  (`worker/src/run/execute/disclosure-basis.ts`) lives on the run context; every
+  read that puts content into the model's window adds the scope it came from.
+  `computeReplyBasis` then subtracts what the destination already implies — a
+  source in this very channel is not privileged *here* — and the remainder is
+  written as `MessageBasisScope` rows in the same transaction as the message
+  (`agent-message.ts`, the one write chokepoint) plus `RunBasisScope` for the run.
+- **An empty basis means unrestricted**, so a read path that forgets to feed the
+  sink fails *open* and silently: the reply is published to everyone. That is the
+  defect class to watch for, and it is why every new read tool must add its scope
+  in the same change. Current writers: the transcript window (transitive
+  inheritance — a turn's own basis flows into the run reading it), memory recall,
+  every knowledge-base read, the conversation searches, and attachment reads.
+- **Scope vocabulary is shared, not restated.** A thought carries
+  `(audience_type, audience_id)`; a knowledge space carries `visibility` plus the
+  tenant chain — the same fact in two shapes, resolved by one
+  `scopeForVisibility` (`packages/memory/src/scopes.ts`).
+- **A channel scope is recorded only when the channel is not public.** A viewer's
+  channel scopes come from their `ChannelMember` rows alone
+  (`packages/runtime/src/disclosure-access.ts`), so stamping a public channel
+  would withhold the reply from people who can read the source perfectly well.
+- **Search fails closed rather than withholding.** `message_search`,
+  `workspace_search` and `authored_message_search` exclude any message carrying a
+  basis outright, matching `api/src/services/messages.ts`: a snippet list has
+  nowhere to render a placeholder, and an agent can carry what it reads into
+  another room in its next sentence.
+- **Every read path asks the same question.** `viewerSatisfiesBasis` /
+  `canUserReadDisclosureBasis` / `partitionByDisclosure` gate the message list,
+  the single-message read, and the durable thought log — reasoning inherits the
+  provenance of the sources the reply was built from, so a viewer withheld the
+  answer is withheld the thinking behind it. A run-level basis passes
+  `messageId: null`, which skips per-message grants: sharing one reply does not
+  publish the reasoning of every run in the room.
+- **The live lanes cannot filter per viewer.** SSE publishes once per thread, so
+  the gate is structural: `runReplyIsRestricted` cuts `stream.delta`,
+  `stream.reasoning` and `stream.thinking.tool` the moment a run consumes a
+  privileged source. It is monotone (the sink is additive, the destination
+  fixed), so a cut stream never resumes mid-reply, and text published before the
+  flip was produced with nothing privileged in context. WS `message.new` and SSE
+  `stream.done` carry `restricted: true` in place of a content preview.
+- **Containment is the floor underneath all of it**
+  (`constrainScopesToDestination`, default on, `NESSIE_DISCLOSURE_CONTAINMENT=off`,
+  PA exempt) — but it constrains **memory recall only**, so it was never the
+  "nothing crosses" guarantee the plan claimed. The sink is what covers the rest.
+- Spec and current build status:
+  [docs/plans/2026-08-11-disclosure-boundaries-build.md](docs/plans/2026-08-11-disclosure-boundaries-build.md).
+
 ## Live document streaming — watch a document being written
 
 `kb_document_compose` writes a markdown document and saves it as a real **`.md`

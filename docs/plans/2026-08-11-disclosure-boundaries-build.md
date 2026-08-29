@@ -1,7 +1,9 @@
 # Build plan — disclosure boundaries
 
-**Status:** implementation plan, reviewed. Not yet started.
-**Date:** 2026-08-11
+**Status:** partially built — the header said "Not yet started" for two weeks
+after work landed. Corrected 2026-08-29. See "Build status" below for what is
+actually in the tree.
+**Date:** 2026-08-11 · **Status last verified against code:** 2026-08-29
 **Design:** [2026-08-11-viewer-scoped-agent-knowledge.md](2026-08-11-viewer-scoped-agent-knowledge.md)
 — read that for *why*. This document is *what to build and in what order*.
 
@@ -199,6 +201,34 @@
 > grows** to cover four more create paths and message *edits*, and a new
 > **WP2.5 — derived-artifact containment** becomes part of the security cut.
 > The revised cut is stated at the end.
+
+## Build status (2026-08-29, read from the code)
+
+This header claimed "Not yet started" while WP0–WP3 were already merged, which
+is how the gaps below survived: a reader checking whether a boundary existed was
+told the whole thing was hypothetical. What is actually in the tree:
+
+| WP | State | Where |
+|---|---|---|
+| Containment floor (Option B) | **on**, default, `NESSIE_DISCLOSURE_CONTAINMENT=off` to disable; PA exempt. Covers memory recall only — this is narrower than "nothing crosses", because it never covered the KB or search reads below | `constrainScopesToDestination` (`packages/memory/src/scopes.ts`), applied in `worker/src/run/execute/memory.ts` |
+| WP0 stamped-post chokepoint | **partial** — `createAgentMessage` / `replaceAgentMessageContent` exist and the rolling watch status now routes through them, but other direct writers remain; the chokepoint's own docstring overstates its coverage | `worker/src/run/execute/agent-message.ts` |
+| WP1 `MessageBasisScope` + stamping | **built**, including transitive inheritance from the transcript | `prompt.ts` feeds the sink from each admitted turn's basis |
+| WP2 close the wire | **built 2026-08-29.** The WS `message.new`/`message.reply` and SSE `stream.done` events carry `restricted: true` instead of a preview, and the live lanes (`stream.delta`, `stream.reasoning`, `stream.thinking.tool`) are withheld once a run's reply is restricted | `packages/schemas/src/realtime-{ws,sse}.ts`, `runReplyIsRestricted` |
+| WP3 read predicate | **built**, and now applied on the single-message read and the durable thought log as well as the list | `packages/runtime/src/disclosure-*.ts`, `api/src/services/run-thinking-disclosure.ts` |
+| WP4 checkpoint basis | **not verified** | — |
+| WP5 withheld placeholder | **built** | `RestrictedMessageCard` |
+| WP7–WP11 | **not started** | — |
+
+**Provenance sources feeding the sink** were the load-bearing gap and are worth
+stating explicitly, because a source that does not feed the sink produces an
+*empty* basis, and an empty basis means unrestricted — the failure is silent and
+opens outward. As of 2026-08-29 the writers are: the transcript window, memory
+recall, every knowledge-base read (`kb_page_read`, `kb_search`, `kb_list`,
+`kb_document_edit`, the `kb_comment_*` family), the conversation searches
+(`message_search`, `workspace_search`, `authored_message_search`), and the
+attachment reads. The searches additionally fail closed, excluding any message
+that carries a basis at all — matching `api/src/services/messages.ts`, which
+made the same call for the same reason.
 
 ## The one thing to get right first
 
