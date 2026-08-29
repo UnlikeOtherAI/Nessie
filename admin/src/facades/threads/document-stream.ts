@@ -18,6 +18,7 @@ import type {
   DocumentStreamListResponse,
   DocumentStreamRetargetBody,
 } from '@nessie/schemas'
+import { threadKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import {
   applyDocumentDelta,
@@ -62,12 +63,6 @@ export type DocumentFrameData = {
   title?: string
   versionNumber?: number
 }
-
-export const documentStreamsKey = (threadId?: string) =>
-  ['threads', threadId, 'documentStreams'] as const
-
-const documentStreamKey = (threadId: string | undefined, sessionId: string) =>
-  [...documentStreamsKey(threadId), sessionId] as const
 
 // A repair is bounded: the durable lane trails the live one by ≲250 ms, so a
 // handful of attempts always closes the gap. Giving up leaves the entry flagged
@@ -133,7 +128,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
   const fetchDetail = useCallback(
     (sessionId: string) =>
       queryClient.fetchQuery({
-        queryKey: documentStreamKey(threadId, sessionId),
+        queryKey: threadKeys.documentStream(threadId, sessionId),
         queryFn: () =>
           apiClient.get<DocumentStreamDetailResponse>(
             `/api/threads/${threadId}/document-streams/${sessionId}`,
@@ -391,7 +386,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
     const requestedAt = Date.now()
     void queryClient
       .fetchQuery({
-        queryKey: documentStreamsKey(threadId),
+        queryKey: threadKeys.documentStreams(threadId),
         queryFn: () =>
           apiClient.get<DocumentStreamListResponse>(
             `/api/threads/${threadId}/document-streams?active=1`,
@@ -479,7 +474,7 @@ export const useRetargetDocumentStream = (threadId?: string) => {
         spaceId: input.spaceId,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: documentStreamsKey(threadId) })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.documentStreams(threadId) })
     },
   })
 }

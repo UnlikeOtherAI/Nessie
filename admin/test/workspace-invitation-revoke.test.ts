@@ -4,6 +4,8 @@ import test from 'node:test'
 import type { ApiClient } from '@nessie/client-core'
 import { JSDOM } from 'jsdom'
 
+import { workspaceKeys } from '../src/lib/query-keys.js'
+
 /**
  * The Revoke action on a pending workspace invitation: it exists where an
  * owner/admin is already standing (Settings → Members → Pending invitations),
@@ -41,10 +43,8 @@ const domGlobals = {
   IS_REACT_ACT_ENVIRONMENT: true,
 }
 
-// The facade's query keys. Seeding them keeps the render deterministic without
-// waiting on a fetch, exactly as the billing render test does.
-const MEMBERS_KEY = ['workspace', 'members']
-const INVITATIONS_KEY = ['workspace', 'invitations']
+// Seeding the real query keys keeps the render deterministic without waiting on
+// a fetch, exactly as the billing render test does.
 
 const invitations = {
   invitations: [
@@ -85,8 +85,8 @@ const mount = async (canManage: boolean) => {
   } as unknown as ApiClient
 
   const queryClient = new QueryClient()
-  queryClient.setQueryData(MEMBERS_KEY, { members: [] })
-  queryClient.setQueryData(INVITATIONS_KEY, invitations)
+  queryClient.setQueryData(workspaceKeys.members, { members: [] })
+  queryClient.setQueryData(workspaceKeys.invitations, invitations)
 
   const container = dom.window.document.createElement('div')
   dom.window.document.body.appendChild(container)

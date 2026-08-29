@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { policyKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -37,7 +38,7 @@ export const PolicyPage = () => {
   const [newActorId, setNewActorId] = useState('*')
 
   const { data } = useQuery<PolicyRulesResponse>({
-    queryKey: ['policy-rules'],
+    queryKey: policyKeys.rules,
     queryFn: () => apiClient.get('/api/policy/rules?limit=100'),
     enabled: isOwner,
   })
@@ -56,14 +57,14 @@ export const PolicyPage = () => {
         priority: 100,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['policy-rules'] })
+      void queryClient.invalidateQueries({ queryKey: policyKeys.rules })
     },
   })
 
   const deleteRule = useMutation({
     mutationFn: (ruleId: string) => apiClient.delete(`/api/policy/rules/${ruleId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['policy-rules'] })
+      void queryClient.invalidateQueries({ queryKey: policyKeys.rules })
     },
   })
 

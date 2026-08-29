@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { auditLogKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -28,7 +29,7 @@ export const AuditLogPage = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false
 
   const { data } = useQuery<AuditResponse>({
-    queryKey: ['audit-log', actionFilter],
+    queryKey: auditLogKeys.forAction(actionFilter),
     queryFn: () => {
       const params = new URLSearchParams()
       if (actionFilter) params.set('action', actionFilter)

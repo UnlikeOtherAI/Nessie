@@ -7,6 +7,7 @@ import type {
   UserRecord,
 } from '../../lib/api-client'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { searchKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useChannels } from '../channels/hooks'
@@ -155,7 +156,7 @@ export const useGlobalSearch = (
   )
 
   const messagesQuery = useQuery<MessageSearchResult[]>({
-    queryKey: ['search', 'messages', trimmed, mode],
+    queryKey: searchKeys.messages(trimmed, mode),
     queryFn: () =>
       apiClient.get(`/api/messages/search?query=${encodeURIComponent(trimmed)}&limit=20`),
     enabled: active && textMode,
@@ -164,7 +165,7 @@ export const useGlobalSearch = (
   // Text mode uses keyword search; semantic mode uses hybrid search so
   // knowledge results (with highlighted passages) surface alongside thoughts.
   const knowledgeQuery = useQuery<KnowledgeSearchHit[]>({
-    queryKey: ['search', 'knowledge', trimmed, mode],
+    queryKey: searchKeys.knowledge(trimmed, mode),
     queryFn: () =>
       apiClient.post<KnowledgeSearchHit[]>('/api/knowledge-base/search', {
         query: trimmed,
@@ -175,7 +176,7 @@ export const useGlobalSearch = (
   })
 
   const thoughtsQuery = useQuery<ThoughtSearchHit[]>({
-    queryKey: ['search', 'thoughts', trimmed, mode],
+    queryKey: searchKeys.thoughts(trimmed, mode),
     queryFn: () =>
       apiClient.post<ThoughtSearchHit[]>('/api/thoughts/search', {
         limit: 20,

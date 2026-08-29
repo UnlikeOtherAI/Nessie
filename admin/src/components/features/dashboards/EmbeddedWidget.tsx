@@ -15,6 +15,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { DashboardWidgetProjection } from '@nessie/schemas'
+import { dashboardKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { DashboardWidgetCard, type WidgetSurface } from './DashboardWidgetCard'
 
@@ -46,7 +47,7 @@ export const EmbeddedWidget = ({
 }) => {
   const client = useApiClient()
   const { data, isLoading } = useQuery({
-    queryKey: ['dashboard-embed', embedId],
+    queryKey: dashboardKeys.embed(embedId),
     queryFn: () => client.get<EmbedResponse>(`/api/dashboard-embeds/${embedId}`),
     // A live embed follows its source's cache; a static one never changes, but
     // one poll interval for both keeps this component free of mode branching.

@@ -3,10 +3,10 @@ import { useState } from 'react'
 import { BudgetManager } from '../components/features/budgets/BudgetManager'
 import {
   PricingManager,
-  PRICING_PROFILES_KEY,
   type PricingProfile,
 } from '../components/features/budgets/PricingManager'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { opsTelemetryKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -109,37 +109,37 @@ export const OperationalTelemetryPage = () => {
   const isOwner = me?.user.roleIds.includes('owner') ?? false
 
   const { data: summary } = useQuery<TokenSummary>({
-    queryKey: ['token-summary', groupBy],
+    queryKey: opsTelemetryKeys.tokenSummaryBy(groupBy),
     queryFn: () => apiClient.get(`/api/ledger/tokens/summary?groupBy=${groupBy}`),
     enabled: isOwner,
   })
 
   const { data: connectors } = useQuery<ConnectorSummary>({
-    queryKey: ['connector-summary', connectorGroupBy],
+    queryKey: opsTelemetryKeys.connectorSummary(connectorGroupBy),
     queryFn: () => apiClient.get(`/api/ledger/connectors/summary?groupBy=${connectorGroupBy}`),
     enabled: isOwner,
   })
 
   const { data: fileUsage } = useQuery<FileUsageSummary>({
-    queryKey: ['file-usage-summary'],
+    queryKey: opsTelemetryKeys.fileUsageSummary,
     queryFn: () => apiClient.get('/api/ledger/files/summary'),
     enabled: isOwner,
   })
 
   const { data: estimate } = useQuery<MonthlyEstimate>({
-    queryKey: ['token-estimate'],
+    queryKey: opsTelemetryKeys.tokenEstimate,
     queryFn: () => apiClient.get('/api/ledger/tokens/monthly-estimate'),
     enabled: isOwner,
   })
 
   const { data: outcomeUsage } = useQuery<OutcomeUsageSummary>({
-    queryKey: ['token-by-outcome'],
+    queryKey: opsTelemetryKeys.tokenByOutcome,
     queryFn: () => apiClient.get('/api/ledger/tokens/by-outcome'),
     enabled: isOwner,
   })
 
   const { data: pricingProfiles } = useQuery<PricingProfile[]>({
-    queryKey: PRICING_PROFILES_KEY,
+    queryKey: opsTelemetryKeys.pricingProfiles,
     queryFn: () => apiClient.get('/api/ledger/tokens/pricing'),
     enabled: isOwner,
   })

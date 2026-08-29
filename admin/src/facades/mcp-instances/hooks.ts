@@ -8,8 +8,8 @@ import type {
   McpServerLifecycleState,
   McpServerScopeType,
 } from '@nessie/schemas'
+import { mcpKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { mcpInstancesKeyPrefix } from '../integration-query-keys'
 
 /**
  * Domain facade for `McpServerInstance` rows (installed servers at a scope).
@@ -63,8 +63,6 @@ export type UpsertCredentialOverrideInput = {
   secret: string
 }
 
-const INSTANCE_QUERY_KEY = mcpInstancesKeyPrefix
-
 const buildSearch = (filters: {
   scopeType?: McpServerScopeType
   scopeId?: string
@@ -84,7 +82,7 @@ export const useMcpInstances = (
   const search = buildSearch(filters)
 
   return useQuery<McpServerInstanceRecord[]>({
-    queryKey: [...INSTANCE_QUERY_KEY, filters.scopeType ?? null, filters.scopeId ?? null],
+    queryKey: mcpKeys.instanceList(filters.scopeType ?? null, filters.scopeId ?? null),
     queryFn: () => apiClient.get(`/api/mcp/instances${search}`),
     enabled: options.enabled ?? true,
   })
@@ -98,7 +96,7 @@ export const useCreateInstance = () => {
     mutationFn: (input: CreateInstanceInput) =>
       apiClient.post<McpServerInstanceRecord>('/api/mcp/instances', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: INSTANCE_QUERY_KEY })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.instances })
     },
   })
 }
@@ -110,7 +108,7 @@ export const useDeleteInstance = () => {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/api/mcp/instances/${id}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: INSTANCE_QUERY_KEY })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.instances })
     },
   })
 }
@@ -131,20 +129,17 @@ export const useTestInstance = () => {
         {},
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: INSTANCE_QUERY_KEY })
-      void queryClient.invalidateQueries({ queryKey: ['mcp-tools'] })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.instances })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.tools })
     },
   })
 }
-
-const credentialQueryKey = (instanceId: string) =>
-  ['mcp-instances', instanceId, 'credentials'] as const
 
 export const useInstanceCredentials = (instanceId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<McpCredentialOverrideRecord[]>({
-    queryKey: credentialQueryKey(instanceId ?? ''),
+    queryKey: mcpKeys.instanceCredentials(instanceId ?? ''),
     queryFn: () =>
       apiClient.get(`/api/mcp/instances/${instanceId}/credentials`),
     enabled: Boolean(instanceId),
@@ -167,7 +162,7 @@ export const useUpsertInstanceCredential = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: credentialQueryKey(variables.instanceId),
+        queryKey: mcpKeys.instanceCredentials(variables.instanceId),
       })
     },
   })
@@ -188,7 +183,7 @@ export const useDeleteInstanceCredential = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: credentialQueryKey(variables.instanceId),
+        queryKey: mcpKeys.instanceCredentials(variables.instanceId),
       })
     },
   })

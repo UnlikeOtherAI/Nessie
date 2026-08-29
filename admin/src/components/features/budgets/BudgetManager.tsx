@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { budgetKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { useProjects, useTeams } from '../../../facades/projects/hooks'
 
@@ -63,7 +64,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
   const queryClient = useQueryClient()
 
   const { data: budgets = [] } = useQuery<BudgetStatus[]>({
-    queryKey: ['budgets'],
+    queryKey: budgetKeys.all,
     queryFn: () => apiClient.get('/api/ledger/budgets'),
   })
   const { data: projects = [] } = useProjects()
@@ -97,7 +98,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
   }
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['budgets'] })
+    void queryClient.invalidateQueries({ queryKey: budgetKeys.all })
   }
 
   const save = useMutation({

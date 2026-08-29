@@ -4,6 +4,7 @@ import type {
   AppDetailRecord,
   AppListResponse,
 } from '@nessie/schemas'
+import { appKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
@@ -26,12 +27,6 @@ export type AppListFilters = {
   installed?: boolean
   query?: string
 }
-
-/**
- * Exported so the later connect phase can invalidate every catalogue read from
- * one place after an install, reconnect, or disconnect.
- */
-export const APPS_QUERY_KEY = ['apps'] as const
 
 const buildSearch = (filters: AppListFilters): string => {
   const params = new URLSearchParams()
@@ -60,13 +55,7 @@ export const useApps = (filters: AppListFilters = {}) => {
     // blanks to the pending state between queries, which reads as "no results"
     // for a moment on every letter.
     placeholderData: (previous) => previous,
-    queryKey: [
-      ...APPS_QUERY_KEY,
-      'list',
-      filters.query ?? null,
-      filters.category ?? null,
-      filters.installed ?? false,
-    ],
+    queryKey: appKeys.list(filters),
     queryFn: () => apiClient.get(`/api/apps${search}`),
   })
 }
@@ -79,7 +68,7 @@ export const useApp = (slug: string | undefined) => {
   const apiClient = useApiClient()
 
   return useQuery<AppDetailRecord>({
-    queryKey: [...APPS_QUERY_KEY, 'detail', slug ?? null],
+    queryKey: appKeys.detail(slug),
     queryFn: () => apiClient.get(`/api/apps/${encodeURIComponent(slug ?? '')}`),
     enabled: Boolean(slug),
   })

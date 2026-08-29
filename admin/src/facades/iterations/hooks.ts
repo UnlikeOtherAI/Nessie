@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { iterationKeys, projectKeys, taskKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type IterationStatus = 'planned' | 'active' | 'completed'
@@ -49,18 +50,16 @@ export type ProjectInsights = {
 export const useProjectInsights = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery<ProjectInsights>({
-    queryKey: ['project-insights', projectId ?? ''],
+    queryKey: projectKeys.insights(projectId ?? ''),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/insights`),
     enabled: Boolean(projectId),
   })
 }
 
-const iterationsKey = (projectId: string) => ['iterations', projectId] as const
-
 export const useIterations = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery<Iteration[]>({
-    queryKey: ['iterations', projectId ?? ''],
+    queryKey: iterationKeys.forProject(projectId ?? ''),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/iterations`),
     enabled: Boolean(projectId),
   })
@@ -72,7 +71,7 @@ export const useCreateIteration = (projectId: string) => {
   return useMutation({
     mutationFn: (input: CreateIterationInput) =>
       apiClient.post<Iteration>(`/api/projects/${projectId}/iterations`, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: iterationsKey(projectId) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: iterationKeys.forProject(projectId) }),
   })
 }
 
@@ -85,8 +84,8 @@ export const useUpdateIteration = (projectId: string) => {
       return apiClient.patch<Iteration>(`/api/iterations/${id}`, body)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: iterationsKey(projectId) })
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: iterationKeys.forProject(projectId) })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }
@@ -98,8 +97,8 @@ export const useDeleteIteration = (projectId: string) => {
     mutationFn: (iterationId: string) =>
       apiClient.delete<{ ok: true }>(`/api/iterations/${iterationId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: iterationsKey(projectId) })
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: iterationKeys.forProject(projectId) })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }

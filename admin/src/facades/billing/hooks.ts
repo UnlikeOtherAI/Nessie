@@ -15,6 +15,7 @@ import type {
   BillingStatementV2,
 } from '@unlikeotherai/billing-statement-protocol'
 import type { MeResponse, UoaBillingCapability } from '@nessie/schemas'
+import { billingKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useOptionalAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -35,7 +36,7 @@ const billingSessionScope = (
 } : null
 
 export const billingCapabilityKey = (scope: BillingSessionScope | null) => [
-  'uoa-billing-capability',
+  ...billingKeys.capability,
   scope?.userId ?? 'anonymous',
   scope?.organizationId ?? 'no-organization',
   scope?.teamId ?? 'no-team',
@@ -43,7 +44,7 @@ export const billingCapabilityKey = (scope: BillingSessionScope | null) => [
 ] as const
 
 export const billingCreditsKey = (scope: UoaBillingCapability['scope']) => [
-  'uoa-billing-credits',
+  ...billingKeys.credits,
   scope.userId,
   scope.organisationId,
   scope.teamId,
@@ -53,7 +54,7 @@ export const billingCreditsKey = (scope: UoaBillingCapability['scope']) => [
 export const billingRecurringAddonsKey = (
   scope: UoaBillingCapability['scope'],
 ) => [
-  'uoa-billing-recurring-addons',
+  ...billingKeys.recurringAddons,
   scope.userId,
   scope.organisationId,
   scope.teamId,
@@ -61,7 +62,7 @@ export const billingRecurringAddonsKey = (
 ] as const
 
 export const billingStatementKey = (scope: UoaBillingCapability['scope']) => [
-  'uoa-billing-statement',
+  ...billingKeys.statement,
   scope.userId,
   scope.organisationId,
   scope.teamId,
@@ -120,10 +121,10 @@ export const useUoaBillingRecurringAddons = () => {
 const invalidateFunding = (
   queryClient: ReturnType<typeof useQueryClient>,
 ): void => {
-  void queryClient.invalidateQueries({ queryKey: ['uoa-billing-credits'] })
-  void queryClient.invalidateQueries({ queryKey: ['uoa-billing-recurring-addons'] })
-  void queryClient.invalidateQueries({ queryKey: ['uoa-billing-statement'] })
-  void queryClient.invalidateQueries({ queryKey: ['uoa-billing-capability'] })
+  void queryClient.invalidateQueries({ queryKey: billingKeys.credits })
+  void queryClient.invalidateQueries({ queryKey: billingKeys.recurringAddons })
+  void queryClient.invalidateQueries({ queryKey: billingKeys.statement })
+  void queryClient.invalidateQueries({ queryKey: billingKeys.capability })
 }
 
 export const useUoaBillingCreditTopUp = () => {

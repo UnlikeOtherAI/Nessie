@@ -1,9 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useChannels } from '../channels/hooks'
 import type { ChannelRecord, ThreadMessageRecord } from '../../lib/api-client'
-import { getBaseUrl } from '../../lib/api-client'
 import {
   parseChannelIdFromPath,
   parseReplyRootMessageIdFromPath,
@@ -16,15 +15,15 @@ import {
   resolveReportedPushSurface,
   type PushSurfaceReport,
 } from '../../lib/push-surface'
-import { readSseStream } from '../../lib/sse'
+import type { SseFrame } from '../../lib/sse'
+import { channelKeys, threadKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useEventStream } from '../realtime/event-stream'
+import type { EventStreamConnection } from '../realtime/event-stream-fanout'
 import { showBrowserNotification } from './browser-notification'
 
-const RECONNECT_DELAY_MS = 2_000
 const MAX_NOTIFIED_MESSAGE_IDS = 500
-
-const baseUrl = getBaseUrl()
 
 export type NotificationToastInput = {
   body: string
@@ -166,6 +165,17 @@ const parseMessageCreatedPayload = (data: unknown): MessageCreatedPayload | null
   }
 }
 
+/**
+ * The cutoff below which a frame is history rather than news.
+ *
+ * A cold connection is handed the hub's buffer to warm the feed, and announcing
+ * that as new messages would toast a burst of things the user has already read.
+ * A connection that resumed from a `Last-Event-ID` replays only what this
+ * session genuinely missed, so nothing there is suppressed.
+ */
+export const backlogWatermark = (connection: EventStreamConnection): number =>
+  connection.resumed ? 0 : connection.openedAt
+
 const isInitialBacklogEvent = (
   event: RealtimeEventFrame,
   connectedAt: number,
@@ -270,7 +280,7 @@ export const useMessageNotifications = (input: {
 }): void => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
-  const { me, token } = useAuthSession()
+  const { me } = useAuthSession()
   const { data: channels = [] } = useChannels()
   const location = useLocation()
   const route = useMemo(
@@ -334,91 +344,97 @@ export const useMessageNotifications = (input: {
     }
   }, [activeRootMessageId, activeThreadId, channelLookup, currentUserId, input.onToast, input.openChannel])
 
+  const enabled = Boolean(currentUserId) && notificationsEnabled
+
   useEffect(() => {
-    if (!currentUserId || !notificationsEnabled || !token) {
+    if (!enabled) {
       notifiedMessageIdsRef.current.clear()
+    }
+  }, [enabled])
+
+  const handleMessageCreated = useCallback(async (payload: MessageCreatedPayload): Promise<void> => {
+    const latest = latestRef.current
+    let channel = resolveChannel(payload, latest.channelLookup)
+
+    if (!channel && !payload.channelId && payload.threadId) {
+      try {
+        const freshChannels = await queryClient.fetchQuery<ChannelRecord[]>({
+          queryKey: channelKeys.all,
+          queryFn: () => apiClient.get('/api/channels'),
+        })
+        channel = resolveChannel(payload, buildChannelLookup(freshChannels))
+      } catch {
+        // Without a channel mapping there is nowhere useful to deep-link.
+      }
+    }
+
+    const channelId = payload.channelId ?? channel?.id
+
+    if (payload.threadId) {
+      void queryClient.invalidateQueries({
+        queryKey: threadKeys.messages(payload.threadId),
+      })
+    }
+    void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+
+    // A foreground banner is suppressed only while this exact conversation is
+    // visible and focused. A different reply root in the same channel thread
+    // is still work that needs attention, just like a different channel.
+    if (!channelId || isActivelyViewingConversation(
+      payload.threadId,
+      payload.rootMessageId,
+      latest.activeThreadId,
+      latest.activeRootMessageId,
+    )) {
       return
     }
 
-    let cancelled = false
-    let lastEventId = ''
-    let activeController: AbortController | null = null
-
-    const handleMessageCreated = async (payload: MessageCreatedPayload): Promise<void> => {
-      const latest = latestRef.current
-      let channel = resolveChannel(payload, latest.channelLookup)
-
-      if (!channel && !payload.channelId && payload.threadId) {
-        try {
-          const freshChannels = await queryClient.fetchQuery<ChannelRecord[]>({
-            queryKey: ['channels'],
-            queryFn: () => apiClient.get('/api/channels'),
-          })
-          channel = resolveChannel(payload, buildChannelLookup(freshChannels))
-        } catch {
-          // Without a channel mapping there is nowhere useful to deep-link.
-        }
-      }
-
-      const channelId = payload.channelId ?? channel?.id
-
-      if (payload.threadId) {
-        void queryClient.invalidateQueries({
-          queryKey: ['threads', payload.threadId, 'messages'],
-        })
-      }
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
-
-      // A foreground banner is suppressed only while this exact conversation is
-      // visible and focused. A different reply root in the same channel thread
-      // is still work that needs attention, just like a different channel.
-      if (!channelId || isActivelyViewingConversation(
-        payload.threadId,
-        payload.rootMessageId,
-        latest.activeThreadId,
-        latest.activeRootMessageId,
-      )) {
-        return
-      }
-
-      if (!claimMessageNotification(notifiedMessageIdsRef.current, payload.messageId)) {
-        return
-      }
-
-      const authoredByCurrentUser = await isCurrentUserMessage(
-        payload,
-        latest.currentUserId,
-        (threadId) => apiClient.get(`/api/threads/${threadId}/messages?limit=50`),
-      )
-      if (authoredByCurrentUser) {
-        return
-      }
-
-      const title = channel?.label ?? payload.authorName ?? 'New message'
-      const body = payload.contentPreview.trim() || 'New message'
-      const rootMessageId = payload.rootMessageId ?? payload.messageId
-      const notificationInput = {
-        body,
-        channelId,
-        messageId: payload.messageId,
-        rootMessageId,
-        threadId: payload.threadId,
-        title,
-      }
-
-      showBrowserNotification({
-        ...notificationInput,
-        openChannel: latest.openChannel,
-      })
-      latest.onToast(notificationInput)
+    if (!claimMessageNotification(notifiedMessageIdsRef.current, payload.messageId)) {
+      return
     }
 
-    const handleFrame = async (frameData: string, suppressEventsBefore: number): Promise<void> => {
-      const event = parseRealtimeEvent(frameData)
+    const authoredByCurrentUser = await isCurrentUserMessage(
+      payload,
+      latest.currentUserId,
+      (threadId) => apiClient.get(`/api/threads/${threadId}/messages?limit=50`),
+    )
+    if (authoredByCurrentUser) {
+      return
+    }
+
+    const title = channel?.label ?? payload.authorName ?? 'New message'
+    const body = payload.contentPreview.trim() || 'New message'
+    const rootMessageId = payload.rootMessageId ?? payload.messageId
+    const notificationInput = {
+      body,
+      channelId,
+      messageId: payload.messageId,
+      rootMessageId,
+      threadId: payload.threadId,
+      title,
+    }
+
+    showBrowserNotification({
+      ...notificationInput,
+      openChannel: latest.openChannel,
+    })
+    latest.onToast(notificationInput)
+  }, [apiClient, queryClient])
+
+  const onFrame = useCallback(async (
+    frame: SseFrame,
+    connection: EventStreamConnection,
+  ): Promise<void> => {
+    try {
+      if (!frame.data || !frame.event || !isMessageCreatedEvent(frame.event)) {
+        return
+      }
+
+      const event = parseRealtimeEvent(frame.data)
       if (
         !event
         || !isMessageCreatedEvent(event.event)
-        || isInitialBacklogEvent(event, suppressEventsBefore)
+        || isInitialBacklogEvent(event, backlogWatermark(connection))
       ) {
         return
       }
@@ -427,65 +443,10 @@ export const useMessageNotifications = (input: {
       if (payload) {
         await handleMessageCreated(payload)
       }
+    } catch {
+      // A malformed event or notification failure must not break the stream.
     }
+  }, [handleMessageCreated])
 
-    const connectStream = async (): Promise<void> => {
-      while (!cancelled) {
-        const controller = new AbortController()
-        const suppressEventsBefore = lastEventId ? 0 : Date.now()
-        activeController = controller
-
-        try {
-          const headers: Record<string, string> = {
-            authorization: `Bearer ${token}`,
-          }
-          if (lastEventId) {
-            headers['Last-Event-ID'] = lastEventId
-          }
-
-          const response = await fetch(`${baseUrl}/api/events/stream`, {
-            headers,
-            signal: controller.signal,
-          })
-
-          if (!response.ok || !response.body) {
-            throw new Error('Event stream unavailable')
-          }
-
-          await readSseStream(response.body, async (frame) => {
-            try {
-              if (frame.id) {
-                lastEventId = frame.id
-              }
-
-              if (frame.data && frame.event && isMessageCreatedEvent(frame.event)) {
-                await handleFrame(frame.data, suppressEventsBefore)
-              }
-            } catch {
-              // A malformed event or notification failure must not break the stream.
-            }
-          })
-        } catch {
-          // Connection lost or rejected; retry below while the user remains signed in.
-        } finally {
-          if (activeController === controller) {
-            activeController = null
-          }
-        }
-
-        if (!cancelled) {
-          await new Promise((resolve) => {
-            window.setTimeout(resolve, RECONNECT_DELAY_MS)
-          })
-        }
-      }
-    }
-
-    void connectStream()
-
-    return () => {
-      cancelled = true
-      activeController?.abort()
-    }
-  }, [apiClient, currentUserId, notificationsEnabled, queryClient, token])
+  useEventStream({ enabled, onFrame })
 }

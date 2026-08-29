@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { taskKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { uploadFileWithProgress, type UploadProgress } from '../../lib/upload-xhr'
@@ -6,13 +7,11 @@ import type { KnowledgePageRecord } from './hooks'
 
 // The ticket "Documents" tab: a task's bound knowledge pages (notes stored in
 // the project's "Project Documents" space, plus uploaded file nodes).
-const taskPagesKey = (taskId?: string) => ['task-pages', taskId ?? 'none'] as const
-
 export const useTaskPages = (taskId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgePageRecord[]>({
-    queryKey: taskPagesKey(taskId),
+    queryKey: taskKeys.documents(taskId),
     queryFn: () => apiClient.get(`/api/knowledge-base/tasks/${taskId}/pages`),
     enabled: Boolean(taskId),
   })
@@ -26,7 +25,7 @@ export const useCreateTaskPage = (taskId?: string) => {
     mutationFn: (input: { title: string; body?: string }) =>
       apiClient.post<KnowledgePageRecord>(`/api/knowledge-base/tasks/${taskId}/pages`, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: taskPagesKey(taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.documents(taskId) })
     },
   })
 }
@@ -46,7 +45,7 @@ export const useUploadTaskFile = (taskId?: string) => {
         onProgress,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: taskPagesKey(taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.documents(taskId) })
     },
   })
 }

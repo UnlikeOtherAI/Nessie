@@ -1,11 +1,8 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { workspaceKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { uploadWorkspaceAvatar } from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-
-const workspaceKeys = {
-  avatarRevision: ['workspace', 'avatar', 'revision'] as const,
-}
 
 /**
  * The workspace avatar lives behind one fixed URL (`/api/workspace/avatar`) and

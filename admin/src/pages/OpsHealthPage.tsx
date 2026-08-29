@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
+import { opsHealthKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -61,14 +62,14 @@ export const OpsHealthPage = () => {
   const isSuperAdmin = me?.user.superAdmin ?? false
 
   const { data, isError, error } = useQuery<OpsHealth>({
-    queryKey: ['ops-health'],
+    queryKey: opsHealthKeys.all,
     queryFn: () => apiClient.get('/api/ops/health'),
     enabled: isSuperAdmin,
     refetchInterval: 10_000,
   })
 
   const refresh = useMutation({
-    mutationFn: async () => queryClient.invalidateQueries({ queryKey: ['ops-health'] }),
+    mutationFn: async () => queryClient.invalidateQueries({ queryKey: opsHealthKeys.all }),
   })
 
   const worker = data?.worker

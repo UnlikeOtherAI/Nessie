@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { budgetKeys, opsTelemetryKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 
 export type PricingProfile = {
@@ -18,8 +19,6 @@ export type PricingProfile = {
   effectiveTo: string | null
 }
 
-export const PRICING_PROFILES_KEY = ['pricing-profiles'] as const
-
 const sectionTitle = 'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 const parseRate = (raw: string): number | null | 'invalid' => {
@@ -37,7 +36,7 @@ export const PricingManager = () => {
   const queryClient = useQueryClient()
 
   const { data: profiles = [] } = useQuery<PricingProfile[]>({
-    queryKey: PRICING_PROFILES_KEY,
+    queryKey: opsTelemetryKeys.pricingProfiles,
     queryFn: () => apiClient.get('/api/ledger/tokens/pricing'),
   })
 
@@ -51,11 +50,11 @@ export const PricingManager = () => {
   const [recomputeMsg, setRecomputeMsg] = useState<string | null>(null)
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: PRICING_PROFILES_KEY })
+    void queryClient.invalidateQueries({ queryKey: opsTelemetryKeys.pricingProfiles })
     // Cost figures everywhere depend on pricing — refresh the summaries too.
-    void queryClient.invalidateQueries({ queryKey: ['token-summary'] })
-    void queryClient.invalidateQueries({ queryKey: ['token-estimate'] })
-    void queryClient.invalidateQueries({ queryKey: ['budgets'] })
+    void queryClient.invalidateQueries({ queryKey: opsTelemetryKeys.tokenSummary })
+    void queryClient.invalidateQueries({ queryKey: opsTelemetryKeys.tokenEstimate })
+    void queryClient.invalidateQueries({ queryKey: budgetKeys.all })
   }
 
   const resetForm = () => {

@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { webPushKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type WebPushConfig = {
@@ -6,13 +7,11 @@ export type WebPushConfig = {
   publicKey: string | null
 }
 
-const CONFIG_QUERY_KEY = ['web-push', 'config'] as const
-
 export const useWebPushConfig = () => {
   const apiClient = useApiClient()
 
   return useQuery<WebPushConfig>({
-    queryKey: CONFIG_QUERY_KEY,
+    queryKey: webPushKeys.config,
     queryFn: () => apiClient.get('/api/push/web/config'),
     staleTime: Infinity,
   })

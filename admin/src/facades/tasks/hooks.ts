@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { iterationKeys, taskKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type TaskStatus =
@@ -40,14 +41,10 @@ export type AssignableUser = {
   displayName: string
 }
 
-// All task queries share the ['tasks', …] prefix so a single invalidate or
-// optimistic write reaches every board (aggregate + per-project) at once.
-const tasksKey = (projectId?: string) => ['tasks', projectId ?? 'all'] as const
-
 export const useTasks = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery<TaskRecord[]>({
-    queryKey: tasksKey(projectId),
+    queryKey: taskKeys.forProject(projectId),
     queryFn: () => apiClient.get(`/api/tasks${projectId ? `?project=${projectId}` : ''}`),
   })
 }
@@ -55,7 +52,7 @@ export const useTasks = (projectId?: string) => {
 export const useTaskAssignees = () => {
   const apiClient = useApiClient()
   return useQuery<AssignableUser[]>({
-    queryKey: ['task-assignees'],
+    queryKey: taskKeys.assignees,
     queryFn: () => apiClient.get('/api/tasks/assignees'),
   })
 }
@@ -77,7 +74,7 @@ export const useCreateTask = () => {
       assigneeAgentId?: string
     }) => apiClient.post<TaskRecord>('/api/tasks', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }
@@ -102,8 +99,8 @@ export const useUpdateTask = () => {
       return apiClient.patch<TaskRecord>(`/api/tasks/${id}`, fields)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      void queryClient.invalidateQueries({ queryKey: ['iterations'] })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
+      void queryClient.invalidateQueries({ queryKey: iterationKeys.all })
     },
   })
 }
@@ -115,8 +112,8 @@ export const useArchiveDoneTasks = () => {
     mutationFn: (input: { olderThanDays?: number | null }) =>
       apiClient.post<{ count: number }>('/api/tasks/archive-done', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      void queryClient.invalidateQueries({ queryKey: ['iterations'] })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
+      void queryClient.invalidateQueries({ queryKey: iterationKeys.all })
     },
   })
 }
@@ -130,8 +127,8 @@ export const useSetTaskIteration = () => {
         iterationId: input.iterationId,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      void queryClient.invalidateQueries({ queryKey: ['iterations'] })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
+      void queryClient.invalidateQueries({ queryKey: iterationKeys.all })
     },
   })
 }
@@ -143,8 +140,8 @@ export const useUpdateTaskPoints = () => {
     mutationFn: (input: { id: string; storyPoints: number | null }) =>
       apiClient.patch<TaskRecord>(`/api/tasks/${input.id}`, { storyPoints: input.storyPoints }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      void queryClient.invalidateQueries({ queryKey: ['iterations'] })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
+      void queryClient.invalidateQueries({ queryKey: iterationKeys.all })
     },
   })
 }
@@ -163,21 +160,21 @@ export const useAssignTask = () => {
         assigneeAgentId: input.assigneeAgentId ?? null,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }
 
 type OptimisticContext = { snapshots: [readonly unknown[], TaskRecord[] | undefined][] }
 
-// Optimistically patch the matching task across every ['tasks', …] cache so the
+// Optimistically patch the matching task across every per-project cache so the
 // board reacts instantly; returns the snapshots for rollback on error.
 const optimisticPatch = (
   queryClient: ReturnType<typeof useQueryClient>,
   id: string,
   patch: Partial<TaskRecord>,
 ): OptimisticContext => {
-  const snapshots = queryClient.getQueriesData<TaskRecord[]>({ queryKey: ['tasks'] })
+  const snapshots = queryClient.getQueriesData<TaskRecord[]>({ queryKey: taskKeys.all })
   for (const [key, data] of snapshots) {
     if (!data) continue
     queryClient.setQueryData(
@@ -201,7 +198,7 @@ export const useMoveTask = () => {
         position: input.position,
       }),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }
@@ -217,14 +214,14 @@ export const useTransitionTask = () => {
     // Optimistically move the dragged card across columns so the board feels
     // instant; roll back on failure (e.g. a transition the API rejects).
     onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: ['tasks'] })
+      await queryClient.cancelQueries({ queryKey: taskKeys.all })
       return optimisticPatch(queryClient, input.id, { status: input.status })
     },
     onError: (_error, _input, context) => {
       context?.snapshots.forEach(([key, data]) => queryClient.setQueryData(key, data))
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }

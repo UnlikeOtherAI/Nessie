@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { approvalKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -62,7 +63,7 @@ export const ApprovalsPage = () => {
   // directly — typing the full envelope here made `data?.data` permanently
   // undefined, so the page rendered empty even with pending approvals.
   const { data } = useQuery<ApprovalRequest[]>({
-    queryKey: ['approvals'],
+    queryKey: approvalKeys.all,
     queryFn: () => apiClient.get('/api/approvals?limit=50'),
     enabled: Boolean(me),
   })
@@ -73,7 +74,7 @@ export const ApprovalsPage = () => {
         resolution: input.resolution,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['approvals'] })
+      void queryClient.invalidateQueries({ queryKey: approvalKeys.all })
     },
   })
 

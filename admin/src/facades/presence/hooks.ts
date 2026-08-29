@@ -1,10 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { PresenceListResponse, PresenceManualState } from '../../lib/api-client'
+import { presenceKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-
-export const presenceKeys = {
-  all: ['presence'] as const,
-}
 
 // Org-wide presence + active-status map. Polled so every avatar can badge other
 // users; the current user's own dot is refined locally in PresenceProvider.

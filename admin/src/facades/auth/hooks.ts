@@ -7,14 +7,13 @@ import {
 import type { MeResponse, UserPreferences } from '@nessie/schemas'
 import type { AuthProviderDescriptor } from '../../lib/api-client'
 import { uploadMyUoaAvatar } from '../../lib/uploads'
+import { authKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
-const myAvatarRevisionKey = ['auth', 'me', 'avatar', 'revision'] as const
-
 const bumpMyAvatarRevision = (queryClient: QueryClient): void => {
   queryClient.setQueryData<number>(
-    myAvatarRevisionKey,
+    authKeys.myAvatarRevision,
     (current) => (current ?? 0) + 1,
   )
 }
@@ -32,7 +31,7 @@ export const useAuthProviders = () => {
   const apiClient = useApiClient()
 
   return useQuery<AuthProviderDescriptor[]>({
-    queryKey: ['auth', 'providers'],
+    queryKey: authKeys.providers,
     queryFn: () => apiClient.get('/api/auth/providers'),
     staleTime: 60_000,
   })
@@ -57,7 +56,7 @@ export const useSessions = () => {
   const apiClient = useApiClient()
 
   return useQuery<SessionSummary[]>({
-    queryKey: ['auth', 'sessions'],
+    queryKey: authKeys.sessions,
     queryFn: () => apiClient.get('/api/auth/sessions'),
   })
 }
@@ -70,7 +69,7 @@ export const useRevokeSession = () => {
     mutationFn: (sessionId: string) =>
       apiClient.delete<{ revoked: number }>(`/api/auth/sessions/${sessionId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] })
+      void queryClient.invalidateQueries({ queryKey: authKeys.sessions })
     },
   })
 }
@@ -108,7 +107,7 @@ export const useUpdateMyAvatar = () => {
  */
 export const useMyAvatarRevision = (): number => {
   const { data } = useQuery({
-    queryKey: myAvatarRevisionKey,
+    queryKey: authKeys.myAvatarRevision,
     queryFn: () => 0,
     initialData: 0,
     gcTime: Infinity,

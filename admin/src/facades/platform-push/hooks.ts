@@ -7,17 +7,16 @@ import type {
   PushTestResult,
 } from '@nessie/schemas'
 import { putMultipart } from '../../lib/multipart'
+import { platformPushKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-
-const STATUS_QUERY_KEY = ['platform-push', 'status'] as const
 
 export const usePushStatus = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<PushStatusResponse>({
     enabled,
-    queryKey: STATUS_QUERY_KEY,
+    queryKey: platformPushKeys.status,
     queryFn: () => apiClient.get('/api/platform/push/status'),
   })
 }
@@ -42,7 +41,7 @@ export const useUploadApns = () => {
       return putMultipart('/api/platform/push/apns', file, fields, token)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY })
+      void queryClient.invalidateQueries({ queryKey: platformPushKeys.status })
     },
   })
 }
@@ -55,7 +54,7 @@ export const useUploadFcm = () => {
     mutationFn: ({ file }) =>
       putMultipart('/api/platform/push/fcm', file, {}, token),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY })
+      void queryClient.invalidateQueries({ queryKey: platformPushKeys.status })
     },
   })
 }
@@ -75,7 +74,7 @@ export const useDeletePushCredential = () => {
   return useMutation<PushCredentialResult, Error, PushProvider>({
     mutationFn: (provider) => apiClient.delete(`/api/platform/push/${provider}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY })
+      void queryClient.invalidateQueries({ queryKey: platformPushKeys.status })
     },
   })
 }

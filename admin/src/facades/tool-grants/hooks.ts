@@ -18,12 +18,11 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   deepWaterAgentAccessKeyPrefix,
-  mcpInstancesKeyPrefix,
+  mcpKeys,
   mcpToolRegistryKey,
-  mcpToolRegistryKeyPrefix,
   toolPolicyTargetsKey,
   toolPolicyTargetsKeyPrefix,
-} from '../integration-query-keys'
+} from '../../lib/query-keys'
 
 /**
  * Domain facade for the tool registry surface (`/api/mcp/tools`) and its grant
@@ -109,7 +108,7 @@ export const useMcpToolRegistry = (
   return useQuery<McpToolRegistryRecord[]>({
     queryKey: scope
       ? mcpToolRegistryKey(scope, enabled, filters)
-      : [...mcpToolRegistryKeyPrefix, 'signed-out'],
+      : [...mcpKeys.tools, 'signed-out'],
     queryFn: () => apiClient.get(`/api/mcp/tools${search}`),
     enabled: enabled && scope !== null,
   })
@@ -179,10 +178,10 @@ export const useSetToolRegistryStatus = () => {
         input,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: mcpToolRegistryKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.tools })
       // The Connectors page shows a pending-review count per installed scope;
       // approving here is what makes that chip disappear.
-      void queryClient.invalidateQueries({ queryKey: mcpInstancesKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.instances })
     },
   })
 }
@@ -209,7 +208,7 @@ export const useCreateToolGrant = () => {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: mcpToolRegistryKeyPrefix,
+        queryKey: mcpKeys.tools,
       })
     },
   })
@@ -226,7 +225,7 @@ export const useDeleteToolGrant = () => {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: mcpToolRegistryKeyPrefix,
+        queryKey: mcpKeys.tools,
       })
     },
   })

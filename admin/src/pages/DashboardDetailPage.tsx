@@ -21,6 +21,7 @@ import {
   type DashboardWidgetRecord,
 } from '../facades/dashboards/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { dashboardKeys } from '../lib/query-keys'
 
 /**
  * Each widget loads its own data so one inaccessible widget degrades to a lock
@@ -245,7 +246,7 @@ export const DashboardDetailPage = () => {
       {showAddWidget ? (
         <AddWidgetPanel
           dashboardId={dashboard.id}
-          onAdded={() => queryClient.invalidateQueries({ queryKey: ['dashboards', dashboard.id] })}
+          onAdded={() => queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboard.id) })}
           onClose={() => setShowAddWidget(false)}
         />
       ) : null}

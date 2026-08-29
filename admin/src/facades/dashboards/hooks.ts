@@ -13,6 +13,7 @@ import type {
   DashboardWidgetProjection,
   WidgetDefinition,
 } from '@nessie/schemas'
+import { dashboardKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type DashboardRecord = {
@@ -65,14 +66,6 @@ export type DashboardVersionRecord = {
   createdAt: string
 }
 
-export const dashboardKeys = {
-  all: ['dashboards'] as const,
-  detail: (id: string) => ['dashboards', id] as const,
-  widgetData: (id: string) => ['dashboard-widget-data', id] as const,
-  sources: ['dashboard-sources'] as const,
-  versions: (id: string) => ['dashboards', id, 'versions'] as const,
-}
-
 export const useDashboards = (filter?: { home?: string; projectId?: string }) => {
   const client = useApiClient()
   const query = new URLSearchParams()
@@ -81,7 +74,7 @@ export const useDashboards = (filter?: { home?: string; projectId?: string }) =>
   const suffix = query.toString() ? `?${query.toString()}` : ''
 
   return useQuery({
-    queryKey: [...dashboardKeys.all, suffix],
+    queryKey: dashboardKeys.list(suffix),
     queryFn: () => client.get<DashboardRecord[]>(`/api/dashboards${suffix}`),
   })
 }
@@ -90,7 +83,7 @@ export const useDashboard = (dashboardId: string | undefined) => {
   const client = useApiClient()
   return useQuery({
     enabled: Boolean(dashboardId),
-    queryKey: dashboardKeys.detail(dashboardId ?? ''),
+    queryKey: dashboardKeys.detail(dashboardId),
     queryFn: () =>
       client.get<DashboardRecord & { widgets: DashboardWidgetRecord[] }>(
         `/api/dashboards/${dashboardId}`,
@@ -102,7 +95,7 @@ export const useWidgetData = (widgetId: string, options?: { compact?: boolean })
   const client = useApiClient()
   const suffix = options?.compact ? '?compact=true' : ''
   return useQuery({
-    queryKey: [...dashboardKeys.widgetData(widgetId), suffix],
+    queryKey: dashboardKeys.widgetDataView(widgetId, suffix),
     queryFn: () =>
       client.get<DashboardWidgetProjection>(`/api/dashboard-widgets/${widgetId}/data${suffix}`),
     // Viewing never triggers an outbound fetch; this only re-reads the cache

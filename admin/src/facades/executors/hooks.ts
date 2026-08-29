@@ -18,16 +18,13 @@ import {
   type ExecutorScope,
 } from '@nessie/schemas'
 
+import { executorKeys, threadKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-
-export const executorKeyPrefix = ['executors'] as const
-
-const executorKey = (executorId: string) => [...executorKeyPrefix, executorId] as const
 
 export const useExecutors = () => {
   const apiClient = useApiClient()
   return useQuery({
-    queryKey: executorKeyPrefix,
+    queryKey: executorKeys.all,
     queryFn: async () => ExecutorRecordResponseSchema.array().parse(
       await apiClient.get('/api/executors'),
     ),
@@ -37,7 +34,7 @@ export const useExecutors = () => {
 export const useExecutorAccess = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    queryKey: executorId ? [...executorKey(executorId), 'access'] : [...executorKeyPrefix, 'none', 'access'],
+    queryKey: executorKeys.access(executorId),
     queryFn: async () => ExecutorAccessViewResponseSchema.parse(
       await apiClient.get(`/api/executors/${executorId}/access`),
     ),
@@ -48,7 +45,7 @@ export const useExecutorAccess = (executorId?: string) => {
 export const useExecutorWorkspaceReviews = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    queryKey: executorId ? [...executorKey(executorId), 'workspace-reviews'] : [...executorKeyPrefix, 'none', 'workspace-reviews'],
+    queryKey: executorKeys.workspaceReviews(executorId),
     queryFn: async () => ExecutorWorkspaceReviewRecordResponseSchema.array().parse(
       await apiClient.get(`/api/executors/${executorId}/workspace-reviews`),
     ),
@@ -59,7 +56,7 @@ export const useExecutorWorkspaceReviews = (executorId?: string) => {
 export const useMyExecutorWorkspaceReviews = () => {
   const apiClient = useApiClient()
   return useQuery({
-    queryKey: [...executorKeyPrefix, 'workspace-reviews', 'mine'],
+    queryKey: executorKeys.myWorkspaceReviews,
     queryFn: async () => OriginatingExecutorWorkspaceReviewRecordResponseSchema.array().parse(
       await apiClient.get('/api/executor-workspace-reviews/mine'),
     ),
@@ -69,9 +66,7 @@ export const useMyExecutorWorkspaceReviews = () => {
 export const useExecutorWorkspacePromotion = (promotionId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    queryKey: promotionId
-      ? [...executorKeyPrefix, 'workspace-promotion', promotionId]
-      : [...executorKeyPrefix, 'workspace-promotion', 'none'],
+    queryKey: executorKeys.workspacePromotion(promotionId),
     queryFn: async () => ExecutorWorkspacePromotionRecordResponseSchema.parse(
       await apiClient.get(`/api/executor-workspace-promotions/${promotionId}`),
     ),
@@ -83,7 +78,7 @@ export const useExecutorWorkspacePromotion = (promotionId?: string) => {
 export const usePendingExecutorEnrollment = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    queryKey: executorId ? [...executorKey(executorId), 'pairing'] : [...executorKeyPrefix, 'none', 'pairing'],
+    queryKey: executorKeys.pairing(executorId),
     queryFn: async () => PendingExecutorEnrollmentResponseSchema.parse(
       await apiClient.get(`/api/executors/${executorId}/pairing-pending`),
     ),
@@ -95,9 +90,7 @@ export const usePendingExecutorEnrollment = (executorId?: string) => {
 export const useExecutorAccessChange = (accessChangeId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    queryKey: accessChangeId
-      ? [...executorKeyPrefix, 'access-change', accessChangeId]
-      : [...executorKeyPrefix, 'access-change', 'none'],
+    queryKey: executorKeys.accessChange(accessChangeId),
     queryFn: async () => ExecutorAccessChangeResponseSchema.parse(
       await apiClient.get(`/api/executor-access-changes/${accessChangeId}`),
     ),
@@ -116,7 +109,7 @@ export const useCreateExecutor = () => {
       scope: ExecutorScope
     }) => ExecutorCreateResponseSchema.parse(await apiClient.post('/api/executors', input)),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: executorKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: executorKeys.all })
     },
   })
 }
@@ -157,7 +150,7 @@ export const useLaunchExecutorRun = () => {
       }),
     ),
     onSuccess: (_result, input) => {
-      void queryClient.invalidateQueries({ queryKey: ['threads', input.threadId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.messages(input.threadId) })
     },
   })
 }
@@ -182,7 +175,7 @@ export const useConfirmExecutorWorkspacePromotion = () => {
         currentPassword: input.currentPassword,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: executorKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: executorKeys.all })
     },
   })
 }
@@ -196,7 +189,7 @@ export const useRejectExecutorWorkspacePromotion = () => {
         confirmationToken: input.confirmationToken,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: executorKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: executorKeys.all })
     },
   })
 }
@@ -210,7 +203,7 @@ export const useConfirmExecutorEnrollment = () => {
         fingerprint: input.fingerprint,
       }),
     onSuccess: (_result, input) => {
-      void queryClient.invalidateQueries({ queryKey: executorKey(input.executorId) })
+      void queryClient.invalidateQueries({ queryKey: executorKeys.detail(input.executorId) })
     },
   })
 }
@@ -229,7 +222,7 @@ export const usePrepareExecutorAccessChange = () => {
       )
     },
     onSuccess: (prepared) => {
-      void queryClient.invalidateQueries({ queryKey: executorKey(prepared.executorId) })
+      void queryClient.invalidateQueries({ queryKey: executorKeys.detail(prepared.executorId) })
     },
   })
 }
@@ -247,7 +240,7 @@ export const useConfirmExecutorAccessChange = () => {
       ...(input.currentPassword ? { currentPassword: input.currentPassword } : {}),
     }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: executorKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: executorKeys.all })
     },
   })
 }
@@ -261,7 +254,7 @@ export const useRejectExecutorAccessChange = () => {
         confirmationToken: input.confirmationToken,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: executorKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: executorKeys.all })
     },
   })
 }

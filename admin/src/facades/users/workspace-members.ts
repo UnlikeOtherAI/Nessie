@@ -5,6 +5,7 @@ import type {
   WorkspaceInvitationsResponse,
   WorkspaceMembersResponse,
 } from '@nessie/schemas'
+import { workspaceKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
@@ -16,15 +17,13 @@ import { useApiClient } from '../../providers/ApiClientProvider'
  * The local (non-UOA) member list keeps using `./hooks`.
  */
 
-const MEMBERS_KEY = ['workspace', 'members'] as const
-const INVITATIONS_KEY = ['workspace', 'invitations'] as const
 
 export const useWorkspaceMembers = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<WorkspaceMembersResponse>({
     enabled,
-    queryKey: MEMBERS_KEY,
+    queryKey: workspaceKeys.members,
     queryFn: () => apiClient.get('/api/workspace/members'),
   })
 }
@@ -34,7 +33,7 @@ export const useWorkspaceInvitations = (enabled = true) => {
 
   return useQuery<WorkspaceInvitationsResponse>({
     enabled,
-    queryKey: INVITATIONS_KEY,
+    queryKey: workspaceKeys.invitations,
     queryFn: () => apiClient.get('/api/workspace/invitations'),
   })
 }
@@ -49,8 +48,8 @@ const useWorkspaceMutation = <TInput>(
   return useMutation({
     mutationFn: (input: TInput) => run(apiClient, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: MEMBERS_KEY })
-      void queryClient.invalidateQueries({ queryKey: INVITATIONS_KEY })
+      void queryClient.invalidateQueries({ queryKey: workspaceKeys.members })
+      void queryClient.invalidateQueries({ queryKey: workspaceKeys.invitations })
     },
   })
 }
@@ -81,7 +80,7 @@ export const useCreateWorkspaceInvitations = () => {
     mutationFn: (input: CreateWorkspaceInvitationsRequest) =>
       apiClient.post<CreateWorkspaceInvitationsResponse>('/api/workspace/invitations', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: INVITATIONS_KEY })
+      void queryClient.invalidateQueries({ queryKey: workspaceKeys.invitations })
     },
   })
 }
