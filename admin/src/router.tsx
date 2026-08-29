@@ -8,7 +8,6 @@ import { readNativePendingPushPath, usePhoneLayout } from './lib/mobile-shell'
 import { AdminShellLayout } from './layouts/AdminShellLayout'
 import { RootLayout } from './layouts/RootLayout'
 import { SearchPage } from './pages/SearchPage'
-import { AgentActivityPage } from './pages/AgentActivityPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
 import { AgentDetailPage } from './pages/AgentDetailPage'
@@ -217,10 +216,6 @@ export const router = createBrowserRouter([
         element: <KnowledgeBasePage />,
       },
       {
-        path: '/agents/activity',
-        element: <AgentActivityPage />,
-      },
-      {
         path: '/agents/designer',
         element: <AgentDesignerPage />,
       },
@@ -254,7 +249,7 @@ export const router = createBrowserRouter([
       },
       {
         // Dynamic agent id last: static siblings above outrank it in the
-        // router's ranking, so `/agents/activity` etc. still resolve to their
+        // router's ranking, so `/agents/triggers` etc. still resolve to their
         // own pages while a real agent id lands on the detail page.
         path: '/agents/:agentId',
         element: <AgentDetailPage />,
