@@ -40,8 +40,10 @@ needs: `organizationId`, `channelId`, `taskId`, `runId`, `agentId`,
 `requesterId` (the asker), `action`, `reason`, `context` (Json), `status`,
 `resolverId`/`resolvedAt`/`resolution`, and `continuationToken` (the resume
 handle the `waiting_approval` gate already uses). A second approval table would
-be exactly the fork AGENTS.md rule-zero forbids; the `/approvals` page stays the
-index over one table.
+be exactly the fork AGENTS.md rule-zero forbids. The in-chat card renders every
+`ApprovalRequest` — the new `disclose_information` request and the existing
+tool-gate `approval_required` request alike — so the standalone `/approvals`
+page is removed (see "Disposition" below), not kept as a second surface.
 
 Additive migration (never edit a committed migration folder):
 
@@ -229,12 +231,48 @@ transaction pattern in `api/src/services/runs.ts`:
 
 ## Disposition of the standalone `/approvals` page
 
-**Keep as the index, fold the new kind in.** `admin/src/pages/ApprovalsPage.tsx`
-continues to list every `ApprovalRequest`; consent-to-disclose rows appear with
-their `action`, owner, asker, and a deep link into the channel message (the
-card is the primary doorway; the page is the owning surface for audit and for
-owners who missed the alert — AGENTS.md rule 1: home + doorway). Owners can
-also resolve from the page through the same resolve route. No second page.
+**Remove it entirely — chat is the only surface.** Everything an approval needs
+lives where the work is: the card is the doorway, and the run it gates is
+already a conversation in a channel. So `admin/src/pages/ApprovalsPage.tsx`, its
+`/approvals` route (`admin/src/router.tsx`), the "Approvals" admin nav item
+(`AdminSidebarNav.tsx`, Governance group), and the page's data hooks are deleted
+in this change — mirroring the Agents → Activity removal precedent.
+
+**Consequence — the pre-existing tool-gate approvals must move to chat too, in
+the same change.** Today `/approvals` is the *only* surface for the existing
+`approval_required` tool-gate flow; deleting it without a replacement would
+strand those approvals (Rule zero: a capability nobody can reach is unfinished).
+So the in-chat card is built to render **both** kinds from `ApprovalRequest`
+metadata — the new `disclose_information` request and the existing tool-gate
+request — keyed off the request's `channelId`/`taskId`. This widens the change
+but is the honest cost of removing the page: the card is one component
+parameterised by the request's `action`, not two.
+
+- **The resolve API stays; only the admin *page* goes.** `POST
+  /api/approvals/:approvalId/resolve` and `approval.resolved` are unchanged and
+  now serve only the in-chat card.
+- **The owner may not be a member of the channel** — the archetypal case is
+  info from a DM with someone who is not in the room. The card renders in the
+  asker's channel, which that owner cannot open, and with the page removed there
+  is no fallback surface. So the owner's **alert must open a focused,
+  per-approval card view the owner can act on without channel membership** — the
+  approval card as its own addressable surface reached from the alert/bell/push,
+  *not* the deleted admin page and *not* requiring the owner to enter a channel
+  they are not in. This is a hard requirement created by removing the page;
+  phase 4 must build the standalone card view alongside the in-feed one (one
+  component, two mounts), and the resolve route authorizes by `ownerId`, not by
+  channel membership.
+- **Approvals with no channel context** (should be none — a tool-gate approval
+  is raised mid-run, and a run has a channel/thread — but `channelId` is
+  nullable): the raise paths must attach the originating channel + card message
+  for every approval, so none can exist without an in-chat home. Phase 1 audits
+  the existing `approval_required` raise sites and adds the card there; any that
+  genuinely cannot resolve a channel are called out as a blocker, not silently
+  dropped.
+- A migration/backfill note: any **already-pending** `ApprovalRequest` at deploy
+  time won't have a `messageId`. Either backfill a card message for open rows, or
+  accept that pre-existing pending approvals resolve only via API until they
+  expire — decide during phase 1 (backfill preferred so nothing is stranded).
 
 ## Reuse-not-fork summary
 
@@ -250,17 +288,21 @@ also resolve from the page through the same resolve route. No second page.
 
 ## Phased task list
 
-1. **Schema** — additive migration: `ApprovalRequest.ownerId`,
+1. **Schema + raise-site audit** — additive migration: `ApprovalRequest.ownerId`,
    `ApprovalRequest.messageId`, `UserAlertKind.approval_requested`; the
    `'disclose_information'` action constant in `@nessie/schemas`. Update the
    `UserAlert` model comment's kind list. (New migration folder only —
-   `pnpm lint:migrations` must pass.)
+   `pnpm lint:migrations` must pass.) **Audit every existing
+   `approval_required` raise site** (grep `approval` in `worker/src`): each must
+   attach the originating channel + a card message, so that once `/approvals` is
+   gone no approval lacks an in-chat home. Flag any raise site that cannot
+   resolve a channel as a blocker before proceeding.
 2. **API** — extend the resolve service/route
    (`api/src/routes/approvals.ts`, `api/src/services/approvals.ts`): owner-only
    entitlement for `disclose_information`; transactional outcome message
-   insert + card-metadata update; include `ownerId`/`summary`/message link in
-   the presenter so `ApprovalsPage` can render the new kind. Keep the
-   `approval.resolved` publish.
+   insert + card-metadata update. Keep the `approval.resolved` publish. (No
+   presenter work for a page — the page is being removed; the card reads request
+   metadata off the message.)
 3. **Worker hook** — `request_disclosure_approval` builtin: schema, prompt
    availability, dispatch through `authorizeToolExecution`; the **self-disclosure
    short-circuit** (`askerUserId === ownerUserId` → no request, no suspension,
@@ -269,17 +311,25 @@ also resolve from the page through the same resolve route. No second page.
    injects the verdict. Rebuild `@nessie/worker` (dev API embeds built `dist`).
    A worker test asserts self-disclosure persists **no** `ApprovalRequest` row
    and that a second, differently-owned ask still raises one.
-4. **Chat card** — extract/generalise the `RunStopContinue` pattern;
-   `DisclosureApprovalCard` with owner-enabled buttons, disabled-after-acting,
-   non-owner waiting view; wire into the message feed; deep link from
-   `ApprovalsPage` rows.
-5. **Alerts** — confirm `api/src/services/alerts.ts` list/read paths handle
+4. **Chat card** — extract/generalise the `RunStopContinue` pattern into one
+   approval card parameterised by the request's `action`. Render **both** kinds:
+   the `disclose_information` request (owner-enabled Accept/Decline, non-owner
+   waiting view) and the existing `approval_required` tool-gate request (its
+   own approver rule). Wire into the message feed for every approval-carrying
+   channel/thread.
+5. **Remove the `/approvals` page** — delete `admin/src/pages/ApprovalsPage.tsx`,
+   its `/approvals` route, the "Approvals" nav item, and its now-unused data
+   hooks; keep the resolve route/service and `approval.resolved`. Backfill a
+   card message for any already-pending `ApprovalRequest` so no open approval is
+   stranded when the page disappears. (Phase 1 already made every raise site
+   attach the channel + card, so from here forward every approval has a home.)
+6. **Alerts** — confirm `api/src/services/alerts.ts` list/read paths handle
    `approval_requested` (the `visibleUserAlertWhere` scope is generic; verify
    mark-read kinds need no change); push copy via the existing web-push
    pipeline.
-6. **Realtime** — verify `message.updated`/`message.new`/`alert.created`
+7. **Realtime** — verify `message.updated`/`message.new`/`alert.created`
    fan-out covers the new writes; add nothing new unless a gap appears.
-7. **Tests** — worker: creation transaction + resume on approve/decline
+8. **Tests** — worker: creation transaction + resume on approve/decline
    (mock-LLM scenario where the model calls the tool); api: owner-only resolve
    entitlement (non-owner refusal), transaction atomicity, alert row +
    `eventKey` idempotency; admin: card renders owner-enabled/other-waiting/
