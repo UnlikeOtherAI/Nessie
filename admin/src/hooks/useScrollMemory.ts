@@ -48,8 +48,3 @@ export const useScrollMemory = (key: string | undefined | null): ScrollMemory =>
 
   return { ref, onScroll }
 }
-
-// Test-only: reset the module store between cases.
-export const __resetScrollMemory = (): void => {
-  scrollTopByKey.clear()
-}

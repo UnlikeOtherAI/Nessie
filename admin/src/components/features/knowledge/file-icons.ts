@@ -100,10 +100,6 @@ export const iconForMime = (mime: string): IconDefinition => {
   return faFile
 }
 
-// Whether a MIME type can be previewed inline in the browser.
-export const canPreviewInline = (mime: string): boolean =>
-  mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('text/') || mime === 'text/csv'
-
 export type PreviewKind = 'image' | 'pdf' | 'text' | 'video' | 'audio' | null
 
 const IMAGE_EXT = new Set([
