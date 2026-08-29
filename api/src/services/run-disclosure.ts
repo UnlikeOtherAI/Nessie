@@ -2,16 +2,20 @@ import type { PrismaClient } from '@prisma/client'
 import { canUserReadDisclosureBasis } from '@nessie/runtime'
 
 /**
- * The disclosure gate for a run's thought log.
+ * May this viewer read material derived from a given run?
  *
- * A run's reasoning and tool-activity lines are derived from the very sources
- * its reply was built on, so they carry the same provenance and must answer the
- * same question: may *this* viewer read material derived from these scopes?
- * Without this the thought-process dialog was a second, durable route to
- * withheld content — `GET /api/threads/:id/thinking` and
- * `…/runs/:runId/thinking` gated on thread membership alone, so a member who is
- * correctly withheld the reply could still read the run's full thinking about
- * it, and unlike the live stream that route persists.
+ * One question with several askers, so it lives in one place. A run's reasoning
+ * and its checkpoint are both derived from the very sources its reply was built
+ * on, so they carry the same provenance and get the same answer.
+ *
+ * - The thought log: `GET /api/threads/:id/thinking` and `…/runs/:runId/thinking`
+ *   gated on thread membership alone, so a member correctly withheld the reply
+ *   could still read the run's full thinking about it — and unlike the live
+ *   stream, that route persists.
+ * - Continuing a run: pressing Continue claims the checkpoint. Someone who
+ *   cannot reach the stopped run's sources consumes it, and the resumed run
+ *   (which withholds the note from them anyway) then redoes the work — the
+ *   entitled person's resume is spent by someone who could never use it.
  *
  * `RunBasisScope` is the per-run provenance ledger written by the agent-message
  * chokepoint. It existed with no reader; this is that reader. Zero rows means
@@ -21,7 +25,7 @@ import { canUserReadDisclosureBasis } from '@nessie/runtime'
  * so lifting the restriction on a reply (share once, or a standing rule) also
  * lifts it on the reasoning behind that reply — one decision, not two.
  */
-export const canReadRunThinking = async (
+export const canUserReadRunBasis = async (
   prisma: PrismaClient,
   input: {
     organizationId: string

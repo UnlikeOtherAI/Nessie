@@ -5,7 +5,7 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 
 import { mapMessageRecordWithAttachments, messageInclude } from '../src/services/messages.js'
-import { canReadRunThinking } from '../src/services/run-thinking-disclosure.js'
+import { canUserReadRunBasis } from '../src/services/run-disclosure.js'
 import { loadThreadThinking } from '../src/services/run-thinking.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
@@ -200,7 +200,7 @@ runDatabaseTest("a run's thought log is withheld from viewers its reply would be
   })
 
   assert.equal(
-    await canReadRunThinking(prisma, {
+    await canUserReadRunBasis(prisma, {
       organizationId: s.organizationId,
       runId: run.id,
       userId: s.outsiderId,
@@ -208,7 +208,7 @@ runDatabaseTest("a run's thought log is withheld from viewers its reply would be
     false,
   )
   assert.equal(
-    await canReadRunThinking(prisma, {
+    await canUserReadRunBasis(prisma, {
       organizationId: s.organizationId,
       runId: run.id,
       userId: s.insiderId,
@@ -250,7 +250,7 @@ runDatabaseTest('a run that consumed nothing privileged keeps its thought log re
   })
 
   assert.equal(
-    await canReadRunThinking(prisma, {
+    await canUserReadRunBasis(prisma, {
       organizationId: s.organizationId,
       runId: run.id,
       userId: s.outsiderId,

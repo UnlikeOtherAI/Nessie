@@ -3,6 +3,8 @@ import {
   attributionFromActorContext,
   checkBudget,
   decideAgentEngagement,
+  partitionByDisclosure,
+  resolveDisclosureViewer,
   selectFollowingAgentIds,
   type OrchestratorAgent,
   type OrchestratorDecision,
@@ -174,10 +176,26 @@ export const executeOrchestrateDecideJob = async (
       where: { threadId },
       orderBy: { createdAt: 'desc' },
       take: 6,
-      include: { agent: { select: { name: true } } },
+      include: {
+        agent: { select: { name: true } },
+        basisScopes: { select: { scopeType: true, scopeId: true } },
+      },
     })
 
-    const recentOrdered = recentDbMessages.reverse()
+    // The window the *run* reads is disclosure-filtered (`prompt.ts`); this one
+    // was not, so the engagement judgement for one person's message could be
+    // formed over another person's restricted exchange. It decides only whether
+    // and where to reply, but a judgement is still a reading, and the two
+    // windows disagreeing about what exists is its own defect. Withheld turns
+    // are dropped rather than placeheld: there is no reader here to show a
+    // placeholder to.
+    const viewer = await resolveDisclosureViewer(
+      deps.prisma,
+      channel.organizationId,
+      actorContext.actionContext.effectiveUserId
+        ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : undefined),
+    )
+    const recentOrdered = partitionByDisclosure(recentDbMessages, viewer).visible.reverse()
     // A message can be nothing but a photo. Naming its files gives the
     // engagement judgement something to read — without an inventory line an
     // image-only post looks like an empty message and nobody answers it.

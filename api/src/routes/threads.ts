@@ -24,7 +24,7 @@ import {
 } from '../services/messages.js'
 import { toggleUserReaction } from '../services/message-reactions.js'
 import { loadRunThinkingLog, loadThreadThinking } from '../services/run-thinking.js'
-import { canReadRunThinking } from '../services/run-thinking-disclosure.js'
+import { canUserReadRunBasis } from '../services/run-disclosure.js'
 import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js'
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
@@ -147,7 +147,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     // restricted answer must not read the reasoning that produced it. Answering
     // 404 (rather than 403) keeps this consistent with the route's existing
     // "do not confirm what you cannot see" behaviour above.
-    const readable = await canReadRunThinking(prisma, {
+    const readable = await canUserReadRunBasis(prisma, {
       organizationId: actorContext.tenant.organizationId,
       runId,
       userId: actorContext.actor.actorId,

@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import { parseAgentId, parseRunId } from '@nessie/schemas'
 
 import type { RunThinkingEntry, RunThinkingLog, ThreadThinking } from '../contracts.js'
-import { canReadRunThinking } from './run-thinking-disclosure.js'
+import { canUserReadRunBasis } from './run-disclosure.js'
 
 // The full log is capped so a very long run cannot return an unbounded payload;
 // the bootstrap tail only needs enough to fill the bubble's ticker plus a bit of
@@ -104,7 +104,7 @@ export const loadThreadThinking = async (
 
   const readable = await Promise.all(
     runs.map((run) =>
-      canReadRunThinking(prisma, {
+      canUserReadRunBasis(prisma, {
         organizationId: viewer.organizationId,
         runId: run.id,
         userId: viewer.userId,
