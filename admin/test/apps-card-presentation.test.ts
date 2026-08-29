@@ -12,7 +12,7 @@ import {
   appDetailHref,
   appIconInitials,
   appKindPill,
-  appUnavailableReason,
+  appUnavailableExplanation,
 } from '../src/components/features/apps/app-card-presentation.js'
 
 /**
@@ -161,6 +161,8 @@ test('somebody else owning the decision disables the button rather than hiding i
     title: 'Managed by your admin.',
     tone: 'primary',
   })
+  // The card keeps a plain sentence: `title` is a tooltip and cannot hold an
+  // anchor. The detail hero renders the same sentence with the link.
   assert.deepEqual(appCardAction(app({ managedByIntegration: true, state: 'auth_expired' })), {
     kind: 'disabled',
     label: 'Reconnect',
@@ -170,12 +172,39 @@ test('somebody else owning the decision disables the button rather than hiding i
 })
 
 test('an integration-managed app names Integrations even when it is also locked', () => {
-  assert.equal(appUnavailableReason(app()), null)
-  assert.equal(appUnavailableReason(app({ locked: true })), 'Managed by your admin.')
-  assert.equal(
-    appUnavailableReason(app({ locked: true, managedByIntegration: true })),
-    'Turned on from Integrations, not here.',
-  )
+  assert.equal(appUnavailableExplanation(app()), null)
+  assert.deepEqual(appUnavailableExplanation(app({ locked: true })), {
+    link: null,
+    text: 'Managed by your admin.',
+  })
+  // Naming the door is not opening it, so the sentence carries the way there.
+  assert.deepEqual(appUnavailableExplanation(app({ locked: true, managedByIntegration: true })), {
+    link: { href: '/settings/integrations', label: 'Open Integrations' },
+    text: 'Turned on from Integrations, not here.',
+  })
+})
+
+test('each availability verdict is worded, and says who can change it', () => {
+  // These used to return null, so the detail hero — whose whole job is to
+  // explain — rendered a bare "Unavailable" with no sentence under it.
+  const blocked = appUnavailableExplanation(app({ state: 'disabled', trustLevel: 'blocked' }))
+  assert.match(blocked?.text ?? '', /Blocked for this organisation/)
+  assert.match(blocked?.text ?? '', /An owner can lift that/)
+
+  const deprecated = appUnavailableExplanation(app({ state: 'disabled' }))
+  assert.match(deprecated?.text ?? '', /No longer offered by its publisher/)
+  assert.match(deprecated?.text ?? '', /An owner can point you at a replacement/)
+
+  const unreachable = appUnavailableExplanation(app({ state: 'unavailable' }))
+  assert.match(unreachable?.text ?? '', /could not reach this app's server/)
+  assert.match(unreachable?.text ?? '', /an owner can look into it/)
+})
+
+test('a verdict is never worded over an app that is connected and working', () => {
+  // The wording keys off the two action-less states, not off the raw flags, so
+  // a blocked trust level on a live connection cannot produce a refusal.
+  assert.equal(appUnavailableExplanation(app({ state: 'connected', trustLevel: 'blocked' })), null)
+  assert.equal(appUnavailableExplanation(app({ state: 'error', trustLevel: 'blocked' })), null)
 })
 
 test('connecting is disabled without promising to resolve itself, because it may never', () => {
@@ -189,14 +218,22 @@ test('connecting is disabled without promising to resolve itself, because it may
   })
 })
 
-test('paused offers Manage alongside the connected states — its accounts are the person own', () => {
-  for (const state of ['connected', 'multiple_accounts', 'paused'] as const) {
+test('paused opens the accounts tab to look, because nothing re-enables an install', () => {
+  for (const state of ['connected', 'multiple_accounts'] as const) {
     assert.deepEqual(
       appCardAction(app({ state })),
       { kind: 'link', href: '/apps/github?tab=accounts', label: 'Manage', tone: 'secondary' },
       state,
     )
   }
+  // "Manage" promised a control the accounts tab does not have and no endpoint
+  // backs: a paused install cannot be switched back on anywhere in the product.
+  assert.deepEqual(appCardAction(app({ state: 'paused' })), {
+    kind: 'link',
+    href: '/apps/github?tab=accounts',
+    label: 'View accounts',
+    tone: 'secondary',
+  })
 })
 
 test('the two availability verdicts offer no card action — the detail page says why in words', () => {

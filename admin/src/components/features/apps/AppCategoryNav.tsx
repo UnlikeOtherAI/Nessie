@@ -39,6 +39,12 @@ export const AppCategoryNav = ({ activeCategory, onSelect, sections }: AppCatego
         const active = section.category === activeCategory
         return (
           <button
+            // The highlight is the whole answer this nav gives ("where did I
+            // go"), so it has to be announced and not only painted: without it
+            // a screen reader reads N identically-shaped buttons and no
+            // position among them. `location` rather than `page` because the
+            // jump lands on a section of this page, not on another one.
+            aria-current={active ? 'location' : undefined}
             className={[
               'shrink-0 rounded-full border px-3 py-1.5',
               'transition-colors duration-[var(--duration-fast)]',

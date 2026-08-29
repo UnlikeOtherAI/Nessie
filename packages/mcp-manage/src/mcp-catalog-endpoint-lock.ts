@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 
 import type { McpCatalogEntryRow } from './mcp-catalog.js'
+import { normalizeEndpoint } from './registry/registry-mapper.js'
 
 const endpointUrlOf = (
   entry: { defaultTransportConfig: unknown },
@@ -9,7 +10,13 @@ const endpointUrlOf = (
   if (config && typeof config === 'object' && !Array.isArray(config)) {
     const url = (config as Record<string, unknown>).url
     if (typeof url === 'string' && url.length > 0) {
-      return url.replace(/\/+$/, '')
+      // Canonical on BOTH sides. Stripping trailing slashes and comparing the
+      // raw strings let a semantically identical URL slip a lock: a member
+      // could install `https://API.Example.com:443/mcp` past a lock recorded
+      // on `https://api.example.com/mcp`. Registry ingestion made that routine
+      // rather than hypothetical, since it creates rows from URLs the
+      // publisher wrote however they liked.
+      return normalizeEndpoint(url) ?? url.replace(/\/+$/, '')
     }
   }
   return null

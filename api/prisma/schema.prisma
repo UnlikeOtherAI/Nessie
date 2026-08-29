@@ -2900,6 +2900,9 @@ model McpCatalogEntry {
   featuredOrder     Int?                   @map("featured_order")
   /// Upstream registry provenance. `upstream` holds the raw normalized record
   /// so a re-sync can diff without a second fetch.
+  /// The upstream registry id, and the database-arbitrated identity of an
+  /// ingested app: unique where present (partial index, see the migration) so
+  /// two concurrent sweeps cannot both insert the same server.
   registryName      String?                @map("registry_name")
   registryVersion   String?                @map("registry_version")
   upstream          Json                   @default("{}")
@@ -2935,6 +2938,9 @@ model McpCatalogEntry {
   @@index([moderationState, trustLevel])
   @@index([primaryCategory, moderationState])
   @@index([featured, featuredOrder])
+  // registry_name uniqueness is a PARTIAL index (WHERE registry_name IS NOT
+  // NULL) — hand-authored connectors leave it null and must stay unconstrained,
+  // which `@@unique` cannot express. Declared in the migration.
   @@map("mcp_catalog_entries")
 }
 
