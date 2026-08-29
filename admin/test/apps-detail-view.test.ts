@@ -129,20 +129,19 @@ test('a deep link to a tab this app does not offer falls back to Overview, not a
   assert.equal(resolveAppDetailTab('accounts', appDetailTabs(detail({ connections: [connection()] }))), 'accounts')
 })
 
-test('the connect label names both parties, except where a phone has no room for it', () => {
-  assert.equal(appConnectCtaLabel('GitHub', false), 'Connect Nessie to GitHub')
-  assert.equal(appConnectCtaLabel('GitHub', true), 'Connect')
+test('the connect label is the one word Connect — the page already names both parties', () => {
+  // It used to read "Connect Nessie to GitHub" wherever there was room. The
+  // person is on GitHub's page, under GitHub's name and icon, having clicked
+  // GitHub's card: restating both parties is words, not information.
+  assert.equal(appConnectCtaLabel(), 'Connect')
+  // No parameters at all, so the label cannot vary by app or by screen width —
+  // a re-introduced display name would have to come back through this signature.
+  assert.equal(appConnectCtaLabel.length, 0)
 })
 
-test('the hero CTA is the card decision, relabelled and pointed at the server own install route', () => {
+test('the hero CTA is the card decision, pointed at the server own install route', () => {
   const app = detail()
-  assert.deepEqual(appDetailCta(app, false), {
-    kind: 'link',
-    href: app.installHref,
-    label: 'Connect Nessie to GitHub',
-    tone: 'primary',
-  })
-  assert.deepEqual(appDetailCta(app, true), {
+  assert.deepEqual(appDetailCta(app), {
     kind: 'link',
     href: app.installHref,
     label: 'Connect',
@@ -150,27 +149,30 @@ test('the hero CTA is the card decision, relabelled and pointed at the server ow
   })
 })
 
-test('a blocked connect keeps its disabled shape and reason, and only gains the longer label', () => {
-  assert.deepEqual(appDetailCta(detail({ locked: true }), false), {
+test('a blocked connect keeps its disabled shape and reason', () => {
+  assert.deepEqual(appDetailCta(detail({ locked: true })), {
     kind: 'disabled',
-    label: 'Connect Nessie to GitHub',
+    label: 'Connect',
     title: 'Managed by your admin.',
     tone: 'primary',
   })
 })
 
-test('an action that is not Connect passes through untouched, compact or not', () => {
+test('an action that is not Connect passes through untouched', () => {
   const connected = detail({ connections: [connection()], state: 'connected' })
-  const manage = { kind: 'link', href: '/apps/github?tab=accounts', label: 'Manage', tone: 'secondary' }
-  assert.deepEqual(appDetailCta(connected, false), manage)
-  assert.deepEqual(appDetailCta(connected, true), manage)
-  assert.deepEqual(appDetailCta(detail({ state: 'auth_expired' }), true), {
+  assert.deepEqual(appDetailCta(connected), {
+    kind: 'link',
+    href: '/apps/github?tab=accounts',
+    label: 'Manage',
+    tone: 'secondary',
+  })
+  assert.deepEqual(appDetailCta(detail({ state: 'auth_expired' })), {
     kind: 'link',
     href: detail().installHref,
     label: 'Reconnect',
     tone: 'primary',
   })
-  assert.deepEqual(appDetailCta(detail({ state: 'unavailable' }), false), { kind: 'none' })
+  assert.deepEqual(appDetailCta(detail({ state: 'unavailable' })), { kind: 'none' })
 })
 
 test('the provider line names the publisher when one claims the app, and the category always', () => {

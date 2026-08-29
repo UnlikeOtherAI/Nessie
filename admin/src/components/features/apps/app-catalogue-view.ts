@@ -1,14 +1,19 @@
-import type { AppCategory, AppListResponse, AppSummaryRecord } from '@nessie/schemas'
-import { APP_CATEGORY_LABELS, APP_CATEGORY_ORDER } from '@nessie/schemas'
+import type {
+  AppCategory,
+  AppCategoryCountRecord,
+  AppListResponse,
+  AppSummaryRecord,
+} from '@nessie/schemas'
 
 /**
- * How the catalogue arranges itself: which apps the current filter keeps, how
- * they fall into category sections, how much of a section a person sees before
- * asking for the rest, and what an empty grid says.
+ * How the catalogue arranges itself: which apps a section holds, how much of it
+ * a person sees before asking for the rest, and what an empty grid says.
  *
- * All of it derives from the one list response, so switching filter or typing a
- * query never waits on the network — a store that stalls while you browse it is
- * a store nobody browses.
+ * The shaping is local; the *facts* are not. Every count here comes from the
+ * server's aggregates (`totalCount`, `installedCount`, `categories[].count`) and
+ * never from the length of the array beside it, because the array is a bounded
+ * slice of a catalogue that holds thousands of apps. "Show all 412" has to be
+ * 412 whether the response carried twelve cards or forty-eight.
  */
 
 // ─── Filter ─────────────────────────────────────────────────────────────────
@@ -36,6 +41,16 @@ export const parseAppFilter = (raw: string | null): AppFilter =>
  */
 export const isInstalledApp = (app: AppSummaryRecord): boolean => app.connectionCount > 0
 
+/**
+ * The grid is narrowed by the *server* — a filter applied to a bounded slice
+ * hides apps that are simply on another page, and contradicts the count printed
+ * on the control that applied it.
+ *
+ * This survives for the Featured strip alone, which the server draws from
+ * everything visible (at most five records, all of them present) so that it
+ * outlives a search or a category narrowing the grid to nothing. Filtering that
+ * one small, complete list locally drops nothing.
+ */
 export const filterApps = (
   apps: readonly AppSummaryRecord[],
   filter: AppFilter,
@@ -107,15 +122,29 @@ export const sectionPageSize = (columns: number): number =>
 // ─── Category sections ──────────────────────────────────────────────────────
 
 export type AppCategorySectionModel = {
+  /** The slice the server sent for this category — never the whole category. */
   apps: AppSummaryRecord[]
   category: AppCategory
   label: string
+  /**
+   * Apps in this category under the active narrowing, counted in SQL over the
+   * unsliced set. `apps.length` is what arrived; this is what exists, and it is
+   * the number "Show all N" says out loud.
+   */
+  total: number
 }
 
 /**
- * One section per category that still has an app, in the taxonomy's fixed
- * order — fixed so an app does not move down the page because somebody else in
- * the organisation connected something.
+ * One section per category the server counted, in the taxonomy's fixed order —
+ * fixed so an app does not move down the page because somebody else in the
+ * organisation connected something.
+ *
+ * The **counts** decide which sections exist, not the returned cards: a
+ * category with 300 apps and a twelve-card shelf is one section either way, and
+ * deriving the set from the slice would silently drop a shelf whose page had
+ * not arrived. Cards keep the server's order — that order is the one paging
+ * cuts on, so re-sorting here would make the boundary between page one and page
+ * two meaningless.
  *
  * An app appears only under its `primaryCategory`. Listing GitHub under both
  * Development and Project Management doubles the page and makes every count a
@@ -123,40 +152,69 @@ export type AppCategorySectionModel = {
  */
 export const buildCategorySections = (
   apps: readonly AppSummaryRecord[],
+  categories: readonly AppCategoryCountRecord[],
 ): AppCategorySectionModel[] =>
-  APP_CATEGORY_ORDER.flatMap((category) => {
-    const inCategory = apps
-      .filter((app) => app.primaryCategory === category)
-      .sort((left, right) => left.displayName.localeCompare(right.displayName))
-    return inCategory.length === 0
-      ? []
-      : [{ apps: inCategory, category, label: APP_CATEGORY_LABELS[category] }]
-  })
+  categories.map((entry) => ({
+    apps: apps.filter((app) => app.primaryCategory === entry.category),
+    category: entry.category,
+    // The server labels its own counts from the one taxonomy constant, so the
+    // heading and the count it sits beside can never name different categories.
+    label: entry.label,
+    total: entry.count,
+  }))
 
-/**
- * `Other` is the long tail and is usually short; a "Show all" link on it is a
- * control that saves nobody anything.
- */
-const alwaysFullyShown = (category: AppCategory): boolean => category === 'other'
-
+/** How many cards a collapsed section shows: two rows of whatever arrived. */
 export const sectionVisibleApps = (
   section: AppCategorySectionModel,
   pageSize: number,
   expanded: boolean,
 ): AppSummaryRecord[] =>
-  expanded || alwaysFullyShown(section.category) || section.apps.length <= pageSize
-    ? section.apps
-    : section.apps.slice(0, pageSize)
+  expanded ? section.apps : section.apps.slice(0, pageSize)
 
+/**
+ * There is more of this category than a collapsed shelf shows — decided against
+ * the SQL total, so the offer is right whether the rest is on this page or on
+ * the next one.
+ *
+ * `other` used to be exempt on the grounds that the long tail is short. Registry
+ * ingestion inverted that: uncategorised is now the largest shelf, and the one
+ * that most needs paging.
+ */
 export const sectionOffersShowAll = (
   section: AppCategorySectionModel,
   pageSize: number,
-): boolean => !alwaysFullyShown(section.category) && section.apps.length > pageSize
+): boolean => section.total > Math.min(pageSize, section.apps.length)
 
 export const sectionToggleLabel = (
   section: AppCategorySectionModel,
   expanded: boolean,
-): string => (expanded ? 'Show less ↑' : `Show all ${section.apps.length} →`)
+): string => (expanded ? 'Show less ↑' : `Show all ${section.total} →`)
+
+/** "Load more" only while the server says pages remain. */
+export const sectionRemainingLabel = (loaded: number, total: number): string =>
+  `Load more (${Math.max(0, total - loaded)} left)`
+
+// ─── Search results ─────────────────────────────────────────────────────────
+
+/**
+ * How many apps matched, all of them, however few were sent. The server ranks
+ * and returns its best hundred; the per-category counts are aggregates over the
+ * whole match set, so summing them is the exact total rather than an estimate
+ * from the truncated array.
+ */
+export const catalogueMatchTotal = (
+  categories: readonly AppCategoryCountRecord[],
+): number => categories.reduce((sum, entry) => sum + entry.count, 0)
+
+/**
+ * Said under the results count when the list is capped. Without it "340
+ * results" sits above a hundred cards and a person concludes the page is broken
+ * rather than that it is bounded.
+ */
+export const searchTruncationNote = (shown: number, total: number): string | null =>
+  total > shown
+    ? `Showing the ${shown} closest matches — narrow the search to see the rest.`
+    : null
 
 // ─── Empty grid ─────────────────────────────────────────────────────────────
 
@@ -170,13 +228,18 @@ const ADD_CUSTOM_LABEL = 'Add custom app'
  */
 export const CATALOGUE_FOOTER_NUDGE: AppCatalogueEmptyModel = {
   actionLabel: ADD_CUSTOM_LABEL,
-  message: "Can't find what you need? Add any MCP-compatible server as a custom app.",
+  message: "Can't find what you need? Connect a tool by its address.",
 }
 
 /**
  * Which nothing this is. "No results" and "nothing published yet" and "you have
  * connected nothing" are three different situations with three different next
  * moves, and one generic sentence answers none of them.
+ *
+ * `query` must be the query the *rendered* response answers, not whatever the
+ * search box currently holds: while "git" is in flight the page is still
+ * showing the results for "g", and naming the pending query here asserts an
+ * answer nobody has given yet.
  */
 export const catalogueEmptyMessage = (input: {
   filter: AppFilter
@@ -189,7 +252,7 @@ export const catalogueEmptyMessage = (input: {
       actionLabel: ADD_CUSTOM_LABEL,
       message:
         'No apps have been published to your catalogue yet. '
-        + 'Add any MCP-compatible server as a custom app.',
+        + 'Connect a tool by its address to add the first one.',
     }
   }
   if (query.length > 0) {
@@ -197,15 +260,19 @@ export const catalogueEmptyMessage = (input: {
       actionLabel: ADD_CUSTOM_LABEL,
       message:
         `No apps match "${query}". Try a different word — `
-        + 'or add any MCP-compatible server as a custom app.',
+        + 'or connect a tool by its address.',
     }
   }
   if (input.filter === 'installed') {
+    // The sentence used to say "Switch to All" while the only button said "Add
+    // custom app" — an instruction that was not clickable, beside a control
+    // that did something else. Now the words describe the state and the button
+    // is the action they name.
     return {
       actionLabel: ADD_CUSTOM_LABEL,
       message:
-        "You haven't connected any apps yet. "
-        + 'Switch to All to see what your team can connect.',
+        "You haven't connected any apps yet. Browse the catalogue with the All "
+        + 'filter above, or connect a tool by its address.',
     }
   }
   return CATALOGUE_FOOTER_NUDGE

@@ -88,6 +88,7 @@ import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerDisclosureGrantRoutes } from './routes/disclosure-grants.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerFeedbackRoutes } from './routes/feedback.js'
+import { registerAppsRegistryRoutes } from './routes/apps-registry.js'
 import { registerAppRoutes } from './routes/apps.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerOrganizationRoutes } from './routes/organizations.js'
@@ -424,6 +425,7 @@ export const buildApp = async () => {
   registerWorkspaceMembersRoutes(app, deps)
   registerFeedbackRoutes(app, deps)
   registerAppRoutes(app, deps)
+  registerAppsRegistryRoutes(app, deps)
   registerIntegrationRoutes(app, deps)
   registerExternalAgentRoutes(app, deps)
   registerProjectRoutes(app, deps)

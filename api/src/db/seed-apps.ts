@@ -103,7 +103,7 @@ const APP_LISTINGS: AppListing[] = [
     displayName: 'DeepSignal',
     shortDescription:
       'Keeps watch on the things you decided matter and tells you when something changes, '
-      + 'so opportunities and risks find you rather than the other way round.',
+      + 'before you would have noticed yourself.',
     longDescription:
       'DeepSignal holds a standing watch over the subjects you name — a market, a '
       + 'competitor, an account, a piece of regulation — and surfaces only what changed and '
@@ -136,8 +136,8 @@ const APP_LISTINGS: AppListing[] = [
     slug: 'deeptest',
     displayName: 'DeepTest',
     shortDescription:
-      'Puts a codebase through a security review and hands back findings someone can act '
-      + 'on, without the source ever leaving your side.',
+      'Puts a codebase through a security review and hands back findings, without the '
+      + 'source ever leaving your side.',
     longDescription:
       'DeepTest reviews code the way a security engineer would — hunting the weaknesses '
       + 'that actually get exploited rather than listing every lint warning — and returns a '
