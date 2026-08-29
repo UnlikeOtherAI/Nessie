@@ -48,7 +48,7 @@ type AdminNavItem = {
   badgeCount?: number;
 };
 
-type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'platform';
+type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'ops' | 'platform';
 
 type AdminNavGroup = {
   id: AdminNavGroupId;
@@ -300,8 +300,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
-    // Group is visible to all so any member can reach Approvals (they can act on
-    // approvals); the audit/cost/policy/health items stay owner-only per-item.
+    // Member-reachable: any member can act on Approvals they are entitled to and
+    // read their team's Credits & billing. The owner-only surfaces live in Ops.
     id: 'governance',
     heading: 'Governance',
     items: [
@@ -311,6 +311,26 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         icon: icon(<path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />),
       },
       {
+        path: '/tokens',
+        label: 'Credits & billing',
+        icon: icon(
+          <>
+            <circle cx="12" cy="12" r="8" />
+            <path d="M12 8v8M9.5 10.5h3.5a1.5 1.5 0 010 3H9.5" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+    ],
+  },
+  {
+    // Owner-only operational surfaces, grouped so the whole section — header
+    // included — never renders for a non-owner. Each item keeps its own
+    // ownerOnly gate as defence in depth.
+    id: 'ops',
+    heading: 'Ops',
+    ownerOnly: true,
+    items: [
+      {
         path: '/audit',
         label: 'Audit log',
         ownerOnly: true,
@@ -318,16 +338,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
           <>
             <path d="M6 3h9l3 3v15H6z" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M9 9h6M9 13h6M9 17h4" strokeLinecap="round" strokeLinejoin="round" />
-          </>,
-        ),
-      },
-      {
-        path: '/tokens',
-        label: 'Credits & billing',
-        icon: icon(
-          <>
-            <circle cx="12" cy="12" r="8" />
-            <path d="M12 8v8M9.5 10.5h3.5a1.5 1.5 0 010 3H9.5" strokeLinecap="round" strokeLinejoin="round" />
           </>,
         ),
       },
@@ -354,25 +364,25 @@ export const ADMIN_NAV: AdminNavGroup[] = [
           </>,
         ),
       },
+    ],
+  },
+  {
+    // Instance administration (deployment-wide), not organisation administration.
+    id: 'platform',
+    heading: 'Platform',
+    superAdminOnly: true,
+    items: [
       {
         path: '/ops',
         label: 'Health',
         exact: true,
-        // Deployment-wide infrastructure (worker heartbeat, queue, dead jobs),
-        // so instance administration rather than organisation administration.
+        // Deployment-wide infrastructure (worker heartbeat, queue, dead jobs).
         // `GET /api/ops/health` requires `User.superAdmin`.
         visibleTo: (viewer) => viewer.isSuperAdmin,
         icon: icon(
           <path d="M3 12h4l2 6 4-12 2 6h6" strokeLinecap="round" strokeLinejoin="round" />,
         ),
       },
-    ],
-  },
-  {
-    id: 'platform',
-    heading: 'Platform',
-    superAdminOnly: true,
-    items: [
       {
         path: '/settings/push',
         label: 'Push credentials',
