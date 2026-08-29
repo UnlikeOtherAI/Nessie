@@ -4,8 +4,11 @@
 **Date:** 2026-08-29
 **Supersedes:** [docs/done/2026-08-29-org-chain-of-command-superseded.md](../done/2026-08-29-org-chain-of-command-superseded.md)
 (the rejected "chain of command" plan and its invented manager edge)
-**Reviewed:** Codex Sol + kimix (design review of the superseded plan, both
-blocking); a five-way code-grounding sweep and adversarial synthesis for this one
+**Reviewed:** two rounds of cross-model review (Codex Sol + kimix), plus a
+five-way code-grounding sweep and adversarial synthesis. Round 2 on this plan:
+Sol "sound direction, four blockers"; kimix "fundamentally sound, approve after
+S1/S3/realtime". All findings verified against code before applying; where the
+two disagreed (the composite FK) the adjudication is recorded in-line.
 **Related:** [2026-08-15-uoa-org-tenancy.md](2026-08-15-uoa-org-tenancy.md)
 (the authority split), [2026-08-29-approvals-in-chat.md](2026-08-29-approvals-in-chat.md)
 (itself superseded in approach; the disclosure system is the real substrate),
@@ -110,26 +113,43 @@ Ownership closes that hole as a side effect.
 Agent.ownerUserId  String?  @db.Uuid
 @@index([organizationId, ownerUserId])
 
--- tenancy enforced at the storage boundary, not by service discipline
+-- tenancy enforced at the storage boundary, not by service discipline.
+-- The column list on SET NULL is REQUIRED (PG 15+; production is pg17):
+-- a bare ON DELETE SET NULL on a composite FK nulls EVERY referencing
+-- column, which would blank the agent's organization_id.
 FOREIGN KEY (organization_id, owner_user_id)
   REFERENCES organization_members(organization_id, user_id)
-  ON DELETE SET NULL
+  ON DELETE SET NULL (owner_user_id)
 
 CHECK (owner_user_id IS NULL
        OR (system_managed = false AND organization_id IS NOT NULL))
 ```
 
-**Both a composite FK and live re-derivation — not either.** An earlier draft
-argued live re-derivation alone was enough. It is not, because one writer
-(`spawn_subtask`) is a raw `tx.agent.create` **outside the shared creation
-chokepoint** (`worker/src/run/subtask-tools.ts:85-106`), and because ownership
-becomes an authorization widener and an escalation edge. Malformed cross-org
-ownership must be impossible at the storage boundary rather than merely unlikely
-in the intended service path. `OrganizationMember` is already unique on
-`(organizationId, userId)`, so the tenant key exists. This does **not** create a
-second hierarchy — it only stops a Nessie authorization pointer crossing its
-tenant. The FK proves *membership exists*; it cannot prove that membership is
-still live, which is what the read-time re-derivation below is for.
+**The two reviewers disagreed here, so the reasoning is recorded.** Sol asked for
+a composite FK plus live re-derivation; kimix argued the composite FK is
+over-cautious and gives "false confidence", because `OrganizationMember` rows are
+**deliberately retained after deactivation** for audit history
+(`packages/runtime/src/disclosure-access.ts:28-31`), so the FK is satisfied even
+by a deactivated member.
+
+**Both invariants are real and they are different, so keep both.**
+
+- **Tenancy** — the owner is a member of *this agent's* organisation. A bare
+  `User` FK cannot express this at all; the composite FK does. This matters
+  because one writer, `spawn_subtask`, is a raw `tx.agent.create` **outside the
+  shared creation chokepoint** (`worker/src/run/subtask-tools.ts:85-106`), so
+  cross-org ownership must be impossible at the storage boundary rather than
+  merely unlikely in the intended service path.
+- **Liveness** — that membership is not deactivated. **No FK can express this**,
+  which is kimix's real point and it is correct. Only the read-time
+  re-derivation below provides it.
+
+So the FK is a *tenancy* constraint and must never be read as a liveness
+guarantee. It does not create a second hierarchy; it stops an authorization
+pointer crossing its tenant. In practice `organization_members` rows are **never
+deleted** (verified: no `delete`/`deleteMany` call anywhere in production code —
+deactivation is a reversible flag), so the `ON DELETE` clause is a safety net
+rather than a live code path.
 
 - **The CHECK carries `organization_id IS NOT NULL`** because `Agent.organizationId`
   is nullable by explicit design (system/global agents), and ownership is only
@@ -156,13 +176,22 @@ separate piece of work with its own trigger and surface.
 
 **The owner is a pointer whose meaning is re-derived on every read.** The
 composite FK proves the membership row exists in the right org; it cannot prove
-that membership is still live, since a deactivated projection row still
+that membership is still live, since a deactivated row is retained and still
 satisfies it. So *recorded owner* and *effective, entitled owner* are two
 concepts, and **every authorization, visibility, transfer and escalation path
-uses the second**, resolved through one shared predicate that fails closed. This
-follows the existing precedent in `resolveGrantedDisclosureScopeKeys`
-(`packages/runtime/src/disclosure-access.ts:117-139`): a stored pointer, live
-authority.
+uses the second**, resolved through one shared predicate that fails closed —
+the same live `deactivatedAt: null` org-membership read `resolveDisclosureViewer`
+already performs before trusting any retained channel/team/project row
+(`packages/runtime/src/disclosure-access.ts:28-37`).
+
+**The visibility branch is not exempt from this**, and saying so is the
+difference between the safety claim being true and being aspirational. The new
+OR-branch widens by *pointer equality to a user id*, so on its own a member
+deactivated in org A — who still holds a local `User` row and is still
+`ownerUserId` on agents in A — would keep seeing those agents. The branch is
+therefore `{ ownerUserId: userId, parentAgentId: null }` **ANDed with the live
+membership predicate**, not the pointer alone. Cost: one extra join on a query
+that already joins.
 
 ### Write paths
 
@@ -189,10 +218,14 @@ Two design constraints on it when it does land:
   transfer it would hand that steward **every configuration mutation** as a side
   effect. Either accept that explicitly as a product decision, or authorize per
   field so transfer and configuration do not inherit each other's gate.
-- **Transfer is itself a disclosure.** `AgentRecord` carries the system prompt,
-  tool policy and run limits, so assigning a private-channel agent to another
-  member exposes at least its configuration to them. Settle open question 1
-  (does the recipient have to accept?) before it ships.
+- **Transfer is itself a disclosure, and a coercion vector.** `AgentRecord`
+  carries the system prompt, tool policy and run limits, so assigning a
+  private-channel agent to someone exposes at least its configuration to them.
+  Worse, ownership is escalation rung 1: transferring a noisy agent to a person
+  floods them with notifications they did not ask for. The pointer-not-content
+  invariant caps the *content* blast radius, not the notification one. So
+  transfer **requires the target's acceptance** — a pending-transfer state, with
+  no escalation delivery to a target who has not accepted.
 
 ### The display projection — without it the doorway cannot render
 
@@ -225,15 +258,26 @@ So the honest contract per phase is:
 
 | Phase | `ownerState` can say |
 |---|---|
-| 1 | `recorded` / `unknown` — the stored steward, no liveness claim |
+| 1 | `active` / `deactivated` for a locally-known member, else `unknown` |
 | 2 | `+ in_this_workspace` — joined against the live team roster |
-| 3 | `+ active_elsewhere` vs `deactivated` — needs the org-wide read |
+| 3 | `+ active_elsewhere` vs `removed_upstream` — needs the org-wide read |
 
-It must reach three values *eventually* because the roster is team-keyed: an
+Phase 1 can honestly say `deactivated` for anyone with a local membership row,
+because `OrganizationMember.deactivatedAt` is read live — the same signal
+`resolveDisclosureViewer` trusts. What phase 1 *cannot* distinguish is
+"deactivated locally" from "removed upstream and never materialised here"; that
+is what phase 3 adds.
+
+It must reach the fuller set *eventually* because the roster is team-keyed: an
 agent owned by an **active colleague in another team** is client-side
 indistinguishable from one owned by someone UOA removed, and collapsing them
-would **libel active colleagues as departed**. Never infer these states from
-retained local membership rows.
+would **libel active colleagues as departed**.
+
+**A cross-org owner renders as Unowned.** Because `uoaSub` is globally unique, a
+person can hold memberships in two organisations on one instance. Live
+re-derivation makes such an owner *invalid for this agent's org*, so the agent
+falls into the Unowned bucket rather than displaying a name the viewer has no
+entitlement to.
 
 ## The tree
 
@@ -285,16 +329,28 @@ per-report performance.
 `deepEqual`s exactly `['/settings/members']`, which is itself the argument.
 **Doorways:** owner cell on `AgentListRow`; "Owned by" on the agent detail page;
 owner field in the Agent Designer; person → their agents from
-`ChannelMembersPopup`.
+`ChannelMembersPopup` — noting that this last one crosses a scope boundary
+(the popup lists *channel* members while a person's agents are org-scoped), so
+it takes the same entitlement intersection as the tree rather than listing
+whatever that person owns.
+
+**People render even without a local row; agents require one.** The `uoaSub →
+User.id` join necessarily passes through local `User`/`OrganizationMember` rows,
+so someone who exists in UOA but has never signed in appears in the tree as a
+person with **zero** agents. That is correct — they cannot own a local agent
+without a local row — but it means the tree is not purely UOA-shaped, and the
+copy should not imply otherwise.
 
 **Cost, stated because it is the obvious objection.** The tree read is one agent
 query plus four batched relation loads, one `uoaSub → User` join, and two UOA
 HTTP calls — about **seven queries and two HTTP calls regardless of headcount**.
-Two adjacent things are *not* clean and need a budget or lazy rendering:
-avatars fan out one upstream fetch per person (a 60-person tree is 60 UOA image
-fetches on first paint; only the *subject set* is cached, not the image), and
-phase 3's multi-team view multiplies the roster read per team with no
-cross-team cache.
+Avatars are the exception and need a budget: the relay does one upstream fetch
+per subject and only the *subject set* is cached, not the image, so a 60-person
+tree is 60 UOA image fetches on first paint. **This bites phase 1 before the
+tree exists** — the owner cell on `AgentListRow` puts the same fan-out on the
+agents list, a higher-traffic surface. Lazy-render avatars below the fold or cap
+first-paint fan-out before phase 1 ships. Phase 3's multi-team view multiplies
+the roster read per team with no cross-team cache.
 
 ## One correction worth recording
 
@@ -398,8 +454,14 @@ Two further invariants:
 
 - **If no rung yields a recipient passing both checks, record it and do not
   deliver.** Never widen the search to find an audience.
-- **`UserAlert` rows are not basis-stamped** the way messages are, so an alert
-  body is an unchecked disclosure channel; it carries a pointer, never content.
+- **Pointer-not-content is a structural invariant, not a guideline.**
+  `UserAlert` rows carry no basis stamp the way messages do, so an alert body is
+  an unchecked disclosure channel *by construction*. "Prefer a pointer" is
+  therefore not good enough: the escalation artifact writer must be
+  **structurally incapable** of embedding run content — a fixed server-authored
+  template with no model-supplied free-text field. This plan insists elsewhere
+  that the model is never the security gate; the same standard applies here, so
+  the constraint lives in code, not in a prompt.
 
 **Recipient freshness is its own prerequisite.** `canManageChannel` is a
 predicate over one supplied user and its membership reads **do not filter
@@ -477,12 +539,16 @@ all unfinished work as "blocked" makes the register useless for sequencing.
 
 Bundling unrelated fixes into an ownership phase makes verification and rollback
 harder, so these get their own changes even though this work found them:
-`presence.ts` list reads have **no `orderBy`**; `date_range` schedules ignore
-their stored timezone; and message-scoped `DisclosureGrant` computes `expiresAt`
-and **omits it from both the create and the update**
-(`api/src/routes/disclosure-grants.ts:107-134`), with the duration cap checked
-only on the `scope` branch — so those grants never expire. That last one is a
-prerequisite for any story that calls disclosure grants time-bounded.
+`presence.ts` list reads have **no `orderBy`**, and `date_range` schedules ignore
+their stored timezone.
+
+**One of them is a prerequisite, not a drive-by.** Message-scoped
+`DisclosureGrant` computes `expiresAt` and **omits it from both the create and
+the update** (`api/src/routes/disclosure-grants.ts:107-134`), with the duration
+cap checked only on the `scope` branch — so a re-grant silently resurrects a
+never-expiring grant even when the granter picked 10 minutes. Escalation's
+content gate leans on exactly this system, so **this must be fixed before
+escalation delivery ships**, not filed alongside the cosmetic defects.
 
 **Deferred — unbuilt or expensive, but nothing external stops it**
 
@@ -505,10 +571,12 @@ prerequisite for any story that calls disclosure grants time-bounded.
 
 **Blocked — waiting on a decision or an external contract**
 
-- **Escalation delivery**, on two unresolved designs, and these are the real
-  blockers rather than the alert plumbing above: **source entitlement** (the
-  two-check gate) and **recipient freshness** (a UOA-removed manager stays a
-  local candidate). `[blocked-on-design]`
+- **Escalation delivery**, on three prerequisites — these are the real blockers
+  rather than the alert plumbing above: **source entitlement** (the two-check
+  gate), **recipient freshness** (a UOA-removed manager stays a local
+  candidate), and **the message-grant `expiresAt` fix**, since the content gate
+  leans on a grant system that currently cannot expire.
+  `[blocked-on-design + one bug fix]`
 - **Org-wide people / multiple teams** — the org member list is already fetched
   and discarded (`uoa-org-roster.ts:299-320`, `parseOrgMembers` is
   module-private); what is missing is a decision about who may read it, since
@@ -566,8 +634,8 @@ Each phase ships with its surface in the same change, additive migrations only.
 
 1. **Who may transfer an agent?** Proposed: the current owner *or* an org
    owner/admin, target must be an active member of the agent's org, both parties
-   audited. Open: does a transfer *to* someone need their acceptance? A transfer
-   hands them escalations carrying context about that agent's work.
+   audited. (The *acceptance* half is now settled — see "Transfer" above: it is
+   required, because ownership is escalation rung 1.)
 2. **Who may read the org-wide people list** (phase 3)? UOA applies no
    authorization of its own, so Nessie must decide. Proposed: any active member,
    matching the existing per-team roster's `{ admin: false }`.
@@ -580,7 +648,9 @@ Each phase ships with its surface in the same change, additive migrations only.
    attribution honest; not inheriting keeps the roster clean. The
    `parentAgentId: null` filter makes the leak moot either way, so this is now a
    question about audit attribution rather than visibility.
-5. **Realtime on transfer.** `useAgents` splits `['agents']` and
-   `['agents','all']` deliberately; an owner change must invalidate both plus
-   the tree. `WsScope` has an `agent` kind, so an event is available — is it
-   worth one, or is refetch-on-focus enough?
+5. ~~**Realtime on transfer.**~~ **Settled: yes, emit.** An ownership change
+   alters *who can see the agent at all*, so leaving a newly-owned agent
+   invisible until refetch-on-focus is the "capability exists but nobody can
+   reach it" failure rule zero exists to catch. `WsScope` already has an `agent`
+   kind, so this is cheap: emit on transfer and invalidate both `['agents']` and
+   `['agents','all']` plus the tree.
