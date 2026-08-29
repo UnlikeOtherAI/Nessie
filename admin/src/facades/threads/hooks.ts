@@ -42,6 +42,10 @@ type StreamEventData = {
   content?: string
   createdAt?: string
   messageId?: string
+  // Set on `stream.done` when the finished reply draws on restricted sources:
+  // its content is withheld from the stream, so the client must refetch through
+  // the gated list endpoint rather than cache the empty body.
+  restricted?: boolean
   rootMessageId?: string | null
   runId: string
 }
@@ -272,7 +276,15 @@ export const useThreadStream = (threadId?: string): StreamState => {
       }
 
       if (frame.event === 'stream.done') {
-        if (data.messageId && data.content !== undefined) {
+        // A restricted reply closes the stream content-free: the terminator
+        // carries `restricted` and an empty `content`, because the thread SSE
+        // connection has no viewer to filter per-recipient. Writing that empty
+        // body into the cache would pin a blank message for an entitled reader
+        // and never recover, so refetch through the gated list endpoint — which
+        // returns the real content, or the withheld placeholder, per viewer.
+        if (data.messageId && data.restricted) {
+          void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+        } else if (data.messageId && data.content !== undefined) {
           queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
             ['threads', threadId, 'messages'],
             (current) => {
