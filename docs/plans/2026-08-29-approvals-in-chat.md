@@ -1,7 +1,71 @@
 # Consent-to-disclose approvals in chat
 
 Date: 2026-08-29
-Status: plan
+Status: **superseded in approach — see the review banner below**
+
+> ## ⚠️ Review outcome (Codex Sol + Fable, 2026-08-29): rebuild on the existing disclosure system
+>
+> A cross-model review caught — and a code check **confirmed** — that this plan
+> **reinvents a capability Nessie already has, largely built and structural.**
+> Do not implement the `ApprovalRequest` + `request_disclosure_approval`
+> model-tool design below as written. The verified findings:
+>
+> - **The feature already exists.** Specs
+>   `docs/plans/2026-08-11-viewer-scoped-agent-knowledge.md` +
+>   `docs/plans/2026-08-11-disclosure-boundaries-build.md`; code
+>   `worker/src/run/execute/disclosure-basis.ts` (`ConsumedSourceSink` — the run
+>   structurally records every scoped source it consumed),
+>   `packages/runtime/src/disclosure-access.ts`,
+>   `api/src/routes/disclosure-grants.ts`
+>   (`POST /api/messages/:id/disclosure-grants`,
+>   `DELETE /api/disclosure-grants/:grantId`), Prisma models `MessageBasisScope`
+>   / `RunBasisScope` / `DisclosureGrant` / `ScopeDisclosureGrant`, and the
+>   in-chat **`RestrictedMessageCard`** — which already renders a *withheld*
+>   placeholder to readers who cannot reach a reply's sources and gives a reader
+>   who *can* the controls to **share this one reply** or **stand up a rule**
+>   (`10m / today / 30d / forever`). That is precisely the consent card + "the
+>   nod" this plan re-describes.
+> - **The gate must be structural, not a model tool (fail-open).** A gate that
+>   fires only when the model remembers to call `request_disclosure_approval`
+>   leaks whenever it doesn't. The real design derives the gate from the reply's
+>   **consumed-source basis** vs. the destination's reach — exactly what
+>   `disclosure-basis.ts` already accumulates. The model may suggest copy; it
+>   must not be what decides whether a secret is withheld.
+> - **The owner is derived from source provenance, never model-named.** A
+>   `user:<id>` basis names its owner structurally; the asker is the persisted
+>   trigger message's authenticated `userId`. Accepting `ownerUserId` from tool
+>   arguments (as below) can authorize the *wrong* owner.
+> - **No suspend/resume exists to reuse.** The `approval_required` /
+>   `waiting_approval` path **denies and the run continues** — documented as
+>   "vaporware: the gate denies and the agent barrels on" in
+>   `docs/plans/2026-06-14-enterprise-readiness-roadmap.md` (row 8). The existing
+>   disclosure model needs *no* suspended inference — the reply is emitted with a
+>   withheld placeholder and the owner grants disclosure after the fact.
+> - **Smaller verified corrections:** the status enum is `rejected` (not
+>   `declined`); the reuse target is `RestrictedMessageCard` (not
+>   `RunStopContinue`); the `metadata.runStop` stamp is the budget run-stop path,
+>   not `cancel-stop.ts`; `alert.created` is org/channel/agent-scoped (no
+>   user-private realtime yet); and `UserAlertKind` + `visibleUserAlertWhere` +
+>   the attention dispatcher do **not** handle a new kind automatically.
+> - **Streaming + the "share-safe summary" are open leak channels.** Text can
+>   stream before any gate resolves, and a model-authored summary placed in
+>   shared metadata/push/DTOs is itself a disclosure. Public placeholders and
+>   push must be constant, generic copy; owner-only detail is fetched after auth.
+> - Fable's design review agreed independently on the owner-not-in-channel gap
+>   and the leak surfaces; its accepted UX decisions (see-answer-first,
+>   anonymous states, humane timeouts) still apply — but layered onto the
+>   **existing** system, not the model-tool one.
+>
+> **Recommended next step:** rewrite this as *enhancements to the existing
+> disclosure-basis / `DisclosureGrant` / `RestrictedMessageCard` system* — add
+> the proactive owner **alert** (+ push), the **anonymous group outcome**
+> message, the **see-the-answer-first** owner affordance, and the
+> **offline-owner** surface — and delete the `ApprovalRequest` + model-tool
+> design. The self-disclosure "pre-approval" is already the basis passing when
+> the asker can reach the source. Everything below the line is retained only as
+> the record of the superseded approach.
+>
+> ---
 
 ## Overview
 
