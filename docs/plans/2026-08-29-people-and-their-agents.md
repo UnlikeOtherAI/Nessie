@@ -107,12 +107,29 @@ Ownership closes that hole as a side effect.
 ## The data model — one column
 
 ```
-Agent.ownerUserId  String?  @db.Uuid   → User(id) ON DELETE SET NULL
+Agent.ownerUserId  String?  @db.Uuid
 @@index([organizationId, ownerUserId])
+
+-- tenancy enforced at the storage boundary, not by service discipline
+FOREIGN KEY (organization_id, owner_user_id)
+  REFERENCES organization_members(organization_id, user_id)
+  ON DELETE SET NULL
 
 CHECK (owner_user_id IS NULL
        OR (system_managed = false AND organization_id IS NOT NULL))
 ```
+
+**Both a composite FK and live re-derivation — not either.** An earlier draft
+argued live re-derivation alone was enough. It is not, because one writer
+(`spawn_subtask`) is a raw `tx.agent.create` **outside the shared creation
+chokepoint** (`worker/src/run/subtask-tools.ts:85-106`), and because ownership
+becomes an authorization widener and an escalation edge. Malformed cross-org
+ownership must be impossible at the storage boundary rather than merely unlikely
+in the intended service path. `OrganizationMember` is already unique on
+`(organizationId, userId)`, so the tenant key exists. This does **not** create a
+second hierarchy — it only stops a Nessie authorization pointer crossing its
+tenant. The FK proves *membership exists*; it cannot prove that membership is
+still live, which is what the read-time re-derivation below is for.
 
 - **The CHECK carries `organization_id IS NOT NULL`** because `Agent.organizationId`
   is nullable by explicit design (system/global agents), and ownership is only
@@ -137,12 +154,15 @@ else; UOA-side removal writes nothing locally; there is no sweep and no
 `agent.orphaned` event. This is deliberate and unchanged here. Changing it is a
 separate piece of work with its own trigger and surface.
 
-**The owner is a pointer whose meaning is re-derived on every read.** The FK is
-org-agnostic but the invariant is "owner is an active `OrganizationMember` of
-*the agent's* org" — a person in orgs A and B, deactivated in A only, is a valid
-owner in B and an invalid one in A. This follows the existing precedent in
-`resolveGrantedDisclosureScopeKeys` (`packages/runtime/src/disclosure-access.ts:117-139`):
-a stored pointer, live authority.
+**The owner is a pointer whose meaning is re-derived on every read.** The
+composite FK proves the membership row exists in the right org; it cannot prove
+that membership is still live, since a deactivated projection row still
+satisfies it. So *recorded owner* and *effective, entitled owner* are two
+concepts, and **every authorization, visibility, transfer and escalation path
+uses the second**, resolved through one shared predicate that fails closed. This
+follows the existing precedent in `resolveGrantedDisclosureScopeKeys`
+(`packages/runtime/src/disclosure-access.ts:117-139`): a stored pointer, live
+authority.
 
 ### Write paths
 
@@ -154,11 +174,25 @@ a stored pointer, live authority.
 | `spawn_subtask` | inherits `parentAgent.ownerUserId` (raw `tx.agent.create`, bypasses the chokepoint — must be edited directly) |
 | PA / Librarian / external-agent bootstraps | stay `NULL` by CHECK |
 
-**Transfer** extends the existing owner-gated `PUT /api/agents/:agentId` rather
-than adding a second write path into the same row with a second gate to keep in
-sync. Server-validates that the target is an `OrganizationMember` of **the
-agent's** organisation with `deactivatedAt: null`, and audits
-`agent.owner_changed` with old and new values.
+**Transfer ships in phase 2, not phase 1**, for a reason that is a house rule
+rather than a preference: *a write that takes an id ships with the entitled read
+that resolves it*. In phase 1 a non-org-owner has no target picker at all —
+`GET /api/users` is owner-only, and the roster record carries `uoaSub` but not
+the local `userId` the write needs. Transfer therefore lands with
+`WorkspaceMemberRecord.userId`.
+
+Two design constraints on it when it does land:
+
+- **Body-sensitive authorization.** `PUT /api/agents/:agentId` is `requireOwner`
+  today and its body already mutates system prompt, tool policy, provider/model,
+  effort and run limits. Widening the whole route so an agent's own steward can
+  transfer it would hand that steward **every configuration mutation** as a side
+  effect. Either accept that explicitly as a product decision, or authorize per
+  field so transfer and configuration do not inherit each other's gate.
+- **Transfer is itself a disclosure.** `AgentRecord` carries the system prompt,
+  tool policy and run limits, so assigning a private-channel agent to another
+  member exposes at least its configuration to them. Settle open question 1
+  (does the recipient have to accept?) before it ships.
 
 ### The display projection — without it the doorway cannot render
 
@@ -168,7 +202,7 @@ member-readable endpoint mapping a local user id to a display name**:
 keyed by `uoaSub` and scoped to one team. So `AgentRecord` also carries:
 
 ```
-owner: { userId, displayName, avatarAttachmentId, uoaSub, ownerState } | null
+owner: { userId, displayName, avatarAttachmentId, ownerState } | null
 ```
 
 resolved by adding `ownerUser: { select: … }` to the existing
@@ -177,13 +211,29 @@ The `User.displayName`/`avatarUrl` mirror exists for exactly this; its schema
 comment says so ("these columns exist only so a name and a picture can be
 rendered without a round trip per row", `api/prisma/schema.prisma:815-819`).
 
-`ownerState` is `active | deactivated | outside_workspace`, resolved
-server-side. It must be three values and not two, because the roster is
-team-keyed: an agent owned by an **active colleague in another team** produces
-exactly the same client-side observation as one owned by someone UOA removed.
-Collapsing them would **libel active colleagues as departed**. The `deactivated`
-arm needs the org-wide roster read and is therefore honest only from phase 3 —
-say so in the UI rather than guessing.
+**`uoaSub` is deliberately not in this projection.** `UserAvatar` already
+prefers the organisation-scoped user-id relay, so the subject buys nothing an
+avatar needs — and an agent can be visible across teams through any public
+channel, so inlining a UOA subject would be a contextual cross-team identity
+disclosure decided before the org-wide directory entitlement has been.
+
+**`ownerState` is phased, not resolved "for free".** The three-state value
+cannot come from one relation load: the live roster is team-keyed and costs two
+UOA reads, `listAgentsForUser` does not even receive the session team, and the
+local `displayName` mirror is refreshed at login/switch/refresh rather than live.
+So the honest contract per phase is:
+
+| Phase | `ownerState` can say |
+|---|---|
+| 1 | `recorded` / `unknown` — the stored steward, no liveness claim |
+| 2 | `+ in_this_workspace` — joined against the live team roster |
+| 3 | `+ active_elsewhere` vs `deactivated` — needs the org-wide read |
+
+It must reach three values *eventually* because the roster is team-keyed: an
+agent owned by an **active colleague in another team** is client-side
+indistinguishable from one owned by someone UOA removed, and collapsing them
+would **libel active colleagues as departed**. Never infer these states from
+retained local membership rows.
 
 ## The tree
 
@@ -196,8 +246,16 @@ session-derived scope as org scope is precisely the Rule zero #2 mistake. When
 phase 3 widens it, the honest label is "Workspaces active in Nessie" — a fact
 about Nessie, not a claim about UOA's shape.
 
-**Level 2 — People, from the live roster only.** Never from local
-`OrganizationMember`/`TeamMember` rows.
+**Level 2 — People, from whichever source is *authoritative for that
+deployment*.** On a UOA deployment that is the live roster, never local
+`OrganizationMember`/`TeamMember` rows. But `/settings/members` already has two
+deliberate modes — `isUoaSession` renders the workspace roster, and a local
+install renders its own authoritative `User` rows
+(`admin/src/pages/settings/SettingsMembersPage.tsx:127,142,191`) — and a local
+install with no IdP *is* the authority for its people. So the tree takes its
+people source as a parameter: one renderer, two authoritative sources. Saying
+"never local rows" without that qualifier would leave the local install with no
+tree and risk replacing its existing member management.
 
 **Level 3 — that person's agents**, `ownerUserId = person.userId` **intersected
 with the viewer's own `listAgentsForUser` result**, so entitlement is inherited
@@ -251,7 +309,7 @@ before adding the field. That work is **unnecessary and rests on a misreading**:
 hand-rolled fork, and its owner is `null` by CHECK. Do not gate ownership on a
 refactor that buys nothing.
 
-## Two leaks this design must not open
+## Three leaks this design must not open
 
 **The ownership branch must exclude subtask children.** Widening
 `listAgentsForUser` with `{ ownerUserId: userId }` and having `spawn_subtask`
@@ -269,7 +327,24 @@ a local principal id for someone who has signed into a *different* organisation
 on the same instance and has no membership here. Scope it with
 `organizationMemberships: { some: { organizationId: sessionOrgId } }`, and
 describe `userId` as "the local row in this organisation, when one exists" —
-never as an identity claim.
+never as an identity claim. The existing PA people lookup
+(`worker/src/run/pa-tools/people.ts:91-100`) resolves `uoaSub` globally today
+and is the first caller the shared presenter should replace.
+
+**The children endpoint must take the viewer's scope — in phase 1, not later.**
+`GET /api/agents/:agentId/children` authorizes only the **parent**
+(`isAgentAccessibleToActor`) and then calls `loadAgentChildren` with no
+visibility scope, returning every child in the organisation with name, status
+and purpose (`api/src/routes/agents.ts:586-604`,
+`api/src/services/agent-read-model.ts:295-324`) — unlike its sibling
+status/activity/messages/tools reads, which all pass
+`createAgentVisibilityScope`. That is a pre-existing looseness, but the
+ownership branch **activates** it: a member who newly reaches a parent through
+ownership can enumerate all of its children, which is exactly the enumeration
+`parentAgentId: null` was added to prevent. Having decided that inherited
+ownership is *not* sufficient for child visibility in the list, it cannot be
+sufficient here either. Phase 1 passes the scope through and defines what a
+child must satisfy to be listed.
 
 ## Escalation — a ladder over real edges, notify-and-continue
 
@@ -288,23 +363,53 @@ The ladder, first non-empty rung wins, over edges that already exist:
 **There is no rung 4 and no manager chain.** Extract one
 `resolveEscalationRecipients` rather than a fourth restatement of the same walk.
 
-Two invariants, both from the synthesis:
+**Escalation is a disclosure act, not a neutral one.** Delivering model-authored
+text to a new person *is* disclosure, and being on the ladder proves
+organisational relation, not entitlement to the source channel, DM, project, or
+memory. The model may decide it wants to escalate and may draft wording; **it is
+never the security gate.**
 
-- **If no rung yields an entitled recipient, record it and do not deliver.**
-  Never widen the search to find an audience.
-- **The artifact carries a pointer, not content**, whenever the run's basis is
-  non-empty. `UserAlert` rows are not basis-stamped the way messages are, so an
-  alert body is an unchecked disclosure channel.
+**The gate is two independent checks, and disclosure basis alone is not enough.**
+This is the correction that matters most, and the first draft of this plan got
+it wrong. `computeReplyBasis` deliberately subtracts the destination's own chain
+— including `channel:${destinationChannelId}` — from the basis
+(`worker/src/run/execute/disclosure-basis.ts:61-72`), because a source the room
+already implies is not privileged *there*. So **a reply produced in a private
+channel, drawing only on that conversation, has an empty basis**, and
+`viewerSatisfiesBasis` returns `true` unconditionally for an empty basis
+(`packages/runtime/src/disclosure-predicate.ts:39-46`). A rule of "carry a
+pointer whenever the basis is non-empty" therefore does nothing in precisely the
+case that matters most.
 
-**Escalation is a disclosure act, not a neutral one.** Sol's finding, which the
-superseded plan got wrong: delivering model-authored text to a new person *is*
-disclosure, and being on the ladder proves organisational relation, not
-entitlement to the source channel, DM, project, or memory. So escalation content
-runs through the existing disclosure-basis system — the run already accumulates
-its consumed source scopes (`worker/src/run/execute/disclosure-basis.ts:13-58`)
-and delivery already revalidates a viewer's live reach
-(`packages/runtime/src/disclosure-access.ts:17-64`). The model may decide it
-wants to escalate and may draft wording; **it is never the security gate.**
+The existing push path is safe because it does not rely on the basis alone: it
+checks **source-channel membership first**, then applies basis gating
+(`worker/src/control/push-dispatch.ts:90-105`, `:138-149`). Escalation must do
+the same. Every recipient must independently satisfy:
+
+1. **live access to the originating artifact** — the channel or thread the run
+   was working in; and
+2. **the run's disclosure basis**, via the existing predicate.
+
+Neither check subsumes the other. If the product later wants to notify someone
+who fails check 1, that artifact carries *defined non-sensitive metadata only*
+and its dereference route re-runs both checks — it is not a shortcut around them.
+
+Two further invariants:
+
+- **If no rung yields a recipient passing both checks, record it and do not
+  deliver.** Never widen the search to find an audience.
+- **`UserAlert` rows are not basis-stamped** the way messages are, so an alert
+  body is an unchecked disclosure channel; it carries a pointer, never content.
+
+**Recipient freshness is its own prerequisite.** `canManageChannel` is a
+predicate over one supplied user and its membership reads **do not filter
+`deactivatedAt`** (`api/src/services/channels.ts:137-171`), and the UOA member
+remove/deactivate routes relay upstream **without updating local rows**
+(`api/src/routes/workspace-members.ts:258-294`). So a UOA-removed manager stays
+a local candidate. This matters more for push than for page reads, because a
+push recipient need not hold a session that would re-derive authority. Escalation
+delivery therefore depends on a live org-wide authority read or another
+revocation contract — not merely on a new alert kind.
 
 **Prompt hygiene.** Feed the model opaque candidate handles and the structural
 capability needed to choose — not names, away dates, or deputy facts. Chain
@@ -355,40 +460,55 @@ members, per-person analytics.
 
 ## What is missing — the honest register
 
+The register distinguishes three things that are not the same: **buildable now**,
+**deferred** (nothing external stops it; it is unbuilt or expensive), and
+**blocked** (waiting on an authority decision or an external contract). Treating
+all unfinished work as "blocked" makes the register useless for sequencing.
+
 **Buildable now**
 
-- `Agent.ownerUserId` column, CHECK, index; writers at all four paths; owner
-  projection; the `parentAgentId: null` OR-branch mirrored into
-  `isAgentVisibleToUser`; transfer + audit.
+- `Agent.ownerUserId` column, composite FK, CHECK, index; writers at all four
+  paths; owner projection; the `parentAgentId: null` OR-branch mirrored into
+  `isAgentVisibleToUser`; the `loadAgentChildren` visibility-scope fix; audit.
 - `WorkspaceMemberRecord.userId`, org-scoped, in a shared presenter that also
   replaces the ad-hoc join in `worker/src/run/pa-tools/people.ts:91-115`.
 - The tree at `/settings/members` (one team, honestly labelled) + four doorways.
-- Independent bug fixes this touches: `presence.ts` list reads have **no
-  `orderBy`**; `date_range` schedules ignore their timezone; message-scoped
-  `DisclosureGrant` computes `expiresAt` and then **omits it from the create**
-  (`api/src/routes/disclosure-grants.ts:112` vs `:124-130`), and the duration
-  cap is checked only on the `scope` branch — a prerequisite for any story that
-  calls grants time-bounded.
+**Adjacent defects — fix separately, do not bundle into these phases**
 
-**Blocked, and named as such**
+Bundling unrelated fixes into an ownership phase makes verification and rollback
+harder, so these get their own changes even though this work found them:
+`presence.ts` list reads have **no `orderBy`**; `date_range` schedules ignore
+their stored timezone; and message-scoped `DisclosureGrant` computes `expiresAt`
+and **omits it from both the create and the update**
+(`api/src/routes/disclosure-grants.ts:107-134`), with the duration cap checked
+only on the `scope` branch — so those grants never expire. That last one is a
+prerequisite for any story that calls disclosure grants time-bounded.
 
-- **Escalation delivery** — needs a fourth `UserAlertKind`: an `ALTER TYPE`
-  migration plus ~nine coordinated edit sites, with two silent-failure modes.
-  Omit it from `visibleUserAlertWhere`'s exhaustive `OR`
+**Deferred — unbuilt or expensive, but nothing external stops it**
+
+- **A fourth `UserAlertKind` for escalation** — an `ALTER TYPE` migration plus
+  ~nine coordinated edit sites, with two silent-failure modes: omit it from
+  `visibleUserAlertWhere`'s exhaustive `OR`
   (`packages/db/src/user-alerts.ts:20-71`) and the alert is invisible in every
   list, count, read and delivery path; omit it from `resolveAttention` and the
-  job returns `null`, enqueued and never delivered. `[buildable-but-expensive]`
-- **Reaching a person outside the originating channel, live** — `WsScope` is
-  `organization | channel | agent` only; there is **no user-private realtime
-  scope**. `[blocked-on-new-scope]`
-- **A shared agent addressing a specific person** — `send_message` is
-  `personalAssistantOnly`. `[blocked-by-design — do not relax]`
-- **Run suspension** ("the agent waits for its owner") — four independent
-  missing pieces, not wiring: no writer of `waiting_approval`, no resume column,
-  no `run.resume` topic, no consumer of `continuationToken`, no writer of
-  `actorContext.approval`, no `ask_human` tool. Nothing is scheduled to build
-  it: the plan this was previously sequenced behind is itself superseded and
-  explicitly needs no suspension. `[blocked-on-unbuilt-mechanism]`
+  job returns `null`, enqueued and never delivered.
+- **A user-private realtime scope** — `WsScope` is `organization | channel |
+  agent` only, so a recipient outside the originating channel gets a durable row
+  and a bell but no live update.
+- **Run suspension** — six independent missing pieces, not wiring: no writer of
+  `waiting_approval`, no resume column, no `run.resume` topic, no consumer of
+  `continuationToken`, no writer of `actorContext.approval`, no `ask_human`
+  tool. Nothing is scheduled to build it; the plan this was previously sequenced
+  behind is itself superseded and explicitly needs no suspension.
+- **Agent reaping/archival** — no delete route, no `archivedAt`, no sweep, so
+  `spawn_subtask` children accumulate permanently.
+
+**Blocked — waiting on a decision or an external contract**
+
+- **Escalation delivery**, on two unresolved designs, and these are the real
+  blockers rather than the alert plumbing above: **source entitlement** (the
+  two-check gate) and **recipient freshness** (a UOA-removed manager stays a
+  local candidate). `[blocked-on-design]`
 - **Org-wide people / multiple teams** — the org member list is already fetched
   and discarded (`uoa-org-roster.ts:299-320`, `parseOrgMembers` is
   module-private); what is missing is a decision about who may read it, since
@@ -399,8 +519,8 @@ members, per-person analytics.
   `[blocked-on-UOA-contract]`
 - **"Owner has left" as a reliable signal** — needs the org-wide roster read.
   `[blocked-on-org-wide-roster-read]`
-- **Agent reaping/archival** — no delete route, no `archivedAt`, no sweep;
-  `spawn_subtask` children accumulate permanently. `[blocked-on-unbuilt-mechanism]`
+- **A shared agent addressing a specific person** — `send_message` is
+  `personalAssistantOnly`. `[blocked-by-design — do not relax]`
 
 **Pre-existing defects found on the way, tracked separately**
 
@@ -423,18 +543,22 @@ members, per-person analytics.
 
 ## Phases
 
-1. **Ownership exists** — migration, four writers, owner projection, the
-   `parentAgentId: null` OR-branch, transfer on the existing PUT, and
-   `agent.created`/`agent.owner_changed` audit. Surface: owner cell on
+1. **Ownership exists** — migration (column, composite FK, CHECK, index), the
+   four writers, the owner projection with a phase-1-honest `ownerState`, the
+   `{ownerUserId, parentAgentId: null}` OR-branch mirrored into
+   `isAgentAccessibleToActor`, **the `loadAgentChildren` scope fix**, and
+   `agent.created` / `agent.owner_changed` audit. Surface: owner cell on
    `/agents`, "Owned by" on agent detail. Ships alone and closes the
-   member-loses-their-own-unbound-agent hole.
-2. **The tree** — `WorkspaceMemberRecord.userId` (org-scoped),
-   `buildPeopleAgentsTree`, one renderer at `/settings/members`, buckets and
-   labels as above.
+   member-loses-their-own-unbound-agent hole. **No transfer** — see phase 2.
+2. **The tree, and transfer** — `WorkspaceMemberRecord.userId` (org-scoped) in a
+   shared presenter, `buildPeopleAgentsTree`, one renderer at
+   `/settings/members` parameterised by people source (UOA roster / local
+   users), buckets and labels as above. Transfer lands here because this is
+   where the picker that resolves its id exists.
 3. **Org-wide people** — expose the org member list already being fetched, as an
    explicit `?scope=organization`, behind a real entitlement gate. Unlocks the
-   honest "owner has left" signal.
-4. **Blocked, not scheduled** — escalation delivery, coverage, run suspension.
+   honest "owner has left" signal and `ownerState`'s third value.
+4. **Not scheduled** — escalation delivery, coverage, run suspension.
 
 Each phase ships with its surface in the same change, additive migrations only.
 
@@ -447,11 +571,11 @@ Each phase ships with its surface in the same change, additive migrations only.
 2. **Who may read the org-wide people list** (phase 3)? UOA applies no
    authorization of its own, so Nessie must decide. Proposed: any active member,
    matching the existing per-team roster's `{ admin: false }`.
-3. **Does the ownership branch widen `isAgentAccessibleToActor` too far?**
-   `loadAgentChildren` takes no visibility scope, so an owner could enumerate
-   every child of their agent org-wide. Defensible — they would own those
-   children — but it should be a stated decision, and the missing scope is a
-   pre-existing looseness worth fixing regardless.
+3. **What must a child satisfy to be listed** once `loadAgentChildren` takes the
+   viewer's scope (phase 1)? An accessible run/thread, a channel binding, or
+   ownership of the child itself? Inherited ownership of the *parent* is
+   explicitly not sufficient — that is the decision that makes the fix
+   necessary — but the positive rule still needs choosing.
 4. **Should `spawn_subtask` inherit the owner at all?** Inheriting keeps
    attribution honest; not inheriting keeps the roster clean. The
    `parentAgentId: null` filter makes the leak moot either way, so this is now a
