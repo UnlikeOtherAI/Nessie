@@ -19,9 +19,26 @@ const ID = {
 test('an interactive run tells the person waiting what went wrong', async () => {
   const messages: Array<{ content: string; role: string }> = []
   const streamEvents: string[] = []
+  // A real `$transaction` hands the callback a client carrying every model, so
+  // the stub must too: the message chokepoint writes the row and its basis rows
+  // inside one, and a transaction client missing `message` made the write throw
+  // rather than fail an assertion.
   const transaction = {
     $executeRaw: async () => undefined,
+    message: {
+      create: async ({ data }: { data: { content: string; role: string } }) => {
+        messages.push(data)
+        return {
+          content: data.content,
+          createdAt: new Date('2026-08-04T20:00:00.000Z'),
+          id: '00000000-0000-4000-8000-000000000007',
+          role: 'assistant' as const,
+        }
+      },
+    },
+    messageBasisScope: { createMany: async () => undefined },
     run: { findFirst: async () => null },
+    runBasisScope: { createMany: async () => undefined },
     runThreadPendingMessage: { findMany: async () => [] },
   }
   const deps = {
@@ -108,9 +125,26 @@ test('an interactive run tells the person waiting what went wrong', async () => 
 
 test('an unattended run fails quietly — no message into a room that did not ask', async () => {
   const messages: Array<{ content: string; role: string }> = []
+  // A real `$transaction` hands the callback a client carrying every model, so
+  // the stub must too: the message chokepoint writes the row and its basis rows
+  // inside one, and a transaction client missing `message` made the write throw
+  // rather than fail an assertion.
   const transaction = {
     $executeRaw: async () => undefined,
+    message: {
+      create: async ({ data }: { data: { content: string; role: string } }) => {
+        messages.push(data)
+        return {
+          content: data.content,
+          createdAt: new Date('2026-08-04T20:00:00.000Z'),
+          id: '00000000-0000-4000-8000-000000000007',
+          role: 'assistant' as const,
+        }
+      },
+    },
+    messageBasisScope: { createMany: async () => undefined },
     run: { findFirst: async () => null },
+    runBasisScope: { createMany: async () => undefined },
     runThreadPendingMessage: { findMany: async () => [] },
   }
   const deps = {
