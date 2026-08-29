@@ -23,11 +23,15 @@ export type TabDef = {
   matches: (pathname: string) => boolean
 }
 
-// Agents, workflows and the MCP app store now live under the Admin section.
+// Agents, workflows, the App Store and the MCP connector catalogue all live
+// under the Admin section. Mirror admin/src/layouts/admin-shell/nav-items.tsx
+// ADMIN_ROUTE_PREFIXES — the RN shell cannot import from the admin package, so
+// this copy must be kept in step with it.
 const ADMIN_PREFIXES = [
   '/settings',
   '/agents',
   '/workflows',
+  '/apps',
   '/mcp-app-store',
   '/approvals',
   '/audit',
@@ -86,8 +90,22 @@ export const TABS: TabDef[] = [
   },
 ]
 
+// Strip the query/hash and any trailing slash so tab classification compares the
+// semantic pathname only. The admin bridge reports `${pathname}${search}` (see
+// NativeShellBridge), and a WebView reload — boot recovery adds `?__boot=N`, a
+// billing return adds `?uoa_billing=...` — arrives here as `/settings?__boot=1`.
+// Matching that raw string missed every prefix (`'/settings?__boot=1'` is
+// neither `=== '/settings'` nor `startsWith('/settings/')`), so the bar fell
+// back to Channels while the admin rendered `/settings`. Mirrors the web's
+// `normalizeAdminPathname` and this package's own `nativePhonePathname`.
+const normalizeTabPathname = (path: string): string => {
+  const normalized = (path.split(/[?#]/, 1)[0] ?? '/').replace(/\/+$/, '')
+  return normalized || '/'
+}
+
 // Index of the tab owning the given SPA route; falls back to Channels.
 export const tabIndexForPath = (pathname: string): number => {
-  const index = TABS.findIndex((tab) => tab.matches(pathname))
+  const normalized = normalizeTabPathname(pathname)
+  const index = TABS.findIndex((tab) => tab.matches(normalized))
   return index === -1 ? 0 : index
 }
