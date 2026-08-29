@@ -1,6 +1,11 @@
 import { Prisma } from '@prisma/client'
 import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
-import { buildPrefixTsQuery, partitionByDisclosure, viewerSatisfiesBasis } from '@nessie/runtime'
+import {
+  buildPrefixTsQuery,
+  canUserReadDisclosureBasis,
+  partitionByDisclosure,
+  viewerSatisfiesBasis,
+} from '@nessie/runtime'
 import { resolveMessageViewer } from './disclosure-viewer.js'
 import { resolveGrantedScopeKeys } from './disclosure-grants.js'
 import {
@@ -76,13 +81,20 @@ const mapThreadMessageRecord = (
   // row is still returned — the client renders a placeholder — but never its
   // content. Withholding the row entirely would leave an unexplained gap.
   withheld = false,
+  // Whether the caller satisfies the basis *directly*, rather than through a
+  // grant someone gave them. Only a direct reader may share onward: a grant
+  // recipient's share is refused by the server anyway, so offering them the
+  // control was an affordance that could only fail. Defaults true for callers
+  // that cannot distinguish, which is the pre-existing behaviour.
+  readableWithoutGrant = true,
 ): ThreadMessageRecord => ({
   attachmentCount: withheld ? 0 : attachmentCount,
   ...(withheld
     ? { restricted: true as const }
-    : message.basisScopes.length > 0
-      // Readable, but drew on restricted sources — this reader is the one who
-      // can share it. Private material offers no standing rule.
+    : message.basisScopes.length > 0 && readableWithoutGrant
+      // Readable on their own entitlement, and drew on restricted sources — so
+      // this reader is the one who can share it. Private material offers no
+      // standing rule.
       ? {
           restrictedSources: true as const,
           canShareStanding: !message.basisScopes.some((s) => s.scopeType === 'user'),
@@ -111,14 +123,26 @@ const mapThreadMessageRecord = (
   rootMessageId: message.rootMessageId ?? undefined,
   replyCount: message.replyCount,
   lastReplyAt: message.lastReplyAt ? message.lastReplyAt.toISOString() : undefined,
-  replyParticipantIds: message.replyParticipantIds,
   editedAt: message.editedAt ? message.editedAt.toISOString() : null,
   deletedAt: message.deletedAt ? message.deletedAt.toISOString() : null,
+  // Metadata is derived from the content it accompanies — tool activity, watch
+  // status text, run-stop reasons, document references, embed ids — and the
+  // admin renders cards from it *outside* the placeholder branch, including an
+  // actionable Continue button. A withheld row carries none of it.
   metadata:
-    message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+    !withheld
+    && message.metadata
+    && typeof message.metadata === 'object'
+    && !Array.isArray(message.metadata)
       ? (message.metadata as Record<string, unknown>)
       : undefined,
-  reactions: message.reactions.map((r) => ({
+  // The social envelope names people, not just volume: who reacted to material
+  // you cannot read, and who is in the sub-conversation about it. `replyCount`
+  // and `lastReplyAt` stay — replies carry their own basis and are gated
+  // independently, so a reader may well be entitled to some of them, and a
+  // placeholder that admits a conversation exists is honest.
+  replyParticipantIds: withheld ? [] : message.replyParticipantIds,
+  reactions: withheld ? [] : message.reactions.map((r) => ({
     id: r.id,
     messageId: r.messageId,
     agentId: r.agentId ? parseAgentId(r.agentId) : undefined,
@@ -282,6 +306,9 @@ export const listThreadMessages = async (
     }))?.channelId ?? null
     : null
   const withheldIds = new Set<string>()
+  // Everything the predicate admitted without consulting grants is read on the
+  // caller's own entitlement, so it stays shareable.
+  const grantOnlyIds = new Set<string>()
   for (const row of provisional.withheld) {
     const granted = options.organizationId && viewer.kind === 'user' && grantChannelId
       ? await resolveGrantedScopeKeys(prisma, {
@@ -296,7 +323,11 @@ export const listThreadMessages = async (
         viewerUserId: viewer.userId,
       })
       : new Set<string>()
-    if (!viewerSatisfiesBasis(row.basisScopes, viewer, granted)) {
+    if (viewerSatisfiesBasis(row.basisScopes, viewer, granted)) {
+      // Readable only because a grant said so — readable, but not theirs to
+      // pass on.
+      grantOnlyIds.add(row.id)
+    } else {
       withheldIds.add(row.id)
     }
   }
@@ -310,6 +341,7 @@ export const listThreadMessages = async (
           row,
           attachmentCounts.get(row.id) ?? 0,
           withheldIds.has(row.id),
+          !grantOnlyIds.has(row.id),
         )),
     meta: {
       cursor: hasMore && oldest ? `${oldest.createdAt.toISOString()}|${oldest.id}` : null,
@@ -488,9 +520,41 @@ export const mapMessageRecord = (
 export const mapMessageRecordWithAttachments = async (
   prisma: PrismaClient,
   message: MessageWithReactions,
+  // Who is reading, for the disclosure predicate. The list endpoint has always
+  // withheld restricted content; this single-message read did not, because the
+  // mapper was called with two arguments and `withheld` fell to its `false`
+  // default — handing the caller the verbatim content of a reply they are not
+  // entitled to, plus the share affordance for it. The admin hits this route on
+  // a cold deep-link into a reply thread, so it was reachable from the product.
+  // Omitting `viewer` keeps the unrestricted behaviour for internal callers that
+  // have already authorized the read.
+  viewer?: { channelId: string; organizationId: string; userId: string },
 ): Promise<ThreadMessageRecord> => {
   const counts = await loadAttachmentCounts(prisma, [message.id])
-  return mapThreadMessageRecord(message, counts.get(message.id) ?? 0)
+  const count = counts.get(message.id) ?? 0
+  if (!viewer || message.basisScopes.length === 0) {
+    return mapThreadMessageRecord(message, count)
+  }
+  // Two questions, not one: may they read it, and is that on their own
+  // entitlement? A grant recipient reads it but may not pass it on.
+  const messageViewer = await resolveMessageViewer(
+    prisma,
+    viewer.organizationId,
+    viewer.userId,
+  )
+  const direct = viewerSatisfiesBasis(message.basisScopes, messageViewer)
+  if (direct) {
+    return mapThreadMessageRecord(message, count, false, true)
+  }
+  const readable = await canUserReadDisclosureBasis(prisma, {
+    agentId: message.agentId,
+    basis: message.basisScopes,
+    channelId: viewer.channelId,
+    messageId: message.id,
+    organizationId: viewer.organizationId,
+    userId: viewer.userId,
+  })
+  return mapThreadMessageRecord(message, count, !readable, false)
 }
 
 type MessageSearchRow = {

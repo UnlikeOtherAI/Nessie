@@ -14,7 +14,10 @@ import {
   buildRealtimeScopesForChannel,
   resolveMessageDestination,
 } from './message-destination.js'
-import { computeReplyBasis } from '../execute/disclosure-basis.js'
+import {
+  insertMessageBasis,
+  resolveToolPostBasis,
+} from './tool-message-basis.js'
 import { truncate } from './tool-output.js'
 
 export const runSendMessageTool = async (
@@ -48,21 +51,7 @@ export const runSendMessageTool = async (
   // run holding restricted sources could otherwise relay them somewhere they
   // were never implied. The destination's own chain decides: anything the run
   // consumed that this destination does not imply is stamped on the post.
-  const consumed = context.consumedSources?.list() ?? []
-  const destinationChannel = consumed.length > 0
-    ? await context.prisma.channel.findUnique({
-      where: { id: destination.channelId },
-      select: { projectId: true, teamId: true },
-    })
-    : null
-  const destinationBasis = destinationChannel
-    ? computeReplyBasis(consumed, {
-      channelId: destination.channelId,
-      organizationId: context.channel.organizationId,
-      projectId: destinationChannel.projectId,
-      teamId: destinationChannel.teamId,
-    })
-    : []
+  const destinationBasis = await resolveToolPostBasis(context, destination.channelId)
 
   const message = await context.prisma.$transaction(async (tx) => {
     const created = await tx.message.create({
@@ -82,17 +71,11 @@ export const runSendMessageTool = async (
         threadId: true,
       },
     })
-    if (destinationBasis.length > 0) {
-      await tx.messageBasisScope.createMany({
-        data: destinationBasis.map((scope) => ({
-          messageId: created.id,
-          organizationId: context.channel.organizationId,
-          scopeId: scope.scopeId,
-          scopeType: scope.scopeType,
-        })),
-        skipDuplicates: true,
-      })
-    }
+    await insertMessageBasis(tx, {
+      basis: destinationBasis,
+      messageId: created.id,
+      organizationId: String(context.channel.organizationId),
+    })
     return created
   })
 

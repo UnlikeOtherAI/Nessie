@@ -4,6 +4,7 @@ import { attributionFromActorContext, collectStream } from '@nessie/runtime'
 import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildVisibleChannelWhere } from './access.js'
+import { recordMessageChannelRead } from './message-search-basis.js'
 import { clampLimit, formatSection, truncate } from './tool-output.js'
 
 const ATTACHMENT_READ_MAX_TEXT_BYTES = 64 * 1024
@@ -98,10 +99,21 @@ export const runAttachmentListTool = async (
 
   const messages = await context.prisma.message.findMany({
     where: messageWhere,
-    select: { id: true },
+    select: {
+      id: true,
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      thread: { select: { channel: { select: { id: true, visibility: true } } } },
+    },
     take: 200,
   })
   const messageIds = messages.map((m) => m.id)
+  // A filename names what exists somewhere. Record the channels listed from,
+  // and inherit the basis of any message whose attachments are being named.
+  recordMessageChannelRead(
+    context,
+    messages.map((message) => message.thread.channel),
+  )
+  context.consumedSources?.addAll(messages.flatMap((message) => message.basisScopes))
 
   if (messageIds.length === 0) {
     return {
@@ -165,11 +177,21 @@ export const runAttachmentReadTool = async (
     : { id: context.channel.id, organizationId: attachment.organizationId }
   const visibleMessage = await context.prisma.message.findFirst({
     where: { id: attachment.messageId, thread: { channel: visibleChannel } },
-    select: { id: true },
+    select: {
+      id: true,
+      basisScopes: { select: { scopeId: true, scopeType: true } },
+      thread: { select: { channel: { select: { id: true, visibility: true } } } },
+    },
   })
   if (!visibleMessage) {
     throw new Error('Attachment not found.')
   }
+
+  // A text attachment is inlined into the run's context below, and even the
+  // metadata-only branch names a file. Both are provenance: the channel it was
+  // posted in, plus whatever basis the carrying message already had.
+  recordMessageChannelRead(context, [visibleMessage.thread.channel])
+  context.consumedSources?.addAll(visibleMessage.basisScopes)
 
   const metadataLines = [
     `id=${attachment.id}`,
