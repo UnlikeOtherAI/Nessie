@@ -19,6 +19,7 @@ import {
 } from '@nessie/dashboard'
 import {
   DashboardLayoutSchema,
+  formatZodIssues,
   WidgetDefinitionSchema,
   type DashboardLayout,
 } from '@nessie/schemas'
@@ -54,9 +55,8 @@ const explain = (error: unknown): string => {
       + ' Probe the endpoint again and declare the columns it actually returns.'
   }
   if (error instanceof z.ZodError) {
-    return `That widget definition is not valid: ${error.issues
-      .map((issue) => `${issue.path.join('.') || 'definition'} — ${issue.message}`)
-      .join('; ')}`
+    const detail = formatZodIssues(error, { emptyPathLabel: 'definition', separator: ' — ' })
+    return `That widget definition is not valid: ${detail}`
   }
   const message = error instanceof Error ? error.message : 'unknown error'
   return message

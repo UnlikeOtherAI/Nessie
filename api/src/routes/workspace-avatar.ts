@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import { readAvatarUpload, sendAvatarRelayError } from './avatar-upload.js'
@@ -27,9 +27,6 @@ import type { RouteDeps } from './types.js'
  * routes never take a team id from the request. The picker route accepts a team
  * id only for reads and verifies the signed-in user's membership first.
  */
-
-// Mirrors the org logo route: owners and admins manage organisation identity.
-const ADMIN_ROLES = new Set(['owner', 'admin'])
 
 const NO_WORKSPACE_MESSAGE =
   'This workspace has no UnlikeOtherAI company avatar'
@@ -59,8 +56,8 @@ const requireWorkspaceAdmin = (
   actorContext: AuthorizedActionContext,
   reply: FastifyReply,
 ): boolean => {
-  const allowed = actorContext.actor.actorType === 'user'
-    && (actorContext.actor.roles ?? []).some((role) => ADMIN_ROLES.has(role))
+  // Mirrors the org logo route: owners and admins manage organisation identity.
+  const allowed = actorContext.actor.actorType === 'user' && isAdminActor(actorContext)
   if (!allowed) {
     sendApiError(
       reply,

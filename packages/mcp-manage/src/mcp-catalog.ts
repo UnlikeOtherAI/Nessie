@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   McpServerAuthConfigSchema,
+  ORGANIZATION_ADMIN_ROLES,
   type AuthorizedActionContext,
   type McpCatalogAuthMethod,
   type McpCatalogProtocol,
@@ -108,10 +109,6 @@ export type CatalogView = 'store' | 'mine' | 'queue' | 'all'
 export const isOwnerRole = (actorContext: AuthorizedActionContext): boolean =>
   actorContext.actor.roles?.includes('owner') ?? false
 
-/** Owner or org admin — the roles that manage shared connector policy. */
-export const isAdminRole = (actorContext: AuthorizedActionContext): boolean =>
-  isOwnerRole(actorContext) || (actorContext.actor.roles?.includes('admin') ?? false)
-
 /**
  * DB-authoritative admin check for contexts whose JWT roles may be absent or
  * stale (the personal assistant derives its acting-user context in the
@@ -127,7 +124,7 @@ export const isAdminUser = async (
     select: { role: true, deactivatedAt: true },
   })
   if (!membership || membership.deactivatedAt) return false
-  return membership.role === 'owner' || membership.role === 'admin'
+  return ORGANIZATION_ADMIN_ROLES.has(membership.role)
 }
 
 /**

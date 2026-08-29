@@ -157,8 +157,11 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   schedule with no UOA identity on a signing deployment. Because
   `api/src/services/*` is unreachable from the worker, the shared functions live
   in **`@nessie/workspace-admin`** and the api services re-export them — never a
-  second copy in `pa-tools` (the old "mirrored from api/src/services" comment in
-  `pa-tools/channels.ts` is the anti-pattern, not a precedent). An owner-gated
+  second copy in `pa-tools`. `pa-tools/channels.ts` carried a "mirrored from
+  api/src/services" comment over a duplicated `canManageChannel` for exactly
+  that reason; on 2026-08-29 the predicate and the writes it gates moved to
+  `@nessie/workspace-admin` `channel-manage.ts`, which the api service
+  re-exports and the PA tool imports. An owner-gated
   tool stays visible to non-owners and refuses in words, following
   `pa-tools/connectors.ts`. Role comes from the live `OrganizationMember` row at
   call time, not from the run's enqueue-time `actorContext`. **A tool that takes

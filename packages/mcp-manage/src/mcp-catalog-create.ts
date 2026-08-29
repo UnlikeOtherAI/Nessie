@@ -1,10 +1,10 @@
+import { isAdminActor } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { resolveAvailableAppSlug } from './apps/app-slug.js'
 import {
   ensureAuthConfigMatchesMethod,
-  isAdminRole,
   isAdminUser,
   type CreateCatalogEntryInput,
   type McpCatalogEntryRow,
@@ -55,7 +55,7 @@ export const createCatalogEntry = async (
     )
     if (lock) {
       const isAdmin =
-        isAdminRole(actorContext)
+        isAdminActor(actorContext)
         || (await isAdminUser(
           prisma,
           actorContext.tenant.organizationId,

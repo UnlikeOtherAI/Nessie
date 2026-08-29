@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { DashboardAccessError } from '@nessie/dashboard'
 import { DashboardFetchError, DashboardNormalizeError } from '@nessie/dashboard'
+import { formatZodIssues } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   DashboardServiceError,
@@ -117,9 +118,7 @@ const sendDashboardError = (reply: Parameters<typeof sendApiError>[0], error: un
     // Without this the contract still rejects the payload — but as a 500 with
     // no usable message, which makes an agent retry blindly instead of fixing
     // the field it got wrong.
-    const detail = error.issues
-      .map((issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`)
-      .join('; ')
+    const detail = formatZodIssues(error, { emptyPathLabel: 'body', separator: ': ' })
     sendApiError(reply, 400, 'DASHBOARD_WIDGET_INVALID', detail)
     return true
   }

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { createMcpSecretResolver } from '@nessie/mcp-manage'
 import { attributionFromActorContext } from '@nessie/runtime'
-import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
+import { isAdminActor, parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RequestWithRawBody } from '../lib/server-context.js'
@@ -53,9 +53,6 @@ const syncErrorStatus = (code: string): number => {
       return 400
   }
 }
-
-const isAdminOrOwner = (roles: string[] | undefined): boolean =>
-  Boolean(roles?.some((role) => role === 'owner' || role === 'admin'))
 
 const firstHeader = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value
@@ -160,7 +157,7 @@ export const registerExternalAgentRoutes = (app: FastifyInstance, deps: RouteDep
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     if (!requireUserActor(actorContext, reply)) return reply
-    if (!isAdminOrOwner(actorContext.actor.roles)) {
+    if (!isAdminActor(actorContext)) {
       sendApiError(reply, 403, 'FORBIDDEN', 'Admin or owner access required')
       return reply
     }

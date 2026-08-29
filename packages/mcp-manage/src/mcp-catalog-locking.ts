@@ -1,3 +1,4 @@
+import { isAdminActor } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
@@ -5,7 +6,6 @@ import {
   MCP_CATALOG_ERROR_CODES,
   McpCatalogError,
   getAccessibleCatalogEntry,
-  isAdminRole,
   type McpCatalogEntryRow,
 } from './mcp-catalog.js'
 import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
@@ -21,7 +21,7 @@ export const setCatalogEntryLocked = async (
   id: string,
   locked: boolean,
 ): Promise<McpCatalogEntryRow | null> => {
-  if (!isAdminRole(actorContext)) {
+  if (!isAdminActor(actorContext)) {
     throw new McpCatalogError(
       MCP_CATALOG_ERROR_CODES.FORBIDDEN,
       'Only organisation owners/admins can lock or unlock connectors',

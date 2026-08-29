@@ -15,6 +15,7 @@ import {
   DashboardLayoutSchema,
   DASHBOARD_GRID_COLUMNS,
   DASHBOARD_WIDGET_SIZES,
+  isAdminRole,
   WidgetDefinitionSchema,
   type DashboardLayout,
   type DashboardWidgetKind,
@@ -95,7 +96,7 @@ export const listDashboardsForActor = async (
   filter: { home?: DashboardHome; projectId?: string } = {},
 ) => {
   const { prisma, actor, membership } = context
-  const isManager = actor.role === 'owner' || actor.role === 'admin'
+  const isManager = isAdminRole(actor.role)
 
   const candidates = await prisma.dashboard.findMany({
     where: {
