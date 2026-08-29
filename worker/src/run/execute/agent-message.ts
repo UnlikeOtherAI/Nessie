@@ -79,8 +79,11 @@ const destinationFor = (context: RunContext) => ({
  * everything after the flip is withheld until the finished message is read
  * through the disclosure predicate.
  */
+export const runReplyBasis = (context: RunContext): BasisScope[] =>
+  computeReplyBasis(context.consumedSources.list(), destinationFor(context))
+
 export const runReplyIsRestricted = (context: RunContext): boolean =>
-  computeReplyBasis(context.consumedSources.list(), destinationFor(context)).length > 0
+  runReplyBasis(context).length > 0
 
 export type AgentMessageDraft = {
   content: string
@@ -158,7 +161,7 @@ export const createAgentMessage = async (
   context: RunContext,
   draft: AgentMessageDraft,
 ): Promise<StampedMessage> => {
-  const basis = computeReplyBasis(context.consumedSources.list(), destinationFor(context))
+  const basis = runReplyBasis(context)
 
   return inTransaction(tx, async (inner) => {
     const message = await inner.message.create({
@@ -210,7 +213,7 @@ export const replaceAgentMessageContent = async (
     editedAt?: Date
   },
 ): Promise<BasisScope[]> => {
-  const basis = computeReplyBasis(context.consumedSources.list(), destinationFor(context))
+  const basis = runReplyBasis(context)
 
   return inTransaction(tx, async (inner) => {
     await inner.message.update({

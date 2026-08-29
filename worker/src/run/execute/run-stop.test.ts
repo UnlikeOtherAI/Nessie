@@ -5,6 +5,7 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 import type { LoopResult } from '../agentic-loop.js'
 import type { RunInference } from './run-inference.js'
 import { prepareWindDownHandover, WIND_DOWN_INSTRUCTION } from './run-stop.js'
+import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 const loopResult = (over: Partial<LoopResult> = {}): LoopResult => ({
@@ -27,7 +28,16 @@ const loopResult = (over: Partial<LoopResult> = {}): LoopResult => ({
 
 const context = {
   agent: { id: 'agent-1' },
-  channel: { organizationId: 'org-1' },
+  // The checkpoint now carries the writing run's disclosure basis, so the
+  // context needs the sink and the destination chain the basis is computed
+  // against. An empty sink is the common case: an unrestricted run.
+  channel: {
+    id: 'channel-1',
+    organizationId: 'org-1',
+    projectId: 'project-1',
+    teamId: 'team-1',
+  },
+  consumedSources: createConsumedSourceSink(),
   replyRootMessageId: 'root-1',
   run: { id: 'run-1', threadId: 'thread-1' },
   task: { id: 'task-1' },
