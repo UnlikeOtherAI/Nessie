@@ -194,6 +194,27 @@ test('admin: /settings depth0 and every admin page depth1 under it', () => {
   assert.equal(getPhoneNavigationDirection('/settings', '/settings/members'), 'forward')
 })
 
+// Apps shipped as a route and a sidebar entry but was left out of
+// ADMIN_ROUTE_PREFIXES, so every admin-section question about it fell through
+// to the Channels default: the phone tab bar lit Channels while you stood on
+// Apps, and Back offered "Back to Channels".
+test('Apps belongs to the Admin tab, list and detail alike', () => {
+  assert.equal(getPhoneTabRootPath('/apps'), '/settings')
+  assert.equal(getPhoneTabRootPath('/apps/deep-water'), '/settings')
+  assert.equal(getPhoneNavigationScreen('/apps')?.section, 'admin')
+  assert.equal(getPhoneNavigationScreen('/apps/deep-water')?.section, 'admin')
+  assert.deepEqual(getPhoneNavigationBackTarget('/apps'), {
+    label: 'Back to Admin',
+    pathname: '/settings',
+  })
+  // An app detail is another admin detail, so opening one from the list is a
+  // content swap rather than a route-level transition.
+  assert.equal(getPhoneNavigationDirection('/apps', '/apps/deep-water'), null)
+  // /approvals must not be swallowed by the /apps prefix.
+  assert.equal(getPhoneTabRootPath('/approvals'), '/settings')
+  assert.equal(getPhoneNavigationScreen('/approvals')?.section, 'admin')
+})
+
 test('the provider-independent Back decision: pop a parent, replace otherwise', () => {
   // Parent behind → pop (the ledger unwinds real history).
   assert.deepEqual(
