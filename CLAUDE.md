@@ -505,6 +505,54 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
 - Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:5455/<path>`, screenshot the affected page, and confirm correct rendering.
 - Always run Playwright headless unless the user explicitly requests otherwise.
 
+## MCP App Store — `/apps`
+
+Installing an integration should feel like installing an app in Slack, not like
+configuring a server. `/apps` is that surface, and it is **a second face on
+`McpCatalogEntry`, never a second catalogue**: one row is one app, so `/apps`
+and the existing `/mcp-app-store` "Connectors" page (which stays, as the
+governance surface for review, install scopes, credentials, and the approval
+queue) cannot drift into two sources of truth. Product vocabulary on `/apps`:
+MCP server → **App**, connection → **Connected account**, `tools/list` →
+**Capabilities**.
+
+Migration `20260829090000_mcp_app_store_catalogue` adds the store dimension to
+`mcp_catalog_entries` (curated copy, icon reference, category/tags/aliases,
+trust, moderation state, source, distribution, featured order, registry
+provenance, cached capability counts) plus `mcp_registry_sync_runs` and
+`mcp_server_health`. Additive only — installed connectors are untouched.
+
+- **`slug` is the immutable identity behind `/apps/:slug`.** `name` is mutable
+  and unique only among public entries. The backfill trims separators *inside*
+  the expression its duplicate count reads (trimming afterwards makes
+  `"Notion (dev)"` and `"Notion dev"` collide only after de-duplication and
+  aborts the migration), and nulls any residual duplicate rather than failing;
+  the store resolves an app by slug **or** id, so a null slug stays reachable.
+- **`search_vector` is trigger-maintained, not a generated column** — Postgres
+  refuses the generation expression (`42P17`) because `array_to_string` is only
+  STABLE. The trigger keeps the property that mattered: no write path can
+  forget it.
+- **Ranking is Postgres's job**, weighted name/aliases A, publisher B, tags C,
+  prose D, with a `pg_trgm` typo fallback. This is what makes "pentest" find
+  DeepTest. **The client filters nothing and re-sorts nothing** — re-scoring in
+  the browser drops the fuzzy matches only the database can find.
+- **Store visibility** is `moderationState IN ('curated','approved')` and
+  `trustLevel <> 'blocked'`, composed with `catalogTenancyWhere`. `curated`
+  additionally requires public+published or caller-owned, because the migration
+  backfills `curated` onto every pre-existing non-public row and a bare `IN`
+  would list one member's private draft to the whole organisation. A
+  human-authored entry is created `curated` with a resolved slug so the page's
+  own "Add custom MCP server" produces something the page can show.
+
+Service in `packages/mcp-manage/src/apps/` (shared, because `api/src/services/*`
+is unreachable from the worker); routes `GET /api/apps`, `/api/apps/:slug`,
+`/api/apps/categories` (member-level, not owner-gated); seed
+`pnpm --filter @nessie/api seed:apps`. Every response goes through a presenter
+that cannot emit a `credentialRef`, auth/transport config, endpoint URL, or a
+raw upstream icon URL. No connect flow yet — the detail CTA links to the
+existing install path. Spec:
+[docs/plans/2026-08-29-mcp-app-store/overview.md](docs/plans/2026-08-29-mcp-app-store/overview.md).
+
 ## MCP Integration
 
 The live API server (`api/`) exposes a **REST MCP connector-management surface** under `/api/mcp/*`. This is for managing third-party MCP connectors (register, list, approve, activate, delete) — it is not a JSON-RPC tool server.

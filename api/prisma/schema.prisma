@@ -572,6 +572,70 @@ enum McpCredentialPrincipalType {
   organization
 }
 
+// ─── App Store (store dimension over the same catalogue) ───
+//
+// The App Store is a second face on `McpCatalogEntry`, never a second
+// catalogue: one row is one app, and these columns carry the presentation and
+// curation facts the store needs. Keeping them here is what stops `/apps` and
+// `/mcp-app-store` drifting into two sources of truth.
+
+/// Nessie's own taxonomy. Deliberately NOT derived from upstream registry
+/// metadata, which is inconsistent across publishers; `registry/categorize.ts`
+/// maps upstream signals onto these and a curator override always wins.
+enum McpAppCategory {
+  communication
+  development
+  productivity
+  crm_sales
+  project_management
+  customer_support
+  data_databases
+  analytics
+  finance
+  marketing
+  files_documents
+  ai_search
+  infrastructure
+  commerce
+  other
+}
+
+/// How far an app is trusted. `nessie` is first-party; `blocked` hides it from
+/// every store surface and refuses installation.
+enum McpAppTrustLevel {
+  nessie
+  verified
+  community
+  unknown
+  blocked
+}
+
+/// Curation state. The public store shows `curated` + `approved` only, so an
+/// ingested registry server is never exposed until someone has looked at it.
+enum McpAppModerationState {
+  discovered
+  curated
+  approved
+  hidden
+  blocked
+}
+
+/// Where the catalogue row came from. Not the same question as trust.
+enum McpAppSource {
+  nessie
+  mcp_registry
+  custom
+}
+
+/// How the app is delivered. `builtin` covers first-party products that are
+/// not remote MCP servers at all (e.g. a link-only product), which is why the
+/// store can show every existing connector without rewriting any of them.
+enum McpAppDistribution {
+  remote
+  package
+  builtin
+}
+
 enum ToolRegistrySource {
   builtin
   custom
@@ -2802,11 +2866,63 @@ model McpCatalogEntry {
   createdAt              DateTime             @default(now()) @map("created_at")
   updatedAt              DateTime             @updatedAt @map("updated_at")
 
+  // ─── App Store presentation + curation ───
+  //
+  // `name` is mutable and only unique among *public* entries, so it cannot
+  // address an app in a URL. `slug` is the immutable public identity behind
+  // `/apps/:slug`: set once at creation, never rewritten by registry sync, and
+  // globally unique when present so a deep link survives every rename.
+  slug              String?                @unique
+  /// Curated overrides. Registry sync writes `upstream`, never these — that
+  /// separation is what lets a sync run at any time without clobbering copy a
+  /// human wrote. Readers fall back: displayName ?? label.
+  displayName       String?                @map("display_name")
+  shortDescription  String?                @map("short_description")
+  longDescription   String?                @map("long_description")
+  websiteUrl        String?                @map("website_url")
+  documentationUrl  String?                @map("documentation_url")
+  repositoryUrl     String?                @map("repository_url")
+  /// Icon bytes are fetched, validated, and cached through the one
+  /// `FileService` chokepoint; `iconUrl` above stays as the raw upstream URL
+  /// for provenance and is NEVER rendered directly (untrusted external SVG).
+  iconAttachmentId  String?                @map("icon_attachment_id") @db.Uuid
+  iconSource        String?                @map("icon_source")
+  primaryCategory   McpAppCategory         @default(other) @map("primary_category")
+  categories        McpAppCategory[]       @default([])
+  tags              String[]               @default([])
+  /// Curated synonyms — how "email" finds Gmail and "issues" finds Linear.
+  aliases           String[]               @default([])
+  trustLevel        McpAppTrustLevel       @default(unknown) @map("trust_level")
+  moderationState   McpAppModerationState  @default(discovered) @map("moderation_state")
+  appSource         McpAppSource           @default(nessie) @map("app_source")
+  distribution      McpAppDistribution     @default(remote)
+  featured          Boolean                @default(false)
+  featuredOrder     Int?                   @map("featured_order")
+  /// Upstream registry provenance. `upstream` holds the raw normalized record
+  /// so a re-sync can diff without a second fetch.
+  registryName      String?                @map("registry_name")
+  registryVersion   String?                @map("registry_version")
+  upstream          Json                   @default("{}")
+  upstreamUpdatedAt DateTime?              @map("upstream_updated_at")
+  /// Cached capability counts, so a card can say "42 capabilities" without a
+  /// probe. Refreshed on install, reconnect, and registry sync.
+  toolCount         Int?                   @map("tool_count")
+  resourceCount     Int?                   @map("resource_count")
+  promptCount       Int?                   @map("prompt_count")
+  capabilitiesAt    DateTime?              @map("capabilities_at")
+  /// Weighted full-text search document, maintained by a BEFORE INSERT/UPDATE
+  /// trigger (see the migration) rather than by application code, so it cannot
+  /// drift from the row it describes. Not a GENERATED column: the expression
+  /// uses `array_to_string`, which is only STABLE, and Postgres refuses a
+  /// non-immutable generation expression.
+  searchVector      Unsupported("tsvector")?  @map("search_vector")
+
   organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   owner              User?               @relation("McpCatalogOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   reviewer           User?               @relation("McpCatalogReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
   instances          McpServerInstance[]
   integratedProducts IntegratedProduct[]
+  health             McpServerHealth?
 
   // Uniqueness is enforced by partial indexes (see migration): public entries
   // are unique on `name` store-wide; private entries are unique per owner. A
@@ -2814,7 +2930,56 @@ model McpCatalogEntry {
   @@index([organizationId, status])
   @@index([ownerUserId, status])
   @@index([visibility, status])
+  // Store reads: the catalogue lists by moderation + trust, then groups by
+  // category, and the featured strip is its own ordered slice.
+  @@index([moderationState, trustLevel])
+  @@index([primaryCategory, moderationState])
+  @@index([featured, featuredOrder])
   @@map("mcp_catalog_entries")
+}
+
+/// One row per registry import attempt. Kept so a failed or partial sync is
+/// visible and diagnosable rather than silent; `serversFailed` > 0 with a
+/// completed run is the normal "one bad record, rest imported" outcome,
+/// because a malformed upstream record must never fail the whole import.
+model McpRegistrySyncRun {
+  id              String    @id @default(uuid()) @db.Uuid
+  source          String    @default("mcp-registry")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  serversFetched  Int       @default(0) @map("servers_fetched")
+  serversCreated  Int       @default(0) @map("servers_created")
+  serversUpdated  Int       @default(0) @map("servers_updated")
+  serversFailed   Int       @default(0) @map("servers_failed")
+  iconsCached     Int       @default(0) @map("icons_cached")
+  error           String?
+  /// Per-record failures, capped, so one poison record is identifiable
+  /// without trawling logs.
+  failures        Json      @default("[]")
+
+  @@index([startedAt])
+  @@index([completedAt])
+  @@map("mcp_registry_sync_runs")
+}
+
+/// Last known reachability of an app's advertised endpoint. Deliberately a
+/// side table and never awaited by a catalogue read: health must not be able
+/// to slow or fail the store rendering.
+model McpServerHealth {
+  catalogEntryId           String    @id @map("catalog_entry_id") @db.Uuid
+  reachable                Boolean   @default(false)
+  initializationSuccessful Boolean   @default(false) @map("initialization_successful")
+  latencyMs                Int?      @map("latency_ms")
+  toolCount                Int?      @map("tool_count")
+  resourceCount            Int?      @map("resource_count")
+  promptCount              Int?      @map("prompt_count")
+  checkedAt                DateTime  @default(now()) @map("checked_at")
+  error                    String?
+
+  catalogEntry McpCatalogEntry @relation(fields: [catalogEntryId], references: [id], onDelete: Cascade)
+
+  @@index([checkedAt])
+  @@map("mcp_server_health")
 }
 
 model McpServerInstance {

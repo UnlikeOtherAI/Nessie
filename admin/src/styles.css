@@ -1626,6 +1626,21 @@ button.reaction-pill-active:focus-visible {
    Height, max/min-width, margins, gaps and text-align are not claimed and do
    still work from utilities. */
 
+/* Disabled state — the one modifier a call site cannot write as a utility even
+   in principle. `.admin-button:hover` above is unlayered and beats Tailwind's
+   `utilities` layer at any specificity, and `:hover` still matches a disabled
+   button, so `disabled:opacity-50` at a call site was silently lifted back to
+   0.92 the moment the pointer arrived — killing the one cue that the control
+   cannot be pressed exactly when the user aimed at it. Equal specificity to
+   `:hover`, so it has to stay *below* it in source order. `[aria-disabled]`
+   covers the controls that cannot carry the real attribute (links, composite
+   widgets); it is matched on `true` so an explicit `false` reads as enabled. */
+.admin-button:disabled,
+.admin-button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* Compact size for a control that sits inline in a row instead of a form
    column. Both modifiers resolve to the same 30px box so a select and a
    button align in one row. */

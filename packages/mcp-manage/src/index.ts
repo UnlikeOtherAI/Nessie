@@ -9,9 +9,11 @@
  * both the API routes and the worker can share one implementation.
  */
 
+export * from './apps/index.js'
 export * from './auth-apply.js'
 export * from './instance-secret.js'
 export * from './mcp-catalog.js'
+export * from './mcp-catalog-create.js'
 export * from './mcp-catalog-endpoint-lock.js'
 export * from './mcp-catalog-list.js'
 export * from './mcp-catalog-locking.js'

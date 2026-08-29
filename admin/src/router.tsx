@@ -27,6 +27,8 @@ import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
 import { DashboardsPage } from './pages/DashboardsPage'
 import { DashboardDetailPage } from './pages/DashboardDetailPage'
 import { LoginPage } from './pages/LoginPage'
+import { AppDetailPage } from './pages/AppDetailPage'
+import { AppsPage } from './pages/AppsPage'
 import { McpAppStorePage } from './pages/McpAppStorePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { OperationalTelemetryPage } from './pages/OperationalTelemetryPage'
@@ -256,6 +258,14 @@ export const router = createBrowserRouter([
         // own pages while a real agent id lands on the detail page.
         path: '/agents/:agentId',
         element: <AgentDetailPage />,
+      },
+      {
+        path: '/apps',
+        element: <AppsPage />,
+      },
+      {
+        path: '/apps/:slug',
+        element: <AppDetailPage />,
       },
       {
         path: '/mcp-app-store',
