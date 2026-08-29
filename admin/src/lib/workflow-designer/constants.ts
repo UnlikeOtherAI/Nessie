@@ -7,15 +7,8 @@ export const toolbarButtonClass = [
   'hover:bg-[#f4eff8]',
 ].join(' ')
 
-export const menuItemClass = [
-  'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left',
-  'text-[#433349] transition-colors hover:bg-[#f4eff8]',
-].join(' ')
-
 export const sectionLabelClass =
   'px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8b7a93]'
-
-export const dividerClass = 'my-1 border-t border-black/8'
 
 export const canvasClass = [
   'relative flex-1 overflow-hidden bg-white select-none',

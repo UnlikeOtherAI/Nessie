@@ -64,20 +64,3 @@ export const WidgetEmbed = Node.create({
     }
   },
 })
-
-/**
- * Extracts the embed ids from a saved page body.
- *
- * Mirrors `packages/knowledge/src/native-links.ts`, which does the same for
- * wikilinks. Deliberately a narrow regex over the one attribute rather than a
- * DOM parse: the server needs the ids, not the document.
- */
-const EMBED_ID_ATTR = /data-dashboard-embed-id="([0-9a-fA-F-]{36})"/g
-
-export const extractWidgetEmbedIds = (html: string): string[] => {
-  const found = new Set<string>()
-  for (const match of html.matchAll(EMBED_ID_ATTR)) {
-    if (match[1]) found.add(match[1])
-  }
-  return [...found]
-}
