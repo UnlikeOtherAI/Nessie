@@ -8,6 +8,7 @@ import type {
 } from '@nessie/schemas'
 import type { AgentRecord, UserRecord } from '../../../lib/api-client'
 import { usePrepareExecutorAccessChange } from '../../../facades/executors/hooks'
+import { TabBar } from '../../primitives/TabBar'
 
 type ExecutorTab = 'overview' | 'access' | 'operations' | 'sessions' | 'attention'
 
@@ -26,12 +27,13 @@ const operationKeys = [
   'sandbox.stop', 'coding.launch', 'coding.observe',
 ] as const
 
-const tabClass = (selected: boolean): string => [
-  'rounded-md px-2.5 py-1.5 text-xs font-semibold',
-  selected
-    ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
-    : 'text-[color:var(--tx2)] hover:bg-[color:var(--overlay-weak)]',
-].join(' ')
+const EXECUTOR_TABS: ReadonlyArray<{ label: string; value: ExecutorTab }> = [
+  { label: 'Overview', value: 'overview' },
+  { label: 'Access', value: 'access' },
+  { label: 'Operations', value: 'operations' },
+  { label: 'Sessions', value: 'sessions' },
+  { label: 'Attention', value: 'attention' },
+]
 
 const scopeSummary = (executor: ExecutorRecordResponse): string =>
   executor.scope.kind === 'private'
@@ -112,12 +114,14 @@ export const ExecutorDetailPanels = ({
           {executor.status}
         </span>
       </div>
-      <div className="mt-3 flex flex-wrap gap-1" role="tablist">
-        {(['overview', 'access', 'operations', 'sessions', 'attention'] as const).map((item) => (
-          <button className={tabClass(tab === item)} key={item} onClick={() => setTab(item)} type="button">
-            {item.charAt(0).toUpperCase() + item.slice(1)}
-          </button>
-        ))}
+      <div className="mt-3 flex">
+        <TabBar
+          ariaLabel="Executor sections"
+          items={EXECUTOR_TABS}
+          onChange={setTab}
+          size="sm"
+          value={tab}
+        />
       </div>
       {error ? <p className="mt-3 text-xs text-[color:var(--danger-text)]">{error}</p> : null}
       {tab === 'overview' ? (

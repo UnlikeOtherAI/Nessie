@@ -31,7 +31,12 @@ Four checks, applied to every change that adds or alters a capability:
 4. **Reuse the surface; never fork it.** When the same thing must appear in two
    places, it is one component parameterised by scope — as the project Docs tab
    reuses the knowledge workspace. A second implementation of the same view is a
-   defect, not a feature.
+   defect, not a feature. The same holds one level down, for controls: the
+   admin's single-select strip is `components/primitives/TabBar.tsx` and nothing
+   else. It had drifted into nine look-alikes (`.admin-tab`, `SegmentedControl`,
+   `IntegrationTabs`, six inline ones) that disagreed on shape, colour, counts,
+   and ARIA; they were collapsed into one on 2026-08-29. See `CLAUDE.md` →
+   "Theming / design system".
 
 A new server capability ships with its surface in the same change, or with a
 deliberate, written decision that it is machine-only. "The API exists" is not a

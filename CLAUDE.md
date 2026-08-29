@@ -479,6 +479,17 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   the same account theme.
 - Adding a theme = add a `[data-theme]` block (redeclare every token) + register
   the id in `ThemeProvider`. See [docs/plans/2026-06-10-design-system-theming.md](docs/plans/2026-06-10-design-system-theming.md).
+- **One tab bar, everywhere.** Every single-select strip in the admin — detail
+  tabs, page sections, and filter segments — is
+  `components/primitives/TabBar.tsx`. The selected item is a *single sliding
+  pill* (`.tabbar-indicator`, measured from the DOM and moved with a 120 ms
+  `transform`/`width` transition) rather than a per-item background that blinks
+  on and off, so a tab change reads as one object moving to what was tapped.
+  `role="tablist"` when it switches panels, `role="radiogroup"` when it narrows
+  a list; `fullWidth` stretches items, `size="sm"` for dense strips, `count`
+  renders a dimmed `(n)`. Adding a tenth fork is the defect Rule zero names —
+  parameterise this one. (2026-08-29 replaced nine forks: `.admin-tab`,
+  `SegmentedControl`, `IntegrationTabs`, and six inline strips.)
 
 ## Ports — NON-NEGOTIABLE
 

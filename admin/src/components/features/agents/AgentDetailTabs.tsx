@@ -6,6 +6,7 @@ import {
   useAgentStatus,
 } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
+import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
 import { AgentAvailableTools } from './AgentAvailableTools'
 import { AgentMessagePreview } from './AgentMessagePreview'
@@ -16,11 +17,11 @@ import { ToolExecutionLog } from './ToolExecutionLog'
 
 type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages'
 
-const DETAIL_TABS: { id: Tab; label: string }[] = [
-  { id: 'activity', label: 'Activity' },
-  { id: 'sub-agents', label: 'Sub-Agents' },
-  { id: 'tools', label: 'Tools' },
-  { id: 'messages', label: 'Messages' },
+const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
+  { label: 'Activity', value: 'activity' },
+  { label: 'Sub-Agents', value: 'sub-agents' },
+  { label: 'Tools', value: 'tools' },
+  { label: 'Messages', value: 'messages' },
 ]
 
 const PAGE_SIZE = 10
@@ -35,7 +36,7 @@ type AgentDetailTabsProps = {
 
 export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailTabsProps) => {
   const tabs = useMemo(
-    () => (editSlot ? [{ id: 'edit' as Tab, label: 'Edit' }, ...DETAIL_TABS] : DETAIL_TABS),
+    () => (editSlot ? [{ label: 'Edit', value: 'edit' as Tab }, ...DETAIL_TABS] : DETAIL_TABS),
     [editSlot],
   )
   const [activeTab, setActiveTab] = useState<Tab>(editSlot ? 'edit' : 'activity')
@@ -66,37 +67,16 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
     setMessagePage(0)
   }
 
-  const activeIndex = tabs.findIndex((t) => t.id === activeTab)
-
   return (
     <div className="flex h-full flex-col">
-      <div className="relative flex-shrink-0 border-b border-[color:var(--sep)]">
-        <div className="flex">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              className={[
-                'flex-1 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition-colors',
-                activeTab === tab.id
-                  ? 'text-[var(--tx)]'
-                  : 'text-[color:var(--tx3)] hover:text-[color:var(--tx2)]',
-              ].join(' ')}
-              onClick={() => handleTabChange(tab.id)}
-              type="button"
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div
-          className="absolute bottom-0 left-0 flex transition-transform duration-200 ease-out"
-          style={{
-            width: `${100 / tabs.length}%`,
-            transform: `translateX(${activeIndex * 100}%)`,
-          }}
-        >
-          <div className="mx-4 h-[2px] flex-1 rounded-full bg-[var(--accent)]" />
-        </div>
+      <div className="flex-shrink-0 border-b border-[color:var(--sep)] px-4 py-2">
+        <TabBar
+          ariaLabel="Agent sections"
+          fullWidth
+          items={tabs}
+          onChange={handleTabChange}
+          value={activeTab}
+        />
       </div>
 
       {/* Kept mounted (hidden when inactive) so switching tabs never discards

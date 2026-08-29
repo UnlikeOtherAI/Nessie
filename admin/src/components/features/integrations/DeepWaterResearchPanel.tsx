@@ -10,16 +10,16 @@ import {
   useSetDeepWaterAgentAccess,
 } from '../../../facades/integrations/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { TabBar } from '../../primitives/TabBar'
 import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 import { DeepWaterRunHistory } from './DeepWaterRunHistory'
-import { IntegrationTabs } from './IntegrationTabs'
 
 type DeepWaterTab = 'run' | 'runs' | 'settings'
 
-const tabs: Array<{ id: DeepWaterTab; label: string }> = [
-  { id: 'run', label: 'Test run' },
-  { id: 'runs', label: 'My runs' },
-  { id: 'settings', label: 'Settings' },
+const tabs: ReadonlyArray<{ label: string; value: DeepWaterTab }> = [
+  { label: 'Test run', value: 'run' },
+  { label: 'My runs', value: 'runs' },
+  { label: 'Settings', value: 'settings' },
 ]
 
 const readinessClass = (ready: boolean): string =>
@@ -104,7 +104,13 @@ export const DeepWaterResearchPanel = ({
       </div>
 
       <div className="mt-4">
-        <IntegrationTabs activeTab={activeTab} onSelect={(tab) => setActiveTab(tab as DeepWaterTab)} tabs={tabs} />
+        <TabBar
+          ariaLabel="Deep Water sections"
+          idPrefix="integration"
+          items={tabs}
+          onChange={setActiveTab}
+          value={activeTab}
+        />
       </div>
 
       {activeTab === 'run' ? (

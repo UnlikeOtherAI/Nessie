@@ -1244,20 +1244,106 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
-.admin-tab {
+/* The one single-select strip in the admin (components/primitives/TabBar).
+   The selected item is a single sliding pill rather than a per-item background,
+   so a tab change reads as one object moving to what was tapped. Every colour
+   is a theme token, so the strip follows the active theme like everything else. */
+.tabbar {
+  position: relative;
   display: flex;
-  height: 36px;
+  max-width: 100%;
   align-items: center;
-  gap: 6px;
-  border-bottom: 2px solid transparent;
-  padding: 0 10px;
-  color: var(--tx3);
-  white-space: nowrap;
+  gap: 2px;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  background: var(--overlay-weak);
+  padding: 3px;
+  scrollbar-width: none;
 }
 
-.admin-tab.active {
-  border-bottom-color: var(--accent);
+.tabbar::-webkit-scrollbar {
+  display: none;
+}
+
+.tabbar-full {
+  width: 100%;
+}
+
+.tabbar-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  z-index: 0;
+  border-radius: calc(var(--radius-md) - 3px);
+  background: var(--panel);
+  box-shadow: 0 1px 2px var(--scrim-weak), 0 0 0 1px var(--sep);
+  transition:
+    transform var(--duration-fast) var(--easing-standard),
+    width var(--duration-fast) var(--easing-standard);
+  will-change: transform, width;
+}
+
+/* The first placement must not slide in from the left edge. */
+.tabbar-indicator[data-animate='false'] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-indicator {
+    transition: none;
+  }
+}
+
+.tabbar-item {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: calc(var(--radius-md) - 3px);
+  color: var(--tx3);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--easing-standard);
+}
+
+.tabbar-item:hover {
+  color: var(--tx2);
+}
+
+.tabbar-item[aria-selected='true'],
+.tabbar-item[aria-checked='true'] {
   color: var(--tx);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tabbar-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tabbar-full .tabbar-item {
+  flex: 1 1 0;
+}
+
+.tabbar-sm .tabbar-item {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.tabbar-md .tabbar-item {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.tabbar-count {
+  color: var(--tx3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Agents list table: zebra striping over the row-hover highlight. The `:hover`
