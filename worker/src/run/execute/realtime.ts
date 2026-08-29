@@ -130,11 +130,19 @@ export const publishTaskUpdated = async (
 export const publishMessageUpdated = async (
   transport: PgRealtimeTransport,
   context: RunContext,
-  input: { content: string; editedAt: Date; messageId: string },
+  input: {
+    content: string
+    editedAt: Date
+    messageId: string
+    /** See `publishMessageCreated`: a restricted edit publishes content-free. */
+    restricted?: boolean
+  },
 ): Promise<void> => {
   await transport.publishWs(buildScopes(context), {
     data: {
-      contentPreview: input.content.slice(0, 200),
+      ...(input.restricted
+        ? { restricted: true as const }
+        : { contentPreview: input.content.slice(0, 200) }),
       editedAt: input.editedAt.toISOString(),
       messageId: input.messageId,
       threadId: parseThreadId(context.run.threadId),

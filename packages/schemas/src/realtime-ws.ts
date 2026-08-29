@@ -87,7 +87,8 @@ export type WsEventMap = {
   'message.updated': {
     messageId: string
     threadId: ThreadId
-    contentPreview: string
+    contentPreview?: string
+    restricted?: true
     editedAt: string
   }
   'message.deleted': {
@@ -212,7 +213,12 @@ export type MessageNewEvent = z.infer<typeof MessageNewEventSchema>
 export const MessageUpdatedEventSchema = z.object({
   messageId: NonEmptyStringSchema,
   threadId: ThreadIdSchema,
-  contentPreview: z.string(),
+  // Optional for the same reason `message.new`'s is: WS scopes are channel- and
+  // organisation-wide, so a preview here reaches every connected member
+  // regardless of entitlement. A restricted edit publishes `restricted: true`
+  // and no preview; entitled clients refetch through the gated list.
+  contentPreview: z.string().optional(),
+  restricted: z.literal(true).optional(),
   editedAt: TimestampSchema,
 })
 export type MessageUpdatedEvent = z.infer<typeof MessageUpdatedEventSchema>

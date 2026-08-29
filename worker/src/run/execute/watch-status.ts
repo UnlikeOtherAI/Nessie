@@ -55,6 +55,13 @@ export type FoldResult = {
   editedAt: Date
   messageId: string
   runCount: number
+  /**
+   * Whether the status line the fold just wrote carries a disclosure basis. The
+   * chokepoint knows; the caller has to publish, and a rolling watch that read a
+   * private source would otherwise broadcast the model's words to the whole
+   * channel through `message.updated`.
+   */
+  restricted: boolean
 }
 
 /**
@@ -109,7 +116,7 @@ export const foldWatchStatus = async (
     if (existing && !supersededBy) {
       const previous = readWatchStatus(existing.metadata)
       const runCount = (previous?.runCount ?? 1) + 1
-      await replaceAgentMessageContent(tx, context, {
+      const editBasis = await replaceAgentMessageContent(tx, context, {
         content: input.content,
         editedAt: input.now,
         messageId: existing.id,
@@ -122,7 +129,13 @@ export const foldWatchStatus = async (
           },
         } as Prisma.InputJsonValue,
       })
-      return { created: false, editedAt: input.now, messageId: existing.id, runCount }
+      return {
+        created: false,
+        editedAt: input.now,
+        messageId: existing.id,
+        restricted: editBasis.length > 0,
+        runCount,
+      }
     }
 
     const created = await createAgentMessage(tx, context, {
@@ -139,7 +152,13 @@ export const foldWatchStatus = async (
       role: 'assistant',
       threadId: input.threadId,
     })
-    return { created: true, editedAt: input.now, messageId: created.id, runCount: 1 }
+    return {
+      created: true,
+      editedAt: input.now,
+      messageId: created.id,
+      restricted: created.basis.length > 0,
+      runCount: 1,
+    }
   })
 
 export const readWatchStatus = (metadata: unknown): WatchStatusMetadata | null => {
