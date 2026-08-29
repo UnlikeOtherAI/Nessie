@@ -8,14 +8,18 @@ import {
   type McpCatalogVisibility,
   type McpServerAuthConfig,
 } from '@nessie/schemas'
+import { MCP_CATALOG_ERROR_CODES, McpCatalogError } from './mcp-catalog-errors.js'
 import {
-  McpSecurityError,
-  assertMcpAuthUrlsSafe,
-  assertUserAuthoredMcpTransportSafe,
-} from './mcp-security.js'
-import { findApplicableLock } from './mcp-catalog-endpoint-lock.js'
+  assertCatalogSecurity,
+  isUniqueViolation,
+  toJsonRecord,
+} from './mcp-catalog-guards.js'
 import { catalogTenancyWhere } from './mcp-catalog-visibility.js'
 import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
+
+// Re-exported so the package's public surface is unchanged by the split.
+export { MCP_CATALOG_ERROR_CODES, McpCatalogError }
+export { isUniqueViolation }
 
 /**
  * MCP App Store catalog service.
@@ -36,25 +40,6 @@ import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
  * file owns CRUD, listing, the access predicate, and the private self-publish /
  * deprecate transitions.
  */
-
-export const MCP_CATALOG_ERROR_CODES = {
-  NOT_FOUND: 'MCP_CATALOG_ENTRY_NOT_FOUND',
-  AUTH_CONFIG_INVALID: 'MCP_CATALOG_AUTH_CONFIG_INVALID',
-  AUTH_METHOD_MISMATCH: 'MCP_CATALOG_AUTH_METHOD_MISMATCH',
-  TRANSPORT_CONFIG_INVALID: 'MCP_CATALOG_TRANSPORT_CONFIG_INVALID',
-  DUPLICATE_NAME: 'MCP_CATALOG_ENTRY_DUPLICATE_NAME',
-  INVALID_TRANSITION: 'MCP_CATALOG_ENTRY_INVALID_TRANSITION',
-  FORBIDDEN: 'MCP_CATALOG_ENTRY_FORBIDDEN',
-  LOCKED: 'MCP_CATALOG_ENTRY_LOCKED',
-} as const
-
-export class McpCatalogError extends Error {
-  override readonly name = 'McpCatalogError'
-
-  constructor(public readonly code: string, message: string) {
-    super(message)
-  }
-}
 
 export type McpCatalogEntryRow = {
   id: string
@@ -189,59 +174,6 @@ export const ensureAuthConfigMatchesMethod = (
   return parsed.data
 }
 
-const toJsonRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-
-export const isUniqueViolation = (error: unknown): boolean =>
-  typeof error === 'object'
-  && error !== null
-  && 'code' in error
-  && (error as { code?: unknown }).code === 'P2002'
-
-const duplicateNameError = (name: string): McpCatalogError =>
-  new McpCatalogError(
-    MCP_CATALOG_ERROR_CODES.DUPLICATE_NAME,
-    `An MCP catalog entry named "${name}" already exists in this scope`,
-  )
-
-const transportConfigError = (message: string): McpCatalogError =>
-  new McpCatalogError(MCP_CATALOG_ERROR_CODES.TRANSPORT_CONFIG_INVALID, message)
-
-const mapSecurityError = (error: unknown): never => {
-  if (error instanceof McpSecurityError) {
-    throw transportConfigError(error.message)
-  }
-  throw error
-}
-
-const assertCatalogProtocolSafe = (protocol: McpCatalogProtocol): void => {
-  if (protocol === 'stdio') {
-    throw transportConfigError(
-      'MCP stdio transport is disabled for user-authored connectors',
-    )
-  }
-}
-
-const assertCatalogSecurity = async (
-  input: {
-    authConfig?: McpServerAuthConfig
-    defaultTransportConfig?: unknown
-    protocol?: McpCatalogProtocol
-  },
-): Promise<void> => {
-  if (input.protocol) assertCatalogProtocolSafe(input.protocol)
-  try {
-    if (input.authConfig) {
-      await assertMcpAuthUrlsSafe(input.authConfig)
-    }
-    await assertUserAuthoredMcpTransportSafe(input.defaultTransportConfig)
-  } catch (error) {
-    mapSecurityError(error)
-  }
-}
-
 /**
  * Org-scoped by-id read for internal, post-install operations (OAuth handshake,
  * instance probe/health) where access was already established at install time
@@ -324,75 +256,6 @@ const requireManageable = async (
   }
   await assertCatalogLifecycleIsUserManaged(prisma, id)
   return entry
-}
-
-export const createCatalogEntry = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  input: CreateCatalogEntryInput,
-): Promise<McpCatalogEntryRow> => {
-  const authConfig = ensureAuthConfigMatchesMethod(input.authMethod, input.authConfig)
-  await assertCatalogSecurity({
-    authConfig,
-    defaultTransportConfig: input.defaultTransportConfig,
-    protocol: input.protocol,
-  })
-
-  // A member must not bypass an admin lock by re-registering the same
-  // endpoint under a fresh name. Owners/admins are exempt.
-  const transportUrl =
-    input.defaultTransportConfig && typeof input.defaultTransportConfig.url === 'string'
-      ? input.defaultTransportConfig.url
-      : null
-  if (transportUrl) {
-    const lock = await findApplicableLock(
-      prisma,
-      actorContext.tenant.organizationId,
-      null,
-      transportUrl,
-    )
-    if (lock) {
-      const isAdmin =
-        isAdminRole(actorContext)
-        || (await isAdminUser(
-          prisma,
-          actorContext.tenant.organizationId,
-          actorContext.actor.actorId,
-        ))
-      if (!isAdmin) {
-        throw new McpCatalogError(
-          MCP_CATALOG_ERROR_CODES.LOCKED,
-          `This endpoint belongs to "${lock.label}", which is locked by your organisation's admins`,
-        )
-      }
-    }
-  }
-
-  try {
-    return await prisma.mcpCatalogEntry.create({
-      data: {
-        organizationId: actorContext.tenant.organizationId,
-        name: input.name,
-        label: input.label,
-        description: input.description ?? '',
-        protocol: input.protocol,
-        authMethod: input.authMethod,
-        authConfig: authConfig as object,
-        defaultTransportConfig: toJsonRecord(input.defaultTransportConfig) as object,
-        iconUrl: input.iconUrl ?? null,
-        vendor: input.vendor ?? null,
-        sourceUrl: input.sourceUrl ?? null,
-        signature: input.signature ?? null,
-        status: 'draft',
-        visibility: 'private',
-        ownerUserId: actorContext.actor.actorId,
-        createdBy: actorContext.actor.actorId,
-      },
-    })
-  } catch (error) {
-    if (isUniqueViolation(error)) throw duplicateNameError(input.name)
-    throw error
-  }
 }
 
 export const updateCatalogEntry = async (

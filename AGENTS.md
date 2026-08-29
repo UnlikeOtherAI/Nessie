@@ -197,6 +197,27 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   SDK HTTP+SSE transports, FCM `token_uri`, `web_fetch` and `http_fetch`.
   Inference provider `baseUrl` is validated at write time as well as use time.
   See `docs/security-audit-2026-06.md`.
+- **The App Store (`/apps`) is a second face on `McpCatalogEntry`, never a
+  second catalogue.** One row is one app, so the member-facing store and the
+  `/mcp-app-store` governance page cannot drift apart; a parallel `mcp_apps`
+  table would have guaranteed they did. Store visibility is
+  `moderationState IN ('curated','approved')` + `trustLevel <> 'blocked'`
+  composed with `catalogTenancyWhere` — and `curated` additionally requires
+  public+published or caller-owned, because the migration backfills `curated`
+  onto every pre-existing non-public row and a bare `IN` would list one
+  member's private draft connector to their whole organisation. Ranking lives
+  in Postgres (weighted name/aliases A, publisher B, tags C, prose D, plus a
+  `pg_trgm` typo fallback); **the client filters nothing and re-sorts nothing**,
+  because re-scoring the server's answer in the browser silently drops the
+  fuzzy matches only the index can find. `search_vector` is trigger-maintained
+  rather than a generated column — `array_to_string` is only STABLE and
+  Postgres refuses it (`42P17`). Every `/api/apps` response goes through a
+  presenter that cannot emit a `credentialRef`, auth/transport config, endpoint
+  URL, or a raw upstream icon URL, and `listAgentsWithAppAccess` imports
+  `buildAccessibleChannelWhere` from `@nessie/workspace-admin` rather than
+  restating it, so a member-readable surface can never name an agent
+  `GET /api/agents` would withhold. Spec:
+  `docs/plans/2026-08-29-mcp-app-store/overview.md`.
 - MCP connector management logic (catalog, instances, probe, projection,
   credentials, secret store, library, discovery, OAuth) lives in
   `@nessie/mcp-manage` and is shared by the API routes and the worker's

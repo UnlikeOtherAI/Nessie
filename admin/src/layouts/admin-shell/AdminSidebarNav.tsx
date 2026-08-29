@@ -138,6 +138,23 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        // The App Store: the member-facing face of the connector catalogue.
+        // `exact: false` would light this on `/apps/:slug` anyway, which is
+        // what we want — the detail page belongs to Apps.
+        path: '/apps',
+        label: 'Apps',
+        icon: icon(
+          <>
+            <rect height="7" rx="2" width="7" x="3" y="3" />
+            <rect height="7" rx="2" width="7" x="14" y="3" />
+            <rect height="7" rx="2" width="7" x="3" y="14" />
+            <path d="M17.5 14v7M14 17.5h7" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
+        // Kept alongside Apps: this is the governance surface (catalog review,
+        // install scopes, credentials, the approval queue), not the store.
         path: '/mcp-app-store',
         label: 'Connectors',
         icon: icon(

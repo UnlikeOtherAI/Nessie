@@ -100,35 +100,49 @@ SET "moderation_state" = CASE
 -- Private entries are unique only per owner, so they can genuinely collide;
 -- those get a short disambiguating suffix from the id rather than being left
 -- null, so every existing app is addressable at `/apps/:slug` on day one.
-UPDATE "mcp_catalog_entries" AS e
-SET "slug" = CASE
-      WHEN dupe.n = 1 THEN slugified.s
-      ELSE slugified.s || '-' || substring(replace(e."id"::text, '-', '') FROM 1 FOR 6)
-    END
-FROM (
+-- The trim of leading/trailing separators happens INSIDE the expression the
+-- duplicate count reads. Trimming afterwards would be a real bug: "Notion
+-- (dev)" and "Notion dev" slugify to `notion-dev-` and `notion-dev`, which are
+-- distinct before the trim and identical after it, so both would be counted as
+-- unique, neither would get a suffix, and `CREATE UNIQUE INDEX` below would
+-- abort the migration and leave `prisma migrate deploy` needing a manual
+-- `migrate resolve`.
+WITH slugified AS (
   SELECT
     "id",
-    NULLIF(regexp_replace(lower(trim("name")), '[^a-z0-9]+', '-', 'g'), '') AS s
+    NULLIF(
+      trim(BOTH '-' FROM regexp_replace(lower(trim("name")), '[^a-z0-9]+', '-', 'g')),
+      ''
+    ) AS s
   FROM "mcp_catalog_entries"
-) AS slugified,
-LATERAL (
-  SELECT count(*) AS n
-  FROM (
-    SELECT NULLIF(regexp_replace(lower(trim("name")), '[^a-z0-9]+', '-', 'g'), '') AS s2
-    FROM "mcp_catalog_entries"
-  ) AS all_slugs
-  WHERE all_slugs.s2 = slugified.s
-) AS dupe
-WHERE e."id" = slugified."id"
-  AND slugified.s IS NOT NULL;
+),
+counted AS (
+  SELECT "id", s, count(*) OVER (PARTITION BY s) AS n
+  FROM slugified
+  WHERE s IS NOT NULL
+)
+UPDATE "mcp_catalog_entries" AS e
+SET "slug" = CASE
+      WHEN counted.n = 1 THEN counted.s
+      ELSE counted.s || '-' || substring(replace(e."id"::text, '-', '') FROM 1 FOR 6)
+    END
+FROM counted
+WHERE e."id" = counted."id";
 
--- Trim any leading/trailing separators the regexp above can leave behind
--- (a name like "--Foo--" slugifies to "-foo-").
-UPDATE "mcp_catalog_entries"
-SET "slug" = trim(BOTH '-' FROM "slug")
-WHERE "slug" IS NOT NULL AND "slug" <> trim(BOTH '-' FROM "slug");
-
-UPDATE "mcp_catalog_entries" SET "slug" = NULL WHERE "slug" = '';
+-- Belt and braces before the unique index. The id suffix above makes a
+-- residual collision vanishingly unlikely (it needs a row whose name already
+-- slugifies to exactly `<other-slug>-<6 hex>`), but a migration that can abort
+-- on someone's production data is not worth the tidiness: keep the oldest
+-- claimant and leave the rest null. A null slug is addressable — the store
+-- resolves an app by slug or id — so nothing becomes unreachable.
+UPDATE "mcp_catalog_entries" AS e
+SET "slug" = NULL
+WHERE e."slug" IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM "mcp_catalog_entries" AS other
+    WHERE other."slug" = e."slug"
+      AND (other."created_at", other."id") < (e."created_at", e."id")
+  );
 
 CREATE UNIQUE INDEX "mcp_catalog_entries_slug_key"
   ON "mcp_catalog_entries" ("slug");
