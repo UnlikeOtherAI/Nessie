@@ -168,6 +168,35 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `agent_trigger_create` usable on an agent the user merely named, rather than
   only on one created in the same conversation. Details:
   `CLAUDE.md` → "Personal assistant — workspace provisioning".
+- **A read that enters a run's context feeds the disclosure sink, in the same
+  change.** An agent reaches material its audience cannot, and what stops it
+  laundering that into a shared room is provenance: `ConsumedSourceSink`
+  (`worker/src/run/execute/disclosure-basis.ts`) collects the scoped sources a run
+  consumed, `computeReplyBasis` subtracts what the destination already implies,
+  and the remainder is stamped on the message and the run by the one write
+  chokepoint (`agent-message.ts`). **An empty basis means unrestricted**, so a
+  read path that forgets to feed the sink does not fail loudly — it publishes to
+  everyone. That is the whole defect class, and it is why the obligation sits on
+  the *read*, not on the reply. Adding a tool that puts content in the window and
+  not adding its scope is the same defect as skipping the `FileService`.
+  Corollaries, each learned from a real gap: resolve a source's scope with the
+  shared `scopeForVisibility` rather than a second mapping beside your reader,
+  since a thought's `(audience_type, audience_id)` and a knowledge space's
+  `visibility` + chain are one fact in two shapes; record a channel scope only
+  when the channel is **not public**, because viewer channel scopes come from
+  `ChannelMember` rows alone and stamping a public channel withholds the reply
+  from people entitled to read the source; and make search **fail closed**
+  (exclude anything carrying a basis) rather than withhold, because a snippet
+  list has nowhere to render a placeholder. On the read side every path asks the
+  one predicate — list, single message, and the durable thought log alike, since
+  reasoning inherits the provenance of what the reply was built from. The live
+  SSE lanes cannot filter per viewer, so they are cut structurally by
+  `runReplyIsRestricted` the moment a run consumes a privileged source; that
+  predicate is monotone by construction, which is what makes it safe to call per
+  delta. Containment (`constrainScopesToDestination`) is a floor under all of
+  this, but it constrains **memory recall only** — never treat it as "nothing
+  crosses". Details: `CLAUDE.md` → "Disclosure boundaries"; spec and build status:
+  `docs/plans/2026-08-11-disclosure-boundaries-build.md`.
 - **Live document streaming taps the model's own tool-call arguments, and its
   live path never touches durable storage.** `kb_document_compose` emits the
   document as its `markdown` argument; the enriched `tool_call.delta` events
