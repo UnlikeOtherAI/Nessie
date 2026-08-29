@@ -6,7 +6,7 @@ import type {
   TriggerStatusFilter,
   TriggerTypeFilter,
 } from '../../../pages/triggers/useTriggersPageState'
-import { SegmentedControl } from '../../primitives/SegmentedControl'
+import { TabBar } from '../../primitives/TabBar'
 import { ColumnBrowserColumn } from '../../shared/column-browser/ColumnBrowserColumn'
 import {
   TRIGGER_TYPE_ICONS,
@@ -143,15 +143,18 @@ export const TriggerListColumn = ({
         value={searchQuery}
       />
 
-      <SegmentedControl
+      <TabBar
         ariaLabel="Filter by status"
-        onChange={onStatusFilterChange}
-        options={[
-          { label: 'All', value: 'all', count: statusCounts.all },
-          { label: 'Active', value: 'active', count: statusCounts.active },
-          { label: 'Paused', value: 'paused', count: statusCounts.paused },
-          { label: 'Error', value: 'error', count: statusCounts.error },
+        fullWidth
+        items={[
+          { count: statusCounts.all, label: 'All', value: 'all' },
+          { count: statusCounts.active, label: 'Active', value: 'active' },
+          { count: statusCounts.paused, label: 'Paused', value: 'paused' },
+          { count: statusCounts.error, label: 'Error', value: 'error' },
         ]}
+        onChange={onStatusFilterChange}
+        role="radiogroup"
+        size="sm"
         value={statusFilter}
       />
 

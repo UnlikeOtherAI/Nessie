@@ -2,7 +2,7 @@ import type {
   ToolRegistryEntryStatus,
   ToolRegistrySource,
 } from '@nessie/schemas'
-import { SegmentedControl } from '../../primitives/SegmentedControl'
+import { TabBar } from '../../primitives/TabBar'
 
 /**
  * Tool list filters. Source is the primary mental model ("where does this
@@ -47,10 +47,13 @@ export const ToolFilterBar = ({
   tagOptions,
 }: ToolFilterBarProps) => (
   <div className="grid gap-2">
-    <SegmentedControl<SourceSegment>
+    <TabBar<SourceSegment>
       ariaLabel="Filter by source"
+      fullWidth
+      items={SOURCE_OPTIONS}
       onChange={(next) => onSourceChange(next === 'all' ? undefined : next)}
-      options={SOURCE_OPTIONS}
+      role="radiogroup"
+      size="sm"
       value={source ?? 'all'}
     />
     <div className="flex gap-2">

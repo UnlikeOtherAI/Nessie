@@ -92,10 +92,12 @@ explicit set of rules; new work on these surfaces should follow them:
   container with hairline dividers and a 2px accent bar for selection
   (`divide-y` + `border-l-2`); status is a colour dot in rows, spelled out
   in the detail.
-- **Filters: one segmented control + quiet selects.** The glanceable,
-  operational dimension (trigger status with counts, tool source) gets the
-  `SegmentedControl` primitive (`components/primitives/SegmentedControl.tsx`);
+- **Filters: one tab bar + quiet selects.** The glanceable, operational
+  dimension (trigger status with counts, tool source) gets the shared `TabBar`
+  primitive (`components/primitives/TabBar.tsx`, `role="radiogroup"`, `fullWidth`);
   narrowing dimensions (type, status, tag) collapse into compact selects.
+  (Until 2026-08-29 this was a separate `SegmentedControl` primitive; it was one
+  of nine forks of the same strip and is now the one `TabBar`.)
 - **Forms ordered by decision weight.** The trigger editor runs
   name → type → target → type-specific config → optional description, with
   the enabled Switch in the footer next to the submit actions.

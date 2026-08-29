@@ -5,6 +5,7 @@ import { useScrollMemory } from '../../../hooks/useScrollMemory'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
+import { TabBar } from '../../primitives/TabBar'
 import { AgentCreateButton } from './AgentCreateButton'
 import { AgentsTable } from './AgentsTable'
 import {
@@ -88,25 +89,17 @@ export const AgentsList = () => {
         />
       </header>
 
-      <div
-        className="flex items-center gap-1 border-b border-[color:var(--sep)] px-6"
-        role="tablist"
-      >
-        {AGENT_SCOPES.map((scope) => (
-          <button
-            aria-selected={activeScope === scope}
-            className={`admin-tab ${activeScope === scope ? 'active' : ''}`}
-            key={scope}
-            onClick={() => setActiveScope(scope)}
-            role="tab"
-            type="button"
-          >
-            {AGENT_SCOPE_META[scope].label}
-            <span className="text-[color:var(--tx3)]">
-              {buckets[scope].length}
-            </span>
-          </button>
-        ))}
+      <div className="flex items-center border-b border-[color:var(--sep)] px-6 py-2">
+        <TabBar
+          ariaLabel="Agent scopes"
+          items={AGENT_SCOPES.map((scope) => ({
+            count: buckets[scope].length,
+            label: AGENT_SCOPE_META[scope].label,
+            value: scope,
+          }))}
+          onChange={setActiveScope}
+          value={activeScope}
+        />
       </div>
 
       <div

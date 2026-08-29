@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { TabBar, type TabBarItem } from '../components/primitives/TabBar'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { AddServerWizard } from '../components/features/mcp-app-store/AddServerWizard'
@@ -54,15 +55,7 @@ import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationBut
 
 type PageView = CatalogView | 'library'
 
-type TabConfig = { view: PageView; label: string }
-
-const tabClass = (active: boolean): string =>
-  [
-    'rounded-md px-3 py-1 text-xs font-semibold',
-    active
-      ? 'bg-[color:var(--accent)] text-[color:var(--on-accent)]'
-      : 'border border-[color:var(--sep)] text-[color:var(--tx2)] hover:bg-[color:var(--overlay-weak)]',
-  ].join(' ')
+type TabConfig = TabBarItem<PageView>
 
 export const McpAppStorePage = () => {
   const { me } = useAuthSession()
@@ -116,10 +109,12 @@ export const McpAppStorePage = () => {
     useState<McpServerInstanceRecord | null>(null)
 
   const tabs: TabConfig[] = [
-    { view: 'store', label: 'Store' },
-    { view: 'library', label: 'Library' },
-    { view: 'mine', label: 'My connectors' },
-    ...(isSuperAdmin ? [{ view: 'queue' as const, label: 'Approval queue' }] : []),
+    { label: 'Store', testId: 'catalog-tab-store', value: 'store' },
+    { label: 'Library', testId: 'catalog-tab-library', value: 'library' },
+    { label: 'My connectors', testId: 'catalog-tab-mine', value: 'mine' },
+    ...(isSuperAdmin
+      ? [{ label: 'Approval queue', testId: 'catalog-tab-queue', value: 'queue' as const }]
+      : []),
   ]
 
   const catalogEntries = useMemo(
@@ -225,19 +220,13 @@ export const McpAppStorePage = () => {
   }
 
   const tabBar = (
-    <div className="flex items-center gap-2">
-      {tabs.map((tab) => (
-        <button
-          className={tabClass(view === tab.view)}
-          data-testid={`catalog-tab-${tab.view}`}
-          key={tab.view}
-          onClick={() => switchView(tab.view)}
-          type="button"
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
+    <TabBar
+      ariaLabel="Connector sections"
+      items={tabs}
+      onChange={switchView}
+      size="sm"
+      value={view}
+    />
   )
 
   const columns = [
