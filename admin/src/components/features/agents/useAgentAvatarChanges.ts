@@ -54,10 +54,16 @@ export const useAgentAvatarChanges = (
     }
   }
 
-  const generate = async (): Promise<GeneratedAgentAvatar | null> => {
+  const generate = async (
+    instructions?: string,
+  ): Promise<GeneratedAgentAvatar | null> => {
     setError(null)
     try {
-      return await generateAvatar.mutateAsync({ agentId, ...avatarContext })
+      return await generateAvatar.mutateAsync({
+        agentId,
+        ...avatarContext,
+        instructions: instructions?.trim() || undefined,
+      })
     } catch (generationError) {
       setError(messageFor(generationError, 'Failed to generate a headshot'))
       return null

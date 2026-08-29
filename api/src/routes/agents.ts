@@ -369,6 +369,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
           role: body.role ?? existingAgent.role,
           systemPrompt: body.systemPrompt ?? existingAgent.systemPrompt,
         },
+        instructions: body.instructions,
         config: deps.config.model,
         fileService: deps.fileService,
         ledgerIdentity: deps.ledgerIdentity,

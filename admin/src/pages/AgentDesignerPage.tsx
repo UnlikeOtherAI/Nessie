@@ -5,7 +5,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom'
-import { AgentAvatarPanel } from '../components/features/agents/AgentAvatarPanel'
+import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentAvatarDraftPanel } from '../components/features/agents/AgentAvatarDraftPanel'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
@@ -270,14 +270,26 @@ export const AgentDesignerContent = ({
         <div className="min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)] p-5 lg:flex-[7] lg:border-b-0 lg:border-r">
           <div className="grid gap-5">
             {editingAgent ? (
-              <AgentAvatarPanel
-                agent={editingAgent}
-                avatarContext={{
-                  name: state.name,
-                  role: state.role.trim() || 'assistant',
-                  systemPrompt: state.systemPrompt,
-                }}
-              />
+              <section className="admin-card flex items-center gap-4 p-4">
+                <AgentAvatarQuickEdit
+                  agent={editingAgent}
+                  avatarContext={{
+                    name: state.name,
+                    role: state.role.trim() || 'assistant',
+                    systemPrompt: state.systemPrompt,
+                  }}
+                  canEdit={isOwner}
+                  size="xl"
+                />
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+                    Avatar
+                  </div>
+                  <p className="mt-1 text-sm text-[color:var(--tx3)]">
+                    Tap the pencil to upload an image or generate a headshot.
+                  </p>
+                </div>
+              </section>
             ) : (
               <AgentAvatarDraftPanel
                 avatarAttachmentId={avatarAttachmentId}
