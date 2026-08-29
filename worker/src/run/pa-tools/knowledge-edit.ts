@@ -6,6 +6,7 @@ import { fileServiceFor } from '../file-service.js'
 import { applyDocumentEdits } from '../execute/document-stream-edit.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
+import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 import { readMarkdownDocument } from './knowledge-document-io.js'
 
 const MAX_BODY_CHARS = 200_000
@@ -66,6 +67,9 @@ export const runKbDocumentEditTool = async (
   if (principal.actorType === 'agent' && space.sensitivityTier === 'restricted') {
     throw new Error('Agents may not write to a restricted knowledge space.')
   }
+  // The whole document body is now in the run's context.
+  recordKnowledgeSpaceRead(context, [space])
+
   const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')

@@ -46,8 +46,11 @@ export {
   constrainScopesToDestination,
   loadThoughtAudiences,
   resolveAccessibleScopes,
+  scopeForVisibility,
   type AccessibleScopes,
   type DestinationScopeChain,
+  type ScopedRecord,
+  type ScopeRef,
   type ScopeResolutionMode,
   type ResolveAccessibleScopesInput,
 } from './scopes.js'
