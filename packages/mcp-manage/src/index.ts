@@ -10,6 +10,7 @@
  */
 
 export * from './apps/index.js'
+export * from './registry/index.js'
 export * from './auth-apply.js'
 export * from './instance-secret.js'
 export * from './mcp-catalog.js'

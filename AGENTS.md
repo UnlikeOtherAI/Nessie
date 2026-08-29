@@ -239,7 +239,12 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   composed with `catalogTenancyWhere` — and `curated` additionally requires
   public+published or caller-owned, because the migration backfills `curated`
   onto every pre-existing non-public row and a bare `IN` would list one
-  member's private draft connector to their whole organisation. Ranking lives
+  member's private draft connector to their whole organisation. **The store
+  reads a decision and never re-derives one from `status`**: approval writes
+  `approved`, rejection and deprecation write `hidden`, and submission writes
+  nothing (a request is not a decision). Skipping those writes is what let a
+  rejected connector keep rendering to its owner and a deprecated one keep an
+  enabled Connect button. Ranking lives
   in Postgres (weighted name/aliases A, publisher B, tags C, prose D, plus a
   `pg_trgm` typo fallback); **the client filters nothing and re-sorts nothing**,
   because re-scoring the server's answer in the browser silently drops the

