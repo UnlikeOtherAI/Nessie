@@ -3,6 +3,11 @@ import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveAccessibleChannelIds } from './access.js'
 import {
+  recordMessageChannelRead,
+  UNRESTRICTED_MESSAGES_ONLY,
+} from './message-search-basis.js'
+import { insertMessageBasis, resolveToolPostBasis } from './tool-message-basis.js'
+import {
   buildSnippet,
   clampLimit,
   formatMessageLine,
@@ -15,6 +20,7 @@ type MessageSearchRow = {
   thread_id: string
   channel_id: string
   channel_label: string
+  channel_visibility: string
   content: string
   created_at: Date
   author_name: string | null
@@ -54,6 +60,7 @@ export const runMessageSearchTool = async (
       m."root_message_id",
       c."id" AS channel_id,
       c."label" AS channel_label,
+      c."visibility" AS channel_visibility,
       p."name" AS project_name,
       tm."name" AS team_name,
       m."content",
@@ -75,9 +82,17 @@ export const runMessageSearchTool = async (
         channelIds.map((id) => Prisma.sql`${id}::uuid`),
       )})
       AND to_tsvector('english', m."content") @@ plainto_tsquery('english', ${searchQuery})
+      AND ${UNRESTRICTED_MESSAGES_ONLY}
     ORDER BY m."created_at" DESC
     LIMIT ${take}
   `)
+
+  // The snippets below are content from these channels, so the run's reply
+  // inherits their scope.
+  recordMessageChannelRead(
+    context,
+    rows.map((row) => ({ id: row.channel_id, visibility: row.channel_visibility })),
+  )
 
   const lines = rows.map((row, index) =>
     formatMessageLine({
@@ -122,15 +137,28 @@ export const runMessageEditTool = async (
   // Agents may only edit messages they authored themselves.
   const existing = await context.prisma.message.findFirst({
     where: { id: input.messageId, agentId: context.agentId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, thread: { select: { channelId: true } } },
   })
   if (!existing) {
     throw new Error('Message not found or not authored by this agent.')
   }
 
-  await context.prisma.message.update({
-    where: { id: input.messageId },
-    data: { content, editedAt: new Date() },
+  // An edit is a second write path into an existing row, and swapping
+  // unrestricted text for privileged text must not inherit the original's empty
+  // basis. Resolved against the edited message's own channel, not the run's:
+  // the edit may target a message in another thread.
+  const basis = await resolveToolPostBasis(context, existing.thread.channelId)
+
+  await context.prisma.$transaction(async (tx) => {
+    await tx.message.update({
+      where: { id: input.messageId },
+      data: { content, editedAt: new Date() },
+    })
+    await insertMessageBasis(tx, {
+      basis,
+      messageId: input.messageId,
+      organizationId: String(context.channel.organizationId),
+    })
   })
 
   return {

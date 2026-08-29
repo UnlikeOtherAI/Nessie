@@ -87,7 +87,7 @@ export const completeRunExecution = async (
       id: payload.messageId,
     }
   } else if (input.rollingWatch) {
-    const fold = await foldWatchStatus(deps.prisma, {
+    const fold = await foldWatchStatus(deps.prisma, context, {
       agentId: context.agent.id,
       content: input.responseText,
       lastRunId: context.run.id,
@@ -97,16 +97,20 @@ export const completeRunExecution = async (
     })
     // An edit adds no row, so unread counts do not move and no mention alert
     // fires — which is the point: a quiet sweep must not light the channel up.
+    // A watch that read a privileged source writes a restricted status line, and
+    // both of these reach the whole channel regardless of entitlement.
     await publishMessageUpdated(deps.realtimeTransport, context, {
       content: input.responseText,
       editedAt: fold.editedAt,
       messageId: fold.messageId,
+      ...(fold.restricted ? { restricted: true } : {}),
     })
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
       agentId: parseAgentId(context.agent.id),
-      content: input.responseText,
+      content: fold.restricted ? '' : input.responseText,
       messageId: fold.messageId,
       runId: parseRunId(context.run.id),
+      ...(fold.restricted ? { restricted: true } : {}),
     })
   } else {
   // The personal assistant is its owner's delegate: anything it posts into a

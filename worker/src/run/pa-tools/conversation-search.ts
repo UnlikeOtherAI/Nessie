@@ -15,6 +15,10 @@ import {
   MAX_SEARCH_RESULTS,
   truncate,
 } from './tool-output.js'
+import {
+  recordMessageChannelRead,
+  UNRESTRICTED_MESSAGES_ONLY,
+} from './message-search-basis.js'
 
 type MessageIdRow = { id: string }
 
@@ -61,6 +65,7 @@ const searchMessageIdsByContent = async (
      )})
        AND m."deleted_at" IS NULL
        AND to_tsvector('english', m."content") @@ to_tsquery('english', ${prefixQuery})
+       AND ${UNRESTRICTED_MESSAGES_ONLY}
        ${input.authorUserId
          ? Prisma.sql`AND m."user_id" = ${input.authorUserId}::uuid`
          : Prisma.empty}
@@ -169,6 +174,7 @@ export const runWorkspaceSearchTool = async (
               select: {
                 id: true,
                 label: true,
+                visibility: true,
                 team: {
                   select: {
                     name: true,
@@ -194,6 +200,21 @@ export const runWorkspaceSearchTool = async (
       },
       take,
     }),
+  ])
+
+  // Labels, titles and snippets are all content from somewhere. Record every
+  // non-public channel this search actually surfaced, so a reply built on it
+  // inherits that scope.
+  recordMessageChannelRead(context, [
+    ...channels.map((channel) => ({ id: channel.id, visibility: channel.visibility })),
+    ...threads.map((thread) => ({
+      id: thread.channel.id,
+      visibility: thread.channel.visibility,
+    })),
+    ...messages.map((message) => ({
+      id: message.thread.channel.id,
+      visibility: message.thread.channel.visibility,
+    })),
   ])
 
   const lines: string[] = []
@@ -304,6 +325,7 @@ export const runAuthoredMessageSearchTool = async (
             select: {
             id: true,
             label: true,
+            visibility: true,
             team: {
               select: {
                 name: true,
@@ -317,6 +339,16 @@ export const runAuthoredMessageSearchTool = async (
     },
     take,
   })
+
+  // The acting user may read these, but the room the reply lands in may not:
+  // an owner's own #board post relayed into #general is still a disclosure.
+  recordMessageChannelRead(
+    context,
+    messages.map((message) => ({
+      id: message.thread.channel.id,
+      visibility: message.thread.channel.visibility,
+    })),
+  )
 
   const messageLines = messages.map((message, index) =>
     formatMessageLine({

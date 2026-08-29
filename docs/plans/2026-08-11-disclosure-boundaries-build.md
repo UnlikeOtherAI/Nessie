@@ -1,7 +1,9 @@
 # Build plan — disclosure boundaries
 
-**Status:** implementation plan, reviewed. Not yet started.
-**Date:** 2026-08-11
+**Status:** partially built — the header said "Not yet started" for two weeks
+after work landed. Corrected 2026-08-29. See "Build status" below for what is
+actually in the tree.
+**Date:** 2026-08-11 · **Status last verified against code:** 2026-08-29
 **Design:** [2026-08-11-viewer-scoped-agent-knowledge.md](2026-08-11-viewer-scoped-agent-knowledge.md)
 — read that for *why*. This document is *what to build and in what order*.
 
@@ -199,6 +201,44 @@
 > grows** to cover four more create paths and message *edits*, and a new
 > **WP2.5 — derived-artifact containment** becomes part of the security cut.
 > The revised cut is stated at the end.
+
+## Build status (2026-08-29, read from the code)
+
+This header claimed "Not yet started" while WP0–WP3 were already merged, which
+is how the gaps below survived: a reader checking whether a boundary existed was
+told the whole thing was hypothetical. What is actually in the tree:
+
+| WP | State | Where |
+|---|---|---|
+| Containment floor (Option B) | **on**, default, `NESSIE_DISCLOSURE_CONTAINMENT=off` to disable; PA exempt. Covers memory recall only — narrower than "nothing crosses", which is why the sink below had to cover the rest | `constrainScopesToDestination` (`packages/memory/src/scopes.ts`) |
+| WP0 stamped-post chokepoint | **built.** `createAgentMessage` / `replaceAgentMessageContent` now guarantee their own atomicity (`inTransaction`) rather than trusting each caller, the rolling watch status and `message_edit` route through, and the docstring states which writers stay outside and why | `worker/src/run/execute/agent-message.ts`, `pa-tools/tool-message-basis.ts` |
+| WP1 `MessageBasisScope` + stamping | **built**, including transitive inheritance from the transcript | `prompt.ts` |
+| WP2 close the wire | **built.** WS `message.new`/`message.reply`/`message.updated` and SSE `stream.done` carry `restricted: true` instead of a preview on every terminal path (completion, cancel, rolling watch); the live lanes stop the moment a run's reply is restricted | `packages/schemas/src/realtime-{ws,sse}.ts`, `runReplyIsRestricted` |
+| WP3 read predicate | **built** and applied on the message list, the single-message read, and the durable thought log. A withheld row also carries no metadata, reactions or reply participants, and the share affordance is offered only to a reader who satisfies the basis directly rather than through a grant | `packages/runtime/src/disclosure-*.ts`, `api/src/services/{messages,run-disclosure}.ts` |
+| WP4 checkpoint basis | **built.** A checkpoint carries the writing run's basis (reusing `RunBasisScope` — a checkpoint belongs to one run, so no second table), is withheld from a viewer who cannot satisfy it, and is inherited when admitted. The API's Continue claim is gated on the same predicate | `checkpoint.ts`, `run-setup.ts`, `api/src/services/run-continuation.ts` |
+| WP5 withheld placeholder | **built** | `RestrictedMessageCard` |
+| WP8 standing grants | **partial.** Grants exist and are bounded by the granter's own reach — channel visibility at both ends, a validated audience, and a real expiry on message grants — but there is no owner-facing surface listing or revoking them | `api/src/routes/disclosure-grants.ts` |
+| WP6, WP7, WP9–WP11 | **not started** | — |
+
+**Known gaps, stated rather than assumed.** Agent-to-agent mailbox delivery
+(`control/mailbox.ts`) and workflow step messages
+(`control/workflow-message-send.ts`) carry content authored by *another* run and
+do not propagate that run's basis, because neither the mailbox row nor the
+workflow step carries one to propagate. Both are named in the chokepoint's
+docstring so the next reader does not have to rediscover them.
+
+**Provenance sources feeding the sink** were the load-bearing gap and are worth
+stating explicitly, because a source that does not feed the sink produces an
+*empty* basis, and an empty basis means unrestricted — the failure is silent and
+opens outward. As of 2026-08-29 the writers are: the transcript window, memory
+recall, every knowledge-base read (`kb_page_read`, `kb_search`, `kb_list`,
+`kb_document_edit`, the `kb_comment_*` family), the conversation searches
+(`message_search`, `workspace_search`, `authored_message_search`), the
+attachment reads, and an admitted checkpoint. The searches additionally fail
+closed, excluding any message that carries a basis at all — matching
+`api/src/services/messages.ts`, which made the same call for the same reason.
+The pre-run engagement window is filtered by the same predicate as the run's own
+window, so the two cannot disagree about what exists.
 
 ## The one thing to get right first
 

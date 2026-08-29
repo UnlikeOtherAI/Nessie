@@ -119,6 +119,43 @@ the model: removal is fused to the terminal status transition in
 cancellation all clear it without having to remember, and a crashed run clears
 it when the queue re-delivers it to a terminal state.
 
+## Disclosure boundaries — what an agent read decides who may read its answer
+
+An agent reaches material its whole audience cannot. What stops it laundering
+that into a shared room is **provenance, not redaction**: a run accumulates the
+scoped sources it consumed (`ConsumedSourceSink`,
+`worker/src/run/execute/disclosure-basis.ts`), `computeReplyBasis` subtracts what
+the destination already implies, and the remainder is stamped as
+`MessageBasisScope` + `RunBasisScope` in the same transaction as the message —
+`agent-message.ts` is the one write chokepoint and opens that transaction itself
+rather than trusting callers.
+
+- **An empty basis means unrestricted**, so a read that forgets to feed the sink
+  fails *open* and silently. That is the defect class: every new read tool adds
+  its scope in the same change. Writers today are the transcript window
+  (transitive), memory recall, every knowledge-base read, the conversation
+  searches, attachment reads, and an admitted checkpoint.
+- **Resolve a scope with the shared `scopeForVisibility`** — a thought's
+  `(audience_type, audience_id)` and a space's `visibility` + chain are one fact
+  in two shapes. Record a channel scope only when the channel is **not public**:
+  viewer channel scopes come from `ChannelMember` rows alone, so stamping a
+  public channel withholds the reply from people who can read the source.
+- **Search fails closed**, excluding anything carrying a basis, because a snippet
+  list has nowhere to render a placeholder and an agent can carry what it reads
+  into another room in its next sentence.
+- **Every read path asks the same question** — message list, single-message read,
+  durable thought log, and a checkpoint on resume — so reasoning and work-state
+  inherit the provenance of what they were built from. A withheld row carries no
+  metadata, reactions, or reply participants, and the share affordance goes only
+  to a reader who satisfies the basis directly, never a grant recipient.
+- **The live lanes cannot filter per viewer**, so `runReplyIsRestricted` cuts
+  `stream.delta`/`.reasoning`/`.thinking.tool` structurally, and the WS/SSE
+  terminal events carry `restricted: true` instead of a preview.
+- **Containment** (`constrainScopesToDestination`, default on, PA exempt)
+  constrains **memory recall only** — never the "nothing crosses" floor the plan
+  claimed. Spec and build status:
+  [docs/plans/2026-08-11-disclosure-boundaries-build.md](docs/plans/2026-08-11-disclosure-boundaries-build.md).
+
 ## Live document streaming — watch a document being written
 
 `kb_document_compose` writes a markdown document and saves it as a real **`.md`

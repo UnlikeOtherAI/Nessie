@@ -85,14 +85,17 @@ export type WsEventMap = {
     channelId?: ChannelId
     messageId: string
     role: MessageRole
-    contentPreview: string
+    // Absent exactly when `restricted` is set — see `MessageNewEventSchema`.
+    contentPreview?: string
+    restricted?: true
     threadId: ThreadId
   }
   // sp-messaging slice: message lifecycle events
   'message.updated': {
     messageId: string
     threadId: ThreadId
-    contentPreview: string
+    contentPreview?: string
+    restricted?: true
     editedAt: string
   }
   'message.deleted': {
@@ -110,7 +113,9 @@ export type WsEventMap = {
     messageId: string
     rootMessageId: string
     role: MessageRole
-    contentPreview: string
+    // Absent exactly when `restricted` is set — see `MessageReplyEventSchema`.
+    contentPreview?: string
+    restricted?: true
     threadId: ThreadId
   }
   'message.reply.meta': {
@@ -199,7 +204,15 @@ export const MessageNewEventSchema = z.object({
   channelId: ChannelIdSchema.optional(),
   messageId: NonEmptyStringSchema,
   role: MessageRoleSchema,
-  contentPreview: z.string(),
+  // Absent exactly when `restricted` is true: WS scopes are channel- and
+  // organization-wide, so a preview would reach every connected member
+  // regardless of entitlement. A restricted message publishes content-free and
+  // entitled clients refetch through the gated list endpoint. Declaring this
+  // optional is load-bearing — `publishWs` parses through `WsEventSchema`, so a
+  // required `contentPreview` made the content-free publish throw and fail the
+  // run instead of closing the wire.
+  contentPreview: z.string().optional(),
+  restricted: z.literal(true).optional(),
   threadId: ThreadIdSchema,
 })
 export type MessageNewEvent = z.infer<typeof MessageNewEventSchema>
@@ -207,7 +220,12 @@ export type MessageNewEvent = z.infer<typeof MessageNewEventSchema>
 export const MessageUpdatedEventSchema = z.object({
   messageId: NonEmptyStringSchema,
   threadId: ThreadIdSchema,
-  contentPreview: z.string(),
+  // Optional for the same reason `message.new`'s is: WS scopes are channel- and
+  // organisation-wide, so a preview here reaches every connected member
+  // regardless of entitlement. A restricted edit publishes `restricted: true`
+  // and no preview; entitled clients refetch through the gated list.
+  contentPreview: z.string().optional(),
+  restricted: z.literal(true).optional(),
   editedAt: TimestampSchema,
 })
 export type MessageUpdatedEvent = z.infer<typeof MessageUpdatedEventSchema>
@@ -225,7 +243,10 @@ export const MessageReplyEventSchema = z.object({
   messageId: NonEmptyStringSchema,
   rootMessageId: NonEmptyStringSchema,
   role: MessageRoleSchema,
-  contentPreview: z.string(),
+  // Optional for the same reason as `message.new`: a restricted reply is
+  // published content-free rather than previewed to the whole channel.
+  contentPreview: z.string().optional(),
+  restricted: z.literal(true).optional(),
   threadId: ThreadIdSchema,
 })
 export type MessageReplyEvent = z.infer<typeof MessageReplyEventSchema>

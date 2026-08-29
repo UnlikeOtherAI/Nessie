@@ -1,4 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { persistRunBasis } from './agent-message.js'
+import type { BasisScope } from './disclosure-basis.js'
 import type { RunEndReason } from './budget-stop.js'
 
 // Durable work state for a run that stopped at a policy ceiling.
@@ -20,6 +22,18 @@ export type LoadedRunCheckpoint = {
   note: string
   reason: string
   sources: CheckpointSource[]
+  /**
+   * The disclosure basis of the run that wrote this checkpoint.
+   *
+   * A checkpoint note is built from the writing run's raw transcript, including
+   * verbatim tool output, under a prompt that demands exact values rather than
+   * paraphrase. Without this it was a second carry-forward channel with none of
+   * the treatment the transcript gets: the next run received the privileged text
+   * in full and then computed its reply basis from a sink that had never seen
+   * those scopes, so "keep going" laundered a restricted answer into an
+   * unrestricted one.
+   */
+  basisScopes: BasisScope[]
 }
 
 const CHECKPOINT_INJECTION_HEADER = [
@@ -71,6 +85,7 @@ export const loadRunCheckpointForRun = async (
       id: true,
       note: true,
       reason: true,
+      runId: true,
       sources: true,
     },
   })
@@ -84,7 +99,16 @@ export const loadRunCheckpointForRun = async (
     if (count !== 1) return null
   }
 
+  // `RunBasisScope` is already the per-run provenance ledger and a checkpoint
+  // belongs to exactly one run, so the writing run's own rows are the
+  // checkpoint's basis — no second table, and no way for the two to disagree.
+  const basisScopes = await prisma.runBasisScope.findMany({
+    where: { runId: row.runId },
+    select: { scopeId: true, scopeType: true },
+  })
+
   return {
+    basisScopes,
     createdAt: row.createdAt,
     generation: row.generation,
     id: row.id,
@@ -138,9 +162,21 @@ export const persistRunCheckpoint = async (
     sources: CheckpointSource[]
     taskId: string
     threadId: string
+    /**
+     * What the writing run consumed that its destination does not imply. A run
+     * can checkpoint without ever posting a message — a crash, or a stop before
+     * any reply — so the basis cannot be left to the message chokepoint to
+     * record; the checkpoint has to carry it or it is lost with the run.
+     */
+    basis: readonly BasisScope[]
   },
 ): Promise<string> => {
   const sources = input.sources as unknown as Prisma.InputJsonValue
+  await persistRunBasis(prisma, {
+    basis: input.basis,
+    organizationId: input.organizationId,
+    runId: input.runId,
+  })
   const checkpoint = await prisma.runCheckpoint.upsert({
     where: { runId: input.runId },
     create: {
