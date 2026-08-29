@@ -114,6 +114,38 @@ the context, who is asking, run invariants).
   ("approval requested from \<owner\>; run suspended"), never the verdict —
   the verdict arrives after resume.
 
+## Self-disclosure is pre-approved — the owner asking about their own info
+
+If the **asker is the owner** of the information — I ask an agent about
+something I am privy to but others are not — no approval is needed: I already
+have the right to my own private context. This is a **pre-approved** request,
+so the agent answers directly and **no** `request_disclosure_approval` is
+raised, **no** card, **no** alert, and **no** group-visible outcome message is
+posted.
+
+The pre-approval is **narrow by construction — that information, that request
+only**, never a standing grant:
+
+- The decision is per-answer and structural. The model still judges, per turn,
+  what an answer would disclose and whose private context it belongs to (the
+  `ownerUserId` it would name); the worker then checks the **structural fact**
+  `askerUserId === ownerUserId` (the message author vs. the identified owner).
+  Only when they are the **same person** is that particular answer auto-cleared.
+  This is a user-id equality check on structural facts — allowed by AGENTS.md
+  ("deterministic code may act only on structural facts"), not a content
+  heuristic.
+- **Nothing is persisted.** No `ApprovalRequest` row, no reusable "approved"
+  flag, no scope grant. Because there is no stored approval, a *later* request —
+  even by the same owner — for a *different* piece of private information, or
+  the *same* information surfaced in a *different* case, is evaluated fresh and
+  raises its own request if the asker is not that item's owner. Self-disclosure
+  can never leak into a standing bypass others could ride.
+- If a single answer would disclose information owned by **more than one**
+  person, the asker being one owner pre-approves **only their own** slice; any
+  slice owned by someone else still raises a `request_disclosure_approval` for
+  that other owner. The agent answers with the owner's own material and withholds
+  the rest pending approval.
+
 ## The owner-only Accept/Decline card
 
 Reuse-not-fork: this is `admin/src/components/features/channels/RunStopContinue.tsx`
@@ -230,10 +262,13 @@ also resolve from the page through the same resolve route. No second page.
    the presenter so `ApprovalsPage` can render the new kind. Keep the
    `approval.resolved` publish.
 3. **Worker hook** — `request_disclosure_approval` builtin: schema, prompt
-   availability, dispatch through `authorizeToolExecution`; the single
-   creation transaction (request + card message + alert + `waiting_approval`
-   flip); resume path injects the verdict. Rebuild `@nessie/worker` (dev API
-   embeds built `dist`).
+   availability, dispatch through `authorizeToolExecution`; the **self-disclosure
+   short-circuit** (`askerUserId === ownerUserId` → no request, no suspension,
+   answer proceeds); the single creation transaction for the asker≠owner case
+   (request + card message + alert + `waiting_approval` flip); resume path
+   injects the verdict. Rebuild `@nessie/worker` (dev API embeds built `dist`).
+   A worker test asserts self-disclosure persists **no** `ApprovalRequest` row
+   and that a second, differently-owned ask still raises one.
 4. **Chat card** — extract/generalise the `RunStopContinue` pattern;
    `DisclosureApprovalCard` with owner-enabled buttons, disabled-after-acting,
    non-owner waiting view; wire into the message feed; deep link from
