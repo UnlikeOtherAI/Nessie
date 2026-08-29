@@ -17,6 +17,9 @@ type AgentDesignerFormProps = {
   modelOptionsError?: string
   modelsLoading: boolean
   parentAgentName?: string
+  // Tools live on the agent detail page's Tools tab for an existing agent; the
+  // designer only shows the picker while creating one (no Tools tab yet).
+  showTools?: boolean
   state: AgentFormState
   toolGroups: DesignerToolGroup[]
   toolsLoading: boolean
@@ -43,6 +46,7 @@ export const AgentDesignerForm = ({
   modelOptionsError,
   modelsLoading,
   parentAgentName,
+  showTools = true,
   state,
   toolGroups,
   toolsLoading,
@@ -182,38 +186,41 @@ export const AgentDesignerForm = ({
         />
       </div>
 
-      {/* Tools */}
-      <div className="grid gap-1.5">
-        <div className={fieldLabelClass}>Tools</div>
-        <p className="text-xs text-[color:var(--tx3)]">
-          Built-in tools are on by default; connector (MCP) tools must be
-          switched on per agent.
-        </p>
-        <p className="text-xs text-[color:var(--tx3)]">
-          Explicit-grant tools are protected from Agent Designer edits.{' '}
-          {canManageExplicitTools ? (
-            <>
-              Manage them in <Link className="underline" to="/agents/tools">Tools</Link>
-              {' '}or{' '}
-              <Link className="underline" to="/settings/integrations">
-                Integrations
-              </Link>.
-            </>
-          ) : (
-            'An organization owner manages them in Tools or Integrations.'
-          )}
-        </p>
-        <p className="text-xs text-[color:var(--tx3)]">
-          Executor operations require a separate exact executor-agent-operation grant.{' '}
-          <Link className="underline" to="/agents/executors">Manage executors and access</Link>.
-        </p>
-        <ToolPicker
-          groups={toolGroups}
-          isLoading={toolsLoading}
-          onToggle={actions.toggleTool}
-          toolState={state.tools}
-        />
-      </div>
+      {/* Tools — only while creating. An existing agent's tools are managed on
+          the detail page's Tools tab. */}
+      {showTools ? (
+        <div className="grid gap-1.5">
+          <div className={fieldLabelClass}>Tools</div>
+          <p className="text-xs text-[color:var(--tx3)]">
+            Built-in tools are on by default; connector (MCP) tools must be
+            switched on per agent.
+          </p>
+          <p className="text-xs text-[color:var(--tx3)]">
+            Explicit-grant tools are protected from Agent Designer edits.{' '}
+            {canManageExplicitTools ? (
+              <>
+                Manage them in <Link className="underline" to="/agents/tools">Tools</Link>
+                {' '}or{' '}
+                <Link className="underline" to="/settings/integrations">
+                  Integrations
+                </Link>.
+              </>
+            ) : (
+              'An organization owner manages them in Tools or Integrations.'
+            )}
+          </p>
+          <p className="text-xs text-[color:var(--tx3)]">
+            Executor operations require a separate exact executor-agent-operation grant.{' '}
+            <Link className="underline" to="/agents/executors">Manage executors and access</Link>.
+          </p>
+          <ToolPicker
+            groups={toolGroups}
+            isLoading={toolsLoading}
+            onToggle={actions.toggleTool}
+            toolState={state.tools}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

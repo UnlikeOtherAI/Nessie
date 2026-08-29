@@ -8,6 +8,11 @@ import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents, useAgentStatus } from '../facades/agents/hooks'
 import type { AgentRecord } from '../lib/api-client'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import {
+  LOCAL_BACK_PRIORITY,
+  useLocalBack,
+} from '../layouts/admin-shell/local-back/LocalBackContext'
+import { usePhoneLayout } from '../lib/mobile-shell'
 import { StatusPill } from '../components/primitives/StatusPill'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -35,19 +40,34 @@ export const AgentDetailPage = () => {
 
   const backToList = () => void navigate('/agents')
 
+  // On a phone the shell's single leading doorway (PhoneNavigationButton) owns
+  // Back — register the destination there so it returns to the agents list, and
+  // render this page's own Back button only on wider layouts. Otherwise the two
+  // stack up as a duplicate Back on mobile.
+  const phoneLayout = usePhoneLayout()
+  useLocalBack({
+    active: phoneLayout,
+    id: 'agent-detail',
+    label: 'Agents',
+    onBack: backToList,
+    priority: LOCAL_BACK_PRIORITY.columnBase,
+  })
+
   if (!agent) {
     return (
       <div className="flex h-full flex-col">
         <header className="flex items-center gap-3 px-6 pt-6 pb-4">
           <PhoneNavigationButton />
-          <button
-            className="admin-button admin-button-secondary gap-1.5"
-            onClick={backToList}
-            type="button"
-          >
-            <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-            Agents
-          </button>
+          {!phoneLayout ? (
+            <button
+              className="admin-button admin-button-secondary gap-1.5"
+              onClick={backToList}
+              type="button"
+            >
+              <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
+              Agents
+            </button>
+          ) : null}
         </header>
         <div className="flex flex-1 items-center justify-center text-sm text-[color:var(--tx3)]">
           {isPending ? 'Loading agent…' : 'This agent could not be found.'}
@@ -60,14 +80,16 @@ export const AgentDetailPage = () => {
     <div className="flex h-full flex-col">
       <header className="flex items-start gap-3 px-6 pt-6 pb-4">
         <PhoneNavigationButton />
-        <button
-          className="admin-button admin-button-secondary mt-1 gap-1.5"
-          onClick={backToList}
-          type="button"
-        >
-          <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-          Agents
-        </button>
+        {!phoneLayout ? (
+          <button
+            className="admin-button admin-button-secondary mt-1 gap-1.5"
+            onClick={backToList}
+            type="button"
+          >
+            <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
+            Agents
+          </button>
+        ) : null}
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
           <div className="min-w-0">

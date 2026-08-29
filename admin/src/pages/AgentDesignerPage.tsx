@@ -293,6 +293,7 @@ export const AgentDesignerContent = ({
               modelOptionsError={modelOptionsError}
               modelsLoading={modelOptionsQuery.isLoading}
               parentAgentName={parentAgent?.name}
+              showTools={!isEditMode}
               state={state}
               toolGroups={toolCatalog.groups}
               toolsLoading={toolCatalog.isLoading}
