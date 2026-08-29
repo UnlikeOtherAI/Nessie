@@ -11,6 +11,7 @@ import { SearchPage } from './pages/SearchPage'
 import { AgentActivityPage } from './pages/AgentActivityPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { AgentDesignerPage } from './pages/AgentDesignerPage'
+import { AgentDetailPage } from './pages/AgentDetailPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { ExecutorsPage } from './pages/ExecutorsPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
@@ -248,6 +249,13 @@ export const router = createBrowserRouter([
       {
         path: '/agents/executors',
         element: <ExecutorsPage />,
+      },
+      {
+        // Dynamic agent id last: static siblings above outrank it in the
+        // router's ranking, so `/agents/activity` etc. still resolve to their
+        // own pages while a real agent id lands on the detail page.
+        path: '/agents/:agentId',
+        element: <AgentDetailPage />,
       },
       {
         path: '/mcp-app-store',

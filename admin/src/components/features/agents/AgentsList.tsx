@@ -6,7 +6,6 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
 import { AgentCreateButton } from './AgentCreateButton'
-import { AgentDetailDrawer } from './AgentDetailDrawer'
 import { AgentsTable } from './AgentsTable'
 import {
   AGENT_SCOPES,
@@ -38,20 +37,12 @@ export const AgentsList = () => {
     initialState.activeScope,
   )
   const [pageByScope, setPageByScope] = useState(initialState.pageByScope)
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
 
   useEffect(() => {
     saveAgentsListState({ activeScope, pageByScope })
   }, [activeScope, pageByScope])
 
-  // Every agent, so the detail drawer can resolve a sub-agent the table row does
-  // not itself list (children are returned by the same endpoint).
-  const agentsById = useMemo(
-    () => new Map(agents.map((agent) => [agent.id, agent])),
-    [agents],
-  )
-
-  // Only root agents are listed; sub-agents are reached from the detail drawer.
+  // Only root agents are listed; sub-agents are reached from the detail page.
   const buckets = useMemo(() => {
     const grouped = emptyBuckets()
     for (const agent of agents) {
@@ -74,9 +65,6 @@ export const AgentsList = () => {
   }
 
   const scroll = useScrollMemory(`agents:list:${activeScope}`)
-  const selectedAgent = selectedAgentId
-    ? agentsById.get(selectedAgentId) ?? null
-    : null
 
   const rangeStart = scopeAgents.length === 0 ? 0 : page * PAGE_SIZE + 1
   const rangeEnd = Math.min((page + 1) * PAGE_SIZE, scopeAgents.length)
@@ -131,7 +119,7 @@ export const AgentsList = () => {
           emptyMessage={AGENT_SCOPE_META[activeScope].empty}
           isLoading={isPending}
           onEdit={(agentId) => void navigate(`/agents/designer/${agentId}`)}
-          onOpen={(agentId) => setSelectedAgentId(agentId)}
+          onOpen={(agentId) => void navigate(`/agents/${agentId}`)}
           showMenu={isAgentScopeEditable(activeScope) && isOwner}
           token={token}
         />
@@ -160,12 +148,6 @@ export const AgentsList = () => {
           Next
         </button>
       </div>
-
-      <AgentDetailDrawer
-        agent={selectedAgent}
-        onClose={() => setSelectedAgentId(null)}
-        onSelectAgent={(agentId) => setSelectedAgentId(agentId)}
-      />
     </div>
   )
 }
