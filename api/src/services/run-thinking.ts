@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import { parseAgentId, parseRunId } from '@nessie/schemas'
 
 import type { RunThinkingEntry, RunThinkingLog, ThreadThinking } from '../contracts.js'
+import { canReadRunThinking } from './run-thinking-disclosure.js'
 
 // The full log is capped so a very long run cannot return an unbounded payload;
 // the bootstrap tail only needs enough to fill the bubble's ticker plus a bit of
@@ -88,6 +89,11 @@ export const loadRunThinkingLog = async (
 export const loadThreadThinking = async (
   prisma: PrismaClient,
   threadId: string,
+  // Who is reading. A run's reasoning inherits the provenance of the sources it
+  // was built from, so a viewer who would be withheld the reply is withheld the
+  // thinking too. The run stays listed — the bubble is the honest signal that
+  // *something* is happening — but carries no entries.
+  viewer: { organizationId: string; userId: string },
 ): Promise<ThreadThinking> => {
   const runs = await prisma.run.findMany({
     where: { threadId, status: 'running' },
@@ -96,8 +102,22 @@ export const loadThreadThinking = async (
     select: { id: true, agentId: true, replyRootMessageId: true, startedAt: true },
   })
 
+  const readable = await Promise.all(
+    runs.map((run) =>
+      canReadRunThinking(prisma, {
+        organizationId: viewer.organizationId,
+        runId: run.id,
+        userId: viewer.userId,
+      }),
+    ),
+  )
+
   const entries = await Promise.all(
-    runs.map((run) => loadTail(prisma, run.id, THREAD_THINKING_TAIL_LIMIT)),
+    runs.map((run, index) =>
+      readable[index]
+        ? loadTail(prisma, run.id, THREAD_THINKING_TAIL_LIMIT)
+        : Promise.resolve({ entries: [], truncated: false }),
+    ),
   )
 
   return {

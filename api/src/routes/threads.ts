@@ -24,6 +24,7 @@ import {
 } from '../services/messages.js'
 import { toggleUserReaction } from '../services/message-reactions.js'
 import { loadRunThinkingLog, loadThreadThinking } from '../services/run-thinking.js'
+import { canReadRunThinking } from '../services/run-thinking-disclosure.js'
 import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js'
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
@@ -109,7 +110,12 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
 
     return createApiResponse(
-      ThreadThinkingSchema.parse(await loadThreadThinking(prisma, thread.id)),
+      ThreadThinkingSchema.parse(
+        await loadThreadThinking(prisma, thread.id, {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        }),
+      ),
     )
   })
 
@@ -133,6 +139,20 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const log = await loadRunThinkingLog(prisma, { runId, threadId: thread.id })
     if (!log) {
+      sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
+      return reply
+    }
+
+    // The thought log inherits the reply's provenance: a viewer withheld the
+    // restricted answer must not read the reasoning that produced it. Answering
+    // 404 (rather than 403) keeps this consistent with the route's existing
+    // "do not confirm what you cannot see" behaviour above.
+    const readable = await canReadRunThinking(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      runId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!readable) {
       sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
       return reply
     }
