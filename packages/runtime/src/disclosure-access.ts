@@ -79,7 +79,13 @@ export const resolveGrantedDisclosureScopeKeys = async (
     agentId: string | null
     basis: readonly BasisScopeRow[]
     channelId: string
-    messageId: string
+    /**
+     * The message the basis is attached to, or null for a basis that belongs to
+     * no single message — a run's own `RunBasisScope` ledger. Per-message grants
+     * simply cannot match in that case, which is the correct reading: sharing
+     * one reply does not publish the reasoning of every run in the room.
+     */
+    messageId: string | null
     organizationId: string
     viewerChannelIds: readonly string[]
     viewerUserId: string | null
@@ -89,18 +95,23 @@ export const resolveGrantedDisclosureScopeKeys = async (
   if (input.basis.length === 0 || !input.viewerUserId) return granted
 
   const [messageGrants, scopeGrants] = await Promise.all([
-    prisma.disclosureGrant.findMany({
-      where: {
-        messageId: input.messageId,
-        organizationId: input.organizationId,
-        ...liveGrantFilter(new Date()),
-        OR: [
-          { audienceKind: 'user', audienceId: input.viewerUserId },
-          { audienceKind: 'channel', audienceId: { in: [...input.viewerChannelIds] } },
-        ],
-      },
-      select: { grantedByUserId: true },
-    }),
+    // `message_id` is a uuid column, so this must be skipped rather than queried
+    // with a placeholder: an empty string reaches Postgres as an invalid uuid
+    // and throws, which would turn "is this readable?" into a 500.
+    input.messageId
+      ? prisma.disclosureGrant.findMany({
+        where: {
+          messageId: input.messageId,
+          organizationId: input.organizationId,
+          ...liveGrantFilter(new Date()),
+          OR: [
+            { audienceKind: 'user', audienceId: input.viewerUserId },
+            { audienceKind: 'channel', audienceId: { in: [...input.viewerChannelIds] } },
+          ],
+        },
+        select: { grantedByUserId: true },
+      })
+      : Promise.resolve([]),
     input.agentId
       ? prisma.scopeDisclosureGrant.findMany({
         where: {
@@ -148,7 +159,8 @@ export const canUserReadDisclosureBasis = async (
     agentId: string | null
     basis: readonly BasisScopeRow[]
     channelId: string
-    messageId: string
+    /** Null for a run-level basis; see `resolveGrantedDisclosureScopeKeys`. */
+    messageId: string | null
     organizationId: string
     userId: string
   },

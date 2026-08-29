@@ -40,9 +40,10 @@ export const canReadRunThinking = async (
 
   // A run has no reply column to join on — messages carry their own basis, so
   // nothing links a run to the message it produced. The run's own channel is
-  // therefore what a standing (scope) grant is resolved against. Passing no
-  // message id simply means per-message grants cannot match, which is correct:
-  // sharing one reply does not publish the reasoning of every run in the room.
+  // therefore what a standing (scope) grant is resolved against, and `null`
+  // says there is no message: per-message grants cannot match, which is
+  // correct, since sharing one reply does not publish the reasoning of every
+  // run in the room.
   const run = await prisma.run.findUnique({
     where: { id: input.runId },
     select: { agentId: true, thread: { select: { channelId: true } } },
@@ -55,7 +56,7 @@ export const canReadRunThinking = async (
     agentId: run.agentId,
     basis,
     channelId: run.thread.channelId,
-    messageId: '',
+    messageId: null,
     organizationId: input.organizationId,
     userId: input.userId,
   })
