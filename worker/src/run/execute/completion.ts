@@ -87,7 +87,7 @@ export const completeRunExecution = async (
       id: payload.messageId,
     }
   } else if (input.rollingWatch) {
-    const fold = await foldWatchStatus(deps.prisma, {
+    const fold = await foldWatchStatus(deps.prisma, context, {
       agentId: context.agent.id,
       content: input.responseText,
       lastRunId: context.run.id,

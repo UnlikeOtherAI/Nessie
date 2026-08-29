@@ -160,12 +160,23 @@ export const createAgentMessage = async (
 export const replaceAgentMessageContent = async (
   tx: Tx,
   context: RunContext,
-  input: { messageId: string; content: string },
+  input: {
+    messageId: string
+    content: string
+    /** Written alongside the content; the rolling watch counter rides here. */
+    metadata?: Prisma.InputJsonValue
+    /** Caller-supplied edit time, so a caller that reports it can report the stored value. */
+    editedAt?: Date
+  },
 ): Promise<BasisScope[]> => {
   const basis = computeReplyBasis(context.consumedSources.list(), destinationFor(context))
 
   await tx.message.update({
-    data: { content: input.content, editedAt: new Date() },
+    data: {
+      content: input.content,
+      editedAt: input.editedAt ?? new Date(),
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+    },
     where: { id: input.messageId },
   })
 

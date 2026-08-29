@@ -1,5 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 
+import { createAgentMessage, replaceAgentMessageContent } from './agent-message.js'
+import type { RunContext } from './types.js'
+
 /**
  * One rolling status message for a recurring watch.
  *
@@ -65,6 +68,7 @@ export type FoldResult = {
  */
 export const foldWatchStatus = async (
   prisma: PrismaClient,
+  context: RunContext,
   input: FoldInput,
 ): Promise<FoldResult> =>
   prisma.$transaction(async (tx) => {
@@ -105,40 +109,35 @@ export const foldWatchStatus = async (
     if (existing && !supersededBy) {
       const previous = readWatchStatus(existing.metadata)
       const runCount = (previous?.runCount ?? 1) + 1
-      await tx.message.update({
-        data: {
-          content: input.content,
-          editedAt: input.now,
-          metadata: {
-            [WATCH_STATUS_METADATA_KEY]: {
-              lastRunAt: input.now.toISOString(),
-              lastRunId: input.lastRunId,
-              runCount,
-              triggerId: input.triggerId,
-            },
-          } as Prisma.InputJsonValue,
-        },
-        where: { id: existing.id },
-      })
-      return { created: false, editedAt: input.now, messageId: existing.id, runCount }
-    }
-
-    const created = await tx.message.create({
-      data: {
-        agentId: input.agentId,
+      await replaceAgentMessageContent(tx, context, {
         content: input.content,
+        editedAt: input.now,
+        messageId: existing.id,
         metadata: {
           [WATCH_STATUS_METADATA_KEY]: {
             lastRunAt: input.now.toISOString(),
             lastRunId: input.lastRunId,
-            runCount: 1,
+            runCount,
             triggerId: input.triggerId,
           },
         } as Prisma.InputJsonValue,
-        role: 'assistant',
-        threadId: input.threadId,
-      },
-      select: { id: true },
+      })
+      return { created: false, editedAt: input.now, messageId: existing.id, runCount }
+    }
+
+    const created = await createAgentMessage(tx, context, {
+      agentId: input.agentId,
+      content: input.content,
+      metadata: {
+        [WATCH_STATUS_METADATA_KEY]: {
+          lastRunAt: input.now.toISOString(),
+          lastRunId: input.lastRunId,
+          runCount: 1,
+          triggerId: input.triggerId,
+        },
+      } as Prisma.InputJsonValue,
+      role: 'assistant',
+      threadId: input.threadId,
     })
     return { created: true, editedAt: input.now, messageId: created.id, runCount: 1 }
   })

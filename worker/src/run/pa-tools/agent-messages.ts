@@ -3,6 +3,10 @@ import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveAccessibleChannelIds } from './access.js'
 import {
+  recordMessageChannelRead,
+  UNRESTRICTED_MESSAGES_ONLY,
+} from './message-search-basis.js'
+import {
   buildSnippet,
   clampLimit,
   formatMessageLine,
@@ -15,6 +19,7 @@ type MessageSearchRow = {
   thread_id: string
   channel_id: string
   channel_label: string
+  channel_visibility: string
   content: string
   created_at: Date
   author_name: string | null
@@ -54,6 +59,7 @@ export const runMessageSearchTool = async (
       m."root_message_id",
       c."id" AS channel_id,
       c."label" AS channel_label,
+      c."visibility" AS channel_visibility,
       p."name" AS project_name,
       tm."name" AS team_name,
       m."content",
@@ -75,9 +81,17 @@ export const runMessageSearchTool = async (
         channelIds.map((id) => Prisma.sql`${id}::uuid`),
       )})
       AND to_tsvector('english', m."content") @@ plainto_tsquery('english', ${searchQuery})
+      AND ${UNRESTRICTED_MESSAGES_ONLY}
     ORDER BY m."created_at" DESC
     LIMIT ${take}
   `)
+
+  // The snippets below are content from these channels, so the run's reply
+  // inherits their scope.
+  recordMessageChannelRead(
+    context,
+    rows.map((row) => ({ id: row.channel_id, visibility: row.channel_visibility })),
+  )
 
   const lines = rows.map((row, index) =>
     formatMessageLine({
