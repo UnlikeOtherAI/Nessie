@@ -87,6 +87,17 @@ export type CreateInstanceInput = {
   /** First-party provisioning only; user/API install surfaces must omit it. */
   managedProvision?: boolean
   transportConfig?: Record<string, unknown>
+  /**
+   * Project this connection's tools default-OFF, needing an explicit per-agent
+   * grant. Set by the App Store connect flow, because installing an app and
+   * letting an agent use it are two decisions.
+   *
+   * Like `managedProvision`, this is a SERVER-CHOSEN fact: the public instance
+   * routes must never let a caller supply it. Accepting it from a request body
+   * would let a member stamp somebody else's connector and take tools away from
+   * agents already using them.
+   */
+  requiresExplicitToolGrant?: boolean
 }
 
 const toRecord = (value: unknown): Record<string, unknown> =>
@@ -367,6 +378,7 @@ export const createInstance = async (
         discoveredTools: [] as object,
         lifecycleState: 'pending_setup',
         healthFailureCount: 0,
+        requiresExplicitToolGrant: input.requiresExplicitToolGrant ?? false,
         installedBy: actorContext.actor.actorId,
       },
     })

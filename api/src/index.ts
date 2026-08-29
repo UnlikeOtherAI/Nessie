@@ -88,8 +88,10 @@ import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerDisclosureGrantRoutes } from './routes/disclosure-grants.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerFeedbackRoutes } from './routes/feedback.js'
+import { registerAppsConnectRoutes } from './routes/apps-connect.js'
 import { registerAppsRegistryRoutes } from './routes/apps-registry.js'
 import { registerAppRoutes } from './routes/apps.js'
+import { registerWellKnownOAuthClientRoutes } from './routes/well-known-oauth-client.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerWorkspaceAvatarRoutes } from './routes/workspace-avatar.js'
@@ -426,6 +428,8 @@ export const buildApp = async () => {
   registerFeedbackRoutes(app, deps)
   registerAppRoutes(app, deps)
   registerAppsRegistryRoutes(app, deps)
+  registerAppsConnectRoutes(app, deps)
+  registerWellKnownOAuthClientRoutes(app, deps)
   registerIntegrationRoutes(app, deps)
   registerExternalAgentRoutes(app, deps)
   registerProjectRoutes(app, deps)

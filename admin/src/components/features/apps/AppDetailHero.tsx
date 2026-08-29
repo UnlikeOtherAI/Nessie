@@ -13,6 +13,9 @@ import {
 
 type AppDetailHeroProps = {
   app: AppDetailRecord
+  /** The connect flow already owns the outcome, so the CTA is spent. */
+  connectInFlight: boolean
+  onConnect: () => void
   onManageAccess: () => void
 }
 
@@ -20,7 +23,12 @@ type AppDetailHeroProps = {
 // mark, who publishes it, how far Nessie vouches for it, what it can do, and
 // one control. Endpoints, transports and sign-in mechanics are not facts a
 // person needs to decide that, so none of them render here.
-export const AppDetailHero = ({ app, onManageAccess }: AppDetailHeroProps) => {
+export const AppDetailHero = ({
+  app,
+  connectInFlight,
+  onConnect,
+  onManageAccess,
+}: AppDetailHeroProps) => {
   const cta = appDetailCta(app)
   const status = appCardStatus(app)
   const meta = appHeroMeta(app)
@@ -82,7 +90,21 @@ export const AppDetailHero = ({ app, onManageAccess }: AppDetailHeroProps) => {
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {cta.kind === 'link' ? (
+            {cta.kind === 'connect' ? (
+              // The one control on this page that acts rather than navigates.
+              // While it is in flight it reads "Connecting…" and refuses a
+              // second press — the panel underneath carries the detail, so the
+              // button says only that it is spent.
+              <button
+                className={`admin-button admin-button-${cta.tone}`}
+                data-testid="app-detail-cta"
+                disabled={connectInFlight}
+                onClick={onConnect}
+                type="button"
+              >
+                {connectInFlight ? 'Connecting…' : cta.label}
+              </button>
+            ) : cta.kind === 'link' ? (
               <Link
                 className={`admin-button admin-button-${cta.tone}`}
                 data-testid="app-detail-cta"

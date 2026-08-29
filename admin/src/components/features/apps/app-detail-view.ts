@@ -3,7 +3,9 @@ import {
   appCardAction,
   appCategoryLabel,
   type AppCardAction,
+  type AppCardActionTone,
 } from './app-card-presentation'
+import type { ConnectPhase } from './connect-flow'
 
 /**
  * What the app detail page shows and in which tab.
@@ -83,29 +85,58 @@ export const resolveAppDetailTab = (
 
 // ─── Hero ───────────────────────────────────────────────────────────────────
 
-/**
- * The connect button's label: just "Connect".
- *
- * It used to read "Connect Nessie to GitHub" on wide screens. The person is
- * already on GitHub's page, under GitHub's name and icon, having clicked
- * GitHub's card — restating both parties is words, not information.
- */
-export const appConnectCtaLabel = (): string => 'Connect'
+/** The card's action vocabulary, plus the one thing only this page can do. */
+export type AppDetailCta =
+  | AppCardAction
+  /** Runs the connect flow on this page; never navigates. */
+  | { kind: 'connect'; label: string; tone: AppCardActionTone }
 
 /**
- * The hero's primary control. It is the card's decision — the same eight states
- * resolve to the same action — with two differences the hero can afford: the
- * connect label names both parties, and the destination is the server's own
- * `installHref` rather than one this client assembled.
+ * The hero's primary control.
+ *
+ * It is the card's decision — the same eight states resolve to the same action,
+ * and the label stays the card's one word, because a person standing on
+ * GitHub's page under GitHub's name and icon does not need "Connect Nessie to
+ * GitHub" spelled out — with one difference this surface can afford. A card can
+ * only *link* at the Connectors page's install route; the detail page runs the
+ * connect flow in place, so `kind: 'connect'` replaces the link the card built
+ * from `installHref`. Every other action is a navigation and stays a link.
+ *
+ * `auth_expired` is deliberately left as that link. Reconnecting means signing
+ * in again rather than probing a grant we already have reason to doubt, which
+ * is `POST /api/app-connections/:id/reconnect` — a different call this flow
+ * does not make, and probing with the lapsed token would land the person back
+ * where they started.
  */
-export const appDetailCta = (app: AppDetailRecord): AppCardAction => {
+export const appDetailCta = (app: AppDetailRecord): AppDetailCta => {
   const action = appCardAction(app)
-  if (action.kind === 'none' || action.label !== 'Connect') return action
-  const label = appConnectCtaLabel()
-  return action.kind === 'link'
-    ? { ...action, href: app.installHref, label }
-    : { ...action, label }
+  // `installHref` identifies the card's connect branch exactly — "Open",
+  // "Manage" and "View accounts" all point at pages instead.
+  if (action.kind !== 'link' || action.href !== app.installHref) return action
+  if (app.state === 'auth_expired') return action
+  return { kind: 'connect', label: action.label, tone: action.tone }
 }
+
+/**
+ * Whether the connect flow currently owns the outcome, which is what spends the
+ * CTA: pressing Connect twice would start a second handshake over the first.
+ * The settled phases are not in flight — an error and a missing key each carry
+ * their own control in the panel below, and a finished connect has already
+ * flipped the hero.
+ */
+export const appConnectInFlight = (phase: ConnectPhase): boolean =>
+  phase === 'probing' || phase === 'awaiting_authorization' || phase === 'verifying'
+
+/**
+ * Where a person adds the key an app asked for.
+ *
+ * The Connectors page owns the encrypted credential dialog, and this points at
+ * the app's installed scopes there — deliberately *not* at `installHref`, whose
+ * install dialog would create a second account. By the time the server answers
+ * `needs_secret` the account already exists; what is missing is its key.
+ */
+export const appCredentialsHref = (app: AppDetailRecord): string =>
+  `/mcp-app-store?catalogEntryId=${encodeURIComponent(app.id)}`
 
 /** "by GitHub, Inc. · Development", or just the category when nobody claims it. */
 export const appProviderLine = (app: AppDetailRecord): string => {

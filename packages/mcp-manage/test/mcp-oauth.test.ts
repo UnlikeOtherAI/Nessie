@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import test from 'node:test'
 
+import type {
+  McpClientManager,
+  McpConnectionId,
+  McpToolDescriptor,
+} from '@nessie/mcp-client'
 import {
   McpOAuth2AuthConfigSchema,
   McpServerAuthConfigSchema,
@@ -19,6 +25,7 @@ import {
   defaultTokenExchange,
   generateState,
   startOAuth,
+  type ManagerFactory,
   type SecretStore,
   type TokenExchangeFn,
 } from '../src/index.js'
@@ -28,11 +35,36 @@ import {
  * deliberately injected per-test so we never share state across tests, and
  * the token exchange + secret store are stubs — no real HTTP traffic, no
  * plaintext token material leaves the test process.
+ *
+ * `completeOAuth` finishes by probing the instance, and `probeConnection` runs
+ * the SSRF guard with no injected resolver, so the MCP endpoint is a literal
+ * public IP: a hostname there would put a real DNS lookup in this suite.
+ * Authorization/token URLs keep their hostnames — those checks take
+ * `publicResolver`.
  */
 
 const ORG_A = '00000000-0000-4000-8000-00000000000a'
 const USER_A = '00000000-0000-4000-8000-00000000000c'
+const CIMD_URL = 'https://api.example/.well-known/oauth-client'
+const MCP_ENDPOINT = 'https://93.184.216.34/mcp'
 const publicResolver = async (): Promise<string[]> => ['93.184.216.34']
+
+/**
+ * A probe that never opens a socket. Every completion test needs one, because
+ * storing the token is no longer the last thing `completeOAuth` does.
+ */
+const offlineProbe = (
+  behaviour: { descriptors?: McpToolDescriptor[]; failWith?: string } = {},
+): ManagerFactory => () =>
+  ({
+    open: async () => 'connection-1' as McpConnectionId,
+    listTools: async () => {
+      if (behaviour.failWith) throw new Error(behaviour.failWith)
+      return behaviour.descriptors ?? []
+    },
+    close: async () => undefined,
+    closeAll: async () => undefined,
+  }) as unknown as McpClientManager
 
 const actorContext: AuthorizedActionContext = {
   tenant: {
@@ -81,7 +113,7 @@ const oauthCatalogEntry: McpCatalogEntryRow = {
     clientSecret: 'test-client-secret',
     scopes: ['read:repo'],
   },
-  defaultTransportConfig: { transport: 'http', url: 'https://provider.example/mcp' },
+  defaultTransportConfig: { transport: 'http', url: MCP_ENDPOINT },
   iconUrl: null,
   vendor: null,
   sourceUrl: null,
@@ -103,26 +135,62 @@ type StubOptions = {
   catalogEntry?: McpCatalogEntryRow | null
 }
 
+type CredentialUpsert = {
+  instanceId: string
+  principalType: string
+  principalId: string
+  credentialRef: string
+}
+
 const makePrismaStub = (options: StubOptions = {}): {
   prisma: PrismaClient
-  upserts: Array<{ instanceId: string; principalType: string; principalId: string; credentialRef: string }>
+  upserts: CredentialUpsert[]
+  /** Every `mcpServerInstance.update` the flow wrote, in order. */
+  instanceUpdates: Record<string, unknown>[]
 } => {
-  const upserts: Array<{
-    instanceId: string
-    principalType: string
-    principalId: string
-    credentialRef: string
-  }> = []
-  const instance = options.instance === undefined ? baseInstance : options.instance
+  const upserts: CredentialUpsert[] = []
+  const instanceUpdates: Record<string, unknown>[] = []
+  // Mutable: the credential this flow stores has to be readable by the probe
+  // that follows it. A stub answering the pre-callback row would let a probe
+  // pass while resolving nothing.
+  let current = options.instance === undefined ? baseInstance : options.instance
   const catalogEntry = options.catalogEntry === undefined ? oauthCatalogEntry : options.catalogEntry
+
+  const applyUpdate = (data: Record<string, unknown>): McpInstanceRow => {
+    instanceUpdates.push(data)
+    const plain = { ...data }
+    // `healthFailureCount: { increment: 1 }` is a Prisma atomic op, not a value.
+    delete plain.healthFailureCount
+    current = { ...(current ?? baseInstance), ...plain } as McpInstanceRow
+    return current
+  }
+
   const prisma = {
     mcpServerInstance: {
-      findFirst: async () => instance,
+      findFirst: async () => current,
+      findUnique: async () => current,
+      update: async ({ data }: { data: Record<string, unknown> }) => applyUpdate(data),
     },
     mcpCatalogEntry: {
-      findFirst: async () => catalogEntry,
+      // `isManagedIntegrationCatalogEntry` is the only reader that filters by
+      // name; answering null there keeps these fixtures user-managed.
+      findFirst: async (args: { where?: { name?: unknown } }) =>
+        args?.where?.name === undefined ? catalogEntry : null,
     },
     mcpServerCredentialOverride: {
+      findUnique: async (args: {
+        where: { instanceId_principalType_principalId: Record<string, string> }
+      }) => {
+        const key = args.where.instanceId_principalType_principalId
+        return (
+          upserts.find(
+            (row) =>
+              row.instanceId === key.instanceId
+              && row.principalType === key.principalType
+              && row.principalId === key.principalId,
+          ) ?? null
+        )
+      },
       upsert: async ({ create }: { create: Record<string, string> }) => {
         upserts.push({
           instanceId: create.instanceId,
@@ -133,8 +201,19 @@ const makePrismaStub = (options: StubOptions = {}): {
         return { id: 'override-1', ...create, createdAt: new Date(), updatedAt: new Date() }
       },
     },
+    $transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> =>
+      fn({
+        mcpServerInstance: {
+          update: async ({ data }: { data: Record<string, unknown> }) => applyUpdate(data),
+        },
+        toolRegistryEntry: {
+          findMany: async () => [],
+          upsert: async () => ({}),
+          updateMany: async () => ({ count: 0 }),
+        },
+      }),
   }
-  return { prisma: prisma as unknown as PrismaClient, upserts }
+  return { prisma: prisma as unknown as PrismaClient, upserts, instanceUpdates }
 }
 
 // ─── generateState ──────────────────────────────────────────────────────────
@@ -195,6 +274,80 @@ test('startOAuth stores the state with a 10-minute TTL for callback verification
   // 10 minute TTL, allow some slack for execution time.
   assert.ok(ttlMs >= 9 * 60 * 1000, `ttl ${ttlMs} too short`)
   assert.ok(ttlMs <= 11 * 60 * 1000, `ttl ${ttlMs} too long`)
+})
+
+test('startOAuth static mode authorizes with PKCE S256 bound to the stored verifier', async () => {
+  // A pre-registered client is not a reason to skip proof of possession: an
+  // authorization code intercepted on the redirect must be worthless without
+  // the verifier that never left this process.
+  const { prisma } = makePrismaStub()
+  const store = createInMemoryStateStore()
+  const result = await startOAuth({
+    prisma,
+    store,
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://app.example/api/mcp/oauth/callback',
+    resolveHost: publicResolver,
+  })
+
+  const url = new URL(result.authorizationUrl)
+  assert.equal(result.mode, 'static')
+  assert.equal(url.searchParams.get('code_challenge_method'), 'S256')
+  const challenge = url.searchParams.get('code_challenge') ?? ''
+  assert.ok(challenge.length > 20, 'no code_challenge on the authorize URL')
+
+  const record = await store.take(result.state)
+  const verifier = record?.codeVerifier ?? ''
+  assert.ok(verifier.length >= 43, 'no verifier persisted for the callback')
+  assert.equal(
+    crypto.createHash('sha256').update(verifier).digest('base64url'),
+    challenge,
+  )
+})
+
+test('startOAuth static mode binds the token to the MCP server (RFC 8707 resource)', async () => {
+  const { prisma } = makePrismaStub()
+  const store = createInMemoryStateStore()
+  const result = await startOAuth({
+    prisma,
+    store,
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://app.example/api/mcp/oauth/callback',
+    resolveHost: publicResolver,
+  })
+
+  const url = new URL(result.authorizationUrl)
+  // Canonical form of the instance's own endpoint, so an authorization server
+  // fronting several resources cannot be talked into minting a token for
+  // another one.
+  assert.equal(url.searchParams.get('resource'), MCP_ENDPOINT)
+  const record = await store.take(result.state)
+  assert.equal(record?.resource, MCP_ENDPOINT)
+})
+
+test('startOAuth static mode omits the resource when the endpoint is not an HTTP remote', async () => {
+  // A resource indicator only means something for a remote URL. A transport we
+  // cannot express as one is the probe's problem to report — not a reason to
+  // refuse a sign-in the person just asked for.
+  const { prisma } = makePrismaStub({
+    catalogEntry: {
+      ...oauthCatalogEntry,
+      defaultTransportConfig: { transport: 'stdio', command: 'local-server' },
+    },
+  })
+  const result = await startOAuth({
+    prisma,
+    store: createInMemoryStateStore(),
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://app.example/api/mcp/oauth/callback',
+    resolveHost: publicResolver,
+  })
+  const url = new URL(result.authorizationUrl)
+  assert.equal(url.searchParams.get('resource'), null)
+  assert.equal(url.searchParams.get('code_challenge_method'), 'S256')
 })
 
 test('startOAuth throws INSTANCE_NOT_FOUND when the instance is missing', async () => {
@@ -263,6 +416,82 @@ test('startOAuth rejects unsafe OAuth authorization URLs', async () => {
   )
 })
 
+test('startOAuth uses the published client metadata document instead of registering', async () => {
+  // The wiring half of the preference order: a server advertising CIMD gets
+  // the document URL as its client_id, and no client row is minted for it.
+  const registered: string[] = []
+  const prisma = {
+    mcpServerInstance: { findFirst: async () => baseInstance },
+    mcpCatalogEntry: {
+      findFirst: async () => ({
+        ...oauthCatalogEntry,
+        name: 'dynamic-server',
+        authConfig: { method: 'oauth2' },
+        // Discovery is driven entirely by the injected `fetchImpl` below, and
+        // this flow stops at the authorize URL, so a readable hostname costs
+        // nothing here.
+        defaultTransportConfig: { transport: 'http', url: 'https://provider.example/mcp' },
+      }),
+    },
+    mcpOAuthClient: {
+      findUnique: async () => null,
+      upsert: async () => {
+        registered.push('upsert')
+        return {}
+      },
+    },
+  } as unknown as PrismaClient
+
+  const asMetadata = {
+    issuer: 'https://provider.example',
+    authorization_endpoint: 'https://provider.example/authorize',
+    token_endpoint: 'https://provider.example/token',
+    // Registration is on offer and must still lose to CIMD.
+    registration_endpoint: 'https://provider.example/register',
+    code_challenge_methods_supported: ['S256'],
+    client_id_metadata_document_supported: true,
+  }
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input)
+    if ((init?.method ?? 'GET') === 'POST' && url === 'https://provider.example/mcp') {
+      return new Response('', {
+        status: 401,
+        headers: { 'www-authenticate': 'Bearer' },
+      })
+    }
+    if (url === 'https://provider.example/.well-known/oauth-authorization-server') {
+      return new Response(JSON.stringify(asMetadata), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('not found', { status: 404 })
+  }) as typeof fetch
+
+  const store = createInMemoryStateStore()
+  const result = await startOAuth({
+    prisma,
+    store,
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://api.example/api/mcp/oauth/callback',
+    resolveHost: publicResolver,
+    discovery: { fetchImpl },
+    clientResolution: {
+      clientIdMetadataDocumentUrl: CIMD_URL,
+    },
+  })
+
+  const url = new URL(result.authorizationUrl)
+  assert.equal(result.mode, 'dynamic')
+  assert.equal(url.searchParams.get('client_id'), CIMD_URL)
+  assert.equal(url.searchParams.get('code_challenge_method'), 'S256')
+  assert.deepEqual(registered, [], 'CIMD must not register a client')
+  const record = await store.take(result.state)
+  assert.equal(record?.clientId, CIMD_URL)
+  assert.equal(record?.clientSecretRef, undefined)
+})
+
 // ─── completeOAuth ──────────────────────────────────────────────────────────
 
 const makeSecretStore = (): { store: SecretStore; calls: number; lastInput: unknown } => {
@@ -317,6 +546,7 @@ test('completeOAuth exchanges code, persists secret, links per-user override', a
     code: 'auth-code-123',
     callbackUrl: 'https://app.example/cb',
     resolveHost: publicResolver,
+    managerFactory: offlineProbe(),
   })
 
   assert.equal(result.instanceId, 'instance-1')
@@ -358,6 +588,7 @@ test('completeOAuth response never leaks the internal credentialRef', async () =
     code: 'auth-code-123',
     callbackUrl: 'https://app.example/cb',
     resolveHost: publicResolver,
+    managerFactory: offlineProbe(),
   })
 
   assert.deepEqual(Object.keys(result).sort(), ['instanceId'])
@@ -455,6 +686,7 @@ test('completeOAuth treats state as single-use (replay rejected)', async () => {
     code: 'auth-code-123',
     callbackUrl: 'https://app.example/cb',
     resolveHost: publicResolver,
+    managerFactory: offlineProbe(),
   })
 
   // Second exchange with the same state must be rejected.
@@ -626,6 +858,7 @@ test('completeOAuth forwards client_id + client_secret to the token exchange', a
     code: 'auth-code-123',
     callbackUrl: 'https://app.example/cb',
     resolveHost: publicResolver,
+    managerFactory: offlineProbe(),
   })
 
   assert.ok(captured)
@@ -634,6 +867,140 @@ test('completeOAuth forwards client_id + client_secret to the token exchange', a
   // the authorization_code grant.
   assert.equal(captured?.clientId, 'test-client-id')
   assert.equal(captured?.clientSecret, 'test-client-secret')
+})
+
+test('completeOAuth redeems the static code with the verifier the challenge was built from', async () => {
+  // RFC 7636 §4.6: an authorization server that recorded a challenge MUST
+  // reject a token request that omits its verifier, and `startOAuth` sends a
+  // challenge in static mode. A completion that leaves the verifier out
+  // therefore fails every static-mode connector at the last step — and proves
+  // nothing on a server lenient enough to let it through. An exchange stub
+  // that ignores its arguments cannot catch that, so this one reads them.
+  const { prisma } = makePrismaStub()
+  const store = createInMemoryStateStore()
+  const start = await startOAuth({
+    prisma,
+    store,
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
+  })
+  const challenge = new URL(start.authorizationUrl).searchParams.get('code_challenge')
+  assert.ok(challenge, 'startOAuth sent no challenge to verify against')
+
+  const secret = makeSecretStore()
+  let captured: Parameters<TokenExchangeFn>[0] | undefined
+  await completeOAuth({
+    prisma,
+    store,
+    secretStore: secret.store,
+    tokenExchange: async (input) => {
+      captured = input
+      return { accessToken: 'ya29.fake', tokenType: 'Bearer' }
+    },
+    state: start.state,
+    code: 'auth-code-123',
+    callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
+    managerFactory: offlineProbe(),
+  })
+
+  const verifier = captured?.codeVerifier
+  assert.ok(verifier, 'no code_verifier reached the token endpoint')
+  assert.equal(
+    crypto.createHash('sha256').update(verifier).digest('base64url'),
+    challenge,
+    'the verifier sent does not hash to the challenge that was authorized',
+  )
+  // RFC 8707 — both legs of the flow must name the same audience, or the
+  // server may issue a token for a resource the person never approved.
+  assert.equal(captured?.resource, MCP_ENDPOINT)
+})
+
+test('completeOAuth probes with the stored credential so a sign-in ends connected', async () => {
+  // Nothing else probes after the callback, so without this the instance stays
+  // `pending_setup` — which the App Store renders as "connecting". The person
+  // who just authorised successfully watches the poll exhaust and is told
+  // nothing was saved, and no tools are ever projected.
+  const { prisma, instanceUpdates } = makePrismaStub()
+  const store = createInMemoryStateStore()
+  const start = await startOAuth({
+    prisma,
+    store,
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
+  })
+  const secret = makeSecretStore()
+  const dialledWith: string[] = []
+
+  await completeOAuth({
+    prisma,
+    store,
+    secretStore: secret.store,
+    secretResolver: {
+      resolve: async (ref) => {
+        dialledWith.push(ref)
+        return 'ya29.fake-access-token'
+      },
+    },
+    tokenExchange: stubTokenExchange(),
+    state: start.state,
+    code: 'auth-code-123',
+    callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
+    managerFactory: offlineProbe({
+      descriptors: [{ name: 'search', description: 'Search' } as McpToolDescriptor],
+    }),
+  })
+
+  assert.deepEqual(
+    instanceUpdates.map((update) => update.lifecycleState),
+    ['active'],
+    'the connection did not leave pending_setup',
+  )
+  // The probe dialled with the credential this callback just minted, rather
+  // than with whatever happened to be on the row before.
+  assert.deepEqual(dialledWith, ['secret_test_ref_1'])
+})
+
+test('completeOAuth keeps the credential when the probe fails, and records the failure', async () => {
+  // The authorization really did succeed and the token really is stored, so
+  // failing the callback here would tell the person the opposite of what
+  // happened. `testInstance` writes the failure onto the row instead, which is
+  // where the connections surface reads it from.
+  const { prisma, upserts, instanceUpdates } = makePrismaStub()
+  const store = createInMemoryStateStore()
+  const start = await startOAuth({
+    prisma,
+    store,
+    instanceId: 'instance-1',
+    actorContext,
+    callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
+  })
+  const secret = makeSecretStore()
+
+  const result = await completeOAuth({
+    prisma,
+    store,
+    secretStore: secret.store,
+    tokenExchange: stubTokenExchange(),
+    state: start.state,
+    code: 'auth-code-123',
+    callbackUrl: 'https://app.example/cb',
+    resolveHost: publicResolver,
+    managerFactory: offlineProbe({ failWith: 'connect ECONNREFUSED' }),
+  })
+
+  assert.equal(result.instanceId, 'instance-1')
+  assert.equal(upserts.length, 1, 'the credential was rolled back by a failed probe')
+  assert.deepEqual(
+    instanceUpdates.map((update) => update.lifecycleState),
+    ['error'],
+  )
 })
 
 test('defaultTokenExchange POSTs client_id + client_secret in the form body', async () => {

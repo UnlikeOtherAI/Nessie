@@ -10,6 +10,15 @@ type ProjectionInstance = {
   id: string
   scopeType: McpServerScopeType
   scopeId: string
+  /**
+   * This connection's tools are default-OFF until an agent is explicitly
+   * granted them (`worker` `isExposed`). Carried from the durable instance
+   * column rather than decided here, because the OAuth callback and the
+   * generic instance refresh both re-project through this function — a marker
+   * applied only at the App Store's own call sites would be dropped by the
+   * next probe and silently widen the app.
+   */
+  requiresExplicitToolGrant?: boolean
 }
 
 /**
@@ -142,7 +151,9 @@ export const projectMcpToolDescriptors = async (
         builtin: false,
         enabled: true,
         handlerKind: 'mcp',
-        metadata: {} as object,
+        metadata: (instance.requiresExplicitToolGrant
+          ? { requiresExplicitGrant: true }
+          : {}) as object,
         source: prismaSource,
         transport: 'mcp',
         transportConfig: {
@@ -163,6 +174,12 @@ export const projectMcpToolDescriptors = async (
       update: {
         label: descriptor.title ?? descriptor.name,
         description: descriptor.description ?? '',
+        // Written on update too. A tool discovered on a LATER refresh would
+        // otherwise be created open while its siblings are gated, quietly
+        // widening an app the person installed as default-off.
+        ...(instance.requiresExplicitToolGrant
+          ? { metadata: { requiresExplicitGrant: true } as object }
+          : {}),
         source: prismaSource,
         transport: 'mcp',
         transportConfig: {

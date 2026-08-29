@@ -36,6 +36,12 @@ export type OAuthServerConfig = {
   scopesSupported: string[]
   supportsS256: boolean
   /**
+   * The server advertises `client_id_metadata_document_supported` — it will
+   * dereference a URL used as `client_id`. Never assumed: to a server that has
+   * not published this, a URL is just an unknown client.
+   */
+  supportsClientIdMetadataDocument: boolean
+  /**
    * `metadata` when the server genuinely publishes RFC 9728/8414 documents;
    * `fallback` when only the spec's legacy default endpoints were assumed.
    * Discovery proposals treat `fallback` as bearer-only — assuming OAuth for
@@ -65,6 +71,7 @@ const AuthServerMetadataSchema = z.object({
   registration_endpoint: z.string().optional(),
   scopes_supported: z.array(z.string()).optional(),
   code_challenge_methods_supported: z.array(z.string()).optional(),
+  client_id_metadata_document_supported: z.boolean().optional(),
 })
 
 const safeFetchJson = async (
@@ -167,7 +174,12 @@ const loadAuthServerMetadata = async (
   return null
 }
 
-const canonicalResource = (serverUrl: string): string => {
+/**
+ * The RFC 8707 `resource` indicator for an MCP server: its URL without query
+ * or fragment. Exported because the static OAuth path needs the same value and
+ * two spellings of "canonical" would bind tokens to two different resources.
+ */
+export const canonicalResource = (serverUrl: string): string => {
   const url = new URL(serverUrl)
   url.hash = ''
   url.search = ''
@@ -241,6 +253,8 @@ export const discoverOAuthServerConfig = async (
         supportsS256:
           metadata.code_challenge_methods_supported?.includes('S256')
           ?? true,
+        supportsClientIdMetadataDocument:
+          metadata.client_id_metadata_document_supported === true,
         metadataSource: 'metadata',
       }
     }
@@ -258,6 +272,9 @@ export const discoverOAuthServerConfig = async (
       registrationEndpoint: `${server.origin}/register`,
       scopesSupported: prmScopes,
       supportsS256: true,
+      // Nothing was published, so nothing is advertised — a guessed CIMD
+      // client_id would just be an unknown client at the authorize endpoint.
+      supportsClientIdMetadataDocument: false,
       metadataSource: 'fallback',
     }
   }

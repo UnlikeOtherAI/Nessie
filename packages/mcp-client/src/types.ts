@@ -63,6 +63,23 @@ export type McpToolDescriptor = {
   annotations?: Record<string, unknown>
 }
 
+/**
+ * What the server advertised about itself in the `initialize` handshake,
+ * reduced to the only question a caller can act on: does this listing exist at
+ * all.
+ *
+ * MCP advertises by presence — `{ resources: {} }` means supported, an absent
+ * key means not — and that convention is the SDK's to know, not every caller's.
+ * A `null` capability set (see `McpClientManager.serverCapabilities`) means the
+ * handshake produced no advertisement, which is an absence of knowledge and
+ * never a claim that the server offers nothing.
+ */
+export type McpServerCapabilities = {
+  tools: boolean
+  resources: boolean
+  prompts: boolean
+}
+
 /** Output shape of `tools/call` after normalisation. */
 export type McpToolResult = {
   isError: boolean
