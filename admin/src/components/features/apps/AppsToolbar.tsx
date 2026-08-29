@@ -1,5 +1,5 @@
 import type { AppCategory } from '@nessie/schemas'
-import { SegmentedControl } from '../../primitives/SegmentedControl'
+import { TabBar } from '../../primitives/TabBar'
 import { AppCategoryNav } from './AppCategoryNav'
 import { AppSearchInput } from './AppSearchInput'
 import type {
@@ -44,10 +44,12 @@ export const AppsToolbar = ({
         <AppSearchInput onChange={onQueryChange} value={query} />
       </div>
       <div className="w-full lg:w-auto lg:min-w-[14rem]" data-testid="apps-filter">
-        <SegmentedControl
+        <TabBar
           ariaLabel="Filter apps"
+          fullWidth
+          items={filterOptions}
           onChange={onFilterChange}
-          options={filterOptions}
+          role="radiogroup"
           value={filter}
         />
       </div>
