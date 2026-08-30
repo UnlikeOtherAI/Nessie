@@ -99,7 +99,7 @@ services:
       retries: 5
 
   infisical:
-    image: ${INFISICAL_IMAGE:-infisical/infisical:v0.151.0-postgres}
+    image: ${INFISICAL_IMAGE:-infisical/infisical:v0.151.0}
     container_name: nessie-infisical
     profiles: ["secrets"]
     restart: unless-stopped
