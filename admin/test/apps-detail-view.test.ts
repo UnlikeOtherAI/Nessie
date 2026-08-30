@@ -163,7 +163,8 @@ test('a blocked connect keeps its disabled shape and reason', () => {
   })
 })
 
-test('an action that is not a connect handshake passes through as a link', () => {
+test('the hero offers exactly the card action — navigations link, connects connect', () => {
+  // A navigation stays a link: "Manage" goes to a tab, it does not handshake.
   const connected = detail({ connections: [connection()], state: 'connected' })
   assert.deepEqual(appDetailCta(connected), {
     kind: 'link',
@@ -171,11 +172,11 @@ test('an action that is not a connect handshake passes through as a link', () =>
     label: 'Manage',
     tone: 'secondary',
   })
-  // Reconnect means sign in again, which is the reconnect endpoint and not this
-  // flow; probing with the lapsed grant would leave the person where they were.
+  // Reconnecting runs the flow in place like every other connect. It used to
+  // link out to the Connectors install page, which is exactly the bounce the
+  // store must never do — connecting happens where the person is standing.
   assert.deepEqual(appDetailCta(detail({ state: 'auth_expired' })), {
-    kind: 'link',
-    href: detail().installHref,
+    kind: 'connect',
     label: 'Reconnect',
     tone: 'primary',
   })

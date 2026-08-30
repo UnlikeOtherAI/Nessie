@@ -22,10 +22,11 @@ export type AppLinkTarget = Pick<AppSummaryRecord, 'id' | 'slug'>
 export const appDetailHref = (app: AppLinkTarget, tab?: string): string =>
   `/apps/${encodeURIComponent(app.slug ?? app.id)}${tab ? `?tab=${tab}` : ''}`
 
-// Where connecting goes is `AppSummaryRecord.installHref`, named by the server.
-// A client-side builder for the same URL used to sit here, which meant the card
-// footer and the hero CTA each assembled their own destination and would part
-// company the moment the connect phase changed it.
+// Connect no longer leaves the page: the card's Connect button opens the
+// AppConnectDialog, which runs the same `useAppConnectFlow` the detail page
+// drives. `AppSummaryRecord.installHref` still names the server's fallback
+// destination, and the detail hero links to it, but the grid's primary path
+// is the dialog.
 
 // ─── Icon fallback ──────────────────────────────────────────────────────────
 
@@ -102,6 +103,8 @@ export type AppCardAction =
   /** Nothing a person can do from a card — the detail view says why in words. */
   | { kind: 'none' }
   | { kind: 'link'; href: string; label: string; tone: AppCardActionTone }
+  /** Opens the connect dialog on this page — connecting never navigates away. */
+  | { kind: 'connect'; label: string; tone: AppCardActionTone }
   /** `title` is a tooltip, so it stays a complete sentence with no link in it. */
   | { kind: 'disabled'; label: string; title: string; tone: AppCardActionTone }
 
@@ -174,7 +177,7 @@ export const appCardAction = (app: AppSummaryRecord): AppCardAction => {
   const blocked = appUnavailableExplanation(app)
   const connect = (label: string): AppCardAction =>
     blocked === null
-      ? { kind: 'link', href: app.installHref, label, tone: 'primary' }
+      ? { kind: 'connect', label, tone: 'primary' }
       : { kind: 'disabled', label, title: blocked.text, tone: 'primary' }
 
   switch (app.state) {
@@ -183,12 +186,15 @@ export const appCardAction = (app: AppSummaryRecord): AppCardAction => {
     case 'connecting':
       // Not "Finishing the connection" — an install waiting on a key nobody
       // has entered is in this state indefinitely, and the card must not
-      // promise it is about to resolve itself. Opening the app is the way on.
+      // promise it is about to resolve itself. Opening the app is the way on,
+      // so the action *is* that doorway rather than a disabled restatement of
+      // the "Connecting…" pill beside it. Two elements reading the same word,
+      // one of them dead, named no decision and looked like a rendering fault.
       return {
-        kind: 'disabled',
-        label: 'Connecting…',
-        title: 'This connection has not finished setting up yet.',
-        tone: 'primary',
+        kind: 'link',
+        href: appDetailHref(app, 'accounts'),
+        label: 'Finish setup',
+        tone: 'secondary',
       }
     case 'connected':
     case 'multiple_accounts':

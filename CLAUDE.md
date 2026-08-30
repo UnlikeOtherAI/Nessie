@@ -647,197 +647,60 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
 - **Context-safe toolsets**: above `NESSIE_MCP_INLINE_TOOL_LIMIT` (default 12) exposed MCP tools, agent runs get three meta tools (`mcp_find_tools` → `mcp_load_tools` → call directly, `mcp_drop_tools` to free) over a live tool list instead of every schema inlined — see `docs/external-tool-integration.md` §5.
 - **External-agent products** (e.g. DeepSignal): a first-party product can be surfaced as a per-user DM channel whose bound agent has `executionMode = external_mcp` — turns are proxied straight to the product's MCP endpoint with **no Nessie inference**, reply + cards rendered verbatim. DeepSignal's system-managed user instance is pinned to the deployment reference `DEEPSIGNAL_MCP_APP_KEY`; it resolves a DeepSignal-issued, Nessie-only `dsk_` bearer only through the canonical public catalog linked from the `deepsignal` product row and only for `https://api.deepsignal.live`. That global catalog is integration-owned, absent from the generic library, and immutable through generic catalog controls. Initial/follow-up chat, history, digest, and action calls independently add exact-scope `X-UOA-Delegation` user/workspace identity plus a fresh RS256 `X-Nessie-Context` carrying non-null user/org/team/agent/run/request/tool-call provenance; stale identity headers are rejected case-insensitively. Every call rechecks team enablement and requires the selected team's external UOA mapping to match the active link. The private DM key includes the active UOA team (`extagent:deepsignal:${orgId}:${userId}:${uoaTeamId}`), so switching teams creates a distinct thread/conversation and legacy team-less channels fail closed. DeepSignal has no per-user OAuth or generic credential fallback; ordinary third-party connectors retain dynamic OAuth. Startup rejects reuse of the dsk key through any configured secret-bearing environment credential (including URL userinfo/key lists) or encrypted per-org webhook HMAC secret. Generic lifecycle/secret surfaces reject this integration-managed instance. The worker driver and API share one `@nessie/mcp-manage` "connect + call one tool" seam (`resolveInstanceMcpTransport` / `callInstanceTool`, next to `probeConnection`). History hydration (`POST /api/channels/:id/external-sync`, idempotent on `metadata.external.turnId`) and a per-org HMAC-verified insight webhook (`POST /api/integrations/deepsignal/events`; secret set via `PUT /api/integrations/products/:slug/webhook-secret`, stored encrypted) keep the product as source of truth. The webhook is **delivery-shaped, not one-card-per-event**: insights coalesce into a single rolling "You have N new signals" digest message per user (updated in place within `NESSIE_SIGNAL_DIGEST_WINDOW_MS`, default ~1h; per-insight ids retained for idempotency + counts-by-kind), and fresh proactive digests are budgeted per user per rolling window (`NESSIE_SIGNAL_BUDGET_MAX`, default 6 / `NESSIE_SIGNAL_BUDGET_WINDOW_MS`, default 24h — sane heuristics, not law); over budget an insight is still recorded on the digest but the channel interruption (realtime `message.new`) is suppressed. DeepSignal also exposes a **Signals** page — a triaged Overview/Inbox: `GET /api/integrations/products/deepsignal/signals?include=active|all` (insight digest, grouped by kind with an attention tally + mission detail drawer) + `POST .../signals/:insightId/act` (done|snooze|mute|reopen) run over the user's user-scoped instance via the shared `resolveUserScopedProductTransport`/`callInstanceTool` seam, fail-closed to `{ status: 'needs_setup' }` when not linked. See `docs/plans/2026-07-09-deepsignal-integration.md`, `docs/plans/2026-07-10-deep-integration-surface-registry.md` + `docs/external-tool-integration.md` §2.
 
-- **DeepWater as an agent tool**: enabling DeepWater for a team (owner-only
-  `team-enablement` toggle) provisions a **team-scoped, tool-projecting**
-  `McpServerInstance` from the `deep-water` catalog entry, resolves the
-  **Ledger-only** MCP adapter from **`LEDGER_DEEPWATER_MCP_URL`** (canonical
-  hosted value `https://ledger.unlikeotherai.com/v1/mcp/deepwater`; enable fails
-  loudly with `LEDGER_DEEPWATER_MCP_URL_UNSET` when unset), installs a bearer
-  HTTP transport, and projects Ledger's `research_start`, `research_status`,
-  `research_report`, `research_list`, and `research_cancel` tools into
-  `ToolRegistryEntry` as `active` (surfaced as `mcp_research_*`); disabling
-  removes the instance linked from the first-party public product before
-  persisting `enabled=false` (robust to renames and private same-name entries).
-  Generic instance test, refresh, healthcheck, and delete operations reject
-  this integration-managed instance with
-  `MCP_INSTANCE_MANAGED_BY_INTEGRATION`; generic secret writes are also
-  rejected, and PA probe/uninstall tools direct callers to the Integrations
-  toggle, which is its sole lifecycle path.
-  **Default OFF, explicit per-agent grant required:** the
-  projected DeepWater tools and the `deep_water_run_update` builtin are flagged
-  `requiresExplicitGrant`, so team scope alone never exposes them — an agent (PA
-  or shared) sees them ONLY when its `toolPolicy` carries an explicit allow
-  (`=== true`) and the instance scope reaches the run; a grant never bypasses
-  tenancy, and an absent/inherited verdict is a denial. Owners write these
-  verdicts through the targeted `/api/mcp/tools/.../policy-targets/...` route,
-  which merges one key under a per-agent database lock and preserves unrelated
-  allow/deny entries. Canonical DeepWater rows take the team-transition lock,
-  re-read the projection generation, then take the agent lock. Its minimal
-  owner-only target list includes the
-  system-managed Personal Assistant without widening `/api/agents` or exposing
-  private PA bindings/activity. The DeepWater launcher manages the five MCP
-  projections plus `deep_water_run_update` as a six-entry bundle through
-  `/api/integrations/products/deep-water/agent-access`; it disables launch, and
-  the API rejects before run creation, until the PA has all six. The updater
-  satisfies readiness only while its registry row is enabled and active,
-  matching worker exposure. Owners can use
-  the same bundle action for shared agents or manage individual entries at
-  `/agents/tools`. Generic agent create/PUT rejects protected keys and
-  provenance markers, a locked stale PUT carries existing protected state
-  forward; clones and spawned subtask children strip it, PA bootstrap config
-  cannot inject it, generic responses redact server provenance, and Agent
-  Designer does not expose protected switches. Generic shared-agent create,
-  list, parent selection, hierarchy/status/activity/realtime reads, and channel
-  binding require the same organization;
-  system/global exceptions stay in dedicated bootstraps. Bundle provenance keeps the
-  shared updater while any team or manual
-  grant depends on it; the updater's individual OFF control is disabled until
-  those dependencies are revoked. A disabled updater does not satisfy
-  readiness, but remains part of cleanup identity so bundle revocation clears
-  its protected allow before later re-enable. Bundle and individual lifecycle revocation
-  return 409 for queued/running/needs_setup work, with no force override. The
-  launch transaction takes the team lock,
-  then policy lock, then performs the final 6/6 read and durable run insert.
-  Disable returns `LEDGER_DEEPWATER_ACTIVE_RUNS` for queued, running, or
-  `needs_setup` research; cancel/recover the run or wait for a terminal state
-  before retrying. Handoff enforcement is activated only by server-authored
-  DeepWater message metadata `integrationLaunch.{productSlug,runId}`; ordinary
-  messages remain unguarded. The lookup requires that exact durable run id plus
-  message/org/team/thread, and missing or mismatched state fails closed. For
-  that exact Product run, the worker binds the first `research_start` provider
-  tool-call id and exact arguments before transport. A still-clean Product run
-  moves to `failed` only for a validated Ledger-local pre-start rejection
-  (`invalid_request` 400/401, `budget_exceeded` 402, or `forbidden` 403), or for
-  Nessie's own budget block while it remains truly queued, uncorrelated, and
-  undispatched. Conflicts, upstream rejections, 5xx, malformed errors or malformed
-  successful tickets, throws, timeouts, and uncertain claim or
-  ticket-persistence outcomes abort the Nessie run for queue retry without
-  terminalizing it; recovery reuses the exact saved correlation and arguments.
-  A validated matching `rs_...` ticket and exact Ledger status are persisted
-  before success is returned, and a retry can replay both locally without
-  transport. The managed integration reserves the canonical five
-  `mcp_research_*` names against private connector collisions. Same-batch
-  status/report/cancel calls are pinned to that id, while
-  `research_list` and delegation remain blocked for the launch turn. Run-update and
-  Knowledge calls stay blocked until exact start-result delivery and throughout an abandoned
-  timeout attempt. Result delivery uses an invocation-specific token
-  acknowledged only after connector telemetry, tool-end recording, and tool
-  message incorporation; failure-persistence and post-ticket/pre-delivery
-  timeouts therefore remain fatal. Ordinary
-  setup/inference/callback failures are promoted while unresolved. Budget
-  blocking settles only a truly uncorrelated queued Product row before
-  terminalizing the Nessie run; correlated work remains recovery-safe, and an
-  exact late definitive rejection may settle correlated `needs_setup`.
-  Missing/duplicate attachment state and an
-  omitted required start fail closed; exhausted clean candidates become
-  `needs_setup`, while rows with external/dispatch/report/Knowledge evidence
-  are preserved. A validated ticket that settles after final recovery still
-  attaches, clears the stale recovery detail, preserves its exact Ledger status,
-  and keeps the Product run `running` until mandatory terminal reconciliation,
-  preventing accepted work from being orphaned or prematurely unblocked. Fatal tools
-  retain paired sanitized end events, and the worker awaits every started
-  same-batch tool wrapper before retry. Ordinary DeepWater calls remain
-  unchanged. PA message creation,
-  run attachment, PA run/task creation,
-  and direct `run.execute` enqueue are atomic; product handoffs bypass chat
-  engagement decisions while ordinary chat remains unchanged. Duplicate
-  enqueue conflicts roll back the duplicate unit, and realtime publication is
-  post-commit/non-fatal. Ambiguous
-  null-external-id work stays blocking to avoid deleting the
-  connector during an in-flight, metered `research_start`; attached-run errors
-  point to the chat where PA can call `research_cancel`. This is unchanged for
-  other connectors (scope still exposes them). First-party team-enable stands in
-  for the manual install + admin-approve gate. The managed instance resolves
-  `LEDGER_PROXY_TOKEN` as Nessie's one deployment-wide, product-bound Ledger app
-  API key, never a per-user credential; personal DeepWater overrides are
-  forbidden. Signed caller identity is a
-  separate boundary, and webhook signing secrets must never be reused as the
-  app key. Every
-  dispatch also carries a fresh RS256 `X-Nessie-Context` (non-null
-  user/org/team/agent/run)
-  and the linked user's short-lived `X-UOA-Delegation`, obtained through UOA
-  token exchange. New renewable UOA sessions require a nonnegative `tv`
-  authentication epoch and bind immutable `{sub, org, team, tv}` proof into the
-  Nessie access session and refresh family. UOA's opaque refresh credential is
-  AES-256-GCM encrypted server-side; the browser receives only Nessie's
-  unrelated rotating cookie. Delegation assertions/caches and billing
-  `X-UOA-Actor` use that session proof and require exact equality with the live
-  product-link mirror and selected team. PostgreSQL family/user locks serialize
-  rotation, replay, issuance, security revocation, and encrypted-credential
-  erasure across API replicas; first-workspace creation is exact-workspace
-  locked and product-link epochs cannot regress. Ledger therefore authenticates Nessie independently from the
-  human whose research and raw usage it attributes. Setting
-  `NESSIE_MODEL_BASE_URL=https://ledger.unlikeotherai.com/v1/openai` applies the
-  same signed attribution to all model and embedding calls (embeddings resolve
-  their own `/v1/:serviceId` segment — see "Embeddings" above); runtime routing
-  rewrites the final path to Ledger's `/v1/:serviceId/*` adapter for the
-  selected OpenAI, Kimi, MiniMax, or custom provider. When the deployment-wide
-  URL is absent, signing is decided after resolving the effective organization
-  provider-record URL, so a Ledger route introduced by an organization provider
-  record still receives complete attribution. **Signing is best-effort by
-  deployment, mandatory once available.** A deployment that configured the UOA
-  signer signs every Ledger inference call and still fails closed when the
-  originating user has no linked SSO identity; a deployment that configured no
-  signer at all (no `UOA_*` env — an operator using a personal Ledger API key)
-  dispatches on `NESSIE_MODEL_API_KEY` alone. That is Ledger's call, not
-  Nessie's: Ledger authenticates the bearer and enforces per token whether
-  signed provenance is additionally required, answering 401 when it is. The
-  choice is read once from process env at startup
-  (`loadLedgerIdentitySettings`), never per request, organization, or user, so
-  nothing reachable from a request can downgrade a signing deployment.
-  User-triggered
-  background jobs persist their user/team origin and named system agent/run, and
-  fail before model dispatch if it is unavailable. A scheduled trigger also
-  persists the creator's immutable UOA identity tuple in its server-owned
-  `launchOrigin.uoaIdentity`, captured while a real session exists: a fire has
-  no session, and the account link proves subject/status/epoch but not the UOA
-  workspace, so without it every scheduled run failed closed at dispatch. The
-  tuple is replayed at fire time and re-verified against the live link exactly
-  as a session is (link `linked`, matching `uoaSub` and `uoaTokenVersion`, and
-  the target team's external mapping), and `queueTriggerRun` pre-flights that
-  check so a schedule which can no longer sign stops once instead of burning a
-  failed run every sweep. **The pre-flight shares dispatch's own predicate** —
-  it calls the exported `activeWorkspaceMatchesAttribution` rather than keeping
-  a second copy, so the account link *and* the attributed team's external UOA
-  mapping are both checked. (It is still gated on the process-wide signer flag
-  while dispatch gates on the *effective provider* being a Ledger route, so an
-  organisation routed elsewhere can still be stopped by a check its own requests
-  would not make — a known remaining divergence.) Checking
-  only the link let a trigger pass, create a run, and have that run die at its
-  first inference, silently, because an unattended failure posts nothing; that
-  is what produced ~1.5 hours of "delivered / run failed" deliveries before one
-  production sweep's epoch drifted far enough to fail the gate too. It
-  deliberately does **not** perform the remote token exchange: a UOA outage must
-  never look like a dead schedule. See "A schedule that stops says so". DeepWater research launch
-  retries reuse the provider's stable `tool_call_id`. Ledger owns job isolation,
-  budget enforcement, audit, and raw usage metering; UOA alone rates that usage.
-  `deep_water_run_update`
-  is not PA-only — any *granted* agent can write back the durable Nessie run
-  record (same team + thread; `knowledgePageId` validated against the org).
-  It never accepts or persists cost, price, charge, tariff, or currency fields;
-  Ledger's DeepWater REST/MCP contract exposes none, and UOA alone supplies
-  customer-commercial amounts. Nessie persists the external report URL
-  only from Ledger's authenticated `research_start` structured response after
-  validating its origin and exact job path, and persists source count only from
-  the authenticated `research_report` references array. Both require
-  server-only provenance before they are exposed; agent-authored run updates
-  cannot set, replace, or mark either value as trusted. Source persistence also
-  repairs the exact per-run connector usage event atomically, so same-batch
-  report/update order cannot lose usage units. The event is operational and
-  cost-free, remains attributed to the immutable launch user, and is excluded
-  from local cost totals. Historical local values are erased, reduced to a
-  cost-free dispatch-recovery marker; the obsolete Product-run cost columns are
-  dropped, and a database trigger rejects future DeepWater connector-event
-  amounts. The same locked write
-  rejects a Product status that contradicts a terminal start ticket (`complete`
-  maps to `completed`; failed/cancelled/timed_out map to `failed`). Each org/team
-  transition is cross-process
-  serialized with a PostgreSQL transaction-scoped advisory lock; connector
-  rows and the enablement toggle mutate in one transaction and roll back
-  together. A missing linked first-party catalog fails enablement with
-  `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` rather than persisting a dead toggle.
-  Re-enable preserves richer probed schemas only for the current Ledger
-  tool-name contract; legacy direct-provider projections are replaced.
+- **DeepWater as an agent tool** — an owner-only `team-enablement` toggle
+  provisions a **team-scoped, tool-projecting** `McpServerInstance` from the
+  `deep-water` catalog entry and projects Ledger's `research_start`,
+  `research_status`, `research_report`, `research_list`, and `research_cancel`
+  as active `mcp_research_*` tools. It is **always routed through Ledger**:
+  `LEDGER_DEEPWATER_MCP_URL` (hosted `https://ledger.unlikeotherai.com/v1/mcp/deepwater`)
+  with `LEDGER_PROXY_TOKEN`, Nessie's one deployment-wide, product-bound app API
+  key — never a per-user credential, never a webhook signing secret. Enable
+  fails loudly (`LEDGER_DEEPWATER_MCP_URL_UNSET`,
+  `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE`) rather than persisting a dead toggle.
+  The invariants worth knowing before touching it — each learned from a real
+  defect, and stated in full in `AGENTS.md`:
+
+  - **Default OFF, explicit per-agent grant required.** The five projections and
+    the `deep_water_run_update` builtin are `requiresExplicitGrant`: team scope
+    alone never exposes them, an agent needs `toolPolicy` carrying `=== true`,
+    and absent-or-inherited is a denial. A grant never bypasses tenancy. Owners
+    write verdicts through `/api/mcp/tools/.../policy-targets/...`, which merges
+    **one key** under a per-agent lock rather than replacing the policy.
+  - **The launcher's bundle is exactly six entries** (five projections +
+    the updater), read and managed through
+    `/api/integrations/products/deep-water/agent-access`. Launch stays disabled
+    and the API rejects before run creation until the PA holds 6/6, and the
+    updater counts only while its registry row is enabled *and* active, matching
+    worker exposure — a disabled builtin must not authorize metered work.
+  - **The transaction order is team lock → policy lock → final 6/6 read →
+    durable run insert**, cross-process serialized by PostgreSQL advisory locks;
+    connector rows and the toggle mutate together and roll back together.
+  - **Handoff enforcement is activated only by server-authored
+    `integrationLaunch.{productSlug,runId}` metadata**, and the lookup must match
+    that exact run id plus message/org/team/thread. Ordinary messages stay
+    unguarded, missing or mismatched state fails closed. **Ambiguity is fatal,
+    never terminal**: conflicts, 5xx, malformed tickets, throws, timeouts and
+    uncertain writes abort the Nessie run for queue retry using the persisted
+    correlation, because a metered `research_start` may be in flight. Only a
+    validated Ledger-local pre-start rejection terminalizes a still-clean run.
+  - **It never accepts a cost, price, tariff, or currency.** Ledger's contract
+    exposes none and UOA is the sole commercial authority; a database trigger
+    rejects DeepWater connector-event amounts. The report URL and source count
+    are persisted **only** from authenticated Ledger responses and carry
+    server-only provenance, so an agent-authored run update cannot set them.
+  - **Every dispatch carries identity separate from transport auth**: a fresh
+    RS256 `X-Nessie-Context` (non-null user/org/team/agent/run) plus the linked
+    user's `X-UOA-Delegation`. Generic instance test/refresh/healthcheck/delete
+    and secret writes reject the managed instance
+    (`MCP_INSTANCE_MANAGED_BY_INTEGRATION`); the Integrations toggle is its sole
+    lifecycle path. Disable returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while queued,
+    running, or `needs_setup` research still references the connector.
+
+  `deep_water_run_update` is **not** PA-only: any granted agent may write back
+  the durable run record (same team + thread). Full rules, including the
+  recovery matrix and the session/epoch proof model:
+  `AGENTS.md` → DeepWater, and
+  [docs/external-tool-integration.md](docs/external-tool-integration.md).
 
 Customer tariffs, statements, credits, top-ups, subscriptions, adjustments,
 and Stripe lifecycle stay in UOA. Ledger's raw reporting API is UOA-only; Nessie has no billing

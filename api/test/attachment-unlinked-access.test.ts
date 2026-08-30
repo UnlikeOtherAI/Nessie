@@ -13,15 +13,24 @@ const attachmentId = '00000000-0000-4000-8000-000000000004'
 type Published = {
   userAvatar?: boolean
   agentAvatar?: boolean
+  projectAvatar?: boolean
   orgLogo?: boolean
   feedback?: boolean
 }
 
+/**
+ * Every reference `isPublishedOrgAsset` counts needs a delegate here, and the
+ * stub is cast, so a model it forgets is `undefined` at call time rather than a
+ * type error — `project` was missed when project avatars were added and took
+ * five of these tests down with a bare TypeError. A published-reference kind
+ * added to that function is added here in the same change, with a case below.
+ */
 const makePrisma = (published: Published = {}): PrismaClient =>
   ({
     knowledgePageVersion: { findFirst: async () => null },
     user: { count: async () => (published.userAvatar ? 1 : 0) },
     agent: { count: async () => (published.agentAvatar ? 1 : 0) },
+    project: { count: async () => (published.projectAvatar ? 1 : 0) },
     organization: { count: async () => (published.orgLogo ? 1 : 0) },
     feedback: { count: async () => (published.feedback ? 1 : 0) },
   }) as unknown as PrismaClient
@@ -63,6 +72,17 @@ test('a published user avatar stays readable org-wide', async () => {
 
 test('a published agent avatar stays readable org-wide', async () => {
   const allowed = await canAccessAttachment(makePrisma({ agentAvatar: true }), unlinked, {
+    organizationId,
+    userId: otherMemberId,
+  })
+  assert.equal(allowed, true)
+})
+
+test('a published project avatar stays readable org-wide', async () => {
+  // The kind that had no case: project avatars became a published reference
+  // without one, so nothing asserted that a member other than the uploader can
+  // read the picture on a project they can already see.
+  const allowed = await canAccessAttachment(makePrisma({ projectAvatar: true }), unlinked, {
     organizationId,
     userId: otherMemberId,
   })

@@ -114,6 +114,10 @@ export const APP_CATEGORY_ORDER: readonly AppCategory[] = APP_CATEGORIES
  * it is a moderation outcome the catalogue read filters out — but the value
  * exists so an admin surface can name the state it is applying.
  */
+/** The auth a connect will need. Mirrors Prisma's `McpCatalogAuthMethod`. */
+export const AppAuthMethodSchema = z.enum(['none', 'api_key', 'bearer', 'basic', 'oauth2'])
+export type AppAuthMethod = z.infer<typeof AppAuthMethodSchema>
+
 export const AppTrustLevelSchema = z.enum([
   'nessie',
   'verified',
@@ -187,6 +191,12 @@ export const AppSummaryRecordSchema = z.object({
   aliases: z.array(z.string()),
   trustLevel: AppTrustLevelSchema,
   distribution: AppDistributionSchema,
+  /**
+   * How connecting will authenticate, so the Connect dialog can say "this opens
+   * a sign-in" or "this needs a key" BEFORE the person commits — the method
+   * only, never the configuration behind it.
+   */
+  authMethod: AppAuthMethodSchema,
   appSource: AppSourceSchema,
   featured: z.boolean(),
   featuredOrder: z.number().int().nullable(),

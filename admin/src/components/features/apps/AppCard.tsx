@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import type { AppSummaryRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
+import { AppConnectDialog } from './AppConnectDialog'
 import { StatusPill } from '../../primitives/StatusPill'
 import { AppIcon } from './AppIcon'
 import { AppTrustBadge } from './AppTrustBadge'
@@ -63,6 +65,7 @@ const HighlightedText = ({ query, text }: { query: string; text: string }) => (
 )
 
 export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }: AppCardProps) => {
+  const [connectOpen, setConnectOpen] = useState(false)
   const status = appCardStatus(app)
   const action = appCardAction(app)
   const kindPill = appKindPill(app)
@@ -83,7 +86,14 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
       <div className="flex items-start gap-3">
         <AppIcon displayName={app.displayName} iconUrl={app.iconUrl} size="card" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex min-w-0 items-start gap-2">
+          {/* Title and badge wrap instead of competing: on a narrow tile (the
+              phone two-column grid, the featured strip) a shrink-0 chip beside
+              a shrinkable title starves the title down to a couple of
+              characters, so the badge drops under the title before the title
+              gives up a pixel. The title clamps at two lines and holds that
+              height even when short, keeping every card in a row the same
+              shape. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             {/* A stretched link: real anchor semantics and one tab stop for the
                 whole tile, while the footer action stays its own control (an
                 anchor inside an anchor would not be valid markup). Every state
@@ -91,7 +101,8 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
                 person whose install has stalled or whose app is unavailable. */}
             <Link
               className={[
-                'min-w-0 truncate text-[0.9375rem] font-semibold text-[color:var(--tx)]',
+                'line-clamp-2 min-h-10 min-w-0 text-[0.9375rem] font-semibold leading-5',
+                'text-[color:var(--tx)]',
                 'after:absolute after:inset-0 after:content-[""]',
                 'focus-visible:outline-none focus-visible:after:ring-2',
                 'focus-visible:after:ring-[color:var(--accent)]',
@@ -152,6 +163,17 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
           >
             {action.label}
           </Link>
+        ) : action.kind === 'connect' ? (
+          // Connect stays on this page: the dialog runs the same flow the
+          // detail hero drives, so pressing it never navigates away.
+          <button
+            className={`${ACTION_TONE[action.tone]} relative z-10`}
+            data-testid="app-card-action"
+            onClick={() => setConnectOpen(true)}
+            type="button"
+          >
+            {action.label}
+          </button>
         ) : action.kind === 'disabled' ? (
           <button
             // Disabled styling belongs to `.admin-button:disabled` in
@@ -167,6 +189,8 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
           </button>
         ) : null}
       </div>
+
+      <AppConnectDialog app={app} onClose={() => setConnectOpen(false)} open={connectOpen} />
     </article>
   )
 }
