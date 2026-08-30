@@ -1233,6 +1233,11 @@ a {
   padding-left: 32px;
 }
 
+/* Threads belongs beside the top-level sections, not inside Starred. */
+.admin-sb-item.sidebar-top-level {
+  padding-left: 12px;
+}
+
 /* Native phone/tablet shells use Slack-scale navigation density. This marker
    arrives only from the React Native WebView bridge, so desktops (including
    touchscreen laptops) retain their compact rail and sidebar typography. */
