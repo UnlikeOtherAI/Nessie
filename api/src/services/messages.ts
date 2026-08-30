@@ -1,6 +1,11 @@
 import { Prisma } from '@prisma/client'
 import type { ChannelSystemType, PrismaClient, Thread } from '@prisma/client'
-import { buildPrefixTsQuery, partitionByDisclosure, viewerSatisfiesBasis } from '@nessie/runtime'
+import {
+  buildPrefixTsQuery,
+  canUserReadDisclosureBasis,
+  partitionByDisclosure,
+  viewerSatisfiesBasis,
+} from '@nessie/runtime'
 import { resolveMessageViewer } from './disclosure-viewer.js'
 import { resolveGrantedScopeKeys } from './disclosure-grants.js'
 import {
@@ -76,13 +81,20 @@ const mapThreadMessageRecord = (
   // row is still returned — the client renders a placeholder — but never its
   // content. Withholding the row entirely would leave an unexplained gap.
   withheld = false,
+  // Whether the caller satisfies the basis *directly*, rather than through a
+  // grant someone gave them. Only a direct reader may share onward: a grant
+  // recipient's share is refused by the server anyway, so offering them the
+  // control was an affordance that could only fail. Defaults true for callers
+  // that cannot distinguish, which is the pre-existing behaviour.
+  readableWithoutGrant = true,
 ): ThreadMessageRecord => ({
   attachmentCount: withheld ? 0 : attachmentCount,
   ...(withheld
     ? { restricted: true as const }
-    : message.basisScopes.length > 0
-      // Readable, but drew on restricted sources — this reader is the one who
-      // can share it. Private material offers no standing rule.
+    : message.basisScopes.length > 0 && readableWithoutGrant
+      // Readable on their own entitlement, and drew on restricted sources — so
+      // this reader is the one who can share it. Private material offers no
+      // standing rule.
       ? {
           restrictedSources: true as const,
           canShareStanding: !message.basisScopes.some((s) => s.scopeType === 'user'),
@@ -111,14 +123,26 @@ const mapThreadMessageRecord = (
   rootMessageId: message.rootMessageId ?? undefined,
   replyCount: message.replyCount,
   lastReplyAt: message.lastReplyAt ? message.lastReplyAt.toISOString() : undefined,
-  replyParticipantIds: message.replyParticipantIds,
   editedAt: message.editedAt ? message.editedAt.toISOString() : null,
   deletedAt: message.deletedAt ? message.deletedAt.toISOString() : null,
+  // Metadata is derived from the content it accompanies — tool activity, watch
+  // status text, run-stop reasons, document references, embed ids — and the
+  // admin renders cards from it *outside* the placeholder branch, including an
+  // actionable Continue button. A withheld row carries none of it.
   metadata:
-    message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+    !withheld
+    && message.metadata
+    && typeof message.metadata === 'object'
+    && !Array.isArray(message.metadata)
       ? (message.metadata as Record<string, unknown>)
       : undefined,
-  reactions: message.reactions.map((r) => ({
+  // The social envelope names people, not just volume: who reacted to material
+  // you cannot read, and who is in the sub-conversation about it. `replyCount`
+  // and `lastReplyAt` stay — replies carry their own basis and are gated
+  // independently, so a reader may well be entitled to some of them, and a
+  // placeholder that admits a conversation exists is honest.
+  replyParticipantIds: withheld ? [] : message.replyParticipantIds,
+  reactions: withheld ? [] : message.reactions.map((r) => ({
     id: r.id,
     messageId: r.messageId,
     agentId: r.agentId ? parseAgentId(r.agentId) : undefined,
@@ -282,6 +306,9 @@ export const listThreadMessages = async (
     }))?.channelId ?? null
     : null
   const withheldIds = new Set<string>()
+  // Everything the predicate admitted without consulting grants is read on the
+  // caller's own entitlement, so it stays shareable.
+  const grantOnlyIds = new Set<string>()
   for (const row of provisional.withheld) {
     const granted = options.organizationId && viewer.kind === 'user' && grantChannelId
       ? await resolveGrantedScopeKeys(prisma, {
@@ -296,7 +323,11 @@ export const listThreadMessages = async (
         viewerUserId: viewer.userId,
       })
       : new Set<string>()
-    if (!viewerSatisfiesBasis(row.basisScopes, viewer, granted)) {
+    if (viewerSatisfiesBasis(row.basisScopes, viewer, granted)) {
+      // Readable only because a grant said so — readable, but not theirs to
+      // pass on.
+      grantOnlyIds.add(row.id)
+    } else {
       withheldIds.add(row.id)
     }
   }
@@ -310,6 +341,7 @@ export const listThreadMessages = async (
           row,
           attachmentCounts.get(row.id) ?? 0,
           withheldIds.has(row.id),
+          !grantOnlyIds.has(row.id),
         )),
     meta: {
       cursor: hasMore && oldest ? `${oldest.createdAt.toISOString()}|${oldest.id}` : null,
@@ -321,7 +353,9 @@ export const listThreadMessages = async (
 export const markThreadRead = async (
   prisma: PrismaClient,
   input: {
+    organizationId: string
     rootMessageId?: string
+    lastReadMessageId?: string
     threadId: string
     userId: string
   },
@@ -345,42 +379,148 @@ export const markThreadRead = async (
         id: input.rootMessageId,
         rootMessageId: null,
         threadId: input.threadId,
+        deletedAt: null,
       },
-      select: { createdAt: true },
+      select: {
+        agentId: true,
+        basisScopes: { select: { scopeId: true, scopeType: true } },
+        createdAt: true,
+        id: true,
+      },
     })
     if (!root) return false
 
-    const latestMessage = await prisma.message.findFirst({
-      where: {
-        threadId: input.threadId,
-        OR: [
-          { id: input.rootMessageId },
-          { rootMessageId: input.rootMessageId },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    })
-    const lastReadAt = [root.createdAt, latestMessage?.createdAt, legacyReadState?.lastReadAt]
-      .filter((value): value is Date => Boolean(value))
-      .reduce((latest, value) => value > latest ? value : latest)
-
-    await prisma.messageConversationReadState.upsert({
-      where: {
-        rootMessageId_userId: {
-          rootMessageId: input.rootMessageId,
-          userId: input.userId,
+    // A stale or deep-linked panel can still name a root whose disclosure
+    // basis the caller cannot read. Never let that placeholder advance a
+    // durable cursor: it would turn a future grant into an already-read reply.
+    const candidates = input.lastReadMessageId
+      ? await prisma.message.findMany({
+        where: {
+          id: input.lastReadMessageId,
+          threadId: input.threadId,
+          deletedAt: null,
+          role: { not: 'system' },
+          OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
         },
-      },
-      create: {
-        rootMessageId: input.rootMessageId,
-        userId: input.userId,
-        lastReadAt,
-      },
-      update: {
-        lastReadAt,
-      },
-    })
+        select: {
+          agentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          createdAt: true,
+          id: true,
+        },
+      })
+      : await prisma.message.findMany({
+        where: {
+          threadId: input.threadId,
+          deletedAt: null,
+          role: { not: 'system' },
+          OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          agentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          createdAt: true,
+          id: true,
+        },
+      })
+    if (input.lastReadMessageId && candidates.length === 0) return false
+
+    const disclosureMayApply = root.basisScopes.length > 0
+      || candidates.some((message) => message.basisScopes.length > 0)
+    const viewer = disclosureMayApply
+      ? await resolveMessageViewer(prisma, input.organizationId, input.userId)
+      : null
+    let channelId: string | null = null
+    const canRead = async (message: {
+      agentId: string | null
+      basisScopes: Array<{ scopeId: string; scopeType: string }>
+      id: string
+    }): Promise<boolean> => {
+      if (!viewer || message.basisScopes.length === 0) return true
+      if (partitionByDisclosure([message], viewer).withheld.length === 0) return true
+      if (!channelId) {
+        const thread = await prisma.thread.findUnique({
+          where: { id: input.threadId },
+          select: { channelId: true },
+        })
+        channelId = thread?.channelId ?? null
+      }
+      const grants = channelId && viewer.kind === 'user'
+        ? await resolveGrantedScopeKeys(prisma, {
+          agentId: message.agentId,
+          basis: message.basisScopes,
+          channelId,
+          messageId: message.id,
+          organizationId: input.organizationId,
+          viewerChannelIds: viewer.scopes
+            .filter((scope) => scope.scopeType === 'channel')
+            .map((scope) => scope.scopeId),
+          viewerUserId: input.userId,
+        })
+        : new Set<string>()
+      return viewerSatisfiesBasis(message.basisScopes, viewer, grants)
+    }
+    if (!(await canRead(root))) return false
+
+    const latestMessage = input.lastReadMessageId
+      ? candidates[0]
+      : (await Promise.all(candidates.map(async (message) =>
+        (await canRead(message)) ? message : null,
+      ))).find((message) => message !== null)
+    if (input.lastReadMessageId && latestMessage && !(await canRead(latestMessage))) return false
+
+    const cursorCandidates = [
+      { at: root.createdAt, id: root.id },
+      ...(latestMessage ? [{ at: latestMessage.createdAt, id: latestMessage.id }] : []),
+      ...(legacyReadState ? [{ at: legacyReadState.lastReadAt, id: '' }] : []),
+    ]
+    const cursor = cursorCandidates.reduce((latest, candidate) =>
+      candidate.at > latest.at || (candidate.at.getTime() === latest.at.getTime() && candidate.id > latest.id)
+        ? candidate
+        : latest,
+    )
+
+    // A read acknowledgement can arrive late from another tab or device. The
+    // database, rather than timing in the browser, owns the monotonic cursor:
+    // conflicting writes keep the lexicographically greatest (time, message)
+    // pair, including Postgres timestamp(3) ties.
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "message_conversation_read_states" (
+        "id", "root_message_id", "user_id", "last_read_at", "last_read_message_id", "created_at", "updated_at"
+      ) VALUES (
+        gen_random_uuid(),
+        ${input.rootMessageId}::uuid,
+        ${input.userId}::uuid,
+        ${cursor.at},
+        ${cursor.id || null}::uuid,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      )
+      ON CONFLICT ("root_message_id", "user_id") DO UPDATE
+      SET
+        "last_read_at" = CASE
+          WHEN EXCLUDED."last_read_at" > "message_conversation_read_states"."last_read_at"
+            OR (
+              EXCLUDED."last_read_at" = "message_conversation_read_states"."last_read_at"
+              AND COALESCE(EXCLUDED."last_read_message_id"::text, '')
+                > COALESCE("message_conversation_read_states"."last_read_message_id"::text, '')
+            )
+          THEN EXCLUDED."last_read_at"
+          ELSE "message_conversation_read_states"."last_read_at"
+        END,
+        "last_read_message_id" = CASE
+          WHEN EXCLUDED."last_read_at" > "message_conversation_read_states"."last_read_at"
+            OR (
+              EXCLUDED."last_read_at" = "message_conversation_read_states"."last_read_at"
+              AND COALESCE(EXCLUDED."last_read_message_id"::text, '')
+                > COALESCE("message_conversation_read_states"."last_read_message_id"::text, '')
+            )
+          THEN EXCLUDED."last_read_message_id"
+          ELSE "message_conversation_read_states"."last_read_message_id"
+        END,
+        "updated_at" = CURRENT_TIMESTAMP
+    `)
     return true
   }
 
@@ -488,9 +628,41 @@ export const mapMessageRecord = (
 export const mapMessageRecordWithAttachments = async (
   prisma: PrismaClient,
   message: MessageWithReactions,
+  // Who is reading, for the disclosure predicate. The list endpoint has always
+  // withheld restricted content; this single-message read did not, because the
+  // mapper was called with two arguments and `withheld` fell to its `false`
+  // default — handing the caller the verbatim content of a reply they are not
+  // entitled to, plus the share affordance for it. The admin hits this route on
+  // a cold deep-link into a reply thread, so it was reachable from the product.
+  // Omitting `viewer` keeps the unrestricted behaviour for internal callers that
+  // have already authorized the read.
+  viewer?: { channelId: string; organizationId: string; userId: string },
 ): Promise<ThreadMessageRecord> => {
   const counts = await loadAttachmentCounts(prisma, [message.id])
-  return mapThreadMessageRecord(message, counts.get(message.id) ?? 0)
+  const count = counts.get(message.id) ?? 0
+  if (!viewer || message.basisScopes.length === 0) {
+    return mapThreadMessageRecord(message, count)
+  }
+  // Two questions, not one: may they read it, and is that on their own
+  // entitlement? A grant recipient reads it but may not pass it on.
+  const messageViewer = await resolveMessageViewer(
+    prisma,
+    viewer.organizationId,
+    viewer.userId,
+  )
+  const direct = viewerSatisfiesBasis(message.basisScopes, messageViewer)
+  if (direct) {
+    return mapThreadMessageRecord(message, count, false, true)
+  }
+  const readable = await canUserReadDisclosureBasis(prisma, {
+    agentId: message.agentId,
+    basis: message.basisScopes,
+    channelId: viewer.channelId,
+    messageId: message.id,
+    organizationId: viewer.organizationId,
+    userId: viewer.userId,
+  })
+  return mapThreadMessageRecord(message, count, !readable, false)
 }
 
 type MessageSearchRow = {

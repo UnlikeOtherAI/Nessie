@@ -59,14 +59,30 @@ const appsRoot = ['apps'] as const
 
 export const appKeys = {
   all: appsRoot,
+  // "Show all" walks one category's own pages, a different corpus from the
+  // mixed catalogue slice `list` holds — under the same root, so a single
+  // invalidation after a connect or disconnect still reaches both.
+  category: (category: string, installed: boolean) =>
+    [...appsRoot, 'category', category, installed] as const,
   detail: (slug?: string) => [...appsRoot, 'detail', slug ?? null] as const,
-  list: (filters: { category?: string; installed?: boolean; query?: string }) =>
+  // The facade normalises before it calls this, so each field is spelled one
+  // way by the time it reaches the key. The defaults restate that normal form
+  // rather than inventing a second one: an absent query is the empty search,
+  // an absent `installed` is the unnarrowed catalogue, an absent offset is the
+  // first page.
+  list: (filters: {
+    category?: string
+    installed?: boolean
+    offset?: number
+    query?: string
+  }) =>
     [
       ...appsRoot,
       'list',
-      filters.query ?? null,
+      filters.query ?? '',
       filters.category ?? null,
-      filters.installed ?? false,
+      filters.installed === true,
+      filters.offset ?? 0,
     ] as const,
 }
 
@@ -269,18 +285,6 @@ export const deepWaterAgentAccessKey = (scope: IntegrationQueryScope) => [
   ...scopeParts(scope),
 ] as const
 
-export const deepSignalSignalsKeyPrefix =
-  ['integrations', 'products', 'deepsignal', 'signals'] as const
-
-export const deepSignalSignalsKey = (
-  scope: IntegrationQueryScope,
-  include: 'active' | 'all',
-) => [
-  ...deepSignalSignalsKeyPrefix,
-  ...scopeParts(scope),
-  include,
-] as const
-
 export const mcpToolRegistryKey = (
   scope: IntegrationQueryScope,
   enabled: boolean,
@@ -403,6 +407,9 @@ export const teamKeys = {
 }
 
 export const threadKeys = {
+  // The unread/activity projection across every thread, reset rather than
+  // invalidated by the read-marker writes that change it.
+  activity: ['threads', 'activity'] as const,
   documentStream: (threadId: string | undefined, sessionId: string) =>
     ['threads', threadId, 'documentStreams', sessionId] as const,
   documentStreams: (threadId?: string) =>

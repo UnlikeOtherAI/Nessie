@@ -107,6 +107,12 @@ enum AgentTriggerStatus {
   active
   paused
   error
+  // The schedule is structurally fine but can no longer prove the identity it
+  // was created under, so it must not run. Split from `error` because the two
+  // need different remedies: `error` means "fix the configuration", this means
+  // "an authorized person re-authorizes it", and the surface offers that button
+  // only for this state. Both are non-runnable — the scheduler claims `active`.
+  needs_reauthorization
 }
 
 enum AgentTriggerDeliveryStatus {
@@ -572,6 +578,38 @@ enum McpCredentialPrincipalType {
   organization
 }
 
+// ─── External-vault secret metadata ────────────────────────────────────────
+// Secret bytes are intentionally absent from this schema. `vaultReference`
+// identifies the record in Infisical; Nessie owns only its placement, policy,
+// and audit metadata.
+enum SecretScopeType {
+  personal
+  team
+  project
+  workspace
+}
+
+enum SecretStatus {
+  active
+  revoked
+  expired
+}
+
+enum SecretPermission {
+  use
+  reveal
+  manage
+  delegate
+}
+
+enum SecretPrincipalType {
+  user
+  agent
+  team
+  project
+  workspace
+}
+
 // ─── App Store (store dimension over the same catalogue) ───
 //
 // The App Store is a second face on `McpCatalogEntry`, never a second
@@ -1034,6 +1072,7 @@ model Organization {
   productTeamEnablements ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
   productWebhookSecrets  ProductWebhookSecret[]
+  secrets                Secret[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -1224,6 +1263,9 @@ model OrganizationMember {
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Agents this member stewards. Tenancy only — a retained deactivated row
+  /// still satisfies the FK, so readers re-derive liveness.
+  ownedAgents    Agent[]      @relation("AgentOwner")
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -1232,6 +1274,11 @@ model OrganizationMember {
 model Project {
   id                       String                    @id @default(uuid()) @db.Uuid
   name                     String
+  // A project can show one member-chosen identity in the sidebar: either an
+  // emoji or a cropped image attachment. The update route keeps them mutually
+  // exclusive so the display never needs a precedence rule.
+  avatarEmoji              String?                   @map("avatar_emoji")
+  avatarAttachmentId       String?                   @map("avatar_attachment_id") @db.Uuid
   organizationId           String                    @map("organization_id") @db.Uuid
   // An invisible, system-owned container for organization-wide channels. It
   // is not a UOA workspace and does not mirror any external team.
@@ -1255,8 +1302,10 @@ model Project {
   pushAttentionAlerts      UserAlert[]               @relation("PushAttentionAlertProject")
   userPushSurfacePresences UserPushSurfacePresence[]
   executors                Executor[]
+  avatarAttachment         Attachment?               @relation("ProjectAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@unique([id, organizationId])
+  @@index([avatarAttachmentId])
   @@map("projects")
 }
 
@@ -1457,6 +1506,9 @@ model MessageConversationReadState {
   rootMessageId String   @map("root_message_id") @db.Uuid
   userId        String   @map("user_id") @db.Uuid
   lastReadAt    DateTime @map("last_read_at")
+  // Paired with the timestamp because Postgres stores timestamps at
+  // millisecond precision; this makes the conversation high-water mark exact.
+  lastReadMessageId String? @map("last_read_message_id") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
   rootMessage   Message  @relation("MessageConversationReadRoot", fields: [rootMessageId], references: [id], onDelete: Cascade)
@@ -1471,6 +1523,10 @@ enum UserAlertKind {
   mention
   task_assigned
   knowledge_published
+  // A scheduled trigger stopped being runnable. Durable rather than push-only
+  // because the whole defect this fixes was a failure nobody could see: a push
+  // is missable, the bell is not.
+  trigger_health
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1490,6 +1546,7 @@ model UserAlert {
   projectId       String?        @map("project_id") @db.Uuid
   taskId          String?        @map("task_id") @db.Uuid
   knowledgePageId String?        @map("knowledge_page_id") @db.Uuid
+  triggerId       String?        @map("trigger_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey        String?        @map("event_key")
@@ -1505,6 +1562,7 @@ model UserAlert {
   project         Project?       @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
   task            Task?          @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
   knowledgePage   KnowledgePage? @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
+  trigger         AgentTrigger?  @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
   actorUser       User?          @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   actorAgent      Agent?         @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
@@ -1530,13 +1588,15 @@ model ThreadStreamEvent {
 model RealtimeEvent {
   id             BigInt       @id @default(autoincrement())
   organizationId String       @map("organization_id") @db.Uuid
-  channelId      String       @map("channel_id") @db.Uuid
+  channelId      String?      @map("channel_id") @db.Uuid
+  recipientUserId String?     @map("recipient_user_id") @db.Uuid
   eventType      String       @map("event_type")
   payload        Json         @db.JsonB
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz()
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([channelId, id], map: "idx_realtime_events_replay")
+  @@index([organizationId, recipientUserId, id], map: "idx_realtime_events_user_replay")
   @@index([organizationId, createdAt])
   @@map("realtime_events")
 }
@@ -1573,6 +1633,10 @@ enum PushSurfaceKind {
   ops_usage
   project_board
   knowledge_space
+  // The Triggers page. Modelled so a trigger-health notification names its real
+  // destination rather than borrowing another surface's identity, which would
+  // suppress it for anyone who happened to be on that other page.
+  triggers
 }
 
 model UserPushSurfacePresence {
@@ -1880,6 +1944,18 @@ model Agent {
   avatarAttachmentId             String?                         @map("avatar_attachment_id") @db.Uuid
   avatarBackgroundColor          String?                         @map("avatar_background_color")
   parentAgentId                  String?                         @map("parent_agent_id") @db.Uuid
+  /// Stewardship — the person this agent belongs to, their "virtual employee".
+  /// NOT the same concept as `Task.ownerUserId`, which is work assignment.
+  /// NULL means unowned (org-level), which is a rendered category, not an error.
+  ///
+  /// The composite relation to OrganizationMember enforces TENANCY at the
+  /// storage boundary: the owner must be a member of THIS agent's organization,
+  /// which a bare User FK cannot express and which matters because
+  /// `spawn_subtask` writes agents outside the shared creation chokepoint.
+  /// It does NOT prove the membership is live — deactivated rows are retained
+  /// deliberately — so every read re-derives `deactivatedAt: null` instead of
+  /// trusting the pointer. See docs/plans/2026-08-29-people-and-their-agents.md.
+  ownerUserId                    String?                         @map("owner_user_id") @db.Uuid
   /// Intentionally nullable and without an Organization FK: system / personal-
   /// assistant agents may be global (no owning org). Do not "fix" to required.
   organizationId                 String?                         @map("organization_id") @db.Uuid
@@ -1913,12 +1989,20 @@ model Agent {
   userAlertActivity              UserAlert[]
   runThreadPendingMessages       RunThreadPendingMessage[]
   organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // NoAction, not the Prisma default SetNull: on a COMPOSITE foreign key
+  // SET NULL blanks every referencing column, which would wipe the agent's
+  // organizationId along with its owner. organization_members rows are never
+  // deleted (deactivation is a reversible flag), so this never fires.
+  ownerMembership                OrganizationMember?             @relation("AgentOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId])
   @@index([organizationId, projectId])
   @@index([avatarAttachmentId])
   @@index([organizationId, agentKind, systemManaged])
   @@index([routingProfileId])
+  // "which agents does this person steward" — the first non-channel-derived
+  // agent read, and the tree's level-3 query.
+  @@index([organizationId, ownerUserId])
   @@map("agents")
 }
 
@@ -2287,6 +2371,19 @@ model AgentTrigger {
   // Inbound webhook HMAC signing secret (sp-webhook). When set, the webhook
   // intake endpoint requires a valid X-Nessie-Signature instead of bearer key.
   signingSecret            String?                   @map("signing_secret")
+  // Why this trigger is not runnable, as a stable code plus the sentence shown
+  // to a person. Before this, the only record of a fatal fire lived in the
+  // newest delivery row's `error_message`, so the Triggers page could say a
+  // schedule was in ERROR but never why, and nothing else could read the reason
+  // to decide whether it was recoverable.
+  healthReason             String?                   @map("health_reason")
+  healthDetail             String?                   @map("health_detail")
+  // Bumped on every transition INTO a non-runnable state. It is the identity of
+  // "this failure", which is what makes alerting exactly-once per transition:
+  // the alert's `UserAlert.eventKey` embeds it, and that table already carries
+  // `@@unique([userId, eventKey])`. A stuck state therefore never re-notifies,
+  // while a genuine repeat failure after a repair does.
+  healthRevision           Int                       @default(0) @map("health_revision")
   lastFiredAt              DateTime?                 @map("last_fired_at")
   nextRunAt                DateTime?                 @map("next_run_at")
   createdAt                DateTime                  @default(now()) @map("created_at")
@@ -2299,6 +2396,7 @@ model AgentTrigger {
   runs                     Run[]
   workflowRuns             WorkflowRun[]
   runThreadPendingMessages RunThreadPendingMessage[]
+  healthAlerts             UserAlert[]               @relation("TriggerHealthAlert")
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
@@ -2900,6 +2998,9 @@ model McpCatalogEntry {
   featuredOrder     Int?                   @map("featured_order")
   /// Upstream registry provenance. `upstream` holds the raw normalized record
   /// so a re-sync can diff without a second fetch.
+  /// The upstream registry id, and the database-arbitrated identity of an
+  /// ingested app: unique where present (partial index, see the migration) so
+  /// two concurrent sweeps cannot both insert the same server.
   registryName      String?                @map("registry_name")
   registryVersion   String?                @map("registry_version")
   upstream          Json                   @default("{}")
@@ -2935,6 +3036,9 @@ model McpCatalogEntry {
   @@index([moderationState, trustLevel])
   @@index([primaryCategory, moderationState])
   @@index([featured, featuredOrder])
+  // registry_name uniqueness is a PARTIAL index (WHERE registry_name IS NOT
+  // NULL) — hand-authored connectors leave it null and must stay unconstrained,
+  // which `@@unique` cannot express. Declared in the migration.
   @@map("mcp_catalog_entries")
 }
 
@@ -2991,6 +3095,13 @@ model McpServerInstance {
   credentialRef       String?                 @map("credential_ref")
   transportConfig     Json                    @default("{}") @map("transport_config")
   discoveredTools     Json                    @default("[]") @map("discovered_tools")
+  /// This connection's tools are default-OFF and need an explicit per-agent
+  /// grant (`worker` `isExposed`). Set when the App Store creates the
+  /// connection, because installing an app and letting an agent use it are two
+  /// decisions. A durable column rather than a stamp at the projection call
+  /// site: the OAuth callback and the generic refresh both re-project, and
+  /// would otherwise quietly widen the app on the next probe.
+  requiresExplicitToolGrant Boolean             @default(false) @map("requires_explicit_tool_grant")
   lifecycleState      McpServerLifecycleState @default(pending_setup) @map("lifecycle_state")
   healthLastCheckedAt DateTime?               @map("health_last_checked_at")
   healthFailureCount  Int                     @default(0) @map("health_failure_count")
@@ -4351,6 +4462,54 @@ model McpOAuthSecret {
   @@map("mcp_oauth_secret")
 }
 
+/// Nessie-managed metadata for a secret held by an external vault. No secret
+/// value, ciphertext, key material, or vault token may be added to this model.
+model Secret {
+  id             String          @id @default(uuid()) @db.Uuid
+  reference      String          @unique @map("reference")
+  organizationId String          @map("organization_id") @db.Uuid
+  name           String
+  description    String?
+  provider       String?
+  scopeType      SecretScopeType @map("scope_type")
+  scopeId        String          @map("scope_id") @db.Uuid
+  vaultReference String          @unique @map("vault_reference")
+  createdById    String          @map("created_by_id") @db.Uuid
+  rotatedAt      DateTime?       @map("rotated_at")
+  expiresAt      DateTime?       @map("expires_at")
+  status         SecretStatus    @default(active)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grants       SecretGrant[]
+
+  @@unique([organizationId, scopeType, scopeId, name])
+  @@index([organizationId, scopeType, scopeId])
+  @@index([organizationId, status])
+  @@map("secrets")
+}
+
+/// Explicit permissions supplement a secret's home scope. An agent can receive
+/// only `use`; the API refuses every other permission for an agent principal.
+model SecretGrant {
+  id            String              @id @default(uuid()) @db.Uuid
+  secretId      String              @map("secret_id") @db.Uuid
+  principalType SecretPrincipalType @map("principal_type")
+  principalId   String              @map("principal_id") @db.Uuid
+  permissions   SecretPermission[]
+  expiresAt     DateTime?           @map("expires_at")
+  createdById   String              @map("created_by_id") @db.Uuid
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  secret Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+
+  @@unique([secretId, principalType, principalId])
+  @@index([principalType, principalId])
+  @@map("secret_grants")
+}
+
 /// Per-organization signing secret for an integrated product's inbound webhooks
 /// (e.g. DeepSignal `insight.surfaced`). Set once by an org admin who pastes the
 /// secret the product returned at webhook-registration time. Stored encrypted at
@@ -4443,6 +4602,7 @@ model Attachment {
   logoForOrganizations Organization[] @relation("OrganizationLogo")
   avatarForUsers       User[]         @relation("UserAvatar")
   avatarForAgents      Agent[]        @relation("AgentAvatar")
+  avatarForProjects    Project[]      @relation("ProjectAvatar")
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
   organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

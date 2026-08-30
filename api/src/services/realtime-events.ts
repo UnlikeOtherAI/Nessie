@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { RealtimeNotificationPayload } from '@nessie/runtime'
-import { type WsScope } from '@nessie/schemas'
+import { parseOrganizationId, parseUserId, type WsScope } from '@nessie/schemas'
 
 const MAX_REPLAY_EVENTS = 5_000
 const REALTIME_EVENT_RETENTION_MS = 24 * 60 * 60 * 1000
@@ -8,10 +8,11 @@ const REALTIME_EVENT_PRUNE_INTERVAL_MS = 60_000
 
 export type RealtimeReplayEvent = {
   id: bigint
-  channelId: string
+  channelId: string | null
   eventType: string
   payload: unknown
   createdAt: Date
+  recipientUserId: string | null
 }
 
 type ChannelRealtimeScopeInput = {
@@ -97,15 +98,49 @@ export const resolveUserChannelRealtimeScopes = async (
     },
   })
 
+  // Public channels do not have ChannelMember rows. A person who follows a
+  // reply conversation there is nevertheless entitled to its activity and
+  // must receive the same live/replayed events as a member; otherwise the
+  // Threads badge changes only on polling.
+  const followedPublicRoots = await prisma.messageThreadFollow.findMany({
+    where: {
+      userId: input.userId,
+      rootMessage: {
+        thread: { channel: { organizationId: input.organizationId, visibility: 'public' } },
+      },
+    },
+    select: {
+      rootMessage: {
+        select: {
+          thread: { select: { channel: { select: { id: true, organizationId: true, systemChannelType: true } } } },
+        },
+      },
+    },
+  })
+
   // TODO: mid-stream channel join/leave is not reflected until reconnect.
-  return buildUserChannelRealtimeScopes(
-    memberships.map((membership) => ({
+  return [
+    {
+      kind: 'user',
+      organizationId: parseOrganizationId(input.organizationId),
+      userId: parseUserId(input.userId),
+    },
+    ...buildUserChannelRealtimeScopes(
+      [
+      ...memberships.map((membership) => ({
       channelId: membership.channel.id,
       organizationId: membership.channel.organizationId,
       systemChannelType: membership.channel.systemChannelType,
-    })),
-    input.buildChannelRealtimeScopes,
-  )
+      })),
+      ...followedPublicRoots.map((follow) => ({
+        channelId: follow.rootMessage.thread.channel.id,
+        organizationId: follow.rootMessage.thread.channel.organizationId,
+        systemChannelType: follow.rootMessage.thread.channel.systemChannelType,
+      })),
+      ],
+      input.buildChannelRealtimeScopes,
+    ),
+  ]
 }
 
 export const listRealtimeEventsAfterCursor = async (
@@ -114,17 +149,17 @@ export const listRealtimeEventsAfterCursor = async (
     afterEventId: bigint
     channelIds: string[]
     organizationId: string
+    userId: string
   },
 ): Promise<RealtimeReplayEvent[]> => {
-  if (input.channelIds.length === 0) {
-    return []
-  }
-
   return prisma.realtimeEvent.findMany({
     where: {
       organizationId: input.organizationId,
-      channelId: { in: input.channelIds },
       id: { gt: input.afterEventId },
+      OR: [
+        ...(input.channelIds.length ? [{ channelId: { in: input.channelIds } }] : []),
+        { recipientUserId: input.userId },
+      ],
     },
     orderBy: { id: 'asc' },
     take: MAX_REPLAY_EVENTS,
@@ -165,7 +200,10 @@ export const createRealtimeEventStore = (prisma: PrismaClient) => {
     const channelScope = notification.scopes.find(
       (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
     )
-    if (!channelScope) {
+    const userScope = notification.scopes.find(
+      (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
+    )
+    if (!channelScope && !userScope) {
       return null
     }
 
@@ -175,7 +213,7 @@ export const createRealtimeEventStore = (prisma: PrismaClient) => {
     )
     const organizationId =
       organizationScope?.organizationId
-      ?? (await resolveOrganizationIdForChannel(channelScope.channelId))
+      ?? (channelScope ? await resolveOrganizationIdForChannel(channelScope.channelId) : null)
 
     if (!organizationId) {
       return null
@@ -184,9 +222,10 @@ export const createRealtimeEventStore = (prisma: PrismaClient) => {
     const event = await prisma.realtimeEvent.create({
       data: {
         organizationId,
-        channelId: channelScope.channelId,
+        channelId: channelScope?.channelId,
         eventType: notification.message.event,
         payload: toJsonPayload(notification.message),
+        recipientUserId: userScope?.userId,
       },
     })
 
@@ -201,6 +240,7 @@ export const createRealtimeEventStore = (prisma: PrismaClient) => {
       afterEventId: bigint
       channelIds: string[]
       organizationId: string
+      userId: string
     }) => listRealtimeEventsAfterCursor(prisma, input),
   }
 }

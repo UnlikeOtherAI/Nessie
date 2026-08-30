@@ -13,6 +13,8 @@ import {
 } from '../src/components/features/mcp-app-store/install-scope-targets.js'
 
 const project = (overrides: Partial<ProjectRecord> = {}): ProjectRecord => ({
+  avatarAttachmentId: null,
+  avatarEmoji: null,
   createdAt: '2026-08-01T00:00:00.000Z',
   id: 'project-1',
   memberCount: 3,

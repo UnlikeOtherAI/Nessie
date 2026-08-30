@@ -184,6 +184,9 @@ export type ResolveApprovalBody = z.infer<typeof ResolveApprovalBodySchema>
 // ─── Phase 2: Audit Trail ──────────────────────────────────────────────────
 
 export const AuditActionSchema = z.enum([
+  'app.connected',
+  'app.capabilities_refreshed',
+  'app.disconnected',
   'auth.bootstrap',
   'auth.login',
   'auth.logout',
@@ -211,6 +214,7 @@ export const AuditActionSchema = z.enum([
   'channel.member_removed',
   'channel.visibility_changed',
   'agent.created',
+  'agent.owner_changed',
   'agent.updated',
   'agent.retired',
   'agent.restored',

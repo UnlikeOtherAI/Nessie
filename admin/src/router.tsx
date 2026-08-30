@@ -19,8 +19,8 @@ import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverviewPage'
 import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
+import { ThreadsPage } from './pages/ThreadsPage'
 import { FeedbackPage } from './pages/FeedbackPage'
-import { ProductPageHost } from './components/features/integrations/ProductPageHost'
 import { IntegrationsPage } from './pages/IntegrationsPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
 import { DashboardsPage } from './pages/DashboardsPage'
@@ -41,6 +41,7 @@ import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
 import { SecuritySettingsPage } from './pages/settings/SecuritySettingsPage'
+import { SecretsPage } from './pages/settings/SecretsPage'
 import { SettingsChannelsPage } from './pages/settings/SettingsChannelsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
 import { SettingsProfilePage } from './pages/settings/SettingsProfilePage'
@@ -87,10 +88,6 @@ export const router = createBrowserRouter([
     element: <Navigate to="/agents/workflows" replace />,
   },
   {
-    path: '/threads',
-    element: <Navigate to="/channels" replace />,
-  },
-  {
     path: '/chats',
     element: <Navigate to="/channels" replace />,
   },
@@ -116,6 +113,7 @@ export const router = createBrowserRouter([
   {
     element: <AdminShellLayout />,
     children: [
+      { path: '/threads', element: <ThreadsPage /> },
       {
         path: '/channels/projects/:projectId',
         element: <ChannelProjectOverviewPage />,
@@ -175,15 +173,6 @@ export const router = createBrowserRouter([
       {
         path: '/projects/:projectId/settings',
         element: <ProjectView />,
-      },
-      {
-        // Product `nav_page` surfaces (e.g. DeepSignal's /signals) mount on the
-        // generic registry-driven host. The host gates on live activation and
-        // renders the concrete page once a slice registers it in
-        // product-page-registry; adding a new product route means adding its
-        // manifest-declared path here.
-        path: '/signals',
-        element: <ProductPageHost />,
       },
       {
         path: '/dashboards',
@@ -277,6 +266,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/security',
         element: <SecuritySettingsPage />,
+      },
+      {
+        path: '/settings/secrets',
+        element: <SecretsPage />,
       },
       {
         path: '/settings/organization',

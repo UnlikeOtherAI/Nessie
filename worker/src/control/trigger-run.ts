@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  activeWorkspaceMatchesAttribution,
   buildTriggerPrompt,
   loadLedgerIdentitySettings,
   loadLedgerUoaIdentity,
@@ -27,6 +28,7 @@ import {
 import { enqueueRunExecution } from '../queue.js'
 import { claimThreadRunOrPend } from '../run/thread-serialization.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
+import { recordTriggerHealthFailure } from './trigger-health.js'
 import {
   assertTriggerExecutionOriginTenant,
   resolveTriggerExecutionOrigin,
@@ -244,6 +246,15 @@ export const queueTriggerRun = async (
     // Catches the three ways a captured identity goes stale: the link was
     // revoked, the user's credential epoch rotated (logout, password change,
     // deactivation), or the schedule predates identity capture entirely.
+    //
+    // It must ask exactly what dispatch asks. `loadLedgerUoaIdentity` checks
+    // only the account link (status, subject, epoch); the header path that
+    // actually signs a model call additionally requires the attributed team's
+    // external UOA mapping to match the captured workspace. Checking the
+    // narrower condition here let a trigger pass, create a run, and have that
+    // run die at its first inference — silently, because an unattended failure
+    // posts nothing. That is how one production schedule burned ~1.5 hours of
+    // failed runs before its epoch drifted far enough to fail this gate too.
     if (ledgerSigningConfigured && executionOrigin.userId) {
       const identity = executionOrigin.uoaIdentity
         ? await loadLedgerUoaIdentity(prisma, {
@@ -256,7 +267,26 @@ export const queueTriggerRun = async (
         : null
       if (!identity) {
         throw new TriggerLaunchOriginError(
+          'uoa_identity_unverifiable',
           'its saved UnlikeOtherAI identity is missing or no longer valid',
+        )
+      }
+      // The same predicate the signing path applies, not a second copy of it.
+      const workspaceMatches = await activeWorkspaceMatchesAttribution(
+        prisma,
+        {
+          actorId: executionOrigin.userId,
+          actorType: 'user',
+          organizationId: executionOrigin.organizationId,
+          ...(executionOrigin.teamId ? { teamId: executionOrigin.teamId } : {}),
+          userId: executionOrigin.userId,
+        },
+        identity,
+      )
+      if (!workspaceMatches) {
+        throw new TriggerLaunchOriginError(
+          'uoa_identity_unverifiable',
+          'its saved UnlikeOtherAI workspace no longer maps to its team',
         )
       }
     }
@@ -275,6 +305,7 @@ export const queueTriggerRun = async (
       })
       if (!membership) {
         throw new TriggerLaunchOriginError(
+          'channel_access_lost',
           'its saved user no longer has access to the target channel',
         )
       }
@@ -434,9 +465,9 @@ export const queueTriggerRun = async (
       triggerId: input.trigger.id,
     })
     if (error instanceof TriggerLaunchOriginError) {
-      await prisma.agentTrigger.update({
-        where: { id: input.trigger.id },
-        data: { status: 'error' },
+      await recordTriggerHealthFailure(prisma, {
+        error,
+        triggerId: input.trigger.id,
       })
     }
     throw error

@@ -20,6 +20,7 @@ import {
   normalizeNextRunAt,
   resolveExecutionTarget,
   SCHEDULER_TRIGGER_TYPES,
+  TRIGGER_ADMIN_AUDIENCE,
   type WorkflowTriggerPrismaLike,
 } from './trigger-shared.js'
 
@@ -36,7 +37,7 @@ export const listAgentTriggers = async (
     orderBy: [{ createdAt: 'asc' }],
   })
 
-  return triggers.map(mapTriggerRecord)
+  return triggers.map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 }
 
 export const listOrganizationTriggers = async (
@@ -71,7 +72,7 @@ export const listOrganizationTriggers = async (
     orderBy: [{ createdAt: 'desc' }],
   })
 
-  return triggers.map(mapTriggerRecord)
+  return triggers.map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 }
 
 export const listWorkflowInstallationTriggers = async (
@@ -83,7 +84,11 @@ export const listWorkflowInstallationTriggers = async (
     orderBy: [{ createdAt: 'asc' }],
   })
 
-  return triggers.map(mapTriggerRecord)
+  // Deliberately NOT the admin audience: this route gates on
+  // `canActorReadWorkflowInstallation` (entitlement to read the installation),
+  // not on org ownership, so it is reachable by members who may not hold the
+  // webhook intake credential. The key is revealed at creation instead.
+  return triggers.map((trigger) => mapTriggerRecord(trigger))
 }
 
 export const listScheduledTriggers = async (
@@ -126,7 +131,7 @@ export const listScheduledTriggers = async (
     take: input.limit,
   })
 
-  return triggers.map(mapTriggerRecord)
+  return triggers.map((trigger) => mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE))
 }
 
 export const createWorkflowTrigger = async (
@@ -176,7 +181,7 @@ export const createWorkflowTrigger = async (
     },
   })
 
-  return mapTriggerRecord(trigger)
+  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
 }
 
 export const getAgentTrigger = async (
@@ -321,7 +326,7 @@ export const updateAgentTrigger = async (
     },
   })
 
-  return mapTriggerRecord(trigger)
+  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
 }
 
 export const deleteAgentTrigger = async (
@@ -384,8 +389,19 @@ export const resumeAgentTrigger = async (
   if (needsRearm && !rearmed) {
     return mapTriggerRecord(
       await prisma.agentTrigger.findUniqueOrThrow({ where: { id: triggerId } }),
+      TRIGGER_ADMIN_AUDIENCE,
     )
   }
+
+  // Clear the stale verdict. Health records why the machine last refused to
+  // run this schedule; resuming is the operator asserting they want it running
+  // again, so carrying the old reason forward would leave the page explaining a
+  // failure that is no longer current. The next fire re-derives it — and if the
+  // cause is still there, that counts as a fresh transition and alerts again.
+  await prisma.agentTrigger.update({
+    data: { healthDetail: null, healthReason: null },
+    where: { id: triggerId },
+  })
 
   return updateAgentTrigger(prisma, triggerId, {
     enabled: true,

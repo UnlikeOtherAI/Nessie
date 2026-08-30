@@ -29,8 +29,19 @@ test('quiet hours evaluate now in the user timezone', () => {
 
 test('per-event preferences are enabled by default and suppress only their own event', () => {
   const now = new Date('2026-06-07T12:00:00.000Z')
+  const pushKinds = [
+    'messages',
+    'mentions',
+    'budgetAlerts',
+    'assignedWork',
+    'publishedKnowledge',
+    'triggerHealth',
+  ] as const
 
   assert.equal(shouldSuppressPushForPreferences({}, now, 'messages'), false)
+  for (const kind of pushKinds) {
+    assert.equal(shouldSuppressPushForPreferences({ focusModeEnabled: true }, now, kind), true)
+  }
   assert.equal(shouldSuppressPushForPreferences({}, now, 'mentions'), false)
   assert.equal(shouldSuppressPushForPreferences({}, now, 'budgetAlerts'), false)
   assert.equal(shouldSuppressPushForPreferences({}, now, 'assignedWork'), false)

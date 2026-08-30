@@ -149,69 +149,8 @@ export const DeepWaterResearchRunRecordSchema = z.object({
 export type DeepWaterResearchRunRecord =
   z.infer<typeof DeepWaterResearchRunRecordSchema>
 
-// DeepSignal Signals page (surface-registry plan §4). The Signals route calls
-// the product's `insight_digest` MCP tool through the user's user-scoped
-// instance and returns the digest as typed records; `insight_act` proxies a
-// done/snooze/mute/reopen action back. Fail-closed: when the connector is not
-// installed / signed in for the user the route returns `needs_setup` (not a
-// fabricated list), which the page renders as a "Connect DeepSignal" empty
-// state.
-export const DeepSignalSignalStatusSchema = z.enum([
-  'active',
-  'done',
-  'snoozed',
-  'muted',
-])
-export type DeepSignalSignalStatus = z.infer<typeof DeepSignalSignalStatusSchema>
-
 export const DeepSignalSignalKindSchema = z.enum(['opportunity', 'risk', 'signal'])
 export type DeepSignalSignalKind = z.infer<typeof DeepSignalSignalKindSchema>
-
-export const DeepSignalSignalRecordSchema = z.object({
-  id: NonEmptyStringSchema,
-  headline: NonEmptyStringSchema,
-  summary: z.string(),
-  status: DeepSignalSignalStatusSchema,
-  kind: DeepSignalSignalKindSchema.nullable(),
-  actionIds: z.array(NonEmptyStringSchema),
-  deepLink: z.string().url().nullable(),
-  surfacedAt: TimestampSchema.nullable(),
-})
-export type DeepSignalSignalRecord = z.infer<typeof DeepSignalSignalRecordSchema>
-
-export const DeepSignalSignalsResponseSchema = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('ok'),
-    items: z.array(DeepSignalSignalRecordSchema),
-  }),
-  z.object({ status: z.literal('needs_setup') }),
-])
-export type DeepSignalSignalsResponse =
-  z.infer<typeof DeepSignalSignalsResponseSchema>
-
-export const DeepSignalSignalActionSchema = z.enum([
-  'done',
-  'snooze',
-  'mute',
-  'reopen',
-])
-export type DeepSignalSignalAction = z.infer<typeof DeepSignalSignalActionSchema>
-
-export const DeepSignalSignalActRequestSchema = z.object({
-  action: DeepSignalSignalActionSchema,
-})
-export type DeepSignalSignalActRequest =
-  z.infer<typeof DeepSignalSignalActRequestSchema>
-
-export const DeepSignalSignalActResponseSchema = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('ok'),
-    item: DeepSignalSignalRecordSchema.nullable(),
-  }),
-  z.object({ status: z.literal('needs_setup') }),
-])
-export type DeepSignalSignalActResponse =
-  z.infer<typeof DeepSignalSignalActResponseSchema>
 
 export const IntegratedProductResponseSchema = z.object({
   id: z.string().uuid(),

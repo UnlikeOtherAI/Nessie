@@ -33,6 +33,8 @@ export type UpdateChannelBody = z.infer<typeof UpdateChannelBodySchema>
 export const ProjectRecordSchema = z.object({
   id: ProjectIdSchema,
   name: NonEmptyStringSchema,
+  avatarEmoji: z.string().min(1).max(32).nullable(),
+  avatarAttachmentId: z.string().uuid().nullable(),
   organizationId: OrganizationIdSchema,
   memberCount: z.number().int().nonnegative(),
   teamCount: z.number().int().nonnegative().optional(),
@@ -81,8 +83,13 @@ export const CreateChannelBodySchema = z.object({
 })
 
 export const UpdateProjectBodySchema = z.object({
-  name: NonEmptyStringSchema,
-})
+  name: NonEmptyStringSchema.optional(),
+  avatarEmoji: z.string().trim().min(1).max(32).nullable().optional(),
+  avatarAttachmentId: z.string().uuid().nullable().optional(),
+}).refine(
+  (body) => body.name !== undefined || body.avatarEmoji !== undefined || body.avatarAttachmentId !== undefined,
+  { message: 'At least one project field is required' },
+)
 
 export const AddChannelMemberBodySchema = z.object({
   userId: UserIdSchema,

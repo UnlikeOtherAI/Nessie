@@ -55,6 +55,9 @@ export type SseEventMap = {
     content?: string
     createdAt?: string
     rootMessageId?: string
+    // Set when the finished message is disclosure-restricted: content is
+    // withheld and the client must refetch through the gated endpoint.
+    restricted?: true
   }
   'message.reaction': { messageId: string; agentId?: AgentId; userId?: string; emoji: string }
   // Live document composition (`kb_document_compose`). `stream.document.delta`
@@ -163,6 +166,12 @@ export const StreamDoneEventSchema = z.object({
   createdAt: TimestampSchema.optional(),
   rootMessageId: z.string().uuid().optional(),
   runId: RunIdSchema,
+  // The finished message draws on restricted sources, so its content is not on
+  // this event. Clients must refetch through the gated list endpoint rather
+  // than caching an empty body. Declared here because zod strips undeclared
+  // keys: without it the marker never reached a client and the terminator
+  // looked like an ordinary empty-content completion.
+  restricted: z.literal(true).optional(),
   // Absent when the run answered with a reaction rather than a message.
   // `stream.done` is the run terminator either way: clients must always clear
   // the pending thinking bubble on it, and append a message row only when

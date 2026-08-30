@@ -22,6 +22,7 @@ const checkpointRow = (over: Record<string, unknown> = {}) => ({
   id: 'checkpoint-1',
   note: '## State\nhalf done',
   reason: 'token_limit',
+  runId: 'run-1',
   sources: [{ title: 'A', url: 'https://example.com/a' }],
   ...over,
 })
@@ -31,6 +32,9 @@ const prismaWith = (input: {
   updateCount: number
   updates?: UpdateManyArg[]
   queries?: unknown[]
+  // The writing run's provenance ledger. A checkpoint belongs to one run, so
+  // its `RunBasisScope` rows are the checkpoint's basis.
+  runBasis?: Array<{ scopeType: string; scopeId: string }>
 }): PrismaClient => ({
   runCheckpoint: {
     findFirst: async (arg: unknown) => {
@@ -42,6 +46,7 @@ const prismaWith = (input: {
       return { count: input.updateCount }
     },
   },
+  runBasisScope: { findMany: async () => input.runBasis ?? [] },
 } as unknown as PrismaClient)
 
 test('an unconsumed checkpoint is claimed by a single conditional update', async () => {
@@ -89,6 +94,7 @@ test('a checkpoint already claimed by THIS run is reused without a second update
 
 test('the injected block is explicitly untrusted and lists sources verbatim', () => {
   const injection = buildCheckpointInjection({
+    basisScopes: [],
     createdAt: new Date(),
     generation: 2,
     id: 'checkpoint-1',
@@ -122,6 +128,7 @@ test('persisting a checkpoint upserts on runId and emits run.checkpointed', asyn
 
   const id = await persistRunCheckpoint(prisma, {
     agentId: 'agent-1',
+    basis: [],
     generation: 3,
     note: 'note',
     organizationId: 'org-1',
@@ -173,4 +180,30 @@ test('a failed note call degrades to a mechanical note instead of losing the wor
   assert.match(note.note, /research slack clones/)
   assert.match(note.note, /Mattermost/)
   assert.deepEqual(note.sources, [])
+})
+
+test("a checkpoint carries the writing run's basis, so a resume cannot launder it", async () => {
+  // The note is built from the run's raw transcript including verbatim tool
+  // output. Without this the next run received privileged text in full and then
+  // computed its reply basis from a sink that had never seen those scopes — so
+  // "keep going" turned a restricted answer into an unrestricted one.
+  const loaded = await loadRunCheckpointForRun(
+    prismaWith({
+      row: checkpointRow(),
+      runBasis: [{ scopeId: 'user-9', scopeType: 'user' }],
+      updateCount: 1,
+    }),
+    { rootMessageId: 'root-1', runId: 'run-2', threadId: 'thread-1' },
+  )
+
+  assert.deepEqual(loaded?.basisScopes, [{ scopeId: 'user-9', scopeType: 'user' }])
+})
+
+test('an unrestricted checkpoint reports an empty basis, which is the common case', async () => {
+  const loaded = await loadRunCheckpointForRun(
+    prismaWith({ row: checkpointRow(), updateCount: 1 }),
+    { rootMessageId: 'root-1', runId: 'run-2', threadId: 'thread-1' },
+  )
+
+  assert.deepEqual(loaded?.basisScopes, [])
 })

@@ -12,6 +12,7 @@ export type PushSurfaceTarget =
   | { kind: 'ops_usage' }
   | { kind: 'project_board'; projectId: string }
   | { kind: 'knowledge_space'; spaceId: string }
+  | { kind: 'triggers' }
 
 /**
  * Returns the recipient ids that are already viewing the exact destination of

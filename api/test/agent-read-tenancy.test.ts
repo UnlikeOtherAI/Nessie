@@ -114,7 +114,7 @@ test('children listing excludes historical cross-organization parent links', asy
     },
   } as unknown as PrismaClient
 
-  const result = await loadAgentChildren(prisma, parentId, organizationId)
+  const result = await loadAgentChildren(prisma, parentId, visibility)
 
   assert.deepEqual(result.map((child) => child.agentId), [localChildId])
 })

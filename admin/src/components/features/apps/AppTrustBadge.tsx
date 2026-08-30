@@ -39,6 +39,12 @@ export const AppTrustBadge = ({ trustLevel }: AppTrustBadgeProps) => {
     >
       <FontAwesomeIcon className="h-2.5 w-2.5" icon={ICONS[badge.iconId]} />
       {badge.label}
+      {/* The chip's meaning must not live only in a `title`. A tooltip never
+          appears on touch and is not part of the accessible name, so "Community"
+          reached a screen reader as a bare word with nothing behind it. The
+          sentence rides along visually hidden, leaving the chip's size — the
+          reason it is one word on screen — unchanged. */}
+      <span className="sr-only">{`: ${badge.description}`}</span>
     </span>
   )
 }

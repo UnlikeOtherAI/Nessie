@@ -71,16 +71,27 @@ export const AgentTriggerDeliveryRecordSchema = z.object({
 })
 export type AgentTriggerDeliveryRecord = z.infer<typeof AgentTriggerDeliveryRecordSchema>
 
+// `source` is deliberately absent: it is provenance, rendered as the delivery's
+// origin on the Triggers page, and the route decides it. Accepting it from the
+// body let a caller label their own fire `scheduler`, falsifying the one audit
+// trail an operator has when a schedule misbehaves.
 export const FireAgentTriggerBodySchema = z.object({
   dedupeKey: z.string().min(1).optional(),
-  source: z.string().min(1).optional(),
   prompt: z.string().min(1).optional(),
   payload: z.unknown().optional(),
 })
 
+// `takeOver` is the owner's explicit "run this as me instead" — never implicit,
+// because re-pointing a schedule's workspace moves its billing attribution.
+export const ReauthorizeAgentTriggerBodySchema = z.object({
+  takeOver: z.boolean().optional(),
+})
+
+// `source` is absent here for the same reason it is absent from the fire body:
+// it is provenance shown in the delivery log, so a caller must not be able to
+// label their own event `scheduler`.
 export const PublishEventBodySchema = z.object({
   dedupeKey: z.string().min(1).optional(),
   eventType: NonEmptyStringSchema,
   payload: z.record(z.unknown()).default({}),
-  source: z.string().min(1).optional(),
 })

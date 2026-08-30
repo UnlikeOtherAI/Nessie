@@ -29,6 +29,7 @@ import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
 import { recordToolEnd } from './tool-events.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
+import { runReplyIsRestricted } from './agent-message.js'
 
 export const runExecutionAgentLoop = async (
   deps: ExecutionDependencies,
@@ -236,6 +237,11 @@ export const runExecutionAgentLoop = async (
       },
       onTextDelta: async (delta) => {
         if (input.inference.consumeStreamedFlag()) {
+          return
+        }
+        // Same gate as the streaming path in `run-inference.ts`: the live lane
+        // is a thread-wide broadcast and cannot withhold per viewer.
+        if (runReplyIsRestricted(context)) {
           return
         }
         await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.delta', {

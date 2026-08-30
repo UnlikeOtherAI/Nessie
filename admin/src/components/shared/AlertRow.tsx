@@ -31,11 +31,14 @@ const formatRelativeTime = (value: string): string => {
 export const AlertRow = ({ alert }: { alert: UserAlertRecord }) => {
   const unread = alert.readAt === null
   const actor = alert.actorDisplayName ?? 'Someone'
-  const description = alert.kind === 'task_assigned'
-    ? `${actor} assigned work to you`
-    : alert.kind === 'knowledge_published'
-      ? `${actor} published knowledge for you`
-      : `${actor} mentioned you${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
+  const description = alert.kind === 'trigger_health'
+    // No actor: nobody did this, a schedule stopped being able to run.
+    ? 'A scheduled task stopped running'
+    : alert.kind === 'task_assigned'
+      ? `${actor} assigned work to you`
+      : alert.kind === 'knowledge_published'
+        ? `${actor} published knowledge for you`
+        : `${actor} mentioned you${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
 
   return (
     <>

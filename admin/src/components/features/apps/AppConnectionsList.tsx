@@ -55,6 +55,15 @@ export const AppConnectionsList = ({ app }: AppConnectionsListProps) => {
               {connectedLabel ? (
                 <div className="mt-1 text-xs text-[color:var(--tx3)]">{connectedLabel}</div>
               ) : null}
+              {/* A switched-off account has no control here and none anywhere
+                  else either — nothing in the product moves an install out of
+                  `paused`. Saying so, and naming the one route that does work,
+                  is the difference between a status and a dead end. */}
+              {connection.status === 'disabled' ? (
+                <div className="mt-1 text-xs text-[color:var(--tx3)]">
+                  Switched off. Connecting an account below is the way to use this app again.
+                </div>
+              ) : null}
               {connection.errorMessage ? (
                 <p
                   className={[

@@ -151,6 +151,9 @@ export const useTriggersPageState = (): TriggersPageState => {
       active: sortedTriggers.filter((trigger) => trigger.status === 'active').length,
       paused: sortedTriggers.filter((trigger) => trigger.status === 'paused').length,
       error: sortedTriggers.filter((trigger) => trigger.status === 'error').length,
+      needs_reauthorization: sortedTriggers.filter(
+        (trigger) => trigger.status === 'needs_reauthorization',
+      ).length,
     }),
     [sortedTriggers],
   )

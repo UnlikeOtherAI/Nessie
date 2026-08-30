@@ -14,6 +14,8 @@ const IDS = {
 } as const
 
 const project = (id: string, name: string): ProjectRecord => ({
+  avatarAttachmentId: null,
+  avatarEmoji: null,
   createdAt: '2026-08-20T10:00:00.000Z',
   id,
   memberCount: 1,

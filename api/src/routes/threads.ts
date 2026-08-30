@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 
 import {
+  detectSecrets,
+  parseOrganizationId,
   parseThreadId,
+  parseUserId,
 } from '@nessie/schemas'
 import {
   ListThreadMessagesQuerySchema,
@@ -24,9 +27,11 @@ import {
 } from '../services/messages.js'
 import { toggleUserReaction } from '../services/message-reactions.js'
 import { loadRunThinkingLog, loadThreadThinking } from '../services/run-thinking.js'
+import { canUserReadRunBasis } from '../services/run-disclosure.js'
 import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js'
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
+import { registerThreadActivityRoutes } from './thread-activity.js'
 import type { RouteDeps } from './types.js'
 
 export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -38,6 +43,8 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     requireActorContext,
     buildChannelRealtimeScopes,
   } = deps
+
+  registerThreadActivityRoutes(app, deps)
 
   app.get('/api/threads/:threadId/messages', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -109,7 +116,12 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
 
     return createApiResponse(
-      ThreadThinkingSchema.parse(await loadThreadThinking(prisma, thread.id)),
+      ThreadThinkingSchema.parse(
+        await loadThreadThinking(prisma, thread.id, {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        }),
+      ),
     )
   })
 
@@ -133,6 +145,20 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const log = await loadRunThinkingLog(prisma, { runId, threadId: thread.id })
     if (!log) {
+      sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
+      return reply
+    }
+
+    // The thought log inherits the reply's provenance: a viewer withheld the
+    // restricted answer must not read the reasoning that produced it. Answering
+    // 404 (rather than 403) keeps this consistent with the route's existing
+    // "do not confirm what you cannot see" behaviour above.
+    const readable = await canUserReadRunBasis(prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      runId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!readable) {
       sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
       return reply
     }
@@ -164,7 +190,9 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
 
     const marked = await markThreadRead(prisma, {
+      organizationId: actorContext.tenant.organizationId,
       rootMessageId: body.rootMessageId,
+      lastReadMessageId: body.lastReadMessageId,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
     })
@@ -172,6 +200,21 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 404, 'REPLY_ROOT_NOT_FOUND', 'Reply conversation not found')
       return reply
     }
+
+    // Read state is per person. Deliver a durable, recipient-private event so
+    // their other sessions refresh immediately without exposing a read receipt
+    // to every channel participant.
+    await realtimeHub.publishWs([
+      { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+      {
+        kind: 'user',
+        organizationId: parseOrganizationId(actorContext.tenant.organizationId),
+        userId: parseUserId(actorContext.actor.actorId),
+      },
+    ], {
+      data: { rootMessageId: body.rootMessageId, threadId: thread.id },
+      event: 'thread.read',
+    })
 
     return reply.code(200).send(createApiResponse({ ok: true }))
   })
@@ -252,6 +295,15 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const body = parseInput(UpdateThreadMessageBodySchema, request.body, reply)
     if (!body) {
+      return reply
+    }
+    if (detectSecrets(body.content).length > 0) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this message was saved. Save it through Secrets instead.',
+      )
       return reply
     }
 
@@ -340,7 +392,14 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const record = await mapMessageRecordWithAttachments(prisma, result.message)
+    // A channel manager may delete a message they were never entitled to read,
+    // so the record echoed back to them goes through the disclosure predicate
+    // like any other read.
+    const record = await mapMessageRecordWithAttachments(prisma, result.message, {
+      channelId: thread.channel.id,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
     await realtimeHub.publishWs(
       buildChannelRealtimeScopes({
         channelId: thread.channel.id,

@@ -11,6 +11,8 @@ type PushPreferenceCardProps = {
   disabled: boolean
   pushAssignedWork: boolean
   pushBudgetAlerts: boolean
+  pushTriggerHealth: boolean
+  setPushTriggerHealth: (value: boolean) => void
   pushEnabled: boolean
   pushMentions: boolean
   pushMessages: boolean
@@ -57,6 +59,8 @@ export const PushPreferenceCard = ({
   disabled,
   pushAssignedWork,
   pushBudgetAlerts,
+  pushTriggerHealth,
+  setPushTriggerHealth,
   pushEnabled,
   pushMentions,
   pushMessages,
@@ -110,6 +114,12 @@ export const PushPreferenceCard = ({
             description: 'Operational budget warnings and blocks for organisation owners.',
             label: 'Budget alerts',
             onChange: setPushBudgetAlerts,
+          },
+          {
+            checked: pushTriggerHealth,
+            description: 'A scheduled task that stopped running and needs attention.',
+            label: 'Scheduled task failures',
+            onChange: setPushTriggerHealth,
           },
           {
             checked: pushAssignedWork,

@@ -12,32 +12,59 @@ const USER_ID = '00000000-0000-4000-8000-000000000003'
 test('opening a reply conversation advances only that root cursor', async () => {
   const rootCreatedAt = new Date('2026-08-13T10:00:00.000Z')
   const replyCreatedAt = new Date('2026-08-13T10:02:00.000Z')
-  let readInput: unknown
+  let sql = ''
   const prisma = {
     threadReadState: {
       findUnique: async () => ({ lastReadAt: new Date('2026-08-13T09:00:00.000Z') }),
     },
     message: {
-      findFirst: async ({ where }: { where: { OR?: unknown } }) =>
-        where.OR ? { createdAt: replyCreatedAt } : { createdAt: rootCreatedAt },
+      findFirst: async ({ where }: { where: { id?: string } }) =>
+        where.id === ROOT_ID
+          ? { agentId: null, basisScopes: [], createdAt: rootCreatedAt, id: ROOT_ID }
+          : null,
+      findMany: async () => [{
+        agentId: null,
+        basisScopes: [],
+        createdAt: replyCreatedAt,
+        id: '00000000-0000-4000-8000-000000000004',
+      }],
     },
-    messageConversationReadState: {
-      upsert: async (input: unknown) => {
-        readInput = input
-      },
-    },
+    $executeRaw: async (query: { sql: string }) => { sql = query.sql },
   } as unknown as PrismaClient
 
   assert.equal(await markThreadRead(prisma, {
+    organizationId: '00000000-0000-4000-8000-000000000005',
     rootMessageId: ROOT_ID,
     threadId: THREAD_ID,
     userId: USER_ID,
   }), true)
-  assert.deepEqual(readInput, {
-    where: { rootMessageId_userId: { rootMessageId: ROOT_ID, userId: USER_ID } },
-    create: { rootMessageId: ROOT_ID, userId: USER_ID, lastReadAt: replyCreatedAt },
-    update: { lastReadAt: replyCreatedAt },
-  })
+  assert.match(sql, /ON CONFLICT \("root_message_id", "user_id"\) DO UPDATE/)
+  assert.match(sql, /EXCLUDED\."last_read_at" > "message_conversation_read_states"\."last_read_at"/)
+  assert.match(sql, /last_read_message_id/)
+})
+
+test('a missing or deleted client cursor cannot mark a conversation read', async () => {
+  let wrote = false
+  const prisma = {
+    threadReadState: { findUnique: async () => null },
+    message: {
+      findFirst: async ({ where }: { where: { id?: string } }) =>
+        where.id === ROOT_ID
+          ? { agentId: null, basisScopes: [], createdAt: new Date(), id: ROOT_ID }
+          : null,
+      findMany: async () => [],
+    },
+    $executeRaw: async () => { wrote = true },
+  } as unknown as PrismaClient
+
+  assert.equal(await markThreadRead(prisma, {
+    organizationId: '00000000-0000-4000-8000-000000000005',
+    rootMessageId: ROOT_ID,
+    lastReadMessageId: '00000000-0000-4000-8000-000000000099',
+    threadId: THREAD_ID,
+    userId: USER_ID,
+  }), false)
+  assert.equal(wrote, false)
 })
 
 test('the unread query resolves a message-level cursor before the legacy container cursor', async () => {

@@ -4,6 +4,7 @@ import { ApiClientProvider } from './ApiClientProvider'
 import { AuthSessionProvider } from './AuthSessionProvider'
 import { ExternalAuthProvider } from './ExternalAuthProvider'
 import { FontScaleProvider } from './FontScaleProvider'
+import { FocusModeProvider } from './FocusModeProvider'
 import { QueryProvider } from './QueryProvider'
 import { ThemeProvider } from './ThemeProvider'
 
@@ -14,7 +15,9 @@ export const AppProvider = () => (
         <ApiClientProvider>
           <ThemeProvider>
             <FontScaleProvider>
-              <RouterProvider router={router} />
+              <FocusModeProvider>
+                <RouterProvider router={router} />
+              </FocusModeProvider>
             </FontScaleProvider>
           </ThemeProvider>
         </ApiClientProvider>

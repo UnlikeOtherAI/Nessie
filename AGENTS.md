@@ -74,6 +74,7 @@ delivery.
   - **Never *depend* on a globally-scoped production lookup either.** Asserting on the global scope is only half of it: a test also breaks when the code under test reads it. `resolveUoaWorkspaceContext` used to resolve "the shared organization" as the globally oldest `Organization` row (right in production — one org, never deleted; unstable in a test database where a dozen suites create and delete organizations): a suite that seeded its own organization still got a *foreign* one back, and died on a foreign-key violation the moment that suite's cleanup deleted it. The UOA path now resolves 1:1 by `Organization.externalOrgId` — deterministic per suite by construction (`api/test/workspace-context-postgres-race.test.ts` no longer anchors an epoch-dated org) — but the oldest-org lookup survives for the legacy no-workspace/generic-OIDC path, so the rule stands: make such a lookup resolve the seed deterministically and assert that it did, so the precondition is stated rather than assumed.
   - **A suite that drives a global poller needs an exclusive database.** Unique per-suite ids are not enough — a foreign `queued` mailbox row is claimed ahead of the suite's own. Those suites live in `worker/test/db/`, run via `pnpm --filter @nessie/worker test:db` with `--test-concurrency=1` (one file at a time), and call `assertGlobalQueuesQuiet` first, which fails fast with an actionable message rather than dispatching a real database's mail. `test:unit` globs `test/*.test.ts`, so the directory itself is the split.
   - **Timestamps are `timestamp(3)` and Postgres *rounds* into them.** Back-to-back inserts tie on `created_at` (5 rapid inserts typically record ~3 distinct values), so a test that asserts an exact arrival order must set the order explicitly rather than race the clock. Rounding also puts a just-inserted `visible_at` up to ~0.5 ms in the *future* versus full-precision `now()`, so a row can be briefly invisible to a `visible_at <= now()` poller — real pollers loop, single-shot tests must seed an explicitly past `visibleAt`.
+- **A cast Prisma fake is unityped, so a query it does not model fails as a runtime `TypeError` — extend the fake in the change that extends the query.** `as unknown as PrismaClient` silences the compiler, so a delegate or a nested relation the fake omits is `undefined` at call time, not a type error. Both shapes have shipped red to `main`: project avatars became a published attachment reference and `prisma.project.count` took five attachment-ACL tests down with `reading 'count'`; and `team.findMany`/`findFirst` returned flat rows while production read `team.project.organization.name` and `…organization.members[0].role`, which login wrapped as a 401 `EXTERNAL_AUTH_FAILED` so the shape mismatch never named itself. The rule follows the disclosure-sink one: the obligation sits on the *query*. Adding a counted reference, a `select`ed relation, or a new delegate means teaching the fake in the same commit — and a fake that honours `select` must honour the `where` beside it, or it widens the result set while it is at it. Prefer asserting the new case too (`api/test/attachment-unlinked-access.test.ts` had no project-avatar case at all).
 - Mock-LLM harness: deterministic scripted inference for tests lives in `@nessie/mock-llm` (`packages/mock-llm`, scenario JSON + in-process `runInference` adapter + OpenAI-compatible HTTP server). `pnpm --filter @nessie/worker test:smoke` runs the full-pipeline CI smoke (seeded Postgres → enqueue → loop → tool call → completion); `pnpm --filter @nessie/worker test:load --runs N --workers W` runs the load mode. See `docs/mock-llm-harness.md`.
 
 ## Natural-language intent is model-judged — never string-matched
@@ -171,6 +172,66 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `agent_trigger_create` usable on an agent the user merely named, rather than
   only on one created in the same conversation. Details:
   `CLAUDE.md` → "Personal assistant — workspace provisioning".
+- **A read that enters a run's context feeds the disclosure sink, in the same
+  change.** An agent reaches material its audience cannot, and what stops it
+  laundering that into a shared room is provenance: `ConsumedSourceSink`
+  (`worker/src/run/execute/disclosure-basis.ts`) collects the scoped sources a run
+  consumed, `computeReplyBasis` subtracts what the destination already implies,
+  and the remainder is stamped on the message and the run by the one write
+  chokepoint (`agent-message.ts`). **An empty basis means unrestricted**, so a
+  read path that forgets to feed the sink does not fail loudly — it publishes to
+  everyone. That is the whole defect class, and it is why the obligation sits on
+  the *read*, not on the reply. Adding a tool that puts content in the window and
+  not adding its scope is the same defect as skipping the `FileService`.
+  Corollaries, each learned from a real gap: resolve a source's scope with the
+  shared `scopeForVisibility` rather than a second mapping beside your reader,
+  since a thought's `(audience_type, audience_id)` and a knowledge space's
+  `visibility` + chain are one fact in two shapes; record a channel scope only
+  when the channel is **not public**, because viewer channel scopes come from
+  `ChannelMember` rows alone and stamping a public channel withholds the reply
+  from people entitled to read the source; and make search **fail closed**
+  (exclude anything carrying a basis) rather than withhold, because a snippet
+  list has nowhere to render a placeholder. On the read side every path asks the
+  one predicate — list, single message, and the durable thought log alike, since
+  reasoning inherits the provenance of what the reply was built from. The live
+  SSE lanes cannot filter per viewer, so they are cut structurally by
+  `runReplyIsRestricted` the moment a run consumes a privileged source; that
+  predicate is monotone by construction, which is what makes it safe to call per
+  delta. Containment (`constrainScopesToDestination`) is a floor under all of
+  this, but it constrains **memory recall only** — never treat it as "nothing
+  crosses". Details: `CLAUDE.md` → "Disclosure boundaries"; spec and build status:
+  `docs/plans/2026-08-11-disclosure-boundaries-build.md`.
+- **An agent belongs to a person, and the org tree is a read-time JOIN — never
+  a stored hierarchy.** `Agent.ownerUserId` (stewardship: their "virtual
+  employee") is the only local fact behind it; people, roles, teams and
+  lifecycle come from UOA live on every read. There is deliberately **no human
+  reporting edge**: UOA's roster carries no manager field, and an edge that
+  decided authority would be the second org hierarchy the SSO invariant forbids
+  whatever table it sat in. Tenancy is enforced in the database — a composite FK
+  `(organization_id, owner_user_id) → organization_members`, because
+  `spawn_subtask` writes agents outside the `createAgentRecord` chokepoint, with
+  `ON DELETE NO ACTION` since on a composite key `SET NULL` blanks *every*
+  referencing column including `organization_id`; a CHECK keeps ownership off
+  system-managed and org-less agents (the PA is one org-singleton row serving
+  everyone). The FK proves the membership row *exists*, never that it is live:
+  deactivated rows are retained deliberately, so **every read re-derives
+  `deactivatedAt: null`**. One predicate, `buildOwnedAgentWhere`, is shared by
+  `listAgentsForUser` and `isAgentVisibleToUser` so list and detail cannot
+  disagree, and both of its conditions are load-bearing — the live-membership
+  join (the branch widens by pointer equality, so without it a deactivated
+  member keeps seeing their agents) and `parentAgentId: null` (else owning one
+  agent pours every unreaped `spawn_subtask` child into that list forever).
+  `loadAgentChildren` takes the viewer's scope for the same reason. Never
+  backfill ownership: nothing recorded who created an agent, so old rows read
+  `Unowned` and `agent.created`/`agent.owner_changed` now emit instead. The tree
+  itself is one `buildPeopleAgentsTree` rendered on `/settings/members` with the
+  people source parameterised (UOA roster, or local `User` rows on a no-IdP
+  install) — *unowned* and *owned outside this workspace* stay separate buckets,
+  because the roster is team-keyed and a colleague on another team is otherwise
+  indistinguishable from someone who left. `resolveLocalUserIdsByUoaSub` is
+  org-scoped: `User.uoaSub` is globally unique, so the naive lookup hands this
+  organisation a principal id for a stranger. Spec:
+  `docs/plans/2026-08-29-people-and-their-agents.md`.
 - **Live document streaming taps the model's own tool-call arguments, and its
   live path never touches durable storage.** `kb_document_compose` emits the
   document as its `markdown` argument; the enriched `tool_call.delta` events
@@ -193,6 +254,30 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   never collapse them into one, or the check becomes a restatement. An
   ambiguous anchor is skipped in the preview and refused in words at save.
   Spec: `docs/plans/2026-08-13-live-document-streaming/overview.md`.
+- **A capability that can stop working owns the way a person finds out.** A
+  recurring trigger whose captured UOA identity stopped verifying was flipped to
+  `error` and abandoned — non-claimable by the sweep, abandoned by the retry
+  poller, and announced to nobody, so one production schedule was dead and
+  silent for nineteen days. The obligation sits on the **transition**, not on
+  whoever might later look: classify the failure into a state that names its
+  remedy (`needs_reauthorization` is a button; `error` is an edit), persist the
+  reason so the surface can explain it, and alert exactly once per transition —
+  `health_revision` plus the existing `user_alerts (user_id, event_key)`
+  uniqueness, never a second marker table. Exactly-once is what separates this
+  from the repeating-apology failure the unattended-run path deliberately avoids
+  (`worker/src/run/execute/failure.ts`): an unattended run posts nothing to chat
+  for good reason, so the signal has to be a durable alert instead. Recovery is
+  **explicit** — `POST /api/triggers/:id/reauthorize` re-captures a live
+  identity, sharing `captureScheduledLaunchOrigin` with the create route. Never
+  auto-heal at login: signing in proves the same person is present, not that
+  they intend a dormant automation to resume, and an epoch may have rotated
+  because access was withdrawn. Re-stamp the **epoch only**; the organisation
+  and team decide billing attribution, so refreshing them from whoever clicks
+  repair moves a schedule's costs as a side effect. Re-arm from **now**, or a
+  long-dead cron schedule grinds through every missed occurrence. And a fire
+  gate must ask exactly what dispatch asks: checking a strict subset let
+  triggers pass, create runs, and die at the first inference invisibly. Details:
+  `CLAUDE.md` → "A schedule that stops says so".
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and
@@ -213,7 +298,12 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   composed with `catalogTenancyWhere` — and `curated` additionally requires
   public+published or caller-owned, because the migration backfills `curated`
   onto every pre-existing non-public row and a bare `IN` would list one
-  member's private draft connector to their whole organisation. Ranking lives
+  member's private draft connector to their whole organisation. **The store
+  reads a decision and never re-derives one from `status`**: approval writes
+  `approved`, rejection and deprecation write `hidden`, and submission writes
+  nothing (a request is not a decision). Skipping those writes is what let a
+  rejected connector keep rendering to its owner and a deprecated one keep an
+  enabled Connect button. Ranking lives
   in Postgres (weighted name/aliases A, publisher B, tags C, prose D, plus a
   `pg_trgm` typo fallback); **the client filters nothing and re-sorts nothing**,
   because re-scoring the server's answer in the browser silently drops the
@@ -226,6 +316,22 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   restating it, so a member-readable surface can never name an agent
   `GET /api/agents` would withhold. Spec:
   `docs/plans/2026-08-29-mcp-app-store/overview.md`.
+- **App Store connect orchestrates the existing OAuth/instance machinery; it is
+  never a second stack.** `POST /api/apps/:slug/connect` sequences
+  `createInstance` → probe → `startOAuth`. PKCE must be present on BOTH legs —
+  sending `code_challenge` without returning `code_verifier` makes any RFC 7636
+  §4.6 server reject the exchange, and the completion tests that used an
+  argument-ignoring stub are why that shipped unnoticed once. The OAuth callback
+  stays a **constant HTML page that never redirects** (a caller-supplied return
+  URL is an open redirect); it posts a fixed message to its opener at a
+  server-resolved origin, and the popup carries `noopener` because its first
+  navigation is the third-party authorize URL, not ours. **Installing an app is
+  not granting it**: `McpServerInstance.requiresExplicitToolGrant` (default
+  false) is carried into `projectMcpToolDescriptors` on both the create and
+  update branches — update too, or a capability discovered by a later refresh
+  projects open and silently widens the app — and the worker's existing
+  `isExposed` enforces default-OFF. Never add a grant table: `ToolGrant` rows
+  exist and the worker never reads them.
 - MCP connector management logic (catalog, instances, probe, projection,
   credentials, secret store, library, discovery, OAuth) lives in
   `@nessie/mcp-manage` and is shared by the API routes and the worker's

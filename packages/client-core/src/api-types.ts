@@ -59,6 +59,8 @@ export type ChannelRecord = {
 }
 
 export type ProjectRecord = {
+  avatarAttachmentId: string | null
+  avatarEmoji: string | null
   channelCount?: number
   createdAt: string
   id: string
@@ -101,6 +103,19 @@ export type CallRecord = {
   status: 'active' | 'ended'
 }
 
+/**
+ * The resolved steward of an agent. `ownerState` is re-derived server-side on
+ * every read rather than implied by the stored pointer, because a deactivated
+ * membership row is retained deliberately and would otherwise still read as a
+ * present colleague.
+ */
+export type AgentOwner = {
+  avatarAttachmentId?: string | null
+  displayName?: string
+  ownerState: 'active' | 'deactivated' | 'unknown'
+  userId: string
+}
+
 export type AgentRecord = {
   avatarAttachmentId?: string | null
   avatarBackgroundColor?: AgentAvatarBackgroundColor | null
@@ -118,6 +133,7 @@ export type AgentRecord = {
   provider?: string
   agentKind?: 'shared' | 'personal_assistant'
   delegationMode?: 'none' | 'act_as_requesting_user'
+  owner?: AgentOwner | null
   ownerUserId?: string | null
   role: string
   runLimits?: AgentRunLimits | null
@@ -353,11 +369,13 @@ export type AgentTriggerRecord = {
   agentId?: string
   workflowInstallationId?: string
   type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
-  status: 'active' | 'paused' | 'error'
+  status: 'active' | 'paused' | 'error' | 'needs_reauthorization'
   enabled: boolean
   name?: string
   description?: string
   config: Record<string, unknown>
+  healthReason?: string
+  healthDetail?: string
   webhookApiKey?: string
   targetChannelId?: string
   targetThreadId?: string

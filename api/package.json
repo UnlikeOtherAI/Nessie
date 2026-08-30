@@ -18,6 +18,8 @@
     "prisma:migrate:status": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} prisma migrate status --schema prisma/schema.prisma",
     "seed:apps": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/seed-apps-cli.ts",
     "seed:connectors": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/seed-connectors-cli.ts",
+    "sync:registry": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/sync-registry-cli.ts",
+    "recategorize:apps": "DATABASE_URL=${DATABASE_URL:-postgresql://${PGUSER:-$USER}@localhost:5432/nessie} tsx src/db/recategorize-apps-cli.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

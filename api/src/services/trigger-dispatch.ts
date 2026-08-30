@@ -38,6 +38,16 @@ export const dispatchAgentTrigger = async (
     triggerId: string
   },
 ): Promise<DispatchTriggerResult> => {
+  // Dedupe keys share one per-trigger namespace, and the scheduler's are
+  // predictable: `scheduled:<triggerId>:<next run ISO>`. A caller who supplied
+  // that exact string could pre-create the delivery for a future occurrence,
+  // and the sweep's existing-delivery short-circuit would then skip that run —
+  // silently cancelling a schedule from a member-level endpoint. Callers only
+  // ever name a key *within* their own route's namespace.
+  const dedupeKey = input.dedupeKey
+    ? `${input.source}:${input.dedupeKey}`
+    : undefined
+
   const loadTrigger = () =>
     prisma.agentTrigger.findUnique({
       where: { id: input.triggerId },
@@ -77,7 +87,7 @@ export const dispatchAgentTrigger = async (
   if (trigger.workflowInstallationId) {
     return dispatchWorkflowTrigger(prisma, {
       actorContext: input.actorContext,
-      dedupeKey: input.dedupeKey,
+      dedupeKey,
       loadTrigger,
       payload: input.payload,
       prompt: input.prompt,
@@ -132,9 +142,9 @@ export const dispatchAgentTrigger = async (
     threadId: trigger.targetThreadId,
   }
 
-  if (input.dedupeKey) {
+  if (dedupeKey) {
     const existing = await loadExistingDeliveryRun(prisma, {
-      dedupeKey: input.dedupeKey,
+      dedupeKey,
       triggerId: input.triggerId,
     })
 
@@ -189,7 +199,7 @@ export const dispatchAgentTrigger = async (
       const delivery = await tx.agentTriggerDelivery.create({
         data: {
           payload: normalizedPayload,
-          dedupeKey: input.dedupeKey,
+          dedupeKey,
           source: input.source,
           status: 'pending',
           triggerId: trigger.id,
@@ -316,12 +326,12 @@ export const dispatchAgentTrigger = async (
     }
   } catch (error) {
     if (
-      input.dedupeKey &&
+      dedupeKey &&
       error instanceof Prisma.PrismaClientKnownRequestError &&
       isTriggerDeliveryDedupeConflict(error)
     ) {
       const existing = await loadExistingDeliveryRun(prisma, {
-        dedupeKey: input.dedupeKey,
+        dedupeKey,
         triggerId: input.triggerId,
       })
 
@@ -347,7 +357,7 @@ export const dispatchAgentTrigger = async (
     // sp-webhook: persist a retryable failed delivery so the worker retry poller
     // can re-attempt with backoff, then surface the error to the caller.
     await recordTriggerDeliveryFailure(prisma, {
-      dedupeKey: input.dedupeKey,
+      dedupeKey,
       error,
       payload: normalizedPayload,
       source: input.source,

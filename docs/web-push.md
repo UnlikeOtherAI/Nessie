@@ -10,13 +10,15 @@ both native device tokens and browser subscriptions.
 
 When a channel message is dispatched, the worker's `handlePushDispatch`
 pipeline resolves recipients (channel members minus the author, minus muted /
-push-disabled / quiet-hours users), then delivers the notification over every
-configured transport. Recipients who were directly @mentioned in the message
-get distinct mention framing — `<author> mentioned you in <channel>` as the
-title instead of the channel label — while unmentioned members keep the
-standard framing. A muted channel suppresses the push even for mentioned
-users, but the durable `UserAlert` row (bell badge) is still created: a
-mention is never lost, just quiet.
+push-disabled / focus-mode / quiet-hours users), then delivers the notification
+over every configured transport. Focus mode is stored in the user's server-side
+preferences, so it applies to every registered device immediately at delivery;
+active clients also refresh the shared preference while visible. Recipients who
+were directly @mentioned in the message get distinct mention framing —
+`<author> mentioned you in <channel>` as the title instead of the channel label
+— while unmentioned members keep the standard framing. A muted channel
+suppresses the push even for mentioned users, but the durable `UserAlert` row
+(bell badge) is still created: a mention is never lost, just quiet.
 
 - **Native** — APNs (Apple) and FCM (Android) via stored `DeviceToken` rows.
 - **Browser** — Web Push via stored `WebPushSubscription` rows, encrypted and

@@ -3,7 +3,9 @@ import {
   appCardAction,
   appCategoryLabel,
   type AppCardAction,
+  type AppCardActionTone,
 } from './app-card-presentation'
+import type { ConnectPhase } from './connect-flow'
 
 /**
  * What the app detail page shows and in which tab.
@@ -83,29 +85,47 @@ export const resolveAppDetailTab = (
 
 // ─── Hero ───────────────────────────────────────────────────────────────────
 
-/**
- * The full sentence names both parties, which is the whole point of the
- * button — you are connecting *Nessie* to something of yours. There is no room
- * for it on a phone, and "Connect" alone is unambiguous next to the app's name
- * and icon.
- */
-export const appConnectCtaLabel = (displayName: string, compact: boolean): string =>
-  compact ? 'Connect' : `Connect Nessie to ${displayName}`
+/** The card's action vocabulary, plus the one thing only this page can do. */
+export type AppDetailCta =
+  | AppCardAction
+  /** Runs the connect flow on this page; never navigates. */
+  | { kind: 'connect'; label: string; tone: AppCardActionTone }
 
 /**
- * The hero's primary control. It is the card's decision — the same eight states
- * resolve to the same action — with two differences the hero can afford: the
- * connect label names both parties, and the destination is the server's own
- * `installHref` rather than one this client assembled.
+ * The hero's primary control.
+ *
+ * It is the card's decision — the same eight states resolve to the same action,
+ * and the label stays the card's one word, because a person standing on
+ * GitHub's page under GitHub's name and icon does not need "Connect Nessie to
+ * GitHub" spelled out. The card and the detail hero now offer the SAME action:
+ * both run the connect flow in place (`kind: 'connect'`), because connecting
+ * from the store must never bounce a person to the Connectors page. So this is
+ * a pass-through — kept as a named seam because the hero has diverged from the
+ * card before and may again, and one call site is cheaper to change than every
+ * consumer.
  */
-export const appDetailCta = (app: AppDetailRecord, compact: boolean): AppCardAction => {
-  const action = appCardAction(app)
-  if (action.kind === 'none' || action.label !== 'Connect') return action
-  const label = appConnectCtaLabel(app.displayName, compact)
-  return action.kind === 'link'
-    ? { ...action, href: app.installHref, label }
-    : { ...action, label }
-}
+export const appDetailCta = (app: AppDetailRecord): AppDetailCta => appCardAction(app)
+
+/**
+ * Whether the connect flow currently owns the outcome, which is what spends the
+ * CTA: pressing Connect twice would start a second handshake over the first.
+ * The settled phases are not in flight — an error and a missing key each carry
+ * their own control in the panel below, and a finished connect has already
+ * flipped the hero.
+ */
+export const appConnectInFlight = (phase: ConnectPhase): boolean =>
+  phase === 'probing' || phase === 'awaiting_authorization' || phase === 'verifying'
+
+/**
+ * Where a person adds the key an app asked for.
+ *
+ * The Connectors page owns the encrypted credential dialog, and this points at
+ * the app's installed scopes there — deliberately *not* at `installHref`, whose
+ * install dialog would create a second account. By the time the server answers
+ * `needs_secret` the account already exists; what is missing is its key.
+ */
+export const appCredentialsHref = (app: AppDetailRecord): string =>
+  `/mcp-app-store?catalogEntryId=${encodeURIComponent(app.id)}`
 
 /** "by GitHub, Inc. · Development", or just the category when nobody claims it. */
 export const appProviderLine = (app: AppDetailRecord): string => {

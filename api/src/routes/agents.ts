@@ -10,7 +10,9 @@ import {
   UpdateAgentBodySchema,
   UpdateAgentAvatarBodySchema,
 } from '../contracts.js'
+import { parseAgentId } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import {
   AgentAvatarGenerationError,
   generateAgentAvatar,
@@ -76,6 +78,7 @@ const validateAgentAvatarAttachment = async (input: {
 export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
     prisma,
+    realtimeHub,
     requireActorContext,
     requireOwner,
     getChannelIfMember,
@@ -156,6 +159,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       // Validate before a missing avatar triggers billed prompt/image calls.
       await validateAgentCreateInput(prisma, {
         organizationId: actorContext.tenant.organizationId,
+        ownerUserId: actorContext.actor.actorId,
         parentAgentId: body.parentAgentId,
         toolPolicy: body.toolPolicy,
       })
@@ -196,6 +200,9 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         model: body.model,
         name: body.name,
         organizationId: actorContext.tenant.organizationId,
+        // The person clicking "create" is this agent's steward, so a member
+        // keeps sight of it before it is bound to any channel.
+        ownerUserId: actorContext.actor.actorId,
         parentAgentId: body.parentAgentId,
         projectId: actorContext.tenant.projectId,
         provider: body.provider,
@@ -212,6 +219,19 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       if (sendAgentAvatarGenerationError(reply, error)) return reply
       throw error
     }
+
+    // Provenance: a column transfer overwrites the current steward, so who
+    // originally created an agent survives only in the tamper-evident chain.
+    // Nothing emitted this before, which is exactly why no honest ownership
+    // backfill was possible for existing rows.
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'agent.created',
+      metadata: { ownerUserId: actorContext.actor.actorId },
+      outcome: 'success',
+      resourceId: agent.id,
+      resourceType: 'agent',
+    })
 
     return reply.code(201).send(createApiResponse(AgentRecordSchema.parse(agent)))
   })
@@ -235,6 +255,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       },
       select: {
         model: true,
+        ownerUserId: true,
         provider: true,
         systemManaged: true,
       },
@@ -280,6 +301,31 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply
+    }
+
+    // A transfer changes who can see this agent at all, so it is recorded in
+    // the tamper-evident chain (a column overwrite keeps no history of its own)
+    // and broadcast, so a newly-owned agent appears without a manual refresh.
+    const nextOwnerUserId = agent.ownerUserId ?? null
+    if (body.ownerUserId !== undefined && nextOwnerUserId !== existingAgent.ownerUserId) {
+      await emitAuditEvent(prisma, {
+        actorContext,
+        action: 'agent.owner_changed',
+        metadata: {
+          nextOwnerUserId,
+          previousOwnerUserId: existingAgent.ownerUserId,
+        },
+        outcome: 'success',
+        resourceId: agentId,
+        resourceType: 'agent',
+      })
+      await realtimeHub.publishWs(
+        [
+          { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+          { kind: 'agent', agentId: parseAgentId(agentId) },
+        ],
+        { data: { agentId: parseAgentId(agentId) }, event: 'agent.updated' },
+      )
     }
 
     return createApiResponse(AgentRecordSchema.parse(agent))
@@ -511,6 +557,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       prisma,
       agentId,
       actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
     )
     if (!cloned) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
@@ -599,7 +646,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       await loadAgentChildren(
         prisma,
         agentId,
-        actorContext.tenant.organizationId,
+        createAgentVisibilityScope(actorContext),
       ),
     )
   })

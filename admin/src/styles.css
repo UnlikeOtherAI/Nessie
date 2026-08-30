@@ -14,6 +14,38 @@
   --breakpoint-2xl: 96rem;
 }
 
+/* Focus mode changes the palette through inherited custom properties. Register
+   the colour tokens that it replaces so browsers can interpolate them instead
+   of snapping every surface to its new colour. */
+@property --rail { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sb { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sb-active { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --main { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --main-hover { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --panel { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --panel-soft { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --surface-inverse { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --surface-inverse-2 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --ink { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --muted { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --line { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sep { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --border-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx2 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx3 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-hover { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-soft { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --on-accent { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --overlay-weak { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --overlay { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --overlay-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim-weak { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+
 :root {
   color-scheme: dark;
   --rail: #2e1132; --sb: #1e1222; --sb-active: #6d3579; --ink: #2c1832;
@@ -286,6 +318,138 @@ a {
   height: 100dvh;
   background: var(--rail);
   color: var(--tx);
+}
+
+/* The value changes happen on the four palette owners. Descendants inherit the
+   in-flight colours, which keeps every route and component in sync through one
+   300ms transition rather than giving each screen a separate animation. */
+.admin-frame > .admin-topbar,
+.admin-frame > .admin-shell,
+.admin-frame > .admin-shell > aside,
+.admin-frame > .admin-shell > .resizable-sidebar {
+  transition:
+    --rail 300ms var(--easing-standard),
+    --sb 300ms var(--easing-standard),
+    --sb-active 300ms var(--easing-standard),
+    --main 300ms var(--easing-standard),
+    --main-hover 300ms var(--easing-standard),
+    --panel 300ms var(--easing-standard),
+    --panel-soft 300ms var(--easing-standard),
+    --surface-inverse 300ms var(--easing-standard),
+    --surface-inverse-2 300ms var(--easing-standard),
+    --ink 300ms var(--easing-standard),
+    --muted 300ms var(--easing-standard),
+    --line 300ms var(--easing-standard),
+    --sep 300ms var(--easing-standard),
+    --border-strong 300ms var(--easing-standard),
+    --tx 300ms var(--easing-standard),
+    --tx2 300ms var(--easing-standard),
+    --tx3 300ms var(--easing-standard),
+    --accent 300ms var(--easing-standard),
+    --accent-hover 300ms var(--easing-standard),
+    --accent-strong 300ms var(--easing-standard),
+    --accent-soft 300ms var(--easing-standard),
+    --on-accent 300ms var(--easing-standard),
+    --overlay-weak 300ms var(--easing-standard),
+    --overlay 300ms var(--easing-standard),
+    --overlay-strong 300ms var(--easing-standard),
+    --scrim-weak 300ms var(--easing-standard),
+    --scrim 300ms var(--easing-standard),
+    --scrim-strong 300ms var(--easing-standard);
+}
+
+/* Focus is a neutral Slack-style treatment: charcoal navigation frames a
+   paper-white work surface, so the current theme's colour accents cannot turn
+   messages into another source of visual noise. */
+.focus-mode > .admin-topbar,
+.focus-mode > .admin-shell > aside,
+.focus-mode > .admin-shell > .resizable-sidebar {
+  --rail: #242424;
+  --sb: #383838;
+  --sb-active: #606062;
+  --sep: #505052;
+  --border-strong: #6a6a6c;
+  --tx: #f1f1f1;
+  --tx2: #d4d4d6;
+  --tx3: #aeaeaf;
+  --accent: #b9b9bc;
+  --accent-hover: #d4d4d6;
+  --accent-strong: #ececee;
+  --accent-soft: rgba(255, 255, 255, 0.16);
+  --panel: #353535;
+  --panel-soft: rgba(255, 255, 255, 0.08);
+  --overlay-weak: rgba(255, 255, 255, 0.09);
+  --overlay: rgba(255, 255, 255, 0.14);
+  --overlay-strong: rgba(255, 255, 255, 0.24);
+  --scrim-weak: rgba(0, 0, 0, 0.2);
+  --scrim: rgba(0, 0, 0, 0.38);
+  --scrim-strong: rgba(0, 0, 0, 0.62);
+  color: var(--tx);
+}
+
+.focus-mode > .admin-shell {
+  --rail: #ffffff;
+  --sb: #ffffff;
+  --sb-active: #ececec;
+  --main: #ffffff;
+  --main-hover: #f5f5f5;
+  --panel: #ffffff;
+  --panel-soft: #f5f5f5;
+  --surface-inverse: #1d1d1d;
+  --surface-inverse-2: #353535;
+  --ink: #1d1d1d;
+  --muted: #686868;
+  --line: rgba(29, 29, 29, 0.16);
+  --sep: #dddddd;
+  --border-strong: #b8b8b8;
+  --tx: #1d1d1d;
+  --tx2: #4d4d4d;
+  --tx3: #707070;
+  --accent: #303030;
+  --accent-hover: #171717;
+  --accent-strong: #000000;
+  --accent-soft: rgba(29, 29, 29, 0.12);
+  --on-accent: #ffffff;
+  --overlay-weak: rgba(29, 29, 29, 0.05);
+  --overlay: rgba(29, 29, 29, 0.09);
+  --overlay-strong: rgba(29, 29, 29, 0.16);
+  --scrim-weak: rgba(0, 0, 0, 0.08);
+  --scrim: rgba(0, 0, 0, 0.18);
+  --scrim-strong: rgba(0, 0, 0, 0.45);
+  color: var(--tx);
+}
+
+/* Tailwind's generated arbitrary-colour utilities are resolved before this
+   focus scope in a few controls. Pin their visible accent treatment to the
+   same monochrome scale as the work surface. */
+.focus-mode > .admin-shell .admin-button-primary,
+.focus-mode > .admin-shell [role='switch'][aria-checked='true'] {
+  background-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [role='switch'][aria-checked='true'] {
+  border-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='bg-[color:var(--accent)]'] {
+  background-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='border-[color:var(--accent)]'] {
+  border-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='text-[color:var(--accent)]'] {
+  color: #1d1d1d !important;
+}
+
+.focus-mode .admin-sb-item.unread {
+  color: var(--tx2);
+  font-weight: 400;
+}
+
+.focus-mode .sidebar-unread-count {
+  display: none;
 }
 
 .admin-shell {
@@ -960,7 +1124,8 @@ a {
 
 .admin-sidebar-menu-project {
   top: 24px;
-  right: 0;
+  left: 0;
+  right: auto;
   width: 220px;
 }
 
@@ -1122,11 +1287,6 @@ a {
   color: var(--tx);
 }
 
-.admin-sb-item.active .sidebar-pa-badge {
-  background: color-mix(in srgb, var(--tx) 10%, transparent);
-  color: var(--tx);
-}
-
 .admin-sb-item.active-parent {
   /* The parent remains visible, but at half the selected child's intensity. */
   background: color-mix(in srgb, var(--sb-active) 10%, transparent);
@@ -1135,6 +1295,12 @@ a {
 
 .admin-sb-item.sidebar-child {
   padding-left: 32px;
+}
+
+/* Threads aligns with a section's chevron, not the section title. */
+.admin-sb-item.sidebar-threads {
+  padding-left: 10px;
+  font-weight: 700;
 }
 
 /* Native phone/tablet shells use Slack-scale navigation density. This marker
@@ -1236,6 +1402,130 @@ a {
 
 .admin-rail-btn.active .admin-rail-btn-label {
   font-weight: var(--font-weight-semibold);
+}
+
+/* The rail clips its contents, so the focus explanation is portalled beside
+   it. This matches Slack's two-line, right-hand focus-mode hover affordance. */
+.focus-mode-tooltip {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 92px));
+  transform: translateY(-50%);
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #1f1f1f;
+  color: #f8f8f8;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.focus-mode-tooltip.is-opening {
+  animation: focus-tooltip-enter 120ms ease-out both;
+}
+
+.focus-mode-tooltip.is-closing {
+  animation: focus-tooltip-exit 120ms ease-in both;
+}
+
+@keyframes focus-tooltip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 3px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes focus-tooltip-exit {
+  from {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(calc(-50% + 3px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus-mode-tooltip.is-opening,
+  .focus-mode-tooltip.is-closing {
+    animation: none;
+  }
+}
+
+.focus-mode-tooltip strong {
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.focus-mode-tooltip span {
+  color: #c8c8c8;
+}
+
+/* The rail's creation control intentionally has no label: its compact
+   plus-button placement mirrors the native phone action and keeps it directly
+   above the account avatar, where it remains available from every workspace. */
+.admin-rail-create-trigger {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  margin: 0 0 8px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tx) 16%, transparent);
+  color: var(--tx);
+  cursor: pointer;
+  font-size: 21px;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.admin-rail-create-trigger:hover,
+.admin-rail-create-trigger:focus-visible,
+.admin-rail-create-trigger.is-open {
+  background: color-mix(in srgb, var(--tx) 28%, transparent);
+  outline: none;
+}
+
+.admin-rail-create-trigger:active {
+  transform: scale(0.94);
+}
+
+.create-menu-icon {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.create-menu-icon-message {
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
+  color: var(--accent);
+}
+
+.create-menu-icon-channel {
+  background: color-mix(in srgb, #3ba55c 19%, transparent);
+  color: #258143;
+}
+
+.create-menu-icon-project {
+  background: color-mix(in srgb, #d98600 19%, transparent);
+  color: #a96400;
 }
 
 /* The one single-select strip in the admin (components/primitives/TabBar).
@@ -2055,6 +2345,20 @@ button.reaction-pill-active:focus-visible {
 /* sp-messaging slice: transient highlight when jumping to a search result. */
 .admin-msg-highlight {
   animation: admin-msg-flash 1.6s ease-out;
+}
+
+/* A visible, keyboard-safe confirmation for an assistant-guided UI change. */
+.designer-control-highlight {
+  animation: designer-control-flash 1.6s ease-out;
+}
+
+@keyframes designer-control-flash {
+  0% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 @keyframes admin-msg-flash {

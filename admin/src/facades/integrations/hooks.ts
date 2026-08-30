@@ -4,9 +4,6 @@ import type { ChatAssistantSurface } from '@nessie/schemas'
 import type {
   BuildMeProjectHandoffRequest,
   ChannelRecord,
-  DeepSignalSignalAction,
-  DeepSignalSignalActResponse,
-  DeepSignalSignalsResponse,
   DeepTestReviewHandoffRequest,
   DeepWaterAgentAccessResponse,
   DeepWaterResearchLaunchRequest,
@@ -23,8 +20,6 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   channelKeys,
-  deepSignalSignalsKey,
-  deepSignalSignalsKeyPrefix,
   deepWaterAgentAccessKey,
   deepWaterAgentAccessKeyPrefix,
   deepWaterResearchRunsKey,
@@ -114,50 +109,6 @@ export const useExternalAgentIdentity = (
       conversationStarters: manifest.conversationStarters ?? [],
     }
   }, [isExternal, product, manifestQuery.data])
-}
-
-// DeepSignal Signals digest (surface-registry plan §4). The route returns a
-// discriminated response: `{ status: 'ok', items }` or `{ status: 'needs_setup' }`
-// when the connector isn't linked for this user — the page renders the latter as
-// a "Connect DeepSignal" empty state rather than an error. `include` toggles
-// between the active-only triage view (default) and the full list (with resolved
-// signals); both variants cache under the shared prefix so an act invalidates all.
-export const useDeepSignalSignals = (include: 'active' | 'all' = 'active') => {
-  const apiClient = useApiClient()
-  const scope = useIntegrationQueryScope()
-
-  return useQuery<DeepSignalSignalsResponse>({
-    queryKey: scope
-      ? deepSignalSignalsKey(scope, include)
-      : [...deepSignalSignalsKeyPrefix, 'signed-out', include],
-    queryFn: () =>
-      apiClient.get(`/api/integrations/products/deepsignal/signals?include=${include}`),
-    enabled: scope !== null,
-  })
-}
-
-// Proxy a done/snooze/mute/reopen action for one insight back to DeepSignal, then
-// refetch the digest so the acted-on signal drops out of the active list.
-export const useActOnSignal = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation<
-    DeepSignalSignalActResponse,
-    unknown,
-    { insightId: string; action: DeepSignalSignalAction }
-  >({
-    mutationFn: (input) =>
-      apiClient.post(
-        `/api/integrations/products/deepsignal/signals/${input.insightId}/act`,
-        { action: input.action },
-      ),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: deepSignalSignalsKeyPrefix,
-      })
-    },
-  })
 }
 
 export const useDeepWaterResearchRuns = () => {

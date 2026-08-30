@@ -147,6 +147,10 @@ export const runAgentCreateTool = async (
     model: args.model,
     name: args.name,
     organizationId: member.organizationId,
+    // Mirrors `POST /api/agents`: the person who asked for the agent stewards
+    // it. `member` is the live OrganizationMember resolved at call time, not
+    // the run's enqueue-time snapshot.
+    ownerUserId: member.userId,
     projectId: context.actorContext.tenant.projectId,
     provider: args.provider,
     role: args.role ?? 'assistant',

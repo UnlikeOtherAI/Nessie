@@ -1,6 +1,6 @@
 import type { AppCategory } from '@nessie/schemas'
 import { TabBar } from '../../primitives/TabBar'
-import { AppCategoryNav } from './AppCategoryNav'
+import { AppCategorySelect } from './AppCategorySelect'
 import { AppSearchInput } from './AppSearchInput'
 import type {
   AppCategorySectionModel,
@@ -14,14 +14,16 @@ type AppsToolbarProps = {
   filterOptions: AppFilterOption[]
   onFilterChange: (filter: AppFilter) => void
   onQueryChange: (query: string) => void
-  onSelectCategory: (category: AppCategory) => void
+  onSelectCategory: (category: AppCategory | null) => void
   query: string
   sections: readonly AppCategorySectionModel[]
 }
 
-// The one bar that stays with you down the page: search, the filter, and the
-// category jump list. It sticks to the top so a long shelf never leaves a
-// person scrolling back up to change what they are looking at.
+// The one bar that stays with you down the page: search, the All/Installed
+// filter, and the category dropdown at the far right. It sticks to the top so
+// a long shelf never leaves a person scrolling back up to change what they
+// are looking at. One row at lg and up; on a narrow screen it wraps, with the
+// dropdown going full-width rather than overflowing.
 export const AppsToolbar = ({
   activeCategory,
   filter,
@@ -40,7 +42,7 @@ export const AppsToolbar = ({
     data-testid="apps-toolbar"
   >
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 lg:flex-1">
         <AppSearchInput onChange={onQueryChange} value={query} />
       </div>
       <div className="w-full lg:w-auto lg:min-w-[14rem]" data-testid="apps-filter">
@@ -53,12 +55,7 @@ export const AppsToolbar = ({
           value={filter}
         />
       </div>
-    </div>
-    {/* One nav, not one per breakpoint: it changes shape (chips below lg, a
-        slim inline list at lg and up) through its own classes. A second copy
-        behind `hidden` would duplicate every test hook on the page. */}
-    <div className="mt-2 lg:mt-3">
-      <AppCategoryNav
+      <AppCategorySelect
         activeCategory={activeCategory}
         onSelect={onSelectCategory}
         sections={sections}

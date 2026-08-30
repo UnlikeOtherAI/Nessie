@@ -100,6 +100,16 @@ export const shouldDeliverWsNotification = async (
   const notificationChannelScopes = input.notificationScopes.filter(
     (scope): scope is Extract<WsScope, { kind: 'channel' }> => scope.kind === 'channel',
   )
+  const notificationUserScopes = input.notificationScopes.filter(
+    (scope): scope is Extract<WsScope, { kind: 'user' }> => scope.kind === 'user',
+  )
+  if (notificationUserScopes.length > 0) {
+    return input.connectionScopes.some((scope) =>
+      scope.kind === 'user' && notificationUserScopes.some((target) =>
+        target.userId === scope.userId && target.organizationId === scope.organizationId,
+      ),
+    )
+  }
   const notificationScopeKeys = new Set(input.notificationScopes.map(toScopeKey))
 
   if (notificationChannelScopes.length > 0) {
@@ -332,6 +342,7 @@ export const createRealtimeHub = async (input: {
         afterEventId: connection.lastEventId,
         channelIds: [...connection.channelIds],
         organizationId: connection.organizationId,
+        userId: connection.userId,
       })
       for (const event of backlog) {
         if (event.id <= connection.lastEventId) {

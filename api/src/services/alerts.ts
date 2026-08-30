@@ -25,6 +25,7 @@ const parseCursor = (
 }
 
 const alertInclude = {
+  message: { select: { id: true, rootMessageId: true } },
   channel: { select: { label: true } },
   actorUser: { select: { displayName: true } },
   actorAgent: { select: { name: true } },
@@ -36,12 +37,14 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   id: alert.id,
   kind: alert.kind,
   messageId: alert.messageId,
+  rootMessageId: alert.message ? alert.message.rootMessageId ?? alert.message.id : null,
   threadId: alert.threadId,
   channelId: alert.channelId,
   channelLabel: alert.channel?.label ?? null,
   projectId: alert.projectId ?? null,
   taskId: alert.taskId ?? null,
   knowledgePageId: alert.knowledgePageId ?? null,
+  triggerId: alert.triggerId ?? null,
   actorUserId: alert.actorUserId,
   actorAgentId: alert.actorAgentId,
   actorDisplayName: alert.actorUser?.displayName ?? alert.actorAgent?.name ?? null,

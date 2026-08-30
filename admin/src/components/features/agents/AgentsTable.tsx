@@ -24,7 +24,7 @@ const HeaderRow = () => (
     <tr className="border-b border-[color:var(--sep)]">
       <th
         className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]"
-        colSpan={4}
+        colSpan={5}
         scope="col"
       >
         Agent
@@ -60,6 +60,9 @@ export const AgentsTable = ({
                 <div className="mb-1.5 h-3 w-40 animate-pulse rounded bg-[color:var(--overlay)]" />
                 <div className="h-2.5 w-24 animate-pulse rounded bg-[color:var(--overlay-weak)]" />
               </td>
+              <td className="hidden sm:table-cell">
+                <div className="h-3 w-24 animate-pulse rounded bg-[color:var(--overlay-weak)]" />
+              </td>
               <td />
               <td />
             </tr>
@@ -77,7 +80,7 @@ export const AgentsTable = ({
           <tr>
             <td
               className="px-4 py-12 text-center text-sm text-[color:var(--tx3)]"
-              colSpan={4}
+              colSpan={5}
             >
               {emptyMessage}
             </td>

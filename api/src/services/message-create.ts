@@ -176,7 +176,10 @@ export const createThreadMessage = async (
       })
       await followReplyThread(tx, {
         rootMessageId: created.id,
-        userIds: [input.userId],
+        // A direct mention is an explicit invitation into this reply
+        // conversation just as it is for a reply. This keeps the durable
+        // Threads inbox independent from whether its alert is later read.
+        userIds: [input.userId, ...mentions.userIds],
       })
       const alerted = await createMentionUserAlerts(tx, {
         organizationId: thread.channel.organizationId,

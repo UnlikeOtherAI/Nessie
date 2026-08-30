@@ -8,14 +8,16 @@ import { useEventStream } from '../realtime/event-stream'
 
 export type UserAlertRecord = {
   id: string
-  kind: 'mention' | 'task_assigned' | 'knowledge_published'
+  kind: 'mention' | 'task_assigned' | 'knowledge_published' | 'trigger_health'
   messageId: string | null
+  rootMessageId: string | null
   threadId: string | null
   channelId: string | null
   channelLabel: string | null
   projectId: string | null
   taskId: string | null
   knowledgePageId: string | null
+  triggerId: string | null
   actorUserId: string | null
   actorAgentId: string | null
   actorDisplayName: string | null
@@ -155,6 +157,11 @@ export const useAlertEvents = (): void => {
 export const getAlertLink = (
   alert: UserAlertRecord,
 ): { to: string; state?: { highlightMessageId: string } } | null => {
+  if (alert.kind === 'trigger_health' && alert.triggerId) {
+    // The Triggers page selects by hash, so the row opens the schedule that
+    // stopped rather than a list the reader has to search.
+    return { to: `/agents/triggers#${alert.triggerId}` }
+  }
   if (alert.kind === 'task_assigned' && alert.projectId) {
     return { to: `/projects/${alert.projectId}/board` }
   }
@@ -162,6 +169,9 @@ export const getAlertLink = (
     return { to: `/projects/${alert.projectId}/docs?pageId=${alert.knowledgePageId}` }
   }
   if (alert.channelId) {
+    if (alert.threadId && alert.rootMessageId) {
+      return { to: `/channels/${alert.channelId}/threads/${alert.threadId}/replies/${alert.rootMessageId}` }
+    }
     return {
       to: `/channels/${alert.channelId}`,
       state: alert.messageId ? { highlightMessageId: alert.messageId } : undefined,

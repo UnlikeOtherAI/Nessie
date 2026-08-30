@@ -22,6 +22,15 @@ test('chat navigation does not duplicate the Agents activity section', () => {
   assert.doesNotMatch(source, /sidebar-nav-agents/)
 })
 
+test('Threads aligns with section chevrons and remains a bold top-level destination', () => {
+  const sidebar = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
+  const styles = readSource('../src/styles.css')
+
+  assert.match(sidebar, /admin-sb-item sidebar-threads group/)
+  assert.doesNotMatch(sidebar, /sidebar-top-level/)
+  assert.match(styles, /\.admin-sb-item\.sidebar-threads\s*\{[\s\S]*?padding-left: 10px;[\s\S]*?font-weight: 700;/)
+})
+
 test('a starred direct-message entry is removed from its original sidebar location', () => {
   const source = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
 
@@ -65,6 +74,17 @@ test('the starred Personal Assistant follows its active direct-message route', (
   assert.match(source, /agent\.agentKind === 'personal_assistant'/)
   assert.match(source, /personalAssistantChannelId === currentChannelId/)
   assert.match(source, /isActivePersonalAssistant \? 'active' : ''/)
+})
+
+test('the Personal Assistant has the same favorite control as a direct-message user', () => {
+  const sidebar = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
+  const assistant = readSource('../src/components/features/personal-assistant/PersonalAssistantSurface.tsx')
+
+  assert.match(sidebar, /onToggleStar\('agent', personalAssistantAgent\.id\)/)
+  assert.match(sidebar, /starred=\{Boolean\([\s\S]*?starredAgentIds\.has\(personalAssistantAgent\.id\)/)
+  assert.match(assistant, /sidebar-row-star/)
+  assert.match(assistant, /\{starred \? '★' : '☆'\}/)
+  assert.doesNotMatch(assistant, /sidebar-pa-badge/)
 })
 
 test('the Direct-messages Personal Assistant reuses the managed agent avatar record', () => {

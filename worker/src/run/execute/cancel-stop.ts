@@ -110,17 +110,25 @@ export const finalizeCancelledRun = async (
 
   const reply = await applyRunReplyBookkeeping(deps.prisma, context, message.createdAt)
 
+  // Partial text is drawn from the same context the completed reply would have
+  // used, so cancellation publishes exactly like completion: a restricted
+  // partial answer closes the stream without its content, and the WS event
+  // carries no preview. Neither wire can be filtered per viewer.
+  const restricted = message.basis.length > 0
+
   await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
     agentId: parseAgentId(context.agent.id),
-    content: terminalContent,
+    content: restricted ? '' : terminalContent,
     createdAt: message.createdAt.toISOString(),
     messageId: message.id,
     runId: parseRunId(context.run.id),
+    ...(restricted ? { restricted: true } : {}),
   })
   await publishMessageCreated(deps.realtimeTransport, context, {
     content: terminalContent,
     messageId: message.id,
     role: 'assistant',
+    ...(restricted ? { restricted: true } : {}),
     ...(reply ? { reply } : {}),
   })
   const replyPushMessage = {

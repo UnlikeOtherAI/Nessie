@@ -16,6 +16,7 @@ import {
   listWorkspaceMembers,
   removeWorkspaceMember,
   resendWorkspaceInvitation,
+  resolveLocalUserIdsByUoaSub,
   resolveUoaRosterWorkspace,
   revokeTeamInvitation,
   reviewWorkspaceInvitation,
@@ -173,7 +174,11 @@ export const registerWorkspaceMembersRoutes = (
     request: FastifyRequest,
     reply: FastifyReply,
     options: { admin: boolean; parse?: () => TBody | null },
-    run: (workspace: UoaRosterWorkspace, body: TBody) => Promise<TResult>,
+    run: (
+      workspace: UoaRosterWorkspace,
+      body: TBody,
+      actorContext: AuthorizedActionContext,
+    ) => Promise<TResult>,
   ): Promise<FastifyReply | { data: TResult }> => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -186,17 +191,34 @@ export const registerWorkspaceMembersRoutes = (
     if (!workspace) return reply
 
     try {
-      return createApiResponse(await run(workspace, body as TBody))
+      return createApiResponse(await run(workspace, body as TBody, actorContext))
     } catch (error) {
       if (sendRelayError(request, reply, error)) return reply
       throw error
     }
   }
 
+  /**
+   * The roster, with each person's local principal id attached where one
+   * exists. The id is resolved org-scoped (`resolveLocalUserIdsByUoaSub`) and
+   * is what lets the Members page show each person beside the agents they
+   * steward, without Nessie storing any second copy of UOA's roster.
+   */
   app.get('/api/workspace/members', async (request, reply) =>
-    relay(request, reply, { admin: false }, async (workspace) => ({
-      members: await listWorkspaceMembers(workspace, rosterDeps),
-    })))
+    relay(request, reply, { admin: false }, async (workspace, _body, actorContext) => {
+      const members = await listWorkspaceMembers(workspace, rosterDeps)
+      const localIdBySub = await resolveLocalUserIdsByUoaSub(
+        deps.prisma,
+        actorContext.tenant.organizationId,
+        members.map((member) => member.uoaSub),
+      )
+      return {
+        members: members.map((member) => {
+          const userId = localIdBySub.get(member.uoaSub)
+          return userId ? { ...member, userId } : member
+        }),
+      }
+    }))
 
   /**
    * The picture UOA holds for one person in this workspace's roster. Same

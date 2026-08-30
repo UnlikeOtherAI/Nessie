@@ -1,7 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AgentRecord } from '@nessie/schemas'
 
-import { buildAccessibleChannelWhere, mapAgentRecord } from './agent-record.js'
+import {
+  AGENT_OWNER_MEMBERSHIP_SELECT,
+  buildAccessibleChannelWhere,
+  buildOwnedAgentWhere,
+  mapAgentRecord,
+} from './agent-record.js'
 
 /**
  * The agents a person is entitled to see, as `GET /api/agents` answers it and
@@ -43,6 +48,10 @@ export const listAgentsForUser = async (
         },
       },
     },
+    // An agent you steward is yours to see even before it is bound anywhere.
+    // Without this a member who creates an agent loses sight of it the moment
+    // the page reloads, because `includeUnbound` is owner-only.
+    buildOwnedAgentWhere({ organizationId, userId }),
   ]
 
   if (includeUnbound) {
@@ -60,6 +69,7 @@ export const listAgentsForUser = async (
       OR: visibilityFilters,
     },
     include: {
+      ownerMembership: AGENT_OWNER_MEMBERSHIP_SELECT,
       bindings: {
         where: {
           channel: visibleChannelWhere,

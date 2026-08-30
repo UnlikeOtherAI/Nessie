@@ -72,16 +72,6 @@ export const ChatAssistantSurfaceSchema = z.object({
 })
 export type ChatAssistantSurface = z.infer<typeof ChatAssistantSurfaceSchema>
 
-export const NavPageSurfaceSchema = z.object({
-  type: z.literal('nav_page'),
-  id: NonEmptyStringSchema,
-  label: NonEmptyStringSchema,
-  route: NonEmptyStringSchema,
-  iconGlyph: z.string().optional(),
-  requires: ProductSurfaceRequirementSchema,
-})
-export type NavPageSurface = z.infer<typeof NavPageSurfaceSchema>
-
 export const DocumentsSectionSurfaceSchema = z.object({
   type: z.literal('documents_section'),
   id: NonEmptyStringSchema,
@@ -94,7 +84,6 @@ export type DocumentsSectionSurface = z.infer<typeof DocumentsSectionSurfaceSche
 
 export const ProductSurfaceSchema = z.discriminatedUnion('type', [
   ChatAssistantSurfaceSchema,
-  NavPageSurfaceSchema,
   DocumentsSectionSurfaceSchema,
 ])
 export type ProductSurface = z.infer<typeof ProductSurfaceSchema>
@@ -176,8 +165,8 @@ export const IntegrationPluginManifestSchema = z.object({
     ]).nullable(),
     costFields: z.array(NonEmptyStringSchema),
   }),
-  // Surfaces the product weaves into the real app when active (chat sidebar,
-  // left rail + page, Documents section). Optional/additive: manifests without
+  // Surfaces the product weaves into the real app when active (chat sidebar or
+  // Documents section). Optional/additive: manifests without
   // it declare no surfaces and behave exactly as before.
   surfaces: z.array(ProductSurfaceSchema).default([]),
   // Suggested prompts shown on the empty external-agent channel to bootstrap the

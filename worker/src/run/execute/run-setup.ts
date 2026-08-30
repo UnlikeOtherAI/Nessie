@@ -18,6 +18,7 @@ import {
 } from './checkpoint.js'
 import { buildMemoryContext, retrieveRelevantMemories } from './memory.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
+import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
@@ -157,13 +158,33 @@ export const prepareRunExecution = async (
   // saved work state, which is what makes a plain "keep going" reply resume
   // properly. DeepWater handoff runs are excluded — their launch prompt is
   // server-authored and must stay byte-identical.
-  const checkpoint = input.isHandoffTurn
+  const loadedCheckpoint = input.isHandoffTurn
     ? null
     : await loadRunCheckpointForRun(deps.prisma, {
       rootMessageId: context.replyRootMessageId ?? null,
       runId: context.run.id,
       threadId: context.run.threadId,
     })
+
+  // A checkpoint gets exactly the treatment the transcript gets, and for the
+  // same reason: it is a carry-forward channel for another run's words. The
+  // transcript withholds turns this viewer cannot read (`partitionByDisclosure`)
+  // and inherits the basis of the ones it admits, so that "summarise that"
+  // cannot launder a restricted turn. Without the same two halves here, "keep
+  // going" did exactly that — the note carries verbatim tool output, and the
+  // resumed reply computed its basis from a sink that had never seen those
+  // scopes.
+  //
+  // Withheld: the person resuming cannot reach the sources, so the run must not
+  // answer them from it. Admitted: inherit, so the continuation's own reply is
+  // restricted the way the interrupted one was.
+  const checkpoint = loadedCheckpoint
+    && !viewerSatisfiesBasis(loadedCheckpoint.basisScopes, viewer)
+    ? null
+    : loadedCheckpoint
+  if (checkpoint) {
+    context.consumedSources.addAll(checkpoint.basisScopes)
+  }
 
   return {
     allowedToolIds,

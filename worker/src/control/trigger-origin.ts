@@ -18,16 +18,66 @@ export type TriggerExecutionOrigin = {
   userId: string | null
 }
 
+/**
+ * Why a fire was refused, as a stable code.
+ *
+ * The distinction that matters is the remedy, not the severity. An identity
+ * that no longer verifies is repaired by an authorized person re-authorizing
+ * the schedule — one click, no edit. Everything else here is a configuration or
+ * entitlement fact the person has to go and change. Persisting the code (rather
+ * than only a sentence) is what lets the surface offer the right button and the
+ * alert say the right thing.
+ */
+export type TriggerLaunchOriginReason =
+  /** The saved UOA identity is absent, stale, or no longer matches the link. */
+  | 'uoa_identity_unverifiable'
+  /** The saved user is no longer an active member of the saved organization. */
+  | 'member_inactive'
+  /** The saved team no longer belongs to the saved org/project, or user left. */
+  | 'team_unreachable'
+  /** The saved user can no longer read the target channel. */
+  | 'channel_access_lost'
+  /** The stored launch origin is missing, malformed, or self-inconsistent. */
+  | 'launch_origin_invalid'
+
+/**
+ * The states an authorized person can repair by re-proving who they are. Every
+ * other reason needs the trigger's configuration or the person's entitlements
+ * to change, so offering "Reauthorize" for them would be a dead end.
+ */
+const REAUTHORIZABLE_REASONS: ReadonlySet<TriggerLaunchOriginReason> = new Set([
+  'uoa_identity_unverifiable',
+])
+
 export class TriggerLaunchOriginError extends Error {
   readonly code = 'TRIGGER_LAUNCH_ORIGIN_INVALID'
 
-  constructor(detail: string) {
+  readonly reason: TriggerLaunchOriginReason
+
+  /** The sentence a person reads, without the "recreate it" advice. */
+  readonly detail: string
+
+  constructor(reason: TriggerLaunchOriginReason, detail: string) {
     super(
       `Scheduled task cannot run because ${detail}. `
-      + 'Sign in again if needed, then recreate the schedule so it captures '
-      + 'your current authenticated team and UnlikeOtherAI identity.',
+      + (REAUTHORIZABLE_REASONS.has(reason)
+        // Reauthorizing is a button now, so the message names it instead of
+        // telling people to recreate the schedule — which they could not do
+        // anyway, since a trigger with delivery history refuses deletion.
+        ? 'Sign in and reauthorize this schedule to resume it.'
+        // The other reasons have no stored identity to refresh, or need the
+        // workspace itself changed, so recreating really is the remedy.
+        : 'Sign in again if needed, then recreate the schedule so it captures '
+          + 'your current authenticated team and UnlikeOtherAI identity.'),
     )
     this.name = 'TriggerLaunchOriginError'
+    this.reason = reason
+    this.detail = detail
+  }
+
+  /** Whether re-proving identity is the remedy, deciding the health state. */
+  get isReauthorizable(): boolean {
+    return REAUTHORIZABLE_REASONS.has(this.reason)
   }
 }
 
@@ -52,11 +102,13 @@ export const resolveTriggerExecutionOrigin = (input: {
   if (hasCreatedByUserId || hasLaunchOrigin) {
     if (!createdByUserId || !launchOrigin) {
       throw new TriggerLaunchOriginError(
+        'launch_origin_invalid',
         'its saved user or launch origin is missing or malformed',
       )
     }
     if (createdByUserId !== launchOrigin.userId) {
       throw new TriggerLaunchOriginError(
+        'launch_origin_invalid',
         'its saved user does not match its immutable launch origin',
       )
     }
@@ -68,6 +120,7 @@ export const resolveTriggerExecutionOrigin = (input: {
       )
     ) {
       throw new TriggerLaunchOriginError(
+        'launch_origin_invalid',
         'its saved organization no longer matches the target',
       )
     }
@@ -94,6 +147,7 @@ export const resolveTriggerExecutionOrigin = (input: {
     && !trustedAutonomousSchedule
   ) {
     throw new TriggerLaunchOriginError(
+      'launch_origin_invalid',
       'this legacy user-facing schedule has no authenticated launch origin',
     )
   }
@@ -102,6 +156,7 @@ export const resolveTriggerExecutionOrigin = (input: {
     input.agent.organizationId ?? input.channelOrganizationId
   if (organizationId !== input.channelOrganizationId) {
     throw new TriggerLaunchOriginError(
+      'launch_origin_invalid',
       'its agent organization no longer matches the target',
     )
   }
@@ -146,11 +201,13 @@ export const assertTriggerExecutionOriginTenant = async (
 
   if (origin.userId && !organizationMember) {
     throw new TriggerLaunchOriginError(
+      'member_inactive',
       'its saved user is no longer an active member of its saved organization',
     )
   }
   if (origin.teamId && !team) {
     throw new TriggerLaunchOriginError(
+      'team_unreachable',
       'its saved team does not belong to its saved organization and project, '
       + 'or its saved user is no longer a member',
     )

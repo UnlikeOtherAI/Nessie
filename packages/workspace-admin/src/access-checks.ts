@@ -1,7 +1,7 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import { buildAccessibleChannelWhere } from './agent-record.js'
+import { buildAccessibleChannelWhere, buildOwnedAgentWhere } from './agent-record.js'
 
 export type ChannelAccessRow = {
   systemChannelType?: ChannelSystemType
@@ -45,7 +45,12 @@ export const getChannelIfMember = async (
   }
 }
 
-/** An agent is visible to a user through any channel that user can see it bound to. */
+/**
+ * An agent is visible to a user through any channel that user can see it bound
+ * to — or because that user stewards it. The ownership arm mirrors
+ * `listAgentsForUser` exactly (same `buildOwnedAgentWhere`), so the list and the
+ * per-agent gate can never disagree about what a person may reach.
+ */
 export const isAgentVisibleToUser = async (
   prisma: PrismaClient,
   userId: string,
@@ -57,16 +62,21 @@ export const isAgentVisibleToUser = async (
       id: agentId,
       organizationId,
       systemManaged: false,
-      bindings: {
-        some: {
-          channel: {
-            ...buildAccessibleChannelWhere({
-              organizationId,
-              userId,
-            }),
+      OR: [
+        {
+          bindings: {
+            some: {
+              channel: {
+                ...buildAccessibleChannelWhere({
+                  organizationId,
+                  userId,
+                }),
+              },
+            },
           },
         },
-      },
+        buildOwnedAgentWhere({ organizationId, userId }),
+      ],
     },
   })) > 0
 

@@ -292,12 +292,28 @@ export const loadAgentMessages = async (
   }))
 }
 
+/**
+ * The children of an agent, scoped to what the viewer may actually see.
+ *
+ * The route gates only on the *parent* being accessible, so before this took a
+ * visibility scope it returned every child in the organization — name, status
+ * and purpose — to anyone who could reach the parent. Reaching a parent through
+ * stewardship therefore would have re-opened exactly the subtask-child
+ * enumeration that `buildOwnedAgentWhere`'s `parentAgentId: null` exists to
+ * prevent. Having decided that inherited ownership is not sufficient for child
+ * visibility in the list, it cannot be sufficient here either.
+ *
+ * A child is listed when the viewer can see it working in a channel they can
+ * reach, or when they steward the child itself. Owner callers
+ * (`includeAllOrgChannels`) still see everything, as they do everywhere else.
+ */
 export const loadAgentChildren = async (
   prisma: PrismaClient,
   agentId: string,
-  organizationId: string,
+  visibility: AgentVisibilityScope,
   options?: { includeSystemManaged?: boolean },
 ): Promise<AgentChild[]> => {
+  const organizationId = visibility.organizationId
   const agent = await prisma.agent.findFirst({
     where: { id: agentId, organizationId },
     select: {
@@ -310,7 +326,18 @@ export const loadAgentChildren = async (
   if (!options?.includeSystemManaged && isSystemManagedAgent(agent)) return []
 
   const agents = await prisma.agent.findMany({
-    where: { organizationId, parentAgentId: agentId },
+    where: {
+      organizationId,
+      parentAgentId: agentId,
+      ...(visibility.includeAllOrgChannels
+        ? {}
+        : {
+            OR: [
+              { bindings: { some: { channel: buildAccessibleChannelWhere(visibility) } } },
+              { ownerMembership: { deactivatedAt: null }, ownerUserId: visibility.userId },
+            ],
+          }),
+    },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -376,6 +403,9 @@ export const buildSnapshotForScopes = async (
           ? { channel: buildAccessibleChannelWhere(options.visibility) }
           : {}),
       })
+      continue
+    }
+    if (scope.kind === 'user') {
       continue
     }
     bindingOr.push({

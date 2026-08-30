@@ -18,6 +18,7 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 | Push relay (optional) | `https://push.unlikeotherai.com` | `nessie-gateway` (Fastify, 5556) | `edge` |
 | Worker | — (no ingress) | `nessie-worker` | `db` |
 | Postgres + pgvector | — (internal) | `nessie-postgres` (pg17) | `db` |
+| Secret vault | `https://vault.nessie.works` | `nessie-infisical` | `edge`, private `vault` |
 
 - **Host:** `178.105.82.46` (Hetzner, Ubuntu 24.04), SSH as `root`.
 - **DNS zone:** `nessie.works` in Cloudflare (`ffc45bc029478feb510f8e5791feaf20`),
@@ -42,8 +43,9 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   a DNS alias on the shared `db` network, so naming it `postgres` would collide
   with the shared Postgres container and make `postgres:5432` round-robin between
   two databases, breaking every other app on the host.
-- **No Redis.** The job queue and realtime transport are Postgres-backed
-  (`PgQueueProvider` / `PgRealtimeTransport`), so no Redis is needed.
+- **Nessie has no Redis dependency.** Its job queue and realtime transport are
+  Postgres-backed (`PgQueueProvider` / `PgRealtimeTransport`). Infisical has a
+  separate private Redis sidecar for its own sessions and background work.
 - **One backend image for API + worker.** The workspace is tightly interlinked
   (`@nessie/api` depends on `@nessie/worker`, both need the Prisma client). A
   single full-workspace image (`Dockerfile.app`) builds everything once; the
@@ -67,6 +69,30 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   rather than parsing `X-Forwarded-For` itself. Production behind Caddy sets
   `NESSIE_API_TRUSTED_PROXY_HOPS=1`; local and unproxied deployments default to
   `0`, so forwarded client IP headers are ignored.
+
+### Infisical vault
+
+Infisical owns secret values and runs with Redis plus a dedicated `infisical`
+database and database role on the existing `nessie-postgres` container. Before
+the first deploy, create the database and role from the host without echoing a
+password into shell history, then create `/srv/nessie/secrets/infisical-service-token`
+with mode `0600`. Set the corresponding `INFISICAL_*` values in the Compose
+`.env`; create the separate root-readable `.env.infisical` from
+`infrastructure/compose/.env.infisical.example` for the vault database URI,
+encryption key, and auth secret. The write-scoped service token is mounted only
+into `nessie-api` as a Docker secret. Do not put any vault root material in
+`.env` or pass it to `nessie-worker`.
+The deployment mirror explicitly preserves `.env.infisical`, just as it
+preserves `.env`; keep it host-only with mode `0600`.
+Set `COMPOSE_PROFILES=secrets` only after all vault settings exist; this keeps
+ordinary application deploys bootable while the vault has not been provisioned.
+
+Add a `vault.nessie.works` DNS-only A record to the same host and a Caddy site
+block that proxies only to `nessie-infisical:8080`. Validate the Caddyfile and
+recreate Caddy as described below. After startup, create the Infisical admin,
+project, `prod` environment, and an API service token scoped only to
+`prod:/nessie` with read/write access. Record its project ID in
+`INFISICAL_PROJECT_ID`.
 
 ## Shared infra (already on the host, do not disrupt)
 
@@ -448,6 +474,7 @@ production settings:
 | Auth secret | `NESSIE_AUTH_SECRET` | 32-byte hex; signs sessions, bootstrap tokens, and encrypts MCP OAuth secrets |
 | Session TTLs | `NESSIE_AUTH_TOKEN_TTL`, `NESSIE_AUTH_REFRESH_TOKEN_TTL` | optional, seconds; access JWT default 1800 (30 min), rotating refresh cookie default 2592000 (30 days). See [auth spec](deployment-modes-and-auth-spec/overview.md) |
 | Model (chat) | `NESSIE_MODEL_PROVIDER`, `NESSIE_MODEL_BASE_URL`, `NESSIE_MODEL_API_KEY` | Hosted production routes OpenAI-compatible chat through Ledger; direct provider keys are not used by Nessie. A Ledger `NESSIE_MODEL_BASE_URL` always takes its bearer from `NESSIE_MODEL_API_KEY` and never inherits `OPENAI_API_KEY`/`OPENAI_CHAT_API_KEY`; startup fails if a Ledger URL is set with no key at all. |
+| Agent avatar images | `NESSIE_LEDGER_IMAGE_PURPOSE_API_ID` | Optional. When set, agent-avatar "Generate with AI" routes image generation through this Ledger **Purpose API** (`/v1/purpose/:id/images/generations`) on `NESSIE_MODEL_BASE_URL`'s Ledger host, so Ledger owns the image provider fallback chain (e.g. Gemini image primary, OpenAI `gpt-image-2` fallback) behind one endpoint. Unset keeps the direct `/v1/openai/images/generations` service route, which fails when OpenAI's key is exhausted. Uses the same `NESSIE_MODEL_API_KEY` bearer and signed identity as chat; the token must hold a grant for that Purpose API. |
 | Model (embeddings) | `NESSIE_EMBEDDING_PROVIDER`, `NESSIE_EMBEDDING_MODEL`, `NESSIE_EMBEDDING_SERVICE_ID`, `NESSIE_EMBEDDING_BASE_URL`, `NESSIE_EMBEDDING_API_KEY` | Optional; every unset field inherits the chat provider, so a deployment that sets none of these embeds exactly as before. Set them when the chat provider serves no embeddings endpoint — DeepSeek does not, and Ledger answers `403 embeddings is not allowed for deepseek`. `NESSIE_EMBEDDING_SERVICE_ID` is the Ledger `/v1/:serviceId/*` segment embeddings are rewritten to; without it the segment defaults to the provider name, which is meaningless for `openai-compatible`. Production uses `openai-compatible` + `jina` + `jina-embeddings-v3`, inheriting the Ledger host and key. **Changing the embedding model is a schema change** — see "Embedding model and vector width" below. |
 | Auth providers (SSO) | `nessie.config.json` `auth.providers` | see SSO below |
 | Feedback → GitHub | `NESSIE_GITHUB_TOKEN`, `NESSIE_GITHUB_OWNER`, `NESSIE_GITHUB_REPO` | token (repo-scoped PAT) required to file issues from the Feedback section; owner/repo default to `UnlikeOtherAI`/`Nessie`. Without a token, feedback is stored but no issue is created (`status: saved`) |

@@ -6,7 +6,8 @@ import type { AppConnectionSummaryRecord, AppDetailRecord } from '@nessie/schema
 import {
   agentsAccessEmptyMessage,
   appCapabilityCount,
-  appConnectCtaLabel,
+  appConnectInFlight,
+  appCredentialsHref,
   appDetailCta,
   appDetailLinks,
   appDetailStats,
@@ -18,6 +19,10 @@ import {
   capabilitiesNote,
   resolveAppDetailTab,
 } from '../src/components/features/apps/app-detail-view.js'
+import {
+  createWindowAuthLauncher,
+  type ExternalAuthWindow,
+} from '../src/components/features/apps/external-auth-launcher.js'
 
 /**
  * The app detail page is the member surface: connect, accounts, capabilities,
@@ -129,48 +134,108 @@ test('a deep link to a tab this app does not offer falls back to Overview, not a
   assert.equal(resolveAppDetailTab('accounts', appDetailTabs(detail({ connections: [connection()] }))), 'accounts')
 })
 
-test('the connect label names both parties, except where a phone has no room for it', () => {
-  assert.equal(appConnectCtaLabel('GitHub', false), 'Connect Nessie to GitHub')
-  assert.equal(appConnectCtaLabel('GitHub', true), 'Connect')
-})
-
-test('the hero CTA is the card decision, relabelled and pointed at the server own install route', () => {
-  const app = detail()
-  assert.deepEqual(appDetailCta(app, false), {
-    kind: 'link',
-    href: app.installHref,
-    label: 'Connect Nessie to GitHub',
-    tone: 'primary',
-  })
-  assert.deepEqual(appDetailCta(app, true), {
-    kind: 'link',
-    href: app.installHref,
+test('Connect runs the flow on this page instead of linking at the install route', () => {
+  // The whole point of the detail page owning connect: pressing this must not
+  // hand the person to the Connectors page's install dialog.
+  assert.deepEqual(appDetailCta(detail()), {
+    kind: 'connect',
     label: 'Connect',
     tone: 'primary',
   })
+  // That label is the card's one word. It used to read "Connect Nessie to
+  // GitHub" wherever there was room; the person is on GitHub's page, under
+  // GitHub's name and icon, having clicked GitHub's card.
+  //
+  // A failed connection is the same handshake again, so it runs here too.
+  assert.deepEqual(appDetailCta(detail({ state: 'error' })), {
+    kind: 'connect',
+    label: 'Retry',
+    tone: 'primary',
+  })
 })
 
-test('a blocked connect keeps its disabled shape and reason, and only gains the longer label', () => {
-  assert.deepEqual(appDetailCta(detail({ locked: true }), false), {
+test('a blocked connect keeps its disabled shape and reason', () => {
+  assert.deepEqual(appDetailCta(detail({ locked: true })), {
     kind: 'disabled',
-    label: 'Connect Nessie to GitHub',
+    label: 'Connect',
     title: 'Managed by your admin.',
     tone: 'primary',
   })
 })
 
-test('an action that is not Connect passes through untouched, compact or not', () => {
+test('the hero offers exactly the card action — navigations link, connects connect', () => {
+  // A navigation stays a link: "Manage" goes to a tab, it does not handshake.
   const connected = detail({ connections: [connection()], state: 'connected' })
-  const manage = { kind: 'link', href: '/apps/github?tab=accounts', label: 'Manage', tone: 'secondary' }
-  assert.deepEqual(appDetailCta(connected, false), manage)
-  assert.deepEqual(appDetailCta(connected, true), manage)
-  assert.deepEqual(appDetailCta(detail({ state: 'auth_expired' }), true), {
+  assert.deepEqual(appDetailCta(connected), {
     kind: 'link',
-    href: detail().installHref,
+    href: '/apps/github?tab=accounts',
+    label: 'Manage',
+    tone: 'secondary',
+  })
+  // Reconnecting runs the flow in place like every other connect. It used to
+  // link out to the Connectors install page, which is exactly the bounce the
+  // store must never do — connecting happens where the person is standing.
+  assert.deepEqual(appDetailCta(detail({ state: 'auth_expired' })), {
+    kind: 'connect',
     label: 'Reconnect',
     tone: 'primary',
   })
-  assert.deepEqual(appDetailCta(detail({ state: 'unavailable' }), false), { kind: 'none' })
+  assert.deepEqual(appDetailCta(detail({ state: 'unavailable' })), { kind: 'none' })
+})
+
+test('the CTA is spent only while the flow owns the outcome', () => {
+  assert.equal(appConnectInFlight('probing'), true)
+  assert.equal(appConnectInFlight('awaiting_authorization'), true)
+  assert.equal(appConnectInFlight('verifying'), true)
+  // Each of these carries its own control — the panel's retry, the panel's
+  // "Add the key", or a hero that has already flipped to connected.
+  assert.equal(appConnectInFlight('idle'), false)
+  assert.equal(appConnectInFlight('error'), false)
+  assert.equal(appConnectInFlight('needs_secret'), false)
+  assert.equal(appConnectInFlight('connected'), false)
+})
+
+test('the key an app asked for is added beside the account, not through a second install', () => {
+  // The account already exists by the time the server says `needs_secret`;
+  // `installHref` would open the install dialog and make a second one.
+  const app = detail()
+  assert.equal(appCredentialsHref(app), '/mcp-app-store?catalogEntryId=app-1')
+  assert.notEqual(appCredentialsHref(app), app.installHref)
+})
+
+/**
+ * The sign-in window this page opens.
+ *
+ * Its canonical home is `apps-connect-flow.test.ts` beside the rest of the
+ * launcher's assertions; it is here because the reverse-tabnabbing fix landed
+ * with the page that mounts the flow.
+ */
+test('the sign-in popup cannot reach back at the tab that opened it', () => {
+  const popup: ExternalAuthWindow = {
+    close: () => {},
+    closed: false,
+    focus: () => {},
+    // Whatever the browser handed the window; the launcher must clear it.
+    opener: { location: 'https://app.nessie.works/apps/github' },
+  }
+  const calls: string[] = []
+  const handle = createWindowAuthLauncher({
+    open: (url) => {
+      calls.push(url)
+      return popup
+    },
+    outerHeight: 1000,
+    outerWidth: 1400,
+    screenX: 0,
+    screenY: 0,
+  }).open('https://attacker.example/authorize')
+
+  assert.ok(handle)
+  assert.deepEqual(calls, ['https://attacker.example/authorize'])
+  // The first page this window loads is a third party's. It cannot read the
+  // opener across origins, but it can write `opener.location` and replace the
+  // admin tab with a credential-harvesting copy — unless there is no opener.
+  assert.equal(popup.opener, null)
 })
 
 test('the provider line names the publisher when one claims the app, and the category always', () => {

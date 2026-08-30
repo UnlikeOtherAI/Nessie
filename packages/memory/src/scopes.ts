@@ -347,6 +347,51 @@ export const constrainScopesToDestination = (
   }
 }
 
+/**
+ * A record that carries the shared scoped-content shape: a `visibility` plus the
+ * tenant chain it is scoped against. `Thought` and `KnowledgeSpace` both satisfy
+ * it by construction, which is why one resolver serves both.
+ */
+export type ScopedRecord = {
+  visibility: string
+  organizationId: string
+  projectId?: string | null
+  teamId?: string | null
+  channelId?: string | null
+  userId?: string | null
+}
+
+/**
+ * The single scope a scoped record lives at, in disclosure-basis vocabulary.
+ *
+ * A thought stores its audience as an explicit `(audience_type, audience_id)`
+ * pair, but a knowledge space stores `visibility` plus the chain — the same fact
+ * in a different shape. Resolving it here keeps one mapping from visibility to
+ * audience type instead of a second copy beside every reader.
+ *
+ * Returns null when the record names no id at its own visibility level (a
+ * `private` space with no `userId`, say): there is no scope to be outside of, so
+ * it cannot make a reply privileged.
+ */
+export const scopeForVisibility = (record: ScopedRecord): ScopeRef | null => {
+  switch (record.visibility) {
+    case 'private':
+      return record.userId ? { scopeId: record.userId, scopeType: 'user' } : null
+    case 'channel':
+      return record.channelId ? { scopeId: record.channelId, scopeType: 'channel' } : null
+    case 'team':
+      return record.teamId ? { scopeId: record.teamId, scopeType: 'team' } : null
+    case 'project':
+      return record.projectId ? { scopeId: record.projectId, scopeType: 'project' } : null
+    case 'organization':
+      return { scopeId: record.organizationId, scopeType: 'organization' }
+    default:
+      return null
+  }
+}
+
+export type ScopeRef = { scopeType: string; scopeId: string }
+
 type ThoughtAudienceRow = {
   audienceType: string | null
   audienceId: string | null

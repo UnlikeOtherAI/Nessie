@@ -44,6 +44,11 @@ const makeApp = (input: {
     startedAt: Date | null
   }>
   threadVisible?: boolean
+  // The run's disclosure basis. Empty (the default) means unrestricted, which
+  // is the case every other test here is about; a non-empty basis exercises the
+  // gate that withholds a restricted run's reasoning.
+  runBasis?: Array<{ scopeType: string; scopeId: string }>
+  viewerScopes?: Array<{ scopeType: string; scopeId: string }>
 }) => {
   const prisma = {
     thread: {
@@ -71,10 +76,23 @@ const makeApp = (input: {
               status: 'running',
             },
       findMany: async () => input.runningRuns ?? [],
+      // The disclosure gate resolves the run's channel to evaluate scope grants.
+      findUnique: async () => ({ agentId, thread: { channelId } }),
     },
     runThinkingChunk: {
       findMany: async (args: { take: number }) => newestFirst(input.chunks ?? [], args.take),
     },
+    runBasisScope: {
+      findMany: async () => input.runBasis ?? [],
+    },
+    // Consulted only when a basis exists. An org member with no channel/team/
+    // project rows satisfies nothing, so a restricted run is withheld.
+    organizationMember: { findFirst: async () => ({ id: 'member-row' }) },
+    channelMember: { findMany: async () => [] },
+    teamMember: { findMany: async () => [] },
+    projectMember: { findMany: async () => [] },
+    disclosureGrant: { findMany: async () => [] },
+    scopeDisclosureGrant: { findMany: async () => [] },
   } as unknown as PrismaClient
 
   const app = Fastify({ logger: false })
@@ -246,6 +264,55 @@ test('a top-level run reports a null anchor rather than omitting it', async () =
     assert.equal(run.rootMessageId, null)
     assert.equal(run.startedAt, null)
     assert.equal(run.lastChunkId, null)
+  } finally {
+    await app.close()
+  }
+})
+
+// The gate itself is unit-tested against real Postgres in
+// `disclosure-read-paths.test.ts`; these two pin its wiring at the route.
+
+test('a restricted run answers 404 on its own thought log, not 403', async () => {
+  // 404 rather than 403 keeps this consistent with the route's existing "do not
+  // confirm what you cannot see" behaviour for a thread the viewer cannot reach.
+  const app = makeApp({
+    chunks: [chunk(1, 'reasoning', 'Checking the private memo…')],
+    runBasis: [{ scopeId: '00000000-0000-4000-8000-0000000000ff', scopeType: 'user' }],
+  })
+  try {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/threads/${threadId}/runs/${runId}/thinking`,
+    })
+
+    assert.equal(response.statusCode, 404)
+    assert.equal(response.json().error.code, 'RUN_NOT_FOUND')
+    assert.ok(!response.body.includes('private memo'))
+  } finally {
+    await app.close()
+  }
+})
+
+test('the bootstrap still lists a restricted run, but carries none of its thinking', async () => {
+  // The bubble is the honest signal that something is happening — withholding
+  // the run entirely would leave an unexplained gap in the feed.
+  const app = makeApp({
+    chunks: [chunk(1, 'reasoning', 'Checking the private memo…')],
+    runBasis: [{ scopeId: '00000000-0000-4000-8000-0000000000ff', scopeType: 'user' }],
+    runningRuns: [{ agentId, id: runId, replyRootMessageId: rootMessageId, startedAt: null }],
+  })
+  try {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/threads/${threadId}/thinking`,
+    })
+
+    assert.equal(response.statusCode, 200)
+    const run = response.json().data.runs[0]
+    assert.equal(run.runId, runId)
+    assert.deepEqual(run.entries, [])
+    assert.equal(run.lastChunkId, null)
+    assert.ok(!response.body.includes('private memo'))
   } finally {
     await app.close()
   }

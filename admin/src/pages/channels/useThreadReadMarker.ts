@@ -36,7 +36,7 @@ export const useThreadReadMarker = (
     if (!marker || !threadId) return
 
     pendingReadMarkerRef.current = marker
-    markThreadRead.mutate({ rootMessageId, threadId }, {
+    markThreadRead.mutate({ rootMessageId, lastReadMessageId: latestMessageId, threadId }, {
       onError: () => {
         pendingReadMarkerRef.current = null
       },

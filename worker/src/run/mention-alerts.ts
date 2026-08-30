@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   createMentionUserAlerts,
+  followReplyThread,
   resolveMessageMentions,
   type PgRealtimeTransport,
 } from '@nessie/runtime'
@@ -63,6 +64,19 @@ export const createMessageMentionAlerts = async (
       actorAgentId: input.actorAgentId ?? null,
       mentionedUserIds: mentions.userIds,
     })
+    // Agent replies use the same durable participation model as human
+    // messages. Alert state is separate attention state, never the source of
+    // truth for whether a conversation belongs in Threads.
+    const message = await deps.prisma.message.findUnique({
+      where: { id: input.messageId },
+      select: { rootMessageId: true },
+    })
+    if (message) {
+      await followReplyThread(deps.prisma, {
+        rootMessageId: message.rootMessageId ?? input.messageId,
+        userIds: mentions.userIds,
+      })
+    }
   } catch (error) {
     console.error(
       '[mention-alerts] failed to persist mention alerts for message',

@@ -10,6 +10,7 @@ import type {
   McpEventName,
   McpHealth,
   McpManagerEvent,
+  McpServerCapabilities,
   McpToolDescriptor,
   McpToolResult,
   Unsubscribe,
@@ -69,6 +70,35 @@ export class McpClientManager {
     opts?: { timeoutMs?: number; abort?: AbortSignal },
   ): Promise<McpToolDescriptor[]> {
     return this.requireConnection(id).listTools(false, opts)
+  }
+
+  /**
+   * What this server advertised at handshake, or `null` if it advertised
+   * nothing. Synchronous — the answer costs no round trip, which is what lets a
+   * caller use it as a gate before sending a listing the server never offered.
+   * See `McpConnection.serverCapabilities`.
+   */
+  serverCapabilities(id: McpConnectionId): McpServerCapabilities | null {
+    return this.requireConnection(id).serverCapabilities()
+  }
+
+  /**
+   * `resources/list`, one page. Only meaningful when `serverCapabilities()`
+   * says the server offers resources at all.
+   */
+  async listResources(
+    id: McpConnectionId,
+    opts?: { timeoutMs?: number; abort?: AbortSignal },
+  ): Promise<unknown[]> {
+    return this.requireConnection(id).listResources(opts)
+  }
+
+  /** `prompts/list`, one page. See `listResources`. */
+  async listPrompts(
+    id: McpConnectionId,
+    opts?: { timeoutMs?: number; abort?: AbortSignal },
+  ): Promise<unknown[]> {
+    return this.requireConnection(id).listPrompts(opts)
   }
 
   /** Force a fresh `tools/list` round-trip, bypassing the discovery cache. */

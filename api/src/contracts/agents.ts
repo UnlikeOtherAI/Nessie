@@ -38,6 +38,21 @@ export const CreateAgentBodySchema = z.object({
 
 export const UpdateAgentBodySchema = z.object({
   name: NonEmptyStringSchema.optional(),
+  /**
+   * Reassign stewardship. `null` returns the agent to the unowned pool.
+   *
+   * Gated by the route's existing `requireOwner` — deliberately NOT widened to
+   * let an agent's own steward transfer it, because this endpoint also mutates
+   * the system prompt, tool policy and run limits, and one gate cannot serve
+   * both without handing every steward those powers too.
+   *
+   * No acceptance step: today ownership decides visibility and attribution
+   * only. When escalation delivery ships, ownership becomes its first rung and
+   * a transfer starts routing interruptions to the recipient — at which point
+   * this needs a pending-transfer state before it can stay unilateral. See
+   * docs/plans/2026-08-29-people-and-their-agents.md.
+   */
+  ownerUserId: z.string().uuid().nullish(),
   role: NonEmptyStringSchema.optional(),
   systemPrompt: z.string().optional(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),

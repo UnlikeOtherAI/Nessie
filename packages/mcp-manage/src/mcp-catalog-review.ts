@@ -28,6 +28,17 @@ import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
  * organisation that was the closest thing available. It is now `User.superAdmin`,
  * the role that actually names instance administration; an org owner reviewing
  * submissions on behalf of every other tenant was never the intent.
+ *
+ * **A review outcome is written to `moderationState`, not left to be inferred.**
+ * The App Store (`app-store-visibility.ts`) lists by moderation state, so a
+ * review that only moved `visibility`/`status` left the store's copy of the
+ * decision stale: an approved entry appeared only by accident of the curation
+ * rule's "public + published" arm, and a *rejected* one kept the `curated` state
+ * the store migration had backfilled — still an ordinary app card to its owner,
+ * claiming a curation decision nobody made. Approval writes `approved`;
+ * rejection writes `hidden`, the store's word for a deliberate removal.
+ * Submission writes nothing: a request is not a decision, and laundering the
+ * state on submit would let an owner re-list an entry a reviewer had removed.
  */
 
 const requireSuperAdmin = async (
@@ -96,7 +107,9 @@ export const submitForReview = async (
 }
 
 /**
- * Superuser approves a pending submission → `published` in the public store.
+ * Superuser approves a pending submission → `published` in the public store,
+ * and `moderationState: 'approved'` so the App Store lists it *because* of the
+ * decision rather than as a side effect of it now being public + published.
  * Atomic on `status === 'pending_approval'` so a double-approve is a no-op.
  */
 export const approveSubmission = async (
@@ -121,6 +134,7 @@ export const approveSubmission = async (
     data: {
       status: 'published',
       visibility: 'public',
+      moderationState: 'approved',
       reviewedAt: new Date(),
       reviewedBy: actorContext.actor.actorId,
       rejectionReason: null,
@@ -140,7 +154,12 @@ export const approveSubmission = async (
 /**
  * Superuser rejects a pending submission. The entry reverts to a `private`
  * `rejected` draft (freeing the public name) with the reason recorded so the
- * owner can revise and resubmit.
+ * owner can revise and resubmit, and leaves the App Store as `hidden`.
+ *
+ * The owner does not lose the connector — it is still theirs to install, and
+ * the Connectors page is where the rejection reason and the resubmit action
+ * live. What they lose is the app card, which had been telling them a reviewer
+ * had curated something a reviewer had just refused.
  */
 export const rejectSubmission = async (
   prisma: PrismaClient,
@@ -166,6 +185,7 @@ export const rejectSubmission = async (
     data: {
       visibility: 'private',
       status: 'rejected',
+      moderationState: 'hidden',
       reviewedAt: new Date(),
       reviewedBy: actorContext.actor.actorId,
       rejectionReason: reason,

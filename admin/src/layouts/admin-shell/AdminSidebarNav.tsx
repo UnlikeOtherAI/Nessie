@@ -182,6 +182,17 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         ),
       },
       {
+        path: '/settings/secrets',
+        label: 'Secrets',
+        icon: icon(
+          <>
+            <rect height="10" rx="2" width="14" x="5" y="11" />
+            <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12 14v3" strokeLinecap="round" />
+          </>,
+        ),
+      },
+      {
         path: '/settings/notifications',
         label: 'Notifications',
         icon: icon(

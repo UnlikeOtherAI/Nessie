@@ -22,10 +22,11 @@ export type AppLinkTarget = Pick<AppSummaryRecord, 'id' | 'slug'>
 export const appDetailHref = (app: AppLinkTarget, tab?: string): string =>
   `/apps/${encodeURIComponent(app.slug ?? app.id)}${tab ? `?tab=${tab}` : ''}`
 
-// Where connecting goes is `AppSummaryRecord.installHref`, named by the server.
-// A client-side builder for the same URL used to sit here, which meant the card
-// footer and the hero CTA each assembled their own destination and would part
-// company the moment the connect phase changed it.
+// Connect no longer leaves the page: the card's Connect button opens the
+// AppConnectDialog, which runs the same `useAppConnectFlow` the detail page
+// drives. `AppSummaryRecord.installHref` still names the server's fallback
+// destination, and the detail hero links to it, but the grid's primary path
+// is the dialog.
 
 // ─── Icon fallback ──────────────────────────────────────────────────────────
 
@@ -95,24 +96,74 @@ export const appCardStatus = (app: AppSummaryRecord): AppCardStatus => {
 
 export type AppCardActionTone = 'primary' | 'secondary'
 
+/** Where the decision behind a refusal actually lives, when a page owns it. */
+export type AppUnavailableLink = { href: string; label: string }
+
 export type AppCardAction =
   /** Nothing a person can do from a card — the detail view says why in words. */
   | { kind: 'none' }
   | { kind: 'link'; href: string; label: string; tone: AppCardActionTone }
+  /** Opens the connect dialog on this page — connecting never navigates away. */
+  | { kind: 'connect'; label: string; tone: AppCardActionTone }
+  /** `title` is a tooltip, so it stays a complete sentence with no link in it. */
   | { kind: 'disabled'; label: string; title: string; tone: AppCardActionTone }
 
+export type AppUnavailableExplanation = {
+  text: string
+  /** Where the decision lives, for surfaces with room to render an anchor. */
+  link: AppUnavailableLink | null
+}
+
 /**
- * Why a person cannot start this themselves. Both cases keep the button
- * visible and disabled rather than hiding it: a missing button reads as a
- * missing feature, a disabled one with a reason reads as somebody else's call.
+ * Why this app cannot be connected here, in one sentence that always names
+ * either what the person can do or who can change it.
  *
- * Exported because the states that offer no button at all still owe the reader
- * this sentence — the detail hero says it in words where the card had room only
- * for "Unavailable".
+ * The first two cases keep the button visible and disabled rather than hiding
+ * it: a missing button reads as a missing feature, a disabled one with a reason
+ * reads as somebody else's call. Naming Integrations is not enough on its own —
+ * a member then has to go and find it — so that one carries the door as well as
+ * the sentence.
+ *
+ * The three verdicts below — blocked, retired, unreachable — belong to the
+ * states with no button at all, and all three used to return null. The detail
+ * hero builds its explanation from exactly this function, so the surface whose
+ * whole job is to explain rendered a bare "Unavailable" and stopped. Which
+ * verdict it is stays legible from the wire: `trustLevel` carries the
+ * moderation block, and `state` separates a retired app from one whose server
+ * could not be reached, so no new field is needed to say it.
  */
-export const appUnavailableReason = (app: AppSummaryRecord): string | null => {
-  if (app.managedByIntegration) return 'Turned on from Integrations, not here.'
-  if (app.locked) return 'Managed by your admin.'
+export const appUnavailableExplanation = (
+  app: AppSummaryRecord,
+): AppUnavailableExplanation | null => {
+  if (app.managedByIntegration) {
+    return {
+      text: 'Turned on from Integrations, not here.',
+      link: { href: '/settings/integrations', label: 'Open Integrations' },
+    }
+  }
+  if (app.locked) return { text: 'Managed by your admin.', link: null }
+
+  // Gated on the two action-less states rather than on the underlying flags, so
+  // a verdict can never be worded over an app that is connected and working.
+  if (app.state === 'disabled') {
+    return app.trustLevel === 'blocked'
+      ? {
+        text: 'Blocked for this organisation, so it cannot be connected. An owner can lift that.',
+        link: null,
+      }
+      : {
+        text: 'No longer offered by its publisher, so new accounts cannot be connected. '
+          + 'An owner can point you at a replacement.',
+        link: null,
+      }
+  }
+  if (app.state === 'unavailable') {
+    return {
+      text: "Nessie could not reach this app's server when it last checked. Try again shortly; "
+        + 'if it keeps failing, an owner can look into it.',
+      link: null,
+    }
+  }
   return null
 }
 
@@ -123,11 +174,11 @@ export const appCardAction = (app: AppSummaryRecord): AppCardAction => {
     return { kind: 'link', href: appDetailHref(app), label: 'Open', tone: 'secondary' }
   }
 
-  const blocked = appUnavailableReason(app)
+  const blocked = appUnavailableExplanation(app)
   const connect = (label: string): AppCardAction =>
     blocked === null
-      ? { kind: 'link', href: app.installHref, label, tone: 'primary' }
-      : { kind: 'disabled', label, title: blocked, tone: 'primary' }
+      ? { kind: 'connect', label, tone: 'primary' }
+      : { kind: 'disabled', label, title: blocked.text, tone: 'primary' }
 
   switch (app.state) {
     case 'available':
@@ -135,24 +186,36 @@ export const appCardAction = (app: AppSummaryRecord): AppCardAction => {
     case 'connecting':
       // Not "Finishing the connection" — an install waiting on a key nobody
       // has entered is in this state indefinitely, and the card must not
-      // promise it is about to resolve itself. Opening the app is the way on.
+      // promise it is about to resolve itself. Opening the app is the way on,
+      // so the action *is* that doorway rather than a disabled restatement of
+      // the "Connecting…" pill beside it. Two elements reading the same word,
+      // one of them dead, named no decision and looked like a rendering fault.
       return {
-        kind: 'disabled',
-        label: 'Connecting…',
-        title: 'This connection has not finished setting up yet.',
-        tone: 'primary',
+        kind: 'link',
+        href: appDetailHref(app, 'accounts'),
+        label: 'Finish setup',
+        tone: 'secondary',
       }
-    // `paused` belongs here, not with the two states below: the accounts exist
-    // and are the person's own to switch back on, and the accounts tab is where
-    // they do it. Sending them to "no action available" would strand the only
-    // person who can undo it.
     case 'connected':
     case 'multiple_accounts':
-    case 'paused':
       return {
         kind: 'link',
         href: appDetailHref(app, 'accounts'),
         label: 'Manage',
+        tone: 'secondary',
+      }
+    // `paused` still belongs in the connected family — the accounts exist, and
+    // the tab names each one and offers connecting a fresh account, which is
+    // the way back to a working app. It says "View accounts" rather than
+    // "Manage" because nothing in the product switches a paused install back
+    // on: there is no such endpoint, and the accounts list renders name,
+    // status and error with no control. "Manage" sent the one person who cares
+    // to a page that read "Turned off" back at them.
+    case 'paused':
+      return {
+        kind: 'link',
+        href: appDetailHref(app, 'accounts'),
+        label: 'View accounts',
         tone: 'secondary',
       }
     case 'auth_expired':

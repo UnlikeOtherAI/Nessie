@@ -62,6 +62,7 @@ export const runSpawnSubtaskTool = async (
       id: true,
       model: true,
       name: true,
+      ownerUserId: true,
       provider: true,
       systemPrompt: true,
       toolPolicy: true,
@@ -91,6 +92,11 @@ export const runSpawnSubtaskTool = async (
         model: parentAgent.model,
         name: `${parentAgent.name} ${role} ${randomUUID().slice(0, 8)}`,
         organizationId: context.channel.organizationId,
+        // A subtask child answers to the same person as its parent, so spend
+        // and activity stay attributable. It is still kept out of every
+        // ownership-derived list by `parentAgentId` — these are run workers,
+        // not staff (see buildOwnedAgentWhere).
+        ownerUserId: parentAgent.ownerUserId,
         parentAgentId: parentAgent.id,
         provider: parentAgent.provider,
         role,

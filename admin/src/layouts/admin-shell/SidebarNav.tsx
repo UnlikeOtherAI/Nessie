@@ -1,12 +1,14 @@
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
+import { useLocation } from 'react-router-dom';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
+import { renderUnreadCount } from './SidebarRow';
 import type {
   CreateChannelTarget,
-  RenameProjectTarget,
+  EditProjectTarget,
   SidebarAgentDm,
   SidebarGroupDm,
   SidebarMenu,
@@ -26,13 +28,14 @@ type SidebarNavProps = {
   dmCollapsed: boolean;
   onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
+  onNavigateThreads: () => void;
   onNavigateDm: (userId: string) => void;
   onNavigateNewConversation: () => void;
   onNavigateProject: (projectId: string) => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onOpenCreateProject: () => void;
   onOpenPersonalAssistant: () => void;
-  onOpenRenameProject: (target: RenameProjectTarget) => void;
+  onOpenEditProject: (target: EditProjectTarget) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
   personalAssistantAgent: AgentRecord | null;
   personalAssistantBootstrapping: boolean;
@@ -59,9 +62,11 @@ type SidebarNavProps = {
   visibleSidebarProjects: SidebarProject[];
   visibleStarredEntries: VisibleStarredEntry[];
   standaloneChannels: ChannelRecord[];
+  threadsUnreadCount: number;
 };
 
 export const SidebarNav = (props: SidebarNavProps) => {
+  const { pathname } = useLocation();
   const {
     attentionCountByProjectId,
     activeDmChannelId,
@@ -71,13 +76,14 @@ export const SidebarNav = (props: SidebarNavProps) => {
     dmCollapsed,
     onNavigateAgent,
     onNavigateChannel,
+    onNavigateThreads,
     onNavigateDm,
     onNavigateNewConversation,
     onNavigateProject,
     onOpenCreateChannel,
     onOpenCreateProject,
     onOpenPersonalAssistant,
-    onOpenRenameProject,
+    onOpenEditProject,
     onToggleStar,
     personalAssistantAgent,
     personalAssistantBootstrapping,
@@ -104,6 +110,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     visibleSidebarProjects,
     visibleStarredEntries,
     standaloneChannels,
+    threadsUnreadCount,
   } = props;
   const nativeTouchShell = isReactNativeWebView();
 
@@ -132,6 +139,15 @@ export const SidebarNav = (props: SidebarNavProps) => {
           unreadCountByChannelId={unreadCountByChannelId}
         />
 
+        <button
+          className={`admin-sb-item sidebar-threads group ${pathname === '/threads' ? 'active' : ''}`}
+          onClick={onNavigateThreads}
+          type="button"
+        >
+          <span>Threads</span>
+          {renderUnreadCount(threadsUnreadCount)}
+        </button>
+
       <SidebarProjectsSection
         attentionCountByProjectId={attentionCountByProjectId}
           currentChannelId={currentChannelId}
@@ -140,7 +156,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onNavigateProject={onNavigateProject}
           onOpenCreateChannel={onOpenCreateChannel}
           onOpenCreateProject={onOpenCreateProject}
-          onOpenRenameProject={onOpenRenameProject}
+          onOpenEditProject={onOpenEditProject}
           onToggleStar={onToggleStar}
           projectsCollapsed={projectsCollapsed}
           setSidebarMenu={setSidebarMenu}

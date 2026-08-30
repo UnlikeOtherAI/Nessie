@@ -11,6 +11,13 @@ import {
 } from '../../facades/users/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
+  PersonAgents,
+  UnassignedAgents,
+} from '../../components/features/members/PersonAgents'
+import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
+import { useAgents } from '../../facades/agents/queries'
+import type { AgentRecord } from '../../lib/api-client'
+import {
   FeedbackBanner,
   SettingsPanel,
   type SettingsFeedback,
@@ -26,7 +33,15 @@ const ROLE_OPTIONS = [
   { value: 'viewer', label: 'Viewer' },
 ] as const
 
-const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
+const MemberRow = ({
+  isSelf,
+  ownedAgents,
+  user,
+}: {
+  isSelf: boolean
+  ownedAgents: AgentRecord[]
+  user: UserRecord
+}) => {
   const { token } = useAuthSession()
   const updateRole = useUpdateUserRole()
   const setDeactivated = useSetUserDeactivated()
@@ -80,6 +95,9 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
         ) : null}
       </div>
 
+      {/* This person's agents — the same nesting the UOA roster row uses. */}
+      <PersonAgents agents={ownedAgents} token={token} />
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
           aria-label={`Role for ${user.displayName}`}
@@ -116,7 +134,7 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
 }
 
 export const SettingsMembersPage = () => {
-  const { me } = useAuthSession()
+  const { me, token } = useAuthSession()
   const roleIds = me?.user.roleIds ?? []
   const isOwner = useIsOwner()
   // On an UnlikeOtherAI session the roster and its invitations are UOA API
@@ -125,6 +143,27 @@ export const SettingsMembersPage = () => {
   const canManageWorkspace = isOwner || roleIds.includes('admin')
   const { data: users = [] } = useUsers(isOwner && !isUoaSession)
   const createUser = useCreateUser()
+
+  /*
+   * A no-IdP install is the authority for its own people, so the same
+   * people-and-their-agents tree renders here with local `User` rows as the
+   * source instead of the UOA roster. One join, one renderer, two authoritative
+   * sources — never a second implementation of the view.
+   */
+  const agentsQuery = useAgents({ scope: 'all' })
+  const localTree = (() => {
+    const agents = Array.isArray(agentsQuery.data) ? agentsQuery.data : []
+    const tree = buildPeopleAgentsTree(
+      users.map((user) => ({ displayName: user.displayName, uoaSub: user.id, userId: user.id })),
+      agents,
+    )
+    return {
+      agentsByUserId: new Map(
+        tree.people.map((person) => [person.member.userId ?? '', person.agents]),
+      ),
+      tree,
+    }
+  })()
 
   const [userDisplayName, setUserDisplayName] = useState('')
   const [userEmail, setUserEmail] = useState('')
@@ -186,9 +225,27 @@ export const SettingsMembersPage = () => {
           <SectionLabel>People</SectionLabel>
           <div className="mt-4 grid gap-2">
             {users.map((user) => (
-              <MemberRow isSelf={user.id === me.user.id} key={user.id} user={user} />
+              <MemberRow
+                isSelf={user.id === me.user.id}
+                key={user.id}
+                ownedAgents={localTree.agentsByUserId.get(user.id) ?? []}
+                user={user}
+              />
             ))}
           </div>
+          {localTree.tree.unowned.length > 0 ? (
+            <div
+              className="mt-5 border-t border-[color:var(--sep)] pt-4"
+              data-testid="local-unassigned-agents"
+            >
+              <UnassignedAgents
+                agents={localTree.tree.unowned}
+                emptyLabel="None"
+                title="Unowned agents"
+                token={token}
+              />
+            </div>
+          ) : null}
         </section>
 
         <section className="admin-card p-4">

@@ -88,7 +88,10 @@ import { registerLedgerRoutes } from './routes/ledger.js'
 import { registerDisclosureGrantRoutes } from './routes/disclosure-grants.js'
 import { registerMailboxRoutes } from './routes/mailbox.js'
 import { registerFeedbackRoutes } from './routes/feedback.js'
+import { registerAppsConnectRoutes } from './routes/apps-connect.js'
+import { registerAppsRegistryRoutes } from './routes/apps-registry.js'
 import { registerAppRoutes } from './routes/apps.js'
+import { registerWellKnownOAuthClientRoutes } from './routes/well-known-oauth-client.js'
 import { registerMcpRoutes } from './routes/mcp.js'
 import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerWorkspaceAvatarRoutes } from './routes/workspace-avatar.js'
@@ -105,6 +108,7 @@ import { registerProjectRoutes } from './routes/projects.js'
 import { registerResourceLockRoutes } from './routes/resource-locks.js'
 import { registerRunRoutes } from './routes/runs.js'
 import { registerSearchRoutes } from './routes/search.js'
+import { registerSecretRoutes } from './routes/secrets.js'
 import { registerStatusRoutes } from './routes/statuses.js'
 import { registerTaskRoutes } from './routes/tasks.js'
 import { registerTeamRoutes } from './routes/teams.js'
@@ -424,6 +428,9 @@ export const buildApp = async () => {
   registerWorkspaceMembersRoutes(app, deps)
   registerFeedbackRoutes(app, deps)
   registerAppRoutes(app, deps)
+  registerAppsRegistryRoutes(app, deps)
+  registerAppsConnectRoutes(app, deps)
+  registerWellKnownOAuthClientRoutes(app, deps)
   registerIntegrationRoutes(app, deps)
   registerExternalAgentRoutes(app, deps)
   registerProjectRoutes(app, deps)
@@ -433,6 +440,7 @@ export const buildApp = async () => {
   registerEventRoutes(app, deps)
   registerThreadRoutes(app, deps)
   registerSearchRoutes(app, deps)
+  registerSecretRoutes(app, deps)
   registerActivityRoutes(app, deps)
   registerThoughtRoutes(app, deps)
   registerDesignerRoutes(app, deps)

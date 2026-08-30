@@ -16,8 +16,10 @@ import {
   appGridColumns,
   buildCategorySections,
   catalogueEmptyMessage,
+  catalogueMatchTotal,
   filterApps,
   parseAppFilter,
+  searchTruncationNote,
   sectionPageSize,
   type AppFilter,
 } from '../components/features/apps/app-catalogue-view'
@@ -36,9 +38,17 @@ import { registerViewportMediaQuery, useViewport } from '../hooks/useViewport'
  * The Apps catalogue — the member's doorway to everything Nessie and its agents
  * can be connected to.
  *
- * It is a store, not an admin tool: one scrolling page of shelves, no protocol
- * vocabulary, and no network wait between a keystroke and a result. The whole
- * catalogue arrives in one request and every narrowing happens locally.
+ * It is a store, not an admin tool: one scrolling page of shelves and no
+ * protocol vocabulary. What it is *not* any more is one request for everything.
+ * The registry puts thousands of apps in this catalogue, so the server sends a
+ * shelf per category with the true size of each, search comes back ranked and
+ * capped, and a shelf a person opens fetches its own pages. Every number on
+ * screen is one of those server-side counts.
+ *
+ * The page also never narrates data it is not showing. While a query is in
+ * flight the previous results stay painted, so the results line, the empty
+ * state, and the filter all read from `data.applied` — the request the rendered
+ * rows actually answer — rather than from what the search box currently holds.
  *
  * The Connectors page (`/mcp-app-store`) stays the owner's surface for catalog
  * governance and the add-server wizard, and is where this page's one deliberate
@@ -60,17 +70,23 @@ export const AppsPage = () => {
   const [activeCategory, setActiveCategory] = useState<AppCategory | null>(null)
 
   // 150 ms is below the threshold where typing feels laggy and above the rate
-  // at which re-ranking 60 cards would churn.
+  // at which re-requesting would churn.
   const debouncedQuery = useDebouncedValue(query, 150)
-  const searching = isAppSearchActive(debouncedQuery)
   const filter = parseAppFilter(searchParams.get('filter'))
-  // The query goes to the server: Postgres owns the weighted ranking and the
-  // typo fallback, and a client-side re-filter would drop the rows only it can
-  // find. `placeholderData` keeps the previous results painted while the next
-  // ones arrive, so typing never flashes an empty shelf.
-  const { data, isError, isPending } = useApps(
-    searching ? { query: debouncedQuery } : {},
-  )
+  // Both narrowings go to the server. The query does because Postgres owns the
+  // weighted ranking and the typo fallback; "Installed" does because the
+  // response is a bounded slice, and filtering a slice would hide connected
+  // apps that are simply on another page while contradicting the count on the
+  // control that applied it.
+  const { data, isError, isPending } = useApps({
+    // The category dropdown narrows server-side for the same reason the other
+    // two do: the response is a bounded slice per category, so filtering it in
+    // the browser would hide apps that are merely on another page and make the
+    // count beside the control a lie.
+    category: activeCategory ?? undefined,
+    installed: filter === 'installed',
+    query: isAppSearchActive(debouncedQuery) ? debouncedQuery : undefined,
+  })
   const viewport = useViewport()
 
   const columns = appGridColumns({
@@ -81,19 +97,29 @@ export const AppsPage = () => {
   })
   const pageSize = sectionPageSize(columns)
 
-  const visibleApps = useMemo(() => filterApps(data?.apps ?? [], filter), [data, filter])
+  // Everything below describes the response on screen, not the input in hand.
+  const response = data?.response
+  const shownQuery = data?.applied.query ?? ''
+  const shownFilter: AppFilter = data?.applied.installed === true ? 'installed' : 'all'
+  const searching = isAppSearchActive(shownQuery)
+
   const results = useMemo(
-    () => (searching ? describeSearchResults(visibleApps, debouncedQuery) : []),
-    [debouncedQuery, searching, visibleApps],
+    () => (searching ? describeSearchResults(response?.apps ?? [], shownQuery) : []),
+    [response, searching, shownQuery],
   )
   const sections = useMemo(
-    () => (searching ? [] : buildCategorySections(visibleApps)),
-    [searching, visibleApps],
+    () => (searching ? [] : buildCategorySections(response?.apps ?? [], response?.categories ?? [])),
+    [response, searching],
   )
+  // The strip is the one list the server sends whole (five records at most), so
+  // narrowing it here drops nothing the next page would have held.
   const featured = useMemo(
-    () => (searching ? [] : filterApps(data?.featured ?? [], filter)),
-    [data, filter, searching],
+    () => (searching ? [] : filterApps(response?.featured ?? [], shownFilter)),
+    [response, shownFilter, searching],
   )
+  // Summed from per-category aggregates, so a capped result list still reports
+  // how many apps actually matched.
+  const matchTotal = catalogueMatchTotal(response?.categories ?? [])
 
   const setFilter = (next: AppFilter) => {
     const params = new URLSearchParams(searchParams)
@@ -106,10 +132,11 @@ export const AppsPage = () => {
 
   const empty = searching ? results.length === 0 : sections.length === 0
   const emptyModel = catalogueEmptyMessage({
-    filter,
-    query: searching ? debouncedQuery : '',
-    totalCount: data?.totalCount ?? 0,
+    filter: shownFilter,
+    query: shownQuery,
+    totalCount: response?.totalCount ?? 0,
   })
+  const truncation = searchTruncationNote(results.length, matchTotal)
 
   return (
     <div className="flex h-full flex-col">
@@ -118,7 +145,7 @@ export const AppsPage = () => {
           {
             icon: faPlus,
             id: 'apps-add-custom',
-            label: 'Add custom MCP server',
+            label: 'Add a custom app',
             onSelect: openConnectors,
             primary: true,
             priority: 0,
@@ -127,18 +154,22 @@ export const AppsPage = () => {
         title="Apps"
         titleTone="page"
       />
+      {/*
+        Full-bleed, like the agents list (c29c6f6a): a store is a shelf, and a
+        centred column wastes the width the grid exists to use — at five
+        columns on a wide screen that is the difference between seeing ten apps
+        and seeing twenty. No subtitle: the heading already says Apps, and a
+        line explaining that apps connect you to tools names no decision
+        (AGENTS.md rule zero #3).
+      */}
       <div className="min-h-0 flex-1 overflow-y-auto bg-[color:var(--main)]">
-        <div className="mx-auto w-full max-w-[80rem] px-4 py-6 sm:px-6 lg:px-8">
-          <p className="mb-4 text-sm text-[color:var(--tx2)]">
-            Connect Nessie and your agents to the tools your team uses.
-          </p>
-
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
           <AppsToolbar
             activeCategory={activeCategory}
             filter={filter}
             filterOptions={appFilterOptions({
-              installedCount: data?.installedCount ?? 0,
-              totalCount: data?.totalCount ?? 0,
+              installedCount: response?.installedCount ?? 0,
+              totalCount: response?.totalCount ?? 0,
             })}
             onFilterChange={setFilter}
             onQueryChange={setQuery}
@@ -179,16 +210,26 @@ export const AppsPage = () => {
             </div>
           ) : searching ? (
             <div className="mt-6" data-testid="apps-search-results">
-              <p className="mb-4 text-sm text-[color:var(--tx3)]">
-                {searchResultsLabel(results.length, debouncedQuery)}
-              </p>
+              <div className="mb-4">
+                <p className="text-sm text-[color:var(--tx3)]">
+                  {searchResultsLabel(matchTotal, shownQuery)}
+                </p>
+                {truncation ? (
+                  <p
+                    className="mt-1 text-xs text-[color:var(--tx3)]"
+                    data-testid="apps-search-capped"
+                  >
+                    {truncation}
+                  </p>
+                ) : null}
+              </div>
               <div className={APP_GRID_CLASS}>
                 {results.map((result) => (
                   <AppCard
                     app={result.app}
                     key={result.app.id}
                     provenance={result.provenance}
-                    query={debouncedQuery}
+                    query={shownQuery}
                   />
                 ))}
               </div>
@@ -199,6 +240,7 @@ export const AppsPage = () => {
               {sections.map((section) => (
                 <AppCategorySection
                   expanded={expandedCategories[section.category] === true}
+                  installed={shownFilter === 'installed'}
                   key={section.category}
                   onToggleExpanded={() =>
                     setExpandedCategories((current) => ({

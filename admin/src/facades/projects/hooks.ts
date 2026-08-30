@@ -63,13 +63,20 @@ export const useCreateTeam = () => {
   })
 }
 
-export const useRenameProject = () => {
+export const useUpdateProject = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string; projectId: string }) =>
+    mutationFn: (input: {
+      avatarAttachmentId: string | null
+      avatarEmoji: string | null
+      name: string
+      projectId: string
+    }) =>
       apiClient.patch<ProjectRecord>(`/api/projects/${input.projectId}`, {
+        avatarAttachmentId: input.avatarAttachmentId,
+        avatarEmoji: input.avatarEmoji,
         name: input.name,
       }),
     onSuccess: () => {

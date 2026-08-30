@@ -3,11 +3,21 @@
 Browsing and installing an integration should feel like installing an app in
 Slack or Notion, not like configuring a server. `/apps` is that surface.
 
-**Status:** Phase 2 (catalogue foundation) shipped. Phases 3–8 — registry
-ingestion, the generic MCP runtime, universal OAuth, platform auth UX, agent
-grants, and custom servers — are still to come. The design for all of it is in
-[ux-design-catalogue.md](ux-design-catalogue.md) and
-[ux-design-detail-and-connect.md](ux-design-detail-and-connect.md).
+**Status:** all eight phases shipped — the catalogue, registry ingestion, the
+generic MCP runtime, universal OAuth, platform auth UX, agent grants, and custom
+servers. What remained after that was making the store fill itself on a real
+deployment: the two catalogue seeds now run in `redeploy.sh` after the
+migration, and a scheduled worker sweep runs the registry sync ~every 6 hours
+(and once shortly after startup) so the ~5,500 apps arrive and stay fresh
+without anyone running a CLI.
+
+## Table of Contents
+
+- [ux-design-catalogue.md](ux-design-catalogue.md) — the catalogue page, the
+  app card and its eight states, categories, search, responsive behaviour.
+- [ux-design-detail-and-connect.md](ux-design-detail-and-connect.md) — the app
+  detail view, the universal Connect flow, connection management, agent access,
+  custom servers, trust badges, and the component reuse map.
 
 ## Table of Contents
 
@@ -71,6 +81,25 @@ through trigram similarity, and no substring test on the loaded record can
 reproduce it, so the card simply vanishes. `describeSearchResults` labels the
 server's answer with why each row matched; it never decides what matched.
 
+**A prefix lane covers the first two keystrokes.** Full text matches whole
+lexemes and the trigram lane needs three characters, so `"fi"` answered empty
+while `"fin"` answered — the store stopped narrowing exactly as a person began
+to type. `prefixTerm` OR-s Postgres' own `to_tsquery('simple', 'fi:*')` onto the
+whole-word query, so an exact match still outranks a prefix hit. It is the only
+tsquery text this module assembles by hand, so the lexeme is **whitelisted
+rather than escaped**: the last word lowercased, everything outside `[a-z0-9-]`
+dropped, trailing hyphens trimmed (tsquery rejects them), and nothing left means
+no prefix term at all. The bound parameter stays the raw user text; `:*` is the
+one interpolated character and it is a literal.
+
+Its tests are worth reading before adding another: a 2-character prefix is
+*intrinsically* low-signal — on the synced registry `"fi"` matches ~1,600 of
+5,500 rows, all legitimately (`FileToPDF`, `Financial`, `Filtrix`). A test that
+seeds one row and asserts it lands inside a `LIMIT`ed slice is therefore
+measuring how full the shared database is, not whether prefix matching works.
+Assert on a token the catalogue does not carry, and assert *that the lane
+answers*, never a position.
+
 ## Visibility
 
 The store shows `moderationState IN ('curated','approved')` and
@@ -106,8 +135,139 @@ the rule has to move in one place.
 Every response goes through a presenter that cannot emit a `credentialRef`,
 auth config, transport config, endpoint URL, or a raw upstream icon URL.
 
+## Registry ingestion (Phase 3)
+
+The catalogue is filled from the official MCP Registry — a measured ~5,500
+installable apps, against the 5 first-party connectors it launched with.
+`packages/mcp-manage/src/registry/` holds the client, mapper, categoriser,
+merge policy and importer; `POST /api/admin/mcp-registry/sync` (owner-only) and
+`pnpm --filter @nessie/api sync:registry` are the two doorways.
+
+What the design turns on:
+
+- **Only `isLatest` + `active` + an HTTP/SSE remote is installable.** Everything
+  else is counted as skipped, not imported — a package-only server is not
+  something Nessie's remote-only connector model can reach.
+- **Ingest as `discovered`; auto-promote to `curated` on objective gates only**
+  (https endpoint past the SSRF guard, a description of real length, a
+  resolvable name). Never auto-`approved`: that state means a human decided.
+- **An ingested row is always `community`.** The first mapper granted
+  `verified` when the advertised endpoint matched Nessie's curated library, and
+  the record author chooses that endpoint — so publishing
+  `io.github.attacker/notion-official` pointing at Notion's real URL minted a
+  store card carrying the attacker's own copy under a badge saying Nessie had
+  confirmed it with the publisher. `verified` is a human judgement again;
+  `20260829160000_demote_ingested_trust` clears rows written before the fix.
+- **One server is one app.** A record with no `registryName` match adopts an
+  existing row with the same canonical endpoint — stamping provenance onto it —
+  rather than inserting a rival `context7-2` beside the seeded Context7.
+  `registry_name` carries a partial unique index so two concurrent sweeps
+  cannot both insert.
+- **The persisted endpoint is canonical** (lower-cased host, default port and
+  trailing slash dropped), and `findApplicableLock` now canonicalises both
+  sides. Otherwise a registry row advertising `https://API.Example.com:443/mcp`
+  walks straight past an admin lock recorded on `https://api.example.com/mcp`.
+- **Curation is never overwritten.** A column is rewritten only when it still
+  holds what the last sync wrote, or is unset — with the two NOT NULL defaults
+  (`primaryCategory: 'other'`, `trustLevel: 'unknown'`) tested *before* the
+  generic empty-string check, or an untouched column reads as curator-owned and
+  no adopted row is ever categorised.
+- **Categorisation is deterministic rules, not a model.** These are
+  machine-authored records written to a published schema by publishers who
+  chose their words; sending thousands through a model would cost real money to
+  produce an answer nobody could reproduce or correct. The rule table was
+  extended against the actual ingested corpus rather than guessed, which took
+  uncategorised apps from 74% to ~48%. A rule matching nothing leaves the app
+  in `other` — a wrong shelf is worse than no shelf.
+- **Untrusted text and URLs.** Every URL-shaped field is http(s)-constrained at
+  the schema, rejected at ingest, and sanitised again on the way out; the same
+  gate was applied to `library.ts`, where the identical vector was still open.
+
+## The connect flow (Phases 4–8)
+
+**Connect orchestrates what already existed; it is not a second stack.** Nessie
+had RFC 9728 / RFC 8414 / OIDC discovery, PKCE, RFC 8707 resource indicators,
+RFC 7591 dynamic registration, an AES-256-GCM token vault with refresh inside
+the resolver, and `createInstance` with every scope, lock and SSRF guard.
+`POST /api/apps/:slug/connect` sequences them: create the instance → probe → on
+a 401 with OAuth, `startOAuth`. Three genuine gaps were closed:
+
+- **Static-mode OAuth had no PKCE and no resource indicator.** It now mints a
+  verifier, sends `code_challenge`/S256, and — the half that was missed first
+  time — `completeOAuth` sends the verifier back. Without that, RFC 7636 §4.6
+  says a server that recorded the challenge MUST reject the exchange, so every
+  static-mode connector would have failed at the last step. The old completion
+  tests used a stub that ignored its arguments, which is why nothing caught it;
+  the new test asserts the verifier's SHA-256 equals the challenge.
+- **No CIMD.** `GET /.well-known/oauth-client` publishes an OAuth Client ID
+  Metadata Document, and client resolution now follows the spec's preference:
+  pre-registered → CIMD (only when the AS advertises it) → DCR → operator.
+- **A successful sign-in read as a failure.** Nothing probed after the callback
+  stored the credential, so the instance stayed `pending_setup` and the client's
+  poll timed out. `completeOAuth` now probes; a probe failure is deliberately
+  not fatal, because the authorization really did succeed.
+
+**The callback is still a constant HTML page.** No redirect back to the SPA: a
+caller-supplied return URL is an open-redirect surface this feature does not
+need. The page posts a fixed message to its opener with the target origin
+resolved server-side from configuration, and the popup is opened with
+`noopener` — its first navigation is the *third-party* authorize URL, so an
+opener handle is a reverse-tabnabbing vector. Completion is therefore detected
+by the status poll on focus, with the message as the fast path.
+
+**Installing an app is not the same decision as letting an agent use it.**
+`McpServerInstance.requiresExplicitToolGrant` is set when the App Store creates
+a connection, and carried into `projectMcpToolDescriptors` — on both the create
+and update branches, or a capability discovered by a later refresh would project
+open and quietly widen the app. The worker's existing `isExposed` then keeps
+those tools invisible until an agent's `toolPolicy` carries an explicit allow.
+No new grant table: `ToolGrant` rows exist but the worker never reads them.
+Default `false`, so every connector that predates this keeps exactly the
+exposure it has.
+
+Verified against the live Context7 MCP server: connect created the instance,
+probed, discovered 2 capabilities, and both projected rows carry
+`requiresExplicitGrant`. Resource and prompt counts read 0 there because the
+server does not advertise those capabilities — the gate answers from the
+handshake rather than sending a request that would error.
+
+**Connecting happens on `/apps`, in a dialog that says what it will do.**
+Connect used to navigate to the Connectors page, which dropped the person out
+of the store mid-decision and into a surface built for a different question.
+`AppConnectDialog` runs the whole flow in place and states the cost of the
+click *before* it is made — "Connecting opens a … sign-in window", "needs no
+sign-in", or "needs an API key" — read from `AppSummaryRecord.authMethod`. That
+field is on the wire for exactly this reason and is the auth *method* only: the
+presenter's `STORE_CATALOG_SELECT` still cannot emit `authConfig`, a
+`credentialRef`, or the endpoint. A failure keeps the person in the dialog and
+says nothing was saved, because a half-made connection they cannot see is worse
+than a refusal they can retry.
+
+A card's **pill and its action are two different jobs** — the pill says what
+state the app is in, the action says what you can do — so they must never carry
+the same word. `connecting` broke that: a "Connecting…" pill sat beside a
+*disabled* "Connecting…" button, which named no decision and read as a rendering
+fault. The state stays on the pill and the action is now the doorway the code's
+own comment already described ("Finish setup" → the accounts tab), because
+`connecting` is `lifecycleState: 'pending_setup'` — an install waiting on a key
+nobody entered sits there indefinitely, so the label must offer a way on without
+promising the system will resolve it.
+
+The catalogue's toolbar is one row: search, the All/Installed filter, then the
+category `<select>` right-aligned. Categories were a chip row, which the
+registry's ~5,500 apps made unusable — 16 categories do not fit a line, and a
+horizontally-scrolled chip strip hides its own tail. The dropdown's first option
+is "All categories" and carries **no count**, deliberately: the filter
+immediately to its left already shows that same total, and two adjacent controls
+both reading "All (1092)" say nothing about which one narrows what. Counts stay
+on the individual categories, where each names a real choice, and every count is
+the server's aggregate rather than the length of the loaded slice. Narrowing is
+a server round trip (`useApps({ category })`) — per §"Search is the database's
+job", the client never filters what it was sent.
+
 ## Not built yet
 
-No connect flow. The detail CTA links to the existing install path on
-`/mcp-app-store`, which already works. Registry ingestion, the universal OAuth
-flow, per-agent grants, and custom-server addition are Phases 3–8.
+Icon caching — `iconsCached` is always 0, because a cached icon has to go
+through the `FileService` chokepoint and a raw upstream icon URL must never
+reach a browser. Resource and prompt counts are `null` (undetermined, never
+guessed as 0) for any server whose listings could not be read.

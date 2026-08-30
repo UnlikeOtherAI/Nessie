@@ -4,19 +4,29 @@ import { TimestampSchema } from './shared.js'
 
 // Persistent recipient-private attention. Every kind is revalidated against
 // its linked resource before it is returned or counted.
-export const UserAlertKindSchema = z.enum(['mention', 'task_assigned', 'knowledge_published'])
+export const UserAlertKindSchema = z.enum([
+  'mention',
+  'task_assigned',
+  'knowledge_published',
+  // A scheduled trigger became non-runnable. Durable rather than push-only: the
+  // failure this surfaces was previously invisible unless somebody opened the
+  // Triggers page and read a delivery row.
+  'trigger_health',
+])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
 export const UserAlertRecordSchema = z.object({
   id: z.string().uuid(),
   kind: UserAlertKindSchema,
   messageId: z.string().uuid().nullable(),
+  rootMessageId: z.string().uuid().nullable(),
   threadId: z.string().uuid().nullable(),
   channelId: z.string().uuid().nullable(),
   channelLabel: z.string().nullable(),
   projectId: z.string().uuid().nullable(),
   taskId: z.string().uuid().nullable(),
   knowledgePageId: z.string().uuid().nullable(),
+  triggerId: z.string().uuid().nullable(),
   actorUserId: z.string().uuid().nullable(),
   actorAgentId: z.string().uuid().nullable(),
   actorDisplayName: z.string().nullable(),

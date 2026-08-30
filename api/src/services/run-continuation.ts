@@ -13,6 +13,7 @@ import { isThreadRunSlotBusy } from '@nessie/db'
 
 import { enqueueRunExecution } from '../queue/pgqueue.js'
 import { findThreadForUser } from './messages.js'
+import { canUserReadRunBasis } from './run-disclosure.js'
 import {
   ACTIVE_RUN_STATUSES,
   handoffProductSlug,
@@ -81,6 +82,20 @@ export const continueRun = async (
   }
   if (checkpoint.consumedByRunId !== null) {
     return { kind: 'checkpoint_consumed' }
+  }
+
+  // Continuing is "post this turn again", so channel access is the right gate
+  // for *starting* a run — but the checkpoint carries the stopped run's work
+  // state, and claiming it is one-shot. Someone who cannot reach that run's
+  // sources would consume the entitled person's resume and get a run that
+  // withholds the note from itself anyway, quietly redoing the work.
+  const entitled = await canUserReadRunBasis(prisma, {
+    organizationId: input.organizationId,
+    runId: run.id,
+    userId: actorContext.actor.actorId,
+  })
+  if (!entitled) {
+    return { kind: 'not_continuable', detail: 'no_checkpoint', status: run.status }
   }
 
   // The continuation replays the same input the stopped run was given; the

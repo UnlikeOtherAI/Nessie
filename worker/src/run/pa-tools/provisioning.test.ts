@@ -54,6 +54,9 @@ const buildContext = (
     ledgerIdentity: null,
     prisma: {
       organizationMember: {
+        // `findUnique` resolves the acting member; `findFirst` is the
+        // active-membership check the owner stamp runs before creating an agent.
+        findFirst: async () => ({ id: 'membership-1' }),
         findUnique: async () => ({ role, deactivatedAt: null }),
       },
       ...prisma,
@@ -199,16 +202,28 @@ test('agent_list gives a member the agents they may see, with the ids bind and t
 
   const result = await runAgentListTool(context, {})
 
-  // A member reaches an agent only through a channel they can see it in, so the
-  // "unbound agents too" branch an owner gets must be absent.
+  // A member reaches an agent through a channel they can see it in, or because
+  // they steward it. The "unbound agents too" branch an owner gets is absent.
   const where = queries[0]?.where as { OR: Array<Record<string, unknown>> }
-  assert.equal(where.OR.length, 1)
+  assert.equal(where.OR.length, 2)
   assert.deepEqual(
     (where.OR[0] as { bindings: { some: { channel: unknown } } }).bindings.some.channel,
     {
       organizationId: ORG_ID,
       OR: [{ visibility: 'public' }, { members: { some: { userId: USER_ID } } }],
     },
+  )
+  // Ownership widens by pointer equality, so it carries the live-membership
+  // join and excludes spawned subtask children.
+  assert.deepEqual(where.OR[1], {
+    ownerMembership: { deactivatedAt: null },
+    ownerUserId: USER_ID,
+    parentAgentId: null,
+  })
+  assert.equal(
+    where.OR.some((branch) => 'bindings' in branch && 'none' in (branch.bindings as object)),
+    false,
+    'a member must not get the owner-only unbound branch',
   )
 
   assert.match(result.outputPreview, /Agents \(1\)/)
@@ -245,7 +260,16 @@ test('agent_list gives an owner unbound agents too, and narrows on a named one',
   const result = await runAgentListTool(context, { query: 'hardware' })
 
   const where = queries[0]?.where as { OR: Array<Record<string, unknown>> }
-  assert.deepEqual(where.OR[1], { bindings: { none: {} } })
+  // Matched by shape rather than index: the ownership branch sits between the
+  // channel-binding branch and the owner-only unbound one.
+  assert.ok(
+    where.OR.some((branch) => JSON.stringify(branch) === JSON.stringify({ bindings: { none: {} } })),
+    'an owner still reaches unbound agents',
+  )
+  assert.ok(
+    where.OR.some((branch) => (branch as { ownerUserId?: string }).ownerUserId === USER_ID),
+    'the ownership branch is present for an owner too',
+  )
 
   assert.match(result.outputPreview, /Agents \(1\)/)
   assert.match(result.outputPreview, new RegExp(`agentId=${AGENT_ID}`))

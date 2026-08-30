@@ -98,6 +98,29 @@ export const useResumeTrigger = () => {
   })
 }
 
+/**
+ * Put a schedule back to work after its captured identity stopped verifying.
+ *
+ * `takeOver` is the owner's explicit "run this as me instead"; without it the
+ * server refuses to re-point a schedule at a different workspace, because that
+ * would move its billing attribution as a side effect of a repair click.
+ */
+export const useReauthorizeTrigger = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { takeOver?: boolean; triggerId: string }) =>
+      apiClient.post(`/api/triggers/${input.triggerId}/reauthorize`, {
+        ...(input.takeOver === undefined ? {} : { takeOver: input.takeOver }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
+      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
 export const useUpdateTrigger = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

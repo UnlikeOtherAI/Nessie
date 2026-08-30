@@ -205,17 +205,30 @@ const addWorkspaceAvatarTeamIds = async (
       externalWorkspaceId: { in: externalWorkspaceIds },
       members: { some: { userId } },
     },
-    select: { externalWorkspaceId: true, id: true },
+    select: {
+      externalOrgId: true,
+      externalWorkspaceId: true,
+      id: true,
+      project: { select: { organization: { select: { name: true } } } },
+    },
   })
-  const localTeamIds = new Map(
-    teams.flatMap((team) => team.externalWorkspaceId
-      ? [[team.externalWorkspaceId, parseTeamId(team.id)] as const]
+  const localTeams = new Map(
+    teams.flatMap((team) => team.externalOrgId && team.externalWorkspaceId
+      ? [[`${team.externalOrgId}:${team.externalWorkspaceId}`, {
+          avatarTeamId: parseTeamId(team.id),
+          orgName: team.project.organization.name,
+        }] as const]
       : []),
   )
 
   return workspaces.map((workspace) => {
-    const avatarTeamId = localTeamIds.get(workspace.teamId)
-    return avatarTeamId ? { ...workspace, avatarTeamId } : workspace
+    const localTeam = localTeams.get(`${workspace.organizationId}:${workspace.teamId}`)
+    if (!localTeam) return workspace
+    return {
+      ...workspace,
+      avatarTeamId: localTeam.avatarTeamId,
+      ...(workspace.orgName ? {} : { orgName: localTeam.orgName }),
+    }
   })
 }
 

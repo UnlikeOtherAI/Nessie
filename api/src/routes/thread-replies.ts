@@ -63,7 +63,11 @@ export const registerThreadReplyRoutes = (app: FastifyInstance, deps: RouteDeps)
 
     return createApiResponse({
       message: ThreadMessageRecordSchema.parse(
-        await mapMessageRecordWithAttachments(prisma, message),
+        await mapMessageRecordWithAttachments(prisma, message, {
+          channelId: thread.channel.id,
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        }),
       ),
       viewerFollowing: follow !== null,
     })

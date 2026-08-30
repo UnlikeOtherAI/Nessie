@@ -12,6 +12,7 @@ import {
   mechanicalCheckpointNote,
   parseCheckpointNote,
 } from './checkpoint-note.js'
+import { runReplyBasis } from './agent-message.js'
 import { persistRunCheckpoint } from './checkpoint.js'
 import { enqueueAutoContinuation, isInteractiveRun, shouldAutoContinue } from './continuation.js'
 import type { RunInference } from './run-inference.js'
@@ -108,6 +109,9 @@ export const prepareRunStop = async (
     )
     checkpointId = await persistRunCheckpoint(deps.prisma, {
       agentId: context.agent.id,
+      // The note is built from the run's raw transcript including verbatim tool
+      // output, so it inherits what the run consumed.
+      basis: runReplyBasis(context),
       generation,
       note,
       organizationId: context.channel.organizationId,
@@ -189,6 +193,7 @@ export const prepareWindDownHandover = async (
     )
     const checkpointId = await persistRunCheckpoint(deps.prisma, {
       agentId: context.agent.id,
+      basis: runReplyBasis(context),
       generation: input.priorGeneration + 1,
       note,
       organizationId: context.channel.organizationId,

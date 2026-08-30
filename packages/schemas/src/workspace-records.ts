@@ -90,11 +90,43 @@ export type AgentAvatarBackgroundColor = z.infer<
   typeof AgentAvatarBackgroundColorSchema
 >
 
+/**
+ * Whether the recorded steward is still an entitled member of the agent's
+ * organization, re-derived on every read rather than implied by the stored
+ * pointer. `unknown` is honest rather than optimistic: it means no local
+ * membership row answered, which phase 1 cannot distinguish from "removed
+ * upstream" without the org-wide roster read.
+ */
+export const AgentOwnerStateSchema = z.enum(['active', 'deactivated', 'unknown'])
+export type AgentOwnerState = z.infer<typeof AgentOwnerStateSchema>
+
+/**
+ * The display projection for an agent's steward. It exists because there is no
+ * member-readable endpoint mapping a local user id to a name — `GET /api/users`
+ * is owner-only and the UOA roster is keyed by subject and scoped to one team —
+ * so without this an owner cell could render an id and nothing else.
+ *
+ * Deliberately carries no `uoaSub`: an agent is visible across teams through any
+ * public channel, so inlining a UOA subject would be a cross-team identity
+ * disclosure decided before the org-wide directory entitlement has been.
+ */
+export const AgentOwnerSchema = z.object({
+  userId: z.string().uuid(),
+  displayName: z.string().optional(),
+  avatarAttachmentId: z.string().uuid().nullish(),
+  ownerState: AgentOwnerStateSchema,
+})
+export type AgentOwner = z.infer<typeof AgentOwnerSchema>
+
 export const AgentRecordSchema = z.object({
   id: AgentIdSchema,
   name: NonEmptyStringSchema,
   role: NonEmptyStringSchema,
   status: AgentStatusSchema,
+  /** Stewardship pointer. Null = unowned, a real category rather than an error. */
+  ownerUserId: z.string().uuid().nullish(),
+  /** Resolved steward for display; null whenever `ownerUserId` is null. */
+  owner: AgentOwnerSchema.nullish(),
   agentKind: z.enum(['shared', 'personal_assistant']).optional(),
   systemManaged: z.boolean().optional(),
   surfacePolicy: z.enum(['shared', 'dm_only']).optional(),
@@ -122,7 +154,15 @@ export const AgentRecordSchema = z.object({
 })
 export type AgentRecord = z.infer<typeof AgentRecordSchema>
 
-export const AgentTriggerStatusSchema = z.enum(['active', 'paused', 'error'])
+export const AgentTriggerStatusSchema = z.enum([
+  'active',
+  'paused',
+  'error',
+  // Non-runnable, but repairable by an authorized person re-proving identity
+  // rather than by editing the trigger — the surface offers a different
+  // action for it, which is why it is a state and not a flavour of `error`.
+  'needs_reauthorization',
+])
 export type AgentTriggerStatus = z.infer<typeof AgentTriggerStatusSchema>
 
 export const AgentTriggerRecordSchema = z.object({
@@ -135,6 +175,11 @@ export const AgentTriggerRecordSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   config: z.record(z.unknown()),
+  // Why a non-runnable schedule stopped: a stable code the surface turns into
+  // copy, plus the sentence the fire path composed. Without these the page can
+  // show that a trigger failed but never what to do about it.
+  healthReason: z.string().optional(),
+  healthDetail: z.string().optional(),
   webhookApiKey: z.string().optional(),
   targetChannelId: ChannelIdSchema.optional(),
   targetThreadId: ThreadIdSchema.optional(),

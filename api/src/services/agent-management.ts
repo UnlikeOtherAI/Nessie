@@ -6,8 +6,10 @@ import type {
 import {
   acquireAgentToolPolicyLock,
   AGENT_MANAGEMENT_ERROR_CODES,
+  AGENT_OWNER_MEMBERSHIP_SELECT,
   AgentManagementError,
   agentRecordInclude,
+  assertAgentOwnerIsActiveMember,
   createAgentRecord,
   isSystemManagedAgent,
   listAgentsForUser,
@@ -45,6 +47,8 @@ export const updateAgentRecord = async (
     effort?: AgentEffort
     model?: string
     name?: string
+    /** undefined = leave stewardship alone; null = return to the unowned pool. */
+    ownerUserId?: string | null
     provider?: string
     role?: string
     runLimits?: AgentRunLimits | null
@@ -82,6 +86,18 @@ export const updateAgentRecord = async (
           existing.toolPolicy,
           input.toolPolicy,
         )
+
+    // A system-managed agent has no steward by construction (the CHECK would
+    // refuse), and a transfer target must be an active member of THIS agent's
+    // organization — refused in words here rather than as a raw constraint
+    // violation.
+    if (input.ownerUserId !== undefined && !existing.systemManaged) {
+      await assertAgentOwnerIsActiveMember(
+        tx,
+        input.organizationId,
+        input.ownerUserId ?? undefined,
+      )
+    }
     const agent = await tx.agent.update({
       where: { id: agentId },
       data: {
@@ -92,6 +108,11 @@ export const updateAgentRecord = async (
         name: existing.systemManaged
           ? existing.name
           : input.name ?? existing.name,
+        ownerUserId: existing.systemManaged
+          ? existing.ownerUserId
+          : input.ownerUserId === undefined
+            ? existing.ownerUserId
+            : input.ownerUserId,
         provider: input.provider ?? existing.provider,
         role: input.role ?? existing.role,
         runLimits: runLimitsWriteValue(input.runLimits),
@@ -101,6 +122,7 @@ export const updateAgentRecord = async (
         toolPolicy: toolPolicy ?? undefined,
       },
       include: {
+        ownerMembership: AGENT_OWNER_MEMBERSHIP_SELECT,
         bindings: {
           orderBy: { createdAt: 'asc' },
           select: { channelId: true },
@@ -131,10 +153,18 @@ export const updateAgentRecord = async (
     return mapAgentRecord(agent)
   })
 
+/**
+ * A clone belongs to whoever cloned it, not to the source's steward: the copy
+ * is that person's to configure and run, and inheriting someone else's
+ * ownership would hand them an agent they never asked for (ownership is also
+ * the escalation anchor). Consistent with the existing decision that a clone
+ * drops `parentAgentId` and is always a root.
+ */
 export const cloneAgentRecord = async (
   prisma: PrismaClient,
   sourceAgentId: string,
   organizationId: string,
+  clonedByUserId?: string,
 ): Promise<AgentRecord | null> => {
   const source = await prisma.agent.findFirst({
     where: {
@@ -165,6 +195,9 @@ export const cloneAgentRecord = async (
     prisma,
     source.toolPolicy,
   )
+  if (source.organizationId) {
+    await assertAgentOwnerIsActiveMember(prisma, source.organizationId, clonedByUserId)
+  }
   const agent = await prisma.agent.create({
     data: {
       agentKind: 'shared',
@@ -174,6 +207,7 @@ export const cloneAgentRecord = async (
       model: source.model,
       name: `${source.name} (copy)`,
       organizationId: source.organizationId,
+      ownerUserId: clonedByUserId,
       provider: source.provider,
       projectId: source.projectId,
       role: source.role,

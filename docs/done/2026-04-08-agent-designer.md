@@ -5,6 +5,15 @@
 > was replaced by the live org tool catalog — see
 > [docs/plans/2026-07-06-tools-triggers-agent-designer-redesign.md](../plans/2026-07-06-tools-triggers-agent-designer-redesign.md).
 
+> **Current interaction (2026-08-30).** The Design Assistant is one persistent,
+> full-height right-hand drawer across the owner’s agent-detail tabs. It can be
+> closed and reopened without losing the conversation. Each turn receives the
+> active tab's title, description, and only the actions that tab exposes. On the
+> Tools tab, an assistant tool change first smoothly reveals and highlights the
+> exact existing switch, then changes its draft state; the person still uses the
+> existing Save changes button. This keeps assistant activity visible and
+> prevents a hidden edit form from mutating while another tab is in view.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace the simple "create agent" dialog with a full Agent Designer page featuring an AI-assisted chat that can control every form field in real-time with streaming token updates.

@@ -244,10 +244,10 @@ test('insight fan-out targets only the named recipient subs when present', async
   assert.equal(result.deliveries.length, 1)
   assert.equal(result.deliveries[0]?.channelId, `chan-${USER_B}-${UOA_TEAM_A}`)
 
-  // The digest card links to the Signals inbox, not a per-insight external link.
+  // The digest remains inside the recipient's DeepSignal conversation; it no
+  // longer links out to a custom left-rail page.
   const cards = fake.messages[0]!.metadata.uiCards as Array<{ actions?: Array<{ label: string; href: string }> }>
-  assert.equal(cards[0]?.actions?.[0]?.label, 'View signals')
-  assert.equal(cards[0]?.actions?.[0]?.href, '/signals')
+  assert.deepEqual(cards[0]?.actions ?? [], [])
 })
 
 test('insight fan-out stays inside the exact enabled external workspace', async () => {

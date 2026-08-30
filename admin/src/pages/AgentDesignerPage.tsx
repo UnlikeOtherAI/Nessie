@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   useLocation,
   useNavigate,
@@ -9,6 +10,8 @@ import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQ
 import { AgentAvatarDraftPanel } from '../components/features/agents/AgentAvatarDraftPanel'
 import { AgentDesignerForm } from '../components/features/agents/designer/AgentDesignerForm'
 import { DesignerChat } from '../components/features/agents/designer/DesignerChat'
+import { useDesignerAssistantPanel } from '../components/features/agents/designer/DesignerAssistantPanelContext'
+import { revealDesignerToolCall } from '../components/features/agents/designer/reveal-control'
 import {
   ResponsivePageHeader,
   type PageHeaderAction,
@@ -83,6 +86,34 @@ export const AgentDesignerContent = ({
   const parentId = searchParams.get('parentId') ?? undefined
   const parentAgent = parentId ? agents.find((a) => a.id === parentId) : undefined
   const isEditMode = Boolean(editingAgent)
+  const assistantPanel = useDesignerAssistantPanel()
+  const assistantCanEditForm = !assistantPanel || assistantPanel.pageContext.title === 'Edit agent'
+  const handleAssistantToolCall = useCallback((name: string, args: Record<string, unknown>) => {
+    if (!assistantPanel) return false
+    if (assistantPanel.actionHandler(name, args)) return true
+    // A hidden form must never change while the person is inspecting a
+    // different tab. The active page either owns a known action or the model
+    // explains that no control is available there.
+    return !assistantCanEditForm && [
+      'batch_toggle_tools',
+      'set_model',
+      'set_name',
+      'set_role',
+      'set_system_prompt',
+      'toggle_tool',
+    ].includes(name)
+  }, [assistantCanEditForm, assistantPanel])
+  const handleAssistantToolCallStart = useCallback((name: string) => {
+    const formAction = [
+      'set_model',
+      'set_name',
+      'set_role',
+      'set_system_prompt',
+    ].includes(name)
+    if (!assistantCanEditForm && formAction) return true
+    revealDesignerToolCall(name)
+    return false
+  }, [assistantCanEditForm])
 
   const toolCatalog = useDesignerToolCatalog(isOwner)
   const modelOptionsQuery = useAgentModelOptions()
@@ -117,7 +148,11 @@ export const AgentDesignerContent = ({
     setModelSelection(leadingModelOption)
   }, [isEditMode, leadingModelOption, setModelSelection, state.model, state.provider])
 
-  const chat = useDesignerChat(state, actions, toolCatalog.options, modelOptions)
+  const chat = useDesignerChat(state, actions, toolCatalog.options, modelOptions, {
+    onToolCall: handleAssistantToolCall,
+    onToolCallStart: handleAssistantToolCallStart,
+    pageContext: assistantPanel?.pageContext,
+  })
   const createAgent = useCreateAgent()
   const updateAgent = useUpdateAgent()
 
@@ -264,7 +299,9 @@ export const AgentDesignerContent = ({
         </div>
       ) : null}
 
-      {/* Two-column layout: 70% form, 30% chat */}
+      {/* The standalone designer owns its panel. When embedded in agent detail,
+          the same panel is portalled into the persistent right rail so it stays
+          available as the person moves between the agent's tabs. */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Form panel */}
         <div className="min-h-0 flex-1 overflow-y-auto border-b border-[color:var(--sep)] p-5 lg:flex-[7] lg:border-b-0 lg:border-r">
@@ -311,18 +348,34 @@ export const AgentDesignerContent = ({
           </div>
         </div>
 
-        {/* Chat panel */}
-        <div className="h-[360px] min-h-[320px] lg:h-auto lg:flex-[3] lg:min-w-[280px]">
-          <DesignerChat
-            error={chat.error}
-            messages={chat.messages}
-            onSend={chat.send}
-            onStop={chat.stop}
-            status={chat.status}
-            streaming={chat.streaming}
-            thinking={chat.thinking}
-          />
-        </div>
+        {assistantPanel?.panelOutlet
+          ? createPortal(
+              <DesignerChat
+                error={chat.error}
+                messages={chat.messages}
+                onClose={assistantPanel.closeDrawer}
+                onSend={chat.send}
+                onStop={chat.stop}
+                pageContext={assistantPanel.pageContext}
+                status={chat.status}
+                streaming={chat.streaming}
+                thinking={chat.thinking}
+              />,
+              assistantPanel.panelOutlet,
+            )
+          : !assistantPanel ? (
+              <div className="h-[360px] min-h-[320px] lg:h-auto lg:flex-[3] lg:min-w-[280px]">
+                <DesignerChat
+                  error={chat.error}
+                  messages={chat.messages}
+                  onSend={chat.send}
+                  onStop={chat.stop}
+                  status={chat.status}
+                  streaming={chat.streaming}
+                  thinking={chat.thinking}
+                />
+              </div>
+            ) : null}
       </div>
     </div>
   )

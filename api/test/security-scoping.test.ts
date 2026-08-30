@@ -6,6 +6,7 @@ import { shouldDeliverWsNotification } from '../src/realtime/hub.js'
 import { buildAccessibleChannelWhere } from '../src/services/agents.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
+const otherOrganizationId = '00000000-0000-4000-8000-000000000010'
 const channelId = '00000000-0000-4000-8000-000000000002'
 const userId = '00000000-0000-4000-8000-000000000003'
 
@@ -88,6 +89,30 @@ test('multi-channel websocket events require access to every channel scope', asy
         { kind: 'channel', channelId: '00000000-0000-4000-8000-000000000005' },
       ],
       canAccessChannel: async (candidateChannelId) => candidateChannelId === channelId,
+    }),
+    false,
+  )
+})
+
+test('recipient-private events stay within the recipient organization', async () => {
+  const notificationScopes: WsScope[] = [
+    { kind: 'organization', organizationId },
+    { kind: 'user', organizationId, userId },
+  ]
+
+  assert.equal(
+    await shouldDeliverWsNotification({
+      connectionScopes: [{ kind: 'user', organizationId, userId }],
+      notificationScopes,
+      canAccessChannel: async () => true,
+    }),
+    true,
+  )
+  assert.equal(
+    await shouldDeliverWsNotification({
+      connectionScopes: [{ kind: 'user', organizationId: otherOrganizationId, userId }],
+      notificationScopes,
+      canAccessChannel: async () => true,
     }),
     false,
   )

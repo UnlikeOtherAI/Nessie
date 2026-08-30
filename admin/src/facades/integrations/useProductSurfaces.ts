@@ -5,7 +5,6 @@ import type {
   DocumentsSectionSurface,
   IntegratedProductResponse,
   IntegrationPluginManifest,
-  NavPageSurface,
   ProductSurface,
   ProductSurfaceRequirement,
 } from '@nessie/schemas'
@@ -18,14 +17,11 @@ import { useIntegratedProducts } from './hooks'
 type ResolvedBase = { productSlug: string; productName: string }
 export type ResolvedChatAssistantSurface = ResolvedBase &
   Omit<ChatAssistantSurface, 'type' | 'requires'>
-export type ResolvedNavPageSurface = ResolvedBase &
-  Omit<NavPageSurface, 'type' | 'requires'>
 export type ResolvedDocumentsSectionSurface = ResolvedBase &
   Omit<DocumentsSectionSurface, 'type' | 'requires'>
 
 export type ProductSurfaceRegistry = {
   chatAssistants: ResolvedChatAssistantSurface[]
-  navPages: ResolvedNavPageSurface[]
   documentsSections: ResolvedDocumentsSectionSurface[]
   isLoading: boolean
 }
@@ -51,7 +47,6 @@ const collect = (
   manifestBySlug: Map<string, IntegrationPluginManifest>,
 ): Omit<ProductSurfaceRegistry, 'isLoading'> => {
   const chatAssistants: ResolvedChatAssistantSurface[] = []
-  const navPages: ResolvedNavPageSurface[] = []
   const documentsSections: ResolvedDocumentsSectionSurface[] = []
 
   for (const product of products) {
@@ -68,14 +63,6 @@ const collect = (
           label: surface.label,
           iconGlyph: surface.iconGlyph,
         })
-      } else if (surface.type === 'nav_page') {
-        navPages.push({
-          ...base,
-          id: surface.id,
-          label: surface.label,
-          route: surface.route,
-          iconGlyph: surface.iconGlyph,
-        })
       } else {
         documentsSections.push({
           ...base,
@@ -88,7 +75,7 @@ const collect = (
     }
   }
 
-  return { chatAssistants, navPages, documentsSections }
+  return { chatAssistants, documentsSections }
 }
 
 // The single seam the shell reads to know which product surfaces are live.

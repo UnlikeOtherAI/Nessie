@@ -62,26 +62,62 @@ const redactTriggerConfig = (value: unknown): Record<string, unknown> => {
     config['apiKey'] = '[redacted]'
   }
 
+  // Server-owned provenance never leaves the server. `launchOrigin` carries the
+  // creator's UOA subject, their external organisation and workspace ids, and
+  // their credential epoch — internal identity metadata that no client reads and
+  // that has no business in an API response. Callers cannot write these keys
+  // (`stripServerOwnedTriggerConfig`); this is the matching read-side rule.
+  for (const key of ['createdByUserId', 'createdViaTool', 'launchOrigin']) {
+    delete config[key]
+  }
+
   return config
 }
 
-export const mapTriggerRecord = (trigger: {
-  agentId: string | null
-  config: unknown
-  createdAt: Date
-  description: string | null
-  enabled: boolean
-  id: string
-  lastFiredAt: Date | null
-  name: string | null
-  nextRunAt: Date | null
-  status: 'active' | 'paused' | 'error'
-  targetChannelId: string | null
-  targetThreadId: string | null
-  type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
-  updatedAt: Date
-  workflowInstallationId: string | null
-}): AgentTriggerRecord => ({
+/**
+ * Who is being handed this record.
+ *
+ * The webhook intake key is a bearer credential: whoever holds it can post to
+ * the public intake endpoint forever, with no session. `redactTriggerConfig`
+ * has always blanked it inside `config`, but the record also carried it as a
+ * top-level `webhookApiKey`, and `POST /api/triggers/:id/fire` — which is
+ * member-level, not owner-gated — returned that record to its caller. Any
+ * member who could fire a webhook trigger therefore received its key.
+ *
+ * The flag is opt-in rather than opt-out so a new call site that does not think
+ * about audience omits the secret instead of leaking it.
+ */
+export type TriggerRecordAudience = {
+  /**
+   * Include the webhook intake key. Only for surfaces already gated to the
+   * people who administer the trigger — the owner-only agent-trigger routes and
+   * the creation response that first mints the key.
+   */
+  includeWebhookApiKey?: boolean
+}
+
+export const mapTriggerRecord = (
+  trigger: {
+    agentId: string | null
+    config: unknown
+    createdAt: Date
+    description: string | null
+    enabled: boolean
+    id: string
+    lastFiredAt: Date | null
+    name: string | null
+    nextRunAt: Date | null
+    healthDetail?: string | null
+    healthReason?: string | null
+    status: 'active' | 'paused' | 'error' | 'needs_reauthorization'
+    targetChannelId: string | null
+    targetThreadId: string | null
+    type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
+    updatedAt: Date
+    workflowInstallationId: string | null
+  },
+  audience: TriggerRecordAudience = {},
+): AgentTriggerRecord => ({
   id: trigger.id,
   agentId: trigger.agentId ? parseAgentId(trigger.agentId) : undefined,
   workflowInstallationId: trigger.workflowInstallationId ?? undefined,
@@ -91,7 +127,11 @@ export const mapTriggerRecord = (trigger: {
   name: trigger.name ?? undefined,
   description: trigger.description ?? undefined,
   config: redactTriggerConfig(trigger.config),
-  webhookApiKey: extractWebhookApiKey(trigger.config),
+  ...(trigger.healthReason ? { healthReason: trigger.healthReason } : {}),
+  ...(trigger.healthDetail ? { healthDetail: trigger.healthDetail } : {}),
+  ...(audience.includeWebhookApiKey
+    ? { webhookApiKey: extractWebhookApiKey(trigger.config) }
+    : {}),
   targetChannelId: trigger.targetChannelId ? parseChannelId(trigger.targetChannelId) : undefined,
   targetThreadId: trigger.targetThreadId ? parseThreadId(trigger.targetThreadId) : undefined,
   lastFiredAt: toTimestamp(trigger.lastFiredAt),
@@ -99,6 +139,11 @@ export const mapTriggerRecord = (trigger: {
   createdAt: trigger.createdAt.toISOString(),
   updatedAt: trigger.updatedAt.toISOString(),
 })
+
+/** The owner-administered surfaces that legitimately reveal the intake key. */
+export const TRIGGER_ADMIN_AUDIENCE: TriggerRecordAudience = {
+  includeWebhookApiKey: true,
+}
 
 export const normalizeNextRunAt = (input: {
   config?: Record<string, unknown>

@@ -25,7 +25,7 @@ import { useVisibleStarredEntries } from './useVisibleStarredEntries';
 import {
   type CreateChannelTarget,
   type PreferenceStarredItem,
-  type RenameProjectTarget,
+  type EditProjectTarget,
   type SidebarMenu,
   type StarredItem,
 } from './types';
@@ -61,12 +61,6 @@ export const useAdminShell = () => {
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
   const isAdminRoute = matchesAdminRoute(location.pathname);
   const productSurfaces = useProductSurfaces();
-  // A live product `nav_page` route (e.g. DeepSignal's /signals). These pages
-  // host their own full-width content and take no channels/DM secondary nav.
-  const isProductPageRoute = productSurfaces.navPages.some(
-    (page) => location.pathname === page.route
-      || location.pathname.startsWith(`${page.route}/`),
-  );
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const currentChannelsProjectId = parseChannelProjectIdFromPath(location.pathname);
   const personalAssistantChannel = useMemo(
@@ -94,7 +88,7 @@ export const useAdminShell = () => {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [createChannelTarget, setCreateChannelTarget] = useState<CreateChannelTarget | null>(null);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [renameProjectTarget, setRenameProjectTarget] = useState<RenameProjectTarget | null>(null);
+  const [editProjectTarget, setEditProjectTarget] = useState<EditProjectTarget | null>(null);
   const [sidebarMenu, setSidebarMenu] = useState<SidebarMenu>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const initialStarred = useMemo<PreferenceStarredItem[]>(
@@ -223,11 +217,11 @@ export const useAdminShell = () => {
     setCreateProjectOpen(true);
   }, []);
   const closeCreateProject = useCallback(() => setCreateProjectOpen(false), []);
-  const openRenameProject = useCallback((target: RenameProjectTarget) => {
+  const openEditProject = useCallback((target: EditProjectTarget) => {
     setSidebarMenu(null);
-    setRenameProjectTarget(target);
+    setEditProjectTarget(target);
   }, []);
-  const closeRenameProject = useCallback(() => setRenameProjectTarget(null), []);
+  const closeEditProject = useCallback(() => setEditProjectTarget(null), []);
   const openMobileDrawer = useCallback(() => setMobileDrawerOpen(true), []);
   const closeMobileDrawer = useCallback(() => setMobileDrawerOpen(false), []);
 
@@ -274,6 +268,10 @@ export const useAdminShell = () => {
 
   const navigateToChannel = useCallback((channelId: string) => {
     void navigate(`/channels/${channelId}`);
+  }, [navigate]);
+
+  const navigateToThreads = useCallback(() => {
+    void navigate('/threads');
   }, [navigate]);
 
   const navigateToNewConversation = useCallback(() => {
@@ -362,7 +360,7 @@ export const useAdminShell = () => {
     closeAgentDrawer,
     closeCreateChannel,
     closeCreateProject,
-    closeRenameProject,
+    closeEditProject,
     createChannelTarget,
     createProjectOpen,
     currentChannelId,
@@ -372,7 +370,6 @@ export const useAdminShell = () => {
     isAgentsRoute,
     isFeedbackRoute,
     isKnowledgeRoute,
-    isProductPageRoute,
     isProjectsRoute,
     isOwner,
     isAdmin,
@@ -385,6 +382,7 @@ export const useAdminShell = () => {
     closeMobileDrawer,
     navigateToAgent,
     navigateToChannel,
+    navigateToThreads,
     navigateToDm,
     navigateToAgentDesigner,
     navigateToNewConversation,
@@ -393,7 +391,7 @@ export const useAdminShell = () => {
     openCreateChannel,
     openCreateProject,
     openPersonalAssistant,
-    openRenameProject,
+    openEditProject,
     pathname: location.pathname,
     personalAssistantAgent,
     personalAssistantBootstrapping: personalAssistantBootstrap.isPending,
@@ -401,7 +399,7 @@ export const useAdminShell = () => {
     personalAssistantUnreadCount: personalAssistantChannel?.unreadCount ?? 0,
     projectsCollapsed,
     realtime,
-    renameProjectTarget,
+    editProjectTarget,
     scopedAgents,
     selectAgent,
     selectedAgent,

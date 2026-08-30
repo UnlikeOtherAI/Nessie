@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertRow } from '../../components/shared/AlertRow'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { UnreadBadge } from '../../components/primitives/UnreadBadge'
+import { useFocusMode } from '../../providers/FocusModeProvider'
 import {
   getAlertLink,
   useAlertEvents,
@@ -28,6 +29,7 @@ const Bell = () => (
 // recent alerts. Channel-derived alert frames invalidate immediately while the
 // private categories use the shared short refresh interval.
 export const AlertsBell = () => {
+  const { focusModeEnabled } = useFocusMode()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -56,6 +58,10 @@ export const AlertsBell = () => {
     if (link) {
       navigate(link.to, { state: link.state })
     }
+  }
+
+  if (focusModeEnabled) {
+    return null
   }
 
   return (

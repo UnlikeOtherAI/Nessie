@@ -11,6 +11,7 @@ import {
 } from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
+import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 import { truncate } from './tool-output.js'
 
 // A delegating PA authors as its owning user (with the agent recorded); an
@@ -37,6 +38,11 @@ const loadPageAccess = async (context: BuiltinToolRuntimeContext, pageId: string
     pageId: page.id,
     spaceId: page.spaceId,
   }
+  // Every comment tool resolves access through here, so this is the one place a
+  // knowledge read has to be recorded as run provenance: annotation bodies are
+  // content from the page's space just as the page body is.
+  recordKnowledgeSpaceRead(context, [space])
+
   return { access, page }
 }
 

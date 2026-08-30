@@ -7,6 +7,7 @@ import { getBaseUrl, type AgentModelOption } from '../../lib/api-client'
 import { readSseStream } from '../../lib/sse'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import type { DesignerToolOption } from './tool-catalog'
+import type { DesignerPageContext } from '../../components/features/agents/designer/DesignerAssistantPanelContext'
 
 export type ChatMessage = {
   content: string
@@ -21,6 +22,13 @@ type DesignerChatState = {
   thinking: boolean
 }
 
+type DesignerChatOptions = {
+  onToolCall?: (name: string, args: Record<string, unknown>) => boolean
+  /** True means the active page handles or refuses this UI change itself. */
+  onToolCallStart?: (name: string) => boolean
+  pageContext?: DesignerPageContext
+}
+
 // Maps tool call names to the streaming field they affect
 const TOOL_TO_FIELD: Record<string, string> = {
   set_name: 'name',
@@ -30,6 +38,7 @@ const TOOL_TO_FIELD: Record<string, string> = {
 
 type ActiveToolCall = {
   argsBuffer: string
+  handledByActivePage: boolean
   lastContentLen: number
   name: string
 }
@@ -83,6 +92,7 @@ export const useDesignerChat = (
   actions: AgentDesignerActions,
   availableTools: DesignerToolOption[] = [],
   availableModels: AgentModelOption[] = [],
+  options: DesignerChatOptions = {},
 ) => {
   const { token } = useAuthSession()
   const [state, setState] = useState<DesignerChatState>({
@@ -148,6 +158,7 @@ export const useDesignerChat = (
             // Sent in picker order, so the prompt's "leading model" and the
             // form's preselection are the same entry.
             availableModels,
+            pageContext: options.pageContext,
           }),
           signal: controller.signal,
         })
@@ -170,6 +181,7 @@ export const useDesignerChat = (
               setState,
               actions,
               activeToolCallsRef.current,
+              options,
             )
           } catch {
             // A malformed frame must not break the stream: the assistant
@@ -205,6 +217,7 @@ export const useDesignerChat = (
       token,
       availableTools,
       availableModels,
+      options,
     ],
   )
 
@@ -230,6 +243,7 @@ const processEvent = (
   setState: React.Dispatch<React.SetStateAction<DesignerChatState>>,
   actions: AgentDesignerActions,
   activeToolCalls: Map<string, ActiveToolCall>,
+  options: DesignerChatOptions,
 ): void => {
   switch (event) {
     case 'reasoning.delta': {
@@ -267,15 +281,21 @@ const processEvent = (
     case 'tool_call.start': {
       const name = String(data.name ?? '')
       const id = String(data.id ?? '')
+      const activePageHandlesCall = options.onToolCallStart?.(name) ?? false
       const field = TOOL_TO_FIELD[name]
-      if (field) {
+      if (field && !activePageHandlesCall) {
         actions.dispatch({ type: 'set_streaming', field })
       }
       // For set_system_prompt, clear the field so tokens stream in fresh
-      if (name === 'set_system_prompt') {
+      if (name === 'set_system_prompt' && !activePageHandlesCall) {
         actions.dispatch({ type: 'set_system_prompt', prompt: '' })
       }
-      activeToolCalls.set(id, { argsBuffer: '', lastContentLen: 0, name })
+      activeToolCalls.set(id, {
+        argsBuffer: '',
+        handledByActivePage: activePageHandlesCall,
+        lastContentLen: 0,
+        name,
+      })
       // Show status for known tool actions
       const statusMap: Record<string, string> = {
         set_system_prompt: 'Writing system prompt...',
@@ -299,7 +319,7 @@ const processEvent = (
       tc.argsBuffer += argChunk
 
       // Stream content tokens into system prompt textarea
-      if (tc.name === 'set_system_prompt') {
+      if (tc.name === 'set_system_prompt' && !tc.handledByActivePage) {
         const fullContent = extractPartialContent(tc.argsBuffer)
         if (fullContent !== null && fullContent.length > tc.lastContentLen) {
           const newChunk = fullContent.slice(tc.lastContentLen)
@@ -316,8 +336,12 @@ const processEvent = (
       const id = String(data.id ?? '')
       const args = data.args as Record<string, unknown> | undefined
       if (args) {
+        const handled = options.onToolCall?.(name, args) ?? false
         // For system prompt, skip the full set — we already streamed it in
-        if (name !== 'set_system_prompt') {
+        if (handled) {
+          // The active page owns this control. It reveals and changes the
+          // exact UI surface rather than letting a hidden editor drift away.
+        } else if (name !== 'set_system_prompt') {
           actions.applyToolCall(name, args)
         } else {
           // Final safety set in case streaming missed chars

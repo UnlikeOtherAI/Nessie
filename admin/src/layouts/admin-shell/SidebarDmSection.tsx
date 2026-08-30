@@ -14,6 +14,7 @@ import type {
   SidebarGroupDm,
   SidebarPerson,
   SidebarProductAssistant,
+  StarredItem,
 } from './types';
 
 type SidebarDmSectionProps = {
@@ -24,7 +25,7 @@ type SidebarDmSectionProps = {
   onNavigateDm: (userId: string) => void;
   onStartNewConversation: () => void;
   onOpenPersonalAssistant: () => void;
-  onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
+  onToggleStar: (type: StarredItem['type'], id: string) => void;
   personalAssistantAgent: AgentRecord | null;
   personalAssistantBootstrapping: boolean;
   personalAssistantChannelId?: string;
@@ -94,6 +95,14 @@ export const SidebarDmSection = ({
           agent={personalAssistantAgent}
           bootstrapping={personalAssistantBootstrapping}
           onClick={onOpenPersonalAssistant}
+          onToggleStar={() => {
+            if (personalAssistantAgent) {
+              onToggleStar('agent', personalAssistantAgent.id);
+            }
+          }}
+          starred={Boolean(
+            personalAssistantAgent && starredAgentIds.has(personalAssistantAgent.id),
+          )}
           token={token}
           unreadCount={personalAssistantUnreadCount}
         />

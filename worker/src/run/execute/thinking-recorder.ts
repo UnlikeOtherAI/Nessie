@@ -23,6 +23,15 @@ type RecorderInput = {
   realtimeTransport: Pick<PgRealtimeTransport, 'publishSse'>
   runId: string
   threadId: string
+  /**
+   * Whether the run's reply is restricted *right now*. Evaluated per flush, not
+   * captured at construction, because a run becomes restricted mid-loop the
+   * moment it reads a privileged source. Reasoning is derived from the very
+   * sources the reply is, so it inherits the same boundary; the durable row is
+   * still written (the thought log is read back through its own gate) and only
+   * the thread-wide live publish is withheld.
+   */
+  isRestricted?: () => boolean
 }
 
 /**
@@ -58,6 +67,9 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
         data: { content, kind, runId: input.runId },
         select: { id: true },
       })
+      if (input.isRestricted?.()) {
+        return
+      }
       await input.realtimeTransport.publishSse(
         input.threadId,
         kind === 'tool' ? 'stream.thinking.tool' : 'stream.reasoning',

@@ -37,9 +37,9 @@ jobs:
         # linger on the host and get compiled into the image. Without it, the
         # mcp-manage extraction left stale api/src/services/mcp-*.ts on the host,
         # which broke every Docker build (tsc errors in files no longer in git).
-        # rsync never deletes excluded paths, so the host-only .env is safe; the
-        # Postgres/MinIO data live in named Docker volumes outside this tree, and
-        # `--exclude '.env'` protects any host env file at any depth.
+        # rsync never deletes excluded paths, so the host-only Nessie and
+        # Infisical environment files are safe. Postgres/MinIO data live in
+        # named Docker volumes outside this tree.
         run: |
           rsync -az --delete \
             --exclude '.git' \
@@ -52,6 +52,7 @@ jobs:
             --exclude '/admin/*.png' \
             --exclude '.env' \
             --exclude 'infrastructure/compose/.env' \
+            --exclude 'infrastructure/compose/.env.infisical' \
             -e "ssh -i ~/.ssh/id_ed25519" \
             ./ "$DEPLOY_USER@$DEPLOY_HOST:/srv/nessie/"
 

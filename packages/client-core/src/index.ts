@@ -7,6 +7,7 @@ export {
 
 // Shared API data-shape types (also re-exported via api-client for back-compat).
 export type {
+  AgentOwner,
   AgentRecord,
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
@@ -76,13 +77,6 @@ export type {
   CreateFeedbackRequest,
   DeepTestReviewDepth,
   DeepTestReviewHandoffRequest,
-  DeepSignalSignalAction,
-  DeepSignalSignalActRequest,
-  DeepSignalSignalActResponse,
-  DeepSignalSignalKind,
-  DeepSignalSignalRecord,
-  DeepSignalSignalStatus,
-  DeepSignalSignalsResponse,
   DeepWaterResearchDepth,
   DeepWaterAgentAccessResponse,
   DeepWaterAgentAccessTarget,

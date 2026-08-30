@@ -80,8 +80,10 @@ export const clearUoaWorkspaceDirectoryCache = (): void => {
  * **only** from data Nessie legitimately owns: the user's own `TeamMember` rows
  * joined to the `Team.externalWorkspaceId` / `externalOrgId` mapping written
  * when that UOA workspace was materialized locally. The team name stands in for
- * the UOA label and there is no org name; the avatar falls back to UOA's
- * deterministic per-team image URL at render time.
+ * the UOA label. The local Organisation name is the permitted
+ * non-authoritative mirror of UOA's `orgName`, so it is used only when present;
+ * the avatar falls back to UOA's deterministic per-team image URL at render
+ * time.
  *
  * Consequence, and the reason this is a fallback rather than a source: a
  * workspace the person is entitled to in UOA but has never opened in Nessie has
@@ -99,7 +101,12 @@ export const deriveUoaWorkspaceDirectoryFromTeams = async (
       members: { some: { userId } },
     },
     orderBy: { name: 'asc' },
-    select: { externalOrgId: true, externalWorkspaceId: true, name: true },
+    select: {
+      externalOrgId: true,
+      externalWorkspaceId: true,
+      name: true,
+      project: { select: { organization: { select: { name: true } } } },
+    },
   })
 
   return teams.flatMap((team) => team.externalOrgId && team.externalWorkspaceId
@@ -107,6 +114,7 @@ export const deriveUoaWorkspaceDirectoryFromTeams = async (
         organizationId: team.externalOrgId,
         teamId: team.externalWorkspaceId,
         label: team.name,
+        orgName: team.project.organization.name,
       }]
     : [])
 }
