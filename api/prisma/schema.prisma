@@ -1367,6 +1367,7 @@ model Team {
   name                   String
   projectId              String                  @map("project_id") @db.Uuid
   systemManaged          Boolean                 @default(false) @map("system_managed")
+  callProvider           String                  @default("google_meet") @map("call_provider")
   // Slack-style workspace binding. When this Nessie team represents a UOA
   // workspace, `externalWorkspaceId` is that workspace's UOA team id
   // (`active.teamId`) — unique, so one Nessie team per UOA workspace — and

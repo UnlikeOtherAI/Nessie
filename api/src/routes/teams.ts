@@ -1,9 +1,18 @@
 import type { FastifyInstance } from 'fastify'
+import {
+  CallLinkProviderSchema,
+  isCallLinkProviderConfigured,
+} from '@nessie/workspace-admin'
+import { z } from 'zod'
 
-import { createApiResponse, sendApiError } from '../lib/api.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
+
+const UpdateTeamSettingsBodySchema = z.object({
+  callProvider: CallLinkProviderSchema,
+}).strict()
 
 export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -147,5 +156,47 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     })
 
     return reply.code(201).send(createApiResponse({ ok: true }))
+  })
+
+  app.patch('/api/teams/:teamId/settings', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const roles = actorContext.actor.roles ?? []
+    if (!roles.includes('owner') && !roles.includes('admin')) {
+      sendApiError(reply, 403, 'FORBIDDEN', 'Owner or admin access required')
+      return reply
+    }
+
+    const body = parseInput(UpdateTeamSettingsBodySchema, request.body, reply)
+    if (!body) return reply
+    if (!isCallLinkProviderConfigured(body.callProvider)) {
+      sendApiError(
+        reply,
+        409,
+        'PROVIDER_NOT_CONFIGURED',
+        `The ${body.callProvider} call provider is not configured`,
+      )
+      return reply
+    }
+
+    const { teamId } = request.params as { teamId: string }
+    const team = await prisma.team.findFirst({
+      where: {
+        id: teamId,
+        project: { organizationId: actorContext.tenant.organizationId },
+      },
+      select: { id: true },
+    })
+    if (!team) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Team not found')
+      return reply
+    }
+
+    const updated = await prisma.team.update({
+      where: { id: team.id },
+      data: { callProvider: body.callProvider },
+      select: { id: true, callProvider: true },
+    })
+    return createApiResponse(updated)
   })
 }

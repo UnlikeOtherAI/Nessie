@@ -434,6 +434,9 @@ importers:
       '@nessie/comms-connect':
         specifier: workspace:*
         version: link:../comms-connect
+      '@nessie/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       '@types/node':
         specifier: ^20.19.24
@@ -682,6 +685,12 @@ importers:
 
   packages/workspace-admin:
     dependencies:
+      '@nessie/comms-connect':
+        specifier: workspace:*
+        version: link:../comms-connect
+      '@nessie/comms-google':
+        specifier: workspace:*
+        version: link:../comms-google
       '@nessie/config':
         specifier: workspace:*
         version: link:../config

@@ -79,7 +79,7 @@ export const persistConnectedAccount = async (
       },
       update: {
         accessTokenCiphertext,
-        refreshTokenCiphertext,
+        ...(refreshTokenCiphertext ? { refreshTokenCiphertext } : {}),
         expiresAt,
         scopeHash,
       },

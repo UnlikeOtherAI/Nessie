@@ -881,6 +881,12 @@ them.
   match the API OAuth-start source of truth (`api/src/routes/comms/oauth-config.ts`).
 - OAuth token bundles are encrypted at rest (shared AES-GCM secret-crypto) in a
   **separate** `CommsConnectionCredential` table, never returned to the browser.
+- Prisma-aware credential loading lives in `@nessie/workspace-admin`, shared by
+  API and worker. It decrypts only the selected connection, serializes expired
+  token refresh under a credential-row lock, preserves a stored refresh token
+  when Google omits a replacement, persists expiry/scope changes, and moves a
+  provider-rejected credential atomically to `needs_reauthorization`. Do not
+  recreate row-to-connector decryption in either process.
 - Import is resumable + checkpointed `CommsSyncJob`s plus webhook/watch ingestion,
   all through the worker queue. An expired provider cursor (`SyncCursorExpiredError`)
   triggers a bounded history re-sync; a rejected credential (`needsReauthorization`)

@@ -53,6 +53,7 @@ const COMMS_OAUTH_CONFIG: Partial<Record<CommsProvider, CommsOAuthProviderConfig
     scopeParam: 'scope',
     scopes: [
       'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/meetings.space.created',
       'openid',
       'email',
       'profile',
@@ -61,6 +62,7 @@ const COMMS_OAUTH_CONFIG: Partial<Record<CommsProvider, CommsOAuthProviderConfig
     extraParams: {
       response_type: 'code',
       access_type: 'offline',
+      include_granted_scopes: 'true',
       prompt: 'consent',
     },
     clientIdEnv: 'NESSIE_COMMS_GOOGLE_CLIENT_ID',

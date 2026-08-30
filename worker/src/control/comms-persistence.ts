@@ -2,11 +2,12 @@ import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import {
   decideEventPersistence,
-  openSecret,
-  type ConnectorConnectionContext,
   type NormalizedEvent,
   type SubscriptionDescriptor,
 } from '@nessie/comms-connect'
+import {
+  buildCommsConnectorContext,
+} from '@nessie/workspace-admin'
 
 /**
  * Persistence + mapping helpers for the communications sync worker. Kept apart
@@ -27,38 +28,7 @@ const isUniqueViolation = (error: unknown): boolean =>
  * context. Tokens are opened with the same shared secret-crypto seam that
  * sealed them; the plaintext never leaves the worker.
  */
-export const toConnectorContext = (
-  connection: CommsConnectionRow,
-  encryptionSecret: string,
-): ConnectorConnectionContext => {
-  if (!connection.credential) {
-    throw new Error(
-      `[comms] connection ${connection.id} has no stored credential`,
-    )
-  }
-  const { credential } = connection
-  const scopes = Array.isArray(connection.grantedScopes)
-    ? (connection.grantedScopes as unknown[]).filter(
-        (scope): scope is string => typeof scope === 'string',
-      )
-    : []
-  return {
-    id: connection.id,
-    organizationId: connection.organizationId,
-    ownerUserId: connection.ownerUserId,
-    provider: connection.provider,
-    externalTenantId: connection.externalTenantId,
-    externalUserId: connection.externalUserId,
-    credential: {
-      accessToken: openSecret(encryptionSecret, credential.accessTokenCiphertext),
-      refreshToken: credential.refreshTokenCiphertext
-        ? openSecret(encryptionSecret, credential.refreshTokenCiphertext)
-        : undefined,
-      expiresAt: credential.expiresAt?.toISOString(),
-      scopes,
-    },
-  }
-}
+export const toConnectorContext = buildCommsConnectorContext
 
 const mapEventToCreateInput = (
   event: NormalizedEvent,

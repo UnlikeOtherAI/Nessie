@@ -494,14 +494,46 @@ production settings:
 | Comms Slack client id | `NESSIE_COMMS_SLACK_CLIENT_ID` | optional; Slack app OAuth client id for the Individual Communications Connector. Also read by the API OAuth-start (`oauth-config.ts`) to build the authorize URL |
 | Comms Slack client secret | `NESSIE_COMMS_SLACK_CLIENT_SECRET` | optional (secret); Slack app OAuth client secret used for the code→token exchange |
 | Comms Slack signing secret | `NESSIE_COMMS_SLACK_SIGNING_SECRET` | optional (secret); Slack Events API request-signing secret (`v0` HMAC). Slack registers only when all three of the above are set |
-| Comms Google client id | `NESSIE_COMMS_GOOGLE_CLIENT_ID` | optional; Google OAuth client id for the Gmail connector. Also read by the API OAuth-start |
-| Comms Google client secret | `NESSIE_COMMS_GOOGLE_CLIENT_SECRET` | optional (secret); Google OAuth client secret for the code→token exchange. Google registers when the id + secret are set |
+| Comms Google client id | `NESSIE_COMMS_GOOGLE_CLIENT_ID` | optional; Google OAuth client id for the Gmail + Meet connector. Also read by the API OAuth-start |
+| Comms Google client secret | `NESSIE_COMMS_GOOGLE_CLIENT_SECRET` | optional (secret); Google OAuth client secret for the code→token exchange. Google and the `google_meet` call provider are configured only when the id + secret are both set |
 | Comms Google Pub/Sub topic | `NESSIE_COMMS_GOOGLE_PUBSUB_TOPIC` | optional; fully-qualified `projects/<p>/topics/<t>` for Gmail `users.watch` push notifications. Sync still works without it (incremental polling); only real-time watch renewal needs it |
+| Jitsi call domain | `NESSIE_JITSI_DOMAIN` | optional; hostname (and optional port) used for server-minted Jitsi links. Defaults to `meet.jit.si`; do not include a scheme or path |
 
 Communications connectors register from env at API and worker startup via
 `@nessie/comms-providers`; a provider whose vars are unset simply does not
 register, and its sync jobs park cleanly on `ConnectorNotRegisteredError`.
 Startup logs one line listing the registered providers (no secrets).
+
+### Google Meet link setup
+
+Google Meet link minting uses the existing per-user Google communications OAuth
+connection. Before offering `google_meet` as a team's call provider:
+
+1. Select the Google Cloud project that owns the configured OAuth client and
+   enable the Meet REST API:
+
+   ```sh
+   gcloud config set project <project-id>
+   gcloud services enable meet.googleapis.com
+   ```
+
+2. In Google Cloud Console, update the OAuth consent screen to declare
+   `https://www.googleapis.com/auth/meetings.space.created`. Google classifies
+   this as a Sensitive scope; it permits managing Meet spaces this application
+   created, not only creating them. Complete Google's production verification
+   before deployment.
+3. Keep the existing web OAuth client and callback URI, and configure its id and
+   secret through `NESSIE_COMMS_GOOGLE_CLIENT_ID` and
+   `NESSIE_COMMS_GOOGLE_CLIENT_SECRET`. Consent-screen and external web-client
+   management are Console steps; `gcloud` does not expose a general API for
+   them.
+4. Put an external consent screen into **In production** status. Testing mode is
+   capped at 100 test users and its refresh tokens expire after seven days.
+
+New and reauthorized Google connections request the Meet scope incrementally
+with `include_granted_scopes=true`. Existing connections that lack it receive a
+typed `MEET_SCOPE_MISSING` refusal and must be reauthorized; Nessie never
+silently widens a user's grant.
 
 ### Object storage (MinIO)
 

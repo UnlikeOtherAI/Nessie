@@ -24,4 +24,9 @@ export {
   normalizeGmailDeletion,
   GMAIL_VISIBILITY,
 } from './normalize.js'
+export {
+  createGoogleMeetSpace,
+  GOOGLE_MEET_CREATE_SCOPE,
+  GoogleMeetApiError,
+} from './meet.js'
 export type { FetchLike, FetchResponse } from './http.js'

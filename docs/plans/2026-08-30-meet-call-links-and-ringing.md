@@ -1,6 +1,6 @@
 # Call links + real ringing — Google Meet by default, Jitsi per team, replacing the embedded call
 
-**Status:** Draft for review · 2026-08-30
+**Status:** Implementation in progress — Slice 1 complete · 2026-08-30
 **Provider decision (made by the product owner, 2026-08-30, amended same
 day):** the link provider is a **per-team setting** — **Google Meet (the
 default)**, **Jitsi**, or **Microsoft Teams**. Pressing the phone icon does
@@ -786,14 +786,17 @@ handlers in `worker/src/run/pa-tools/`:
 
 ## 11. Delivery slices (each merges green on its own)
 
-1. **Link service + team setting** — `@nessie/comms-google` Meet client,
+1. **Link service + team setting — implemented 2026-08-30.**
+   `@nessie/comms-google` Meet client,
    the provider-dispatching `createCallLinkForTeamUser` seam (Meet + Jitsi
    mints), `Team.callProvider` column + `PATCH /api/teams/:teamId/settings`
-   + the `/settings/organization` Calls section, scope/config change +
-   re-consent path, `POST /api/meetings/links`, deployment doc for the
-   console steps (§3.5). Deliberate Rule-zero note: until slice 5 lands
-   the tool, this route is **machine-only by decision** — its surface is
-   the agent tool and the call flow, both arriving in later slices.
+   + scope/config change, credential refresh coordinator,
+   `POST /api/meetings/links`, and deployment docs for the console steps
+   (§3.5). Per the implementation brief, the organization Calls section and
+   connect-from-call return intent move with the later UI slice. Deliberate
+   Rule-zero note: until that UI and slice 5's tool land, this route is
+   **machine-only by decision** — its doorways are deliberately deferred, not
+   silently missing.
 2. **Schema + call service rework** — `CallInvite`, widened status,
    provider/`meetingUri` columns, migration force-ending live Jitsi calls,
    new accept/decline/cancel routes, ring-timeout job + expiry sweep,

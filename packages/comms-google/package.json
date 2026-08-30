@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@nessie/comms-connect": "workspace:*"
+    "@nessie/comms-connect": "workspace:*",
+    "@nessie/runtime": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.24"
