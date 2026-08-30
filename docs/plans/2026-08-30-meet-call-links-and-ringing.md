@@ -1,10 +1,14 @@
-# Google Meet call links + real ringing — replace the embedded Jitsi call
+# Call links + real ringing — Google Meet by default, Jitsi per team, replacing the embedded call
 
 **Status:** Draft for review · 2026-08-30
-**Provider decision (made by the product owner, 2026-08-30):** the generated
-link is a **Google Meet** link. The original request mentioned both a "Teams
-link" and "the google call"; the ambiguity was flagged and resolved to Meet —
-§4 records the alternatives and why they lost.
+**Provider decision (made by the product owner, 2026-08-30, amended same
+day):** the link provider is a **per-team setting** with two values —
+**Google Meet (the default)** and **Jitsi**. The original request mentioned
+both a "Teams link" and "the google call"; the ambiguity was flagged and
+resolved to Meet, then widened to team-configurable Meet-or-Jitsi. Microsoft
+Teams stays out — §4 records the alternatives. Either way the call is a
+**link opened in a tab**: the ring/accept/popup-blocker/native design below
+is provider-agnostic, and the embedded Jitsi iframe dies regardless.
 
 ## 0. Summary
 
@@ -13,11 +17,13 @@ creates a channel-scoped room, renders a Jitsi iframe overlay, and informs
 only people who happen to be looking at that channel. Nobody's device rings —
 discovery is a 5–30 s poll that only runs on the open channel page.
 
-This plan replaces that with a **generate-a-Meet-link + ring** flow:
+This plan replaces that with a **generate-a-call-link + ring** flow:
 
 1. Caller presses **Call** (same surfaces the button lives on today).
-2. The server mints a **Google Meet link** under the caller's own Google
-   connection and creates a `ringing` call with one invite per recipient.
+2. The server mints a call link — by the channel's **team setting**, a
+   **Google Meet** link under the caller's own Google connection (default)
+   or a **Jitsi** room URL (no auth needed) — and creates a `ringing` call
+   with one invite per recipient.
 3. A popup on the caller's screen shows the link (copyable, joinable as a
    plain anchor) and live per-recipient ring state.
 4. Every **recipient device** rings like an incoming call — user-scoped
@@ -90,7 +96,7 @@ its Phase 1 is genuinely built, with drift:
 ## 2. What "replace" means
 
 - The channel-header Call button keeps its slot and icon; its action becomes
-  **create Meet link + ring**. The banner survives as "Call happening —
+  **create call link + ring** (provider per §3.0). The banner survives as "Call happening —
   Join" where Join is a plain anchor to the Meet link.
 - Deleted: `CallOverlay.tsx`, `CallBanner`'s Jitsi-join wiring,
   `admin/src/lib/jitsi.ts`, the Jitsi globals/types, the unused
@@ -103,9 +109,36 @@ its Phase 1 is genuinely built, with drift:
   server counts **human** members (same predicate the client uses), so both
   agree.
 
-## 3. Google Meet link generation
+## 3. Link generation — provider by team setting
 
-### 3.1 API choice — Meet REST `spaces.create` (chosen)
+### 3.0 The team setting
+
+`Team.callProvider` — string column, `'google_meet'` (default) | `'jitsi'`,
+on the `Team` model (`api/prisma/schema.prisma:1365`; the model has no
+settings fields today, and there is **no team-update route** — only
+`GET/POST /api/teams` + member add — so this ships with a new
+`PATCH /api/teams/:teamId/settings`, org owner/admin-gated). Resolution at
+call time: channel → its team → `callProvider`. The provider used is
+stamped on the `Call` row, so a mid-flight settings change never mutates an
+existing call. The setting is a **default, not a lockout**: the agent tool
+may mint the other provider on the user's explicit request (§10) — it
+carries the user's own Google authority either way. The human Call button
+always follows the team setting (no per-call picker in v1; §12).
+
+**Surface (Rule zero):** there is no team-settings page; per-team controls
+live as rows on org-level pages (the Integrations page's per-team DeepWater
+enablement is the precedent). Home: a **Calls** section on
+`/settings/organization` listing each team with a provider select. In-context
+doorway: the caller popup names the provider ("via Google Meet"), linking to
+the setting for owners/admins.
+
+The `createMeetingLinkForUser` seam (§3.4) becomes
+`createCallLinkForTeamUser(prisma, {teamId, userId})`, dispatching on the
+resolved provider — this is the provider seam §4 calls deliberately
+provider-shaped, now with its second implementation. Everything downstream
+(ring, accept, popup, state machine, shells) sees only a URL.
+
+### 3.1 Meet API choice — Meet REST `spaces.create` (chosen)
 
 `POST https://meet.googleapis.com/v2/spaces` with the user's OAuth bearer
 returns `{ name, meetingUri, meetingCode, config }` — an instant link
@@ -124,14 +157,15 @@ Google-side invites (they may not have Google accounts). The link is a
 capability; accepted tradeoff recorded in §12 (parity with today's
 public-Jitsi rooms, which are strictly worse — guessable names).
 
-### 3.2 Whose Google account
+### 3.2 Whose Google account (Meet teams only)
 
 **The initiator's.** Minted under the caller's per-user Google
 `CommsConnection` (Individual Communications Connector). For the agent tool,
 the initiator is the **run's requesting user** (§10). No org-level service
 account. A user without a Google connection gets a typed refusal and the
 existing connect path (`/settings/connections`, or the PA's
-`comms_connect_card`).
+`comms_connect_card`). Teams set to `jitsi` never touch Google — no
+connection, no scopes, no refusal states (§3.6).
 
 ### 3.3 OAuth scope — new connections and re-consent
 
@@ -193,16 +227,34 @@ One-time, per deployment (the production Google OAuth client):
   but Gmail readonly already forces Google verification; that verification
   burden exists today and does not change materially).
 
+### 3.6 Jitsi as a link provider (team opt-in)
+
+A team set to `jitsi` mints
+`https://${NESSIE_JITSI_DOMAIN}/nessie-<128-bit base32 random>` — pure URL
+construction, no OAuth, no network call, no per-user setup. Notes:
+
+- `NESSIE_JITSI_DOMAIN` (default `meet.jit.si`) replaces the client
+  hard-coded constant (`admin/src/lib/jitsi.ts:3`) server-side; a
+  self-hosted Jitsi is just a different domain.
+- The cryptographically random room id retires today's guessable
+  `nessie-<8 hex of channel uuid>-<hex ms>` naming — on a public Jitsi
+  server the room name **is** the access control, so this matters.
+- Same capability semantics as an OPEN Meet space: whoever holds the link
+  joins. Same ring flow, same tab-open, same state machine.
+- The call still happens in a separate tab on the Jitsi page — the embedded
+  iframe/overlay is **not** retained for jitsi teams.
+
 ## 4. Provider decision — recorded
 
-**Decided: Google Meet.** Options considered:
+**Decided: per-team setting, Google Meet default, Jitsi opt-in** (owner's
+call, 2026-08-30). Options considered:
 
-| Option | Why not / notes |
+| Option | Outcome / notes |
 |---|---|
-| **Google Meet** ✅ | Chosen. Instant links via a create-only scope; recipients need no Google account to join an OPEN space; rides the existing Google connection. |
-| Microsoft Teams | `onlineMeetings` Graph API needs an Azure AD app and per-user M365 accounts; no M365 footprint in the org. |
-| Nessie-native (keep/fix Jitsi) | Keeps an entire media surface Nessie must own (TURN, JWT, self-hosting, entitlements, CSP) — the thing being removed. |
-| Provider-configurable | Real future direction — the §3.4 seam is deliberately provider-shaped — but an abstraction for one provider now is speculative generality. |
+| **Google Meet** ✅ default | Instant links via a create-only scope; recipients need no Google account to join an OPEN space; rides the existing Google connection. |
+| **Jitsi (link, not embed)** ✅ team opt-in | Zero-setup link mint for teams without Google connections or with a self-hosted Jitsi; the embedded iframe still dies. |
+| Microsoft Teams | Out. `onlineMeetings` Graph API needs an Azure AD app and per-user M365 accounts; no M365 footprint in the org. |
+| Embedded Jitsi (status quo) | Out. Keeps a media surface Nessie must own (entitlements, CSP, TURN/JWT) — the thing being removed. |
 
 ## 5. The new flow, end to end
 
@@ -222,10 +274,12 @@ One-time, per deployment (the production Google OAuth client):
 `POST /api/channels/:channelId/call` (same route, new behavior):
 
 1. Auth + membership + eligibility as today (human-member count).
-2. Mint the Meet space under the caller (§3). Typed failures
-   (`GOOGLE_NOT_CONNECTED`, `MEET_SCOPE_MISSING`, `GOOGLE_REAUTH_REQUIRED`,
-   `MEET_LINK_FAILED`) — no `Call` row is written on failure.
-3. Transaction: `Call` row (`provider='google_meet'`, `meetingUri`,
+2. Resolve the team's `callProvider` (§3.0) and mint the link — Meet space
+   under the caller for `google_meet` (typed failures:
+   `GOOGLE_NOT_CONNECTED`, `MEET_SCOPE_MISSING`, `GOOGLE_REAUTH_REQUIRED`,
+   `MEET_LINK_FAILED`; no `Call` row on failure), random room URL for
+   `jitsi` (cannot fail).
+3. Transaction: `Call` row (`provider` = the resolved value, `meetingUri`,
    `status='ringing'`, `ringExpiresAt`) + one `CallInvite` per **human**
    channel member except the caller (`state='ringing'`). Agents are never
    invited.
@@ -395,8 +449,10 @@ sniffing):
 
 ### 9.1 Schema evolution
 
-`Call` gains `provider` (`'google_meet'`; legacy rows backfilled
-`'jitsi'`), `meetingUri` (nullable on legacy), `ringExpiresAt`,
+`Call` gains `provider` (`'google_meet' | 'jitsi'`, stamped from the team
+setting at creation; legacy embedded-era rows backfilled
+`'jitsi_embedded'` to stay distinguishable), `meetingUri` (nullable on
+legacy), `ringExpiresAt`,
 `createdViaAgentId` (nullable), and `status` widens: `ringing | active |
 ended | missed | declined | cancelled` (stays a string column; values
 validated in code like today). New model `CallInvite`: `callId`, `userId`,
@@ -462,10 +518,20 @@ handler in `worker/src/run/pa-tools/`:
   `requiresExplicitGrant` (§12.5), not a default.
 - **Handler:** `resolveActingMember(context)` (live-membership re-read,
   attribution rewritten to the person), then the same shared seam the
-  routes use — `createMeetingLinkForUser` for link-only,
-  `startCallForUser` when ringing. Typed refusals in words: unattended run
-  with no requesting user; `GOOGLE_NOT_CONNECTED` / `MEET_SCOPE_MISSING`
-  (the answer names `/settings/connections`).
+  routes use — `createCallLinkForTeamUser` for link-only,
+  `startCallForUser` when ringing. The provider **defaults to the
+  conversation channel's team setting** (§3.0), and the tool takes an
+  optional `provider` argument so a person can ask the agent for a Meet
+  link even on a Jitsi-preferring team (owner's explicit call,
+  2026-08-30): the override is the *user's* request relayed by their
+  agent, minted under that user's own Google connection, so it grants
+  nothing the user couldn't do with their own account. Whether the agent
+  should offer the override unprompted is the model's judgement, never a
+  string-matched heuristic. The mirroring REST route accepts the same
+  optional `provider`, keeping tool and route no-weaker-no-stronger.
+  Typed refusals in words: unattended run with no requesting user; for a
+  Meet mint, `GOOGLE_NOT_CONNECTED` / `MEET_SCOPE_MISSING` (the answer
+  names `/settings/connections`).
 - **Modes:** default returns `{meetingUri}` for the agent's reply
   (mirroring a new member-level `POST /api/meetings/links` route that
   ships in the same change — same service, same gates, per the
@@ -481,9 +547,12 @@ handler in `worker/src/run/pa-tools/`:
 
 ## 11. Delivery slices (each merges green on its own)
 
-1. **Meet client + link service** — `@nessie/comms-google` Meet client,
-   comms-core seam, scope/config change + re-consent path,
-   `POST /api/meetings/links`, deployment doc for the console steps (§3.5).
+1. **Link service + team setting** — `@nessie/comms-google` Meet client,
+   the provider-dispatching `createCallLinkForTeamUser` seam (Meet + Jitsi
+   mints), `Team.callProvider` column + `PATCH /api/teams/:teamId/settings`
+   + the `/settings/organization` Calls section, scope/config change +
+   re-consent path, `POST /api/meetings/links`, deployment doc for the
+   console steps (§3.5).
 2. **Schema + call service rework** — `CallInvite`, widened status,
    provider/`meetingUri` columns, migration force-ending live Jitsi calls,
    new accept/decline/cancel routes, ring-timeout job + expiry sweep,
@@ -528,6 +597,15 @@ handler in `worker/src/run/pa-tools/`:
 7. **Google OAuth client verification**: adding the Meet scope to the
    consent screen may retrigger Google's app review for the production
    client. Deployment-side risk, not code; §3.5.
+8. **Per-call provider picker for humans**: the button follows the team
+   setting; only the agent tool can override on explicit request. If
+   people want a chooser on the button (e.g. long-press → "Start Jitsi
+   call"), that's a v2 UI decision, not plumbing — the seam already takes
+   a provider.
+9. **Placement of the team Calls setting**: `/settings/organization` Calls
+   section is the recommendation (org-page-with-team-rows precedent); a
+   dedicated team-settings page does not exist and this plan does not
+   invent one. Owner may prefer the Integrations page instead.
 
 ## 13. Review log
 
