@@ -367,7 +367,7 @@ export type AgentTriggerRecord = {
   agentId?: string
   workflowInstallationId?: string
   type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
-  status: 'active' | 'paused' | 'error'
+  status: 'active' | 'paused' | 'error' | 'needs_reauthorization'
   enabled: boolean
   name?: string
   description?: string

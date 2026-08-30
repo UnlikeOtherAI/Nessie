@@ -107,6 +107,12 @@ enum AgentTriggerStatus {
   active
   paused
   error
+  // The schedule is structurally fine but can no longer prove the identity it
+  // was created under, so it must not run. Split from `error` because the two
+  // need different remedies: `error` means "fix the configuration", this means
+  // "an authorized person re-authorizes it", and the surface offers that button
+  // only for this state. Both are non-runnable — the scheduler claims `active`.
+  needs_reauthorization
 }
 
 enum AgentTriggerDeliveryStatus {
@@ -1474,6 +1480,10 @@ enum UserAlertKind {
   mention
   task_assigned
   knowledge_published
+  // A scheduled trigger stopped being runnable. Durable rather than push-only
+  // because the whole defect this fixes was a failure nobody could see: a push
+  // is missable, the bell is not.
+  trigger_health
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1493,6 +1503,7 @@ model UserAlert {
   projectId       String?        @map("project_id") @db.Uuid
   taskId          String?        @map("task_id") @db.Uuid
   knowledgePageId String?        @map("knowledge_page_id") @db.Uuid
+  triggerId       String?        @map("trigger_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey        String?        @map("event_key")
@@ -1508,6 +1519,7 @@ model UserAlert {
   project         Project?       @relation("PushAttentionAlertProject", fields: [projectId], references: [id], onDelete: Cascade)
   task            Task?          @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
   knowledgePage   KnowledgePage? @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
+  trigger         AgentTrigger?  @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
   actorUser       User?          @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   actorAgent      Agent?         @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
@@ -1576,6 +1588,10 @@ enum PushSurfaceKind {
   ops_usage
   project_board
   knowledge_space
+  // The Triggers page. Modelled so a trigger-health notification names its real
+  // destination rather than borrowing another surface's identity, which would
+  // suppress it for anyone who happened to be on that other page.
+  triggers
 }
 
 model UserPushSurfacePresence {
@@ -2310,6 +2326,19 @@ model AgentTrigger {
   // Inbound webhook HMAC signing secret (sp-webhook). When set, the webhook
   // intake endpoint requires a valid X-Nessie-Signature instead of bearer key.
   signingSecret            String?                   @map("signing_secret")
+  // Why this trigger is not runnable, as a stable code plus the sentence shown
+  // to a person. Before this, the only record of a fatal fire lived in the
+  // newest delivery row's `error_message`, so the Triggers page could say a
+  // schedule was in ERROR but never why, and nothing else could read the reason
+  // to decide whether it was recoverable.
+  healthReason             String?                   @map("health_reason")
+  healthDetail             String?                   @map("health_detail")
+  // Bumped on every transition INTO a non-runnable state. It is the identity of
+  // "this failure", which is what makes alerting exactly-once per transition:
+  // the alert's `UserAlert.eventKey` embeds it, and that table already carries
+  // `@@unique([userId, eventKey])`. A stuck state therefore never re-notifies,
+  // while a genuine repeat failure after a repair does.
+  healthRevision           Int                       @default(0) @map("health_revision")
   lastFiredAt              DateTime?                 @map("last_fired_at")
   nextRunAt                DateTime?                 @map("next_run_at")
   createdAt                DateTime                  @default(now()) @map("created_at")
@@ -2322,6 +2351,7 @@ model AgentTrigger {
   runs                     Run[]
   workflowRuns             WorkflowRun[]
   runThreadPendingMessages RunThreadPendingMessage[]
+  healthAlerts             UserAlert[]               @relation("TriggerHealthAlert")
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])

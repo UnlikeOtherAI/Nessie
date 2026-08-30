@@ -154,7 +154,15 @@ export const AgentRecordSchema = z.object({
 })
 export type AgentRecord = z.infer<typeof AgentRecordSchema>
 
-export const AgentTriggerStatusSchema = z.enum(['active', 'paused', 'error'])
+export const AgentTriggerStatusSchema = z.enum([
+  'active',
+  'paused',
+  'error',
+  // Non-runnable, but repairable by an authorized person re-proving identity
+  // rather than by editing the trigger — the surface offers a different
+  // action for it, which is why it is a state and not a flavour of `error`.
+  'needs_reauthorization',
+])
 export type AgentTriggerStatus = z.infer<typeof AgentTriggerStatusSchema>
 
 export const AgentTriggerRecordSchema = z.object({

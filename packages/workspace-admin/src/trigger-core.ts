@@ -98,7 +98,7 @@ export const mapTriggerRecord = (
     lastFiredAt: Date | null
     name: string | null
     nextRunAt: Date | null
-    status: 'active' | 'paused' | 'error'
+    status: 'active' | 'paused' | 'error' | 'needs_reauthorization'
     targetChannelId: string | null
     targetThreadId: string | null
     type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'

@@ -42,6 +42,7 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   projectId: alert.projectId ?? null,
   taskId: alert.taskId ?? null,
   knowledgePageId: alert.knowledgePageId ?? null,
+  triggerId: alert.triggerId ?? null,
   actorUserId: alert.actorUserId,
   actorAgentId: alert.actorAgentId,
   actorDisplayName: alert.actorUser?.displayName ?? alert.actorAgent?.name ?? null,

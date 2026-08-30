@@ -27,6 +27,7 @@ import {
 import { enqueueRunExecution } from '../queue.js'
 import { claimThreadRunOrPend } from '../run/thread-serialization.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
+import { recordTriggerHealthFailure } from './trigger-health.js'
 import {
   assertTriggerExecutionOriginTenant,
   resolveTriggerExecutionOrigin,
@@ -43,6 +44,40 @@ import {
 // existing `failed` delivery row instead of creating a new one, so the
 // (trigger_id, dedupe_key) uniqueness holds and backoff state accumulates.
 export type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
+
+/**
+ * The workspace half of the identity check dispatch performs.
+ *
+ * `activeWorkspaceMatchesAttribution` (packages/runtime) requires the local
+ * `Team` carrying the run's attribution to advertise exactly the UOA
+ * organisation and workspace the identity names. It is a pure database read, so
+ * asking it here costs one query and closes the gap between what the fire gate
+ * checks and what the signing path checks. Deliberately NOT the remote token
+ * exchange: that is a network call, it is cached per delegation, and a UOA
+ * outage must never look like a dead schedule.
+ */
+const triggerWorkspaceStillMatches = async (
+  prisma: PrismaClient,
+  origin: { organizationId: string; projectId?: string; teamId?: string },
+  identity: { organizationId: string | null; teamId: string | null },
+): Promise<boolean> => {
+  if (!origin.teamId || !identity.organizationId || !identity.teamId) {
+    return false
+  }
+  const team = await prisma.team.findFirst({
+    where: {
+      id: origin.teamId,
+      project: { organizationId: origin.organizationId },
+    },
+    select: { externalOrgId: true, externalWorkspaceId: true },
+  })
+  return Boolean(
+    team?.externalOrgId
+    && team.externalWorkspaceId
+    && team.externalOrgId === identity.organizationId
+    && team.externalWorkspaceId === identity.teamId,
+  )
+}
 
 // Create the delivery for a fresh fire, or reuse+reset the row when retrying.
 export const upsertDelivery = async (
@@ -244,6 +279,15 @@ export const queueTriggerRun = async (
     // Catches the three ways a captured identity goes stale: the link was
     // revoked, the user's credential epoch rotated (logout, password change,
     // deactivation), or the schedule predates identity capture entirely.
+    //
+    // It must ask exactly what dispatch asks. `loadLedgerUoaIdentity` checks
+    // only the account link (status, subject, epoch); the header path that
+    // actually signs a model call additionally requires the attributed team's
+    // external UOA mapping to match the captured workspace. Checking the
+    // narrower condition here let a trigger pass, create a run, and have that
+    // run die at its first inference — silently, because an unattended failure
+    // posts nothing. That is how one production schedule burned ~1.5 hours of
+    // failed runs before its epoch drifted far enough to fail this gate too.
     if (ledgerSigningConfigured && executionOrigin.userId) {
       const identity = executionOrigin.uoaIdentity
         ? await loadLedgerUoaIdentity(prisma, {
@@ -256,7 +300,14 @@ export const queueTriggerRun = async (
         : null
       if (!identity) {
         throw new TriggerLaunchOriginError(
+          'uoa_identity_unverifiable',
           'its saved UnlikeOtherAI identity is missing or no longer valid',
+        )
+      }
+      if (!(await triggerWorkspaceStillMatches(prisma, executionOrigin, identity))) {
+        throw new TriggerLaunchOriginError(
+          'uoa_identity_unverifiable',
+          'its saved UnlikeOtherAI workspace no longer maps to its team',
         )
       }
     }
@@ -275,6 +326,7 @@ export const queueTriggerRun = async (
       })
       if (!membership) {
         throw new TriggerLaunchOriginError(
+          'channel_access_lost',
           'its saved user no longer has access to the target channel',
         )
       }
@@ -434,9 +486,9 @@ export const queueTriggerRun = async (
       triggerId: input.trigger.id,
     })
     if (error instanceof TriggerLaunchOriginError) {
-      await prisma.agentTrigger.update({
-        where: { id: input.trigger.id },
-        data: { status: 'error' },
+      await recordTriggerHealthFailure(prisma, {
+        error,
+        triggerId: input.trigger.id,
       })
     }
     throw error
