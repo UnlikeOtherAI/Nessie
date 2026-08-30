@@ -8,7 +8,7 @@ import {
 } from '../../../facades/workspace/hooks'
 import { activeWorkspace } from '../../../lib/workspaces'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { sectionTitleClass } from '../settings-shared'
+import { SectionLabel } from '../../../components/primitives/SectionLabel'
 
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
@@ -79,7 +79,7 @@ export const WorkspaceAvatarPanel = () => {
 
   return (
     <section className="admin-card max-w-3xl p-4">
-      <div className={sectionTitleClass}>Workspace avatar</div>
+      <SectionLabel>Workspace avatar</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         The company picture for {workspaceName}, held by UnlikeOtherAI and shown
         anywhere the workspace appears. Separate from the organisation logo above,

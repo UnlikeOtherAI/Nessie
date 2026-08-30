@@ -8,7 +8,7 @@ import {
 } from '../../../facades/workflows/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { useToasts } from '../../../providers/ToastProvider'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import {
   formatRelativeTime,
   getInstallationTone,
@@ -75,7 +75,7 @@ const InstallationAutomationRow = ({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-semibold text-[var(--tx)]">{name}</span>
-          <StatusPill tone={getInstallationTone(status)}>{status}</StatusPill>
+          <Pill tone={getInstallationTone(status)}>{status}</Pill>
         </div>
         <div className="mt-1 text-xs text-[color:var(--tx3)]">
           {lastRun

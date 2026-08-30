@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
 import { AgentStatusDot } from './AgentStatusDot'
 import { AgentDetailTabs } from './AgentDetailTabs'
@@ -65,7 +65,7 @@ export const AgentDetailDrawer = ({
               <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
               <h2 className="text-2xl font-semibold text-[var(--tx)]">{agent.name}</h2>
               <AgentStatusDot status={agent.status} />
-              <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
+              <Pill tone={getStatusTone(agent.status)}>{agent.status}</Pill>
             </div>
             <div className="mt-2 text-sm text-[color:var(--tx2)]">{agent.role}</div>
             <div className="mt-2 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">

@@ -1,4 +1,5 @@
 import type { DeepSignalSignalKind, DeepSignalSignalRecord } from '../../../lib/api-client'
+import type { PillTone } from '../../primitives/Pill'
 
 // Shared presentation helpers for the DeepSignal Signals inbox — the row, the
 // detail drawer, and the overview header all read kinds/status the same way, so
@@ -34,27 +35,17 @@ export const formatTimestamp = (value: string | null): string => {
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export const kindBadgeClass = (kind: DeepSignalSignalKind): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    kind === 'risk'
-      ? 'bg-[var(--danger-soft)] text-[var(--danger-text)]'
-      : kind === 'opportunity'
-        ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-        : 'bg-[var(--overlay)] text-[var(--tx2)]',
-  ].join(' ')
+export const kindPillTone = (kind: DeepSignalSignalKind): PillTone =>
+  kind === 'risk' ? 'danger' : kind === 'opportunity' ? 'success' : 'muted'
 
-export const statusBadgeClass = (status: DeepSignalSignalRecord['status']): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    status === 'done'
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : status === 'snoozed'
-        ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-        : status === 'muted'
-          ? 'bg-[var(--overlay)] text-[var(--tx3)]'
-          : 'bg-[var(--accent-soft)] text-[var(--thinking)]',
-  ].join(' ')
+export const statusPillTone = (status: DeepSignalSignalRecord['status']): PillTone =>
+  status === 'done'
+    ? 'success'
+    : status === 'snoozed'
+      ? 'warning'
+      : status === 'muted'
+        ? 'muted'
+        : 'accent'
 
 const kindOf = (signal: DeepSignalSignalRecord): DeepSignalSignalKind | 'other' =>
   signal.kind ?? 'other'

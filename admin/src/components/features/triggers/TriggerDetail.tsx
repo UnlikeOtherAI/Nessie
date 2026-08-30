@@ -9,7 +9,9 @@ import {
 } from '../../../facades/triggers/hooks'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
 import { getBaseUrl } from '../../../lib/api-client'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Notice } from '../../primitives/Notice'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import {
   TRIGGER_TYPE_ICONS,
   formatRelativeTime,
@@ -19,7 +21,6 @@ import {
   getTriggerEventNames,
   getTriggerTone,
   getTriggerTypeLabel,
-  sectionTitle,
   type TriggerRegistryMaps,
 } from './trigger-presentation'
 
@@ -152,9 +153,9 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
                 <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
                   {trigger.name ?? trigger.type}
                 </h2>
-                <StatusPill tone={getTriggerTone(trigger.status)}>
+                <Pill tone={getTriggerTone(trigger.status)}>
                   {trigger.status}
-                </StatusPill>
+                </Pill>
               </div>
               <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
                 {getTriggerTypeLabel(trigger)}
@@ -207,14 +208,14 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
         ) : null}
 
         {fireTrigger.isSuccess && !fireTrigger.isPending ? (
-          <div className="mt-3 rounded-lg border border-[var(--success-border)] bg-[var(--success-soft)] px-3 py-2 text-xs text-[var(--success-text)]">
+          <Notice className="mt-3" radius="lg" size="sm" tone="success">
             Trigger fired — the run appears under recent deliveries below.
-          </div>
+          </Notice>
         ) : null}
         {actionError ? (
-          <div className="mt-3 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger-text)]">
+          <Notice className="mt-3" radius="lg" size="sm" tone="danger">
             {actionError}
-          </div>
+          </Notice>
         ) : null}
       </div>
 
@@ -240,7 +241,7 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
 
       {trigger.type === 'webhook' ? (
         <section>
-          <div className={sectionTitle}>Webhook endpoint</div>
+          <SectionLabel>Webhook endpoint</SectionLabel>
           <p className="mt-1 text-xs text-[color:var(--tx3)]">
             POST to this endpoint with the API key as a bearer token to fire
             the trigger.
@@ -259,7 +260,7 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
       ) : null}
 
       <section>
-        <div className={sectionTitle}>Recent deliveries</div>
+        <SectionLabel>Recent deliveries</SectionLabel>
         {history.length === 0 ? (
           <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
             No deliveries yet. Use “Run now” to test this trigger.
@@ -282,15 +283,9 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
                       succeeded is a different question, and the one the owner
                       is actually asking when a schedule looks broken. */}
                   {delivery.runStatus && delivery.runStatus !== 'completed' ? (
-                    <span
-                      className="flex-shrink-0 rounded px-1.5 py-0.5 text-xs"
-                      style={{
-                        background: 'var(--danger-soft)',
-                        color: 'var(--danger-text)',
-                      }}
-                    >
+                    <Pill className="flex-shrink-0" radius="chip" size="sm" tone="danger" uppercase={false}>
                       run {delivery.runStatus}
-                    </span>
+                    </Pill>
                   ) : null}
                   <span className="ml-auto flex-shrink-0 text-xs tabular-nums text-[color:var(--tx3)]">
                     {formatTimestamp(delivery.createdAt)}

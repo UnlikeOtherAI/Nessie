@@ -5,6 +5,7 @@ import {
   PricingManager,
   type PricingProfile,
 } from '../components/features/budgets/PricingManager'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { opsTelemetryKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
@@ -77,9 +78,6 @@ type FileUsageSummary = {
 }
 
 const formatCount = (count: number) => new Intl.NumberFormat('en-US').format(count)
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 const formatCost = (amount: number, currency: string) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
@@ -176,7 +174,7 @@ export const OperationalTelemetryPage = () => {
           </select>
         </div>
         <div className="admin-card mb-4 border border-[color:var(--sep)] p-4">
-          <div className={sectionTitle}>Internal operations only</div>
+          <SectionLabel>Internal operations only</SectionLabel>
           <p className="mt-1 text-sm text-[color:var(--tx2)]">
             These token, connector, file, budget, and model-pricing signals help
             owners operate Nessie. They are not customer credits, a tariff, or an
@@ -185,6 +183,7 @@ export const OperationalTelemetryPage = () => {
           </p>
         </div>
 
+        {/* .admin-card is unlayered and beats both colour utilities: this renders as a plain --panel card. */}
         {costTrackingInactive && (
           <div className="admin-card mb-4 border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
             Cost tracking is inactive — {formatTokens(summary?.totalTokens ?? 0)} tokens recorded but
@@ -195,7 +194,7 @@ export const OperationalTelemetryPage = () => {
 
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="admin-card p-4">
-            <div className={sectionTitle}>Total Tokens</div>
+            <SectionLabel>Total Tokens</SectionLabel>
             <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
               {formatTokens(summary?.totalTokens ?? 0)}
             </div>
@@ -205,13 +204,13 @@ export const OperationalTelemetryPage = () => {
             </div>
           </div>
           <div className="admin-card p-4">
-            <div className={sectionTitle}>Estimated Cost</div>
+            <SectionLabel>Estimated Cost</SectionLabel>
             <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
               {formatCost(summary?.totalEstimatedCost ?? 0, summary?.currency ?? 'USD')}
             </div>
           </div>
           <div className="admin-card p-4">
-            <div className={sectionTitle}>Monthly Projection</div>
+            <SectionLabel>Monthly Projection</SectionLabel>
             <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
               {formatCost(estimate?.projectedMonthlyCost ?? 0, estimate?.currency ?? 'USD')}
             </div>
@@ -227,7 +226,7 @@ export const OperationalTelemetryPage = () => {
 
         {(summary?.breakdowns ?? []).length > 0 && (
           <div className="mt-4">
-            <div className={sectionTitle}>Breakdown</div>
+            <SectionLabel>Breakdown</SectionLabel>
             <div className="mt-2 grid gap-2">
               {(summary?.breakdowns ?? []).map((breakdown) => (
                 <div
@@ -257,7 +256,7 @@ export const OperationalTelemetryPage = () => {
 
         {(outcomeUsage?.outcomes ?? []).length > 0 && (
           <div className="mt-6">
-            <div className={sectionTitle}>Spend by Run Outcome</div>
+            <SectionLabel>Spend by Run Outcome</SectionLabel>
             <div className="mt-2 grid gap-2">
               {(outcomeUsage?.outcomes ?? []).map((row) => (
                 <div
@@ -287,10 +286,10 @@ export const OperationalTelemetryPage = () => {
         )}
 
         <div className="mt-6">
-          <div className={sectionTitle}>File Usage</div>
+          <SectionLabel>File Usage</SectionLabel>
           <div className="mt-2 grid gap-4 lg:grid-cols-4">
             <div className="admin-card p-4">
-              <div className={sectionTitle}>Stored</div>
+              <SectionLabel>Stored</SectionLabel>
               <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
                 {formatBytes(fileUsage?.currentStoredBytes ?? 0)}
               </div>
@@ -299,19 +298,19 @@ export const OperationalTelemetryPage = () => {
               </div>
             </div>
             <div className="admin-card p-4">
-              <div className={sectionTitle}>Uploaded</div>
+              <SectionLabel>Uploaded</SectionLabel>
               <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
                 {formatBytes(fileUsage?.uploadBytes ?? 0)}
               </div>
             </div>
             <div className="admin-card p-4">
-              <div className={sectionTitle}>Downloaded</div>
+              <SectionLabel>Downloaded</SectionLabel>
               <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
                 {formatBytes(fileUsage?.downloadBytes ?? 0)}
               </div>
             </div>
             <div className="admin-card p-4">
-              <div className={sectionTitle}>Transfers</div>
+              <SectionLabel>Transfers</SectionLabel>
               <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
                 {formatBytes(fileUsage?.totalTransferBytes ?? 0)}
               </div>
@@ -345,7 +344,7 @@ export const OperationalTelemetryPage = () => {
         </div>
 
         <div className="mt-6 flex items-center gap-4">
-          <div className={sectionTitle}>Connector Usage</div>
+          <SectionLabel>Connector Usage</SectionLabel>
           <div className="ml-auto w-44">
             <select
               aria-label="Group connector telemetry"
@@ -363,13 +362,13 @@ export const OperationalTelemetryPage = () => {
         </div>
         <div className="mt-2 grid gap-4 lg:grid-cols-2">
           <div className="admin-card p-4">
-            <div className={sectionTitle}>Total Calls</div>
+            <SectionLabel>Total Calls</SectionLabel>
             <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
               {formatCount(connectors?.totalCalls ?? 0)}
             </div>
           </div>
           <div className="admin-card p-4">
-            <div className={sectionTitle}>Connector Cost</div>
+            <SectionLabel>Connector Cost</SectionLabel>
             <div className="mt-2 text-2xl font-bold text-[color:var(--tx)]">
               {formatCost(connectors?.totalCost ?? 0, connectors?.currency ?? 'USD')}
             </div>

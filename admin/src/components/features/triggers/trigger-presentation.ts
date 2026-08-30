@@ -20,9 +20,6 @@ import type {
  * editor and the per-agent trigger panel.
  */
 
-export const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
-
 export type TriggerRegistryMaps = {
   agentsById: Map<string, AgentRecord>
   channelsById: Map<string, ChannelRecord>

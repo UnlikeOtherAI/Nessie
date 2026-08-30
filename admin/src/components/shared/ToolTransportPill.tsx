@@ -20,6 +20,8 @@ const TRANSPORT_LABELS: Record<ToolRegistryTransport, string> = {
   pty: 'pty',
 }
 
+// Unconverted: this chip's fill is --scrim, a darkening wash; Pill's muted tone
+// paints --overlay-weak, a lightening one, flipping polarity on dark themes.
 export const ToolTransportPill = ({ transport }: ToolTransportPillProps) => (
   <span
     className={[

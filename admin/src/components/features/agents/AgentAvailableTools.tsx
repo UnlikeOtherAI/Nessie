@@ -7,7 +7,8 @@ import {
 } from '../../../facades/designer/tool-catalog'
 import { useUpdateAgent } from '../../../facades/agents/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { EmptyState } from '../../shared/EmptyState'
 import { ToolPicker } from './designer/ToolPicker'
 
@@ -101,9 +102,7 @@ const AgentToolsReadOnly = ({ agent }: AgentAvailableToolsProps) => {
     <div className="grid gap-6">
       {groups.map((group) => (
         <section className="grid gap-2" key={group.name}>
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            {group.name}
-          </div>
+          <SectionLabel>{group.name}</SectionLabel>
           <div className="grid gap-2">
             {group.tools.map((tool) => {
               const enabled = isToolEnabled(tool, policy)
@@ -117,9 +116,9 @@ const AgentToolsReadOnly = ({ agent }: AgentAvailableToolsProps) => {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-mono text-sm text-[var(--thinking)]">{tool.label}</div>
-                    <StatusPill tone={enabled ? 'success' : 'muted'}>
+                    <Pill tone={enabled ? 'success' : 'muted'}>
                       {enabled ? 'enabled' : 'off'}
-                    </StatusPill>
+                    </Pill>
                   </div>
                   <div className="mt-1 text-xs text-[color:var(--tx3)]">{tool.description}</div>
                 </div>

@@ -1,5 +1,6 @@
 import type { AgentRecord, ChannelRecord, PersonalAssistantStateResponse } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { PersonalAssistantConfigBanner } from '../personal-assistant/PersonalAssistantSurface'
 import { ChannelAutomationsPanel } from './ChannelAutomationsPanel'
@@ -50,9 +51,7 @@ export const ChannelTabPanels = ({
         <section className="admin-card p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                Conversation files
-              </div>
+              <SectionLabel>Conversation files</SectionLabel>
               <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">
                 Files shared in this {isConversationSurface ? 'conversation' : 'channel'} will
                 live here instead of getting mixed into runs or agent controls.
@@ -89,9 +88,7 @@ export const ChannelTabPanels = ({
         </section>
 
         <aside className="admin-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            Scope
-          </div>
+          <SectionLabel>Scope</SectionLabel>
           <div className="mt-4 grid gap-3 text-sm">
             <div className="rounded-lg border border-[color:var(--sep)] bg-[var(--scrim-weak)] p-3">
               <div className="text-[color:var(--tx3)]">Surface</div>
@@ -166,9 +163,7 @@ export const ChannelTabPanels = ({
         )}
 
         <div className="admin-card p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-            Manage agents
-          </div>
+          <SectionLabel>Manage agents</SectionLabel>
           <p className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
             Create new agents, bind them to channels, and inspect tool access from the
             admin route.

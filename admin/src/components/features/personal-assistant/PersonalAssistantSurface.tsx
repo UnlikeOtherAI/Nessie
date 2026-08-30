@@ -5,6 +5,7 @@ import type {
 } from '../../../lib/api-client'
 import { isPersonalAssistantChannel } from '../../../facades/personal-assistant/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 
 type PersonalAssistantSidebarEntryProps = {
@@ -25,14 +26,6 @@ type PersonalAssistantConfigBannerProps = {
 const assistantGlyphClassName =
   'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ' +
   'bg-[var(--accent-soft)] text-[10px] font-bold text-[var(--thinking)]'
-
-const badgeClassName =
-  'rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ' +
-  'text-[color:var(--tx3)]'
-
-const pillClassName =
-  'rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] ' +
-  'px-2 py-0.5 text-[10px] font-semibold text-[var(--thinking)]'
 
 const assistantPills = (
   agent?: AgentRecord | null,
@@ -106,7 +99,9 @@ export const PersonalAssistantSidebarEntry = ({
       <span className="min-w-0 flex-1 truncate text-current">
         Personal Assistant
       </span>
-      <span className={`${badgeClassName} sidebar-pa-badge`}>PA</span>
+      <Pill className="sidebar-pa-badge" radius="chip" size="sm" tone="muted">
+        PA
+      </Pill>
       {bootstrapping ? (
         <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-[var(--overlay-strong)] border-t-[var(--on-accent)]" />
       ) : unreadCount > 0 ? (
@@ -140,7 +135,9 @@ export const PersonalAssistantConfigBanner = ({
             <span className="text-sm font-semibold text-[var(--tx)]">
               {agent?.name ?? 'Personal Assistant'}
             </span>
-            <span className={badgeClassName}>system managed</span>
+            <Pill radius="chip" size="sm" tone="muted">
+              system managed
+            </Pill>
           </div>
           <p className="mt-1 text-xs leading-5 text-[color:var(--tx2)]">
             This DM stays private to you. Admin-managed settings can shape behavior,
@@ -149,9 +146,16 @@ export const PersonalAssistantConfigBanner = ({
           {pills.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {pills.map((pill) => (
-                <span className={pillClassName} key={pill}>
+                <Pill
+                  className="border border-[var(--accent)] font-semibold"
+                  key={pill}
+                  radius="capsule"
+                  size="sm"
+                  tone="accent"
+                  uppercase={false}
+                >
                   {pill}
-                </span>
+                </Pill>
               ))}
             </div>
           )}

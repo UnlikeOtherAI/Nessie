@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom'
 import type { McpServerLifecycleState } from '@nessie/schemas'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import type { McpServerInstanceRecord } from '../../../facades/mcp-instances/hooks'
 import { mcpInstanceToolsPath } from '../../../facades/mcp-instance-tool-filter'
 
 /**
  * Installed-server list used in the App Store right column. Renders lifecycle
  * state (pending_setup / active / paused / error) using the shared
- * `StatusPill` primitive so it's consistent with channel/agent rows.
+ * `Pill` primitive so it's consistent with channel/agent rows.
  */
 
 type InstanceListProps = {
@@ -91,9 +91,9 @@ export const InstanceList = ({
                 Failures: {instance.healthFailureCount}
               </div>
             </div>
-            <StatusPill tone={LIFECYCLE_TONE[instance.lifecycleState]}>
+            <Pill tone={LIFECYCLE_TONE[instance.lifecycleState]}>
               {instance.lifecycleState}
-            </StatusPill>
+            </Pill>
           </button>
           {instance.pendingToolCount > 0 ? (
             <Link

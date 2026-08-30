@@ -1,6 +1,6 @@
 import type { AppDetailRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import { EmptyState } from '../../shared/EmptyState'
 import {
   connectionConnectedLabel,
@@ -50,7 +50,7 @@ export const AppConnectionsList = ({ app }: AppConnectionsListProps) => {
                 <span className="min-w-0 truncate text-sm font-medium text-[color:var(--tx)]">
                   {connection.displayName}
                 </span>
-                <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
+                <Pill tone={pill.tone}>{pill.label}</Pill>
               </div>
               {connectedLabel ? (
                 <div className="mt-1 text-xs text-[color:var(--tx3)]">{connectedLabel}</div>

@@ -9,10 +9,10 @@ import { LogoPanel } from './organization/LogoPanel'
 import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
 import {
   FeedbackBanner,
-  sectionTitleClass,
   SettingsPanel,
   type SettingsFeedback,
 } from './settings-shared'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 export const OrganizationSettingsPage = () => {
   const { me } = useAuthSession()
@@ -64,7 +64,7 @@ export const OrganizationSettingsPage = () => {
     <SettingsPanel eyebrow="Organization" title="General">
       <div className="grid max-w-3xl gap-4">
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Profile</div>
+          <SectionLabel>Profile</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={saveName}>
             <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
               Organisation name

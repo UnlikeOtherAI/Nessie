@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { budgetKeys, opsTelemetryKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
+import { SectionLabel } from '../../primitives/SectionLabel'
 
 export type PricingProfile = {
   profileId: string
@@ -18,8 +19,6 @@ export type PricingProfile = {
   effectiveFrom: string
   effectiveTo: string | null
 }
-
-const sectionTitle = 'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 const parseRate = (raw: string): number | null | 'invalid' => {
   const trimmed = raw.trim()
@@ -127,7 +126,7 @@ export const PricingManager = () => {
 
   return (
     <div className="admin-card mt-4 p-4">
-      <div className={sectionTitle}>Model pricing</div>
+      <SectionLabel>Model pricing</SectionLabel>
       <p className="mt-1 text-xs text-[color:var(--tx2)]">
         Per-million-token rates turn the usage ledger into dollars. Use the exact model name, or
         <code className="mx-1 rounded bg-[var(--overlay-weak)] px-1">*</code> as a provider-wide
@@ -189,7 +188,7 @@ export const PricingManager = () => {
       {formError && <div className="mt-2 text-xs text-[var(--danger-text)]">{formError}</div>}
 
       <div className="mt-5 flex items-center justify-between gap-2">
-        <span className={sectionTitle}>Configured pricing ({profiles.length})</span>
+        <SectionLabel as="span">Configured pricing ({profiles.length})</SectionLabel>
         <button
           className="admin-button admin-button-secondary"
           disabled={recompute.isPending || profiles.length === 0}

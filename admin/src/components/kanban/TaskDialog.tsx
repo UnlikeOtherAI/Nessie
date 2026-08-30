@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Notice } from '../primitives/Notice'
 import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../shared/AssigneePicker'
 import { useOverlayDismiss } from '../shared/useOverlayDismiss'
 import { useAgents } from '../../facades/agents/queries'
@@ -336,9 +337,9 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
           {isEdit && task ? <TaskDocuments taskId={task.id} /> : null}
 
           {error ? (
-            <div className="rounded-md border border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] px-3 py-2 text-xs text-[color:var(--danger-text)] md:col-span-2">
+            <Notice className="md:col-span-2" size="sm" tone="danger">
               {error}
-            </div>
+            </Notice>
           ) : null}
 
           <div className="flex items-center justify-between pt-1 md:col-span-2">

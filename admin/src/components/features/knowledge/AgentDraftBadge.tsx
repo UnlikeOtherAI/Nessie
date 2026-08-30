@@ -1,6 +1,7 @@
 // Compact chip flagging an unreviewed agent-authored draft, shown alongside
 // (never instead of) the normal status label so reviewers can spot Librarian
 // work waiting for a human pass without it changing existing status styling.
+// Unconverted: Pill's accent tone emits --thinking; this chip ships --accent.
 export const AgentDraftBadge = () => (
   <span
     className={[

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ColumnBrowserItem } from '../../shared/column-browser/ColumnBrowserItem'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import {
   useDiscoverMcpEndpoint,
   type McpDiscoveryResultRecord,
@@ -108,9 +109,7 @@ export const LibraryPanel = ({
       />
 
       <div className="grid gap-2 rounded-md border border-[color:var(--sep)] p-3">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
-          Only have a link?
-        </div>
+        <SectionLabel size="2xs">Only have a link?</SectionLabel>
         <div className="flex gap-2">
           <input
             className={inputClass}
@@ -159,9 +158,9 @@ export const LibraryPanel = ({
               isSelected={entry.key === selectedKey}
               key={entry.key}
               meta={
-                <StatusPill tone={entry.source === 'curated' ? 'success' : 'muted'}>
+                <Pill tone={entry.source === 'curated' ? 'success' : 'muted'}>
                   {entry.source === 'curated' ? 'verified' : 'registry'}
-                </StatusPill>
+                </Pill>
               }
               onClick={() => onSelect(entry)}
               subtitle={

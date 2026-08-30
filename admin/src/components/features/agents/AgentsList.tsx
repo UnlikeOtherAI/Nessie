@@ -75,6 +75,7 @@ export const AgentsList = () => {
       <header className="flex items-start gap-3 px-6 pt-6 pb-4">
         <PhoneNavigationButton />
         <div className="min-w-0 flex-1 space-y-1">
+          {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
             Agents
           </p>

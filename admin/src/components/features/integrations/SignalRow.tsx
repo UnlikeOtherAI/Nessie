@@ -1,8 +1,9 @@
 import type { DeepSignalSignalRecord } from '../../../lib/api-client'
+import { Pill } from '../../primitives/Pill'
 import {
   formatTimestamp,
-  kindBadgeClass,
-  statusBadgeClass,
+  kindPillTone,
+  statusPillTone,
   titleCase,
   type SignalActionType,
 } from './signal-format'
@@ -46,10 +47,26 @@ export const SignalRow = ({ signal, acting, onOpen, onAct }: SignalRowProps) => 
       >
         <span className="flex flex-wrap items-center gap-2">
           {signal.kind ? (
-            <span className={kindBadgeClass(signal.kind)}>{titleCase(signal.kind)}</span>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={kindPillTone(signal.kind)}
+              uppercase={false}
+            >
+              {titleCase(signal.kind)}
+            </Pill>
           ) : null}
           {!isActive ? (
-            <span className={statusBadgeClass(signal.status)}>{titleCase(signal.status)}</span>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={statusPillTone(signal.status)}
+              uppercase={false}
+            >
+              {titleCase(signal.status)}
+            </Pill>
           ) : null}
           {timestamp ? (
             <span className="ml-auto text-[11px] text-[var(--tx3)]">{timestamp}</span>

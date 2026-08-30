@@ -6,6 +6,7 @@ import {
   useAgentStatus,
 } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
 import { AgentAvailableTools } from './AgentAvailableTools'
@@ -97,9 +98,7 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
         {activeTab === 'activity' && (
           <div className="grid gap-6">
             <section className="admin-card p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                Current activity
-              </div>
+              <SectionLabel>Current activity</SectionLabel>
               {status?.currentToolName || activity?.currentRun ? (
                 <div className="mt-3 text-sm leading-6 text-[color:var(--tx2)]">
                   {status?.currentToolName

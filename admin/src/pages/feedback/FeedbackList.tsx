@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 import type { FeedbackRecord } from '../../lib/api-client'
-import { sectionTitleClass } from '../settings/settings-shared'
 
 const FEEDBACK_PAGE_SIZE = 5
 
@@ -57,7 +57,7 @@ export const FeedbackList = ({
 
   return (
     <section className="admin-card w-full p-4">
-      <div className={sectionTitleClass}>Your feedback</div>
+      <SectionLabel>Your feedback</SectionLabel>
 
       {isLoading ? (
         <div className="mt-3 text-sm text-[color:var(--tx2)]">Loading…</div>

@@ -13,6 +13,9 @@ const statusLabels: Record<ProductIntegrationRunStatus, string> = {
   warning: 'Warning',
 }
 
+// Not a `Pill`: this chip is pinned to a fixed 24px height with its label
+// vertically centred, so it lines up with the run row's baseline. `Pill` has no
+// height affordance and would become content-sized (~18px).
 const statusClass = (status: ProductIntegrationRunStatus): string =>
   [
     'inline-flex h-6 items-center rounded px-2 text-[11px] font-semibold',

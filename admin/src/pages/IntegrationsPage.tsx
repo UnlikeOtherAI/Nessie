@@ -4,9 +4,10 @@ import type { IntegratedProductResponse } from '../lib/api-client'
 import {
   AgentConnectorSection,
   mcpCatalogHref,
-  mcpConnectorClass,
   mcpConnectorLabel,
+  mcpConnectorTone,
 } from '../components/features/integrations/AgentConnectorSection'
+import { Pill, type PillTone } from '../components/primitives/Pill'
 import { BuildMeProjectPanel } from '../components/features/integrations/BuildMeProjectPanel'
 import { DeepTestSecurityPanel } from '../components/features/integrations/DeepTestSecurityPanel'
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
@@ -88,17 +89,12 @@ const healthLabels: Record<IntegratedProductResponse['healthStatus'], string> = 
   unreachable: 'Unreachable',
 }
 
-const statusClass = (status: IntegratedProductResponse['healthStatus']): string =>
-  [
-    'inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold',
-    status === 'healthy'
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : status === 'degraded' || status === 'setup_required'
-        ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-        : status === 'unreachable'
-          ? 'bg-[var(--danger-soft)] text-[var(--danger-text)]'
-          : 'bg-[var(--overlay)] text-[var(--tx2)]',
-  ].join(' ')
+const healthTone = (status: IntegratedProductResponse['healthStatus']): PillTone => {
+  if (status === 'healthy') return 'success'
+  if (status === 'degraded' || status === 'setup_required') return 'warning'
+  if (status === 'unreachable') return 'danger'
+  return 'muted'
+}
 
 const productAccent = (slug: string): string => {
   if (slug === 'deep-water') return '#0f766e'
@@ -166,25 +162,33 @@ const ProductRow = ({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h3 className="truncate text-sm font-semibold text-[var(--tx)]">{product.name}</h3>
-          <span className={statusClass(product.healthStatus)}>
+          <Pill
+            className="font-semibold"
+            radius="chip"
+            size="sm"
+            tone={healthTone(product.healthStatus)}
+            uppercase={false}
+          >
             {healthLabels[product.healthStatus]}
-          </span>
+          </Pill>
         </div>
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--tx3)]">{product.summary}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          <Pill radius="chip" size="sm" uppercase={false}>
             {installLabels[product.defaultInstallState]}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {accountLabel(product)}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {teamEnablementLabel(product)}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {teamAuthorityLabel(product)}
-          </span>
-          <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
+          </Pill>
+          <Pill radius="chip" size="sm" tone={mcpConnectorTone(product)} uppercase={false}>
+            {mcpConnectorLabel(product)}
+          </Pill>
         </div>
       </div>
     </div>
@@ -344,9 +348,15 @@ const ProductDetail = ({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-semibold text-[var(--tx)]">{product.name}</h2>
-                <span className={statusClass(product.healthStatus)}>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={healthTone(product.healthStatus)}
+                  uppercase={false}
+                >
                   {healthLabels[product.healthStatus]}
-                </span>
+                </Pill>
               </div>
               <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">{product.summary}</p>
             </div>
@@ -367,7 +377,9 @@ const ProductDetail = ({
             <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
               {teamAuthorityLabel(product)}
             </span>
-            <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
+            <Pill radius="chip" size="sm" tone={mcpConnectorTone(product)} uppercase={false}>
+              {mcpConnectorLabel(product)}
+            </Pill>
           </div>
           <div className="flex flex-wrap gap-2">
             {product.launchUrl ? (

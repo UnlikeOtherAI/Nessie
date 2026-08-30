@@ -1,10 +1,11 @@
 import { useRef } from 'react'
 import type { DeepSignalSignalRecord } from '../../../lib/api-client'
 import { useModalA11y } from '../../shared/useModalA11y'
+import { Pill } from '../../primitives/Pill'
 import {
   formatTimestamp,
-  kindBadgeClass,
-  statusBadgeClass,
+  kindPillTone,
+  statusPillTone,
   titleCase,
   type SignalActionType,
 } from './signal-format'
@@ -66,9 +67,25 @@ export const SignalDetailDrawer = ({ signal, acting, onClose, onAct }: SignalDet
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {signal.kind ? (
-                <span className={kindBadgeClass(signal.kind)}>{titleCase(signal.kind)}</span>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={kindPillTone(signal.kind)}
+                  uppercase={false}
+                >
+                  {titleCase(signal.kind)}
+                </Pill>
               ) : null}
-              <span className={statusBadgeClass(signal.status)}>{titleCase(signal.status)}</span>
+              <Pill
+                className="font-semibold"
+                radius="chip"
+                size="sm"
+                tone={statusPillTone(signal.status)}
+                uppercase={false}
+              >
+                {titleCase(signal.status)}
+              </Pill>
               {timestamp ? (
                 <span className="text-[11px] text-[var(--tx3)]">{timestamp}</span>
               ) : null}

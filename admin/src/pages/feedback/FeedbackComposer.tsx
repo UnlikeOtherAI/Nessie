@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { useCreateFeedback } from '../../facades/feedback/hooks'
 import { uploadAttachment } from '../../lib/uploads'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useShakeFeedback } from '../../providers/ShakeFeedbackContext'
-import { sectionTitleClass } from '../settings/settings-shared'
 
 export const FeedbackComposer = ({ onSubmitted }: { onSubmitted: () => void }) => {
   const { token } = useAuthSession()
@@ -71,7 +71,7 @@ export const FeedbackComposer = ({ onSubmitted }: { onSubmitted: () => void }) =
 
   return (
     <form className="admin-card w-full p-4" onSubmit={handleSubmit}>
-      <div className={sectionTitleClass}>Send feedback</div>
+      <SectionLabel>Send feedback</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">
         Tell us what&apos;s working or what&apos;s not. Your feedback is filed as a GitHub issue.
       </div>

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Pill } from '../components/primitives/Pill'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { auditLogKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
@@ -68,16 +69,9 @@ export const AuditLogPage = () => {
                   <span className="font-mono text-xs font-semibold text-[color:var(--tx)]">
                     {entry.action}
                   </span>
-                  <span
-                    className={[
-                      'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
-                      entry.outcome === 'success'
-                        ? 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
-                        : 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
-                    ].join(' ')}
-                  >
+                  <Pill radius="chip" size="sm" tone={entry.outcome === 'success' ? 'success' : 'danger'}>
                     {entry.outcome}
-                  </span>
+                  </Pill>
                 </div>
                 <span className="text-xs text-[color:var(--tx3)]">
                   {new Date(entry.createdAt).toLocaleString()}

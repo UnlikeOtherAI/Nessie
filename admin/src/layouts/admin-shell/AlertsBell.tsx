@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertRow } from '../../components/shared/AlertRow'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { UnreadBadge } from '../../components/primitives/UnreadBadge'
 import {
   getAlertLink,
@@ -79,9 +80,7 @@ export const AlertsBell = () => {
           style={{ left: 'auto', right: 0, width: 320 }}
         >
           <div className="flex items-center justify-between px-2 py-1">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-              Alerts
-            </span>
+            <SectionLabel as="span">Alerts</SectionLabel>
             <button
               className="text-xs text-[color:var(--accent)] disabled:cursor-default disabled:text-[color:var(--tx3)]"
               disabled={unreadCount === 0 || markRead.isPending}

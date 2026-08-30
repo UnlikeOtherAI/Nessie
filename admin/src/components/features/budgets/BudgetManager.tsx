@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { budgetKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
 import { useProjects, useTeams } from '../../../facades/projects/hooks'
+import { Pill, type PillTone } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 
 type BudgetMode = 'off' | 'warn' | 'enforce' | 'degrade' | 'unlimited'
 type BudgetScopeType = 'organization' | 'project' | 'team'
@@ -38,9 +40,6 @@ const formatBytes = (bytes: number): string => {
   return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
 }
 
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
-
 const formatTokens = (count: number) => new Intl.NumberFormat('en-US').format(count)
 const formatUsd = (amount: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
@@ -53,10 +52,10 @@ const parseLimit = (raw: string, integer: boolean): number | null | 'invalid' =>
   return integer ? Math.round(value) : value
 }
 
-const levelTone: Record<BudgetStatus['level'], string> = {
-  ok: 'bg-[var(--success-soft)] text-[var(--success-text)]',
-  warn: 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
-  over: 'bg-[var(--danger-soft)] text-[var(--danger-text)]',
+const levelTone: Record<BudgetStatus['level'], PillTone> = {
+  ok: 'success',
+  warn: 'warning',
+  over: 'danger',
 }
 
 export const BudgetManager = ({ organizationId }: { organizationId: string }) => {
@@ -183,7 +182,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
 
   return (
     <div className="admin-card mt-4 p-4">
-      <div className={sectionTitle}>Budgets</div>
+      <SectionLabel>Budgets</SectionLabel>
       <p className="mt-1 text-xs text-[color:var(--tx2)]">
         Most-specific budget wins (team &rarr; project &rarr; organization). A scope set to
         Unlimited is exempt and stops inheriting a parent cap. Soft cap &mdash; in-flight runs can
@@ -354,7 +353,7 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
       </div>
       {formError && <div className="mt-2 text-xs text-[var(--danger-text)]">{formError}</div>}
 
-      <div className={`${sectionTitle} mt-5`}>Configured budgets ({budgets.length})</div>
+      <SectionLabel className="mt-5">Configured budgets ({budgets.length})</SectionLabel>
       <div className="mt-2 grid gap-2">
         {budgets.map((b) => (
           <div key={`${b.scopeType}:${b.scopeId}`} className="admin-card p-3">
@@ -365,18 +364,17 @@ export const BudgetManager = ({ organizationId }: { organizationId: string }) =>
                   {b.scopeType} · {b.mode} · {b.period}
                 </span>
               </div>
-              <span
-                className={[
-                  'shrink-0 rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]',
-                  b.mode === 'unlimited' ? 'bg-[var(--overlay)] text-[color:var(--tx3)]' : levelTone[b.level],
-                ].join(' ')}
+              <Pill
+                className="shrink-0"
+                size="sm"
+                tone={b.mode === 'unlimited' ? 'muted' : levelTone[b.level]}
               >
                 {b.mode === 'unlimited'
                   ? 'unlimited'
                   : b.percentUsed != null
                     ? `${b.percentUsed}% used`
                     : 'no cap'}
-              </span>
+              </Pill>
             </div>
             <div className="mt-1 text-xs text-[color:var(--tx2)]">
               {formatTokens(b.spentTokens)} tokens · {formatUsd(b.spentUsd)} this {b.period.replace('ly', '')}

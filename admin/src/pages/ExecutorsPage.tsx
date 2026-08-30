@@ -212,6 +212,7 @@ export const ExecutorsPage = () => {
           <div className="flex min-w-0 items-start gap-3">
             <PhoneNavigationButton />
             <div>
+              {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">Agents</p>
               <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Executors</h1>
               <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx3)]">

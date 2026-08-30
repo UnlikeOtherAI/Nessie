@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ARCHIVED_STATUSES, statusLabel } from '../../components/kanban/kanban-config'
 import { NewTaskButton } from '../../components/kanban/NewTaskButton'
+import { Pill } from '../../components/primitives/Pill'
 import {
   type Iteration,
   useCreateIteration,
@@ -95,9 +96,7 @@ const IterationCard = ({
     <div className="admin-card grid gap-2 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold text-[color:var(--tx)]">{iteration.name}</span>
-        <span className="rounded-full bg-[color:var(--overlay)] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-[color:var(--tx3)]">
-          {iteration.status}
-        </span>
+        <Pill size="sm">{iteration.status}</Pill>
         <span className="text-xs text-[color:var(--tx3)]">
           {iteration.pointsDone}/{iteration.pointsTotal} pts · {iteration.taskCount} tasks
         </span>

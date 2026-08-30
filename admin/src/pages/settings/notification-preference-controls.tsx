@@ -1,3 +1,5 @@
+import { SectionLabel } from '../../components/primitives/SectionLabel'
+
 type NotificationToggleProps = {
   checked: boolean
   disabled?: boolean
@@ -67,9 +69,7 @@ export const PushPreferenceCard = ({
   setPushPublishedKnowledge,
 }: PushPreferenceCardProps) => (
   <section className="admin-card p-4">
-    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-      Push
-    </div>
+    <SectionLabel>Push</SectionLabel>
     <div className="mt-4 flex items-center justify-between gap-4">
       <div>
         <div className="font-semibold text-[color:var(--tx)]">Push enabled</div>

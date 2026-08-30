@@ -10,6 +10,7 @@ import {
   useSetDeepWaterAgentAccess,
 } from '../../../facades/integrations/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { Pill, type PillTone } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
 import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 import { DeepWaterRunHistory } from './DeepWaterRunHistory'
@@ -22,13 +23,7 @@ const tabs: ReadonlyArray<{ label: string; value: DeepWaterTab }> = [
   { label: 'Settings', value: 'settings' },
 ]
 
-const readinessClass = (ready: boolean): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    ready
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
-  ].join(' ')
+const readinessTone = (ready: boolean): PillTone => (ready ? 'success' : 'warning')
 
 const accessTargetLabel = (target: DeepWaterAgentAccessTarget): string =>
   target.agentKind === 'personal_assistant' ? 'Personal Assistant' : target.name
@@ -163,18 +158,42 @@ export const DeepWaterResearchPanel = ({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <span className={readinessClass(teamReady)}>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={readinessTone(teamReady)}
+                  uppercase={false}
+                >
                   {teamReady ? 'Team enabled' : 'Team disabled'}
-                </span>
-                <span className={readinessClass(connectorReady)}>
+                </Pill>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={readinessTone(connectorReady)}
+                  uppercase={false}
+                >
                   {connectorReady ? 'MCP active' : 'MCP setup required'}
-                </span>
-                <span className={readinessClass(product.accountLink?.status === 'linked')}>
+                </Pill>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={readinessTone(product.accountLink?.status === 'linked')}
+                  uppercase={false}
+                >
                   {product.accountLink?.status === 'linked' ? 'Account linked' : 'Account pending'}
-                </span>
-                <span className={readinessClass(personalAssistantReady)}>
+                </Pill>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={readinessTone(personalAssistantReady)}
+                  uppercase={false}
+                >
                   {personalAssistantReady ? 'Personal Assistant granted' : 'Agent grant required'}
-                </span>
+                </Pill>
               </div>
             </div>
           </section>

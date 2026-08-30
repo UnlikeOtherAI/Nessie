@@ -13,7 +13,7 @@ import {
   useLocalBack,
 } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { StatusPill } from '../components/primitives/StatusPill'
+import { Pill } from '../components/primitives/Pill'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 const getStatusTone = (status: AgentRecord['status']) => {
@@ -98,7 +98,7 @@ export const AgentDetailPage = () => {
                 {agent.name}
               </h1>
               <AgentStatusDot status={agent.status} />
-              <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
+              <Pill tone={getStatusTone(agent.status)}>{agent.status}</Pill>
             </div>
             <div className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</div>
             <div className="mt-0.5 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">

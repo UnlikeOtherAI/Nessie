@@ -4,6 +4,7 @@ import type {
   CommsConnectionStatus,
   CommsProvider,
 } from '../../../lib/api-client'
+import { Pill, type PillTone } from '../../../components/primitives/Pill'
 import { Switch } from '../../../components/primitives/Switch'
 import {
   useCommsConnection,
@@ -27,18 +28,11 @@ const STATUS_LABEL: Record<CommsConnectionStatus, string> = {
   error: 'Error',
 }
 
-const statusPillClass = (status: CommsConnectionStatus): string => {
-  const base = 'rounded px-2 py-0.5 text-[11px] font-semibold'
-  if (status === 'active') {
-    return `${base} bg-[color:var(--success-soft)] text-[color:var(--success-text)]`
-  }
-  if (status === 'needs_reauthorization') {
-    return `${base} bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]`
-  }
-  if (status === 'error') {
-    return `${base} bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]`
-  }
-  return `${base} bg-[color:var(--overlay)] text-[color:var(--tx2)]`
+const STATUS_TONE: Record<CommsConnectionStatus, PillTone> = {
+  active: 'success',
+  needs_reauthorization: 'warning',
+  disconnected: 'muted',
+  error: 'danger',
 }
 
 const formatDate = (iso: string | null): string =>
@@ -98,9 +92,15 @@ export const ConnectionCard = ({
             <h2 className="text-sm font-semibold text-[color:var(--tx)]">
               {PROVIDER_LABEL[connection.provider]}
             </h2>
-            <span className={statusPillClass(connection.status)}>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={STATUS_TONE[connection.status]}
+              uppercase={false}
+            >
               {STATUS_LABEL[connection.status]}
-            </span>
+            </Pill>
           </div>
           <div className="mt-1 truncate text-xs text-[color:var(--tx3)]">
             {connection.externalUserId} · workspace {connection.externalTenantId}

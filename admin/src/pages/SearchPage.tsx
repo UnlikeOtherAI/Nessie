@@ -8,6 +8,7 @@ import type {
 } from '../lib/api-client'
 import { HighlightedPassage } from '../components/features/search/HighlightedPassage'
 import { SearchModeToggle } from '../components/features/search/SearchModeToggle'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import {
   parseGlobalSearchMode,
@@ -16,7 +17,6 @@ import {
   type KnowledgeSearchHit,
 } from '../facades/search/hooks'
 import { selectBestPassage } from '../lib/highlight-passage'
-import { sectionTitleClass } from './settings/settings-shared'
 
 const rowClass = [
   'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left',
@@ -66,7 +66,7 @@ interface SearchSectionProps {
 
 const SearchSection = ({ title, children }: SearchSectionProps) => (
   <section className="space-y-1">
-    <h2 className={`${sectionTitleClass} px-3`}>{title}</h2>
+    <SectionLabel as="h2" className="px-3">{title}</SectionLabel>
     <div className="space-y-0.5">{children}</div>
   </section>
 )

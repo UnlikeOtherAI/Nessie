@@ -1,4 +1,5 @@
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import type { McpLibraryEntryRecord } from '../../../facades/mcp-library/hooks'
 
 /**
@@ -12,17 +13,16 @@ type LibraryDetailPanelProps = {
   onAdd: () => void
 }
 
-const fieldLabel = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]'
 
 export const LibraryDetailPanel = ({ entry, onAdd }: LibraryDetailPanelProps) => (
   <div className="grid gap-4">
     <div className="flex items-center gap-2">
-      <StatusPill tone={entry.source === 'curated' ? 'success' : 'muted'}>
+      <Pill tone={entry.source === 'curated' ? 'success' : 'muted'}>
         {entry.source === 'curated' ? 'verified' : 'registry'}
-      </StatusPill>
-      <StatusPill tone={entry.authMethod === 'none' ? 'success' : 'warning'}>
+      </Pill>
+      <Pill tone={entry.authMethod === 'none' ? 'success' : 'warning'}>
         {entry.authMethod === 'none' ? 'no key needed' : `auth: ${entry.authMethod}`}
-      </StatusPill>
+      </Pill>
     </div>
 
     {entry.description ? (
@@ -31,28 +31,28 @@ export const LibraryDetailPanel = ({ entry, onAdd }: LibraryDetailPanelProps) =>
 
     <div className="grid gap-3">
       <div>
-        <div className={fieldLabel}>Endpoint</div>
+        <SectionLabel size="2xs">Endpoint</SectionLabel>
         <div className="break-all text-sm text-[color:var(--tx)]">{entry.url}</div>
       </div>
       <div>
-        <div className={fieldLabel}>Transport</div>
+        <SectionLabel size="2xs">Transport</SectionLabel>
         <div className="text-sm text-[color:var(--tx)]">{entry.transport.toUpperCase()}</div>
       </div>
       {entry.vendor ? (
         <div>
-          <div className={fieldLabel}>Vendor</div>
+          <SectionLabel size="2xs">Vendor</SectionLabel>
           <div className="text-sm text-[color:var(--tx)]">{entry.vendor}</div>
         </div>
       ) : null}
       {entry.authHint ? (
         <div>
-          <div className={fieldLabel}>Credential</div>
+          <SectionLabel size="2xs">Credential</SectionLabel>
           <div className="text-sm text-[color:var(--tx2)]">{entry.authHint}</div>
         </div>
       ) : null}
       {entry.sourceUrl ? (
         <div>
-          <div className={fieldLabel}>Docs</div>
+          <SectionLabel size="2xs">Docs</SectionLabel>
           <a
             className="break-all text-sm text-[color:var(--accent)] hover:underline"
             href={entry.sourceUrl}

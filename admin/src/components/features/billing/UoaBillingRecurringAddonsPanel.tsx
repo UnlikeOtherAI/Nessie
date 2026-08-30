@@ -10,9 +10,7 @@ import {
   useUoaBillingRecurringAddonCheckout,
   useUoaBillingRecurringAddons,
 } from '../../../facades/billing/hooks'
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
+import { SectionLabel } from '../../primitives/SectionLabel'
 
 export const UoaBillingRecurringAddonsPanel = () => {
   const addons = useUoaBillingRecurringAddons()
@@ -39,13 +37,14 @@ export const UoaBillingRecurringAddonsPanel = () => {
 
   return (
     <section className="mb-8" data-testid="uoa-billing-recurring-addons">
-      <div className={sectionTitle}>Subscriptions &amp; add-ons</div>
+      <SectionLabel>Subscriptions &amp; add-ons</SectionLabel>
       <div className="mt-2 admin-card p-5">
         {addons.isLoading && (
           <div className="text-sm text-[color:var(--tx2)]">
             Loading subscriptions and add-ons…
           </div>
         )}
+        {/* Unconverted: the border deliberately matches the fill (both --warning-soft), so no outline shows. */}
         {addons.error && (
           <div className="rounded-md border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
             Subscriptions and add-ons are unavailable: {addons.error.message}

@@ -18,7 +18,8 @@ import {
 } from '../../facades/statuses/hooks'
 import type { UserStatusRuleScope, UserStatusScheduleKind } from '../../lib/api-client'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
-import { sectionTitleClass, SettingsPanel } from './settings-shared'
+import { SettingsPanel } from './settings-shared'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 import {
   dayLabels,
   describeRule,
@@ -187,7 +188,7 @@ export const StatusesPage = () => {
     >
       <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Statuses</div>
+          <SectionLabel>Statuses</SectionLabel>
           <form className="mt-4 grid gap-2" onSubmit={createStatusSubmit}>
             <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
               <StatusEmojiPicker label="New status icon" onChange={setNewEmoji} value={newEmoji} />
@@ -218,7 +219,7 @@ export const StatusesPage = () => {
             <form className="admin-card grid gap-4 p-4" onSubmit={saveStatusSubmit}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className={sectionTitleClass}>Status detail</div>
+                  <SectionLabel>Status detail</SectionLabel>
                   <div className="mt-2 text-sm text-[color:var(--tx3)]">
                     {selectedStatus.activeNow ? 'Currently visible' : 'Not currently visible'}
                   </div>
@@ -276,7 +277,7 @@ export const StatusesPage = () => {
             </form>
 
             <section className="admin-card p-4">
-              <div className={sectionTitleClass}>Schedules</div>
+              <SectionLabel>Schedules</SectionLabel>
               <form className="mt-4 grid gap-3" onSubmit={scheduleSubmit}>
                 <div className="grid gap-2 md:grid-cols-3">
                   <select
@@ -381,7 +382,7 @@ export const StatusesPage = () => {
             </section>
 
             <section className="admin-card p-4">
-              <div className={sectionTitleClass}>Contact rules</div>
+              <SectionLabel>Contact rules</SectionLabel>
               <form className="mt-4 grid gap-3" onSubmit={ruleSubmit}>
                 <div className="grid gap-2 md:grid-cols-3">
                   <select

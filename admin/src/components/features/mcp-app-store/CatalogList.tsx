@@ -1,5 +1,5 @@
 import { ColumnBrowserItem } from '../../shared/column-browser/ColumnBrowserItem'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import type { McpCatalogEntryRecord } from '../../../facades/mcp-catalog/hooks'
 
 /**
@@ -46,10 +46,10 @@ export const CatalogList = ({
           key={entry.id}
           meta={
             <span className="flex items-center gap-1">
-              {entry.locked ? <StatusPill tone="muted">🔒 locked</StatusPill> : null}
-              <StatusPill tone={STATUS_TONE[entry.status]}>
+              {entry.locked ? <Pill tone="muted">🔒 locked</Pill> : null}
+              <Pill tone={STATUS_TONE[entry.status]}>
                 {entry.status}
-              </StatusPill>
+              </Pill>
             </span>
           }
           onClick={() => onSelect(entry.id)}

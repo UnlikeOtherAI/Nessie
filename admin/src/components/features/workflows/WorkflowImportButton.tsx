@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { WorkflowTemplateRecord } from '../../../lib/api-client'
 import { useCreateWorkflowTemplate } from '../../../facades/workflows/hooks'
+import { Notice } from '../../primitives/Notice'
 import { parseWorkflowImport } from './workflow-transfer'
 
 /**
@@ -71,9 +72,9 @@ export const WorkflowImportButton = ({ onImported }: WorkflowImportButtonProps) 
         type="file"
       />
       {error ? (
-        <div className="rounded-lg border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger-text)]">
+        <Notice radius="lg" size="sm" tone="danger">
           {error}
-        </div>
+        </Notice>
       ) : null}
     </div>
   )

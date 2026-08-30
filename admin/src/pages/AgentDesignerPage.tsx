@@ -30,6 +30,7 @@ import {
 import { useDesignerChat } from '../facades/designer/hooks'
 import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/tool-catalog'
 import type { AgentRecord } from '../lib/api-client'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
 export const AgentDesignerPage = () => {
@@ -282,9 +283,7 @@ export const AgentDesignerContent = ({
                   size="xl"
                 />
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                    Avatar
-                  </div>
+                  <SectionLabel>Avatar</SectionLabel>
                   <p className="mt-1 text-sm text-[color:var(--tx3)]">
                     Tap the pencil to upload an image or generate a headshot.
                   </p>

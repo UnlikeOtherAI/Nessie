@@ -1,5 +1,6 @@
 import { useCallback, useState, type FormEvent } from 'react'
 import type { McpServerScopeType } from '@nessie/schemas'
+import { Notice } from '../../primitives/Notice'
 import type { McpCatalogEntryRecord } from '../../../facades/mcp-catalog/hooks'
 import { InstallScopeTargetField } from './InstallScopeTargetField'
 
@@ -219,9 +220,7 @@ export const InstallScopeDialog = ({
             </label>
           ) : null}
           {error ? (
-            <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]">
-              {error}
-            </div>
+            <Notice tone="danger">{error}</Notice>
           ) : null}
         </div>
 

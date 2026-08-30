@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
+import { Pill } from '../components/primitives/Pill'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { policyKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
@@ -22,9 +24,6 @@ type PolicyRulesResponse = {
   data: PolicyRule[]
   meta: { cursor: string | null; hasMore: boolean }
 }
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 export const PolicyPage = () => {
   const { me } = useAuthSession()
@@ -92,7 +91,7 @@ export const PolicyPage = () => {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <form className="admin-card mb-4 grid gap-3 p-4" onSubmit={handleCreate}>
-          <div className={sectionTitle}>Create Rule</div>
+          <SectionLabel>Create Rule</SectionLabel>
           <div className="grid grid-cols-4 gap-2">
             <select
               className="admin-input"
@@ -149,16 +148,9 @@ export const PolicyPage = () => {
             <div key={rule.id} className="admin-card flex items-center justify-between p-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <span
-                    className={[
-                      'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
-                      rule.effect === 'allow'
-                        ? 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
-                        : 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
-                    ].join(' ')}
-                  >
+                  <Pill radius="chip" size="sm" tone={rule.effect === 'allow' ? 'success' : 'danger'}>
                     {rule.effect}
-                  </span>
+                  </Pill>
                   <span className="font-mono text-xs text-[color:var(--tx)]">
                     {rule.resourceType}.{rule.action}
                   </span>

@@ -13,7 +13,9 @@ import {
   useWorkspaceInvitations,
   useWorkspaceMembers,
 } from '../../facades/users/workspace-members'
-import { FeedbackBanner, sectionTitleClass, type SettingsFeedback } from './settings-shared'
+import { FeedbackBanner, type SettingsFeedback } from './settings-shared'
+import { Pill } from '../../components/primitives/Pill'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 /**
  * The workspace roster on an UnlikeOtherAI session: people, their workspace
@@ -32,14 +34,6 @@ const TEAM_ROLE_OPTIONS = [
 
 const errorMessage = (caught: unknown, fallback: string): string =>
   caught instanceof Error ? caught.message : fallback
-
-const badgeClass = (tone: 'warning' | 'muted'): string =>
-  [
-    'shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
-    tone === 'warning'
-      ? 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]'
-      : 'bg-[color:var(--main-hover)] text-[color:var(--tx3)]',
-  ].join(' ')
 
 const memberLabel = (member: WorkspaceMemberRecord): string =>
   member.displayName ?? member.email ?? member.uoaSub
@@ -94,8 +88,18 @@ const MemberRow = ({
             ) : null}
           </div>
         </div>
-        {deactivated ? <span className={badgeClass('warning')}>Deactivated</span> : null}
-        {member.teamRole === 'owner' ? <span className={badgeClass('muted')}>Owner</span> : null}
+        {deactivated ? (
+          <Pill className="shrink-0" radius="chip" size="sm" tone="warning">Deactivated</Pill>
+        ) : null}
+        {/* Not a `Pill`: this chip's fill is --main-hover, an opaque surface token
+            equal to --panel on six of ten themes, so on this card it reads as no
+            fill at all. `Pill`'s muted tone paints the translucent --overlay-weak,
+            which does show. */}
+        {member.teamRole === 'owner' ? (
+          <span className="shrink-0 rounded bg-[color:var(--main-hover)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+            Owner
+          </span>
+        ) : null}
       </div>
 
       {canManage && member.teamRole !== 'owner' ? (
@@ -192,7 +196,9 @@ const InvitationRow = ({ invitation }: { invitation: WorkspaceInvitationRecord }
               .join(' · ')}
           </div>
         </div>
-        {awaitingApproval ? <span className={badgeClass('warning')}>Needs approval</span> : null}
+        {awaitingApproval ? (
+          <Pill className="shrink-0" radius="chip" size="sm" tone="warning">Needs approval</Pill>
+        ) : null}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -351,7 +357,7 @@ export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) =
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <section className="admin-card p-4">
-        <div className={sectionTitleClass}>People</div>
+        <SectionLabel>People</SectionLabel>
         <div className="mt-4 grid gap-2" data-testid="workspace-member-list">
           {members.isError ? (
             <FeedbackBanner
@@ -375,12 +381,12 @@ export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) =
       {canManage ? (
         <div className="grid content-start gap-4">
           <section className="admin-card p-4">
-            <div className={sectionTitleClass}>Invite to workspace</div>
+            <SectionLabel>Invite to workspace</SectionLabel>
             <InviteForm />
           </section>
 
           <section className="admin-card p-4">
-            <div className={sectionTitleClass}>Pending invitations</div>
+            <SectionLabel>Pending invitations</SectionLabel>
             <div className="mt-4 grid gap-2" data-testid="workspace-invitation-list">
               {invitationRows.map((invitation) => (
                 <InvitationRow invitation={invitation} key={invitation.inviteId} />

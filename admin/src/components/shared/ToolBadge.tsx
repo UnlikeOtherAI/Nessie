@@ -14,6 +14,10 @@ type ToolBadgeProps = {
   source?: ToolRegistrySource
 }
 
+// Unconverted: Pill has one accent tone (--thinking); this ramp needs two
+// accent-family foregrounds (--accent for builtin/fallback, --thinking for
+// mcp-remote), and splitting the ramp across Pill and raw markup would put two
+// chip sizes in one list.
 const SOURCE_STYLES: Record<ToolRegistrySource, string> = {
   'builtin': [
     'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',

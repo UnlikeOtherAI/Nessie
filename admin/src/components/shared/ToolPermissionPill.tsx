@@ -1,4 +1,5 @@
 import type { ToolRegistryEntryStatus } from '@nessie/schemas'
+import { Pill, type PillTone } from '../primitives/Pill'
 
 /**
  * `ToolPermissionPill` reports the lifecycle status of a tool registry entry:
@@ -12,19 +13,19 @@ type ToolPermissionPillProps = {
   status: ToolRegistryEntryStatus
 }
 
-const STATUS_STYLES: Record<ToolRegistryEntryStatus, string> = {
-  active: [
-    'border-[color:var(--success-border)] bg-[color:var(--success-soft)]',
-    'text-[color:var(--success-text)]',
-  ].join(' '),
-  pending_review: [
-    'border-[color:var(--warning-border)] bg-[color:var(--warning-soft)]',
-    'text-[color:var(--warning-text)]',
-  ].join(' '),
-  disabled: [
-    'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)]',
-    'text-[color:var(--danger-text)]',
-  ].join(' '),
+const STATUS_TONES: Record<ToolRegistryEntryStatus, PillTone> = {
+  active: 'success',
+  pending_review: 'warning',
+  disabled: 'danger',
+}
+
+// The border is tinted with the status colour rather than `bordered`'s neutral
+// `--sep`: on a dense permissions table the outline is what separates the three
+// states when the soft fills read as near-identical washes.
+const STATUS_BORDERS: Record<ToolRegistryEntryStatus, string> = {
+  active: 'border border-[color:var(--success-border)]',
+  pending_review: 'border border-[color:var(--warning-border)]',
+  disabled: 'border border-[color:var(--danger-border)]',
 }
 
 const STATUS_LABELS: Record<ToolRegistryEntryStatus, string> = {
@@ -34,13 +35,7 @@ const STATUS_LABELS: Record<ToolRegistryEntryStatus, string> = {
 }
 
 export const ToolPermissionPill = ({ status }: ToolPermissionPillProps) => (
-  <span
-    className={[
-      'inline-flex rounded-full border px-3 py-1 text-[11px] uppercase',
-      'tracking-[0.18em]',
-      STATUS_STYLES[status],
-    ].join(' ')}
-  >
+  <Pill className={STATUS_BORDERS[status]} tone={STATUS_TONES[status]}>
     {STATUS_LABELS[status]}
-  </span>
+  </Pill>
 )

@@ -1,4 +1,5 @@
 import { useId, useRef, type FormEvent } from 'react'
+import { Notice } from '../primitives/Notice'
 import { useModalA11y } from './useModalA11y'
 
 export const SessionDebugIcon = () => (
@@ -169,12 +170,9 @@ export const SessionDebugDialog = ({
           />
 
           {error ? (
-            <div
-              className="mt-3 rounded-xl border border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] px-3 py-2 text-sm text-[color:var(--danger-text)]"
-              role="alert"
-            >
+            <Notice className="mt-3" radius="xl" role="alert" tone="danger">
               {error}
-            </div>
+            </Notice>
           ) : null}
 
           <span aria-live="polite" className="sr-only">

@@ -5,6 +5,7 @@ import type {
   IntegratedProductResponse,
 } from '../../../lib/api-client'
 import { usePrepareDeepTestReview } from '../../../facades/integrations/hooks'
+import { Pill, type PillTone } from '../../primitives/Pill'
 import { mcpInstallHref } from './AgentConnectorSection'
 
 const depthOptions: Array<{ label: string; value: DeepTestReviewDepth }> = [
@@ -14,13 +15,7 @@ const depthOptions: Array<{ label: string; value: DeepTestReviewDepth }> = [
   { label: 'Overnight', value: 'overnight' },
 ]
 
-const readinessClass = (ready: boolean): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    ready
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
-  ].join(' ')
+const readinessTone = (ready: boolean): PillTone => (ready ? 'success' : 'warning')
 
 const PrivacyRow = ({ label, value }: { label: string; value: string }) => (
   <div className="rounded border border-[var(--sep)] px-3 py-2">
@@ -62,15 +57,33 @@ export const DeepTestSecurityPanel = ({
         <div>
           <h3 className="text-sm font-semibold text-[var(--tx)]">DeepTest security review</h3>
           <div className="mt-2 flex flex-wrap gap-2">
-            <span className={readinessClass(teamReady)}>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(teamReady)}
+              uppercase={false}
+            >
               {teamReady ? 'Team enabled' : 'Team disabled'}
-            </span>
-            <span className={readinessClass(connectorReady)}>
+            </Pill>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(connectorReady)}
+              uppercase={false}
+            >
               {connectorReady ? 'Local MCP active' : 'Local MCP setup required'}
-            </span>
-            <span className={readinessClass(product.accountLink?.status === 'linked')}>
+            </Pill>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(product.accountLink?.status === 'linked')}
+              uppercase={false}
+            >
               {product.accountLink?.status === 'linked' ? 'Account linked' : 'Account pending'}
-            </span>
+            </Pill>
           </div>
         </div>
       </div>

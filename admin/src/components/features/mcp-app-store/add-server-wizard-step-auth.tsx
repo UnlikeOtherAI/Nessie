@@ -1,5 +1,6 @@
 import type { McpCatalogAuthMethod } from '@nessie/schemas'
 import { ariaFor, renderFieldError } from './add-server-wizard-field'
+import { Notice } from '../../primitives/Notice'
 import { Oauth2Fields } from './add-server-wizard-oauth2-fields'
 import { AUTH_METHODS } from './add-server-wizard-config'
 import {
@@ -133,10 +134,7 @@ export const StepAuth = ({ controller, pending }: StepAuthProps) => {
         </label>
       </fieldset>
       {error ? (
-        <div
-          className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]"
-          role="alert"
-        >{error}</div>
+        <Notice role="alert" tone="danger">{error}</Notice>
       ) : null}
       <div className="flex justify-between gap-2">
         <button

@@ -206,6 +206,10 @@ export const ChannelAgentInfoDrawer = ({
                   {agent.role}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                  {/* Not a `Pill`: this chip inherits the row's text-[11px], and
+                      `Pill` has no size that leaves the font size to the parent —
+                      size="sm" would pin it to 10px while the provider/model span
+                      beside it stays at 11px. */}
                   <span className="rounded bg-[var(--overlay-weak)] px-1.5 py-0.5 uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                     {agent.status}
                   </span>

@@ -6,7 +6,8 @@ import { useStatuses } from '../../facades/statuses/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { AvatarPanel } from './profile/AvatarPanel'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
-import { sectionTitleClass, SettingsPanel } from './settings-shared'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
+import { SettingsPanel } from './settings-shared'
 
 // Friendly names for the authenticator a user signed in through. Keyed by the
 // provider *type* so the brand shows even when the configured label is a login
@@ -66,7 +67,7 @@ export const SettingsProfilePage = () => {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Profile</div>
+          <SectionLabel>Profile</SectionLabel>
           <div className="mt-4 text-2xl font-semibold text-[color:var(--tx)]">
             {me.user.displayName}
             {activeStatus?.emoji && (
@@ -101,7 +102,7 @@ export const SettingsProfilePage = () => {
         </section>
 
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Session</div>
+          <SectionLabel>Session</SectionLabel>
           <div className="mt-4 grid gap-3 text-sm text-[color:var(--tx2)]">
             <div className="admin-card p-3">
               <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--tx3)]">

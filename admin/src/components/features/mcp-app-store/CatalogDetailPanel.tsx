@@ -1,4 +1,5 @@
 import type { McpCatalogEntryRecord } from '../../../facades/mcp-catalog/hooks'
+import { Notice } from '../../primitives/Notice'
 
 /**
  * Detail + action panel for a selected catalog entry. Pure presentational: the
@@ -90,12 +91,9 @@ export const CatalogDetailPanel = ({
         </dl>
 
         {entry.status === 'rejected' && entry.rejectionReason ? (
-          <div
-            className="mt-3 rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger-text)]"
-            role="alert"
-          >
+          <Notice className="mt-3" role="alert" size="sm" tone="danger">
             <span className="font-semibold">Rejected:</span> {entry.rejectionReason}
-          </div>
+          </Notice>
         ) : null}
 
         {entry.locked ? (
