@@ -36,18 +36,6 @@ export const deepWaterAgentAccessKey = (scope: IntegrationQueryScope) => [
   ...scopeParts(scope),
 ] as const
 
-export const deepSignalSignalsKeyPrefix =
-  ['integrations', 'products', 'deepsignal', 'signals'] as const
-
-export const deepSignalSignalsKey = (
-  scope: IntegrationQueryScope,
-  include: 'active' | 'all',
-) => [
-  ...deepSignalSignalsKeyPrefix,
-  ...scopeParts(scope),
-  include,
-] as const
-
 export const mcpInstancesKeyPrefix = ['mcp-instances'] as const
 
 export const mcpToolRegistryKeyPrefix = ['mcp-tools'] as const

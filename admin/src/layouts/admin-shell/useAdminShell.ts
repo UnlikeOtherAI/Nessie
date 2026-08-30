@@ -60,12 +60,6 @@ export const useAdminShell = () => {
   const isFeedbackRoute = location.pathname.startsWith('/feedback');
   const isAdminRoute = matchesAdminRoute(location.pathname);
   const productSurfaces = useProductSurfaces();
-  // A live product `nav_page` route (e.g. DeepSignal's /signals). These pages
-  // host their own full-width content and take no channels/DM secondary nav.
-  const isProductPageRoute = productSurfaces.navPages.some(
-    (page) => location.pathname === page.route
-      || location.pathname.startsWith(`${page.route}/`),
-  );
   const currentChannelId = parseChannelIdFromPath(location.pathname);
   const currentChannelsProjectId = parseChannelProjectIdFromPath(location.pathname);
   const personalAssistantChannel = useMemo(
@@ -371,7 +365,6 @@ export const useAdminShell = () => {
     isAgentsRoute,
     isFeedbackRoute,
     isKnowledgeRoute,
-    isProductPageRoute,
     isProjectsRoute,
     isOwner,
     isAdmin,

@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import test from 'node:test'
+import { fileURLToPath } from 'node:url'
+
+const readSource = (relativePath: string): string =>
+  readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
+
+test('the left rail accepts only Nessie navigation items', () => {
+  const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')
+
+  assert.match(rail, /SIDEBAR_RAIL_ITEMS\.map/)
+  assert.doesNotMatch(rail, /useProductSurfaces/)
+  assert.doesNotMatch(rail, /productNavPages/)
+})

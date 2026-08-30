@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
-import { useProductSurfaces } from '../../facades/integrations/useProductSurfaces';
 import { NAV_ITEMS } from './nav-items';
 import { resolveSectionNavTarget } from './section-route-memory';
 import { UserMenuTrigger } from './UserMenuTrigger';
@@ -14,8 +13,6 @@ type SidebarRailProps = {
 };
 
 export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
-  const { navPages: productNavPages } = useProductSurfaces();
-
   return (
     <aside
       className={[
@@ -44,27 +41,6 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
           </Link>
         );
       })}
-
-      {productNavPages.map((page) => (
-        <Link
-          className={`admin-rail-btn ${pathname === page.route || pathname.startsWith(`${page.route}/`) ? 'active' : ''}`}
-          key={page.productSlug + page.route}
-          to={page.route}
-        >
-          <span className="admin-rail-btn-icon">
-            <span
-              className={[
-                'flex h-5 w-5 items-center justify-center rounded-md text-[10px]',
-                'font-bold text-[color:var(--on-accent)]',
-              ].join(' ')}
-              style={{ background: 'linear-gradient(135deg,var(--accent-strong),var(--accent))' }}
-            >
-              {(page.iconGlyph ?? page.label.slice(0, 1)).toUpperCase()}
-            </span>
-          </span>
-          <span className="admin-rail-btn-label">{page.label}</span>
-        </Link>
-      ))}
 
       <div className="my-2 h-px w-8 bg-[color:var(--overlay)]" />
 

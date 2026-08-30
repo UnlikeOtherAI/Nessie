@@ -33,9 +33,6 @@ export const DEFAULT_BUDGET_MAX = 6
 
 export const SIGNAL_DIGEST_KIND = 'signal_digest'
 const DEEPSIGNAL_SLUG = 'deepsignal'
-/** Where the digest card's primary action sends the user (the Signals inbox). */
-const SIGNALS_INBOX_PATH = '/signals'
-
 export type InsightSummary = {
   insightId: string
   headline: string
@@ -99,7 +96,7 @@ const buildDigestContent = (insights: InsightSummary[]): string => {
   return `You have ${n} new signal${n === 1 ? '' : 's'} from DeepSignal`
 }
 
-/** Build the rolling digest card: counts by kind + a jump to the Signals inbox. */
+/** Build the rolling digest card shown in the recipient's DeepSignal conversation. */
 const buildDigestCard = (insights: InsightSummary[]): IntegrationUiCard => {
   const counts = countByKind(insights)
   const fields = [
@@ -117,7 +114,6 @@ const buildDigestCard = (insights: InsightSummary[]): IntegrationUiCard => {
     status: 'completed' as const,
     ...(latest ? { summary: `Latest: ${latest.headline}` } : {}),
     ...(fields.length > 0 ? { fields } : {}),
-    actions: [{ label: 'View signals', href: SIGNALS_INBOX_PATH, variant: 'primary' as const }],
   }
   return IntegrationUiCardSchema.parse(candidate)
 }

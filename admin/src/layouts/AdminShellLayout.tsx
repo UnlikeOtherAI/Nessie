@@ -194,7 +194,7 @@ const AuthenticatedAdminShellLayout = () => {
   );
 
   // The contextual secondary nav for the active section. Knowledge needs the
-  // KnowledgeProvider (wrapped below). Feedback and product pages have no
+  // KnowledgeProvider (wrapped below). Feedback has no
   // secondary column on desktop; everything else falls back to the
   // channels/DMs SidebarNav.
   const secNavElement = shell.isKnowledgeRoute ? (
@@ -208,7 +208,7 @@ const AuthenticatedAdminShellLayout = () => {
       isUoaSession={shell.isUoaSession}
       pathname={shell.pathname}
     />
-  ) : shell.isFeedbackRoute || shell.isProductPageRoute ? null : (
+  ) : shell.isFeedbackRoute ? null : (
     sidebarNavElement
   );
 

@@ -20,7 +20,6 @@ import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverv
 import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { FeedbackPage } from './pages/FeedbackPage'
-import { ProductPageHost } from './components/features/integrations/ProductPageHost'
 import { IntegrationsPage } from './pages/IntegrationsPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
 import { DashboardsPage } from './pages/DashboardsPage'
@@ -175,15 +174,6 @@ export const router = createBrowserRouter([
       {
         path: '/projects/:projectId/settings',
         element: <ProjectView />,
-      },
-      {
-        // Product `nav_page` surfaces (e.g. DeepSignal's /signals) mount on the
-        // generic registry-driven host. The host gates on live activation and
-        // renders the concrete page once a slice registers it in
-        // product-page-registry; adding a new product route means adding its
-        // manifest-declared path here.
-        path: '/signals',
-        element: <ProductPageHost />,
       },
       {
         path: '/dashboards',

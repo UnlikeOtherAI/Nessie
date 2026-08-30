@@ -10,7 +10,6 @@ import { meetsRequirements } from '../../../facades/integrations/useProductSurfa
 
 const surfaceTypeLabel: Record<ProductSurface['type'], string> = {
   chat_assistant: 'Chat assistant',
-  nav_page: 'Page',
   documents_section: 'Documents',
 }
 
@@ -56,7 +55,6 @@ export const ProductSurfacesPanel = ({
   }
 
   const resolveTarget = (surface: ProductSurface): string | null => {
-    if (surface.type === 'nav_page') return surface.route
     if (surface.type === 'documents_section') return `/knowledge-base?view=${surface.view}`
     const channel = channels.find(
       (candidate) => isExternalAgentChannel(candidate) && candidate.label === product.name,

@@ -102,10 +102,11 @@ test('deepsignal and deep-water declare surface-registry surfaces', () => {
   assert.equal(chat?.requires.linked, true)
   assert.equal(chat?.requires.capability, 'external_agent')
 
-  const signals = deepSignal?.surfaces.find((surface) => surface.type === 'nav_page')
-  assert.ok(signals, 'deepsignal declares a Signals nav_page')
-  assert.equal(signals?.type === 'nav_page' ? signals.route : null, '/signals')
-  assert.equal(signals?.requires.linked, true)
+  assert.equal(
+    deepSignal?.surfaces.some((surface) => surface.type === 'nav_page'),
+    false,
+    'products cannot add custom left-rail pages',
+  )
 
   const deepWater = getIntegrationPluginManifest('deep-water')
   const research = deepWater?.surfaces.find((surface) => surface.type === 'documents_section')
