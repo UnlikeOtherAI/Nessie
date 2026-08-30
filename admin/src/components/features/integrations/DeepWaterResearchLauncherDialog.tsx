@@ -58,6 +58,9 @@ export const DeepWaterResearchLauncherDialog = ({
   }
 
   return (
+    // Not the shared `Dialog`: a `max-w-3xl` / `--panel` / `shadow-2xl` card with
+    // a `text-base` heading — a different panel family from the shell's
+    // `.create-channel-panel`. It already composes `useModalA11y`.
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
       {...overlayDismiss}

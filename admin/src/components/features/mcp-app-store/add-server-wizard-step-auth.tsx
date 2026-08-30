@@ -1,5 +1,5 @@
 import type { McpCatalogAuthMethod } from '@nessie/schemas'
-import { ariaFor, renderFieldError } from './add-server-wizard-field'
+import { ariaFor, renderFieldError } from '../../shared/FormFieldError'
 import { Notice } from '../../primitives/Notice'
 import { Oauth2Fields } from './add-server-wizard-oauth2-fields'
 import { AUTH_METHODS } from './add-server-wizard-config'

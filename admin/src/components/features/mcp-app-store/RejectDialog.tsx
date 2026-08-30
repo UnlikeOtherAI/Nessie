@@ -24,6 +24,8 @@ export const RejectDialog = ({
   const trimmed = reason.trim()
 
   return (
+    // Not the shared `Dialog`: an `admin-card` panel with no close control and no
+    // scrim dismissal — rejecting needs a deliberate Cancel, not a stray click.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim-strong)] px-4">
       <div
         className={[

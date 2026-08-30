@@ -257,6 +257,9 @@ export const TriggerEditorDialog = ({
   const webhookUrl = `${webhookBaseUrl}/api/triggers/webhook`
 
   return (
+    // Not the shared `Dialog`: its subtitle is `mt-1 text-sm` where the shell
+    // renders a description at `text-xs`, and its panel is 680px wide, which is
+    // not one of the three geometries the shell ships.
     <div
       {...overlayDismiss}
       style={{

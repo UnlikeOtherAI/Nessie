@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ARCHIVED_STATUSES, statusLabel } from '../../components/kanban/kanban-config'
 import { NewTaskButton } from '../../components/kanban/NewTaskButton'
+import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { Pill } from '../../components/primitives/Pill'
 import {
   type Iteration,
@@ -91,62 +92,74 @@ const IterationCard = ({
 }) => {
   const update = useUpdateIteration(projectId)
   const remove = useDeleteIteration(projectId)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   return (
-    <div className="admin-card grid gap-2 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold text-[color:var(--tx)]">{iteration.name}</span>
-        <Pill size="sm">{iteration.status}</Pill>
-        <span className="text-xs text-[color:var(--tx3)]">
-          {iteration.pointsDone}/{iteration.pointsTotal} pts · {iteration.taskCount} tasks
-        </span>
-        {isOwner ? (
-          <div className="ml-auto flex gap-2">
-            {iteration.status === 'planned' ? (
+    <>
+      <div className="admin-card grid gap-2 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-[color:var(--tx)]">{iteration.name}</span>
+          <Pill size="sm">{iteration.status}</Pill>
+          <span className="text-xs text-[color:var(--tx3)]">
+            {iteration.pointsDone}/{iteration.pointsTotal} pts · {iteration.taskCount} tasks
+          </span>
+          {isOwner ? (
+            <div className="ml-auto flex gap-2">
+              {iteration.status === 'planned' ? (
+                <button
+                  className="admin-button admin-button-primary admin-button-compact"
+                  disabled={update.isPending}
+                  onClick={() => update.mutate({ id: iteration.id, action: 'start' })}
+                  type="button"
+                >
+                  Start
+                </button>
+              ) : null}
+              {iteration.status === 'active' ? (
+                <button
+                  className="admin-button admin-button-secondary admin-button-compact"
+                  disabled={update.isPending}
+                  onClick={() => update.mutate({ id: iteration.id, action: 'complete' })}
+                  type="button"
+                >
+                  Complete
+                </button>
+              ) : null}
               <button
-                className="admin-button admin-button-primary admin-button-compact"
-                disabled={update.isPending}
-                onClick={() => update.mutate({ id: iteration.id, action: 'start' })}
+                className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
+                onClick={() => setDeleteOpen(true)}
                 type="button"
               >
-                Start
+                Delete
               </button>
-            ) : null}
-            {iteration.status === 'active' ? (
-              <button
-                className="admin-button admin-button-secondary admin-button-compact"
-                disabled={update.isPending}
-                onClick={() => update.mutate({ id: iteration.id, action: 'complete' })}
-                type="button"
-              >
-                Complete
-              </button>
-            ) : null}
-            <button
-              className="text-xs text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
-              onClick={() => {
-                if (window.confirm(`Delete "${iteration.name}"? Its tasks return to the backlog.`)) {
-                  remove.mutate(iteration.id)
-                }
-              }}
-              type="button"
-            >
-              Delete
-            </button>
-          </div>
+            </div>
+          ) : null}
+        </div>
+        {iteration.goal ? (
+          <div className="text-xs text-[color:var(--tx2)]">{iteration.goal}</div>
         ) : null}
+        <div className="grid gap-1">
+          {tasks.length === 0 ? (
+            <div className="text-xs text-[color:var(--tx3)]">No tasks in this iteration.</div>
+          ) : (
+            tasks.map((task) => <TaskRow key={task.id} moveTargets={moveTargets} task={task} />)
+          )}
+        </div>
       </div>
-      {iteration.goal ? (
-        <div className="text-xs text-[color:var(--tx2)]">{iteration.goal}</div>
-      ) : null}
-      <div className="grid gap-1">
-        {tasks.length === 0 ? (
-          <div className="text-xs text-[color:var(--tx3)]">No tasks in this iteration.</div>
-        ) : (
-          tasks.map((task) => <TaskRow key={task.id} moveTargets={moveTargets} task={task} />)
-        )}
-      </div>
-    </div>
+
+      <ConfirmDialog
+        body="Its tasks return to the backlog."
+        confirmLabel="Delete"
+        destructive
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={() => {
+          setDeleteOpen(false)
+          remove.mutate(iteration.id)
+        }}
+        open={deleteOpen}
+        title={`Delete "${iteration.name}"?`}
+      />
+    </>
   )
 }
 

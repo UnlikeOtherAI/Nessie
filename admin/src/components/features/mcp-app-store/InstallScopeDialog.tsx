@@ -135,6 +135,8 @@ export const InstallScopeDialog = ({
   }
 
   return (
+    // Not the shared `Dialog`: an `admin-card` panel that *is* the <form>, with
+    // no close control at all — the shell always renders one.
     <div
       className={[
         'fixed inset-0 z-50 flex items-center justify-center',

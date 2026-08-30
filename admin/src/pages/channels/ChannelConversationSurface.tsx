@@ -89,6 +89,7 @@ interface ChannelConversationSurfaceProps {
     | 'cancelEdit'
     | 'changeEditingContent'
     | 'confirmDelete'
+    | 'deleteConfirm'
     | 'editingContent'
     | 'editingMessageId'
     | 'startEdit'
@@ -183,6 +184,7 @@ export const ChannelConversationSurface = ({
     cancelEdit,
     changeEditingContent,
     confirmDelete,
+    deleteConfirm,
     editingContent,
     editingMessageId,
     startEdit,
@@ -346,6 +348,8 @@ export const ChannelConversationSurface = ({
         }}
         />
       ) : null}
+
+      {deleteConfirm}
 
       <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />
     </div>

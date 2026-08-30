@@ -175,6 +175,9 @@ export const CredentialsDialog = ({
   }
 
   return (
+    // Not the shared `Dialog`: the app-store modals are `admin-card` panels on a
+    // `--main` background with a ghost "Close" control, not the shell's
+    // `.create-channel-panel` card and close cross.
     <div
       className={[
         'fixed inset-0 z-50 flex items-center justify-center',

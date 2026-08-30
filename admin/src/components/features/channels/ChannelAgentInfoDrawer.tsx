@@ -120,6 +120,7 @@ export const ChannelAgentInfoDrawer = ({
     cancelEdit,
     changeEditingContent,
     confirmDelete,
+    deleteConfirm,
     editingContent,
     editingMessageId,
     startEdit,
@@ -302,6 +303,8 @@ export const ChannelAgentInfoDrawer = ({
           onDismissPendingAgent={dismissPendingAgent}
         />
       </aside>
+
+      {deleteConfirm}
 
       <OversizePasteDialog
         limit={CHAT_MESSAGE_MAX_CHARS}

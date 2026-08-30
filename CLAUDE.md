@@ -493,6 +493,21 @@ Legacy single-user server lives in `src/` and is being removed — do not rely o
   renders a dimmed `(n)`. Adding a tenth fork is the defect Rule zero names —
   parameterise this one. (2026-08-29 replaced nine forks: `.admin-tab`,
   `SegmentedControl`, `IntegrationTabs`, and six inline strips.)
+- **One dialog shell.** Every centred modal is
+  `components/shared/Dialog.tsx`, which *always* composes `useModalA11y` (focus
+  in, Tab trap, Escape, focus restore) and `useOverlayDismiss` (the drag-safe
+  scrim gesture), and always emits `role="dialog" aria-modal="true"` with a
+  labelled heading. It exists because the affordances had drifted apart rather
+  than the markup: of 51 overlay files, ~13 composed the a11y hook and twenty-plus
+  had **no** Escape, no focus trap and no dialog role at all, while half used the
+  `onMouseDown` scrim pattern `useOverlayDismiss` was written to replace (a drag
+  released outside the panel discarded an in-progress edit). `ConfirmDialog`
+  builds on it and replaced four native `window.confirm` deletes — note that
+  `window.confirm` blocks, so a converted call site must carry its own `pending`
+  flag rather than relying on the thread being frozen. Edge-anchored drawers,
+  the full-screen search overlay, the scroll-locking attachment viewer and the
+  two dialogs that branch their scrim on phone layout are deliberately **not**
+  this component; each says so where it stands.
 
 ## Ports — NON-NEGOTIABLE
 
