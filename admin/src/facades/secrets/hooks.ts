@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { secretKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type SecretScopeType = 'personal' | 'team' | 'project' | 'workspace'
@@ -30,7 +31,7 @@ export type CreateSecretInput = {
 export const useSecrets = () => {
   const apiClient = useApiClient()
   return useQuery<SecretRecord[]>({
-    queryKey: ['secrets'],
+    queryKey: secretKeys.all,
     queryFn: () => apiClient.get('/api/secrets'),
   })
 }
@@ -40,7 +41,7 @@ export const useCreateSecret = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateSecretInput) => apiClient.post<SecretRecord>('/api/secrets', input),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['secrets'] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: secretKeys.all }),
   })
 }
 
@@ -49,6 +50,6 @@ export const useRevokeSecret = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (reference: string) => apiClient.post<SecretRecord>(`/api/secrets/${reference}/revoke`, {}),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['secrets'] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: secretKeys.all }),
   })
 }

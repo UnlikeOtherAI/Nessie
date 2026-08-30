@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import * as queryKeys from '../src/lib/query-keys.js'
 
@@ -126,4 +129,168 @@ test('every family root is the exact prefix its own children are built from', ()
     queryKeys.workflowKeys.run('r-1').slice(0, queryKeys.workflowKeys.runs.length),
     [...queryKeys.workflowKeys.runs],
   )
+})
+
+/**
+ * The factory rule, enforced instead of documented.
+ *
+ * The prefix rule above only sees keys that reached the module. A key spelled
+ * inline at a call site never does: it is a second definition of the same cache
+ * identity, invisible to every check here, and it stops matching the moment
+ * either side moves. Seven of them reappeared within weeks of the module
+ * landing — `['secrets']`, `['threads', 'activity']`, `['triggers']` and the
+ * rest — which is the answer to whether a header comment is enough.
+ *
+ * The violation is textual, so the check is a scan of the source on disk rather
+ * than of the imported module. It reads every file under `admin/src` (the
+ * module itself excepted, since that is where the literals belong) and refuses
+ * an array literal handed to `queryKey` or passed positionally to the query
+ * filters. A key built by a factory — `secretKeys.all`,
+ * `threadKeys.messages(id)` — is what passes.
+ */
+
+const SOURCE_ROOT = fileURLToPath(new URL('../src/', import.meta.url))
+
+/** Where the literals live; every other file must import from it. */
+const KEY_MODULE = 'lib/query-keys.ts'
+
+/**
+ * `queryKey: [...]`, `queryKey = [...]`, and `invalidateQueries([...])`.
+ *
+ * The positional list covers every `QueryFilters` taker that accepts a bare key
+ * — the object form of each is already caught by the `queryKey:` pattern. Note
+ * what is deliberately absent: `for (const queryKey of [a, b])` in
+ * `TokenUsagePage` collects keys the billing facade built, so an array whose
+ * ELEMENTS are factory calls is not a raw key and must keep passing.
+ */
+const RAW_KEY_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  // `queryKey: [` in a TYPE position — `{ queryKey: [string] }` — describes a
+  // key's shape rather than building one, so the value form is required to
+  // contain a quote, a spread, or a template literal. A key with no literal
+  // segment at all cannot be a cache key worth guarding.
+  { label: 'queryKey: [ … ]', pattern: /queryKey\s*:\s*\[\s*(?:['"`]|\.\.\.)/ },
+  { label: 'queryKey = [ … ]', pattern: /\bqueryKey\s*=\s*\[/ },
+  {
+    label: 'someQueries([ … ])',
+    pattern: /\b(?:invalidate|reset|cancel|refetch|remove)Queries\s*(?:<[^>]*>)?\(\s*\[/,
+  },
+  {
+    // The write side takes the same key and was the one hole a verifier walked
+    // through: `setQueryData([...APPS_QUERY_KEY, 'detail', slug], …)` was a
+    // second spelling that diverged from the factory whenever slug was absent.
+    label: 'someQueryData([ … ])',
+    pattern: /\b(?:set|get)Quer(?:yData|iesData)\s*(?:<[^>]*>)?\(\s*\[/,
+  },
+]
+
+/**
+ * Call sites that genuinely cannot use a factory, as data with a reason — the
+ * shape `ROOT_EXCEPTIONS` uses, for the same purpose: an exception that stops
+ * being needed fails the test rather than lingering. `line` is the offending
+ * source line, trimmed, so an exception cannot silently widen to cover a
+ * different literal that drifts onto the same line number.
+ */
+const RAW_KEY_EXCEPTIONS: readonly { file: string; line: string; reason: string }[] = []
+
+const isSourceFile = (name: string) => name.endsWith('.ts') || name.endsWith('.tsx')
+
+const sourceFiles = (): string[] => {
+  const found: string[] = []
+  const walk = (dir: string, prefix: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) walk(join(dir, entry.name), relative)
+      else if (entry.isFile() && isSourceFile(entry.name)) found.push(relative)
+    }
+  }
+  walk(SOURCE_ROOT, '')
+  return found
+}
+
+/**
+ * Comment lines are prose about keys, not keys. A whole-line `//` or a
+ * doc-comment `*` continuation is dropped; a trailing comment is not, because
+ * cutting at the first `//` would also cut a `https://` inside a string and
+ * hide a literal after it. False positives there are cheap and visible; a false
+ * negative is a hole in the guard.
+ */
+const isCommentLine = (line: string) => {
+  const trimmed = line.trimStart()
+  return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')
+}
+
+test('no raw query-key literal outside query-keys.ts', () => {
+  const files = sourceFiles()
+  assert.ok(files.length > 100, 'expected the scan to reach the admin source tree')
+  assert.ok(files.includes(KEY_MODULE), `expected ${KEY_MODULE} in the scanned tree`)
+
+  const violations: string[] = []
+  const usedExceptions = new Set<string>()
+
+  for (const file of files) {
+    if (file === KEY_MODULE) continue
+    const contents = readFileSync(join(SOURCE_ROOT, file), 'utf8')
+    contents.split('\n').forEach((line, index) => {
+      if (isCommentLine(line)) return
+      const hit = RAW_KEY_PATTERNS.find(({ pattern }) => pattern.test(line))
+      if (!hit) return
+      const excepted = RAW_KEY_EXCEPTIONS.find(
+        (entry) => entry.file === file && entry.line === line.trim(),
+      )
+      if (excepted) {
+        usedExceptions.add(`${excepted.file} :: ${excepted.line}`)
+        return
+      }
+      violations.push(`${file}:${index + 1}  ${hit.label}  ${line.trim()}`)
+    })
+  }
+
+  assert.deepEqual(
+    violations,
+    [],
+    'These call sites spell a cache key inline instead of calling a factory in lib/query-keys.ts. '
+      + 'A literal is a second definition of the same cache identity and stops matching the moment '
+      + 'either side moves — add or reuse a factory, or, if the site genuinely cannot, add it to '
+      + 'RAW_KEY_EXCEPTIONS with the reason:\n' + violations.join('\n'),
+  )
+
+  const stale = RAW_KEY_EXCEPTIONS.filter(
+    (entry) => !usedExceptions.has(`${entry.file} :: ${entry.line}`),
+  ).map((entry) => `${entry.file} :: ${entry.line} (${entry.reason})`)
+
+  assert.deepEqual(
+    stale,
+    [],
+    'These RAW_KEY_EXCEPTIONS no longer match a call site — delete them:\n' + stale.join('\n'),
+  )
+})
+
+test('the raw-key scan detects a literal when one is present', () => {
+  // The guard above passes on a clean tree, which on its own is also what a
+  // broken scanner does. This states what it is measuring: the same patterns,
+  // run over the shapes they exist to catch and the shapes they must not.
+  const caught = (line: string) => RAW_KEY_PATTERNS.some(({ pattern }) => pattern.test(line))
+
+  for (const offender of [
+    "    queryKey: ['secrets'],",
+    "  const queryKey = ['threads', 'activity']",
+    "void queryClient.invalidateQueries({ queryKey: ['triggers'] })",
+    "void queryClient.invalidateQueries(['triggers'])",
+    "queryClient.resetQueries([...threadKeys.activity])",
+    "queryClient.cancelQueries(['tasks', projectId])",
+  ]) {
+    assert.ok(caught(offender), `scan missed a raw key: ${offender}`)
+  }
+
+  for (const allowed of [
+    '    queryKey: secretKeys.all,',
+    '    queryKey: threadKeys.messages(threadId),',
+    'void queryClient.invalidateQueries({ queryKey: triggerKeys.all })',
+    'void queryClient.resetQueries({ queryKey: threadKeys.activity })',
+    '    for (const queryKey of [',
+  ]) {
+    assert.ok(!caught(allowed), `scan flagged a factory-built key: ${allowed}`)
+  }
 })
