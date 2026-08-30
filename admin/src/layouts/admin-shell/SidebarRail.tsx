@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
@@ -11,6 +11,7 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useFocusMode } from '../../providers/FocusModeProvider';
 
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
+const TOOLTIP_FADE_MS = 120;
 
 type SidebarRailProps = {
   onCreateChannel: () => void;
@@ -30,7 +31,9 @@ export const SidebarRail = ({
   const { focusModeEnabled, toggleFocusMode, updating } = useFocusMode();
   const { capabilities } = useViewport();
   const focusButtonRef = useRef<HTMLButtonElement>(null);
+  const focusTooltipExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [focusTooltipOpen, setFocusTooltipOpen] = useState(false);
+  const [focusTooltipMounted, setFocusTooltipMounted] = useState(false);
   const [focusTooltipPosition, setFocusTooltipPosition] = useState({ left: 0, top: 0 });
 
   const placeFocusTooltip = (): void => {
@@ -42,6 +45,23 @@ export const SidebarRail = ({
       top: rect.top + rect.height / 2,
     });
   };
+
+  const dismissFocusTooltip = useCallback((): void => {
+    setFocusTooltipOpen(false);
+    if (focusTooltipExitTimer.current !== null) {
+      window.clearTimeout(focusTooltipExitTimer.current);
+    }
+    focusTooltipExitTimer.current = window.setTimeout(() => {
+      setFocusTooltipMounted(false);
+      focusTooltipExitTimer.current = null;
+    }, TOOLTIP_FADE_MS);
+  }, []);
+
+  useEffect(() => () => {
+    if (focusTooltipExitTimer.current !== null) {
+      window.clearTimeout(focusTooltipExitTimer.current);
+    }
+  }, []);
 
   useLayoutEffect(() => {
     if (!focusTooltipOpen) return undefined;
@@ -61,12 +81,17 @@ export const SidebarRail = ({
 
     // Touch browsers can retain focus after a tap, leaving this otherwise
     // hover-only affordance visible. Give it a short, predictable lifetime.
-    const timeoutId = window.setTimeout(() => setFocusTooltipOpen(false), 5_000);
+    const timeoutId = window.setTimeout(dismissFocusTooltip, 5_000);
     return () => window.clearTimeout(timeoutId);
-  }, [capabilities.coarsePointer, capabilities.hover, focusTooltipOpen]);
+  }, [capabilities.coarsePointer, capabilities.hover, dismissFocusTooltip, focusTooltipOpen]);
 
   const showFocusTooltip = (): void => {
+    if (focusTooltipExitTimer.current !== null) {
+      window.clearTimeout(focusTooltipExitTimer.current);
+      focusTooltipExitTimer.current = null;
+    }
     placeFocusTooltip();
+    setFocusTooltipMounted(true);
     setFocusTooltipOpen(true);
   };
   const focusTooltipTitle = focusModeEnabled ? 'Turn off focus mode' : 'Turn on focus mode';
@@ -139,10 +164,10 @@ export const SidebarRail = ({
           className={`admin-rail-btn ${focusModeEnabled ? 'active' : ''}`}
           disabled={updating}
           onClick={toggleFocusMode}
-          onBlur={() => setFocusTooltipOpen(false)}
+          onBlur={dismissFocusTooltip}
           onFocus={showFocusTooltip}
           onMouseEnter={showFocusTooltip}
-          onMouseLeave={() => setFocusTooltipOpen(false)}
+          onMouseLeave={dismissFocusTooltip}
           ref={focusButtonRef}
           type="button"
         >
@@ -154,10 +179,10 @@ export const SidebarRail = ({
           <span className="admin-rail-btn-label">Focus</span>
         </button>
 
-        {focusTooltipOpen && typeof document !== 'undefined'
+        {focusTooltipMounted && typeof document !== 'undefined'
           ? createPortal(
               <span
-                className="focus-mode-tooltip pointer-events-none"
+                className={`focus-mode-tooltip pointer-events-none ${focusTooltipOpen ? 'is-opening' : 'is-closing'}`}
                 id="focus-mode-tooltip"
                 role="tooltip"
                 style={focusTooltipPosition}

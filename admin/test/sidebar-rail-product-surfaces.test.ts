@@ -36,5 +36,16 @@ test('the Focus tooltip dismisses itself after five seconds on touch devices', (
   assert.match(rail, /const \{ capabilities \} = useViewport\(\)/)
   assert.match(rail, /capabilities\.hover/)
   assert.match(rail, /capabilities\.coarsePointer/)
-  assert.match(rail, /window\.setTimeout\(\(\) => setFocusTooltipOpen\(false\), 5_000\)/)
+  assert.match(rail, /window\.setTimeout\(dismissFocusTooltip, 5_000\)/)
+})
+
+test('the desktop Focus tooltip fades in and out quickly', () => {
+  const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')
+  const styles = readSource('../src/styles.css')
+
+  assert.match(rail, /focusTooltipMounted && typeof document !== 'undefined'/)
+  assert.match(rail, /focusTooltipOpen \? 'is-opening' : 'is-closing'/)
+  assert.match(rail, /TOOLTIP_FADE_MS = 120/)
+  assert.match(styles, /\.focus-mode-tooltip\.is-opening\s*\{[\s\S]*?animation: focus-tooltip-enter 120ms/)
+  assert.match(styles, /\.focus-mode-tooltip\.is-closing\s*\{[\s\S]*?animation: focus-tooltip-exit 120ms/)
 })
