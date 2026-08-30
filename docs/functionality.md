@@ -179,8 +179,9 @@ Root app layout:
 - The admin **Agents page** (`/agents`) groups the same entitlement-scoped list
   into three tabs — **Personal** (`agentKind === 'personal_assistant'`), **Team**
   (ordinary shared agents), and **Global** (system-provided `systemManaged`
-  agents, read-only, no edit menu) — over a paginated, zebra-striped table with a
-  reused agent detail drawer (`admin/src/components/features/agents/AgentsList.tsx`).
+  agents, read-only) — over a paginated, zebra-striped table. Selecting a row
+  opens its detail surface, the single doorway for the integrated designer and
+  Design Assistant (`admin/src/components/features/agents/AgentsList.tsx`).
   The scope is derived from `agentKind`/`systemManaged`, not a stored column. To
   populate the Personal and Global tabs, `GET /api/agents` accepts `?scope=all`,
   which includes the read-only system tier under the *same* channel-visibility

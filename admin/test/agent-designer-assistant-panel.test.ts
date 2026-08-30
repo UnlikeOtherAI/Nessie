@@ -19,6 +19,17 @@ test('agent detail keeps one full-height Design Assistant drawer beside every ta
   assert.match(drawer, /transition-\[width,height,opacity\]/)
 })
 
+test('agent rows use detail as their only designer doorway', () => {
+  const list = readSource('../src/components/features/agents/AgentsList.tsx')
+  const table = readSource('../src/components/features/agents/AgentsTable.tsx')
+  const row = readSource('../src/components/features/agents/AgentListRow.tsx')
+
+  assert.match(list, /onOpen=\{\(agentId\) => void navigate\(`\/agents\/\$\{agentId\}`\)\}/)
+  assert.doesNotMatch(list, /\/agents\/designer\/\$\{agentId\}/)
+  assert.doesNotMatch(table, /onEdit|showMenu/)
+  assert.doesNotMatch(row, /AgentRowMenu|Edit in designer|Actions for/)
+})
+
 test('assistant-driven controls reveal the real UI before changing it', () => {
   const reveal = readSource('../src/components/features/agents/designer/reveal-control.ts')
   const tools = readSource('../src/components/features/agents/AgentAvailableTools.tsx')
