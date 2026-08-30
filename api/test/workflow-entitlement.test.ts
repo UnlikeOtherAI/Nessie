@@ -13,7 +13,8 @@ import {
   canActorStartWorkflowRun,
   workflowInstallationEntitlementFilter,
 } from '../src/services/workflow-entitlement.js'
-import { getWorkflowRun, installWorkflowTemplate } from '../src/services/workflows.js'
+import { getWorkflowRun } from '../src/services/workflow-runs.js'
+import { installWorkflowTemplate } from '../src/services/workflow-templates.js'
 
 // W19 + W22 + W25 — the reachability matrix, its audit trail, and run origin:
 //  - a channel-entitled member reads an installation and can start a run;
@@ -218,7 +219,7 @@ runDatabaseTest('W22/W25: audit rows carry the acting caller; retry keeps the or
     },
   })
 
-  const { retryWorkflowRun } = await import('../src/services/workflows.js')
+  const { retryWorkflowRun } = await import('../src/services/workflow-runs.js')
   const retried = await retryWorkflowRun(prisma, member, run.id, { reason: 'try again' })
   assert.ok(retried)
   await auditWorkflowMutation(prisma, member, {

@@ -5,7 +5,7 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import { cancelWorkflowRun } from '../src/services/workflows.js'
+import { cancelWorkflowRun } from '../src/services/workflow-run-controls.js'
 
 // W2: cancelling a workflow run must propagate to its children, not just flip
 // the rows. Assertions are scoped to this suite's own organization seed; the

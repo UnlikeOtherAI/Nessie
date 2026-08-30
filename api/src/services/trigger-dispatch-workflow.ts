@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { isWorkflowInstallationRunnable } from './workflow-templates.js'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   parseChannelId,
@@ -47,13 +48,9 @@ export const dispatchWorkflowTrigger = async (
 ): Promise<DispatchTriggerResult> => {
   const installation = input.trigger.workflowInstallation
   // W8: `paused` must actually pause. Anything but an unambiguous active
-  // installation refuses to fire — one lifecycle read, shared with the API
-  // (`isWorkflowInstallationRunnable` in services/workflows.ts).
-  if (
-    !installation ||
-    installation.status !== 'active' ||
-    !installation.active
-  ) {
+  // installation refuses to fire, through the same predicate the API uses —
+  // the check was inlined here, so the two could disagree.
+  if (!installation || !isWorkflowInstallationRunnable(installation)) {
     return { kind: 'rejected', reason: 'workflow_installation_not_ready' }
   }
 

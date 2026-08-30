@@ -113,7 +113,7 @@ the trigger/tool/agent machinery:
 - **`GET /api/workflows` was broken with real data**: the list view replaced
   the stored graph with `{}`, which `WorkflowGraphSchema` (min 1 step)
   rejects — the endpoint 500'd as soon as one template existed. The list now
-  returns the real graph (`api/src/services/workflows.ts`).
+  returns the real graph (`api/src/services/workflow-templates.ts`).
 - **Workflows page IA**: one workflow list (search, derived status pill)
   with drill-down workflow → installation → run; installations are
   subordinate rows in the template detail instead of a parallel top-level
@@ -153,7 +153,7 @@ the trigger/tool/agent machinery:
   nodes via `stepKey` = graph step id) and the inspector shows the selected
   node's last-run status, error and output.
 - **Save-time template validation** (`validateWorkflowGraphSteps`,
-  `api/src/services/workflows.ts`): unsupported step types, duplicate step
+  `api/src/services/workflow-validation.ts`): unsupported step types, duplicate step
   ids, unknown tool names, missing/nonexistent agent ids and environment
   steps without a template reference are rejected with a 400
   `WORKFLOW_TEMPLATE_INVALID` listing every issue. Values containing

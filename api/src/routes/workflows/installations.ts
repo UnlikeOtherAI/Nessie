@@ -12,16 +12,17 @@ import {
 } from '../../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import { createWorkflowTrigger, listWorkflowInstallationTriggers } from '../../services/triggers.js'
+import { createWorkflowRun, listWorkflowRuns } from '../../services/workflow-runs.js'
 import {
-  WorkflowActionError,
-  createWorkflowRun,
   installWorkflowTemplate,
   listWorkflowInstallations,
-  listWorkflowRuns,
   updateWorkflowInstallation,
   WorkflowInstallationLifecycleError,
+} from '../../services/workflow-templates.js'
+import {
+  WorkflowActionError,
   WorkflowSecretWriteError,
-} from '../../services/workflows.js'
+} from '../../services/workflow-validation.js'
 import { auditWorkflowMutation } from '../../services/workflow-audit.js'
 import {
   canActorReadWorkflowInstallation,

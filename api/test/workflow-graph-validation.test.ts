@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client'
 import {
   validateWorkflowGraphSteps,
   WorkflowTemplateValidationError,
-} from '../src/services/workflows.js'
+} from '../src/services/workflow-validation.js'
 
 // W9: `{{` must not disable validation. Binding syntax is parsed on every
 // step, and every steps.<id> reference must name a step that exists AND

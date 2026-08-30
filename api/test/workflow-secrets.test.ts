@@ -7,13 +7,13 @@ import { WORKFLOW_SECRET_REDACTION } from '@nessie/workspace-admin'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { parseOrganizationId } from '@nessie/schemas'
 
+import { getWorkflowRun } from '../src/services/workflow-runs.js'
 import {
-  getWorkflowRun,
   installWorkflowTemplate,
   listWorkflowInstallations,
   updateWorkflowInstallation,
-  WorkflowSecretWriteError,
-} from '../src/services/workflows.js'
+} from '../src/services/workflow-templates.js'
+import { WorkflowSecretWriteError } from '../src/services/workflow-validation.js'
 
 // W0 — the redaction boundary. A reference binding is declared per key in the
 // template's `bindingSchema`; only server-minted `secret_*` refs may persist

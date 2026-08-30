@@ -111,10 +111,17 @@ then `projects`/`teams`/`organizations` (mechanical CRUD).
 
 ### 4. The workflows subsystem has outgrown the architecture in every tier
 
-**Evidence (cap is 500 lines):** `api/src/services/workflows.ts` **1,989** —
-the largest code file in the repo, with four separable domains already visible
-(graph/step validation L177-649, templates L765-928, installations L930-1188,
-runs + step-run actions L1190-1988). `worker/src/control/workflows.ts`
+**Status (2026-08-29):** the API tier is done. `api/src/services/workflows.ts`
+**1,989** — then the largest code file in the repo — was split into six
+single-responsibility modules, all under the cap: `workflow-validation.ts`
+(358), `workflow-references.ts` (212), `workflow-records.ts` (225),
+`workflow-templates.ts` (441), `workflow-runs.ts` (414) and
+`workflow-run-controls.ts` (421). The four domains named below turned out to be
+six once measured: validation splits from tenancy-boundary lookups, and the run
+record splits from operator intervention in a live run. The worker tiers below
+are untouched.
+
+**Evidence (cap is 500 lines):** `worker/src/control/workflows.ts`
 **1,180** — six domains (binding/JMESPath resolution, agent-task dispatch,
 environment-launch validation, terminal transitions, the step-engine
 `while (true)` scheduler). `worker/src/run/workflows.ts` **673** and
