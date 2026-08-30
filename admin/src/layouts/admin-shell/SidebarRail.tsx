@@ -147,8 +147,8 @@ export const SidebarRail = ({
           type="button"
         >
           <span className="admin-rail-btn-icon">
-            <svg fill="none" height="20" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" width="20">
-              <path d="M20.6 15.8A8.8 8.8 0 0 1 8.2 3.4 8.8 8.8 0 1 0 20.6 15.8Z" strokeLinecap="round" strokeLinejoin="round" />
+            <svg aria-hidden="true" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M21.75 15.002A9.72 9.72 0 0 1 12 21.75C6.615 21.75 2.25 17.385 2.25 12c0-4.14 2.58-7.678 6.223-9.094a.75.75 0 0 1 .983.868 7.5 7.5 0 0 0 9.402 9.402.75.75 0 0 1 .892.826Z" />
             </svg>
           </span>
           <span className="admin-rail-btn-label">Focus</span>
