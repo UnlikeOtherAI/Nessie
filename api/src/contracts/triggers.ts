@@ -71,9 +71,12 @@ export const AgentTriggerDeliveryRecordSchema = z.object({
 })
 export type AgentTriggerDeliveryRecord = z.infer<typeof AgentTriggerDeliveryRecordSchema>
 
+// `source` is deliberately absent: it is provenance, rendered as the delivery's
+// origin on the Triggers page, and the route decides it. Accepting it from the
+// body let a caller label their own fire `scheduler`, falsifying the one audit
+// trail an operator has when a schedule misbehaves.
 export const FireAgentTriggerBodySchema = z.object({
   dedupeKey: z.string().min(1).optional(),
-  source: z.string().min(1).optional(),
   prompt: z.string().min(1).optional(),
   payload: z.unknown().optional(),
 })

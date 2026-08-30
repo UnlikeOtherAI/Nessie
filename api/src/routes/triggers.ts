@@ -347,7 +347,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       dedupeKey,
       payload: body.payload,
       prompt: body.prompt,
-      source: body.source ?? 'manual',
+      source: 'manual',
       triggerId,
     })
 
