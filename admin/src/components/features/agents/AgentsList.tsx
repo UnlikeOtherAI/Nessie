@@ -7,14 +7,12 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
 import { TabBar } from '../../primitives/TabBar'
 import { PaginationFooter } from '../../shared/PaginationFooter'
-import { useIsOwner } from '../../shared/OwnerGate'
 import { AgentCreateButton } from './AgentCreateButton'
 import { AgentsTable } from './AgentsTable'
 import {
   AGENT_SCOPES,
   AGENT_SCOPE_META,
   getAgentScope,
-  isAgentScopeEditable,
   type AgentScope,
 } from './agent-scope'
 import { loadAgentsListState, saveAgentsListState } from './agents-list-state'
@@ -30,7 +28,6 @@ const emptyBuckets = (): Record<AgentScope, AgentRecord[]> => ({
 export const AgentsList = () => {
   const navigate = useNavigate()
   const { token } = useAuthSession()
-  const isOwner = useIsOwner()
   // `scope: 'all'` so the read-only system tier (the Personal Assistant + global
   // system agents) is available to bucket, not just the shared team agents.
   const { data: agents = [], isPending } = useAgents({ scope: 'all' })
@@ -117,9 +114,7 @@ export const AgentsList = () => {
           agents={pageAgents}
           emptyMessage={AGENT_SCOPE_META[activeScope].empty}
           isLoading={isPending}
-          onEdit={(agentId) => void navigate(`/agents/designer/${agentId}`)}
           onOpen={(agentId) => void navigate(`/agents/${agentId}`)}
-          showMenu={isAgentScopeEditable(activeScope) && isOwner}
           token={token}
         />
       </div>

@@ -3,26 +3,19 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentRecord } from '../../../lib/api-client'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AgentOwnerCell } from './AgentOwnerCell'
-import { AgentRowMenu } from './AgentRowMenu'
 
 type AgentListRowProps = {
   agent: AgentRecord
-  onEdit: (agentId: string) => void
   onOpen: (agentId: string) => void
-  // Whether the editable ⋯ menu is offered. False for read-only global agents.
-  showMenu: boolean
   token: string | null
 }
 
 // One agent row: avatar, the agent's name over a short job description, an
-// optional ⋯ edit menu, and a far-right chevron. Nothing else lives on the row —
-// the whole row opens the agent's detail; the chevron is the visible affordance
-// for it, and the ⋯ menu stops propagation so its actions do not also open detail.
+// owner, and a far-right chevron. The whole row opens agent detail, which owns
+// editing alongside the integrated Design Assistant.
 export const AgentListRow = ({
   agent,
-  onEdit,
   onOpen,
-  showMenu,
   token,
 }: AgentListRowProps) => (
   <tr
@@ -49,22 +42,6 @@ export const AgentListRow = ({
     </td>
     <td className="hidden w-44 px-3 py-2.5 align-middle sm:table-cell">
       <AgentOwnerCell owner={agent.owner} token={token} />
-    </td>
-    <td className="w-10 px-1 py-2.5 text-right align-middle">
-      {showMenu ? (
-        <div className="flex justify-end">
-          <AgentRowMenu
-            agentName={agent.name}
-            items={[
-              {
-                id: 'edit',
-                label: 'Edit in designer',
-                onSelect: () => onEdit(agent.id),
-              },
-            ]}
-          />
-        </div>
-      ) : null}
     </td>
     <td className="w-9 py-2.5 pl-0 pr-4 text-right align-middle">
       <FontAwesomeIcon

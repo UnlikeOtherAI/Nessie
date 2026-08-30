@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
 import { useViewport } from '../../hooks/useViewport';
 import { CreateMenuTrigger } from './CreateMenuTrigger';
 import { NAV_ITEMS } from './nav-items';
 import { resolveSectionNavTarget } from './section-route-memory';
+import { RailTooltip } from './RailTooltip';
 import { UserMenuTrigger } from './UserMenuTrigger';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { useFocusMode } from '../../providers/FocusModeProvider';
 
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
-const TOOLTIP_FADE_MS = 120;
-
 type SidebarRailProps = {
   onCreateChannel: () => void;
   onCreateMessage: () => void;
@@ -31,44 +29,8 @@ export const SidebarRail = ({
   const { focusModeEnabled, toggleFocusMode, updating } = useFocusMode();
   const { capabilities } = useViewport();
   const focusButtonRef = useRef<HTMLButtonElement>(null);
-  const focusTooltipExitTimer = useRef<number | null>(null);
   const [focusTooltipOpen, setFocusTooltipOpen] = useState(false);
-  const [focusTooltipMounted, setFocusTooltipMounted] = useState(false);
-  const [focusTooltipPosition, setFocusTooltipPosition] = useState({ left: 0, top: 0 });
-
-  const placeFocusTooltip = (): void => {
-    const button = focusButtonRef.current;
-    if (!button) return;
-    const rect = button.getBoundingClientRect();
-    setFocusTooltipPosition({
-      left: rect.right + 10,
-      top: rect.top + rect.height / 2,
-    });
-  };
-
-  const dismissFocusTooltip = useCallback((): void => {
-    setFocusTooltipOpen(false);
-    if (focusTooltipExitTimer.current !== null) {
-      window.clearTimeout(focusTooltipExitTimer.current);
-    }
-    focusTooltipExitTimer.current = window.setTimeout(() => {
-      setFocusTooltipMounted(false);
-      focusTooltipExitTimer.current = null;
-    }, TOOLTIP_FADE_MS);
-  }, []);
-
-  useEffect(() => () => {
-    if (focusTooltipExitTimer.current !== null) {
-      window.clearTimeout(focusTooltipExitTimer.current);
-    }
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!focusTooltipOpen) return undefined;
-    placeFocusTooltip();
-    window.addEventListener('resize', placeFocusTooltip);
-    return () => window.removeEventListener('resize', placeFocusTooltip);
-  }, [focusTooltipOpen]);
+  const dismissFocusTooltip = useCallback((): void => setFocusTooltipOpen(false), []);
 
   useEffect(() => {
     if (
@@ -86,12 +48,6 @@ export const SidebarRail = ({
   }, [capabilities.coarsePointer, capabilities.hover, dismissFocusTooltip, focusTooltipOpen]);
 
   const showFocusTooltip = (): void => {
-    if (focusTooltipExitTimer.current !== null) {
-      window.clearTimeout(focusTooltipExitTimer.current);
-      focusTooltipExitTimer.current = null;
-    }
-    placeFocusTooltip();
-    setFocusTooltipMounted(true);
     setFocusTooltipOpen(true);
   };
   const focusTooltipTitle = focusModeEnabled ? 'Turn off focus mode' : 'Turn on focus mode';
@@ -179,20 +135,13 @@ export const SidebarRail = ({
           <span className="admin-rail-btn-label">Focus</span>
         </button>
 
-        {focusTooltipMounted && typeof document !== 'undefined'
-          ? createPortal(
-              <span
-                className={`focus-mode-tooltip pointer-events-none ${focusTooltipOpen ? 'is-opening' : 'is-closing'}`}
-                id="focus-mode-tooltip"
-                role="tooltip"
-                style={focusTooltipPosition}
-              >
-                <strong>{focusTooltipTitle}</strong>
-                <span>{focusTooltipDescription}</span>
-              </span>,
-              document.body,
-            )
-          : null}
+        <RailTooltip
+          anchorRef={focusButtonRef}
+          description={focusTooltipDescription}
+          id="focus-mode-tooltip"
+          open={focusTooltipOpen}
+          title={focusTooltipTitle}
+        />
 
         <DebugTokenButton />
 

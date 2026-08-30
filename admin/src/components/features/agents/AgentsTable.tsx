@@ -5,9 +5,7 @@ type AgentsTableProps = {
   agents: AgentRecord[]
   emptyMessage: string
   isLoading: boolean
-  onEdit: (agentId: string) => void
   onOpen: (agentId: string) => void
-  showMenu: boolean
   token: string | null
 }
 
@@ -24,7 +22,7 @@ const HeaderRow = () => (
     <tr className="border-b border-[color:var(--sep)]">
       <th
         className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]"
-        colSpan={5}
+        colSpan={4}
         scope="col"
       >
         Agent
@@ -41,9 +39,7 @@ export const AgentsTable = ({
   agents,
   emptyMessage,
   isLoading,
-  onEdit,
   onOpen,
-  showMenu,
   token,
 }: AgentsTableProps) => {
   if (isLoading) {
@@ -64,7 +60,6 @@ export const AgentsTable = ({
                 <div className="h-3 w-24 animate-pulse rounded bg-[color:var(--overlay-weak)]" />
               </td>
               <td />
-              <td />
             </tr>
           ))}
         </tbody>
@@ -80,7 +75,7 @@ export const AgentsTable = ({
           <tr>
             <td
               className="px-4 py-12 text-center text-sm text-[color:var(--tx3)]"
-              colSpan={5}
+              colSpan={4}
             >
               {emptyMessage}
             </td>
@@ -98,9 +93,7 @@ export const AgentsTable = ({
           <AgentListRow
             agent={agent}
             key={agent.id}
-            onEdit={onEdit}
             onOpen={onOpen}
-            showMenu={showMenu}
             token={token}
           />
         ))}

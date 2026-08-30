@@ -22,6 +22,17 @@ test('the left rail exposes the shared create actions immediately above the acco
   assert.ok(rail.indexOf('<CreateMenuTrigger') < rail.indexOf('<UserMenuTrigger'))
 })
 
+test('the Create control uses the same desktop rail tooltip as Focus', () => {
+  const createMenu = readSource('../src/layouts/admin-shell/CreateMenuTrigger.tsx')
+  const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')
+
+  assert.match(createMenu, /import \{ RailTooltip \} from '\.\/RailTooltip'/)
+  assert.match(createMenu, /id="create-menu-tooltip"/)
+  assert.match(createMenu, /onMouseEnter=\{showTooltip\}/)
+  assert.match(rail, /<RailTooltip/)
+  assert.match(rail, /id="focus-mode-tooltip"/)
+})
+
 test('the whole rail keeps Feedback beside Focus and scrolls when space is tight', () => {
   const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')
 
@@ -40,12 +51,11 @@ test('the Focus tooltip dismisses itself after five seconds on touch devices', (
 })
 
 test('the desktop Focus tooltip fades in and out quickly', () => {
-  const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')
+  const tooltip = readSource('../src/layouts/admin-shell/RailTooltip.tsx')
   const styles = readSource('../src/styles.css')
 
-  assert.match(rail, /focusTooltipMounted && typeof document !== 'undefined'/)
-  assert.match(rail, /focusTooltipOpen \? 'is-opening' : 'is-closing'/)
-  assert.match(rail, /TOOLTIP_FADE_MS = 120/)
-  assert.match(styles, /\.focus-mode-tooltip\.is-opening\s*\{[\s\S]*?animation: focus-tooltip-enter 120ms/)
-  assert.match(styles, /\.focus-mode-tooltip\.is-closing\s*\{[\s\S]*?animation: focus-tooltip-exit 120ms/)
+  assert.match(tooltip, /open \? 'is-opening' : 'is-closing'/)
+  assert.match(tooltip, /TOOLTIP_FADE_MS = 120/)
+  assert.match(styles, /\.rail-tooltip\.is-opening\s*\{[\s\S]*?animation: rail-tooltip-enter 120ms/)
+  assert.match(styles, /\.rail-tooltip\.is-closing\s*\{[\s\S]*?animation: rail-tooltip-exit 120ms/)
 })
