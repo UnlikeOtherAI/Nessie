@@ -1430,6 +1430,45 @@ a {
   line-height: 1.35;
 }
 
+.focus-mode-tooltip.is-opening {
+  animation: focus-tooltip-enter 120ms ease-out both;
+}
+
+.focus-mode-tooltip.is-closing {
+  animation: focus-tooltip-exit 120ms ease-in both;
+}
+
+@keyframes focus-tooltip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 3px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes focus-tooltip-exit {
+  from {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(calc(-50% + 3px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus-mode-tooltip.is-opening,
+  .focus-mode-tooltip.is-closing {
+    animation: none;
+  }
+}
+
 .focus-mode-tooltip strong {
   font-size: 14px;
   font-weight: var(--font-weight-semibold);
