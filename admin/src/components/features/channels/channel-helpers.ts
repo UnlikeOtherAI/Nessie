@@ -22,7 +22,7 @@ export type FeedItem =
   | { kind: 'message'; message: ThreadMessageRecord }
 
 export const toolbarButtonClass = [
-  'flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)]',
+  'admin-compose-action flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)]',
   'hover:bg-[var(--overlay)]',
 ].join(' ')
 

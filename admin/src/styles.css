@@ -1700,6 +1700,33 @@ a {
   color: var(--tx3);
 }
 
+/* Chat controls need to stay distinct from the message content on compact
+   touch layouts. A 32px glyph makes them twice their desktop size while the
+   34px button frame keeps every optional composer action on one row. */
+@media (max-width: 1023px) {
+  .admin-compose-actions {
+    gap: 1px;
+  }
+
+  .admin-compose-action {
+    width: 34px;
+    height: 34px;
+    font-size: 32px;
+    line-height: 1;
+  }
+
+  .admin-compose-action-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .admin-compose-send {
+    height: 34px;
+    padding-right: 7px;
+    padding-left: 7px;
+  }
+}
+
 .mention-editor {
   caret-color: var(--tx);
   white-space: pre-wrap;

@@ -383,12 +383,12 @@ export const ChannelConversationComposePage = () => {
             </div>
             <button
               aria-label="Send message"
-              className="flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
+              className="admin-compose-send flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
               disabled={recipients.length === 0 || !message.trim() || isPending}
               type="submit"
             >
               <svg
-                className="h-4 w-4"
+                className="admin-compose-action-icon h-4 w-4"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"

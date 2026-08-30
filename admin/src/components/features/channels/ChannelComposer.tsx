@@ -122,7 +122,7 @@ export const ChannelComposer = ({
         />
         <ComposerAttachments attachments={attachments} />
         <div className="flex items-center justify-between border-t border-[color:var(--border-strong)] px-3 py-1.5">
-          <div className="flex items-center gap-1">
+          <div className="admin-compose-actions flex items-center gap-1">
             <button
               className={toolbarButtonClass}
               onClick={onInsertAtSign}
@@ -148,7 +148,7 @@ export const ChannelComposer = ({
                 type="button"
               >
                 <svg
-                  className="h-4 w-4"
+                  className="admin-compose-action-icon h-4 w-4"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -168,7 +168,7 @@ export const ChannelComposer = ({
                 type="button"
               >
                 <svg
-                  className="h-4 w-4"
+                  className="admin-compose-action-icon h-4 w-4"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -187,7 +187,7 @@ export const ChannelComposer = ({
               title="Attach files"
               type="button"
             >
-              <FontAwesomeIcon className="h-4 w-4" icon={faPaperclip} />
+              <FontAwesomeIcon className="admin-compose-action-icon h-4 w-4" icon={faPaperclip} />
             </button>
             <input
               className="hidden"
@@ -204,12 +204,12 @@ export const ChannelComposer = ({
           </div>
           <button
             aria-label="Send message"
-            className="flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
+            className="admin-compose-send flex h-[30px] items-center justify-center rounded-lg bg-[color:var(--accent)] px-3 text-[var(--on-accent)] disabled:opacity-50"
             disabled={!canSend}
             type="submit"
           >
             <svg
-              className="h-4 w-4"
+              className="admin-compose-action-icon h-4 w-4"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"

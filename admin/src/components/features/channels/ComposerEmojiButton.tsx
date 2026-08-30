@@ -48,7 +48,7 @@ export const ComposerEmojiButton = ({ onSelect }: { onSelect: (emoji: string) =>
         title="Insert emoji"
         type="button"
       >
-        <FontAwesomeIcon className="h-4 w-4" icon={faFaceSmile} />
+        <FontAwesomeIcon className="admin-compose-action-icon h-4 w-4" icon={faFaceSmile} />
       </button>
       {open ? (
         <div className="admin-compose-emoji-menu" id={pickerId} role="dialog">
