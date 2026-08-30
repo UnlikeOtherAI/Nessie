@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import { appKeys } from '../../lib/query-keys'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AppDetailRecord, McpServerScopeType } from '@nessie/schemas'
 
@@ -159,7 +160,7 @@ export const useAppConnectFlow = (input: {
         const detail = await apiClient.get<AppDetailRecord>(
           `/api/apps/${encodeURIComponent(slug)}`,
         )
-        queryClient.setQueryData([...APPS_QUERY_KEY, 'detail', slug], detail)
+        queryClient.setQueryData(appKeys.detail(slug), detail)
         const connected = detail.connections.some(
           (connection) => connection.id === connectionId && connection.status === 'connected',
         )

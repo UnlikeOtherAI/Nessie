@@ -115,8 +115,8 @@ export const useReauthorizeTrigger = () => {
         ...(input.takeOver === undefined ? {} : { takeOver: input.takeOver }),
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['triggers'] })
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }

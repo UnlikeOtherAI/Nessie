@@ -25,7 +25,7 @@ type ThreadActivityResponse = {
 export const useThreadActivity = () => {
   const apiClient = useApiClient()
   const query = useInfiniteQuery<ThreadActivityResponse>({
-    queryKey: ['threads', 'activity'],
+    queryKey: threadKeys.activity,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => {
       const cursor = typeof pageParam === 'string' ? pageParam : undefined
