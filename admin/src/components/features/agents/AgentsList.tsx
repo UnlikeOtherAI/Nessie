@@ -12,7 +12,6 @@ import {
   AGENT_SCOPES,
   AGENT_SCOPE_META,
   getAgentScope,
-  isAgentScopeEditable,
   type AgentScope,
 } from './agent-scope'
 import { loadAgentsListState, saveAgentsListState } from './agents-list-state'
@@ -27,8 +26,7 @@ const emptyBuckets = (): Record<AgentScope, AgentRecord[]> => ({
 
 export const AgentsList = () => {
   const navigate = useNavigate()
-  const { me, token } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const { token } = useAuthSession()
   // `scope: 'all'` so the read-only system tier (the Personal Assistant + global
   // system agents) is available to bucket, not just the shared team agents.
   const { data: agents = [], isPending } = useAgents({ scope: 'all' })
@@ -111,9 +109,7 @@ export const AgentsList = () => {
           agents={pageAgents}
           emptyMessage={AGENT_SCOPE_META[activeScope].empty}
           isLoading={isPending}
-          onEdit={(agentId) => void navigate(`/agents/designer/${agentId}`)}
           onOpen={(agentId) => void navigate(`/agents/${agentId}`)}
-          showMenu={isAgentScopeEditable(activeScope) && isOwner}
           token={token}
         />
       </div>
