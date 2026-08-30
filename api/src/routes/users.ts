@@ -203,7 +203,13 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     // Last-active-owner guard is enforced atomically inside the service.
     try {
-      await setOrganizationMemberDeactivated(prisma, { organizationId, userId, deactivated: true })
+      await setOrganizationMemberDeactivated(prisma, {
+        actorUserId: actorContext.actor.actorId,
+        deactivated: true,
+        organizationId,
+        requestId: actorContext.actionContext.requestId,
+        userId,
+      })
     } catch (error) {
       if (isLastOwnerError(error)) {
         sendApiError(reply, 400, 'LAST_OWNER', 'Cannot deactivate the last active owner')
@@ -229,7 +235,13 @@ export const registerUserRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       return reply
     }
 
-    await setOrganizationMemberDeactivated(prisma, { organizationId, userId, deactivated: false })
+    await setOrganizationMemberDeactivated(prisma, {
+      actorUserId: actorContext.actor.actorId,
+      deactivated: false,
+      organizationId,
+      requestId: actorContext.actionContext.requestId,
+      userId,
+    })
     const updated = await getOrganizationUserRecord(prisma, organizationId, userId)
     return createApiResponse(UserRecordSchema.parse(updated))
   })

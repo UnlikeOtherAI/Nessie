@@ -33,11 +33,12 @@ export const handleRunExecutionFailure = async (
 ): Promise<void> => {
   const messageText =
     input.error instanceof Error ? input.error.message : 'Run execution failed unexpectedly'
+  const failureReason = classifyError(input.error)
 
   const fallbackMessageId = `run-error:${context.run.id}`
   let terminalMessageId = fallbackMessageId
   let terminalContent =
-    input.terminalMessage ?? userMessageForFailureReason(classifyError(input.error))
+    input.terminalMessage ?? userMessageForFailureReason(failureReason)
   let terminalCreatedAt = new Date().toISOString()
   let replyPushMessage: {
     content: string
@@ -56,7 +57,7 @@ export const handleRunExecutionFailure = async (
   // to deliver. The failure is not hidden — the run is `failed`, the Triggers
   // page delivery row now shows that outcome, and the error is logged — it
   // simply stops being announced to a room that did not ask.
-  const announceFailure = isInteractiveRun(payload)
+  const announceFailure = isInteractiveRun(payload) && failureReason !== 'private_agent_placement'
 
   try {
     if (!announceFailure) throw new SkipTerminalMessage()
@@ -96,7 +97,7 @@ export const handleRunExecutionFailure = async (
   } catch (streamError) {
     if (streamError instanceof SkipTerminalMessage) {
       console.warn(
-        `[worker] run ${context.run.id} failed unattended (no channel message): ${messageText}`,
+        `[worker] run ${context.run.id} failed without a channel message: ${messageText}`,
       )
     } else {
       console.error('Failed to persist terminal error message', streamError)

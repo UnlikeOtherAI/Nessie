@@ -49,7 +49,8 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     description:
       'Create a new workspace-visible or private agent — a colleague with its own instructions, model, '
       + 'and tool policy — the same record the Agent Designer writes. The agent '
-      + 'starts in no channel; an owner puts it to work with agent_bind_channel. '
+      + 'gets an owner-only home conversation when private; a workspace agent starts '
+      + 'in no channel and an owner puts it to work with agent_bind_channel. '
       + 'Any member can do this. Explicit-grant tools (research, DeepWater) cannot '
       + 'be granted here; they are owner controls.',
     parameters: {
@@ -83,6 +84,11 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           enum: ['workspace', 'private'],
           description:
             'Who can find this agent. workspace is the default; private means only its creator.',
+        },
+        ownerUserId: {
+          type: 'string',
+          description:
+            'Optional requested owner id. A private agent can only belong to the acting user.',
         },
         runLimits: {
           type: 'object',

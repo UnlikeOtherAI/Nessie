@@ -15,6 +15,7 @@ import {
   isAgentVisibleToUser,
   resolveLocalUserIdsByUoaSub,
 } from '@nessie/workspace-admin'
+import { listChannelsForUser } from '../src/services/channels.js'
 
 /**
  * Agent stewardship, exercised against a real database because every guarantee
@@ -166,10 +167,39 @@ dbTest('private visibility beats member, admin, and org-owner entitlement', asyn
       organizationId: orgId,
       ownerUserId,
       role: 'assistant',
+      teamId,
       visibility: 'private',
     })
 
     assert.equal(agent.visibility, 'private')
+    assert.ok(agent.homeChannelId)
+    const home = await prisma.channel.findUniqueOrThrow({
+      where: { id: agent.homeChannelId },
+      include: {
+        agentBindings: true,
+        members: true,
+        threads: true,
+      },
+    })
+    assert.equal(home.dmKey, `agent:${orgId}:${ownerUserId}:${agent.id}`)
+    assert.equal(home.type, 'dm')
+    assert.equal(home.visibility, 'private')
+    assert.equal(home.systemChannelType, null)
+    assert.deepEqual(home.members.map((member) => member.userId), [ownerUserId])
+    assert.equal(home.threads.length, 1)
+    assert.deepEqual(home.agentBindings.map((binding) => binding.agentId), [agent.id])
+
+    const ownerChannels = await listChannelsForUser(prisma, ownerUserId, orgId)
+    const otherChannels = await listChannelsForUser(prisma, memberUserId, orgId)
+    assert.equal(ownerChannels.some((channel) => channel.id === agent.homeChannelId), true)
+    assert.equal(otherChannels.some((channel) => channel.id === agent.homeChannelId), false)
+
+    await assert.rejects(
+      () => prisma.channelMember.create({
+        data: { channelId: agent.homeChannelId!, userId: memberUserId },
+      }),
+      /must contain exactly its owner/,
+    )
     for (const viewer of [
       { includeUnbound: false, role: 'member' as const, userId: memberUserId },
       { includeUnbound: false, role: 'admin' as const, userId: adminUserId },
@@ -217,6 +247,7 @@ dbTest('deactivating the owner withdraws the ownership-only visibility', async (
       organizationId: orgId,
       ownerUserId,
       role: 'assistant',
+      teamId,
       visibility: 'private',
     })
 
@@ -252,6 +283,7 @@ dbTest('private agents are refused by the binding service and database trigger',
       organizationId: orgId,
       ownerUserId,
       role: 'assistant',
+      teamId,
       visibility: 'private',
     })
 
@@ -282,7 +314,23 @@ dbTest('private agents are refused by the binding service and database trigger',
       () => prisma.agentBinding.create({
         data: { agentId: agent.id, channelId },
       }),
-      /Private agents cannot be bound to channels/,
+      /Private agents can only be bound to their owner home DM/,
+    )
+
+    const otherAgent = await createAgentRecord(prisma, {
+      name: `private-bind-other-${suite}`,
+      organizationId: orgId,
+      ownerUserId: memberUserId,
+      role: 'assistant',
+      teamId,
+      visibility: 'private',
+    })
+    assert.ok(otherAgent.homeChannelId)
+    await assert.rejects(
+      () => prisma.agentBinding.create({
+        data: { agentId: agent.id, channelId: otherAgent.homeChannelId! },
+      }),
+      /Private agents can only be bound to their owner home DM/,
     )
   })
 })

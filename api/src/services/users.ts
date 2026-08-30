@@ -9,6 +9,7 @@ import {
   lockUserSessions,
 } from './user-session-lock.js'
 import { resolveActiveStatus, type StatusWithRelations } from './user-statuses.js'
+import { pausePrivateAgentsForDeactivatedOwner } from './private-agent-lifecycle.js'
 
 const mapUserRecord = (record: {
   avatarUrl: string | null
@@ -160,10 +161,25 @@ export const updateOrganizationMemberRole = async (
 // org the user belongs to — acceptable for a security-sensitive action.
 export const setOrganizationMemberDeactivated = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string; deactivated: boolean },
+  input: {
+    actorUserId: string
+    organizationId: string
+    requestId: string
+    userId: string
+    deactivated: boolean
+  },
 ): Promise<void> => {
   await prisma.$transaction(async (transaction) => {
     await lockUserSessions(transaction, input.userId)
+    const membership = await transaction.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+        },
+      },
+      select: { deactivatedAt: true },
+    })
     if (input.deactivated) {
       await assertNotLastOwner(transaction, input.organizationId, input.userId)
     }
@@ -173,6 +189,9 @@ export const setOrganizationMemberDeactivated = async (
       },
       data: { deactivatedAt: input.deactivated ? new Date() : null },
     })
+    if (input.deactivated && membership?.deactivatedAt === null) {
+      await pausePrivateAgentsForDeactivatedOwner(transaction, input)
+    }
 
     if (input.deactivated) {
       await revokeUserRefreshFamilies(transaction, {

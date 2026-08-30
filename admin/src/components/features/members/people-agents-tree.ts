@@ -30,6 +30,8 @@ export type PeopleAgentsTree = {
   ownedOutsideWorkspace: AgentRecord[]
   /** System-managed agents (Personal Assistant, Librarian): nobody's staff. */
   system: AgentRecord[]
+  /** Owner-only agents paused because their owner is inactive; names stay private. */
+  pausedPrivateAgentCount: number
 }
 
 const isSystemAgent = (agent: AgentRecord): boolean =>
@@ -46,6 +48,7 @@ const isSpawnedWorker = (agent: AgentRecord): boolean =>
 export const buildPeopleAgentsTree = (
   members: readonly WorkspaceMemberRecord[],
   agents: readonly AgentRecord[],
+  input: { pausedPrivateAgentCount?: number } = {},
 ): PeopleAgentsTree => {
   const byOwner = new Map<string, AgentRecord[]>()
   const unowned: AgentRecord[] = []
@@ -77,5 +80,11 @@ export const buildPeopleAgentsTree = (
     .filter(([ownerUserId]) => !claimed.has(ownerUserId))
     .flatMap(([, ownerAgents]) => ownerAgents)
 
-  return { ownedOutsideWorkspace, people, system, unowned }
+  return {
+    ownedOutsideWorkspace,
+    pausedPrivateAgentCount: input.pausedPrivateAgentCount ?? 0,
+    people,
+    system,
+    unowned,
+  }
 }

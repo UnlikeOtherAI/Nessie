@@ -70,6 +70,7 @@ import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 import { runReplyIsRestricted } from './agent-message.js'
+import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
 
 export const executeRunJob = async (
   deps: ExecutionDependencies,
@@ -113,17 +114,6 @@ export const executeRunJob = async (
 
   const prompt = payload.promptOverride?.trim() || message.content
   const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)
-
-  // External-agent turns bypass the inference loop entirely: the driver proxies
-  // the message to the external product over MCP and owns its own run
-  // lifecycle. Nessie runs no inference for these runs (plan §5).
-  if (
-    context.agent.executionMode === 'external_mcp'
-    && handoffMarker.kind === 'none'
-  ) {
-    await runExternalConversation(deps, payload, context, prompt)
-    return
-  }
 
   let streamStarted = false
   let planContext: RunPlanContext | null = null
@@ -197,6 +187,17 @@ export const executeRunJob = async (
   const executionDeps = { ...deps, documentStream }
 
   try {
+    assertPrivateAgentRunPlacement(context)
+    // External-agent turns bypass the inference loop entirely: the driver
+    // proxies the message to the external product. Placement is still checked
+    // first so a malformed private binding cannot reach any provider.
+    if (
+      context.agent.executionMode === 'external_mcp'
+      && handoffMarker.kind === 'none'
+    ) {
+      await runExternalConversation(deps, payload, context, prompt)
+      return
+    }
     if (
       handoffMarker.kind === 'invalid'
       || (handoffMarker.kind === 'found' && !handoffLocator)

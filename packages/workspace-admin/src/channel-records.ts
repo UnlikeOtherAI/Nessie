@@ -186,7 +186,7 @@ export const loadLastMessageAtByThread = async (
 }
 
 export const ensureDefaultThread = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   channelId: string,
 ): Promise<string> => {
   const existingThread = await prisma.thread.findFirst({

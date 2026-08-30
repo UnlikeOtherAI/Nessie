@@ -124,11 +124,13 @@ export const loadRunContext = async (
           model: true,
           name: true,
           parentAgentId: true,
+          ownerUserId: true,
           provider: true,
           // Optional explicit per-run caps; absent keys fall through to the
           // deployment backstop (see run-budget.ts).
           runLimits: true,
           systemPrompt: true,
+          visibility: true,
         },
       },
       thread: {
@@ -141,6 +143,7 @@ export const loadRunContext = async (
               projectId: true,
               teamId: true,
               systemChannelType: true,
+              dmKey: true,
             },
           },
         },
@@ -150,6 +153,7 @@ export const loadRunContext = async (
         select: { id: true },
         take: 1,
       },
+      trigger: { select: { agentId: true, targetThreadId: true } },
     },
   })
 
@@ -167,6 +171,7 @@ export const loadRunContext = async (
       threadId: run.thread.id,
       createdAt: run.createdAt,
       replyPlacement: run.replyPlacement,
+      trigger: run.trigger,
     },
     task,
   }

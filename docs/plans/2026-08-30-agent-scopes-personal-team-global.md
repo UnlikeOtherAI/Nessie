@@ -3,9 +3,9 @@
 **Status:** approved; phased implementation in progress. The server-core
 visibility slice is implemented: stored visibility + constraints, shared read
 predicate, enumerated reader gates, placement refusal, creation contract, and
-subtask inheritance. Personal-agent home DMs, PA presence, admin UI, global
-agent reachability, run-start placement assertion, and deactivation pausing
-remain later phases.
+subtask inheritance. Personal-agent home DMs, the worker run-start placement
+assertion, and owner-deactivation trigger pausing are implemented. PA presence,
+admin UI, and global agent reachability remain later phases.
 **Date:** 2026-08-30
 **Related:** [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership = stewardship; this doc adds *visibility*, a different fact),
@@ -350,8 +350,9 @@ decided an owned agent keeps executing when its owner leaves, and for
 workspace agents that stands. A private agent whose owner is deactivated has
 an audience of zero: triggers firing, spend accruing, nothing anyone can see.
 So deactivation **pauses** the member's private agents (their triggers
-disabled with a durable owner alert, per the transition-owns-the-signal
-rule), and org owners see *existence without content* — a "N paused private
+disabled with one durable audit transition; the deactivated owner is no longer
+an entitled alert recipient, and the signal is never widened), and org owners
+see *existence without content* — a "N paused private
 agents" line in the people-tree's buckets, no names, no prompts — so an admin
 can act on the spend without reading private configuration. Reactivation is
 explicit, mirroring `POST /api/triggers/:id/reauthorize`. The

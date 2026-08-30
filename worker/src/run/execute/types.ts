@@ -44,6 +44,8 @@ export type ExecutionDependencies = {
 export type RunContext = {
   agent: {
     agentKind: 'personal_assistant' | 'shared'
+    visibility?: 'private' | 'workspace'
+    ownerUserId?: string | null
     effort: AgentEffort
     executionMode: 'inference' | 'external_mcp'
     id: string
@@ -68,6 +70,7 @@ export type RunContext = {
     projectId: string
     teamId: string
     systemChannelType: ChannelSystemType | null
+    dmKey?: string | null
   }
   /**
    * Scoped sources this run has consumed, accumulated as they arrive (memories
@@ -89,6 +92,7 @@ export type RunContext = {
      * `resolveReplyRootMessageId`.
      */
     replyPlacement: RunReplyPlacement | null
+    trigger?: { agentId: string | null; targetThreadId: string | null } | null
   }
   task: {
     id: string

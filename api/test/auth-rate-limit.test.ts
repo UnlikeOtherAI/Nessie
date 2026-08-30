@@ -19,6 +19,7 @@ const dbStub = [
   'export const writeAuditEntry = async (_prisma, entry) => {',
   '  globalThis.__rateLimitAuditWrites.push(entry)',
   '}',
+  'export const writeAuditEntryInTransaction = async () => {}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

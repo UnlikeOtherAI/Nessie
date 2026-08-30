@@ -12,6 +12,7 @@ import {
 
 import { assertGenericAgentToolPolicyInput } from './agent-tool-policy-core.js'
 import { AGENT_OWNER_MEMBERSHIP_SELECT, mapAgentRecord } from './agent-record.js'
+import { ensurePrivateAgentHome } from './private-agent-home.js'
 
 // `Agent.runLimits` write value. `undefined` leaves the stored limits alone
 // (the ordinary "field omitted" carry-forward), an explicit `null` clears them,
@@ -138,7 +139,7 @@ export const assertAgentOwnerIsActiveMember = async (
 
 /** Validate creation before a route spends on optional follow-on work. */
 export const validateAgentCreateInput = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   input: Pick<
     CreateAgentRecordInput,
     'organizationId' | 'ownerUserId' | 'parentAgentId' | 'toolPolicy' | 'visibility'
@@ -193,33 +194,66 @@ export const createAgentRecord = async (
     throw new Error('PERSONAL_ASSISTANT_CREATE_REQUIRES_BOOTSTRAP')
   }
 
-  await validateAgentCreateInput(prisma, input)
-
-  const agent = await prisma.agent.create({
-    data: {
-      agentKind: 'shared',
-      avatarAttachmentId: input.avatarAttachmentId,
-      avatarBackgroundColor: input.avatarBackgroundColor ?? randomAgentAvatarBackgroundColor(),
-      delegationMode: 'none',
-      effort: input.effort ?? 'medium',
-      model: input.model,
-      name: input.name,
-      organizationId: input.organizationId,
-      ownerUserId: input.ownerUserId,
-      parentAgentId: input.parentAgentId,
-      projectId: input.projectId,
-      provider: input.provider,
-      role: input.role,
-      runLimits: runLimitsWriteValue(input.runLimits),
-      surfacePolicy: 'shared',
-      systemPrompt: input.systemPrompt,
-      systemManaged: false,
-      teamId: input.teamId,
-      toolPolicy: input.toolPolicy ?? undefined,
-      visibility: input.visibility ?? 'workspace',
-    },
-    include: agentRecordInclude,
+  const visibility = input.visibility ?? 'workspace'
+  const createData = (): Prisma.AgentUncheckedCreateInput => ({
+    agentKind: 'shared',
+    avatarAttachmentId: input.avatarAttachmentId,
+    avatarBackgroundColor: input.avatarBackgroundColor ?? randomAgentAvatarBackgroundColor(),
+    delegationMode: 'none',
+    effort: input.effort ?? 'medium',
+    model: input.model,
+    name: input.name,
+    organizationId: input.organizationId,
+    ownerUserId: input.ownerUserId,
+    parentAgentId: input.parentAgentId,
+    projectId: input.projectId,
+    provider: input.provider,
+    role: input.role,
+    runLimits: runLimitsWriteValue(input.runLimits),
+    surfacePolicy: 'shared',
+    systemPrompt: input.systemPrompt,
+    systemManaged: false,
+    teamId: input.teamId,
+    toolPolicy: input.toolPolicy ?? undefined,
+    visibility,
   })
 
-  return mapAgentRecord(agent)
+  // Preserve the ordinary workspace-agent write path. Private creation alone
+  // needs the encompassing transaction because its home is part of the agent's
+  // creation invariant, not a follow-up repair.
+  if (visibility === 'workspace') {
+    await validateAgentCreateInput(prisma, input)
+    const agent = await prisma.agent.create({
+      data: createData(),
+      include: agentRecordInclude,
+    })
+    return mapAgentRecord(agent)
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await validateAgentCreateInput(tx, input)
+    const ownerUserId = input.ownerUserId
+    if (!ownerUserId) {
+      throw new AgentManagementError(
+        AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_OWNER_REQUIRED,
+        'Private agents require an owner.',
+      )
+    }
+    const agent = await tx.agent.create({
+      data: createData(),
+      select: { id: true },
+    })
+    const homeChannelId = await ensurePrivateAgentHome(tx, {
+      agentId: agent.id,
+      label: input.name,
+      organizationId: input.organizationId,
+      ownerUserId,
+      teamId: input.teamId,
+    })
+    const record = await tx.agent.findUniqueOrThrow({
+      where: { id: agent.id },
+      include: agentRecordInclude,
+    })
+    return mapAgentRecord({ ...record, homeChannelId })
+  })
 }

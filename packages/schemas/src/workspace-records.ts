@@ -133,6 +133,8 @@ export const AgentRecordSchema = z.object({
   agentKind: z.enum(['shared', 'personal_assistant']).optional(),
   systemManaged: z.boolean().optional(),
   visibility: AgentVisibilitySchema,
+  /** Owner-only DM provisioned together with a private agent. */
+  homeChannelId: ChannelIdSchema.optional(),
   surfacePolicy: z.enum(['shared', 'dm_only']).optional(),
   delegationMode: z.enum(['none', 'act_as_requesting_user']).optional(),
   currentRunId: RunIdSchema.optional(),

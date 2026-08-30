@@ -121,6 +121,7 @@ const AgentCreateInputSchema = z.object({
   runLimits: AgentRunLimitsSchema.nullish(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   visibility: AgentVisibilitySchema.optional(),
+  ownerUserId: z.string().uuid().optional(),
 })
 
 export const runAgentCreateTool = async (
@@ -129,6 +130,14 @@ export const runAgentCreateTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = AgentCreateInputSchema.parse(input)
   const member = await resolveActingMember(context)
+
+  if (
+    args.visibility === 'private'
+    && args.ownerUserId !== undefined
+    && args.ownerUserId !== member.userId
+  ) {
+    throw new Error('A private agent can only be created for you.')
+  }
 
   // Same gate as the route: a model/provider pair must exist in the Ledger
   // catalogue, so chat cannot mint an agent pointing at a model that will fail
@@ -171,7 +180,9 @@ export const runAgentCreateTool = async (
       `Created agent "${agent.name}" (${agent.role})`,
       `agentId=${agent.id}`
       + (agent.model ? ` | model=${agent.provider ?? '?'}/${agent.model}` : ' | model=deployment default'),
-      'It is not in any channel yet — an owner can bind it with agent_bind_channel.',
+      agent.homeChannelId
+        ? `Its private home is channelId=${agent.homeChannelId}.`
+        : 'It is not in any channel yet — an owner can bind it with agent_bind_channel.',
     ].join('\n'),
     toolName: 'agent_create',
   }

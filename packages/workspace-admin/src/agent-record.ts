@@ -188,6 +188,7 @@ export const mapAgentRecord = (agent: {
   agentKind: 'personal_assistant' | 'shared'
   systemManaged: boolean
   visibility: 'private' | 'workspace'
+  homeChannelId?: string
   surfacePolicy: 'dm_only' | 'shared'
   delegationMode: 'act_as_requesting_user' | 'none'
   status: 'error' | 'executing' | 'idle' | 'offline' | 'thinking' | 'waiting_approval'
@@ -222,6 +223,7 @@ export const mapAgentRecord = (agent: {
     agentKind: agent.agentKind,
     systemManaged: agent.systemManaged,
     visibility: agent.visibility,
+    ...(agent.homeChannelId ? { homeChannelId: parseChannelId(agent.homeChannelId) } : {}),
     surfacePolicy: agent.surfacePolicy,
     delegationMode: agent.delegationMode,
     currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,

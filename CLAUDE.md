@@ -835,7 +835,9 @@ service function the route calls.
   accepts optional `visibility` (`workspace` by default, or owner-only
   `private`) and deliberately exposes no `agentKind`/`systemManaged`/
   `surfacePolicy`/`delegationMode`/`parentAgentId`; private creation stamps the
-  live acting member as owner. `assertGenericAgentToolPolicyInput` still refuses
+  live acting member as owner and atomically provisions its owner-only home DM,
+  returning that `homeChannelId`. Asking for somebody else's private agent is
+  refused in words. `assertGenericAgentToolPolicyInput` still refuses
   every `requiresExplicitGrant` key and DeepWater provenance marker, so chat
   cannot grant itself research.
 - `agent_bind_channel` → `bindAgentToChannel`. Reproduces all four gates of
@@ -858,6 +860,16 @@ deactivated membership is refused. Deliberately **not** included: agent update,
 agent delete, policy-target mutation, or anything touching the DeepWater bundle.
 `schedule_task` remains the un-gated "schedule *me*" tool; `agent_trigger_create`
 is the owner action on *another* agent.
+
+Private creation is one transaction: the agent, its
+`agent:{org}:{owner}:{agent}` private DM, the sole owner membership, default
+thread, and direct home binding either all commit or none do. Database
+constraints independently refuse a second home member, a malformed `agent:` DM,
+or a private-agent binding to any other channel. The worker re-checks the
+loaded destination before inference and permits only that home DM or the
+agent's own trigger thread. Owner deactivation disables only private-agent
+triggers in the membership transaction, records one aggregate audit transition
+with no widened recipient, and does not auto-resume on reactivation.
 
 **Reuse, never fork.** `api/src/services/*` cannot be imported by the worker, so
 the shared functions live in **`@nessie/workspace-admin`** (mirroring how
