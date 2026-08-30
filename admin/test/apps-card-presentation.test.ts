@@ -206,15 +206,25 @@ test('a verdict is never worded over an app that is connected and working', () =
   assert.equal(appUnavailableExplanation(app({ state: 'error', trustLevel: 'blocked' })), null)
 })
 
-test('connecting is disabled without promising to resolve itself, because it may never', () => {
+test('connecting offers the way on, without promising to resolve itself', () => {
   // `connecting` is `pending_setup`: an install waiting on a key nobody has
-  // entered sits there indefinitely.
+  // entered sits there indefinitely, so the label must not say "Finishing".
+  // It was a *disabled* "Connecting…" beside a "Connecting…" pill — two
+  // elements, one word, nothing to click — which read as a rendering fault on
+  // the card. The state stays on the pill; the action is the doorway.
   assert.deepEqual(appCardAction(app({ state: 'connecting' })), {
-    kind: 'disabled',
-    label: 'Connecting…',
-    title: 'This connection has not finished setting up yet.',
-    tone: 'primary',
+    kind: 'link',
+    href: appDetailHref(app({ state: 'connecting' }), 'accounts'),
+    label: 'Finish setup',
+    tone: 'secondary',
   })
+})
+
+test('the connecting pill and its action never say the same word', () => {
+  const status = appCardStatus(app({ state: 'connecting' }))
+  const action = appCardAction(app({ state: 'connecting' }))
+  assert.equal(status.kind, 'pill')
+  assert.notEqual(status.kind === 'pill' ? status.label : null, action.kind === 'none' ? null : action.label)
 })
 
 test('paused opens the accounts tab to look, because nothing re-enables an install', () => {

@@ -186,12 +186,15 @@ export const appCardAction = (app: AppSummaryRecord): AppCardAction => {
     case 'connecting':
       // Not "Finishing the connection" — an install waiting on a key nobody
       // has entered is in this state indefinitely, and the card must not
-      // promise it is about to resolve itself. Opening the app is the way on.
+      // promise it is about to resolve itself. Opening the app is the way on,
+      // so the action *is* that doorway rather than a disabled restatement of
+      // the "Connecting…" pill beside it. Two elements reading the same word,
+      // one of them dead, named no decision and looked like a rendering fault.
       return {
-        kind: 'disabled',
-        label: 'Connecting…',
-        title: 'This connection has not finished setting up yet.',
-        tone: 'primary',
+        kind: 'link',
+        href: appDetailHref(app, 'accounts'),
+        label: 'Finish setup',
+        tone: 'secondary',
       }
     case 'connected':
     case 'multiple_accounts':

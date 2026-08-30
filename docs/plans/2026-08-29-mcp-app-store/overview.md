@@ -236,6 +236,16 @@ presenter's `STORE_CATALOG_SELECT` still cannot emit `authConfig`, a
 says nothing was saved, because a half-made connection they cannot see is worse
 than a refusal they can retry.
 
+A card's **pill and its action are two different jobs** — the pill says what
+state the app is in, the action says what you can do — so they must never carry
+the same word. `connecting` broke that: a "Connecting…" pill sat beside a
+*disabled* "Connecting…" button, which named no decision and read as a rendering
+fault. The state stays on the pill and the action is now the doorway the code's
+own comment already described ("Finish setup" → the accounts tab), because
+`connecting` is `lifecycleState: 'pending_setup'` — an install waiting on a key
+nobody entered sits there indefinitely, so the label must offer a way on without
+promising the system will resolve it.
+
 The catalogue's toolbar is one row: search, the All/Installed filter, then the
 category `<select>` right-aligned. Categories were a chip row, which the
 registry's ~5,500 apps made unusable — 16 categories do not fit a line, and a
