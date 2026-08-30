@@ -211,6 +211,8 @@ export const ChannelsPage = () => {
     inviteErrors,
     invitePendingAgent,
     dismissPendingAgent,
+    secretCapture,
+    dismissSecretCapture,
   } = useChannelComposer({
     activeChannel,
     threadMessages,
@@ -365,6 +367,7 @@ export const ChannelsPage = () => {
         composer={{
           attachments,
           dismissPendingAgent,
+          dismissSecretCapture,
           insertEmoji,
           inviteErrors,
           invitePendingAgent,
@@ -378,6 +381,7 @@ export const ChannelsPage = () => {
           sendText,
           setMessage,
           setOversizePaste,
+          secretCapture,
         }}
         agentsTabAvailable={agentsTabAvailable}
         deepWaterLauncher={deepWaterLauncher}

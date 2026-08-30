@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { captureUserMessageMemory } from '@nessie/memory'
 import {
   CHAT_MESSAGE_MAX_CHARS,
+  detectSecrets,
   parseChannelId,
   parseThreadId,
   parseUserId,
@@ -83,6 +84,20 @@ export const registerCreateThreadMessageRoute = (
     // Attachment-only posts carry no text; the stored message content is the
     // empty string and the attachments are the payload.
     const content = body.content ?? ''
+    const detectedSecrets = detectSecrets(content)
+    if (detectedSecrets.length > 0) {
+      // This is deliberately before message creation, memory capture, model
+      // dispatch, websocket previews, and any application logging of content.
+      // The client uses the same structural scanner, but the server remains
+      // the authoritative containment boundary for pasted or bypassed input.
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'Nessie did not send this message because it contains a credential. Save it through Secrets instead.',
+      )
+      return reply
+    }
 
     const result = await createThreadMessage(prisma, {
       content,
