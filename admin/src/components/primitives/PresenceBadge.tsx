@@ -1,6 +1,9 @@
 import type { PresenceState } from '../../lib/api-client'
 
 type PresenceBadgeProps = {
+  // Focus mode replaces the ordinary solid online dot with an intentional
+  // hollow ring. It is a status marker, not a second availability state.
+  focusModeEnabled?: boolean
   state: PresenceState
   // Dot diameter in px.
   size?: number
@@ -14,6 +17,7 @@ type PresenceBadgeProps = {
 // Three-state presence dot: filled green when online, an amber "z" when away
 // (idle / tab hidden), and an empty muted ring when offline.
 export const PresenceBadge = ({
+  focusModeEnabled = false,
   state,
   size = 10,
   ringColor = 'var(--panel)',
@@ -23,6 +27,20 @@ export const PresenceBadge = ({
     width: size,
     height: size,
     boxShadow: `0 0 0 ${ringWidth}px ${ringColor}`,
+  }
+
+  if (focusModeEnabled) {
+    return (
+      <span
+        aria-hidden
+        className="block rounded-full"
+        style={{
+          ...base,
+          background: '#ffffff',
+          border: '1.5px dashed var(--success)',
+        }}
+      />
+    )
   }
 
   if (state === 'online') {

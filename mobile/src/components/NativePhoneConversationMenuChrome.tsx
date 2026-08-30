@@ -35,6 +35,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
 export const NativePhoneConversationMenuChrome = ({
   accentColor,
   accountAvatarUrl,
+  accountFocusModeEnabled,
   accountName,
   accountPresence,
   bottomInset,
@@ -137,6 +138,7 @@ export const NativePhoneConversationMenuChrome = ({
       <NativePhoneHeader
         accentColor={accentColor}
         accountAvatarUrl={accountAvatarUrl}
+        accountFocusModeEnabled={accountFocusModeEnabled}
         accountName={accountName}
         accountPresence={accountPresence}
         headerSurface={headerSurface}

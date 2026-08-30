@@ -145,6 +145,8 @@ test('the native phone home chrome delegates workspace, history, account, and Ch
   assert.match(accountPopover, /Help &amp; feedback/)
   assert.match(account, /type: 'nessie:account'/)
   assert.match(account, /userPresence: selfPresence\?\.state \?\? 'offline'/)
+  assert.match(account, /userFocusMode: focusModeEnabled/)
+  assert.match(phoneHeader, /accountFocusModeEnabled/)
   assert.match(mobileShell, /requestNativeFullRefresh/)
   assert.match(mobileShell, /type: 'nessie:full-refresh'/)
   assert.match(creation, /onCreateProject\(\)/)

@@ -491,6 +491,7 @@ const Shell = (): React.JSX.Element => {
         <NativePhoneConversationMenuChrome
           accentColor={accent}
           accountAvatarUrl={nativeAccount.avatarUrl}
+          accountFocusModeEnabled={nativeAccount.focusModeEnabled}
           accountName={nativeAccount.name}
           accountPresence={nativeAccount.presence}
           bottomInset={insets.bottom}

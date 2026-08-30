@@ -88,6 +88,7 @@ type UserAvatarProps = AvatarSources & {
   size?: number
   className?: string
   // Overlay the user's presence dot / active-status emoji. Both need `userId`.
+  focusPresence?: boolean
   showPresence?: boolean
   showStatus?: boolean
   // Background the avatar sits on (for the badges' separating ring).
@@ -103,6 +104,7 @@ export const UserAvatar = ({
   token,
   size = 32,
   className,
+  focusPresence,
   showPresence,
   showStatus,
   ringColor,
@@ -150,6 +152,7 @@ export const UserAvatar = ({
     <AvatarBadges
       ringColor={ringColor}
       ringWidth={presenceRingWidth}
+      focusPresence={focusPresence}
       showPresence={showPresence}
       showStatus={showStatus}
       size={size}

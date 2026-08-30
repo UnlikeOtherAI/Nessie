@@ -42,6 +42,17 @@ test('native presentation normalizes badge counts and preserves an authoritative
   assert.equal(nativeAttentionTotal(message), 9)
 })
 
+test('native account focus mode is preserved from the web shell', () => {
+  const focused = reduceNativeShellPresentation(DEFAULT_NATIVE_SHELL_PRESENTATION, {
+    type: 'nessie:account',
+    userFocusMode: true,
+    userPresence: 'online',
+  })
+
+  assert.equal(focused.nativeAccount.focusModeEnabled, true)
+  assert.equal(focused.nativeAccount.presence, 'online')
+})
+
 test('only presentation messages enter the native presentation reducer', () => {
   assert.equal(isNativeShellPresentationMessage({ type: 'theme' }), true)
   assert.equal(isNativeShellPresentationMessage({ type: 'nessie:workspace' }), true)

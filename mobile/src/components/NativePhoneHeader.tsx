@@ -12,6 +12,7 @@ import {
 export type NativePhoneHeaderProps = {
   accentColor: string
   accountAvatarUrl: string | null
+  accountFocusModeEnabled: boolean
   accountName: string | null
   accountPresence: 'away' | 'offline' | 'online'
   headerSurface: string
@@ -30,15 +31,19 @@ const initial = (label: string | null, fallback: string): string =>
   [...(label?.trim() ?? '')][0]?.toUpperCase() ?? fallback
 
 const AccountPresenceIndicator = ({
+  focusModeEnabled,
   headerSurface,
   headerText,
   state,
 }: {
+  focusModeEnabled: boolean
   headerSurface: string
   headerText: string
   state: 'away' | 'offline' | 'online'
 }): React.JSX.Element => {
-  const dotStyle = state === 'online'
+  const dotStyle = focusModeEnabled
+    ? { backgroundColor: '#ffffff', borderColor: '#20a86b', borderStyle: 'dashed' as const, borderWidth: 1.5 }
+    : state === 'online'
     ? { backgroundColor: '#20a86b' }
     : state === 'away'
       ? { backgroundColor: '#e6a323' }
@@ -110,6 +115,7 @@ const NativePhoneToolbarControls = ({
 export const NativePhoneHeader = ({
   accentColor,
   accountAvatarUrl,
+  accountFocusModeEnabled,
   accountName,
   accountPresence,
   headerSurface,
@@ -207,6 +213,7 @@ export const NativePhoneHeader = ({
             </View>
           )}
           <AccountPresenceIndicator
+            focusModeEnabled={accountFocusModeEnabled}
             headerSurface={headerSurface}
             headerText={headerText}
             state={accountPresence}

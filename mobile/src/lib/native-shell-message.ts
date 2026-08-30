@@ -27,6 +27,7 @@ export type NativeShellMessage = {
   type?: string
   url?: string
   userAvatarUrl?: string
+  userFocusMode?: boolean
   userName?: string
   userPresence?: 'away' | 'offline' | 'online'
   userStatusEmoji?: string

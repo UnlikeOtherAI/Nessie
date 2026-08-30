@@ -9,6 +9,7 @@ type AvatarBadgesProps = {
   // Diameter of the wrapped avatar in px.
   size: number
   children: ReactNode
+  focusPresence?: boolean
   showPresence?: boolean
   showStatus?: boolean
   // Background the avatar sits on, used for the badges' separating ring.
@@ -23,6 +24,7 @@ export const AvatarBadges = ({
   userId,
   size,
   children,
+  focusPresence = false,
   showPresence = true,
   showStatus = true,
   ringColor = 'var(--panel)',
@@ -65,6 +67,7 @@ export const AvatarBadges = ({
       {showPresence && (
         <span className="absolute" style={{ bottom: -1, right: -1 }}>
           <PresenceBadge
+            focusModeEnabled={focusPresence}
             ringColor={ringColor}
             ringWidth={ringWidth}
             size={dotSize}

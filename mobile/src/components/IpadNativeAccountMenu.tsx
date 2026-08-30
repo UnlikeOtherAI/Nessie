@@ -4,6 +4,7 @@ import { type IpadNativeChromeTheme } from '../lib/ipad-native-chrome'
 
 export type IpadNativeAccount = {
   avatarUrl: string | null
+  focusModeEnabled: boolean
   name: string | null
   presence: 'away' | 'offline' | 'online'
   statusEmoji: string | null
@@ -17,10 +18,13 @@ type IpadNativeAccountButtonProps = IpadNativeAccount & {
 const initial = (name: string | null): string => [...(name?.trim() ?? '')][0]?.toUpperCase() ?? 'U'
 
 const PresenceBadge = ({
+  focusModeEnabled,
   presence,
   theme,
-}: Pick<IpadNativeAccountButtonProps, 'presence' | 'theme'>): React.JSX.Element => {
-  const dot = presence === 'online'
+}: Pick<IpadNativeAccountButtonProps, 'focusModeEnabled' | 'presence' | 'theme'>): React.JSX.Element => {
+  const dot = focusModeEnabled
+    ? { backgroundColor: '#ffffff', borderColor: '#20a86b', borderStyle: 'dashed' as const, borderWidth: 1.5 }
+    : presence === 'online'
     ? { backgroundColor: '#20a86b' }
     : presence === 'away'
       ? { backgroundColor: '#e6a323' }
@@ -39,6 +43,7 @@ const PresenceBadge = ({
 // delegates to the WebView, which keeps the same account menu and actions.
 export const IpadNativeAccountButton = ({
   avatarUrl,
+  focusModeEnabled,
   name,
   onPress,
   presence,
@@ -67,7 +72,7 @@ export const IpadNativeAccountButton = ({
         <Text style={styles.statusEmoji}>{statusEmoji}</Text>
       </View>
     ) : null}
-    <PresenceBadge presence={presence} theme={theme} />
+    <PresenceBadge focusModeEnabled={focusModeEnabled} presence={presence} theme={theme} />
   </Pressable>
 )
 

@@ -5,6 +5,7 @@ import type { NativeShellMessage } from '../lib/native-shell-message'
 
 type NativeAccount = {
   avatarUrl: string | null
+  focusModeEnabled: boolean
   name: string | null
   presence: 'away' | 'offline' | 'online'
   statusEmoji: string | null
@@ -41,7 +42,7 @@ export const DEFAULT_NATIVE_SHELL_PRESENTATION: NativeShellPresentation = {
   background: DEFAULT_BG,
   chromeSurface: '#222629',
   inactive: '#8a8f98',
-  nativeAccount: { avatarUrl: null, name: null, presence: 'offline', statusEmoji: null },
+  nativeAccount: { avatarUrl: null, focusModeEnabled: false, name: null, presence: 'offline', statusEmoji: null },
   phoneHeaderSurface: '#2b2018',
   phoneHeaderText: '#fffdf8',
   phoneOnAccent: '#fffdf8',
@@ -108,6 +109,7 @@ export const reduceNativeShellPresentation = (
       ...current,
       nativeAccount: {
         avatarUrl: optionalText(message.userAvatarUrl),
+        focusModeEnabled: message.userFocusMode === true,
         name: optionalText(message.userName),
         presence: message.userPresence === 'online' || message.userPresence === 'away'
           ? message.userPresence

@@ -4,6 +4,7 @@ import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { MeUser } from '@nessie/schemas'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { useFocusMode } from '../../providers/FocusModeProvider'
 import { PresenceControl } from './user-menu/PresenceControl'
 import { StatusSection } from './user-menu/StatusSection'
 
@@ -45,6 +46,7 @@ export const UserMenuPopover = ({
   placement = 'rail',
   showFeedbackLink = false,
 }: UserMenuPopoverProps) => {
+  const { focusModeEnabled } = useFocusMode()
   const [position, setPosition] = useState<MenuPosition | null>(null)
 
   useLayoutEffect(() => {
@@ -94,6 +96,7 @@ export const UserMenuPopover = ({
             avatarAttachmentId={user.avatarAttachmentId}
             avatarUrl={user.avatarUrl}
             displayName={user.displayName}
+            focusPresence={focusModeEnabled}
             ringColor="var(--panel)"
             showPresence
             showStatus

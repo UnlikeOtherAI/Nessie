@@ -3,6 +3,7 @@ import { UserAvatar } from '../../components/primitives/UserAvatar'
 import { useMyAvatarRevision } from '../../facades/auth/hooks'
 import { isReactNativeWebView } from '../../lib/mobile-shell'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useFocusMode } from '../../providers/FocusModeProvider'
 import { useUserPresence } from '../../providers/PresenceProvider'
 import { UserMenuPopover, type UserMenuPopoverPlacement } from './UserMenuPopover'
 import { useTransientMenu } from './TransientMenuContext'
@@ -32,6 +33,7 @@ export const UserMenuTrigger = ({
   showFeedbackLink = false,
 }: UserMenuTriggerProps) => {
   const { me, token } = useAuthSession()
+  const { focusModeEnabled } = useFocusMode()
   // Follows a profile-photo change made on the settings page: the relay URL is
   // fixed, so without this the account button keeps the browser-cached image.
   const avatarRevision = useMyAvatarRevision()
@@ -56,10 +58,11 @@ export const UserMenuTrigger = ({
         userAvatarUrl: me.user.avatarUrl ?? null,
         userName: me.user.displayName,
         userPresence: selfPresence?.state ?? 'offline',
+        userFocusMode: focusModeEnabled,
         userStatusEmoji: selfPresence?.statusEmoji ?? null,
       }),
     )
-  }, [me, nativeShellBridge, selfPresence?.state, selfPresence?.statusEmoji])
+  }, [focusModeEnabled, me, nativeShellBridge, selfPresence?.state, selfPresence?.statusEmoji])
 
   if (!me) return null
 
@@ -85,6 +88,7 @@ export const UserMenuTrigger = ({
           avatarAttachmentId={me.user.avatarAttachmentId}
           avatarUrl={me.user.avatarUrl}
           displayName={me.user.displayName}
+          focusPresence={focusModeEnabled}
           revision={avatarRevision}
           ringColor={ringColor}
           showPresence
