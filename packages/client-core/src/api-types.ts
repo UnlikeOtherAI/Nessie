@@ -372,6 +372,8 @@ export type AgentTriggerRecord = {
   name?: string
   description?: string
   config: Record<string, unknown>
+  healthReason?: string
+  healthDetail?: string
   webhookApiKey?: string
   targetChannelId?: string
   targetThreadId?: string

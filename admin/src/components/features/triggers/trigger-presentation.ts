@@ -68,6 +68,8 @@ export const getTriggerTone = (status: AgentTriggerRecord['status']) => {
       return 'warning' as const
     case 'error':
       return 'danger' as const
+    case 'needs_reauthorization':
+      return 'warning' as const
     default:
       return 'muted' as const
   }
@@ -197,3 +199,41 @@ export const getTriggerEventNames = (trigger: AgentTriggerRecord): string[] =>
         (value): value is string => typeof value === 'string' && value.trim().length > 0,
       )
     : []
+
+/**
+ * What a person should read when a schedule has stopped, and what they can do.
+ *
+ * The reason is a stable server code rather than a sentence, so the copy lives
+ * here next to the rest of the trigger presentation. Before this the Triggers
+ * page could show that a schedule was in ERROR but never why — the cause was
+ * buried in the newest delivery row, which is how one production sweep stayed
+ * broken and unexplained for nineteen days.
+ */
+export const TRIGGER_HEALTH_COPY: Record<string, string> = {
+  uoa_identity_unverifiable:
+    'This schedule can no longer prove the UnlikeOtherAI identity it was created '
+    + 'with, so it has stopped running. Reauthorize it to resume.',
+  member_inactive:
+    'The person this schedule runs as is no longer an active member of this '
+    + 'organization, so it has stopped running.',
+  team_unreachable:
+    'The team this schedule runs in is no longer reachable for that person, so '
+    + 'it has stopped running.',
+  channel_access_lost:
+    'The person this schedule runs as can no longer reach its target channel, so '
+    + 'it has stopped running.',
+  launch_origin_invalid:
+    'This schedule\'s saved launch identity is missing or inconsistent, so it '
+    + 'has stopped running.',
+}
+
+export const getTriggerHealthMessage = (
+  trigger: Pick<AgentTriggerRecord, 'healthDetail' | 'healthReason'>,
+): string | null => {
+  if (!trigger.healthReason) return null
+  return (
+    TRIGGER_HEALTH_COPY[trigger.healthReason]
+    ?? trigger.healthDetail
+    ?? 'This schedule has stopped running.'
+  )
+}

@@ -175,6 +175,11 @@ export const AgentTriggerRecordSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   config: z.record(z.unknown()),
+  // Why a non-runnable schedule stopped: a stable code the surface turns into
+  // copy, plus the sentence the fire path composed. Without these the page can
+  // show that a trigger failed but never what to do about it.
+  healthReason: z.string().optional(),
+  healthDetail: z.string().optional(),
   webhookApiKey: z.string().optional(),
   targetChannelId: ChannelIdSchema.optional(),
   targetThreadId: ThreadIdSchema.optional(),

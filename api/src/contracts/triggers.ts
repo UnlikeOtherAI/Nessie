@@ -81,6 +81,12 @@ export const FireAgentTriggerBodySchema = z.object({
   payload: z.unknown().optional(),
 })
 
+// `takeOver` is the owner's explicit "run this as me instead" — never implicit,
+// because re-pointing a schedule's workspace moves its billing attribution.
+export const ReauthorizeAgentTriggerBodySchema = z.object({
+  takeOver: z.boolean().optional(),
+})
+
 export const PublishEventBodySchema = z.object({
   dedupeKey: z.string().min(1).optional(),
   eventType: NonEmptyStringSchema,

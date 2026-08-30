@@ -62,6 +62,15 @@ const redactTriggerConfig = (value: unknown): Record<string, unknown> => {
     config['apiKey'] = '[redacted]'
   }
 
+  // Server-owned provenance never leaves the server. `launchOrigin` carries the
+  // creator's UOA subject, their external organisation and workspace ids, and
+  // their credential epoch — internal identity metadata that no client reads and
+  // that has no business in an API response. Callers cannot write these keys
+  // (`stripServerOwnedTriggerConfig`); this is the matching read-side rule.
+  for (const key of ['createdByUserId', 'createdViaTool', 'launchOrigin']) {
+    delete config[key]
+  }
+
   return config
 }
 
@@ -98,6 +107,8 @@ export const mapTriggerRecord = (
     lastFiredAt: Date | null
     name: string | null
     nextRunAt: Date | null
+    healthDetail?: string | null
+    healthReason?: string | null
     status: 'active' | 'paused' | 'error' | 'needs_reauthorization'
     targetChannelId: string | null
     targetThreadId: string | null
@@ -116,6 +127,8 @@ export const mapTriggerRecord = (
   name: trigger.name ?? undefined,
   description: trigger.description ?? undefined,
   config: redactTriggerConfig(trigger.config),
+  ...(trigger.healthReason ? { healthReason: trigger.healthReason } : {}),
+  ...(trigger.healthDetail ? { healthDetail: trigger.healthDetail } : {}),
   ...(audience.includeWebhookApiKey
     ? { webhookApiKey: extractWebhookApiKey(trigger.config) }
     : {}),
