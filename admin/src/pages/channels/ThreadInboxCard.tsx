@@ -18,6 +18,7 @@ import { buildFeedItems } from '../../components/features/channels/channel-helpe
 import { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
 import { useChannelMentions } from './useChannelMentions'
+import { splitThreadInboxMessages } from './thread-inbox-presentation'
 
 type ThreadInboxCardProps = {
   activity: ThreadActivity
@@ -67,6 +68,10 @@ export const ThreadInboxCard = ({
     () => (rootQuery.data?.message ? [rootQuery.data.message, ...(repliesQuery.data ?? [])] : []),
     [repliesQuery.data, rootQuery.data],
   )
+  const inboxMessages = useMemo(
+    () => splitThreadInboxMessages(rootQuery.data?.message, repliesQuery.data ?? []),
+    [repliesQuery.data, rootQuery.data],
+  )
   const getSendExtras = useCallback(
     () => ({ alsoSendToChannel, rootMessageId: activity.rootMessageId }),
     [activity.rootMessageId, alsoSendToChannel],
@@ -109,7 +114,7 @@ export const ThreadInboxCard = ({
         <div className="flex flex-shrink-0 items-center gap-2">
           {activity.unread ? (
             <button
-              className="admin-button-secondary text-xs"
+              className="admin-button admin-button-primary"
               disabled={markRead.isPending}
               onClick={() => markRead.mutate({
                 lastReadMessageId: activity.latestReply.id,
@@ -122,7 +127,7 @@ export const ThreadInboxCard = ({
             </button>
           ) : null}
           <button
-            className="admin-button-secondary text-xs"
+            className="admin-button admin-button-secondary"
             onClick={onOpen}
             type="button"
           >
@@ -150,7 +155,59 @@ export const ThreadInboxCard = ({
             channelUsers={channelUsers}
             editingContent={messageActions.editingContent}
             editingMessageId={messageActions.editingMessageId}
-            feedItems={buildFeedItems(messages)}
+            feedItems={buildFeedItems(inboxMessages.root)}
+            isPersonalAssistantConversation={false}
+            meAvatar={{
+              avatarAttachmentId: currentUser.avatarAttachmentId ?? undefined,
+              avatarUrl: currentUser.avatarUrl ?? undefined,
+            }}
+            meDisplayName={currentUser.displayName}
+            meUserId={currentUser.id}
+            optimisticMessages={[]}
+            pendingMessages={[]}
+            renderContent={renderContent}
+            token={token}
+            updatePending={messageActions.updatePending}
+            onAddReaction={messageActions.addReaction}
+            onCancelEdit={messageActions.cancelEdit}
+            onChangeEditingContent={messageActions.changeEditingContent}
+            onConfirmDelete={messageActions.confirmDelete}
+            onStartEdit={messageActions.startEdit}
+            onSubmitEdit={(messageId) => void messageActions.submitEdit(messageId)}
+          />
+          {inboxMessages.hiddenReplyCount > 0 ? (
+            <button
+              aria-label={`Open ${inboxMessages.hiddenReplyCount} earlier ${inboxMessages.hiddenReplyCount === 1 ? 'reply' : 'replies'}`}
+              className="group flex w-full items-center gap-3 px-5 py-3 text-[color:var(--tx3)] outline-none transition-colors hover:text-[color:var(--lnk)] focus-visible:rounded focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              onClick={onOpen}
+              type="button"
+            >
+              <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--sep)]" />
+              <span className="flex items-center gap-2 text-xs font-semibold">
+                <svg
+                  aria-hidden="true"
+                  className="h-3 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.75"
+                  viewBox="0 0 24 12"
+                >
+                  <path d="m1 2 4 8 4-8 4 8 4-8 4 8" />
+                </svg>
+                {inboxMessages.hiddenReplyCount} earlier {inboxMessages.hiddenReplyCount === 1 ? 'reply' : 'replies'}
+              </span>
+              <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--sep)]" />
+            </button>
+          ) : null}
+          <ChannelMessageFeed
+            agentById={agentMap}
+            agentMap={agentMap}
+            channelUsers={channelUsers}
+            editingContent={messageActions.editingContent}
+            editingMessageId={messageActions.editingMessageId}
+            feedItems={buildFeedItems(inboxMessages.recentReplies)}
             isPersonalAssistantConversation={false}
             meAvatar={{
               avatarAttachmentId: currentUser.avatarAttachmentId ?? undefined,
