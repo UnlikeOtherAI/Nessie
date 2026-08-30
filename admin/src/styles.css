@@ -1700,7 +1700,7 @@ a {
    receive it even when their browser is wider than the desktop breakpoint. */
 @media (any-pointer: coarse) {
   .admin-compose-actions {
-    gap: 1px;
+    gap: 6px;
   }
 
   .admin-compose-action {
