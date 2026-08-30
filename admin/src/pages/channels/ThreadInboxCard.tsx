@@ -5,7 +5,11 @@ import type {
   ChannelRecord,
   UserRecord,
 } from '../../lib/api-client'
-import { useThreadMessage, useThreadReplies } from '../../facades/threads/hooks'
+import {
+  useMarkThreadRead,
+  useThreadMessage,
+  useThreadReplies,
+} from '../../facades/threads/hooks'
 import type { ThreadActivity } from '../../facades/threads/activity-hooks'
 import { useChannelComposer } from '../../components/features/channels/useChannelComposer'
 import { ChannelComposer } from '../../components/features/channels/ChannelComposer'
@@ -73,6 +77,7 @@ export const ThreadInboxCard = ({
     getSendExtras,
     threadMessages: messages,
   })
+  const markRead = useMarkThreadRead()
   const messageActions = useChannelMessageActions(channel?.defaultThreadId)
   const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
   const isLoading = rootQuery.isLoading || repliesQuery.isLoading
@@ -101,13 +106,29 @@ export const ThreadInboxCard = ({
             {activity.unread ? ' · New activity' : ''}
           </div>
         </button>
-        <button
-          className="admin-button-secondary flex-shrink-0 text-xs"
-          onClick={onOpen}
-          type="button"
-        >
-          Open thread
-        </button>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {activity.unread ? (
+            <button
+              className="admin-button-secondary text-xs"
+              disabled={markRead.isPending}
+              onClick={() => markRead.mutate({
+                lastReadMessageId: activity.latestReply.id,
+                rootMessageId: activity.rootMessageId,
+                threadId: activity.threadId,
+              })}
+              type="button"
+            >
+              {markRead.isPending ? 'Marking read…' : 'Mark read'}
+            </button>
+          ) : null}
+          <button
+            className="admin-button-secondary text-xs"
+            onClick={onOpen}
+            type="button"
+          >
+            Open thread
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
