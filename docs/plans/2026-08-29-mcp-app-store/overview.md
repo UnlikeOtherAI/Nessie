@@ -3,9 +3,13 @@
 Browsing and installing an integration should feel like installing an app in
 Slack or Notion, not like configuring a server. `/apps` is that surface.
 
-**Status:** Phases 2 and 3 shipped — the catalogue, and the registry ingestion
-that fills it. Phases 4–8 (the generic MCP runtime, universal OAuth, platform
-auth UX, agent grants, custom servers) are still to come.
+**Status:** all eight phases shipped — the catalogue, registry ingestion, the
+generic MCP runtime, universal OAuth, platform auth UX, agent grants, and custom
+servers. What remained after that was making the store fill itself on a real
+deployment: the two catalogue seeds now run in `redeploy.sh` after the
+migration, and a scheduled worker sweep runs the registry sync ~every 6 hours
+(and once shortly after startup) so the ~5,500 apps arrive and stay fresh
+without anyone running a CLI.
 
 ## Table of Contents
 

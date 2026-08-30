@@ -54,6 +54,18 @@ fi
 echo "==> Applying database migrations"
 $COMPOSE run --rm --no-deps api pnpm --filter @nessie/api prisma:migrate:deploy
 
+# The App Store's first-party rows are seeded by migration, but their curated
+# copy, categories, trust and Featured flags — and the two curated connectors
+# (context7, deep-agent-crawl) — come from these seeds. Both are idempotent
+# upserts keyed on stable ids, and both preserve any field a curator has since
+# edited, so running them on every deploy converges the catalogue without
+# clobbering hand curation. Without this the store shows the raw first-party
+# rows as uncategorised "Other" cards. The ~5,500 registry apps are NOT seeded
+# here — that is the worker's scheduled sync (heavy, external, 6-hourly).
+echo "==> Seeding App Store catalogue (first-party + curated connectors)"
+$COMPOSE run --rm --no-deps api pnpm --filter @nessie/api seed:connectors
+$COMPOSE run --rm --no-deps api pnpm --filter @nessie/api seed:apps
+
 echo "==> Recreating api + worker + admin + web"
 $COMPOSE up -d
 
