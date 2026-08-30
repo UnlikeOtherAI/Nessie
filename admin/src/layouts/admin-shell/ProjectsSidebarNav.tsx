@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
 import { ProjectMembersDialog } from '../../components/shared/ProjectMembersDialog'
-import { RenameProjectDialog } from '../../components/shared/RenameProjectDialog'
+import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
@@ -37,7 +37,7 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
   const deleteProject = useDeleteProject()
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [renameTarget, setRenameTarget] = useState<ProjectRecord | null>(null)
+  const [editTarget, setEditTarget] = useState<ProjectRecord | null>(null)
   const [membersTarget, setMembersTarget] = useState<ProjectRecord | null>(null)
   const [menuProjectId, setMenuProjectId] = useState<string | null>(null)
   const { collapsedSections, toggleSection } = useCookieBackedSidebarSections(
@@ -126,11 +126,11 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
                         <button
                           onClick={() => {
                             setMenuProjectId(null)
-                            setRenameTarget(project)
+                            setEditTarget(project)
                           }}
                           type="button"
                         >
-                          Rename
+                          Edit
                         </button>
                         <button
                           onClick={() => {
@@ -168,12 +168,11 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
       </nav>
 
       <CreateProjectDialog onClose={() => setCreateOpen(false)} open={createOpen} />
-      {renameTarget ? (
-        <RenameProjectDialog
-          currentName={renameTarget.name}
-          onClose={() => setRenameTarget(null)}
+      {editTarget ? (
+        <EditProjectDialog
+          onClose={() => setEditTarget(null)}
           open
-          projectId={renameTarget.id}
+          project={editTarget}
         />
       ) : null}
       {membersTarget ? (

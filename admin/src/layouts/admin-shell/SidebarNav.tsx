@@ -6,7 +6,7 @@ import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
 import type {
   CreateChannelTarget,
-  RenameProjectTarget,
+  EditProjectTarget,
   SidebarAgentDm,
   SidebarGroupDm,
   SidebarMenu,
@@ -32,7 +32,7 @@ type SidebarNavProps = {
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onOpenCreateProject: () => void;
   onOpenPersonalAssistant: () => void;
-  onOpenRenameProject: (target: RenameProjectTarget) => void;
+  onOpenEditProject: (target: EditProjectTarget) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
   personalAssistantAgent: AgentRecord | null;
   personalAssistantBootstrapping: boolean;
@@ -77,7 +77,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     onOpenCreateChannel,
     onOpenCreateProject,
     onOpenPersonalAssistant,
-    onOpenRenameProject,
+    onOpenEditProject,
     onToggleStar,
     personalAssistantAgent,
     personalAssistantBootstrapping,
@@ -140,7 +140,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onNavigateProject={onNavigateProject}
           onOpenCreateChannel={onOpenCreateChannel}
           onOpenCreateProject={onOpenCreateProject}
-          onOpenRenameProject={onOpenRenameProject}
+          onOpenEditProject={onOpenEditProject}
           onToggleStar={onToggleStar}
           projectsCollapsed={projectsCollapsed}
           setSidebarMenu={setSidebarMenu}

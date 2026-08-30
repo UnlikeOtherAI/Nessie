@@ -1,15 +1,15 @@
 import { CreateChannelDialog } from '../../components/shared/CreateChannelDialog';
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog';
-import { RenameProjectDialog } from '../../components/shared/RenameProjectDialog';
-import type { CreateChannelTarget, RenameProjectTarget } from './types';
+import { EditProjectDialog } from '../../components/shared/EditProjectDialog';
+import type { CreateChannelTarget, EditProjectTarget } from './types';
 
 type SidebarDialogsProps = {
   createChannelTarget: CreateChannelTarget | null;
   createProjectOpen: boolean;
   onCloseCreateChannel: () => void;
   onCloseCreateProject: () => void;
-  onCloseRenameProject: () => void;
-  renameProjectTarget: RenameProjectTarget | null;
+  editProjectTarget: EditProjectTarget | null;
+  onCloseEditProject: () => void;
 };
 
 export const SidebarDialogs = ({
@@ -17,8 +17,8 @@ export const SidebarDialogs = ({
   createProjectOpen,
   onCloseCreateChannel,
   onCloseCreateProject,
-  onCloseRenameProject,
-  renameProjectTarget,
+  editProjectTarget,
+  onCloseEditProject,
 }: SidebarDialogsProps) => {
   return (
     <>
@@ -30,12 +30,11 @@ export const SidebarDialogs = ({
         teamId={createChannelTarget?.teamId}
       />
       <CreateProjectDialog onClose={onCloseCreateProject} open={createProjectOpen} />
-      {renameProjectTarget ? (
-        <RenameProjectDialog
-          currentName={renameProjectTarget.name}
-          onClose={onCloseRenameProject}
+      {editProjectTarget ? (
+        <EditProjectDialog
+          onClose={onCloseEditProject}
           open
-          projectId={renameProjectTarget.id}
+          project={editProjectTarget}
         />
       ) : null}
     </>

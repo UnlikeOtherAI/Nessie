@@ -1,5 +1,6 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
@@ -134,19 +135,13 @@ export const SidebarStarredSection = ({
                 onClick={() => onNavigateProject(project.id)}
                 type="button"
               >
-                <svg
-                  className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <ProjectAvatar
+                  avatarAttachmentId={project.avatarAttachmentId}
+                  avatarEmoji={project.avatarEmoji}
+                  name={project.name}
+                  size={18}
+                  token={token}
+                />
                 <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 {renderUnreadCount(unreadCount)}
                 {item.starred ? (

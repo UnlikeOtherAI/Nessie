@@ -966,7 +966,8 @@ a {
 
 .admin-sidebar-menu-project {
   top: 24px;
-  right: 0;
+  left: 0;
+  right: auto;
   width: 220px;
 }
 
