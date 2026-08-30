@@ -6,6 +6,7 @@ import {
   faPlus,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { RailTooltip } from './RailTooltip'
 import { useTransientMenu } from './TransientMenuContext'
 
 const MENU_GAP = 8
@@ -130,10 +131,21 @@ export const CreateMenuTrigger = ({
 }: CreateMenuTriggerProps) => {
   const buttonRef = useRef<HTMLButtonElement>(null)
   const { close, isOpen, toggle } = useTransientMenu()
+  const [tooltipOpen, setTooltipOpen] = useState(false)
+
+  const showTooltip = () => {
+    if (!isOpen) setTooltipOpen(true)
+  }
+
+  const toggleMenu = () => {
+    setTooltipOpen(false)
+    toggle()
+  }
 
   return (
     <>
       <button
+        aria-describedby={tooltipOpen ? 'create-menu-tooltip' : undefined}
         aria-expanded={isOpen}
         aria-haspopup="menu"
         aria-label="Create new"
@@ -141,9 +153,12 @@ export const CreateMenuTrigger = ({
           'admin-rail-create-trigger',
           isOpen ? 'is-open' : '',
         ].join(' ')}
-        onClick={toggle}
+        onBlur={() => setTooltipOpen(false)}
+        onClick={toggleMenu}
+        onFocus={showTooltip}
+        onMouseEnter={showTooltip}
+        onMouseLeave={() => setTooltipOpen(false)}
         ref={buttonRef}
-        title="Create new"
         type="button"
       >
         <FontAwesomeIcon aria-hidden="true" icon={faPlus} />
@@ -157,6 +172,13 @@ export const CreateMenuTrigger = ({
           onCreateProject={onCreateProject}
         />
       ) : null}
+      <RailTooltip
+        anchorRef={buttonRef}
+        description="Start a message, channel, or project."
+        id="create-menu-tooltip"
+        open={tooltipOpen}
+        title="Create new"
+      />
     </>
   )
 }

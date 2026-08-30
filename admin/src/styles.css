@@ -1410,9 +1410,9 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
-/* The rail clips its contents, so the focus explanation is portalled beside
-   it. This matches Slack's two-line, right-hand focus-mode hover affordance. */
-.focus-mode-tooltip {
+/* The rail clips its contents, so its control explanations are portalled beside
+   it. This matches Slack's two-line, right-hand hover affordance. */
+.rail-tooltip {
   position: fixed;
   z-index: 90;
   display: flex;
@@ -1430,12 +1430,12 @@ a {
   line-height: 1.35;
 }
 
-.focus-mode-tooltip strong {
+.rail-tooltip strong {
   font-size: 14px;
   font-weight: var(--font-weight-semibold);
 }
 
-.focus-mode-tooltip span {
+.rail-tooltip span {
   color: #c8c8c8;
 }
 
