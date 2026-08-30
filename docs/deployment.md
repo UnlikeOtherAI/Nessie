@@ -75,7 +75,7 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 Infisical owns secret values and runs with Redis plus a dedicated `infisical`
 database and database role on the existing `nessie-postgres` container. Before
 the first deploy, create the database and role from the host without echoing a
-password into shell history, then create `/srv/nessie/secrets/infisical-service-token`
+password into shell history, then create `/srv/nessie-secrets/infisical-service-token`
 with mode `0600`. Set the corresponding `INFISICAL_*` values in the Compose
 `.env`; create the separate root-readable `.env.infisical` from
 `infrastructure/compose/.env.infisical.example` for the vault database URI,
