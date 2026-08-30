@@ -1410,9 +1410,9 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
-/* The rail clips its contents, so the focus explanation is portalled beside
-   it. This matches Slack's two-line, right-hand focus-mode hover affordance. */
-.focus-mode-tooltip {
+/* The rail clips its contents, so its control explanations are portalled beside
+   it. This matches Slack's two-line, right-hand hover affordance. */
+.rail-tooltip {
   position: fixed;
   z-index: 90;
   display: flex;
@@ -1430,15 +1430,15 @@ a {
   line-height: 1.35;
 }
 
-.focus-mode-tooltip.is-opening {
-  animation: focus-tooltip-enter 120ms ease-out both;
+.rail-tooltip.is-opening {
+  animation: rail-tooltip-enter 120ms ease-out both;
 }
 
-.focus-mode-tooltip.is-closing {
-  animation: focus-tooltip-exit 120ms ease-in both;
+.rail-tooltip.is-closing {
+  animation: rail-tooltip-exit 120ms ease-in both;
 }
 
-@keyframes focus-tooltip-enter {
+@keyframes rail-tooltip-enter {
   from {
     opacity: 0;
     transform: translateY(calc(-50% + 3px));
@@ -1450,7 +1450,7 @@ a {
   }
 }
 
-@keyframes focus-tooltip-exit {
+@keyframes rail-tooltip-exit {
   from {
     opacity: 1;
     transform: translateY(-50%);
@@ -1463,18 +1463,18 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .focus-mode-tooltip.is-opening,
-  .focus-mode-tooltip.is-closing {
+  .rail-tooltip.is-opening,
+  .rail-tooltip.is-closing {
     animation: none;
   }
 }
 
-.focus-mode-tooltip strong {
+.rail-tooltip strong {
   font-size: 14px;
   font-weight: var(--font-weight-semibold);
 }
 
-.focus-mode-tooltip span {
+.rail-tooltip span {
   color: #c8c8c8;
 }
 
