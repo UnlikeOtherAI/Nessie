@@ -8,6 +8,7 @@ import {
   parseRunId,
   parseTeamId,
   parseThreadId,
+  parseUserId,
   type AuthorizedActionContext,
   type WsScope,
 } from '@nessie/schemas'
@@ -419,6 +420,16 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
 
       if (scope.kind === 'channel') {
         if (await getVisibleChannel(userId, tenantOrganizationId, scope.channelId)) {
+          authorizedScopes.push(scope)
+        }
+        continue
+      }
+
+      if (scope.kind === 'user') {
+        if (
+          scope.userId === parseUserId(userId)
+          && scope.organizationId === parseOrganizationId(tenantOrganizationId)
+        ) {
           authorizedScopes.push(scope)
         }
         continue

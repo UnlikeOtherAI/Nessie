@@ -106,11 +106,11 @@ export const useMarkThreadRead = () => {
         : {}),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
-      void queryClient.invalidateQueries({ queryKey: ['threads', 'activity'] })
+      void queryClient.resetQueries({ queryKey: ['threads', 'activity'] })
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })
-      void queryClient.invalidateQueries({ queryKey: ['threads', 'activity'] })
+      void queryClient.resetQueries({ queryKey: ['threads', 'activity'] })
     },
   })
 }

@@ -2,7 +2,9 @@ import type { FastifyInstance } from 'fastify'
 
 import {
   detectSecrets,
+  parseOrganizationId,
   parseThreadId,
+  parseUserId,
 } from '@nessie/schemas'
 import {
   ListThreadMessagesQuerySchema,
@@ -188,6 +190,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
 
     const marked = await markThreadRead(prisma, {
+      organizationId: actorContext.tenant.organizationId,
       rootMessageId: body.rootMessageId,
       lastReadMessageId: body.lastReadMessageId,
       threadId: thread.id,
@@ -197,6 +200,21 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 404, 'REPLY_ROOT_NOT_FOUND', 'Reply conversation not found')
       return reply
     }
+
+    // Read state is per person. Deliver a durable, recipient-private event so
+    // their other sessions refresh immediately without exposing a read receipt
+    // to every channel participant.
+    await realtimeHub.publishWs([
+      { kind: 'organization', organizationId: actorContext.tenant.organizationId },
+      {
+        kind: 'user',
+        organizationId: parseOrganizationId(actorContext.tenant.organizationId),
+        userId: parseUserId(actorContext.actor.actorId),
+      },
+    ], {
+      data: { rootMessageId: body.rootMessageId, threadId: thread.id },
+      event: 'thread.read',
+    })
 
     return reply.code(200).send(createApiResponse({ ok: true }))
   })

@@ -1588,13 +1588,15 @@ model ThreadStreamEvent {
 model RealtimeEvent {
   id             BigInt       @id @default(autoincrement())
   organizationId String       @map("organization_id") @db.Uuid
-  channelId      String       @map("channel_id") @db.Uuid
+  channelId      String?      @map("channel_id") @db.Uuid
+  recipientUserId String?     @map("recipient_user_id") @db.Uuid
   eventType      String       @map("event_type")
   payload        Json         @db.JsonB
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz()
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([channelId, id], map: "idx_realtime_events_replay")
+  @@index([organizationId, recipientUserId, id], map: "idx_realtime_events_user_replay")
   @@index([organizationId, createdAt])
   @@map("realtime_events")
 }

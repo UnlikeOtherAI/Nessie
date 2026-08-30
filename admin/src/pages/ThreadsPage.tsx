@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
-import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks'
+import { useThreadActivity } from '../facades/threads/activity-hooks'
 import { useUsers } from '../facades/users/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { ThreadInboxCard } from './channels/ThreadInboxCard'
@@ -15,7 +15,6 @@ export const ThreadsPage = () => {
   const { data: channels = [] } = useChannels()
   const isOwner = me?.user.roleIds?.includes('owner') ?? false
   const { data: users = [] } = useUsers(isOwner)
-  useThreadActivityEvents()
   const items = activity.data?.items ?? []
 
   return (
@@ -41,6 +40,18 @@ export const ThreadsPage = () => {
             />
           )) : null}
         </div>
+        {activity.hasNextPage ? (
+          <div className="flex justify-center py-5">
+            <button
+              className="admin-button-secondary"
+              disabled={activity.isFetchingNextPage}
+              onClick={() => void activity.fetchNextPage()}
+              type="button"
+            >
+              {activity.isFetchingNextPage ? 'Loading threads…' : 'Load more threads'}
+            </button>
+          </div>
+        ) : null}
       </div>
     </section>
   )

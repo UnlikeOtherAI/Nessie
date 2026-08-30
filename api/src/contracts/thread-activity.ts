@@ -31,6 +31,8 @@ export const ThreadActivityRecordSchema = z.object({
 export const ThreadActivityResponseSchema = z.object({
   items: z.array(ThreadActivityRecordSchema),
   unreadTotal: z.number().int().nonnegative(),
+  hasMore: z.boolean(),
+  nextCursor: z.string().min(1).optional(),
 })
 
 export type ThreadActivityRecord = z.infer<typeof ThreadActivityRecordSchema>

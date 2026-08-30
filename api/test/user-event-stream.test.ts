@@ -21,8 +21,8 @@ const channelC = '00000000-0000-4000-8000-00000000000c'
 type FindManyArgs = {
   where: {
     organizationId: string
-    channelId: { in: string[] }
     id: { gt: bigint }
+    OR: Array<{ channelId?: { in: string[] }; recipientUserId?: string }>
   }
   orderBy: { id: 'asc' }
   take: number
@@ -43,9 +43,16 @@ test('realtime replay query returns only accessible channel events after the cur
     realtimeEvent: {
       findMany: async (args: FindManyArgs) => {
         capturedArgs = args
+        const channelIds = args.where.OR
+          .flatMap((clause) => clause.channelId?.in ?? [])
+        const recipientUserIds = args.where.OR
+          .flatMap((clause) => clause.recipientUserId ? [clause.recipientUserId] : [])
         return rows
           .filter((row) => row.id > args.where.id.gt)
-          .filter((row) => row.channelId && args.where.channelId.in.includes(row.channelId))
+          .filter((row) =>
+            (row.channelId !== null && channelIds.includes(row.channelId))
+            || (row.recipientUserId !== null && recipientUserIds.includes(row.recipientUserId)),
+          )
           .filter((row) => row.payloadOrganizationId === args.where.organizationId)
           .sort((left, right) => (left.id < right.id ? -1 : 1))
       },
@@ -56,14 +63,18 @@ test('realtime replay query returns only accessible channel events after the cur
     afterEventId: 2n,
     channelIds: [channelA, channelB],
     organizationId,
+    userId,
   })
 
   assert.deepEqual(result.map((row) => row.id), [5n])
   assert.deepEqual(capturedArgs, {
     where: {
       organizationId,
-      channelId: { in: [channelA, channelB] },
       id: { gt: 2n },
+      OR: [
+        { channelId: { in: [channelA, channelB] } },
+        { recipientUserId: userId },
+      ],
     },
     orderBy: { id: 'asc' },
     take: 5000,
@@ -108,6 +119,7 @@ test('realtime membership resolution returns the union of channel scopes', async
   })
 
   assert.deepEqual(scopes, [
+    { kind: 'user', organizationId, userId },
     { kind: 'channel', channelId: channelA },
     { kind: 'channel', channelId: channelB },
   ] satisfies WsScope[])
@@ -130,4 +142,5 @@ const makeEvent = (
   payload: { type: 'event', event: 'message.new', data: {}, ts: new Date().toISOString() },
   payloadOrganizationId,
   createdAt: new Date(),
+  recipientUserId: null,
 })

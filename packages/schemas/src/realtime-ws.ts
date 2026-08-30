@@ -126,6 +126,10 @@ export type WsEventMap = {
     lastReplyAt?: string
     replyParticipantIds: string[]
   }
+  'thread.read': {
+    rootMessageId?: string
+    threadId: ThreadId
+  }
   'agent.iteration': {
     agentId: string
     iteration: number
@@ -259,6 +263,11 @@ export const MessageReplyMetaEventSchema = z.object({
   replyParticipantIds: z.array(z.string().uuid()),
 })
 export type MessageReplyMetaEvent = z.infer<typeof MessageReplyMetaEventSchema>
+export const ThreadReadEventSchema = z.object({
+  rootMessageId: z.string().uuid().optional(),
+  threadId: ThreadIdSchema,
+})
+export type ThreadReadEvent = z.infer<typeof ThreadReadEventSchema>
 export const ApprovalResolvedEventSchema = z.object({
   approvalId: NonEmptyStringSchema,
   taskId: TaskIdSchema,
@@ -305,6 +314,7 @@ export const WsEventNameSchema = z.enum([
   'message.reaction',
   'message.reply',
   'message.reply.meta',
+  'thread.read',
   'agent.iteration',
   'alert.created',
   'alert.read',
@@ -322,6 +332,11 @@ export const WsScopeSchema = z.union([
   z.object({
     kind: z.literal('agent'),
     agentId: AgentIdSchema,
+  }),
+  z.object({
+    kind: z.literal('user'),
+    organizationId: OrganizationIdSchema,
+    userId: UserIdSchema,
   }),
 ])
 export type WsScope = z.infer<typeof WsScopeSchema>
@@ -465,6 +480,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('message.reply.meta'),
     data: MessageReplyMetaEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('thread.read'),
+    data: ThreadReadEventSchema,
     ts: TimestampSchema,
   }),
   z.object({

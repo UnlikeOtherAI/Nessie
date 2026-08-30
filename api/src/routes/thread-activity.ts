@@ -9,6 +9,7 @@ export const registerThreadActivityRoutes = (app: FastifyInstance, deps: RouteDe
   app.get('/api/threads/activity', async (request, reply) => {
     const actorContext = deps.requireActorContext(request, reply)
     if (!actorContext) return reply
+    if (!deps.requireUserActor(actorContext, reply)) return reply
     const query = parseInput(ListThreadActivityQuerySchema, request.query ?? {}, reply)
     if (!query) return reply
     const result = await listThreadActivity(deps.prisma, {
@@ -16,6 +17,10 @@ export const registerThreadActivityRoutes = (app: FastifyInstance, deps: RouteDe
       userId: actorContext.actor.actorId,
       ...query,
     })
-    return createApiResponse(ThreadActivityResponseSchema.parse(result.data), result.meta)
+    return createApiResponse(ThreadActivityResponseSchema.parse({
+      ...result.data,
+      hasMore: result.meta.hasMore,
+      nextCursor: result.meta.cursor ?? undefined,
+    }), result.meta)
   })
 }

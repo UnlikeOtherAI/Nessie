@@ -353,6 +353,7 @@ export const listThreadMessages = async (
 export const markThreadRead = async (
   prisma: PrismaClient,
   input: {
+    organizationId: string
     rootMessageId?: string
     lastReadMessageId?: string
     threadId: string
@@ -378,54 +379,148 @@ export const markThreadRead = async (
         id: input.rootMessageId,
         rootMessageId: null,
         threadId: input.threadId,
+        deletedAt: null,
       },
-      select: { createdAt: true },
+      select: {
+        agentId: true,
+        basisScopes: { select: { scopeId: true, scopeType: true } },
+        createdAt: true,
+        id: true,
+      },
     })
     if (!root) return false
 
-    const latestMessage = input.lastReadMessageId
-      ? await prisma.message.findFirst({
+    // A stale or deep-linked panel can still name a root whose disclosure
+    // basis the caller cannot read. Never let that placeholder advance a
+    // durable cursor: it would turn a future grant into an already-read reply.
+    const candidates = input.lastReadMessageId
+      ? await prisma.message.findMany({
         where: {
           id: input.lastReadMessageId,
           threadId: input.threadId,
+          deletedAt: null,
+          role: { not: 'system' },
           OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
         },
-        select: { createdAt: true, id: true },
-      })
-      : await prisma.message.findFirst({
-      where: {
-        threadId: input.threadId,
-        OR: [
-          { id: input.rootMessageId },
-          { rootMessageId: input.rootMessageId },
-        ],
-      },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { createdAt: true, id: true },
-      })
-    const lastReadAt = [root.createdAt, latestMessage?.createdAt, legacyReadState?.lastReadAt]
-      .filter((value): value is Date => Boolean(value))
-      .reduce((latest, value) => value > latest ? value : latest)
-
-    const readCursor = latestMessage?.id ? { lastReadMessageId: latestMessage.id } : {}
-    await prisma.messageConversationReadState.upsert({
-      where: {
-        rootMessageId_userId: {
-          rootMessageId: input.rootMessageId,
-          userId: input.userId,
+        select: {
+          agentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          createdAt: true,
+          id: true,
         },
-      },
-      create: {
-        rootMessageId: input.rootMessageId,
-        userId: input.userId,
-        lastReadAt,
-        ...readCursor,
-      },
-      update: {
-        lastReadAt,
-        ...readCursor,
-      },
-    })
+      })
+      : await prisma.message.findMany({
+        where: {
+          threadId: input.threadId,
+          deletedAt: null,
+          role: { not: 'system' },
+          OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          agentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          createdAt: true,
+          id: true,
+        },
+      })
+    if (input.lastReadMessageId && candidates.length === 0) return false
+
+    const disclosureMayApply = root.basisScopes.length > 0
+      || candidates.some((message) => message.basisScopes.length > 0)
+    const viewer = disclosureMayApply
+      ? await resolveMessageViewer(prisma, input.organizationId, input.userId)
+      : null
+    let channelId: string | null = null
+    const canRead = async (message: {
+      agentId: string | null
+      basisScopes: Array<{ scopeId: string; scopeType: string }>
+      id: string
+    }): Promise<boolean> => {
+      if (!viewer || message.basisScopes.length === 0) return true
+      if (partitionByDisclosure([message], viewer).withheld.length === 0) return true
+      if (!channelId) {
+        const thread = await prisma.thread.findUnique({
+          where: { id: input.threadId },
+          select: { channelId: true },
+        })
+        channelId = thread?.channelId ?? null
+      }
+      const grants = channelId && viewer.kind === 'user'
+        ? await resolveGrantedScopeKeys(prisma, {
+          agentId: message.agentId,
+          basis: message.basisScopes,
+          channelId,
+          messageId: message.id,
+          organizationId: input.organizationId,
+          viewerChannelIds: viewer.scopes
+            .filter((scope) => scope.scopeType === 'channel')
+            .map((scope) => scope.scopeId),
+          viewerUserId: input.userId,
+        })
+        : new Set<string>()
+      return viewerSatisfiesBasis(message.basisScopes, viewer, grants)
+    }
+    if (!(await canRead(root))) return false
+
+    const latestMessage = input.lastReadMessageId
+      ? candidates[0]
+      : (await Promise.all(candidates.map(async (message) =>
+        (await canRead(message)) ? message : null,
+      ))).find((message) => message !== null)
+    if (input.lastReadMessageId && latestMessage && !(await canRead(latestMessage))) return false
+
+    const cursorCandidates = [
+      { at: root.createdAt, id: root.id },
+      ...(latestMessage ? [{ at: latestMessage.createdAt, id: latestMessage.id }] : []),
+      ...(legacyReadState ? [{ at: legacyReadState.lastReadAt, id: '' }] : []),
+    ]
+    const cursor = cursorCandidates.reduce((latest, candidate) =>
+      candidate.at > latest.at || (candidate.at.getTime() === latest.at.getTime() && candidate.id > latest.id)
+        ? candidate
+        : latest,
+    )
+
+    // A read acknowledgement can arrive late from another tab or device. The
+    // database, rather than timing in the browser, owns the monotonic cursor:
+    // conflicting writes keep the lexicographically greatest (time, message)
+    // pair, including Postgres timestamp(3) ties.
+    await prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "message_conversation_read_states" (
+        "id", "root_message_id", "user_id", "last_read_at", "last_read_message_id", "created_at", "updated_at"
+      ) VALUES (
+        gen_random_uuid(),
+        ${input.rootMessageId}::uuid,
+        ${input.userId}::uuid,
+        ${cursor.at},
+        ${cursor.id || null}::uuid,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      )
+      ON CONFLICT ("root_message_id", "user_id") DO UPDATE
+      SET
+        "last_read_at" = CASE
+          WHEN EXCLUDED."last_read_at" > "message_conversation_read_states"."last_read_at"
+            OR (
+              EXCLUDED."last_read_at" = "message_conversation_read_states"."last_read_at"
+              AND COALESCE(EXCLUDED."last_read_message_id"::text, '')
+                > COALESCE("message_conversation_read_states"."last_read_message_id"::text, '')
+            )
+          THEN EXCLUDED."last_read_at"
+          ELSE "message_conversation_read_states"."last_read_at"
+        END,
+        "last_read_message_id" = CASE
+          WHEN EXCLUDED."last_read_at" > "message_conversation_read_states"."last_read_at"
+            OR (
+              EXCLUDED."last_read_at" = "message_conversation_read_states"."last_read_at"
+              AND COALESCE(EXCLUDED."last_read_message_id"::text, '')
+                > COALESCE("message_conversation_read_states"."last_read_message_id"::text, '')
+            )
+          THEN EXCLUDED."last_read_message_id"
+          ELSE "message_conversation_read_states"."last_read_message_id"
+        END,
+        "updated_at" = CURRENT_TIMESTAMP
+    `)
     return true
   }
 

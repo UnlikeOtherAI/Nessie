@@ -13,10 +13,19 @@ authors; alert read state remains separate from conversation membership.
 
 Rows order by their latest visible, non-self-authored reply. Their unread state
 uses a `(lastReadAt, lastReadMessageId)` cursor, which avoids ambiguity from
-Postgres `timestamp(3)` ties. Opening the existing reply panel provides the
-cursor based on the latest message that panel rendered.
+Postgres `timestamp(3)` ties. The server accepts only a visible, non-deleted
+message in that specific conversation and persists the cursor monotonically,
+so a delayed acknowledgement from another browser cannot make newer activity
+unread again. Opening the existing reply panel provides the cursor based on the
+latest message that panel rendered. The inbox exposes a cursor too, and the UI
+offers **Load more threads** rather than silently dropping activity after one
+page.
 
-The Threads hook invalidates from the existing durable user event stream. A
-follower of a public channel is included in that stream's channel scopes even
-without a `ChannelMember` row, so live and replayed reply activity obey the
-same entitlement rule as the index.
+The Threads hook resets to its first page on reply and deletion events from the
+existing durable user event stream, so activity that moves across a keyset page
+boundary never duplicates or disappears in the flattened list. Read state uses
+a durable recipient-private event so a person's other sessions update
+immediately without disclosing a read receipt to channel participants. A
+follower of a public channel is included in that stream's channel scopes even without a
+`ChannelMember` row, so live and replayed reply activity obey the same
+entitlement rule as the index.

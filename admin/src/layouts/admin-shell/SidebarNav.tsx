@@ -1,4 +1,5 @@
 import type { AgentRecord, ChannelRecord } from '../../lib/api-client';
+import { useLocation } from 'react-router-dom';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
@@ -65,6 +66,7 @@ type SidebarNavProps = {
 };
 
 export const SidebarNav = (props: SidebarNavProps) => {
+  const { pathname } = useLocation();
   const {
     attentionCountByProjectId,
     activeDmChannelId,
@@ -137,7 +139,11 @@ export const SidebarNav = (props: SidebarNavProps) => {
           unreadCountByChannelId={unreadCountByChannelId}
         />
 
-        <button className="admin-sb-item sidebar-top-level group" onClick={onNavigateThreads} type="button">
+        <button
+          className={`admin-sb-item sidebar-top-level group ${pathname === '/threads' ? 'active' : ''}`}
+          onClick={onNavigateThreads}
+          type="button"
+        >
           <span className="sidebar-row-symbol w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]">◌</span>
           <span>Threads</span>
           {renderUnreadCount(threadsUnreadCount)}

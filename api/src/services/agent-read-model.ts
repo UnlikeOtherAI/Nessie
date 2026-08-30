@@ -405,6 +405,9 @@ export const buildSnapshotForScopes = async (
       })
       continue
     }
+    if (scope.kind === 'user') {
+      continue
+    }
     bindingOr.push({
       channel: {
         ...(options?.visibility

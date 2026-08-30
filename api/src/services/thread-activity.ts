@@ -77,7 +77,7 @@ export const listThreadActivity = async (
         include: {
           ...activityMessageInclude,
           replies: {
-            where: { role: { not: 'system' } },
+            where: { deletedAt: null, role: { not: 'system' } },
             include: activityMessageInclude,
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           },
@@ -141,6 +141,9 @@ export const listThreadActivity = async (
       channelLabel: channel.label,
       root: toActivityMessage(root),
       latestReply: toActivityMessage(latestReply),
+      // The Threads inbox cannot reveal that an otherwise withheld reply
+      // exists. Its count is therefore the same disclosure-filtered set it
+      // renders and uses for unread state.
       replyCount: visibleReplies.length,
       unread,
       sort: latestReply,
