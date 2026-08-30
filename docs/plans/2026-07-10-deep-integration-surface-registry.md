@@ -1,7 +1,13 @@
 # Deep Integration — Product Surface Registry
 
-Status: Proposal (2026-07-10). Builds on `docs/plans/2026-07-08-esc-integration-unification-plan.md`
-and `docs/plans/2026-07-09-deepsignal-integration.md`.
+Status: Superseded in part (2026-08-30). Builds on
+`docs/plans/2026-07-08-esc-integration-unification-plan.md` and
+`docs/plans/2026-07-09-deepsignal-integration.md`.
+
+> The `nav_page` surface, the Signals page/API, and all left-rail product
+> injection were removed on 2026-08-30. Integrations may use the existing chat
+> and Documents surfaces, but may not add custom left-rail icons or pages. The
+> remaining historical implementation notes below describe the superseded work.
 
 ## Problem
 
@@ -21,8 +27,7 @@ homes; the Integrations page becomes the switch that lights them up, not the con
 
 Concretely for the two first consumers:
 - **DeepSignal** → a "DeepSignal" assistant link in the chat sidebar directly under the
-  Personal Assistant (opens its external-agent channel), plus a **Signals** page showing the
-  digest of things you shouldn't miss.
+  Personal Assistant (opens its external-agent channel).
 - **DeepWater** → a **Research** section inside Documents listing all your researches
   (reusing the parallel team's existing services + `DeepWaterRunHistory`, not forking).
 
@@ -38,8 +43,6 @@ unaffected). `ProductSurface` is a discriminated union on `type`:
 
 - `{ type: 'chat_assistant', channelKind: 'external_agent', label, iconGlyph?, requires }`
   — a pinned assistant link under the PA that opens the product's system channel.
-- `{ type: 'nav_page', id, label, route, iconGlyph?, requires }` — a top-level left-rail
-  section + page.
 - `{ type: 'documents_section', id, label, view, iconGlyph?, requires }` — a pinned entry
   in the Documents (Knowledge) sidebar selecting a product view.
 
@@ -48,7 +51,7 @@ connectorActive?: boolean }` — evaluated against the `GET /api/integrations/pr
 (`accountLink.status === 'linked'`, `teamEnablement.enabled`, `capabilities`,
 `mcpInstallation.lifecycleState === 'active'`).
 
-Populate `surfaces` on the `deepsignal` (chat_assistant + Signals nav_page) and `deep-water`
+Populate `surfaces` on the `deepsignal` (chat_assistant) and `deep-water`
 (Research documents_section) manifests in `integration-plugin-manifests.ts`.
 
 ### 2. Frontend registry (single read seam)
@@ -63,19 +66,11 @@ no per-product code in the shell.
 - **Chat under PA:** `SidebarDmSection.tsx` renders `chat_assistant` surfaces immediately
   after `PersonalAssistantSidebarEntry`, resolving each product's channel via
   `isExternalAgentChannel` + slug, navigating with `navigateToChannel`.
-- **Left rail + routes:** the rail (`nav-items.tsx` / `SidebarRail`) appends `nav_page`
-  surfaces; `router.tsx` gains a generic product-page outlet that renders the registered
-  page component for the active `nav_page` route.
 - **Documents:** `KnowledgeSidebarNav.tsx` renders `documents_section` surfaces as pinned
   entries; `KnowledgeWorkspace.tsx` branches to the product view when selected.
 
 ### 4. Product views (the actual pages)
 
-- **DeepSignal Signals page** — new page rendering the insight digest. Data via a new
-  `GET /api/integrations/products/deepsignal/signals` route that calls the DeepSignal
-  `insight_digest` MCP tool through the user's user-scoped instance (reusing the
-  `callInstanceTool` seam from `@nessie/mcp-manage`), returning items rendered as cards with
-  done/snooze actions (proxied to `insight_act`). Fail-closed/needs-setup when not linked.
 - **DeepWater Research view** — reuse `DeepWaterRunHistory.tsx` verbatim, fed by
   `useDeepWaterResearchRuns()`; a list→report/knowledge/chat deep-link view inside Documents.
 
@@ -83,7 +78,7 @@ no per-product code in the shell.
 
 Replace the inert `ManifestPanel` badge list + the `slug ===` ladder with a registry-driven
 "Where this appears" section: for an active product, list its live surfaces as **links** into
-the app (Open DeepSignal chat, Open Signals, Open Research); for an inactive one, show them as
+the app (Open DeepSignal chat, Open Research); for an inactive one, show them as
 what activating will unlock. Per-product operational panels stay, dispatched via the registry
 rather than a hard-coded ladder.
 
@@ -95,8 +90,7 @@ rather than a hard-coded ladder.
   new DeepWater service.
 - Surfaces are **gated**: nothing appears for a product a user hasn't activated / a team hasn't
   enabled. Removal on deactivate is automatic (registry is derived from live state).
-- No new identity/tenancy paths; the Signals route runs as the user's own principal over their
-  user-scoped MCP instance.
+- No custom left-rail entries: integrations appear through an existing contextual surface only.
 
 ## Execution Plan
 

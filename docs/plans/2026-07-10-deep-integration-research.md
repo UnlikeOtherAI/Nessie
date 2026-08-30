@@ -2,6 +2,11 @@
 
 Status: Research synthesis (2026-07-10). Feeds `docs/plans/2026-07-10-deep-integration-surface-registry.md`.
 
+> **Superseded decision (2026-08-30).** Nessie removed the Signals page and
+> every custom product icon from the left rail. DeepSignal's batched insight
+> digest remains in its existing conversation; the page/API triage proposal
+> below is historical only.
+
 > **Method & confidence.** Multi-source fan-out (Slack, Microsoft, VS Code, Atlassian, the
 > MCP project, ambient-agent UX writing). The workflow's 3-vote agent verification was cut short
 > by a quota outage, so verification was **re-done frugally by direct source fetch** (6 targeted

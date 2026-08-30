@@ -51,8 +51,8 @@ Root app layout:
   mutate it. Only the canonical product-linked public catalog can back the
   instance, and outbound app-key requests are pinned to
   `https://api.deepsignal.live`.
-- Initial and follow-up chat, history hydration, Signals digest, and Signals
-  actions retain the DeepSignal-issued `dsk_` bearer and independently add
+- Initial and follow-up chat, history hydration, and proactive insight digests
+  retain the DeepSignal-issued `dsk_` bearer and independently add
   exact-scope UOA delegation plus fresh signed user/org/team/agent/run/request/
   tool-call provenance. Missing hosted configuration, incomplete identity, or
   a stale generic credential, stale identity header, or cross-role key reuse
@@ -62,9 +62,7 @@ Root app layout:
   separate per-org credential and cannot reuse an app key.
 - The live routes are
   `POST /api/integrations/products/deepsignal/activate`,
-  `POST .../deactivate`, `POST /api/channels/:channelId/external-sync`,
-  `GET /api/integrations/products/deepsignal/signals`,
-  `POST .../signals/:insightId/act`, and
+  `POST .../deactivate`, `POST /api/channels/:channelId/external-sync`, and
   `POST /api/integrations/deepsignal/events`.
 
 ### 2.0a Live first-party DeepWater grant boundary

@@ -221,13 +221,6 @@ const rawManifests = [
         // linked) and the external-agent capability is present.
         requires: { capability: 'external_agent', linked: true },
       },
-      {
-        type: 'nav_page',
-        id: 'signals',
-        label: 'Signals',
-        route: '/signals',
-        requires: { linked: true },
-      },
     ],
     artifacts: [
       {

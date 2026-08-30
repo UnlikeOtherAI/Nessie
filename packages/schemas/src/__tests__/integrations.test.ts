@@ -281,7 +281,7 @@ test('DeepTestReviewHandoffRequestSchema rejects target material fields', () => 
   )
 })
 
-test('ProductSurfaceSchema validates each surface kind and gating', () => {
+test('ProductSurfaceSchema validates supported surfaces and gating', () => {
   const chat = ProductSurfaceSchema.parse({
     type: 'chat_assistant',
     channelKind: 'external_agent',
@@ -292,15 +292,6 @@ test('ProductSurfaceSchema validates each surface kind and gating', () => {
   assert.equal(chat.type, 'chat_assistant')
   assert.equal(chat.requires.linked, true)
 
-  const page = ProductSurfaceSchema.parse({
-    type: 'nav_page',
-    id: 'signals',
-    label: 'Signals',
-    route: '/signals',
-    requires: {},
-  })
-  assert.equal(page.type === 'nav_page' ? page.route : null, '/signals')
-
   const docs = ProductSurfaceSchema.parse({
     type: 'documents_section',
     id: 'research',
@@ -310,20 +301,12 @@ test('ProductSurfaceSchema validates each surface kind and gating', () => {
   })
   assert.equal(docs.type === 'documents_section' ? docs.view : null, 'deep-water-research')
 
-  // Unknown surface type and a nav_page missing its route are both rejected.
+  // Unknown surface types, including removed rail pages, are rejected.
   assert.equal(
     ProductSurfaceSchema.safeParse({ type: 'sidebar_widget', id: 'x', label: 'X' }).success,
     false,
   )
-  assert.equal(
-    ProductSurfaceSchema.safeParse({
-      type: 'nav_page',
-      id: 'signals',
-      label: 'Signals',
-      requires: {},
-    }).success,
-    false,
-  )
+  assert.equal(ProductSurfaceSchema.safeParse({ type: 'nav_page' }).success, false)
 })
 
 test('IntegrationPluginManifestSchema defaults surfaces to an empty array', () => {
@@ -357,17 +340,15 @@ test('IntegrationPluginManifestSchema defaults surfaces to an empty array', () =
   assert.deepEqual(IntegrationPluginManifestSchema.parse(manifest).surfaces, [])
   const withSurface = IntegrationPluginManifestSchema.parse({
     ...manifest,
-    surfaces: [
-      {
-        type: 'nav_page',
-        id: 'signals',
-        label: 'Signals',
-        route: '/signals',
-        requires: { linked: true },
-      },
-    ],
+    surfaces: [{
+      type: 'chat_assistant',
+      channelKind: 'external_agent',
+      productSlug: 'test',
+      label: 'Test assistant',
+      requires: { linked: true },
+    }],
   })
-  assert.equal(withSurface.surfaces[0]?.type, 'nav_page')
+  assert.equal(withSurface.surfaces[0]?.type, 'chat_assistant')
 })
 
 test('BuildMeProjectHandoffRequestSchema rejects board sync payload fields', () => {

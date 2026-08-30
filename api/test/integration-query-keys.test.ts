@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  deepSignalSignalsKey,
   deepWaterAgentAccessKey,
   deepWaterResearchRunsKey,
   integratedProductsKey,
@@ -36,20 +35,12 @@ test('integration caches are isolated by actor, organization, team, and privileg
   }
 
   assert.notDeepEqual(
-    deepSignalSignalsKey(ownerScope, 'active'),
-    deepSignalSignalsKey({ ...ownerScope, userId: 'user-b' }, 'active'),
-  )
-  assert.notDeepEqual(
     mcpToolRegistryKey(ownerScope, true, {}),
     mcpToolRegistryKey({ ...ownerScope, isOwner: false }, false, {}),
   )
   assert.notDeepEqual(
     mcpToolRegistryKey(ownerScope, true, {}),
     mcpToolRegistryKey({ ...ownerScope, teamId: 'team-b' }, true, {}),
-  )
-  assert.notDeepEqual(
-    deepSignalSignalsKey(ownerScope, 'active'),
-    deepSignalSignalsKey(ownerScope, 'all'),
   )
 })
 
