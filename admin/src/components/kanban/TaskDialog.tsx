@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Notice } from '../primitives/Notice'
 import { AssigneePicker, type AssigneeValue, type AssigneeOption } from '../shared/AssigneePicker'
-import { useOverlayDismiss } from '../shared/useOverlayDismiss'
+import { Dialog } from '../shared/Dialog'
 import { useAgents } from '../../facades/agents/queries'
 import { useProjects } from '../../facades/projects/hooks'
 import {
@@ -88,12 +89,12 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   const pending =
     createTask.isPending || updateTask.isPending || assignTask.isPending || transition.isPending
 
+  // Still gates the footer's own Close button; the shell's close paths are
+  // gated by `dismissDisabled`.
   const handleClose = () => {
     if (pending) return
     onClose()
   }
-
-  const overlayDismiss = useOverlayDismiss(handleClose)
 
   if (!open) return null
 
@@ -166,226 +167,203 @@ export const TaskDialog = ({ open, onClose, task, projectId, iterationId }: Task
   }
 
   return (
-    <div
-      {...overlayDismiss}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') handleClose()
-      }}
-      style={{
-        alignItems: 'center',
-        backdropFilter: 'blur(4px)',
-        background: 'var(--scrim-strong)',
-        display: 'flex',
-        inset: 0,
-        justifyContent: 'center',
-        position: 'fixed',
-        zIndex: 9999,
-      }}
+    // `dismissDisabled` reproduces the pending gate the old `handleClose` held:
+    // scrim, Escape and the close cross all refuse while a mutation is in flight.
+    <Dialog
+      dismissDisabled={pending}
+      initialFocusRef={titleRef}
+      onClose={onClose}
+      open={open}
+      size="xl"
+      title={isEdit ? 'Task details' : 'New task'}
     >
-      <div
-        className="create-channel-panel"
-        style={{ width: 'min(80vw, 1100px)', maxWidth: 'none', maxHeight: '88vh', overflowY: 'auto' }}
+      <form
+        className="grid gap-5 md:grid-cols-[1.7fr_1fr]"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (canSubmit) void handleSubmit()
+        }}
       >
-        <div className="create-channel-header">
-          <h2 className="text-lg font-bold text-[color:var(--tx)]">
-            {isEdit ? 'Task details' : 'New task'}
-          </h2>
-          <button
-            className={[
-              'flex h-7 w-7 items-center justify-center',
-              'rounded text-[color:var(--tx3)]',
-              'hover:bg-[color:var(--overlay)] hover:text-[color:var(--tx)]',
-            ].join(' ')}
-            onClick={handleClose}
-            type="button"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+        <div className="grid content-start gap-4">
+          <div className="grid gap-1.5">
+            <label className={fieldLabel} htmlFor="task-title">
+              Title
+            </label>
+            <input
+              ref={titleRef}
+              autoComplete="off"
+              className="admin-input"
+              id="task-title"
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="What needs doing?"
+              value={title}
+            />
+          </div>
+
+          <div className="grid gap-1.5">
+            <label className={fieldLabel} htmlFor="task-purpose">
+              Excerpt
+            </label>
+            <textarea
+              className="admin-input"
+              id="task-purpose"
+              onChange={(event) => setPurpose(event.target.value)}
+              placeholder="A short summary…"
+              rows={2}
+              value={purpose}
+            />
+          </div>
+
+          <div className="grid gap-1.5">
+            <label className={fieldLabel} htmlFor="task-detail">
+              Detail
+            </label>
+            <textarea
+              className="admin-input"
+              id="task-detail"
+              onChange={(event) => setDetail(event.target.value)}
+              placeholder="The full description, context, acceptance criteria…"
+              rows={10}
+              value={detail}
+            />
+          </div>
         </div>
 
-        <form
-          className="grid gap-5 md:grid-cols-[1.7fr_1fr]"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (canSubmit) void handleSubmit()
-          }}
-        >
-          <div className="grid content-start gap-4">
-            <div className="grid gap-1.5">
-              <label className={fieldLabel} htmlFor="task-title">
-                Title
-              </label>
-              <input
-                ref={titleRef}
-                autoComplete="off"
-                className="admin-input"
-                id="task-title"
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="What needs doing?"
-                value={title}
-              />
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className={fieldLabel} htmlFor="task-purpose">
-                Excerpt
-              </label>
-              <textarea
-                className="admin-input"
-                id="task-purpose"
-                onChange={(event) => setPurpose(event.target.value)}
-                placeholder="A short summary…"
-                rows={2}
-                value={purpose}
-              />
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className={fieldLabel} htmlFor="task-detail">
-                Detail
-              </label>
-              <textarea
-                className="admin-input"
-                id="task-detail"
-                onChange={(event) => setDetail(event.target.value)}
-                placeholder="The full description, context, acceptance criteria…"
-                rows={10}
-                value={detail}
-              />
-            </div>
-          </div>
-
-          <div className="grid content-start gap-4">
-            <div className="grid gap-1.5">
-              <span className={fieldLabel}>Priority</span>
-              <div className="flex gap-1.5">
-                {PRIORITY_ORDER.map((value) => {
-                  const active = priority === value
-                  return (
-                    <button
-                      key={value}
-                      className={[
-                        'flex flex-1 items-center justify-center gap-1.5 rounded-md px-1.5 py-1.5 text-[11px] font-semibold transition-colors',
-                        active
-                          ? 'bg-[color:var(--overlay)] text-[color:var(--tx)] ring-1 ring-inset ring-[color:var(--sep)]'
-                          : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
-                      ].join(' ')}
-                      onClick={() => setPriority(value)}
-                      type="button"
-                    >
-                      <FontAwesomeIcon
-                        className={`text-[11px] ${PRIORITY_SIGNAL[value]} ${active ? '' : 'opacity-50'}`}
-                        icon={faSignal}
-                      />
-                      {PRIORITY_LABEL[value]}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className={fieldLabel} htmlFor="task-assignee">
-                Assignee
-              </label>
-              <AssigneePicker
-                id="task-assignee"
-                onChange={setAssignee}
-                options={assigneeOptions}
-                value={assignee}
-              />
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className={fieldLabel} htmlFor="task-due">
-                Deadline
-              </label>
-              <input
-                className="admin-input"
-                id="task-due"
-                onChange={(event) => setDue(event.target.value)}
-                type="date"
-                value={due}
-              />
-            </div>
-
-            {!isEdit && !projectId ? (
-              <div className="grid gap-1.5">
-                <label className={fieldLabel} htmlFor="task-project">
-                  Project
-                </label>
-                <select
-                  className="admin-input"
-                  id="task-project"
-                  onChange={(event) => setFormProjectId(event.target.value)}
-                  value={formProjectId}
-                >
-                  <option value="">No project</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-          </div>
-
-          {isEdit && task ? <TaskDocuments taskId={task.id} /> : null}
-
-          {error ? (
-            <div className="rounded-md border border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] px-3 py-2 text-xs text-[color:var(--danger-text)] md:col-span-2">
-              {error}
-            </div>
-          ) : null}
-
-          <div className="flex items-center justify-between pt-1 md:col-span-2">
-            <div className="text-xs">
-              {isEdit && task ? (
-                task.archivedAt ? (
+        <div className="grid content-start gap-4">
+          <div className="grid gap-1.5">
+            <span className={fieldLabel}>Priority</span>
+            <div className="flex gap-1.5">
+              {PRIORITY_ORDER.map((value) => {
+                const active = priority === value
+                return (
                   <button
-                    className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
-                    onClick={() => void handleUnarchive()}
+                    key={value}
+                    className={[
+                      'flex flex-1 items-center justify-center gap-1.5 rounded-md px-1.5 py-1.5 text-[11px] font-semibold transition-colors',
+                      active
+                        ? 'bg-[color:var(--overlay)] text-[color:var(--tx)] ring-1 ring-inset ring-[color:var(--sep)]'
+                        : 'bg-[color:var(--overlay-weak)] text-[color:var(--tx3)] hover:text-[color:var(--tx)]',
+                    ].join(' ')}
+                    onClick={() => setPriority(value)}
                     type="button"
                   >
-                    Unarchive
-                  </button>
-                ) : archived ? (
-                  <button
-                    className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
-                    onClick={() => void handleStatus('inbox')}
-                    type="button"
-                  >
-                    Restore ({statusLabel(task.status)})
-                  </button>
-                ) : (
-                  <button
-                    className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
-                    onClick={() => void handleStatus('cancelled')}
-                    type="button"
-                  >
-                    Cancel task
+                    <FontAwesomeIcon
+                      className={`text-[11px] ${PRIORITY_SIGNAL[value]} ${active ? '' : 'opacity-50'}`}
+                      icon={faSignal}
+                    />
+                    {PRIORITY_LABEL[value]}
                   </button>
                 )
-              ) : null}
-            </div>
-            <div className="flex gap-2">
-              <button
-                className="admin-button admin-button-secondary"
-                onClick={handleClose}
-                type="button"
-              >
-                Close
-              </button>
-              <button className="admin-button admin-button-primary" disabled={!canSubmit} type="submit">
-                {isEdit ? 'Save changes' : 'Create task'}
-              </button>
+              })}
             </div>
           </div>
-        </form>
-      </div>
-    </div>
+
+          <div className="grid gap-1.5">
+            <label className={fieldLabel} htmlFor="task-assignee">
+              Assignee
+            </label>
+            <AssigneePicker
+              id="task-assignee"
+              onChange={setAssignee}
+              options={assigneeOptions}
+              value={assignee}
+            />
+          </div>
+
+          <div className="grid gap-1.5">
+            <label className={fieldLabel} htmlFor="task-due">
+              Deadline
+            </label>
+            <input
+              className="admin-input"
+              id="task-due"
+              onChange={(event) => setDue(event.target.value)}
+              type="date"
+              value={due}
+            />
+          </div>
+
+          {!isEdit && !projectId ? (
+            <div className="grid gap-1.5">
+              <label className={fieldLabel} htmlFor="task-project">
+                Project
+              </label>
+              <select
+                className="admin-input"
+                id="task-project"
+                onChange={(event) => setFormProjectId(event.target.value)}
+                value={formProjectId}
+              >
+                <option value="">No project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </div>
+
+        {isEdit && task ? <TaskDocuments taskId={task.id} /> : null}
+
+        {/*
+          One banner for three mutations (save, status transition, unarchive),
+          so it belongs to the form rather than to a field — no `aria-invalid`
+          target exists. `role="alert"` is the whole delta: each of the three
+          catch blocks clears the message before its await and writes it only
+          on failure, so it announces once per rejected action.
+        */}
+        {error ? (
+          <Notice className="md:col-span-2" role="alert" size="sm" tone="danger">
+            {error}
+          </Notice>
+        ) : null}
+
+        <div className="flex items-center justify-between pt-1 md:col-span-2">
+          <div className="text-xs">
+            {isEdit && task ? (
+              task.archivedAt ? (
+                <button
+                  className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                  onClick={() => void handleUnarchive()}
+                  type="button"
+                >
+                  Unarchive
+                </button>
+              ) : archived ? (
+                <button
+                  className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--tx)]"
+                  onClick={() => void handleStatus('inbox')}
+                  type="button"
+                >
+                  Restore ({statusLabel(task.status)})
+                </button>
+              ) : (
+                <button
+                  className="font-semibold text-[color:var(--tx3)] hover:text-[color:var(--danger-text)]"
+                  onClick={() => void handleStatus('cancelled')}
+                  type="button"
+                >
+                  Cancel task
+                </button>
+              )
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="admin-button admin-button-secondary"
+              onClick={handleClose}
+              type="button"
+            >
+              Close
+            </button>
+            <button className="admin-button admin-button-primary" disabled={!canSubmit} type="submit">
+              {isEdit ? 'Save changes' : 'Create task'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </Dialog>
   )
 }

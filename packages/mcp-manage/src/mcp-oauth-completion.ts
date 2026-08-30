@@ -1,3 +1,4 @@
+import { isAdminRole } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import type { McpOAuth2AuthConfig } from '@nessie/schemas'
 
@@ -367,7 +368,7 @@ export const canStartOAuthForInstance = async (
   if (instance.scopeType === 'user') return instance.scopeId === userId
   if (instance.scopeType === 'organization' || instance.scopeType === 'system') return true
   const access = await resolveMcpUserAccess(prisma, organizationId, userId)
-  if (access.role === 'owner' || access.role === 'admin') return true
+  if (isAdminRole(access.role)) return true
   switch (instance.scopeType) {
     case 'team':
       return access.teamIds.includes(instance.scopeId)

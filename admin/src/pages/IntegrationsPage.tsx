@@ -4,15 +4,18 @@ import type { IntegratedProductResponse } from '../lib/api-client'
 import {
   AgentConnectorSection,
   mcpCatalogHref,
-  mcpConnectorClass,
   mcpConnectorLabel,
+  mcpConnectorTone,
 } from '../components/features/integrations/AgentConnectorSection'
+import { Pill, type PillTone } from '../components/primitives/Pill'
 import { BuildMeProjectPanel } from '../components/features/integrations/BuildMeProjectPanel'
 import { DeepTestSecurityPanel } from '../components/features/integrations/DeepTestSecurityPanel'
 import { DeepWaterResearchPanel } from '../components/features/integrations/DeepWaterResearchPanel'
 import { ExternalAgentActivationSection } from '../components/features/integrations/ExternalAgentActivationSection'
 import { ProductSurfacesPanel } from '../components/features/integrations/ProductSurfacesPanel'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
+import { useIsOwner } from '../components/shared/OwnerGate'
+import { QueryState } from '../components/shared/QueryState'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import {
   useIntegratedProducts,
@@ -20,7 +23,6 @@ import {
   useSetProductTeamEnablement,
 } from '../facades/integrations/hooks'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 type SurfacePlan = {
@@ -88,17 +90,12 @@ const healthLabels: Record<IntegratedProductResponse['healthStatus'], string> = 
   unreachable: 'Unreachable',
 }
 
-const statusClass = (status: IntegratedProductResponse['healthStatus']): string =>
-  [
-    'inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold',
-    status === 'healthy'
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : status === 'degraded' || status === 'setup_required'
-        ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-        : status === 'unreachable'
-          ? 'bg-[var(--danger-soft)] text-[var(--danger-text)]'
-          : 'bg-[var(--overlay)] text-[var(--tx2)]',
-  ].join(' ')
+const healthTone = (status: IntegratedProductResponse['healthStatus']): PillTone => {
+  if (status === 'healthy') return 'success'
+  if (status === 'degraded' || status === 'setup_required') return 'warning'
+  if (status === 'unreachable') return 'danger'
+  return 'muted'
+}
 
 const productAccent = (slug: string): string => {
   if (slug === 'deep-water') return '#0f766e'
@@ -166,25 +163,33 @@ const ProductRow = ({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h3 className="truncate text-sm font-semibold text-[var(--tx)]">{product.name}</h3>
-          <span className={statusClass(product.healthStatus)}>
+          <Pill
+            className="font-semibold"
+            radius="chip"
+            size="sm"
+            tone={healthTone(product.healthStatus)}
+            uppercase={false}
+          >
             {healthLabels[product.healthStatus]}
-          </span>
+          </Pill>
         </div>
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--tx3)]">{product.summary}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          <Pill radius="chip" size="sm" uppercase={false}>
             {installLabels[product.defaultInstallState]}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {accountLabel(product)}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {teamEnablementLabel(product)}
-          </span>
-          <span className="rounded bg-[var(--overlay)] px-2 py-0.5 text-[11px] text-[var(--tx2)]">
+          </Pill>
+          <Pill radius="chip" size="sm" uppercase={false}>
             {teamAuthorityLabel(product)}
-          </span>
-          <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
+          </Pill>
+          <Pill radius="chip" size="sm" tone={mcpConnectorTone(product)} uppercase={false}>
+            {mcpConnectorLabel(product)}
+          </Pill>
         </div>
       </div>
     </div>
@@ -276,9 +281,8 @@ const ProductDetail = ({
   product: IntegratedProductResponse
   showBack: boolean
 }) => {
-  const { me } = useAuthSession()
   const manifestQuery = useIntegrationPluginManifest(product.slug)
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const plan = surfacePlans[product.slug] ?? {
     nativePage: 'Custom product page registered from the integration manifest.',
     chatCards: 'Cards rendered from message metadata when agents run product work.',
@@ -344,9 +348,15 @@ const ProductDetail = ({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base font-semibold text-[var(--tx)]">{product.name}</h2>
-                <span className={statusClass(product.healthStatus)}>
+                <Pill
+                  className="font-semibold"
+                  radius="chip"
+                  size="sm"
+                  tone={healthTone(product.healthStatus)}
+                  uppercase={false}
+                >
                   {healthLabels[product.healthStatus]}
-                </span>
+                </Pill>
               </div>
               <p className="mt-1 text-sm leading-6 text-[var(--tx2)]">{product.summary}</p>
             </div>
@@ -367,7 +377,9 @@ const ProductDetail = ({
             <span className="rounded border border-[var(--sep)] px-2 py-1 text-xs text-[var(--tx2)]">
               {teamAuthorityLabel(product)}
             </span>
-            <span className={mcpConnectorClass(product)}>{mcpConnectorLabel(product)}</span>
+            <Pill radius="chip" size="sm" tone={mcpConnectorTone(product)} uppercase={false}>
+              {mcpConnectorLabel(product)}
+            </Pill>
           </div>
           <div className="flex flex-wrap gap-2">
             {product.launchUrl ? (
@@ -411,31 +423,30 @@ export const IntegrationsPage = () => {
     [products, selectedSlug],
   )
 
-  const listBody = productsQuery.isLoading ? (
-    <div className="py-8 text-center text-sm text-[var(--tx3)]">Loading integrations...</div>
-  ) : productsQuery.isError ? (
-    <div className="py-8 text-center text-sm text-[var(--danger-text)]">
-      Failed to load integrations.{' '}
-      <button className="underline" onClick={() => void productsQuery.refetch()} type="button">
-        Retry
-      </button>
-    </div>
-  ) : products.length === 0 ? (
-    <div className="py-8 text-center text-sm text-[var(--tx3)]">No integrations registered.</div>
-  ) : (
-    <div className="grid gap-3">
-      {products.map((product) => (
-        <ProductRow
-          active={selectedProduct?.slug === product.slug}
-          key={product.slug}
-          onSelect={() => {
-            setSelectedSlug(product.slug)
-            setMobileDetailOpen(true)
-          }}
-          product={product}
-        />
-      ))}
-    </div>
+  const listBody = (
+    <QueryState
+      emptyLabel="No integrations registered."
+      errorLabel="Failed to load integrations."
+      isEmpty={products.length === 0}
+      loadingLabel="Loading integrations…"
+      query={productsQuery}
+    >
+      {() => (
+        <div className="grid gap-3">
+          {products.map((product) => (
+            <ProductRow
+              active={selectedProduct?.slug === product.slug}
+              key={product.slug}
+              onSelect={() => {
+                setSelectedSlug(product.slug)
+                setMobileDetailOpen(true)
+              }}
+              product={product}
+            />
+          ))}
+        </div>
+      )}
+    </QueryState>
   )
 
   const columns = [

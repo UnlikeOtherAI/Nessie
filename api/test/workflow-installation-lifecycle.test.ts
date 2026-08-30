@@ -12,12 +12,12 @@ import {
 } from '@nessie/schemas'
 
 import { dispatchAgentTrigger } from '../src/services/trigger-dispatch.js'
+import { retryWorkflowRun } from '../src/services/workflow-runs.js'
 import {
   installWorkflowTemplate,
-  retryWorkflowRun,
   updateWorkflowInstallation,
   WorkflowInstallationLifecycleError,
-} from '../src/services/workflows.js'
+} from '../src/services/workflow-templates.js'
 
 // W8: `paused` must actually pause, and become reachable. Dispatch gates on
 // the exact active status; the update endpoint derives one lifecycle and

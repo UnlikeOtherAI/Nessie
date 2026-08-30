@@ -26,6 +26,7 @@ import { IntervalTriggerFields } from './IntervalTriggerFields'
 import { ScheduledTriggerFields } from './ScheduledTriggerFields'
 import { TriggerMetaFields } from './TriggerMetaFields'
 import { WebhookTriggerFields } from './WebhookTriggerFields'
+import { Notice } from '../../primitives/Notice'
 import { Switch } from '../../primitives/Switch'
 import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
 
@@ -256,6 +257,9 @@ export const TriggerEditorDialog = ({
   const webhookUrl = `${webhookBaseUrl}/api/triggers/webhook`
 
   return (
+    // Not the shared `Dialog`: its subtitle is `mt-1 text-sm` where the shell
+    // renders a description at `text-xs`, and its panel is 680px wide, which is
+    // not one of the three geometries the shell ships.
     <div
       {...overlayDismiss}
       style={{
@@ -368,9 +372,7 @@ export const TriggerEditorDialog = ({
           </div>
 
           {formError ? (
-            <div className="rounded-xl border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-3 text-sm text-[var(--danger-text)]">
-              {formError}
-            </div>
+            <Notice padding="lg" radius="xl" tone="danger">{formError}</Notice>
           ) : null}
 
           <div className="flex items-center justify-between gap-3 pt-1">

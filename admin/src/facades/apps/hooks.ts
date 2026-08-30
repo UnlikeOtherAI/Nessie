@@ -4,6 +4,7 @@ import type {
   AppDetailRecord,
   AppListResponse,
 } from '@nessie/schemas'
+import { appKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
@@ -29,10 +30,15 @@ export type AppListFilters = {
 }
 
 /**
- * Exported so the later connect phase can invalidate every catalogue read from
- * one place after an install, reconnect, or disconnect.
+ * The catalogue family's invalidation prefix, so the connect and agent-access
+ * hooks can refresh every catalogue read from one place after an install,
+ * reconnect, or disconnect.
+ *
+ * It is the shared factory's root rather than its own `['apps']` literal: a
+ * second spelling of a prefix stops matching the moment either side moves,
+ * which is the drift `lib/query-keys.ts` exists to remove.
  */
-export const APPS_QUERY_KEY = ['apps'] as const
+export const APPS_QUERY_KEY = appKeys.all
 
 const buildSearch = (filters: AppListFilters): string => {
   const params = new URLSearchParams()
@@ -51,13 +57,6 @@ const normalise = (filters: AppListFilters): AppListFilters => ({
   offset: filters.offset,
   query: filters.query?.trim() ?? '',
 })
-
-const filterKey = (filters: AppListFilters): readonly unknown[] => [
-  filters.query ?? '',
-  filters.category ?? null,
-  filters.installed === true,
-  filters.offset ?? 0,
-]
 
 /**
  * A catalogue response **together with the request it answers**.
@@ -100,7 +99,7 @@ export const useApps = (filters: AppListFilters = {}) => {
     // for a moment on every letter. `applied` is what keeps the copy honest
     // while that older page is on screen.
     placeholderData: (previous) => previous,
-    queryKey: [...APPS_QUERY_KEY, 'list', ...filterKey(applied)],
+    queryKey: appKeys.list(applied),
     queryFn: async () => ({
       applied,
       response: await apiClient.get<AppListResponse>(`/api/apps${search}`),
@@ -130,7 +129,7 @@ export const useAppCategoryPages = (input: {
   return useInfiniteQuery({
     enabled: input.enabled,
     initialPageParam: 0,
-    queryKey: [...APPS_QUERY_KEY, 'category', input.category, input.installed],
+    queryKey: appKeys.category(input.category, input.installed),
     queryFn: ({ pageParam }): Promise<AppListResponse> =>
       apiClient.get<AppListResponse>(
         `/api/apps${buildSearch({
@@ -158,7 +157,7 @@ export const useApp = (slug: string | undefined) => {
   const apiClient = useApiClient()
 
   return useQuery<AppDetailRecord>({
-    queryKey: [...APPS_QUERY_KEY, 'detail', slug ?? null],
+    queryKey: appKeys.detail(slug),
     queryFn: () => apiClient.get(`/api/apps/${encodeURIComponent(slug ?? '')}`),
     enabled: Boolean(slug),
   })

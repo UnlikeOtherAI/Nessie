@@ -31,6 +31,9 @@ export const FileVersionUploadDialog = ({
   const { isDragging, dropHandlers } = useFileDrop(firstFileOnly(handleFile), uploading)
 
   return (
+    // Not the shared `Dialog`: a `rounded-2xl` / `--main` / `p-5` card with a
+    // drop shadow and a text "Close" control — none of which the shell's
+    // `.create-channel-panel` chrome expresses.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--scrim-strong)] p-4"
       onClick={onClose}

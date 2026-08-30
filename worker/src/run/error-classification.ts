@@ -1,3 +1,5 @@
+import { exponentialBackoffMs } from '@nessie/runtime/scheduling'
+
 export type FailoverReason =
   | 'auth'
   | 'auth_permanent'
@@ -134,18 +136,18 @@ export const resolveRecovery = (
   switch (reason) {
     case 'rate_limit':
       return attemptCount < 3
-        ? { action: 'retry', delayMs: Math.min(1000 * 2 ** attemptCount, 30_000) }
+        ? { action: 'retry', delayMs: exponentialBackoffMs({ attempt: attemptCount, baseMs: 1000, capMs: 30_000 }) }
         : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'overloaded':
       return attemptCount < 3
-        ? { action: 'retry', delayMs: Math.min(5000 * 2 ** attemptCount, 60_000) }
+        ? { action: 'retry', delayMs: exponentialBackoffMs({ attempt: attemptCount, baseMs: 5000, capMs: 60_000 }) }
         : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'transient':
     case 'timeout':
       return attemptCount < 2
-        ? { action: 'retry', delayMs: Math.min(2000 * 2 ** attemptCount, 30_000) }
+        ? { action: 'retry', delayMs: exponentialBackoffMs({ attempt: attemptCount, baseMs: 2000, capMs: 30_000 }) }
         : { action: 'surface_error', userMessage: userMessageForFailureReason(reason) }
 
     case 'format':

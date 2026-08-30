@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import type { UserRecord } from '../../lib/api-client'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import {
   useCreateUser,
   useSetUserDeactivated,
@@ -18,10 +19,11 @@ import { useAgents } from '../../facades/agents/queries'
 import type { AgentRecord } from '../../lib/api-client'
 import {
   FeedbackBanner,
-  sectionTitleClass,
   SettingsPanel,
   type SettingsFeedback,
 } from './settings-shared'
+import { Pill } from '../../components/primitives/Pill'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { WorkspaceMembersSection } from './WorkspaceMembersSection'
 
 const ROLE_OPTIONS = [
@@ -87,14 +89,9 @@ const MemberRow = ({
           </div>
         </div>
         {deactivated ? (
-          <span
-            className={[
-              'shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
-              'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
-            ].join(' ')}
-          >
+          <Pill className="shrink-0" radius="chip" size="sm" tone="warning">
             Deactivated
-          </span>
+          </Pill>
         ) : null}
       </div>
 
@@ -139,7 +136,7 @@ const MemberRow = ({
 export const SettingsMembersPage = () => {
   const { me, token } = useAuthSession()
   const roleIds = me?.user.roleIds ?? []
-  const isOwner = roleIds.includes('owner')
+  const isOwner = useIsOwner()
   // On an UnlikeOtherAI session the roster and its invitations are UOA API
   // features: UOA owns membership, and Nessie holds no list to show.
   const isUoaSession = me?.auth.providerType === 'uoa'
@@ -225,7 +222,7 @@ export const SettingsMembersPage = () => {
     <SettingsPanel eyebrow="Organization" title="Members">
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>People</div>
+          <SectionLabel>People</SectionLabel>
           <div className="mt-4 grid gap-2">
             {users.map((user) => (
               <MemberRow
@@ -252,7 +249,7 @@ export const SettingsMembersPage = () => {
         </section>
 
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Add member</div>
+          <SectionLabel>Add member</SectionLabel>
           <form className="mt-4 grid gap-3" onSubmit={createUserSubmit}>
             <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
               Display name

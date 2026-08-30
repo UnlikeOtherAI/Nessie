@@ -61,7 +61,7 @@ export const nodeThemes: Record<
 }
 
 // W17: executable STEP TYPES with a registered worker executor — mirrors
-// `WORKFLOW_STEP_TYPES` in api/src/services/workflows.ts, which carries the
+// `WORKFLOW_STEP_TYPES` in api/src/services/workflow-validation.ts, which carries the
 // same executor-registration rule. Drift fails the same way W12's tool list
 // drift does: an authoring surface advertising a capability that can only
 // fail at run time.

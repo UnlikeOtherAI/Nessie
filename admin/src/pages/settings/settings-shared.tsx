@@ -1,9 +1,15 @@
 import type { ReactNode } from 'react'
+import { Notice } from '../../components/primitives/Notice'
 import {
   AdminPageHeader,
 } from '../../components/shared/AdminPageHeader'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 
+/**
+ * The section-label look as a bare class, for the elements `SectionLabel`'s
+ * `as` union cannot render — a `<dt>` inside a definition list, where a `<div>`
+ * would break the list semantics. Everything else uses the primitive.
+ */
 export const sectionTitleClass =
   'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
@@ -25,17 +31,9 @@ export const FeedbackBanner = ({ feedback }: { feedback: SettingsFeedback | null
   }
 
   return (
-    <div
-      className={[
-        'rounded-md border px-3 py-2 text-sm',
-        feedback.kind === 'success'
-          ? 'border-[color:var(--success-border)] bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
-          : 'border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
-      ].join(' ')}
-      role="alert"
-    >
+    <Notice role="alert" tone={feedback.kind === 'success' ? 'success' : 'danger'}>
       {feedback.message}
-    </div>
+    </Notice>
   )
 }
 

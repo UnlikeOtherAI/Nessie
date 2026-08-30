@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { MessageSearchResult, ThreadMessageRecord } from '../../lib/api-client'
 import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
+import { channelKeys, threadKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -33,9 +34,9 @@ export const useSendMessage = (threadId?: string) => {
     } & SendMessageThreadExtras) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${threadId}/messages`, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
-      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'replies'] })
-      void queryClient.resetQueries({ queryKey: ['threads', 'activity'] })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.replies(threadId) })
+        void queryClient.resetQueries({ queryKey: threadKeys.activity })
     },
   })
 }
@@ -52,9 +53,9 @@ export const useSendMessageToThread = () => {
       }),
     onSuccess: (_message, input) => {
       void queryClient.invalidateQueries({
-        queryKey: ['threads', input.threadId, 'messages'],
+        queryKey: threadKeys.messages(input.threadId),
       })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -71,7 +72,7 @@ export const useUpdateMessage = (threadId?: string) => {
         { content: input.content },
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
     },
   })
 }
@@ -86,7 +87,7 @@ export const useDeleteMessage = (threadId?: string) => {
         `/api/threads/${threadId}/messages/${messageId}`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
     },
   })
 }
@@ -102,7 +103,7 @@ export const useAddMessageReaction = (threadId?: string) => {
         { emoji: input.emoji },
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
     },
   })
 }
@@ -112,7 +113,7 @@ export const useMessageSearch = (channelId: string | undefined, query: string) =
   const trimmed = query.trim()
 
   return useQuery<MessageSearchResult[]>({
-    queryKey: ['channels', channelId, 'messages', 'search', trimmed],
+    queryKey: channelKeys.messageSearch(channelId, trimmed),
     queryFn: () =>
       apiClient.get(
         `/api/channels/${channelId}/messages/search?query=${encodeURIComponent(trimmed)}`,
@@ -166,7 +167,7 @@ export const useShareRestrictedMessage = (threadId?: string) => {
         { duration: input.duration, kind: input.kind },
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
     },
   })
 }

@@ -8,7 +8,8 @@ import {
 } from '../../../facades/workflows/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { useToasts } from '../../../providers/ToastProvider'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
+import { useIsOwner } from '../../shared/OwnerGate'
 import {
   formatRelativeTime,
   getInstallationTone,
@@ -75,7 +76,7 @@ const InstallationAutomationRow = ({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-semibold text-[var(--tx)]">{name}</span>
-          <StatusPill tone={getInstallationTone(status)}>{status}</StatusPill>
+          <Pill tone={getInstallationTone(status)}>{status}</Pill>
         </div>
         <div className="mt-1 text-xs text-[color:var(--tx3)]">
           {lastRun
@@ -121,9 +122,8 @@ const InstallationAutomationRow = ({
 
 export const ChannelAutomationsPanel = ({ channelId }: { channelId: string }) => {
   const { me } = useAuthSession()
-  const isWorkflowAdmin =
-    (me?.user.roleIds.includes('owner') ?? false) ||
-    (me?.user.roleIds.includes('admin') ?? false)
+  const isOwner = useIsOwner()
+  const isWorkflowAdmin = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const { data: installations = [], isLoading } = useWorkflowInstallations(true, channelId)
   const { data: templates = [] } = useWorkflowTemplates()
   const templateNameById = new Map(templates.map((template) => [template.id, template.name]))

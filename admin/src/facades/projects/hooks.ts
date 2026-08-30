@@ -4,13 +4,14 @@ import type {
   ProjectRecord,
   TeamRecord,
 } from '../../lib/api-client'
+import { channelKeys, projectKeys, teamKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useProjects = () => {
   const apiClient = useApiClient()
 
   return useQuery<ProjectRecord[]>({
-    queryKey: ['projects'],
+    queryKey: projectKeys.all,
     queryFn: () => apiClient.get('/api/projects'),
     staleTime: Infinity,
   })
@@ -21,7 +22,7 @@ export const useProjectMembers = (projectId: string | null) => {
 
   return useQuery<ProjectMemberRecord[]>({
     enabled: Boolean(projectId),
-    queryKey: ['project-members', projectId],
+    queryKey: projectKeys.members(projectId),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/members`),
   })
 }
@@ -30,7 +31,7 @@ export const useTeams = () => {
   const apiClient = useApiClient()
 
   return useQuery<TeamRecord[]>({
-    queryKey: ['teams'],
+    queryKey: teamKeys.all,
     queryFn: () => apiClient.get('/api/teams'),
     staleTime: Infinity,
   })
@@ -44,7 +45,7 @@ export const useCreateProject = () => {
     mutationFn: (input: { name: string }) =>
       apiClient.post<ProjectRecord>('/api/projects', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all })
     },
   })
 }
@@ -57,7 +58,7 @@ export const useCreateTeam = () => {
     mutationFn: (input: { name: string; projectId: string }) =>
       apiClient.post<TeamRecord>('/api/teams', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['teams'] })
+      void queryClient.invalidateQueries({ queryKey: teamKeys.all })
     },
   })
 }
@@ -79,8 +80,8 @@ export const useUpdateProject = () => {
         name: input.name,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -93,8 +94,8 @@ export const useDeleteProject = () => {
     mutationFn: (projectId: string) =>
       apiClient.delete<{ ok: true }>(`/api/projects/${projectId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -109,9 +110,8 @@ export const useAddProjectMember = () => {
         userId: input.userId,
         role: input.role,
       }),
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['project-members', variables.projectId] })
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all })
     },
   })
 }
@@ -123,9 +123,8 @@ export const useRemoveProjectMember = () => {
   return useMutation({
     mutationFn: (input: { projectId: string; userId: string }) =>
       apiClient.delete<{ ok: true }>(`/api/projects/${input.projectId}/members/${input.userId}`),
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['project-members', variables.projectId] })
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all })
     },
   })
 }

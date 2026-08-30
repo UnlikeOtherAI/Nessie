@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ThreadMessageRecord } from '../../lib/api-client'
 import { readSseStream, type SseFrame } from '../../lib/sse'
+import { channelKeys, threadKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
@@ -61,7 +62,7 @@ export const useThreadMessages = (threadId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<ThreadMessageRecord[]>({
-    queryKey: ['threads', threadId, 'messages'],
+    queryKey: threadKeys.messages(threadId),
     queryFn: () => apiClient.get(`/api/threads/${threadId}/messages`),
     enabled: Boolean(threadId),
   })
@@ -72,7 +73,7 @@ export const useThreadReplies = (threadId?: string, rootMessageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<ThreadMessageRecord[]>({
-    queryKey: ['threads', threadId, 'replies', rootMessageId],
+    queryKey: threadKeys.repliesOf(threadId, rootMessageId),
     queryFn: () =>
       apiClient.get(`/api/threads/${threadId}/messages?rootMessageId=${rootMessageId}`),
     enabled: Boolean(threadId) && Boolean(rootMessageId),
@@ -89,7 +90,7 @@ export const useThreadMessage = (threadId?: string, messageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<ThreadMessageDetail>({
-    queryKey: ['threads', threadId, 'message', messageId],
+    queryKey: threadKeys.message(threadId, messageId),
     queryFn: () => apiClient.get(`/api/threads/${threadId}/messages/${messageId}`),
     enabled: Boolean(threadId) && Boolean(messageId),
   })
@@ -105,12 +106,12 @@ export const useMarkThreadRead = () => {
         ? { rootMessageId: input.rootMessageId, lastReadMessageId: input.lastReadMessageId }
         : {}),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
-      void queryClient.resetQueries({ queryKey: ['threads', 'activity'] })
-    },
-    onError: () => {
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
-      void queryClient.resetQueries({ queryKey: ['threads', 'activity'] })
+        void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+        void queryClient.resetQueries({ queryKey: threadKeys.activity })
+      },
+      onError: () => {
+        void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+        void queryClient.resetQueries({ queryKey: threadKeys.activity })
     },
   })
 }
@@ -125,7 +126,7 @@ export const useRunThinkingLog = (
   const apiClient = useApiClient()
 
   return useQuery<RunThinkingLog>({
-    queryKey: ['threads', threadId, 'runs', runId, 'thinking'],
+    queryKey: threadKeys.runThinking(threadId, runId),
     queryFn: () => apiClient.get(`/api/threads/${threadId}/runs/${runId}/thinking`),
     enabled: enabled && Boolean(threadId) && Boolean(runId),
   })
@@ -288,7 +289,7 @@ export const useThreadStream = (threadId?: string): StreamState => {
           void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
         } else if (data.messageId && data.content !== undefined) {
           queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
-            ['threads', threadId, 'messages'],
+            threadKeys.messages(threadId),
             (current) => {
               const finalMessage: ThreadMessageRecord = {
                 agentId: data.agentId ?? null,
@@ -313,17 +314,17 @@ export const useThreadStream = (threadId?: string): StreamState => {
         setPendingMessages((current) =>
           current.filter((message) => message.runId !== data.runId),
         )
-        void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+        void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
         if (data.rootMessageId) {
           void queryClient.invalidateQueries({
-            queryKey: ['threads', threadId, 'replies', data.rootMessageId],
+            queryKey: threadKeys.repliesOf(threadId, data.rootMessageId),
           })
         }
         return
       }
 
       if (frame.event === 'message.reaction') {
-        void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+        void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
       }
     }
 

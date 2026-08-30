@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import type { KnowledgePageKind } from './hooks'
 
@@ -22,7 +23,7 @@ export const useProjectRecentPages = (projectId?: string, limit = 5) => {
   const apiClient = useApiClient()
 
   return useQuery<RecentKnowledgePage[]>({
-    queryKey: ['knowledge-recent-pages', projectId ?? 'none', limit],
+    queryKey: knowledgeKeys.recentPages(projectId, limit),
     queryFn: () =>
       apiClient.get(
         `/api/knowledge-base/recent-pages?projectId=${encodeURIComponent(projectId ?? '')}`

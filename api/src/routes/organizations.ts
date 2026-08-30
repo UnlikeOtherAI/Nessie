@@ -2,15 +2,13 @@ import type { FastifyInstance } from 'fastify'
 import { recordStorageTransferUsage } from '@nessie/runtime'
 
 import {
+  isAdminRole,
   OrganizationSummarySchema,
   UpdateOrganizationRequestSchema,
 } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import type { RouteDeps } from './types.js'
-
-// Only owners/admins may change the org-wide logo (members get a read-only view).
-const ADMIN_ROLES = new Set(['owner', 'admin'])
 
 // Logos are served from a public, unauthenticated endpoint and rendered on the
 // login screen, so restrict them to raster image types. This excludes SVG —
@@ -61,7 +59,8 @@ export const registerOrganizationRoutes = (app: FastifyInstance, deps: RouteDeps
     const membership = await prisma.organizationMember.findUnique({
       where: { organizationId_userId: { organizationId, userId } },
     })
-    if (!membership || !ADMIN_ROLES.has(membership.role)) {
+    // Only owners/admins may change the org-wide logo (members get a read-only view).
+    if (!membership || !isAdminRole(membership.role)) {
       sendApiError(
         reply,
         403,

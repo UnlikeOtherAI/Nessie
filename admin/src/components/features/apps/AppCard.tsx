@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { AppSummaryRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
+import { Pill } from '../../primitives/Pill'
 import { AppConnectDialog } from './AppConnectDialog'
-import { StatusPill } from '../../primitives/StatusPill'
 import { AppIcon } from './AppIcon'
 import { AppTrustBadge } from './AppTrustBadge'
 import {
@@ -150,7 +150,7 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
         <div className="min-w-0">
           {status.kind === 'pill' ? (
-            <StatusPill tone={status.tone}>{status.label}</StatusPill>
+            <Pill tone={status.tone}>{status.label}</Pill>
           ) : status.kind === 'quiet' ? (
             <span className="truncate text-xs text-[color:var(--tx3)]">{status.label}</span>
           ) : null}

@@ -21,6 +21,7 @@ import {
   type DashboardWidgetRecord,
 } from '../facades/dashboards/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { dashboardKeys } from '../lib/query-keys'
 
 /**
  * Each widget loads its own data so one inaccessible widget degrades to a lock
@@ -129,6 +130,10 @@ export const DashboardDetailPage = () => {
   return (
     <div className="flex h-full min-h-0" data-testid="dashboard-detail">
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Left hand-rolled: AdminPageHeader has no subtitle slot for
+            `dashboard.description` under the title — its only secondary line is
+            `eyebrow`, a 10px uppercase tracking-[0.2em] rail above the title,
+            which is not the same element. */}
         <header
           className="flex items-center gap-3 border-b px-6 py-3"
           style={{ borderColor: 'var(--sep)' }}
@@ -245,7 +250,7 @@ export const DashboardDetailPage = () => {
       {showAddWidget ? (
         <AddWidgetPanel
           dashboardId={dashboard.id}
-          onAdded={() => queryClient.invalidateQueries({ queryKey: ['dashboards', dashboard.id] })}
+          onAdded={() => queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(dashboard.id) })}
           onClose={() => setShowAddWidget(false)}
         />
       ) : null}

@@ -6,6 +6,7 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../../../layouts/admin-shell/PhoneNavigationButton'
 import { TabBar } from '../../primitives/TabBar'
+import { PaginationFooter } from '../../shared/PaginationFooter'
 import { AgentCreateButton } from './AgentCreateButton'
 import { AgentsTable } from './AgentsTable'
 import {
@@ -70,9 +71,13 @@ export const AgentsList = () => {
 
   return (
     <div className="flex h-full flex-col">
+      {/* Hand-rolled: AdminPageHeader fixes the page title at text-[17px]
+          font-bold inside an h-[50px] bar, and cannot express this 24px
+          font-semibold hero over a scope description that changes with the tab. */}
       <header className="flex items-start gap-3 px-6 pt-6 pb-4">
         <PhoneNavigationButton />
         <div className="min-w-0 flex-1 space-y-1">
+          {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
             Agents
           </p>
@@ -114,29 +119,20 @@ export const AgentsList = () => {
         />
       </div>
 
-      <div className="flex items-center justify-between border-t border-[color:var(--sep)] px-6 py-3">
-        <button
-          className="admin-button admin-button-secondary"
-          disabled={page === 0}
-          onClick={() => setPage(page - 1)}
-          type="button"
-        >
-          Previous
-        </button>
-        <span className="text-xs text-[color:var(--tx3)]">
-          {scopeAgents.length === 0
+      {/* Always visible: an empty or single-page scope still shows the strip,
+          so the table above it does not grow and shrink as pages change. */}
+      <PaginationFooter
+        canNext={page < totalPages - 1}
+        canPrevious={page > 0}
+        className="px-6 py-3"
+        label={
+          scopeAgents.length === 0
             ? 'No agents'
-            : `${rangeStart}–${rangeEnd} of ${scopeAgents.length} · Page ${page + 1} of ${totalPages}`}
-        </span>
-        <button
-          className="admin-button admin-button-secondary"
-          disabled={page >= totalPages - 1}
-          onClick={() => setPage(page + 1)}
-          type="button"
-        >
-          Next
-        </button>
-      </div>
+            : `${rangeStart}–${rangeEnd} of ${scopeAgents.length} · Page ${page + 1} of ${totalPages}`
+        }
+        onPageChange={setPage}
+        page={page}
+      />
     </div>
   )
 }

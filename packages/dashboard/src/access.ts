@@ -23,6 +23,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client'
+import { isAdminRole } from '@nessie/schemas'
 
 export type DashboardActor = {
   userId: string
@@ -208,7 +209,7 @@ export const resolveDashboardAccess = async (
     return NOT_FOUND
   }
 
-  const isOwnerOrAdmin = actor.role === 'owner' || actor.role === 'admin'
+  const isOwnerOrAdmin = isAdminRole(actor.role)
   const isCreator = dashboard.createdBy === actor.userId
 
   // Archived dashboards are readable but frozen, so history and embeds keep

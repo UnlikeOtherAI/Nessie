@@ -6,6 +6,7 @@ import type {
   CommsProvider,
   CommsResourceToggle,
 } from '../../lib/api-client'
+import { commsKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
@@ -14,14 +15,10 @@ import { useApiClient } from '../../providers/ApiClientProvider'
  * the client never passes an owner id. The response envelope is unwrapped by
  * the shared api-client, so hooks receive plain data.
  */
-export const commsConnectionsKey = ['comms', 'connections'] as const
-export const commsConnectionKey = (id: string) =>
-  ['comms', 'connections', id] as const
-
 export const useCommsConnections = () => {
   const apiClient = useApiClient()
   return useQuery<CommsConnectionListResponse>({
-    queryKey: commsConnectionsKey,
+    queryKey: commsKeys.connections,
     queryFn: () => apiClient.get('/api/comms/connections'),
   })
 }
@@ -29,7 +26,7 @@ export const useCommsConnections = () => {
 export const useCommsConnection = (id: string | null) => {
   const apiClient = useApiClient()
   return useQuery<CommsConnectionDetail>({
-    queryKey: id ? commsConnectionKey(id) : ['comms', 'connections', 'none'],
+    queryKey: commsKeys.connection(id ?? 'none'),
     queryFn: () => apiClient.get(`/api/comms/connections/${id}`),
     enabled: id !== null,
   })
@@ -60,8 +57,8 @@ export const useUpdateCommsResources = () => {
         { resources: input.resources },
       ),
     onSuccess: (_data, input) => {
-      void queryClient.invalidateQueries({ queryKey: commsConnectionKey(input.id) })
-      void queryClient.invalidateQueries({ queryKey: commsConnectionsKey })
+      void queryClient.invalidateQueries({ queryKey: commsKeys.connection(input.id) })
+      void queryClient.invalidateQueries({ queryKey: commsKeys.connections })
     },
   })
 }
@@ -73,7 +70,7 @@ export const useResyncCommsConnection = () => {
     mutationFn: (id: string) =>
       apiClient.post<{ queued: boolean }>(`/api/comms/connections/${id}/resync`),
     onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: commsConnectionKey(id) })
+      void queryClient.invalidateQueries({ queryKey: commsKeys.connection(id) })
     },
   })
 }
@@ -85,7 +82,7 @@ export const useDisconnectCommsConnection = () => {
     mutationFn: (id: string) =>
       apiClient.delete<void>(`/api/comms/connections/${id}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: commsConnectionsKey })
+      void queryClient.invalidateQueries({ queryKey: commsKeys.connections })
     },
   })
 }
@@ -97,8 +94,8 @@ export const useDeleteCommsData = () => {
     mutationFn: (id: string) =>
       apiClient.delete<void>(`/api/comms/connections/${id}/data`),
     onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: commsConnectionKey(id) })
-      void queryClient.invalidateQueries({ queryKey: commsConnectionsKey })
+      void queryClient.invalidateQueries({ queryKey: commsKeys.connection(id) })
+      void queryClient.invalidateQueries({ queryKey: commsKeys.connections })
     },
   })
 }

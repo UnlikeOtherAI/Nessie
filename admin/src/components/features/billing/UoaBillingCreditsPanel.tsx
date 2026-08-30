@@ -13,9 +13,7 @@ import {
   useUoaBillingCredits,
   useUoaBillingCreditTopUp,
 } from '../../../facades/billing/hooks'
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
+import { SectionLabel } from '../../primitives/SectionLabel'
 
 const isManagerCredits = (
   credits: BillingCreditsV1,
@@ -32,7 +30,7 @@ const CreditCard = ({
   value: BillingCreditAmount
 }) => (
   <div className="rounded-lg border border-[color:var(--sep)] p-3">
-    <div className={sectionTitle}>{label}</div>
+    <SectionLabel>{label}</SectionLabel>
     <div className="mt-1 text-xl font-semibold text-[color:var(--tx)]">
       {value.display}
     </div>
@@ -46,7 +44,7 @@ const ManagerServiceBreakdown = ({
   credits: BillingCreditsManagerV1
 }) => (
   <div className="mt-5">
-    <div className={sectionTitle}>Credits used by service</div>
+    <SectionLabel>Credits used by service</SectionLabel>
     <div className="mt-2 grid gap-2">
       {credits.credit_summary.consumed_breakdown.length === 0 && (
         <div className="rounded-lg border border-[color:var(--sep)] p-3 text-sm text-[color:var(--tx2)]">
@@ -98,7 +96,7 @@ const MemberServiceBreakdown = ({
   credits: BillingCreditsMemberV1
 }) => (
   <div className="mt-5">
-    <div className={sectionTitle}>Credits used by service</div>
+    <SectionLabel>Credits used by service</SectionLabel>
     <div className="mt-2 grid gap-2">
       {credits.credit_summary.consumed_breakdown.length === 0 && (
         <div className="rounded-lg border border-[color:var(--sep)] p-3 text-sm text-[color:var(--tx2)]">
@@ -146,7 +144,7 @@ const ManagerAutomaticTopUp = ({
     <div className="mt-5 rounded-lg border border-[color:var(--sep)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className={sectionTitle}>Automatic top-up</div>
+          <SectionLabel>Automatic top-up</SectionLabel>
           <div className="mt-1 font-semibold text-[color:var(--tx)]">
             {automatic.display_status}
           </div>
@@ -154,6 +152,7 @@ const ManagerAutomaticTopUp = ({
             {automatic.description}
           </p>
         </div>
+        {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
         <div className="rounded-full border border-[color:var(--sep)] px-3 py-1 text-xs text-[color:var(--tx2)]">
           {automatic.state}
         </div>
@@ -176,7 +175,7 @@ const MemberAutomaticTopUp = ({
   credits: BillingCreditsMemberV1
 }) => (
   <div className="mt-5 rounded-lg border border-[color:var(--sep)] p-4">
-    <div className={sectionTitle}>Automatic top-up</div>
+    <SectionLabel>Automatic top-up</SectionLabel>
     <div className="mt-2 text-sm font-semibold text-[color:var(--tx)]">
       Payment method status: {credits.automatic_top_up.payment_method.status}
     </div>
@@ -193,7 +192,7 @@ const AutomaticTopUp = ({ credits }: { credits: BillingCreditsV1 }) =>
 
 const RecentActivity = ({ credits }: { credits: BillingCreditsV1 }) => (
   <div className="mt-5">
-    <div className={sectionTitle}>Recent credit activity</div>
+    <SectionLabel>Recent credit activity</SectionLabel>
     <div className="mt-2 grid gap-2">
       {credits.recent_entries.length === 0 && (
         <div className="rounded-lg border border-[color:var(--sep)] p-3 text-sm text-[color:var(--tx2)]">
@@ -249,7 +248,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
   return (
     <div className="mt-5 grid gap-4 xl:grid-cols-2">
       <div className="rounded-lg border border-[color:var(--sep)] p-4">
-        <div className={sectionTitle}>{credits.funding_policy.title}</div>
+        <SectionLabel>{credits.funding_policy.title}</SectionLabel>
         <p className="mt-1 text-xs text-[color:var(--tx2)]">
           {credits.funding_policy.description}
         </p>
@@ -276,7 +275,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
       </div>
 
       <div className="rounded-lg border border-[color:var(--sep)] p-4">
-        <div className={sectionTitle}>Automatic top-up options</div>
+        <SectionLabel>Automatic top-up options</SectionLabel>
         <div className="mt-3 grid gap-3">
           {credits.automatic_top_up.options.map((option) => {
             const optionId = option.setup_action.request.body.option_id
@@ -294,6 +293,7 @@ const FundingActions = ({ credits }: { credits: BillingCreditsV1 }) => {
                       {option.description}
                     </div>
                   </div>
+                  {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
                   {option.selected && (
                     <span className="rounded-full border border-[color:var(--sep)] px-2 py-0.5 text-xs text-[color:var(--tx2)]">
                       Selected
@@ -380,13 +380,14 @@ export const UoaBillingCreditsPanel = () => {
 
   return (
     <section className="mb-8" data-testid="uoa-billing-credits">
-      <div className={sectionTitle}>Team credits</div>
+      <SectionLabel>Team credits</SectionLabel>
       <div className="mt-2 admin-card p-5">
         {credits.isLoading && (
           <div className="text-sm text-[color:var(--tx2)]">
             Loading team credits…
           </div>
         )}
+        {/* Unconverted: the border deliberately matches the fill (both --warning-soft), so no outline shows. */}
         {credits.error && (
           <div className="rounded-md border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
             Credits are unavailable: {credits.error.message}
@@ -406,6 +407,7 @@ export const UoaBillingCreditsPanel = () => {
                   {data.credit_balance.description}
                 </p>
               </div>
+              {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
               <div className="rounded-full border border-[color:var(--sep)] px-3 py-1 text-xs text-[color:var(--tx2)]">
                 {data.viewer.role === 'billing_manager'
                   ? 'Full team detail'

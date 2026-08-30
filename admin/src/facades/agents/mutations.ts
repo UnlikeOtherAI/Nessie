@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AgentAvatarBackgroundColor, AgentRunLimits } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
+import { agentKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useCreateAgent = () => {
@@ -23,7 +24,7 @@ export const useCreateAgent = () => {
     }) =>
       apiClient.post<AgentRecord>('/api/agents', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }
@@ -49,7 +50,7 @@ export const useUpdateAgent = () => {
       return apiClient.put<AgentRecord>(`/api/agents/${agentId}`, body)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }
@@ -71,7 +72,7 @@ export const useUpdateAgentAvatar = () => {
           : {}),
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }
@@ -107,7 +108,7 @@ export const useBindAgent = () => {
         ...(input.triggerMessageId ? { triggerMessageId: input.triggerMessageId } : {}),
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }
@@ -122,7 +123,7 @@ export const useUnbindAgent = () => {
         `/api/agents/${input.agentId}/bindings/${input.channelId}`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }
@@ -135,7 +136,7 @@ export const useCloneAgent = () => {
     mutationFn: (agentId: string) =>
       apiClient.post<AgentRecord>(`/api/agents/${agentId}/clone`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
     },
   })
 }

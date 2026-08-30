@@ -255,6 +255,20 @@ export const buildTriggerPrompt = (input: {
   return `${prefix}\n\nPayload:\n${JSON.stringify(input.payload, null, 2)}`
 }
 
+/**
+ * Capped exponential backoff: `baseMs * 2^attempt`, never above `capMs`.
+ *
+ * Only the curve is shared. The base, the cap, and any clamp on `attempt`
+ * itself stay with the caller: they are that domain's retry policy, and a
+ * clamped exponent is a different decision from a capped result — folding them
+ * together here would hide which one a call site actually meant.
+ */
+export const exponentialBackoffMs = (input: {
+  attempt: number
+  baseMs: number
+  capMs: number
+}): number => Math.min(input.baseMs * 2 ** input.attempt, input.capMs)
+
 // --- sp-webhook: trigger-delivery retry/backoff policy -----------------------
 // Single source of truth for delivery retry math, shared by the API dispatch
 // path (webhook intake) and the worker retry poller so the two never drift.
@@ -268,9 +282,10 @@ export const computeNextRetryAt = (
   retryCount: number,
   from: Date = new Date(),
 ): Date => {
-  const backoff = Math.min(
-    DELIVERY_RETRY_BASE_MS * 2 ** Math.max(0, retryCount),
-    DELIVERY_RETRY_MAX_BACKOFF_MS,
-  )
+  const backoff = exponentialBackoffMs({
+    attempt: Math.max(0, retryCount),
+    baseMs: DELIVERY_RETRY_BASE_MS,
+    capMs: DELIVERY_RETRY_MAX_BACKOFF_MS,
+  })
   return new Date(from.getTime() + backoff)
 }

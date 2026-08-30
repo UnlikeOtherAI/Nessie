@@ -21,7 +21,8 @@ import {
   NotificationToggle,
   PushPreferenceCard,
 } from './notification-preference-controls'
-import { FeedbackBanner, type SettingsFeedback, sectionTitleClass, SettingsPanel } from './settings-shared'
+import { FeedbackBanner, type SettingsFeedback, SettingsPanel } from './settings-shared'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 const DEFAULT_QUIET_START = '22:00'
 const DEFAULT_QUIET_END = '07:00'
@@ -169,7 +170,7 @@ const BrowserNotificationsSection = () => {
 
   return (
     <section className="admin-card p-4">
-      <div className={sectionTitleClass}>Browser notifications</div>
+      <SectionLabel>Browser notifications</SectionLabel>
       <div className="mt-4 flex items-center justify-between gap-4">
         <div>
           <div className="font-semibold text-[color:var(--tx)]">Browser notifications</div>
@@ -338,7 +339,7 @@ export const NotificationsPage = () => {
           onSubmit={savePreferences}
         >
           <section className="admin-card p-4">
-            <div className={sectionTitleClass}>Focus mode</div>
+            <SectionLabel>Focus mode</SectionLabel>
             <div className="mt-4 flex items-center justify-between gap-4">
               <div>
                 <div className="font-semibold text-[color:var(--tx)]">Pause distractions</div>
@@ -381,7 +382,7 @@ export const NotificationsPage = () => {
           />
 
           <section className="admin-card p-4">
-            <div className={sectionTitleClass}>Quiet hours</div>
+            <SectionLabel>Quiet hours</SectionLabel>
             <div className="mt-4 flex items-center justify-between gap-4">
               <div>
                 <div className="font-semibold text-[color:var(--tx)]">Quiet hours</div>
@@ -445,7 +446,7 @@ export const NotificationsPage = () => {
         </form>
 
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Muted channels</div>
+          <SectionLabel>Muted channels</SectionLabel>
           <div className="mt-4 grid gap-2">
             {channels.length === 0 ? (
               <div className="admin-card p-3 text-sm text-[color:var(--tx3)]">

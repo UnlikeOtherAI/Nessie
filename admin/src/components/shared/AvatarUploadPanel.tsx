@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
+import { SectionLabel } from '../primitives/SectionLabel'
 import { CircleImageCropper } from './CircleImageCropper'
 
 type AvatarUploadPanelProps = {
@@ -53,9 +54,7 @@ export const AvatarUploadPanel = ({
 
   return (
     <section className="admin-card p-4">
-      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-        {title}
-      </div>
+      <SectionLabel>{title}</SectionLabel>
       <div className="mt-2 text-sm text-[color:var(--tx2)]">{hint}</div>
 
       <div className="mt-4 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">

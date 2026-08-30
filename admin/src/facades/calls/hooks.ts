@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CallRecord } from '../../lib/api-client'
+import { callKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useActiveCall = (channelId: string | undefined) => {
   const apiClient = useApiClient()
 
   return useQuery<CallRecord | null>({
-    queryKey: ['call', channelId],
+    queryKey: callKeys.forChannel(channelId),
     queryFn: async () => {
       try {
         return await apiClient.get<CallRecord | null>(
@@ -30,8 +31,8 @@ export const useStartCall = () => {
     mutationFn: (channelId: string) =>
       apiClient.post<CallRecord>(`/api/channels/${channelId}/call`),
     onSuccess: (data, channelId) => {
-      queryClient.setQueryData(['call', channelId], data)
-      void queryClient.invalidateQueries({ queryKey: ['call', channelId] })
+      queryClient.setQueryData(callKeys.forChannel(channelId), data)
+      void queryClient.invalidateQueries({ queryKey: callKeys.forChannel(channelId) })
     },
   })
 }
@@ -44,8 +45,8 @@ export const useJoinCall = () => {
     mutationFn: (callId: string) =>
       apiClient.post<CallRecord>(`/api/calls/${callId}/join`),
     onSuccess: (data) => {
-      queryClient.setQueryData(['call', data.channelId], data)
-      void queryClient.invalidateQueries({ queryKey: ['call'] })
+      queryClient.setQueryData(callKeys.forChannel(data.channelId), data)
+      void queryClient.invalidateQueries({ queryKey: callKeys.all })
     },
   })
 }
@@ -58,7 +59,7 @@ export const useLeaveCall = () => {
     mutationFn: (callId: string) =>
       apiClient.post<CallRecord>(`/api/calls/${callId}/leave`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['call'] })
+      void queryClient.invalidateQueries({ queryKey: callKeys.all })
     },
   })
 }
@@ -71,7 +72,7 @@ export const useEndCall = () => {
     mutationFn: (channelId: string) =>
       apiClient.delete<CallRecord>(`/api/channels/${channelId}/call`),
     onSuccess: (_data, channelId) => {
-      void queryClient.invalidateQueries({ queryKey: ['call', channelId] })
+      void queryClient.invalidateQueries({ queryKey: callKeys.forChannel(channelId) })
     },
   })
 }

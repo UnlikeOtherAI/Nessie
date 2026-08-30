@@ -1,6 +1,7 @@
 import { IntegrationUiCardSchema, type IntegrationUiCard } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
 import { deepWaterResearchLauncherNavigationState } from '../../../facades/integrations/deep-water-research-launcher-navigation'
+import { Pill, type PillTone } from '../../primitives/Pill'
 import { AgentActivityTimeline } from './AgentActivityTimeline'
 
 type IntegrationUiCardAction = NonNullable<IntegrationUiCard['actions']>[number]
@@ -36,19 +37,16 @@ const productLabel = (slug: string | undefined): string => {
 const statusLabel = (status: IntegrationUiCard['status']): string =>
   status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
-const statusClass = (status: IntegrationUiCard['status']): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    status === 'completed'
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : status === 'failed'
-        ? 'bg-[var(--danger-soft)] text-[var(--danger-text)]'
-        : status === 'warning' || status === 'needs_setup'
-          ? 'bg-[var(--warning-soft)] text-[var(--warning-text)]'
-          : status === 'running' || status === 'queued'
-            ? 'bg-[var(--accent-soft)] text-[var(--thinking)]'
-            : 'bg-[var(--overlay)] text-[var(--tx2)]',
-  ].join(' ')
+const statusTone = (status: IntegrationUiCard['status']): PillTone =>
+  status === 'completed'
+    ? 'success'
+    : status === 'failed'
+      ? 'danger'
+      : status === 'warning' || status === 'needs_setup'
+        ? 'warning'
+        : status === 'running' || status === 'queued'
+          ? 'accent'
+          : 'muted'
 
 const actionClass = (variant: IntegrationUiCardAction['variant']): string =>
   [
@@ -93,7 +91,9 @@ const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
       <span className="text-[11px] font-semibold uppercase text-[var(--tx3)]">
         {productLabel(card.productSlug)}
       </span>
-      <span className={statusClass(card.status)}>{statusLabel(card.status)}</span>
+      <Pill className="font-semibold" radius="chip" size="sm" tone={statusTone(card.status)} uppercase={false}>
+        {statusLabel(card.status)}
+      </Pill>
     </div>
     <div className="mt-2 text-sm font-semibold text-[var(--tx)]">{card.title}</div>
     {card.summary ? (

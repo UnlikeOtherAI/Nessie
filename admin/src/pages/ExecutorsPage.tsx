@@ -208,10 +208,22 @@ export const ExecutorsPage = () => {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto grid max-w-7xl gap-5 px-6 py-6">
+        {/* Hand-rolled, and inside the max-w-7xl column so the title aligns with
+            the body: AdminPageHeader fixes the title at text-[17px] font-bold in
+            an h-[50px] full-bleed bar and cannot express this 24px font-semibold
+            hero, its 0.18em eyebrow, or the paragraph beneath it.
+            The cost of keeping it: this action row gets no measured overflow, so
+            the two buttons never fold into a "More" menu. The header wraps, so
+            at 375px they drop to their own line and still fit; below roughly
+            350px of content width — a 320px-class phone, a narrow split view, or
+            any browser zoom — their labels wrap inside the buttons into a ragged
+            two-height row. Fixable by measuring this row without touching the
+            title. */}
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <PhoneNavigationButton />
             <div>
+              {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">Agents</p>
               <h1 className="text-2xl font-semibold text-[color:var(--tx)]">Executors</h1>
               <p className="mt-1 max-w-3xl text-sm text-[color:var(--tx3)]">
@@ -308,6 +320,8 @@ export const ExecutorsPage = () => {
         <div className="grid min-h-[460px] gap-4 lg:grid-cols-[minmax(230px,0.33fr)_minmax(0,0.67fr)]">
           <aside className="admin-card min-h-0 p-3">
             <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold text-[color:var(--tx)]">Available to you</h2><span className="text-xs text-[color:var(--tx3)]">{executors.length}</span></div>
+            {/* Not QueryState: left-aligned p-2 notes rendered above the list
+                rather than in place of it, and the error offers no Retry. */}
             {executorsQuery.isLoading ? <p className="p-2 text-sm text-[color:var(--tx3)]">Loading executors…</p> : null}
             {executorsQuery.isError ? <p className="p-2 text-sm text-[color:var(--danger-text)]">Unable to load executors.</p> : null}
             {!executorsQuery.isLoading && executors.length === 0 ? <p className="p-2 text-sm text-[color:var(--tx3)]">No executor is visible to you. Pair one, or ask its human administrator to assign you.</p> : null}

@@ -18,6 +18,7 @@ import {
   partitionPageHeaderActions,
   type PageHeaderActionLayout,
 } from './responsive-page-header-layout'
+import { SectionLabel } from '../primitives/SectionLabel'
 import {
   HeaderAccountMenu,
   useHeaderAccountMenuVisible,
@@ -366,9 +367,9 @@ export const ResponsivePageHeader = ({
               value={titleInput.value}
             />
           ) : titleTone === 'section' ? (
-            <h2 className="truncate text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
+            <SectionLabel as="h2" className="truncate">
               {title}
-            </h2>
+            </SectionLabel>
           ) : (
             <h1 className="truncate text-[17px] font-bold text-[color:var(--tx)]">{title}</h1>
           )}

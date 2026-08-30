@@ -25,7 +25,7 @@ test('canvas tool list equals the runtime workflow tool ids', () => {
 
 test('the API validates against the same runtime list (no hand-maintained copy)', () => {
   const source = readFileSync(
-    new URL('../../api/src/services/workflows.ts', import.meta.url),
+    new URL('../../api/src/services/workflow-validation.ts', import.meta.url),
     'utf8',
   )
   // The allow-list must come from the runtime package, not a literal list.

@@ -150,6 +150,7 @@ export const ThreadReplyPanel = ({
     cancelEdit,
     changeEditingContent,
     confirmDelete,
+    deleteConfirm,
     editingContent,
     editingMessageId,
     startEdit,
@@ -436,6 +437,8 @@ export const ThreadReplyPanel = ({
 
         <DropZoneOverlay active={replyDrop.isDragging} label="Drop files to reply with" />
       </aside>
+
+      {deleteConfirm}
 
       <OversizePasteDialog
         limit={CHAT_MESSAGE_MAX_CHARS}

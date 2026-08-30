@@ -110,6 +110,7 @@ export const ExecutorDetailPanels = ({
           <h2 className="text-base font-semibold text-[color:var(--tx)]">{executor.label}</h2>
           <p className="mt-0.5 text-xs text-[color:var(--tx3)]">{scopeSummary(executor)}</p>
         </div>
+        {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
         <span className="rounded-full border border-[color:var(--sep)] px-2 py-1 text-xs text-[color:var(--tx2)]">
           {executor.status}
         </span>

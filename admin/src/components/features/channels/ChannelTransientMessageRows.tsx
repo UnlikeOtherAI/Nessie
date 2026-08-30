@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import type { PendingStreamMessage } from '../../../facades/threads/thinking'
 import type { PresenceView } from '../../../providers/PresenceProvider'
+import { Pill } from '../../primitives/Pill'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import type { OptimisticMessage } from './channel-helpers'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
@@ -41,14 +42,9 @@ export const OptimisticMessageRow = ({
         <span className="text-sm font-bold text-[var(--tx)]">{meDisplayName}</span>
         <StatusBadge presence={getPresence(meUserId)} />
         {entry.status === 'failed' ? (
-          <span
-            className={[
-              'inline-flex items-center rounded px-1.5 py-0.5',
-              'bg-[var(--danger-soft)] text-[11px] font-semibold text-[var(--danger-text)]',
-            ].join(' ')}
-          >
+          <Pill className="font-semibold" radius="chip" size="sm" tone="danger" uppercase={false}>
             failed
-          </span>
+          </Pill>
         ) : (
           <span
             className="inline-flex items-center gap-1 text-xs text-[color:var(--tx3)]"

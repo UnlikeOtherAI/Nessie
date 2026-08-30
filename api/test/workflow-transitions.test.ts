@@ -8,7 +8,7 @@ import {
   canUnblockWorkflowStepRun,
   isActiveWorkflowRunStatus,
   isTerminalWorkflowRunStatus,
-} from '../src/services/workflows.js'
+} from '../src/services/workflow-runs.js'
 
 test('isTerminalWorkflowRunStatus flags only cancelled/completed/failed', () => {
   assert.equal(isTerminalWorkflowRunStatus('cancelled'), true)

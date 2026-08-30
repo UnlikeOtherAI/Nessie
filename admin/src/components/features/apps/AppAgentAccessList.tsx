@@ -8,7 +8,7 @@ import {
   useSetAppAgentAccess,
 } from '../../../facades/apps/agent-access-hooks'
 import { mcpInstanceToolsPath } from '../../../facades/mcp-instance-tool-filter'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
 import { getAgentGlyph } from '../../shared/AgentAvatar'
 import { EmptyState } from '../../shared/EmptyState'
@@ -73,7 +73,7 @@ const AgentIdentity = ({ caption, row }: { caption: string | null; row: AgentAcc
       <span className="flex items-center gap-2">
         <span className="truncate text-sm font-medium text-[color:var(--tx)]">{row.name}</span>
         {row.isPersonalAssistant ? (
-          <StatusPill tone="accent">Assistant</StatusPill>
+          <Pill tone="accent">Assistant</Pill>
         ) : null}
       </span>
       {caption ? (

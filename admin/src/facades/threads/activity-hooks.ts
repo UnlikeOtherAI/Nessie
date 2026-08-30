@@ -1,7 +1,6 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
-import { getBaseUrl } from '../../lib/api-client'
-import { readSseStream } from '../../lib/sse'
+import { threadKeys } from '../../lib/query-keys'
+import { useEventStream } from '../realtime/event-stream'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 
@@ -22,7 +21,6 @@ type ThreadActivityResponse = {
   nextCursor?: string
   unreadTotal: number
 }
-const baseUrl = getBaseUrl()
 
 export const useThreadActivity = () => {
   const apiClient = useApiClient()
@@ -53,39 +51,32 @@ export const useThreadActivity = () => {
   }
 }
 
+// A subscriber on the one shared /api/events/stream connection, not a second
+// socket. This hook opened its own fetch with a flat 2s retry and no terminal
+// classification, which is exactly the pair of connections — each parsing every
+// frame and discarding the other's events, each retrying a 403 forever — that
+// facades/realtime/event-stream.ts exists to collapse. The event filter and the
+// reset policy stay here, where they belong.
+const ACTIVITY_EVENTS = new Set([
+  'alert.created',
+  'message.deleted',
+  'message.reply',
+  'message.reply.meta',
+  'thread.read',
+])
+
 export const useThreadActivityEvents = (): void => {
   const queryClient = useQueryClient()
   const { token } = useAuthSession()
-  useEffect(() => {
-    if (!token) return
-    let cancelled = false
-    let controller: AbortController | null = null
-    let lastEventId = ''
-    const connect = async () => {
-      while (!cancelled) {
-        controller = new AbortController()
-        try {
-          const response = await fetch(`${baseUrl}/api/events/stream`, {
-            headers: { authorization: `Bearer ${token}`, ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}) },
-            signal: controller.signal,
-          })
-          if (!response.ok || !response.body) throw new Error('Event stream unavailable')
-          await readSseStream(response.body, (frame) => {
-            if (frame.id) lastEventId = frame.id
-            if (frame.event === 'message.reply.meta' || frame.event === 'message.reply' || frame.event === 'message.deleted' || frame.event === 'alert.created' || frame.event === 'thread.read') {
-              // Pages are keyset slices. An activity change can move an item
-              // across a saved boundary, so retain only page one before
-              // refetching rather than flattening stale pages into duplicates.
-              void queryClient.resetQueries({ queryKey: ['threads', 'activity'] })
-            }
-          })
-        } catch {
-          // Reconnect below; REST remains the source of truth.
-        }
-        if (!cancelled) await new Promise((resolve) => window.setTimeout(resolve, 2_000))
-      }
-    }
-    void connect()
-    return () => { cancelled = true; controller?.abort() }
-  }, [queryClient, token])
+
+  useEventStream({
+    enabled: Boolean(token),
+    onFrame: (frame) => {
+      if (!frame.event || !ACTIVITY_EVENTS.has(frame.event)) return
+      // Pages are keyset slices. An activity change can move an item across a
+      // saved boundary, so retain only page one before refetching rather than
+      // flattening stale pages into duplicates.
+      void queryClient.resetQueries({ queryKey: threadKeys.activity })
+    },
+  })
 }

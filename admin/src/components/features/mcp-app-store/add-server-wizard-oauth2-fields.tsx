@@ -1,6 +1,6 @@
 import type { ChangeEvent, ReactElement } from 'react'
 import type { StepErrors } from './add-server-wizard-validation'
-import { ariaFor, renderFieldError } from './add-server-wizard-field'
+import { ariaFor, renderFieldError } from '../../shared/FormFieldError'
 
 /**
  * OAuth2 sub-form for {@link ./AddServerWizard.tsx}. Per RFC 6749 §2.2 + §4.1

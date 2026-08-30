@@ -8,8 +8,9 @@ import type {
   ProductSurface,
   ProductSurfaceRequirement,
 } from '@nessie/schemas'
+import { integrationManifestKey } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { integrationManifestKey, useIntegratedProducts } from './hooks'
+import { useIntegratedProducts } from './hooks'
 
 // A surface resolved against a live product record, carrying the product's
 // identity so the shell can render + navigate without re-joining data.

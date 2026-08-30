@@ -1,4 +1,5 @@
 import { useId, useRef, type FormEvent } from 'react'
+import { Notice } from '../primitives/Notice'
 import { useModalA11y } from './useModalA11y'
 
 export const SessionDebugIcon = () => (
@@ -76,6 +77,9 @@ export const SessionDebugDialog = ({
   }
 
   return (
+    // Not the shared `Dialog`: this one is tuned for phones — safe-area insets on
+    // the scrim, a 44px close target instead of the shell's 28px, and a dvh
+    // max-height with a scrolling flex column. It already composes `useModalA11y`.
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-[var(--scrim-strong)] backdrop-blur-sm"
       onMouseDown={(event) => {
@@ -169,12 +173,9 @@ export const SessionDebugDialog = ({
           />
 
           {error ? (
-            <div
-              className="mt-3 rounded-xl border border-[color:var(--danger-border)] bg-[color:var(--danger-soft)] px-3 py-2 text-sm text-[color:var(--danger-text)]"
-              role="alert"
-            >
+            <Notice className="mt-3" radius="xl" role="alert" tone="danger">
               {error}
-            </div>
+            </Notice>
           ) : null}
 
           <span aria-live="polite" className="sr-only">

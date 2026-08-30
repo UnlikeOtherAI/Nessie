@@ -10,6 +10,7 @@ import type {
   McpCatalogVisibility,
   McpServerAuthConfig,
 } from '@nessie/schemas'
+import { mcpKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 /**
@@ -81,8 +82,6 @@ export type UpdateCatalogEntryInput = Partial<{
   signature: string | null
 }>
 
-const CATALOG_QUERY_KEY = ['mcp-catalog'] as const
-
 const buildSearch = (filters: { view?: CatalogView; status?: McpCatalogStatus }): string => {
   const params = new URLSearchParams()
   if (filters.view) params.set('view', filters.view)
@@ -99,14 +98,14 @@ export const useMcpCatalog = (
   const search = buildSearch(filters)
 
   return useQuery<McpCatalogEntryRecord[]>({
-    queryKey: [...CATALOG_QUERY_KEY, filters.view ?? 'store', filters.status ?? null],
+    queryKey: mcpKeys.catalogList(filters.view ?? 'store', filters.status ?? null),
     queryFn: () => apiClient.get(`/api/mcp/catalog${search}`),
     enabled: options.enabled ?? true,
   })
 }
 
 const invalidateCatalog = (queryClient: ReturnType<typeof useQueryClient>) =>
-  queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY })
+  queryClient.invalidateQueries({ queryKey: mcpKeys.catalog })
 
 export const useCreateCatalogEntry = () => {
   const apiClient = useApiClient()

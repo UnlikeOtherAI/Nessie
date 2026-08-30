@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ChatMessage } from '../../../../facades/designer/hooks'
+import { Notice } from '../../../primitives/Notice'
 import type { DesignerPageContext } from './DesignerAssistantPanelContext'
 
 type DesignerChatProps = {
@@ -163,14 +164,9 @@ export const DesignerChat = ({
         </div>
 
         {error && (
-          <div
-            className={[
-              'mt-2 rounded-lg border border-[var(--danger-border)]',
-              'bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger-text)]',
-            ].join(' ')}
-          >
+          <Notice className="mt-2" radius="lg" size="sm" tone="danger">
             {error}
-          </div>
+          </Notice>
         )}
       </div>
 

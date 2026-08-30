@@ -11,8 +11,9 @@ import {
   useWorkflowTemplates,
 } from '../facades/workflows/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
-import { StatusPill } from '../components/primitives/StatusPill'
+import { Pill } from '../components/primitives/Pill'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
+import { useIsOwner } from '../components/shared/OwnerGate'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { WorkflowInstallationDetail } from '../components/features/workflows/WorkflowInstallationDetail'
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
@@ -74,7 +75,7 @@ export const WorkflowsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const isWorkflowAdmin =
     isOwner || (me?.user.roleIds.includes('admin') ?? false)
   // W19: template authoring stays admin-gated; the member-facing read surface
@@ -212,7 +213,7 @@ export const WorkflowsPage = () => {
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
                     Run {run.id.slice(0, 8)}
                   </span>
-                  <StatusPill tone="danger">{run.status}</StatusPill>
+                  <Pill tone="danger">{run.status}</Pill>
                 </div>
                 <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
                   {run.errorMessage ?? run.summary ?? 'Failed'}
@@ -261,9 +262,9 @@ export const WorkflowsPage = () => {
         <span className="text-sm font-medium text-[var(--tx)]">
           What failed?
         </span>
-        <StatusPill tone={failedRuns.length > 0 ? 'danger' : 'muted'}>
+        <Pill tone={failedRuns.length > 0 ? 'danger' : 'muted'}>
           {failedRuns.length} failed
-        </StatusPill>
+        </Pill>
       </button>
       <div className="grid gap-3">
         <div className="flex items-start gap-2">
@@ -312,7 +313,7 @@ export const WorkflowsPage = () => {
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--tx)]">
                       {template.name}
                     </span>
-                    <StatusPill tone={summary.tone}>{summary.label}</StatusPill>
+                    <Pill tone={summary.tone}>{summary.label}</Pill>
                   </div>
                   <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
                     v{template.version} · {template.graph.steps.length} step

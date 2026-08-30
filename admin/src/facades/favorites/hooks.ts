@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type { FavoriteRecord, FavoriteTargetType } from '../../lib/api-client'
+import { favoriteKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-
-const favoritesQueryKey = ['favorites'] as const
 
 type SetFavoriteInput = {
   favorite: boolean
@@ -38,7 +37,7 @@ export const useFavorites = () => {
   const apiClient = useApiClient()
 
   return useQuery<FavoriteRecord[]>({
-    queryKey: favoritesQueryKey,
+    queryKey: favoriteKeys.all,
     queryFn: () => apiClient.get('/api/favorites'),
     staleTime: Infinity,
   })
@@ -59,9 +58,9 @@ export const useSetFavorite = () => {
         ? apiClient.put<FavoriteRecord>(`/api/favorites/${targetType}/${targetId}`)
         : apiClient.delete<{ ok: boolean }>(`/api/favorites/${targetType}/${targetId}`),
     onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: favoritesQueryKey })
-      const previous = queryClient.getQueryData<FavoriteRecord[]>(favoritesQueryKey)
-      queryClient.setQueryData<FavoriteRecord[]>(favoritesQueryKey, (current) =>
+      await queryClient.cancelQueries({ queryKey: favoriteKeys.all })
+      const previous = queryClient.getQueryData<FavoriteRecord[]>(favoriteKeys.all)
+      queryClient.setQueryData<FavoriteRecord[]>(favoriteKeys.all, (current) =>
         input.favorite
           ? upsertFavorite(current, input)
           : removeFavorite(current, input),
@@ -69,10 +68,10 @@ export const useSetFavorite = () => {
       return { previous }
     },
     onError: (_error, _input, context) => {
-      queryClient.setQueryData(favoritesQueryKey, context?.previous)
+      queryClient.setQueryData(favoriteKeys.all, context?.previous)
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: favoritesQueryKey })
+      void queryClient.invalidateQueries({ queryKey: favoriteKeys.all })
     },
   })
 }

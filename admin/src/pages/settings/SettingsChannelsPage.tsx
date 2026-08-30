@@ -5,7 +5,8 @@ import type { PageHeaderAction } from '../../components/shared/ResponsivePageHea
 import { useAllChannels, useArchiveChannel } from '../../facades/channels/hooks'
 import type { ChannelRecord } from '../../lib/api-client'
 import type { AdminShellOutletContext } from '../../layouts/AdminShellLayout'
-import { sectionTitleClass, SettingsPanel } from './settings-shared'
+import { SettingsPanel } from './settings-shared'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 export const SettingsChannelsPage = () => {
   const { onCreateChannel } = useOutletContext<AdminShellOutletContext>()
@@ -62,7 +63,7 @@ export const SettingsChannelsPage = () => {
       ]}
     >
       <section className="admin-card p-4">
-        <div className={sectionTitleClass}>All channels</div>
+        <SectionLabel>All channels</SectionLabel>
         <div className="mt-4 grid gap-2">
           {activeChannels.length === 0 ? (
             <div className="admin-card p-3 text-sm text-[color:var(--tx3)]">
@@ -76,7 +77,7 @@ export const SettingsChannelsPage = () => {
 
       {archivedChannels.length > 0 ? (
         <section className="admin-card mt-4 p-4">
-          <div className={sectionTitleClass}>Archived</div>
+          <SectionLabel>Archived</SectionLabel>
           <div className="mt-4 grid gap-2">
             {archivedChannels.map((channel) => renderRow(channel, true))}
           </div>

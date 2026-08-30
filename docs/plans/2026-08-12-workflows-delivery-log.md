@@ -15,7 +15,7 @@ so the plan does not grow an implementation history inside itself.
   callers skip continuation and the terminal event when the write lost the race; a
   cancelled run can no longer be resurrected by its orphaned child.
 - **W2 · Cancel propagates to every kind of child, not just agents — done.**
-  `cancelWorkflowRun` (`api/src/services/workflows.ts`) skips pending/blocked
+  `cancelWorkflowRun` (`api/src/services/workflow-run-controls.ts`) skips pending/blocked
   steps outright and propagates per running-step kind: agent children get the
   cooperative `cancelRequestedAt` flag (the step output names the abandoned
   queued mailbox message), `environment_launch` instances get an

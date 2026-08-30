@@ -33,7 +33,8 @@ import {
 import { useDesignerChat } from '../facades/designer/hooks'
 import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/tool-catalog'
 import type { AgentRecord } from '../lib/api-client'
-import { useAuthSession } from '../providers/AuthSessionProvider'
+import { SectionLabel } from '../components/primitives/SectionLabel'
+import { useIsOwner } from '../components/shared/OwnerGate'
 
 export const AgentDesignerPage = () => {
   const { agentId } = useParams<{ agentId?: string }>()
@@ -81,8 +82,7 @@ export const AgentDesignerContent = ({
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const parentId = searchParams.get('parentId') ?? undefined
   const parentAgent = parentId ? agents.find((a) => a.id === parentId) : undefined
   const isEditMode = Boolean(editingAgent)
@@ -319,9 +319,7 @@ export const AgentDesignerContent = ({
                   size="xl"
                 />
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-                    Avatar
-                  </div>
+                  <SectionLabel>Avatar</SectionLabel>
                   <p className="mt-1 text-sm text-[color:var(--tx3)]">
                     Tap the pencil to upload an image or generate a headshot.
                   </p>

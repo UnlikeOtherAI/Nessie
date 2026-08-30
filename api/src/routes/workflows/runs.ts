@@ -14,13 +14,11 @@ import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
   blockWorkflowStepRun,
   cancelWorkflowRun,
-  getWorkflowRun,
-  listWorkflowRuns,
-  retryWorkflowRun,
   skipWorkflowStepRun,
   unblockWorkflowStepRun,
-  WorkflowActionError,
-} from '../../services/workflows.js'
+} from '../../services/workflow-run-controls.js'
+import { getWorkflowRun, listWorkflowRuns, retryWorkflowRun } from '../../services/workflow-runs.js'
+import { WorkflowActionError } from '../../services/workflow-validation.js'
 import { auditWorkflowMutation } from '../../services/workflow-audit.js'
 import {
   canActorReadWorkflowInstallation,

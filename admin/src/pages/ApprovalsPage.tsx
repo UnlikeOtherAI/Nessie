@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { Pill } from '../components/primitives/Pill'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { approvalKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -18,9 +21,6 @@ type ApprovalRequest = {
   expiresAt: string
   createdAt: string
 }
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 const KNOWLEDGE_PAGE_PUBLISH_ACTION = 'knowledge.page.publish'
 
@@ -62,7 +62,7 @@ export const ApprovalsPage = () => {
   // directly — typing the full envelope here made `data?.data` permanently
   // undefined, so the page rendered empty even with pending approvals.
   const { data } = useQuery<ApprovalRequest[]>({
-    queryKey: ['approvals'],
+    queryKey: approvalKeys.all,
     queryFn: () => apiClient.get('/api/approvals?limit=50'),
     enabled: Boolean(me),
   })
@@ -73,7 +73,7 @@ export const ApprovalsPage = () => {
         resolution: input.resolution,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['approvals'] })
+      void queryClient.invalidateQueries({ queryKey: approvalKeys.all })
     },
   })
 
@@ -92,7 +92,7 @@ export const ApprovalsPage = () => {
         ) : null}
         {pending.length > 0 && (
           <div className="mb-4">
-            <div className={sectionTitle}>Pending</div>
+            <SectionLabel>Pending</SectionLabel>
             <div className="mt-2 grid gap-2">
               {pending.map((approval) => {
                 const knowledgePublish = readKnowledgePagePublishContext(approval)
@@ -165,7 +165,7 @@ export const ApprovalsPage = () => {
         )}
 
         <div>
-          <div className={sectionTitle}>History</div>
+          <SectionLabel>History</SectionLabel>
           <div className="mt-2 grid gap-2">
             {resolved.map((approval) => {
               const knowledgePublish = readKnowledgePagePublishContext(approval)
@@ -180,18 +180,19 @@ export const ApprovalsPage = () => {
                     ) : (
                       <span className="font-mono text-xs text-[color:var(--tx)]">{approval.action}</span>
                     )}
-                    <span
-                      className={[
-                        'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
+                    <Pill
+                      radius="chip"
+                      size="sm"
+                      tone={
                         approval.status === 'approved'
-                          ? 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]'
+                          ? 'success'
                           : approval.status === 'rejected'
-                            ? 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]'
-                            : 'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
-                      ].join(' ')}
+                            ? 'danger'
+                            : 'muted'
+                      }
                     >
                       {approval.status}
-                    </span>
+                    </Pill>
                   </div>
                   <span className="text-xs text-[color:var(--tx3)]">
                     {new Date(approval.createdAt).toLocaleString()}

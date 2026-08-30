@@ -9,6 +9,7 @@ import {
   useCreateInstance,
   useTestInstance,
 } from '../../../facades/mcp-instances/hooks'
+import { Notice } from '../../primitives/Notice'
 
 /**
  * One-click install flow for a library entry (or a discovered endpoint):
@@ -183,6 +184,8 @@ export const LibraryInstallDialog = ({
   }
 
   return (
+    // Not the shared `Dialog`: an `admin-card` panel that *is* the <form>, with
+    // no close control at all — the shell always renders one.
     <div
       className={[
         'fixed inset-0 z-50 flex items-center justify-center',
@@ -265,9 +268,7 @@ export const LibraryInstallDialog = ({
             <div className="text-sm text-[color:var(--tx2)]">{progress}</div>
           ) : null}
           {error ? (
-            <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]">
-              {error}
-            </div>
+            <Notice tone="danger">{error}</Notice>
           ) : null}
         </div>
 

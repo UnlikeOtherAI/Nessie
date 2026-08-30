@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminActor, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { AVATAR_CACHE_CONTROL, sendAvatarImage, sendAvatarNotFound } from './avatar-response.js'
@@ -53,8 +53,6 @@ import type { RouteDeps } from './types.js'
  * every request (`lib/server-context.ts`), so it is safe to gate on.
  */
 
-const ADMIN_ROLES = new Set(['owner', 'admin'])
-
 const NOT_LINKED_MESSAGE =
   'This workspace is not linked to an UnlikeOtherAI workspace'
 
@@ -104,8 +102,7 @@ const requireWorkspaceAdmin = (
   actorContext: AuthorizedActionContext,
   reply: FastifyReply,
 ): boolean => {
-  const allowed = actorContext.actor.actorType === 'user'
-    && (actorContext.actor.roles ?? []).some((role) => ADMIN_ROLES.has(role))
+  const allowed = actorContext.actor.actorType === 'user' && isAdminActor(actorContext)
   if (!allowed) {
     sendApiError(
       reply,

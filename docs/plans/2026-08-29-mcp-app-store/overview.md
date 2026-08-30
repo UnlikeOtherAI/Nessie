@@ -19,6 +19,13 @@ without anyone running a CLI.
   detail view, the universal Connect flow, connection management, agent access,
   custom servers, trust badges, and the component reuse map.
 
+## Table of Contents
+
+- [ux-design-catalogue.md](ux-design-catalogue.md) — the store: browse, search,
+  categories, and the app card.
+- [ux-design-detail-and-connect.md](ux-design-detail-and-connect.md) — one app's
+  detail page and the connect flow.
+
 ## One catalogue, two faces
 
 The App Store is **a second face on `McpCatalogEntry`, never a second

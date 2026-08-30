@@ -15,29 +15,31 @@ import type {
   ThreadMessageRecord,
   ThreadRecord,
 } from '../../lib/api-client'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
+  channelKeys,
   deepWaterAgentAccessKey,
   deepWaterAgentAccessKeyPrefix,
   deepWaterResearchRunsKey,
   deepWaterResearchRunsKeyPrefix,
   integratedProductsKey,
   integratedProductsKeyPrefix,
-  mcpToolRegistryKeyPrefix,
+  integrationManifestKey,
+  mcpKeys,
+  threadKeys,
   toolPolicyTargetsKeyPrefix,
   type IntegrationQueryScope,
-} from '../integration-query-keys'
+} from '../../lib/query-keys'
 import { isExternalAgentChannel } from '../personal-assistant/hooks'
-
-export const integrationManifestKey = (productSlug?: string) =>
-  ['integrations', 'manifest', productSlug ?? 'none'] as const
 
 const useIntegrationQueryScope = (): IntegrationQueryScope | null => {
   const { me } = useAuthSession()
+  const isOwner = useIsOwner()
   return me
     ? {
-        isOwner: me.user.roleIds.includes('owner'),
+        isOwner,
         organizationId: me.context.organizationId,
         teamId: me.context.teamId,
         userId: me.user.id,
@@ -187,7 +189,7 @@ export const useActivateExternalAgentProduct = () => {
       void queryClient.invalidateQueries({
         queryKey: integratedProductsKeyPrefix,
       })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -205,7 +207,7 @@ export const useDeactivateExternalAgentProduct = () => {
       void queryClient.invalidateQueries({
         queryKey: integratedProductsKeyPrefix,
       })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -228,7 +230,7 @@ export const useSyncExternalAgentChannel = () => {
     onSuccess: (result, input) => {
       if (result.imported > 0 && input.threadId) {
         void queryClient.invalidateQueries({
-          queryKey: ['threads', input.threadId, 'messages'],
+          queryKey: threadKeys.messages(input.threadId),
         })
       }
     },
@@ -259,7 +261,7 @@ export const useSetProductTeamEnablement = () => {
           queryKey: toolPolicyTargetsKeyPrefix,
         })
         void queryClient.invalidateQueries({
-          queryKey: mcpToolRegistryKeyPrefix,
+          queryKey: mcpKeys.tools,
         })
       }
     },
@@ -296,9 +298,9 @@ export const useLaunchDeepWaterResearch = () => {
       void queryClient.invalidateQueries({
         queryKey: deepWaterResearchRunsKeyPrefix,
       })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
       void queryClient.invalidateQueries({
-        queryKey: ['threads', response.thread.id, 'messages'],
+        queryKey: threadKeys.messages(response.thread.id),
       })
     },
   })
@@ -318,9 +320,9 @@ export const usePrepareDeepTestReview = () => {
       void queryClient.invalidateQueries({
         queryKey: integratedProductsKeyPrefix,
       })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
       void queryClient.invalidateQueries({
-        queryKey: ['threads', response.thread.id, 'messages'],
+        queryKey: threadKeys.messages(response.thread.id),
       })
     },
   })
@@ -340,9 +342,9 @@ export const usePrepareBuildMeProjectHandoff = () => {
       void queryClient.invalidateQueries({
         queryKey: integratedProductsKeyPrefix,
       })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
       void queryClient.invalidateQueries({
-        queryKey: ['threads', response.thread.id, 'messages'],
+        queryKey: threadKeys.messages(response.thread.id),
       })
     },
   })

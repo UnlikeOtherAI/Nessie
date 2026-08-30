@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
+import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
 import { ProjectMembersDialog } from '../../components/shared/ProjectMembersDialog'
 import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
@@ -45,6 +46,7 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ProjectRecord | null>(null)
   const [membersTarget, setMembersTarget] = useState<ProjectRecord | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProjectRecord | null>(null)
   const [menuProjectId, setMenuProjectId] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<ProjectMenuPosition | null>(null)
   const menuButtonRefs = useRef(new Map<string, HTMLButtonElement>())
@@ -84,9 +86,15 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
     }
   }, [closeMenu, menuPosition])
 
+  // Opening the confirm is the whole of the menu action. The mutation lives in
+  // `runDelete`, which nothing but the dialog's confirm control can reach.
   const handleDelete = (project: ProjectRecord) => {
     closeMenu()
-    if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) return
+    setDeleteTarget(project)
+  }
+
+  const runDelete = (project: ProjectRecord) => {
+    setDeleteTarget(null)
     deleteProject.mutate(project.id, {
       onError: (error) =>
         window.alert(error instanceof Error ? error.message : 'Failed to delete project'),
@@ -243,6 +251,17 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
           isOwner={isOwner}
           onClose={() => setMembersTarget(null)}
           project={membersTarget}
+        />
+      ) : null}
+      {deleteTarget ? (
+        <ConfirmDialog
+          body="This cannot be undone."
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => runDelete(deleteTarget)}
+          open
+          title={`Delete project "${deleteTarget.name}"?`}
         />
       ) : null}
     </aside>

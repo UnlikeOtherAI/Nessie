@@ -4,6 +4,7 @@ import type {
   AgentFormState,
 } from '../../components/features/agents/designer/useAgentDesigner'
 import { getBaseUrl, type AgentModelOption } from '../../lib/api-client'
+import { readSseStream } from '../../lib/sse'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import type { DesignerToolOption } from './tool-catalog'
 import type { DesignerPageContext } from '../../components/features/agents/designer/DesignerAssistantPanelContext'
@@ -171,44 +172,22 @@ export const useDesignerChat = (
           throw new Error('No response body')
         }
 
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        let currentEvent = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim()
-            } else if (line.startsWith('data: ')) {
-              const raw = line.slice(6).trim()
-              try {
-                const data = JSON.parse(raw) as Record<string, unknown>
-                processEvent(
-                  currentEvent,
-                  data,
-                  setState,
-                  actions,
-                  activeToolCallsRef.current,
-                  options,
-                )
-              } catch {
-                // ignore malformed data
-              }
-            }
-            // blank line resets current event
-            if (line === '') {
-              currentEvent = ''
-            }
+        await readSseStream(response.body, (frame) => {
+          if (!frame.data) return
+          try {
+            processEvent(
+              frame.event ?? '',
+              JSON.parse(frame.data) as Record<string, unknown>,
+              setState,
+              actions,
+              activeToolCallsRef.current,
+              options,
+            )
+          } catch {
+            // A malformed frame must not break the stream: the assistant
+            // bubble keeps growing from the frames that do parse.
           }
-        }
+        })
       } catch (err) {
         if ((err as Error).name === 'AbortError') return
         setState((prev) => ({

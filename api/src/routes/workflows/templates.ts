@@ -20,8 +20,8 @@ import {
   getWorkflowTemplate,
   listWorkflowTemplates,
   updateWorkflowTemplate,
-  WorkflowTemplateValidationError,
-} from '../../services/workflows.js'
+} from '../../services/workflow-templates.js'
+import { WorkflowTemplateValidationError } from '../../services/workflow-validation.js'
 import { auditWorkflowMutation } from '../../services/workflow-audit.js'
 import { isWorkflowAdmin } from '../../services/workflow-entitlement.js'
 import type { FastifyReply } from 'fastify'

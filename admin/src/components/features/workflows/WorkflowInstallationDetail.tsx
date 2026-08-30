@@ -12,7 +12,8 @@ import {
   useWorkflowInstallationRuns,
   useWorkflowInstallationTriggers,
 } from '../../../facades/workflows/hooks'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { TriggerEditorDialog } from '../triggers/TriggerEditorDialog'
 import {
   TRIGGER_TYPE_ICONS,
@@ -26,7 +27,6 @@ import {
   getInstallationTone,
   getRunStatusColor,
   getWorkflowTemplateLabel,
-  sectionTitle,
 } from './presentation'
 
 /**
@@ -97,9 +97,9 @@ export const WorkflowInstallationDetail = ({
               <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
                 {getWorkflowTemplateLabel(template, installation)}
               </h2>
-              <StatusPill tone={getInstallationTone(installation.status)}>
+              <Pill tone={getInstallationTone(installation.status)}>
                 {installation.status}
-              </StatusPill>
+              </Pill>
             </div>
             <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
               Installation {installation.id.slice(0, 8)} · template v
@@ -134,7 +134,7 @@ export const WorkflowInstallationDetail = ({
 
       <section>
         <div className="flex items-center justify-between gap-3">
-          <div className={sectionTitle}>Triggers</div>
+          <SectionLabel>Triggers</SectionLabel>
           <button
             className="admin-button admin-button-secondary"
             onClick={() => setTriggerDialogOpen(true)}
@@ -186,7 +186,7 @@ export const WorkflowInstallationDetail = ({
 
       <section>
         <div className="flex items-baseline justify-between gap-3">
-          <div className={sectionTitle}>Runs</div>
+          <SectionLabel>Runs</SectionLabel>
           <div className="text-xs text-[color:var(--tx3)]">{sortedRuns.length} total</div>
         </div>
         {sortedRuns.length === 0 ? (

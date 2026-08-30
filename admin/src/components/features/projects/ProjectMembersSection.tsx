@@ -2,6 +2,7 @@ import { useNavigateToDm } from '../../../facades/channels/dm-navigation'
 import { useProjectMembers } from '../../../facades/projects/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { UserAvatar } from '../../primitives/UserAvatar'
+import { useIsOwner } from '../../shared/OwnerGate'
 import {
   DashboardSectionCard,
   SectionNotice,
@@ -27,13 +28,14 @@ type ProjectMembersSectionProps = {
  */
 export const ProjectMembersSection = ({ className, projectId }: ProjectMembersSectionProps) => {
   const { me, token } = useAuthSession()
+  const isOrganizationOwner = useIsOwner()
   const navigateToDm = useNavigateToDm()
   const { data: members, isError, isPending } = useProjectMembers(projectId)
 
   const ordered = orderProjectMembers(members ?? [])
   const visible = ordered.slice(0, MEMBER_ROW_CAP)
   const canManage = canManageProjectMembers({
-    isOrganizationOwner: me?.user.roleIds.includes('owner') ?? false,
+    isOrganizationOwner,
     members: ordered,
     userId: me?.user.id,
   })

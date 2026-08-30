@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { SectionLabel } from '../../primitives/SectionLabel'
 
 export type SectionLink = {
   label: string
@@ -17,9 +18,6 @@ type DashboardSectionCardProps = {
   children: ReactNode
 }
 
-// The house section label, owned here so all four sections share one chrome.
-const sectionTitle = 'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
-
 export const DashboardSectionCard = ({
   title,
   count,
@@ -29,10 +27,10 @@ export const DashboardSectionCard = ({
 }: DashboardSectionCardProps) => (
   <section className={['admin-card overflow-hidden', className ?? ''].join(' ')}>
     <header className="flex items-center gap-3 px-4 pb-2 pt-3">
-      <h2 className={sectionTitle}>
+      <SectionLabel as="h2">
         {title}
         {typeof count === 'number' ? ` · ${count}` : ''}
-      </h2>
+      </SectionLabel>
       {links && links.length > 0 ? (
         <nav className="ml-auto flex items-center gap-2 text-xs">
           {links.map((link, index) => (

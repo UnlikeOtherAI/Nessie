@@ -1,6 +1,6 @@
 import type { AppDetailRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import { AppIcon } from './AppIcon'
 import { AppTrustBadge } from './AppTrustBadge'
 import { appCardStatus, appUnavailableExplanation } from './app-card-presentation'
@@ -75,7 +75,7 @@ export const AppDetailHero = ({
             </h1>
             <AppTrustBadge trustLevel={app.trustLevel} />
             {status.kind === 'pill' ? (
-              <StatusPill tone={status.tone}>{status.label}</StatusPill>
+              <Pill tone={status.tone}>{status.label}</Pill>
             ) : null}
           </div>
           <p className="text-sm text-[color:var(--tx2)]">{appProviderLine(app)}</p>

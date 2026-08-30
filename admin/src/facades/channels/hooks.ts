@@ -1,26 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { SetChannelMuteRequest } from '@nessie/schemas'
 import type { ChannelRecord } from '../../lib/api-client'
+import { agentKeys, channelKeys, userKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useChannels = () => {
   const apiClient = useApiClient()
 
   return useQuery<ChannelRecord[]>({
-    queryKey: ['channels'],
+    queryKey: channelKeys.all,
     queryFn: () => apiClient.get('/api/channels'),
     staleTime: Infinity,
   })
 }
 
 // Admin Channels page needs archived channels too; kept under a distinct
-// query key so the active-only ['channels'] list stays untouched. Mutations
-// invalidate ['channels'], which partial-matches and refreshes this too.
+// query key so the active-only list stays untouched. Mutations invalidate the
+// family root, which partial-matches and refreshes this too.
 export const useAllChannels = () => {
   const apiClient = useApiClient()
 
   return useQuery<ChannelRecord[]>({
-    queryKey: ['channels', 'all'],
+    queryKey: channelKeys.allScopes,
     queryFn: () => apiClient.get('/api/channels?includeArchived=true'),
     staleTime: Infinity,
   })
@@ -34,8 +35,8 @@ export const useOpenDm = () => {
     mutationFn: (userId: string) =>
       apiClient.post<ChannelRecord>(`/api/dm/${userId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+      void queryClient.invalidateQueries({ queryKey: userKeys.all })
     },
   })
 }
@@ -51,9 +52,9 @@ export const useStartChannelConversation = () => {
         userIds: input.userIds ?? [],
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['agents'] })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+      void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+      void queryClient.invalidateQueries({ queryKey: userKeys.all })
     },
   })
 }
@@ -71,7 +72,7 @@ export const useCreateChannel = () => {
     }) =>
       apiClient.post<ChannelRecord>('/api/channels', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -86,8 +87,8 @@ export const useAddChannelMember = () => {
         userId: input.userId,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: userKeys.all })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -102,8 +103,8 @@ export const useRemoveChannelMember = () => {
         `/api/channels/${input.channelId}/members/${input.userId}`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: userKeys.all })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -125,7 +126,7 @@ export const useUpdateChannel = () => {
       return apiClient.patch<ChannelRecord>(`/api/channels/${channelId}`, body)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -140,7 +141,7 @@ export const useArchiveChannel = () => {
         `/api/channels/${input.channelId}/${input.archived ? 'archive' : 'unarchive'}`,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -153,7 +154,7 @@ export const useJoinChannel = () => {
     mutationFn: (input: { channelId: string }) =>
       apiClient.post<ChannelRecord>(`/api/channels/${input.channelId}/join`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }
@@ -168,7 +169,7 @@ export const useSetChannelMute = () => {
         muted,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['channels'] })
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
     },
   })
 }

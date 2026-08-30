@@ -1,5 +1,6 @@
 import type { UserRecord } from '../../../lib/api-client'
 import { AvatarBadges } from '../../primitives/AvatarBadges'
+import { Pill } from '../../primitives/Pill'
 import { UserAvatar } from '../../primitives/UserAvatar'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { CloseIcon } from './icons'
@@ -43,14 +44,7 @@ export const CurrentUserRow = ({
         {user.email}
       </div>
     </div>
-    <span
-      className={[
-        'rounded bg-[color:var(--overlay-weak)] px-1.5 py-0.5 text-[10px] uppercase',
-        'tracking-[0.12em] text-[color:var(--tx3)]',
-      ].join(' ')}
-    >
-      user
-    </span>
+    <Pill radius="chip" size="sm">user</Pill>
     {user.id !== currentUserId && (
       <button
         className={`${actionBtnClass} text-[color:var(--tx3)] hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger-text)]`}

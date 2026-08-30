@@ -13,8 +13,8 @@ import {
   useLocalBack,
 } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { StatusPill } from '../components/primitives/StatusPill'
-import { useAuthSession } from '../providers/AuthSessionProvider'
+import { Pill } from '../components/primitives/Pill'
+import { useIsOwner } from '../components/shared/OwnerGate'
 import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
 import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
 
@@ -32,8 +32,7 @@ const getStatusTone = (status: AgentRecord['status']) => {
 export const AgentDetailPage = () => {
   const navigate = useNavigate()
   const { agentId } = useParams<{ agentId?: string }>()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   // `scope: 'all'` so a system/global agent (or a sub-agent) resolves too — the
   // same list the Agents page renders.
   const { data: agents = [], isPending } = useAgents({ scope: 'all' })
@@ -82,6 +81,11 @@ export const AgentDetailPage = () => {
     <DesignerAssistantPanelProvider>
       <div className="flex h-full min-w-0 flex-col lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col">
+          {/* Hand-rolled: AdminPageHeader can express neither the avatar in
+              the leading lane (it hardcodes `leading` to PhoneNavigationButton
+              and takes no `onBack` for the desktop-only Back) nor the
+              three-line identity block — name + status dot + status Pill, role,
+              current tool/last activity — under one title. */}
           <header className="flex items-start gap-3 px-6 pt-6 pb-4">
             <PhoneNavigationButton />
             {!phoneLayout ? (
@@ -102,7 +106,7 @@ export const AgentDetailPage = () => {
                     {agent.name}
                   </h1>
                   <AgentStatusDot status={agent.status} />
-                  <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
+                  <Pill tone={getStatusTone(agent.status)}>{agent.status}</Pill>
                 </div>
                 <div className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</div>
                 <div className="mt-0.5 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">

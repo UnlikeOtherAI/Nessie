@@ -1,4 +1,4 @@
-import { ariaFor, renderFieldError } from './add-server-wizard-field'
+import { ariaFor, renderFieldError } from '../../shared/FormFieldError'
 import {
   buttonGhost,
   buttonPrimary,

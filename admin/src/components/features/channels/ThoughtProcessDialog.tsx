@@ -76,6 +76,9 @@ export const ThoughtProcessDialog = ({
   }, [blocks.length, pinned, tailLength])
 
   return (
+    // Not the shared `Dialog`: a `max-w-3xl` scrolling flex column with a
+    // `text-base` heading, and a scrim that stops Escape from also closing the
+    // reply panel underneath. It already composes `useModalA11y`.
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
       {...overlayDismiss}

@@ -101,6 +101,7 @@ export const DeepWaterResearchLauncher = ({
         <DeepWaterResearchCustomControls onChange={updateValue} values={values} />
       ) : null}
 
+      {/* Unconverted: bare `rounded` is 4px, not --radius-sm's 6px, and the border is a /30 tint of --warning-text. */}
       {readinessMessage ? (
         <p className="rounded border border-[var(--warning-text)]/30 bg-[var(--warning-soft)] px-3 py-2 text-xs leading-5 text-[var(--warning-text)]">
           {readinessMessage}

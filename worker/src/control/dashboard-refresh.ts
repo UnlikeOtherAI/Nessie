@@ -28,7 +28,11 @@ import {
   type DashboardEgressPolicy,
 } from '@nessie/dashboard'
 import type { DashboardOutputColumn } from '@nessie/schemas'
-import type { FileService, LedgerAttribution } from '@nessie/runtime'
+import {
+  exponentialBackoffMs,
+  type FileService,
+  type LedgerAttribution,
+} from '@nessie/runtime'
 
 export type DashboardRefreshDeps = {
   prisma: PrismaClient
@@ -54,7 +58,11 @@ const attributionFor = (organizationId: string, userId: string | null): LedgerAt
 
 /** Capped exponential backoff: 1m, 2m, 4m … up to six hours. */
 const backoffMs = (consecutiveFailures: number): number =>
-  Math.min(6 * 60 * 60 * 1000, 60_000 * 2 ** Math.min(consecutiveFailures, 9))
+  exponentialBackoffMs({
+    attempt: Math.min(consecutiveFailures, 9),
+    baseMs: 60_000,
+    capMs: 6 * 60 * 60 * 1000,
+  })
 
 const nextRunAfterSuccess = (intervalMinutes: number | null): Date | null =>
   intervalMinutes ? new Date(Date.now() + intervalMinutes * 60_000) : null

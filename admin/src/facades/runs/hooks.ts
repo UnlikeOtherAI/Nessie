@@ -1,17 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { runKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-// Invalidated after cancel/continue so the run's state refreshes wherever it is
-// shown (the document-stream cancel control, budget-stop Continue notices).
-export const activeRunsKey = ['runs', 'active'] as const
-
+// Cancel/continue invalidate the active-run list so a run's state refreshes
+// wherever it is shown (the document-stream cancel control, budget-stop
+// Continue notices).
 export const useCancelRun = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation<{ status: 'cancelled' | 'cancel_requested' }, Error, string>({
     mutationFn: (runId) => apiClient.post(`/api/runs/${runId}/cancel`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: activeRunsKey })
+      void queryClient.invalidateQueries({ queryKey: runKeys.active })
     },
   })
 }
@@ -26,7 +26,7 @@ export const useContinueRun = () => {
   return useMutation<{ runId: string }, Error, string>({
     mutationFn: (runId) => apiClient.post(`/api/runs/${runId}/continue`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: activeRunsKey })
+      void queryClient.invalidateQueries({ queryKey: runKeys.active })
     },
   })
 }

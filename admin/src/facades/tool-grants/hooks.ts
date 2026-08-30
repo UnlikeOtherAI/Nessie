@@ -14,16 +14,16 @@ import type {
   ToolRegistrySource,
   ToolRegistryTransport,
 } from '@nessie/schemas'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   deepWaterAgentAccessKeyPrefix,
-  mcpInstancesKeyPrefix,
+  mcpKeys,
   mcpToolRegistryKey,
-  mcpToolRegistryKeyPrefix,
   toolPolicyTargetsKey,
   toolPolicyTargetsKeyPrefix,
-} from '../integration-query-keys'
+} from '../../lib/query-keys'
 
 /**
  * Domain facade for the tool registry surface (`/api/mcp/tools`) and its grant
@@ -96,10 +96,11 @@ export const useMcpToolRegistry = (
 ) => {
   const apiClient = useApiClient()
   const { me } = useAuthSession()
+  const isOwner = useIsOwner()
   const search = buildSearch(filters)
   const scope = me
     ? {
-        isOwner: me.user.roleIds.includes('owner'),
+        isOwner,
         organizationId: me.context.organizationId,
         teamId: me.context.teamId,
         userId: me.user.id,
@@ -109,7 +110,7 @@ export const useMcpToolRegistry = (
   return useQuery<McpToolRegistryRecord[]>({
     queryKey: scope
       ? mcpToolRegistryKey(scope, enabled, filters)
-      : [...mcpToolRegistryKeyPrefix, 'signed-out'],
+      : [...mcpKeys.tools, 'signed-out'],
     queryFn: () => apiClient.get(`/api/mcp/tools${search}`),
     enabled: enabled && scope !== null,
   })
@@ -118,9 +119,10 @@ export const useMcpToolRegistry = (
 export const useAgentToolPolicyTargets = (enabled = true) => {
   const apiClient = useApiClient()
   const { me } = useAuthSession()
+  const isOwner = useIsOwner()
   const scope = me
     ? {
-        isOwner: me.user.roleIds.includes('owner'),
+        isOwner,
         organizationId: me.context.organizationId,
         userId: me.user.id,
       }
@@ -179,10 +181,10 @@ export const useSetToolRegistryStatus = () => {
         input,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: mcpToolRegistryKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.tools })
       // The Connectors page shows a pending-review count per installed scope;
       // approving here is what makes that chip disappear.
-      void queryClient.invalidateQueries({ queryKey: mcpInstancesKeyPrefix })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.instances })
     },
   })
 }
@@ -209,7 +211,7 @@ export const useCreateToolGrant = () => {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: mcpToolRegistryKeyPrefix,
+        queryKey: mcpKeys.tools,
       })
     },
   })
@@ -226,7 +228,7 @@ export const useDeleteToolGrant = () => {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: mcpToolRegistryKeyPrefix,
+        queryKey: mcpKeys.tools,
       })
     },
   })

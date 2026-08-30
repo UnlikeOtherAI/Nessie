@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
-import { getBaseUrl } from '../../lib/api-client'
-import { readSseStream } from '../../lib/sse'
+import { useCallback } from 'react'
+import type { SseFrame } from '../../lib/sse'
+import { alertKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useEventStream } from '../realtime/event-stream'
 
 export type UserAlertRecord = {
   id: string
@@ -46,10 +47,7 @@ type MarkAlertsReadResponse = {
   unreadCount: number
 }
 
-const RECONNECT_DELAY_MS = 2_000
 const ATTENTION_REFRESH_MS = 15_000
-
-const baseUrl = getBaseUrl()
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -80,7 +78,7 @@ export const useAlerts = (options?: { limit?: number; unreadOnly?: boolean }) =>
   const unreadOnly = options?.unreadOnly ?? false
 
   return useQuery<AlertsListResponse>({
-    queryKey: ['alerts', { limit, unreadOnly }],
+    queryKey: alertKeys.list(limit, unreadOnly),
     queryFn: () => {
       const params = new URLSearchParams({ limit: String(limit) })
       if (unreadOnly) {
@@ -95,7 +93,7 @@ export const useAlerts = (options?: { limit?: number; unreadOnly?: boolean }) =>
 export const useAttentionSummary = () => {
   const apiClient = useApiClient()
   return useQuery<AttentionSummary>({
-    queryKey: ['alerts', 'summary'],
+    queryKey: alertKeys.summary,
     queryFn: () => apiClient.get('/api/alerts/summary'),
     refetchInterval: ATTENTION_REFRESH_MS,
   })
@@ -119,7 +117,7 @@ export const useMarkAlertsRead = () => {
         input.all ? { all: true } : input.surface ? { surface: input.surface } : { ids: input.ids ?? [] },
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      void queryClient.invalidateQueries({ queryKey: alertKeys.all })
     },
   })
 }
@@ -128,86 +126,29 @@ export const useMarkAlertsRead = () => {
 // the shared events stream, so only frames for the signed-in user invalidate.
 export const useAlertEvents = (): void => {
   const queryClient = useQueryClient()
-  const { me, token } = useAuthSession()
+  const { me } = useAuthSession()
   const currentUserId = me?.user.id
 
-  useEffect(() => {
-    if (!currentUserId || !token) {
-      return
-    }
-
-    let cancelled = false
-    let lastEventId = ''
-    let activeController: AbortController | null = null
-
-    const handleFrame = (frameData: string): void => {
-      const data = parseAlertEventData(frameData)
-      if (!data || data.userId !== currentUserId) {
+  const onFrame = useCallback((frame: SseFrame): void => {
+    try {
+      if (
+        !currentUserId
+        || !frame.data
+        || (frame.event !== 'alert.created' && frame.event !== 'alert.read')
+      ) {
         return
       }
-      void queryClient.invalidateQueries({ queryKey: ['alerts'] })
-    }
 
-    const connectStream = async (): Promise<void> => {
-      while (!cancelled) {
-        const controller = new AbortController()
-        activeController = controller
-
-        try {
-          const headers: Record<string, string> = {
-            authorization: `Bearer ${token}`,
-          }
-          if (lastEventId) {
-            headers['Last-Event-ID'] = lastEventId
-          }
-
-          const response = await fetch(`${baseUrl}/api/events/stream`, {
-            headers,
-            signal: controller.signal,
-          })
-
-          if (!response.ok || !response.body) {
-            throw new Error('Event stream unavailable')
-          }
-
-          await readSseStream(response.body, (frame) => {
-            try {
-              if (frame.id) {
-                lastEventId = frame.id
-              }
-              if (
-                (frame.event === 'alert.created' || frame.event === 'alert.read')
-                && frame.data
-              ) {
-                handleFrame(frame.data)
-              }
-            } catch {
-              // A malformed event must not break the stream.
-            }
-          })
-        } catch {
-          // Connection lost or rejected; retry below while signed in.
-        } finally {
-          if (activeController === controller) {
-            activeController = null
-          }
-        }
-
-        if (!cancelled) {
-          await new Promise((resolve) => {
-            window.setTimeout(resolve, RECONNECT_DELAY_MS)
-          })
-        }
+      const data = parseAlertEventData(frame.data)
+      if (data && data.userId === currentUserId) {
+        void queryClient.invalidateQueries({ queryKey: alertKeys.all })
       }
+    } catch {
+      // A malformed event must not break the stream.
     }
+  }, [currentUserId, queryClient])
 
-    void connectStream()
-
-    return () => {
-      cancelled = true
-      activeController?.abort()
-    }
-  }, [currentUserId, queryClient, token])
+  useEventStream({ enabled: Boolean(currentUserId), onFrame })
 }
 
 // Deep-link target for an alert. Every durable attention kind has one owning

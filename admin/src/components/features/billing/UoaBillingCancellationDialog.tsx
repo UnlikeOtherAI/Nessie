@@ -79,6 +79,9 @@ export const UoaBillingCancellationDialog = ({
   const message = confirmation?.message ?? preview?.message ?? ''
 
   return (
+    // Not the shared `Dialog`: a `max-w-2xl` `admin-card` on `--main` with its
+    // own `data-testid` panel hook — a different panel family from the shell's
+    // `.create-channel-panel`. It already composes `useModalA11y`.
     <div
       className={[
         'fixed inset-0 z-[9999] flex items-center justify-center',

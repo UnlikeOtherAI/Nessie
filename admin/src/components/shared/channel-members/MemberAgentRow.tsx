@@ -1,5 +1,6 @@
 import type { AgentRecord } from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { Pill } from '../../primitives/Pill'
 import { AgentAvatar } from '../AgentAvatar'
 import { CloneIcon, CloseIcon, ViewIcon } from './icons'
 import { actionBtnClass, rowClass } from './styles'
@@ -42,16 +43,9 @@ export const CurrentAgentRow = ({
           {agent.role}
         </div>
       </div>
-      <span
-        className={[
-          'rounded border border-[color:var(--accent)]/30',
-          'bg-[color:var(--accent-soft)] px-1.5 py-0.5',
-          'text-[10px] font-semibold uppercase tracking-[0.12em]',
-          'text-[color:var(--thinking)]',
-        ].join(' ')}
-      >
+      <Pill className="border border-[color:var(--accent)]/30" radius="chip" size="sm" tone="accent">
         agent
-      </span>
+      </Pill>
       <div className="flex items-center gap-1">
         <button
           className={agentActionBtnClass}

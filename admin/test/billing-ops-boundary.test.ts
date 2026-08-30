@@ -26,7 +26,9 @@ test('local calculations remain on the owner-only operations surface', () => {
     '../src/layouts/admin-shell/AdminSidebarNav.tsx',
   )
 
-  assert.match(telemetry, /Owner access required/)
+  // The refusal sentence moved into the shared <OwnerGate>; what this line
+  // pins is that the page is still owner-gated, not where the words live.
+  assert.match(telemetry, /<OwnerGate>/)
   assert.match(telemetry, /\/api\/ledger\/tokens\/summary/)
   assert.match(telemetry, /BudgetManager/)
   assert.match(telemetry, /PricingManager/)

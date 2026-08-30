@@ -376,10 +376,15 @@ both the **web admin** and the **desktop (Tauri) app** (which loads the same
 bundle) notify on new messages with **no APNs/FCM** — they ride the per-user SSE
 stream directly:
 
-- `admin/src/facades/notifications/useMessageNotifications.ts` opens a fetch-based
-  SSE connection to `GET /api/events/stream` (bearer token + `Last-Event-ID`
-  reconnect, shared frame reader in `admin/src/lib/sse.ts`, also used by
-  `useThreadStream`). On each newly created message (`message.new` or an agent
+- `admin/src/facades/notifications/useMessageNotifications.ts` subscribes to the
+  shared per-user event stream (`admin/src/facades/realtime/event-stream.ts`,
+  which owns the single fetch to `GET /api/events/stream` — bearer token,
+  `Last-Event-ID` resume, the jittered reconnect policy from
+  `facades/threads/stream-retry.ts`, and the shared frame reader in
+  `admin/src/lib/sse.ts`). It used to open that connection itself, alongside a
+  second one from the alerts bell; the route derives the subscription entirely
+  server-side, so the two sockets carried identical bytes and each discarded the
+  other's events. On each newly created message (`message.new` or an agent
   `message.reply`) it fires a native
   `Notification` (when permission is granted) **and** an in-app toast
   (`admin/src/providers/NotificationsProvider.tsx`), deep-linking to

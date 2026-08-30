@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { faCircleXmark, faPenToSquare } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Pill } from '../../../components/primitives/Pill'
 import {
   useActivateStatus,
   useClearActiveStatus,
@@ -56,9 +57,9 @@ export const StatusSection = ({ onClose }: { onClose: () => void }) => {
                   <span className="truncate">{status.label}</span>
                 </span>
                 {isActive && (
-                  <span className="rounded bg-[color:var(--success-soft)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--success-text)]">
+                  <Pill radius="chip" size="sm" tone="success">
                     Active
-                  </span>
+                  </Pill>
                 )}
               </button>
             )

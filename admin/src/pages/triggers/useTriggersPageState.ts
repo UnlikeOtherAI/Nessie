@@ -7,7 +7,7 @@ import {
   useWorkflowInstallations,
   useWorkflowTemplates,
 } from '../../facades/workflows/hooks'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import type {
   AgentRecord,
   AgentTriggerRecord,
@@ -39,7 +39,6 @@ export type TriggersPageState = {
   effectiveTriggerId?: string
   filteredTriggers: AgentTriggerRecord[]
   isCreateDialogOpen: boolean
-  isOwner: boolean
   registry: TriggerRegistryMaps
   searchQuery: string
   selectedTrigger?: AgentTriggerRecord
@@ -60,8 +59,9 @@ export type TriggersPageState = {
 
 export const useTriggersPageState = (): TriggersPageState => {
   const location = useLocation()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  // The three owner-only reads below stay gated on this flag; the page's
+  // refusal is <OwnerGate>, which asks the same question of the same session.
+  const isOwner = useIsOwner()
   const { data: triggers = [] } = useTriggers(isOwner)
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
@@ -202,7 +202,6 @@ export const useTriggersPageState = (): TriggersPageState => {
     effectiveTriggerId,
     filteredTriggers,
     isCreateDialogOpen: createDialogOpen,
-    isOwner,
     registry,
     searchQuery,
     selectedTrigger,

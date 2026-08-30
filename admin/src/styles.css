@@ -566,12 +566,6 @@ a {
   will-change: transform;
 }
 
-.phone-navigation-screen--outgoing {
-  z-index: 2;
-  animation: none;
-  pointer-events: none;
-}
-
 @keyframes phone-navigation-forward-out {
   from { transform: translate3d(0, 0, 0); }
   to { transform: translate3d(-28%, 0, 0); }
@@ -1879,6 +1873,39 @@ button.reaction-pill-active:focus-visible {
   background: var(--panel-soft);
 }
 
+/* Unlayered, like the control classes below — see the convention note there.
+
+   NOT the same card as the inline
+   `rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)]`
+   string used across the feature panels, and not a duplicate of it. This rule
+   is a 12px card; `rounded-xl` resolves to `--radius-xl`, which the `:root`
+   block above redeclares as **20px** (it lands after `@import 'tailwindcss'`,
+   so it overrides Tailwind's 0.75rem default). Folding those call sites onto
+   `.admin-card` was attempted on 2026-08-30 and reverted: it silently reshaped
+   26 panels — AgentAvailableTools, TriggerDetail, TriggerListColumn,
+   WorkflowRunDetail/TemplateDetail/InstallationDetail, WorkflowsPage, ToolList,
+   ToolExecutionLog, the two agent-access panels, the attachment viewer, and the
+   user-menu/workspace popovers among them. Two cards of different radii are two
+   cards. If the admin should have one card radius, that is a design decision
+   with a visible diff, not a de-duplication.
+
+   Because this rule is unlayered it also beats every Tailwind utility on the
+   same element, so a call site cannot restyle it: `admin-card border-... bg-...`
+   renders as a plain `--panel`/`--sep` card with the utilities inert. Removing
+   `admin-card` from such a string is therefore a visible change, not a cleanup.
+
+   A `@utility admin-card` was tried and reverted. Moving it into the
+   `utilities` layer did fix the radius-override trap (a call site could then
+   say `admin-card rounded-md`), but it also handed EVERY other utility a win
+   against this rule: `bg-*`, `border-*`, `hover:bg-*` all began painting on
+   cards where they had been silently inert, including through indirect
+   composition (`hoverCardClass` in `pages/settings/settings-shared.tsx`, the
+   joined class array in `pages/settings/statuses/status-components.tsx`).
+   Two site-by-site audits could not enumerate the blast radius; the flips
+   they did catch repainted the appearance panels, four App Store panels,
+   three executor panels and five hover rows. Do not repeat it as part of a
+   tidy-up. If the radius trap is worth fixing, it is its own change, with
+   every affected call site pinned first. */
 .admin-card {
   border: 1px solid var(--sep);
   border-radius: 12px;
@@ -1989,13 +2016,6 @@ button.reaction-pill-active:focus-visible {
    `font: inherit` reset claims font-family for every control. */
 .admin-input.admin-input-mono {
   font-family: var(--font-family-mono);
-}
-
-.admin-inline-code {
-  border-radius: 4px;
-  background: var(--sep);
-  padding: 1px 5px;
-  font-size: 12px;
 }
 
 /* User and agent posts share one safe GitHub-flavoured Markdown surface. */
@@ -2517,22 +2537,6 @@ button.reaction-pill-active:focus-visible {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
-}
-
-@keyframes slide-in-right {
-  from {
-    transform: translateX(100%);
-    opacity: 0.8;
-  }
-
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 300ms ease-out;
 }
 
 @keyframes kb-view-slide {

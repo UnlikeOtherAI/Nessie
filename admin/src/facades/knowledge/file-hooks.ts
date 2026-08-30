@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import type { AttachmentRecord } from '../../lib/uploads'
@@ -7,14 +8,6 @@ import type { KnowledgePageRecord, KnowledgeVersionRecord } from './hooks'
 
 export type StorageUsage = { usedBytes: string; limitBytes: string | null }
 export type StorageScopeType = 'organization' | 'project' | 'team' | 'space' | 'uploader'
-
-const pagesKey = (spaceId?: string) => ['knowledge-pages', spaceId ?? 'none'] as const
-const versionsKey = (pageId?: string) => ['knowledge-versions', pageId ?? 'none'] as const
-const pageKey = (pageId?: string) => ['knowledge-page', pageId ?? 'none'] as const
-export const pageAttachmentsKey = (pageId?: string) =>
-  ['knowledge-page-attachments', pageId ?? 'none'] as const
-const storageUsageKey = (scopeType: string, scopeId?: string) =>
-  ['knowledge-storage-usage', scopeType, scopeId ?? 'self'] as const
 
 export const versionDownloadPath = (pageId: string, versionId: string): string =>
   `/api/knowledge-base/pages/${pageId}/versions/${versionId}/download`
@@ -39,7 +32,7 @@ export const useUploadFileNode = (spaceId?: string, parentPageId?: string | null
       )
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: pagesKey(spaceId) })
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(spaceId) })
     },
   })
 }
@@ -57,9 +50,9 @@ export const useUploadFileVersion = (pageId?: string, spaceId?: string) => {
         onProgress,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: versionsKey(pageId) })
-      void queryClient.invalidateQueries({ queryKey: pageKey(pageId) })
-      if (spaceId) void queryClient.invalidateQueries({ queryKey: pagesKey(spaceId) })
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.versions(pageId) })
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.page(pageId) })
+      if (spaceId) void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(spaceId) })
     },
   })
 }
@@ -75,9 +68,9 @@ export const useConvertToDocument = (spaceId?: string) => {
         {},
       ),
     onSuccess: (_data, pageId) => {
-      void queryClient.invalidateQueries({ queryKey: pageKey(pageId) })
-      void queryClient.invalidateQueries({ queryKey: versionsKey(pageId) })
-      if (spaceId) void queryClient.invalidateQueries({ queryKey: pagesKey(spaceId) })
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.page(pageId) })
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.versions(pageId) })
+      if (spaceId) void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(spaceId) })
     },
   })
 }
@@ -95,7 +88,7 @@ export type ZipListing = { entries: ZipEntry[]; tooLarge: boolean }
 export const useZipEntries = (pageId?: string, versionId?: string) => {
   const apiClient = useApiClient()
   return useQuery<ZipListing>({
-    queryKey: ['knowledge-zip', pageId ?? 'none', versionId ?? 'none'],
+    queryKey: knowledgeKeys.zip(pageId, versionId),
     queryFn: () =>
       apiClient.get(`/api/knowledge-base/pages/${pageId}/versions/${versionId}/zip`),
     enabled: Boolean(pageId && versionId),
@@ -106,7 +99,7 @@ export const useZipEntries = (pageId?: string, versionId?: string) => {
 export const useZipEntryText = (pageId?: string, versionId?: string, path?: string | null) => {
   const apiClient = useApiClient()
   return useQuery<{ text: string; truncated: boolean }>({
-    queryKey: ['knowledge-zip-entry', pageId ?? 'none', versionId ?? 'none', path ?? 'none'],
+    queryKey: knowledgeKeys.zipEntry(pageId, versionId, path),
     queryFn: () =>
       apiClient.get(
         `/api/knowledge-base/pages/${pageId}/versions/${versionId}/zip/entry?path=${encodeURIComponent(path ?? '')}`,
@@ -118,7 +111,7 @@ export const useZipEntryText = (pageId?: string, versionId?: string, path?: stri
 export const usePageAttachments = (pageId?: string) => {
   const apiClient = useApiClient()
   return useQuery<AttachmentRecord[]>({
-    queryKey: pageAttachmentsKey(pageId),
+    queryKey: knowledgeKeys.attachments(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}/attachments`),
     enabled: Boolean(pageId),
   })
@@ -136,7 +129,7 @@ export const useUploadPageAttachment = (pageId?: string) => {
         onProgress,
       ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: pageAttachmentsKey(pageId) })
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.attachments(pageId) })
     },
   })
 }
@@ -148,7 +141,7 @@ export const useDeleteAttachment = (pageId?: string) => {
     mutationFn: (attachmentId: string) =>
       apiClient.delete(`/api/knowledge-base/attachments/${attachmentId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: pageAttachmentsKey(pageId) })
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.attachments(pageId) })
     },
   })
 }
@@ -156,7 +149,7 @@ export const useDeleteAttachment = (pageId?: string) => {
 export const useStorageUsage = (scopeType: StorageScopeType = 'organization', scopeId?: string) => {
   const apiClient = useApiClient()
   return useQuery<StorageUsage>({
-    queryKey: storageUsageKey(scopeType, scopeId),
+    queryKey: knowledgeKeys.storageUsage(scopeType, scopeId),
     queryFn: () => {
       const params = new URLSearchParams({ scopeType })
       if (scopeId) params.set('scopeId', scopeId)

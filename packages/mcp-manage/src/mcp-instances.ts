@@ -1,3 +1,4 @@
+import { isAdminActor } from '@nessie/schemas'
 import { type PrismaClient } from '@prisma/client'
 import {
   type AuthorizedActionContext,
@@ -7,7 +8,6 @@ import {
 
 import {
   getAccessibleCatalogEntry,
-  isAdminRole,
   isAdminUser,
 } from './mcp-catalog.js'
 import { findApplicableLock } from './mcp-catalog-endpoint-lock.js'
@@ -347,7 +347,7 @@ export const createInstance = async (
   const lock = await findApplicableLock(prisma, organizationId, catalogEntry)
   if (lock) {
     const isAdmin =
-      isAdminRole(actorContext)
+      isAdminActor(actorContext)
       || (await isAdminUser(prisma, organizationId, actorContext.actor.actorId))
     if (!isAdmin) {
       throw new McpInstanceError(

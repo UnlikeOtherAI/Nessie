@@ -6,7 +6,7 @@ import {
   useWorkflowInstallations,
   useWorkflowRun,
 } from '../../facades/workflows/hooks'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import type {
   WorkflowStepRunRecord,
   WorkflowTemplateRecord,
@@ -36,8 +36,7 @@ export const useWorkflowTestRun = ({
   persistWorkflow,
   workflowTemplateId,
 }: UseWorkflowTestRunInput) => {
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const installationsQuery = useWorkflowInstallations(isOwner)
   const installTemplate = useInstallWorkflowTemplate()
   const startRun = useStartWorkflowRun()

@@ -110,6 +110,7 @@ const WorkspaceMenu = ({
           width: position.width,
         }}
       >
+        {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
         <div className="flex items-center justify-between gap-3 px-2 py-1">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
             Workspaces

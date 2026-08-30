@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import type { AgentToolPolicyTarget } from '@nessie/schemas'
 
-import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   useAgentToolPolicyTargets,
   useMcpToolRegistry,
@@ -39,8 +39,7 @@ export type AppAgentAccessSource = {
 }
 
 export const useAppAgentAccessSource = (): AppAgentAccessSource => {
-  const { me } = useAuthSession()
-  const canManage = me?.user.roleIds.includes('owner') ?? false
+  const canManage = useIsOwner()
   const toolsQuery = useMcpToolRegistry({}, canManage)
   const targetsQuery = useAgentToolPolicyTargets(canManage)
 

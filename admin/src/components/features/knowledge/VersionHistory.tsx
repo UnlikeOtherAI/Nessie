@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import type {
   KnowledgePageRecord,
   KnowledgeVersionRecord,
@@ -63,9 +64,7 @@ export const VersionHistory = ({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-[color:var(--sep)] p-4">
-        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]">
-          Versions
-        </div>
+        <SectionLabel>Versions</SectionLabel>
         <div className="mt-3 flex flex-wrap gap-2">
           {versions.map((version) => (
             <button

@@ -1,4 +1,11 @@
-import { Prisma, type PrismaClient } from '@prisma/client'
+import type { ChannelRecord } from '@nessie/schemas'
+import {
+  ChannelSlugConflictError,
+  ChannelValidationError,
+  setChannelArchived,
+  updateChannel,
+} from '@nessie/workspace-admin'
+
 import {
   getScopedChannelSlug,
   parseScopedChannelTarget,
@@ -11,77 +18,13 @@ import {
 } from './access.js'
 import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
 
-// Channel-manage authz mirrored from api/src/services/channels.ts canManageChannel:
-// channel owner/admin, org owner/admin, or team owner/admin may manage.
-const canManageChannel = async (
-  prisma: PrismaClient,
-  input: { userId: string; organizationId: string; channelId: string },
-): Promise<boolean> => {
-  const channel = await prisma.channel.findUnique({
-    where: { id: input.channelId },
-    select: { organizationId: true, teamId: true },
-  })
-  if (!channel || channel.organizationId !== input.organizationId) {
-    return false
-  }
-
-  const [channelMember, orgMember, teamMember] = await Promise.all([
-    prisma.channelMember.findUnique({
-      where: { channelId_userId: { channelId: input.channelId, userId: input.userId } },
-      select: { role: true },
-    }),
-    prisma.organizationMember.findFirst({
-      where: { organizationId: input.organizationId, userId: input.userId },
-      select: { role: true },
-    }),
-    prisma.teamMember.findFirst({
-      where: { teamId: channel.teamId, userId: input.userId },
-      select: { role: true },
-    }),
-  ])
-
-  return (
-    channelMember?.role === 'owner'
-    || channelMember?.role === 'admin'
-    || orgMember?.role === 'owner'
-    || orgMember?.role === 'admin'
-    || teamMember?.role === 'owner'
-    || teamMember?.role === 'admin'
-  )
-}
-
-const ensureChannelSlugAvailable = async (
-  prisma: PrismaClient,
-  input: { channelId: string; projectId: string; slug: string },
-): Promise<void> => {
-  const existing = await prisma.channel.findFirst({
-    where: {
-      id: { not: input.channelId },
-      projectId: input.projectId,
-      slug: input.slug,
-      type: 'standard',
-    },
-    select: { id: true },
-  })
-  if (existing) {
-    throw new Error(`A channel with slug "${input.slug}" already exists in this project.`)
-  }
-}
-
-const isChannelSlugConflict = (error: unknown): boolean => {
-  const target = error instanceof Prisma.PrismaClientKnownRequestError
-    ? error.meta?.['target']
-    : undefined
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError
-    && error.code === 'P2002'
-    && (
-      target === 'channels_project_slug_standard_key'
-      || (Array.isArray(target) && target.includes('channels_project_slug_standard_key'))
-      || (Array.isArray(target) && target.includes('project_id') && target.includes('slug'))
-    )
-  )
-}
+// The shared writes answer with the flat channel record; the assistant's
+// formatters read the nested channel/team shape.
+const toChannelRef = (channel: ChannelRecord) => ({
+  label: channel.label,
+  slug: channel.slug,
+  team: { name: channel.teamName, project: { name: channel.projectName } },
+})
 
 export const runChannelListTool = async (
   context: BuiltinToolRuntimeContext,
@@ -208,76 +151,34 @@ export const runChannelUpdateTool = async (
     throw new Error('Provide at least one of label, topic, or description.')
   }
 
-  const canManage = await canManageChannel(context.prisma, {
-    channelId: input.channelId,
-    organizationId,
-    userId,
-  })
-  if (!canManage) {
-    throw new Error('Channel not found or insufficient permissions to manage it.')
-  }
-
-  const data: Prisma.ChannelUpdateInput = {}
-  if (input.label !== undefined) {
-    const label = input.label.trim()
-    const slug = toChannelSlug(label)
-    if (slug.length === 0) {
-      throw new Error('Channel name must contain at least one letter or number.')
-    }
-    const channel = await context.prisma.channel.findUnique({
-      where: { id: input.channelId },
-      select: { projectId: true },
-    })
-    if (!channel) {
-      throw new Error('Channel not found.')
-    }
-    await ensureChannelSlugAvailable(context.prisma, {
-      channelId: input.channelId,
-      projectId: channel.projectId,
-      slug,
-    })
-    data.label = label
-    data.slug = slug
-  }
-  if (input.topic !== undefined) {
-    data.topic = input.topic
-  }
-  if (input.description !== undefined) {
-    data.description = input.description
-  }
-
-  let channel
+  let channel: ChannelRecord | null
   try {
-    channel = await context.prisma.channel.update({
-      where: { id: input.channelId },
-      data,
-      select: {
-        id: true,
-        label: true,
-        slug: true,
-        topic: true,
-        description: true,
-        team: {
-          select: {
-            name: true,
-            project: { select: { name: true } },
-          },
-        },
-      },
+    channel = await updateChannel(context.prisma, {
+      channelId: input.channelId,
+      organizationId,
+      userId,
+      ...(input.label !== undefined ? { label: input.label } : {}),
+      ...(input.topic !== undefined ? { topic: input.topic } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
     })
   } catch (error) {
-    if (isChannelSlugConflict(error) && input.label !== undefined) {
-      throw new Error(`A channel with slug "${toChannelSlug(input.label)}" already exists in this project.`)
+    // The shared write states the rule; the assistant says it as a sentence.
+    if (error instanceof ChannelValidationError || error instanceof ChannelSlugConflictError) {
+      throw new Error(`${error.message}.`)
     }
     throw error
   }
+  if (!channel) {
+    throw new Error('Channel not found or insufficient permissions to manage it.')
+  }
 
+  const channelRef = toChannelRef(channel)
   return {
     inputSummary: `channelId=${input.channelId}`,
     outputPreview: [
       `Updated channelId=${channel.id}`,
-      `channel=${formatChannelRef(channel)}`,
-      `slug=${getScopedChannelSlug(channel)}`,
+      `channel=${formatChannelRef(channelRef)}`,
+      `slug=${getScopedChannelSlug(channelRef)}`,
       `topic=${channel.topic ? `"${channel.topic}"` : '(none)'}`,
       `description=${channel.description ? `"${truncate(channel.description, 120)}"` : '(none)'}`,
     ].join('\n'),
@@ -296,35 +197,20 @@ export const runChannelArchiveTool = async (
   }
 
   const archived = input.archived ?? true
-  const canManage = await canManageChannel(context.prisma, {
+  const channel = await setChannelArchived(context.prisma, {
+    archived,
     channelId: input.channelId,
     organizationId,
     userId,
   })
-  if (!canManage) {
+  if (!channel) {
     throw new Error('Channel not found or insufficient permissions to manage it.')
   }
-
-  const channel = await context.prisma.channel.update({
-    where: { id: input.channelId },
-    data: { archivedAt: archived ? new Date() : null },
-    select: {
-      id: true,
-      label: true,
-      archivedAt: true,
-      team: {
-        select: {
-          name: true,
-          project: { select: { name: true } },
-        },
-      },
-    },
-  })
 
   return {
     inputSummary: `channelId=${input.channelId} archived=${archived}`,
     outputPreview:
-      `${channel.archivedAt ? 'Archived' : 'Unarchived'} channelId=${channel.id} | ${formatChannelRef(channel)}`,
+      `${channel.archivedAt ? 'Archived' : 'Unarchived'} channelId=${channel.id} | ${formatChannelRef(toChannelRef(channel))}`,
     toolName: 'channel_archive',
   }
 }

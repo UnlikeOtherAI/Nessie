@@ -140,6 +140,7 @@ export const ChannelUserInfoDrawer = ({
     cancelEdit,
     changeEditingContent,
     confirmDelete,
+    deleteConfirm,
     editingContent,
     editingMessageId,
     startEdit,
@@ -281,6 +282,8 @@ export const ChannelUserInfoDrawer = ({
           />
         ) : null}
       </aside>
+
+      {deleteConfirm}
 
       <OversizePasteDialog
         limit={CHAT_MESSAGE_MAX_CHARS}

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 import type { FeedbackRecord } from '../../lib/api-client'
-import { sectionTitleClass } from '../settings/settings-shared'
 
 const FEEDBACK_PAGE_SIZE = 5
 
@@ -57,8 +57,11 @@ export const FeedbackList = ({
 
   return (
     <section className="admin-card w-full p-4">
-      <div className={sectionTitleClass}>Your feedback</div>
+      <SectionLabel>Your feedback</SectionLabel>
 
+      {/* Not QueryState: this takes an `isLoading` boolean, not a query, so
+          there is nothing for a Retry to call — and the lines are tx2, not
+          tx3, left-aligned under the section label. */}
       {isLoading ? (
         <div className="mt-3 text-sm text-[color:var(--tx2)]">Loading…</div>
       ) : items.length === 0 ? (
@@ -100,6 +103,10 @@ export const FeedbackList = ({
             ))}
           </ul>
 
+          {/* Not the shared PaginationFooter: that strip puts Previous and Next
+              at the two edges around a centred text-xs label, and this card
+              ships the label first with both buttons grouped on the right at
+              text-sm. Two DOM orders is a variant prop, not a shared control. */}
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between gap-3 text-sm">
               <span className="text-[color:var(--tx3)]">

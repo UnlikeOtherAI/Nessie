@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useIsOwner } from '../components/shared/OwnerGate'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels } from '../facades/channels/hooks'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
@@ -13,7 +14,7 @@ export const ThreadsPage = () => {
   const activity = useThreadActivity()
   const { data: agents = [] } = useAgents()
   const { data: channels = [] } = useChannels()
-  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: users = [] } = useUsers(isOwner)
   const items = activity.data?.items ?? []
 

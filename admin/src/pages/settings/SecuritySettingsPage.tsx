@@ -8,10 +8,10 @@ import {
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   FeedbackBanner,
-  sectionTitleClass,
   SettingsPanel,
   type SettingsFeedback,
 } from './settings-shared'
+import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 const formatWhen = (iso: string): string => new Date(iso).toLocaleString()
 
@@ -39,6 +39,7 @@ const SessionRow = ({ session }: { session: SessionSummary }) => {
             Last used {formatWhen(session.lastUsedAt)}
           </div>
         </div>
+        {/* Unconverted: Pill's accent tone emits --thinking; this chip ships --accent. */}
         {session.current ? (
           <span
             className={[
@@ -98,7 +99,7 @@ const ChangePasswordCard = () => {
 
   return (
     <section className="admin-card p-4">
-      <div className={sectionTitleClass}>Password</div>
+      <SectionLabel>Password</SectionLabel>
       <form className="mt-4 grid max-w-sm gap-3" onSubmit={submit}>
         <label className="grid gap-1 text-sm text-[color:var(--tx2)]">
           Current password
@@ -164,7 +165,7 @@ export const SecuritySettingsPage = () => {
     <SettingsPanel eyebrow="Account" title="Security">
       <div className="grid max-w-3xl gap-4">
         <section className="admin-card p-4">
-          <div className={sectionTitleClass}>Active sessions</div>
+          <SectionLabel>Active sessions</SectionLabel>
           <div className="mt-2 text-sm text-[color:var(--tx2)]">
             Devices currently signed in to your account. Revoking a session signs
             that device out.
@@ -188,7 +189,7 @@ export const SecuritySettingsPage = () => {
           <ChangePasswordCard />
         ) : (
           <section className="admin-card p-4">
-            <div className={sectionTitleClass}>Password</div>
+            <SectionLabel>Password</SectionLabel>
             <div className="mt-2 text-sm text-[color:var(--tx2)]">
               Your account signs in through an identity provider. Manage your
               password with that provider.

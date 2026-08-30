@@ -11,12 +11,12 @@ import type {
   WorkflowInstallationRecord,
   WorkflowTemplateRecord,
 } from '../../../lib/api-client'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import {
   formatRelativeTime,
   formatTimestamp,
   getInstallationTone,
-  sectionTitle,
 } from './presentation'
 import { downloadWorkflowExport } from './workflow-transfer'
 
@@ -65,9 +65,9 @@ export const WorkflowTemplateDetail = ({
               <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
                 {template.name}
               </h2>
-              <StatusPill tone={installations.length > 0 ? 'accent' : 'muted'}>
+              <Pill tone={installations.length > 0 ? 'accent' : 'muted'}>
                 {installations.length > 0 ? 'installed' : 'draft'}
-              </StatusPill>
+              </Pill>
             </div>
             <div className="mt-0.5 text-xs text-[color:var(--tx3)]">
               v{template.version} · {steps.length} step{steps.length === 1 ? '' : 's'} ·
@@ -107,7 +107,7 @@ export const WorkflowTemplateDetail = ({
       </div>
 
       <section>
-        <div className={sectionTitle}>Steps</div>
+        <SectionLabel>Steps</SectionLabel>
         {steps.length === 0 ? (
           <div className="mt-3 rounded-xl border border-dashed border-[color:var(--sep)] px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
             No steps defined yet — open the designer to build this workflow.
@@ -137,7 +137,7 @@ export const WorkflowTemplateDetail = ({
 
       <section>
         <div className="flex items-baseline justify-between gap-3">
-          <div className={sectionTitle}>Installations</div>
+          <SectionLabel>Installations</SectionLabel>
           <div className="text-xs text-[color:var(--tx3)]">
             {installations.length} total
           </div>
@@ -170,9 +170,9 @@ export const WorkflowTemplateDetail = ({
                       formatTimestamp(installation.updatedAt)}
                   </div>
                 </div>
-                <StatusPill tone={getInstallationTone(installation.status)}>
+                <Pill tone={getInstallationTone(installation.status)}>
                   {installation.status}
-                </StatusPill>
+                </Pill>
               </button>
             ))}
           </div>

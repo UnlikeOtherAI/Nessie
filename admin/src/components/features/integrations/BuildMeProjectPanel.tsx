@@ -5,6 +5,7 @@ import type {
   IntegratedProductResponse,
 } from '../../../lib/api-client'
 import { usePrepareBuildMeProjectHandoff } from '../../../facades/integrations/hooks'
+import { Pill, type PillTone } from '../../primitives/Pill'
 
 const intentOptions: Array<{ label: string; value: BuildMeProjectHandoffIntent }> = [
   { label: 'Project definition', value: 'project_definition' },
@@ -12,13 +13,7 @@ const intentOptions: Array<{ label: string; value: BuildMeProjectHandoffIntent }
   { label: 'Board source', value: 'board_source_discovery' },
 ]
 
-const readinessClass = (ready: boolean): string =>
-  [
-    'rounded px-2 py-0.5 text-[11px] font-semibold',
-    ready
-      ? 'bg-[var(--success-soft)] text-[var(--success-text)]'
-      : 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
-  ].join(' ')
+const readinessTone = (ready: boolean): PillTone => (ready ? 'success' : 'warning')
 
 const BoundaryRow = ({ label, value }: { label: string; value: string }) => (
   <div className="rounded border border-[var(--sep)] px-3 py-2">
@@ -57,13 +52,33 @@ export const BuildMeProjectPanel = ({
         <div>
           <h3 className="text-sm font-semibold text-[var(--tx)]">buildme.live handoff</h3>
           <div className="mt-2 flex flex-wrap gap-2">
-            <span className={readinessClass(teamReady)}>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(teamReady)}
+              uppercase={false}
+            >
               {teamReady ? 'Team enabled' : 'Team disabled'}
-            </span>
-            <span className={readinessClass(accountReady)}>
+            </Pill>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(accountReady)}
+              uppercase={false}
+            >
               {accountReady ? 'UOA SSO linked' : 'SSO link pending'}
-            </span>
-            <span className={readinessClass(false)}>Board API pending</span>
+            </Pill>
+            <Pill
+              className="font-semibold"
+              radius="chip"
+              size="sm"
+              tone={readinessTone(false)}
+              uppercase={false}
+            >
+              Board API pending
+            </Pill>
           </div>
         </div>
       </div>

@@ -31,7 +31,7 @@ const TRUST_BADGES: Record<AppTrustLevel, AppTrustBadgeModel> = {
     // `--thinking` rather than `--accent-strong`: the strong accent is a dark
     // purple that disappears into the panel on every dark theme, while
     // `--thinking` is the accent-family foreground each theme already tuned to
-    // sit on `--accent-soft` (see StatusPill's accent tone).
+    // sit on `--accent-soft` (see Pill's accent tone).
     toneClass: 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
   },
   verified: {

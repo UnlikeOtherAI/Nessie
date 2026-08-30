@@ -29,6 +29,7 @@ const PortfolioOrigin = ({
           {origin.call_share.display}
         </div>
       </div>
+      {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
       {origin.is_statement_product && (
         <span className="rounded-full border border-[color:var(--sep)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--tx3)]">
           This app
@@ -90,6 +91,7 @@ const ConnectedServiceUsage = ({
           {service.description}
         </div>
       </div>
+      {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
       <span className="rounded-full border border-[color:var(--sep)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--tx3)]">
         {service.access} · {service.direct_user_count} direct users
       </span>
@@ -199,6 +201,7 @@ export const UoaBillingStatementDetails = ({
                 <div className="text-sm font-semibold text-[color:var(--tx)]">
                   {service.display_name}
                 </div>
+                {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
                 <span className="rounded-full border border-[color:var(--sep)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--tx3)]">
                   {service.access}
                 </span>

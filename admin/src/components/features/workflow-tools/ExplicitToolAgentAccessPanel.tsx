@@ -5,7 +5,7 @@ import {
   useSetAgentToolPolicyEntry,
   type McpToolRegistryRecord,
 } from '../../../facades/tool-grants/hooks'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
 
 type ExplicitToolAgentAccessPanelProps = {
@@ -76,7 +76,7 @@ const ExplicitPolicyRow = ({
         </span>
         {target.agentKind === 'personal_assistant' ? (
           <span className="ml-2">
-            <StatusPill tone="accent">Personal Assistant</StatusPill>
+            <Pill tone="accent">Personal Assistant</Pill>
           </span>
         ) : null}
         {error ? (

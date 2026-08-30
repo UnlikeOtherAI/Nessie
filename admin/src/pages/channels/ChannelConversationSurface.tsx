@@ -92,6 +92,7 @@ interface ChannelConversationSurfaceProps {
     | 'cancelEdit'
     | 'changeEditingContent'
     | 'confirmDelete'
+    | 'deleteConfirm'
     | 'editingContent'
     | 'editingMessageId'
     | 'startEdit'
@@ -186,6 +187,7 @@ export const ChannelConversationSurface = ({
     cancelEdit,
     changeEditingContent,
     confirmDelete,
+    deleteConfirm,
     editingContent,
     editingMessageId,
     startEdit,
@@ -350,6 +352,7 @@ export const ChannelConversationSurface = ({
         />
       ) : null}
 
+      {deleteConfirm}
       {composer.secretCapture ? (
         <SecretCaptureDialog capture={composer.secretCapture} onClose={composer.dismissSecretCapture} />
       ) : null}

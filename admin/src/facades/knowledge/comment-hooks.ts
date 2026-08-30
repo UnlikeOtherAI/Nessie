@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type TextQuoteAnchor = {
@@ -41,13 +42,10 @@ export type KnowledgeAnnotationRecord = {
   replies: KnowledgeAnnotationRecord[]
 }
 
-const annotationsKey = (pageId?: string, kind?: AnnotationKind) =>
-  ['knowledge-annotations', pageId ?? 'none', kind ?? 'all'] as const
-
 export const useKnowledgeAnnotations = (pageId?: string, kind?: AnnotationKind) => {
   const apiClient = useApiClient()
   return useQuery<KnowledgeAnnotationRecord[]>({
-    queryKey: annotationsKey(pageId, kind),
+    queryKey: knowledgeKeys.annotationsByKind(pageId, kind),
     queryFn: () =>
       apiClient.get(
         `/api/knowledge-base/pages/${pageId}/annotations${kind ? `?kind=${kind}` : ''}`,
@@ -61,7 +59,7 @@ export const useKnowledgeAnnotations = (pageId?: string, kind?: AnnotationKind) 
 const useInvalidateAnnotations = (pageId: string) => {
   const queryClient = useQueryClient()
   return () =>
-    void queryClient.invalidateQueries({ queryKey: ['knowledge-annotations', pageId] })
+    void queryClient.invalidateQueries({ queryKey: knowledgeKeys.annotations(pageId) })
 }
 
 export const useCreateComment = (pageId: string) => {

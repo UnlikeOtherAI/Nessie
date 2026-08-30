@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Pill, type PillTone } from '../components/primitives/Pill'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
+import { opsHealthKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -28,18 +31,15 @@ type OpsHealth = {
   }
 }
 
-const WORKER_TONE: Record<WorkerHealthStatus, string> = {
-  up: 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]',
-  stale: 'bg-[color:var(--warning-soft)] text-[color:var(--warning-text)]',
-  down: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+const WORKER_TONE: Record<WorkerHealthStatus, PillTone> = {
+  up: 'success',
+  stale: 'warning',
+  down: 'danger',
 }
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 const Stat = ({ label, value, danger }: { label: string; value: number; danger?: boolean }) => (
   <div className="admin-card flex flex-col gap-1 p-3">
-    <span className={sectionTitle}>{label}</span>
+    <SectionLabel as="span">{label}</SectionLabel>
     <span
       className={[
         'text-2xl font-semibold',
@@ -61,14 +61,14 @@ export const OpsHealthPage = () => {
   const isSuperAdmin = me?.user.superAdmin ?? false
 
   const { data, isError, error } = useQuery<OpsHealth>({
-    queryKey: ['ops-health'],
+    queryKey: opsHealthKeys.all,
     queryFn: () => apiClient.get('/api/ops/health'),
     enabled: isSuperAdmin,
     refetchInterval: 10_000,
   })
 
   const refresh = useMutation({
-    mutationFn: async () => queryClient.invalidateQueries({ queryKey: ['ops-health'] }),
+    mutationFn: async () => queryClient.invalidateQueries({ queryKey: opsHealthKeys.all }),
   })
 
   const worker = data?.worker
@@ -107,31 +107,24 @@ export const OpsHealthPage = () => {
           </div>
         )}
 
-        <div className={sectionTitle}>Worker</div>
+        <SectionLabel>Worker</SectionLabel>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <div className="admin-card flex flex-col gap-1 p-3">
-            <span className={sectionTitle}>Status</span>
-            <span
-              className={[
-                'inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.16em]',
-                worker
-                  ? WORKER_TONE[worker.status]
-                  : 'bg-[color:var(--overlay)] text-[color:var(--tx3)]',
-              ].join(' ')}
-            >
+            <SectionLabel as="span">Status</SectionLabel>
+            <Pill className="w-fit" tone={worker ? WORKER_TONE[worker.status] : 'muted'}>
               {worker?.status ?? '—'}
-            </span>
+            </Pill>
           </div>
           <Stat label="Active runners" value={worker?.activeRunners ?? 0} />
           <div className="admin-card flex flex-col gap-1 p-3">
-            <span className={sectionTitle}>Last heartbeat</span>
+            <SectionLabel as="span">Last heartbeat</SectionLabel>
             <span className="text-2xl font-semibold text-[color:var(--tx)]">
               {heartbeat == null ? '—' : `${heartbeat}s`}
             </span>
           </div>
         </div>
 
-        <div className={`${sectionTitle} mt-5`}>Queue</div>
+        <SectionLabel className="mt-5">Queue</SectionLabel>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Stat label="Pending" value={data?.queue.pending ?? 0} />
           <Stat label="Processing" value={data?.queue.processing ?? 0} />
@@ -139,9 +132,9 @@ export const OpsHealthPage = () => {
           <Stat label="Dead" value={data?.queue.dead ?? 0} danger />
         </div>
 
-        <div className={`${sectionTitle} mt-5`}>
+        <SectionLabel className="mt-5">
           Dead-letter jobs ({data?.deadJobs.length ?? 0})
-        </div>
+        </SectionLabel>
         <div className="mt-2 grid gap-2">
           {(data?.deadJobs ?? []).map((job) => (
             <div key={job.id} className="admin-card p-3">
@@ -163,9 +156,9 @@ export const OpsHealthPage = () => {
           )}
         </div>
 
-        <div className={`${sectionTitle} mt-5`}>
+        <SectionLabel className="mt-5">
           Dead-letter messages ({data?.deadLetters.count ?? 0})
-        </div>
+        </SectionLabel>
         <div className="mt-2 grid gap-2">
           {(data?.deadLetters.recent ?? []).map((message) => (
             <div key={message.id} className="admin-card flex items-center justify-between p-3">

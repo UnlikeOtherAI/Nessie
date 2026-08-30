@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type KnowledgeVersionRecord = {
@@ -88,25 +89,15 @@ export type SavePageInput = {
 
 export type EnsureMyDocsResponse = { spaceId: string }
 
-const spacesKey = ['knowledge-spaces'] as const
-// A project-scoped list is a different corpus from the org-wide one, so it gets
-// its own cache entry; invalidation covers the whole `knowledge-spaces` prefix.
-const scopedSpacesKey = (projectId?: string) =>
-  [...spacesKey, projectId ?? 'organization'] as const
-const myDocsKey = ['knowledge-my-docs'] as const
-const pagesKey = (spaceId?: string) => ['knowledge-pages', spaceId ?? 'none'] as const
-const pageKey = (pageId?: string) => ['knowledge-page', pageId ?? 'none'] as const
-const versionsKey = (pageId?: string) => ['knowledge-versions', pageId ?? 'none'] as const
-
 const invalidateKnowledge = (
   queryClient: ReturnType<typeof useQueryClient>,
   input: { pageId?: string; spaceId?: string } = {},
 ) => {
-  void queryClient.invalidateQueries({ queryKey: spacesKey })
-  if (input.spaceId) void queryClient.invalidateQueries({ queryKey: pagesKey(input.spaceId) })
+  void queryClient.invalidateQueries({ queryKey: knowledgeKeys.spaces })
+  if (input.spaceId) void queryClient.invalidateQueries({ queryKey: knowledgeKeys.pages(input.spaceId) })
   if (input.pageId) {
-    void queryClient.invalidateQueries({ queryKey: pageKey(input.pageId) })
-    void queryClient.invalidateQueries({ queryKey: versionsKey(input.pageId) })
+    void queryClient.invalidateQueries({ queryKey: knowledgeKeys.page(input.pageId) })
+    void queryClient.invalidateQueries({ queryKey: knowledgeKeys.versions(input.pageId) })
   }
 }
 
@@ -118,7 +109,7 @@ export const useKnowledgeSpaces = (projectId?: string) => {
   const scope = projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''
 
   return useQuery<KnowledgeSpaceRecord[]>({
-    queryKey: scopedSpacesKey(projectId),
+    queryKey: knowledgeKeys.scopedSpaces(projectId),
     queryFn: () => apiClient.get(`/api/knowledge-base/spaces?limit=100${scope}`),
   })
 }
@@ -127,7 +118,7 @@ export const useKnowledgePages = (spaceId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgePageRecord[]>({
-    queryKey: pagesKey(spaceId),
+    queryKey: knowledgeKeys.pages(spaceId),
     queryFn: () => apiClient.get(`/api/knowledge-base/spaces/${spaceId}/pages`),
     enabled: Boolean(spaceId),
   })
@@ -137,7 +128,7 @@ export const useKnowledgePage = (pageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgePageRecord>({
-    queryKey: pageKey(pageId),
+    queryKey: knowledgeKeys.page(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}`),
     enabled: Boolean(pageId),
   })
@@ -156,7 +147,7 @@ export const useKnowledgePageLookup = () => {
   return useMutation({
     mutationFn: (pageId: string) =>
       queryClient.fetchQuery({
-        queryKey: pageKey(pageId),
+        queryKey: knowledgeKeys.page(pageId),
         queryFn: () => apiClient.get<KnowledgePageRecord>(`/api/knowledge-base/pages/${pageId}`),
       }),
   })
@@ -166,7 +157,7 @@ export const useKnowledgeVersions = (pageId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<KnowledgeVersionRecord[]>({
-    queryKey: versionsKey(pageId),
+    queryKey: knowledgeKeys.versions(pageId),
     queryFn: () => apiClient.get(`/api/knowledge-base/pages/${pageId}/versions`),
     enabled: Boolean(pageId),
   })
@@ -181,7 +172,7 @@ export const useEnsureMyDocsSpace = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<EnsureMyDocsResponse>({
-    queryKey: myDocsKey,
+    queryKey: knowledgeKeys.myDocs,
     queryFn: () => apiClient.post('/api/knowledge-base/my-docs', {}),
     staleTime: Infinity,
     enabled,

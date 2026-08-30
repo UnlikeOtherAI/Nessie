@@ -138,6 +138,7 @@ export const PagePreview = ({
 
         <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
           <div className="flex items-center justify-between">
+            {/* SectionLabel cannot express tracking-[0.18em] at text-xs (xs is 0.2em, 2xs is 11px). */}
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
               Sub-pages
             </span>

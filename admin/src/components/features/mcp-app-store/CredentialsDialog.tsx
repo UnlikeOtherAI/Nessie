@@ -10,6 +10,8 @@ import {
   useSetInstanceSecret,
   useStartInstanceOAuth,
 } from '../../../facades/mcp-library/hooks'
+import { Notice } from '../../primitives/Notice'
+import { SectionLabel } from '../../primitives/SectionLabel'
 
 /**
  * Per-server credential modal. Raw API keys and tokens cross the encrypted
@@ -37,6 +39,9 @@ const PRINCIPAL_TYPES: McpCredentialPrincipalType[] = [
   'organization',
 ]
 
+// The same treatment as <SectionLabel size="2xs">, kept as a class string for
+// the <label> elements: SectionLabel renders div/h2/h3/p/span, and swapping a
+// <label> for one of those would drop the implicit label-to-control binding.
 const labelClass = [
   'text-[11px] font-semibold uppercase tracking-[0.18em]',
   'text-[color:var(--tx3)]',
@@ -170,6 +175,9 @@ export const CredentialsDialog = ({
   }
 
   return (
+    // Not the shared `Dialog`: the app-store modals are `admin-card` panels on a
+    // `--main` background with a ghost "Close" control, not the shell's
+    // `.create-channel-panel` card and close cross.
     <div
       className={[
         'fixed inset-0 z-50 flex items-center justify-center',
@@ -218,7 +226,7 @@ export const CredentialsDialog = ({
           onSubmit={(event) => void storePersonalSecret(event)}
         >
           <div>
-            <div className={labelClass}>Store personal credential</div>
+            <SectionLabel size="2xs">Store personal credential</SectionLabel>
             <p className="mt-1 text-sm text-[color:var(--tx3)]">
               Stored encrypted as your override for this connector. The value is
               sent once, never displayed, and is not shared with other users.
@@ -240,14 +248,10 @@ export const CredentialsDialog = ({
             />
           </label>
           {secretError ? (
-            <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]">
-              {secretError}
-            </div>
+            <Notice tone="danger">{secretError}</Notice>
           ) : null}
           {secretSaved ? (
-            <div className="rounded-md border border-[var(--success-border)] bg-[var(--success-soft)] px-3 py-2 text-sm text-[var(--success-text)]">
-              Personal credential stored securely.
-            </div>
+            <Notice tone="success">Personal credential stored securely.</Notice>
           ) : null}
           <div className="flex justify-end">
             <button
@@ -310,9 +314,7 @@ export const CredentialsDialog = ({
             </label>
           </div>
           {error ? (
-            <div className="rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger-text)]">
-              {error}
-            </div>
+            <Notice tone="danger">{error}</Notice>
           ) : null}
           <div className="flex justify-end">
             <button
@@ -330,7 +332,7 @@ export const CredentialsDialog = ({
         </form>
 
         <div className="mt-6">
-          <div className={labelClass}>Existing overrides</div>
+          <SectionLabel size="2xs">Existing overrides</SectionLabel>
           <div className="mt-2 grid gap-2">
             {overrides.length === 0 ? (
               <div className="text-sm text-[color:var(--tx3)]">

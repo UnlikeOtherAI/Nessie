@@ -7,13 +7,14 @@ import type {
   WorkflowStepSamplesRecord,
   WorkflowTemplateRecord,
 } from '../../lib/api-client'
+import { workflowKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export const useWorkflowTemplates = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<WorkflowTemplateRecord[]>({
-    queryKey: ['workflow-templates'],
+    queryKey: workflowKeys.templates,
     queryFn: () => apiClient.get('/api/workflows'),
     enabled,
   })
@@ -26,7 +27,7 @@ export const useWorkflowTemplate = (
   const apiClient = useApiClient()
 
   return useQuery<WorkflowTemplateRecord>({
-    queryKey: ['workflow-templates', workflowTemplateId],
+    queryKey: workflowKeys.template(workflowTemplateId),
     queryFn: () => apiClient.get(`/api/workflows/${workflowTemplateId}`),
     enabled: enabled && Boolean(workflowTemplateId),
   })
@@ -47,7 +48,7 @@ export const useCreateWorkflowTemplate = () => {
       variableSchema?: unknown
     }) => apiClient.post<WorkflowTemplateRecord>('/api/workflows', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['workflow-templates'] })
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.templates })
     },
   })
 }
@@ -71,9 +72,9 @@ export const useUpdateWorkflowTemplate = () => {
       return apiClient.put<WorkflowTemplateRecord>(`/api/workflows/${workflowTemplateId}`, body)
     },
     onSuccess: (workflow) => {
-      void queryClient.invalidateQueries({ queryKey: ['workflow-templates'] })
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.templates })
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-templates', workflow.id],
+        queryKey: workflowKeys.template(workflow.id),
       })
     },
   })
@@ -83,7 +84,7 @@ export const useWorkflowInstallations = (enabled = true, channelId?: string) => 
   const apiClient = useApiClient()
 
   return useQuery<WorkflowInstallationRecord[]>({
-    queryKey: ['workflow-installations', channelId ?? null],
+    queryKey: workflowKeys.installationsForChannel(channelId),
     queryFn: () =>
       apiClient.get(
         channelId
@@ -99,7 +100,7 @@ export const useFailedWorkflowRuns = (enabled = true) => {
   const apiClient = useApiClient()
 
   return useQuery<WorkflowRunRecord[]>({
-    queryKey: ['workflow-runs', 'failed'],
+    queryKey: workflowKeys.failedRuns,
     queryFn: () => apiClient.get('/api/workflow-runs?status=failed'),
     enabled,
   })
@@ -121,7 +122,7 @@ export const useUpdateWorkflowInstallation = () => {
       )
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.installations })
     },
   })
 }
@@ -146,8 +147,8 @@ export const useInstallWorkflowTemplate = () => {
       )
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
-      void queryClient.invalidateQueries({ queryKey: ['workflow-templates'] })
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.installations })
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.templates })
     },
   })
 }
@@ -159,7 +160,7 @@ export const useWorkflowInstallationRuns = (
   const apiClient = useApiClient()
 
   return useQuery<WorkflowRunRecord[]>({
-    queryKey: ['workflow-installations', installationId, 'runs'],
+    queryKey: workflowKeys.installationRuns(installationId),
     queryFn: () =>
       apiClient.get(`/api/workflow-installations/${installationId}/runs`),
     enabled: enabled && Boolean(installationId),
@@ -176,7 +177,7 @@ export const useWorkflowStepSamples = (
   const apiClient = useApiClient()
 
   return useQuery<WorkflowStepSamplesRecord | null>({
-    queryKey: ['workflow-templates', workflowTemplateId, 'step-samples'],
+    queryKey: workflowKeys.templateStepSamples(workflowTemplateId),
     queryFn: async () => {
       try {
         return await apiClient.get<WorkflowStepSamplesRecord>(
@@ -211,7 +212,7 @@ export const useRecordWorkflowStepSamples = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-templates', variables.workflowTemplateId, 'step-samples'],
+        queryKey: workflowKeys.templateStepSamples(variables.workflowTemplateId),
       })
     },
   })
@@ -224,7 +225,7 @@ export const useWorkflowInstallationTriggers = (
   const apiClient = useApiClient()
 
   return useQuery<AgentTriggerRecord[]>({
-    queryKey: ['workflow-installations', installationId, 'triggers'],
+    queryKey: workflowKeys.installationTriggers(installationId),
     queryFn: () =>
       apiClient.get(`/api/workflow-installations/${installationId}/triggers`),
     enabled: enabled && Boolean(installationId),
@@ -239,7 +240,7 @@ export const useWorkflowRun = (
   const apiClient = useApiClient()
 
   return useQuery<WorkflowRunDetail>({
-    queryKey: ['workflow-runs', workflowRunId],
+    queryKey: workflowKeys.run(workflowRunId),
     queryFn: () => apiClient.get(`/api/workflow-runs/${workflowRunId}`),
     enabled: enabled && Boolean(workflowRunId),
     refetchInterval: pollWhileActive
@@ -266,7 +267,7 @@ export const useStartWorkflowRun = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-installations', variables.installationId, 'runs'],
+        queryKey: workflowKeys.installationRuns(variables.installationId),
       })
     },
   })
@@ -284,9 +285,9 @@ export const useCancelWorkflowRun = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-runs', variables.workflowRunId],
+        queryKey: workflowKeys.run(variables.workflowRunId),
       })
-      void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.installations })
     },
   })
 }
@@ -303,9 +304,9 @@ export const useRetryWorkflowRun = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-runs', variables.workflowRunId],
+        queryKey: workflowKeys.run(variables.workflowRunId),
       })
-      void queryClient.invalidateQueries({ queryKey: ['workflow-installations'] })
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.installations })
     },
   })
 }
@@ -328,7 +329,7 @@ export const useSkipWorkflowStepRun = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-runs', variables.workflowRunId],
+        queryKey: workflowKeys.run(variables.workflowRunId),
       })
     },
   })
@@ -346,7 +347,7 @@ export const useBlockWorkflowStepRun = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-runs', variables.workflowRunId],
+        queryKey: workflowKeys.run(variables.workflowRunId),
       })
     },
   })
@@ -364,7 +365,7 @@ export const useUnblockWorkflowStepRun = () => {
       ),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['workflow-runs', variables.workflowRunId],
+        queryKey: workflowKeys.run(variables.workflowRunId),
       })
     },
   })

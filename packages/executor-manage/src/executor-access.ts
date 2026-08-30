@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminRole, type AuthorizedActionContext } from '@nessie/schemas'
 
 export type ExecutorHumanAccess = {
   organizationRole: 'owner' | 'admin' | 'member' | 'viewer' | null
@@ -16,9 +16,8 @@ type ExecutorAccessRow = {
 export const requireHumanActor = (actorContext: AuthorizedActionContext): string | null =>
   actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null
 
-export const isOrganizationManager = (
-  role: ExecutorHumanAccess['organizationRole'],
-): boolean => role === 'owner' || role === 'admin'
+export const isOrganizationManager = (role: ExecutorHumanAccess['organizationRole']): boolean =>
+  isAdminRole(role)
 
 export const resolveExecutorHumanAccess = async (
   prisma: PrismaClient | Prisma.TransactionClient,

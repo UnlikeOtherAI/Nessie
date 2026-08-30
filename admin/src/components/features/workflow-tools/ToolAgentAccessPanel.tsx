@@ -5,7 +5,7 @@ import {
   useDeleteToolGrant,
   type McpToolRegistryRecord,
 } from '../../../facades/tool-grants/hooks'
-import { StatusPill } from '../../primitives/StatusPill'
+import { Pill } from '../../primitives/Pill'
 import { Switch } from '../../primitives/Switch'
 
 /**
@@ -92,7 +92,7 @@ const AgentAccessRow = ({ agent, baseline, tool }: AgentAccessRowProps) => {
         ) : null}
       </div>
       {baseline.denied ? (
-        <StatusPill tone="danger">denied</StatusPill>
+        <Pill tone="danger">denied</Pill>
       ) : (
         <div className={pending ? 'opacity-50' : ''}>
           <Switch

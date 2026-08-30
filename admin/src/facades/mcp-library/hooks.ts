@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { mcpKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import type { McpCatalogEntryRecord } from '../mcp-catalog/hooks'
 
@@ -68,8 +69,6 @@ export type ImportLibraryEntryInput = {
   shareToOrg?: boolean
 }
 
-const LIBRARY_QUERY_KEY = ['mcp-library'] as const
-
 export const useMcpLibrary = (search: string, options: { enabled?: boolean } = {}) => {
   const apiClient = useApiClient()
   const params = new URLSearchParams()
@@ -77,7 +76,7 @@ export const useMcpLibrary = (search: string, options: { enabled?: boolean } = {
   const serialised = params.toString()
 
   return useQuery<McpLibraryResponse>({
-    queryKey: [...LIBRARY_QUERY_KEY, search.trim()],
+    queryKey: mcpKeys.librarySearch(search.trim()),
     queryFn: () => apiClient.get(`/api/mcp/library${serialised ? `?${serialised}` : ''}`),
     enabled: options.enabled ?? true,
     staleTime: 60_000,
@@ -92,7 +91,7 @@ export const useImportLibraryEntry = () => {
     mutationFn: (input: ImportLibraryEntryInput) =>
       apiClient.post<McpCatalogEntryRecord>('/api/mcp/library/import', input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['mcp-catalog'] })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.catalog })
     },
   })
 }
@@ -129,9 +128,9 @@ export const useSetInstanceSecret = () => {
         shared: input.shared,
       }),
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['mcp-instances'] })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.instances })
       void queryClient.invalidateQueries({
-        queryKey: ['mcp-instances', variables.instanceId, 'credentials'],
+        queryKey: mcpKeys.instanceCredentials(variables.instanceId),
       })
     },
   })

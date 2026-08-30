@@ -6,6 +6,7 @@ import {
   useArchiveChannel,
   useUpdateChannel,
 } from '../../facades/channels/hooks'
+import { fieldErrorAria, fieldErrorProps } from './FormFieldError'
 import { useModalA11y } from './useModalA11y'
 import { useOverlayDismiss } from './useOverlayDismiss'
 
@@ -86,6 +87,9 @@ export const ChannelSettingsDialog = (
   if (!open) return null
 
   return (
+    // Not the shared `Dialog`: the archive-confirm overlay below renders as a
+    // sibling of the panel inside this scrim, and the shell has no slot for a
+    // second child outside its panel. It already composes `useModalA11y`.
     <div
       {...overlayDismiss}
       style={{
@@ -154,6 +158,7 @@ export const ChannelSettingsDialog = (
               Name
             </label>
             <input
+              {...fieldErrorAria('channel-settings-name', formError)}
               autoComplete="off"
               className="admin-input"
               id="channel-settings-name"
@@ -167,8 +172,18 @@ export const ChannelSettingsDialog = (
             <div className="text-xs text-[color:var(--tx3)]">
               Lowercase letters, numbers and hyphens. Spaces become hyphens.
             </div>
+            {/*
+              Same shape as CreateChannelDialog: the red line is unchanged, and
+              only the id + role="alert" pairing it to the input above is new.
+              Written in the save catch, cleared on the next keystroke.
+            */}
             {formError ? (
-              <div className="text-xs text-[color:var(--danger-text)]">{formError}</div>
+              <div
+                className="text-xs text-[color:var(--danger-text)]"
+                {...fieldErrorProps('channel-settings-name')}
+              >
+                {formError}
+              </div>
             ) : null}
           </div>
 

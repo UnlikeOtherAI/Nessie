@@ -4,19 +4,16 @@ import type {
   UserStatusRuleScope,
   UserStatusScheduleKind,
 } from '../../lib/api-client'
+import { presenceKeys, statusKeys, userKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-
-const statusKeys = {
-  all: ['statuses'] as const,
-}
 
 const useStatusInvalidation = () => {
   const queryClient = useQueryClient()
   return () => {
     void queryClient.invalidateQueries({ queryKey: statusKeys.all })
-    void queryClient.invalidateQueries({ queryKey: ['users'] })
+    void queryClient.invalidateQueries({ queryKey: userKeys.all })
     // Presence carries each user's active-status emoji, so refresh it too.
-    void queryClient.invalidateQueries({ queryKey: ['presence'] })
+    void queryClient.invalidateQueries({ queryKey: presenceKeys.all })
   }
 }
 

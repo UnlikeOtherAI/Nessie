@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { budgetKeys, opsTelemetryKeys } from '../../../lib/query-keys'
 import { useApiClient } from '../../../providers/ApiClientProvider'
+import { SectionLabel } from '../../primitives/SectionLabel'
 
 export type PricingProfile = {
   profileId: string
@@ -18,10 +20,6 @@ export type PricingProfile = {
   effectiveTo: string | null
 }
 
-export const PRICING_PROFILES_KEY = ['pricing-profiles'] as const
-
-const sectionTitle = 'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
-
 const parseRate = (raw: string): number | null | 'invalid' => {
   const trimmed = raw.trim()
   if (trimmed === '') return null
@@ -37,7 +35,7 @@ export const PricingManager = () => {
   const queryClient = useQueryClient()
 
   const { data: profiles = [] } = useQuery<PricingProfile[]>({
-    queryKey: PRICING_PROFILES_KEY,
+    queryKey: opsTelemetryKeys.pricingProfiles,
     queryFn: () => apiClient.get('/api/ledger/tokens/pricing'),
   })
 
@@ -51,11 +49,11 @@ export const PricingManager = () => {
   const [recomputeMsg, setRecomputeMsg] = useState<string | null>(null)
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: PRICING_PROFILES_KEY })
+    void queryClient.invalidateQueries({ queryKey: opsTelemetryKeys.pricingProfiles })
     // Cost figures everywhere depend on pricing — refresh the summaries too.
-    void queryClient.invalidateQueries({ queryKey: ['token-summary'] })
-    void queryClient.invalidateQueries({ queryKey: ['token-estimate'] })
-    void queryClient.invalidateQueries({ queryKey: ['budgets'] })
+    void queryClient.invalidateQueries({ queryKey: opsTelemetryKeys.tokenSummary })
+    void queryClient.invalidateQueries({ queryKey: opsTelemetryKeys.tokenEstimate })
+    void queryClient.invalidateQueries({ queryKey: budgetKeys.all })
   }
 
   const resetForm = () => {
@@ -128,7 +126,7 @@ export const PricingManager = () => {
 
   return (
     <div className="admin-card mt-4 p-4">
-      <div className={sectionTitle}>Model pricing</div>
+      <SectionLabel>Model pricing</SectionLabel>
       <p className="mt-1 text-xs text-[color:var(--tx2)]">
         Per-million-token rates turn the usage ledger into dollars. Use the exact model name, or
         <code className="mx-1 rounded bg-[var(--overlay-weak)] px-1">*</code> as a provider-wide
@@ -190,7 +188,7 @@ export const PricingManager = () => {
       {formError && <div className="mt-2 text-xs text-[var(--danger-text)]">{formError}</div>}
 
       <div className="mt-5 flex items-center justify-between gap-2">
-        <span className={sectionTitle}>Configured pricing ({profiles.length})</span>
+        <SectionLabel as="span">Configured pricing ({profiles.length})</SectionLabel>
         <button
           className="admin-button admin-button-secondary"
           disabled={recompute.isPending || profiles.length === 0}

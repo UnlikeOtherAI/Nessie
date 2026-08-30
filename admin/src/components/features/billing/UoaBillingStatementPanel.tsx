@@ -14,11 +14,9 @@ import {
   useUoaBillingHostedAction,
   useUoaBillingStatement,
 } from '../../../facades/billing/hooks'
+import { SectionLabel } from '../../primitives/SectionLabel'
 import { UoaBillingCancellationDialog } from './UoaBillingCancellationDialog'
 import { UoaBillingStatementDetails } from './UoaBillingStatementDetails'
-
-const sectionTitle =
-  'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--tx3)]'
 
 const errorMessage = (error: unknown): string | null =>
   error instanceof Error ? error.message : null
@@ -33,7 +31,7 @@ const SummaryCard = ({
   value: string
 }) => (
   <div className="rounded-lg border border-[color:var(--sep)] p-3">
-    <div className={sectionTitle}>{label}</div>
+    <SectionLabel>{label}</SectionLabel>
     <div className="mt-1 font-semibold text-[color:var(--tx)]">
       {value}
     </div>
@@ -104,7 +102,7 @@ export const UoaBillingStatementPanel = () => {
 
   return (
     <section className="mb-8" data-testid="uoa-billing-statement">
-      <div className={sectionTitle}>Customer statement</div>
+      <SectionLabel>Customer statement</SectionLabel>
       <div className="mt-2 admin-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -117,6 +115,7 @@ export const UoaBillingStatementPanel = () => {
               Nessie does not calculate commercial billing.
             </p>
           </div>
+          {/* Unconverted: border-only chip; Pill bordered+muted adds an --overlay-weak fill. */}
           {data && (
             <div className="rounded-full border border-[color:var(--sep)] px-3 py-1 text-xs text-[color:var(--tx2)]">
               {data.period.key} · {data.period.state}
@@ -129,6 +128,7 @@ export const UoaBillingStatementPanel = () => {
             Loading customer statement…
           </div>
         )}
+        {/* Unconverted: the border deliberately matches the fill (both --warning-soft), so no outline shows. */}
         {statement.error && (
           <div className="mt-4 rounded-md border border-[var(--warning-soft)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
             Billing is unavailable: {statement.error.message}
@@ -193,7 +193,7 @@ export const UoaBillingStatementPanel = () => {
             <UoaBillingStatementDetails statement={data} />
 
             <div className="mt-6">
-              <div className={sectionTitle}>Subscription actions</div>
+              <SectionLabel>Subscription actions</SectionLabel>
               <div className="mt-2 grid gap-2 sm:grid-cols-3">
                 {data.actions.map((action) => (
                   <div
