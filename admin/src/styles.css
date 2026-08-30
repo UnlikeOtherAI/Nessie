@@ -1155,11 +1155,6 @@ a {
   color: var(--tx);
 }
 
-.admin-sb-item.active .sidebar-pa-badge {
-  background: color-mix(in srgb, var(--tx) 10%, transparent);
-  color: var(--tx);
-}
-
 .admin-sb-item.active-parent {
   /* The parent remains visible, but at half the selected child's intensity. */
   background: color-mix(in srgb, var(--sb-active) 10%, transparent);

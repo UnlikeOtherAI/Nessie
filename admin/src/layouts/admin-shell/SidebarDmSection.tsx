@@ -94,6 +94,14 @@ export const SidebarDmSection = ({
           agent={personalAssistantAgent}
           bootstrapping={personalAssistantBootstrapping}
           onClick={onOpenPersonalAssistant}
+          onToggleStar={() => {
+            if (personalAssistantAgent) {
+              onToggleStar('agent', personalAssistantAgent.id);
+            }
+          }}
+          starred={Boolean(
+            personalAssistantAgent && starredAgentIds.has(personalAssistantAgent.id),
+          )}
           token={token}
           unreadCount={personalAssistantUnreadCount}
         />
