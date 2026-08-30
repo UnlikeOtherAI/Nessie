@@ -64,6 +64,7 @@ const getTimeZoneOptions = (selectedTimeZone: string, browserTimeZone: string): 
 const buildPreferencesPayload = (
   input: {
     pushBudgetAlerts: boolean
+    pushTriggerHealth: boolean
     pushAssignedWork: boolean
     pushEnabled: boolean
     pushMentions: boolean
@@ -73,6 +74,7 @@ const buildPreferencesPayload = (
   },
 ): UserPreferences => ({
   pushBudgetAlerts: input.pushBudgetAlerts,
+  pushTriggerHealth: input.pushTriggerHealth,
   pushAssignedWork: input.pushAssignedWork,
   pushEnabled: input.pushEnabled,
   pushMentions: input.pushMentions,
@@ -199,6 +201,7 @@ export const NotificationsPage = () => {
   const [pushMessages, setPushMessages] = useState(true)
   const [pushMentions, setPushMentions] = useState(true)
   const [pushBudgetAlerts, setPushBudgetAlerts] = useState(true)
+  const [pushTriggerHealth, setPushTriggerHealth] = useState(true)
   const [pushAssignedWork, setPushAssignedWork] = useState(true)
   const [pushPublishedKnowledge, setPushPublishedKnowledge] = useState(true)
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false)
@@ -225,6 +228,7 @@ export const NotificationsPage = () => {
     setPushMessages(preferences?.pushMessages ?? true)
     setPushMentions(preferences?.pushMentions ?? true)
     setPushBudgetAlerts(preferences?.pushBudgetAlerts ?? true)
+    setPushTriggerHealth(preferences?.pushTriggerHealth ?? true)
     setPushAssignedWork(preferences?.pushAssignedWork ?? true)
     setPushPublishedKnowledge(preferences?.pushPublishedKnowledge ?? true)
     setQuietHoursEnabled(Boolean(quietHours))
@@ -268,6 +272,7 @@ export const NotificationsPage = () => {
     try {
       await updatePreferences.mutateAsync(buildPreferencesPayload({
         pushBudgetAlerts,
+        pushTriggerHealth,
         pushAssignedWork,
         pushEnabled,
         pushMentions,
@@ -356,12 +361,14 @@ export const NotificationsPage = () => {
             disabled={!preferencesHydrated || updatePreferences.isPending}
             pushAssignedWork={pushAssignedWork}
             pushBudgetAlerts={pushBudgetAlerts}
+            pushTriggerHealth={pushTriggerHealth}
             pushEnabled={pushEnabled}
             pushMentions={pushMentions}
             pushMessages={pushMessages}
             pushPublishedKnowledge={pushPublishedKnowledge}
             setPushAssignedWork={setPushAssignedWork}
             setPushBudgetAlerts={setPushBudgetAlerts}
+            setPushTriggerHealth={setPushTriggerHealth}
             setPushEnabled={(next) => {
               setPushEnabled(next)
               if (next) {

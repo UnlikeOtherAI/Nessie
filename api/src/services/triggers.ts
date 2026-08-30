@@ -19,3 +19,7 @@ export {
   updateAgentTrigger,
 } from './trigger-crud.js'
 export { dispatchAgentTrigger, type DispatchTriggerResult } from './trigger-dispatch.js'
+export {
+  reauthorizeAgentTrigger,
+  type ReauthorizeTriggerResult,
+} from './trigger-reauthorize.js'

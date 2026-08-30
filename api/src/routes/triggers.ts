@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify'
-import { parseUserId } from '@nessie/schemas'
 
 import {
   AgentTriggerDeliveryRecordSchema,
@@ -19,13 +18,13 @@ import {
   listAgentTriggers,
   listOrganizationTriggers,
   listScheduledTriggers,
-  pauseAgentTrigger,
-  resumeAgentTrigger,
   updateAgentTrigger,
 } from '../services/triggers.js'
 import { registerTriggerIntakeRoutes } from './trigger-intake.js'
+import { registerTriggerLifecycleRoutes } from './trigger-lifecycle.js'
 import type { RouteDeps } from './types.js'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
+import { captureScheduledLaunchOrigin } from '@nessie/workspace-admin'
 
 // Read once at startup, exactly like the runtime signer itself: whether this
 // deployment signs Ledger calls is never a per-request or per-user decision.
@@ -88,9 +87,15 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     if (isScheduled && !requireUserActor(actorContext, reply)) {
       return reply
     }
-    const teamId =
-      actorContext.tenant.teamId ?? actorContext.actionContext.teamId
-    if (isScheduled && !teamId) {
+
+    // Shared with `POST /api/triggers/:id/reauthorize`, which must capture the
+    // identity exactly as creation does — a second copy would be free to drift,
+    // and drift here means schedules that authenticate differently depending on
+    // which door they came through.
+    const captured = isScheduled
+      ? captureScheduledLaunchOrigin({ actorContext, ledgerSigningConfigured })
+      : null
+    if (captured?.kind === 'no_team') {
       sendApiError(
         reply,
         400,
@@ -99,33 +104,10 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       )
       return reply
     }
-    const launchOrigin = isScheduled
-      ? {
-          organizationId: actorContext.tenant.organizationId,
-          ...(actorContext.tenant.projectId
-            ? { projectId: actorContext.tenant.projectId }
-            : {}),
-          teamId: teamId!,
-          // Captured here because this is the only moment a real session
-          // exists. A fire has none, and signing a Ledger call needs the UOA
-          // workspace the creator was acting in — the account link proves
-          // subject/status/epoch but not that. Re-verified against the link at
-          // fire time, so this is replay, not a second source of truth.
-          ...(actorContext.actionContext.uoaIdentity
-            ? { uoaIdentity: actorContext.actionContext.uoaIdentity }
-            : {}),
-          userId: parseUserId(actorContext.actor.actorId),
-        }
-      : undefined
-
     // A signing deployment cannot fire a schedule whose creator left no UOA
     // identity: it would mint a trigger that fails at every sweep forever.
     // Refuse now, while there is somebody to tell.
-    if (
-      isScheduled
-      && ledgerSigningConfigured
-      && !actorContext.actionContext.uoaIdentity
-    ) {
+    if (captured?.kind === 'no_uoa_identity') {
       sendApiError(
         reply,
         400,
@@ -134,6 +116,8 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       )
       return reply
     }
+    const launchOrigin =
+      captured?.kind === 'captured' ? captured.launchOrigin : undefined
 
     const trigger = await createAgentTrigger(
       prisma,
@@ -221,68 +205,6 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     return reply.code(204).send()
   })
 
-  app.post('/api/triggers/:triggerId/pause', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
-
-    const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
-    if (!trigger) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    const updated = await pauseAgentTrigger(prisma, triggerId)
-    if (!updated) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
-  })
-
-  app.post('/api/triggers/:triggerId/resume', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
-
-    const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
-    if (!trigger) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    const updated = await resumeAgentTrigger(prisma, triggerId)
-    if (!updated) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
-  })
-
   app.post('/api/triggers/:triggerId/fire', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -347,7 +269,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       dedupeKey,
       payload: body.payload,
       prompt: body.prompt,
-      source: body.source ?? 'manual',
+      source: 'manual',
       triggerId,
     })
 
@@ -481,5 +403,6 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   // Inbound intake (public webhook + authenticated event publish) is split into
   // its own module to keep this file under the 500-line cap. Registered last to
   // preserve the original route ordering.
+  registerTriggerLifecycleRoutes(app, deps)
   registerTriggerIntakeRoutes(app, deps)
 }
