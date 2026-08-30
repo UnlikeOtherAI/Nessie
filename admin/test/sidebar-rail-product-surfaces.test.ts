@@ -13,3 +13,11 @@ test('the left rail accepts only Nessie navigation items', () => {
   assert.doesNotMatch(rail, /useProductSurfaces/)
   assert.doesNotMatch(rail, /productNavPages/)
 })
+
+test('the left rail exposes the shared create actions immediately above the account control', () => {
+  const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')
+
+  assert.match(rail, /<CreateMenuTrigger/)
+  assert.match(rail, /onCreateMessage=\{onCreateMessage\}/)
+  assert.ok(rail.indexOf('<CreateMenuTrigger') < rail.indexOf('<UserMenuTrigger'))
+})
