@@ -289,21 +289,34 @@ a {
 }
 
 /* Focus is intentionally a neutral chrome treatment, not a second theme: the
-   work surface stays legible while the rail, sidebar and attention signals stop
-   competing for notice. */
-.admin-frame.focus-mode {
-  --rail: #252527;
-  --sb: #373739;
-  --sb-active: #58585b;
-  --accent: #8a8a8f;
-  --accent-hover: #737378;
-  --accent-strong: #5c5c60;
-  --accent-soft: rgba(138, 138, 143, 0.18);
-}
-
+   work surface keeps its chosen theme while the rail and sidebar take on
+   Slack's quiet charcoal treatment. These variables stay on the chrome rather
+   than the frame, so a light work surface does not inherit light-on-light text
+   or lose its normal action colours. */
 .focus-mode > .admin-topbar,
-.focus-mode > .admin-shell > aside {
-  filter: grayscale(1);
+.focus-mode > .admin-shell > aside,
+.focus-mode > .admin-shell > .resizable-sidebar {
+  --rail: #242424;
+  --sb: #383838;
+  --sb-active: #606062;
+  --sep: #505052;
+  --border-strong: #6a6a6c;
+  --tx: #f1f1f1;
+  --tx2: #d4d4d6;
+  --tx3: #aeaeaf;
+  --accent: #b9b9bc;
+  --accent-hover: #d4d4d6;
+  --accent-strong: #ececee;
+  --accent-soft: rgba(255, 255, 255, 0.16);
+  --panel: #353535;
+  --panel-soft: rgba(255, 255, 255, 0.08);
+  --overlay-weak: rgba(255, 255, 255, 0.09);
+  --overlay: rgba(255, 255, 255, 0.14);
+  --overlay-strong: rgba(255, 255, 255, 0.24);
+  --scrim-weak: rgba(0, 0, 0, 0.2);
+  --scrim: rgba(0, 0, 0, 0.38);
+  --scrim-strong: rgba(0, 0, 0, 0.62);
+  color: var(--tx);
 }
 
 .focus-mode .admin-sb-item.unread {
