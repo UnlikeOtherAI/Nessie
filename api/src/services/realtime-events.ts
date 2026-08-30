@@ -97,13 +97,40 @@ export const resolveUserChannelRealtimeScopes = async (
     },
   })
 
+  // Public channels do not have ChannelMember rows. A person who follows a
+  // reply conversation there is nevertheless entitled to its activity and
+  // must receive the same live/replayed events as a member; otherwise the
+  // Threads badge changes only on polling.
+  const followedPublicRoots = await prisma.messageThreadFollow.findMany({
+    where: {
+      userId: input.userId,
+      rootMessage: {
+        thread: { channel: { organizationId: input.organizationId, visibility: 'public' } },
+      },
+    },
+    select: {
+      rootMessage: {
+        select: {
+          thread: { select: { channel: { select: { id: true, organizationId: true, systemChannelType: true } } } },
+        },
+      },
+    },
+  })
+
   // TODO: mid-stream channel join/leave is not reflected until reconnect.
   return buildUserChannelRealtimeScopes(
-    memberships.map((membership) => ({
+    [
+      ...memberships.map((membership) => ({
       channelId: membership.channel.id,
       organizationId: membership.channel.organizationId,
       systemChannelType: membership.channel.systemChannelType,
-    })),
+      })),
+      ...followedPublicRoots.map((follow) => ({
+        channelId: follow.rootMessage.thread.channel.id,
+        organizationId: follow.rootMessage.thread.channel.organizationId,
+        systemChannelType: follow.rootMessage.thread.channel.systemChannelType,
+      })),
+    ],
     input.buildChannelRealtimeScopes,
   )
 }

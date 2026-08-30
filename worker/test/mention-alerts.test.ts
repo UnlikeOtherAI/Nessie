@@ -32,6 +32,7 @@ const makeDeps = (input: {
   failCreateMany?: boolean
 }) => {
   const created: AlertCreate[] = []
+  const follows: { rootMessageId: string; userId: string }[] = []
   const published: { data: Record<string, unknown>; event: string }[] = []
   const prisma = {
     channelMember: {
@@ -44,6 +45,15 @@ const makeDeps = (input: {
         return { count: data.length }
       },
     },
+    message: {
+      findUnique: async () => ({ rootMessageId: null }),
+    },
+    messageThreadFollow: {
+      createMany: async ({ data }: { data: { rootMessageId: string; userId: string }[] }) => {
+        follows.push(...data)
+        return { count: data.length }
+      },
+    },
   } as unknown as PrismaClient
   const realtimeTransport = {
     publishWs: async (_scopes: WsScope[], event: { data: Record<string, unknown>; event: string }) => {
@@ -51,7 +61,7 @@ const makeDeps = (input: {
       return {}
     },
   }
-  return { prisma, realtimeTransport, created, published }
+  return { prisma, realtimeTransport, created, follows, published }
 }
 
 const baseInput = {
@@ -87,6 +97,7 @@ test('an agent-authored @mention creates an alert row and publishes alert.create
   assert.equal(deps.created[0]?.actorUserId, null)
   assert.equal(deps.created[0]?.actorAgentId, AGENT)
   assert.equal(deps.created[0]?.organizationId, ORG)
+  assert.deepEqual(deps.follows, [{ rootMessageId: MESSAGE, userId: MEMBER }])
 
   assert.equal(deps.published.length, 1)
   assert.equal(deps.published[0]?.event, 'alert.created')

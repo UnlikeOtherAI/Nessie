@@ -100,9 +100,9 @@ export const useMarkThreadRead = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { rootMessageId?: string; threadId: string }) =>
+    mutationFn: (input: { rootMessageId?: string; lastReadMessageId?: string; threadId: string }) =>
       apiClient.post(`/api/threads/${input.threadId}/read`, input.rootMessageId
-        ? { rootMessageId: input.rootMessageId }
+        ? { rootMessageId: input.rootMessageId, lastReadMessageId: input.lastReadMessageId }
         : {}),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['channels'] })

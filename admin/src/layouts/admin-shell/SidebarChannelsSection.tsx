@@ -8,6 +8,8 @@ type SidebarChannelsSectionProps = {
   channelsCollapsed: boolean;
   currentChannelId?: string;
   onNavigateChannel: (channelId: string) => void;
+  onNavigateThreads: () => void;
+  threadsUnreadCount: number;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
   standaloneChannels: ChannelRecord[];
@@ -19,10 +21,12 @@ export const SidebarChannelsSection = ({
   channelsCollapsed,
   currentChannelId,
   onNavigateChannel,
+  onNavigateThreads,
   onOpenCreateChannel,
   onToggleStar,
   standaloneChannels,
   starredChannelIds,
+  threadsUnreadCount,
   toggleChannelsCollapsed,
 }: SidebarChannelsSectionProps) => {
   return (
@@ -42,6 +46,11 @@ export const SidebarChannelsSection = ({
       onToggle={toggleChannelsCollapsed}
       title="Channels"
     >
+      <button className="admin-sb-item group" onClick={onNavigateThreads} type="button">
+        <span className="sidebar-row-symbol w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]">◌</span>
+        <span>Threads</span>
+        {renderUnreadCount(threadsUnreadCount)}
+      </button>
       {standaloneChannels.map((channel) => {
         const isStarredChannel = starredChannelIds.has(channel.id);
         return (

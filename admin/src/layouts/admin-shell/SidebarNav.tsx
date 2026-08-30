@@ -26,6 +26,7 @@ type SidebarNavProps = {
   dmCollapsed: boolean;
   onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
+  onNavigateThreads: () => void;
   onNavigateDm: (userId: string) => void;
   onNavigateNewConversation: () => void;
   onNavigateProject: (projectId: string) => void;
@@ -59,6 +60,7 @@ type SidebarNavProps = {
   visibleSidebarProjects: SidebarProject[];
   visibleStarredEntries: VisibleStarredEntry[];
   standaloneChannels: ChannelRecord[];
+  threadsUnreadCount: number;
 };
 
 export const SidebarNav = (props: SidebarNavProps) => {
@@ -71,6 +73,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     dmCollapsed,
     onNavigateAgent,
     onNavigateChannel,
+    onNavigateThreads,
     onNavigateDm,
     onNavigateNewConversation,
     onNavigateProject,
@@ -104,6 +107,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     visibleSidebarProjects,
     visibleStarredEntries,
     standaloneChannels,
+    threadsUnreadCount,
   } = props;
   const nativeTouchShell = isReactNativeWebView();
 
@@ -156,10 +160,12 @@ export const SidebarNav = (props: SidebarNavProps) => {
           channelsCollapsed={channelsCollapsed}
           currentChannelId={currentChannelId}
           onNavigateChannel={onNavigateChannel}
+          onNavigateThreads={onNavigateThreads}
           onOpenCreateChannel={onOpenCreateChannel}
           onToggleStar={onToggleStar}
           standaloneChannels={standaloneChannels}
           starredChannelIds={starredChannelIds}
+          threadsUnreadCount={threadsUnreadCount}
           toggleChannelsCollapsed={toggleChannelsCollapsed}
         />
 
