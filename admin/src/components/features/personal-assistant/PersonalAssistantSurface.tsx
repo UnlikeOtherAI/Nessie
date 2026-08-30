@@ -12,6 +12,8 @@ type PersonalAssistantSidebarEntryProps = {
   agent?: AgentRecord | null
   bootstrapping?: boolean
   onClick: () => void
+  onToggleStar: () => void
+  starred?: boolean
   token: string | null
   unreadCount?: number
 }
@@ -74,6 +76,8 @@ export const PersonalAssistantSidebarEntry = ({
   agent,
   bootstrapping = false,
   onClick,
+  onToggleStar,
+  starred = false,
   token,
   unreadCount = 0,
 }: PersonalAssistantSidebarEntryProps) => {
@@ -106,12 +110,27 @@ export const PersonalAssistantSidebarEntry = ({
       <span className="min-w-0 flex-1 truncate text-current">
         Personal Assistant
       </span>
-      <span className={`${badgeClassName} sidebar-pa-badge`}>PA</span>
       {bootstrapping ? (
         <span className="ml-1 h-4 w-4 animate-spin rounded-full border border-[var(--overlay-strong)] border-t-[var(--on-accent)]" />
       ) : unreadCount > 0 ? (
         <span className="ml-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-[10px] font-bold text-[var(--on-accent)]">
           {unreadCount}
+        </span>
+      ) : null}
+      {agent ? (
+        <span
+          className={[
+            'sidebar-row-star flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none transition-opacity',
+            starred
+              ? 'ml-1 text-[color:var(--warning-text)] opacity-100'
+              : 'ml-auto text-[color:var(--tx3)] opacity-0 group-hover:opacity-100',
+          ].join(' ')}
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggleStar()
+          }}
+        >
+          {starred ? '★' : '☆'}
         </span>
       ) : null}
     </button>
