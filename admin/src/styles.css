@@ -1694,9 +1694,11 @@ a {
   color: var(--tx3);
 }
 
-/* Keep mobile composer glyphs at their familiar size while giving every
-   secondary action the same easy-to-tap frame as Send. */
-@media (max-width: 1024px) {
+/* Keep touch-device composer glyphs at their familiar size while giving every
+   secondary action the same easy-to-tap frame as Send. This follows the input
+   capability instead of viewport width, so iPad Safari and Android tablets
+   receive it even when their browser is wider than the desktop breakpoint. */
+@media (any-pointer: coarse) {
   .admin-compose-actions {
     gap: 1px;
   }
