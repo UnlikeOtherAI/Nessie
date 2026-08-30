@@ -2,13 +2,14 @@
 
 **Status:** Draft for review · 2026-08-30
 **Provider decision (made by the product owner, 2026-08-30, amended same
-day):** the link provider is a **per-team setting** with two values —
-**Google Meet (the default)** and **Jitsi**. The original request mentioned
-both a "Teams link" and "the google call"; the ambiguity was flagged and
-resolved to Meet, then widened to team-configurable Meet-or-Jitsi. Microsoft
-Teams stays out — §4 records the alternatives. Either way the call is a
-**link opened in a tab**: the ring/accept/popup-blocker/native design below
-is provider-agnostic, and the embedded Jitsi iframe dies regardless.
+day):** the link provider is a **per-team setting** — **Google Meet (the
+default)**, **Jitsi**, or **Microsoft Teams**. Pressing the phone icon does
+whatever the team chose: a Jitsi team gets a Jitsi link on click, a Teams
+team a Teams link. The agent, when asked, can mint a link with any provider
+the asking user's connections support, and can remind people about a call
+through ordinary messaging. Whatever the provider, the call is a **link
+opened in a tab**: the ring/accept/popup-blocker/native design below is
+provider-agnostic, and the embedded Jitsi iframe dies regardless.
 
 ## 0. Summary
 
@@ -77,8 +78,10 @@ its Phase 1 is genuinely built, with drift:
   publish goes through `WsEventSchema.parse`
   (`packages/runtime/src/realtime.ts:296`) and the union
   (`packages/schemas/src/realtime-ws.ts:400`) contains no `call.*` literal —
-  so each call action 500s *after* its transaction commits, and the UI
-  limps along on the poll. Any new ring event starts by extending
+  so each call action 500s *after* its transaction commits: the caller of
+  `POST .../call` gets a 500 **with the call created**, a retry answers
+  `ACTIVE_CALL_EXISTS`, and the UI limps along on the poll. Any new ring
+  event starts by extending
   `WsEventMap`/`WsEventNameSchema`/`WsEventSchema`; this plan's events fix
   that defect structurally rather than patching the old names in.
 - **No ringing of any kind today**: no push, no sound, no toast, no system
@@ -113,8 +116,8 @@ its Phase 1 is genuinely built, with drift:
 
 ### 3.0 The team setting
 
-`Team.callProvider` — string column, `'google_meet'` (default) | `'jitsi'`,
-on the `Team` model (`api/prisma/schema.prisma:1365`; the model has no
+`Team.callProvider` — string column, `'google_meet'` (default) | `'jitsi'`
+| `'microsoft_teams'`, on the `Team` model (`api/prisma/schema.prisma:1365`; the model has no
 settings fields today, and there is **no team-update route** — only
 `GET/POST /api/teams` + member add — so this ships with a new
 `PATCH /api/teams/:teamId/settings`, org owner/admin-gated). Resolution at
@@ -244,16 +247,36 @@ construction, no OAuth, no network call, no per-user setup. Notes:
 - The call still happens in a separate tab on the Jitsi page — the embedded
   iframe/overlay is **not** retained for jitsi teams.
 
+### 3.7 Microsoft Teams as a link provider (team opt-in)
+
+Microsoft Graph `POST /me/onlineMeetings` (scope `OnlineMeetings.ReadWrite`)
+returns a `joinWebUrl` — the same shape as a Meet mint: created under the
+**initiator's** Microsoft connection. The comms connector already plans a
+Microsoft provider (`CommsProvider` includes it; the adapter package and the
+`NESSIE_COMMS_MICROSOFT_*` OAuth config are the unbuilt half), so the Teams
+mint rides that connection exactly as Meet rides Google — typed
+`MICROSOFT_NOT_CONNECTED` / `TEAMS_SCOPE_MISSING` refusals, encrypted
+credential bundle, same `needs_reauthorization` semantics. The team setting
+only offers `microsoft_teams` when the deployment has the Microsoft OAuth
+provider configured (an unconfigured provider is unselectable, named in the
+UI — never a dead toggle, per the trigger-health precedent). **Sequencing
+decision for the owner (§12.10):** the Microsoft comms connection is real
+work (Azure AD app + adapter package); v1 can ship Meet + Jitsi with the
+provider seam and setting already three-valued, Teams landing with the
+Microsoft connector — or the Microsoft OAuth leg gets pulled forward. The
+seam and the ring flow are identical either way.
+
 ## 4. Provider decision — recorded
 
-**Decided: per-team setting, Google Meet default, Jitsi opt-in** (owner's
-call, 2026-08-30). Options considered:
+**Decided: per-team setting — Google Meet default, Jitsi and Microsoft
+Teams opt-in** (owner's calls, 2026-08-30; Teams first deferred, then
+explicitly reinstated: "some people wanna just create a Teams link").
 
 | Option | Outcome / notes |
 |---|---|
 | **Google Meet** ✅ default | Instant links via a create-only scope; recipients need no Google account to join an OPEN space; rides the existing Google connection. |
 | **Jitsi (link, not embed)** ✅ team opt-in | Zero-setup link mint for teams without Google connections or with a self-hosted Jitsi; the embedded iframe still dies. |
-| Microsoft Teams | Out. `onlineMeetings` Graph API needs an Azure AD app and per-user M365 accounts; no M365 footprint in the org. |
+| **Microsoft Teams** ✅ team opt-in | Graph `onlineMeetings` under the initiator's Microsoft connection; needs the planned-but-unbuilt Microsoft comms OAuth leg (§3.7); selectable only where configured. |
 | Embedded Jitsi (status quo) | Out. Keeps a media surface Nessie must own (entitlements, CSP, TURN/JWT) — the thing being removed. |
 
 ## 5. The new flow, end to end
@@ -265,7 +288,12 @@ call, 2026-08-30). Options considered:
   ring/participant state. Eligibility unchanged in spirit (≥ 2 human
   members, PA DM refused) and now consistent client/server.
 - **In-channel banner**: "N started a call — Join" (anchor). Driven by the
-  channel-scoped events, as today's banner should have been.
+  channel-scoped events, as today's banner should have been. **Stated
+  plainly: a channel call is open to the whole channel.** The banner hands
+  the link to every member, so the invite list is a *ring* list (who gets
+  woken), never an access list — a declined invitee can still join from the
+  banner, and that is the design, not a leak. Anything invite-gated would
+  need `TRUSTED` spaces and is out of scope (§12.1).
 - **Incoming-call dialog**: new, global (§6.1) — renders anywhere in the
   app, not only on the channel page.
 
@@ -280,9 +308,13 @@ call, 2026-08-30). Options considered:
    `MEET_LINK_FAILED`; no `Call` row on failure), random room URL for
    `jitsi` (cannot fail).
 3. Transaction: `Call` row (`provider` = the resolved value, `meetingUri`,
-   `status='ringing'`, `ringExpiresAt`) + one `CallInvite` per **human**
-   channel member except the caller (`state='ringing'`). Agents are never
-   invited.
+   `status='ringing'`, `ringExpiresAt`) + one `CallInvite` per **human,
+   currently-active** channel member except the caller (`state='ringing'`).
+   "Human, active" means joining `organization_members` on
+   `(organizationId, userId)` with `deactivatedAt IS NULL` — a raw
+   `channelMember` filter still includes deactivated people, who must get
+   neither invites nor rings (the `resolveActingMember` liveness standard).
+   The eligibility count uses the same join. Agents are never invited.
 4. Post-commit (never inside it, matching the message-create pattern):
    publish realtime (§6.1), enqueue the ring push job (§6.2), enqueue the
    ring-timeout job (§9.3).
@@ -310,9 +342,13 @@ Accept is a click on the incoming-call dialog (or push notification —
    the ring event, so there is no await before the open. Browser:
    `window.open(meetingUri, '_blank', 'noopener,noreferrer')`. Shells: the
    platform opener (§8).
-2. Fire `POST /api/calls/:callId/accept` (after/parallel, with retry — the
-   tab already being open is fine even if this races the timeout; server
-   answers `CALL_NO_LONGER_RINGING` and the UI shows the missed state).
+2. Fire `POST /api/calls/:callId/accept` (after/parallel, with retry).
+   Accept is **idempotent per invitee**: an invite already `accepted` (the
+   same user's other device won the race) answers 200
+   `CALL_ALREADY_ACCEPTED` and the device shows nothing alarming — the tab
+   is open and that's correct, it's the same person. Only a genuinely
+   terminal call (`missed`/`cancelled`/`ended`) answers
+   `CALL_NO_LONGER_RINGING`, and the UI then shows the missed state.
 3. If `window.open` returned `null` (blocked regardless), the dialog stays
    up and swaps to a "Pop-up blocked — Join call" **anchor**; a direct
    anchor click always opens.
@@ -366,11 +402,15 @@ Specifics the existing pipeline does NOT give us, each an explicit change:
   *other* devices must still ring). The ring dispatch passes an explicit
   no-suppression flag; de-dupe is client-side on `callId` (the SSE dialog
   and the push share the tag).
-- **New preference kind** `incomingCalls` in `UserPreferencesSchema` +
+- **New preference kind** `pushIncomingCalls` (matching the existing
+  `pushMessages`/`pushMentions` naming) in `UserPreferencesSchema` +
   `shouldSuppressPushForPreferences`, default on. **Quiet hours and focus
   mode suppress the ring push** like everything else — a ring is not above
   the user's own do-not-disturb (the realtime dialog still appears; §12.3
-  flags the alternative).
+  flags the alternative). The **missed-call push respects the same
+  suppression** — a person whose quiet hours silenced the ring must not be
+  buzzed 45 s later about having "missed" it; the durable alert row and the
+  channel message still exist for when they look.
 - **Web Push:** payload is E2E-encrypted (RFC 8291), so `meetingUri` may
   ride in it. `admin/public/sw.js` gains: `actions: [Accept, Decline]`,
   `requireInteraction: true`, `renotify`, a stable `tag: call-<callId>`, an
@@ -378,8 +418,25 @@ Specifics the existing pipeline does NOT give us, each an explicit change:
   handler (dismiss ≠ decline; it just stops that device's banner). Accept
   in the SW: `clients.openWindow(meetingUri)` **first** (a notification
   click is user-gesture-bearing; no await before it), then `waitUntil` the
-  same-origin accept fetch. **iOS PWA caveat:** action buttons are
-  unsupported there — the notification degrades to click-= accept-and-open.
+  same-origin accept fetch. A **plain click** (no action button) is *not*
+  an unambiguous accept: it opens the app at the channel with the ring
+  dialog up, preserving today's deep-link behavior. **Degraded paths,
+  stated:** iOS PWA has no action buttons (plain-click path only); and
+  cross-origin `openWindow` from a SW is not uniformly reliable outside
+  Chromium — where it refuses, the SW opens same-origin
+  `/channels/:id?acceptCall=<callId>` instead and the page completes the
+  accept and offers the Meet anchor for a real click (the §7 gesture logic,
+  applied once more).
+- **Native push (APNs/FCM) carries no `meetingUri` — deliberately.** The
+  mobile shell treats notification data as untrusted by design:
+  `pathFromPushData` accepts only internal `'/'`-prefixed paths, with a
+  comment saying exactly why (`mobile/src/lib/push-navigation.ts:4-9`), and
+  this plan does not weaken that. The native ring push carries the call id
+  and an internal path (`/channels/:id?incomingCall=<callId>`); tapping it
+  boots the app into the incoming-call dialog, which fetches the call and
+  opens the link through the §8 bridge on Accept — the tap-then-accept
+  gesture chain tolerates that one fetch, since `Linking.openURL` is not
+  popup-blocked.
 - **Ring cancel over push:** a cancel push with the same `tag`; the SW
   closes the matching notification (`registration.getNotifications({tag})`)
   and shows nothing (where a platform insists on a visible notification per
@@ -436,12 +493,18 @@ sniffing):
   `nessie:open-external {url}` posted to the shell, handled in `App.tsx`
   with `Linking.openURL` (system browser). This bridge does not exist today
   — the only current external-open path is hardwired to the auth callback —
-  and it ships allowlisted to `https://meet.google.com/` at the native
-  side, so a compromised page context cannot use it as an arbitrary URL
-  launcher. Fallback when the shell predates the handler: `window.open`,
-  which the WebView turns into in-place navigation — ugly but functional;
-  the shell's `onShouldStartLoadWithRequest` gains an external-origin trap
-  in the same release.
+  and it follows the existing typed-guard pattern for bridge messages (an
+  `isOpenExternalMessage` guard beside `isNativeShellPresentationMessage`),
+  with the **allowlist enforced on the native side** (the call-provider
+  origins: `meet.google.com`, the configured Jitsi domain,
+  `teams.microsoft.com`) so a compromised page context cannot use it as an
+  arbitrary URL launcher; a non-allowlisted URL is dropped and logged.
+  Fallback when the shell predates the handler: `window.open`, which the
+  WebView turns into in-place navigation — ugly but functional. The shell's
+  `onShouldStartLoadWithRequest` gains a trap in the same release that
+  **allowlists the same call origins out to the system browser** rather
+  than blanket-externalizing every non-Nessie origin (a blanket rule would
+  break embedded content the WebView legitimately loads).
 - Ring parity: `IncomingCallProvider` renders identically inside the
   shells; native push covers the closed-app case.
 
@@ -455,16 +518,24 @@ setting at creation; legacy embedded-era rows backfilled
 legacy), `ringExpiresAt`,
 `createdViaAgentId` (nullable), and `status` widens: `ringing | active |
 ended | missed | declined | cancelled` (stays a string column; values
-validated in code like today). New model `CallInvite`: `callId`, `userId`,
-`state` (`ringing | accepted | declined | missed | cancelled`),
-`respondedAt`, `@@unique([callId, userId])`. `CallParticipant` is retired
-from the new flow (Meet-side presence is unobservable) but kept for
-history.
+validated in code — and `mapCallRecord`, which today collapses everything
+non-`ended` to `active` (`api/src/services/calls.ts:29`), grows with the
+new states or the banner would show `ringing` as an active call).
+**`roomId` becomes nullable**: link-provider calls have no room id, legacy
+rows keep theirs, the `@unique` survives on the non-null values. New model
+`CallInvite`: `callId`, `userId`, `state` (`ringing | accepted | declined |
+missed | cancelled`), `respondedAt`, `@@unique([callId, userId])`.
+`CallParticipant` is retired from the new flow (provider-side presence is
+unobservable) but kept for history.
 
 New routes: `POST /api/calls/:callId/accept` / `.../decline` /
-`.../cancel`; existing create/end routes keep their paths. Every
-invite-mutating route checks the actor **is the invitee** (accept/decline)
-or the caller (cancel/end), on top of channel membership.
+`.../cancel`; the create/end routes keep their paths, and **`POST
+/api/calls/:callId/join` and `/leave` are deleted with the overlay** —
+against a `ringing` row they could only ever 409, and nothing calls them
+once Jitsi-embed dies. Every invite-mutating route checks the actor **is
+the invitee** (accept/decline) or the caller (cancel/end), on top of
+channel membership; not-a-member stays `404 CHANNEL_NOT_FOUND` (never a
+403), preserving the existing no-existence-probing semantics.
 
 ### 9.2 Transitions (conditional updates, race-safe)
 
@@ -476,11 +547,17 @@ or the caller (cancel/end), on top of channel membership.
 - `ringing → declined`: the last still-ringing invite declines and none
   accepted.
 - `ringing → missed`: ring timeout with zero accepts; `ringing` invites →
-  `missed`. Writes a **server-authored** "Missed call from N" system
-  message in the channel (the `agent-message.ts` docstring's fixed-copy
-  group — empty disclosure basis is correct: the event is channel-visible
-  by construction) + a durable `UserAlert` per missed invitee (`eventKey =
-  call:<callId>:missed:<userId>`, revalidated on read like other alerts).
+  `missed`. The **worker's ring-timeout handler** (it already runs there)
+  writes a server-authored "Missed call from N" system message in the
+  channel — the `agent-message.ts` docstring's fixed-copy group, like
+  `comms-card.ts`/`trigger-run.ts`; empty disclosure basis is correct, the
+  event is channel-visible by construction — plus a durable `UserAlert`
+  per missed invitee. That alert is a **new alert kind** (`call_missed`),
+  which is a cross-stack addition, not one line: the alert contract, the
+  admin alerts facade rendering, the bell copy, and its own read-time
+  revalidation (alive while the call row exists; kinds each carry bespoke
+  revalidation in the attention path). `eventKey =
+  call:<callId>:missed:<userId>`.
 - `active → ended`: caller/any-participant explicit end, or the expiry
   sweep. Nessie **cannot observe** Meet-side hangup — no Workspace Events
   subscription in scope — so `ended` is honest bookkeeping (§12.2).
@@ -491,8 +568,17 @@ or the caller (cancel/end), on top of channel membership.
 ### 9.3 Timers are durable, never in-process
 
 - **Ring timeout** (`NESSIE_CALL_RING_TIMEOUT_MS`, default 45 s): delayed
-  queue job enqueued at creation; handler is one conditional UPDATE, so
-  crash/double-delivery is harmless. Never `setTimeout` in the API.
+  queue job enqueued at creation. Delay support exists only in the
+  runtime's `PgQueueProvider.enqueue` (`delayMs` → future `enqueued_at`,
+  claimed by `enqueued_at <= now()`); the API-side `enqueueQueueJob`
+  helper in `@nessie/db` takes no delay — so that helper **gains a
+  `delayMs` option** (same future-`enqueued_at` write) in slice 2 rather
+  than the API growing a second enqueue path. Handler: re-read the call,
+  then conditional UPDATEs only — call `WHERE status='ringing'`, invites
+  `WHERE state='ringing'` — so crash/double-delivery is harmless **and a
+  concurrently-accepted invite can never be stomped to `missed`** (the
+  same `WHERE state='ringing'` shape applies to the cancel path). Never
+  `setTimeout` in the API.
 - **Active-call expiry**: periodic sweep flips `active` calls older than
   `NESSIE_CALL_MAX_ACTIVE_HOURS` (default 8 h) to `ended` so the banner
   cannot stick forever.
@@ -522,16 +608,28 @@ handler in `worker/src/run/pa-tools/`:
   `startCallForUser` when ringing. The provider **defaults to the
   conversation channel's team setting** (§3.0), and the tool takes an
   optional `provider` argument so a person can ask the agent for a Meet
-  link even on a Jitsi-preferring team (owner's explicit call,
+  or Teams link even on a Jitsi-preferring team (owner's explicit call,
   2026-08-30): the override is the *user's* request relayed by their
-  agent, minted under that user's own Google connection, so it grants
-  nothing the user couldn't do with their own account. Whether the agent
-  should offer the override unprompted is the model's judgement, never a
-  string-matched heuristic. The mirroring REST route accepts the same
-  optional `provider`, keeping tool and route no-weaker-no-stronger.
-  Typed refusals in words: unattended run with no requesting user; for a
-  Meet mint, `GOOGLE_NOT_CONNECTED` / `MEET_SCOPE_MISSING` (the answer
-  names `/settings/connections`).
+  agent, minted under that user's own connection, so it grants nothing
+  the user couldn't do with their own account. Whether to offer the
+  override unprompted is the model's judgement, never a string-matched
+  heuristic. The mirroring REST route accepts the same optional
+  `provider`, keeping tool and route no-weaker-no-stronger. "Remind
+  people about the call" needs no new tool — that's the agent posting an
+  ordinary message with the link. Typed refusals in words: unattended
+  run with no requesting user; `GOOGLE_NOT_CONNECTED` /
+  `MEET_SCOPE_MISSING` / `MICROSOFT_NOT_CONNECTED` (the answer names
+  `/settings/connections`).
+- **Tenancy keys on the *target* channel, not the run's home channel.**
+  `resolveActingMember` reads the run channel's organization; when
+  `ring: true` names another channel, `startCallForUser` resolves the
+  target channel's own organization and re-derives live membership
+  (`deactivatedAt IS NULL`) **in that org** — on the UOA multi-org model
+  a PA run in org A must never ring an org-B channel under org-A
+  membership (the `resolveLocalUserIdsByUoaSub` org-scoping lesson). A
+  channel the acting user cannot reach answers the same
+  channel-not-found refusal as the route, so the tool cannot probe
+  channel existence.
 - **Modes:** default returns `{meetingUri}` for the agent's reply
   (mirroring a new member-level `POST /api/meetings/links` route that
   ships in the same change — same service, same gates, per the
@@ -552,7 +650,9 @@ handler in `worker/src/run/pa-tools/`:
    mints), `Team.callProvider` column + `PATCH /api/teams/:teamId/settings`
    + the `/settings/organization` Calls section, scope/config change +
    re-consent path, `POST /api/meetings/links`, deployment doc for the
-   console steps (§3.5).
+   console steps (§3.5). Deliberate Rule-zero note: until slice 5 lands
+   the tool, this route is **machine-only by decision** — its surface is
+   the agent tool and the call flow, both arriving in later slices.
 2. **Schema + call service rework** — `CallInvite`, widened status,
    provider/`meetingUri` columns, migration force-ending live Jitsi calls,
    new accept/decline/cancel routes, ring-timeout job + expiry sweep,
@@ -606,8 +706,65 @@ handler in `worker/src/run/pa-tools/`:
    section is the recommendation (org-page-with-team-rows precedent); a
    dedicated team-settings page does not exist and this plan does not
    invent one. Owner may prefer the Integrations page instead.
+10. **Teams sequencing** (§3.7): ship v1 as Meet + Jitsi with the
+    three-valued setting and seam, Microsoft Teams landing with the
+    Microsoft comms OAuth leg — or pull that leg forward into this work.
+    Recommendation: v1 without it; the Azure AD app + adapter package is
+    its own project.
 
 ## 13. Review log
 
-_To be filled after codex sol + kimix review: findings, which were verified
-real and folded in, which were rejected and why._
+Reviewers: **Kimix** (delivered, folded in below) and **Codex Sol**
+(in progress at the time of this revision; its outcomes get appended
+here). Both reviewed revision `d309821a` — before the per-team provider
+setting and the Teams reinstatement — so their findings target the
+Meet-only draft; all still applied. Every folded finding was re-verified
+against the code before acceptance.
+
+**Kimix — confirmed and folded:**
+
+1. *(critical)* Native push must not carry `meetingUri`: the mobile shell's
+   `pathFromPushData` treats notification data as untrusted and accepts
+   internal paths only (verified verbatim,
+   `mobile/src/lib/push-navigation.ts:4-9`). → §6.2 native-push paragraph:
+   internal path + call id, dialog fetches, bridge opens.
+2. *(critical)* Accept had contradictory outcomes for a same-user
+   multi-device race. → §5.4: accept idempotent per invitee,
+   `CALL_ALREADY_ACCEPTED` vs `CALL_NO_LONGER_RINGING`.
+3. *(major)* The API-side `enqueueQueueJob` has no delay support (verified:
+   `delayMs` exists only on the runtime `PgQueueProvider`). → §9.3: the
+   `@nessie/db` helper gains `delayMs`.
+4. *(major)* The banner hands the link to the whole channel, so invites
+   must be named a ring list, not an access list. → §5.1 states it plainly
+   (decision (b): channel calls are channel-open).
+5. *(major)* Invites/eligibility from raw `channelMember` would include
+   deactivated members. → §5.2: live-org-membership join.
+6. *(major)* Timeout/cancel bulk updates could stomp a concurrent accept.
+   → §9.3: all invite mutations `WHERE state='ringing'`.
+7. *(major)* Missed-call alert is a new alert kind with cross-stack cost;
+   writer undecided. → §9.2: worker ring-timeout handler writes it;
+   `call_missed` kind named with its revalidation.
+8. *(major)* Cross-origin `clients.openWindow` from a SW is not uniformly
+   reliable; plain notification click was unspecified. → §6.2: plain click
+   opens the ring dialog; refusal path opens same-origin `?acceptCall=`.
+9. *(major)* The tool's ring mode must key tenancy on the *target*
+   channel's org, and preserve 404 semantics. → §10 tenancy paragraph.
+10. *(minor, several)* Symptom wording of the publish defect (500 with the
+    call created); `mapCallRecord` collapse (verified,
+    `api/src/services/calls.ts:29`); `roomId @unique` non-null needs a
+    decision (→ nullable); join/leave route deletion; `pushIncomingCalls`
+    naming; missed-push respects quiet hours; bridge typed guard +
+    allowlist trap; machine-only note for slice 1. All folded where cited.
+
+**Kimix — verified-accurate confirmations** (no change needed): the
+WsEventSchema defect, user-SSE scope delivery, surface-suppression bypass
+needing to thread into `deliverNativeTokens` (§6.2 flag covers both legs),
+desktop opener capability, entitlement/CSP hazards, OAuth scope facts,
+tool-gating placement, and the `agent-message.ts` fixed-copy exemption.
+
+**Rejected/adjusted:** none rejected outright; finding 8's browser-support
+specifics are folded as "not uniformly reliable" rather than per-browser
+claims, since the degraded path is cheap and the per-browser matrix is
+volatile.
+
+**Codex Sol:** outstanding — to be appended.
