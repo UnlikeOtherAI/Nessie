@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AgentRecord } from '../../../lib/api-client'
 import {
   buildToolPolicy,
@@ -10,6 +10,8 @@ import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { StatusPill } from '../../primitives/StatusPill'
 import { EmptyState } from '../../shared/EmptyState'
 import { ToolPicker } from './designer/ToolPicker'
+import { useDesignerAssistantPanel } from './designer/DesignerAssistantPanelContext'
+import { revealDesignerControl } from './designer/reveal-control'
 
 /**
  * The agent's Tools tab: the single place an agent's tool access is managed.
@@ -37,6 +39,7 @@ const AgentToolsEditor = ({ agent }: AgentAvailableToolsProps) => {
     () => agent.toolPolicy ?? {},
   )
   const updateAgent = useUpdateAgent()
+  const assistantPanel = useDesignerAssistantPanel()
 
   // Compare over the visible option set only, so protected grants the server
   // keeps (and the picker never shows) do not make the tab look permanently
@@ -54,6 +57,39 @@ const AgentToolsEditor = ({ agent }: AgentAvailableToolsProps) => {
   const save = () => {
     void updateAgent.mutateAsync({ agentId: agent.id, toolPolicy: nextPolicy })
   }
+
+  const changeTool = useCallback((toolId: string, enabled: boolean, delay = 0) => {
+    window.setTimeout(() => {
+      revealDesignerControl(`agent-tool-${toolId}`)
+      // Let the smooth reveal begin before changing the same switch a person
+      // would click. This preserves the visible cause-and-effect relationship.
+      window.setTimeout(() => {
+        setToolState((previous) => ({ ...previous, [toolId]: enabled }))
+      }, 180)
+    }, delay)
+  }, [])
+
+  const handleAssistantAction = useCallback((name: string, args: Record<string, unknown>) => {
+    if (name === 'toggle_tool') {
+      if (typeof args.toolId !== 'string' || !args.toolId) return false
+      changeTool(args.toolId, Boolean(args.enabled))
+      return true
+    }
+
+    if (name !== 'batch_toggle_tools' || !Array.isArray(args.tools)) return false
+    args.tools.forEach((item, index) => {
+      const tool = item as { enabled?: unknown; toolId?: unknown }
+      if (typeof tool.toolId === 'string') {
+        changeTool(tool.toolId, Boolean(tool.enabled), index * 650)
+      }
+    })
+    return true
+  }, [changeTool])
+
+  useEffect(() => {
+    assistantPanel?.registerActionHandler(handleAssistantAction)
+    return () => assistantPanel?.registerActionHandler(null)
+  }, [assistantPanel, handleAssistantAction])
 
   return (
     <div className="grid gap-4">

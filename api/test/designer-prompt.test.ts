@@ -98,3 +98,16 @@ test('set_model is declared, and takes both fields together', () => {
     'provider',
   ])
 })
+
+test('the current designer page limits the assistant to controls a person can reach', () => {
+  const prompt = buildDesignerSystemPrompt(formState(), [], models, {
+    title: 'Tools',
+    description: 'Review and change this agent’s tool access.',
+    actions: ['enable or disable tools, then save the changes'],
+  })
+
+  assert.match(prompt, /Current page:/)
+  assert.match(prompt, /- Tools: Review and change this agent’s tool access\./)
+  assert.match(prompt, /Controls available on this page: enable or disable tools, then save the changes/)
+  assert.match(prompt, /Only call a UI-changing tool when[\s\S]*current page lists the relevant control/)
+})

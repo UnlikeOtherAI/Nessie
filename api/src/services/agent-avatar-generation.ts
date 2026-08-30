@@ -86,11 +86,25 @@ const avatarPromptMessages = (
   ]
 }
 
-const ledgerImageEndpoint = (config: Pick<ModelConfig, 'apiKey' | 'baseUrl'>): URL => {
+const ledgerImageEndpoint = (
+  config: Pick<ModelConfig, 'apiKey' | 'baseUrl' | 'imagePurposeApiId'>,
+): URL => {
   if (!config.apiKey?.trim() || !config.baseUrl || !isLedgerEndpoint(config.baseUrl)) {
     throw new AgentAvatarGenerationError(
       'Generating agent avatars requires a Ledger-routed model API key.',
     )
+  }
+
+  // When a Purpose API is configured, Ledger owns the image provider fallback
+  // chain (e.g. Gemini primary, OpenAI fallback) behind one endpoint, so we
+  // address the purpose route instead of the direct OpenAI service route.
+  const purposeApiId = config.imagePurposeApiId?.trim()
+  if (purposeApiId) {
+    const url = new URL(config.baseUrl)
+    url.pathname = `/v1/purpose/${encodeURIComponent(purposeApiId)}/images/generations`
+    url.search = ''
+    url.hash = ''
+    return url
   }
 
   const baseUrl = resolveLedgerServiceBaseUrl(config.baseUrl, 'openai')
@@ -107,7 +121,7 @@ const defaultImageRequest: ImageRequest = (url, init) =>
   safeFetch(url, init, { maxRedirects: 0 })
 
 const requestImage = async (input: {
-  config: Pick<ModelConfig, 'apiKey' | 'baseUrl'>
+  config: Pick<ModelConfig, 'apiKey' | 'baseUrl' | 'imagePurposeApiId'>
   imageRequest: ImageRequest
   ledgerIdentity: LedgerIdentityService | null
   prompt: string
@@ -178,7 +192,7 @@ const requestImage = async (input: {
 export const generateAgentAvatar = async (input: {
   actorContext: AuthorizedActionContext
   agent: AgentAvatarDetails
-  config: Pick<ModelConfig, 'apiKey' | 'baseUrl'>
+  config: Pick<ModelConfig, 'apiKey' | 'baseUrl' | 'imagePurposeApiId'>
   fileService: Pick<FileService, 'store'>
   imageRequest?: ImageRequest
   // Free-text guidance the person typed for this generation.

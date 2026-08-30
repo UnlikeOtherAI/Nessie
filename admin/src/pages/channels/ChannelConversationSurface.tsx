@@ -12,6 +12,7 @@ import type {
 import { CallBanner } from '../../components/shared/CallBanner'
 import { DropZoneOverlay } from '../../components/shared/DropZoneOverlay'
 import { ChannelComposer } from '../../components/features/channels/ChannelComposer'
+import { SecretCaptureDialog } from '../../components/features/channels/SecretCaptureDialog'
 import { ChannelHeader } from '../../components/features/channels/ChannelHeader'
 import { ChannelMessageFeed } from '../../components/features/channels/ChannelMessageFeed'
 import { ChannelSearchPanel } from '../../components/features/channels/ChannelSearchPanel'
@@ -55,6 +56,7 @@ interface ChannelConversationSurfaceProps {
     ReturnType<typeof useChannelComposer>,
     | 'attachments'
     | 'dismissPendingAgent'
+    | 'dismissSecretCapture'
     | 'insertEmoji'
     | 'inviteErrors'
     | 'invitePendingAgent'
@@ -68,6 +70,7 @@ interface ChannelConversationSurfaceProps {
     | 'sendText'
     | 'setMessage'
     | 'setOversizePaste'
+    | 'secretCapture'
   >
   deepWaterLauncher: ReturnType<typeof useDeepWaterResearchLauncher>
   // Live document composition for this conversation; the feed owns the popup.
@@ -345,6 +348,10 @@ export const ChannelConversationSurface = ({
           void composer.sendText(text)
         }}
         />
+      ) : null}
+
+      {composer.secretCapture ? (
+        <SecretCaptureDialog capture={composer.secretCapture} onClose={composer.dismissSecretCapture} />
       ) : null}
 
       <DropZoneOverlay active={chatDrop.isDragging} label="Drop files to attach" />

@@ -13,6 +13,7 @@ import {
 import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
 import { useToasts } from './ToastProvider'
+import { useFocusMode } from './FocusModeProvider'
 
 /**
  * Turns realtime `message.new` events into toasts. The toast stack itself lives
@@ -22,6 +23,7 @@ import { useToasts } from './ToastProvider'
 export const NotificationsProvider = ({ children }: PropsWithChildren) => {
   const navigate = useNavigate()
   const { pushToast } = useToasts()
+  const { focusModeEnabled } = useFocusMode()
 
   const openChannel = useCallback((channelId: string, threadId?: string, rootMessageId?: string) => {
     window.focus()
@@ -42,7 +44,7 @@ export const NotificationsProvider = ({ children }: PropsWithChildren) => {
   }, [navigate])
 
   const addToast = useCallback((toast: NotificationToastInput) => {
-    if (!shouldShowInAppMessageBanner(isReactNativeWebView())) {
+    if (focusModeEnabled || !shouldShowInAppMessageBanner(isReactNativeWebView())) {
       return
     }
     pushToast({
@@ -50,11 +52,12 @@ export const NotificationsProvider = ({ children }: PropsWithChildren) => {
       onOpen: () => openChannel(toast.channelId, toast.threadId, toast.rootMessageId),
       title: toast.title,
     })
-  }, [openChannel, pushToast])
+  }, [focusModeEnabled, openChannel, pushToast])
 
   useMessageNotifications({
     onToast: addToast,
     openChannel,
+    suppressNotifications: focusModeEnabled,
   })
 
   return <>{children}</>

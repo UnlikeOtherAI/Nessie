@@ -19,6 +19,7 @@ export const UserAlertRecordSchema = z.object({
   id: z.string().uuid(),
   kind: UserAlertKindSchema,
   messageId: z.string().uuid().nullable(),
+  rootMessageId: z.string().uuid().nullable(),
   threadId: z.string().uuid().nullable(),
   channelId: z.string().uuid().nullable(),
   channelLabel: z.string().nullable(),

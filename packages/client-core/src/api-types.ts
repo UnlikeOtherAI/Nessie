@@ -59,6 +59,8 @@ export type ChannelRecord = {
 }
 
 export type ProjectRecord = {
+  avatarAttachmentId: string | null
+  avatarEmoji: string | null
   channelCount?: number
   createdAt: string
   id: string

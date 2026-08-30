@@ -288,6 +288,33 @@ a {
   color: var(--tx);
 }
 
+/* Focus is intentionally a neutral chrome treatment, not a second theme: the
+   work surface stays legible while the rail, sidebar and attention signals stop
+   competing for notice. */
+.admin-frame.focus-mode {
+  --rail: #252527;
+  --sb: #373739;
+  --sb-active: #58585b;
+  --accent: #8a8a8f;
+  --accent-hover: #737378;
+  --accent-strong: #5c5c60;
+  --accent-soft: rgba(138, 138, 143, 0.18);
+}
+
+.focus-mode > .admin-topbar,
+.focus-mode > .admin-shell > aside {
+  filter: grayscale(1);
+}
+
+.focus-mode .admin-sb-item.unread {
+  color: var(--tx2);
+  font-weight: 400;
+}
+
+.focus-mode .sidebar-unread-count {
+  display: none;
+}
+
 .admin-shell {
   display: flex;
   min-height: 0;
@@ -966,7 +993,8 @@ a {
 
 .admin-sidebar-menu-project {
   top: 24px;
-  right: 0;
+  left: 0;
+  right: auto;
   width: 220px;
 }
 
@@ -1128,11 +1156,6 @@ a {
   color: var(--tx);
 }
 
-.admin-sb-item.active .sidebar-pa-badge {
-  background: color-mix(in srgb, var(--tx) 10%, transparent);
-  color: var(--tx);
-}
-
 .admin-sb-item.active-parent {
   /* The parent remains visible, but at half the selected child's intensity. */
   background: color-mix(in srgb, var(--sb-active) 10%, transparent);
@@ -1242,6 +1265,62 @@ a {
 
 .admin-rail-btn.active .admin-rail-btn-label {
   font-weight: var(--font-weight-semibold);
+}
+
+/* The rail's creation control intentionally has no label: its compact
+   plus-button placement mirrors the native phone action and keeps it directly
+   above the account avatar, where it remains available from every workspace. */
+.admin-rail-create-trigger {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  margin: 0 0 8px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tx) 16%, transparent);
+  color: var(--tx);
+  cursor: pointer;
+  font-size: 21px;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.admin-rail-create-trigger:hover,
+.admin-rail-create-trigger:focus-visible,
+.admin-rail-create-trigger.is-open {
+  background: color-mix(in srgb, var(--tx) 28%, transparent);
+  outline: none;
+}
+
+.admin-rail-create-trigger:active {
+  transform: scale(0.94);
+}
+
+.create-menu-icon {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.create-menu-icon-message {
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
+  color: var(--accent);
+}
+
+.create-menu-icon-channel {
+  background: color-mix(in srgb, #3ba55c 19%, transparent);
+  color: #258143;
+}
+
+.create-menu-icon-project {
+  background: color-mix(in srgb, #d98600 19%, transparent);
+  color: #a96400;
 }
 
 /* The one single-select strip in the admin (components/primitives/TabBar).
@@ -2035,6 +2114,20 @@ button.reaction-pill-active:focus-visible {
 /* sp-messaging slice: transient highlight when jumping to a search result. */
 .admin-msg-highlight {
   animation: admin-msg-flash 1.6s ease-out;
+}
+
+/* A visible, keyboard-safe confirmation for an assistant-guided UI change. */
+.designer-control-highlight {
+  animation: designer-control-flash 1.6s ease-out;
+}
+
+@keyframes designer-control-flash {
+  0% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 @keyframes admin-msg-flash {

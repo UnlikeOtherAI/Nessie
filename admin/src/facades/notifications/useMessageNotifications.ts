@@ -64,6 +64,7 @@ type LatestNotificationState = {
   currentUserId: string
   onToast: (toast: NotificationToastInput) => void
   openChannel: (channelId: string, threadId?: string, rootMessageId?: string) => void
+  suppressNotifications: boolean
 }
 
 const emptyChannelLookup: ChannelLookup = {
@@ -267,6 +268,7 @@ export const claimMessageNotification = (messageIds: Set<string>, messageId?: st
 export const useMessageNotifications = (input: {
   onToast: (toast: NotificationToastInput) => void
   openChannel: (channelId: string, threadId?: string, rootMessageId?: string) => void
+  suppressNotifications: boolean
 }): void => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
@@ -320,6 +322,7 @@ export const useMessageNotifications = (input: {
     currentUserId: '',
     onToast: input.onToast,
     openChannel: input.openChannel,
+    suppressNotifications: input.suppressNotifications,
   })
   const notifiedMessageIdsRef = useRef(new Set<string>())
 
@@ -331,8 +334,17 @@ export const useMessageNotifications = (input: {
       currentUserId: currentUserId ?? '',
       onToast: input.onToast,
       openChannel: input.openChannel,
+      suppressNotifications: input.suppressNotifications,
     }
-  }, [activeRootMessageId, activeThreadId, channelLookup, currentUserId, input.onToast, input.openChannel])
+  }, [
+    activeRootMessageId,
+    activeThreadId,
+    channelLookup,
+    currentUserId,
+    input.onToast,
+    input.openChannel,
+    input.suppressNotifications,
+  ])
 
   useEffect(() => {
     if (!currentUserId || !notificationsEnabled || !token) {
@@ -378,6 +390,12 @@ export const useMessageNotifications = (input: {
         latest.activeThreadId,
         latest.activeRootMessageId,
       )) {
+        return
+      }
+
+      // Focus mode retains cache coherence above, but intentionally ends the
+      // interruptive delivery path before claiming or inspecting the message.
+      if (latest.suppressNotifications) {
         return
       }
 

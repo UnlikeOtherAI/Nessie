@@ -8,6 +8,11 @@ import {
   type RegistryFetchOptions,
 } from './registry-client.js'
 import {
+  parseAdvertisedIcons,
+  type RegistryIcon,
+  type RegistryIconCacher,
+} from './registry-icons.js'
+import {
   mapRegistryRecord,
   normalizeEndpoint,
   type RegistryAppMapping,
@@ -76,6 +81,7 @@ export type RegistrySyncProgress = {
   serversUpdated: number
   serversSkipped: number
   serversFailed: number
+  iconsCached: number
 }
 
 export type SyncRegistryOptions = RegistryFetchOptions & {
@@ -85,6 +91,13 @@ export type SyncRegistryOptions = RegistryFetchOptions & {
    * import is testable without DNS; production takes `assertMcpUrlSafe`.
    */
   assertEndpointSafe?: (url: string) => Promise<unknown>
+  /**
+   * Fetches, validates, and caches one advertised icon. Absent when the sync
+   * context has no storage (a plain CLI, a test), which simply leaves every
+   * `iconAttachmentId` null — icons are best-effort. The integrator builds it
+   * with `createRegistryIconCacher`.
+   */
+  iconCacher?: RegistryIconCacher
   /** Called once per fetched page, empty pages included. */
   onProgress?: (progress: RegistrySyncProgress) => void
 }
@@ -96,20 +109,28 @@ export type SyncRegistryResult = {
   serversUpdated: number
   serversSkipped: number
   serversFailed: number
+  iconsCached: number
   /** Set when the run itself broke — the registry went away mid-page. */
   error: string | null
 }
 
 type UpsertOutcome = 'created' | 'updated' | 'skipped'
 
+/** An upsert's outcome plus whether it cached an icon along the way. */
+type UpsertResult = { outcome: UpsertOutcome; iconCached: boolean }
+
 type ExistingAppRow = SyncableAppFields & {
   id: string
   moderationState: McpAppModerationState
+  // Whether this row already has a cached icon: an icon is fetched only for a
+  // row that has none, so a re-sync never re-downloads or orphans one.
+  iconAttachmentId: string | null
   upstream: unknown
 }
 
 const EXISTING_SELECT = {
   id: true,
+  iconAttachmentId: true,
   label: true,
   description: true,
   vendor: true,
@@ -168,7 +189,7 @@ const promotedModerationState = (
 const createRegistryApp = async (
   prisma: PrismaClient,
   mapping: RegistryAppMapping,
-): Promise<UpsertOutcome> => {
+): Promise<string> => {
   const fields = syncableFieldsFromMapping(mapping)
   let conflict: unknown = null
 
@@ -180,7 +201,8 @@ const createRegistryApp = async (
     const slug = await resolveAvailableAppSlug(prisma, mapping.displayName)
 
     try {
-      await prisma.mcpCatalogEntry.create({
+      const created = await prisma.mcpCatalogEntry.create({
+        select: { id: true },
         data: {
           organizationId: null,
           name,
@@ -216,13 +238,42 @@ const createRegistryApp = async (
           upstreamUpdatedAt: mapping.upstreamUpdatedAt,
         },
       })
-      return 'created'
+      return created.id
     } catch (error) {
       if (!isUniqueViolation(error)) throw error
       conflict = error
     }
   }
   throw conflict ?? new Error('unable to allocate a catalogue name')
+}
+
+/**
+ * Cache one advertised icon onto a row that has none, best-effort. A row that
+ * already carries an icon is left untouched — re-fetching every sweep would burn
+ * bandwidth and orphan the previous attachment (there is deliberately no second
+ * delete path). Every failure is swallowed: the icon is cosmetic, and a store or
+ * fetch error must never turn a successful upsert into a failed record.
+ */
+const cacheIconIfMissing = async (
+  prisma: PrismaClient,
+  rowId: string,
+  hasIcon: boolean,
+  mapping: RegistryAppMapping,
+  icons: readonly RegistryIcon[],
+  iconCacher: RegistryIconCacher | undefined,
+): Promise<boolean> => {
+  if (!iconCacher || hasIcon || icons.length === 0) return false
+  try {
+    const cached = await iconCacher({ icons, displayName: mapping.displayName })
+    if (!cached) return false
+    await prisma.mcpCatalogEntry.update({
+      where: { id: rowId },
+      data: { iconAttachmentId: cached.attachmentId, iconSource: cached.source },
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 const updateRegistryApp = async (
@@ -315,27 +366,52 @@ const loadAdoptableApps = async (
 const upsertRegistryApp = async (
   prisma: PrismaClient,
   mapping: RegistryAppMapping,
+  icons: readonly RegistryIcon[],
   isEndpointSafe: (url: string) => Promise<boolean>,
   adoptable: Map<string, ExistingAppRow>,
-): Promise<UpsertOutcome> => {
+  iconCacher: RegistryIconCacher | undefined,
+): Promise<UpsertResult> => {
   // Before anything is persisted. A row whose transport points at an internal
   // address is a hazard to keep, not merely one to leave unpromoted.
-  if (!(await isEndpointSafe(mapping.endpointUrl))) return 'skipped'
+  if (!(await isEndpointSafe(mapping.endpointUrl))) return { outcome: 'skipped', iconCached: false }
 
-  const existing = await prisma.mcpCatalogEntry.findFirst({
+  // The row this record resolves to, and whether it already has an icon.
+  let rowId: string
+  let hasIcon: boolean
+  let outcome: UpsertOutcome
+
+  const existing = (await prisma.mcpCatalogEntry.findFirst({
     where: { registryName: mapping.registryName },
     select: EXISTING_SELECT,
-  })
+  })) as unknown as ExistingAppRow | null
+
   if (existing) {
-    return updateRegistryApp(prisma, existing as unknown as ExistingAppRow, mapping, false)
+    outcome = await updateRegistryApp(prisma, existing, mapping, false)
+    rowId = existing.id
+    hasIcon = existing.iconAttachmentId !== null
+  } else {
+    const adopted = adoptable.get(mapping.endpointUrl)
+    if (adopted) {
+      adoptable.delete(mapping.endpointUrl)
+      outcome = await updateRegistryApp(prisma, adopted, mapping, true)
+      rowId = adopted.id
+      hasIcon = adopted.iconAttachmentId !== null
+    } else {
+      rowId = await createRegistryApp(prisma, mapping)
+      outcome = 'created'
+      hasIcon = false
+    }
   }
 
-  const adopted = adoptable.get(mapping.endpointUrl)
-  if (adopted) {
-    adoptable.delete(mapping.endpointUrl)
-    return updateRegistryApp(prisma, adopted, mapping, true)
-  }
-  return createRegistryApp(prisma, mapping)
+  const iconCached = await cacheIconIfMissing(
+    prisma,
+    rowId,
+    hasIcon,
+    mapping,
+    icons,
+    iconCacher,
+  )
+  return { outcome, iconCached }
 }
 
 export const syncRegistry = async (
@@ -350,7 +426,7 @@ export const syncRegistry = async (
     options.assertEndpointSafe ?? ((url: string) => assertMcpUrlSafe(url)),
   )
   const adoptable = await loadAdoptableApps(prisma)
-  const counts = { created: 0, failed: 0, fetched: 0, skipped: 0, updated: 0 }
+  const counts = { created: 0, failed: 0, fetched: 0, iconsCached: 0, skipped: 0, updated: 0 }
   const failures: Array<{ registryName: string | null; reason: string }> = []
   let runError: string | null = null
 
@@ -368,6 +444,7 @@ export const syncRegistry = async (
       serversUpdated: counts.updated,
       serversSkipped: counts.skipped,
       serversFailed: counts.failed,
+      iconsCached: counts.iconsCached,
     })
 
   try {
@@ -387,10 +464,21 @@ export const syncRegistry = async (
           continue
         }
 
+        // Parsed from the raw entry — `RegistryRecord` deliberately does not
+        // carry icons, and the parse is skipped entirely when nothing can cache.
+        const icons = options.iconCacher ? parseAdvertisedIcons(raw) : []
+
         try {
-          counts[
-            await upsertRegistryApp(prisma, mapped.mapping, isEndpointSafe, adoptable)
-          ] += 1
+          const { outcome, iconCached } = await upsertRegistryApp(
+            prisma,
+            mapped.mapping,
+            icons,
+            isEndpointSafe,
+            adoptable,
+            options.iconCacher,
+          )
+          counts[outcome] += 1
+          if (iconCached) counts.iconsCached += 1
         } catch (error) {
           recordFailure(parsed.record.name, errorMessage(error))
         }
@@ -412,6 +500,7 @@ export const syncRegistry = async (
       serversCreated: counts.created,
       serversUpdated: counts.updated,
       serversFailed: counts.failed,
+      iconsCached: counts.iconsCached,
       error: runError,
       failures,
     },
@@ -424,6 +513,7 @@ export const syncRegistry = async (
     serversUpdated: counts.updated,
     serversSkipped: counts.skipped,
     serversFailed: counts.failed,
+    iconsCached: counts.iconsCached,
     error: runError,
   }
 }

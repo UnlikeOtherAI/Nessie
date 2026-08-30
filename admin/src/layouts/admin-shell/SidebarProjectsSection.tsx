@@ -3,11 +3,13 @@ import {
   projectSelectionClassName,
   renderUnreadCount,
 } from './SidebarRow';
+import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
+import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import type {
   CreateChannelTarget,
-  RenameProjectTarget,
+  EditProjectTarget,
   SidebarMenu,
   SidebarProject,
 } from './types';
@@ -20,7 +22,7 @@ type SidebarProjectsSectionProps = {
   onNavigateProject: (projectId: string) => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onOpenCreateProject: () => void;
-  onOpenRenameProject: (target: RenameProjectTarget) => void;
+  onOpenEditProject: (target: EditProjectTarget) => void;
   onToggleStar: (type: 'channel' | 'project' | 'user', id: string) => void;
   projectsCollapsed: boolean;
   setSidebarMenu: (updater: (current: SidebarMenu) => SidebarMenu) => void;
@@ -40,7 +42,7 @@ export const SidebarProjectsSection = ({
   onNavigateProject,
   onOpenCreateChannel,
   onOpenCreateProject,
-  onOpenRenameProject,
+  onOpenEditProject,
   onToggleStar,
   projectsCollapsed,
   setSidebarMenu,
@@ -51,6 +53,7 @@ export const SidebarProjectsSection = ({
   toggleProjectsCollapsed,
   visibleSidebarProjects,
 }: SidebarProjectsSectionProps) => {
+  const { token } = useAuthSession();
   return (
     <SidebarMenuSection
       action={
@@ -98,19 +101,13 @@ export const SidebarProjectsSection = ({
               onClick={() => onNavigateProject(project.id)}
               type="button"
             >
-              <svg
-                className="h-4 w-4 flex-shrink-0 text-[color:var(--tx3)]"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <ProjectAvatar
+                avatarAttachmentId={project.avatarAttachmentId}
+                avatarEmoji={project.avatarEmoji}
+                name={project.name}
+                size={18}
+                token={token}
+              />
               <span className="min-w-0 flex-1 truncate">{project.name}</span>
               {renderUnreadCount(projectUnreadCount)}
               <span
@@ -145,31 +142,41 @@ export const SidebarProjectsSection = ({
                   ⋯
                 </span>
                 {sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id ? (
-                  <span className="admin-sidebar-menu admin-sidebar-menu-project">
+                  <>
                     <span
+                      className="fixed inset-0 z-10"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onOpenCreateChannel({
-                          projectName: project.name,
-                          teamId: teamIdByProjectId.get(project.id),
-                        });
+                        setSidebarMenu(() => null);
                       }}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      Add new channel within project
+                      role="presentation"
+                    />
+                    <span className="admin-sidebar-menu admin-sidebar-menu-project">
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenCreateChannel({
+                            projectName: project.name,
+                            teamId: teamIdByProjectId.get(project.id),
+                          });
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        Add new channel within project
+                      </span>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenEditProject(project);
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        Edit
+                      </span>
                     </span>
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenRenameProject({ id: project.id, name: project.name });
-                      }}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      Rename project
-                    </span>
-                  </span>
+                  </>
                 ) : null}
               </span>
             </button>

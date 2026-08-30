@@ -14,6 +14,7 @@ type PushSurfacePresencePrisma = Pick<
 
 type PushSurfacePresenceTransaction = Pick<
   Prisma.TransactionClient,
+  | '$executeRaw'
   | '$queryRaw'
   | 'channelMember'
   | 'organizationMember'
@@ -186,50 +187,47 @@ export const recordPushSurfacePresence = async (
       ? surface.projectId
       : null
     const knowledgeSpaceId = surface?.kind === 'knowledge_space' ? surface.spaceId : null
-    const uniqueWhere = { clientId: input.clientId, userId: input.userId }
-    const writeWhere = {
-      ...uniqueWhere,
-      heartbeatSequence: { lte: input.sequence },
-    }
-    const writeData = {
-      channelId,
-      threadId,
-      rootMessageId,
-      projectId,
-      knowledgeSpaceId,
-      heartbeatSequence: input.sequence,
-      lastSeenAt: now,
-      organizationId: input.organizationId,
-      surfaceKind,
-    }
-
-    // An earlier foreground heartbeat can be delayed while it validates a channel
-    // membership. Its later completion must never overwrite a newer background
-    // `surface: null` signal (or a heartbeat from a switched organization).
-    const updated = await transaction.userPushSurfacePresence.updateMany({
-      data: writeData,
-      where: writeWhere,
-    })
-    if (updated.count > 0) return
-
-    try {
-      await transaction.userPushSurfacePresence.create({
-        data: {
-          ...writeData,
-          ...uniqueWhere,
-        },
-      })
-    } catch (error) {
-      if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002')) {
-        throw error
-      }
-      // A parallel heartbeat created the row after updateMany observed no row.
-      // The same monotonic predicate decides which of the two writes survives.
-      await transaction.userPushSurfacePresence.updateMany({
-        data: writeData,
-        where: writeWhere,
-      })
-    }
+    // One atomic upsert carries the monotonic predicate in the `DO UPDATE`
+    // qualifier, so a brand-new row is inserted and an existing one is only
+    // advanced when the incoming heartbeat is at least as recent. An earlier
+    // foreground heartbeat delayed while it validated a channel membership can
+    // therefore never overwrite a newer background `surface: null` signal (or a
+    // heartbeat from a switched organization), and two concurrent heartbeats for
+    // the same (user, client) both succeed — there is no read-then-write window
+    // to lose, and no failed INSERT to abort the surrounding transaction.
+    await transaction.$executeRaw`
+      INSERT INTO "user_push_surface_presence" (
+        "user_id", "organization_id", "client_id", "surface_kind",
+        "channel_id", "thread_id", "root_message_id", "project_id",
+        "knowledge_space_id", "heartbeat_sequence", "last_seen_at", "updated_at"
+      ) VALUES (
+        ${input.userId}::uuid,
+        ${input.organizationId}::uuid,
+        ${input.clientId}::uuid,
+        ${surfaceKind}::"PushSurfaceKind",
+        ${channelId}::uuid,
+        ${threadId}::uuid,
+        ${rootMessageId}::uuid,
+        ${projectId}::uuid,
+        ${knowledgeSpaceId}::uuid,
+        ${input.sequence},
+        ${now},
+        ${now}
+      )
+      ON CONFLICT ("user_id", "client_id") DO UPDATE SET
+        "organization_id" = EXCLUDED."organization_id",
+        "surface_kind" = EXCLUDED."surface_kind",
+        "channel_id" = EXCLUDED."channel_id",
+        "thread_id" = EXCLUDED."thread_id",
+        "root_message_id" = EXCLUDED."root_message_id",
+        "project_id" = EXCLUDED."project_id",
+        "knowledge_space_id" = EXCLUDED."knowledge_space_id",
+        "heartbeat_sequence" = EXCLUDED."heartbeat_sequence",
+        "last_seen_at" = EXCLUDED."last_seen_at",
+        "updated_at" = EXCLUDED."updated_at"
+      WHERE "user_push_surface_presence"."heartbeat_sequence"
+        <= EXCLUDED."heartbeat_sequence"
+    `
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
 }
 

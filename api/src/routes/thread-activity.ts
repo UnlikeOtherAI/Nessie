@@ -1,0 +1,21 @@
+import type { FastifyInstance } from 'fastify'
+
+import { ListThreadActivityQuerySchema, ThreadActivityResponseSchema } from '../contracts.js'
+import { createApiResponse, parseInput } from '../lib/api.js'
+import { listThreadActivity } from '../services/thread-activity.js'
+import type { RouteDeps } from './types.js'
+
+export const registerThreadActivityRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  app.get('/api/threads/activity', async (request, reply) => {
+    const actorContext = deps.requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const query = parseInput(ListThreadActivityQuerySchema, request.query ?? {}, reply)
+    if (!query) return reply
+    const result = await listThreadActivity(deps.prisma, {
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+      ...query,
+    })
+    return createApiResponse(ThreadActivityResponseSchema.parse(result.data), result.meta)
+  })
+}

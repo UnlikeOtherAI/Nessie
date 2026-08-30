@@ -15,6 +15,7 @@ import {
   unsubscribeBrowser,
 } from '../../lib/web-push'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useFocusMode } from '../../providers/FocusModeProvider'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import {
   NotificationToggle,
@@ -190,6 +191,7 @@ const BrowserNotificationsSection = () => {
 
 export const NotificationsPage = () => {
   const { me } = useAuthSession()
+  const { focusModeEnabled, setFocusModeEnabled, updating: focusModeUpdating } = useFocusMode()
   const { data: channels = [] } = useChannels()
   const browserTimeZone = useMemo(() => getBrowserTimeZone(), [])
   const updatePreferences = useUpdatePreferences()
@@ -335,6 +337,26 @@ export const NotificationsPage = () => {
           id="notification-preferences-form"
           onSubmit={savePreferences}
         >
+          <section className="admin-card p-4">
+            <div className={sectionTitleClass}>Focus mode</div>
+            <div className="mt-4 flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold text-[color:var(--tx)]">Pause distractions</div>
+                <div className="mt-1 text-sm text-[color:var(--tx2)]">
+                  {focusModeEnabled
+                    ? 'Notifications, app badges, and unread emphasis are paused everywhere you use Nessie.'
+                    : 'Pause notifications and mute attention cues while you work.'}
+                </div>
+              </div>
+              <NotificationToggle
+                checked={focusModeEnabled}
+                disabled={focusModeUpdating}
+                label="Toggle focus mode"
+                onChange={setFocusModeEnabled}
+              />
+            </div>
+          </section>
+
           <PushPreferenceCard
             disabled={!preferencesHydrated || updatePreferences.isPending}
             pushAssignedWork={pushAssignedWork}

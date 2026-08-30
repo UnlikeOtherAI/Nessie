@@ -17,15 +17,14 @@ export type Workspace = {
   uoaWorkspace?: boolean
 }
 
-export type WorkspaceOrganization = {
-  organizationId: string
-  label: string
-  workspaces: Workspace[]
-}
-
 /** Flatten `me.memberships` (org → projects → teams) into the workspace list. */
 export const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
   if (me?.auth.providerType === 'uoa' && me.uoaWorkspaces?.length) {
+    const localOrganizationNames = new Map<string, string>(
+      me.memberships?.flatMap((membership) => membership.organizationName
+        ? [[membership.organizationId, membership.organizationName] as const]
+        : []) ?? [],
+    )
     return me.uoaWorkspaces.map((workspace) => ({
       organizationId: workspace.organizationId,
       projectId: '',
@@ -33,7 +32,7 @@ export const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
       ...(workspace.avatarTeamId ? { avatarTeamId: workspace.avatarTeamId } : {}),
       ...(workspace.avatarImageUrl ? { avatarImageUrl: workspace.avatarImageUrl } : {}),
       label: workspace.label,
-      orgName: workspace.orgName,
+      orgName: workspace.orgName ?? localOrganizationNames.get(workspace.organizationId),
       active: workspace.active,
       uoaWorkspace: true,
     }))
@@ -58,25 +57,14 @@ export const workspacesFromMe = (me: MeResponse | null): Workspace[] => {
   return list
 }
 
-/** Group teams by their stable organisation id while preserving directory order. */
-export const groupWorkspacesByOrganization = (
+/** Keep UOA's directory order, but surface the current workspace first. */
+export const orderWorkspacesWithActiveFirst = (
   workspaces: Workspace[],
-): WorkspaceOrganization[] => {
-  const groups = new Map<string, WorkspaceOrganization>()
-  for (const workspace of workspaces) {
-    const existing = groups.get(workspace.organizationId)
-    if (existing) {
-      existing.workspaces.push(workspace)
-      continue
-    }
-    groups.set(workspace.organizationId, {
-      organizationId: workspace.organizationId,
-      label: workspace.orgName?.trim() || 'Organization',
-      workspaces: [workspace],
-    })
-  }
-  return [...groups.values()]
-}
+  activeTeamId: string | null,
+): Workspace[] => [
+  ...workspaces.filter((workspace) => workspace.active || workspace.teamId === activeTeamId),
+  ...workspaces.filter((workspace) => !workspace.active && workspace.teamId !== activeTeamId),
+]
 
 /** The workspace the session is currently scoped to, if it is still listed. */
 export const activeWorkspace = (me: MeResponse | null): Workspace | null =>

@@ -46,6 +46,8 @@ import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
+import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks';
+import { useFocusMode } from '../providers/FocusModeProvider';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
 
@@ -95,10 +97,13 @@ export const AdminShellLayout = () => {
 // useAdminShell starts several API queries; mounting it while an expired access
 // token is being restored can create competing refresh-token rotations.
 const AuthenticatedAdminShellLayout = () => {
+  const { focusModeEnabled } = useFocusMode();
   const shell = useAdminShell();
   useRecordRecentChannelVisits();
   useRecordSectionRoute();
   const attention = useAttentionSummary();
+  const threadActivity = useThreadActivity();
+  useThreadActivityEvents();
   const attentionCountByProjectId = new Map<string, number>();
   for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
     attentionCountByProjectId.set(projectId, count);
@@ -157,13 +162,14 @@ const AuthenticatedAdminShellLayout = () => {
       dmCollapsed={shell.dmCollapsed}
       onNavigateAgent={shell.navigateToAgent}
       onNavigateChannel={shell.navigateToChannel}
+      onNavigateThreads={shell.navigateToThreads}
       onNavigateDm={shell.navigateToDm}
       onNavigateNewConversation={shell.navigateToNewConversation}
       onNavigateProject={shell.navigateToProject}
       onOpenCreateChannel={shell.openCreateChannel}
       onOpenCreateProject={shell.openCreateProject}
       onOpenPersonalAssistant={() => void shell.openPersonalAssistant()}
-      onOpenRenameProject={shell.openRenameProject}
+      onOpenEditProject={shell.openEditProject}
       onToggleStar={shell.toggleStar}
       personalAssistantAgent={shell.personalAssistantAgent}
       personalAssistantBootstrapping={shell.personalAssistantBootstrapping}
@@ -190,6 +196,7 @@ const AuthenticatedAdminShellLayout = () => {
       visibleSidebarProjects={shell.visibleSidebarProjects}
       visibleStarredEntries={shell.visibleStarredEntries}
       standaloneChannels={shell.standaloneChannels}
+      threadsUnreadCount={threadActivity.data?.unreadTotal ?? 0}
     />
   );
 
@@ -255,6 +262,7 @@ const AuthenticatedAdminShellLayout = () => {
 
   const frameClassName = [
     'admin-frame',
+    focusModeEnabled ? 'focus-mode' : '',
     showWebTabBar ? 'has-mobile-tabbar' : '',
     showNativePhoneTabBar ? 'has-native-phone-tabbar' : '',
   ]
@@ -285,7 +293,13 @@ const AuthenticatedAdminShellLayout = () => {
 
                   <div className="admin-shell">
                     {!mobileLayout && (
-                      <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
+                      <SidebarRail
+                        onCreateChannel={() => shell.openCreateChannel()}
+                        onCreateMessage={shell.navigateToNewConversation}
+                        onCreateProject={shell.openCreateProject}
+                        onLogout={shell.logoutAndRedirect}
+                        pathname={shell.pathname}
+                      />
                     )}
 
                     {shell.isKnowledgeRoute ? (
@@ -321,8 +335,8 @@ const AuthenticatedAdminShellLayout = () => {
                   createProjectOpen={shell.createProjectOpen}
                   onCloseCreateChannel={shell.closeCreateChannel}
                   onCloseCreateProject={shell.closeCreateProject}
-                  onCloseRenameProject={shell.closeRenameProject}
-                  renameProjectTarget={shell.renameProjectTarget}
+                  editProjectTarget={shell.editProjectTarget}
+                  onCloseEditProject={shell.closeEditProject}
                 />
 
                 <AgentDetailDrawer

@@ -93,6 +93,35 @@ test('generates a gpt-image-2 avatar through Ledger and stores it as an attachme
   assert.match(String(promptMessages[0]?.content), /never from a keyword list/)
 })
 
+test('routes image generation through the Ledger Purpose API when one is configured', async () => {
+  let requestUrl: string | null = null
+
+  await generateAgentAvatar({
+    actorContext,
+    agent: { id: '00000000-0000-4000-8000-000000000005', name: 'Release Shepherd', role: 'deployment coordinator' },
+    config: {
+      apiKey: 'lk_nessie_test',
+      baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
+      imagePurposeApiId: 'pa_nessie_avatar',
+    },
+    fileService: {
+      store: async () => ({ attachment: { id: '00000000-0000-4000-8000-000000000006' } }),
+    } as never,
+    imageRequest: async (url) => {
+      requestUrl = url.toString()
+      return new Response(JSON.stringify({
+        data: [{ b64_json: Buffer.from('generated-image-bytes').toString('base64') }],
+      }), { status: 200 })
+    },
+    ledgerIdentity: null,
+    modelClient: { chat: async () => 'A cheerful illustrated release coordinator.' },
+  })
+
+  // The direct /v1/openai/images/generations service route is replaced by the
+  // purpose route, so Ledger owns the provider fallback chain.
+  assert.equal(requestUrl, 'https://ledger.unlikeotherai.com/v1/purpose/pa_nessie_avatar/images/generations')
+})
+
 test('refuses to generate an avatar when the configured model endpoint is not Ledger', async () => {
   let promptCalled = false
 

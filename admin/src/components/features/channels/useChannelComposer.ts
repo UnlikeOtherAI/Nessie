@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
+import { CHAT_MESSAGE_MAX_CHARS, detectSecrets, type DetectedSecret } from '@nessie/schemas'
 import type { MentionInputHandle } from '../../shared/MentionInput'
 import {
   useSendMessage,
@@ -40,6 +40,15 @@ interface UseChannelComposerResult {
   inviteErrors: Record<string, string>
   invitePendingAgent: (agentId: string) => Promise<void>
   dismissPendingAgent: (agentId: string) => void
+  secretCapture: SecretCapture | null
+  dismissSecretCapture: () => void
+}
+
+export type SecretCapture = {
+  detected: DetectedSecret
+  scopeId?: string
+  scopeType: 'personal' | 'project'
+  value: string
 }
 
 export const useChannelComposer = ({
@@ -59,6 +68,7 @@ export const useChannelComposer = ({
   const [pendingInviteMessageIds, setPendingInviteMessageIds] = useState<Record<string, string>>({})
   const [invitingAgentId, setInvitingAgentId] = useState<string | null>(null)
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({})
+  const [secretCapture, setSecretCapture] = useState<SecretCapture | null>(null)
   const mentionRef = useRef<MentionInputHandle>(null)
 
   // Clear optimistic bubble once the real message from the server arrives.
@@ -100,6 +110,23 @@ export const useChannelComposer = ({
         // trim or cancel instead of getting a server 413 after the round
         // trip.
         setOversizePaste(text)
+        return
+      }
+
+      const detected = detectSecrets(text)[0]
+      if (detected) {
+        // Stop before a request, optimistic row, browser notification, or
+        // message-memory path can receive the material. The value stays only
+        // in this protected capture state until the vault POST succeeds.
+        setSecretCapture({
+          detected,
+          ...(activeChannel.projectId
+            ? { scopeId: activeChannel.projectId, scopeType: 'project' as const }
+            : { scopeType: 'personal' as const }),
+          value: text.slice(detected.start, detected.end),
+        })
+        setMessage('')
+        mentionRef.current?.clear()
         return
       }
 
@@ -233,6 +260,18 @@ export const useChannelComposer = ({
       if (!activeChannel) {
         return
       }
+      const detected = detectSecrets(rawText)[0]
+      if (detected) {
+        setSecretCapture({
+          detected,
+          ...(activeChannel.projectId
+            ? { scopeId: activeChannel.projectId, scopeType: 'project' as const }
+            : { scopeType: 'personal' as const }),
+          value: rawText.slice(detected.start, detected.end),
+        })
+        setOversizePaste(null)
+        return
+      }
       const file = new File([rawText], 'pasted-text.txt', { type: 'text/plain' })
       const attachment = await uploadAttachment.mutateAsync(file)
       await sendMessage.mutateAsync({
@@ -265,5 +304,7 @@ export const useChannelComposer = ({
     inviteErrors,
     invitePendingAgent,
     dismissPendingAgent,
+    secretCapture,
+    dismissSecretCapture: () => setSecretCapture(null),
   }
 }

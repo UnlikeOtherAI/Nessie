@@ -93,6 +93,7 @@ export default [
       'admin/src/components/features/channels/ReactionPills.tsx',
       'admin/src/layouts/admin-shell/WorkspaceSwitcher.tsx',
       'admin/src/layouts/admin-shell/UserMenuPopover.tsx',
+      'admin/src/layouts/admin-shell/CreateMenuTrigger.tsx',
       'admin/src/layouts/admin-shell/GroupDmSidebarLabel.tsx',
       'admin/src/components/features/knowledge/wikilink/WikilinkSuggestionMenu.tsx',
       'admin/src/components/features/knowledge/wikilink/WikilinkCreateConfirm.tsx',

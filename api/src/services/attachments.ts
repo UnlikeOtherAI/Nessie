@@ -24,15 +24,16 @@ const isPublishedOrgAsset = async (
   attachmentId: string,
   organizationId: string,
 ): Promise<boolean> => {
-  const [userAvatars, agentAvatars, orgLogos, feedback] = await Promise.all([
+  const [userAvatars, agentAvatars, projectAvatars, orgLogos, feedback] = await Promise.all([
     prisma.user.count({ where: { avatarAttachmentId: attachmentId } }),
     prisma.agent.count({ where: { avatarAttachmentId: attachmentId } }),
+    prisma.project.count({ where: { avatarAttachmentId: attachmentId } }),
     prisma.organization.count({
       where: { id: organizationId, logoAttachmentId: attachmentId },
     }),
     prisma.feedback.count({ where: { attachmentId, organizationId } }),
   ])
-  return userAvatars > 0 || agentAvatars > 0 || orgLogos > 0 || feedback > 0
+  return userAvatars > 0 || agentAvatars > 0 || projectAvatars > 0 || orgLogos > 0 || feedback > 0
 }
 
 export const canAccessMessageAttachment = async (

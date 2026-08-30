@@ -5,6 +5,7 @@ import { useChannels } from '../facades/channels/hooks'
 import { setDesktopBadgeCount } from '../facades/notifications/desktop-native-notification'
 import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
+import { useFocusMode } from './FocusModeProvider'
 
 type NativeShellWindow = Window & {
   ReactNativeWebView?: { postMessage: (message: string) => void }
@@ -44,11 +45,14 @@ const setBrowserBadgeCount = (total: number): void => {
 // combines the existing channel records with the server-owned alert summary and
 // projects the result into the native shell's tab/icon badges.
 export const AttentionDisplayManager = () => {
+  const { focusModeEnabled } = useFocusMode()
   const { data: channels = [] } = useChannels()
   const { data: attention } = useAttentionSummary()
 
   useEffect(() => {
-    const counts = attentionBadgeCounts(channels, attention)
+    const counts = focusModeEnabled
+      ? { assignedWork: 0, channels: 0, knowledge: 0, total: 0 }
+      : attentionBadgeCounts(channels, attention)
     if (isReactNativeWebView()) {
       ;(window as NativeShellWindow).ReactNativeWebView?.postMessage(JSON.stringify({
         ...counts,
@@ -58,7 +62,7 @@ export const AttentionDisplayManager = () => {
     }
     if (isDesktopApp()) setDesktopBadgeCount(counts.total)
     else setBrowserBadgeCount(counts.total)
-  }, [attention, channels])
+  }, [attention, channels, focusModeEnabled])
 
   return null
 }

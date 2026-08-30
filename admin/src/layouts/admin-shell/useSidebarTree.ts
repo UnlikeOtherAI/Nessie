@@ -42,6 +42,8 @@ export const buildSidebarTree = ({
 
     if (!sourceProjectsById.has(channel.projectId)) {
       sourceProjectsById.set(channel.projectId, {
+        avatarAttachmentId: null,
+        avatarEmoji: null,
         createdAt: channel.createdAt,
         id: channel.projectId,
         memberCount: 0,

@@ -73,16 +73,29 @@ export const CATEGORY_RULES: readonly CategoryRule[] = [
   },
   {
     category: 'finance',
+    // Crypto is one of the largest live buckets in the registry, so the
+    // chain/asset words real descriptions use ('bitcoin', 'ethereum', 'nft',
+    // 'market cap') are spelled out rather than left to 'crypto' alone.
+    // Deliberately absent: the bare tokens 'price', 'pricing' and 'market'.
+    // Finance is consulted before `development`, so any of them would file a
+    // repo tool that mentions "CI pricing" or "go to market" under Finance —
+    // exactly the mis-shelf the table order exists to prevent. The plural,
+    // finance-specific forms ('prices', 'markets', 'market data', 'market cap')
+    // carry the signal without the collision.
     keywords: [
       'stripe', 'quickbooks', 'xero', 'paypal', 'plaid', 'freshbooks', 'brex', 'ramp',
       'invoice', 'invoices', 'invoicing', 'billing', 'accounting', 'payments', 'payroll',
       'bookkeeping', 'expenses', 'banking', 'trading', 'portfolio', 'sec filings',
-      'markets', 'market data', 'stock', 'stocks', 'equities', 'crypto',
-      'cryptocurrency', 'blockchain', 'on-chain', 'defi', 'wallet', 'usdc',
+      'markets', 'market data', 'market cap', 'stock', 'stocks', 'equities', 'crypto',
+      'cryptocurrency', 'crypto token', 'blockchain', 'on-chain', 'onchain', 'defi',
+      'staking', 'bitcoin', 'ethereum', 'solana', 'nft', 'wallet', 'usdc',
       'exchange rates', 'currency', 'ticker', 'earnings', 'financial data',
       'prices', 'price history', 'tax', 'treasury', 'futures', 'iban',
     ],
-    aliases: ['payments', 'invoices', 'billing', 'accounting', 'finance', 'money'],
+    // Kept to two additions: `aliases` shares the MAX_ALIASES budget with the
+    // app's own name tokens (`nameAliases`), which are what find a
+    // description-less app by its published name.
+    aliases: ['payments', 'invoices', 'billing', 'accounting', 'finance', 'money', 'crypto', 'trading'],
   },
   {
     category: 'marketing',
@@ -165,7 +178,7 @@ export const CATEGORY_RULES: readonly CategoryRule[] = [
       'transcript', 'transcripts', 'transcription', 'youtube', 'ocr',
       'screenshot', 'screenshots', 'subtitles',
     ],
-    aliases: ['files', 'documents', 'storage', 'drive', 'pdf', 'spreadsheets'],
+    aliases: ['files', 'documents', 'storage', 'drive', 'pdf', 'spreadsheets', 'video', 'transcription'],
   },
   {
     category: 'ai_search',
@@ -177,7 +190,7 @@ export const CATEGORY_RULES: readonly CategoryRule[] = [
       'knowledge base', 'semantic search', 'inference', 'prompts',
       'summarization', 'evaluation',
     ],
-    aliases: ['search', 'ai', 'llm', 'research', 'scraping', 'web'],
+    aliases: ['search', 'ai', 'llm', 'research', 'scraping', 'web', 'memory', 'embeddings'],
   },
   {
     category: 'productivity',

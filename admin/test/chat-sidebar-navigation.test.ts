@@ -67,6 +67,17 @@ test('the starred Personal Assistant follows its active direct-message route', (
   assert.match(source, /isActivePersonalAssistant \? 'active' : ''/)
 })
 
+test('the Personal Assistant has the same favorite control as a direct-message user', () => {
+  const sidebar = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
+  const assistant = readSource('../src/components/features/personal-assistant/PersonalAssistantSurface.tsx')
+
+  assert.match(sidebar, /onToggleStar\('agent', personalAssistantAgent\.id\)/)
+  assert.match(sidebar, /starred=\{Boolean\([\s\S]*?starredAgentIds\.has\(personalAssistantAgent\.id\)/)
+  assert.match(assistant, /sidebar-row-star/)
+  assert.match(assistant, /\{starred \? '★' : '☆'\}/)
+  assert.doesNotMatch(assistant, /sidebar-pa-badge/)
+})
+
 test('the Direct-messages Personal Assistant reuses the managed agent avatar record', () => {
   const source = readSource('../src/layouts/admin-shell/useAdminShell.ts')
 

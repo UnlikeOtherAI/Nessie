@@ -578,6 +578,38 @@ enum McpCredentialPrincipalType {
   organization
 }
 
+// ─── External-vault secret metadata ────────────────────────────────────────
+// Secret bytes are intentionally absent from this schema. `vaultReference`
+// identifies the record in Infisical; Nessie owns only its placement, policy,
+// and audit metadata.
+enum SecretScopeType {
+  personal
+  team
+  project
+  workspace
+}
+
+enum SecretStatus {
+  active
+  revoked
+  expired
+}
+
+enum SecretPermission {
+  use
+  reveal
+  manage
+  delegate
+}
+
+enum SecretPrincipalType {
+  user
+  agent
+  team
+  project
+  workspace
+}
+
 // ─── App Store (store dimension over the same catalogue) ───
 //
 // The App Store is a second face on `McpCatalogEntry`, never a second
@@ -1040,6 +1072,7 @@ model Organization {
   productTeamEnablements ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
   productWebhookSecrets  ProductWebhookSecret[]
+  secrets                Secret[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -1241,6 +1274,11 @@ model OrganizationMember {
 model Project {
   id                       String                    @id @default(uuid()) @db.Uuid
   name                     String
+  // A project can show one member-chosen identity in the sidebar: either an
+  // emoji or a cropped image attachment. The update route keeps them mutually
+  // exclusive so the display never needs a precedence rule.
+  avatarEmoji              String?                   @map("avatar_emoji")
+  avatarAttachmentId       String?                   @map("avatar_attachment_id") @db.Uuid
   organizationId           String                    @map("organization_id") @db.Uuid
   // An invisible, system-owned container for organization-wide channels. It
   // is not a UOA workspace and does not mirror any external team.
@@ -1264,8 +1302,10 @@ model Project {
   pushAttentionAlerts      UserAlert[]               @relation("PushAttentionAlertProject")
   userPushSurfacePresences UserPushSurfacePresence[]
   executors                Executor[]
+  avatarAttachment         Attachment?               @relation("ProjectAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@unique([id, organizationId])
+  @@index([avatarAttachmentId])
   @@map("projects")
 }
 
@@ -1466,6 +1506,9 @@ model MessageConversationReadState {
   rootMessageId String   @map("root_message_id") @db.Uuid
   userId        String   @map("user_id") @db.Uuid
   lastReadAt    DateTime @map("last_read_at")
+  // Paired with the timestamp because Postgres stores timestamps at
+  // millisecond precision; this makes the conversation high-water mark exact.
+  lastReadMessageId String? @map("last_read_message_id") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
   rootMessage   Message  @relation("MessageConversationReadRoot", fields: [rootMessageId], references: [id], onDelete: Cascade)
@@ -4417,6 +4460,54 @@ model McpOAuthSecret {
   @@map("mcp_oauth_secret")
 }
 
+/// Nessie-managed metadata for a secret held by an external vault. No secret
+/// value, ciphertext, key material, or vault token may be added to this model.
+model Secret {
+  id             String          @id @default(uuid()) @db.Uuid
+  reference      String          @unique @map("reference")
+  organizationId String          @map("organization_id") @db.Uuid
+  name           String
+  description    String?
+  provider       String?
+  scopeType      SecretScopeType @map("scope_type")
+  scopeId        String          @map("scope_id") @db.Uuid
+  vaultReference String          @unique @map("vault_reference")
+  createdById    String          @map("created_by_id") @db.Uuid
+  rotatedAt      DateTime?       @map("rotated_at")
+  expiresAt      DateTime?       @map("expires_at")
+  status         SecretStatus    @default(active)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grants       SecretGrant[]
+
+  @@unique([organizationId, scopeType, scopeId, name])
+  @@index([organizationId, scopeType, scopeId])
+  @@index([organizationId, status])
+  @@map("secrets")
+}
+
+/// Explicit permissions supplement a secret's home scope. An agent can receive
+/// only `use`; the API refuses every other permission for an agent principal.
+model SecretGrant {
+  id            String              @id @default(uuid()) @db.Uuid
+  secretId      String              @map("secret_id") @db.Uuid
+  principalType SecretPrincipalType @map("principal_type")
+  principalId   String              @map("principal_id") @db.Uuid
+  permissions   SecretPermission[]
+  expiresAt     DateTime?           @map("expires_at")
+  createdById   String              @map("created_by_id") @db.Uuid
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  secret Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+
+  @@unique([secretId, principalType, principalId])
+  @@index([principalType, principalId])
+  @@map("secret_grants")
+}
+
 /// Per-organization signing secret for an integrated product's inbound webhooks
 /// (e.g. DeepSignal `insight.surfaced`). Set once by an org admin who pastes the
 /// secret the product returned at webhook-registration time. Stored encrypted at
@@ -4509,6 +4600,7 @@ model Attachment {
   logoForOrganizations Organization[] @relation("OrganizationLogo")
   avatarForUsers       User[]         @relation("UserAvatar")
   avatarForAgents      Agent[]        @relation("AgentAvatar")
+  avatarForProjects    Project[]      @relation("ProjectAvatar")
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
   organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

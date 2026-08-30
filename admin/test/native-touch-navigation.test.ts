@@ -54,10 +54,6 @@ test('selected sidebar affordances follow the project selection hierarchy', () =
   )
   assert.match(
     styles,
-    /\.admin-sb-item\.active \.sidebar-pa-badge[\s\S]*?color: var\(--tx\)/,
-  )
-  assert.match(
-    styles,
     /\.admin-sb-item\.active\s*\{[\s\S]*?background: color-mix\(in srgb, var\(--sb-active\) 20%, transparent\)/,
   )
   assert.match(
@@ -71,7 +67,7 @@ test('selected sidebar affordances follow the project selection hierarchy', () =
   assert.match(channels, /sidebar-row-star/)
   assert.match(projects, /projectSelectionClassName\(project\.id, currentProjectId, currentChannelId\)/)
   assert.match(starred, /projectSelectionClassName\(project\.id, currentProjectId, currentChannelId\)/)
-  assert.match(assistant, /sidebar-pa-badge/)
+  assert.match(assistant, /sidebar-row-star/)
 })
 
 test('secondary sidebar menus do not repeat the active tab title above their items', () => {
@@ -271,4 +267,11 @@ test('sidebar action menus have room to read and tap their choices', () => {
     styles,
     /\.admin-sidebar-menu \[role="button"\]\s*\{[\s\S]*?border-radius: 8px[\s\S]*?padding: 10px 12px/,
   )
+})
+
+test('an open project action menu dismisses when the person taps outside it', () => {
+  const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
+
+  assert.match(projects, /className="fixed inset-0 z-10"/)
+  assert.match(projects, /setSidebarMenu\(\(\) => null\)/)
 })

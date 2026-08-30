@@ -122,3 +122,65 @@ test('an empty description still classifies from the name it was published under
   assert.equal(classification.primaryCategory, 'data_databases')
   assert.ok(classification.aliases.includes('postgres'))
 })
+
+test('the expanded rules pull representative real descriptions off the Other shelf', () => {
+  // Each of these is a shape that measured as `other` before the table grew.
+  const cases: Array<[string, string, string]> = [
+    // Crypto is one of the biggest buckets, so the asset words its servers use
+    // resolve to finance even with no vendor name in sight.
+    [
+      'io.github.acme/coingecko-mcp',
+      'Real-time cryptocurrency prices, market data and market cap for Bitcoin and Ethereum.',
+      'finance',
+    ],
+    ['io.example/nft-tracker', 'Track NFT floor prices and on-chain wallet activity.', 'finance'],
+    // Media handling lives on the Files & Documents shelf.
+    [
+      'io.github.acme/whisper-mcp',
+      'Transcription of YouTube videos and audio into text, subtitles and screenshots.',
+      'files_documents',
+    ],
+    // B2B prospecting is CRM & Sales, the first rule in the table.
+    ['io.github.acme/leadgen-mcp', 'Find B2B leads and enrich company data for sales prospecting.', 'crm_sales'],
+  ]
+  for (const [name, description, expected] of cases) {
+    assert.equal(classify(name, description).primaryCategory, expected, name)
+  }
+})
+
+test('ordering keeps a repo tool in development even when it mentions money words', () => {
+  // `finance` sits above `development` in the table, so an incidental finance or
+  // market word in a repo description would out-rank `github` — unless the word
+  // is one finance deliberately does not claim. The ambiguous singulars
+  // 'market', 'price' and 'pricing' are left out for exactly this reason, so the
+  // GitHub tool stays where it belongs.
+  const classification = classify(
+    'io.github.acme/github-mcp',
+    'Manage GitHub repositories, issues and pull requests. Tracks the market price and pricing of CI runs.',
+  )
+  assert.equal(classification.primaryCategory, 'development')
+})
+
+test('the ambiguous singulars price / pricing / market never alone mean finance', () => {
+  // The counterpart to the rule above: a server whose only money-adjacent words
+  // are the omitted singulars matches no finance keyword and stays in `other`,
+  // rather than being mis-shelved. A wrong shelf is worse than Other.
+  const classification = classify(
+    'io.example/thing',
+    'Track the price and the market, and publish your product pricing.',
+  )
+  assert.notEqual(classification.primaryCategory, 'finance')
+  assert.equal(classification.primaryCategory, 'other')
+})
+
+test('a re-shelved app carries the words it actually used as tags', () => {
+  // Tags feed the search index, and are the words present in the record — never
+  // the rule's whole vocabulary.
+  const classification = classify(
+    'io.github.acme/coingecko-mcp',
+    'Real-time cryptocurrency prices and market data for Bitcoin.',
+  )
+  assert.ok(classification.tags.includes('cryptocurrency'))
+  assert.ok(classification.tags.includes('bitcoin'))
+  assert.equal(classification.tags.includes('ethereum'), false)
+})

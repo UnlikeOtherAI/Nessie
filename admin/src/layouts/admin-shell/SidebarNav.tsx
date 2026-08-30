@@ -6,7 +6,7 @@ import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
 import type {
   CreateChannelTarget,
-  RenameProjectTarget,
+  EditProjectTarget,
   SidebarAgentDm,
   SidebarGroupDm,
   SidebarMenu,
@@ -26,13 +26,14 @@ type SidebarNavProps = {
   dmCollapsed: boolean;
   onNavigateAgent: (agentId: string) => void;
   onNavigateChannel: (channelId: string) => void;
+  onNavigateThreads: () => void;
   onNavigateDm: (userId: string) => void;
   onNavigateNewConversation: () => void;
   onNavigateProject: (projectId: string) => void;
   onOpenCreateChannel: (target?: CreateChannelTarget) => void;
   onOpenCreateProject: () => void;
   onOpenPersonalAssistant: () => void;
-  onOpenRenameProject: (target: RenameProjectTarget) => void;
+  onOpenEditProject: (target: EditProjectTarget) => void;
   onToggleStar: (type: StarredItem['type'], id: string) => void;
   personalAssistantAgent: AgentRecord | null;
   personalAssistantBootstrapping: boolean;
@@ -59,6 +60,7 @@ type SidebarNavProps = {
   visibleSidebarProjects: SidebarProject[];
   visibleStarredEntries: VisibleStarredEntry[];
   standaloneChannels: ChannelRecord[];
+  threadsUnreadCount: number;
 };
 
 export const SidebarNav = (props: SidebarNavProps) => {
@@ -71,13 +73,14 @@ export const SidebarNav = (props: SidebarNavProps) => {
     dmCollapsed,
     onNavigateAgent,
     onNavigateChannel,
+    onNavigateThreads,
     onNavigateDm,
     onNavigateNewConversation,
     onNavigateProject,
     onOpenCreateChannel,
     onOpenCreateProject,
     onOpenPersonalAssistant,
-    onOpenRenameProject,
+    onOpenEditProject,
     onToggleStar,
     personalAssistantAgent,
     personalAssistantBootstrapping,
@@ -104,6 +107,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
     visibleSidebarProjects,
     visibleStarredEntries,
     standaloneChannels,
+    threadsUnreadCount,
   } = props;
   const nativeTouchShell = isReactNativeWebView();
 
@@ -140,7 +144,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           onNavigateProject={onNavigateProject}
           onOpenCreateChannel={onOpenCreateChannel}
           onOpenCreateProject={onOpenCreateProject}
-          onOpenRenameProject={onOpenRenameProject}
+          onOpenEditProject={onOpenEditProject}
           onToggleStar={onToggleStar}
           projectsCollapsed={projectsCollapsed}
           setSidebarMenu={setSidebarMenu}
@@ -156,10 +160,12 @@ export const SidebarNav = (props: SidebarNavProps) => {
           channelsCollapsed={channelsCollapsed}
           currentChannelId={currentChannelId}
           onNavigateChannel={onNavigateChannel}
+          onNavigateThreads={onNavigateThreads}
           onOpenCreateChannel={onOpenCreateChannel}
           onToggleStar={onToggleStar}
           standaloneChannels={standaloneChannels}
           starredChannelIds={starredChannelIds}
+          threadsUnreadCount={threadsUnreadCount}
           toggleChannelsCollapsed={toggleChannelsCollapsed}
         />
 

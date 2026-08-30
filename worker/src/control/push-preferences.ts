@@ -58,6 +58,10 @@ export const shouldSuppressPushForPreferences = (
     return true
   }
 
+  if (parsed.data.focusModeEnabled === true) {
+    return true
+  }
+
   const enabledForKind = {
     budgetAlerts: parsed.data.pushBudgetAlerts,
     assignedWork: parsed.data.pushAssignedWork,

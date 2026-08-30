@@ -9,6 +9,7 @@ export type UserAlertRecord = {
   id: string
   kind: 'mention' | 'task_assigned' | 'knowledge_published' | 'trigger_health'
   messageId: string | null
+  rootMessageId: string | null
   threadId: string | null
   channelId: string | null
   channelLabel: string | null
@@ -227,6 +228,9 @@ export const getAlertLink = (
     return { to: `/projects/${alert.projectId}/docs?pageId=${alert.knowledgePageId}` }
   }
   if (alert.channelId) {
+    if (alert.threadId && alert.rootMessageId) {
+      return { to: `/channels/${alert.channelId}/threads/${alert.threadId}/replies/${alert.rootMessageId}` }
+    }
     return {
       to: `/channels/${alert.channelId}`,
       state: alert.messageId ? { highlightMessageId: alert.messageId } : undefined,

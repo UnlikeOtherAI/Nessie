@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ChatMessage } from '../../../../facades/designer/hooks'
+import type { DesignerPageContext } from './DesignerAssistantPanelContext'
 
 type DesignerChatProps = {
   error: string | null
   messages: ChatMessage[]
   onSend: (message: string) => void
+  onClose?: () => void
   onStop: () => void
   status: string | null
   streaming: boolean
   thinking: boolean
+  pageContext?: DesignerPageContext
 }
 
 const ThinkingIndicator = ({ status }: { status: string | null }) => (
@@ -35,10 +38,12 @@ export const DesignerChat = ({
   error,
   messages,
   onSend,
+  onClose,
   onStop,
   status,
   streaming,
   thinking,
+  pageContext,
 }: DesignerChatProps) => {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -89,6 +94,16 @@ export const DesignerChat = ({
         </svg>
         <span className="text-sm font-semibold text-[var(--tx)]">Design Assistant</span>
         {streaming && <span className="streaming-dot" />}
+        {onClose ? (
+          <button
+            aria-label="Close Design Assistant"
+            className="ml-auto -mr-1 rounded p-1 text-[color:var(--tx3)] hover:bg-[color:var(--overlay-weak)] hover:text-[color:var(--tx)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        ) : null}
       </div>
 
       {/* Messages */}
@@ -107,11 +122,18 @@ export const DesignerChat = ({
                 having no way to set the model, so it announced a finished
                 agent that could not be created.
               */}
-              {[
-                'Hi! I can fill in this form for you — name, role, model,'
-                + ' system prompt and tools.',
-                "Tell me what you want to build and I'll configure the agent for you.",
-              ].join('\n\n')}
+              {pageContext
+                ? [
+                    `You’re viewing ${pageContext.title}. ${pageContext.description}`,
+                    pageContext.actions.length > 0
+                      ? `I can help with ${pageContext.actions.join(', ')} on this page.`
+                      : 'I can explain what you’re seeing here.',
+                  ].join('\n\n')
+                : [
+                    'Hi! I can fill in this form for you — name, role, model,'
+                    + ' system prompt and tools.',
+                    "Tell me what you want to build and I'll configure the agent for you.",
+                  ].join('\n\n')}
             </div>
           </div>
           {messages

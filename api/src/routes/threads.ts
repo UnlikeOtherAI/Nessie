@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import {
+  detectSecrets,
   parseThreadId,
 } from '@nessie/schemas'
 import {
@@ -28,6 +29,7 @@ import { canUserReadRunBasis } from '../services/run-disclosure.js'
 import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js'
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
+import { registerThreadActivityRoutes } from './thread-activity.js'
 import type { RouteDeps } from './types.js'
 
 export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -39,6 +41,8 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     requireActorContext,
     buildChannelRealtimeScopes,
   } = deps
+
+  registerThreadActivityRoutes(app, deps)
 
   app.get('/api/threads/:threadId/messages', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -185,6 +189,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const marked = await markThreadRead(prisma, {
       rootMessageId: body.rootMessageId,
+      lastReadMessageId: body.lastReadMessageId,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
     })
@@ -272,6 +277,15 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const body = parseInput(UpdateThreadMessageBodySchema, request.body, reply)
     if (!body) {
+      return reply
+    }
+    if (detectSecrets(body.content).length > 0) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this message was saved. Save it through Secrets instead.',
+      )
       return reply
     }
 
