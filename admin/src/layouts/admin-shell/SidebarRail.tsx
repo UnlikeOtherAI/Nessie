@@ -59,13 +59,13 @@ export const SidebarRail = ({
   return (
     <aside
       className={[
-        'flex h-full w-[65px] flex-col items-center overflow-hidden',
+        'flex h-full w-[65px] flex-col items-center overflow-x-hidden overflow-y-auto',
         'bg-[color:var(--rail)] px-2 py-2',
       ].join(' ')}
     >
       <WorkspaceSwitcher />
 
-      <nav aria-label="Main navigation" className="min-h-0 flex-1 overflow-y-auto">
+      <nav aria-label="Main navigation" className="w-full shrink-0">
         {SIDEBAR_RAIL_ITEMS.map((item) => {
           const Icon = item.icon;
           // Return to where the reader last stood in this section rather than its
@@ -86,6 +86,8 @@ export const SidebarRail = ({
           );
         })}
       </nav>
+
+      <div className="flex-1" />
 
       <div className="flex w-full shrink-0 flex-col items-center">
         <div className="my-2 h-px w-8 bg-[color:var(--overlay)]" />
