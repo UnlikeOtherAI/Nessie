@@ -24,7 +24,7 @@ runDatabaseTest('timeout marks only still-ringing invites missed and writes a vi
   ] })
   const channel = await prisma.channel.create({
     data: {
-      label: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
+      label: 'calls', slug: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
       members: { create: [{ userId: caller.id }, { userId: invitee.id }] },
     },
   })
@@ -63,7 +63,7 @@ runDatabaseTest('a timeout waiting behind an accepted invite never stomps it to 
   ] })
   const channel = await prisma.channel.create({
     data: {
-      label: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
+      label: 'calls', slug: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
       members: { create: [{ userId: caller.id }, { userId: invitee.id }] },
     },
   })
