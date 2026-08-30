@@ -142,31 +142,41 @@ export const SidebarProjectsSection = ({
                   ⋯
                 </span>
                 {sidebarMenu?.type === 'project' && sidebarMenu.projectId === project.id ? (
-                  <span className="admin-sidebar-menu admin-sidebar-menu-project">
+                  <>
                     <span
+                      className="fixed inset-0 z-10"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onOpenCreateChannel({
-                          projectName: project.name,
-                          teamId: teamIdByProjectId.get(project.id),
-                        });
+                        setSidebarMenu(() => null);
                       }}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      Add new channel within project
+                      role="presentation"
+                    />
+                    <span className="admin-sidebar-menu admin-sidebar-menu-project">
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenCreateChannel({
+                            projectName: project.name,
+                            teamId: teamIdByProjectId.get(project.id),
+                          });
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        Add new channel within project
+                      </span>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenEditProject(project);
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        Edit
+                      </span>
                     </span>
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenEditProject(project);
-                      }}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      Edit
-                    </span>
-                  </span>
+                  </>
                 ) : null}
               </span>
             </button>
