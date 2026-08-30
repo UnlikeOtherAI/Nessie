@@ -250,6 +250,30 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   never collapse them into one, or the check becomes a restatement. An
   ambiguous anchor is skipped in the preview and refused in words at save.
   Spec: `docs/plans/2026-08-13-live-document-streaming/overview.md`.
+- **A capability that can stop working owns the way a person finds out.** A
+  recurring trigger whose captured UOA identity stopped verifying was flipped to
+  `error` and abandoned — non-claimable by the sweep, abandoned by the retry
+  poller, and announced to nobody, so one production schedule was dead and
+  silent for nineteen days. The obligation sits on the **transition**, not on
+  whoever might later look: classify the failure into a state that names its
+  remedy (`needs_reauthorization` is a button; `error` is an edit), persist the
+  reason so the surface can explain it, and alert exactly once per transition —
+  `health_revision` plus the existing `user_alerts (user_id, event_key)`
+  uniqueness, never a second marker table. Exactly-once is what separates this
+  from the repeating-apology failure the unattended-run path deliberately avoids
+  (`worker/src/run/execute/failure.ts`): an unattended run posts nothing to chat
+  for good reason, so the signal has to be a durable alert instead. Recovery is
+  **explicit** — `POST /api/triggers/:id/reauthorize` re-captures a live
+  identity, sharing `captureScheduledLaunchOrigin` with the create route. Never
+  auto-heal at login: signing in proves the same person is present, not that
+  they intend a dormant automation to resume, and an epoch may have rotated
+  because access was withdrawn. Re-stamp the **epoch only**; the organisation
+  and team decide billing attribution, so refreshing them from whoever clicks
+  repair moves a schedule's costs as a side effect. Re-arm from **now**, or a
+  long-dead cron schedule grinds through every missed occurrence. And a fire
+  gate must ask exactly what dispatch asks: checking a strict subset let
+  triggers pass, create runs, and die at the first inference invisibly. Details:
+  `CLAUDE.md` → "A schedule that stops says so".
 - User-authored MCP connectors may use HTTP/SSE remote endpoints only. Cloud-side stdio process execution is disabled at catalog, instance, dispatch, and worker boundaries; HTTP/SSE/OAuth URLs must pass the SSRF guard. Use remote MCP runners for private networks or local machines.
 - **Outbound egress is IP-pinned, not just validated.** Validating a URL and
   then calling plain `fetch` leaves a DNS-rebinding window between the check and

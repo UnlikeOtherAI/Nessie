@@ -139,6 +139,14 @@ const createTriggerHarness = (
       },
     },
     agentTrigger: {
+      // The classified health write reads the current state before deciding
+      // whether this is a NEW failure (bump the revision, alert) or the same
+      // one repeating (leave it, stay quiet).
+      findUnique: async () => ({
+        healthReason: null,
+        healthRevision: 0,
+        status: 'active',
+      }),
       update: async (args: { data: Record<string, unknown> }) => {
         triggerUpdates.push(args.data)
         return {}
@@ -264,7 +272,9 @@ test('legacy user-owned PA schedule fails closed before run enqueue', async () =
     String(harness.failedDeliveries[0]?.['errorMessage']),
     /then recreate the schedule/,
   )
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'launch_origin_invalid')
 })
 
 test('saved team outside the organization fails before run enqueue', async () => {
@@ -274,7 +284,9 @@ test('saved team outside the organization fails before run enqueue', async () =>
   await assert.rejects(fireSchedule(harness, config), /does not belong/)
   assert.equal(harness.transactionCount, 0)
   assert.equal(harness.queuePayloads.length, 0)
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'team_unreachable')
 })
 
 test('revoked team member fails before a scheduled PA run is enqueued', async () => {
@@ -287,7 +299,9 @@ test('revoked team member fails before a scheduled PA run is enqueued', async ()
   })
   assert.equal(harness.transactionCount, 0)
   assert.equal(harness.queuePayloads.length, 0)
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'team_unreachable')
 })
 
 test('a PA schedule stops firing once its owner loses the private channel', async () => {
@@ -300,7 +314,9 @@ test('a PA schedule stops firing once its owner loses the private channel', asyn
   await assert.rejects(fireSchedule(harness, config), /no longer has access/)
   assert.equal(harness.transactionCount, 0)
   assert.equal(harness.queuePayloads.length, 0)
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'channel_access_lost')
 })
 
 test('deactivated organization member fails before run enqueue', async () => {
@@ -327,7 +343,12 @@ test('deactivated organization member fails before run enqueue', async () => {
     String(harness.failedDeliveries[0]?.['errorMessage']),
     /no longer an active member of its saved organization/,
   )
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  // `error`, not `needs_reauthorization`: a deactivated member cannot repair
+  // this by proving who they are, so offering Reauthorize would be a dead end.
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'member_inactive')
+  assert.equal(harness.triggerUpdates[0]?.['healthRevision'], 1)
 })
 
 test('legacy REST schedule without an origin fails before run enqueue', async () => {
@@ -347,7 +368,11 @@ test('legacy REST schedule without an origin fails before run enqueue', async ()
   )
   assert.equal(harness.transactionCount, 0)
   assert.equal(harness.queuePayloads.length, 0)
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  // A legacy schedule carries no identity to refresh, so it is `error` (fix the
+  // configuration) rather than `needs_reauthorization` (prove who you are).
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'launch_origin_invalid')
 })
 
 test('trusted autonomous schedule_task marker retains agent scope', async () => {

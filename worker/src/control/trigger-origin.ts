@@ -59,13 +59,16 @@ export class TriggerLaunchOriginError extends Error {
 
   constructor(reason: TriggerLaunchOriginReason, detail: string) {
     super(
-      `Scheduled task cannot run because ${detail}.`
+      `Scheduled task cannot run because ${detail}. `
       + (REAUTHORIZABLE_REASONS.has(reason)
-        // Reauthorizing is now a button, so the message names it rather than
-        // telling people to recreate the schedule — which they could not even
-        // do, since a trigger with delivery history refuses deletion.
-        ? ' Sign in and reauthorize this schedule to resume it.'
-        : ''),
+        // Reauthorizing is a button now, so the message names it instead of
+        // telling people to recreate the schedule — which they could not do
+        // anyway, since a trigger with delivery history refuses deletion.
+        ? 'Sign in and reauthorize this schedule to resume it.'
+        // The other reasons have no stored identity to refresh, or need the
+        // workspace itself changed, so recreating really is the remedy.
+        : 'Sign in again if needed, then recreate the schedule so it captures '
+          + 'your current authenticated team and UnlikeOtherAI identity.'),
     )
     this.name = 'TriggerLaunchOriginError'
     this.reason = reason

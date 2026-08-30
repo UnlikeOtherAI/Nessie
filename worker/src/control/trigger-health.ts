@@ -50,37 +50,43 @@ export const recordTriggerHealthFailure = async (
     ? 'needs_reauthorization'
     : 'error'
 
+  // Read-then-write without a surrounding transaction, deliberately.
+  //
+  // Both callers reach here holding an exclusive claim on this trigger — the
+  // scheduler's lease (`claimDueScheduledTriggers`) and the retry poller's
+  // `FOR UPDATE SKIP LOCKED` claim each hand a row to exactly one worker — so
+  // two concurrent health writes for the same trigger cannot happen. Opening a
+  // transaction here would also blur the meaning of "did this fire enqueue a
+  // run?", which the dispatch tests read off the transaction count.
   let transition: TriggerHealthTransition | null = null
   try {
-    transition = await prisma.$transaction(async (tx) => {
-      const current = await tx.agentTrigger.findUnique({
-        where: { id: input.triggerId },
-        select: { healthReason: true, healthRevision: true, status: true },
-      })
-      if (!current) {
-        return null
-      }
-
-      const unchanged =
-        current.status === status && current.healthReason === input.error.reason
-      const healthRevision = unchanged
-        ? current.healthRevision
-        : current.healthRevision + 1
-
-      await tx.agentTrigger.update({
-        where: { id: input.triggerId },
-        data: {
-          healthDetail: input.error.message,
-          healthReason: input.error.reason,
-          healthRevision,
-          status,
-        },
-      })
-
-      return unchanged
-        ? null
-        : { healthRevision, reason: input.error.reason, status, triggerId: input.triggerId }
+    const current = await prisma.agentTrigger.findUnique({
+      where: { id: input.triggerId },
+      select: { healthReason: true, healthRevision: true, status: true },
     })
+    if (!current) {
+      return null
+    }
+
+    const unchanged =
+      current.status === status && current.healthReason === input.error.reason
+    const healthRevision = unchanged
+      ? current.healthRevision
+      : current.healthRevision + 1
+
+    await prisma.agentTrigger.update({
+      where: { id: input.triggerId },
+      data: {
+        healthDetail: input.error.message,
+        healthReason: input.error.reason,
+        healthRevision,
+        status,
+      },
+    })
+
+    transition = unchanged
+      ? null
+      : { healthRevision, reason: input.error.reason, status, triggerId: input.triggerId }
   } catch (persistError) {
     // The trigger may have been deleted between the fire and this write.
     console.error(
