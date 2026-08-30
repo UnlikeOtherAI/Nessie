@@ -1703,7 +1703,7 @@ a {
 /* Chat controls need to stay distinct from the message content on compact
    touch layouts. A 32px glyph makes them twice their desktop size while the
    34px button frame keeps every optional composer action on one row. */
-@media (max-width: 1023px) {
+@media (max-width: 1024px) {
   .admin-compose-actions {
     gap: 1px;
   }
