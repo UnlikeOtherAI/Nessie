@@ -8,6 +8,7 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { defaultColumnCreateData } from '../services/board.js'
+import { canAccessAttachment } from '../services/attachments.js'
 import { requireLocalMembershipManagement } from './membership-mode-gate.js'
 import type { RouteDeps } from './types.js'
 
@@ -19,6 +20,8 @@ const projectCountsInclude = {
 type ProjectWithCounts = {
   id: string
   name: string
+  avatarEmoji: string | null
+  avatarAttachmentId: string | null
   organizationId: string
   createdAt: Date
   members: { userId: string; role: string }[]
@@ -28,6 +31,8 @@ type ProjectWithCounts = {
 const toProjectRecord = (project: ProjectWithCounts) => ({
   id: project.id,
   name: project.name,
+  avatarEmoji: project.avatarEmoji,
+  avatarAttachmentId: project.avatarAttachmentId,
   organizationId: project.organizationId,
   memberCount: project.members.length,
   teamCount: project.teams.length,
@@ -163,6 +168,8 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     return reply.code(201).send(createApiResponse(ProjectRecordSchema.parse({
       id: project.id,
       name: project.name,
+      avatarEmoji: project.avatarEmoji,
+      avatarAttachmentId: project.avatarAttachmentId,
       organizationId: project.organizationId,
       memberCount: 1,
       teamCount: 0,
@@ -193,9 +200,41 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
+    if (body.avatarAttachmentId) {
+      const attachment = await prisma.attachment.findUnique({
+        where: { id: body.avatarAttachmentId },
+      })
+      if (
+        !attachment
+        || !(await canAccessAttachment(prisma, attachment, {
+          organizationId: actorContext.tenant.organizationId,
+          userId: actorContext.actor.actorId,
+        }))
+      ) {
+        sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
+        return reply
+      }
+      if (attachment.kind !== 'image') {
+        sendApiError(reply, 400, 'INVALID_PROJECT_AVATAR', 'Project photo must be an image')
+        return reply
+      }
+    }
+
+    const avatarIdentity = body.avatarAttachmentId
+      ? { avatarAttachmentId: body.avatarAttachmentId, avatarEmoji: null }
+      : body.avatarEmoji
+        ? { avatarAttachmentId: null, avatarEmoji: body.avatarEmoji }
+        : {
+            ...(body.avatarAttachmentId === null ? { avatarAttachmentId: null } : {}),
+            ...(body.avatarEmoji === null ? { avatarEmoji: null } : {}),
+          }
+
     const updatedProject = await prisma.project.update({
       where: { id: project.id },
-      data: { name: body.name },
+      data: {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...avatarIdentity,
+      },
       include: projectCountsInclude,
     })
 

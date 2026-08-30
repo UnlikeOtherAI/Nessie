@@ -10,7 +10,7 @@ export type CreateChannelTarget = {
   scope?: 'standalone'
   teamId?: string
 }
-export type RenameProjectTarget = { id: string; name: string }
+export type EditProjectTarget = ProjectRecord
 export type SidebarMenu =
   | { type: 'channels' }
   | { type: 'project'; projectId: string }

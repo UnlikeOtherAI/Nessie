@@ -1268,6 +1268,11 @@ model OrganizationMember {
 model Project {
   id                       String                    @id @default(uuid()) @db.Uuid
   name                     String
+  // A project can show one member-chosen identity in the sidebar: either an
+  // emoji or a cropped image attachment. The update route keeps them mutually
+  // exclusive so the display never needs a precedence rule.
+  avatarEmoji              String?                   @map("avatar_emoji")
+  avatarAttachmentId       String?                   @map("avatar_attachment_id") @db.Uuid
   organizationId           String                    @map("organization_id") @db.Uuid
   // An invisible, system-owned container for organization-wide channels. It
   // is not a UOA workspace and does not mirror any external team.
@@ -1291,8 +1296,10 @@ model Project {
   pushAttentionAlerts      UserAlert[]               @relation("PushAttentionAlertProject")
   userPushSurfacePresences UserPushSurfacePresence[]
   executors                Executor[]
+  avatarAttachment         Attachment?               @relation("ProjectAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@unique([id, organizationId])
+  @@index([avatarAttachmentId])
   @@map("projects")
 }
 
@@ -4563,6 +4570,7 @@ model Attachment {
   logoForOrganizations Organization[] @relation("OrganizationLogo")
   avatarForUsers       User[]         @relation("UserAvatar")
   avatarForAgents      Agent[]        @relation("AgentAvatar")
+  avatarForProjects    Project[]      @relation("ProjectAvatar")
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
   organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
