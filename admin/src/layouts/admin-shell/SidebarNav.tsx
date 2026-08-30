@@ -4,6 +4,7 @@ import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
+import { renderUnreadCount } from './SidebarRow';
 import type {
   CreateChannelTarget,
   EditProjectTarget,
@@ -136,6 +137,12 @@ export const SidebarNav = (props: SidebarNavProps) => {
           unreadCountByChannelId={unreadCountByChannelId}
         />
 
+        <button className="admin-sb-item group" onClick={onNavigateThreads} type="button">
+          <span className="sidebar-row-symbol w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]">◌</span>
+          <span>Threads</span>
+          {renderUnreadCount(threadsUnreadCount)}
+        </button>
+
       <SidebarProjectsSection
         attentionCountByProjectId={attentionCountByProjectId}
           currentChannelId={currentChannelId}
@@ -160,12 +167,10 @@ export const SidebarNav = (props: SidebarNavProps) => {
           channelsCollapsed={channelsCollapsed}
           currentChannelId={currentChannelId}
           onNavigateChannel={onNavigateChannel}
-          onNavigateThreads={onNavigateThreads}
           onOpenCreateChannel={onOpenCreateChannel}
           onToggleStar={onToggleStar}
           standaloneChannels={standaloneChannels}
           starredChannelIds={starredChannelIds}
-          threadsUnreadCount={threadsUnreadCount}
           toggleChannelsCollapsed={toggleChannelsCollapsed}
         />
 
