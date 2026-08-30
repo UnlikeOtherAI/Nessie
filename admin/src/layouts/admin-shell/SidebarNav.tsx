@@ -123,6 +123,15 @@ export const SidebarNav = (props: SidebarNavProps) => {
       ].join(' ')}
     >
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
+        <button
+          className={`admin-sb-item sidebar-threads group ${pathname === '/threads' ? 'active' : ''}`}
+          onClick={onNavigateThreads}
+          type="button"
+        >
+          <span>Threads</span>
+          {renderUnreadCount(threadsUnreadCount)}
+        </button>
+
         <SidebarStarredSection
           activeDmChannelId={activeDmChannelId}
           currentChannelId={currentChannelId}
@@ -138,15 +147,6 @@ export const SidebarNav = (props: SidebarNavProps) => {
           toggleStarredCollapsed={toggleStarredCollapsed}
           unreadCountByChannelId={unreadCountByChannelId}
         />
-
-        <button
-          className={`admin-sb-item sidebar-threads group ${pathname === '/threads' ? 'active' : ''}`}
-          onClick={onNavigateThreads}
-          type="button"
-        >
-          <span>Threads</span>
-          {renderUnreadCount(threadsUnreadCount)}
-        </button>
 
       <SidebarProjectsSection
         attentionCountByProjectId={attentionCountByProjectId}

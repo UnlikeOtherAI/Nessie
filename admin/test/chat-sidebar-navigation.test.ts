@@ -31,6 +31,12 @@ test('Threads aligns with section chevrons and remains a bold top-level destinat
   assert.match(styles, /\.admin-sb-item\.sidebar-threads\s*\{[\s\S]*?padding-left: 10px;[\s\S]*?font-weight: 700;/)
 })
 
+test('Threads appears directly above Starred in the chat sidebar', () => {
+  const sidebar = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
+
+  assert.ok(sidebar.indexOf('sidebar-threads') < sidebar.indexOf('<SidebarStarredSection'))
+})
+
 test('a starred direct-message entry is removed from its original sidebar location', () => {
   const source = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
 
