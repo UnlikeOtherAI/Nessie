@@ -19,3 +19,20 @@ test('WsEventSchema accepts message reaction events', () => {
 
   assert.equal(parsed.event, 'message.reaction')
 })
+
+test('WsEventSchema accepts the revisioned call state events', () => {
+  assert.equal(WsEventNameSchema.parse('call.updated'), 'call.updated')
+  const parsed = WsEventSchema.parse({
+    type: 'event',
+    event: 'call.updated',
+    data: {
+      callId: '00000000-0000-4000-8000-000000000001',
+      channelId: '00000000-0000-4000-8000-000000000002',
+      meetingUri: 'https://meet.google.com/abc-defg-hij',
+      revision: 2,
+      status: 'ringing',
+    },
+    ts: '2026-08-30T12:00:00.000Z',
+  })
+  assert.equal(parsed.event, 'call.updated')
+})

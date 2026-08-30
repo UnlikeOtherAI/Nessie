@@ -18,6 +18,7 @@
   "dependencies": {
     "@nessie/comms-connect": "workspace:*",
     "@nessie/comms-google": "workspace:*",
+    "@nessie/db": "workspace:*",
     "@nessie/config": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",

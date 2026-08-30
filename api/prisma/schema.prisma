@@ -891,6 +891,7 @@ model User {
   knowledgeSpaceMembers               KnowledgeSpaceMember[]
   callsStarted                        Call[]                          @relation("CallStarter")
   callParticipants                    CallParticipant[]               @relation("CallParticipation")
+  callInvites                         CallInvite[]
   messages                            Message[]
   reactions                           MessageReaction[]
   threadReadStates                    ThreadReadState[]
@@ -1988,6 +1989,7 @@ model Agent {
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
   userAlertActivity              UserAlert[]
+  callsCreatedVia                Call[]                           @relation("CallCreatedViaAgent")
   runThreadPendingMessages       RunThreadPendingMessage[]
   organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // NoAction, not the Prisma default SetNull: on a COMPOSITE foreign key
@@ -4420,20 +4422,41 @@ model ThoughtRecall {
 }
 
 model Call {
-  id           String            @id @default(uuid()) @db.Uuid
-  channelId    String            @map("channel_id") @db.Uuid
-  roomId       String            @unique @map("room_id")
-  status       String            @default("active")
-  startedById  String            @map("started_by_id") @db.Uuid
-  startedAt    DateTime          @default(now()) @map("started_at")
-  endedAt      DateTime?         @map("ended_at")
-  channel      Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  startedBy    User              @relation("CallStarter", fields: [startedById], references: [id], onDelete: Cascade)
-  participants CallParticipant[]
+  id                String            @id @default(uuid()) @db.Uuid
+  channelId         String            @map("channel_id") @db.Uuid
+  roomId            String?           @unique @map("room_id")
+  provider          String            @default("jitsi_embedded")
+  meetingUri        String?           @map("meeting_uri")
+  status            String            @default("ringing")
+  startedById       String            @map("started_by_id") @db.Uuid
+  createdViaAgentId String?           @map("created_via_agent_id") @db.Uuid
+  startedAt         DateTime          @default(now()) @map("started_at")
+  ringExpiresAt     DateTime?         @map("ring_expires_at")
+  endedAt           DateTime?         @map("ended_at")
+  revision          Int               @default(0)
+  channel           Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  startedBy         User              @relation("CallStarter", fields: [startedById], references: [id], onDelete: Cascade)
+  createdViaAgent  Agent?            @relation("CallCreatedViaAgent", fields: [createdViaAgentId], references: [id], onDelete: SetNull)
+  participants      CallParticipant[]
+  invites           CallInvite[]
 
   @@index([channelId])
   @@index([status])
   @@map("calls")
+}
+
+model CallInvite {
+  id          String    @id @default(uuid()) @db.Uuid
+  callId      String    @map("call_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  state       String    @default("ringing")
+  respondedAt DateTime? @map("responded_at")
+  call        Call      @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, userId])
+  @@index([userId, state])
+  @@map("call_invites")
 }
 
 model CallParticipant {

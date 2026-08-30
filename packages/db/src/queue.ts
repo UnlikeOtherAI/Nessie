@@ -11,6 +11,7 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 export const enqueueQueueJob = async (
   prisma: Pick<PrismaClient, '$executeRaw'>,
   input: {
+    delayMs?: number
     idempotencyKey?: string
     maxAttempts?: number
     payload: unknown
@@ -19,6 +20,7 @@ export const enqueueQueueJob = async (
 ): Promise<boolean> => {
   const encodedPayload = JSON.stringify(input.payload)
   const maxAttempts = input.maxAttempts ?? 3
+  const delayMs = input.delayMs ?? 0
 
   if (input.idempotencyKey) {
     const inserted = await prisma.$executeRaw(
@@ -38,7 +40,7 @@ export const enqueueQueueJob = async (
           'pending',
           0,
           ${maxAttempts},
-          now(),
+          now() + (${delayMs} * interval '1 millisecond'),
           ${input.idempotencyKey}
         )
         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
@@ -64,7 +66,7 @@ export const enqueueQueueJob = async (
         'pending',
         0,
         ${maxAttempts},
-        now()
+        now() + (${delayMs} * interval '1 millisecond')
       )
     `,
   )

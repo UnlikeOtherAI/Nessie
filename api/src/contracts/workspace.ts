@@ -58,15 +58,27 @@ export const CallParticipantRecordSchema = z.object({
   leftAt: TimestampSchema.nullable(),
 })
 
+export const CallInviteRecordSchema = z.object({
+  userId: UserIdSchema,
+  displayName: z.string(),
+  state: z.enum(['ringing', 'accepted', 'declined', 'missed', 'cancelled']),
+  respondedAt: TimestampSchema.nullable(),
+})
+
 export const CallRecordSchema = z.object({
   id: z.string().uuid(),
   channelId: ChannelIdSchema,
-  roomId: z.string(),
-  status: z.enum(['active', 'ended']),
+  roomId: z.string().nullable(),
+  provider: z.enum(['google_meet', 'jitsi', 'microsoft_teams', 'jitsi_embedded']),
+  meetingUri: z.string().url().nullable(),
+  status: z.enum(['ringing', 'active', 'ended', 'missed', 'declined', 'cancelled']),
   startedById: UserIdSchema,
   startedAt: TimestampSchema,
+  ringExpiresAt: TimestampSchema.nullable(),
   endedAt: TimestampSchema.nullable(),
+  revision: z.number().int().nonnegative(),
   participants: z.array(CallParticipantRecordSchema),
+  invites: z.array(CallInviteRecordSchema),
 })
 export type CallRecord = z.infer<typeof CallRecordSchema>
 
