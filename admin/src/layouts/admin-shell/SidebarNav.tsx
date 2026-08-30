@@ -137,7 +137,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
           unreadCountByChannelId={unreadCountByChannelId}
         />
 
-        <button className="admin-sb-item group" onClick={onNavigateThreads} type="button">
+        <button className="admin-sb-item sidebar-top-level group" onClick={onNavigateThreads} type="button">
           <span className="sidebar-row-symbol w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]">◌</span>
           <span>Threads</span>
           {renderUnreadCount(threadsUnreadCount)}
