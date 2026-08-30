@@ -16,7 +16,7 @@ import {
   useTasks,
   useUpdateTaskPoints,
 } from '../../facades/tasks/hooks'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 
 const label = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
 
@@ -168,8 +168,7 @@ type ProjectBacklogTabProps = {
 }
 
 export const ProjectBacklogTab = ({ projectId }: ProjectBacklogTabProps) => {
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: iterations = [] } = useIterations(projectId)
   const { data: tasks = [] } = useTasks(projectId)
   const createIteration = useCreateIteration(projectId)

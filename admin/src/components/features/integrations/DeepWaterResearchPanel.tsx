@@ -9,9 +9,9 @@ import {
   useDeepWaterResearchRuns,
   useSetDeepWaterAgentAccess,
 } from '../../../facades/integrations/hooks'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { TabBar } from '../../primitives/TabBar'
+import { useIsOwner } from '../../shared/OwnerGate'
 import { DeepWaterResearchLauncher } from './DeepWaterResearchLauncher'
 import { DeepWaterRunHistory } from './DeepWaterRunHistory'
 
@@ -58,8 +58,7 @@ export const DeepWaterResearchPanel = ({
   settingsContent,
 }: DeepWaterResearchPanelProps) => {
   const navigate = useNavigate()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const [activeTab, setActiveTab] = useState<DeepWaterTab>('run')
   const runsQuery = useDeepWaterResearchRuns()
   const accessQuery = useDeepWaterAgentAccess()
@@ -216,6 +215,8 @@ export const DeepWaterResearchPanel = ({
               ) : null}
             </div>
 
+            {/* Not QueryState: text-xs, left-aligned, sitting above the list
+                as a note rather than replacing it. */}
             {accessQuery.isLoading ? (
               <div className="mt-3 text-xs text-[var(--tx3)]">Checking agent access…</div>
             ) : accessQuery.isError ? (

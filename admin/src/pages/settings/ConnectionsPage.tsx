@@ -39,6 +39,8 @@ export const ConnectionsPage = () => {
           can disconnect or delete imported data at any time.
         </p>
 
+        {/* Not QueryState: the error is a Notice and the empty state is a card
+            with two Connect buttons — neither is a line. */}
         {connections.isLoading ? (
           <p className="text-sm text-[color:var(--tx3)]">Loading connections…</p>
         ) : connections.isError ? (

@@ -10,7 +10,7 @@ import {
 } from '../../facades/board/hooks'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../components/kanban/kanban-config'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 
 const label = 'text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]'
 
@@ -135,8 +135,7 @@ type ProjectSettingsPageProps = {
 }
 
 export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => {
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: board } = useProjectBoard(projectId)
   const setStyle = useSetBoardStyle(projectId)
   const createColumn = useCreateColumn(projectId)

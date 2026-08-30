@@ -31,7 +31,7 @@ import { useDesignerChat } from '../facades/designer/hooks'
 import { buildToolPolicy, useDesignerToolCatalog } from '../facades/designer/tool-catalog'
 import type { AgentRecord } from '../lib/api-client'
 import { SectionLabel } from '../components/primitives/SectionLabel'
-import { useAuthSession } from '../providers/AuthSessionProvider'
+import { useIsOwner } from '../components/shared/OwnerGate'
 
 export const AgentDesignerPage = () => {
   const { agentId } = useParams<{ agentId?: string }>()
@@ -79,8 +79,7 @@ export const AgentDesignerContent = ({
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const parentId = searchParams.get('parentId') ?? undefined
   const parentAgent = parentId ? agents.find((a) => a.id === parentId) : undefined
   const isEditMode = Boolean(editingAgent)

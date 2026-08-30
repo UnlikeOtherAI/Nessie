@@ -6,10 +6,10 @@ import {
   useDesignerToolCatalog,
 } from '../../../facades/designer/tool-catalog'
 import { useUpdateAgent } from '../../../facades/agents/hooks'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { EmptyState } from '../../shared/EmptyState'
+import { useIsOwner } from '../../shared/OwnerGate'
 import { ToolPicker } from './designer/ToolPicker'
 
 /**
@@ -132,8 +132,7 @@ const AgentToolsReadOnly = ({ agent }: AgentAvailableToolsProps) => {
 }
 
 export const AgentAvailableTools = ({ agent }: AgentAvailableToolsProps) => {
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
 
   return isOwner ? (
     <AgentToolsEditor agent={agent} />

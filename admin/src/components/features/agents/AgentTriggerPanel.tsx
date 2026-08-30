@@ -8,10 +8,10 @@ import {
   useTriggerHistory,
 } from '../../../facades/triggers/hooks'
 import type { AgentRecord, AgentTriggerRecord } from '../../../lib/api-client'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { EmptyState } from '../../shared/EmptyState'
+import { useIsOwner } from '../../shared/OwnerGate'
 import {
   TRIGGER_TYPE_ICONS,
   formatTimestamp,
@@ -125,8 +125,7 @@ const TriggerRow = ({
 }
 
 export const AgentTriggerPanel = ({ agent }: AgentTriggerPanelProps) => {
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: triggers = [] } = useAgentTriggers(agent.id, isOwner)
   const pause = usePauseTrigger()
   const resume = useResumeTrigger()

@@ -6,6 +6,8 @@ import type {
 } from '@nessie/schemas'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
+import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
+import { QueryState } from '../components/shared/QueryState'
 import { ToolAgentAccessPanel } from '../components/features/workflow-tools/ToolAgentAccessPanel'
 import { ExplicitToolAgentAccessPanel } from '../components/features/workflow-tools/ExplicitToolAgentAccessPanel'
 import { ToolDetailDrawer } from '../components/features/workflow-tools/ToolDetailDrawer'
@@ -28,7 +30,6 @@ import {
 } from '../facades/tool-grants/hooks'
 import type { McpToolRegistryRecord } from '../facades/tool-grants/hooks'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 /**
@@ -42,9 +43,10 @@ import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationBut
  * grants inline.
  */
 export const ToolsPage = () => {
-  const { me } = useAuthSession()
   const phoneLayout = usePhoneLayout()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  // Still the page's own flag: the registry and policy-target reads below stay
+  // disabled for a non-owner, exactly as before OwnerGate wrapped the render.
+  const isOwner = useIsOwner()
   const [searchParams] = useSearchParams()
   const deepWaterInstanceId = readDeepWaterInstanceFilter(searchParams)
   // The Connectors page links here with `?instance=…&status=pending_review`
@@ -161,32 +163,25 @@ export const ToolsPage = () => {
     })
   }, [])
 
-  if (!isOwner) {
-    return (
-      <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Owner access required
-      </section>
-    )
-  }
-
-  const listBody = toolsQuery.isLoading ? (
-    <div className="py-8 text-center text-sm text-[color:var(--tx3)]">Loading tools…</div>
-  ) : toolsQuery.isError ? (
-    <div className="py-8 text-center text-sm text-[color:var(--danger-text)]">
-      Failed to load tools.{' '}
-      <button className="underline" onClick={() => void toolsQuery.refetch()} type="button">
-        Retry
-      </button>
-    </div>
-  ) : (
-    <ToolList
-      isReviewable={isReviewable}
-      onSelect={(tool) => setSelectedToolId(tool.id)}
-      onToggleSelected={toggleSelected}
-      selectedForReview={selectedForReview}
-      selectedId={selectedTool?.id}
-      tools={sortedTools}
-    />
+  // No `emptyLabel`: ToolList already distinguishes "no tools at all" from
+  // "none match the current filter", which this component could not.
+  const listBody = (
+    <QueryState
+      errorLabel="Failed to load tools."
+      loadingLabel="Loading tools…"
+      query={toolsQuery}
+    >
+      {() => (
+        <ToolList
+          isReviewable={isReviewable}
+          onSelect={(tool) => setSelectedToolId(tool.id)}
+          onToggleSelected={toggleSelected}
+          selectedForReview={selectedForReview}
+          selectedId={selectedTool?.id}
+          tools={sortedTools}
+        />
+      )}
+    </QueryState>
   )
 
   const columns = [
@@ -240,41 +235,29 @@ export const ToolsPage = () => {
                 ? 'This tool is off by default. Switch a row on to write the exact per-agent allow; switch it off to revoke only that allow.'
                 : 'Switch a row on to grant this tool to that agent; switch it off to revoke. A denied grant is read-only and always wins.'}
             </p>
+            {/* `py-6`, not the default `py-8`: these states swap with the two
+                access panels, whose own "no agents yet" line is py-6. */}
             <div className="mt-3">
-              {(selectedTool.requiresExplicitGrant
-                ? policyTargetsQuery.isLoading
-                : agentsQuery.isLoading) ? (
-                <div className="py-6 text-center text-sm text-[color:var(--tx3)]">
-                  Loading agents…
-                </div>
-              ) : (selectedTool.requiresExplicitGrant
-                ? policyTargetsQuery.isError
-                : agentsQuery.isError) ? (
-                <div className="py-6 text-center text-sm text-[color:var(--danger-text)]">
-                  Failed to load agents.{' '}
-                  <button
-                    className="underline"
-                    onClick={() => {
-                      if (selectedTool.requiresExplicitGrant) {
-                        void policyTargetsQuery.refetch()
-                      } else {
-                        void agentsQuery.refetch()
-                      }
-                    }}
-                    type="button"
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : selectedTool.requiresExplicitGrant ? (
-                <ExplicitToolAgentAccessPanel
-                  deepWaterDependencyPolicyKeys={deepWaterDependencyPolicyKeys}
-                  targets={policyTargetsQuery.data ?? []}
-                  tool={selectedTool}
-                />
-              ) : (
-                <ToolAgentAccessPanel agents={agentsQuery.data ?? []} tool={selectedTool} />
-              )}
+              <QueryState
+                className="py-6"
+                errorLabel="Failed to load agents."
+                loadingLabel="Loading agents…"
+                query={
+                  selectedTool.requiresExplicitGrant ? policyTargetsQuery : agentsQuery
+                }
+              >
+                {() =>
+                  selectedTool.requiresExplicitGrant ? (
+                    <ExplicitToolAgentAccessPanel
+                      deepWaterDependencyPolicyKeys={deepWaterDependencyPolicyKeys}
+                      targets={policyTargetsQuery.data ?? []}
+                      tool={selectedTool}
+                    />
+                  ) : (
+                    <ToolAgentAccessPanel agents={agentsQuery.data ?? []} tool={selectedTool} />
+                  )
+                }
+              </QueryState>
             </div>
           </section>
         </div>
@@ -283,11 +266,13 @@ export const ToolsPage = () => {
   }
 
   return (
-    <div className="h-full w-full">
-      <ColumnBrowserViewport
-        activeColumn={phoneLayout && selectedToolId && selectedTool ? 1 : 0}
-        columns={columns}
-      />
-    </div>
+    <OwnerGate>
+      <div className="h-full w-full">
+        <ColumnBrowserViewport
+          activeColumn={phoneLayout && selectedToolId && selectedTool ? 1 : 0}
+          columns={columns}
+        />
+      </div>
+    </OwnerGate>
   )
 }

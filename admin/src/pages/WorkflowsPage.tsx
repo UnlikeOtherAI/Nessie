@@ -13,6 +13,7 @@ import {
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { Pill } from '../components/primitives/Pill'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
+import { useIsOwner } from '../components/shared/OwnerGate'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import { WorkflowInstallationDetail } from '../components/features/workflows/WorkflowInstallationDetail'
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
@@ -74,7 +75,7 @@ export const WorkflowsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const isWorkflowAdmin =
     isOwner || (me?.user.roleIds.includes('admin') ?? false)
   // W19: template authoring stays admin-gated; the member-facing read surface

@@ -9,6 +9,7 @@ import {
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { useToasts } from '../../../providers/ToastProvider'
 import { Pill } from '../../primitives/Pill'
+import { useIsOwner } from '../../shared/OwnerGate'
 import {
   formatRelativeTime,
   getInstallationTone,
@@ -121,9 +122,8 @@ const InstallationAutomationRow = ({
 
 export const ChannelAutomationsPanel = ({ channelId }: { channelId: string }) => {
   const { me } = useAuthSession()
-  const isWorkflowAdmin =
-    (me?.user.roleIds.includes('owner') ?? false) ||
-    (me?.user.roleIds.includes('admin') ?? false)
+  const isOwner = useIsOwner()
+  const isWorkflowAdmin = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const { data: installations = [], isLoading } = useWorkflowInstallations(true, channelId)
   const { data: templates = [] } = useWorkflowTemplates()
   const templateNameById = new Map(templates.map((template) => [template.id, template.name]))

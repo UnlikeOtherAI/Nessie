@@ -84,8 +84,11 @@ export const DeepWaterRunHistory = ({
     </div>
 
     <div className="mt-3 overflow-hidden rounded border border-[var(--sep)]">
+      {/* Not QueryState: this takes a `loading` boolean, not a query, so a
+          Retry would have nothing to call. The ellipsis is the admin's
+          typographic one, matching every other loading line. */}
       {loading ? (
-        <div className="px-3 py-4 text-sm text-[var(--tx3)]">Loading runs...</div>
+        <div className="px-3 py-4 text-sm text-[var(--tx3)]">Loading runs…</div>
       ) : runs.length === 0 ? (
         <div className="px-3 py-4 text-sm text-[var(--tx3)]">No Deep Water runs yet.</div>
       ) : (

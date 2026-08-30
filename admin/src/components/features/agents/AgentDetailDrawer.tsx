@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { useAgentStatus } from '../../../facades/agents/hooks'
 import type { AgentRecord } from '../../../lib/api-client'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Pill } from '../../primitives/Pill'
+import { useIsOwner } from '../../shared/OwnerGate'
 import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
 import { AgentStatusDot } from './AgentStatusDot'
 import { AgentDetailTabs } from './AgentDetailTabs'
@@ -35,13 +35,12 @@ export const AgentDetailDrawer = ({
   onSelectAgent,
 }: AgentDetailDrawerProps) => {
   const navigate = useNavigate()
-  const { me } = useAuthSession()
+  const isOwner = useIsOwner()
   const { data: status } = useAgentStatus(agent?.id)
 
   if (!agent) {
     return null
   }
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
 
   return (
     <>

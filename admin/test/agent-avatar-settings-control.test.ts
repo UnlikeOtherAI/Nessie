@@ -9,7 +9,8 @@ const readSource = (relativePath: string): string =>
 test('agent details put the avatar editor at the agent detail surface for owners only', () => {
   const drawer = readSource('../src/components/features/agents/AgentDetailDrawer.tsx')
 
-  assert.match(drawer, /const isOwner = me\?\.user\.roleIds\.includes\('owner'\) \?\? false/)
+  // The owner derivation itself now lives in one place (components/shared/OwnerGate).
+  assert.match(drawer, /const isOwner = useIsOwner\(\)/)
   assert.match(drawer, /<AgentAvatarQuickEdit agent=\{agent\} canEdit=\{isOwner\} \/>/)
 })
 

@@ -20,6 +20,7 @@ import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { parseChannelIdFromPath } from '../lib/channel-route'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { reportPushSurface } from '../lib/push-surface'
+import { useIsOwner } from '../components/shared/OwnerGate'
 import { ConversationInfoFlow } from '../components/features/channels/ConversationInfoFlow'
 import {
   buildFeedItems,
@@ -52,7 +53,7 @@ export const ChannelsPage = () => {
   const { onSelectAgent } = useOutletContext<AdminShellOutletContext>()
   const { data: channels = [] } = useChannels()
   const { data: agents = [] } = useAgents()
-  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: allUsers = [] } = useUsers(isOwner)
 
   const isComposeRoute = location.pathname === '/channels/new'

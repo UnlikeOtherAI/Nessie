@@ -14,6 +14,7 @@ import type {
   ToolRegistrySource,
   ToolRegistryTransport,
 } from '@nessie/schemas'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
@@ -95,10 +96,11 @@ export const useMcpToolRegistry = (
 ) => {
   const apiClient = useApiClient()
   const { me } = useAuthSession()
+  const isOwner = useIsOwner()
   const search = buildSearch(filters)
   const scope = me
     ? {
-        isOwner: me.user.roleIds.includes('owner'),
+        isOwner,
         organizationId: me.context.organizationId,
         teamId: me.context.teamId,
         userId: me.user.id,
@@ -117,9 +119,10 @@ export const useMcpToolRegistry = (
 export const useAgentToolPolicyTargets = (enabled = true) => {
   const apiClient = useApiClient()
   const { me } = useAuthSession()
+  const isOwner = useIsOwner()
   const scope = me
     ? {
-        isOwner: me.user.roleIds.includes('owner'),
+        isOwner,
         organizationId: me.context.organizationId,
         userId: me.user.id,
       }

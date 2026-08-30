@@ -30,6 +30,8 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
           </Link>
         </header>
 
+        {/* Not QueryState: left-aligned lines rendered above the grid rather
+            than in place of it, and the empty state is a card, not a line. */}
         {executorsQuery.isLoading ? <p className="text-sm text-[color:var(--tx3)]">Loading executors…</p> : null}
         {executorsQuery.isError ? <p className="text-sm text-[color:var(--danger-text)]">Unable to load project executors.</p> : null}
         {!executorsQuery.isLoading && !executorsQuery.isError && executors.length === 0 ? (

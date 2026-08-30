@@ -18,6 +18,7 @@ import type {
   ThreadMessageRecord,
   ThreadRecord,
 } from '../../lib/api-client'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
@@ -40,9 +41,10 @@ import { isExternalAgentChannel } from '../personal-assistant/hooks'
 
 const useIntegrationQueryScope = (): IntegrationQueryScope | null => {
   const { me } = useAuthSession()
+  const isOwner = useIsOwner()
   return me
     ? {
-        isOwner: me.user.roleIds.includes('owner'),
+        isOwner,
         organizationId: me.context.organizationId,
         teamId: me.context.teamId,
         userId: me.user.id,

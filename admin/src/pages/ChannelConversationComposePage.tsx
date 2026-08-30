@@ -13,6 +13,7 @@ import { PhoneBackButton } from '../layouts/admin-shell/PhoneBackButton'
 import { UserAvatar } from '../components/primitives/UserAvatar'
 import { MentionInput, type MentionEntity, type MentionInputHandle } from '../components/shared/MentionInput'
 import { OversizePasteDialog } from '../components/shared/OversizePasteDialog'
+import { useIsOwner } from '../components/shared/OwnerGate'
 import { useModalA11y } from '../components/shared/useModalA11y'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
@@ -55,7 +56,7 @@ export const ChannelConversationComposePage = () => {
   const navigate = useNavigate()
   const phoneLayout = usePhoneLayout()
   const { me, token } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const { data: allUsers = [] } = useUsers(isOwner)
   const { data: allAgents = [] } = useAgents()
   const startConversation = useStartChannelConversation()

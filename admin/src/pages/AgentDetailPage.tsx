@@ -14,7 +14,7 @@ import {
 } from '../layouts/admin-shell/local-back/LocalBackContext'
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { Pill } from '../components/primitives/Pill'
-import { useAuthSession } from '../providers/AuthSessionProvider'
+import { useIsOwner } from '../components/shared/OwnerGate'
 
 const getStatusTone = (status: AgentRecord['status']) => {
   if (status === 'error') return 'danger'
@@ -30,8 +30,7 @@ const getStatusTone = (status: AgentRecord['status']) => {
 export const AgentDetailPage = () => {
   const navigate = useNavigate()
   const { agentId } = useParams<{ agentId?: string }>()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   // `scope: 'all'` so a system/global agent (or a sub-agent) resolves too — the
   // same list the Agents page renders.
   const { data: agents = [], isPending } = useAgents({ scope: 'all' })
@@ -78,6 +77,11 @@ export const AgentDetailPage = () => {
 
   return (
     <div className="flex h-full flex-col">
+      {/* Left hand-rolled: AdminPageHeader can express neither the avatar in
+          the leading lane (it hardcodes `leading` to PhoneNavigationButton and
+          takes no `onBack` for the desktop-only Back) nor the three-line
+          identity block — name + status dot + status Pill, role, current
+          tool/last activity — under one title. */}
       <header className="flex items-start gap-3 px-6 pt-6 pb-4">
         <PhoneNavigationButton />
         {!phoneLayout ? (

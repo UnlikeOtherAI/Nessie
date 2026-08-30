@@ -14,6 +14,8 @@ import { DeepWaterResearchPanel } from '../components/features/integrations/Deep
 import { ExternalAgentActivationSection } from '../components/features/integrations/ExternalAgentActivationSection'
 import { ProductSurfacesPanel } from '../components/features/integrations/ProductSurfacesPanel'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
+import { useIsOwner } from '../components/shared/OwnerGate'
+import { QueryState } from '../components/shared/QueryState'
 import { ColumnBrowserViewport } from '../components/shared/column-browser/ColumnBrowserViewport'
 import {
   useIntegratedProducts,
@@ -21,7 +23,6 @@ import {
   useSetProductTeamEnablement,
 } from '../facades/integrations/hooks'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
 type SurfacePlan = {
@@ -280,9 +281,8 @@ const ProductDetail = ({
   product: IntegratedProductResponse
   showBack: boolean
 }) => {
-  const { me } = useAuthSession()
   const manifestQuery = useIntegrationPluginManifest(product.slug)
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const plan = surfacePlans[product.slug] ?? {
     nativePage: 'Custom product page registered from the integration manifest.',
     chatCards: 'Cards rendered from message metadata when agents run product work.',
@@ -423,31 +423,30 @@ export const IntegrationsPage = () => {
     [products, selectedSlug],
   )
 
-  const listBody = productsQuery.isLoading ? (
-    <div className="py-8 text-center text-sm text-[var(--tx3)]">Loading integrations...</div>
-  ) : productsQuery.isError ? (
-    <div className="py-8 text-center text-sm text-[var(--danger-text)]">
-      Failed to load integrations.{' '}
-      <button className="underline" onClick={() => void productsQuery.refetch()} type="button">
-        Retry
-      </button>
-    </div>
-  ) : products.length === 0 ? (
-    <div className="py-8 text-center text-sm text-[var(--tx3)]">No integrations registered.</div>
-  ) : (
-    <div className="grid gap-3">
-      {products.map((product) => (
-        <ProductRow
-          active={selectedProduct?.slug === product.slug}
-          key={product.slug}
-          onSelect={() => {
-            setSelectedSlug(product.slug)
-            setMobileDetailOpen(true)
-          }}
-          product={product}
-        />
-      ))}
-    </div>
+  const listBody = (
+    <QueryState
+      emptyLabel="No integrations registered."
+      errorLabel="Failed to load integrations."
+      isEmpty={products.length === 0}
+      loadingLabel="Loading integrations…"
+      query={productsQuery}
+    >
+      {() => (
+        <div className="grid gap-3">
+          {products.map((product) => (
+            <ProductRow
+              active={selectedProduct?.slug === product.slug}
+              key={product.slug}
+              onSelect={() => {
+                setSelectedSlug(product.slug)
+                setMobileDetailOpen(true)
+              }}
+              product={product}
+            />
+          ))}
+        </div>
+      )}
+    </QueryState>
   )
 
   const columns = [

@@ -8,8 +8,8 @@ import type {
 } from '../../lib/api-client'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { searchKeys } from '../../lib/query-keys'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { useChannels } from '../channels/hooks'
 import { useProjects } from '../projects/hooks'
 import { useUsers } from '../users/hooks'
@@ -112,8 +112,7 @@ export const useGlobalSearch = (
   mode: GlobalSearchMode = 'text',
 ): GlobalSearchResults => {
   const apiClient = useApiClient()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const isOwner = useIsOwner()
 
   const debounced = useDebouncedValue(query, DEBOUNCE_MS)
   const trimmed = debounced.trim()

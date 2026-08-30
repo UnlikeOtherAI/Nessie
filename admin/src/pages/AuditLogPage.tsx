@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Pill } from '../components/primitives/Pill'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
+import { OwnerGate, useIsOwner } from '../components/shared/OwnerGate'
 import { auditLogKeys } from '../lib/query-keys'
 import { useApiClient } from '../providers/ApiClientProvider'
-import { useAuthSession } from '../providers/AuthSessionProvider'
 
 type AuditEntry = {
   id: string
@@ -24,10 +24,11 @@ type AuditResponse = {
 }
 
 export const AuditLogPage = () => {
-  const { me } = useAuthSession()
   const apiClient = useApiClient()
   const [actionFilter, setActionFilter] = useState('')
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  // Still the page's own flag: the query below must stay disabled for a
+  // non-owner, exactly as before OwnerGate wrapped the render.
+  const isOwner = useIsOwner()
 
   const { data } = useQuery<AuditResponse>({
     queryKey: auditLogKeys.forAction(actionFilter),
@@ -40,57 +41,54 @@ export const AuditLogPage = () => {
     enabled: isOwner,
   })
 
-  if (!isOwner) {
-    return (
-      <section className="flex h-full items-center justify-center text-[color:var(--tx3)]">
-        Owner access required
-      </section>
-    )
-  }
-
   return (
-    <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title="Audit Log" />
+    <OwnerGate>
+      <section className="flex h-full min-h-0 flex-col">
+        <AdminPageHeader title="Audit Log" />
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="mb-4 w-full max-w-xs">
-          <input
-            className="admin-input"
-            onChange={(e) => setActionFilter(e.target.value)}
-            placeholder="Filter by action..."
-            value={actionFilter}
-          />
-        </div>
-        <div className="grid gap-2">
-          {(data?.data ?? []).map((entry) => (
-            <div key={entry.id} className="admin-card p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-[color:var(--tx)]">
-                    {entry.action}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="mb-4 w-full max-w-xs">
+            <input
+              className="admin-input"
+              onChange={(e) => setActionFilter(e.target.value)}
+              placeholder="Filter by action..."
+              value={actionFilter}
+            />
+          </div>
+          <div className="grid gap-2">
+            {(data?.data ?? []).map((entry) => (
+              <div key={entry.id} className="admin-card p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-[color:var(--tx)]">
+                      {entry.action}
+                    </span>
+                    <Pill radius="chip" size="sm" tone={entry.outcome === 'success' ? 'success' : 'danger'}>
+                      {entry.outcome}
+                    </Pill>
+                  </div>
+                  <span className="text-xs text-[color:var(--tx3)]">
+                    {new Date(entry.createdAt).toLocaleString()}
                   </span>
-                  <Pill radius="chip" size="sm" tone={entry.outcome === 'success' ? 'success' : 'danger'}>
-                    {entry.outcome}
-                  </Pill>
                 </div>
-                <span className="text-xs text-[color:var(--tx3)]">
-                  {new Date(entry.createdAt).toLocaleString()}
-                </span>
+                <div className="mt-1 text-xs text-[color:var(--tx2)]">
+                  {entry.actorType}:{entry.actorId.slice(0, 8)} &rarr;{' '}
+                  {entry.resourceType}
+                  {entry.resourceId ? `:${entry.resourceId.slice(0, 8)}` : ''}
+                </div>
               </div>
-              <div className="mt-1 text-xs text-[color:var(--tx2)]">
-                {entry.actorType}:{entry.actorId.slice(0, 8)} &rarr;{' '}
-                {entry.resourceType}
-                {entry.resourceId ? `:${entry.resourceId.slice(0, 8)}` : ''}
+            ))}
+            {/* Not QueryState: this page renders no loading and no error state
+                at all, so wrapping it would add two states rather than share
+                one. Worth doing — as its own change, not silently here. */}
+            {(data?.data ?? []).length === 0 && (
+              <div className="py-8 text-center text-[color:var(--tx3)]">
+                No audit events found
               </div>
-            </div>
-          ))}
-          {(data?.data ?? []).length === 0 && (
-            <div className="py-8 text-center text-[color:var(--tx3)]">
-              No audit events found
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </OwnerGate>
   )
 }

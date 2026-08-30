@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import type { UserRecord } from '../../lib/api-client'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import {
   useCreateUser,
   useSetUserDeactivated,
@@ -117,7 +118,7 @@ const MemberRow = ({ user, isSelf }: { user: UserRecord; isSelf: boolean }) => {
 export const SettingsMembersPage = () => {
   const { me } = useAuthSession()
   const roleIds = me?.user.roleIds ?? []
-  const isOwner = roleIds.includes('owner')
+  const isOwner = useIsOwner()
   // On an UnlikeOtherAI session the roster and its invitations are UOA API
   // features: UOA owns membership, and Nessie holds no list to show.
   const isUoaSession = me?.auth.providerType === 'uoa'

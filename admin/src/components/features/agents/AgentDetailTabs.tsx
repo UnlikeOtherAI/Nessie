@@ -9,6 +9,7 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
+import { PaginationFooter } from '../../shared/PaginationFooter'
 import { AgentAvailableTools } from './AgentAvailableTools'
 import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentThoughtStream } from './AgentThoughtStream'
@@ -128,27 +129,18 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
         {activeTab === 'messages' && (
           <div className="grid gap-4">
             <AgentMessagePreview messages={messages} />
-            {(messagePage > 0 || hasNextPage) && (
-              <div className="flex items-center justify-between border-t border-[color:var(--sep)] pt-4">
-                <button
-                  className="admin-button admin-button-secondary"
-                  disabled={messagePage === 0}
-                  onClick={() => setMessagePage((p) => p - 1)}
-                  type="button"
-                >
-                  Previous
-                </button>
-                <span className="text-xs text-[color:var(--tx3)]">Page {messagePage + 1}</span>
-                <button
-                  className="admin-button admin-button-secondary"
-                  disabled={!hasNextPage}
-                  onClick={() => setMessagePage((p) => p + 1)}
-                  type="button"
-                >
-                  Next
-                </button>
-              </div>
-            )}
+            {/* No total to name: the count is never fetched, only whether one
+                more row exists. So the strip hides when neither direction
+                leads anywhere — the only "single page" this side can see. */}
+            <PaginationFooter
+              canNext={hasNextPage}
+              canPrevious={messagePage > 0}
+              className="pt-4"
+              hideWhenSinglePage
+              label={`Page ${messagePage + 1}`}
+              onPageChange={setMessagePage}
+              page={messagePage}
+            />
           </div>
         )}
       </div>

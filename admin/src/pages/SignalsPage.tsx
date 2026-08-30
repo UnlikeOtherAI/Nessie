@@ -90,6 +90,9 @@ export const SignalsPage = ({ surface }: ProductPageProps) => {
     )
   }
 
+  // Not QueryState: the error here is the richer CenteredState with a title,
+  // a body and a call to action for the needs_setup flow, and each state
+  // returns its own Frame. A one-line error would lose all of that.
   if (signalsQuery.isLoading) {
     return (
       <Frame title={title}>

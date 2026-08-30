@@ -6,7 +6,7 @@ import {
   useUpdateWorkflowTemplate,
   useWorkflowTemplate,
 } from '../../facades/workflows/hooks'
-import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import {
   CANVAS_NODE_INSERT_OFFSET,
   CANVAS_NODE_INSERT_STEPS,
@@ -58,8 +58,7 @@ export const useWorkflowGraphIo = ({
   const navigate = useNavigate()
   const location = useLocation()
   const { workflowTemplateId } = useParams<{ workflowTemplateId?: string }>()
-  const { me } = useAuthSession()
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const {
     data: workflowTemplate,
     isLoading: isWorkflowTemplateLoading,

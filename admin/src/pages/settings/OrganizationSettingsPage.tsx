@@ -4,6 +4,7 @@ import {
   useCurrentOrganization,
   useUpdateOrganization,
 } from '../../facades/organization/hooks'
+import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { LogoPanel } from './organization/LogoPanel'
 import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
@@ -16,6 +17,10 @@ import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 export const OrganizationSettingsPage = () => {
   const { me } = useAuthSession()
+  // Owner-only, matching the owner-gated nav item and the other org-admin
+  // settings (Members). Non-owners are routed back to their profile. Derived
+  // with the other hooks: the refusal below sits after an early return.
+  const isOwner = useIsOwner()
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateOrganization = useUpdateOrganization()
 
@@ -36,9 +41,6 @@ export const OrganizationSettingsPage = () => {
     return null
   }
 
-  // Owner-only, matching the owner-gated nav item and the other org-admin
-  // settings (Members). Non-owners are routed back to their profile.
-  const isOwner = me.user.roleIds.includes('owner')
   if (!isOwner) {
     return <Navigate to="/settings/profile" replace />
   }

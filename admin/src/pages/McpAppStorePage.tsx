@@ -39,6 +39,7 @@ import {
   useSetInstanceSecret,
   type McpLibraryEntryRecord,
 } from '../facades/mcp-library/hooks'
+import { useIsOwner } from '../components/shared/OwnerGate'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 
@@ -62,7 +63,7 @@ export const McpAppStorePage = () => {
   const [searchParams] = useSearchParams()
   const action = searchParams.get('action')
   const catalogEntryIdParam = searchParams.get('catalogEntryId') ?? undefined
-  const isOwner = me?.user.roleIds.includes('owner') ?? false
+  const isOwner = useIsOwner()
   const isSuperAdmin = me?.user.superAdmin ?? false
   const isElevated = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const currentUserId = me?.user.id ?? ''
