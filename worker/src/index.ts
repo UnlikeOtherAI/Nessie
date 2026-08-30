@@ -55,6 +55,7 @@ import {
 import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { dispatchNextMailboxMessage, reclaimExpiredMailboxMessages } from './control/mailbox.js'
+import { maybeSyncRegistry } from './control/registry-sync-sweep.js'
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
@@ -676,6 +677,44 @@ export const startWorker = async (
     }
   }, COMMS_RENEW_INTERVAL_MS)
 
+  // MCP App Store registry sync. `maybeSyncRegistry` self-gates on the last
+  // completed run (6h window, `NESSIE_REGISTRY_SYNC_INTERVAL_MS`), so a restart
+  // or a frequent poll never triggers a fresh multi-minute walk — the poll only
+  // asks "is one due?". The interval and the post-startup kick share this one
+  // guarded body so the kick fills an empty store within a minute of a fresh
+  // deploy while the interval keeps it fresh (~every 6h) thereafter.
+  let registrySyncSweepInFlight = false
+  const runRegistrySyncSweep = async (): Promise<void> => {
+    if (registrySyncSweepInFlight || abortController.signal.aborted) {
+      return
+    }
+
+    registrySyncSweepInFlight = true
+    try {
+      await maybeSyncRegistry(prisma)
+    } catch (error) {
+      console.error('[worker.registry-sync] failed', error)
+    } finally {
+      registrySyncSweepInFlight = false
+    }
+  }
+
+  // Guard a bad env value: an unparseable NESSIE_REGISTRY_SYNC_SWEEP_MS would
+  // otherwise become a NaN delay (a hot 1ms loop), so fall back to 30 minutes.
+  const registrySyncSweepMs = (() => {
+    const fromEnv = Number(process.env.NESSIE_REGISTRY_SYNC_SWEEP_MS)
+    return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 30 * 60 * 1000
+  })()
+  const registrySyncSweepInterval = setInterval(() => {
+    void runRegistrySyncSweep()
+  }, registrySyncSweepMs)
+  // Fire one sweep shortly after startup so a fresh install fills the store
+  // promptly rather than waiting up to a full poll interval; it still goes
+  // through `maybeSyncRegistry`, so it no-ops if a sync ran recently.
+  const registrySyncKickoff = setTimeout(() => {
+    void runRegistrySyncSweep()
+  }, 60 * 1000)
+
   console.log(
     JSON.stringify(
       {
@@ -701,6 +740,8 @@ export const startWorker = async (
     clearInterval(executionLeaseSweepInterval)
     clearInterval(pendingBatchSweepInterval)
     clearInterval(commsRenewInterval)
+    clearInterval(registrySyncSweepInterval)
+    clearTimeout(registrySyncKickoff)
     modelClient.close()
     await realtimeTransport.close()
     await pool.end()

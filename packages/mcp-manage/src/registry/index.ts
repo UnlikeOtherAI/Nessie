@@ -16,6 +16,7 @@
 export * from './registry-auth.js'
 export * from './registry-categories.js'
 export * from './registry-client.js'
+export * from './registry-icons.js'
 export * from './registry-import.js'
 export * from './registry-mapper.js'
 export * from './registry-merge.js'

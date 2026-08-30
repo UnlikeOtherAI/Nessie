@@ -1,4 +1,8 @@
-import { syncRegistry, type RegistrySyncProgress } from '@nessie/mcp-manage'
+import {
+  createRegistryIconCacher,
+  syncRegistry,
+  type RegistrySyncProgress,
+} from '@nessie/mcp-manage'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
@@ -129,7 +133,7 @@ const resolveAfter = <T>(ms: number, value: T): Promise<T> =>
   })
 
 export const registerAppsRegistryRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
-  const { prisma, requireActorContext, requireOwner } = deps
+  const { prisma, fileService, requireActorContext, requireOwner } = deps
 
   /**
    * Two guards, because neither alone is enough. The in-process handle catches
@@ -190,6 +194,17 @@ export const registerAppsRegistryRoutes = (app: FastifyInstance, deps: RouteDeps
     const firstProgress = createDeferred<string | null>()
     const sweep = syncRegistry(prisma, {
       maxPages: body.maxPages,
+      // An owner-triggered sync has a real org + actor, so it can cache the
+      // icons some registry records advertise. The bytes are attributed to the
+      // triggering owner's org and served cross-org, gated by store
+      // visibility. The scheduled worker sweep runs without this (no actor
+      // context), so those apps keep the monogram fallback until an owner runs
+      // a sync — a re-sync only fills an icon a row does not have yet.
+      iconCacher: createRegistryIconCacher({
+        fileService,
+        organizationId: actorContext.tenant.organizationId,
+        actorId: actorContext.actor.actorId,
+      }),
       onProgress: (progress: RegistrySyncProgress) => {
         firstProgress.settle(progress.runId)
       },
