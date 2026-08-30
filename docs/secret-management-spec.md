@@ -65,7 +65,7 @@ completed before file/tool outputs can be treated as secret-safe inputs.
 `infrastructure/compose/docker-compose.prod.yml` runs Infisical and its Redis
 sidecar alongside Nessie, with a separate `infisical` database and database
 role on the existing `nessie-postgres` cluster. PostgreSQL and Redis have no
-host ports. Caddy is the only ingress to `vault.nessie.works`.
+host ports. Caddy is the only ingress to `vault.unlikeotherai.com`.
 
 The Infisical write service token is mounted as a Docker secret into the API
 container at `/run/secrets/infisical_service_token`. The worker, executor, and

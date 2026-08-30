@@ -18,7 +18,7 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 | Push relay (optional) | `https://push.unlikeotherai.com` | `nessie-gateway` (Fastify, 5556) | `edge` |
 | Worker | — (no ingress) | `nessie-worker` | `db` |
 | Postgres + pgvector | — (internal) | `nessie-postgres` (pg17) | `db` |
-| Secret vault | `https://vault.nessie.works` | `nessie-infisical` | `edge`, private `vault` |
+| Secret vault | `https://vault.unlikeotherai.com` | `nessie-infisical` | `edge`, private `vault` |
 
 - **Host:** `178.105.82.46` (Hetzner, Ubuntu 24.04), SSH as `root`.
 - **DNS zone:** `nessie.works` in Cloudflare (`ffc45bc029478feb510f8e5791feaf20`),
@@ -87,7 +87,7 @@ preserves `.env`; keep it host-only with mode `0600`.
 Set `COMPOSE_PROFILES=secrets` only after all vault settings exist; this keeps
 ordinary application deploys bootable while the vault has not been provisioned.
 
-Add a `vault.nessie.works` DNS-only A record to the same host and a Caddy site
+Add a `vault.unlikeotherai.com` DNS-only A record to the same host and a Caddy site
 block that proxies only to `nessie-infisical:8080`. Validate the Caddyfile and
 recreate Caddy as described below. After startup, create the Infisical admin,
 project, `prod` environment, and an API service token scoped only to

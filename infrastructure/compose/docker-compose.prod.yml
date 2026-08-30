@@ -109,7 +109,7 @@ services:
       - .env.infisical
     environment:
       REDIS_URL: redis://nessie-infisical-redis:6379
-      SITE_URL: https://vault.nessie.works
+      SITE_URL: https://vault.unlikeotherai.com
     depends_on:
       nessie-postgres:
         condition: service_healthy
