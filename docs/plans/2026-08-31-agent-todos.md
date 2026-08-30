@@ -79,7 +79,8 @@ including three stale assumptions this design must not build on:
   same-version dedupe), resolved on the `/approvals` page, effect dispatched
   by `runApprovalEffect`'s action switch
   (`api/src/services/approval-effects.ts`) with a version-staleness guard.
-- **Metadata-driven chat cards** mounted in `ChannelMessageRow.tsx:326-380`
+- **Metadata-driven chat cards** mounted in
+  `admin/src/components/features/channels/ChannelMessageRow.tsx`
   (`runStop` → `RunStopContinue`, `workflowRun` → `WorkflowRunCard`,
   `card.comms_connect`, `documentRef`, `uiCards`): server-authored metadata,
   zod-`safeParse`d client-side, component fetches live state itself.
@@ -143,7 +144,7 @@ So: three new tables plus one agent column, deliberately small.
 enum AgentTodoTemplateStatus { draft  active  archived }
 enum AgentTodoStatus         { open   running completed cancelled }
 enum AgentTodoStepStatus     { pending running completed failed skipped }
-enum AgentTodoAuthorType     { user   agent }
+enum AgentTodoActorType      { user   agent }   // template authorship AND step updates
 
 model AgentTodoTemplate {
   id             String  @id @default(uuid()) @db.Uuid
@@ -154,7 +155,7 @@ model AgentTodoTemplate {
   steps          Json    // ordered array, validated by AgentTodoTemplateStepsSchema
   version        Int     @default(1)         // bumped on every steps/name edit
   status         AgentTodoTemplateStatus @default(draft)
-  authorType     AgentTodoAuthorType     // who authored the *current* version
+  authorType     AgentTodoActorType      // who authored the *current* version
   createdByUserId String? @db.Uuid          // set when a person authored/last edited
   proposedByRunId String? @db.Uuid          // set when the draft came from an agent run
   createdAt DateTime @default(now())
@@ -189,7 +190,7 @@ model AgentTodoStep {
   instructions String
   status     AgentTodoStepStatus @default(pending)
   note       String?                   // short outcome note (agent- or human-written)
-  updatedByActorType String?           // 'user' | 'agent'
+  updatedByActorType AgentTodoActorType?  // enum, not free text — the actor fact is structural
   updatedByActorId   String? @db.Uuid
   completedAt DateTime?
   @@unique([todoId, sequence])
@@ -219,9 +220,26 @@ Decisions folded into that shape:
   later is additive; carrying a dead state from day one is not.
 - **`title` on the instance, not just the template**, because standalone
   to-dos have no template to name them.
-- **No `assigneeUserId`.** A to-do belongs to the agent. Work distribution to
-  people is the existing Task/kanban system; see §9 for the deliberate
-  non-link.
+- **No `assigneeUserId`, and no per-step `assigneeAgentId`** (which
+  `PlanStep` has and a reviewer will ask about): a to-do belongs to one
+  agent. If working a step calls for help, the run uses `delegate` /
+  `spawn_subtask` exactly as in any other run — delegation is run machinery,
+  not to-do structure, and putting an agent id on a step would be the first
+  brick of a second orchestration engine (§9). Work distribution to people
+  is the existing Task/kanban system; see §9 for the deliberate non-link.
+- **`cancelled` is designed, not parked** (unlike `blocked`, which is
+  dropped): the instance creator or an org owner may cancel an `open` or
+  `running` instance. Cancelling never touches a run — the run keeps its own
+  controls; its next `todo_step_update` simply refuses in words ("this to-do
+  was cancelled") because the ownership check below reads live state, and
+  `activeRunId` liveness is derived (§3), so nothing dangles.
+- **System-managed agents are out of scope in v1.** `todosEnabled` is
+  written through the generic agent-update path, which refuses the PA
+  (`PERSONAL_ASSISTANT_UPDATE_REQUIRES_BOOTSTRAP`), and
+  `isAgentAccessibleToActor` hard-codes `systemManaged: false`, so every
+  to-do route and card fails closed for system agents by construction. If
+  the PA ever wants to-dos, that is a bootstrap decision plus a read-path
+  decision, taken deliberately then.
 
 ### 2.3 Determinism guarantees, stated as invariants
 
@@ -234,7 +252,9 @@ Decisions folded into that shape:
    status from message content.
 3. Instance completion is derived: `completed` when every step is terminal
    (`completed | skipped | failed`), computed in the same transaction as the
-   final step write — the `computePlanTerminalStatus` shape. A run ending
+   final step write (the same derive-from-remaining-steps shape
+   `computePlanTerminalStatus` uses, reimplemented here — the plan ledger
+   itself is not reused, §2.1). A run ending
    with steps still `pending` leaves the to-do honestly `open` (or `running`
    → back to `open` when `activeRunId` clears); nothing auto-ticks.
 
@@ -268,12 +288,31 @@ Execution is an ordinary agentic run — no new runner, no suspension:
 
 Run integration details:
 
-- `AgentTodo.activeRunId` is claimed with a conditional update when a run
-  adopts a to-do (one run per to-do at a time; a second `todo_start` on the
-  same instance refuses in words) and cleared at the run's terminal
-  transition — fused into `updateRunStatus` exactly like the 👀
-  working-marker, so completion, failure, budget stop, and cancellation all
-  release it without remembering to.
+- `AgentTodo.activeRunId` is claimed with a conditional update (claim
+  succeeds → steps are returned; the loser of the race gets a refusal in
+  words and **never receives the step list**), and only ever from *inside an
+  executing run* — `todo_start`, or the kickoff adoption at run start — never
+  at enqueue time, so a run cancelled while still `pending` cannot have
+  claimed anything. Release is fused into the worker's `updateRunStatus`
+  (the 👀 working-marker precedent) **but that is not sufficient on its
+  own**: the API's immediate-cancel branch flips a `pending`/
+  `waiting_approval` run terminal with a bare `updateMany`
+  (`api/src/services/runs.ts` `requestRunCancellation`) and sweep/reaper
+  paths terminalize stuck runs outside the loop, none of which pass through
+  `updateRunStatus`. So the release is belt-and-braces: **every reader
+  derives liveness** as `activeRunId` set AND the referenced run non-terminal
+  (one JOIN), and `todo_start`'s conditional claim treats a stale pointer to
+  a terminal run as unclaimed. A dangling id is then harmless by
+  construction rather than by every terminal writer remembering.
+- **Agent step writes are ownership-checked:** `todo_step_update` requires
+  `context.run.id === activeRunId` (live, per the derivation above) and
+  refuses in words otherwise — the run that lost a claim race, or whose
+  to-do was cancelled under it, cannot write last-writer-wins updates.
+  Human ticks are exempt (a shared checklist is the point). And because a
+  person may tick steps while a run is mid-flight, `todo_step_update`'s
+  `outputPreview` always returns the **current full checklist state**, so
+  the agent's view refreshes on every write instead of freezing at
+  `todo_start`.
 - The to-do tools are **builtins gated by `Agent.todosEnabled`**, checked
   structurally at toolset assembly (like `surfacePolicy`), not new
   `requiresExplicitGrant` keys — this is an owner-configured feature of the
@@ -282,10 +321,16 @@ Run integration details:
   context, never from arguments, so an agent can never touch another agent's
   to-dos.
 - **Chat surface (rule zero doorway):** when a run starts a to-do, the
-  server stamps `metadata.todoRef = { todoId }` on the kickoff/reply message;
-  a `TodoProgressCard` in `ChannelMessageRow` (the `runStop`/`workflowRun`
-  precedent — zod-parsed, self-gating) fetches live instance state through
-  the gated API and renders the checklist with per-step status, updating on
+  worker's message chokepoint stamps `metadata.todoRef = { todoId }` on the
+  agent's **assistant reply** — never on the trigger-style kickoff, which is
+  `role: 'system'` and deliberately excluded from the feed
+  (`worker/src/control/trigger-run.ts:347`), where a card would be
+  invisible. A `TodoProgressCard` in `ChannelMessageRow` (the
+  `runStop`/`workflowRun` precedent — zod-parsed, self-gating) carries
+  **only the id in metadata** and fetches all content through the gated API,
+  so a viewer who fails the agent gate gets a 404 and the card renders a
+  neutral placeholder — it fails closed, never leaking step content to a
+  channel-mate the agent predicates would withhold it from. Live updates via
   a realtime `agent.todo.updated` event (id-only payload, the
   `agent.updated` precedent — clients refetch through the entitled route).
 - **Disclosure analysis (obligation stated in the same change):** to-do
@@ -327,6 +372,18 @@ status/activity routes take:
 | Tick a step manually | instance creator, org owner, or the agent's steward | task-board permissiveness; humans drag cards backwards |
 | Agent writes (`todo_start`, `todo_step_update`, `todo_template_propose`) | run context only — own `agentId`, own org/team | `deep_water_run_update`'s tenancy-from-run-context rule |
 
+**Templates are configuration that is deliberately readable wider than
+`systemPrompt`** — worth stating because it looks inconsistent until the
+product rule is named. The Designer's edit tab is owner-gated because a
+system prompt is the agent's private wiring; a to-do is the opposite: the
+whole point of an SOP is that colleagues can see what the agent's checklist
+says and watch it being worked (the progress card renders the steps to the
+room regardless). "Whoever can see the agent sees its to-dos" is the product
+spec, applied to read; *writing* stays owner-gated. Consequence, stated in
+the Designer's copy: step instructions are visible to everyone who can see
+the agent — never put secrets in them (secrets belong in connectors and the
+encrypted store, as everywhere else).
+
 Template editing should eventually open to the agent's **steward**
 (`ownerUserId`), but people-and-their-agents phase 3 is explicitly blocked on
 that entitlement decision — so v1 matches the Designer's actual gate (org
@@ -352,6 +409,15 @@ should be** — following `kb_publish_request` piece for piece:
    model-judged (noticing "I do this every week" in any language); the
    proposal itself is this one structural act. The run does not wait —
    there is no suspend/resume, and the proposal doesn't need one.
+   **The approval sets `requiredApproverRole: 'owner'`** — a divergence from
+   the kb precedent, which sets no role, so there any member passing
+   `approvalVisibilityWhere` can resolve
+   (`api/src/services/approvals.ts:188` checks the live role *only when the
+   field is set*). Activating a template is the same act as authoring one,
+   and authoring is owner-gated (§4); without the role the approval route
+   would be a member-level side door into an owner-only write. This is also
+   what finally gives the dangling `requiredApproverRole` hook a production
+   writer.
 2. **Review.** The draft renders in the Designer's To-dos tab with a
    "proposed by the agent" badge and on the existing `/approvals` page
    (context-narrowed card + deep link into the To-dos tab, the
@@ -384,17 +450,33 @@ is an `AgentTrigger` whose config carries `todoTemplateId`:
   Everything the trigger system owns comes free: the sweep, overlap skips,
   delivery retries, **health classification and the owner alert when the
   schedule dies**, and explicit reauthorization.
+- **`config.todoTemplateId` gets a named validation chokepoint, because the
+  generic config path deliberately is not one.** `AgentTrigger.config` is an
+  open `Record<string, unknown>` and `stripServerOwnedTriggerConfig`
+  (`packages/workspace-admin/src/trigger-config-identity.ts`) strips only
+  the three identity keys — any client can already write arbitrary keys
+  through `POST /api/triggers`. So the shared trigger create/update path
+  (`trigger-create.ts`) grows one validation: when `todoTemplateId` is
+  present, the template must exist, belong to **this trigger's agent**, and
+  be `active`, else the write is refused in words. The fire path
+  re-validates (a template archived after the trigger was written fails the
+  delivery with a `health_detail` naming the template — the
+  "schedule that stops says so" rule), which also covers any row written
+  before the validation existed.
 - At fire time, `trigger-run.ts` sees `config.todoTemplateId`, instantiates
   an `AgentTodo` pinned to the template's current version, and builds the
   kickoff prompt from the materialized steps instead of `config.prompt`. Each
   fire is a fresh instance (a Monday checklist half-done on Tuesday stays
   visible as its own honest record; next Monday starts clean — rollover is an
   open question, §10).
-- A template referenced by an enabled trigger cannot be archived, and
-  `todosEnabled` cannot be switched off, until those triggers are paused or
-  deleted — a reason-coded 409 (`TODO_TEMPLATE_IN_USE` /
-  `AGENT_TODOS_IN_USE`), the `LEDGER_DEEPWATER_ACTIVE_RUNS` precedent, so a
-  schedule never fires into a feature that no longer exists.
+- A template cannot be archived, and `todosEnabled` cannot be switched off,
+  while any referencing trigger has **`enabled: true`** — the exact
+  predicate, not "active": an `enabled` trigger in `needs_reauthorization`
+  is one repair click from firing again, so it still counts; a
+  `enabled: false` (paused/cancelled) one does not. Reason-coded 409
+  (`TODO_TEMPLATE_IN_USE` / `AGENT_TODOS_IN_USE`), the
+  `LEDGER_DEEPWATER_ACTIVE_RUNS` precedent, so a schedule never fires into a
+  feature that no longer exists.
 
 ## 7. The Agent Designer / edit-agent interface
 
@@ -509,7 +591,8 @@ exists (3 and 4 can swap if proposals are wanted sooner).
    an existing active template (a step diff), or only new templates in v1?
    Proposed: new-only; an edit proposal reuses the same draft+approval shape
    later.
-7. **`AgentTodoStatus.cancelled` semantics** — who may cancel an open
-   instance (creator + owner proposed), and does cancelling a running one
-   also cancel its run (proposed: no — it just releases `activeRunId` at the
-   run's own terminal state; run cancellation stays on the run controls).
+7. **Should a run auto-adopt an open scheduled instance?** When a schedule
+   fires and last week's instance is still open, the new run today ignores
+   it (fresh instance per fire, §6). Should the kickoff instead mention the
+   still-open one so the model can decide to finish it first? Structural
+   fact injection is cheap; decide with question 3.
