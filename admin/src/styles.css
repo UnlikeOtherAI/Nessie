@@ -14,6 +14,38 @@
   --breakpoint-2xl: 96rem;
 }
 
+/* Focus mode changes the palette through inherited custom properties. Register
+   the colour tokens that it replaces so browsers can interpolate them instead
+   of snapping every surface to its new colour. */
+@property --rail { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sb { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sb-active { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --main { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --main-hover { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --panel { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --panel-soft { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --surface-inverse { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --surface-inverse-2 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --ink { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --muted { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --line { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --sep { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --border-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx2 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --tx3 { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-hover { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --accent-soft { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --on-accent { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --overlay-weak { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --overlay { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --overlay-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim-weak { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim { syntax: '<color>'; inherits: true; initial-value: #000000; }
+@property --scrim-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
+
 :root {
   color-scheme: dark;
   --rail: #2e1132; --sb: #1e1222; --sb-active: #6d3579; --ink: #2c1832;
@@ -286,6 +318,44 @@ a {
   height: 100dvh;
   background: var(--rail);
   color: var(--tx);
+}
+
+/* The value changes happen on the four palette owners. Descendants inherit the
+   in-flight colours, which keeps every route and component in sync through one
+   300ms transition rather than giving each screen a separate animation. */
+.admin-frame > .admin-topbar,
+.admin-frame > .admin-shell,
+.admin-frame > .admin-shell > aside,
+.admin-frame > .admin-shell > .resizable-sidebar {
+  transition:
+    --rail 300ms var(--easing-standard),
+    --sb 300ms var(--easing-standard),
+    --sb-active 300ms var(--easing-standard),
+    --main 300ms var(--easing-standard),
+    --main-hover 300ms var(--easing-standard),
+    --panel 300ms var(--easing-standard),
+    --panel-soft 300ms var(--easing-standard),
+    --surface-inverse 300ms var(--easing-standard),
+    --surface-inverse-2 300ms var(--easing-standard),
+    --ink 300ms var(--easing-standard),
+    --muted 300ms var(--easing-standard),
+    --line 300ms var(--easing-standard),
+    --sep 300ms var(--easing-standard),
+    --border-strong 300ms var(--easing-standard),
+    --tx 300ms var(--easing-standard),
+    --tx2 300ms var(--easing-standard),
+    --tx3 300ms var(--easing-standard),
+    --accent 300ms var(--easing-standard),
+    --accent-hover 300ms var(--easing-standard),
+    --accent-strong 300ms var(--easing-standard),
+    --accent-soft 300ms var(--easing-standard),
+    --on-accent 300ms var(--easing-standard),
+    --overlay-weak 300ms var(--easing-standard),
+    --overlay 300ms var(--easing-standard),
+    --overlay-strong 300ms var(--easing-standard),
+    --scrim-weak 300ms var(--easing-standard),
+    --scrim 300ms var(--easing-standard),
+    --scrim-strong 300ms var(--easing-standard);
 }
 
 /* Focus is a neutral Slack-style treatment: charcoal navigation frames a
@@ -1337,6 +1407,35 @@ a {
 
 .admin-rail-btn.active .admin-rail-btn-label {
   font-weight: var(--font-weight-semibold);
+}
+
+/* The rail clips its contents, so the focus explanation is portalled beside
+   it. This matches Slack's two-line, right-hand focus-mode hover affordance. */
+.focus-mode-tooltip {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 92px));
+  transform: translateY(-50%);
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #1f1f1f;
+  color: #f8f8f8;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.focus-mode-tooltip strong {
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.focus-mode-tooltip span {
+  color: #c8c8c8;
 }
 
 /* The rail's creation control intentionally has no label: its compact

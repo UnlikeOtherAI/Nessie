@@ -344,8 +344,8 @@ export const NotificationsPage = () => {
                 <div className="font-semibold text-[color:var(--tx)]">Pause distractions</div>
                 <div className="mt-1 text-sm text-[color:var(--tx2)]">
                   {focusModeEnabled
-                    ? 'Notifications, app badges, and unread emphasis are paused everywhere you use Nessie.'
-                    : 'Pause notifications and mute attention cues while you work.'}
+                    ? 'Push notifications, app badges, and unread emphasis are paused on every Nessie device.'
+                    : 'Pause push notifications and mute attention cues on every device while you work.'}
                 </div>
               </div>
               <NotificationToggle
