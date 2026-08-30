@@ -41,6 +41,7 @@ import { NotificationsPage } from './pages/settings/NotificationsPage'
 import { OrganizationSettingsPage } from './pages/settings/OrganizationSettingsPage'
 import { PushCredentialsPage } from './pages/settings/PushCredentialsPage'
 import { SecuritySettingsPage } from './pages/settings/SecuritySettingsPage'
+import { SecretsPage } from './pages/settings/SecretsPage'
 import { SettingsChannelsPage } from './pages/settings/SettingsChannelsPage'
 import { SettingsMembersPage } from './pages/settings/SettingsMembersPage'
 import { SettingsProfilePage } from './pages/settings/SettingsProfilePage'
@@ -277,6 +278,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings/security',
         element: <SecuritySettingsPage />,
+      },
+      {
+        path: '/settings/secrets',
+        element: <SecretsPage />,
       },
       {
         path: '/settings/organization',

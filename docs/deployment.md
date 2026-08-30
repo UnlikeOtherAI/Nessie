@@ -18,6 +18,7 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
 | Push relay (optional) | `https://push.unlikeotherai.com` | `nessie-gateway` (Fastify, 5556) | `edge` |
 | Worker | — (no ingress) | `nessie-worker` | `db` |
 | Postgres + pgvector | — (internal) | `nessie-postgres` (pg17) | `db` |
+| Secret vault | `https://vault.nessie.works` | `nessie-infisical` | `edge`, private `vault` |
 
 - **Host:** `178.105.82.46` (Hetzner, Ubuntu 24.04), SSH as `root`.
 - **DNS zone:** `nessie.works` in Cloudflare (`ffc45bc029478feb510f8e5791feaf20`),
@@ -42,8 +43,9 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   a DNS alias on the shared `db` network, so naming it `postgres` would collide
   with the shared Postgres container and make `postgres:5432` round-robin between
   two databases, breaking every other app on the host.
-- **No Redis.** The job queue and realtime transport are Postgres-backed
-  (`PgQueueProvider` / `PgRealtimeTransport`), so no Redis is needed.
+- **Nessie has no Redis dependency.** Its job queue and realtime transport are
+  Postgres-backed (`PgQueueProvider` / `PgRealtimeTransport`). Infisical has a
+  separate private Redis sidecar for its own sessions and background work.
 - **One backend image for API + worker.** The workspace is tightly interlinked
   (`@nessie/api` depends on `@nessie/worker`, both need the Prisma client). A
   single full-workspace image (`Dockerfile.app`) builds everything once; the
@@ -67,6 +69,28 @@ Cloudflare (DNS-only / grey-cloud, matching the other apps on the host).
   rather than parsing `X-Forwarded-For` itself. Production behind Caddy sets
   `NESSIE_API_TRUSTED_PROXY_HOPS=1`; local and unproxied deployments default to
   `0`, so forwarded client IP headers are ignored.
+
+### Infisical vault
+
+Infisical owns secret values and runs with Redis plus a dedicated `infisical`
+database and database role on the existing `nessie-postgres` container. Before
+the first deploy, create the database and role from the host without echoing a
+password into shell history, then create `/srv/nessie/secrets/infisical-service-token`
+with mode `0600`. Set the corresponding `INFISICAL_*` values in the Compose
+`.env`; create the separate root-readable `.env.infisical` from
+`infrastructure/compose/.env.infisical.example` for the vault database URI,
+encryption key, and auth secret. The write-scoped service token is mounted only
+into `nessie-api` as a Docker secret. Do not put any vault root material in
+`.env` or pass it to `nessie-worker`.
+Set `COMPOSE_PROFILES=secrets` only after all vault settings exist; this keeps
+ordinary application deploys bootable while the vault has not been provisioned.
+
+Add a `vault.nessie.works` DNS-only A record to the same host and a Caddy site
+block that proxies only to `nessie-infisical:8080`. Validate the Caddyfile and
+recreate Caddy as described below. After startup, create the Infisical admin,
+project, `prod` environment, and an API service token scoped only to
+`prod:/nessie` with read/write access. Record its project ID in
+`INFISICAL_PROJECT_ID`.
 
 ## Shared infra (already on the host, do not disrupt)
 

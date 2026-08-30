@@ -572,6 +572,38 @@ enum McpCredentialPrincipalType {
   organization
 }
 
+// ─── External-vault secret metadata ────────────────────────────────────────
+// Secret bytes are intentionally absent from this schema. `vaultReference`
+// identifies the record in Infisical; Nessie owns only its placement, policy,
+// and audit metadata.
+enum SecretScopeType {
+  personal
+  team
+  project
+  workspace
+}
+
+enum SecretStatus {
+  active
+  revoked
+  expired
+}
+
+enum SecretPermission {
+  use
+  reveal
+  manage
+  delegate
+}
+
+enum SecretPrincipalType {
+  user
+  agent
+  team
+  project
+  workspace
+}
+
 // ─── App Store (store dimension over the same catalogue) ───
 //
 // The App Store is a second face on `McpCatalogEntry`, never a second
@@ -1034,6 +1066,7 @@ model Organization {
   productTeamEnablements ProductTeamEnablement[]
   productIntegrationRuns ProductIntegrationRun[]
   productWebhookSecrets  ProductWebhookSecret[]
+  secrets                Secret[]
 
   // Inference control-plane back-relations. The org FKs on these tables were
   // dropped by 20260516202000_reconcile_drift and re-added (ON DELETE CASCADE)
@@ -4385,6 +4418,54 @@ model McpOAuthSecret {
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("mcp_oauth_secret")
+}
+
+/// Nessie-managed metadata for a secret held by an external vault. No secret
+/// value, ciphertext, key material, or vault token may be added to this model.
+model Secret {
+  id             String          @id @default(uuid()) @db.Uuid
+  reference      String          @unique @map("reference")
+  organizationId String          @map("organization_id") @db.Uuid
+  name           String
+  description    String?
+  provider       String?
+  scopeType      SecretScopeType @map("scope_type")
+  scopeId        String          @map("scope_id") @db.Uuid
+  vaultReference String          @unique @map("vault_reference")
+  createdById    String          @map("created_by_id") @db.Uuid
+  rotatedAt      DateTime?       @map("rotated_at")
+  expiresAt      DateTime?       @map("expires_at")
+  status         SecretStatus    @default(active)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grants       SecretGrant[]
+
+  @@unique([organizationId, scopeType, scopeId, name])
+  @@index([organizationId, scopeType, scopeId])
+  @@index([organizationId, status])
+  @@map("secrets")
+}
+
+/// Explicit permissions supplement a secret's home scope. An agent can receive
+/// only `use`; the API refuses every other permission for an agent principal.
+model SecretGrant {
+  id            String              @id @default(uuid()) @db.Uuid
+  secretId      String              @map("secret_id") @db.Uuid
+  principalType SecretPrincipalType @map("principal_type")
+  principalId   String              @map("principal_id") @db.Uuid
+  permissions   SecretPermission[]
+  expiresAt     DateTime?           @map("expires_at")
+  createdById   String              @map("created_by_id") @db.Uuid
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  secret Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+
+  @@unique([secretId, principalType, principalId])
+  @@index([principalType, principalId])
+  @@map("secret_grants")
 }
 
 /// Per-organization signing secret for an integrated product's inbound webhooks

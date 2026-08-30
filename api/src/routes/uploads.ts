@@ -1,8 +1,8 @@
-import type { Readable } from 'node:stream'
+import { Readable } from 'node:stream'
 
 import type { Attachment } from '@prisma/client'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { ATTACHMENT_THUMBNAIL_TOPIC, MESSAGE_UPLOAD_MAX_BYTES } from '@nessie/schemas'
+import { ATTACHMENT_THUMBNAIL_TOPIC, detectSecrets, MESSAGE_UPLOAD_MAX_BYTES } from '@nessie/schemas'
 import {
   attributionFromActorContext,
   FileTooLargeError,
@@ -13,6 +13,7 @@ import {
 } from '@nessie/runtime'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
+import { readStreamCapped } from '../lib/markdown.js'
 import { toAttachmentRecord } from '../contracts.js'
 import { enqueueQueueJob } from '../queue/pgqueue.js'
 import { canAccessAttachment, canAccessMessageAttachment } from '../services/attachments.js'
@@ -182,6 +183,25 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     const filename = file.filename || 'upload.bin'
     const organizationId = actorContext.tenant.organizationId
 
+    // Inspect the bytes before object storage. UTF-8 conversion is deliberate:
+    // it catches every textual format (including a pasted .txt file) without
+    // trusting the caller-provided MIME type. Binary formats get their raw
+    // byte stream checked for embedded ASCII credential syntax as a fallback.
+    const upload = await readStreamCapped(file.file, MESSAGE_UPLOAD_BYTES)
+    if (!upload || file.file.truncated) {
+      sendApiError(reply, 413, 'FILE_TOO_LARGE', `File exceeds the ${MESSAGE_UPLOAD_BYTES} byte upload limit`)
+      return reply
+    }
+    if (detectSecrets(upload.toString('utf8')).length > 0) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this file was stored. Save it through Secrets instead.',
+      )
+      return reply
+    }
+
     try {
       const { attachment, bytesWritten } = await fileService.store({
         attribution: attributionFromActorContext(actorContext),
@@ -189,24 +209,8 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         uploaderId: actorContext.actor.actorId,
         filename,
         mime,
-        body: file.file,
+        body: Readable.from(upload),
       })
-
-      if (file.file.truncated) {
-        // Past the per-route limit — undo the stored object + accounting.
-        await fileService.delete(
-          attachment.id,
-          organizationId,
-          attributionFromActorContext(actorContext),
-        )
-        sendApiError(
-          reply,
-          413,
-          'FILE_TOO_LARGE',
-          `File exceeds the ${MESSAGE_UPLOAD_BYTES} byte upload limit`,
-        )
-        return reply
-      }
 
       void recordStorageTransferUsage(prisma, {
         attribution: attributionFromActorContext(actorContext),
