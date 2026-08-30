@@ -20,7 +20,10 @@
  * disease this file treats.
  *
  * A factory is the only way to build a key: a raw literal at a call site is a
- * second definition that stops matching the moment either side moves. Every
+ * second definition that stops matching the moment either side moves. That rule
+ * is enforced too — the same test scans every file under `admin/src` and fails
+ * on an array literal handed to `queryKey` or to the query filters, because
+ * within weeks of this module landing seven of them had reappeared. Every
  * family exposes `all` because it is that family's invalidation prefix and the
  * root the invariant test measures its members against.
  *
@@ -382,6 +385,10 @@ export const searchKeys = {
     ['search', 'messages', query, mode] as const,
   thoughts: (query: string, mode: string) =>
     ['search', 'thoughts', query, mode] as const,
+}
+
+export const secretKeys = {
+  all: ['secrets'] as const,
 }
 
 export const statusKeys = {

@@ -286,7 +286,7 @@ export const useThreadStream = (threadId?: string): StreamState => {
         // and never recover, so refetch through the gated list endpoint — which
         // returns the real content, or the withheld placeholder, per viewer.
         if (data.messageId && data.restricted) {
-          void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
+          void queryClient.invalidateQueries({ queryKey: threadKeys.messages(threadId) })
         } else if (data.messageId && data.content !== undefined) {
           queryClient.setQueryData<ThreadMessageRecord[] | undefined>(
             threadKeys.messages(threadId),
