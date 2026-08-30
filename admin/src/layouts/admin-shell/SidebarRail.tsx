@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
 import { CreateMenuTrigger } from './CreateMenuTrigger';
@@ -25,6 +27,35 @@ export const SidebarRail = ({
   pathname,
 }: SidebarRailProps) => {
   const { focusModeEnabled, toggleFocusMode, updating } = useFocusMode();
+  const focusButtonRef = useRef<HTMLButtonElement>(null);
+  const [focusTooltipOpen, setFocusTooltipOpen] = useState(false);
+  const [focusTooltipPosition, setFocusTooltipPosition] = useState({ left: 0, top: 0 });
+
+  const placeFocusTooltip = (): void => {
+    const button = focusButtonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    setFocusTooltipPosition({
+      left: rect.right + 10,
+      top: rect.top + rect.height / 2,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!focusTooltipOpen) return undefined;
+    placeFocusTooltip();
+    window.addEventListener('resize', placeFocusTooltip);
+    return () => window.removeEventListener('resize', placeFocusTooltip);
+  }, [focusTooltipOpen]);
+
+  const showFocusTooltip = (): void => {
+    placeFocusTooltip();
+    setFocusTooltipOpen(true);
+  };
+  const focusTooltipTitle = focusModeEnabled ? 'Turn off focus mode' : 'Turn on focus mode';
+  const focusTooltipDescription = focusModeEnabled
+    ? 'Resume notifications and attention cues.'
+    : 'Pause notifications and reduce badging and bolding.';
   return (
     <aside
       className={[
@@ -82,14 +113,17 @@ export const SidebarRail = ({
       <div className="flex-1" />
 
       <button
-        aria-label={focusModeEnabled ? 'Turn off focus mode' : 'Turn on focus mode'}
+        aria-describedby={focusTooltipOpen ? 'focus-mode-tooltip' : undefined}
+        aria-label={focusTooltipTitle}
         aria-pressed={focusModeEnabled}
         className={`admin-rail-btn ${focusModeEnabled ? 'active' : ''}`}
         disabled={updating}
         onClick={toggleFocusMode}
-        title={focusModeEnabled
-          ? 'Turn off focus mode'
-          : 'Turn on focus mode — pause notifications and reduce badging and bolding'}
+        onBlur={() => setFocusTooltipOpen(false)}
+        onFocus={showFocusTooltip}
+        onMouseEnter={showFocusTooltip}
+        onMouseLeave={() => setFocusTooltipOpen(false)}
+        ref={focusButtonRef}
         type="button"
       >
         <span className="admin-rail-btn-icon">
@@ -99,6 +133,21 @@ export const SidebarRail = ({
         </span>
         <span className="admin-rail-btn-label">Focus</span>
       </button>
+
+      {focusTooltipOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <span
+              className="focus-mode-tooltip pointer-events-none"
+              id="focus-mode-tooltip"
+              role="tooltip"
+              style={focusTooltipPosition}
+            >
+              <strong>{focusTooltipTitle}</strong>
+              <span>{focusTooltipDescription}</span>
+            </span>,
+            document.body,
+          )
+        : null}
 
       <DebugTokenButton />
 

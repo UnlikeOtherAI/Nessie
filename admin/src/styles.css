@@ -1409,6 +1409,35 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
+/* The rail clips its contents, so the focus explanation is portalled beside
+   it. This matches Slack's two-line, right-hand focus-mode hover affordance. */
+.focus-mode-tooltip {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 92px));
+  transform: translateY(-50%);
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #1f1f1f;
+  color: #f8f8f8;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.focus-mode-tooltip strong {
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.focus-mode-tooltip span {
+  color: #c8c8c8;
+}
+
 /* The rail's creation control intentionally has no label: its compact
    plus-button placement mirrors the native phone action and keeps it directly
    above the account avatar, where it remains available from every workspace. */
