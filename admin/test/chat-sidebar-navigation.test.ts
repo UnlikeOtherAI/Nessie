@@ -22,6 +22,15 @@ test('chat navigation does not duplicate the Agents activity section', () => {
   assert.doesNotMatch(source, /sidebar-nav-agents/)
 })
 
+test('Threads aligns with section chevrons and remains a bold top-level destination', () => {
+  const sidebar = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
+  const styles = readSource('../src/styles.css')
+
+  assert.match(sidebar, /admin-sb-item sidebar-threads group/)
+  assert.doesNotMatch(sidebar, /sidebar-top-level/)
+  assert.match(styles, /\.admin-sb-item\.sidebar-threads\s*\{[\s\S]*?padding-left: 10px;[\s\S]*?font-weight: 700;/)
+})
+
 test('a starred direct-message entry is removed from its original sidebar location', () => {
   const source = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
 

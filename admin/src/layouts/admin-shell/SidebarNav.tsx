@@ -140,11 +140,10 @@ export const SidebarNav = (props: SidebarNavProps) => {
         />
 
         <button
-          className={`admin-sb-item sidebar-top-level group ${pathname === '/threads' ? 'active' : ''}`}
+          className={`admin-sb-item sidebar-threads group ${pathname === '/threads' ? 'active' : ''}`}
           onClick={onNavigateThreads}
           type="button"
         >
-          <span className="sidebar-row-symbol w-[14px] flex-shrink-0 text-center text-base leading-none text-[color:var(--tx3)]">◌</span>
           <span>Threads</span>
           {renderUnreadCount(threadsUnreadCount)}
         </button>

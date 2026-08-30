@@ -1303,9 +1303,10 @@ a {
   padding-left: 32px;
 }
 
-/* Threads belongs beside the top-level sections, not inside Starred. */
-.admin-sb-item.sidebar-top-level {
-  padding-left: 12px;
+/* Threads aligns with a section's chevron, not the section title. */
+.admin-sb-item.sidebar-threads {
+  padding-left: 10px;
+  font-weight: 700;
 }
 
 /* Native phone/tablet shells use Slack-scale navigation density. This marker
