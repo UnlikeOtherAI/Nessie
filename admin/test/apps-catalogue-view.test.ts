@@ -4,7 +4,9 @@ import test from 'node:test'
 import type { AppSummaryRecord } from '@nessie/schemas'
 
 import {
+  ALL_CATEGORIES_VALUE,
   APP_GRID_CLASS,
+  appCategoryOptions,
   appFilterOptions,
   appGridColumns,
   buildCategorySections,
@@ -290,4 +292,29 @@ test('with nothing narrowed the empty grid falls back to the footer nudge', () =
     actionLabel: 'Add custom app',
     message: "Can't find what you need? Connect a tool by its address.",
   })
+})
+
+test('the category dropdown opens on All, then the taxonomy in its fixed order', () => {
+  const options = appCategoryOptions([
+    section('communication', 3, 35),
+    section('development', 2, 23),
+    section('other', 1, 512),
+  ])
+
+  assert.deepEqual(options, [
+    { label: 'All categories', value: ALL_CATEGORIES_VALUE },
+    { label: 'communication (35)', value: 'communication' },
+    { label: 'development (23)', value: 'development' },
+    { label: 'other (512)', value: 'other' },
+  ])
+})
+
+test('the All option carries no count, because the filter beside it already shows that total', () => {
+  // Two adjacent controls both reading "All (1092)" said nothing about which
+  // one narrowed what. Counts stay on the categories, where they name a real
+  // choice; and every count is the server's total, never the loaded slice.
+  const [all, communication] = appCategoryOptions([section('communication', 3, 35)])
+
+  assert.equal(all?.label, 'All categories')
+  assert.equal(communication?.label, 'communication (35)')
 })

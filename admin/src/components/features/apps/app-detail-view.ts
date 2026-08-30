@@ -97,25 +97,14 @@ export type AppDetailCta =
  * It is the card's decision — the same eight states resolve to the same action,
  * and the label stays the card's one word, because a person standing on
  * GitHub's page under GitHub's name and icon does not need "Connect Nessie to
- * GitHub" spelled out — with one difference this surface can afford. A card can
- * only *link* at the Connectors page's install route; the detail page runs the
- * connect flow in place, so `kind: 'connect'` replaces the link the card built
- * from `installHref`. Every other action is a navigation and stays a link.
- *
- * `auth_expired` is deliberately left as that link. Reconnecting means signing
- * in again rather than probing a grant we already have reason to doubt, which
- * is `POST /api/app-connections/:id/reconnect` — a different call this flow
- * does not make, and probing with the lapsed token would land the person back
- * where they started.
+ * GitHub" spelled out. The card and the detail hero now offer the SAME action:
+ * both run the connect flow in place (`kind: 'connect'`), because connecting
+ * from the store must never bounce a person to the Connectors page. So this is
+ * a pass-through — kept as a named seam because the hero has diverged from the
+ * card before and may again, and one call site is cheaper to change than every
+ * consumer.
  */
-export const appDetailCta = (app: AppDetailRecord): AppDetailCta => {
-  const action = appCardAction(app)
-  // `installHref` identifies the card's connect branch exactly — "Open",
-  // "Manage" and "View accounts" all point at pages instead.
-  if (action.kind !== 'link' || action.href !== app.installHref) return action
-  if (app.state === 'auth_expired') return action
-  return { kind: 'connect', label: action.label, tone: action.tone }
-}
+export const appDetailCta = (app: AppDetailRecord): AppDetailCta => appCardAction(app)
 
 /**
  * Whether the connect flow currently owns the outcome, which is what spends the

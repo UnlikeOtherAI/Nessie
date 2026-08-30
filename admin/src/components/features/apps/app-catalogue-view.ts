@@ -163,6 +163,39 @@ export const buildCategorySections = (
     total: entry.count,
   }))
 
+
+// ─── Category dropdown ─────────────────────────────────────────────────────
+
+/** The select's value for "no category narrowing" — never a real category. */
+export const ALL_CATEGORIES_VALUE = '__all__'
+
+export type AppCategoryOption = {
+  /** The label with its count spelled out: "Finance (640)". */
+  label: string
+  /** A category, or ALL_CATEGORIES_VALUE for the "All" first option. */
+  value: AppCategory | typeof ALL_CATEGORIES_VALUE
+}
+
+/**
+ * The options of the category dropdown: "All categories" first, then one option
+ * per counted category in the taxonomy's fixed order (the order `sections`
+ * already carries). Counts are the server's per-category aggregates, so
+ * "Finance (640)" is 640 however few cards the page actually holds.
+ *
+ * The first option carries no count deliberately: it would restate the total
+ * already on the All/Installed filter immediately to its left, and two adjacent
+ * controls reading "All (1092)" say nothing about which one narrows what.
+ */
+export const appCategoryOptions = (
+  sections: readonly AppCategorySectionModel[],
+): AppCategoryOption[] => [
+  { label: 'All categories', value: ALL_CATEGORIES_VALUE },
+  ...sections.map((section) => ({
+    label: `${section.label} (${section.total})`,
+    value: section.category,
+  })),
+]
+
 /** How many cards a collapsed section shows: two rows of whatever arrived. */
 export const sectionVisibleApps = (
   section: AppCategorySectionModel,

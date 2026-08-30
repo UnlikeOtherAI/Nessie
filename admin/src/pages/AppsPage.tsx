@@ -79,6 +79,11 @@ export const AppsPage = () => {
   // apps that are simply on another page while contradicting the count on the
   // control that applied it.
   const { data, isError, isPending } = useApps({
+    // The category dropdown narrows server-side for the same reason the other
+    // two do: the response is a bounded slice per category, so filtering it in
+    // the browser would hide apps that are merely on another page and make the
+    // count beside the control a lie.
+    category: activeCategory ?? undefined,
     installed: filter === 'installed',
     query: isAppSearchActive(debouncedQuery) ? debouncedQuery : undefined,
   })

@@ -80,6 +80,42 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
   const teamRecord = (teamId: unknown): Row | undefined =>
     teams.find((team) => team.id === teamId)
 
+  /**
+   * A team's project as the *caller's* select asked for it.
+   *
+   * Two production reads walk this nesting and neither optional-chains past the
+   * first level: `resolveUoaSessionContext` reads
+   * `team.project.organization.members[0].role`, and
+   * `deriveUoaWorkspaceDirectoryFromTeams` reads
+   * `team.project.organization.name`. A project returned flat therefore throws
+   * `reading 'organization'` deep inside login, which the route wraps as a 401
+   * `EXTERNAL_AUTH_FAILED` — the shape mismatch never names itself. Projecting
+   * what the select asks for keeps the fake honest about what Prisma hands
+   * back; a select that does not mention `organization` still gets the flat row
+   * it always did.
+   */
+  const selectedProject = (project: Row | null | undefined, select: unknown): Row | null => {
+    if (!project) return null
+    const projectSelect = typeof select === 'object' && select !== null
+      ? (select as Row).select as Row | undefined
+      : undefined
+    if (!projectSelect?.organization) return project
+    const orgSelect = (projectSelect.organization as Row).select as Row | undefined
+    const org = orgs.find((candidate) => candidate.id === project.organizationId)
+    const organization: Row = {}
+    if (orgSelect?.name) organization.name = org?.name ?? 'Organization'
+    if (orgSelect?.members) {
+      // The production select filters to the acting user and takes 1; role is
+      // the only field read, and the seeds carry it on the membership rows.
+      const where = (orgSelect.members as Row).where as Row | undefined
+      organization.members = organizationMembers.filter((member) =>
+        member.organizationId === project.organizationId
+        && (where?.userId === undefined || member.userId === where.userId)
+        && (where?.deactivatedAt !== null || member.deactivatedAt == null)).slice(0, 1)
+    }
+    return { ...project, organization }
+  }
+
   const record = (key: string): void => {
     spy.calls.push(key)
   }
@@ -307,7 +343,7 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
           && (where?.systemManaged === undefined || team.systemManaged === where.systemManaged))
         if (!found) return null
         if (select?.project) {
-          return { ...found, project: projectRow(found) }
+          return { ...found, project: selectedProject(projectRow(found), select.project) }
         }
         return found
       },
@@ -319,11 +355,38 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
             && team.externalWorkspaceId === where.externalWorkspaceId))
         if (!found) return null
         if (select?.project) {
-          return { ...found, project: projects.find((p) => p.id === found.projectId) }
+          const project = projects.find((p) => p.id === found.projectId) ?? null
+          return { ...found, project: selectedProject(project, select.project) }
         }
         return found
       },
-      findMany: async () => (record('team.findMany'), teams),
+      // `deriveUoaWorkspaceDirectoryFromTeams` narrows to the teams this user
+      // belongs to that carry both external ids, and reads
+      // `project.organization.name` off each. Returning every seeded team flat
+      // both widened the directory and threw on the first mapped row.
+      findMany: async ({ where, select }: { where?: Row; select?: Row } = {}) => {
+        record('team.findMany')
+        const matches = teams.filter((team) => {
+          const notNull = (spec: unknown, value: unknown): boolean =>
+            typeof spec === 'object' && spec !== null && 'not' in (spec as Row)
+              ? (spec as Row).not === null ? value != null : true
+              : spec === undefined || spec === value
+          const memberOf = (where?.members as Row | undefined)?.some as Row | undefined
+          return notNull(where?.externalOrgId, team.externalOrgId)
+            && notNull(where?.externalWorkspaceId, team.externalWorkspaceId)
+            && (memberOf?.userId === undefined
+              || teamMembers.some((member) =>
+                member.teamId === team.id && member.userId === memberOf.userId)
+              // Absent explicit team memberships the fake treats every seeded
+              // user as a member, matching `membershipsFor` above.
+              || teamMembers.length === 0)
+        })
+        if (!select?.project) return matches
+        return matches.map((team) => ({
+          ...team,
+          project: selectedProject(projects.find((p) => p.id === team.projectId), select.project),
+        }))
+      },
     },
     channel: {
       create: async ({ data }: { data: Row }) => {

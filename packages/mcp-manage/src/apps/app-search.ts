@@ -28,7 +28,8 @@ import type { AppCategory } from '@nessie/schemas'
  * Every value is a bound parameter — the query text is never interpolated.
  * `websearch_to_tsquery` and `plainto_tsquery` parse arbitrary user text
  * safely, which is exactly why they are used instead of assembling a tsquery by
- * hand.
+ * hand. The one hand-built term is the prefix query, and it is built from
+ * characters that have already passed a whitelist.
  *
  * The document being ranked is the trigger-maintained `search_vector`
  * (`api/prisma/migrations/20260829090000_mcp_app_store_catalogue`), whose
@@ -143,6 +144,38 @@ export const compileCatalogWhere = (where: Prisma.McpCatalogEntryWhereInput): Pr
   compileClause(where as CatalogClause)
 
 /**
+ * The last word of the query as a safe tsquery lexeme, or null when nothing
+ * usable is there.
+ *
+ * Full-text matches whole lexemes only, and the trigram fallback needs three
+ * characters, so a two-letter prefix of a real name ("fi" for "finstat")
+ * matched nothing at all: the store stopped narrowing exactly when a person
+ * starts typing. The fix is Postgres' own prefix term — `to_tsquery('simple',
+ * 'fin:*')` — OR-ed onto the whole-word query so an exact match still ranks
+ * ahead of a prefix hit.
+ *
+ * The term is the only tsquery text this module assembles by hand, so it is
+ * whitelisted rather than escaped: anything outside ASCII word characters and
+ * the hyphen is dropped, and a term with nothing left (or nothing after
+ * trimming trailing hyphens, which tsquery rejects) contributes no prefix.
+ * The bound parameter remains the raw user text; the `:*` suffix is the one
+ * interpolated piece and it is a literal. Quotes, tsquery operators, and
+ * backslashes can therefore neither break nor inject into the SQL.
+ */
+const prefixLexeme = (query: string): string | null => {
+  const lastWord = query.split(/\s+/).pop() ?? ''
+  const safe = lastWord.toLowerCase().replace(/[^a-z0-9-]+/g, '').replace(/-+$/g, '')
+  return safe.length > 0 ? safe : null
+}
+
+const prefixTerm = (query: string): Prisma.Sql => {
+  const lexeme = prefixLexeme(query)
+  return lexeme === null
+    ? Prisma.empty
+    : Prisma.sql`|| to_tsquery('simple', ${lexeme + ':*'})`
+}
+
+/**
  * A ranked, still-unbounded match set, always used as a CTE. `sort_name` is
  * materialised here so the outer `ORDER BY` breaks rank ties on the rendered
  * name without recomputing the coalesce.
@@ -156,7 +189,8 @@ const fullTextMatches = (where: Prisma.McpCatalogEntryWhereInput, query: string)
     FROM "mcp_catalog_entries" e
     CROSS JOIN LATERAL (
       SELECT websearch_to_tsquery('simple', ${query})
-             || plainto_tsquery('english', ${query}) AS q
+             || plainto_tsquery('english', ${query})
+             ${prefixTerm(query)} AS q
     ) tsq
     WHERE ${compileCatalogWhere(where)}
       AND e."search_vector" @@ tsq.q
