@@ -41,6 +41,18 @@ export const visibleUserAlertWhere = (input: {
       },
     },
     {
+      // A schedule that stopped. Revalidated against the trigger's live health
+      // exactly as the other kinds revalidate their resource: once somebody
+      // repairs it the alert stops surfacing, the same way a completed task's
+      // does. Deletion is handled by the FK cascade, and the outer clause
+      // already scopes the recipient to an active membership of the alert's
+      // organisation.
+      kind: 'trigger_health',
+      trigger: {
+        is: { status: { in: ['error', 'needs_reauthorization'] } },
+      },
+    },
+    {
       kind: 'knowledge_published',
       // This mirrors the human-reader access rules in @nessie/knowledge's
       // canReadSpace. Keep changes to that access policy synchronized here:

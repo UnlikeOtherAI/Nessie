@@ -72,7 +72,10 @@ export const reauthorizeAgentTrigger = async (
     where: { id: input.triggerId },
     select: {
       config: true,
+      enabled: true,
+      healthReason: true,
       id: true,
+      status: true,
       targetChannelId: true,
       type: true,
     },
@@ -85,6 +88,24 @@ export const reauthorizeAgentTrigger = async (
     return failure(
       'TRIGGER_NOT_REAUTHORIZABLE',
       'Only scheduled and interval triggers carry a launch identity.',
+      409,
+    )
+  }
+
+  // Repair only what is stopped, and only for the reason repair addresses.
+  //
+  // Without this a call to `/reauthorize` would set `enabled=true,
+  // status='active'` on ANY schedule with a stored origin — including one an
+  // operator deliberately paused. That is precisely the blanket resurrection
+  // used to argue against auto-healing at login; it would be no better for
+  // arriving through a button.
+  if (trigger.status !== 'needs_reauthorization') {
+    return failure(
+      'TRIGGER_NOT_REAUTHORIZABLE',
+      trigger.status === 'paused'
+        ? 'This schedule is paused. Resume it instead — reauthorizing repairs a '
+          + 'broken identity, it does not override an operator\'s decision to stop it.'
+        : 'This schedule is not waiting on reauthorization.',
       409,
     )
   }
@@ -140,6 +161,15 @@ export const reauthorizeAgentTrigger = async (
   const sameWorkspace =
     captured.launchOrigin.organizationId === storedOrigin.organizationId
     && captured.launchOrigin.teamId === storedOrigin.teamId
+  if (input.takeOver && !input.isOwner) {
+    return failure(
+      'TRIGGER_REAUTHORIZE_FORBIDDEN',
+      'Only an organization owner can take over a schedule, because doing so '
+      + 'moves which team it is attributed to.',
+      403,
+    )
+  }
+
   if (!input.takeOver) {
     if (!isCreator) {
       return failure(
@@ -204,16 +234,29 @@ export const reauthorizeAgentTrigger = async (
     },
   }
 
-  const updated = await prisma.agentTrigger.update({
-    where: { id: trigger.id },
+  // Conditional on the state we read, so a pause landing between the read and
+  // this write wins rather than being silently overwritten by a repair that
+  // started earlier.
+  const claimed = await prisma.agentTrigger.updateMany({
     data: {
       config: nextConfig as Prisma.InputJsonValue,
-      enabled: true,
       healthDetail: null,
       healthReason: null,
       nextRunAt,
       status: 'active',
     },
+    where: { id: trigger.id, status: 'needs_reauthorization' },
+  })
+  if (claimed.count === 0) {
+    return failure(
+      'TRIGGER_NOT_REAUTHORIZABLE',
+      'This schedule changed while it was being reauthorized. Reload and try again.',
+      409,
+    )
+  }
+
+  const updated = await prisma.agentTrigger.findUniqueOrThrow({
+    where: { id: trigger.id },
   })
 
   return { kind: 'ok', trigger: mapTriggerRecord(updated, TRIGGER_ADMIN_AUDIENCE) }

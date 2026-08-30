@@ -12,6 +12,13 @@ import { MAX_DELIVERY_RETRIES, computeNextRetryAt } from '@nessie/runtime'
 // The backoff policy itself lives in @nessie/runtime/scheduling so the API
 // dispatch path and this worker poller share one source of truth.
 
+/**
+ * How long a claimed re-attempt stays hidden from other workers. Long enough for
+ * a dispatch to finish and record its own outcome, short enough that a worker
+ * killed mid-attempt returns the delivery to the queue promptly.
+ */
+const RETRY_CLAIM_LEASE_MS = 60_000
+
 const errorMessageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -120,6 +127,7 @@ export const retryFailedTriggerDeliveries = async (
 ): Promise<void> => {
   const limit = options.limit ?? 10
   const now = new Date()
+  const leaseUntil = new Date(now.getTime() + RETRY_CLAIM_LEASE_MS)
 
   // Claim, don't just read. A plain `findMany` let every worker replica select
   // the same due rows and re-attempt them concurrently: the per-(agent, thread)
@@ -127,9 +135,17 @@ export const retryFailedTriggerDeliveries = async (
   // they each pend, and the workflow path can create genuinely separate runs.
   // `FOR UPDATE SKIP LOCKED` inside a claiming UPDATE is the same shape the
   // scheduler's own `claimDueScheduledTriggers` uses — one row goes to exactly
-  // one worker. Clearing `next_retry_at` as we claim is what makes it a claim:
-  // a crashed attempt leaves the row `failed` with backoff state intact, and the
-  // re-attempt path re-arms it on its next failure.
+  // one worker.
+  //
+  // The claim is a LEASE, not a clear. Setting `next_retry_at = NULL` would
+  // make the claim exclusive but not crash-safe: a worker killed between
+  // claiming and recording its failure would strand the delivery permanently,
+  // because nothing else re-arms a row the poller can no longer select. Pushing
+  // the timestamp forward instead keeps exclusivity (the row is not due again
+  // while the lease holds) and restores it to the queue if the attempt dies —
+  // the same trade the scheduler makes with `scheduler_claimed_at`. A handled
+  // failure overwrites the lease with real backoff, and a success takes the row
+  // out of `failed`, which the poller filters on anyway.
   const due = await prisma.$queryRaw<Array<{
     dedupeKey: string | null
     id: string
@@ -152,7 +168,7 @@ export const retryFailedTriggerDeliveries = async (
         LIMIT ${limit}
       )
       UPDATE "agent_trigger_deliveries" AS d
-      SET "next_retry_at" = NULL
+      SET "next_retry_at" = ${leaseUntil}
       FROM due, "agent_triggers" AS t
       WHERE d."id" = due."id" AND t."id" = d."trigger_id"
       RETURNING

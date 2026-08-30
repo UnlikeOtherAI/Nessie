@@ -88,13 +88,14 @@ const loadTriggerContext = async (
 }
 
 /**
- * Who is told.
+ * Who is told: the organisation's active owners.
  *
- * The creator first: unlike a budget, this is their own automation and — for
- * `needs_reauthorization` — they are the person whose identity can repair it.
- * Organisation owners are included because they administer triggers and are the
- * fallback when the creator has left; a creator who is no longer an active
- * member is dropped rather than notified about work they can no longer reach.
+ * Triggers are owner-managed end to end — creating, listing, and the Triggers
+ * page itself all require owner — so the creator of a schedule was an owner when
+ * they made it, and owners are exactly the set who can both see the failure and
+ * repair it. Notifying a since-demoted creator would send them to a page that
+ * answers "Owner access required", which is a worse outcome than not notifying
+ * them: an alert whose link is a wall trains people to ignore alerts.
  */
 const resolveRecipientUserIds = async (
   prisma: TriggerHealthDispatchPrisma,
@@ -104,10 +105,7 @@ const resolveRecipientUserIds = async (
     where: {
       organizationId: context.organizationId,
       deactivatedAt: null,
-      OR: [
-        { role: 'owner' },
-        ...(context.ownerUserId ? [{ userId: context.ownerUserId }] : []),
-      ],
+      role: 'owner',
     },
     select: { userId: true },
   })
@@ -132,7 +130,7 @@ const buildAlertPayload = (
     kind: 'trigger_health',
     reason: payload.reason,
     triggerId: payload.triggerId,
-    url: '/triggers',
+    url: '/agents/triggers',
   },
   collapseId: `trigger-health:${payload.triggerId}`,
 })
@@ -180,7 +178,7 @@ export const handleTriggerHealthAlert = async (
   })
   const now = deps.now?.() ?? new Date()
   const pushableIds = users
-    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'budgetAlerts'))
+    .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'triggerHealth'))
     .map((user) => user.id)
   if (pushableIds.length === 0) {
     return summary
@@ -196,7 +194,7 @@ export const handleTriggerHealthAlert = async (
     payload: buildAlertPayload(payload, context),
     recipientIds: pushableIds,
     organizationId: context.organizationId,
-    deepLinkUrl: '/triggers',
+    deepLinkUrl: '/agents/triggers',
     messageId: null,
     surface: { kind: 'triggers' },
     now: deps.now ?? (() => new Date()),

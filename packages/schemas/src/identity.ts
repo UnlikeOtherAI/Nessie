@@ -81,6 +81,10 @@ export const UserPreferencesSchema = z.object({
   pushMessages: z.boolean().optional(),
   pushMentions: z.boolean().optional(),
   pushBudgetAlerts: z.boolean().optional(),
+  // A scheduled task that stopped running. Its own switch rather than a share
+  // of budget alerts: silencing spend warnings must not silence the discovery
+  // that automation has died, which is a different question entirely.
+  pushTriggerHealth: z.boolean().optional(),
   pushAssignedWork: z.boolean().optional(),
   pushPublishedKnowledge: z.boolean().optional(),
   // `null` clears quiet hours via the partial-merge PATCH; absent leaves them unchanged.

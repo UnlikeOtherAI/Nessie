@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  activeWorkspaceMatchesAttribution,
   buildTriggerPrompt,
   loadLedgerIdentitySettings,
   loadLedgerUoaIdentity,
@@ -44,40 +45,6 @@ import {
 // existing `failed` delivery row instead of creating a new one, so the
 // (trigger_id, dedupe_key) uniqueness holds and backoff state accumulates.
 export type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
-
-/**
- * The workspace half of the identity check dispatch performs.
- *
- * `activeWorkspaceMatchesAttribution` (packages/runtime) requires the local
- * `Team` carrying the run's attribution to advertise exactly the UOA
- * organisation and workspace the identity names. It is a pure database read, so
- * asking it here costs one query and closes the gap between what the fire gate
- * checks and what the signing path checks. Deliberately NOT the remote token
- * exchange: that is a network call, it is cached per delegation, and a UOA
- * outage must never look like a dead schedule.
- */
-const triggerWorkspaceStillMatches = async (
-  prisma: PrismaClient,
-  origin: { organizationId: string; projectId?: string; teamId?: string },
-  identity: { organizationId: string | null; teamId: string | null },
-): Promise<boolean> => {
-  if (!origin.teamId || !identity.organizationId || !identity.teamId) {
-    return false
-  }
-  const team = await prisma.team.findFirst({
-    where: {
-      id: origin.teamId,
-      project: { organizationId: origin.organizationId },
-    },
-    select: { externalOrgId: true, externalWorkspaceId: true },
-  })
-  return Boolean(
-    team?.externalOrgId
-    && team.externalWorkspaceId
-    && team.externalOrgId === identity.organizationId
-    && team.externalWorkspaceId === identity.teamId,
-  )
-}
 
 // Create the delivery for a fresh fire, or reuse+reset the row when retrying.
 export const upsertDelivery = async (
@@ -304,7 +271,19 @@ export const queueTriggerRun = async (
           'its saved UnlikeOtherAI identity is missing or no longer valid',
         )
       }
-      if (!(await triggerWorkspaceStillMatches(prisma, executionOrigin, identity))) {
+      // The same predicate the signing path applies, not a second copy of it.
+      const workspaceMatches = await activeWorkspaceMatchesAttribution(
+        prisma,
+        {
+          actorId: executionOrigin.userId,
+          actorType: 'user',
+          organizationId: executionOrigin.organizationId,
+          ...(executionOrigin.teamId ? { teamId: executionOrigin.teamId } : {}),
+          userId: executionOrigin.userId,
+        },
+        identity,
+      )
+      if (!workspaceMatches) {
         throw new TriggerLaunchOriginError(
           'uoa_identity_unverifiable',
           'its saved UnlikeOtherAI workspace no longer maps to its team',

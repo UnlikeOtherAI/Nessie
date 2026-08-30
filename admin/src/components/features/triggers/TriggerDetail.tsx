@@ -96,6 +96,13 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
   const { data: history = [] } = useTriggerHistory(trigger.id, 8)
   // Only while the schedule is actually stopped: a stale reason left over from a
   // repaired failure would otherwise keep claiming it is broken.
+  // The server refuses a plain repair when the schedule belongs to somebody else
+  // or was created in another workspace, and names which. Offering takeover only
+  // then keeps the ordinary path one click and the attribution-moving path
+  // deliberate.
+  const needsTakeOver =
+    actionError !== null
+    && /belongs to somebody else|active workspace differs/.test(actionError)
   const healthMessage =
     trigger.status === 'needs_reauthorization' || trigger.status === 'error'
       ? getTriggerHealthMessage(trigger)
@@ -122,10 +129,10 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
     )
   }
 
-  const handleReauthorize = () => {
+  const handleReauthorize = (takeOver = false) => {
     setActionError(null)
     reauthorizeTrigger.mutate(
-      { triggerId: trigger.id },
+      { triggerId: trigger.id, ...(takeOver ? { takeOver: true } : {}) },
       {
         onError: (error) =>
           setActionError(
@@ -171,6 +178,16 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
             This schedule has stopped
           </div>
           <p className="mt-1 text-sm text-[color:var(--tx2)]">{healthMessage}</p>
+          {needsTakeOver ? (
+            <button
+              className="admin-button admin-button-secondary mt-2"
+              disabled={reauthorizeTrigger.isPending}
+              onClick={() => handleReauthorize(true)}
+              type="button"
+            >
+              Take over and reauthorize
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -201,7 +218,7 @@ export const TriggerDetail = ({ onDeleted, onEdit, registry, trigger }: TriggerD
               <button
                 className="admin-button admin-button-primary"
                 disabled={reauthorizeTrigger.isPending}
-                onClick={handleReauthorize}
+                onClick={() => handleReauthorize()}
                 type="button"
               >
                 {reauthorizeTrigger.isPending ? 'Reauthorizing…' : 'Reauthorize'}

@@ -272,14 +272,19 @@ deletion is refused once any delivery exists.
   because they take different actions — one is a button, the other is an edit.
   `health_reason` / `health_detail` persist the cause so the page can explain
   without parsing a message string.
-- **Alerting is exactly once per transition.** `health_revision` identifies one
-  failure and is bumped only when the health actually changes, so a schedule
-  stuck in the same broken state never re-notifies. The dedupe reuses the
-  existing `user_alerts (user_id, event_key)` uniqueness rather than adding a
-  second marker table; `trigger.health-alert` writes a durable `UserAlert` for
-  the creator (`launchOrigin.userId`) and the org owners, then pushes through the
-  shared pipeline. The push body is generic — the cause stays behind the deep
-  link, so a lock-screen notification cannot carry a provider error.
+- **Alerting is once per transition.** The transition is claimed by a single
+  conditional UPDATE whose WHERE clause carries the decision, so concurrent
+  reporters cannot both advance `health_revision` — `dispatchEventTriggers` fans
+  out with no claim on the trigger, so a read-then-write would have raced. The
+  durable dedupe reuses the existing `user_alerts (user_id, event_key)`
+  uniqueness rather than adding a second marker table; `trigger.health-alert`
+  writes a durable `UserAlert` for the organisation's active **owners** — the set
+  who can both reach the owner-gated Triggers page and repair the schedule — then
+  pushes through the shared pipeline under its own `pushTriggerHealth`
+  preference. The push body is generic: the cause stays behind the deep link, so
+  a lock-screen notification cannot carry a provider error. The alert is
+  revalidated on read like every other kind (`visibleUserAlertWhere`), so it
+  stops surfacing once the trigger is healthy again.
 - **Recovery is explicit, never automatic.** `POST /api/triggers/:id/reauthorize`
   re-captures the caller's live identity, sharing `captureScheduledLaunchOrigin`
   with the create route rather than keeping a second copy. There is deliberately
@@ -791,8 +796,13 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   as a session is (link `linked`, matching `uoaSub` and `uoaTokenVersion`, and
   the target team's external mapping), and `queueTriggerRun` pre-flights that
   check so a schedule which can no longer sign stops once instead of burning a
-  failed run every sweep. **The pre-flight asks exactly what dispatch asks** —
-  the account link *and* the attributed team's external UOA mapping. Checking
+  failed run every sweep. **The pre-flight shares dispatch's own predicate** —
+  it calls the exported `activeWorkspaceMatchesAttribution` rather than keeping
+  a second copy, so the account link *and* the attributed team's external UOA
+  mapping are both checked. (It is still gated on the process-wide signer flag
+  while dispatch gates on the *effective provider* being a Ledger route, so an
+  organisation routed elsewhere can still be stopped by a check its own requests
+  would not make — a known remaining divergence.) Checking
   only the link let a trigger pass, create a run, and have that run die at its
   first inference, silently, because an unattended failure posts nothing; that
   is what produced ~1.5 hours of "delivered / run failed" deliveries before one

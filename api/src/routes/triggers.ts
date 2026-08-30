@@ -5,7 +5,6 @@ import {
   AgentTriggerRecordSchema,
   CreateAgentTriggerBodySchema,
   FireAgentTriggerBodySchema,
-  ReauthorizeAgentTriggerBodySchema,
   UpdateAgentTriggerBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -19,12 +18,10 @@ import {
   listAgentTriggers,
   listOrganizationTriggers,
   listScheduledTriggers,
-  pauseAgentTrigger,
-  reauthorizeAgentTrigger,
-  resumeAgentTrigger,
   updateAgentTrigger,
 } from '../services/triggers.js'
 import { registerTriggerIntakeRoutes } from './trigger-intake.js'
+import { registerTriggerLifecycleRoutes } from './trigger-lifecycle.js'
 import type { RouteDeps } from './types.js'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
 import { captureScheduledLaunchOrigin } from '@nessie/workspace-admin'
@@ -206,114 +203,6 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     return reply.code(204).send()
-  })
-
-  // Recovery doorway for a schedule whose captured identity stopped verifying.
-  // Deliberately explicit rather than an automatic re-stamp on login: signing in
-  // proves the same person is here, not that they intend a dormant automation to
-  // start running again — and the epoch may have rotated because access was
-  // withdrawn.
-  app.post('/api/triggers/:triggerId/reauthorize', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    if (!requireUserActor(actorContext, reply)) {
-      return reply
-    }
-
-    const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
-    if (!trigger) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    const body = parseInput(ReauthorizeAgentTriggerBodySchema, request.body ?? {}, reply)
-    if (!body) {
-      return reply
-    }
-
-    const result = await reauthorizeAgentTrigger(prisma, {
-      actorContext,
-      isOwner: actorContext.actor.roles?.includes('owner') ?? false,
-      ...(body.takeOver === undefined ? {} : { takeOver: body.takeOver }),
-      triggerId,
-    })
-    if (result.kind === 'error') {
-      sendApiError(reply, result.status, result.code, result.message)
-      return reply
-    }
-
-    return createApiResponse(AgentTriggerRecordSchema.parse(result.trigger))
-  })
-
-  app.post('/api/triggers/:triggerId/pause', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
-
-    const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
-    if (!trigger) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    const updated = await pauseAgentTrigger(prisma, triggerId)
-    if (!updated) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
-  })
-
-  app.post('/api/triggers/:triggerId/resume', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) {
-      return reply
-    }
-
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
-
-    const { triggerId } = request.params as { triggerId: string }
-    const trigger = await getAgentTrigger(prisma, triggerId)
-    if (!trigger) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    const updated = await resumeAgentTrigger(prisma, triggerId)
-    if (!updated) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
-
-    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
   })
 
   app.post('/api/triggers/:triggerId/fire', async (request, reply) => {
@@ -514,5 +403,6 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
   // Inbound intake (public webhook + authenticated event publish) is split into
   // its own module to keep this file under the 500-line cap. Registered last to
   // preserve the original route ordering.
+  registerTriggerLifecycleRoutes(app, deps)
   registerTriggerIntakeRoutes(app, deps)
 }

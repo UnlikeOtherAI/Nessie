@@ -50,77 +50,79 @@ export const recordTriggerHealthFailure = async (
     ? 'needs_reauthorization'
     : 'error'
 
-  // Read-then-write without a surrounding transaction, deliberately.
+  // One conditional statement, not a read followed by a write.
   //
-  // Both callers reach here holding an exclusive claim on this trigger — the
-  // scheduler's lease (`claimDueScheduledTriggers`) and the retry poller's
-  // `FOR UPDATE SKIP LOCKED` claim each hand a row to exactly one worker — so
-  // two concurrent health writes for the same trigger cannot happen. Opening a
-  // transaction here would also blur the meaning of "did this fire enqueue a
-  // run?", which the dispatch tests read off the transaction count.
+  // Not every caller holds an exclusive claim on the trigger. The scheduler
+  // sweep and the retry poller both do, but `dispatchEventTriggers` fans out to
+  // every matching trigger with no claim at all, so two events arriving together
+  // can fail the same trigger concurrently. A read-then-write would then let
+  // both read the same revision and write the same successor — one transition
+  // lost, or worse, two alerts for one failure.
+  //
+  // The WHERE clause carries the decision instead: the revision advances only
+  // when this failure differs from the one already recorded, and whoever loses
+  // the race matches nothing and returns no row. `IS DISTINCT FROM` rather than
+  // `<>` because `health_reason` is nullable and `NULL <> 'x'` is NULL, which
+  // would make a first-ever failure fail to match its own guard.
+  // The transition and its alert commit together, or neither does.
+  //
+  // Writing the health first and enqueuing afterwards left a window that
+  // recreated the very failure this exists to kill: once the UPDATE commits the
+  // schedule is non-runnable and will never be swept again, and the guard's
+  // "unchanged" branch means the next identical failure produces no transition —
+  // so a crash between the two statements loses the only alert, permanently. One
+  // transaction closes it: if the enqueue cannot be written, the health
+  // transition rolls back too and the next sweep tries the whole thing again.
   let transition: TriggerHealthTransition | null = null
   try {
-    const current = await prisma.agentTrigger.findUnique({
-      where: { id: input.triggerId },
-      select: { healthReason: true, healthRevision: true, status: true },
+    transition = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ healthRevision: number }>>(
+        Prisma.sql`
+          UPDATE "agent_triggers"
+          SET
+            "health_detail" = ${input.error.message},
+            "health_reason" = ${input.error.reason},
+            "health_revision" = "health_revision" + 1,
+            "status" = ${status}::"AgentTriggerStatus"
+          WHERE "id" = ${input.triggerId}::uuid
+            AND (
+              "status" <> ${status}::"AgentTriggerStatus"
+              OR "health_reason" IS DISTINCT FROM ${input.error.reason}
+            )
+          RETURNING "health_revision" AS "healthRevision"
+        `,
+      )
+
+      const healthRevision = rows[0]?.healthRevision
+      if (healthRevision === undefined) {
+        return null
+      }
+
+      await enqueueQueueJob(tx, {
+        // One job per transition. The consumer additionally writes a
+        // `UserAlert` keyed on the same revision, so even a redelivered job
+        // cannot double-notify: `user_alerts` is unique on (user_id, event_key).
+        idempotencyKey: `trigger-health:${input.triggerId}:${healthRevision}`,
+        payload: {
+          healthRevision,
+          reason: input.error.reason,
+          status,
+          triggerId: input.triggerId,
+        } satisfies Prisma.InputJsonObject,
+        topic: 'trigger.health-alert',
+      })
+
+      return { healthRevision, reason: input.error.reason, status, triggerId: input.triggerId }
     })
-    if (!current) {
-      return null
-    }
-
-    const unchanged =
-      current.status === status && current.healthReason === input.error.reason
-    const healthRevision = unchanged
-      ? current.healthRevision
-      : current.healthRevision + 1
-
-    await prisma.agentTrigger.update({
-      where: { id: input.triggerId },
-      data: {
-        healthDetail: input.error.message,
-        healthReason: input.error.reason,
-        healthRevision,
-        status,
-      },
-    })
-
-    transition = unchanged
-      ? null
-      : { healthRevision, reason: input.error.reason, status, triggerId: input.triggerId }
   } catch (persistError) {
-    // The trigger may have been deleted between the fire and this write.
+    // The trigger may have been deleted between the fire and this write, or the
+    // enqueue failed. Either way nothing was committed, so the next fire retries.
     console.error(
-      '[worker.trigger-health] failed to persist health for',
+      '[worker.trigger-health] failed to record health transition for',
       input.triggerId,
       persistError,
     )
     return null
-  }
-
-  if (!transition) {
-    return null
-  }
-
-  try {
-    await enqueueQueueJob(prisma, {
-      // One job per transition. The consumer additionally writes a `UserAlert`
-      // keyed on the same revision, so even a duplicated job cannot double-
-      // notify: `user_alerts` is unique on (user_id, event_key).
-      idempotencyKey: `trigger-health:${transition.triggerId}:${transition.healthRevision}`,
-      payload: {
-        healthRevision: transition.healthRevision,
-        reason: transition.reason,
-        status: transition.status,
-        triggerId: transition.triggerId,
-      } satisfies Prisma.InputJsonObject,
-      topic: 'trigger.health-alert',
-    })
-  } catch (enqueueError) {
-    console.error(
-      '[worker.trigger-health] failed to enqueue alert for',
-      input.triggerId,
-      enqueueError,
-    )
   }
 
   return transition

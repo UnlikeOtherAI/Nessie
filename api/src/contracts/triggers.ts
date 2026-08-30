@@ -87,9 +87,11 @@ export const ReauthorizeAgentTriggerBodySchema = z.object({
   takeOver: z.boolean().optional(),
 })
 
+// `source` is absent here for the same reason it is absent from the fire body:
+// it is provenance shown in the delivery log, so a caller must not be able to
+// label their own event `scheduler`.
 export const PublishEventBodySchema = z.object({
   dedupeKey: z.string().min(1).optional(),
   eventType: NonEmptyStringSchema,
   payload: z.record(z.unknown()).default({}),
-  source: z.string().min(1).optional(),
 })
