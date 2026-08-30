@@ -288,11 +288,9 @@ a {
   color: var(--tx);
 }
 
-/* Focus is intentionally a neutral chrome treatment, not a second theme: the
-   work surface keeps its chosen theme while the rail and sidebar take on
-   Slack's quiet charcoal treatment. These variables stay on the chrome rather
-   than the frame, so a light work surface does not inherit light-on-light text
-   or lose its normal action colours. */
+/* Focus is a neutral Slack-style treatment: charcoal navigation frames a
+   paper-white work surface, so the current theme's colour accents cannot turn
+   messages into another source of visual noise. */
 .focus-mode > .admin-topbar,
 .focus-mode > .admin-shell > aside,
 .focus-mode > .admin-shell > .resizable-sidebar {
@@ -317,6 +315,62 @@ a {
   --scrim: rgba(0, 0, 0, 0.38);
   --scrim-strong: rgba(0, 0, 0, 0.62);
   color: var(--tx);
+}
+
+.focus-mode > .admin-shell {
+  --rail: #ffffff;
+  --sb: #ffffff;
+  --sb-active: #ececec;
+  --main: #ffffff;
+  --main-hover: #f5f5f5;
+  --panel: #ffffff;
+  --panel-soft: #f5f5f5;
+  --surface-inverse: #1d1d1d;
+  --surface-inverse-2: #353535;
+  --ink: #1d1d1d;
+  --muted: #686868;
+  --line: rgba(29, 29, 29, 0.16);
+  --sep: #dddddd;
+  --border-strong: #b8b8b8;
+  --tx: #1d1d1d;
+  --tx2: #4d4d4d;
+  --tx3: #707070;
+  --accent: #303030;
+  --accent-hover: #171717;
+  --accent-strong: #000000;
+  --accent-soft: rgba(29, 29, 29, 0.12);
+  --on-accent: #ffffff;
+  --overlay-weak: rgba(29, 29, 29, 0.05);
+  --overlay: rgba(29, 29, 29, 0.09);
+  --overlay-strong: rgba(29, 29, 29, 0.16);
+  --scrim-weak: rgba(0, 0, 0, 0.08);
+  --scrim: rgba(0, 0, 0, 0.18);
+  --scrim-strong: rgba(0, 0, 0, 0.45);
+  color: var(--tx);
+}
+
+/* Tailwind's generated arbitrary-colour utilities are resolved before this
+   focus scope in a few controls. Pin their visible accent treatment to the
+   same monochrome scale as the work surface. */
+.focus-mode > .admin-shell .admin-button-primary,
+.focus-mode > .admin-shell [role='switch'][aria-checked='true'] {
+  background-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [role='switch'][aria-checked='true'] {
+  border-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='bg-[color:var(--accent)]'] {
+  background-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='border-[color:var(--accent)]'] {
+  border-color: #303030 !important;
+}
+
+.focus-mode > .admin-shell [class~='text-[color:var(--accent)]'] {
+  color: #1d1d1d !important;
 }
 
 .focus-mode .admin-sb-item.unread {
