@@ -46,6 +46,7 @@ import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
+import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
 
@@ -99,6 +100,8 @@ const AuthenticatedAdminShellLayout = () => {
   useRecordRecentChannelVisits();
   useRecordSectionRoute();
   const attention = useAttentionSummary();
+  const threadActivity = useThreadActivity();
+  useThreadActivityEvents();
   const attentionCountByProjectId = new Map<string, number>();
   for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
     attentionCountByProjectId.set(projectId, count);
@@ -157,6 +160,7 @@ const AuthenticatedAdminShellLayout = () => {
       dmCollapsed={shell.dmCollapsed}
       onNavigateAgent={shell.navigateToAgent}
       onNavigateChannel={shell.navigateToChannel}
+      onNavigateThreads={shell.navigateToThreads}
       onNavigateDm={shell.navigateToDm}
       onNavigateNewConversation={shell.navigateToNewConversation}
       onNavigateProject={shell.navigateToProject}
@@ -190,6 +194,7 @@ const AuthenticatedAdminShellLayout = () => {
       visibleSidebarProjects={shell.visibleSidebarProjects}
       visibleStarredEntries={shell.visibleStarredEntries}
       standaloneChannels={shell.standaloneChannels}
+      threadsUnreadCount={threadActivity.data?.unreadTotal ?? 0}
     />
   );
 

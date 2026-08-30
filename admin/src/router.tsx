@@ -19,6 +19,7 @@ import { BootstrapPage } from './pages/BootstrapPage'
 import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverviewPage'
 import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
+import { ThreadsPage } from './pages/ThreadsPage'
 import { FeedbackPage } from './pages/FeedbackPage'
 import { IntegrationsPage } from './pages/IntegrationsPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
@@ -86,10 +87,6 @@ export const router = createBrowserRouter([
     element: <Navigate to="/agents/workflows" replace />,
   },
   {
-    path: '/threads',
-    element: <Navigate to="/channels" replace />,
-  },
-  {
     path: '/chats',
     element: <Navigate to="/channels" replace />,
   },
@@ -115,6 +112,7 @@ export const router = createBrowserRouter([
   {
     element: <AdminShellLayout />,
     children: [
+      { path: '/threads', element: <ThreadsPage /> },
       {
         path: '/channels/projects/:projectId',
         element: <ChannelProjectOverviewPage />,

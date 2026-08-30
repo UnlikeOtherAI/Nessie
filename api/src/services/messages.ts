@@ -354,6 +354,7 @@ export const markThreadRead = async (
   prisma: PrismaClient,
   input: {
     rootMessageId?: string
+    lastReadMessageId?: string
     threadId: string
     userId: string
   },
@@ -382,7 +383,16 @@ export const markThreadRead = async (
     })
     if (!root) return false
 
-    const latestMessage = await prisma.message.findFirst({
+    const latestMessage = input.lastReadMessageId
+      ? await prisma.message.findFirst({
+        where: {
+          id: input.lastReadMessageId,
+          threadId: input.threadId,
+          OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
+        },
+        select: { createdAt: true, id: true },
+      })
+      : await prisma.message.findFirst({
       where: {
         threadId: input.threadId,
         OR: [
@@ -390,13 +400,14 @@ export const markThreadRead = async (
           { rootMessageId: input.rootMessageId },
         ],
       },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    })
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { createdAt: true, id: true },
+      })
     const lastReadAt = [root.createdAt, latestMessage?.createdAt, legacyReadState?.lastReadAt]
       .filter((value): value is Date => Boolean(value))
       .reduce((latest, value) => value > latest ? value : latest)
 
+    const readCursor = latestMessage?.id ? { lastReadMessageId: latestMessage.id } : {}
     await prisma.messageConversationReadState.upsert({
       where: {
         rootMessageId_userId: {
@@ -408,9 +419,11 @@ export const markThreadRead = async (
         rootMessageId: input.rootMessageId,
         userId: input.userId,
         lastReadAt,
+        ...readCursor,
       },
       update: {
         lastReadAt,
+        ...readCursor,
       },
     })
     return true

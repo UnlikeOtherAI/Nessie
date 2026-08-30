@@ -253,6 +253,9 @@ export type ListThreadMessagesQuery = z.infer<typeof ListThreadMessagesQuerySche
 // root acknowledges only that one reply conversation.
 export const MarkThreadReadBodySchema = z.object({
   rootMessageId: z.string().uuid().optional(),
+  // The client only supplies a message it rendered through the disclosure
+  // predicate. This is the exact read cursor for a reply conversation.
+  lastReadMessageId: z.string().uuid().optional(),
 })
 export type MarkThreadReadBody = z.infer<typeof MarkThreadReadBodySchema>
 

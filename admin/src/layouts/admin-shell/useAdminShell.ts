@@ -269,6 +269,10 @@ export const useAdminShell = () => {
     void navigate(`/channels/${channelId}`);
   }, [navigate]);
 
+  const navigateToThreads = useCallback(() => {
+    void navigate('/threads');
+  }, [navigate]);
+
   const navigateToNewConversation = useCallback(() => {
     setSidebarMenu(null);
     void navigate('/channels/new', {
@@ -377,6 +381,7 @@ export const useAdminShell = () => {
     closeMobileDrawer,
     navigateToAgent,
     navigateToChannel,
+    navigateToThreads,
     navigateToDm,
     navigateToAgentDesigner,
     navigateToNewConversation,

@@ -90,6 +90,9 @@ test('realtime membership resolution returns the union of channel scopes', async
         },
       ],
     },
+    messageThreadFollow: {
+      findMany: async () => [],
+    },
   } as unknown as PrismaClient
 
   const scopes = await resolveUserChannelRealtimeScopes(prisma, {
