@@ -1,14 +1,20 @@
 import { useNavigate } from 'react-router-dom'
+import { useAgents } from '../facades/agents/hooks'
+import { useChannels } from '../facades/channels/hooks'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
 import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks'
-
-const preview = (content: string): string => content.replace(/\s+/g, ' ').trim() || 'Message removed'
-const author = (message: { author?: { displayName: string }; agentId?: string }): string =>
-  message.author?.displayName ?? (message.agentId ? 'Agent' : 'Unknown sender')
+import { useUsers } from '../facades/users/hooks'
+import { useAuthSession } from '../providers/AuthSessionProvider'
+import { ThreadInboxCard } from './channels/ThreadInboxCard'
 
 export const ThreadsPage = () => {
   const navigate = useNavigate()
+  const { me, token } = useAuthSession()
   const activity = useThreadActivity()
+  const { data: agents = [] } = useAgents()
+  const { data: channels = [] } = useChannels()
+  const isOwner = me?.user.roleIds?.includes('owner') ?? false
+  const { data: users = [] } = useUsers(isOwner)
   useThreadActivityEvents()
   const items = activity.data?.items ?? []
 
@@ -21,28 +27,19 @@ export const ThreadsPage = () => {
         {!activity.isLoading && !activity.isError && items.length === 0 ? (
           <div className="py-8 text-center text-[color:var(--tx3)]">No thread activity yet</div>
         ) : null}
-        <div className="grid gap-2">
-          {items.map((item) => (
-            <button
-              className={[
-                'admin-card w-full p-4 text-left transition-colors hover:bg-[color:var(--surface-hover)]',
-                item.unread ? 'border-l-4 border-l-[color:var(--accent)]' : '',
-              ].join(' ')}
+        <div className="grid gap-5">
+          {me ? items.map((item) => (
+            <ThreadInboxCard
+              activity={item}
+              agents={agents}
+              channels={channels}
+              currentUser={me.user}
               key={item.rootMessageId}
-              onClick={() => navigate(`/channels/${item.channelId}/threads/${item.threadId}/replies/${item.rootMessageId}`)}
-              type="button"
-            >
-              <div className="mb-1 text-sm text-[color:var(--tx3)]"># {item.channelLabel}</div>
-              <div className={item.unread ? 'font-semibold text-[color:var(--tx)]' : 'text-[color:var(--tx)]'}>
-                {author(item.root)} · {preview(item.root.content)}
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-sm text-[color:var(--tx2)]">
-                <span>{item.replyCount} {item.replyCount === 1 ? 'reply' : 'replies'}</span>
-                <span>Latest: {author(item.latestReply)} · {preview(item.latestReply.content)}</span>
-                {item.unread ? <span className="font-semibold text-[color:var(--accent)]">New</span> : null}
-              </div>
-            </button>
-          ))}
+              token={token}
+              users={users}
+              onOpen={() => navigate(`/channels/${item.channelId}/threads/${item.threadId}/replies/${item.rootMessageId}`)}
+            />
+          )) : null}
         </div>
       </div>
     </section>

@@ -35,6 +35,7 @@ export const useSendMessage = (threadId?: string) => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'messages'] })
       void queryClient.invalidateQueries({ queryKey: ['threads', threadId, 'replies'] })
+      void queryClient.invalidateQueries({ queryKey: ['threads', 'activity'] })
     },
   })
 }
