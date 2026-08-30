@@ -1694,9 +1694,8 @@ a {
   color: var(--tx3);
 }
 
-/* Chat controls need to stay distinct from the message content on compact
-   touch layouts. A 32px glyph makes them twice their desktop size while the
-   34px button frame keeps every optional composer action on one row. */
+/* Keep mobile composer glyphs at their familiar size while giving every
+   secondary action the same easy-to-tap frame as Send. */
 @media (max-width: 1024px) {
   .admin-compose-actions {
     gap: 1px;
@@ -1705,19 +1704,14 @@ a {
   .admin-compose-action {
     width: 34px;
     height: 34px;
-    font-size: 32px;
-    line-height: 1;
-  }
-
-  .admin-compose-action-icon {
-    width: 32px;
-    height: 32px;
+    border: 1px solid var(--border-strong);
+    background: var(--overlay);
   }
 
   .admin-compose-send {
+    width: 34px;
     height: 34px;
-    padding-right: 7px;
-    padding-left: 7px;
+    padding: 0;
   }
 }
 
