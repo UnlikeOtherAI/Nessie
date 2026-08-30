@@ -24,7 +24,7 @@ runDatabaseTest('accept is idempotent and preserves the accepted state on a repe
   ] })
   const channel = await prisma.channel.create({
     data: {
-      label: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
+      label: 'calls', slug: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
       members: { create: [{ userId: caller.id }, { userId: invitee.id }] },
     },
   })
@@ -59,7 +59,7 @@ runDatabaseTest('accept and caller-cancel serialize to one valid terminal-or-act
   ] })
   const channel = await prisma.channel.create({
     data: {
-      label: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
+      label: 'calls', slug: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
       members: { create: [{ userId: caller.id }, { userId: invitee.id }] },
     },
   })
