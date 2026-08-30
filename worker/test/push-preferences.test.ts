@@ -31,6 +31,7 @@ test('per-event preferences are enabled by default and suppress only their own e
   const now = new Date('2026-06-07T12:00:00.000Z')
 
   assert.equal(shouldSuppressPushForPreferences({}, now, 'messages'), false)
+  assert.equal(shouldSuppressPushForPreferences({ focusModeEnabled: true }, now, 'messages'), true)
   assert.equal(shouldSuppressPushForPreferences({}, now, 'mentions'), false)
   assert.equal(shouldSuppressPushForPreferences({}, now, 'budgetAlerts'), false)
   assert.equal(shouldSuppressPushForPreferences({}, now, 'assignedWork'), false)

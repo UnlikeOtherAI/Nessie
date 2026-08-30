@@ -46,6 +46,7 @@ import { UserMenuTrigger } from './admin-shell/UserMenuTrigger';
 import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
+import { useFocusMode } from '../providers/FocusModeProvider';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
 
@@ -95,6 +96,7 @@ export const AdminShellLayout = () => {
 // useAdminShell starts several API queries; mounting it while an expired access
 // token is being restored can create competing refresh-token rotations.
 const AuthenticatedAdminShellLayout = () => {
+  const { focusModeEnabled } = useFocusMode();
   const shell = useAdminShell();
   useRecordRecentChannelVisits();
   useRecordSectionRoute();
@@ -255,6 +257,7 @@ const AuthenticatedAdminShellLayout = () => {
 
   const frameClassName = [
     'admin-frame',
+    focusModeEnabled ? 'focus-mode' : '',
     showWebTabBar ? 'has-mobile-tabbar' : '',
     showNativePhoneTabBar ? 'has-native-phone-tabbar' : '',
   ]

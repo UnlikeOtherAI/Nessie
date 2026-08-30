@@ -76,6 +76,9 @@ export const UserPreferencesSchema = z.object({
     id: z.string(),
   })).optional(),
   pushEnabled: z.boolean().optional(),
+  // Focus is a deliberate, across-device pause: the client mutes in-app
+  // attention cues while the worker withholds system push delivery.
+  focusModeEnabled: z.boolean().optional(),
   // Per-event delivery controls default to enabled when absent so existing
   // users retain the current important-notifications behaviour.
   pushMessages: z.boolean().optional(),

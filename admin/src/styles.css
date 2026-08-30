@@ -288,6 +288,33 @@ a {
   color: var(--tx);
 }
 
+/* Focus is intentionally a neutral chrome treatment, not a second theme: the
+   work surface stays legible while the rail, sidebar and attention signals stop
+   competing for notice. */
+.admin-frame.focus-mode {
+  --rail: #252527;
+  --sb: #373739;
+  --sb-active: #58585b;
+  --accent: #8a8a8f;
+  --accent-hover: #737378;
+  --accent-strong: #5c5c60;
+  --accent-soft: rgba(138, 138, 143, 0.18);
+}
+
+.focus-mode > .admin-topbar,
+.focus-mode > .admin-shell > aside {
+  filter: grayscale(1);
+}
+
+.focus-mode .admin-sb-item.unread {
+  color: var(--tx2);
+  font-weight: 400;
+}
+
+.focus-mode .sidebar-unread-count {
+  display: none;
+}
+
 .admin-shell {
   display: flex;
   min-height: 0;
