@@ -77,6 +77,7 @@ const ToolGroupSection = ({
             return (
               <div
                 className="flex items-center gap-3 rounded-md px-1 py-2 transition-colors hover:bg-[var(--overlay-weak)]"
+                id={`agent-tool-${tool.key}`}
                 key={tool.key}
               >
                 <div className="min-w-0 flex-1">

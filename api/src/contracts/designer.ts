@@ -26,6 +26,14 @@ export const DesignerToolDescriptorSchema = z.object({
   kind: z.enum(['builtin', 'mcp']).optional(),
 })
 
+// The assistant is one panel shared across the agent's tabs. This is a
+// concrete description of the current page, not a second source of UI state.
+export const DesignerPageContextSchema = z.object({
+  actions: z.array(z.string()),
+  description: z.string(),
+  title: z.string(),
+})
+
 export const DesignerChatBodySchema = z.object({
   messages: z.array(DesignerChatMessageSchema),
   formState: DesignerFormStateSchema,
@@ -34,4 +42,5 @@ export const DesignerChatBodySchema = z.object({
   // in the same order. The designer cannot pick a model out of a catalogue it
   // cannot see, and the pair it names has to be one the form can resolve.
   availableModels: z.array(AgentModelOptionSchema).optional(),
+  pageContext: DesignerPageContextSchema.optional(),
 })

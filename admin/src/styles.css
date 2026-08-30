@@ -2116,6 +2116,20 @@ button.reaction-pill-active:focus-visible {
   animation: admin-msg-flash 1.6s ease-out;
 }
 
+/* A visible, keyboard-safe confirmation for an assistant-guided UI change. */
+.designer-control-highlight {
+  animation: designer-control-flash 1.6s ease-out;
+}
+
+@keyframes designer-control-flash {
+  0% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
 @keyframes admin-msg-flash {
   0% {
     background: var(--accent-soft);

@@ -15,6 +15,8 @@ import {
 import { usePhoneLayout } from '../lib/mobile-shell'
 import { StatusPill } from '../components/primitives/StatusPill'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { DesignerAssistantPanelProvider } from '../components/features/agents/designer/DesignerAssistantPanelContext'
+import { DesignerAssistantDrawer } from '../components/features/agents/designer/DesignerAssistantDrawer'
 
 const getStatusTone = (status: AgentRecord['status']) => {
   if (status === 'error') return 'danger'
@@ -77,51 +79,56 @@ export const AgentDetailPage = () => {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-start gap-3 px-6 pt-6 pb-4">
-        <PhoneNavigationButton />
-        {!phoneLayout ? (
-          <button
-            className="admin-button admin-button-secondary mt-1 gap-1.5"
-            onClick={backToList}
-            type="button"
-          >
-            <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
-            Agents
-          </button>
-        ) : null}
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-2xl font-semibold text-[color:var(--tx)]">
-                {agent.name}
-              </h1>
-              <AgentStatusDot status={agent.status} />
-              <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
+    <DesignerAssistantPanelProvider>
+      <div className="flex h-full min-w-0 flex-col lg:flex-row">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex items-start gap-3 px-6 pt-6 pb-4">
+            <PhoneNavigationButton />
+            {!phoneLayout ? (
+              <button
+                className="admin-button admin-button-secondary mt-1 gap-1.5"
+                onClick={backToList}
+                type="button"
+              >
+                <FontAwesomeIcon className="h-3 w-3" icon={faChevronLeft} />
+                Agents
+              </button>
+            ) : null}
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <AgentAvatarQuickEdit agent={agent} canEdit={isOwner} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="truncate text-2xl font-semibold text-[color:var(--tx)]">
+                    {agent.name}
+                  </h1>
+                  <AgentStatusDot status={agent.status} />
+                  <StatusPill tone={getStatusTone(agent.status)}>{agent.status}</StatusPill>
+                </div>
+                <div className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</div>
+                <div className="mt-0.5 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
+                  {status?.currentToolName
+                    ? `Active tool: ${status.currentToolName}`
+                    : `Last activity ${new Date(agent.lastActivityAt).toLocaleString()}`}
+                </div>
+              </div>
             </div>
-            <div className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</div>
-            <div className="mt-0.5 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
-              {status?.currentToolName
-                ? `Active tool: ${status.currentToolName}`
-                : `Last activity ${new Date(agent.lastActivityAt).toLocaleString()}`}
-            </div>
+          </header>
+
+          <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
+            <AgentDetailTabs
+              agent={agent}
+              editSlot={
+                isOwner ? (
+                  <AgentDesignerContent agents={agents} editingAgent={agent} embedded />
+                ) : undefined
+              }
+              key={agent.id}
+              onSelectAgent={(nextAgentId) => void navigate(`/agents/${nextAgentId}`)}
+            />
           </div>
         </div>
-      </header>
-
-      <div className="min-h-0 flex-1 border-t border-[color:var(--sep)]">
-        <AgentDetailTabs
-          agent={agent}
-          editSlot={
-            isOwner ? (
-              <AgentDesignerContent agents={agents} editingAgent={agent} embedded />
-            ) : undefined
-          }
-          key={agent.id}
-          onSelectAgent={(nextAgentId) => void navigate(`/agents/${nextAgentId}`)}
-        />
+        {isOwner ? <DesignerAssistantDrawer /> : null}
       </div>
-    </div>
+    </DesignerAssistantPanelProvider>
   )
 }

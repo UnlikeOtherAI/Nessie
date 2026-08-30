@@ -178,6 +178,7 @@ export const buildDesignerSystemPrompt = (
   formState: DesignerChatInput['formState'],
   availableTools: DesignerChatInput['availableTools'],
   availableModels: DesignerChatInput['availableModels'],
+  pageContext?: DesignerChatInput['pageContext'],
 ): string => {
   const enabledTools = Object.entries(formState.tools)
     .filter(([, value]) => value)
@@ -202,6 +203,10 @@ export const buildDesignerSystemPrompt = (
     `- System prompt: ${summarizedSystemPrompt}`,
     `- Model: ${currentModel}`,
     `- Tools enabled: ${enabledTools.length > 0 ? enabledTools.join(', ') : 'none'}`,
+    '',
+    'Current page:',
+    `- ${pageContext?.title ?? 'Agent configuration'}: ${pageContext?.description ?? 'Edit this agent’s configuration.'}`,
+    `- Controls available on this page: ${pageContext?.actions.join(', ') || 'none'}`,
     '',
     'Available tools (use the exact id with toggle_tool / batch_toggle_tools):',
     ...buildAvailableToolLines(availableTools, formState.tools),
@@ -246,6 +251,8 @@ export const buildDesignerSystemPrompt = (
     '  different one.',
     '- ALWAYS include a short text reply explaining what you did.',
     '  Never respond with only tool calls.',
+    '- Discuss the current page directly. Only call a UI-changing tool when',
+    '  the current page lists the relevant control as available.',
     '- System prompts should be direct instructions to the agent.',
     '  No preamble, no meta-commentary. Write as if you ARE the system.',
   ].join('\n')
