@@ -32,7 +32,11 @@ export const recordDeliveryFailure = async (
   },
 ): Promise<void> => {
   const nextRetryCount = input.retryCount + 1
-  const exhausted = nextRetryCount > MAX_DELIVERY_RETRIES
+  // `>=`, not `>`: the poller selects `retryCount < MAX_DELIVERY_RETRIES`, so a
+  // row that lands on exactly MAX kept a due `nextRetryAt` it would never be
+  // picked up for — a delivery that reads as "retry pending" forever while
+  // nothing retries it. Exhaustion is now the same boundary on both sides.
+  const exhausted = nextRetryCount >= MAX_DELIVERY_RETRIES
   const nextRetryAt = exhausted ? null : computeNextRetryAt(input.retryCount)
   const errorMessage = errorMessageOf(input.error)
 
@@ -117,24 +121,50 @@ export const retryFailedTriggerDeliveries = async (
   const limit = options.limit ?? 10
   const now = new Date()
 
-  const due = await prisma.agentTriggerDelivery.findMany({
-    where: {
-      status: 'failed',
-      nextRetryAt: { not: null, lte: now },
-      retryCount: { lt: MAX_DELIVERY_RETRIES },
-    },
-    orderBy: { nextRetryAt: 'asc' },
-    take: limit,
-    select: {
-      id: true,
-      dedupeKey: true,
-      payload: true,
-      retryCount: true,
-      source: true,
-      triggerId: true,
-      trigger: { select: { type: true } },
-    },
-  })
+  // Claim, don't just read. A plain `findMany` let every worker replica select
+  // the same due rows and re-attempt them concurrently: the per-(agent, thread)
+  // lock serialises the resulting runs but not the distinct kickoff messages
+  // they each pend, and the workflow path can create genuinely separate runs.
+  // `FOR UPDATE SKIP LOCKED` inside a claiming UPDATE is the same shape the
+  // scheduler's own `claimDueScheduledTriggers` uses — one row goes to exactly
+  // one worker. Clearing `next_retry_at` as we claim is what makes it a claim:
+  // a crashed attempt leaves the row `failed` with backoff state intact, and the
+  // re-attempt path re-arms it on its next failure.
+  const due = await prisma.$queryRaw<Array<{
+    dedupeKey: string | null
+    id: string
+    payload: unknown
+    retryCount: number
+    source: string | null
+    triggerId: string
+    type: AgentTriggerType
+  }>>(
+    Prisma.sql`
+      WITH due AS (
+        SELECT d.id
+        FROM "agent_trigger_deliveries" AS d
+        WHERE d."status" = 'failed'::"AgentTriggerDeliveryStatus"
+          AND d."next_retry_at" IS NOT NULL
+          AND d."next_retry_at" <= ${now}
+          AND d."retry_count" < ${MAX_DELIVERY_RETRIES}
+        ORDER BY d."next_retry_at" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT ${limit}
+      )
+      UPDATE "agent_trigger_deliveries" AS d
+      SET "next_retry_at" = NULL
+      FROM due, "agent_triggers" AS t
+      WHERE d."id" = due."id" AND t."id" = d."trigger_id"
+      RETURNING
+        d."dedupe_key" AS "dedupeKey",
+        d."id",
+        d."payload",
+        d."retry_count" AS "retryCount",
+        d."source",
+        d."trigger_id" AS "triggerId",
+        t."type"
+    `,
+  )
 
   for (const delivery of due) {
     try {
@@ -145,7 +175,7 @@ export const retryFailedTriggerDeliveries = async (
         retryCount: delivery.retryCount,
         source: delivery.source ?? 'webhook',
         triggerId: delivery.triggerId,
-        type: delivery.trigger.type,
+        type: delivery.type,
       })
     } catch (error) {
       // The reattempt path records its own failure/backoff; only the unexpected
