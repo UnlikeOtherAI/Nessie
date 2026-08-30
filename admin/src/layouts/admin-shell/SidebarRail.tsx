@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
+import { useViewport } from '../../hooks/useViewport';
 import { CreateMenuTrigger } from './CreateMenuTrigger';
 import { NAV_ITEMS } from './nav-items';
 import { resolveSectionNavTarget } from './section-route-memory';
@@ -27,6 +28,7 @@ export const SidebarRail = ({
   pathname,
 }: SidebarRailProps) => {
   const { focusModeEnabled, toggleFocusMode, updating } = useFocusMode();
+  const { capabilities } = useViewport();
   const focusButtonRef = useRef<HTMLButtonElement>(null);
   const [focusTooltipOpen, setFocusTooltipOpen] = useState(false);
   const [focusTooltipPosition, setFocusTooltipPosition] = useState({ left: 0, top: 0 });
@@ -47,6 +49,21 @@ export const SidebarRail = ({
     window.addEventListener('resize', placeFocusTooltip);
     return () => window.removeEventListener('resize', placeFocusTooltip);
   }, [focusTooltipOpen]);
+
+  useEffect(() => {
+    if (
+      !focusTooltipOpen
+      || capabilities.hover
+      || !capabilities.coarsePointer
+    ) {
+      return undefined;
+    }
+
+    // Touch browsers can retain focus after a tap, leaving this otherwise
+    // hover-only affordance visible. Give it a short, predictable lifetime.
+    const timeoutId = window.setTimeout(() => setFocusTooltipOpen(false), 5_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [capabilities.coarsePointer, capabilities.hover, focusTooltipOpen]);
 
   const showFocusTooltip = (): void => {
     placeFocusTooltip();

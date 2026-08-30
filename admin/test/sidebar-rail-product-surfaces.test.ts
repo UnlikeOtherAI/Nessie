@@ -29,3 +29,12 @@ test('the whole rail keeps Feedback beside Focus and scrolls when space is tight
   assert.match(rail, /<nav aria-label="Main navigation" className="w-full shrink-0">/)
   assert.ok(rail.indexOf('>Feedback</span>') < rail.indexOf('>Focus</span>'))
 })
+
+test('the Focus tooltip dismisses itself after five seconds on touch devices', () => {
+  const rail = readSource('../src/layouts/admin-shell/SidebarRail.tsx')
+
+  assert.match(rail, /const \{ capabilities \} = useViewport\(\)/)
+  assert.match(rail, /capabilities\.hover/)
+  assert.match(rail, /capabilities\.coarsePointer/)
+  assert.match(rail, /window\.setTimeout\(\(\) => setFocusTooltipOpen\(false\), 5_000\)/)
+})
