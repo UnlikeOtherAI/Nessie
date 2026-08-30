@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { DebugTokenButton } from '../../components/shared/DebugTokenButton';
+import { CreateMenuTrigger } from './CreateMenuTrigger';
 import { NAV_ITEMS } from './nav-items';
 import { resolveSectionNavTarget } from './section-route-memory';
 import { UserMenuTrigger } from './UserMenuTrigger';
@@ -8,11 +9,20 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 const SIDEBAR_RAIL_ITEMS = NAV_ITEMS.filter((item) => item.id !== 'search');
 
 type SidebarRailProps = {
+  onCreateChannel: () => void;
+  onCreateMessage: () => void;
+  onCreateProject: () => void;
   onLogout: () => void;
   pathname: string;
 };
 
-export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
+export const SidebarRail = ({
+  onCreateChannel,
+  onCreateMessage,
+  onCreateProject,
+  onLogout,
+  pathname,
+}: SidebarRailProps) => {
   return (
     <aside
       className={[
@@ -70,6 +80,12 @@ export const SidebarRail = ({ onLogout, pathname }: SidebarRailProps) => {
       <div className="flex-1" />
 
       <DebugTokenButton />
+
+      <CreateMenuTrigger
+        onCreateChannel={onCreateChannel}
+        onCreateMessage={onCreateMessage}
+        onCreateProject={onCreateProject}
+      />
 
       <UserMenuTrigger onLogout={onLogout} />
     </aside>
