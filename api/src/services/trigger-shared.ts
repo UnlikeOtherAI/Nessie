@@ -21,6 +21,7 @@ export {
   resolveExecutionTarget,
   SCHEDULER_TRIGGER_TYPES,
   toTimestamp,
+  TRIGGER_ADMIN_AUDIENCE,
 } from '@nessie/workspace-admin'
 
 export type WorkflowTriggerPrismaLike = Pick<
