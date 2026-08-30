@@ -96,11 +96,21 @@ export type CallRecord = {
   channelId: string
   endedAt: string | null
   id: string
+  invites: Array<{
+    displayName: string
+    respondedAt: string | null
+    state: 'ringing' | 'accepted' | 'declined' | 'missed' | 'cancelled'
+    userId: string
+  }>
+  meetingUri: string | null
   participants: CallParticipantRecord[]
-  roomId: string
+  provider: 'google_meet' | 'jitsi' | 'microsoft_teams' | 'jitsi_embedded'
+  revision: number
+  ringExpiresAt: string | null
+  roomId: string | null
   startedAt: string
   startedById: string
-  status: 'active' | 'ended'
+  status: 'ringing' | 'active' | 'ended' | 'missed' | 'declined' | 'cancelled'
 }
 
 /**

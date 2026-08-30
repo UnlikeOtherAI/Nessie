@@ -174,7 +174,7 @@ export const ChannelOverlays = ({
       <CallOverlay
         displayName={me.user.displayName ?? 'User'}
         onLeave={onLeaveCall}
-        roomId={activeCall.roomId}
+        roomId={activeCall.roomId ?? ''}
       />
     )}
 

@@ -1,6 +1,6 @@
 # Call links + real ringing — Google Meet by default, Jitsi per team, replacing the embedded call
 
-**Status:** Implementation in progress — Slice 1 complete · 2026-08-30
+**Status:** Implementation in progress — Slices 1–2 complete · 2026-08-30
 **Provider decision (made by the product owner, 2026-08-30, amended same
 day):** the link provider is a **per-team setting** — **Google Meet (the
 default)**, **Jitsi**, or **Microsoft Teams**. Pressing the phone icon does
@@ -797,7 +797,7 @@ handlers in `worker/src/run/pa-tools/`:
    Rule-zero note: until that UI and slice 5's tool land, this route is
    **machine-only by decision** — its doorways are deliberately deferred, not
    silently missing.
-2. **Schema + call service rework** — `CallInvite`, widened status,
+2. **Schema + call service rework — implemented 2026-08-30.** `CallInvite`, widened status,
    provider/`meetingUri` columns, migration force-ending live Jitsi calls,
    new accept/decline/cancel routes, ring-timeout job + expiry sweep,
    `call.*` events added to the realtime schemas (fixing the §1 defect).

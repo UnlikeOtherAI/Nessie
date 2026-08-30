@@ -25,6 +25,7 @@ const dbStub = [
   '  throw new Error("@nessie/db is stubbed in local-auth-mode-gate.test.ts")',
   '}',
   'export const writeAuditEntry = async () => {}',
+  'export const enqueueQueueJob = async () => {}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

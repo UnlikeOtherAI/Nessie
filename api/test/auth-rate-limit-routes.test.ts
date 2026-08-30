@@ -17,6 +17,7 @@ const dbStub = [
   '  throw new Error("@nessie/db is stubbed in auth-rate-limit-routes.test.ts")',
   '}',
   'export const writeAuditEntry = async () => {}',
+  'export const enqueueQueueJob = async () => {}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

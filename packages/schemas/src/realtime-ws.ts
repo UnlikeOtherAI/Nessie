@@ -153,6 +153,28 @@ export type WsEventMap = {
     channelId?: ChannelId
     readAt: string
   }
+  'call.incoming': {
+    callId: string
+    channelId: ChannelId
+    channelName: string
+    caller: { id: UserId; displayName: string; avatarUrl: string | null }
+    meetingUri: string
+    expiresAt: string
+    revision: number
+  }
+  'call.invite.updated': {
+    callId: string
+    userId: UserId
+    state: 'ringing' | 'accepted' | 'declined' | 'missed' | 'cancelled'
+    revision: number
+  }
+  'call.updated': {
+    callId: string
+    channelId: ChannelId
+    status: 'ringing' | 'active' | 'ended' | 'missed' | 'declined' | 'cancelled'
+    meetingUri: string | null
+    revision: number
+  }
 }
 
 export const AgentStatusEventSchema = z.object({
@@ -298,6 +320,38 @@ export const AlertReadEventSchema = z.object({
 })
 export type AlertReadEvent = z.infer<typeof AlertReadEventSchema>
 
+const CallStatusSchema = z.enum(['ringing', 'active', 'ended', 'missed', 'declined', 'cancelled'])
+const CallInviteStateSchema = z.enum(['ringing', 'accepted', 'declined', 'missed', 'cancelled'])
+export const CallIncomingEventSchema = z.object({
+  callId: z.string().uuid(),
+  channelId: ChannelIdSchema,
+  channelName: z.string(),
+  caller: z.object({
+    id: UserIdSchema,
+    displayName: z.string(),
+    avatarUrl: z.string().nullable(),
+  }),
+  meetingUri: z.string().url(),
+  expiresAt: TimestampSchema,
+  revision: z.number().int().nonnegative(),
+})
+export type CallIncomingEvent = z.infer<typeof CallIncomingEventSchema>
+export const CallInviteUpdatedEventSchema = z.object({
+  callId: z.string().uuid(),
+  userId: UserIdSchema,
+  state: CallInviteStateSchema,
+  revision: z.number().int().nonnegative(),
+})
+export type CallInviteUpdatedEvent = z.infer<typeof CallInviteUpdatedEventSchema>
+export const CallUpdatedEventSchema = z.object({
+  callId: z.string().uuid(),
+  channelId: ChannelIdSchema,
+  status: CallStatusSchema,
+  meetingUri: z.string().url().nullable(),
+  revision: z.number().int().nonnegative(),
+})
+export type CallUpdatedEvent = z.infer<typeof CallUpdatedEventSchema>
+
 export const WsEventNameSchema = z.enum([
   'agent.status',
   'agent.tool.start',
@@ -318,6 +372,9 @@ export const WsEventNameSchema = z.enum([
   'agent.iteration',
   'alert.created',
   'alert.read',
+  'call.incoming',
+  'call.invite.updated',
+  'call.updated',
 ])
 
 export const WsScopeSchema = z.union([
@@ -508,6 +565,24 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('alert.read'),
     data: AlertReadEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('call.incoming'),
+    data: CallIncomingEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('call.invite.updated'),
+    data: CallInviteUpdatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('call.updated'),
+    data: CallUpdatedEventSchema,
     ts: TimestampSchema,
   }),
 ])

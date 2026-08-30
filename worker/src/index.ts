@@ -90,6 +90,7 @@ import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import { enqueueCommsSubscriptionsRenew } from './queue.js'
 import { executeExecutorCommandJob } from './control/executor-commands.js'
 import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
+import { handleCallRingTimeout, sweepExpiredActiveCalls } from './control/call-lifecycle.js'
 
 const config = loadConfig()
 if (!process.env.DATABASE_URL) {
@@ -191,6 +192,16 @@ export const startWorker = async (
   }
   const abortController = new AbortController()
   const runnerLabelPrefix = `${process.env.HOSTNAME ?? 'local-worker'}`
+
+  queueProvider.subscribe(
+    'call.ring-timeout',
+    async (job) => {
+      const payload = job.payload as { callId?: unknown }
+      if (typeof payload.callId !== 'string') return
+      await handleCallRingTimeout(prisma, realtimeTransport, payload.callId)
+    },
+    { signal: abortController.signal },
+  )
 
   queueProvider.subscribe(
     'run.execute',
@@ -540,6 +551,27 @@ export const startWorker = async (
     }
   }, 15_000)
 
+  const maxActiveCallHours = (() => {
+    const configured = Number(process.env.NESSIE_CALL_MAX_ACTIVE_HOURS)
+    return Number.isFinite(configured) && configured > 0 ? configured : 8
+  })()
+  let activeCallExpiryInFlight = false
+  const activeCallExpiryInterval = setInterval(async () => {
+    if (activeCallExpiryInFlight || abortController.signal.aborted) return
+    activeCallExpiryInFlight = true
+    try {
+      await sweepExpiredActiveCalls(
+        prisma,
+        realtimeTransport,
+        new Date(Date.now() - maxActiveCallHours * 60 * 60 * 1000),
+      )
+    } catch (error) {
+      console.error('[worker.call-expiry] failed', error)
+    } finally {
+      activeCallExpiryInFlight = false
+    }
+  }, 60_000)
+
   // Due-source sweep. Reuses the trigger poller's claim shape rather than
   // introducing a second scheduler: a conditional update on `claimedAt` means
   // two workers cannot both take one source.
@@ -750,6 +782,7 @@ export const startWorker = async (
   const stop = async () => {
     abortController.abort()
     clearInterval(triggerSweepInterval)
+    clearInterval(activeCallExpiryInterval)
     clearInterval(dashboardSweepInterval)
     clearInterval(workflowStepReapInterval)
     clearInterval(deliveryRetryInterval)

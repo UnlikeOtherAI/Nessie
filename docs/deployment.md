@@ -498,6 +498,8 @@ production settings:
 | Comms Google client secret | `NESSIE_COMMS_GOOGLE_CLIENT_SECRET` | optional (secret); Google OAuth client secret for the code→token exchange. Google and the `google_meet` call provider are configured only when the id + secret are both set |
 | Comms Google Pub/Sub topic | `NESSIE_COMMS_GOOGLE_PUBSUB_TOPIC` | optional; fully-qualified `projects/<p>/topics/<t>` for Gmail `users.watch` push notifications. Sync still works without it (incremental polling); only real-time watch renewal needs it |
 | Jitsi call domain | `NESSIE_JITSI_DOMAIN` | optional; hostname (and optional port) used for server-minted Jitsi links. Defaults to `meet.jit.si`; do not include a scheme or path |
+| Call ring timeout | `NESSIE_CALL_RING_TIMEOUT_MS` | optional; delayed durable queue timeout for an unanswered call. Defaults to `45000` (45 seconds). Never implemented with an API-process timer. |
+| Active-call expiry | `NESSIE_CALL_MAX_ACTIVE_HOURS` | optional; worker sweep backstop for a call that remains active without an explicit end. Defaults to `8` hours. |
 
 Communications connectors register from env at API and worker startup via
 `@nessie/comms-providers`; a provider whose vars are unset simply does not
