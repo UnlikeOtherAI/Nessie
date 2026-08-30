@@ -82,6 +82,8 @@ with mode `0600`. Set the corresponding `INFISICAL_*` values in the Compose
 encryption key, and auth secret. The write-scoped service token is mounted only
 into `nessie-api` as a Docker secret. Do not put any vault root material in
 `.env` or pass it to `nessie-worker`.
+The deployment mirror explicitly preserves `.env.infisical`, just as it
+preserves `.env`; keep it host-only with mode `0600`.
 Set `COMPOSE_PROFILES=secrets` only after all vault settings exist; this keeps
 ordinary application deploys bootable while the vault has not been provisioned.
 
