@@ -393,6 +393,16 @@ export const resumeAgentTrigger = async (
     )
   }
 
+  // Clear the stale verdict. Health records why the machine last refused to
+  // run this schedule; resuming is the operator asserting they want it running
+  // again, so carrying the old reason forward would leave the page explaining a
+  // failure that is no longer current. The next fire re-derives it — and if the
+  // cause is still there, that counts as a fresh transition and alerts again.
+  await prisma.agentTrigger.update({
+    data: { healthDetail: null, healthReason: null },
+    where: { id: triggerId },
+  })
+
   return updateAgentTrigger(prisma, triggerId, {
     enabled: true,
     status: 'active',
