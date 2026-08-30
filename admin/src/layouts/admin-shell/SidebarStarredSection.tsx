@@ -138,7 +138,6 @@ export const SidebarStarredSection = ({
                 <ProjectAvatar
                   avatarAttachmentId={project.avatarAttachmentId}
                   avatarEmoji={project.avatarEmoji}
-                  name={project.name}
                   size={18}
                   token={token}
                 />

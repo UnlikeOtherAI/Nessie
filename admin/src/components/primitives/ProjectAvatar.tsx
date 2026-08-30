@@ -1,23 +1,20 @@
 import { useEffect, useState } from 'react'
 
-import { getInitials } from '../../lib/avatar'
 import { useAuthedObjectUrl } from '../../lib/uploads'
 
 type ProjectAvatarProps = {
   avatarAttachmentId?: string | null
   avatarEmoji?: string | null
   className?: string
-  name: string
   size?: number
   token: string | null
 }
 
-/** A project identity uses the same rounded-square treatment as a profile photo. */
+/** Shows a project picture when set, otherwise its neutral folder marker. */
 export const ProjectAvatar = ({
   avatarAttachmentId,
   avatarEmoji,
   className,
-  name,
   size = 32,
   token,
 }: ProjectAvatarProps) => {
@@ -31,17 +28,30 @@ export const ProjectAvatar = ({
       aria-hidden="true"
       className={[
         'flex shrink-0 items-center justify-center overflow-hidden rounded-md',
-        'bg-[color:var(--accent)] font-bold text-[color:var(--on-accent)]',
         className ?? '',
       ].join(' ')}
-      style={{ fontSize: Math.round(size * 0.48), height: size, width: size }}
+      style={{ height: size, width: size }}
     >
       {imageUrl && !broken ? (
         <img alt="" className="h-full w-full object-cover" onError={() => setBroken(true)} src={imageUrl} />
       ) : avatarEmoji ? (
-        <span>{avatarEmoji}</span>
+        <span style={{ fontSize: Math.round(size * 0.48) }}>{avatarEmoji}</span>
       ) : (
-        <span>{getInitials(name, 'P')}</span>
+        <svg
+          className="shrink-0 text-[color:var(--tx3)]"
+          fill="none"
+          height={Math.round(size * 0.72)}
+          stroke="currentColor"
+          strokeWidth="1.8"
+          viewBox="0 0 24 24"
+          width={Math.round(size * 0.72)}
+        >
+          <path
+            d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       )}
     </span>
   )
