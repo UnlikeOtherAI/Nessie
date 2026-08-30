@@ -74,6 +74,25 @@ through trigram similarity, and no substring test on the loaded record can
 reproduce it, so the card simply vanishes. `describeSearchResults` labels the
 server's answer with why each row matched; it never decides what matched.
 
+**A prefix lane covers the first two keystrokes.** Full text matches whole
+lexemes and the trigram lane needs three characters, so `"fi"` answered empty
+while `"fin"` answered — the store stopped narrowing exactly as a person began
+to type. `prefixTerm` OR-s Postgres' own `to_tsquery('simple', 'fi:*')` onto the
+whole-word query, so an exact match still outranks a prefix hit. It is the only
+tsquery text this module assembles by hand, so the lexeme is **whitelisted
+rather than escaped**: the last word lowercased, everything outside `[a-z0-9-]`
+dropped, trailing hyphens trimmed (tsquery rejects them), and nothing left means
+no prefix term at all. The bound parameter stays the raw user text; `:*` is the
+one interpolated character and it is a literal.
+
+Its tests are worth reading before adding another: a 2-character prefix is
+*intrinsically* low-signal — on the synced registry `"fi"` matches ~1,600 of
+5,500 rows, all legitimately (`FileToPDF`, `Financial`, `Filtrix`). A test that
+seeds one row and asserts it lands inside a `LIMIT`ed slice is therefore
+measuring how full the shared database is, not whether prefix matching works.
+Assert on a token the catalogue does not carry, and assert *that the lane
+answers*, never a position.
+
 ## Visibility
 
 The store shows `moderationState IN ('curated','approved')` and
@@ -204,6 +223,30 @@ probed, discovered 2 capabilities, and both projected rows carry
 `requiresExplicitGrant`. Resource and prompt counts read 0 there because the
 server does not advertise those capabilities — the gate answers from the
 handshake rather than sending a request that would error.
+
+**Connecting happens on `/apps`, in a dialog that says what it will do.**
+Connect used to navigate to the Connectors page, which dropped the person out
+of the store mid-decision and into a surface built for a different question.
+`AppConnectDialog` runs the whole flow in place and states the cost of the
+click *before* it is made — "Connecting opens a … sign-in window", "needs no
+sign-in", or "needs an API key" — read from `AppSummaryRecord.authMethod`. That
+field is on the wire for exactly this reason and is the auth *method* only: the
+presenter's `STORE_CATALOG_SELECT` still cannot emit `authConfig`, a
+`credentialRef`, or the endpoint. A failure keeps the person in the dialog and
+says nothing was saved, because a half-made connection they cannot see is worse
+than a refusal they can retry.
+
+The catalogue's toolbar is one row: search, the All/Installed filter, then the
+category `<select>` right-aligned. Categories were a chip row, which the
+registry's ~5,500 apps made unusable — 16 categories do not fit a line, and a
+horizontally-scrolled chip strip hides its own tail. The dropdown's first option
+is "All categories" and carries **no count**, deliberately: the filter
+immediately to its left already shows that same total, and two adjacent controls
+both reading "All (1092)" say nothing about which one narrows what. Counts stay
+on the individual categories, where each names a real choice, and every count is
+the server's aggregate rather than the length of the loaded slice. Narrowing is
+a server round trip (`useApps({ category })`) — per §"Search is the database's
+job", the client never filters what it was sent.
 
 ## Not built yet
 

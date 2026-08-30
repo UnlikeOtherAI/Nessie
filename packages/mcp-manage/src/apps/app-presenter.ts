@@ -9,6 +9,7 @@ import type {
   AppAgentAccessRecord,
   AppSource,
   AppSummaryRecord,
+  AppAuthMethod,
   AppTrustLevel,
   McpCatalogStatus,
   McpCatalogVisibility,
@@ -59,6 +60,12 @@ export const STORE_CATALOG_SELECT = {
   aliases: true,
   trustLevel: true,
   distribution: true,
+  // The auth METHOD only — never `authConfig`, which holds the client id and
+  // any static secret. A person deserves to know "this will open a sign-in"
+  // versus "this needs a key" BEFORE they press Connect, and that is one enum
+  // value; the configuration behind it stays server-side like every other
+  // credential fact this presenter refuses to emit.
+  authMethod: true,
   appSource: true,
   featured: true,
   featuredOrder: true,
@@ -93,6 +100,7 @@ export type StoreCatalogRow = {
   aliases: string[]
   trustLevel: AppTrustLevel
   distribution: AppDistribution
+  authMethod: AppAuthMethod
   appSource: AppSource
   featured: boolean
   featuredOrder: number | null
@@ -141,6 +149,7 @@ export const presentAppSummary = (
   aliases: row.aliases,
   trustLevel: row.trustLevel,
   distribution: row.distribution,
+  authMethod: row.authMethod,
   appSource: row.appSource,
   featured: row.featured,
   featuredOrder: row.featuredOrder,

@@ -130,23 +130,22 @@ test('a built-in offers Open, not Connect — there is no account, only a surfac
   })
 })
 
-test('connecting goes to the destination the server named, never one this client assembled', () => {
-  const record = app()
-  assert.deepEqual(appCardAction(record), {
-    kind: 'link',
-    href: record.installHref,
+test('connecting is a button that opens the dialog on this page, never a navigation', () => {
+  // The card used to link to `installHref` — the Connectors page's install
+  // form. Connect now happens in the AppConnectDialog on /apps, so the action
+  // is a button and the record's `installHref` never reaches the footer.
+  assert.deepEqual(appCardAction(app()), {
+    kind: 'connect',
     label: 'Connect',
     tone: 'primary',
   })
   assert.deepEqual(appCardAction(app({ state: 'auth_expired' })), {
-    kind: 'link',
-    href: record.installHref,
+    kind: 'connect',
     label: 'Reconnect',
     tone: 'primary',
   })
   assert.deepEqual(appCardAction(app({ state: 'error' })), {
-    kind: 'link',
-    href: record.installHref,
+    kind: 'connect',
     label: 'Retry',
     tone: 'primary',
   })

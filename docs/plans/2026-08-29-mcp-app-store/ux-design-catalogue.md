@@ -271,6 +271,16 @@ Fixed taxonomy, in this exact display order (fixed order = users build spatial m
 
 ### Category jump-nav
 
+> **Superseded by what shipped.** This section designed for a hand-curated
+> catalogue of a few dozen apps. Registry ingestion made that 5,500 apps across
+> 16 categories, and neither shape below survives it: a one-line jump-nav does
+> not hold 16 links, and a horizontally-scrolling chip row hides its own tail —
+> the categories a person has not seen are exactly the ones they are looking
+> for. Both were replaced on 2026-08-30 by a single right-aligned `<select>`
+> (`AppCategorySelect`) sitting on the search row at every width, which also
+> narrows on the server rather than in the browser. The rest of this section is
+> kept for the reasoning that led here. See `overview.md` → "The connect flow".
+
 - **Desktop (≥64rem, `lg`):** a slim jump-nav renders *inside the sticky bar* as a horizontal list of category links (`hidden lg:flex items-center gap-3 text-xs text-[color:var(--tx3)]`, active section `text-[color:var(--tx)]) font-medium`) — one line, overflow scrolls horizontally, clicking smooth-scrolls to the section. It shows only categories currently rendered (respecting the filter), max ~8 visible before scroll. This is the same slot the wireframe shows empty to the right of the SegmentedControl; it appears only at `lg` so it never fights the filter control.
 - **Mobile (<64rem):** the jump-nav becomes its own horizontal scrolling chip row directly under the sticky bar (inside the sticky container): `flex gap-2 overflow-x-auto pb-2 -mx-4 px-4` with chips `shrink-0 rounded-full border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-1.5 text-xs text-[color:var(--tx2)]`, active chip `border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--accent)]`. Scroll-snap not needed; chips are chunky enough.
 
