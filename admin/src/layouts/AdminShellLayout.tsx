@@ -288,7 +288,13 @@ const AuthenticatedAdminShellLayout = () => {
 
                   <div className="admin-shell">
                     {!mobileLayout && (
-                      <SidebarRail onLogout={shell.logoutAndRedirect} pathname={shell.pathname} />
+                      <SidebarRail
+                        onCreateChannel={() => shell.openCreateChannel()}
+                        onCreateMessage={shell.navigateToNewConversation}
+                        onCreateProject={shell.openCreateProject}
+                        onLogout={shell.logoutAndRedirect}
+                        pathname={shell.pathname}
+                      />
                     )}
 
                     {shell.isKnowledgeRoute ? (

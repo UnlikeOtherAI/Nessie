@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import {
+  detectSecrets,
   parseThreadId,
 } from '@nessie/schemas'
 import {
@@ -272,6 +273,15 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
 
     const body = parseInput(UpdateThreadMessageBodySchema, request.body, reply)
     if (!body) {
+      return reply
+    }
+    if (detectSecrets(body.content).length > 0) {
+      sendApiError(
+        reply,
+        422,
+        'SECRET_INTERCEPTED',
+        'A possible credential was intercepted before this message was saved. Save it through Secrets instead.',
+      )
       return reply
     }
 

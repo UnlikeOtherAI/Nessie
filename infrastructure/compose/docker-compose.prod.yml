@@ -77,6 +77,54 @@ services:
       - db
     restart: "no"
 
+  # Infisical persists in a dedicated database on Nessie's existing pgvector
+  # cluster. It is not exposed on a host port: the shared Caddy proxy is its
+  # sole ingress and Postgres/Redis remain private to Docker networks.
+  nessie-infisical-redis:
+    image: redis:7.4-alpine
+    container_name: nessie-infisical-redis
+    profiles: ["secrets"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - nessie_infisical_redisdata:/data
+    networks:
+      vault:
+        aliases:
+          - nessie-infisical-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  infisical:
+    image: ${INFISICAL_IMAGE:-infisical/infisical:v0.151.0-postgres}
+    container_name: nessie-infisical
+    profiles: ["secrets"]
+    restart: unless-stopped
+    env_file:
+      # Vault bootstrap/database keys are intentionally isolated from the
+      # Nessie runtime .env. The API and worker must never inherit them.
+      - .env.infisical
+    environment:
+      REDIS_URL: redis://nessie-infisical-redis:6379
+      SITE_URL: https://vault.nessie.works
+    depends_on:
+      nessie-postgres:
+        condition: service_healthy
+      nessie-infisical-redis:
+        condition: service_healthy
+    networks:
+      - edge
+      - vault
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
   api:
     build:
       context: ../..
@@ -119,8 +167,13 @@ services:
       NESSIE_STORAGE_ACCESS_KEY_ID: ${NESSIE_STORAGE_ACCESS_KEY_ID}
       NESSIE_STORAGE_SECRET_ACCESS_KEY: ${NESSIE_STORAGE_SECRET_ACCESS_KEY}
       NESSIE_MAX_UPLOAD_BYTES: "5368709120"
+      # Docker secret mount. The host path stays in `.env` solely for Compose's
+      # top-level secret declaration and is never inherited by the worker.
+      INFISICAL_SERVICE_TOKEN_FILE: /run/secrets/infisical_service_token
     volumes:
       - ./nessie.config.json:/app/nessie.config.json:ro
+    secrets:
+      - infisical_service_token
     networks:
       - edge
       - db
@@ -240,9 +293,21 @@ services:
 volumes:
   nessie_pgdata:
   nessie_miniodata:
+  nessie_infisical_redisdata:
+
+secrets:
+  infisical_service_token:
+    # Keep ordinary Nessie deploys bootable before the vault is provisioned.
+    # A configured production deployment overrides this with the host-only
+    # token file; the placeholder is not a credential and the API returns 503
+    # until all INFISICAL_* settings are present.
+    file: ${INFISICAL_SERVICE_TOKEN_FILE:-./infisical-disabled-token.example}
 
 networks:
   edge:
     external: true
   db:
     external: true
+  # Infisical's unauthenticated Redis never joins Nessie's shared data network.
+  vault:
+    internal: true

@@ -19,41 +19,65 @@ const sessionId = '00000000-0000-4000-8000-000000000006'
 const threadId = '00000000-0000-4000-8000-000000000008'
 const rootMessageId = '00000000-0000-4000-8000-000000000010'
 
-const pushSurfaceStore = (rows: Map<string, Record<string, unknown>>) => ({
-  updateMany: async ({ data, where }: {
-    data: Record<string, unknown>
-    where: {
-      clientId: string
-      heartbeatSequence: { lte: bigint }
-      userId: string
-    }
-  }) => {
-    const key = `${where.userId}:${where.clientId}`
-    const existing = rows.get(key)
-    if (
-      !existing
-      || typeof existing.heartbeatSequence !== 'bigint'
-      || existing.heartbeatSequence > where.heartbeatSequence.lte
-    ) {
-      return { count: 0 }
-    }
-    rows.set(key, { ...existing, ...data })
-    return { count: 1 }
-  },
-  create: async ({ data }: { data: Record<string, unknown> }) => {
-    const key = `${data.userId}:${data.clientId}`
-    if (rows.has(key)) {
-      throw Object.assign(new Error('duplicate push surface'), { code: 'P2002' })
-    }
-    rows.set(key, data)
-    return data
-  },
-})
+// Model Postgres `INSERT ... ON CONFLICT (user_id, client_id) DO UPDATE ...
+// WHERE existing.heartbeat_sequence <= EXCLUDED.heartbeat_sequence`. The row is
+// created when absent and only advanced when the incoming heartbeat is at least
+// as recent, exactly as the single `$executeRaw` in the service does. The
+// positional order mirrors that statement's VALUES list; a reorder there fails
+// these assertions loudly rather than silently.
+const applyUpsert = (
+  rows: Map<string, Record<string, unknown>>,
+  values: unknown[],
+): number => {
+  const [
+    userId,
+    organizationId,
+    clientId,
+    surfaceKind,
+    channelId,
+    threadId,
+    rootMessageId,
+    projectId,
+    knowledgeSpaceId,
+    heartbeatSequence,
+    lastSeenAt,
+  ] = values
+  const key = `${String(userId)}:${String(clientId)}`
+  const existing = rows.get(key)
+  if (
+    existing
+    && typeof existing.heartbeatSequence === 'bigint'
+    && typeof heartbeatSequence === 'bigint'
+    && existing.heartbeatSequence > heartbeatSequence
+  ) {
+    return 0
+  }
+  rows.set(key, {
+    userId,
+    organizationId,
+    clientId,
+    surfaceKind,
+    channelId,
+    threadId,
+    rootMessageId,
+    projectId,
+    knowledgeSpaceId,
+    heartbeatSequence,
+    lastSeenAt,
+  })
+  return 1
+}
 
-const withSession = <T extends object>(transaction: T, active = true) => ({
+const withSession = <T extends object>(
+  transaction: T,
+  rows: Map<string, Record<string, unknown>>,
+  active = true,
+) => ({
   $transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback({
     ...transaction,
     $queryRaw: async () => [{ locked: true }],
+    $executeRaw: async (_strings: TemplateStringsArray, ...values: unknown[]) =>
+      applyUpsert(rows, values),
     refreshToken: {
       findFirst: async () => (active ? { id: 'refresh-token-1' } : null),
     },
@@ -74,8 +98,7 @@ test('records each app session separately so only an exact open thread can suppr
     },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
     thread: exactThread,
-    userPushSurfacePresence: pushSurfaceStore(rows),
-  })
+  }, rows)
   const channel = PushSurfaceSchema.parse({ kind: 'channel', channelId, rootMessageId: null, threadId })
 
   await recordPushSurfacePresence(prisma as never, {
@@ -115,8 +138,7 @@ test('clears an unentitled channel target instead of persisting a cross-organiza
     channelMember: { findFirst: async () => null },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
     thread: exactThread,
-    userPushSurfacePresence: pushSurfaceStore(rows),
-  })
+  }, rows)
 
   await recordPushSurfacePresence(prisma as never, {
     clientId: phoneClientId,
@@ -143,8 +165,7 @@ test('clears a thread that does not belong to the reported channel', async () =>
     channelMember: { findFirst: async () => ({ id: 'member-1' }) },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
     thread: exactThread,
-    userPushSurfacePresence: pushSurfaceStore(rows),
-  })
+  }, rows)
 
   await recordPushSurfacePresence(prisma as never, {
     clientId: phoneClientId,
@@ -177,8 +198,7 @@ test('records a reply conversation only when its root belongs to the reported th
     },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
     thread: exactThread,
-    userPushSurfacePresence: pushSurfaceStore(rows),
-  })
+  }, rows)
 
   await recordPushSurfacePresence(prisma as never, {
     clientId: phoneClientId,
@@ -199,8 +219,7 @@ test('records a project Board only after checking the recipient can reach that p
     projectMember: { findFirst: async () => ({ id: 'project-member-1' }) },
     organizationMember: { findFirst: async () => ({ id: 'member-1' }) },
     thread: exactThread,
-    userPushSurfacePresence: pushSurfaceStore(rows),
-  })
+  }, rows)
   await recordPushSurfacePresence(prisma as never, {
     clientId: phoneClientId,
     organizationId,
@@ -221,8 +240,7 @@ test('clears the Ops usage surface for a non-owner', async () => {
     channelMember: { findFirst: async () => null },
     organizationMember: { findFirst: async () => null },
     thread: exactThread,
-    userPushSurfacePresence: pushSurfaceStore(rows),
-  })
+  }, rows)
 
   await recordPushSurfacePresence(prisma as never, {
     clientId: tabletClientId,
@@ -244,8 +262,7 @@ test('does not let a delayed foreground heartbeat overwrite a newer background s
     channelMember: { findFirst: async () => ({ id: 'member-1' }) },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
     thread: exactThread,
-    userPushSurfacePresence: pushSurfaceStore(rows),
-  })
+  }, rows)
 
   await recordPushSurfacePresence(prisma as never, {
     clientId: phoneClientId,
@@ -276,8 +293,7 @@ test('does not recreate a surface for a revoked session access token', async () 
     channelMember: { findFirst: async () => ({ id: 'member-1' }) },
     organizationMember: { findFirst: async () => ({ id: 'owner-1' }) },
     thread: exactThread,
-    userPushSurfacePresence: pushSurfaceStore(rows),
-  }, false)
+  }, rows, false)
 
   await recordPushSurfacePresence(prisma as never, {
     clientId: phoneClientId,

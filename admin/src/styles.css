@@ -1271,6 +1271,62 @@ a {
   font-weight: var(--font-weight-semibold);
 }
 
+/* The rail's creation control intentionally has no label: its compact
+   plus-button placement mirrors the native phone action and keeps it directly
+   above the account avatar, where it remains available from every workspace. */
+.admin-rail-create-trigger {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  margin: 0 0 8px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tx) 16%, transparent);
+  color: var(--tx);
+  cursor: pointer;
+  font-size: 21px;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.admin-rail-create-trigger:hover,
+.admin-rail-create-trigger:focus-visible,
+.admin-rail-create-trigger.is-open {
+  background: color-mix(in srgb, var(--tx) 28%, transparent);
+  outline: none;
+}
+
+.admin-rail-create-trigger:active {
+  transform: scale(0.94);
+}
+
+.create-menu-icon {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.create-menu-icon-message {
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
+  color: var(--accent);
+}
+
+.create-menu-icon-channel {
+  background: color-mix(in srgb, #3ba55c 19%, transparent);
+  color: #258143;
+}
+
+.create-menu-icon-project {
+  background: color-mix(in srgb, #d98600 19%, transparent);
+  color: #a96400;
+}
+
 /* The one single-select strip in the admin (components/primitives/TabBar).
    The selected item is a single sliding pill rather than a per-item background,
    so a tab change reads as one object moving to what was tapped. Every colour
