@@ -4,7 +4,7 @@ import test from 'node:test'
 import type { MeResponse } from '@nessie/schemas'
 import {
   activeWorkspace,
-  groupWorkspacesByOrganization,
+  orderWorkspacesWithActiveFirst,
   workspacesFromMe,
   type Workspace,
 } from '../src/lib/workspaces.js'
@@ -83,7 +83,7 @@ test('UOA sessions render the authoritative directory rather than local provisio
   assert.equal(activeWorkspace(uoaMe)?.teamId, 'uoa-team-current')
 })
 
-test('teams are grouped by organization id without changing directory order', () => {
+test('the active workspace leads the picker without separating organizations', () => {
   const workspaces: Workspace[] = [
     {
       organizationId: 'org-a',
@@ -98,6 +98,7 @@ test('teams are grouped by organization id without changing directory order', ()
       teamId: 'team-b-1',
       label: 'General',
       orgName: 'Beta',
+      active: true,
     },
     {
       organizationId: 'org-a',
@@ -108,28 +109,9 @@ test('teams are grouped by organization id without changing directory order', ()
     },
   ]
 
-  assert.deepEqual(groupWorkspacesByOrganization(workspaces), [
-    {
-      organizationId: 'org-a',
-      label: 'Acme',
-      workspaces: [workspaces[0], workspaces[2]],
-    },
-    {
-      organizationId: 'org-b',
-      label: 'Beta',
-      workspaces: [workspaces[1]],
-    },
+  assert.deepEqual(orderWorkspacesWithActiveFirst(workspaces, 'team-b-1'), [
+    workspaces[1],
+    workspaces[0],
+    workspaces[2],
   ])
-})
-
-test('organizations with the same display name remain separate groups', () => {
-  const workspaces: Workspace[] = [
-    { organizationId: 'org-a', projectId: '', teamId: 'team-a', label: 'One', orgName: 'Acme' },
-    { organizationId: 'org-b', projectId: '', teamId: 'team-b', label: 'Two', orgName: 'Acme' },
-  ]
-
-  assert.deepEqual(
-    groupWorkspacesByOrganization(workspaces).map((group) => group.organizationId),
-    ['org-a', 'org-b'],
-  )
 })

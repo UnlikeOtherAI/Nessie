@@ -54,6 +54,7 @@ type LocalTeam = {
   externalWorkspaceId: string
   id: string
   name: string
+  organizationName?: string
 }
 
 type TeamQuery = {
@@ -74,9 +75,15 @@ const makePrisma = (localTeams: LocalTeam[] = []) => ({
       // named external workspaces, the degraded fallback lists every locally
       // materialized UOA workspace this person belongs to.
       const externalIds = where.externalWorkspaceId?.in
-      return externalIds
+      const teams = externalIds
         ? localTeams.filter((team) => externalIds.includes(team.externalWorkspaceId))
         : localTeams
+      return teams.map((team) => ({
+        ...team,
+        project: {
+          organization: { name: team.organizationName ?? 'Mirrored organization' },
+        },
+      }))
     },
   },
   user: { update: async () => user },
@@ -108,6 +115,7 @@ test('a cached directory is served without touching the account link', async () 
     externalWorkspaceId: 'uoa-team-active',
     id: teamId,
     name: 'Local mirror of the active workspace',
+    organizationName: 'Active org',
   }])
 
   const me = await buildMeResponse(prisma, user, claims, config)
@@ -141,6 +149,7 @@ test('a cold cache degrades to the local Team → UOA workspace mapping', async 
     externalWorkspaceId: 'uoa-team-active',
     id: teamId,
     name: 'Engineering',
+    organizationName: 'Nessie Works',
   }])
 
   const me = await buildMeResponse(prisma, user, claims, config)
@@ -155,6 +164,7 @@ test('a cold cache degrades to the local Team → UOA workspace mapping', async 
     avatarImageUrl:
       'https://authentication.unlikeotherai.com/teams/uoa-team-active/avatar?size=128',
     label: 'Engineering',
+    orgName: 'Nessie Works',
     active: true,
   }])
 })
