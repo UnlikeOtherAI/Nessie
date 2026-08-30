@@ -100,6 +100,9 @@ export type AgentAvatarBackgroundColor = z.infer<
 export const AgentOwnerStateSchema = z.enum(['active', 'deactivated', 'unknown'])
 export type AgentOwnerState = z.infer<typeof AgentOwnerStateSchema>
 
+export const AgentVisibilitySchema = z.enum(['workspace', 'private'])
+export type AgentVisibility = z.infer<typeof AgentVisibilitySchema>
+
 /**
  * The display projection for an agent's steward. It exists because there is no
  * member-readable endpoint mapping a local user id to a name — `GET /api/users`
@@ -129,6 +132,7 @@ export const AgentRecordSchema = z.object({
   owner: AgentOwnerSchema.nullish(),
   agentKind: z.enum(['shared', 'personal_assistant']).optional(),
   systemManaged: z.boolean().optional(),
+  visibility: AgentVisibilitySchema,
   surfacePolicy: z.enum(['shared', 'dm_only']).optional(),
   delegationMode: z.enum(['none', 'act_as_requesting_user']).optional(),
   currentRunId: RunIdSchema.optional(),

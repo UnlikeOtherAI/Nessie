@@ -20,6 +20,8 @@ import {
 import { updateAgentAvatar } from '../services/agent-avatars.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import {
+  AGENT_BINDING_ERROR_CODES,
+  AgentBindingError,
   bindAgentToChannel,
   cloneAgentRecord,
   createAgentRecord,
@@ -162,6 +164,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         ownerUserId: actorContext.actor.actorId,
         parentAgentId: body.parentAgentId,
         toolPolicy: body.toolPolicy,
+        visibility: body.visibility,
       })
       if (body.model !== undefined || body.provider !== undefined) {
         await assertLedgerAgentModelSelection({
@@ -211,6 +214,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         systemPrompt: body.systemPrompt,
         teamId: actorContext.tenant.teamId,
         toolPolicy: body.toolPolicy,
+        visibility: body.visibility,
       })
     } catch (error) {
       if (sendProtectedPolicyError(reply, error)) return reply
@@ -474,11 +478,24 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const agent = await bindAgentToChannel(prisma, {
-      agentId,
-      channelId: body.channelId,
-      organizationId: actorContext.tenant.organizationId,
-    })
+    let agent
+    try {
+      agent = await bindAgentToChannel(prisma, {
+        agentId,
+        channelId: body.channelId,
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      if (
+        error instanceof AgentBindingError
+        && error.code === AGENT_BINDING_ERROR_CODES.PRIVATE_VISIBILITY
+      ) {
+        sendApiError(reply, 403, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply

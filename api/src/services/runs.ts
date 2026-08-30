@@ -12,6 +12,7 @@ import {
 
 import { enqueueRunExecution } from '../queue/pgqueue.js'
 import { isThreadRunSlotBusy } from '@nessie/db'
+import { buildAgentVisibilityWhere } from '@nessie/workspace-admin'
 import {
   ACTIVE_RUN_STATUSES,
   RESTARTABLE_RUN_STATUSES,
@@ -35,9 +36,11 @@ export type ActiveRunSummary = {
 export const listActiveRuns = async (
   prisma: PrismaClient,
   organizationId: string,
+  userId: string,
 ): Promise<ActiveRunSummary[]> => {
   const runs = await prisma.run.findMany({
     where: {
+      agent: buildAgentVisibilityWhere({ organizationId, userId }),
       status: { in: ACTIVE_RUN_STATUSES },
       thread: { channel: { organizationId } },
     },
@@ -93,9 +96,11 @@ export type RestartableRunSummary = {
 export const listRestartableRuns = async (
   prisma: PrismaClient,
   organizationId: string,
+  userId: string,
 ): Promise<RestartableRunSummary[]> => {
   const runs = await prisma.run.findMany({
     where: {
+      agent: buildAgentVisibilityWhere({ organizationId, userId }),
       status: { in: RESTARTABLE_RUN_STATUSES },
       thread: { channel: { organizationId } },
       triggerMessageId: { not: null },

@@ -94,6 +94,7 @@ export const registerIntegrationProductRoutes = (
     const access = await getDeepWaterAgentAccess(prisma, {
       organizationId: actorContext.tenant.organizationId,
       teamId,
+      userId: actorContext.actor.actorId,
     })
     const isOwner = actorContext.actor.roles?.includes('owner') ?? false
     return createApiResponse(DeepWaterAgentAccessResponseSchema.parse({
@@ -133,6 +134,7 @@ export const registerIntegrationProductRoutes = (
       const current = await getDeepWaterAgentAccess(prisma, {
         organizationId: actorContext.tenant.organizationId,
         teamId,
+        userId: actorContext.actor.actorId,
       })
       agentId = current.personalAssistant?.agentId ?? null
       if (!agentId && body.enabled) {
@@ -174,6 +176,7 @@ export const registerIntegrationProductRoutes = (
     const access = await getDeepWaterAgentAccess(prisma, {
       organizationId: actorContext.tenant.organizationId,
       teamId,
+      userId: actorContext.actor.actorId,
     })
     return createApiResponse(DeepWaterAgentAccessResponseSchema.parse(access))
   })

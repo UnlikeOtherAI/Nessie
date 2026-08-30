@@ -9,6 +9,10 @@ import { createThreadMessage } from '../src/services/message-create.js'
 // "Scout" that is NOT a member of this channel.
 const makePrisma = () => {
   const calls = { agentFindManyWhere: [] as unknown[] }
+  const candidates = [
+    { id: 'agent-scout', name: 'Scout', ownerUserId: null, visibility: 'workspace' },
+    { id: 'agent-secret', name: 'Secret', ownerUserId: 'user-2', visibility: 'private' },
+  ]
   const prisma = {
     thread: {
       findUnique: async () => ({
@@ -53,10 +57,25 @@ const makePrisma = () => {
       }),
     },
     agent: {
-      findMany: async (args: { where: unknown }) => {
+      findMany: async (args: {
+        where: {
+          AND?: Array<{
+            OR?: Array<{ ownerUserId?: string; visibility?: string }>
+          }>
+        }
+      }) => {
         calls.agentFindManyWhere.push(args.where)
-        // Candidate non-bound shared agents in the org.
-        return [{ id: 'agent-scout', name: 'Scout' }]
+        // Honour the shared visibility fragment: a cast Prisma fake is part of
+        // the query contract, so it must not return a private row that the real
+        // where-clause would exclude.
+        const privateArm = args.where.AND?.[0]?.OR?.find(
+          (arm) => arm.visibility === 'private',
+        )
+        return candidates
+          .filter((candidate) =>
+            candidate.visibility === 'workspace'
+            || candidate.ownerUserId === privateArm?.ownerUserId)
+          .map(({ id, name }) => ({ id, name }))
       },
     },
     userAlert: {
@@ -108,5 +127,19 @@ test('createThreadMessage returns no pending invites when no unbound agent is me
   if (result.kind !== 'created') {
     return
   }
+  assert.deepEqual(result.pendingAgentInvites, [])
+})
+
+test('createThreadMessage does not expose a non-owner private agent as a pending invite', async () => {
+  const { prisma } = makePrisma()
+
+  const result = await createThreadMessage(prisma, {
+    content: '@Secret please help',
+    threadId: 'thread-1',
+    userId: 'user-1',
+  })
+
+  assert.equal(result.kind, 'created')
+  if (result.kind !== 'created') return
   assert.deepEqual(result.pendingAgentInvites, [])
 })

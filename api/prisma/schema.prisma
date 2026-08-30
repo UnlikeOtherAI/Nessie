@@ -35,6 +35,11 @@ enum AgentDelegationMode {
   act_as_requesting_user
 }
 
+enum AgentVisibility {
+  workspace
+  private
+}
+
 // How much work an agent may spend per run. Scales the worker agentic-loop
 // budget and the provider `reasoning_effort`. `medium` is the default;
 // `xhigh` is effectively unbounded (governed only by scope Budgets + the
@@ -1929,6 +1934,7 @@ model Agent {
   systemManaged                  Boolean                         @default(false) @map("system_managed")
   surfacePolicy                  AgentSurfacePolicy              @default(shared) @map("surface_policy")
   delegationMode                 AgentDelegationMode             @default(none) @map("delegation_mode")
+  visibility                     AgentVisibility                 @default(workspace) @map("visibility")
   executionMode                  AgentExecutionMode              @default(inference) @map("execution_mode")
   effort                         AgentEffort                     @default(medium)
   systemPrompt                   String?                         @map("system_prompt")
@@ -2003,6 +2009,7 @@ model Agent {
   // "which agents does this person steward" — the first non-channel-derived
   // agent read, and the tree's level-3 query.
   @@index([organizationId, ownerUserId])
+  @@index([organizationId, visibility, ownerUserId], map: "agents_org_visibility_owner_idx")
   @@map("agents")
 }
 

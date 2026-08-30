@@ -66,6 +66,7 @@ export const runSpawnSubtaskTool = async (
       provider: true,
       systemPrompt: true,
       toolPolicy: true,
+      visibility: true,
     },
   })
   if (!parentAgent) {
@@ -108,6 +109,7 @@ export const runSpawnSubtaskTool = async (
           role,
         }),
         toolPolicy: childToolPolicy as Prisma.InputJsonValue | undefined,
+        visibility: parentAgent.visibility,
       },
       select: { id: true, name: true },
     })

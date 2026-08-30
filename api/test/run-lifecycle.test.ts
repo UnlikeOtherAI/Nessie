@@ -346,7 +346,7 @@ runDatabaseTest('listActiveRuns returns live runs for the org with cheap telemet
   })
 
   const run = await createRun(prisma, seed, 'running')
-  const active = await listActiveRuns(prisma, seed.organizationId)
+  const active = await listActiveRuns(prisma, seed.organizationId, seed.userId)
   const found = active.find((entry) => entry.id === run.id)
   assert.ok(found)
   assert.equal(found?.status, 'running')

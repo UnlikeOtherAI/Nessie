@@ -347,7 +347,11 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const triggers = await listOrganizationTriggers(prisma, actorContext.tenant.organizationId)
+    const triggers = await listOrganizationTriggers(
+      prisma,
+      actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
+    )
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
   })
 
@@ -371,6 +375,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const triggers = await listScheduledTriggers(prisma, {
       organizationId: actorContext.tenant.organizationId,
       limit: Math.min(Math.max(parsedLimit, 1), 200),
+      userId: actorContext.actor.actorId,
     })
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
   })
@@ -396,6 +401,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       dueBefore: new Date(),
       organizationId: actorContext.tenant.organizationId,
       limit: Math.min(Math.max(parsedLimit, 1), 200),
+      userId: actorContext.actor.actorId,
     })
     return createApiResponse(AgentTriggerRecordSchema.array().parse(triggers))
   })

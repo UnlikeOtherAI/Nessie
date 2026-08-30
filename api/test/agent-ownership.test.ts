@@ -2,10 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
+  AGENT_BINDING_ERROR_CODES,
+  AgentBindingError,
   AGENT_MANAGEMENT_ERROR_CODES,
   AgentManagementError,
+  bindAgentToChannel,
   createAgentRecord,
+  isAgentAccessibleToActor,
   listAgentsForUser,
   isAgentVisibleToUser,
   resolveLocalUserIdsByUoaSub,
@@ -29,6 +34,10 @@ const projectId = `00000000-0000-4000-8000-${suite}00000003`
 const teamId = `00000000-0000-4000-8000-${suite}00000004`
 const ownerUserId = `00000000-0000-4000-8000-${suite}00000005`
 const strangerUserId = `00000000-0000-4000-8000-${suite}00000006`
+const memberUserId = `00000000-0000-4000-8000-${suite}00000007`
+const adminUserId = `00000000-0000-4000-8000-${suite}00000008`
+const orgOwnerUserId = `00000000-0000-4000-8000-${suite}00000009`
+const channelId = `00000000-0000-4000-8000-${suite}0000000a`
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -44,12 +53,18 @@ const seed = async (prisma: PrismaClient) => {
     data: [
       { displayName: 'Owner', email: `owner-${suite}@test.local`, id: ownerUserId },
       { displayName: 'Stranger', email: `stranger-${suite}@test.local`, id: strangerUserId },
+      { displayName: 'Member', email: `member-${suite}@test.local`, id: memberUserId },
+      { displayName: 'Admin', email: `admin-${suite}@test.local`, id: adminUserId },
+      { displayName: 'Org owner', email: `org-owner-${suite}@test.local`, id: orgOwnerUserId },
     ],
     skipDuplicates: true,
   })
   await prisma.organizationMember.createMany({
     data: [
       { organizationId: orgId, role: 'member', userId: ownerUserId },
+      { organizationId: orgId, role: 'member', userId: memberUserId },
+      { organizationId: orgId, role: 'admin', userId: adminUserId },
+      { organizationId: orgId, role: 'owner', userId: orgOwnerUserId },
       // A member of the OTHER organization only — the cross-tenant candidate.
       { organizationId: otherOrgId, role: 'member', userId: strangerUserId },
     ],
@@ -63,18 +78,49 @@ const seed = async (prisma: PrismaClient) => {
     data: [{ id: teamId, name: `t-${suite}`, projectId }],
     skipDuplicates: true,
   })
+  await prisma.channel.createMany({
+    data: [{
+      id: channelId,
+      label: `c-${suite}`,
+      organizationId: orgId,
+      projectId,
+      slug: `c-${suite}`,
+      teamId,
+    }],
+    skipDuplicates: true,
+  })
 }
 
 const cleanup = async (prisma: PrismaClient) => {
   await prisma.agent.deleteMany({ where: { organizationId: { in: [orgId, otherOrgId] } } })
+  await prisma.channel.deleteMany({ where: { id: channelId } })
   await prisma.team.deleteMany({ where: { id: teamId } })
   await prisma.project.deleteMany({ where: { id: projectId } })
   await prisma.organizationMember.deleteMany({
-    where: { userId: { in: [ownerUserId, strangerUserId] } },
+    where: {
+      userId: {
+        in: [ownerUserId, strangerUserId, memberUserId, adminUserId, orgOwnerUserId],
+      },
+    },
   })
-  await prisma.user.deleteMany({ where: { id: { in: [ownerUserId, strangerUserId] } } })
+  await prisma.user.deleteMany({
+    where: {
+      id: {
+        in: [ownerUserId, strangerUserId, memberUserId, adminUserId, orgOwnerUserId],
+      },
+    },
+  })
   await prisma.organization.deleteMany({ where: { id: { in: [orgId, otherOrgId] } } })
 }
+
+const actorFor = (
+  userId: string,
+  role: 'admin' | 'member' | 'owner',
+): AuthorizedActionContext => ({
+  actionContext: { requestId: `agent-visibility-${role}` },
+  actor: { actorId: userId, actorType: 'user', roles: [role] },
+  tenant: { organizationId: orgId },
+}) as AuthorizedActionContext
 
 const withDb = async (run: (prisma: PrismaClient) => Promise<void>) => {
   const prisma = new PrismaClient()
@@ -98,6 +144,7 @@ dbTest('an unbound agent stays visible to the person who created it', async () =
     })
 
     assert.equal(agent.ownerUserId, ownerUserId)
+    assert.equal(agent.visibility, 'workspace')
     assert.equal(agent.owner?.ownerState, 'active')
     assert.equal(agent.owner?.displayName, 'Owner')
 
@@ -112,6 +159,57 @@ dbTest('an unbound agent stays visible to the person who created it', async () =
   })
 })
 
+dbTest('private visibility beats member, admin, and org-owner entitlement', async () => {
+  await withDb(async (prisma) => {
+    const agent = await createAgentRecord(prisma, {
+      name: `private-${suite}`,
+      organizationId: orgId,
+      ownerUserId,
+      role: 'assistant',
+      visibility: 'private',
+    })
+
+    assert.equal(agent.visibility, 'private')
+    for (const viewer of [
+      { includeUnbound: false, role: 'member' as const, userId: memberUserId },
+      { includeUnbound: false, role: 'admin' as const, userId: adminUserId },
+      { includeUnbound: true, role: 'owner' as const, userId: orgOwnerUserId },
+    ]) {
+      const visible = await listAgentsForUser(
+        prisma,
+        viewer.userId,
+        orgId,
+        viewer.includeUnbound,
+      )
+      assert.equal(visible.some((entry) => entry.id === agent.id), false)
+      assert.equal(
+        await isAgentVisibleToUser(prisma, viewer.userId, orgId, agent.id),
+        false,
+      )
+      assert.equal(
+        await isAgentAccessibleToActor(
+          prisma,
+          actorFor(viewer.userId, viewer.role),
+          agent.id,
+        ),
+        false,
+      )
+    }
+
+    const ownerVisible = await listAgentsForUser(prisma, ownerUserId, orgId, false)
+    assert.equal(ownerVisible.some((entry) => entry.id === agent.id), true)
+    assert.equal(await isAgentVisibleToUser(prisma, ownerUserId, orgId, agent.id), true)
+    assert.equal(
+      await isAgentAccessibleToActor(
+        prisma,
+        actorFor(ownerUserId, 'member'),
+        agent.id,
+      ),
+      true,
+    )
+  })
+})
+
 dbTest('deactivating the owner withdraws the ownership-only visibility', async () => {
   await withDb(async (prisma) => {
     const agent = await createAgentRecord(prisma, {
@@ -119,6 +217,7 @@ dbTest('deactivating the owner withdraws the ownership-only visibility', async (
       organizationId: orgId,
       ownerUserId,
       role: 'assistant',
+      visibility: 'private',
     })
 
     await prisma.organizationMember.updateMany({
@@ -135,6 +234,82 @@ dbTest('deactivating the owner withdraws the ownership-only visibility', async (
       'a deactivated member must not keep ownership-derived visibility',
     )
     assert.equal(await isAgentVisibleToUser(prisma, ownerUserId, orgId, agent.id), false)
+    assert.equal(
+      await isAgentAccessibleToActor(
+        prisma,
+        actorFor(ownerUserId, 'member'),
+        agent.id,
+      ),
+      false,
+    )
+  })
+})
+
+dbTest('private agents are refused by the binding service and database trigger', async () => {
+  await withDb(async (prisma) => {
+    const agent = await createAgentRecord(prisma, {
+      name: `private-bind-${suite}`,
+      organizationId: orgId,
+      ownerUserId,
+      role: 'assistant',
+      visibility: 'private',
+    })
+
+    assert.equal(
+      await bindAgentToChannel(prisma, {
+        agentId: agent.id,
+        channelId,
+        organizationId: orgId,
+        userId: orgOwnerUserId,
+      }),
+      null,
+      'another org owner gets the same not-found result as an unknown agent',
+    )
+
+    await assert.rejects(
+      () => bindAgentToChannel(prisma, {
+        agentId: agent.id,
+        channelId,
+        organizationId: orgId,
+        userId: ownerUserId,
+      }),
+      (error: unknown) =>
+        error instanceof AgentBindingError
+        && error.code === AGENT_BINDING_ERROR_CODES.PRIVATE_VISIBILITY,
+    )
+
+    await assert.rejects(
+      () => prisma.agentBinding.create({
+        data: { agentId: agent.id, channelId },
+      }),
+      /Private agents cannot be bound to channels/,
+    )
+  })
+})
+
+dbTest('private creation requires an owner in the service and storage', async () => {
+  await withDb(async (prisma) => {
+    await assert.rejects(
+      () => createAgentRecord(prisma, {
+        name: `private-ownerless-${suite}`,
+        organizationId: orgId,
+        role: 'assistant',
+        visibility: 'private',
+      }),
+      (error: unknown) =>
+        error instanceof AgentManagementError
+        && error.code === AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_OWNER_REQUIRED,
+    )
+
+    await assert.rejects(
+      () => prisma.agent.create({
+        data: {
+          name: `private-ownerless-raw-${suite}`,
+          organizationId: orgId,
+          visibility: 'private',
+        },
+      }),
+    )
   })
 })
 

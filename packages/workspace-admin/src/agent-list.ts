@@ -4,6 +4,7 @@ import type { AgentRecord } from '@nessie/schemas'
 import {
   AGENT_OWNER_MEMBERSHIP_SELECT,
   buildAccessibleChannelWhere,
+  buildAgentVisibilityWhere,
   buildOwnedAgentWhere,
   mapAgentRecord,
 } from './agent-record.js'
@@ -64,6 +65,7 @@ export const listAgentsForUser = async (
 
   const agents = await prisma.agent.findMany({
     where: {
+      AND: [buildAgentVisibilityWhere({ organizationId, userId })],
       organizationId,
       ...(includeSystemManaged ? {} : { systemManaged: false }),
       OR: visibilityFilters,

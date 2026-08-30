@@ -3,11 +3,14 @@ import { loadLedgerIdentitySettings } from '@nessie/runtime'
 import {
   AgentEffortSchema,
   AgentRunLimitsSchema,
+  AgentVisibilitySchema,
   CreateAgentTriggerBodySchema,
   parseUserId,
   type ChannelRecord,
 } from '@nessie/schemas'
 import {
+  AGENT_BINDING_ERROR_CODES,
+  AgentBindingError,
   assertLedgerAgentModelSelection,
   bindAgentToChannel,
   checkPolicy,
@@ -117,6 +120,7 @@ const AgentCreateInputSchema = z.object({
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
+  visibility: AgentVisibilitySchema.optional(),
 })
 
 export const runAgentCreateTool = async (
@@ -158,6 +162,7 @@ export const runAgentCreateTool = async (
     systemPrompt: args.systemPrompt,
     teamId: context.actorContext.tenant.teamId,
     toolPolicy: args.toolPolicy,
+    visibility: args.visibility,
   })
 
   return {
@@ -297,11 +302,23 @@ export const runAgentBindChannelTool = async (
     throw new Error(`Agent binding denied by policy: ${decision.reasonCode}`)
   }
 
-  const agent = await bindAgentToChannel(context.prisma, {
-    agentId: args.agentId,
-    channelId: args.channelId,
-    organizationId: member.organizationId,
-  })
+  let agent
+  try {
+    agent = await bindAgentToChannel(context.prisma, {
+      agentId: args.agentId,
+      channelId: args.channelId,
+      organizationId: member.organizationId,
+      userId: member.userId,
+    })
+  } catch (error) {
+    if (
+      error instanceof AgentBindingError
+      && error.code === AGENT_BINDING_ERROR_CODES.PRIVATE_VISIBILITY
+    ) {
+      throw new Error('Private agents cannot be added to channels.')
+    }
+    throw error
+  }
   if (!agent) {
     throw new Error('Agent not found, or it is system managed and cannot be bound.')
   }

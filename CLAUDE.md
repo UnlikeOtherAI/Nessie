@@ -817,9 +817,10 @@ service function the route calls.
 
 - `agent_list` → `listAgentsForUser` (`safe: true`, read-only). Any active
   member, matching `GET /api/agents`, and scoped by the same entitlement the
-  Agents page uses: an owner reaches every non-system agent including unbound
-  ones, everybody else reaches an agent through a channel they can see it
-  working in — never narrowed by the session's project/team. It exists because
+  Agents page uses: an owner reaches every workspace-visible non-system agent
+  including unbound ones plus private agents they own; everybody else reaches
+  a workspace-visible agent through a channel they can see it working in —
+  never narrowed by the session's project/team. It exists because
   `agent_bind_channel` and `agent_trigger_create` take an `agentId` and an
   owner picks that from a list when clicking; without it the assistant could
   only act on an agent created in the same conversation. Output is the acting
@@ -831,10 +832,12 @@ service function the route calls.
   team of the channel the conversation is in — never an invented default.
 - `agent_create` → `assertLedgerAgentModelSelection` + `createAgentRecord`. Any
   active member, matching `POST /api/agents` (**not** owner-gated). Its schema
-  deliberately exposes no `agentKind`/`systemManaged`/`surfacePolicy`/
-  `delegationMode`/`parentAgentId`, and `assertGenericAgentToolPolicyInput`
-  still refuses every `requiresExplicitGrant` key and DeepWater provenance
-  marker, so chat cannot grant itself research.
+  accepts optional `visibility` (`workspace` by default, or owner-only
+  `private`) and deliberately exposes no `agentKind`/`systemManaged`/
+  `surfacePolicy`/`delegationMode`/`parentAgentId`; private creation stamps the
+  live acting member as owner. `assertGenericAgentToolPolicyInput` still refuses
+  every `requiresExplicitGrant` key and DeepWater provenance marker, so chat
+  cannot grant itself research.
 - `agent_bind_channel` → `bindAgentToChannel`. Reproduces all four gates of
   `POST /api/agents/:agentId/bindings`: channel membership
   (`getChannelIfMember`), the `personal_assistant` system-channel refusal,

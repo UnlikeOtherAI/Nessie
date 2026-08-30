@@ -242,6 +242,7 @@ export const registerMcpToolsRoutes = (
     const targets = await listAgentToolPolicyTargets(
       prisma,
       actorContext.tenant.organizationId,
+      actorContext.actor.actorId,
     )
     return createApiResponse(AgentToolPolicyTargetSchema.array().parse(targets))
   })

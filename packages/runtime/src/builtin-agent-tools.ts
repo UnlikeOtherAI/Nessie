@@ -26,7 +26,8 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'whenever the user refers to an existing agent ("put Hardware Watch in '
       + '#ops", "give the reporter a daily schedule") — you only already know an '
       + 'id for an agent you created in this same conversation, so never guess '
-      + 'one. Owners see every agent, including ones sitting in no channel; '
+      + 'one. Owners see every workspace-visible agent, including ones sitting '
+      + 'in no channel, plus private agents they own; '
       + 'everybody else sees the agents working in channels they can see.',
     parameters: {
       type: 'object',
@@ -46,7 +47,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Create Agent',
     personalAssistantOnly: true,
     description:
-      'Create a new shared agent — a colleague with its own instructions, model, '
+      'Create a new workspace-visible or private agent — a colleague with its own instructions, model, '
       + 'and tool policy — the same record the Agent Designer writes. The agent '
       + 'starts in no channel; an owner puts it to work with agent_bind_channel. '
       + 'Any member can do this. Explicit-grant tools (research, DeepWater) cannot '
@@ -76,6 +77,12 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           type: 'string',
           enum: ['low', 'medium', 'high', 'xhigh'],
           description: 'Reasoning effort. Carries no spend meaning.',
+        },
+        visibility: {
+          type: 'string',
+          enum: ['workspace', 'private'],
+          description:
+            'Who can find this agent. workspace is the default; private means only its creator.',
         },
         runLimits: {
           type: 'object',

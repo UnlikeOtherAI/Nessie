@@ -8,6 +8,7 @@ import {
   resolveMessageMentions,
   type ReplyRootMetadata,
 } from '@nessie/runtime'
+import { buildAgentVisibilityWhere } from '@nessie/workspace-admin'
 
 import { messageInclude, type MessageWithReactions } from './messages.js'
 
@@ -217,6 +218,10 @@ export const createThreadMessage = async (
     const boundIds = new Set(resolvedChannelAgents.map((a) => a.id))
     const candidates = await prisma.agent.findMany({
       where: {
+        AND: [buildAgentVisibilityWhere({
+          organizationId: thread.channel.organizationId,
+          userId: input.userId,
+        })],
         agentKind: 'shared',
         id: { notIn: [...boundIds] },
         organizationId: thread.channel.organizationId,

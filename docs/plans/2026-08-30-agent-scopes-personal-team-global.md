@@ -1,6 +1,11 @@
 # Personal, team, and global agents — scopes, directory visibility, and the PA exception
 
-**Status:** design proposal for review — no code changes yet.
+**Status:** approved; phased implementation in progress. The server-core
+visibility slice is implemented: stored visibility + constraints, shared read
+predicate, enumerated reader gates, placement refusal, creation contract, and
+subtask inheritance. Personal-agent home DMs, PA presence, admin UI, global
+agent reachability, run-start placement assertion, and deactivation pausing
+remain later phases.
 **Date:** 2026-08-30
 **Related:** [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership = stewardship; this doc adds *visibility*, a different fact),

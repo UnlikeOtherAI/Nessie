@@ -7,6 +7,7 @@ import {
   type AgentEffort,
   type AgentRecord,
   type AgentRunLimits,
+  type AgentVisibility,
 } from '@nessie/schemas'
 
 import { assertGenericAgentToolPolicyInput } from './agent-tool-policy-core.js'
@@ -35,6 +36,7 @@ export const AGENT_MANAGEMENT_ERROR_CODES = {
   ORGANIZATION_REQUIRED: 'AGENT_ORGANIZATION_REQUIRED',
   OWNER_NOT_A_MEMBER: 'AGENT_OWNER_NOT_A_MEMBER',
   PARENT_NOT_FOUND: 'AGENT_PARENT_NOT_FOUND',
+  PRIVATE_OWNER_REQUIRED: 'AGENT_PRIVATE_OWNER_REQUIRED',
 } as const
 
 export class AgentManagementError extends Error {
@@ -107,6 +109,7 @@ export type CreateAgentRecordInput = {
   delegationMode?: 'act_as_requesting_user' | 'none'
   teamId?: string
   toolPolicy?: Record<string, boolean>
+  visibility?: AgentVisibility
 }
 
 /**
@@ -138,13 +141,20 @@ export const validateAgentCreateInput = async (
   prisma: PrismaClient,
   input: Pick<
     CreateAgentRecordInput,
-    'organizationId' | 'ownerUserId' | 'parentAgentId' | 'toolPolicy'
+    'organizationId' | 'ownerUserId' | 'parentAgentId' | 'toolPolicy' | 'visibility'
   >,
 ): Promise<void> => {
   if (!input.organizationId) {
     throw new AgentManagementError(
       AGENT_MANAGEMENT_ERROR_CODES.ORGANIZATION_REQUIRED,
       'Shared agents require an organization.',
+    )
+  }
+
+  if (input.visibility === 'private' && !input.ownerUserId) {
+    throw new AgentManagementError(
+      AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_OWNER_REQUIRED,
+      'Private agents require an owner.',
     )
   }
 
@@ -206,6 +216,7 @@ export const createAgentRecord = async (
       systemManaged: false,
       teamId: input.teamId,
       toolPolicy: input.toolPolicy ?? undefined,
+      visibility: input.visibility ?? 'workspace',
     },
     include: agentRecordInclude,
   })

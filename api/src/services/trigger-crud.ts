@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
 import {
+  buildAgentVisibilityWhere,
   createAgentTrigger,
   mergeTriggerConfigPreservingIdentity,
   stripServerOwnedTriggerConfig,
@@ -43,12 +44,14 @@ export const listAgentTriggers = async (
 export const listOrganizationTriggers = async (
   prisma: PrismaClient,
   organizationId: string,
+  userId: string,
 ): Promise<AgentTriggerRecord[]> => {
   const triggers = await prisma.agentTrigger.findMany({
     where: {
       OR: [
         {
           agent: {
+            AND: [buildAgentVisibilityWhere({ organizationId, userId })],
             agentKind: { in: ['shared', 'personal_assistant'] },
             OR: [
               { organizationId },
@@ -97,6 +100,7 @@ export const listScheduledTriggers = async (
     dueBefore?: Date
     limit: number
     organizationId: string
+    userId: string
   },
 ): Promise<AgentTriggerRecord[]> => {
   const triggers = await prisma.agentTrigger.findMany({
@@ -104,6 +108,10 @@ export const listScheduledTriggers = async (
       OR: [
         {
           agent: {
+            AND: [buildAgentVisibilityWhere({
+              organizationId: input.organizationId,
+              userId: input.userId,
+            })],
             organizationId: input.organizationId,
             agentKind: { in: ['shared', 'personal_assistant'] },
           },

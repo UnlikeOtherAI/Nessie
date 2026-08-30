@@ -3,6 +3,7 @@ import {
   AgentEffortSchema,
   AgentRecordSchema,
   AgentRunLimitsSchema,
+  AgentVisibilitySchema,
   ChannelIdSchema,
   PersonalAssistantConfigSummarySchema,
 } from '@nessie/schemas'
@@ -34,6 +35,7 @@ export const CreateAgentBodySchema = z.object({
   model: z.string().optional(),
   effort: AgentEffortSchema.optional(),
   runLimits: AgentRunLimitsSchema.nullish(),
+  visibility: AgentVisibilitySchema.optional(),
 })
 
 export const UpdateAgentBodySchema = z.object({
