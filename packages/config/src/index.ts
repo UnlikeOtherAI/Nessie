@@ -43,6 +43,12 @@ export const ModelConfigSchema = z.object({
   maxTokens: z.number().int().positive().default(2048),
   modelName: z.string().min(1).optional(),
   temperature: z.number().min(0).max(2).default(0.2),
+  // When set, agent-avatar image generation routes through this Ledger Purpose
+  // API (`/v1/purpose/:id/images/generations`) instead of the direct
+  // `/v1/openai/images/generations` service route, so Ledger owns the image
+  // provider fallback chain (e.g. Gemini primary, OpenAI fallback). Unset keeps
+  // the direct OpenAI route.
+  imagePurposeApiId: z.string().min(1).optional(),
   backends: z.array(
     z.string().url(),
   ).default([]).refine(
@@ -222,6 +228,7 @@ export const ConfigEnvMap = {
   NESSIE_MODEL_NAME: 'model.modelName',
   NESSIE_MODEL_BACKENDS: 'model.backends',
   NESSIE_MODEL_TEMPERATURE: 'model.temperature',
+  NESSIE_LEDGER_IMAGE_PURPOSE_API_ID: 'model.imagePurposeApiId',
   NESSIE_EMBEDDING_PROVIDER: 'embedding.provider',
   NESSIE_EMBEDDING_API_KEY: 'embedding.apiKey',
   NESSIE_EMBEDDING_BASE_URL: 'embedding.baseUrl',

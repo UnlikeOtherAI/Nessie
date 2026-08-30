@@ -153,6 +153,10 @@ services:
       NESSIE_EMBEDDING_PROVIDER: openai-compatible
       NESSIE_EMBEDDING_SERVICE_ID: jina
       NESSIE_EMBEDDING_MODEL: jina-embeddings-v3
+      # Agent-avatar "Generate with AI" routes through this Ledger Purpose API
+      # (Gemini image primary, OpenAI gpt-image-2 fallback), so the exhausted
+      # OpenAI image key no longer 503s avatar generation. See docs/deployment.md.
+      NESSIE_LEDGER_IMAGE_PURPOSE_API_ID: pa_dd11af80_25a7
       UOA_BASE_URL: https://authentication.unlikeotherai.com
       DATABASE_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
       NESSIE_DB_URL: postgresql://nessie:${NESSIE_DB_PASSWORD}@nessie-postgres:5432/nessie?schema=public
@@ -221,6 +225,10 @@ services:
       NESSIE_EMBEDDING_PROVIDER: openai-compatible
       NESSIE_EMBEDDING_SERVICE_ID: jina
       NESSIE_EMBEDDING_MODEL: jina-embeddings-v3
+      # Agent-avatar "Generate with AI" routes through this Ledger Purpose API
+      # (Gemini image primary, OpenAI gpt-image-2 fallback), so the exhausted
+      # OpenAI image key no longer 503s avatar generation. See docs/deployment.md.
+      NESSIE_LEDGER_IMAGE_PURPOSE_API_ID: pa_dd11af80_25a7
     volumes:
       - ./nessie.config.json:/app/nessie.config.json:ro
     networks:
