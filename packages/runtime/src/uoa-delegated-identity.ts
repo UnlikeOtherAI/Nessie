@@ -169,7 +169,18 @@ const resolveUserId = (attribution: LedgerAttribution): string | null =>
   attribution.userId
   ?? (attribution.actorType === 'user' ? attribution.actorId : null)
 
-const activeWorkspaceMatchesAttribution = async (
+/**
+ * Does the attributed local team still advertise exactly the UOA workspace this
+ * identity names?
+ *
+ * Exported because the scheduled-trigger fire gate must ask precisely this
+ * question before dispatching. It used to check only the account link, so a
+ * trigger could pass, create a run, and have the run die here at its first
+ * inference — silently, since unattended failures post nothing. Two copies of
+ * this predicate would be free to drift back apart, which is exactly the gap
+ * that produced that outage.
+ */
+export const activeWorkspaceMatchesAttribution = async (
   prisma: UoaIdentityPrisma,
   attribution: LedgerAttribution,
   identity: UoaProductIdentity | null,

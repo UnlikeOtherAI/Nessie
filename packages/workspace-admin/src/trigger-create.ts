@@ -12,6 +12,7 @@ import {
   normalizeNextRunAt,
   resolveExecutionTarget,
   SCHEDULER_TRIGGER_TYPES,
+  TRIGGER_ADMIN_AUDIENCE,
 } from './trigger-core.js'
 import { stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
 
@@ -128,5 +129,8 @@ export const createAgentTrigger = async (
     },
   })
 
-  return mapTriggerRecord(trigger)
+  // Creation is the moment the webhook key is minted, and both callers are
+  // owner-gated (`POST /api/agents/:agentId/triggers` and the assistant's
+  // `agent_trigger_create`), so this response reveals it.
+  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
 }

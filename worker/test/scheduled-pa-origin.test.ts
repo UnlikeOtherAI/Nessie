@@ -113,6 +113,15 @@ const createTriggerHarness = (
     agentTrigger: {
       update: async () => ({}),
     },
+    // The classified health write is ONE conditional statement — its WHERE
+    // clause decides whether this failure is new — so it cannot go through the
+    // Prisma model API. Capture its bound values in the order the SQL binds
+    // them: detail, reason, status.
+    $queryRaw: async (query: { values?: unknown[] }) => {
+      const [healthDetail, healthReason, status] = query.values ?? []
+      triggerUpdates.push({ healthDetail, healthReason, status })
+      return [{ healthRevision: 1 }]
+    },
     $executeRaw: async (query: { strings?: string[]; values?: unknown[] }) => {
       // The thread-run claim's advisory lock is not a queue enqueue.
       if (query.strings?.some((sql) => sql.includes('pg_advisory_xact_lock'))) {
@@ -257,14 +266,19 @@ test('legacy user-owned PA schedule fails closed before run enqueue', async () =
   const harness = createTriggerHarness()
 
   await assert.rejects(fireSchedule(harness, config), /then recreate the schedule/)
-  assert.equal(harness.transactionCount, 0)
+  // One transaction, and it is the health transition — which commits its own
+  // alert enqueue atomically, so a crash cannot leave a dead schedule with no
+  // alert. `queuePayloads` below is what proves no RUN was dispatched.
+  assert.equal(harness.transactionCount, 1)
   assert.equal(harness.queuePayloads.length, 0)
   assert.equal(harness.failedDeliveries.length, 1)
   assert.match(
     String(harness.failedDeliveries[0]?.['errorMessage']),
     /then recreate the schedule/,
   )
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'launch_origin_invalid')
 })
 
 test('saved team outside the organization fails before run enqueue', async () => {
@@ -272,9 +286,14 @@ test('saved team outside the organization fails before run enqueue', async () =>
   const harness = createTriggerHarness(false)
 
   await assert.rejects(fireSchedule(harness, config), /does not belong/)
-  assert.equal(harness.transactionCount, 0)
+  // One transaction, and it is the health transition — which commits its own
+  // alert enqueue atomically, so a crash cannot leave a dead schedule with no
+  // alert. `queuePayloads` below is what proves no RUN was dispatched.
+  assert.equal(harness.transactionCount, 1)
   assert.equal(harness.queuePayloads.length, 0)
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'team_unreachable')
 })
 
 test('revoked team member fails before a scheduled PA run is enqueued', async () => {
@@ -285,9 +304,14 @@ test('revoked team member fails before a scheduled PA run is enqueued', async ()
   assert.deepEqual(harness.teamQueries[0]?.['members'], {
     some: { userId: USER_ID },
   })
-  assert.equal(harness.transactionCount, 0)
+  // One transaction, and it is the health transition — which commits its own
+  // alert enqueue atomically, so a crash cannot leave a dead schedule with no
+  // alert. `queuePayloads` below is what proves no RUN was dispatched.
+  assert.equal(harness.transactionCount, 1)
   assert.equal(harness.queuePayloads.length, 0)
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'team_unreachable')
 })
 
 test('a PA schedule stops firing once its owner loses the private channel', async () => {
@@ -298,9 +322,14 @@ test('a PA schedule stops firing once its owner loses the private channel', asyn
   const harness = createTriggerHarness(true, true, [])
 
   await assert.rejects(fireSchedule(harness, config), /no longer has access/)
-  assert.equal(harness.transactionCount, 0)
+  // One transaction, and it is the health transition — which commits its own
+  // alert enqueue atomically, so a crash cannot leave a dead schedule with no
+  // alert. `queuePayloads` below is what proves no RUN was dispatched.
+  assert.equal(harness.transactionCount, 1)
   assert.equal(harness.queuePayloads.length, 0)
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'channel_access_lost')
 })
 
 test('deactivated organization member fails before run enqueue', async () => {
@@ -319,7 +348,10 @@ test('deactivated organization member fails before run enqueue', async () => {
   assert.deepEqual(harness.teamQueries[0]?.['members'], {
     some: { userId: USER_ID },
   })
-  assert.equal(harness.transactionCount, 0)
+  // One transaction, and it is the health transition — which commits its own
+  // alert enqueue atomically, so a crash cannot leave a dead schedule with no
+  // alert. `queuePayloads` below is what proves no RUN was dispatched.
+  assert.equal(harness.transactionCount, 1)
   assert.equal(harness.queuePayloads.length, 0)
   assert.equal(harness.failedDeliveries.length, 1)
   assert.equal(harness.failedDeliveries[0]?.['status'], 'failed')
@@ -327,7 +359,11 @@ test('deactivated organization member fails before run enqueue', async () => {
     String(harness.failedDeliveries[0]?.['errorMessage']),
     /no longer an active member of its saved organization/,
   )
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  assert.equal(harness.triggerUpdates.length, 1)
+  // `error`, not `needs_reauthorization`: a deactivated member cannot repair
+  // this by proving who they are, so offering Reauthorize would be a dead end.
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'member_inactive')
 })
 
 test('legacy REST schedule without an origin fails before run enqueue', async () => {
@@ -345,9 +381,16 @@ test('legacy REST schedule without an origin fails before run enqueue', async ()
     ),
     /legacy user-facing schedule[\s\S]*then recreate the schedule/,
   )
-  assert.equal(harness.transactionCount, 0)
+  // One transaction, and it is the health transition — which commits its own
+  // alert enqueue atomically, so a crash cannot leave a dead schedule with no
+  // alert. `queuePayloads` below is what proves no RUN was dispatched.
+  assert.equal(harness.transactionCount, 1)
   assert.equal(harness.queuePayloads.length, 0)
-  assert.deepEqual(harness.triggerUpdates, [{ status: 'error' }])
+  // A legacy schedule carries no identity to refresh, so it is `error` (fix the
+  // configuration) rather than `needs_reauthorization` (prove who you are).
+  assert.equal(harness.triggerUpdates.length, 1)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'launch_origin_invalid')
 })
 
 test('trusted autonomous schedule_task marker retains agent scope', async () => {
@@ -394,6 +437,9 @@ test('malformed launch identity cannot fall back to autonomous scope', async () 
     ),
     /launch origin is missing or malformed/,
   )
-  assert.equal(harness.transactionCount, 0)
+  // One transaction, and it is the health transition — which commits its own
+  // alert enqueue atomically, so a crash cannot leave a dead schedule with no
+  // alert. `queuePayloads` below is what proves no RUN was dispatched.
+  assert.equal(harness.transactionCount, 1)
   assert.equal(harness.queuePayloads.length, 0)
 })

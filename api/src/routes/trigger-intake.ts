@@ -218,7 +218,7 @@ export const registerTriggerIntakeRoutes = (app: FastifyInstance, deps: RouteDep
       dedupeKey: body.dedupeKey,
       eventType: body.eventType,
       payload: body.payload ?? {},
-      source: body.source ?? `event:${body.eventType}`,
+      source: `event:${body.eventType}`,
     }
     const queueIdempotencyKey = payload.dedupeKey
       ? `trigger-event:${actorContext.tenant.organizationId}:${payload.dedupeKey}`

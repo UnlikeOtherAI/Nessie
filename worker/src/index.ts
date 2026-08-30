@@ -31,6 +31,7 @@ import {
   KnowledgeEmbedJobPayloadSchema,
   KnowledgeExtractJobPayloadSchema,
   BudgetAlertDispatchJobPayloadSchema,
+  TriggerHealthAlertJobPayloadSchema,
   WorkflowRunFailureDispatchJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
@@ -59,6 +60,7 @@ import { maybeSyncRegistry } from './control/registry-sync-sweep.js'
 import { assertValidVapidSubject, loadVapidPrivateKey } from '@nessie/push'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
+import { handleTriggerHealthAlert } from './control/trigger-health-dispatch.js'
 import { handleWorkflowRunFailureDispatch } from './control/workflow-failure-dispatch.js'
 import { handleAttentionDispatch } from './control/attention-dispatch.js'
 import {
@@ -299,6 +301,22 @@ export const startWorker = async (
     async (job) => {
       const payload = BudgetAlertDispatchJobPayloadSchema.parse(job.payload)
       await handleBudgetAlertDispatch(
+        {
+          prisma,
+          authSecret: config.auth.secret ?? '',
+          ...(webPushCreds ? { webPush: webPushCreds } : {}),
+        },
+        payload,
+      )
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    'trigger.health-alert',
+    async (job) => {
+      const payload = TriggerHealthAlertJobPayloadSchema.parse(job.payload)
+      await handleTriggerHealthAlert(
         {
           prisma,
           authSecret: config.auth.secret ?? '',

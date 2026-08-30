@@ -80,6 +80,15 @@ test('secondary sidebar menus do not repeat the active tab title above their ite
   assert.doesNotMatch(admin, /text-\[15px\] font-bold text-\[color:var\(--tx\)\]">Admin<\/span>/)
 })
 
+test('project action menus render in the document overlay layer instead of the clipped sidebar', () => {
+  const projects = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
+
+  assert.match(projects, /createPortal\(/)
+  assert.match(projects, /document\.body/)
+  assert.match(projects, /admin-sidebar-menu-project fixed z-\[61\]/)
+  assert.match(projects, /window\.addEventListener\('scroll', closeMenu, true\)/)
+})
+
 test('avatar tiles are rounded squares and touch navigation uses sidebar-coloured presence cutouts', () => {
   const people = readSource('../src/layouts/admin-shell/SidebarDmSection.tsx')
   const starred = readSource('../src/layouts/admin-shell/SidebarStarredSection.tsx')
@@ -267,4 +276,11 @@ test('sidebar action menus have room to read and tap their choices', () => {
     styles,
     /\.admin-sidebar-menu \[role="button"\]\s*\{[\s\S]*?border-radius: 8px[\s\S]*?padding: 10px 12px/,
   )
+})
+
+test('an open project action menu dismisses when the person taps outside it', () => {
+  const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
+
+  assert.match(projects, /className="fixed inset-0 z-10"/)
+  assert.match(projects, /setSidebarMenu\(\(\) => null\)/)
 })

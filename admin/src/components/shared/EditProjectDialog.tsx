@@ -136,7 +136,6 @@ export const EditProjectDialog = ({ onClose, open, project }: EditProjectDialogP
                 avatarAttachmentId={avatarAttachmentId}
                 avatarEmoji={avatarEmoji}
                 className="border border-[color:var(--sep)]"
-                name={trimmedName || project.name}
                 size={64}
                 token={token}
               />

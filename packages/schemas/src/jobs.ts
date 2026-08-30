@@ -136,6 +136,29 @@ export const BudgetAlertDispatchJobPayloadSchema = z.object({
 export type BudgetAlertDispatchJobPayload = z.infer<typeof BudgetAlertDispatchJobPayloadSchema>
 
 /**
+ * `trigger.health-alert` queue job — emitted once per health transition when a
+ * scheduled trigger becomes non-runnable (`error` or `needs_reauthorization`).
+ * Consumed by the worker to write a durable `UserAlert` for the people who can
+ * act and push it through the shared pipeline, deep-linking the trigger.
+ *
+ * `healthRevision` identifies the specific failure. It is the idempotency key
+ * here and the `UserAlert.eventKey` component in the consumer, so a schedule
+ * that keeps failing the same way notifies once rather than every sweep — the
+ * distinction that separates this from the repeating-apology behaviour the
+ * unattended-failure path deliberately avoids.
+ *
+ * Carries no raw provider error: the detail lives on the trigger row behind the
+ * deep link, so a push notification cannot leak one.
+ */
+export const TriggerHealthAlertJobPayloadSchema = z.object({
+  healthRevision: z.number().int().nonnegative(),
+  reason: z.string(),
+  status: z.enum(['error', 'needs_reauthorization']),
+  triggerId: z.string().uuid(),
+})
+export type TriggerHealthAlertJobPayload = z.infer<typeof TriggerHealthAlertJobPayloadSchema>
+
+/**
  * `workflow.run.failure-dispatch` queue job — emitted once when a workflow run
  * reaches `failed` (the terminal-event seam dedupes), consumed by the worker to
  * push-notify the installation creator and the channel managers entitled to

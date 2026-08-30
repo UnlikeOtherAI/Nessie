@@ -21,12 +21,22 @@ export {
   resolveExecutionTarget,
   SCHEDULER_TRIGGER_TYPES,
   toTimestamp,
+  TRIGGER_ADMIN_AUDIENCE,
 } from '@nessie/workspace-admin'
 
 export type WorkflowTriggerPrismaLike = Pick<
   PrismaClient,
   'agentTrigger' | 'workflowInstallation'
 >
+
+const stripDedupeNamespace = (
+  dedupeKey: string | null,
+  source: string | null,
+): string | null => {
+  if (!dedupeKey || !source) return dedupeKey
+  const prefix = `${source}:`
+  return dedupeKey.startsWith(prefix) ? dedupeKey.slice(prefix.length) : dedupeKey
+}
 
 export const mapTriggerDeliveryRecord = (delivery: {
   createdAt: Date
@@ -44,7 +54,12 @@ export const mapTriggerDeliveryRecord = (delivery: {
 }): AgentTriggerDeliveryRecord => ({
   id: delivery.id,
   triggerId: delivery.triggerId,
-  dedupeKey: delivery.dedupeKey ?? undefined,
+  // Presented as the caller wrote it. Dispatch prefixes a caller-supplied key
+  // with the route's own source so a caller can never occupy the scheduler's
+  // predictable `scheduled:<id>:<ISO>` key, but that namespace is a server
+  // detail: a client that reads a delivery back and replays its key must get
+  // the same idempotent result, not a double-prefixed miss.
+  dedupeKey: stripDedupeNamespace(delivery.dedupeKey, delivery.source) ?? undefined,
   status: delivery.status,
   source: delivery.source ?? undefined,
   payload: delivery.payload,

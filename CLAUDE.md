@@ -253,6 +253,59 @@ Mechanics (`worker/src/run/execute/watch-status.ts` +
   never runs. Realtime uses a `message.updated` event that refreshes only the
   open thread — deliberately not `['channels']`, so badges stay put.
 
+## A schedule that stops says so
+
+A recurring trigger used to die in silence. When its captured UOA identity
+stopped verifying, the fire path flipped `status` to `error` and stopped: the
+sweep claims only `status = 'active'`, the delivery-retry poller clears
+`next_retry_at` for a non-active trigger, and nothing notified anyone. The only
+record of the cause was the newest delivery row's `error_message` — so a
+production sweep sat dead and unexplained for nineteen days, found only by
+opening the Triggers page. Recovery was impossible too: editing preserves the
+server-owned identity by design, resuming re-armed it into the same failure, and
+deletion is refused once any delivery exists.
+
+- **Health is classified, not guessed.** `TriggerLaunchOriginError` carries a
+  reason code (`worker/src/control/trigger-origin.ts`). An identity that cannot
+  be proven moves the trigger to `needs_reauthorization`; everything else
+  (target, membership, malformed origin) stays `error`. They are separate states
+  because they take different actions — one is a button, the other is an edit.
+  `health_reason` / `health_detail` persist the cause so the page can explain
+  without parsing a message string.
+- **Alerting is once per transition.** The transition is claimed by a single
+  conditional UPDATE whose WHERE clause carries the decision, so concurrent
+  reporters cannot both advance `health_revision` — `dispatchEventTriggers` fans
+  out with no claim on the trigger, so a read-then-write would have raced. The
+  durable dedupe reuses the existing `user_alerts (user_id, event_key)`
+  uniqueness rather than adding a second marker table; `trigger.health-alert`
+  writes a durable `UserAlert` for the organisation's active **owners** — the set
+  who can both reach the owner-gated Triggers page and repair the schedule — then
+  pushes through the shared pipeline under its own `pushTriggerHealth`
+  preference. The push body is generic: the cause stays behind the deep link, so
+  a lock-screen notification cannot carry a provider error. The alert is
+  revalidated on read like every other kind (`visibleUserAlertWhere`), so it
+  stops surfacing once the trigger is healthy again.
+- **Recovery is explicit, never automatic.** `POST /api/triggers/:id/reauthorize`
+  re-captures the caller's live identity, sharing `captureScheduledLaunchOrigin`
+  with the create route rather than keeping a second copy. There is deliberately
+  **no** re-stamp on login: signing in proves the same person is present, not
+  that they intend a dormant automation to resume, and an epoch may have rotated
+  precisely because access was withdrawn. It re-stamps the **epoch only** — the
+  organisation and team are what a schedule is billed through, so refreshing
+  them from whoever clicks repair would move its attribution as a side effect. A
+  changed workspace is refused and named; an owner taking over somebody else's
+  schedule is a separate explicit act. It re-arms from **now**, never from the
+  missed occurrence, because cron computes its next time from the previous
+  scheduled time and a long-dead schedule would otherwise grind through its
+  whole backlog one sweep at a time.
+- **Nothing about a trigger's provenance leaves the server.** The record
+  presenter strips `launchOrigin` / `createdByUserId` / `createdViaTool`, and the
+  webhook intake key is opt-in per audience (`TRIGGER_ADMIN_AUDIENCE`) so a call
+  site that does not consider audience omits it. Caller-supplied dedupe keys are
+  namespaced by the route's own server-decided source, because the scheduler's
+  keys are predictable and a caller could otherwise pre-create a delivery and
+  silently cancel a future occurrence.
+
 ## Message reply threads (#233)
 
 `Thread` is a conversation *container* (channel → named threads); Slack-style *reply threads* live one level deep on messages: `Message.rootMessageId` (nullable self-FK; replies to replies attach to the same root), with materialized per-root `replyCount`/`lastReplyAt`/`replyParticipantIds` updated atomically via `@nessie/runtime` `applyReplyBookkeeping` in the message-create transaction, and `MessageThreadFollow` per (user, root) with auto-follow on participate (author the root, reply, or be mentioned in a reply) plus explicit unfollow. Reply visibility inherits the container; deleted roots tombstone and keep their replies; "Also send to #channel" posts an inline top-level copy carrying `metadata.replyBroadcast.rootMessageId`. Message-create accepts `rootMessageId` (validated same-container top-level root); list defaults to top-level posts and takes `?rootMessageId=` for paginated replies; realtime adds `message.reply` + `message.reply.meta`. A run triggered by a message replies **into that message's reply thread** by default (root = `triggerMessage.rootMessageId ?? triggerMessage.id`), and thread-following scopes to that reply thread; DeepWater/product-handoff and external-agent paths stay top-level and byte-identical. **Where a run replies and what it reads are separate questions** (`resolveReplyRootMessageId` vs `resolveConversationRootMessageId`): the conversation window narrows to a reply thread only when the trigger message is *itself* a reply. A run answering a top-level message is starting a reply thread, not sitting in one, so it reads the channel thread — scoping it to its own trigger would leave it a one-message window with no history. Admin: reply-summary bar under roots, deep-linkable right-hand thread panel (`/channels/:id/threads/:threadId/replies/:rootId`, pushes ≥1280px, overlay 900–1279px, full-screen <900px, drag-resized width persisted), `T` opens the focused message's thread. Reply-unread counters (#212) and the Threads inbox (#213) build on `MessageThreadFollow`.
@@ -742,8 +795,20 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   tuple is replayed at fire time and re-verified against the live link exactly
   as a session is (link `linked`, matching `uoaSub` and `uoaTokenVersion`, and
   the target team's external mapping), and `queueTriggerRun` pre-flights that
-  check so a schedule which can no longer sign errors once on the Triggers page
-  instead of burning a failed run every sweep. DeepWater research launch
+  check so a schedule which can no longer sign stops once instead of burning a
+  failed run every sweep. **The pre-flight shares dispatch's own predicate** —
+  it calls the exported `activeWorkspaceMatchesAttribution` rather than keeping
+  a second copy, so the account link *and* the attributed team's external UOA
+  mapping are both checked. (It is still gated on the process-wide signer flag
+  while dispatch gates on the *effective provider* being a Ledger route, so an
+  organisation routed elsewhere can still be stopped by a check its own requests
+  would not make — a known remaining divergence.) Checking
+  only the link let a trigger pass, create a run, and have that run die at its
+  first inference, silently, because an unattended failure posts nothing; that
+  is what produced ~1.5 hours of "delivered / run failed" deliveries before one
+  production sweep's epoch drifted far enough to fail the gate too. It
+  deliberately does **not** perform the remote token exchange: a UOA outage must
+  never look like a dead schedule. See "A schedule that stops says so". DeepWater research launch
   retries reuse the provider's stable `tool_call_id`. Ledger owns job isolation,
   budget enforcement, audit, and raw usage metering; UOA alone rates that usage.
   `deep_water_run_update`
