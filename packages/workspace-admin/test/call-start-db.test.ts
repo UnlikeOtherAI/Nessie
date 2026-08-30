@@ -45,13 +45,14 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   })
   const channel = await prisma.channel.create({
     data: {
-      label: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
+      label: 'calls', slug: 'calls', organizationId: org.id, projectId: project.id, teamId: team.id,
       members: { create: [{ userId: user.id }, { userId: invitee.id }] },
     },
   })
   const otherChannel = await prisma.channel.create({
     data: {
-      label: 'other calls', organizationId: otherOrg.id, projectId: otherProject.id, teamId: otherTeam.id,
+      label: 'other calls', slug: 'other-calls',
+      organizationId: otherOrg.id, projectId: otherProject.id, teamId: otherTeam.id,
     },
   })
   return {
@@ -88,7 +89,12 @@ runDatabaseTest('startCallForUser uses the target channel organisation and the p
     startCallForUser(prisma, { actingUserId: workspace.userId, channelId: workspace.channelId }, jitsi),
     startCallForUser(prisma, { actingUserId: workspace.userId, channelId: workspace.channelId }, jitsi),
   ])
-  assert.equal(attempts.filter((attempt) => attempt.status === 'fulfilled').length, 1)
+  assert.equal(
+    attempts.filter((attempt) => attempt.status === 'fulfilled').length,
+    1,
+    `attempt outcomes: ${JSON.stringify(attempts.map((attempt) =>
+      attempt.status === 'rejected' ? String(attempt.reason) : 'fulfilled'))}`,
+  )
   const rejected = attempts.find((attempt) => attempt.status === 'rejected')
   assert.ok(rejected?.status === 'rejected' && rejected.reason instanceof CallStartError)
   if (rejected?.status === 'rejected') assert.equal(rejected.reason.code, 'ACTIVE_CALL_EXISTS')
