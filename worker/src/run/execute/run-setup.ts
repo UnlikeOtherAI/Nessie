@@ -98,6 +98,7 @@ export const prepareRunExecution = async (
       context.agent.agentKind,
       {
         isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
+          agentKind: context.agent.agentKind,
           principalUserId: context.run.principalUserId,
           systemChannelType: context.channel.systemChannelType,
         }),
@@ -117,6 +118,7 @@ export const prepareRunExecution = async (
         agentKind: context.agent.agentKind,
         channelId: context.channel.id,
         isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
+          agentKind: context.agent.agentKind,
           principalUserId: context.run.principalUserId,
           systemChannelType: context.channel.systemChannelType,
         }),

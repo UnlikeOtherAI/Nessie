@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 import { createAgentRecord } from '@nessie/workspace-admin'
 
 import {
@@ -29,9 +30,14 @@ const issues = async (
   organizationId: string,
   graph: ReturnType<typeof graphWithSteps>,
   actorUserId = randomUUID(),
+  role: 'member' | 'owner' = 'member',
 ): Promise<string[]> => {
   try {
-    await validateWorkflowGraphSteps(prisma, organizationId, actorUserId, graph)
+    await validateWorkflowGraphSteps(prisma, {
+      actionContext: { requestId: `workflow-validation-${role}` },
+      actor: { actorId: actorUserId, actorType: 'user', roles: [role] },
+      tenant: { organizationId },
+    } as AuthorizedActionContext, graph)
     return []
   } catch (error) {
     assert.ok(error instanceof WorkflowTemplateValidationError)
@@ -172,6 +178,46 @@ runDatabaseTest('a workflow cannot reference another member’s private agent', 
     authorId,
   )
   assert.ok(result.some((issue) => issue.includes('does not exist')))
+})
+
+runDatabaseTest('a workflow owner can reference an unbound workspace agent', async (t) => {
+  const prisma = new PrismaClient()
+  const organizationId = randomUUID()
+  const agentOwnerId = randomUUID()
+  const workflowOwnerId = randomUUID()
+  await prisma.organization.create({ data: { id: organizationId, name: `wf-owner-${organizationId}` } })
+  await prisma.user.createMany({
+    data: [
+      { displayName: 'Agent owner', email: `${agentOwnerId}@test.local`, id: agentOwnerId },
+      { displayName: 'Workflow owner', email: `${workflowOwnerId}@test.local`, id: workflowOwnerId },
+    ],
+  })
+  await prisma.organizationMember.createMany({
+    data: [
+      { organizationId, role: 'member', userId: agentOwnerId },
+      { organizationId, role: 'owner', userId: workflowOwnerId },
+    ],
+  })
+  const agent = await createAgentRecord(prisma, {
+    name: 'Unbound workflow agent',
+    organizationId,
+    ownerUserId: agentOwnerId,
+    role: 'assistant',
+  })
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await prisma.user.deleteMany({ where: { id: { in: [agentOwnerId, workflowOwnerId] } } })
+    await prisma.$disconnect()
+  })
+
+  const result = await issues(
+    prisma,
+    organizationId,
+    graphWithSteps([{ id: 'unbound', input: { agentId: agent.id }, type: 'agent' }]),
+    workflowOwnerId,
+    'owner',
+  )
+  assert.deepEqual(result, [])
 })
 
 runDatabaseTest('W16: a when: expression that does not compile is rejected at save time', async (t) => {

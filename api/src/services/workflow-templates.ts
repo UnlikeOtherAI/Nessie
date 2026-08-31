@@ -83,8 +83,7 @@ export const createWorkflowTemplate = async (
 ): Promise<WorkflowTemplateRecord> => {
   await validateWorkflowGraphSteps(
     prisma,
-    actorContext.tenant.organizationId,
-    actorContext.actor.actorId,
+    actorContext,
     input.graph,
   )
   await validateRequiredEnvironmentTemplateIds(
@@ -143,8 +142,7 @@ export const updateWorkflowTemplate = async (
 ): Promise<WorkflowTemplateRecord | null> => {
   await validateWorkflowGraphSteps(
     prisma,
-    actorContext.tenant.organizationId,
-    actorContext.actor.actorId,
+    actorContext,
     input.graph,
   )
   await validateRequiredEnvironmentTemplateIds(

@@ -535,18 +535,21 @@ weight, with two adjustments:
    (`systemChannelType`), never the kind — exempt in the PA DM, contained
    everywhere else. This is the one place the existing code would actively do
    the wrong thing rather than merely lack a feature.
-3. **A presence run is reduced-capability by default; the owner's private
-   estate is behind explicit elevation.** All three reviewers converged on
+3. **A PA or principal-bearing run outside the PA DM is reduced-capability by
+   default; the owner's private estate is behind explicit elevation.** All three reviewers converged on
    the two principals being distinct — the *requester* (the member who
    addressed the PA: attribution, abuse limits) and the *principal* (the
    owner: identity, delegation, billing) — and on the run never falling back
    to the requester's identity. Where they differed was the default posture
    (see §Cross-model review); the adjudicated rule, expressed with existing
-   machinery rather than a new mode enum, is **surface-keyed capability**,
-   the same structural key the containment fix uses:
+   machinery rather than a new mode enum, is **PA identity OR a run principal,
+   outside the PA DM**: `(agentKind === 'personal_assistant' ||
+   principalUserId != null) && systemChannelType !== 'personal_assistant'`.
+   This intentionally differs from the surface-keyed memory-containment rule:
    - In the PA DM (`systemChannelType = 'personal_assistant'`): full PA
-     toolset, exemptions intact — unchanged.
-   - In a shared channel (a presence run): identity is the owner's
+   toolset, exemptions intact — unchanged.
+   - Outside that DM (a PA run or a delegated child carrying the owner's
+     principal): identity is the owner's
      (`effectiveUserId`, UOA delegation, billing attribution — kimix's four
      points stand), but the toolset assembly withholds the owner-private
      tier: user-scope connectors, comms tools, and owner-private
@@ -617,7 +620,7 @@ now exist:
 | Placement refusal | one branch in `bindAgentToChannel` (reason-coded 403), `agent_bindings` BEFORE-INSERT trigger, worker run-start assertion | the single binding chokepoint + its callers; DeepWater trigger precedent |
 | PA presence | `AgentBinding.principalUserId` (+ split uniques), presence route + PA tool, `Message.onBehalfOfUserId`, participant projection record, per-run owner alert | org-singleton PA, `effectiveUserId` machinery, disclosure basis, approvals, `user_alerts` dedupe |
 | Dual display + addressing | render-time projection keyed on principal; structured id-keyed mention entities for presences | `User.displayName` mirror, org PA avatar, mention metadata plumbing |
-| Presence capability | surface-keyed toolset reduction + containment re-key (`memory.ts` exemption → surface, not kind) | approval machinery, `constrainScopesToDestination`, `ConsumedSourceSink` |
+| Presence capability | PA-identity-or-principal toolset reduction outside the PA DM + containment re-key (`memory.ts` exemption → surface, not kind) | approval machinery, `constrainScopesToDestination`, `ConsumedSourceSink` |
 | Owner-deactivation handling | pause private agents + durable alert + existence-only admin bucket | trigger `needs_reauthorization` machinery, people-tree buckets |
 | Global agents | blueprint registry + bootstrap per org; unbound-global list branch; read-only detail gate | `ensurePersonalAssistant*` pattern, `systemManaged` tier, derived scope tabs |
 

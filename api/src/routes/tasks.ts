@@ -129,6 +129,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     if (!body) return reply
 
     const result = await createHumanTask(prisma, {
+      actorContext,
       organizationId: actorContext.tenant.organizationId,
       createdByUserId: actorContext.actor.actorId,
       title: body.title,
@@ -190,7 +191,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       organizationId: actorContext.tenant.organizationId,
       assigneeUserId: body.assigneeUserId,
       assigneeAgentId: body.assigneeAgentId,
-      actorId: actorContext.actor.actorId,
+      actorContext,
     })
 
     if ('error' in result) {
