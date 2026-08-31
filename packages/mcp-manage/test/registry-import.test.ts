@@ -247,12 +247,13 @@ test('an endpoint the SSRF guard refuses is never persisted at all', async () =>
   assert.equal(entries[0]!.registryName, 'io.github.acme/notion-mcp')
 })
 
-test('promotion is objective: it clears the gates or it stays discovered', async () => {
+test('promotion is automatic or an explicit App Store curator decision', async () => {
   const { prisma, entries } = createFakePrisma()
 
   await syncRegistry(prisma, {
     fetchImpl: pageOf([
       record({}),
+      record({ name: 'com.stripe/mcp', description: 'Stripe.' }),
       record({ name: 'io.example/thin', description: 'A server.' }),
       record({
         name: 'io.example/insecure',
@@ -262,10 +263,15 @@ test('promotion is objective: it clears the gates or it stays discovered', async
     assertEndpointSafe: allowAll,
   })
 
-  assert.equal(entries.length, 3)
+  assert.equal(entries.length, 4)
   assert.equal(entries[0]!.moderationState, 'curated')
-  assert.equal(entries[1]!.moderationState, 'discovered', 'description too thin')
-  assert.equal(entries[2]!.moderationState, 'discovered', 'endpoint is not https')
+  assert.equal(
+    entries[1]!.moderationState,
+    'curated',
+    'a source-controlled home selection is a curator decision despite thin copy',
+  )
+  assert.equal(entries[2]!.moderationState, 'discovered', 'description too thin')
+  assert.equal(entries[3]!.moderationState, 'discovered', 'endpoint is not https')
   // Never `approved`: that state means a human decided.
   assert.equal(entries.some((row) => row.moderationState === 'approved'), false)
 })

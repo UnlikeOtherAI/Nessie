@@ -100,7 +100,7 @@ measuring how full the shared database is, not whether prefix matching works.
 Assert on a token the catalogue does not carry, and assert *that the lane
 answers*, never a position.
 
-## Home suggestions are editorial order, not a second catalogue
+## Home suggestions are explicit curation, not a second catalogue
 
 The default category shelves can lead with a small, source-controlled set of
 well-known remote apps selected by their immutable MCP Registry `server.name`.
@@ -108,12 +108,20 @@ well-known remote apps selected by their immutable MCP Registry `server.name`.
 to the unfiltered home shelves: search, a category page, and the installed-only
 view keep their own meaningful orders.
 
-Suggestions are never a visibility, moderation, trust, authentication, or
-connection decision. The store first applies its ordinary entitlement and
-catalogue visibility predicate, then asks for only the configured identities
-that survived it, and finally promotes them within their assigned primary
-category. A hidden, deleted, stale, or reclassified record therefore produces
-no card and cannot be forced into another category by the editorial list.
+Suggestions are a source-controlled human curation decision for records chosen
+because they are published by the original product company or have substantial
+community adoption. The list deliberately stops short of a shelf's capacity
+when the live registry has no stronger candidate. At import time that decision
+may upgrade a matching `discovered` row to `curated`, after the same active,
+latest, remote-transport, and SSRF endpoint checks every registry record must
+pass. It is not a trust, authentication, endpoint, or connection decision:
+the importer neither changes `trustLevel` nor bypasses any safety guard.
+
+The store then applies its ordinary entitlement and catalogue visibility
+predicate, asks for only configured identities that survived it, and promotes
+them within their assigned primary category. A hidden, deleted, stale, or
+reclassified record therefore produces no card and cannot be forced into
+another category by the editorial list.
 
 ## Visibility
 
