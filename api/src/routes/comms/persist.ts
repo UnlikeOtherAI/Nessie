@@ -22,6 +22,12 @@ export type PersistConnectedAccountInput = {
   userId: string
   provider: CommsProviderId
   connect: ConnectResult
+  /**
+   * The capability ids this authorization asked for. Recorded so the UI can
+   * distinguish "asked for and declined" from "never asked" — it is never an
+   * authority for what the connection may do; `grantedScopes` is.
+   */
+  requestedCapabilities?: readonly string[]
 }
 
 export const persistConnectedAccount = async (
@@ -41,6 +47,9 @@ export const persistConnectedAccount = async (
     ? new Date(connect.credential.expiresAt)
     : null
   const scopeHash = computeScopeHash(connect.credential.scopes)
+  const requestedCapabilities = [
+    ...(input.requestedCapabilities ?? []),
+  ] as unknown as Prisma.InputJsonValue
 
   return prisma.$transaction(async (tx) => {
     const connection = await tx.commsConnection.upsert({
@@ -61,10 +70,22 @@ export const persistConnectedAccount = async (
         externalUserId: connect.externalUserId,
         status: 'active',
         grantedScopes,
+        requestedCapabilities,
+        ...(connect.providerAccountId
+          ? { providerAccountId: connect.providerAccountId }
+          : {}),
       },
       update: {
         status: 'active',
         grantedScopes,
+        requestedCapabilities,
+        // Backfills the stable provider account id on a connection made before
+        // identity moved to the id_token. Local capability blocks are
+        // deliberately preserved: re-authorizing widens the grant at Google and
+        // must not quietly switch a capability the person turned off here.
+        ...(connect.providerAccountId
+          ? { providerAccountId: connect.providerAccountId }
+          : {}),
       },
     })
 
