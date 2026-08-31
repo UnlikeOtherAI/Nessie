@@ -6,6 +6,17 @@
 > grounded against Nessie's actual specs and current-state docs. Every claim about the
 > codebase cites the file it comes from; items not verified against a doc are marked
 > **assumption**.
+>
+> **Revised 2026-08-31, against the code rather than the specs.** The first draft's
+> §1 diagnosis — that tools run by keyword detection before the LLM call — was true
+> when its cited source was written and false by the time the draft was: the agentic
+> loop shipped 2026-04-14 (`a36ad091`). §1 is rewritten below, and the episode is kept
+> as §1a because it is this document's own thesis happening to this document. The
+> proposals in §2–§3 were checked against the implementation at the same time; where
+> one is partly built or rests on a seam that does not exist yet, §4 now says so, and
+> the "free" cost claim on the top-ranked item is corrected. Claims below are cited to
+> **code** where the behaviour is shipped and to **specs** where it is intended; the
+> two are no longer used interchangeably.
 
 The organising principle throughout: **prefer changes the platform enforces over
 instructions in a prompt.** An agent under pressure to appear done will ignore a prompt
@@ -36,20 +47,53 @@ over systems people depend on:
 
 Two structural facts make honesty a platform problem here rather than a model problem.
 
-**First, the current run model actively invites fabrication.** In the shipped run
-pipeline, tools are executed *before* the LLM call by keyword detection, and the system
-prompt then tells the agent: *"The required safe tools have already been executed. Do not
-emit tool-call markup or request more tool execution."*
-([agent-base-template.md](agent-base-template.md) §3–§4). When keyword detection misses —
-the user asks a question that needed a search but used none of the trigger words — the
-agent is instructed that tooling is complete, forbidden from requesting more, and still
-expected to answer. The path of least resistance is to answer *as if it had looked*. This
-is precisely the trained failure the external analysis describes: reinforcement on
+**First, the pressure toward fabrication is trained in, and the platform no longer
+structurally amplifies it — but it does not structurally resist it either.** The trained
+failure the external analysis describes is unchanged by any refactor: reinforcement on
 verified rewards teaches the *form* of a completed job, so an agent that cannot achieve
-the substance produces the form. The base template's own §8 concedes the adjacent gaps:
-"No self-correction", "No self-eval", "The agent gets one shot." The agentic-loop
-replacement is planned; the honesty consequences of the interim state are not currently
-written down anywhere, and the contract changes below survive the migration.
+the substance produces the form. What has changed is Nessie's contribution to it. The run
+pipeline used to execute tools by keyword detection *before* the LLM call and then tell
+the agent *"The required safe tools have already been executed. Do not emit tool-call
+markup or request more tool execution."* — so a detection miss left the agent told tooling
+was complete, forbidden from asking for more, and still expected to answer. That is gone:
+`runAgenticLoop` (`worker/src/run/agentic-loop.ts`) sends tool schemas to the provider,
+executes the model's own tool calls, appends the results as `tool` messages and iterates,
+with per-call authorization through `authorizeToolCall` (`worker/src/run/tool-policy.ts`).
+An agent that needs a search can now ask for one.
+
+What replaced the bad instruction is a *good* instruction — the live prompt says "Do not
+fabricate tool output — always call the tool"
+(`worker/src/run/execute/prompt.ts` `buildModelPrompt`). Note what that is: a prompt-level
+plea, the exact instrument this document argues is insufficient. The platform asks the
+model not to fabricate and then relays whatever comes back without checking it against the
+`ToolCall` rows it already holds. So the honesty gap is no longer *induced* by the run
+model; it is simply *unguarded* by it. Every contract change below is about closing that,
+and none of them depended on the old pipeline. The base template's own §8 concedes the
+adjacent gaps that remain: "No self-correction", "No self-eval", "The agent gets one shot."
+
+### 1a. This document was itself misled — which is the argument
+
+The paragraph above originally asserted the keyword-detection pipeline as current fact. It
+was wrong by four months. The draft cited its source honestly
+([agent-base-template.md](agent-base-template.md) §3–§4) — and that source still prints
+both removed sentences today, in the present tense, with no staleness banner, still
+promising they "will be removed when the agentic loop (Phase 1) replaces keyword-based
+tool execution." The replacement had already shipped.
+
+So a document about agents asserting work that was not done was misled by a document
+asserting a state that was not true, and reproduced the claim in good faith because the
+provenance looked sound. That is the failure mode of §2.1 with a human author and a
+markdown file standing in for the agent and its prose, and it is the most direct argument
+available for the principle below: **a narrative record that nothing verifies drifts from
+the truth silently, and cites cleanly the whole way down.** The remedy in code is
+provenance metadata (§2.1); the remedy in docs is the same shape — a stale spec needs a
+banner that a reader cannot miss, and `agent-base-template.md` should carry one.
+
+One residue is worth deleting rather than documenting: the keyword predicates themselves
+(`shouldUseDocumentRead`, `shouldUseWebSearch`, `shouldUseWebFetch`,
+`worker/src/run/content-tools.ts`) still exist with **zero call sites**. They are dead
+code, and as regexes over message content they also contradict the standard in `AGENTS.md`
+→ "Natural-language intent is model-judged — never string-matched."
 
 **Second, Nessie already knows what the fix looks like, because the executor protocol is
 the fix.** Its threat model states it exactly: *"Terminal spoofing — Typed lifecycle
@@ -96,9 +140,20 @@ assistant message as structured metadata, rendered by the client:
 
 Lands in: [agent-base-template.md](agent-base-template.md) §3 (run flow step 10 — save
 assistant message *with tool provenance*) and
-[agent-communication-spec.md](agent-communication-spec.md) §2.2c. This is cheap — the
-rows already exist — and it is the single highest-leverage honesty change in this
-document.
+[agent-communication-spec.md](agent-communication-spec.md) §2.2c. Still the single
+highest-leverage honesty change in this document.
+
+**Cost correction (2026-08-31).** The first draft called this "cheap — the rows already
+exist." The `ToolCall` rows do exist, but there is **no join path from an assistant
+message back to the run that produced it**: `Message` has no `runId` column, and `Run`
+points the other way (`triggerMessageId` is the message that *started* the run, plus
+`replyRootMessageId` for the reply anchor). So this needs either a `Message.runId` column
+and its migration, or the provenance denormalised onto the message at write time. The
+write chokepoint already exists and is the natural home — `createAgentMessage`
+(`worker/src/run/execute/agent-message.ts`) opens the message transaction itself and
+already stamps computed metadata (the disclosure basis) there, so tool provenance can be
+stamped in the same transaction by the same function. Not free; still small, and still
+first.
 
 ### 2.2 Claimed-but-not-done work (task marked done on narration)
 
@@ -229,6 +284,19 @@ labelled layers:
 The approver UI ([approval-gating-spec.md](approval-gating-spec.md) §10) renders the
 machine context first. Lands in: [approval-gating-spec.md](approval-gating-spec.md) §3
 (schema: distinguish `machineContext` from agent-supplied fields), §6, §10.
+
+**Prerequisite (2026-08-31) — the interception seam does not exist yet.** This change, and
+O2 and O6 below, all assume a worker that intercepts a pending tool call and opens an
+approval carrying its verbatim arguments. That flow is not built. `approvalProof` has
+**consumers but no producer**: `checkPolicy` refuses a `requiresApproval` rule when the
+proof is absent (`packages/workspace-admin/src/policy-check.ts`, mirrored in
+`worker/src/run/execute/policy.ts`), and nothing anywhere mints one. In practice a
+`requiresApproval` verdict *denies the tool into the model's context* as
+`approval_required` rather than raising a gate a human can answer, and the only real
+producer of an `ApprovalRequest` in the tree is `kb_publish_request`
+(`worker/src/run/pa-tools/knowledge-write.ts`). So the ordering is: build tool-call
+interception → approval → resumption **first**; the machine-context split is then a schema
+change on a flow that exists. Sequenced accordingly in §4.
 
 ---
 
@@ -370,44 +438,71 @@ back, the human decides.
 Ordered by leverage per unit of work. Each names the document the change lands in;
 implementation follows the specs.
 
-1. **Provenance-authoritative messages** (§2.1) —
+**Implementation status checked against code on 2026-08-31.** None of the twelve is
+complete. Four are partly built and eight are untouched; each carries its status inline
+below, so this list is a work register rather than a wish list. Two dependencies govern
+the order: items 3, 4 and 12 are blocked on the approval-interception seam (§2.6
+prerequisite), and item 1 needs a small schema addition (§2.1 cost correction).
+
+1. **Provenance-authoritative messages** (§2.1) — **NOT DONE.**
    [agent-base-template.md](agent-base-template.md) §3,
    [agent-communication-spec.md](agent-communication-spec.md) §2.2c. `ToolCall` rows
-   already exist; attach them to the message, badge tool-free answers. Highest value,
-   lowest cost.
-2. **Structural failure disclosure** (§2.3) —
-   [agent-base-template.md](agent-base-template.md) §3/§9. Failed/denied/unknown tool
-   outcomes and rejected approvals surface in-thread, non-suppressibly.
-3. **Machine-derived approval context** (§2.6) —
-   [approval-gating-spec.md](approval-gating-spec.md) §3/§6/§10. The approver sees the
-   verbatim intercepted action; agent prose is labelled unverified.
+   exist but do not reach the message; needs `Message.runId` or provenance stamped at
+   the `createAgentMessage` chokepoint (see the §2.1 cost correction). Highest value;
+   small, not free.
+2. **Structural failure disclosure** (§2.3) — **PARTIAL.**
+   [agent-base-template.md](agent-base-template.md) §3/§9. The classified-stop machinery
+   already posts non-suppressible in-thread notices for budget stops, cancellation and
+   run failure (`worker/src/run/execute/budget-stop.ts`, `cancel-stop.ts`, `failure.ts`).
+   What is missing is the per-tool case: an individual failed or denied `ToolCall` inside
+   an otherwise successful run is still admin-only telemetry, and a rejected approval
+   still does not state in-thread that the action did not happen.
+3. **Machine-derived approval context** (§2.6) — **BLOCKED** on tool-call interception
+   (§2.6 prerequisite); partial only for `kb_publish_request`, the one approval producer
+   that exists. [approval-gating-spec.md](approval-gating-spec.md) §3/§6/§10.
 4. **External-contact and external-write gate categories, with the affected party
-   named** (§3.3 O2) — [approval-gating-spec.md](approval-gating-spec.md) §5.
+   named** (§3.3 O2) — **NOT DONE**, and blocked on the same interception seam as item 3.
+   [approval-gating-spec.md](approval-gating-spec.md) §5.
 5. **Disclosure invariant on external identities + send-as-user stays internal**
-   (§3.3 O1) —
+   (§3.3 O1) — **NOT DONE, and not yet urgent in code — which is exactly why to settle
+   it now.**
    [research/agent-identity-and-channels.md](research/agent-identity-and-channels.md)
-   (as it becomes a spec), [the-agents.md](the-agents.md) PA contract. Must be settled
-   *before* email/VOIP/WhatsApp ships, while it is still a design brief.
-6. **Completion by receipt for mutating tasks** (§2.2) —
+   (as it becomes a spec), [the-agents.md](the-agents.md) PA contract. No email/VOIP/
+   WhatsApp adapter ships today, so there is no live inbox or number to retrofit
+   disclosure onto. Decide the invariant while it costs a paragraph.
+6. **Completion by receipt for mutating tasks** (§2.2) — **NOT DONE.**
    [agent-base-template.md](agent-base-template.md) §5/§9, pattern from
    [executor-protocol.md](executor-protocol.md) §6.
-7. **Unified egress conduct policy for worker web tools** (§3.3 O3) —
-   [executor-protocol.md](executor-protocol.md) §8 pattern generalised;
-   [rate-limiting.md](rate-limiting.md) (assumption — unread) for per-host limits.
-8. **Anti-TOCTOU pinning for tool bundles and MCP definitions** (§3.3 O4) — bundle
-   lifecycle around `tool.bundle.*` in [audit-trail-spec.md](audit-trail-spec.md);
-   digest pattern from [executor-protocol.md](executor-protocol.md) §8.
-9. **Immutable task statement + truthful task tree** (§2.5) —
+7. **Unified egress conduct policy for worker web tools** (§3.3 O3) — **PARTIAL: the
+   SSRF/pinning half is done, the conduct half is absent.** `web_fetch` and `http_fetch`
+   already route through the shared `safeFetch`/`pinnedFetch` policy, which resolves once,
+   pins the socket to the vetted IPs and re-validates every redirect hop (`AGENTS.md` →
+   "Outbound egress is IP-pinned"). What is missing is third-party *conduct*: method
+   restrictions, per-destination-host rate limits, no auth-retry loops.
+   **Assumption resolved:** [rate-limiting.md](rate-limiting.md) was read on 2026-08-31 —
+   it covers inbound request limiting only, so per-host egress limiting is new work.
+8. **Anti-TOCTOU pinning for tool bundles and MCP definitions** (§3.3 O4) — **PARTIAL.**
+   MCP connectors already detect descriptor drift and hold changed shared-scope tools at
+   the `pending_review` gate; there is no hash-manifest pinning of externally-hosted
+   instruction content, which is the half the skill-poisoning campaign targets.
+   [audit-trail-spec.md](audit-trail-spec.md); digest pattern from
+   [executor-protocol.md](executor-protocol.md) §8.
+9. **Immutable task statement + truthful task tree** (§2.5) — **NOT DONE.**
    [agent-base-template.md](agent-base-template.md) §5;
    [agent-communication-spec.md](agent-communication-spec.md) §3.3 already mandates
    persisting rejected candidates — implement it and extend to child outcomes.
-10. **Per-agent calibration ledger feeding organizer routing** (§2.4) —
+10. **Per-agent calibration ledger feeding organizer routing** (§2.4) — **NOT DONE.**
     [agent-communication-spec.md](agent-communication-spec.md) §2.2b/§3.1.
 11. **Org-wide stop + third-party destinations in audit metadata** (§3.3 O5) —
-    [organization-governance-spec.md](organization-governance-spec.md) (assumption),
+    **NOT DONE. Assumption resolved:**
+    [organization-governance-spec.md](organization-governance-spec.md) was read on
+    2026-08-31 and contains no org-wide agent stop, so the gap is real in spec and code
+    alike and the placement stands. Note the adjacent primitive that now exists:
+    `POST /api/runs/:id/cancel` cancels a single run cooperatively — the org-wide control
+    is the missing fan-out, not a missing mechanism.
     [audit-trail-spec.md](audit-trail-spec.md) §6.
-12. **Reversibility recorded in approval machine context** (§3.3 O6) —
-    [approval-gating-spec.md](approval-gating-spec.md) §3.
+12. **Reversibility recorded in approval machine context** (§3.3 O6) — **NOT DONE**,
+    blocked with items 3 and 4. [approval-gating-spec.md](approval-gating-spec.md) §3.
 
 Items 1–3 change what every user of the platform sees about every agent, cost little,
 and require no model improvement — they simply stop the platform from relaying claims
