@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { listVisibleAgentIdsForUser } from '@nessie/db'
 import type { KnowledgeSpaceRecord } from './types.js'
 
 // Per-space access. The space creator always has full access. `bypass` is now
@@ -7,6 +8,7 @@ import type { KnowledgeSpaceRecord } from './types.js'
 // evaluated against the real access rules below.
 export type SpaceViewerAgentScopes = {
   id: string
+  parentAgentId: string | null
   // True when the agent has at least one channel binding in this org — grants
   // organization-visibility spaces, mirroring "every human in the org can read
   // an org-visibility space."
@@ -22,6 +24,7 @@ export type SpaceViewer = {
   bypass: boolean
   userId: string | null
   projectIds: Set<string>
+  visibleAgentIds: Set<string>
   agent?: SpaceViewerAgentScopes
 }
 
@@ -42,6 +45,7 @@ type SpaceAccessFacts = Pick<
   | 'memberAgentIds'
   | 'sensitivityTier'
   | 'privateToAgentId'
+  | 'ownerAgentId'
 >
 
 const isMember = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean =>
@@ -50,16 +54,21 @@ const isMember = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean =>
 const isCreator = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean =>
   viewer.userId !== null && space.createdBy === viewer.userId
 
-// Rules 2-4 of the agent access model: private-to-this-agent, creator, or an
-// explicit KnowledgeSpaceMember grant. Shared by the read arm and the
-// writeRestricted branch of the write arm.
+// Rules 2-4 of the agent access model: private-to-this-agent, creator, an
+// explicit KnowledgeSpaceMember grant, or proprietorship of the agent's own
+// documents home (including a spawn_subtask child's parent). Shared by read
+// and write so the plan's §4.1/§4.2 permissions cannot diverge.
 const agentHasExplicitGrant = (
   space: SpaceAccessFacts,
   agent: SpaceViewerAgentScopes,
 ): boolean =>
   space.privateToAgentId === agent.id ||
   space.createdBy === agent.id ||
-  space.memberAgentIds.includes(agent.id)
+  space.memberAgentIds.includes(agent.id) ||
+  // A child works in its parent's home rather than receiving a second space;
+  // see docs/plans/2026-08-31-agent-documents.md §4.1.
+  space.ownerAgentId === agent.id ||
+  (agent.parentAgentId !== null && space.ownerAgentId === agent.parentAgentId)
 
 // Rule 5: fall back to visibility-scoped reach when there is no explicit
 // grant. `private` visibility is members-only, so it has no agent arm here.
@@ -103,6 +112,12 @@ const canAgentWriteSpace = (
 export const canReadSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean => {
   if (viewer.bypass) return true
   if (viewer.agent) return canAgentReadSpace(space, viewer.agent)
+  if (space.ownerAgentId !== null) {
+    // Agent homes derive their audience from live agent visibility; stored
+    // `private` is only the fail-closed floor. Explicit human membership stays
+    // a deliberate grant. Never fall through (agent-documents.md §4.1).
+    return viewer.visibleAgentIds.has(space.ownerAgentId) || isMember(space, viewer)
+  }
   if (isCreator(space, viewer)) return true
   switch (space.visibility) {
     case 'organization':
@@ -118,6 +133,13 @@ export const canReadSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): bool
 export const canWriteSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boolean => {
   if (viewer.bypass) return true
   if (viewer.agent) return canAgentWriteSpace(space, viewer.agent)
+  if (space.ownerAgentId !== null) {
+    // `writeRestricted` is the steward's explicit narrowing switch and wins
+    // over read-derived access. Otherwise colleagues who can see the agent may
+    // edit its notebook; see agent-documents.md §4.2.
+    if (space.writeRestricted) return isMember(space, viewer)
+    return viewer.visibleAgentIds.has(space.ownerAgentId) || isMember(space, viewer)
+  }
   if (isCreator(space, viewer)) return true
   // "public read-only, private write": readable per visibility, written by members.
   if (space.writeRestricted) return isMember(space, viewer)
@@ -133,16 +155,21 @@ export const canWriteSpace = (space: SpaceAccessFacts, viewer: SpaceViewer): boo
 
 const loadUserViewer = async (
   prisma: PrismaClient,
+  organizationId: string,
   userId: string,
 ): Promise<SpaceViewer> => {
-  const memberships = await prisma.projectMember.findMany({
-    select: { projectId: true },
-    where: { userId },
-  })
+  const [memberships, visibleAgentIds] = await Promise.all([
+    prisma.projectMember.findMany({
+      select: { projectId: true },
+      where: { userId },
+    }),
+    listVisibleAgentIdsForUser(prisma, { organizationId, userId }),
+  ])
   return {
     bypass: false,
     userId,
     projectIds: new Set(memberships.map((m) => m.projectId)),
+    visibleAgentIds: new Set(visibleAgentIds),
   }
 }
 
@@ -151,23 +178,32 @@ const loadAgentViewer = async (
   organizationId: string,
   agentId: string,
 ): Promise<SpaceViewer> => {
-  const [bindings, memberships] = await Promise.all([
-    prisma.agentBinding.findMany({
-      where: { agentId, channel: { organizationId } },
-      select: {
-        channelId: true,
-        channel: { select: { teamId: true, projectId: true } },
+  // One tenant-scoped agent read carries the parent, binding reach, and
+  // explicit grants together. Besides avoiding another round trip, this makes
+  // a missing/cross-tenant principal fail closed before any access predicate.
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, organizationId },
+    select: {
+      parentAgentId: true,
+      bindings: {
+        where: { channel: { organizationId } },
+        select: {
+          channelId: true,
+          channel: { select: { teamId: true, projectId: true } },
+        },
       },
-    }),
-    prisma.knowledgeSpaceMember.findMany({
-      where: { agentId, organizationId },
-      select: { spaceId: true },
-    }),
-  ])
+      knowledgeSpaceMemberships: {
+        where: { organizationId },
+        select: { spaceId: true },
+      },
+    },
+  })
+  if (!agent) throw new Error('Agent viewer not found in organization')
+
   const channelIds = new Set<string>()
   const teamIds = new Set<string>()
   const projectIds = new Set<string>()
-  for (const binding of bindings) {
+  for (const binding of agent.bindings) {
     channelIds.add(binding.channelId)
     teamIds.add(binding.channel.teamId)
     projectIds.add(binding.channel.projectId)
@@ -176,13 +212,15 @@ const loadAgentViewer = async (
     bypass: false,
     userId: null,
     projectIds: new Set(),
+    visibleAgentIds: new Set(),
     agent: {
       id: agentId,
-      orgBound: bindings.length > 0,
+      parentAgentId: agent.parentAgentId,
+      orgBound: agent.bindings.length > 0,
       channelIds,
       teamIds,
       projectIds,
-      memberSpaceIds: new Set(memberships.map((m) => m.spaceId)),
+      memberSpaceIds: new Set(agent.knowledgeSpaceMemberships.map((m) => m.spaceId)),
     },
   }
 }
@@ -197,10 +235,15 @@ export const loadSpaceViewer = async (
   principal: SpaceViewerPrincipal,
 ): Promise<SpaceViewer> => {
   if (principal.actorType === 'service') {
-    return { bypass: true, userId: null, projectIds: new Set() }
+    return {
+      bypass: true,
+      userId: null,
+      projectIds: new Set(),
+      visibleAgentIds: new Set(),
+    }
   }
   if (principal.actorType === 'user') {
-    return loadUserViewer(prisma, principal.actorId)
+    return loadUserViewer(prisma, organizationId, principal.actorId)
   }
   return loadAgentViewer(prisma, organizationId, principal.actorId)
 }

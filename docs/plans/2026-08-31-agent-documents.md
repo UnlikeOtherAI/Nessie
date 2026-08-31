@@ -1,6 +1,6 @@
 # Agent documents — the docs an agent keeps for itself
 
-**Status:** design proposal — research + design only, no code.
+**Status:** design proposal; phase 1b access arm implemented.
 **Date:** 2026-08-31
 **Related:**
 [2026-08-31-agent-tables.md](2026-08-31-agent-tables.md) (agent-owned typed
@@ -262,24 +262,26 @@ human-only cross-agent sharing mechanism).
 
 **Product rule:** whoever can see the agent can read its documents. Same
 sentence as tables and to-dos, implemented the same way — by composing the
-`workspace-admin` mirror pair, never restating it:
+shared agent-visibility predicate consumed by `workspace-admin`, never
+restating it:
 
 - **TypeScript** (`packages/knowledge/src/access.ts` `loadUserViewer` /
-  `canReadSpace`): a space with `ownerAgentId` is readable by a user iff
-  `isAgentVisibleToUser(prisma, userId, organizationId, ownerAgentId)` —
-  the exact function the agent detail page gates on, so list and doc access
-  cannot disagree. Org owners inherit their existing omniscience over
-  non-system agents through `isAgentAccessibleToActor`'s owner path — and
-  when the agent-scopes fragment lands *inside* those predicates, **a
-  private agent's documents vanish from every non-owner, org owners
-  included, with zero changes in the knowledge package**. This plan adds the
-  corresponding row to the scopes doc's read-path gating table in the same
-  change that builds phase 1 (the to-dos commitment, repeated).
+  `canReadSpace`): `packages/db/src/agent-visibility.ts` owns the one
+  `buildVisibleAgentWhere` fragment used by `listAgentsForUser`,
+  `isAgentVisibleToUser`, and every derived audience. `loadUserViewer`
+  resolves that fragment once into `SpaceViewer.visibleAgentIds`; the pure,
+  synchronous `canReadSpace` admits an agent-owned space only when that set
+  contains its `ownerAgentId` (or the person has an explicit space grant).
+  This keeps database IO out of the predicate while making list, detail, and
+  document access depend on one definition. Org owners' route-only
+  `includeUnbound` widening remains outside the shared member fragment.
 - **SQL mirror** (`native-search-access.ts` `readableSpaceIdsSqlFor*`): the
-  same arm spelled as an EXISTS over `agent_bindings × channels ×
-  channel_members` plus the steward arm — one fragment, written once,
-  reviewed against the TS predicate the way the existing pair already is.
-  This is what keeps `kb_search` and human KB search honest without a
+  human search arm receives the already-resolved `visibleAgentIds` set as one
+  bound UUID-array parameter. It never restates the binding/steward joins in
+  SQL. The owning-agent/parent arm is mirrored separately for agent search.
+  `visibleUserAlertWhere` composes the same shared Prisma fragment so durable
+  knowledge alerts revalidate against the identical live audience. This is
+  what keeps `kb_search`, human KB search, and alerts honest without a
   post-filter.
 - **Agent-side** (`loadAgentViewer`): the owning agent passes via the
   existing `createdBy === agent.id` grant already; add
@@ -315,7 +317,7 @@ agent's visibility. Adopted, with the KB's own knobs:
   construction of a parallel rule but because the §4.1 arm delegates to the
   mirror pair, which the agent-scopes work narrows. The `visibility:
   'private'` floor means even a bug in the new arm fails closed.
-- **Owner deactivation**: `buildOwnedAgentWhere`'s live-membership
+- **Owner deactivation**: `buildVisibleAgentWhere`'s live-membership
   re-derivation makes a deactivated steward lose sight exactly as they lose
   the agent; the scopes plan's pause-private-agents carve-out needs nothing
   extra here.

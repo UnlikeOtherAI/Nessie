@@ -430,6 +430,7 @@ const spaceRow = (members: Array<{ userId: string | null; agentId: string | null
   name: 'Engineering',
   description: null,
   metadata: null,
+  ownerAgentId: null,
   writeRestricted: false,
   members,
   organizationId,

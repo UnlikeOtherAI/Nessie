@@ -12,6 +12,7 @@ const pageId = '00000000-0000-4000-8000-000000000003'
 const viewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   bypass: false,
   projectIds: new Set(),
+  visibleAgentIds: new Set(),
   userId,
   ...overrides,
 })
@@ -48,7 +49,12 @@ test('listBacklinks skips the space pre-filter for a bypass viewer', async () =>
   await listBacklinks(stubPrisma(capture), {
     organizationId,
     pageId,
-    viewer: { bypass: true, userId: null, projectIds: new Set() },
+    viewer: {
+      bypass: true,
+      userId: null,
+      projectIds: new Set(),
+      visibleAgentIds: new Set(),
+    },
   })
 
   assert.doesNotMatch(capture.sql ?? '', /knowledge_space_members/)

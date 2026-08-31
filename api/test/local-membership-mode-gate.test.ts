@@ -29,6 +29,12 @@ const dbStub = [
   '}',
   'export const writeAuditEntry = async () => {}',
   'export const enqueueQueueJob = async () => {}',
+  'export const buildVisibleAgentWhere = () => {',
+  '  throw new Error("agent visibility is not used by local-membership-mode-gate.test.ts")',
+  '}',
+  'export const listVisibleAgentIdsForUser = async () => {',
+  '  throw new Error("agent visibility is not used by local-membership-mode-gate.test.ts")',
+  '}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

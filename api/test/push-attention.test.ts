@@ -26,6 +26,9 @@ const ACTOR_ID = '00000000-0000-4000-8000-000000000006'
 const RECIPIENT_ID = '00000000-0000-4000-8000-000000000007'
 
 const makeTransaction = (rows: AlertRow[]) => ({
+  agent: {
+    findMany: async () => [],
+  },
   $executeRaw: async () => 1,
   knowledgeSpace: {
     findFirst: async () => ({
@@ -33,6 +36,7 @@ const makeTransaction = (rows: AlertRow[]) => ({
       createdBy: ACTOR_ID,
       id: SPACE_ID,
       members: [],
+      ownerAgentId: null,
       privateToAgentId: null,
       projectId: PROJECT_ID,
       sensitivityTier: 'normal',

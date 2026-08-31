@@ -1,10 +1,12 @@
 import type { Prisma } from '@prisma/client'
+import { listVisibleAgentIdsForUser } from '@nessie/db'
 import { canReadSpace } from '@nessie/knowledge'
 
 import { enqueueAttentionDispatch } from '../queue/pgqueue.js'
 
 type AttentionTransaction = Pick<
   Prisma.TransactionClient,
+  | 'agent'
   | 'organizationMember'
   | 'projectMember'
   | 'knowledgeSpace'
@@ -134,6 +136,7 @@ export const createKnowledgePublicationAttention = async (
       createdBy: true,
       id: true,
       members: { where: { userId: { not: null } }, select: { userId: true } },
+      ownerAgentId: true,
       privateToAgentId: true,
       projectId: true,
       sensitivityTier: true,
@@ -164,6 +167,16 @@ export const createKnowledgePublicationAttention = async (
 
   const projectUserIds = new Set(projectMembers.map((member) => member.userId))
   const memberUserIds = space.members.flatMap((member) => member.userId ? [member.userId] : [])
+  // Resolve each member's live agent audience before deciding publication
+  // attention, keeping the loop below pure and avoiding serial audience reads.
+  // See docs/plans/2026-08-31-agent-documents.md §4.1.
+  const visibleAgentIdsByUser = new Map(await Promise.all(members.map(async (member) => [
+    member.userId,
+    new Set(await listVisibleAgentIdsForUser(tx, {
+      organizationId: input.organizationId,
+      userId: member.userId,
+    })),
+  ] as const)))
   for (const member of members) {
     if (member.userId === input.actorUserId) continue
     const readable = canReadSpace({
@@ -174,6 +187,7 @@ export const createKnowledgePublicationAttention = async (
       bypass: false,
       projectIds: projectUserIds.has(member.userId) ? new Set([input.projectId]) : new Set(),
       userId: member.userId,
+      visibleAgentIds: visibleAgentIdsByUser.get(member.userId) ?? new Set(),
     })
     if (!readable) continue
     const alert = await tx.userAlert.upsert({

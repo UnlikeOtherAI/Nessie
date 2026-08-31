@@ -65,6 +65,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
 
 type SpaceFixtureOverrides = Partial<{
   id: string
+  ownerAgentId: string | null
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   teamId: string | null
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
@@ -86,6 +87,7 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
   visibility: overrides.visibility ?? 'organization',
   sensitivityTier: overrides.sensitivityTier ?? 'normal',
   privateToAgentId: null,
+  ownerAgentId: overrides.ownerAgentId ?? null,
   createdBy: 'user-1',
   deletedAt: null,
   createdAt: now,
@@ -97,11 +99,26 @@ type FakePrismaOptions = {
   space?: ReturnType<typeof buildSpaceRow> | null
   agentBindings?: Array<{ channelId: string; channel: { teamId: string; projectId: string } }>
   agentSpaceMemberships?: Array<{ spaceId: string }>
+  parentAgentId?: string | null
   onQueryRaw?: (query: { sql: string }) => void
 }
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
   const prisma = {
+    agent: {
+      findFirst: async (args: {
+        where: { id: string; organizationId: string }
+      }) => {
+        if (args.where.id !== 'agent-1' || args.where.organizationId !== 'org-1') {
+          return null
+        }
+        return {
+          parentAgentId: options.parentAgentId ?? null,
+          bindings: options.agentBindings ?? [],
+          knowledgeSpaceMemberships: options.agentSpaceMemberships ?? [],
+        }
+      },
+    },
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
@@ -109,12 +126,6 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
       findMany: async () => (options.space ? [options.space] : []),
-    },
-    agentBinding: {
-      findMany: async () => options.agentBindings ?? [],
-    },
-    knowledgeSpaceMember: {
-      findMany: async () => options.agentSpaceMemberships ?? [],
     },
     $queryRaw: async (query: { sql: string }) => {
       options.onQueryRaw?.(query)

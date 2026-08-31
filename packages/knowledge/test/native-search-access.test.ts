@@ -19,12 +19,14 @@ const memberSpaceId = '00000000-0000-4000-8000-000000000007'
 const viewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   bypass: false,
   projectIds: new Set(),
+  visibleAgentIds: new Set(),
   userId,
   ...overrides,
 })
 
 const agentScopes = (overrides: Partial<SpaceViewerAgentScopes> = {}): SpaceViewerAgentScopes => ({
   id: agentId,
+  parentAgentId: null,
   orgBound: false,
   channelIds: new Set(),
   teamIds: new Set(),
@@ -47,7 +49,22 @@ test('readableSpaceIdsSql includes the creator, org-visibility, and membership a
   assert.match(fragment.sql, /s\.visibility = 'organization'::"ThoughtVisibility"/)
   assert.match(fragment.sql, /EXISTS \(\s*SELECT 1 FROM knowledge_space_members m/)
   assert.match(fragment.sql, /m\.user_id = \?::uuid/)
-  assert.deepEqual(fragment.values, [organizationId, userId, userId])
+  assert.deepEqual(fragment.values, [organizationId, userId, userId, userId])
+})
+
+test('readableSpaceIdsSql binds visible agent ids and omits an empty owner arm', () => {
+  const hidden = readableSpaceIdsSql(organizationId, viewer())
+  assert.doesNotMatch(hidden.sql, /owner_agent_id = ANY/)
+
+  const visible = readableSpaceIdsSql(
+    organizationId,
+    viewer({ visibleAgentIds: new Set([agentId]) }),
+  )
+  assert.match(
+    visible.sql,
+    /owner_agent_id IS NOT NULL\s*\n\s*AND s\.owner_agent_id = ANY\(\?::uuid\[\]\)/,
+  )
+  assert.deepEqual(visible.values, [organizationId, userId, [agentId], userId, userId])
 })
 
 test('readableSpaceIdsSql omits the project-visibility arm when projectIds is empty', () => {
@@ -65,7 +82,7 @@ test('readableSpaceIdsSql adds the project-visibility arm when projectIds is non
     fragment.sql,
     /visibility = 'project'::"ThoughtVisibility"\s*\n\s*AND s\.project_id IN \(\?::uuid\)/,
   )
-  assert.deepEqual(fragment.values, [organizationId, userId, projectId, userId])
+  assert.deepEqual(fragment.values, [organizationId, userId, userId, projectId, userId])
 })
 
 test('readableSpaceIdsSqlForAgent always excludes restricted spaces', () => {
@@ -77,7 +94,21 @@ test('readableSpaceIdsSqlForAgent includes the private-to-agent and creator arms
   const fragment = readableSpaceIdsSqlForAgent(organizationId, agentScopes())
   assert.match(fragment.sql, /s\.private_to_agent_id = \?::uuid/)
   assert.match(fragment.sql, /s\.created_by = \?/)
-  assert.deepEqual(fragment.values, [organizationId, agentId, agentId])
+  assert.deepEqual(fragment.values, [organizationId, agentId, agentId, [agentId]])
+})
+
+test('readableSpaceIdsSqlForAgent binds the owning agent and parent as explicit grants', () => {
+  const parentAgentId = '00000000-0000-4000-8000-000000000008'
+  const fragment = readableSpaceIdsSqlForAgent(
+    organizationId,
+    agentScopes({ parentAgentId }),
+  )
+
+  assert.match(fragment.sql, /s\.owner_agent_id = ANY\(\?::uuid\[\]\)/)
+  assert.deepEqual(
+    fragment.values,
+    [organizationId, agentId, agentId, [agentId, parentAgentId]],
+  )
 })
 
 test('readableSpaceIdsSqlForAgent omits every scoped arm when the agent has no reach', () => {
@@ -106,7 +137,10 @@ test('readableSpaceIdsSqlForAgent adds the member-space arm only when memberSpac
     agentScopes({ memberSpaceIds: new Set([memberSpaceId]) }),
   )
   assert.match(fragment.sql, /s\.id IN \(\?::uuid\)/)
-  assert.deepEqual(fragment.values, [organizationId, agentId, agentId, memberSpaceId])
+  assert.deepEqual(
+    fragment.values,
+    [organizationId, agentId, agentId, [agentId], memberSpaceId],
+  )
 })
 
 test('readableSpaceIdsSqlForAgent adds the project/team/channel arms only when the agent reaches them', () => {
@@ -140,7 +174,13 @@ test('readableSpaceIdsSqlForViewer picks the user fragment for a plain user view
 test('readableSpaceIdsSqlForViewer picks the agent fragment for an agent viewer', () => {
   const fragment = readableSpaceIdsSqlForViewer(
     organizationId,
-    { bypass: false, userId: null, projectIds: new Set(), agent: agentScopes() },
+    {
+      bypass: false,
+      userId: null,
+      projectIds: new Set(),
+      visibleAgentIds: new Set(),
+      agent: agentScopes(),
+    },
   )
   assert.match(fragment?.sql ?? '', /sensitivity_tier <> 'restricted'/)
 })
@@ -148,7 +188,12 @@ test('readableSpaceIdsSqlForViewer picks the agent fragment for an agent viewer'
 test('readableSpaceIdsSqlForViewer returns null (no filter) for a bypass viewer', () => {
   const fragment = readableSpaceIdsSqlForViewer(
     organizationId,
-    { bypass: true, userId: null, projectIds: new Set() },
+    {
+      bypass: true,
+      userId: null,
+      projectIds: new Set(),
+      visibleAgentIds: new Set(),
+    },
   )
   assert.equal(fragment, null)
 })

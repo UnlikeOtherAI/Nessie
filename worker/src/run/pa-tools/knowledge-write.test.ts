@@ -61,6 +61,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
 
 type SpaceFixtureOverrides = Partial<{
   id: string
+  ownerAgentId: string | null
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
 }>
 
@@ -80,6 +81,7 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
   visibility: 'organization',
   sensitivityTier: overrides.sensitivityTier ?? 'normal',
   privateToAgentId: null,
+  ownerAgentId: overrides.ownerAgentId ?? null,
   createdBy: 'user-1',
   deletedAt: null,
   createdAt: now,
@@ -99,6 +101,24 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
   const createPageCalls: Array<Record<string, unknown>> = []
   const createVersionCalls: Array<Record<string, unknown>> = []
   const prisma = {
+    agent: {
+      findMany: async () => [],
+      findFirst: async (args: {
+        where: { id: string; organizationId: string }
+      }) => {
+        if (args.where.id !== 'agent-1' || args.where.organizationId !== 'org-1') {
+          return null
+        }
+        return {
+          parentAgentId: null,
+          bindings: [{
+            channelId: 'channel-1',
+            channel: { teamId: 'team-1', projectId: 'project-1' },
+          }],
+          knowledgeSpaceMemberships: [],
+        }
+      },
+    },
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
@@ -131,17 +151,8 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
     },
-    agentBinding: {
-      // The agent is org-bound in every fixture below, so org-visibility
-      // spaces are always in reach — the tests isolate the write-gate under
-      // test, not read-reach.
-      findMany: async () => [{ channelId: 'channel-1', channel: { teamId: 'team-1', projectId: 'project-1' } }],
-    },
     projectMember: {
       findMany: async () => [{ projectId: 'project-1' }],
-    },
-    knowledgeSpaceMember: {
-      findMany: async () => [],
     },
     approvalRequest: {
       findMany: async () => options.pendingApprovals ?? [],

@@ -58,6 +58,7 @@ export const KnowledgeSpaceRecordSchema = OptionalScopeSchema.extend({
   // The requesting actor's effective write permission on this space.
   canWrite: z.boolean(),
   organizationId: UuidSchema,
+  ownerAgentId: UuidSchema.nullable(),
   projectId: UuidSchema,
   visibility: KnowledgeVisibilitySchema,
   sensitivityTier: KnowledgeSensitivityTierSchema,

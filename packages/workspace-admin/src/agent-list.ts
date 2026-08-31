@@ -1,10 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { buildVisibleAgentWhere } from '@nessie/db'
 import type { AgentRecord } from '@nessie/schemas'
 
 import {
   AGENT_OWNER_MEMBERSHIP_SELECT,
   buildAccessibleChannelWhere,
-  buildOwnedAgentWhere,
   mapAgentRecord,
 } from './agent-record.js'
 
@@ -40,24 +40,30 @@ export const listAgentsForUser = async (
     organizationId,
     userId,
   })
-  const visibilityFilters: Prisma.AgentWhereInput[] = [
-    {
-      bindings: {
-        some: {
-          channel: visibleChannelWhere,
-        },
-      },
-    },
-    // An agent you steward is yours to see even before it is bound anywhere.
-    // Without this a member who creates an agent loses sight of it the moment
-    // the page reloads, because `includeUnbound` is owner-only.
-    buildOwnedAgentWhere({ organizationId, userId }),
-  ]
+  const sharedVisibilityWhere = buildVisibleAgentWhere({ organizationId, userId })
+  const sharedVisibilityFilters = Array.isArray(sharedVisibilityWhere.OR)
+    ? sharedVisibilityWhere.OR
+    : [sharedVisibilityWhere]
+  const visibilityFilters: Prisma.AgentWhereInput[] = includeSystemManaged
+    ? [{ systemManaged: false, OR: sharedVisibilityFilters }]
+    : [...sharedVisibilityFilters]
 
   if (includeUnbound) {
+    // Organization owners deliberately widen the ordinary entitlement to every
+    // agent in the tenant, including private-channel and unbound agents. This
+    // remains an additional route-only arm, not part of the shared member rule.
+    visibilityFilters.push(
+      { bindings: { some: { channel: { organizationId } } } },
+      { bindings: { none: {} } },
+    )
+  } else if (includeSystemManaged) {
+    // System agents are a read-only Agents-page tier. They remain outside the
+    // shared non-system predicate and inherit the page's existing channel gate.
     visibilityFilters.push({
+      organizationId,
+      systemManaged: true,
       bindings: {
-        none: {},
+        some: { channel: visibleChannelWhere },
       },
     })
   }
