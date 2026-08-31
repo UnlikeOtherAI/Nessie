@@ -4,8 +4,9 @@ import { LoginSessionImportButton } from '../components/shared/LoginSessionImpor
 import { useAuthProviders } from '../facades/auth/hooks'
 import { getBaseUrl } from '../lib/api-client'
 import { startExternalSignIn } from '../lib/external-auth'
+import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
-import { clearPendingExternalAuth } from '../lib/pkce'
+import { clearPendingExternalAuth, readPendingExternalAuth } from '../lib/pkce'
 import { shouldStartAutomaticSignIn } from '../lib/session-debug-import'
 import { subscribeToNativeExternalAuthResults } from '../lib/native-external-auth'
 import { useAuthSession } from '../providers/AuthSessionProvider'
@@ -91,12 +92,31 @@ export const LoginPage = () => {
   }, [sessionState])
 
   useEffect(() => {
+    // A web SSO launch leaves this document for the provider. If the browser
+    // restores it from its back/forward cache, its old React state still says
+    // "Signing in" and the pending PKCE record would otherwise trap the
+    // person between the app and the provider. Returning with Back is an
+    // explicit cancellation, not a request to launch again.
+    if (isDesktopApp() || isReactNativeWebView()) return undefined
+
+    const cancelReturnedWebSignIn = (event: PageTransitionEvent): void => {
+      if (!event.persisted) return
+      clearPendingExternalAuth()
+      setError(null)
+      setIsSubmitting(false)
+    }
+
+    window.addEventListener('pageshow', cancelReturnedWebSignIn)
+    return () => window.removeEventListener('pageshow', cancelReturnedWebSignIn)
+  }, [])
+
+  useEffect(() => {
     if (!shouldStartAutomaticSignIn({
       callbackInUrl: hasExternalCallback,
       hasAutoRedirectProvider: Boolean(autoRedirectProvider),
       sessionImportOpen,
       unauthenticated: sessionState === 'unauthenticated',
-    }) || !autoRedirectProvider) {
+    }) || !autoRedirectProvider || readPendingExternalAuth()) {
       return
     }
 
@@ -157,6 +177,12 @@ export const LoginPage = () => {
       setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
       setIsSubmitting(false)
     }
+  }
+
+  const cancelProviderSignIn = (): void => {
+    clearPendingExternalAuth()
+    setError(null)
+    setIsSubmitting(false)
   }
 
   return (
@@ -223,6 +249,15 @@ export const LoginPage = () => {
               </div>
             )}
             {error ? <div className={errorBoxClass}>{error}</div> : null}
+            {isSubmitting ? (
+              <button
+                className="text-sm font-medium text-[var(--muted)] underline underline-offset-4 transition hover:text-[color:var(--tx)]"
+                onClick={cancelProviderSignIn}
+                type="button"
+              >
+                Cancel sign-in
+              </button>
+            ) : null}
           </div>
 
           {localModeEnabled ? (

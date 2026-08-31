@@ -332,6 +332,20 @@ export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
     [readSessionCredential, refreshSessionFor],
   )
 
+  useEffect(() => {
+    // Safari can revive a document from its back/forward cache while its
+    // startup /auth/me request was suspended during an external SSO launch.
+    // Reconcile again when that document becomes live; otherwise the shell can
+    // remain in its loading state forever with no request in flight.
+    const reconcileReturnedDocument = (event: PageTransitionEvent): void => {
+      if (!event.persisted) return
+      void refreshSession().catch(() => undefined)
+    }
+
+    window.addEventListener('pageshow', reconcileReturnedDocument)
+    return () => window.removeEventListener('pageshow', reconcileReturnedDocument)
+  }, [refreshSession])
+
   // A network outage, rate limit, or server error during restore is not a
   // logout. Keep the bearer token in localStorage and retry until the API is
   // reachable. An explicit refresh 401 resolves normally after clearSession,
