@@ -11,9 +11,12 @@ both native device tokens and browser subscriptions.
 When a channel message is dispatched, the worker's `handlePushDispatch`
 pipeline resolves recipients (channel members minus the author, minus muted /
 push-disabled / focus-mode / quiet-hours users), then delivers the notification
-over every configured transport. Focus mode is stored in the user's server-side
-preferences, so it applies to every registered device immediately at delivery;
-active clients also refresh the shared preference while visible. Recipients who
+over every configured transport. Incoming calls use the same delivery core via
+the single-recipient `call.ring-dispatch` job, with a deliberately different
+surface rule: a call ring reaches every device even when one device is already
+viewing the channel. Focus mode is stored in the user's server-side preferences,
+so it applies to every registered device immediately at delivery; active clients
+also refresh the shared preference while visible. Recipients who
 were directly @mentioned in the message get distinct mention framing —
 `<author> mentioned you in <channel>` as the title instead of the channel label
 — while unmentioned members keep the standard framing. A muted channel
@@ -139,6 +142,37 @@ The path never throws out of its loop — one failed endpoint cannot abort the
 rest — and the Prisma surface, sender, and SSRF guard are injected so it is
 unit-testable without a live database or network
 (`worker/test/web-push-delivery.test.ts`).
+
+### Incoming calls
+
+Calls use two durable worker topics, each scoped to exactly one current invitee:
+
+- `call.ring-dispatch` rechecks active organization membership, channel
+  membership, the call's still-ringing state and expiry, and the recipient's
+  `pushIncomingCalls` preference before sending. Focus mode and quiet hours
+  suppress both the ring and the later missed-call attention push.
+- `call.ring-cancel` bypasses those preference checks because it is silent
+  protocol cleanup for a ring that might already be visible on another device.
+
+Ring and cancel payloads carry `version: "1"`, `kind`, `callId`, `revision`,
+and an internal channel path. This makes unrecognised future payloads safe for
+older clients to ignore. Rings set native high priority and the
+`incoming-calls` category/channel; cancel payloads share the call collapse id.
+
+Native payloads deliberately contain **no meeting URI** and no action token.
+They carry only the internal path
+`/channels/:channelId?incomingCall=:callId`, preserving the mobile shell's
+internal-path-only trust boundary. Browser Web Push is RFC 8291 encrypted, so
+its payload may additionally carry the meeting URI and two compact signed
+response tokens (accept and decline). A token binds the call id, recipient user
+id, action, expiry, and call revision. `POST /api/calls/:callId/respond` is the
+only unauthenticated call endpoint; it consumes a still-ringing invite exactly
+once and returns `204` with no call record or meeting URI. The normal call
+routes remain bearer-authenticated.
+
+The service worker and native-shell handling for this versioned call protocol
+ship in later call-delivery slices. Until then, server fan-out is safe to run:
+old clients receive ordinary payload data and do not gain an external URL path.
 
 ## Security
 

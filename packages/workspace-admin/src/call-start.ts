@@ -6,6 +6,7 @@ import {
   type CreateCallLinkDependencies,
   type CallLinkProvider,
 } from './call-links.js'
+import { enqueueCallRingDispatch } from './call-push-jobs.js'
 
 const DEFAULT_RING_TIMEOUT_MS = 45_000
 
@@ -151,6 +152,9 @@ export const startCallForUser = async (
         payload: { callId: call.id },
         topic: 'call.ring-timeout',
       })
+      for (const invite of call.invites) {
+        await enqueueCallRingDispatch(tx, { callId: call.id, userId: invite.userId })
+      }
       return call
     })
   } catch (error) {

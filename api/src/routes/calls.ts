@@ -1,7 +1,14 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
-import { parseChannelId } from '@nessie/schemas'
-import { CallLinkError, CallLinkProviderSchema, startCallForUser, CallStartError } from '@nessie/workspace-admin'
+import {
+  CallLinkError,
+  CallLinkProviderSchema,
+  publishCallStartedRealtime,
+  publishCallTransitionRealtime,
+  startCallForUser,
+  CallStartError,
+  verifyCallActionToken,
+} from '@nessie/workspace-admin'
 import { z } from 'zod'
 import { CallRecordSchema, EmptyBodySchema } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -14,11 +21,13 @@ import {
   getCallInOrganization,
   getLiveCallForChannel,
   mapCallRecord,
+  respondToCallInviteAction,
 } from '../services/calls.js'
 import { sendCallLinkError } from './call-link-error.js'
 import type { RouteDeps } from './types.js'
 
 const StartCallBodySchema = z.object({ provider: CallLinkProviderSchema.optional() }).strict()
+const RespondToCallBodySchema = z.object({ token: z.string().min(1).max(2048) }).strict()
 
 const sendStateError = (reply: FastifyReply, error: CallStateError): void => {
   const details: Record<CallStateError['code'], [number, string, string]> = {
@@ -35,17 +44,22 @@ const sendStateError = (reply: FastifyReply, error: CallStateError): void => {
 export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { authSecret, prisma, realtimeHub, requireActorContext, getChannelIfMember, getVisibleChannel } = deps
 
-  const publishCall = async (call: ReturnType<typeof CallRecordSchema.parse>): Promise<void> => {
-    await realtimeHub.publishWs([{ kind: 'channel', channelId: parseChannelId(call.channelId) }], {
-      event: 'call.updated',
-      data: {
-        callId: call.id,
-        channelId: call.channelId,
-        status: call.status,
-        meetingUri: call.meetingUri,
-        revision: call.revision,
-      },
-    })
+  const publishStarted = async (callId: string): Promise<void> => {
+    try {
+      await publishCallStartedRealtime(prisma, realtimeHub, callId)
+    } catch (error) {
+      app.log.error({ callId, err: error }, '[calls] failed to publish call start')
+    }
+  }
+  const publishTransition = async (callId: string, inviteeUserIds?: string[]): Promise<void> => {
+    try {
+      await publishCallTransitionRealtime(prisma, realtimeHub, {
+        callId,
+        ...(inviteeUserIds ? { inviteeUserIds } : {}),
+      })
+    } catch (error) {
+      app.log.error({ callId, err: error }, '[calls] failed to publish call transition')
+    }
   }
 
   const requireMemberCall = async (userId: string, organizationId: string, callId: string) => {
@@ -71,7 +85,7 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         { callLink: { encryptionSecret: authSecret } },
       )
       const call = CallRecordSchema.parse(mapCallRecord(created))
-      await publishCall(call)
+      await publishStarted(call.id)
       return reply.code(201).send(createApiResponse(call))
     } catch (error) {
       if (error instanceof CallStartError) {
@@ -104,7 +118,9 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       try {
         const result = await transition(prisma, callId, actorContext.actor.actorId)
         const call = CallRecordSchema.parse(result.call)
-        if (result.changed) await publishCall(call)
+        if (result.changed) {
+          await publishTransition(call.id, [actorContext.actor.actorId])
+        }
         if (!result.changed) return reply.code(200).send(createApiResponse({ ...call, code: 'CALL_ALREADY_ACCEPTED' }))
         return createApiResponse(call)
       } catch (error) {
@@ -119,6 +135,37 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
   registerInviteTransition('/api/calls/:callId/accept', acceptCallInvite)
   registerInviteTransition('/api/calls/:callId/decline', declineCallInvite)
 
+  // This is intentionally the only unauthenticated call route. The encrypted
+  // Web Push payload carries its signed, expiring, single-use action token;
+  // service workers cannot send the SPA's bearer token or refresh cookie.
+  app.post('/api/calls/:callId/respond', async (request, reply) => {
+    const body = parseInput(RespondToCallBodySchema, request.body ?? {}, reply)
+    if (!body) return reply
+    const { callId } = request.params as { callId: string }
+    const claims = verifyCallActionToken(body.token, authSecret)
+    if (!claims || claims.callId !== callId) {
+      sendApiError(reply, 401, 'CALL_RESPONSE_TOKEN_INVALID', 'Invalid call response token')
+      return reply
+    }
+    try {
+      const result = await respondToCallInviteAction(prisma, {
+        action: claims.action,
+        callId,
+        revision: claims.revision,
+        userId: claims.userId,
+      })
+      await publishTransition(result.call.id, [claims.userId])
+      return reply.code(204).send()
+    } catch (error) {
+      if (error instanceof CallStateError) {
+        // Never disclose a call or invite through the unauthenticated path.
+        sendApiError(reply, 401, 'CALL_RESPONSE_TOKEN_INVALID', 'Invalid call response token')
+        return reply
+      }
+      throw error
+    }
+  })
+
   app.post('/api/calls/:callId/cancel', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext || !parseInput(EmptyBodySchema, request.body ?? {}, reply)) return reply
@@ -130,7 +177,7 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     try {
       const result = await cancelCall(prisma, callId, actorContext.actor.actorId)
       const call = CallRecordSchema.parse(result.call)
-      await publishCall(call)
+      await publishTransition(call.id, call.invites.filter((invite) => invite.state === 'cancelled').map((invite) => invite.userId))
       return createApiResponse(call)
     } catch (error) {
       if (error instanceof CallStateError) {
@@ -157,7 +204,8 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     try {
       const result = await endCall(prisma, liveCall.id, actorContext.actor.actorId)
       const call = CallRecordSchema.parse(result.call)
-      await publishCall(call)
+      const ringingInviteeIds = call.invites.filter((invite) => invite.state === 'ringing').map((invite) => invite.userId)
+      await publishTransition(call.id, ringingInviteeIds)
       return createApiResponse(call)
     } catch (error) {
       if (error instanceof CallStateError) {

@@ -113,6 +113,20 @@ export const AttentionDispatchJobPayloadSchema = z.object({
 })
 export type AttentionDispatchJobPayload = z.infer<typeof AttentionDispatchJobPayloadSchema>
 
+/** One recipient's incoming-call notification fan-out. */
+export const CallRingDispatchJobPayloadSchema = z.object({
+  callId: z.string().uuid(),
+  userId: z.string().uuid(),
+})
+export type CallRingDispatchJobPayload = z.infer<typeof CallRingDispatchJobPayloadSchema>
+
+/** Stops a call notification on all currently registered devices for one user. */
+export const CallRingCancelJobPayloadSchema = z.object({
+  callId: z.string().uuid(),
+  userId: z.string().uuid(),
+})
+export type CallRingCancelJobPayload = z.infer<typeof CallRingCancelJobPayloadSchema>
+
 /**
  * `budget.alert-dispatch` queue job — emitted by the worker's budget gate when a
  * scope Budget first crosses its warn threshold ('threshold') or first blocks a

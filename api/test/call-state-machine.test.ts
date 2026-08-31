@@ -30,7 +30,7 @@ runDatabaseTest('accept is idempotent and preserves the accepted state on a repe
   })
   const started = await startCallForUser(prisma, { actingUserId: caller.id, channelId: channel.id }, jitsi)
   t.after(async () => {
-    await prisma.$executeRaw`DELETE FROM queue_jobs WHERE topic = 'call.ring-timeout' AND payload->>'callId' = ${started.id}`
+    await prisma.$executeRaw`DELETE FROM queue_jobs WHERE payload->>'callId' = ${started.id}`
     await prisma.organization.delete({ where: { id: org.id } }).catch(() => undefined)
     await prisma.user.deleteMany({ where: { id: { in: [caller.id, invitee.id] } } })
     await prisma.$disconnect()
@@ -65,7 +65,7 @@ runDatabaseTest('accept and caller-cancel serialize to one valid terminal-or-act
   })
   const started = await startCallForUser(prisma, { actingUserId: caller.id, channelId: channel.id }, jitsi)
   t.after(async () => {
-    await prisma.$executeRaw`DELETE FROM queue_jobs WHERE topic = 'call.ring-timeout' AND payload->>'callId' = ${started.id}`
+    await prisma.$executeRaw`DELETE FROM queue_jobs WHERE payload->>'callId' = ${started.id}`
     await prisma.organization.delete({ where: { id: org.id } }).catch(() => undefined)
     await prisma.user.deleteMany({ where: { id: { in: [caller.id, invitee.id] } } })
     await prisma.$disconnect()
