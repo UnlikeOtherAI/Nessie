@@ -32,6 +32,7 @@ import {
 const connection = (
   overrides: Partial<AppConnectionSummaryRecord> = {},
 ): AppConnectionSummaryRecord => ({
+  canDisconnect: true,
   displayName: 'Ada Lovelace',
   errorMessage: null,
   id: 'conn-1',

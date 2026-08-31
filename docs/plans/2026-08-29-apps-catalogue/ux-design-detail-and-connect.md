@@ -297,59 +297,35 @@ Every sentence names the *user's next action* ("try again", "check the link",
 
 The **Connected accounts** tab lists each connection as a row
 (`rounded-[var(--radius-md)] border border-[color:var(--sep)]
-bg-[var(--panel-soft)] px-4 py-3`, the same row grammar as
-`CredentialsDialog`'s `OverrideRow`):
+bg-[var(--panel-soft)] px-4 py-3`):
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ [Avatar]  Work                                    [Manage ▾]  │
-│           ada@work.com · StatusPill success "Connected"        │
-│           Connected 3 days ago · tx3 meta                      │
+│ Just me                                     [Connected] [Disconnect] │
+│ Connected 3 days ago · tx3 meta                                   │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-- **Display name**: user-editable label, defaulting to the provider account
-  name; rendered `text-sm font-medium text-[var(--tx)]`.
-- **Connected identity**: `Avatar` (primitives) with the provider profile
-  image when available, fallback initials; username/email in
-  `text-sm text-[color:var(--tx2)]`. This identity is what disambiguates
-  "GitHub Personal" from "GitHub Work" — it is mandatory, never optional.
-- **Status**: `StatusPill` — `success` Connected, `warning` Needs reconnect,
-  `danger` Error.
-- **Manage** opens a menu (or, at <sm, a bottom sheet) with exactly five
-  actions: **Rename**, **Reconnect**, **Refresh capabilities**, **Agent
-  access**, **Disconnect**. Rename is an inline edit, not a dialog. Reconnect
-  re-enters the §2 flow with the existing connection as target. Refresh
-  capabilities re-probes and reports "42 tools · 3 resources · 3 prompts —
-  refreshed just now" in the row's meta line. Agent access jumps to the
-  Agents tab pre-filtered to this account.
+- **Display name**: the server's scope wording — for example **Just me** or
+  **This team** — rendered `text-sm font-medium text-[var(--tx)]`.
+- **Status**: `Pill` — Connected, Needs reconnect, Error, or Turned off.
+- **Disconnect**: shown only when the same live membership rule as
+  `DELETE /api/app-connections/:id` permits the caller to remove that account.
+  Disconnecting invalidates the Apps catalogue/detail cache so the account row,
+  count, and agent-access projection refresh together.
 - `+ Connect another account` is a secondary button below the list,
   permanently visible — multiple accounts are a first-class, day-one state,
   not an edge case. The §2 flow runs identically; the resulting row joins the
   list.
 
-**Disconnect confirmation** — a small modal (not a browser `confirm`), built
-on the standard scrim (`fixed inset-0 z-50 … bg-[var(--scrim-strong)]`),
-`useModalA11y` + `useOverlayDismiss`, panel `max-w-md
-rounded-[var(--radius-lg)] border border-[color:var(--sep)]
-bg-[color:var(--main)] p-6`:
+**Disconnect confirmation** uses the shared `ConfirmDialog`, whose dialog
+shell owns focus, Escape, scrim dismissal, and focus restoration:
 
-> **Disconnect "Work" from GitHub?**
+> **Disconnect Just me?**
 >
-> - **3 agents** that use this account will immediately lose access to
->   GitHub capabilities.
-> - The sign-in is revoked — Nessie forgets the connection and can't use it
->   again until you reconnect.
-> - **History is kept.** Past agent conversations and actions that used this
->   account are not deleted.
+> This account will no longer be available to the agents that use it.
 >
-> [ Cancel ]  [ Disconnect ]  ← `dangerButton` class string from
->   CatalogDetailPanel, verbatim
-
-The warning lists consequences in that order (agents impacted → revocation →
-what survives), because "history is kept" is the reassurance that makes the
-destructive button safe to click. If zero agents use the account, the first
-bullet is omitted rather than shown as "0 agents" — no empty signal.
+> [ Cancel ]  [ Disconnect ]
 
 **Never shown, anywhere in this UI:** any token, secret, `credentialRef`,
 secret id, or masked variant of one (`••••abcd` is still a tease of a secret —

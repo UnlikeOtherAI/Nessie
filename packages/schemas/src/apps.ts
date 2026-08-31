@@ -226,6 +226,10 @@ export const AppConnectionStatusSchema = z.enum([
 export type AppConnectionStatus = z.infer<typeof AppConnectionStatusSchema>
 
 export const AppConnectionSummaryRecordSchema = z.object({
+  // A server-derived permission, computed from the same live membership check
+  // as DELETE /api/app-connections/:id. A shared account is visible to everyone
+  // it serves, but only its manager may remove it.
+  canDisconnect: z.boolean(),
   id: z.string().uuid(),
   displayName: NonEmptyStringSchema,
   scopeType: McpServerScopeTypeSchema,

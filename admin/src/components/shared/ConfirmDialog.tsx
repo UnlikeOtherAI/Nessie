@@ -66,7 +66,7 @@ export const ConfirmDialog = ({
       open={open}
       title={title}
     >
-      {body ? <p className="text-sm text-[color:var(--tx3)]">{body}</p> : null}
+      {body ? <div className="text-sm text-[color:var(--tx3)]">{body}</div> : null}
 
       <div className="flex justify-end gap-2 pt-5">
         <button

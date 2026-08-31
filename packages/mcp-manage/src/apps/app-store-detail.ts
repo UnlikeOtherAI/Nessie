@@ -1,12 +1,13 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { AppDetailRecord, AuthorizedActionContext } from '@nessie/schemas'
 
-import { listInstancesVisibleToUser } from '../mcp-instances.js'
+import { listInstancesVisibleToUser, resolveMcpUserAccess } from '../mcp-instances.js'
 import {
   listAgentsWithAppAccess,
   type AppAccessRegistryRow,
 } from './app-agent-access.js'
 import { deriveConnectionStatus, presentAppConnection } from './app-connections.js'
+import { canManageAppConnectionScope } from './app-connection-management.js'
 import { loadUnreachableAppIds } from './app-health.js'
 import {
   presentAppCapabilities,
@@ -97,10 +98,16 @@ export const getStoreApp = async (
   // Narrowed after the fact rather than by a `catalogEntryId` filter, so the
   // one entitlement predicate decides which connections exist here exactly as
   // it does on the grid — the counts on the two surfaces cannot drift.
+  const access = await resolveMcpUserAccess(
+    prisma,
+    organizationId,
+    actorContext.actor.actorId,
+  )
   const visibleInstances = await listInstancesVisibleToUser(
     prisma,
     organizationId,
     actorContext.actor.actorId,
+    access,
   )
   const instances = visibleInstances.filter(
     (instance) => instance.catalogEntryId === row.id,
@@ -117,9 +124,17 @@ export const getStoreApp = async (
     ),
     serverUnreachable: unreachable.has(row.id),
     capabilities: presentAppCapabilities(projections),
-    connections: instances.map((instance) =>
-      presentAppConnection(instance, appName),
-    ),
+    connections: await Promise.all(instances.map(async (instance) =>
+      presentAppConnection(
+        instance,
+        appName,
+        await canManageAppConnectionScope(
+          { access, actorContext, prisma },
+          instance.scopeType,
+          instance.scopeId,
+        ),
+      ),
+    )),
     // The caller's own context, not just the tenant id: which agents this
     // names is an entitlement question, answered by the same rule
     // `GET /api/agents` answers it with.

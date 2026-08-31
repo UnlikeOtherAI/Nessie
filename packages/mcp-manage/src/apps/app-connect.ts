@@ -7,17 +7,15 @@ import type {
   McpServerScopeType,
 } from '@nessie/schemas'
 
-import { getCatalogEntry, isOwnerRole, type McpCatalogEntryRow } from '../mcp-catalog.js'
+import { getCatalogEntry, type McpCatalogEntryRow } from '../mcp-catalog.js'
 import { McpCredentialError, resolveCredentialRef } from '../mcp-credentials.js'
 import { MCP_INSTANCE_ERROR_CODES, McpInstanceError } from '../mcp-instance-errors.js'
 import type { ManagerFactory } from '../mcp-instance-probe.js'
 import { refreshInstance, testInstance } from '../mcp-instance-testing.js'
 import {
-  canManageInstanceScope,
   createInstance,
   deleteInstance,
   getInstance,
-  resolveMcpUserAccess,
   type McpInstanceRow,
 } from '../mcp-instances.js'
 import { canStartOAuthForInstance } from '../mcp-oauth-completion.js'
@@ -34,6 +32,7 @@ import type { SecretResolver } from '../secret-resolver.js'
 
 import { captureConnectionCapabilities } from './app-capabilities.js'
 import { deriveConnectionStatus } from './app-connections.js'
+import { canManageAppConnectionScope } from './app-connection-management.js'
 import { getStoreApp } from './app-store-detail.js'
 
 /**
@@ -237,20 +236,6 @@ const resolveCallerCredential = async (
   }
 }
 
-const canManageScope = async (
-  ctx: AppConnectContext,
-  scopeType: McpServerScopeType,
-  scopeId: string,
-): Promise<boolean> => {
-  if (isOwnerRole(ctx.actorContext)) return true
-  const access = await resolveMcpUserAccess(
-    ctx.prisma,
-    ctx.actorContext.tenant.organizationId,
-    ctx.actorContext.actor.actorId,
-  )
-  return canManageInstanceScope(access, ctx.actorContext.actor.actorId, scopeType, scopeId)
-}
-
 /**
  * Probe, sign in, or ask for a key — the shared body of connect, reconnect and
  * the custom-server path. They differ only in how they arrived at an instance,
@@ -348,7 +333,7 @@ export const runConnectHandshake = async (
   // (`POST /api/mcp/instances/:id/test`) requires. Otherwise a member could flip
   // a shared connector to `error` for the organisation by connecting at a moment
   // the upstream was down.
-  if (step === 'probe' && !(await canManageScope(ctx, instance.scopeType, instance.scopeId))) {
+  if (step === 'probe' && !(await canManageAppConnectionScope(ctx, instance.scopeType, instance.scopeId))) {
     forbidden('You do not have permission to verify this connected account')
   }
 
@@ -447,7 +432,7 @@ export const resolveConnection = async (
     if (!allowed) forbidden('You do not have access to this connected account')
     return existing
   }
-  if (!(await canManageScope(ctx, scopeType, scopeId))) {
+  if (!(await canManageAppConnectionScope(ctx, scopeType, scopeId))) {
     forbidden('You do not have permission to connect apps at this scope')
   }
   try {
@@ -551,7 +536,7 @@ export const refreshAppConnectionCapabilities = async (
   connectionId: string,
 ): Promise<RefreshCapabilitiesResult> => {
   const { instance } = await loadConnection(ctx, connectionId)
-  if (!(await canManageScope(ctx, instance.scopeType, instance.scopeId))) {
+  if (!(await canManageAppConnectionScope(ctx, instance.scopeType, instance.scopeId))) {
     forbidden('You do not have permission to manage this connected account')
   }
   const refreshed = await refreshInstance(
@@ -592,7 +577,7 @@ export const disconnectAppConnection = async (
   const organizationId = ctx.actorContext.tenant.organizationId
   const instance = await getInstance(ctx.prisma, organizationId, connectionId)
   if (!instance) connectionNotFound()
-  if (!(await canManageScope(ctx, instance.scopeType, instance.scopeId))) {
+  if (!(await canManageAppConnectionScope(ctx, instance.scopeType, instance.scopeId))) {
     forbidden('You do not have permission to disconnect this account')
   }
   await deleteInstance(ctx.prisma, organizationId, connectionId)
