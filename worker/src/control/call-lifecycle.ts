@@ -1,11 +1,13 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { enqueueQueueJob } from '@nessie/db'
+import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import {
   enqueueCallRingCancellation,
   ensureDefaultThread,
   publishCallTransitionRealtime,
 } from '@nessie/workspace-admin'
 import type { PgRealtimeTransport } from '@nessie/runtime'
+import { buildRealtimeScopesForChannel } from '../run/pa-tools/message-destination.js'
 
 const lockCall = async (tx: Prisma.TransactionClient, callId: string): Promise<void> => {
   await tx.$queryRaw(Prisma.sql`SELECT id FROM calls WHERE id = ${callId}::uuid FOR UPDATE`)
@@ -51,15 +53,17 @@ export const handleCallRingTimeout = async (
     const threadId = await ensureDefaultThread(tx as unknown as PrismaClient, call.channelId)
     const channel = await tx.channel.findUniqueOrThrow({
       where: { id: call.channelId },
-      select: { organizationId: true },
+      select: { id: true, organizationId: true, systemChannelType: true },
     })
-    await tx.message.create({
+    const content = `Missed call from ${call.startedBy.displayName}`
+    const message = await tx.message.create({
       data: {
-        content: `Missed call from ${call.startedBy.displayName}`,
+        content,
         metadata: { kind: 'call_missed' } as Prisma.InputJsonValue,
         role: 'assistant',
         threadId,
       },
+      select: { id: true },
     })
     await tx.userAlert.createMany({
       data: missedInviteeIds.map((userId) => ({
@@ -86,9 +90,33 @@ export const handleCallRingTimeout = async (
       })
     }
     await enqueueCallRingCancellation(tx, { callId, userIds: missedInviteeIds })
-    return { callId, missedInviteeIds }
+    return { callId, missedInviteeIds, message: { ...message, content, threadId }, channel }
   })
   if (!missed) return false
+  // The missed-call row is committed; publishing is best-effort so a realtime
+  // failure never fails the timeout job. Without this the message only shows
+  // up on the next refetch.
+  try {
+    await realtimeTransport.publishWs(
+      buildRealtimeScopesForChannel({
+        channelId: missed.channel.id,
+        organizationId: missed.channel.organizationId,
+        systemChannelType: missed.channel.systemChannelType,
+      }),
+      {
+        data: {
+          channelId: parseChannelId(missed.channel.id),
+          contentPreview: missed.message.content,
+          messageId: missed.message.id,
+          role: 'assistant',
+          threadId: parseThreadId(missed.message.threadId),
+        },
+        event: 'message.new',
+      },
+    )
+  } catch (error) {
+    console.error('[calls] missed-call message committed but realtime publish failed', error)
+  }
   await publishCallTransitionRealtime(prisma, realtimeTransport, {
     callId: missed.callId,
     inviteeUserIds: missed.missedInviteeIds,

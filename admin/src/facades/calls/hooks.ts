@@ -37,33 +37,6 @@ export const useStartCall = () => {
   })
 }
 
-export const useJoinCall = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (callId: string) =>
-      apiClient.post<CallRecord>(`/api/calls/${callId}/join`),
-    onSuccess: (data) => {
-      queryClient.setQueryData(callKeys.forChannel(data.channelId), data)
-      void queryClient.invalidateQueries({ queryKey: callKeys.all })
-    },
-  })
-}
-
-export const useLeaveCall = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (callId: string) =>
-      apiClient.post<CallRecord>(`/api/calls/${callId}/leave`),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: callKeys.all })
-    },
-  })
-}
-
 export const useEndCall = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()

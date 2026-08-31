@@ -80,6 +80,7 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         {
           channelId,
           actingUserId: actorContext.actor.actorId,
+          expectedOrganizationId: actorContext.tenant.organizationId,
           ...(body.provider ? { provider: body.provider } : {}),
         },
         { callLink: { encryptionSecret: authSecret } },

@@ -43,7 +43,13 @@ runDatabaseTest('timeout marks only still-ringing invites missed and writes a vi
     await prisma.$disconnect()
   })
 
-  assert.equal(await handleCallRingTimeout(prisma, { publishWs: async () => undefined } as never, started.id), true)
+  const publications: Array<{ data: Record<string, unknown>; event: string; scopes: unknown }> = []
+  const realtimeTransport = {
+    publishWs: async (scopes: unknown, input: { data: Record<string, unknown>; event: string }) => {
+      publications.push({ ...input, scopes })
+    },
+  }
+  assert.equal(await handleCallRingTimeout(prisma, realtimeTransport as never, started.id), true)
   const call = await prisma.call.findUniqueOrThrow({ where: { id: started.id }, include: { invites: true } })
   assert.equal(call.status, 'missed')
   assert.equal(call.invites[0]?.state, 'missed')
@@ -52,6 +58,16 @@ runDatabaseTest('timeout marks only still-ringing invites missed and writes a vi
   })
   assert.equal(message.role, 'assistant')
   assert.equal(message.content, 'Missed call from Caller')
+  const messagePublished = publications.find((publication) => publication.event === 'message.new')
+  assert.ok(messagePublished)
+  assert.deepEqual(messagePublished.scopes, [
+    { kind: 'organization', organizationId: org.id },
+    { channelId: channel.id, kind: 'channel' },
+  ])
+  assert.equal(messagePublished.data.messageId, message.id)
+  assert.equal(messagePublished.data.threadId, message.threadId)
+  assert.equal(messagePublished.data.contentPreview, message.content)
+  assert.equal(messagePublished.data.role, 'assistant')
   const alert = await prisma.userAlert.findUniqueOrThrow({
     where: { userId_eventKey: { userId: invitee.id, eventKey: `call:${started.id}:missed:${invitee.id}` } },
   })

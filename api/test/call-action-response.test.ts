@@ -88,3 +88,50 @@ runDatabaseTest('a Web Push response token is single-use and rejects a token bou
   })
   assert.equal(invite.state, 'accepted')
 })
+
+runDatabaseTest('the call-start route refuses a channel outside the session organization', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  const sessionOrg = await prisma.organization.create({ data: { name: `call-session-${suffix}` } })
+  const targetOrg = await prisma.organization.create({ data: { name: `call-target-${suffix}` } })
+  const project = await prisma.project.create({ data: { name: 'project', organizationId: targetOrg.id } })
+  const team = await prisma.team.create({ data: { callProvider: 'jitsi', name: 'team', projectId: project.id } })
+  const caller = await prisma.user.create({ data: { displayName: 'Caller', email: `cross-org-caller-${suffix}@example.test` } })
+  const invitee = await prisma.user.create({ data: { displayName: 'Invitee', email: `cross-org-invitee-${suffix}@example.test` } })
+  await prisma.organizationMember.createMany({ data: [
+    { organizationId: sessionOrg.id, userId: caller.id },
+    { organizationId: targetOrg.id, userId: caller.id },
+    { organizationId: targetOrg.id, userId: invitee.id },
+  ] })
+  const channel = await prisma.channel.create({
+    data: {
+      label: 'calls', slug: 'calls', organizationId: targetOrg.id, projectId: project.id, teamId: team.id,
+      members: { create: [{ userId: caller.id }, { userId: invitee.id }] },
+    },
+  })
+  const app = Fastify({ logger: false })
+  registerCallRoutes(app, {
+    authSecret: AUTH_SECRET,
+    getChannelIfMember: async () => null,
+    getVisibleChannel: async () => null,
+    prisma,
+    realtimeHub: { publishWs: async () => undefined },
+    requireActorContext: () => ({
+      actionContext: { requestId: randomUUID() },
+      actor: { actorId: caller.id, actorType: 'user' },
+      tenant: { organizationId: sessionOrg.id },
+    }),
+  } as unknown as RouteDeps)
+  t.after(async () => {
+    await app.close()
+    await prisma.organization.deleteMany({ where: { id: { in: [sessionOrg.id, targetOrg.id] } } })
+    await prisma.user.deleteMany({ where: { id: { in: [caller.id, invitee.id] } } })
+    await prisma.$disconnect()
+  })
+
+  const response = await app.inject({ method: 'POST', url: `/api/channels/${channel.id}/call` })
+
+  assert.equal(response.statusCode, 404)
+  assert.equal((response.json() as { error: { code: string } }).error.code, 'CHANNEL_NOT_FOUND')
+  assert.equal(await prisma.call.count({ where: { channelId: channel.id } }), 0)
+})

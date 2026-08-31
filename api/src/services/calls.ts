@@ -140,15 +140,11 @@ export const declineCallInvite = async (
   if (declined.count !== 1) throw new CallStateError('CALL_NO_LONGER_RINGING')
   const ringingInvites = await tx.callInvite.count({ where: { callId, state: 'ringing' } })
   const acceptedInvites = await tx.callInvite.count({ where: { callId, state: 'accepted' } })
+  const lastResponse = acceptedInvites === 0 && ringingInvites === 0
   const completed = await tx.call.updateMany({
-    where: {
-      id: callId,
-      ...(acceptedInvites === 0 && ringingInvites === 0
-        ? { status: 'ringing' }
-        : { status: 'active' }),
-    },
+    where: lastResponse ? { id: callId, status: 'ringing' } : { id: callId, status: current.status },
     data: {
-      ...(acceptedInvites === 0 && ringingInvites === 0
+      ...(lastResponse
         ? { endedAt: new Date(), status: 'declined' }
         : {}),
       revision: { increment: 1 },

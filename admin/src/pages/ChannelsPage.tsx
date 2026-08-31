@@ -137,14 +137,11 @@ export const ChannelsPage = () => {
   const {
     activeCall,
     activeParticipants,
-    isInCall,
     showCallOverlay,
     onCallButton,
-    onBannerJoin,
     onOverlayLeave,
   } = useChannelCall({
     activeChannel,
-    currentUserId: me?.user.id,
     callEligible,
   })
 
@@ -397,7 +394,6 @@ export const ChannelsPage = () => {
         feedScroll={feedScroll}
         isConversationSurface={isConversationSurface}
         isExternalAgentConversation={isExternalAgentActiveChannel}
-        isInCall={isInCall}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         joinPending={joinChannel.isPending}
         mentionEntities={mentionEntities}
@@ -433,7 +429,6 @@ export const ChannelsPage = () => {
         titleFavorite={titleFavorite}
         token={token}
         visibleActiveTab={visibleActiveTab}
-        onBannerJoin={onBannerJoin}
         onCallButton={onCallButton}
         onCreateAgent={() => void navigate('/agents/designer')}
         onJoin={() => {
@@ -462,7 +457,6 @@ export const ChannelsPage = () => {
         deepWaterDialog={deepWaterLauncher.dialog}
         hasRespondingAgent={hasRespondingAgent}
         isExternalAgentConversation={isExternalAgentActiveChannel}
-        isInCall={isInCall}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         me={me}
         mentionEntities={mentionEntities}
