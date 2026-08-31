@@ -9,6 +9,7 @@ import type {
 import { ModelCombobox } from './ModelCombobox'
 import { RunLimitsFieldset } from './RunLimitsFieldset'
 import { ToolPicker } from './ToolPicker'
+import { Switch } from '../../../primitives/Switch'
 
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
@@ -164,6 +165,23 @@ export const AgentDesignerForm = ({
         onChange={actions.setRunLimit}
         value={state.runLimits}
       />
+
+      <div className="flex items-start justify-between gap-4 rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-4">
+        <div className="min-w-0">
+          <div className={fieldLabelClass}>To-dos</div>
+          <p className="mt-1 text-sm leading-6 text-[color:var(--tx2)]">
+            Give this agent reusable checklists it can work through.
+          </p>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
+            Step instructions are visible to everyone who can see this agent. Do not put secrets in them.
+          </p>
+        </div>
+        <Switch
+          checked={state.todosEnabled}
+          label="Enable to-dos for this agent"
+          onChange={actions.setTodosEnabled}
+        />
+      </div>
 
       {/* System prompt */}
       <div className="grid gap-1.5">

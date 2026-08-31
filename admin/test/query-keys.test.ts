@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   agentKeys,
+  agentTodoKeys,
   appKeys,
   channelKeys,
   dashboardKeys,
@@ -46,6 +47,11 @@ test('agent keys keep the arrays the call sites used', () => {
   )
   assert.deepEqual(agentKeys.triggers('a-1'), ['agents', 'a-1', 'triggers'])
   assert.deepEqual(agentKeys.triggers(undefined), ['agents', undefined, 'triggers'])
+  assert.deepEqual(agentTodoKeys.instances('a-1'), ['agents', 'a-1', 'todos'])
+  assert.deepEqual(
+    agentTodoKeys.templates('a-1', true),
+    ['agents', 'a-1', 'todo-templates', true],
+  )
   assert.deepEqual(
     agentKeys.runTools('a-1', 'r-1'),
     ['agents', 'a-1', 'runs', 'r-1', 'tools'],

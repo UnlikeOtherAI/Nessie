@@ -1,8 +1,8 @@
 # Agent to-dos — checklists, SOPs, and runbooks per agent
 
 **Status:** implementation in progress — all open questions decided 2026-08-31
-(§11). The data contract, shared service, and REST surface have landed; the
-Phase 1 Designer and To-dos surfaces, then the later phases in §10, remain.
+(§11). The data contract, shared service, REST surface, and Phase 1 Designer
+and To-dos surfaces have landed; the later phases in §10 remain.
 **Date:** 2026-08-31
 **Reviewed:** two independent adversarial reviews on the same repo — kimix
 (17 findings) and Codex Sol (18 findings, on the doc with kimix's round

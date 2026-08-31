@@ -149,6 +149,7 @@ export type AgentRecord = {
   runLimits?: AgentRunLimits | null
   surfacePolicy?: 'shared' | 'dm_only'
   systemManaged?: boolean
+  todosEnabled: boolean
   status: AgentStatusResponse['status']
   systemPrompt?: string
   toolPolicy?: Record<string, boolean>
