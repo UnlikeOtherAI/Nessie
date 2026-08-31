@@ -34,6 +34,7 @@ import {
   nativePhoneTabBarClearanceScript,
   nativePushPathScript,
   nativeShellInfoScript,
+  wrapNativeWebViewScript,
 } from './src/lib/native-shell'
 import type { NativeShellMessage } from './src/lib/native-shell-message'
 import { isDark } from './src/lib/webview-inject'
@@ -129,7 +130,7 @@ const Shell = (): React.JSX.Element => {
   const externalAuthDeliveries = useRef(createNativeExternalAuthDeliveryQueue())
 
   const runScript = useCallback((script: string): void => {
-    webRef.current?.injectJavaScript(`${script} true;`)
+    webRef.current?.injectJavaScript(wrapNativeWebViewScript(script))
   }, [])
 
   useEffect(() => {

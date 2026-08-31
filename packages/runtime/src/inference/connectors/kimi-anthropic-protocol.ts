@@ -141,36 +141,56 @@ const renderAssistantWithToolCalls = (
   return parts.join('\n')
 }
 
-// A system block is either a plain string or Anthropic's content-block array
-// form, which lets us attach a cache_control breakpoint for prompt caching.
-type AnthropicSystem =
-  | string
-  | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }>
+// A text block in Anthropic's content-block array form, which lets us attach a
+// cache_control breakpoint for prompt caching.
+type AnthropicTextBlock = {
+  type: 'text'
+  text: string
+  cache_control?: { type: 'ephemeral' }
+}
+type AnthropicSystem = string | AnthropicTextBlock[]
+export type AnthropicPayloadMessage = {
+  role: 'user' | 'assistant'
+  content: string | AnthropicTextBlock[]
+}
 
 // Anthropic puts the system prompt at the top level and forbids it as a
-// message role. Squash any system entries into a single string, then map the
-// rest. Tool/result messages are folded into text turns so the prompt-
-// translated tool layer can flow through unchanged.
+// message role. Hoist system entries there, then map the rest. Tool/result
+// messages are folded into text turns so the prompt-translated tool layer can
+// flow through unchanged.
 //
-// When `cache` is set, the system (the agent's prompt + the rendered tool block
-// — the large, byte-stable prefix) is emitted as a content-block array with a
-// cache_control breakpoint, so repeated turns/runs read it from the prompt cache
-// at a steep discount. Verified accepted + honored by Kimi's Anthropic endpoint.
+// When `cache` is set, the system is emitted as a content-block array whose
+// cache_control breakpoint sits on the stable block ONLY — the rendered tool
+// block plus the FIRST system message (the agent's byte-stable anchor). Every
+// later system message (memory context, checkpoint notes, a mid-run wind-down
+// instruction) is volatile and lands in uncached follow-on blocks, so it can
+// vary without busting the cached prefix. A second, sliding breakpoint goes on
+// the last message: each loop iteration only appends turns, so the previous
+// tail breakpoint still names a valid prefix and a multi-iteration run
+// cache-reads its whole transcript (Anthropic's protocol allows 4 breakpoints).
+// Verified accepted + honored by Kimi's Anthropic endpoint.
 export const toAnthropicPayload = (
   messages: ProviderMessage[],
   tools?: ToolSchemaDescriptor[],
   opts?: { cache?: boolean },
-): { system?: AnthropicSystem; messages: Array<{ role: 'user' | 'assistant'; content: string }> } => {
-  const systemParts: string[] = []
+): { system?: AnthropicSystem; messages: AnthropicPayloadMessage[] } => {
+  const stableParts: string[] = []
+  const volatileParts: string[] = []
   const toolBlock = renderKimiTools(tools)
   if (toolBlock) {
-    systemParts.push(toolBlock)
+    stableParts.push(toolBlock)
   }
+  let sawSystemAnchor = false
   const out: Array<{ role: 'user' | 'assistant'; content: string }> = []
 
   for (const message of messages) {
     if (message.role === 'system') {
-      systemParts.push(message.content)
+      if (sawSystemAnchor) {
+        volatileParts.push(message.content)
+      } else {
+        stableParts.push(message.content)
+        sawSystemAnchor = true
+      }
       continue
     }
     const role: 'user' | 'assistant' = message.role === 'assistant' ? 'assistant' : 'user'
@@ -200,15 +220,41 @@ export const toAnthropicPayload = (
     out.unshift({ role: 'user', content: '(continue)' })
   }
 
-  const systemText = systemParts.length > 0 ? systemParts.join('\n\n') : undefined
-  const system: AnthropicSystem | undefined =
-    systemText !== undefined && opts?.cache
-      ? [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
-      : systemText
+  if (!opts?.cache) {
+    const allParts = [...stableParts, ...volatileParts]
+    return {
+      system: allParts.length > 0 ? allParts.join('\n\n') : undefined,
+      messages: out,
+    }
+  }
 
+  const system: AnthropicTextBlock[] = []
+  if (stableParts.length > 0) {
+    system.push({
+      cache_control: { type: 'ephemeral' },
+      text: stableParts.join('\n\n'),
+      type: 'text',
+    })
+  }
+  for (const part of volatileParts) {
+    system.push({ text: part, type: 'text' })
+  }
+
+  const lastIndex = out.length - 1
   return {
-    system,
-    messages: out,
+    system: system.length > 0 ? system : undefined,
+    messages: out.map((message, index): AnthropicPayloadMessage =>
+      index === lastIndex
+        ? {
+            content: [{
+              cache_control: { type: 'ephemeral' },
+              text: message.content,
+              type: 'text',
+            }],
+            role: message.role,
+          }
+        : message,
+    ),
   }
 }
 

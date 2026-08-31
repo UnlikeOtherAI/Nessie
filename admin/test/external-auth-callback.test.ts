@@ -107,6 +107,26 @@ test('hub rejects an uncompleted delivery so native transport can redeliver it',
   )
 })
 
+test('a rejected native callback settles visibly without recording a replay key', async () => {
+  let completions = 0
+  let invalidCallbacks = 0
+  const remembered: string[] = []
+  const hub = createExternalAuthCallbackHub(
+    async () => {
+      completions += 1
+      return true
+    },
+    { has: () => false, remember: (key) => remembered.push(key) },
+    async () => { invalidCallbacks += 1 },
+  )
+
+  await hub.handleNativeUrl('nessie://auth/not-a-callback?code=one')
+
+  assert.equal(completions, 0)
+  assert.equal(invalidCallbacks, 1)
+  assert.deepEqual(remembered, [])
+})
+
 test('queue overflow rejects the incoming delivery without acknowledging queued callbacks', async () => {
   const completed: string[] = []
   const hub = createExternalAuthCallbackHub(async (envelope) => {

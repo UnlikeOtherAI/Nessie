@@ -17,6 +17,7 @@ import type {
 
 import { isManagedIntegrationCatalogRecord } from '../managed-products.js'
 import { deriveAppCardState } from './app-card-state.js'
+import { appIconIsResolvable } from './app-icon-resolve.js'
 
 /**
  * The projection of an `McpCatalogEntry` onto the App Store wire contract.
@@ -56,6 +57,7 @@ export const STORE_CATALOG_SELECT = {
   documentationUrl: true,
   repositoryUrl: true,
   iconAttachmentId: true,
+  iconResolvedAt: true,
   primaryCategory: true,
   categories: true,
   tags: true,
@@ -97,6 +99,7 @@ export type StoreCatalogRow = {
   documentationUrl: string | null
   repositoryUrl: string | null
   iconAttachmentId: string | null
+  iconResolvedAt: Date | null
   primaryCategory: AppCategory
   categories: AppCategory[]
   tags: string[]
@@ -123,8 +126,17 @@ export type AppPresentationContext = {
 }
 
 /** Where the icon bytes are served from once one has been cached locally. */
+/**
+ * Where the client asks for this app's icon, or null for a monogram.
+ *
+ * The path is named whenever an icon is *still possible*, not only when one is
+ * already cached: the route resolves lazily on first view, so naming it only
+ * for cached rows would mean nothing ever got a first view. A row whose
+ * resolution has already been attempted and found nothing goes back to null,
+ * which is what stops the grid re-asking on every paint.
+ */
 export const appIconUrl = (row: StoreCatalogRow): string | null =>
-  row.iconAttachmentId ? `/api/apps/${row.id}/icon` : null
+  appIconIsResolvable(row) ? `/api/apps/${row.id}/icon` : null
 
 /**
  * The primary action still lands on the existing Connectors install path: the

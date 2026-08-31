@@ -100,7 +100,7 @@ measuring how full the shared database is, not whether prefix matching works.
 Assert on a token the catalogue does not carry, and assert *that the lane
 answers*, never a position.
 
-## Home suggestions are editorial order, not a second catalogue
+## Home suggestions are explicit curation, not a second catalogue
 
 The default category shelves can lead with a small, source-controlled set of
 well-known remote apps selected by their immutable MCP Registry `server.name`.
@@ -108,12 +108,20 @@ well-known remote apps selected by their immutable MCP Registry `server.name`.
 to the unfiltered home shelves: search, a category page, and the installed-only
 view keep their own meaningful orders.
 
-Suggestions are never a visibility, moderation, trust, authentication, or
-connection decision. The store first applies its ordinary entitlement and
-catalogue visibility predicate, then asks for only the configured identities
-that survived it, and finally promotes them within their assigned primary
-category. A hidden, deleted, stale, or reclassified record therefore produces
-no card and cannot be forced into another category by the editorial list.
+Suggestions are a source-controlled human curation decision for records chosen
+because they are published by the original product company or have substantial
+community adoption. The list deliberately stops short of a shelf's capacity
+when the live registry has no stronger candidate. At import time that decision
+may upgrade a matching `discovered` row to `curated`, after the same active,
+latest, remote-transport, and SSRF endpoint checks every registry record must
+pass. It is not a trust, authentication, endpoint, or connection decision:
+the importer neither changes `trustLevel` nor bypasses any safety guard.
+
+The store then applies its ordinary entitlement and catalogue visibility
+predicate, asks for only configured identities that survived it, and promotes
+them within their assigned primary category. A hidden, deleted, stale, or
+reclassified record therefore produces no card and cannot be forced into
+another category by the editorial list.
 
 ## Visibility
 
@@ -325,6 +333,52 @@ on the individual categories, where each names a real choice, and every count is
 the server's aggregate rather than the length of the loaded slice. Narrowing is
 a server round trip (`useApps({ category })`) — per §"Search is the database's
 job", the client never filters what it was sent.
+
+## Icons resolve on first view, and the instance shares one copy
+
+The store rendered a monogram on all 5,548 rows, and the reason was one missing
+argument: icon caching was wired only into the **owner-triggered** sync route,
+and the scheduled worker sweep — the only sync that has ever written rows in
+production — passes no `iconCacher`. Six sweeps, `icons_cached = 0` on every
+one. The registry is also a poor source: it publishes an `icons` field on
+roughly 8% of records, while ~75% of catalogue rows carry a `websiteUrl`.
+
+So the icon is derived from the site, **lazily**, by
+`resolveAppIcon` (`apps/app-icon-resolve.ts`):
+
+- **On first view, never on a timer.** `GET /api/apps/:id/icon` starts the
+  resolution; a sweep over 5,500 author-chosen URLs would make every deployment
+  a scanner, and would decay and need re-paying forever. Attention bounds the
+  work, and a row that gains a website later resolves the next time it is seen.
+- **The request never waits for it.** An image request holds one of the ~6
+  connections a browser opens per origin, so awaiting the fetch serialised
+  dozens of cards into a minutes-long queue that starved the page's own API
+  calls. The route answers 404 immediately — the card draws its monogram — and
+  the icon appears on the next visit.
+- **One conditional UPDATE is the whole concurrency design.** Claiming
+  `iconResolvedAt` before fetching means dozens of simultaneous misses perform
+  one fetch, with no lock or transaction held across network I/O. Stamping
+  *before* the attempt is also what stops a site with no favicon being
+  re-fetched on every paint.
+- **Shared by the instance.** The result is one attachment, served cross-org by
+  the same store-visibility floor as the record, so the second viewer — in any
+  organisation — pays nothing.
+- **Bytes are sniffed, never trusted.** Origin-only candidates (a `websiteUrl`
+  cannot steer the fetch to a chosen path), `safeFetch` IP-pinning, a byte cap
+  enforced mid-stream, and raster-only output — an SVG is a script container and
+  is dropped however the host labels it. `FileService` stores it, so it is
+  accounted like any other file.
+- **The client fetches it as an authed blob**, through the same
+  `useAuthedObjectUrlFromPath` an agent avatar uses. `<img src="/api/…">` cannot
+  work here twice over: the admin and API are different origins (`app.` vs
+  `api.`), and an `<img>` cannot carry an `Authorization` header.
+
+Expect roughly a third to a half of cards to end up with a real mark: measured
+against live production sites, 4 of 6 serve a usable raster at the conventional
+paths, and 13 of 41 catalogue rows resolved in a batch. A monogram is a
+legitimate final state, not a failure — `icon-store.ts` holds the one
+fetch→cap→sniff→store pipeline all three cachers share, so a fourth source
+(an ICO decoder, `<link rel=icon>` parsing) plugs in without a fork.
 
 ## Not built yet
 

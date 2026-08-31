@@ -8,6 +8,13 @@ export type NativeShellInfo = {
   pendingPushPath: string | null
 }
 
+/**
+ * React Native WebView expects an injected script to produce a value. Keep the
+ * sentinel on its own line: a builder may end in an expression or IIFE without
+ * a terminator, where a space would change the JavaScript grammar.
+ */
+export const wrapNativeWebViewScript = (script: string): string => `${script}\ntrue;`
+
 export const createNativePushSurfaceClientId = (): string => {
   const fragment = (): string => Math.floor(Math.random() * 0x1_0000_0000)
     .toString(16)
@@ -41,6 +48,7 @@ try {
     ${JSON.stringify(`${IPHONE_TAB_BAR_HEIGHT + safeBottomInset}px`)},
   );
 } catch (e) {}
+true;
 `
 }
 
@@ -66,6 +74,7 @@ try {
     detail: ${JSON.stringify(path)},
   }));
 } catch (e) {}
+true;
 `
   : `delete window.__nessiePendingPushPath;`
 
@@ -76,4 +85,5 @@ try {
     detail: ${JSON.stringify(foreground)},
   }));
 } catch (e) {}
+true;
 `

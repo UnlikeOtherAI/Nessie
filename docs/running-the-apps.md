@@ -73,6 +73,15 @@ desktop bundle declares the `nessie` URL scheme; after UOA redirects to
 callback bridge finishes the PKCE exchange from the deep link, including while
 an authenticated workspace screen remains open.
 
+An interrupted browser hand-off is always recoverable: the login screen offers
+**Cancel sign-in**, and a new deliberate sign-in replaces only the exact stale
+attempt it observed. In a web browser, returning with Back cancels the pending
+attempt instead of reopening the provider; a restored browser page also
+reconciles its session again so it cannot remain at **Loading workspace…**.
+If a restored browser nevertheless leaves its session check unresolved for ten
+seconds, Nessie fails closed to `/login`; an unresolved request never counts as
+an authenticated session.
+
 ### Desktop notifications
 
 The desktop app uses the same authenticated realtime message controller as the

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { ProviderMessage } from '@nessie/runtime'
+import {
+  buildPromptCacheKey,
+  type ProviderMessage,
+  type ToolSchemaDescriptor,
+} from '@nessie/runtime'
 import { buildModelPrompt } from './prompt.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
@@ -86,11 +90,10 @@ test('other agents\' turns are name-prefixed; the acting agent\'s own turns are 
   )
   assert.ok(otherTurn, 'other agent\'s turn should be prefixed with its name')
 
-  // Shared-thread guidance is included when another agent is present.
-  assert.match(systemContent(messages), /prefixed with their name/)
+  assert.match(systemContent(messages), /prefixed with its author's name/)
 })
 
-test('single-agent thread gets no multi-agent guidance and no prefixes', () => {
+test('shared-thread guidance is unconditional; a single-agent thread still gets no prefixes', () => {
   const conversation: StoredConversationMessage[] = [
     { content: 'ping', role: 'user', authorAgentId: null, authorAgentName: null },
     {
@@ -102,7 +105,10 @@ test('single-agent thread gets no multi-agent guidance and no prefixes', () => {
   ]
 
   const messages = buildModelPrompt(conversation, makeContext('Aria'), 'again', null)
-  assert.doesNotMatch(systemContent(messages), /prefixed with their name/)
+  // The paragraph is present even with no other agent in the window — keying
+  // it on window contents flipped the cacheable anchor's bytes as turns slid
+  // in and out of the 20-message window.
+  assert.match(systemContent(messages), /prefixed with its author's name/)
   const assistantTurn = messages.find((message) => message.role === 'assistant')
   assert.equal(assistantTurn?.content, 'pong')
 })
@@ -299,6 +305,74 @@ test('an attachment note annotates a turn without altering what the human wrote'
     'have a look\n[attached: spec.pdf (application/pdf, 40 KB, id=att-9)]',
   )
   assert.equal(messages.filter((message) => message.role === 'user').length, 1)
+})
+
+test('the stable anchor and prompt cache key are identical across runs an hour apart', () => {
+  const tools: ToolSchemaDescriptor[] = [
+    { toolName: 'web_search', description: 'Search the web', inputSchema: {} },
+  ]
+  const early = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    now: new Date('2026-08-31T09:12:45.678Z'),
+  })
+  const late = buildModelPrompt([], makeContext('Aria'), 'what changed?', null, {
+    now: new Date('2026-08-31T10:12:45.678Z'),
+  })
+  assert.deepEqual(early[0], late[0])
+  const earlyKey = buildPromptCacheKey('kimi-for-coding', early, tools)
+  assert.ok(earlyKey)
+  assert.equal(earlyKey, buildPromptCacheKey('kimi-for-coding', late, tools))
+})
+
+test('memory and checkpoint variance does not change the stable anchor or its key', () => {
+  const now = new Date('2026-08-31T09:12:45.678Z')
+  const bare = buildModelPrompt([], makeContext('Aria'), 'hi', null, { now })
+  const loaded = buildModelPrompt(
+    [],
+    makeContext('Aria'),
+    'hi',
+    'Relevant memories:\n- the user prefers tea',
+    { checkpointNotes: 'Working notes from an earlier incomplete run', now },
+  )
+  assert.deepEqual(bare[0], loaded[0])
+  assert.equal(
+    buildPromptCacheKey('m', bare, undefined),
+    buildPromptCacheKey('m', loaded, undefined),
+  )
+})
+
+test('the clock rides in a trailing system message, rounded down to the hour', () => {
+  const conversation: StoredConversationMessage[] = [
+    { content: 'earlier question', role: 'user', authorAgentId: null, authorAgentName: null },
+  ]
+  const messages = buildModelPrompt(
+    conversation,
+    makeContext('Aria'),
+    'keep going',
+    'Relevant memories:\n- a fact',
+    {
+      checkpointNotes: 'Working notes from an earlier incomplete run',
+      now: new Date('2026-08-31T09:12:45.678Z'),
+    },
+  )
+
+  assert.doesNotMatch(systemContent(messages), /Current date and time/)
+
+  const timeIndex = messages.findIndex((message) =>
+    (message.content ?? '').startsWith('Current date and time:'))
+  const memoryIndex = messages.findIndex((message) =>
+    (message.content ?? '').startsWith('Relevant memories:'))
+  const noteIndex = messages.findIndex((message) =>
+    (message.content ?? '').startsWith('Working notes'))
+  const conversationIndex = messages.findIndex(
+    (message) => message.content === 'earlier question',
+  )
+
+  assert.equal(messages[timeIndex]?.role, 'system')
+  assert.ok(timeIndex > memoryIndex, 'clock comes after the memory injection')
+  assert.ok(timeIndex > noteIndex, 'clock comes after the checkpoint notes')
+  assert.ok(timeIndex < conversationIndex, 'clock precedes the conversation window')
+  assert.match(messages[timeIndex]?.content ?? '', /2026-08-31T09:00:00\.000Z/)
+  assert.doesNotMatch(messages[timeIndex]?.content ?? '', /09:12/)
 })
 
 test('an empty prompt never appends an empty trailing user turn', () => {
