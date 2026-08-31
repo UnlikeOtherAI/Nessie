@@ -152,7 +152,10 @@ export const SettingsMembersPage = () => {
    * sources — never a second implementation of the view.
    */
   const agentsQuery = useAgents({ scope: 'all' })
-  const pausedPrivateAgentCount = usePausedPrivateAgentCount(isOwner && !isUoaSession)
+  // The aggregate is an owner-only server surface. Keep that session-derived
+  // query here, at the page boundary, so the shared UOA roster section remains
+  // presentational and can render without an auth-session provider.
+  const pausedPrivateAgentCount = usePausedPrivateAgentCount(isOwner)
   const localTree = (() => {
     const agents = Array.isArray(agentsQuery.data) ? agentsQuery.data : []
     const tree = buildPeopleAgentsTree(
@@ -185,7 +188,10 @@ export const SettingsMembersPage = () => {
     // those for anyone else, so rendering them would only produce 403s.
     return (
       <SettingsPanel eyebrow="Organization" title="Members">
-        <WorkspaceMembersSection canManage={canManageWorkspace} />
+        <WorkspaceMembersSection
+          canManage={canManageWorkspace}
+          pausedPrivateAgentCount={pausedPrivateAgentCount.data?.count ?? 0}
+        />
       </SettingsPanel>
     )
   }

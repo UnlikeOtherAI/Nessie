@@ -11,9 +11,7 @@ import {
   type PeopleAgentsTree,
 } from '../../components/features/members/people-agents-tree'
 import { useAgents } from '../../facades/agents/queries'
-import { usePausedPrivateAgentCount } from '../../facades/agents/queries'
 import type { AgentRecord } from '../../lib/api-client'
-import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   useCreateWorkspaceInvitations,
@@ -399,8 +397,13 @@ const AgentBucketsPanel = ({ tree }: { tree: PeopleAgentsTree }) => {
   )
 }
 
-export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) => {
-  const isOwner = useIsOwner()
+export const WorkspaceMembersSection = ({
+  canManage,
+  pausedPrivateAgentCount = 0,
+}: {
+  canManage: boolean
+  pausedPrivateAgentCount?: number
+}) => {
   const members = useWorkspaceMembers()
   // Invitation emails are PII; the API serves this list to owners and admins only.
   const invitations = useWorkspaceInvitations(canManage)
@@ -408,7 +411,6 @@ export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) =
   // than silently missing from the tree. Entitlement is unchanged — the system
   // tier is still only reachable through a channel the viewer can already see.
   const agents = useAgents({ scope: 'all' })
-  const pausedPrivateAgentCount = usePausedPrivateAgentCount(isOwner)
 
   const memberRows = members.data?.members ?? []
   // Array-guarded: this is the boundary where a query result enters the pure
@@ -417,7 +419,7 @@ export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) =
   const tree = buildPeopleAgentsTree(
     memberRows,
     Array.isArray(agents.data) ? agents.data : [],
-    { pausedPrivateAgentCount: pausedPrivateAgentCount.data?.count ?? 0 },
+    { pausedPrivateAgentCount },
   )
   const agentsBySub = new Map(
     tree.people.map((person) => [person.member.uoaSub, person.agents]),

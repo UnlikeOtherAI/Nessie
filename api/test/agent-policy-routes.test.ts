@@ -77,10 +77,15 @@ const makeApp = (
 ) => {
   const agents = new Map(initialAgents.map((agent) => [agent.id, agent]))
   let createCalls = 0
+  let pausedPrivateCountReads = 0
   let updateCalls = 0
   const db = {
     $executeRaw: async () => 0,
     agent: {
+      count: async () => {
+        pausedPrivateCountReads += 1
+        return 2
+      },
       create: async ({ data }: { data: Partial<AgentRow> }) => {
         createCalls += 1
         assert.ok(data.organizationId)
@@ -193,6 +198,9 @@ const makeApp = (
     agents,
     get createCalls() {
       return createCalls
+    },
+    get pausedPrivateCountReads() {
+      return pausedPrivateCountReads
     },
     get updateCalls() {
       return updateCalls
@@ -315,6 +323,26 @@ test('member cannot escalate an agent through generic toolPolicy PUT', async () 
     assert.equal(response.statusCode, 403)
     assert.equal(response.json().error.code, 'FORBIDDEN')
     assert.equal(state.updateCalls, 0)
+  } finally {
+    await state.app.close()
+  }
+})
+
+test('member cannot read the paused private-agent count', async () => {
+  const state = makeApp('member', [makeAgent(agentId, organizationId)])
+  try {
+    const response = await state.app.inject({
+      method: 'GET',
+      url: '/api/agents/paused-private-count',
+    })
+
+    assert.equal(response.statusCode, 403)
+    assert.equal(response.json().error.code, 'FORBIDDEN')
+    assert.equal(
+      state.pausedPrivateCountReads,
+      0,
+      'the owner gate must reject a member before any private-agent aggregate is read',
+    )
   } finally {
     await state.app.close()
   }
