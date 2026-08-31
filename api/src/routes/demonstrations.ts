@@ -9,7 +9,9 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import {
   DemonstrationError,
   getDemonstrationForUser,
+  listActiveDemonstrationsForChannel,
   listDemonstrationsForUser,
+  requestDemonstrationGeneralization,
   startDemonstration,
   stopDemonstration,
 } from '@nessie/workspace-admin'
@@ -31,7 +33,7 @@ const sendDemonstrationError = (
   return true
 }
 
-/** Review-only demonstration capture; P2 is responsible for any workflow draft. */
+/** Demonstration capture and its reviewable Workflow-draft doorway. */
 export const registerDemonstrationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext, requireUserActor } = deps
 
@@ -60,6 +62,18 @@ export const registerDemonstrationRoutes = (app: FastifyInstance, deps: RouteDep
       return reply
     }
     return createApiResponse(DemonstrationDetailRecordSchema.parse(demonstration))
+  })
+
+  app.get('/api/demonstrations/active/:channelId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext || !requireUserActor(actorContext, reply)) return reply
+    const { channelId } = request.params as { channelId: string }
+    const demonstrations = await listActiveDemonstrationsForChannel(prisma, {
+      channelId,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    return createApiResponse(DemonstrationRecordSchema.array().parse(demonstrations))
   })
 
   app.post('/api/demonstrations', async (request, reply) => {
@@ -96,5 +110,22 @@ export const registerDemonstrationRoutes = (app: FastifyInstance, deps: RouteDep
       if (sendDemonstrationError(reply, error)) return reply
       throw error
     }
+  })
+
+  app.post('/api/demonstrations/:demonstrationId/generalize', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext || !requireUserActor(actorContext, reply)) return reply
+    const params = parseInput(DemonstrationParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const demonstration = await requestDemonstrationGeneralization(prisma, {
+      demonstrationId: params.demonstrationId,
+      organizationId: actorContext.tenant.organizationId,
+      userId: actorContext.actor.actorId,
+    })
+    if (!demonstration) {
+      sendApiError(reply, 404, 'DEMONSTRATION_NOT_FOUND', 'Demonstration not found')
+      return reply
+    }
+    return createApiResponse(DemonstrationRecordSchema.parse(demonstration))
   })
 }

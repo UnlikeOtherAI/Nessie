@@ -30,6 +30,9 @@ const AgentTodoTemplatePublishContextSchema = z.object({
   templateId: z.string().uuid(),
   version: z.number().int().positive(),
 })
+const WorkflowTemplateAdoptContextSchema = z.object({
+  workflowTemplateId: z.string().uuid(),
+})
 
 // Executes the actual publish once a human has approved the request. Guards
 // against staleness: the draft may have picked up a newer version between
@@ -115,6 +118,34 @@ const runAgentTodoTemplatePublishEffect = async (
   return { note: 'published' }
 }
 
+const runWorkflowTemplateAdoptEffect = async (
+  prisma: PrismaClient,
+  approval: ApprovalForEffect,
+  actorContext: AuthorizedActionContext,
+): Promise<ApprovalEffectResult> => {
+  const parsed = WorkflowTemplateAdoptContextSchema.safeParse(approval.context)
+  if (!parsed.success) return { note: 'approval context malformed — adoption not attempted' }
+  const adopted = await prisma.workflowTemplate.updateMany({
+    data: { adoptedAt: new Date() },
+    where: {
+      id: parsed.data.workflowTemplateId,
+      organizationId: actorContext.tenant.organizationId,
+      source: 'demonstration',
+      adoptedAt: null,
+    },
+  })
+  if (adopted.count === 0) return { note: 'learned workflow no longer needs adoption' }
+  await emitAuditEvent(prisma, {
+    actorContext,
+    action: 'workflow.template.adopted',
+    metadata: { approvalId: approval.id },
+    outcome: 'success',
+    resourceId: parsed.data.workflowTemplateId,
+    resourceType: 'workflow_template',
+  })
+  return { note: 'learned workflow adopted' }
+}
+
 // Runs the side effect an approved ApprovalRequest triggers, dispatched on
 // its `action`. Unknown actions (approvals that gate something other than a
 // concrete follow-up mutation) are a deliberate no-op — approving them is the
@@ -144,6 +175,8 @@ export const runApprovalEffect = async (
       return runKnowledgePagePublishEffect(prisma, approval, actorContext)
     case 'agent.todo_template.publish':
       return runAgentTodoTemplatePublishEffect(prisma, approval, actorContext)
+    case 'workflow.template.adopt':
+      return runWorkflowTemplateAdoptEffect(prisma, approval, actorContext)
     default:
       return {}
   }

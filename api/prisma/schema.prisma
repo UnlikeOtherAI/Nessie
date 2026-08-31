@@ -161,6 +161,11 @@ enum DemonstrationStatus {
   discarded
 }
 
+enum WorkflowTemplateSource {
+  authored
+  demonstration
+}
+
 enum PlanStatus {
   draft
   active
@@ -2652,9 +2657,11 @@ model Demonstration {
   startedByUserId String              @map("started_by_user_id") @db.Uuid
   status          DemonstrationStatus @default(recording)
   stepCount       Int                 @default(0) @map("step_count")
+  generalizationError String?         @map("generalization_error")
   startedAt       DateTime            @default(now()) @map("started_at")
   capturedAt      DateTime?           @map("captured_at")
   expiresAt       DateTime            @map("expires_at")
+  workflowTemplate WorkflowTemplate?  @relation("DemonstrationWorkflowTemplate")
   organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   agent           Agent               @relation("AgentDemonstrations", fields: [agentId], references: [id], onDelete: Cascade)
   channel         Channel             @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -2762,6 +2769,9 @@ model WorkflowTemplate {
   triggersJson                   Json                   @default("{}") @map("triggers_json")
   variableSchema                 Json                   @default("{}") @map("variable_schema")
   bindingSchema                  Json                   @default("{}") @map("binding_schema")
+  source                         WorkflowTemplateSource @default(authored)
+  demonstrationId                String?                @unique @map("demonstration_id") @db.Uuid
+  adoptedAt                      DateTime?              @map("adopted_at")
   requiredEnvironmentTemplateIds Json                   @default("[]") @map("required_environment_template_ids")
   // W17 (§5): last successful designer test run's per-step output, keyed by
   // step id — a sensitive-data store (W0-redacted on write, provenance in
@@ -2773,6 +2783,7 @@ model WorkflowTemplate {
   updatedAt                      DateTime               @updatedAt @map("updated_at")
   installations                  WorkflowInstallation[]
   organization                   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  demonstration                  Demonstration?         @relation("DemonstrationWorkflowTemplate", fields: [demonstrationId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, name])

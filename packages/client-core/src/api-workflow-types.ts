@@ -52,6 +52,9 @@ export type WorkflowTemplateRecord = {
   variableSchema: unknown
   bindingSchema: unknown
   requiredEnvironmentTemplateIds: string[]
+  source: 'authored' | 'demonstration'
+  demonstrationId?: string | null
+  adoptedAt?: string | null
   createdByActorType: string
   createdByActorId: string
   createdAt: string

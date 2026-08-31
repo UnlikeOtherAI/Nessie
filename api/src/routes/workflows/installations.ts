@@ -17,6 +17,7 @@ import {
   installWorkflowTemplate,
   listWorkflowInstallations,
   updateWorkflowInstallation,
+  WorkflowTemplateAdoptionRequiredError,
   WorkflowInstallationLifecycleError,
 } from '../../services/workflow-templates.js'
 import {
@@ -103,6 +104,15 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
           409,
           'WORKFLOW_INSTALLATION_STATUS_CONFLICT',
           'active and status describe different states; send one consistent lifecycle',
+        )
+        return reply
+      }
+      if (error instanceof WorkflowTemplateAdoptionRequiredError) {
+        sendApiError(
+          reply,
+          409,
+          'WORKFLOW_TEMPLATE_ADOPTION_REQUIRED',
+          'This agent-proposed learned workflow needs owner adoption before installation.',
         )
         return reply
       }

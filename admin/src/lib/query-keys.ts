@@ -106,6 +106,11 @@ export const approvalKeys = {
   all: ['approvals'] as const,
 }
 
+export const demonstrationKeys = {
+  all: ['demonstrations'] as const,
+  active: (channelId?: string) => ['demonstrations', 'active', channelId] as const,
+}
+
 export const auditLogKeys = {
   forAction: (action: string) => ['audit-log', action] as const,
 }

@@ -54,4 +54,5 @@ export * from './workflow-graph-pin.js'
 export * from './workflow-secrets.js'
 export * from './sandboxed-jmespath.js'
 export * from './workflow-jmespath.js'
+export * from './workflow-template-validation.js'
 export * from "./workflow-concurrency.js"

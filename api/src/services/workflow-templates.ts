@@ -54,6 +54,9 @@ export const listWorkflowTemplates = async (
       variableSchema: true,
       bindingSchema: true,
       requiredEnvironmentTemplateIds: true,
+      source: true,
+      demonstrationId: true,
+      adoptedAt: true,
       createdByActorType: true,
       createdByActorId: true,
       createdAt: true,
@@ -103,6 +106,7 @@ export const createWorkflowTemplate = async (
       bindingSchema: (input.bindingSchema ?? {}) as Prisma.InputJsonValue,
       requiredEnvironmentTemplateIds:
         (input.requiredEnvironmentTemplateIds ?? []) as unknown as Prisma.InputJsonValue,
+      source: 'authored',
       createdByActorType: actorContext.actor.actorType,
       createdByActorId: actorContext.actor.actorId,
     },
@@ -216,6 +220,13 @@ export class WorkflowInstallationLifecycleError extends Error {
   }
 }
 
+export class WorkflowTemplateAdoptionRequiredError extends Error {
+  constructor() {
+    super('WORKFLOW_TEMPLATE_ADOPTION_REQUIRED')
+    this.name = 'WorkflowTemplateAdoptionRequiredError'
+  }
+}
+
 export const isWorkflowInstallationRunnable = (installation: {
   active: boolean
   status: WorkflowInstallationRecord['status']
@@ -271,10 +282,19 @@ export const installWorkflowTemplate = async (
         graphJson: true,
         version: true,
         bindingSchema: true,
+        source: true,
+        adoptedAt: true,
       },
     })
     if (!template) {
       return null
+    }
+
+    // A human-created learned draft is marked adopted when it is generated.
+    // An agent-proposed one reaches this point only after the approval effect
+    // writes its durable adoptedAt decision; a raw trace is never runnable.
+    if (template.source === 'demonstration' && !template.adoptedAt) {
+      throw new WorkflowTemplateAdoptionRequiredError()
     }
 
     // W13: no trigger materialisation from triggersJson. Template

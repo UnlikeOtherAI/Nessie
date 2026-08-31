@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { writeAuditEntry } from '@nessie/db'
+import { enqueueQueueJob, writeAuditEntry } from '@nessie/db'
 import {
+  DEMONSTRATION_GENERALIZE_TOPIC,
   DemonstrationDetailRecordSchema,
   DemonstrationRecordSchema,
   DemonstrationStepRecordSchema,
@@ -30,6 +31,7 @@ type DemonstrationRow = {
   capturedAt: Date | null
   channelId: string
   expiresAt: Date
+  generalizationError?: string | null
   id: string
   organizationId: string
   startedAt: Date
@@ -37,6 +39,7 @@ type DemonstrationRow = {
   status: 'captured' | 'discarded' | 'generalized' | 'recording'
   stepCount: number
   threadId: string
+  workflowTemplate?: { id: string } | null
 }
 
 type DemonstrationStepRow = {
@@ -59,6 +62,7 @@ const mapDemonstration = (row: DemonstrationRow): DemonstrationRecord =>
     capturedAt: row.capturedAt?.toISOString() ?? null,
     expiresAt: row.expiresAt.toISOString(),
     startedAt: row.startedAt.toISOString(),
+    workflowTemplateId: row.workflowTemplate?.id ?? null,
   })
 
 const DEFAULT_DEMONSTRATION_TTL_MS = 4 * 60 * 60 * 1000
@@ -90,7 +94,7 @@ const emitDemonstrationAudit = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   demonstration: DemonstrationRecord,
-  action: 'demonstration.started' | 'demonstration.stopped',
+  action: 'demonstration.started' | 'demonstration.stopped' | 'demonstration.generalized',
 ): Promise<void> => {
   try {
     await writeAuditEntry(prisma, {
@@ -114,6 +118,17 @@ const emitDemonstrationAudit = async (
     // Audit must never undo explicit recording consent already persisted.
     console.error(`[demonstration] Failed to emit audit event: ${action}`)
   }
+}
+
+const enqueueGeneralization = async (
+  prisma: PrismaClient,
+  demonstrationId: string,
+): Promise<void> => {
+  await enqueueQueueJob(prisma, {
+    idempotencyKey: `demonstration:generalize:${demonstrationId}`,
+    payload: { demonstrationId },
+    topic: DEMONSTRATION_GENERALIZE_TOPIC,
+  })
 }
 
 const verifyTarget = async (
@@ -256,7 +271,10 @@ export const stopDemonstration = async (
     userId,
   })) return null
   if (existing.status !== 'recording') {
-    if (existing.status === 'captured') return mapDemonstration(existing)
+    if (existing.status === 'captured') {
+      await enqueueGeneralization(prisma, existing.id)
+      return mapDemonstration(existing)
+    }
     throw new DemonstrationError('NOT_RECORDING')
   }
 
@@ -275,6 +293,7 @@ export const stopDemonstration = async (
   const stopped = await prisma.demonstration.findUniqueOrThrow({ where: { id: existing.id } })
   const demonstration = mapDemonstration(stopped)
   await emitDemonstrationAudit(prisma, input.actorContext, demonstration, 'demonstration.stopped')
+  await enqueueGeneralization(prisma, demonstration.id)
   return demonstration
 }
 
@@ -313,6 +332,7 @@ export const listDemonstrationsForUser = async (
     startedByUserId: input.userId,
   })
   const rows = await prisma.demonstration.findMany({
+    include: { workflowTemplate: { select: { id: true } } },
     orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
     where: { organizationId: input.organizationId, startedByUserId: input.userId },
   })
@@ -326,6 +346,44 @@ export const listDemonstrationsForUser = async (
   return reachable.filter((row): row is DemonstrationRecord => row !== null)
 }
 
+/** A channel-visible consent signal, deliberately without trace details. */
+export const listActiveDemonstrationsForChannel = async (
+  prisma: PrismaClient,
+  input: { channelId: string; organizationId: string; userId: string },
+): Promise<DemonstrationRecord[]> => {
+  if (!await readableForUser(prisma, input)) return []
+  const rows = await prisma.demonstration.findMany({
+    orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
+    where: {
+      channelId: input.channelId,
+      organizationId: input.organizationId,
+      status: 'recording',
+    },
+  })
+  return rows.map(mapDemonstration)
+}
+
+/** Re-enqueues an already captured draft without widening access to its trace. */
+export const requestDemonstrationGeneralization = async (
+  prisma: PrismaClient,
+  input: { demonstrationId: string; organizationId: string; userId: string },
+): Promise<DemonstrationRecord | null> => {
+  const demonstration = await prisma.demonstration.findFirst({
+    where: {
+      id: input.demonstrationId,
+      organizationId: input.organizationId,
+      startedByUserId: input.userId,
+    },
+  })
+  if (!demonstration || !await readableForUser(prisma, {
+    channelId: demonstration.channelId,
+    organizationId: input.organizationId,
+    userId: input.userId,
+  })) return null
+  if (demonstration.status === 'captured') await enqueueGeneralization(prisma, demonstration.id)
+  return mapDemonstration(demonstration)
+}
+
 /** Returns a draft view of one reachable recording, with its redacted steps. */
 export const getDemonstrationForUser = async (
   prisma: PrismaClient,
@@ -337,7 +395,10 @@ export const getDemonstrationForUser = async (
     startedByUserId: input.userId,
   })
   const row = await prisma.demonstration.findFirst({
-    include: { steps: { orderBy: { sequence: 'asc' } } },
+    include: {
+      steps: { orderBy: { sequence: 'asc' } },
+      workflowTemplate: { select: { id: true } },
+    },
     where: {
       id: input.demonstrationId,
       organizationId: input.organizationId,

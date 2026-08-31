@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type {
   WorkflowInstallationRecord,
@@ -10,7 +11,11 @@ import {
   useWorkflowInstallations,
   useWorkflowTemplates,
 } from '../facades/workflows/hooks'
+import {
+  useDemonstrations,
+} from '../facades/demonstrations/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
+import { workflowKeys } from '../lib/query-keys'
 import { Pill } from '../components/primitives/Pill'
 import { ColumnBrowserColumn } from '../components/shared/column-browser/ColumnBrowserColumn'
 import { useIsOwner } from '../components/shared/OwnerGate'
@@ -19,6 +24,7 @@ import { WorkflowInstallationDetail } from '../components/features/workflows/Wor
 import { WorkflowRunDetail } from '../components/features/workflows/WorkflowRunDetail'
 import { WorkflowTemplateDetail } from '../components/features/workflows/WorkflowTemplateDetail'
 import { WorkflowImportButton } from '../components/features/workflows/WorkflowImportButton'
+import { DemonstrationDraftsColumn } from '../components/features/workflows/DemonstrationDraftsColumn'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import {
   formatRelativeTime,
@@ -74,6 +80,7 @@ const summarizeInstallations = (
 export const WorkflowsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { me } = useAuthSession()
   const isOwner = useIsOwner()
   const isWorkflowAdmin =
@@ -85,6 +92,7 @@ export const WorkflowsPage = () => {
   const { data: installations = [] } = useWorkflowInstallations(true)
   const { data: failedRuns = [] } = useFailedWorkflowRuns(true)
   const installWorkflowTemplate = useInstallWorkflowTemplate()
+  const { data: demonstrations = [] } = useDemonstrations()
   const restoredSelection = useMemo(
     () => readWorkflowsPageLocationState(location.state),
     [location.state],
@@ -102,6 +110,19 @@ export const WorkflowsPage = () => {
   // W29: the triage surface — one cross-installation answer to "what broke
   // last night". Opens straight onto the failed run's detail.
   const [showFailedRuns, setShowFailedRuns] = useState(false)
+  const [showDemonstrationDrafts, setShowDemonstrationDrafts] = useState(false)
+
+  useEffect(() => {
+    if (
+      isWorkflowAdmin
+      && demonstrations.some((demonstration) =>
+        demonstration.workflowTemplateId
+        && !templates.some((template) => template.id === demonstration.workflowTemplateId),
+      )
+    ) {
+      void queryClient.invalidateQueries({ queryKey: workflowKeys.templates })
+    }
+  }, [demonstrations, isWorkflowAdmin, queryClient, templates])
 
   const sortedTemplates = useMemo(
     () =>
@@ -229,6 +250,22 @@ export const WorkflowsPage = () => {
     )
   }
 
+  if (showDemonstrationDrafts) {
+    columns.push(
+      <DemonstrationDraftsColumn
+        demonstrations={demonstrations}
+        key="demonstration-drafts"
+        onBack={() => setShowDemonstrationDrafts(false)}
+        onReview={(workflowTemplateId) => {
+          setSelectedTemplateId(workflowTemplateId)
+          setSelectedInstallationId(undefined)
+          setSelectedRunId(undefined)
+          setShowDemonstrationDrafts(false)
+        }}
+      />,
+    )
+  }
+
   columns.push(
     <ColumnBrowserColumn
       leading={<PhoneNavigationButton />}
@@ -264,6 +301,17 @@ export const WorkflowsPage = () => {
         </span>
         <Pill tone={failedRuns.length > 0 ? 'danger' : 'muted'}>
           {failedRuns.length} failed
+        </Pill>
+      </button>
+      <button
+        className="mb-3 flex w-full items-center justify-between rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] px-3 py-2 text-left hover:bg-[var(--overlay-weak)]"
+        data-testid="demonstration-drafts-toggle"
+        onClick={() => setShowDemonstrationDrafts(true)}
+        type="button"
+      >
+        <span className="text-sm font-medium text-[var(--tx)]">Demonstration drafts</span>
+        <Pill tone={demonstrations.some((entry) => entry.status === 'captured') ? 'warning' : 'muted'}>
+          {demonstrations.length}
         </Pill>
       </button>
       <div className="grid gap-3">
@@ -314,6 +362,7 @@ export const WorkflowsPage = () => {
                       {template.name}
                     </span>
                     <Pill tone={summary.tone}>{summary.label}</Pill>
+                    {template.source === 'demonstration' ? <Pill tone="accent">Learned</Pill> : null}
                   </div>
                   <div className="mt-0.5 truncate text-xs text-[color:var(--tx3)]">
                     v{template.version} · {template.graph.steps.length} step
