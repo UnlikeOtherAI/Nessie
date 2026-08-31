@@ -458,6 +458,22 @@ test('disconnecting needs the scope manage right, not merely reach', async () =>
   assert.equal(deleted.length, 0)
 })
 
+test('disconnecting reads the live membership rather than a stale actor role', async () => {
+  const shared = instanceRow({ scopeType: 'organization', scopeId: ORG })
+  const { ctx, deleted } = makeStub({ instance: shared })
+  // A role captured when the request was enqueued is not an authority: the
+  // member may have been demoted before this destructive action is attempted.
+  ctx.actorContext = actor(MEMBER, ['owner'])
+
+  await assert.rejects(
+    disconnectAppConnection(ctx, 'instance-1'),
+    (error: unknown) =>
+      error instanceof AppConnectError
+      && error.code === APP_CONNECT_ERROR_CODES.CONNECT_FORBIDDEN,
+  )
+  assert.equal(deleted.length, 0)
+})
+
 test('disconnecting reports the app and scope it removed, for the audit trail', async () => {
   const { ctx, deleted } = makeStub()
   const removed = await disconnectAppConnection(ctx, 'instance-1')
