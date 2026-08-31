@@ -365,13 +365,17 @@ skill, human edit/test, and execution.
 
 ### 3d. Phased path
 
-1. **P1 — capture + view.** A "record this as a routine" marker on a session, a
-   stored structured action stream, and a draft view. Note: `ToolCall.inputSummary`
-   is only a ~200-char preview and **cannot faithfully replay**, so capture needs
-   the **full (redacted) tool arguments** — a dedicated `Demonstration` /
-   `DemonstrationStep` pair hooked at the existing tool-end chokepoint
-   (`worker/src/run/execute/tool-events.ts` `recordToolEnd`), armed opt-in. Retro-
-   fitting demonstrations from old runs is refused (lossy). (Per the deep-dive.)
+1. **P1 — capture + draft API (shipped 2026-08-31).** Explicit, model-judged
+   `demonstration_start` / `demonstration_stop` controls and the org-scoped
+   `/api/demonstrations` draft read surface arm a single `(agent, thread)`
+   recording. `Demonstration` / `DemonstrationStep` retain the completed
+   structural action stream at `worker/src/run/execute/tool-events.ts`
+   `recordToolEnd`, including **full redacted arguments**, ordered completion,
+   run, and outcome. Recording expires after four hours by default and captures
+   at most 200 steps by default. `ToolCall.inputSummary` remains a ~200-character
+   preview and is never used to retrofit an old run; that would be lossy. The
+   recording is review-only and cannot run anything. P2 remains responsible for
+   model generalization into a Workflow draft.
 2. **P2 — generalise to a draft Workflow.** The utility-model parameterisation pass
    → a draft Workflow definition in the existing editor.
 3. **P3 — edit/test/promote/schedule.** Reuse Workflow publish + approvals +

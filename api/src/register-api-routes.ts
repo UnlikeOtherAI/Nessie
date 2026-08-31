@@ -19,6 +19,7 @@ import { registerCommsConnectionRoutes } from './routes/comms-connections.js'
 import { registerCommsWebhookRoutes } from './routes/comms-webhooks.js'
 import { registerDashboardRoutes } from './routes/dashboards.js'
 import { registerDesignerRoutes } from './routes/designer.js'
+import { registerDemonstrationRoutes } from './routes/demonstrations.js'
 import { registerDeviceRoutes } from './routes/devices.js'
 import { registerDisclosureGrantRoutes } from './routes/disclosure-grants.js'
 import { registerEventRoutes } from './routes/events.js'
@@ -78,6 +79,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerChannelRoutes(app, deps)
   registerCallRoutes(app, deps)
   registerAgentRoutes(app, deps)
+  registerDemonstrationRoutes(app, deps)
   registerAgentTodoRoutes(app, deps)
   registerTriggerRoutes(app, deps)
   registerPlanRoutes(app, deps)
