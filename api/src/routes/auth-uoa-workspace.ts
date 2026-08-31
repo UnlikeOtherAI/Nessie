@@ -14,6 +14,10 @@ import { hashRefreshToken } from '../services/refresh-token-crypto.js'
 import { createUoaRefreshCallbacks } from '../services/uoa-refresh-coordinator.js'
 import { UoaLocalSessionBindingError } from '../services/uoa-session-context.js'
 import { UoaSessionRefreshError } from '../services/uoa-session.js'
+import {
+  parseSessionClientType,
+  SESSION_CLIENT_HEADER,
+} from '../services/session-client.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import { completeConsumedAuthSession } from './auth-session-completion.js'
 import type { RouteDeps } from './types.js'
@@ -104,6 +108,7 @@ export const registerAuthUoaWorkspaceRoute = (
         rawToken,
         ttlSeconds: config.auth.refreshTokenTtlSeconds,
         userAgent: request.headers['user-agent'] ?? null,
+        clientType: parseSessionClientType(request.headers[SESSION_CLIENT_HEADER]),
         uoaWorkspaceSwitch: {
           sourceIdentity: source.uoaIdentity,
           sourceProviderId: source.providerId,

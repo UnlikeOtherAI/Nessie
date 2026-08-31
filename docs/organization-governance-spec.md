@@ -411,7 +411,9 @@ Required invariants:
 >   user's refresh tokens and is enforced live in `authenticateRequest`
 >   (403 `ACCOUNT_DEACTIVATED`); role changes are also enforced live (the actor's
 >   role is re-resolved from the DB membership each request, not the JWT).
-> - **Account security** (`/settings/security`): list + revoke active sessions
+> - **Account security** (`/settings/security`): a paged, screen-bounded table
+>   for active sessions with a visible revoke action; labels distinguish native
+>   Nessie apps from Safari and other desktop/mobile browsers
 >   (`GET`/`DELETE /api/auth/sessions[/:id]`, RefreshToken-backed) and change the
 >   password for local accounts (`POST /api/auth/password`; SSO accounts manage
 >   credentials at their IdP). Changing a password evicts the user's other

@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { MeResponseSchema } from '@nessie/schemas'
+import { MeResponseSchema, SessionSummarySchema } from '@nessie/schemas'
 
 import { hashPassword, verifyPassword } from '../auth/password.js'
 import { verifySessionToken } from '../auth/session.js'
@@ -47,14 +47,15 @@ export const registerAuthSecurityRoutes = (
     if (!actorContext) return reply
     const sessions = await listUserSessions(prisma, actorContext.actor.actorId)
     const currentSid = currentSessionId(request)
-    return createApiResponse(sessions.map((session) => ({
+    return createApiResponse(SessionSummarySchema.array().parse(sessions.map((session) => ({
       sessionId: session.sessionId,
       userAgent: session.userAgent,
+      clientType: session.clientType,
       createdAt: session.createdAt.toISOString(),
       lastUsedAt: session.lastUsedAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
       current: session.sessionId === currentSid,
-    })))
+    }))))
   })
 
   app.delete('/api/auth/sessions/:sessionId', async (request, reply) => {

@@ -2,6 +2,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 import { setRefreshCookie } from '../lib/refresh-cookie.js'
 import { issueRefreshToken } from '../services/refresh-token.js'
+import {
+  parseSessionClientType,
+  SESSION_CLIENT_HEADER,
+} from '../services/session-client.js'
 import { registerAuthCoreRoutes } from './auth-core.js'
 import { registerAuthLoginRoute } from './auth-login.js'
 import { registerAuthRefreshRoute } from './auth-refresh.js'
@@ -38,6 +42,7 @@ const createRefreshCookieIssuer = (deps: RouteDeps): IssueRefreshCookie => async
       : {}),
     ttlSeconds: config.auth.refreshTokenTtlSeconds,
     userAgent: request.headers['user-agent'] ?? null,
+    clientType: parseSessionClientType(request.headers[SESSION_CLIENT_HEADER]),
     expectedPasswordHash: params.expectedPasswordHash,
   })
   setRefreshCookie(reply, rawToken, config, config.auth.refreshTokenTtlSeconds)

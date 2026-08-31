@@ -16,6 +16,10 @@ import { createUoaRefreshCallbacks } from '../services/uoa-refresh-coordinator.j
 import {
   UoaSessionRefreshError,
 } from '../services/uoa-session.js'
+import {
+  parseSessionClientType,
+  SESSION_CLIENT_HEADER,
+} from '../services/session-client.js'
 import { guardAuthRequest, RATE_LIMIT_BUCKETS } from './auth-rate-limit.js'
 import { completeConsumedAuthSession } from './auth-session-completion.js'
 import type { RouteDeps } from './types.js'
@@ -83,6 +87,7 @@ export const registerAuthRefreshRoute = (
         rawToken,
         ttlSeconds: config.auth.refreshTokenTtlSeconds,
         userAgent: request.headers['user-agent'] ?? null,
+        clientType: parseSessionClientType(request.headers[SESSION_CLIENT_HEADER]),
         ...createUoaRefreshCallbacks(prisma),
       })
     } catch (error) {

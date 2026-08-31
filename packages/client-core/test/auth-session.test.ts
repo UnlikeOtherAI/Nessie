@@ -108,6 +108,21 @@ test('refresh returns null only for an explicit 401', async (t) => {
   })
 })
 
+test('session mutation requests identify a native shell without changing browser defaults', async () => {
+  await withMockFetch(
+    async (_input, init) => {
+      const headers = new Headers(init?.headers)
+      assert.equal(headers.get('x-nessie-session-client'), 'native-ios')
+      return Response.json({ data: sessionPayload('renewed-token') })
+    },
+    async () => {
+      await createAuthSessionApi('https://api.example.test', {
+        sessionClient: () => 'native-ios',
+      }).refresh()
+    },
+  )
+})
+
 test('provider discovery surfaces failures to its independent retry owner', async () => {
   await withMockFetch(
     async () =>

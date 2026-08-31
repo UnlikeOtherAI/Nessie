@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import type { SessionClientType } from '@nessie/schemas'
 import {
   lockRefreshFamily,
   revokeRefreshFamilyRows,
@@ -11,6 +12,7 @@ import {
 export type UserSession = {
   sessionId: string
   userAgent: string | null
+  clientType: SessionClientType | null
   createdAt: Date
   lastUsedAt: Date
   expiresAt: Date
@@ -74,6 +76,7 @@ export const listUserSessions = async (
     select: {
       sessionId: true,
       userAgent: true,
+      clientType: true,
       createdAt: true,
       expiresAt: true,
       revokedAt: true,
@@ -89,6 +92,7 @@ export const listUserSessions = async (
       bySession.set(token.sessionId, {
         sessionId: token.sessionId,
         userAgent: token.userAgent,
+        clientType: token.clientType as SessionClientType | null,
         createdAt: token.createdAt,
         lastUsedAt: token.createdAt,
         expiresAt: token.expiresAt,
@@ -99,6 +103,7 @@ export const listUserSessions = async (
     existing.lastUsedAt = token.createdAt
     existing.expiresAt = token.expiresAt
     if (token.userAgent) existing.userAgent = token.userAgent
+    if (token.clientType) existing.clientType = token.clientType as SessionClientType
     if (live) existing.active = true
   }
 
@@ -108,6 +113,7 @@ export const listUserSessions = async (
       (entry): UserSession => ({
         sessionId: entry.sessionId,
         userAgent: entry.userAgent,
+        clientType: entry.clientType,
         createdAt: entry.createdAt,
         lastUsedAt: entry.lastUsedAt,
         expiresAt: entry.expiresAt,

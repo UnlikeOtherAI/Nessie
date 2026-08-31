@@ -20,6 +20,7 @@ export type StoredRefreshToken = {
   replacedById: string | null
   replayProtectedUntil: Date | null
   userAgent: string | null
+  clientType: string | null
   createdAt: Date
 }
 
@@ -71,6 +72,7 @@ type RefreshCreateInput = {
     tokenHash: string
     expiresAt: Date
     userAgent?: string
+    clientType?: string
   }
   select?: { id?: boolean }
 }
@@ -139,6 +141,7 @@ export class FakeRefreshTokenPrisma {
         replacedById: null,
         replayProtectedUntil: null,
         userAgent: input.data.userAgent ?? null,
+        clientType: input.data.clientType ?? null,
         createdAt: new Date(),
       }
       this.records.set(record.id, record)

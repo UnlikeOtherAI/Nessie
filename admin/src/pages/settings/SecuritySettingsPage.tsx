@@ -1,9 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import {
   useChangePassword,
-  useRevokeSession,
   useSessions,
-  type SessionSummary,
 } from '../../facades/auth/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
@@ -12,62 +10,7 @@ import {
   type SettingsFeedback,
 } from './settings-shared'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
-
-const formatWhen = (iso: string): string => new Date(iso).toLocaleString()
-
-const SessionRow = ({ session }: { session: SessionSummary }) => {
-  const revokeSession = useRevokeSession()
-  const [error, setError] = useState<string | null>(null)
-
-  const revoke = async () => {
-    setError(null)
-    try {
-      await revokeSession.mutateAsync(session.sessionId)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to revoke session')
-    }
-  }
-
-  return (
-    <div className="admin-card p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate font-medium text-[color:var(--tx)]">
-            {session.userAgent ?? 'Unknown device'}
-          </div>
-          <div className="mt-1 text-xs text-[color:var(--tx3)]">
-            Last used {formatWhen(session.lastUsedAt)}
-          </div>
-        </div>
-        {/* Unconverted: Pill's accent tone emits --thinking; this chip ships --accent. */}
-        {session.current ? (
-          <span
-            className={[
-              'shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em]',
-              'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
-            ].join(' ')}
-          >
-            This device
-          </span>
-        ) : (
-          <button
-            className="admin-button admin-button-secondary admin-button-compact h-8 shrink-0"
-            disabled={revokeSession.isPending}
-            onClick={() => void revoke()}
-            type="button"
-          >
-            Revoke
-          </button>
-        )}
-      </div>
-      {error ? (
-        <div className="mt-2 text-xs text-[color:var(--danger-text)]" role="alert">
-          {error}
-        </div>
-      ) : null}
-    </div>
-  )
-}
+import { ActiveSessionsTable } from '../../components/features/settings/ActiveSessionsTable'
 
 const ChangePasswordCard = () => {
   const changePassword = useChangePassword()
@@ -170,18 +113,8 @@ export const SecuritySettingsPage = () => {
             Devices currently signed in to your account. Revoking a session signs
             that device out.
           </div>
-          <div className="mt-4 grid gap-2">
-            {isLoading ? (
-              <div className="text-sm text-[color:var(--tx3)]">Loading…</div>
-            ) : sessions.length === 0 ? (
-              <div className="admin-card p-3 text-sm text-[color:var(--tx3)]">
-                No active sessions.
-              </div>
-            ) : (
-              sessions.map((session) => (
-                <SessionRow key={session.sessionId} session={session} />
-              ))
-            )}
+          <div className="mt-4">
+            <ActiveSessionsTable isLoading={isLoading} sessions={sessions} />
           </div>
         </section>
 

@@ -34,6 +34,7 @@ import {
   type StoredTokenMode,
 } from '../lib/storage'
 import { getBaseUrl } from '../lib/api-client'
+import { getSessionClientType } from '../lib/session-client'
 import {
   clearSessionIfCurrent,
   createImportedSessionApplyTracker,
@@ -100,7 +101,7 @@ const unregisterNativePushDevice = (): Promise<void> =>
 
 // Admin (web) supplies the Vite-resolved base URL; @nessie/client-core stays
 // env-agnostic. localStorage is the web TokenStore backing.
-const authApi = createAuthSessionApi(getBaseUrl())
+const authApi = createAuthSessionApi(getBaseUrl(), { sessionClient: getSessionClientType })
 
 export const AuthSessionProvider = ({ children }: PropsWithChildren) => {
   const queryClient = useQueryClient()

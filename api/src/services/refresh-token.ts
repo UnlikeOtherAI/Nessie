@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { type Prisma, type PrismaClient } from '@prisma/client'
-import type { UoaSessionIdentity } from '@nessie/schemas'
+import type { SessionClientType, UoaSessionIdentity } from '@nessie/schemas'
 import {
   deriveRefreshTokenSuccessor,
   hashRefreshToken,
@@ -83,6 +83,7 @@ type ConsumeInput = UoaRotationCallbacks & {
     target: UoaWorkspaceSwitchTarget
   }
   userAgent?: string | null
+  clientType?: SessionClientType | null
   now?: Date
   clock?: () => Date
 }
@@ -449,6 +450,7 @@ export const consumeRefreshToken = async (
         tokenHash: hashRefreshToken(successorRawToken),
         expiresAt: successorExpiresAt,
         userAgent: input.userAgent ?? undefined,
+        clientType: input.clientType ?? undefined,
       },
     })
     if (rotatedUoa) {

@@ -285,6 +285,11 @@ export type AuthSessionApi = {
   ) => Promise<SessionPayload>
 }
 
+type AuthSessionApiOptions = {
+  /** Display-only shell metadata persisted when a refresh family is issued. */
+  sessionClient?: () => string | null
+}
+
 const normaliseBaseUrl = (baseUrl: string): string => baseUrl.trim().replace(/\/$/, '')
 
 const parseResponse = async <TData>(response: Response): Promise<TData> => {
@@ -313,8 +318,15 @@ const parseApiError = async (response: Response): Promise<AuthSessionApiError> =
   }
 }
 
-export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
+export const createAuthSessionApi = (
+  baseUrl: string,
+  options: AuthSessionApiOptions = {},
+): AuthSessionApi => {
   const resolvedBaseUrl = normaliseBaseUrl(baseUrl)
+  const sessionClientHeaders = (): Record<string, string> => {
+    const clientType = options.sessionClient?.()
+    return clientType ? { 'x-nessie-session-client': clientType } : {}
+  }
 
   const fetchProviders = async (): Promise<AuthProviderDescriptor[]> => {
     const response = await fetch(`${resolvedBaseUrl}/api/auth/providers`, {
@@ -366,6 +378,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          ...sessionClientHeaders(),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(body),
@@ -392,6 +405,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
     bootstrap: (input) => postSession('/api/auth/bootstrap', input),
     devLogin: async () => {
       const response = await fetch(`${resolvedBaseUrl}/api/auth/dev-login`, {
+        headers: sessionClientHeaders(),
         credentials: 'include',
       })
       if (!response.ok) {
@@ -425,6 +439,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
     refresh: async () => {
       const response = await fetch(`${resolvedBaseUrl}/api/auth/refresh`, {
         method: 'POST',
+        headers: sessionClientHeaders(),
         credentials: 'include',
       })
       if (response.status === 401) {
@@ -440,6 +455,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          ...sessionClientHeaders(),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(input),
@@ -456,6 +472,7 @@ export const createAuthSessionApi = (baseUrl: string): AuthSessionApi => {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          ...sessionClientHeaders(),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(input),

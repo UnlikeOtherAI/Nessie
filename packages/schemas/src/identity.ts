@@ -146,6 +146,28 @@ export const MeSessionSchema = z.object({
 })
 export type MeSession = z.infer<typeof MeSessionSchema>
 
+// A native shell names itself when it creates or renews a session. Browser
+// sessions deliberately remain null: their browser and device are derived
+// from the user-agent at the presentation boundary.
+export const SessionClientTypeSchema = z.enum([
+  'native-desktop',
+  'native-ios',
+  'native-android',
+  'native-mobile',
+])
+export type SessionClientType = z.infer<typeof SessionClientTypeSchema>
+
+export const SessionSummarySchema = z.object({
+  sessionId: z.string().uuid(),
+  userAgent: z.string().nullable(),
+  clientType: SessionClientTypeSchema.nullable(),
+  createdAt: z.string().datetime(),
+  lastUsedAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  current: z.boolean(),
+})
+export type SessionSummary = z.infer<typeof SessionSummarySchema>
+
 export const MeContextSchema = z.object({
   organizationId: OrganizationIdSchema,
   projectId: ProjectIdSchema,

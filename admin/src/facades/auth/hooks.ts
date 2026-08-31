@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query'
-import type { MeResponse, UserPreferences } from '@nessie/schemas'
+import type { MeResponse, SessionSummary, UserPreferences } from '@nessie/schemas'
 import type { AuthProviderDescriptor } from '../../lib/api-client'
 import { uploadMyUoaAvatar } from '../../lib/uploads'
 import { authKeys } from '../../lib/query-keys'
@@ -18,14 +18,7 @@ const bumpMyAvatarRevision = (queryClient: QueryClient): void => {
   )
 }
 
-export type SessionSummary = {
-  sessionId: string
-  userAgent: string | null
-  createdAt: string
-  lastUsedAt: string
-  expiresAt: string
-  current: boolean
-}
+export type { SessionSummary } from '@nessie/schemas'
 
 export const useAuthProviders = () => {
   const apiClient = useApiClient()

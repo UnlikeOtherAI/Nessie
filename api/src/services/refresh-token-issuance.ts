@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { deriveSecretKey, encryptWithKey } from '@nessie/runtime'
-import type { UoaSessionIdentity } from '@nessie/schemas'
+import type { SessionClientType, UoaSessionIdentity } from '@nessie/schemas'
 import { hashRefreshToken } from './refresh-token-crypto.js'
 import {
   AUTH_LOCK_TRANSACTION_OPTIONS,
@@ -25,6 +25,7 @@ type IssueInput = {
   }
   familyId?: string
   userAgent?: string | null
+  clientType?: SessionClientType | null
   expectedPasswordHash?: string
 }
 
@@ -64,6 +65,7 @@ export const issueRefreshToken = async (
       tokenHash: hashRefreshToken(rawToken),
       expiresAt,
       userAgent: input.userAgent ?? undefined,
+      clientType: input.clientType ?? undefined,
     },
   })
   const encrypted = input.uoaSession
