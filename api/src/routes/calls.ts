@@ -152,7 +152,6 @@ export const registerCallRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       const result = await respondToCallInviteAction(prisma, {
         action: claims.action,
         callId,
-        revision: claims.revision,
         userId: claims.userId,
       })
       await publishTransition(result.call.id, [claims.userId])

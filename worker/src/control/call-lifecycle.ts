@@ -117,10 +117,14 @@ export const handleCallRingTimeout = async (
   } catch (error) {
     console.error('[calls] missed-call message committed but realtime publish failed', error)
   }
-  await publishCallTransitionRealtime(prisma, realtimeTransport, {
-    callId: missed.callId,
-    inviteeUserIds: missed.missedInviteeIds,
-  })
+  try {
+    await publishCallTransitionRealtime(prisma, realtimeTransport, {
+      callId: missed.callId,
+      inviteeUserIds: missed.missedInviteeIds,
+    })
+  } catch (error) {
+    console.error('[calls] missed-call transition committed but realtime publish failed', error)
+  }
   return true
 }
 

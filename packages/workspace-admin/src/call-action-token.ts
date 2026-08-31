@@ -2,14 +2,13 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 
 import { z } from 'zod'
 
-const TOKEN_VERSION = 'v1'
-const TOKEN_DOMAIN = 'nessie.call-action-token.v1\0'
+const TOKEN_VERSION = 'v2'
+const TOKEN_DOMAIN = 'nessie.call-action-token.v2\0'
 
 const CallActionTokenClaimsSchema = z.object({
   action: z.enum(['accept', 'decline']),
   callId: z.string().uuid(),
   expiresAt: z.number().int().positive(),
-  revision: z.number().int().nonnegative(),
   userId: z.string().uuid(),
 }).strict()
 
@@ -23,8 +22,9 @@ const sign = (encodedClaims: string, secret: string): string =>
 
 /**
  * A compact action token for the unauthenticated Web Push response route.
- * Its state-changing single use is enforced by the call invite's conditional
- * ringing -> response transition; the signature keeps every bound field intact.
+ * Its state-changing single use is enforced by the bound call invite's
+ * conditional ringing -> response transition; the signature keeps every
+ * invite-scoped field intact.
  */
 export const issueCallActionToken = (
   claims: CallActionTokenClaims,
