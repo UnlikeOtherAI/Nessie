@@ -26,6 +26,8 @@ import {
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
 import { WorkspaceMembersSection } from './WorkspaceMembersSection'
+import { startExternalSignIn } from '../../lib/external-auth'
+import { resolveAppliedTheme, useTheme } from '../../providers/ThemeProvider'
 
 const ROLE_OPTIONS = [
   { value: 'owner', label: 'Owner' },
@@ -136,6 +138,7 @@ const MemberRow = ({
 
 export const SettingsMembersPage = () => {
   const { me, token } = useAuthSession()
+  const { theme } = useTheme()
   const roleIds = me?.user.roleIds ?? []
   const isOwner = useIsOwner()
   // On an UnlikeOtherAI session the roster and its invitations are UOA API
@@ -190,6 +193,13 @@ export const SettingsMembersPage = () => {
       <SettingsPanel eyebrow="Organization" title="Members">
         <WorkspaceMembersSection
           canManage={canManageWorkspace}
+          onReconnect={async () => {
+            const providerId = me.auth.providerId
+            if (!providerId) throw new Error('UnlikeOtherAI sign-in is not configured.')
+            await startExternalSignIn(providerId, resolveAppliedTheme(theme), {
+              returnPath: window.location.pathname + window.location.search,
+            })
+          }}
           pausedPrivateAgentCount={pausedPrivateAgentCount.data?.count ?? 0}
         />
       </SettingsPanel>
