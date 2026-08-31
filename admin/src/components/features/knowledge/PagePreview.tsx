@@ -144,7 +144,7 @@ export const PagePreview = ({
 
         <BacklinksPanel pageId={page.id} />
 
-        <CommentsSection canWrite={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
+        <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
 
         <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
           <div className="flex items-center justify-between">

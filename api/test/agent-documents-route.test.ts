@@ -45,7 +45,7 @@ const space = {
   writeRestricted: true,
 } as KnowledgeSpaceRecord
 
-const makeApp = (input: { accessible: boolean; hasSpace: boolean }) => {
+const makeApp = (input: { accessible: boolean; hasSpace: boolean; readable?: boolean }) => {
   let lookupCount = 0
   const prisma = {
     agent: {
@@ -71,7 +71,9 @@ const makeApp = (input: { accessible: boolean; hasSpace: boolean }) => {
     getSpace: async (requestedOrganizationId: string, requestedSpaceId: string) => {
       assert.equal(requestedOrganizationId, organizationId)
       assert.equal(requestedSpaceId, spaceId)
-      return space
+      return input.readable === false
+        ? { ...space, memberUserIds: [] }
+        : space
     },
   } as unknown as KnowledgeProvider
   const app = Fastify({ logger: false })
@@ -84,14 +86,25 @@ const makeApp = (input: { accessible: boolean; hasSpace: boolean }) => {
   return { app, lookupCount: () => lookupCount }
 }
 
-test('GET agent docs returns the accessible agent home reference', async () => {
+test('GET agent docs returns the readable agent home reference without recomputing write access', async () => {
   const { app } = makeApp({ accessible: true, hasSpace: true })
   try {
     const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
     assert.equal(response.statusCode, 200)
     assert.deepEqual(response.json().data, {
-      space: { canWrite: true, id: spaceId, name: 'Researcher — Documents' },
+      space: { canRead: true, id: spaceId, name: 'Researcher — Documents' },
     })
+  } finally {
+    await app.close()
+  }
+})
+
+test('GET agent docs reports when an accessible agent home is not readable', async () => {
+  const { app } = makeApp({ accessible: true, hasSpace: true, readable: false })
+  try {
+    const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(response.json().data, { space: { canRead: false } })
   } finally {
     await app.close()
   }

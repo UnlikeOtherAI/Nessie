@@ -10,13 +10,15 @@ type WorkspaceActionInput = {
   canManageSpace: boolean
   canWrite: boolean
   needsReviewOnly: boolean
+  ownerAgentId?: string | null
   onCreateFolder: () => void
   onCreatePage: () => void
-  onOpenAgent?: () => void
+  onOpenAgent: (agentId: string) => void
   onOpenSettings: () => void
   onSelectView: (mode: KnowledgeViewMode) => void
   onToggleNeedsReview: () => void
   onUploadFile: () => void
+  scopeAgentId?: string
   selectedSpaceId?: string
   viewMode: KnowledgeViewMode
 }
@@ -27,6 +29,7 @@ export const buildKnowledgeWorkspaceActions = (
 ): PageHeaderAction[] | undefined => {
   if (!input.selectedSpaceId) return undefined
   const selectedView = knowledgeViewOptions.find((option) => option.value === input.viewMode)
+  const ownerAgentId = input.ownerAgentId
   return [
     {
       icon: selectedView?.icon,
@@ -53,11 +56,11 @@ export const buildKnowledgeWorkspaceActions = (
           selected: input.needsReviewOnly,
         } satisfies PageHeaderAction]
       : []),
-    ...(input.onOpenAgent
+    ...(ownerAgentId && ownerAgentId !== input.scopeAgentId
       ? [{
           id: 'open-agent',
           label: 'Open agent',
-          onSelect: input.onOpenAgent,
+          onSelect: () => input.onOpenAgent(ownerAgentId),
           priority: 50,
         } satisfies PageHeaderAction]
       : []),

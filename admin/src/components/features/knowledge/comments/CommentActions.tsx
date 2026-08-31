@@ -18,7 +18,7 @@ type CommentActionsProps = {
   reactions: KnowledgeAnnotationReaction[]
   currentUserId?: string
   canModify: boolean
-  canInteract: boolean
+  canResolve: boolean
   topLevel: boolean
   resolved: boolean
   onToggleReaction: (emoji: string) => void
@@ -34,7 +34,7 @@ export const CommentActions = ({
   reactions,
   currentUserId,
   canModify,
-  canInteract,
+  canResolve,
   topLevel,
   resolved,
   onToggleReaction,
@@ -83,8 +83,7 @@ export const CommentActions = ({
               key={emoji}
               aria-pressed={reactedByMe}
               className={reactedByMe ? 'reaction-pill reaction-pill-active' : 'reaction-pill'}
-              disabled={!canInteract}
-              onClick={() => canInteract && react(emoji)}
+              onClick={() => react(emoji)}
               type="button"
             >
               {emoji}
@@ -94,7 +93,7 @@ export const CommentActions = ({
         </div>
       ) : null}
 
-      {canInteract ? <div className="admin-msg-actions" onClick={stop} onPointerDown={stop}>
+      <div className="admin-msg-actions" onClick={stop} onPointerDown={stop}>
         <button
           aria-label="Add thumbs up reaction"
           className="admin-msg-action-button"
@@ -134,7 +133,7 @@ export const CommentActions = ({
             <FontAwesomeIcon icon={faReply} />
           </button>
         ) : null}
-        {topLevel ? (
+        {topLevel && canResolve ? (
           <button
             aria-label={resolved ? 'Reopen' : 'Resolve'}
             className="admin-msg-action-button"
@@ -167,7 +166,7 @@ export const CommentActions = ({
             <FontAwesomeIcon icon={faTrashCan} />
           </button>
         ) : null}
-      </div> : null}
+      </div>
     </>
   )
 }

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { KnowledgeSpaceResponse } from '@nessie/schemas'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -20,27 +21,9 @@ export type KnowledgeVersionRecord = {
 
 export type KnowledgePageKind = 'document' | 'file'
 
-export type KnowledgeSpaceRecord = {
-  id: string
-  ownerAgentId: string | null
-  name: string
-  description: string | null
-  // Server-set space metadata. `personal: true` marks the caller's own
-  // "My Docs" space, provisioned by the my-docs ensure endpoint.
-  metadata: Record<string, unknown> | null
-  projectId: string
-  visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
-  sensitivityTier: 'normal' | 'sensitive' | 'restricted'
-  writeRestricted: boolean
-  canWrite: boolean
-  memberUserIds: string[]
-  memberAgentIds: string[]
-  sourceRef: string
-  visibilityReason: string
-  policyChainTrace: string[]
-  createdAt: string
-  updatedAt: string
-}
+// Never hand-copy the API response here. In particular, ownerAgentId must not
+// be allowed to disappear from the server contract while the UI still compiles.
+export type KnowledgeSpaceRecord = KnowledgeSpaceResponse
 
 export type KnowledgePageRecord = {
   id: string

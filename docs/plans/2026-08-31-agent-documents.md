@@ -1,6 +1,7 @@
 # Agent documents — the docs an agent keeps for itself
 
-**Status:** design proposal — research + design only, no code.
+**Status:** phased implementation — the human Documents surface is built;
+the owning-space mapper remains in the phase-1 sibling change.
 **Date:** 2026-08-31
 **Related:**
 [2026-08-31-agent-tables.md](2026-08-31-agent-tables.md) (agent-owned typed
@@ -390,6 +391,20 @@ just applies it:
   creates when the target is an agent-owned space.
 
 ## 6. The human interface
+
+**Phase-2 implementation note (2026-08-31).** The browser and API share one
+`KnowledgeSpaceResponse` contract, including `ownerAgentId`, so doorway fields
+cannot silently disappear at the boundary. A deep link resolves the displayed
+space by its detail endpoint when that space is absent from the scoped/capped
+navigation list; write affordances therefore follow the displayed space's
+verdict. Comments continue to follow read access, while access-list and
+`writeRestricted` administration are limited to the space creator,
+organisation owners, and service actors at both the UI and route. Agent
+visibility does not widen knowledge access: the per-agent route returns an
+explicit unreadable state for a visible agent whose space the caller cannot
+read, and the tab explains that state instead of mounting a workspace that can
+only fail. The `ownerAgentId` contract is live here; populating it end to end
+still depends on the phase-1 sibling's domain-record and native-mapper change.
 
 ### 6.1 The owning surface: a Documents tab on agent detail
 

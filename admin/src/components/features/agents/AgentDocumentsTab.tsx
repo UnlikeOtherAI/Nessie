@@ -55,6 +55,13 @@ export const AgentDocumentsTab = ({ agent }: { agent: AgentRecord }) => {
       </EmptyState>
     )
   }
+  if (!documentsQuery.data.space.canRead) {
+    return (
+      <EmptyState>
+        You can see this agent, but you don’t have access to its documents.
+      </EmptyState>
+    )
+  }
 
   return (
     <KnowledgeProvider agentId={agent.id} spaceId={documentsQuery.data.space.id}>

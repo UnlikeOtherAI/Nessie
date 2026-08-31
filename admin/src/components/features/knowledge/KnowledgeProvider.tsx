@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { reportPushSurface } from '../../../lib/push-surface'
 import {
   useCreateKnowledgePage,
@@ -115,6 +115,20 @@ export const useKnowledge = (): KnowledgeContextValue => {
   return value
 }
 
+/**
+ * Resolve the space currently on screen, even when an explicit deep link
+ * points outside the scoped/capped list. The detail response is authoritative
+ * for permissions; list membership is only navigation state.
+ */
+export const useDisplayedKnowledgeSpace = (
+  spaces: KnowledgeSpaceRecord[],
+  selectedSpaceId?: string,
+): KnowledgeSpaceRecord | null => {
+  const listedSpace = spaces.find((space) => space.id === selectedSpaceId)
+  const detailQuery = useKnowledgeSpace(listedSpace ? undefined : selectedSpaceId)
+  return listedSpace ?? detailQuery.data ?? null
+}
+
 // The provider is the workspace parameterisation seam. `projectId` scopes the
 // project Documents tab to that project's spaces; `spaceId` scopes an owning
 // surface such as an agent Documents tab to one canonical knowledge space.
@@ -132,7 +146,7 @@ export const KnowledgeProvider = ({
 }) => {
   const location = useLocation()
   const navigate = useNavigate()
-  const { me } = useAuthSession()
+  const me = useOptionalAuthSession()?.me ?? null
   const spacesQuery = useKnowledgeSpaces(projectId, !spaceId)
   const spaceQuery = useKnowledgeSpace(spaceId)
   const myDocsQuery = useEnsureMyDocsSpace(!projectId && !spaceId)
@@ -156,6 +170,7 @@ export const KnowledgeProvider = ({
   const [historyPageId, setHistoryPageId] = useState<string | undefined>()
   const [spaceSettingsOpen, setSpaceSettingsOpen] = useState(false)
   const [activeProductView, setActiveProductView] = useState<string | undefined>()
+  const selectedSpace = useDisplayedKnowledgeSpace(spaces, selectedSpaceId)
 
   const pagesQuery = useKnowledgePages(selectedSpaceId)
   const pages = useMemo(() => pagesQuery.data ?? [], [pagesQuery.data])
@@ -230,7 +245,6 @@ export const KnowledgeProvider = ({
     return result
   }, [pagePath, pagesById])
 
-  const selectedSpace = spaces.find((space) => space.id === selectedSpaceId) ?? null
   const rootPages = pagesByParent.get(null) ?? []
   const validOpenPageId = openPageId && validPath.at(-1) === openPageId ? openPageId : undefined
 

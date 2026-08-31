@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import {
-  canWriteSpace,
+  canReadSpace,
   createNativeKnowledgeProvider,
   loadSpaceViewer,
   type KnowledgeProvider,
@@ -51,8 +51,9 @@ export const registerAgentDocumentRoutes = (
       return createApiResponse(AgentDocumentsResponseSchema.parse({ space: null }))
     }
 
-    // Reuse the knowledge package's write verdict instead of restating
-    // writeRestricted, membership, or agent-audience rules in this route.
+    // Agent visibility and document readability are separate entitlements.
+    // Resolve the canonical knowledge read verdict so the tab can explain an
+    // unreadable home instead of mounting a workspace whose requests all 403.
     const actorType = actorContext.actor.actorType
     const principal = actorType === 'user' || actorType === 'agent'
       ? { actorId: actorContext.actor.actorId, actorType }
@@ -64,11 +65,16 @@ export const registerAgentDocumentRoutes = (
     if (!space) {
       return createApiResponse(AgentDocumentsResponseSchema.parse({ space: null }))
     }
+    if (!canReadSpace(space, viewer)) {
+      return createApiResponse(AgentDocumentsResponseSchema.parse({
+        space: { canRead: false },
+      }))
+    }
 
     return createApiResponse(AgentDocumentsResponseSchema.parse({
       space: {
         ...reference,
-        canWrite: canWriteSpace(space, viewer),
+        canRead: true,
       },
     }))
   })

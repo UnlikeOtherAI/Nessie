@@ -195,6 +195,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
   const fileVersionUpload = useUploadFileVersion(versionDialogFor?.id, selectedSpaceId)
   const canWrite = selectedSpace?.canWrite ?? false
   const canManage = canWrite && (canManageSpace ?? true)
+  const canManageAccess = selectedSpace?.canManageAccess ?? false
 
   const updateViewMode = (nextMode: KnowledgeViewMode) => {
     setViewMode(nextMode)
@@ -205,19 +206,19 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
     canManageSpace: canManage,
     canWrite,
     needsReviewOnly,
+    ownerAgentId: selectedSpace?.ownerAgentId,
     onCreateFolder: () => {
       updateViewMode('column')
       setCreatingFolder(true)
     },
     onCreatePage: () => openCreate(currentFolder?.id ?? null),
-    onOpenAgent: selectedSpace?.ownerAgentId && selectedSpace.ownerAgentId !== scopeAgentId
-      ? () => void navigate(`/agents/${selectedSpace.ownerAgentId}`)
-      : undefined,
+    onOpenAgent: (agentId) => void navigate(`/agents/${agentId}`),
     onOpenSettings: openSpaceSettings,
     onSelectView: updateViewMode,
     onToggleNeedsReview: () => setNeedsReviewOnly((value) => !value),
     onUploadFile: () => fileInputRef.current?.click(),
     selectedSpaceId,
+    scopeAgentId,
     viewMode,
   })
 
@@ -457,7 +458,7 @@ export const KnowledgeWorkspace = ({ canManageSpace }: KnowledgeWorkspaceProps =
       {versionDialog}
       {selectedSpace && canManage ? (
         <SpaceSettingsDialog
-          canManageAccess={canManage}
+          canManageAccess={canManageAccess}
           onClose={closeSpaceSettings}
           onSave={updateSpace}
           open={spaceSettingsOpen}

@@ -183,7 +183,7 @@ export const PageNotesLayer = ({
             actions={actions}
             annotation={activeNote}
             authorLabel={authorLabel}
-            canWrite={canWrite}
+            canResolve={canWrite}
             currentUserId={me?.user.id}
             showAnchorQuote
           />

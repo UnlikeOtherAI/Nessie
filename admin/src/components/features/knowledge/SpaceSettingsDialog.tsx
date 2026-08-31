@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import { useUsers } from '../../../facades/users/hooks'
 import { useWorkspaceMembers } from '../../../facades/users/workspace-members'
-import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { Dialog } from '../../shared/Dialog'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
 import { AgentMemberChecklist } from './AgentMemberChecklist'
@@ -26,9 +26,9 @@ type SpaceSettingsDialogProps = {
   space: KnowledgeSpaceRecord
 }
 
-// The owning workspace supplies the management entitlement: ordinary KB
-// surfaces preserve their existing writer-managed settings, while an agent
-// Documents tab narrows this to organization owners.
+// The API supplies the access-administration entitlement independently of the
+// ordinary content-write verdict. A writer may still edit the descriptive
+// fields without gaining control of restriction or membership.
 export const SpaceSettingsDialog = ({
   canManageAccess,
   onClose,
@@ -37,7 +37,7 @@ export const SpaceSettingsDialog = ({
   pending,
   space,
 }: SpaceSettingsDialogProps) => {
-  const { me } = useAuthSession()
+  const me = useOptionalAuthSession()?.me ?? null
   const isUoaSession = me?.auth.providerType === 'uoa'
   const agentsQuery = useAgents()
   const usersQuery = useUsers(open && canManageAccess && !isUoaSession)

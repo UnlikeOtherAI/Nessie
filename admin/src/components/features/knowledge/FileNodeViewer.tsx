@@ -221,7 +221,7 @@ export const FileNodeViewer = ({
           )}
         </div>
 
-        <CommentsSection canWrite={canWrite} pageId={page.id} />
+        <CommentsSection canResolve={canWrite} pageId={page.id} />
       </div>
     </KnowledgePane>
   )

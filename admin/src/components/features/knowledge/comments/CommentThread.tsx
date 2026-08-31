@@ -19,7 +19,7 @@ type RowProps = {
   token: string | null
   resolveAuthor: AuthorResolver
   actions: AnnotationActions
-  canWrite: boolean
+  canResolve: boolean
   topLevel: boolean
   onReply: () => void
 }
@@ -32,7 +32,7 @@ const CommentRow = ({
   token,
   resolveAuthor,
   actions,
-  canWrite,
+  canResolve,
   topLevel,
   onReply,
 }: RowProps) => {
@@ -101,8 +101,8 @@ const CommentRow = ({
           <p className="whitespace-pre-wrap text-sm text-[color:var(--tx)]">{annotation.body}</p>
         )}
         <CommentActions
-          canInteract={canWrite}
-          canModify={canWrite && isOwn}
+          canModify={isOwn}
+          canResolve={canResolve}
           currentUserId={currentUserId}
           onDelete={() => actions.remove(annotation.id)}
           onEdit={() => setEditing(true)}
@@ -123,7 +123,7 @@ type CommentThreadProps = {
   currentUserId?: string
   authorLabel: AuthorResolver
   actions: AnnotationActions
-  canWrite: boolean
+  canResolve: boolean
   showAnchorQuote?: boolean
 }
 
@@ -133,7 +133,7 @@ export const CommentThread = ({
   currentUserId,
   authorLabel,
   actions,
-  canWrite,
+  canResolve,
   showAnchorQuote,
 }: CommentThreadProps) => {
   const { token } = useAuthSession()
@@ -152,7 +152,7 @@ export const CommentThread = ({
       <CommentRow
         actions={actions}
         annotation={annotation}
-        canWrite={canWrite}
+        canResolve={canResolve}
         currentUserId={currentUserId}
         onReply={() => setReplying((value) => !value)}
         resolveAuthor={authorLabel}
@@ -165,7 +165,7 @@ export const CommentThread = ({
             <CommentRow
               actions={actions}
               annotation={reply}
-              canWrite={canWrite}
+              canResolve={canResolve}
               currentUserId={currentUserId}
               key={reply.id}
               onReply={() => setReplying(true)}
@@ -176,7 +176,7 @@ export const CommentThread = ({
           ))}
         </div>
       ) : null}
-      {canWrite && replying ? (
+      {replying ? (
         <div className="px-5 py-2" onClick={stop}>
           <CommentComposer
             autoFocus
