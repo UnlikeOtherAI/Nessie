@@ -132,8 +132,9 @@ export const useAddProjectMember = () => {
         userId: input.userId,
         role: input.role,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, input) => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all })
+      void queryClient.invalidateQueries({ queryKey: projectKeys.members(input.projectId) })
     },
   })
 }
@@ -145,8 +146,9 @@ export const useRemoveProjectMember = () => {
   return useMutation({
     mutationFn: (input: { projectId: string; userId: string }) =>
       apiClient.delete<{ ok: true }>(`/api/projects/${input.projectId}/members/${input.userId}`),
-    onSuccess: () => {
+    onSuccess: (_data, input) => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all })
+      void queryClient.invalidateQueries({ queryKey: projectKeys.members(input.projectId) })
     },
   })
 }

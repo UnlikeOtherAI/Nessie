@@ -1,13 +1,14 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ConfirmDialog } from '../../components/shared/ConfirmDialog'
 import { CreateProjectDialog } from '../../components/shared/CreateProjectDialog'
-import { ProjectMembersDialog } from '../../components/shared/ProjectMembersDialog'
 import { EditProjectDialog } from '../../components/shared/EditProjectDialog'
+import { ProjectAvatar } from '../../components/primitives/ProjectAvatar'
 import { useDeleteProject, useProjects } from '../../facades/projects/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
 import { isReactNativeWebView, usePhoneLayout } from '../../lib/mobile-shell'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection'
 
 type ProjectsSidebarNavProps = {
@@ -26,18 +27,8 @@ const PROJECT_NAV_SECTION_IDS: ProjectNavSectionId[] = ['projects']
 
 const projectNavCookieName = (id: ProjectNavSectionId) => `projectsNavCollapsed-${id}`
 
-const FolderIcon = () => (
-  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-    <path
-      d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
 export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProps) => {
-  const navigate = useNavigate()
+  const { token } = useAuthSession()
   const nativeTouchShell = isReactNativeWebView()
   const phoneLayout = usePhoneLayout()
   const { data: projects = [] } = useProjects()
@@ -45,7 +36,6 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ProjectRecord | null>(null)
-  const [membersTarget, setMembersTarget] = useState<ProjectRecord | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProjectRecord | null>(null)
   const [menuProjectId, setMenuProjectId] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<ProjectMenuPosition | null>(null)
@@ -142,10 +132,18 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
               return (
                 <div key={project.id} className="group relative">
                   <Link
-                    className={['admin-sb-item', isActive ? 'active' : ''].join(' ')}
+                    className={[
+                      'admin-sb-item sidebar-project-tile pr-10',
+                      isActive ? 'active' : '',
+                    ].join(' ')}
                     to={projectPath}
                   >
-                    <FolderIcon />
+                    <ProjectAvatar
+                      avatarAttachmentId={project.avatarAttachmentId}
+                      avatarEmoji={project.avatarEmoji}
+                      size={18}
+                      token={token}
+                    />
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
                   </Link>
                   {isOwner ? (
@@ -199,26 +197,6 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
                               Edit
                             </button>
                             <button
-                              onClick={() => {
-                                closeMenu()
-                                setMembersTarget(project)
-                              }}
-                              role="menuitem"
-                              type="button"
-                            >
-                              Members
-                            </button>
-                            <button
-                              onClick={() => {
-                                closeMenu()
-                                void navigate(`/projects/${project.id}/settings`)
-                              }}
-                              role="menuitem"
-                              type="button"
-                            >
-                              Settings
-                            </button>
-                            <button
                               className="admin-sidebar-menu-danger"
                               onClick={() => handleDelete(project)}
                               role="menuitem"
@@ -244,13 +222,6 @@ export const ProjectsSidebarNav = ({ pathname, isOwner }: ProjectsSidebarNavProp
           onClose={() => setEditTarget(null)}
           open
           project={editTarget}
-        />
-      ) : null}
-      {membersTarget ? (
-        <ProjectMembersDialog
-          isOwner={isOwner}
-          onClose={() => setMembersTarget(null)}
-          project={membersTarget}
         />
       ) : null}
       {deleteTarget ? (

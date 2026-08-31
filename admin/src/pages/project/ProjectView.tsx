@@ -1,7 +1,7 @@
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
+import { ProjectPageHeader } from '../../components/features/projects/ProjectPageHeader'
 import { TaskDialog } from '../../components/kanban/TaskDialog'
-import { AdminPageHeader } from '../../components/shared/AdminPageHeader'
 import type { PageHeaderAction } from '../../components/shared/ResponsivePageHeader'
 import { useProjectBoard } from '../../facades/board/hooks'
 import { useIterations } from '../../facades/iterations/hooks'
@@ -88,7 +88,7 @@ export const ProjectView = () => {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader actions={headerActions} title={project?.name ?? 'Project'} titleTone="page" />
+      <ProjectPageHeader actions={headerActions} project={project} titleTone="page" />
 
       <div className="min-h-0 flex-1">
         {tab === 'settings' ? (

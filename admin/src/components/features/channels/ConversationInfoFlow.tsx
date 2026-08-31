@@ -183,6 +183,7 @@ const ConversationMembers = ({
             currentUserId={currentUserId}
             key={person.id}
             onRemove={(userId) => removeMember.mutate({ channelId: activeChannel.id, userId })}
+            removeLabel="Remove from channel"
             removePending={removeMember.isPending}
             user={person}
           />
