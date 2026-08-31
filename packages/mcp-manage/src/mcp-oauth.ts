@@ -17,6 +17,7 @@ import {
   canonicalResource,
   discoverOAuthServerConfig,
   generatePkcePair,
+  OAuthDiscoveryError,
   registerDynamicClient,
   type OAuthDiscoveryOptions,
   type OAuthServerConfig,
@@ -161,7 +162,9 @@ export const ensureDynamicClient = async (
     )
   } catch (error) {
     throw new McpOAuthError(
-      MCP_OAUTH_ERROR_CODES.REGISTRATION_FAILED,
+      error instanceof OAuthDiscoveryError && error.status === 403
+        ? MCP_OAUTH_ERROR_CODES.CLIENT_APPROVAL_REQUIRED
+        : MCP_OAUTH_ERROR_CODES.REGISTRATION_FAILED,
       error instanceof Error ? error.message : String(error),
     )
   }

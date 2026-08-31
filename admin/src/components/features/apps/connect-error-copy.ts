@@ -20,6 +20,7 @@ export const CONNECT_ERROR_CODES = [
   'MCP_INITIALIZATION_FAILED',
   'CAPABILITY_DISCOVERY_FAILED',
   'OAUTH_DISCOVERY_FAILED',
+  'CLIENT_APPROVAL_REQUIRED',
   'CLIENT_REGISTRATION_FAILED',
   'CONNECTION_FAILED',
 ] as const
@@ -160,6 +161,14 @@ export const connectErrorPresentation = (
           + 'if it persists, ask the app’s provider whether third-party '
           + 'sign-in is enabled.',
         retryLabel: tryAgain,
+        tone: 'danger',
+      }
+    case 'CLIENT_APPROVAL_REQUIRED':
+      return {
+        message:
+          `${app} only accepts pre-approved sign-in clients. Ask its provider `
+          + 'to approve Nessie, then connect again.',
+        retryLabel: null,
         tone: 'danger',
       }
     case 'CONNECTION_FAILED':

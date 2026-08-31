@@ -10,6 +10,8 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 
 import {
+  MCP_OAUTH_ERROR_CODES,
+  McpOAuthError,
   completeOAuth,
   createInMemoryStateStore,
   type McpCatalogEntryRow,
@@ -23,6 +25,7 @@ import {
   AppConnectError,
   chooseConnectStep,
   disconnectAppConnection,
+  mapHandshakeError,
   reconnectAppConnection,
   refreshAppConnectionCapabilities,
   resolveConnection,
@@ -314,6 +317,27 @@ test('an unreachable server never leaks the upstream transport message', async (
       assert.equal(error.code, APP_CONNECT_ERROR_CODES.SERVER_UNREACHABLE)
       assert.equal(error.message, "We couldn't reach Acme's server.")
       assert.ok(!error.message.includes('internal.acme.example'))
+      return true
+    },
+  )
+})
+
+test('a provider that denies client registration names its approval requirement', () => {
+  assert.throws(
+    () => mapHandshakeError(
+      new McpOAuthError(
+        MCP_OAUTH_ERROR_CODES.CLIENT_APPROVAL_REQUIRED,
+        'Dynamic client registration failed: HTTP 403',
+      ),
+      'Figma MCP Server',
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof AppConnectError)
+      assert.equal(error.code, APP_CONNECT_ERROR_CODES.CLIENT_APPROVAL_REQUIRED)
+      assert.equal(
+        error.message,
+        'Figma MCP Server must approve Nessie as a sign-in client before it can connect.',
+      )
       return true
     },
   )

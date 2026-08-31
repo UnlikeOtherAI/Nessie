@@ -291,6 +291,10 @@ export type DynamicClientRegistration = {
 
 export class OAuthDiscoveryError extends Error {
   override readonly name = 'OAuthDiscoveryError'
+
+  constructor(message: string, public readonly status?: number) {
+    super(message)
+  }
 }
 
 export const registerDynamicClient = async (
@@ -323,6 +327,7 @@ export const registerDynamicClient = async (
     await response.body?.cancel().catch(() => undefined)
     throw new OAuthDiscoveryError(
       `Dynamic client registration failed: HTTP ${response.status}`,
+      response.status,
     )
   }
   const payload = (await response.json()) as Record<string, unknown>
