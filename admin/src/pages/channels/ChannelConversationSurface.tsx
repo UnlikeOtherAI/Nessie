@@ -62,6 +62,7 @@ interface ChannelConversationSurfaceProps {
     | 'invitePendingAgent'
     | 'invitingAgentId'
     | 'isSendPending'
+    | 'sendError'
     | 'mentionRef'
     | 'message'
     | 'optimisticMessages'
@@ -325,6 +326,7 @@ export const ChannelConversationSurface = ({
         inviteErrors={composer.inviteErrors}
         invitingAgentId={composer.invitingAgentId}
         isSendPending={composer.isSendPending}
+        sendError={composer.sendError}
         mentionEntities={mentionEntities}
         mentionRef={composer.mentionRef}
         message={composer.message}

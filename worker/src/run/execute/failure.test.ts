@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { ProviderHttpError } from '@nessie/runtime'
 import { handleRunExecutionFailure } from './failure.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
@@ -16,7 +17,7 @@ const ID = {
   thread: '00000000-0000-4000-8000-000000000006',
 }
 
-test('an interactive run tells the person waiting what went wrong', async () => {
+test('an interactive run tells the person waiting that Ledger credits are exhausted', async () => {
   const messages: Array<{ content: string; role: string }> = []
   const streamEvents: string[] = []
   // A real `$transaction` hands the callback a client carrying every model, so
@@ -105,7 +106,14 @@ test('an interactive run tells the person waiting what went wrong', async () => 
     },
     context,
     {
-      error: new Error('Missing API key for provider kimi'),
+      error: new ProviderHttpError(
+        'openai-compatible chat request failed with HTTP 402',
+        {
+          creditRefusal: 'ledger',
+          providerCode: 'budget_exceeded',
+          statusCode: 402,
+        },
+      ),
       planContext: null,
       streamStarted: false,
     },
@@ -115,7 +123,7 @@ test('an interactive run tells the person waiting what went wrong', async () => 
     {
       agentId: ID.agent,
       content:
-        'No API key is configured for the model provider. Ask a workspace owner to add the provider credential, then try again.',
+        'Your team has no AI credits remaining. Ask a billing manager to add credits or update billing in Credits & billing (/tokens), then try again.',
       role: 'assistant',
       threadId: ID.thread,
     },

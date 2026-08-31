@@ -19,6 +19,7 @@ interface ChannelComposerProps {
   placeholder: string
   message: string
   isSendPending: boolean
+  sendError: string | null
   attachments: ComposerAttachmentsState
   onChangeMessage: (value: string) => void
   onOversizePaste: (paste: string) => void
@@ -42,6 +43,7 @@ export const ChannelComposer = ({
   placeholder,
   message,
   isSendPending,
+  sendError,
   attachments,
   onChangeMessage,
   onOversizePaste,
@@ -110,6 +112,11 @@ export const ChannelComposer = ({
           ))}
         </div>
       )}
+      {sendError ? (
+        <p className="mb-2 text-sm text-[color:var(--danger-text)]" role="alert">
+          {sendError}
+        </p>
+      ) : null}
       <form className="admin-compose" onSubmit={onSubmitForm}>
         <MentionInput
           ref={mentionRef}

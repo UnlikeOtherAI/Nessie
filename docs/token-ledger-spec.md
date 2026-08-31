@@ -366,6 +366,35 @@ Browser-supplied action bodies and return URLs are ignored or rejected. The
 browser receives no UOA app key or actor assertion, and the API accepts no
 arbitrary upstream path.
 
+### 10.2 Ledger refusal during inference
+
+UOA and Ledger remain the sole authority for commercial credits at the point an
+inference call is made. Nessie does not preflight a credit balance, cache or
+persist one, translate local token telemetry into credits, or call UOA's
+direct-service-access confirmation seam for an agent, workflow, delegated
+sub-agent, connector, or any other indirect execution. The only direct-access
+confirmation remains the post-SSO-login call described above.
+
+Every connector carries a non-success provider response as a typed HTTP status
+and, when supplied, a structured provider code. A connector also stamps whether
+the request was routed through Ledger. Only a Ledger-routed `402` or
+`budget_exceeded` is an authoritative exhausted-credit refusal, not a
+retryable provider outage and never provider prose to show a person. A direct
+provider's `402` remains a provider-account billing failure. An interactive
+agent run follows ordinary failed-run terminalization and posts:
+
+> Your team has no AI credits remaining. Ask a billing manager to add credits
+> or update billing in Credits & billing (`/tokens`), then try again.
+
+The model-judged channel engagement router normally fails open to no action
+when its own model call fails. It rethrows only this typed credit refusal, so
+the worker can post the same one in-thread “request was not run” notice even
+though no agent run was created. Structural @mentions and personal-assistant
+DMs remain on their existing run paths. The Design Assistant sends the same
+safe message over SSE. Generic provider billing or quota failures retain their
+separate provider-account guidance and do not claim that the team's UOA credits
+are exhausted.
+
 UOA pins Stripe Checkout returns to Nessie's root route with exactly one
 `uoa_billing=checkout_complete` or `uoa_billing=checkout_cancelled` query
 parameter. The root route preserves the complete query while redirecting those

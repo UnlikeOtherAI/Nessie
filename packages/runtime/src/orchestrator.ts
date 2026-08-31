@@ -1,3 +1,4 @@
+import { isCreditsExhaustedError } from './inference/types.js'
 import type { LedgerAttribution } from './ledger.js'
 import type { ModelClient, ModelMessage } from './model.js'
 
@@ -249,7 +250,14 @@ export const decideAgentEngagement = async (
       temperature: 0.1,
       usage: input.usage,
     })
-  } catch {
+  } catch (error) {
+    // A normal routing outage must remain fail-open: the message is stored and
+    // the person can explicitly @mention an agent. Ledger's typed exhausted-
+    // credit refusal is different: without surfacing it here a model-judged
+    // human turn would disappear without any request run to terminalize.
+    if (isCreditsExhaustedError(error)) {
+      throw error
+    }
     // A router failure must never block a user message from being stored.
     // Fall back to "no action" and let the user re-prompt or @mention.
     return []
