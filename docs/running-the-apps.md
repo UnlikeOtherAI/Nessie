@@ -78,6 +78,9 @@ An interrupted browser hand-off is always recoverable: the login screen offers
 attempt it observed. In a web browser, returning with Back cancels the pending
 attempt instead of reopening the provider; a restored browser page also
 reconciles its session again so it cannot remain at **Loading workspace…**.
+If a restored browser nevertheless leaves its session check unresolved for ten
+seconds, Nessie fails closed to `/login`; an unresolved request never counts as
+an authenticated session.
 
 ### Desktop notifications
 

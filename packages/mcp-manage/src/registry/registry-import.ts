@@ -1,5 +1,6 @@
 import type { McpAppModerationState, PrismaClient } from '@prisma/client'
 
+import { isAppHomeSuggestionRegistryName } from '../apps/app-home-suggestions.js'
 import { resolveAvailableAppSlug } from '../apps/app-slug.js'
 import { isUniqueViolation } from '../mcp-catalog-guards.js'
 import { assertMcpUrlSafe } from '../mcp-security.js'
@@ -181,17 +182,21 @@ const memoizedGuard = (
 }
 
 /**
- * Auto-promotion is objective and one-directional (contract §2). A record that
- * clears every gate lifts a row nobody has looked at into the store; a record
- * that stops clearing them does **not** pull an app back out. Removal is a
- * moderation decision, and `hidden` / `blocked` / `approved` are decisions
- * already made — sync never overrules one.
+ * Automatic promotion is objective and one-directional (contract §2), while a
+ * source-controlled App Store home selection is an equally explicit curator
+ * decision. Either lifts a row nobody has looked at into the store; a record
+ * that later stops clearing automatic gates does **not** pull an app back out.
+ * Removal is a moderation decision, and `hidden` / `blocked` / `approved` are
+ * decisions already made — sync never overrules one.
  */
 const promotedModerationState = (
   current: McpAppModerationState,
-  promotable: boolean,
+  mapping: RegistryAppMapping,
 ): McpAppModerationState | null =>
-  promotable && current === 'discovered' ? 'curated' : null
+  (mapping.promotable || isAppHomeSuggestionRegistryName(mapping.registryName))
+    && current === 'discovered'
+    ? 'curated'
+    : null
 
 const createRegistryApp = async (
   prisma: PrismaClient,
@@ -236,7 +241,10 @@ const createRegistryApp = async (
           tags: fields.tags,
           aliases: fields.aliases,
           trustLevel: fields.trustLevel,
-          moderationState: mapping.promotable ? 'curated' : 'discovered',
+          moderationState:
+            mapping.promotable || isAppHomeSuggestionRegistryName(mapping.registryName)
+              ? 'curated'
+              : 'discovered',
           appSource: 'mcp_registry',
           distribution: 'remote',
           registryName: mapping.registryName,
@@ -305,7 +313,7 @@ const updateRegistryApp = async (
   })
   const moderationState = promotedModerationState(
     existing.moderationState,
-    mapping.promotable,
+    mapping,
   )
 
   await prisma.mcpCatalogEntry.update({
