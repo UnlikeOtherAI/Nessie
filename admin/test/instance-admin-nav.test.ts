@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   ADMIN_NAV,
+  isAdminNavGroupVisible,
   isAdminNavItemVisible,
   type AdminNavViewer,
 } from '../src/layouts/admin-shell/AdminSidebarNav.js'
@@ -30,6 +31,12 @@ const navItem = (path: string) => {
   return item
 }
 
+const platform = () => {
+  const group = ADMIN_NAV.find((entry) => entry.id === 'platform')
+  assert.ok(group, 'no Platform nav group')
+  return group
+}
+
 test('System Health is visible to the instance super-admin only', () => {
   const health = navItem('/ops')
 
@@ -53,6 +60,17 @@ test('org-scoped operational surfaces retain their owner doorway', () => {
       `${path} is organisation-scoped, so superAdmin alone must not open it`,
     )
   }
+})
+
+test('Platform owns both operational and instance controls without creating an empty section', () => {
+  assert.deepEqual(
+    platform().items.map((item) => item.path),
+    ['/ops', '/settings/push', '/audit', '/policy', '/ops/usage'],
+  )
+  assert.equal(ADMIN_NAV.some((group) => group.id === 'ops'), false)
+  assert.equal(isAdminNavGroupVisible(platform(), viewer({ isOwner: true })), true)
+  assert.equal(isAdminNavGroupVisible(platform(), viewer({ isSuperAdmin: true })), true)
+  assert.equal(isAdminNavGroupVisible(platform(), viewer()), false)
 })
 
 test('organization settings are also reachable by an organization admin', () => {

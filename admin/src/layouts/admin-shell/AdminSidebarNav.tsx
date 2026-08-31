@@ -49,13 +49,17 @@ type AdminNavItem = {
   badgeCount?: number;
 };
 
-type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'ops' | 'platform';
+type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'platform';
 
 type AdminNavGroup = {
   id: AdminNavGroupId;
   heading: string;
-  ownerOnly?: boolean;
-  superAdminOnly?: boolean;
+  /**
+   * A section may host items with distinct, non-overlapping audiences. Its
+   * visibility must therefore be explicit rather than inherited from the
+   * narrowest item inside it.
+   */
+  visibleTo?: (viewer: AdminNavViewer) => boolean;
   items: AdminNavItem[];
 };
 
@@ -335,13 +339,40 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
-    // Owner-only operational surfaces, grouped so the whole section — header
-    // included — never renders for a non-owner. Each item keeps its own
-    // ownerOnly gate as defence in depth.
-    id: 'ops',
-    heading: 'Ops',
-    ownerOnly: true,
+    // Platform now owns both deployment administration and the organisation
+    // operational controls. Individual item gates preserve the two audiences:
+    // an owner sees the three organisation-scoped controls, while a deployment
+    // super-admin sees Health and Push credentials.
+    id: 'platform',
+    heading: 'Platform',
+    visibleTo: ({ isOwner, isSuperAdmin }) => isOwner || isSuperAdmin,
     items: [
+      {
+        path: '/ops',
+        label: 'Health',
+        exact: true,
+        // Deployment-wide infrastructure (worker heartbeat, queue, dead jobs).
+        // `GET /api/ops/health` requires `User.superAdmin`.
+        visibleTo: (viewer) => viewer.isSuperAdmin,
+        icon: icon(
+          <path d="M3 12h4l2 6 4-12 2 6h6" strokeLinecap="round" strokeLinejoin="round" />,
+        ),
+      },
+      {
+        path: '/settings/push',
+        label: 'Push credentials',
+        visibleTo: (viewer) => viewer.isSuperAdmin,
+        icon: icon(
+          <>
+            <circle cx="8" cy="8" r="3.5" />
+            <path
+              d="M10.6 10.6L20 20M16.5 16.5l2-2M18.5 18.5l1.5-1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>,
+        ),
+      },
       {
         path: '/audit',
         label: 'Audit log',
@@ -378,39 +409,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       },
     ],
   },
-  {
-    // Instance administration (deployment-wide), not organisation administration.
-    id: 'platform',
-    heading: 'Platform',
-    superAdminOnly: true,
-    items: [
-      {
-        path: '/ops',
-        label: 'Health',
-        exact: true,
-        // Deployment-wide infrastructure (worker heartbeat, queue, dead jobs).
-        // `GET /api/ops/health` requires `User.superAdmin`.
-        visibleTo: (viewer) => viewer.isSuperAdmin,
-        icon: icon(
-          <path d="M3 12h4l2 6 4-12 2 6h6" strokeLinecap="round" strokeLinejoin="round" />,
-        ),
-      },
-      {
-        path: '/settings/push',
-        label: 'Push credentials',
-        icon: icon(
-          <>
-            <circle cx="8" cy="8" r="3.5" />
-            <path
-              d="M10.6 10.6L20 20M16.5 16.5l2-2M18.5 18.5l1.5-1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </>,
-        ),
-      },
-    ],
-  },
 ];
 
 const adminNavCookieName = (id: AdminNavGroupId) => `adminNavCollapsed-${id}`;
@@ -418,6 +416,9 @@ const adminNavCookieName = (id: AdminNavGroupId) => `adminNavCollapsed-${id}`;
 /** One gate for every item: its own rule when it has one, else `ownerOnly`. */
 export const isAdminNavItemVisible = (item: AdminNavItem, viewer: AdminNavViewer): boolean =>
   item.visibleTo ? item.visibleTo(viewer) : !item.ownerOnly || viewer.isOwner;
+
+export const isAdminNavGroupVisible = (group: AdminNavGroup, viewer: AdminNavViewer): boolean =>
+  group.visibleTo?.(viewer) ?? true;
 
 /**
  * Whether `pathname` lights up this item: its own path (exact or prefix) or any
@@ -496,10 +497,8 @@ export const AdminSidebarNav = ({
   );
   const visibleGroups = useMemo(
     () =>
-      ADMIN_NAV.filter(
-        (group) => (!group.ownerOnly || isOwner) && (!group.superAdminOnly || isSuperAdmin),
-      ),
-    [isOwner, isSuperAdmin],
+      ADMIN_NAV.filter((group) => isAdminNavGroupVisible(group, viewer)),
+    [viewer],
   );
   const { collapsedSections, toggleSection } = useCookieBackedSidebarSections(
     ADMIN_NAV.map((group) => group.id),
