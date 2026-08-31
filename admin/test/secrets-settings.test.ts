@@ -90,6 +90,14 @@ const { act, createElement: h, useState } = React
 const { createRoot } = await import('react-dom/client')
 
 const installDom = () => {
+  const previousAttachEvent = Object.getOwnPropertyDescriptor(
+    dom.window.HTMLElement.prototype,
+    'attachEvent',
+  )
+  Object.defineProperty(dom.window.HTMLElement.prototype, 'attachEvent', {
+    configurable: true,
+    value: () => undefined,
+  })
   const values = {
     document: dom.window.document,
     Element: dom.window.Element,
@@ -114,6 +122,11 @@ const installDom = () => {
     for (const [key, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor)
       else Reflect.deleteProperty(globalThis, key)
+    }
+    if (previousAttachEvent) {
+      Object.defineProperty(dom.window.HTMLElement.prototype, 'attachEvent', previousAttachEvent)
+    } else {
+      Reflect.deleteProperty(dom.window.HTMLElement.prototype, 'attachEvent')
     }
   }
 }
