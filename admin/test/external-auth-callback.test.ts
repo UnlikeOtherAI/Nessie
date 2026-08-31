@@ -27,8 +27,23 @@ test('native and web parsers accept code, cancellation and provider errors', () 
       redirectUri: 'https://app.example/login',
     },
   )
+  assert.deepEqual(
+    parseWebAuthCallbackUrl(
+      'https://app.example/login/completing?code=abc&state=s',
+      'https://app.example',
+    ),
+    {
+      callback: { code: 'abc', kind: 'code', state: 's' },
+      // The code was minted for the provider's byte-exact /login redirect URI.
+      redirectUri: 'https://app.example/login',
+    },
+  )
   assert.equal(
     parseWebAuthCallbackUrl('https://evil.example/login?code=abc', 'https://app.example'),
+    null,
+  )
+  assert.equal(
+    parseWebAuthCallbackUrl('https://app.example/channels?code=abc', 'https://app.example'),
     null,
   )
 })

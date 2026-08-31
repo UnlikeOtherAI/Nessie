@@ -31,12 +31,10 @@ export type SessionDebugImport = {
 }
 
 export const shouldStartAutomaticSignIn = (input: {
-  callbackInUrl: boolean
   hasAutoRedirectProvider: boolean
   sessionImportOpen: boolean
   unauthenticated: boolean
 }): boolean => input.unauthenticated
-  && !input.callbackInUrl
   && input.hasAutoRedirectProvider
   && !input.sessionImportOpen
 
