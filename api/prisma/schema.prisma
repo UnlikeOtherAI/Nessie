@@ -123,6 +123,32 @@ enum AgentTriggerDeliveryStatus {
   skipped_overlap
 }
 
+enum AgentTodoTemplateStatus {
+  draft
+  active
+  archived
+}
+
+enum AgentTodoStatus {
+  open
+  running
+  completed
+  cancelled
+}
+
+enum AgentTodoStepStatus {
+  pending
+  running
+  completed
+  failed
+  skipped
+}
+
+enum AgentTodoActorType {
+  user
+  agent
+}
+
 enum PlanStatus {
   draft
   active
@@ -923,6 +949,8 @@ model User {
   executorSessionControlLeases        ExecutorSession[]               @relation("ExecutorSessionControlLease")
   executorContinuations               ExecutorContinuation[]          @relation("ExecutorContinuationActor")
   executorAvailabilityCandidates      ExecutorAvailabilityCandidate[] @relation("ExecutorAvailabilityCandidateActor")
+  createdAgentTodoTemplates           AgentTodoTemplate[]             @relation("AgentTodoTemplateCreatedBy")
+  createdAgentTodos                   AgentTodo[]                     @relation("AgentTodoCreatedBy")
   avatarAttachment                    Attachment?                     @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -1129,6 +1157,8 @@ model Organization {
   commsOAuthStates                 CommsOAuthState[]
   commsEvents                      CommsEvent[]
   executors                        Executor[]
+  agentTodoTemplates               AgentTodoTemplate[]
+  agentTodos                       AgentTodo[]
 
   @@map("organizations")
 }
@@ -1478,6 +1508,7 @@ model Thread {
   triggerTargets           AgentTrigger[]            @relation("TriggerTargetThread")
   productIntegrationRuns   ProductIntegrationRun[]
   pushSurfacePresences     UserPushSurfacePresence[]
+  agentTodos               AgentTodo[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -1944,6 +1975,7 @@ model Agent {
   // only by the deployment backstop. `effort` no longer implies spend caps —
   // see docs/plans/2026-08-05-run-budgets-context-and-research-routing.md.
   runLimits                      Json?                           @map("run_limits")
+  todosEnabled                   Boolean                         @default(false) @map("todos_enabled")
   provider                       String?                         @map("provider")
   model                          String?                         @map("model")
   routingProfileId               String?                         @map("routing_profile_id") @db.Uuid
@@ -1996,6 +2028,8 @@ model Agent {
   userAlertActivity              UserAlert[]
   callsCreatedVia                Call[]                           @relation("CallCreatedViaAgent")
   runThreadPendingMessages       RunThreadPendingMessage[]
+  todoTemplates                  AgentTodoTemplate[]             @relation("AgentTodoTemplateAgent")
+  todos                          AgentTodo[]                     @relation("AgentTodoAgent")
   organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // NoAction, not the Prisma default SetNull: on a COMPOSITE foreign key
   // SET NULL blanks every referencing column, which would wipe the agent's
@@ -2003,6 +2037,7 @@ model Agent {
   // deleted (deactivation is a reversible flag), so this never fires.
   ownerMembership                OrganizationMember?             @relation("AgentOwner", fields: [organizationId, ownerUserId], references: [organizationId, userId], onDelete: NoAction, onUpdate: NoAction)
 
+  @@unique([organizationId, id])
   @@index([organizationId])
   @@index([organizationId, projectId])
   @@index([avatarAttachmentId])
@@ -2195,6 +2230,8 @@ model Run {
   basisScopes                    RunBasisScope[]
   executorSessions               ExecutorSession[]
   executorBindings               ExecutorBinding[]
+  proposedAgentTodoTemplates     AgentTodoTemplate[]             @relation("AgentTodoTemplateProposedByRun")
+  activeAgentTodos               AgentTodo[]                     @relation("AgentTodoActiveRun")
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -2405,6 +2442,7 @@ model AgentTrigger {
   workflowRuns             WorkflowRun[]
   runThreadPendingMessages RunThreadPendingMessage[]
   healthAlerts             UserAlert[]               @relation("TriggerHealthAlert")
+  agentTodos               AgentTodo[]
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
@@ -2474,6 +2512,86 @@ model Plan {
   @@index([organizationId, status, createdAt(sort: Desc)])
   @@index([agentId, status])
   @@map("plans")
+}
+
+model AgentTodoTemplate {
+  id              String                  @id @default(uuid()) @db.Uuid
+  organizationId  String                  @map("organization_id") @db.Uuid
+  agentId         String                  @map("agent_id") @db.Uuid
+  name            String
+  description     String?
+  steps           Json
+  version         Int                     @default(1)
+  status          AgentTodoTemplateStatus @default(draft)
+  authorType      AgentTodoActorType      @map("author_type")
+  createdByUserId String?                 @map("created_by_user_id") @db.Uuid
+  proposedByRunId String?                 @map("proposed_by_run_id") @db.Uuid
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent           Agent                   @relation("AgentTodoTemplateAgent", fields: [organizationId, agentId], references: [organizationId, id], onDelete: Cascade)
+  createdByUser   User?                   @relation("AgentTodoTemplateCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  proposedByRun   Run?                    @relation("AgentTodoTemplateProposedByRun", fields: [proposedByRunId], references: [id], onDelete: SetNull)
+  todos           AgentTodo[]
+
+  @@unique([agentId, id])
+  @@index([organizationId, agentId, status])
+  @@index([createdByUserId])
+  @@index([proposedByRunId])
+  @@map("agent_todo_templates")
+}
+
+model AgentTodo {
+  id              String             @id @default(uuid()) @db.Uuid
+  organizationId  String             @map("organization_id") @db.Uuid
+  agentId         String             @map("agent_id") @db.Uuid
+  templateId      String?            @map("template_id") @db.Uuid
+  templateVersion Int?               @map("template_version")
+  title           String
+  status          AgentTodoStatus    @default(open)
+  createdByUserId String?            @map("created_by_user_id") @db.Uuid
+  triggerId       String?            @map("trigger_id") @db.Uuid
+  threadId        String?            @map("thread_id") @db.Uuid
+  activeRunId     String?            @map("active_run_id") @db.Uuid
+  completedAt     DateTime?          @map("completed_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent           Agent              @relation("AgentTodoAgent", fields: [organizationId, agentId], references: [organizationId, id], onDelete: Cascade)
+  template        AgentTodoTemplate? @relation(fields: [agentId, templateId], references: [agentId, id], onDelete: Restrict)
+  createdByUser   User?              @relation("AgentTodoCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  trigger         AgentTrigger?      @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  thread          Thread?            @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  activeRun       Run?               @relation("AgentTodoActiveRun", fields: [activeRunId], references: [id], onDelete: SetNull)
+  steps           AgentTodoStep[]
+
+  @@index([organizationId, agentId, status])
+  @@index([agentId, templateId])
+  @@index([createdByUserId])
+  @@index([triggerId])
+  @@index([threadId])
+  @@index([activeRunId])
+  @@map("agent_todos")
+}
+
+model AgentTodoStep {
+  id                 String              @id @default(uuid()) @db.Uuid
+  todoId             String              @map("todo_id") @db.Uuid
+  sequence           Int
+  key                String
+  title              String
+  instructions       String
+  status             AgentTodoStepStatus @default(pending)
+  note               String?
+  updatedByActorType AgentTodoActorType? @map("updated_by_actor_type")
+  updatedByActorId   String?             @map("updated_by_actor_id") @db.Uuid
+  completedAt        DateTime?           @map("completed_at")
+  todo               AgentTodo           @relation(fields: [todoId], references: [id], onDelete: Cascade)
+
+  @@unique([todoId, sequence])
+  @@unique([todoId, key])
+  @@index([todoId])
+  @@map("agent_todo_steps")
 }
 
 model PlanStep {

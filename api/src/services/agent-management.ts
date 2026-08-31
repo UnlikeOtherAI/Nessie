@@ -52,6 +52,7 @@ export const updateAgentRecord = async (
     provider?: string
     role?: string
     runLimits?: AgentRunLimits | null
+    todosEnabled?: boolean
     surfacePolicy?: 'dm_only' | 'shared'
     systemPrompt?: string
     systemManaged?: boolean
@@ -119,6 +120,9 @@ export const updateAgentRecord = async (
         surfacePolicy: existing.surfacePolicy,
         systemPrompt: input.systemPrompt ?? existing.systemPrompt,
         systemManaged: existing.systemManaged,
+        todosEnabled: existing.systemManaged
+          ? existing.todosEnabled
+          : input.todosEnabled ?? existing.todosEnabled,
         toolPolicy: toolPolicy ?? undefined,
       },
       include: {
@@ -186,6 +190,7 @@ export const cloneAgentRecord = async (
       systemManaged: true,
       systemPrompt: true,
       teamId: true,
+      todosEnabled: true,
       toolPolicy: true,
     },
   })
@@ -218,6 +223,7 @@ export const cloneAgentRecord = async (
       systemPrompt: source.systemPrompt,
       systemManaged: false,
       teamId: source.teamId,
+      todosEnabled: source.todosEnabled,
       toolPolicy,
     },
     include: agentRecordInclude,

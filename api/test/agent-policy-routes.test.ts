@@ -56,6 +56,7 @@ const makeAgent = (
   systemManaged: false,
   systemPrompt: null,
   teamId,
+  todosEnabled: false,
   toolPolicy,
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 })
@@ -447,15 +448,17 @@ test('generic PUT cannot edit a foreign-organization agent', async () => {
   }
 })
 
-test('clone strips explicit grants and markers but keeps ordinary policy', async () => {
-  const state = makeApp('member', [
-    makeAgent(agentId, organizationId, {
+test('clone keeps todosEnabled and ordinary policy while stripping protected keys', async () => {
+  const source = {
+    ...makeAgent(agentId, organizationId, {
       [marker]: true,
       [projectedPolicyKey]: true,
       [DEEP_WATER_RUN_UPDATE_TOOL_ID]: true,
       web_search: false,
     }),
-  ])
+    todosEnabled: true,
+  }
+  const state = makeApp('member', [source])
   try {
     const response = await state.app.inject({
       method: 'POST',
@@ -463,11 +466,13 @@ test('clone strips explicit grants and markers but keeps ordinary policy', async
     })
 
     assert.equal(response.statusCode, 201)
+    assert.equal(response.json().data.todosEnabled, true)
     assert.deepEqual(response.json().data.toolPolicy, { web_search: false })
     const cloned = [...state.agents.values()].find((agent) => agent.id !== agentId)
     assert.equal(cloned?.organizationId, organizationId)
     assert.equal(cloned?.projectId, projectId)
     assert.equal(cloned?.teamId, teamId)
+    assert.equal(cloned?.todosEnabled, true)
     assert.equal(state.createCalls, 1)
   } finally {
     await state.app.close()

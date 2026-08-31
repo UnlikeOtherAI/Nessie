@@ -101,6 +101,7 @@ export type CreateAgentRecordInput = {
   provider?: string
   role: string
   runLimits?: AgentRunLimits | null
+  todosEnabled?: boolean
   surfacePolicy?: 'dm_only' | 'shared'
   systemPrompt?: string
   systemManaged?: boolean
@@ -205,6 +206,7 @@ export const createAgentRecord = async (
       systemPrompt: input.systemPrompt,
       systemManaged: false,
       teamId: input.teamId,
+      todosEnabled: input.todosEnabled ?? false,
       toolPolicy: input.toolPolicy ?? undefined,
     },
     include: agentRecordInclude,

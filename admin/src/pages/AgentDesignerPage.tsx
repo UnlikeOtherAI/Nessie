@@ -129,6 +129,7 @@ export const AgentDesignerContent = ({
       model: editingAgent.model ?? '',
       runLimits: runLimitsToForm(readAgentRunLimits(editingAgent)),
       systemPrompt: editingAgent.systemPrompt ?? '',
+      todosEnabled: editingAgent.todosEnabled,
       tools: editingAgent.toolPolicy ?? {},
     }
   }, [editingAgent])
@@ -219,6 +220,7 @@ export const AgentDesignerContent = ({
         role: state.role.trim() || 'assistant',
         runLimits,
         systemPrompt: state.systemPrompt.trim() || undefined,
+        todosEnabled: state.todosEnabled,
         provider: state.provider || undefined,
         model: state.model || undefined,
         toolPolicy,
@@ -231,6 +233,7 @@ export const AgentDesignerContent = ({
         role: state.role.trim() || 'assistant',
         runLimits: runLimits ?? undefined,
         systemPrompt: state.systemPrompt.trim() || undefined,
+        todosEnabled: state.todosEnabled,
         provider: state.provider || undefined,
         model: state.model || undefined,
         toolPolicy: Object.keys(toolPolicy).length > 0 ? toolPolicy : undefined,
@@ -336,6 +339,7 @@ export const AgentDesignerContent = ({
             <AgentDesignerForm
               actions={actions}
               canManageExplicitTools={isOwner}
+              canManageTodos={isOwner}
               modelOptions={modelOptions}
               modelOptionsError={modelOptionsError}
               modelsLoading={modelOptionsQuery.isLoading}

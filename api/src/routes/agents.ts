@@ -142,6 +142,20 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
+    // Creating an agent is member-level, but enabling its to-do capability is
+    // agent configuration and therefore follows the owner-only update route.
+    // Refuse the protected input instead of silently dropping it so callers
+    // can distinguish an authorization failure from an ordinary disabled agent.
+    if (body.todosEnabled === true && !actorContext.actor.roles?.includes('owner')) {
+      sendApiError(
+        reply,
+        403,
+        'AGENT_TODOS_OWNER_REQUIRED',
+        'Only organization owners can enable to-dos for an agent.',
+      )
+      return reply
+    }
+
     if (
       body.avatarAttachmentId
       && !(await validateAgentAvatarAttachment({
@@ -210,6 +224,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         runLimits: body.runLimits,
         systemPrompt: body.systemPrompt,
         teamId: actorContext.tenant.teamId,
+        todosEnabled: body.todosEnabled,
         toolPolicy: body.toolPolicy,
       })
     } catch (error) {
