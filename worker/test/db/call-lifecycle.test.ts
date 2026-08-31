@@ -10,7 +10,7 @@ import { handleCallRingTimeout } from '../../src/control/call-lifecycle.js'
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 const jitsi = { callLink: { env: { NESSIE_JITSI_DOMAIN: 'meet.example.test' } } }
 
-runDatabaseTest('timeout marks only still-ringing invites missed and writes a visible missed-call message', async (t) => {
+runDatabaseTest('timeout commits a missed call when its later transition realtime publish fails', async (t) => {
   const prisma = new PrismaClient()
   const suffix = randomUUID()
   const org = await prisma.organization.create({ data: { name: `call-missed-${suffix}` } })
@@ -44,12 +44,18 @@ runDatabaseTest('timeout marks only still-ringing invites missed and writes a vi
   })
 
   const publications: Array<{ data: Record<string, unknown>; event: string; scopes: unknown }> = []
+  let transitionPublishAttempts = 0
   const realtimeTransport = {
     publishWs: async (scopes: unknown, input: { data: Record<string, unknown>; event: string }) => {
       publications.push({ ...input, scopes })
+      if (input.event === 'call.updated') {
+        transitionPublishAttempts += 1
+        throw new Error('simulated transition realtime failure')
+      }
     },
   }
   assert.equal(await handleCallRingTimeout(prisma, realtimeTransport as never, started.id), true)
+  assert.equal(transitionPublishAttempts, 1)
   const call = await prisma.call.findUniqueOrThrow({ where: { id: started.id }, include: { invites: true } })
   assert.equal(call.status, 'missed')
   assert.equal(call.invites[0]?.state, 'missed')

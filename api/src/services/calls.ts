@@ -158,20 +158,20 @@ export const declineCallInvite = async (
 /**
  * The Web Push response path is deliberately stricter than the authenticated
  * accept/decline routes: a signed response token is consumed exactly once by
- * requiring the original call revision and a still-ringing invite.
+ * requiring its bound invite to still be ringing. Call revisions track the
+ * whole call, so another invitee's response must not make this token stale.
  */
 export const respondToCallInviteAction = async (
   prisma: PrismaClient,
   input: {
     action: 'accept' | 'decline'
     callId: string
-    revision: number
     userId: string
   },
 ): Promise<CallTransition> => prisma.$transaction(async (tx) => {
   await lockCall(tx, input.callId)
   const current = await loadCall(tx, input.callId)
-  if (current.status !== 'ringing' || current.revision !== input.revision) {
+  if (terminalStatuses.has(current.status as CallStatus)) {
     throw new CallStateError('CALL_NO_LONGER_RINGING')
   }
   const invite = current.invites.find((entry) => entry.userId === input.userId)
@@ -184,16 +184,22 @@ export const respondToCallInviteAction = async (
 
   if (input.action === 'accept') {
     const activated = await tx.call.updateMany({
-      where: { id: input.callId, revision: input.revision, status: 'ringing' },
+      where: { id: input.callId, status: 'ringing' },
       data: { revision: { increment: 1 }, status: 'active' },
     })
-    if (activated.count !== 1) throw new CallStateError('CALL_NO_LONGER_RINGING')
+    if (current.status === 'ringing' && activated.count !== 1) {
+      throw new CallStateError('CALL_NO_LONGER_RINGING')
+    }
   } else {
     const ringingInvites = await tx.callInvite.count({ where: { callId: input.callId, state: 'ringing' } })
+    const acceptedInvites = await tx.callInvite.count({ where: { callId: input.callId, state: 'accepted' } })
+    const lastResponse = acceptedInvites === 0 && ringingInvites === 0
     const completed = await tx.call.updateMany({
-      where: { id: input.callId, revision: input.revision, status: 'ringing' },
+      where: lastResponse
+        ? { id: input.callId, status: 'ringing' }
+        : { id: input.callId, status: current.status },
       data: {
-        ...(ringingInvites === 0 ? { endedAt: new Date(), status: 'declined' } : {}),
+        ...(lastResponse ? { endedAt: new Date(), status: 'declined' } : {}),
         revision: { increment: 1 },
       },
     })

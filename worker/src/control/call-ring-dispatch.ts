@@ -133,10 +133,10 @@ const webRingPayload = (context: CallPushContext, authSecret: string): PushPaylo
     data: {
       ...nativeRingPayload(context).data,
       acceptToken: issueCallActionToken({
-        action: 'accept', callId: context.callId, expiresAt, revision: context.revision, userId: context.userId,
+        action: 'accept', callId: context.callId, expiresAt, userId: context.userId,
       }, authSecret),
       declineToken: issueCallActionToken({
-        action: 'decline', callId: context.callId, expiresAt, revision: context.revision, userId: context.userId,
+        action: 'decline', callId: context.callId, expiresAt, userId: context.userId,
       }, authSecret),
       meetingUri: context.meetingUri,
     },
