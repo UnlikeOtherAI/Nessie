@@ -117,10 +117,13 @@ Mechanics beyond those invariants:
   streamed-vs-parsed byte assertion and save path remain independent; the
   current `RunBasisScope` is persisted before a restricted session or fragment
   becomes bootstrap-readable (the final reply is too late for a mid-stream
-  reconnect), and the
-  document-stream list/detail routes apply `RunBasisScope` through the shared
-  run-disclosure reader before returning any session, target name, offset, or
-  markdown to a reconnecting viewer.
+  reconnect). The barrier remembers exact scope keys and re-stamps whenever
+  the monotone run basis widens; it does no database work for the common
+  unrestricted fragment. The document-stream list, detail **and retarget**
+  routes apply `RunBasisScope` through the shared run-disclosure reader before
+  returning names/content or accepting a target mutation, with an unreadable
+  session shaped exactly like an absent one. A client receiving a structural
+  `restricted: true` frame discards that session, so no empty popup survives.
 
 - The OpenAI-compatible connector enriches each `tool_call.delta` fragment with
   the call's accumulated `id`/`toolName`/`index` (`openai-chat-protocol.ts`) —
@@ -162,10 +165,13 @@ Mechanics beyond those invariants:
   spaces keep the `kb_publish_request` review gate.
 - Edits (`kb_document_edit`): the recorder loads the base document through the
   same reader the save uses (`knowledge-document-io.ts` `readMarkdownDocument`)
-  and seeds the durable lane with it *before* `stream.document.start`, so a
-  bootstrapping client sees the document rather than an empty page. The durable
-  lane switches to **snapshot** mode for edits (mid-document changes cannot be
-  a log of appends; bootstrap concatenates chunks in id order either way).
+  which resolves the source space through the shared `scopeForVisibility` path
+  and feeds `consumedSources` before it opens the attachment. The recorder then
+  seeds the base through the same restriction barrier as every durable append,
+  *before* `stream.document.start`, so a private edit is restricted from its
+  first frame and an entitled bootstrap sees the document rather than an empty
+  page. The durable lane switches to **snapshot** mode for edits (mid-document
+  changes cannot be a log of appends; bootstrap concatenates chunks in id order).
   `stream.document.edit {editIndex, offset, removeLength}` precedes the
   replacement deltas; `stream.document.delta.offset` is the absolute insertion
   point (composing a new document is the degenerate case: one edit at offset 0

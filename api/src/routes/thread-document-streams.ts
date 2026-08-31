@@ -125,6 +125,7 @@ export const registerThreadDocumentStreamRoutes = (
         sessionId,
         spaceId: body.spaceId,
         threadId: thread.id,
+        userId: actorContext.actor.actorId,
       },
     )
 

@@ -14,6 +14,7 @@ import { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from '@nessie/r
 import { createDurableLane, createLiveLane } from './document-stream-lanes.js'
 import { createDocumentEditTracker, type DocumentEditTracker } from './document-stream-edit.js'
 import { createDocumentStreamDisclosureGate } from './document-stream-disclosure.js'
+import type { BasisScope } from './disclosure-basis.js'
 
 /** The argument whose value is the document body. */
 const MARKDOWN_ARGUMENT = 'markdown'
@@ -77,8 +78,9 @@ type TrackedCall = {
 }
 
 type RecorderInput = {
+  getRestrictionBasis: () => readonly BasisScope[]
   isRestricted: () => boolean
-  persistRestrictionBasis: () => Promise<void>
+  persistRestrictionBasis: (basis: readonly BasisScope[]) => Promise<void>
   prisma: PrismaClient
   realtimeTransport: Pick<PgRealtimeTransport, 'publishSse' | 'publishSseEphemeral'>
   run: RunContext
@@ -92,7 +94,11 @@ type RecorderInput = {
   >
 }
 
-/** Streams in-flight compose/edit arguments; tool execution still authorizes. */
+/**
+ * Turns in-flight compose/edit arguments into a live preview; the tool still
+ * authorizes and saves. Failures are swallowed — a broken preview must never
+ * fail a run that is otherwise writing a perfectly good document.
+ */
 export const createDocumentStreamRecorder = (
   input: RecorderInput,
 ): DocumentStreamRecorder => {
@@ -114,14 +120,19 @@ export const createDocumentStreamRecorder = (
     }
   }
 
+  const appendDurable = (
+    call: TrackedCall,
+    fragment: { content: string; offset: number },
+  ): void => disclosure.appendDurable(() => call.durable?.append(fragment))
+
   const terminalize = async (
     call: TrackedCall,
     reason: DocumentStreamErrorReason,
   ): Promise<void> => {
-    if (call.terminal || !call.sessionId) return
-    call.terminal = true
-    const sessionId = call.sessionId
     try {
+      if (call.terminal || !call.sessionId) return
+      call.terminal = true
+      const sessionId = call.sessionId
       const updated = await input.prisma.runDocumentSession.updateMany({
         data: {
           errorReason: reason,
@@ -132,18 +143,17 @@ export const createDocumentStreamRecorder = (
         where: { id: sessionId, status: { in: ['streaming', 'saving'] } },
       })
       if (updated.count === 0) return
+      const restricted = disclosure.isRestricted()
+      if (restricted) await disclosure.beforeRestrictedReadable()
+      await publish('stream.document.error', {
+        reason,
+        runId: parseRunId(input.run.id),
+        sessionId,
+        ...(restricted ? { restricted: true } : {}),
+      })
     } catch (error) {
       console.warn('[worker] document stream terminalize failed', error)
-      return
     }
-    const restricted = disclosure.isRestricted()
-    if (restricted) await disclosure.beforeRestrictedReadable()
-    await publish('stream.document.error', {
-      reason,
-      runId: parseRunId(input.run.id),
-      sessionId,
-      ...(restricted ? { restricted: true } : {}),
-    })
   }
 
   const createSession = async (
@@ -177,9 +187,9 @@ export const createDocumentStreamRecorder = (
           readSnapshot: () => call.tracker?.composed() ?? '',
           sessionId: session.id,
         })
-        await input.prisma.runDocumentChunk.create({
-          data: { content: baseDocument ?? '', offset: 0, sessionId: session.id },
-        })
+        appendDurable(call, { content: baseDocument ?? '', offset: 0 })
+        await disclosure.settleDurableFeed()
+        await call.durable.settle()
       } else {
         call.durable = createDurableLane({ prisma: input.prisma, sessionId: session.id })
       }
@@ -319,13 +329,6 @@ export const createDocumentStreamRecorder = (
         appendDurable(call, { content, offset })
       },
     })
-  }
-
-  const appendDurable = (
-    call: TrackedCall,
-    fragment: { content: string; offset: number },
-  ): void => {
-    disclosure.appendDurable(() => call.durable?.append(fragment))
   }
 
   const pump = (call: TrackedCall): void => {

@@ -313,9 +313,10 @@ const persistOverride = async (
  * still being written the new location is persisted on the session and wins over
  * the model's arguments at save time; once it is saved the page itself moves
  * through the same provider core `POST /api/knowledge-base/pages/:pageId/move`
- * calls. Authorization is `canWriteSpace` against the target — the same check
- * the save will make, so a retarget fails at click time rather than at save
- * time.
+ * calls. Disclosure entitlement is checked before any target read or write,
+ * with an unreadable session shaped like an absent one. Target authorization
+ * is then `canWriteSpace` — the same check the save will make, so a retarget
+ * fails at click time rather than at save time.
  */
 export const retargetDocumentStream = async (
   prisma: PrismaClient,
@@ -326,10 +327,19 @@ export const retargetDocumentStream = async (
     sessionId: string
     spaceId: string
     threadId: string
+    userId: string
   },
 ): Promise<DocumentStreamRetargetOutcome> => {
   const session = await findSession(prisma, input)
   if (!session) {
+    return { kind: 'not_found' }
+  }
+  const readable = await canUserReadRunBasis(prisma, {
+    organizationId: input.organizationId,
+    runId: session.runId,
+    userId: input.userId,
+  })
+  if (!readable) {
     return { kind: 'not_found' }
   }
 

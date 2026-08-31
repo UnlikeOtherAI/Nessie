@@ -179,16 +179,18 @@ export const executeRunJob = async (
   // reason: it must exist before the first provider chunk, and every exit path
   // has to settle it.
   const documentStream = createDocumentStreamRecorder({
+    getRestrictionBasis: () => runReplyBasis(context),
     isRestricted: () => runReplyIsRestricted(context),
     loadDocument: async (pageId) => readMarkdownDocument(
       deps.prisma,
       fileServiceFor(deps.prisma),
       String(context.channel.organizationId),
       pageId,
+      context,
     ),
     prisma: deps.prisma,
-    persistRestrictionBasis: () => persistRunBasis(deps.prisma, {
-      basis: runReplyBasis(context),
+    persistRestrictionBasis: (basis) => persistRunBasis(deps.prisma, {
+      basis,
       organizationId: String(context.channel.organizationId),
       runId: context.run.id,
     }),

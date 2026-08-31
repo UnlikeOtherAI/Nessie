@@ -9,9 +9,11 @@ import {
   type PgRealtimeTransport,
 } from '@nessie/runtime'
 import { createConsumedSourceSink } from './disclosure-basis.js'
-import { runReplyIsRestricted } from './agent-message.js'
+import type { BasisScope } from './disclosure-basis.js'
+import { runReplyBasis, runReplyIsRestricted } from './agent-message.js'
 import { createDocumentStreamRecorder } from './document-stream.js'
 import type { RunContext } from './types.js'
+import { recordKnowledgeSpaceRead } from '../pa-tools/knowledge-basis.js'
 
 const AGENT_ID = '00000000-0000-4000-8000-000000000001'
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000002'
@@ -47,7 +49,14 @@ const contextWith = (
 
 const makeHarness = (
   isRestricted: () => boolean,
-  options: { baseDocument?: string } = {},
+  options: {
+    baseDocument?: string
+    getRestrictionBasis?: () => readonly BasisScope[]
+    onBaseDocumentLoad?: () => void
+    onChunkWrite?: (content: string) => void
+    onSessionCreate?: () => void
+    persistRestrictionBasis?: (basis: readonly BasisScope[]) => Promise<void>
+  } = {},
 ) => {
   const chunks: Array<{ content: string; offset: number; sessionId: string }> = []
   const published: Published[] = []
@@ -69,12 +78,16 @@ const makeHarness = (
       create: async (args: {
         data: { content: string; offset: number; sessionId: string }
       }) => {
+        options.onChunkWrite?.(args.data.content)
         chunks.push({ ...args.data })
         return { id: BigInt(chunks.length) }
       },
     },
     runDocumentSession: {
-      create: async () => ({ id: SESSION_ID }),
+      create: async () => {
+        options.onSessionCreate?.()
+        return { id: SESSION_ID }
+      },
       update: async (args: { data: Record<string, unknown> }) => {
         sessionUpdates.push(args.data)
         if (typeof args.data.status === 'string') status = args.data.status
@@ -113,16 +126,22 @@ const makeHarness = (
     isRestricted,
     ...(options.baseDocument !== undefined
       ? {
-          loadDocument: async () => ({
-            content: options.baseDocument!,
-            parentPageId: null,
-            spaceId: SPACE_ID,
-            title: 'Private source.md',
-          }),
+          loadDocument: async () => {
+            options.onBaseDocumentLoad?.()
+            return {
+              content: options.baseDocument!,
+              parentPageId: null,
+              spaceId: SPACE_ID,
+              title: 'Private source.md',
+            }
+          },
         }
       : {}),
+    getRestrictionBasis: options.getRestrictionBasis ?? (() => isRestricted()
+      ? [{ scopeId: '00000000-0000-4000-8000-0000000000fe', scopeType: 'user' }]
+      : []),
     prisma,
-    persistRestrictionBasis: async () => undefined,
+    persistRestrictionBasis: options.persistRestrictionBasis ?? (async () => undefined),
     realtimeTransport,
     run: {
       agentId: AGENT_ID,
@@ -208,6 +227,48 @@ test('document streaming closes monotonically when the run consumes a privileged
   assert.equal(terminal?.data.restricted, true)
   assert.ok(!JSON.stringify(harness.published).includes('secret suffix'))
   assert.ok(!JSON.stringify(harness.published).includes('later secret'))
+})
+
+test('terminalization swallows a restriction-basis write failure', async () => {
+  let restricted = false
+  const harness = makeHarness(() => restricted, {
+    persistRestrictionBasis: async () => {
+      throw new Error('basis database unavailable')
+    },
+  })
+  harness.push(JSON.stringify({ markdown: 'safe preview', spaceId: SPACE_ID, title: 'Notes' }))
+  await harness.recorder.settle(TOOL_CALL_ID)
+
+  restricted = true
+  await assert.doesNotReject(harness.recorder.finalizeOutstanding('run_failed'))
+})
+
+test('a widened restricted basis is re-stamped before later durable bytes', async () => {
+  const sink = createConsumedSourceSink()
+  const context = contextWith(sink)
+  const persisted: BasisScope[][] = []
+  sink.add({ scopeId: '00000000-0000-4000-8000-0000000000a1', scopeType: 'user' })
+  const harness = makeHarness(() => runReplyIsRestricted(context), {
+    getRestrictionBasis: () => runReplyBasis(context),
+    persistRestrictionBasis: async (basis) => {
+      persisted.push([...basis])
+    },
+  })
+
+  harness.push(`{"spaceId":"${SPACE_ID}","title":"Plan","markdown":"first secret `)
+  await harness.recorder.settle(TOOL_CALL_ID)
+  sink.add({ scopeId: '00000000-0000-4000-8000-0000000000a2', scopeType: 'user' })
+  harness.push('second secret"}')
+  await harness.recorder.settle(TOOL_CALL_ID)
+
+  assert.equal(persisted.length, 2)
+  assert.deepEqual(persisted.map((basis) => basis.map((scope) => scope.scopeId)), [
+    ['00000000-0000-4000-8000-0000000000a1'],
+    [
+      '00000000-0000-4000-8000-0000000000a1',
+      '00000000-0000-4000-8000-0000000000a2',
+    ],
+  ])
 })
 
 test('an unrestricted document stream keeps its existing wire bytes and durable bytes', async () => {
@@ -304,4 +365,46 @@ test('a restricted edit keeps its full snapshot durable but publishes no edit si
   assert.equal(harness.published[1]?.data.restricted, true)
   assert.ok(!JSON.stringify(harness.published).includes('private replacement'))
   assert.ok(!JSON.stringify(harness.published).includes('Private source.md'))
+})
+
+test('a private base document restricts an edit before its seed is durable or announced', async () => {
+  const sink = createConsumedSourceSink()
+  const context = contextWith(sink)
+  const order: string[] = []
+  const harness = makeHarness(() => runReplyIsRestricted(context), {
+    baseDocument: 'private base text',
+    getRestrictionBasis: () => runReplyBasis(context),
+    onBaseDocumentLoad: () => recordKnowledgeSpaceRead(
+      { consumedSources: sink },
+      [{
+        channelId: null,
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        teamId: null,
+        userId: '00000000-0000-4000-8000-0000000000b1',
+        visibility: 'private',
+      }],
+    ),
+    onChunkWrite: () => order.push('chunk'),
+    onSessionCreate: () => {
+      sink.add({ scopeId: '00000000-0000-4000-8000-0000000000b2', scopeType: 'user' })
+    },
+    persistRestrictionBasis: async (basis) => {
+      order.push(`basis:${basis.length}`)
+    },
+  })
+  harness.recorder.handleToolCallDelta({
+    id: TOOL_CALL_ID,
+    index: 0,
+    invocationId: INVOCATION_ID,
+    text: JSON.stringify({ edits: [{ find: 'base', replace: 'edited' }], pageId: PAGE_ID }),
+    toolName: KB_DOCUMENT_EDIT_TOOL_ID,
+  })
+
+  await harness.recorder.settle(TOOL_CALL_ID)
+  assert.deepEqual(order.slice(0, 3), ['basis:1', 'basis:2', 'chunk'])
+  assert.deepEqual(harness.published.map((event) => event.event), ['stream.document.start'])
+  assert.equal(harness.published[0]?.data.restricted, true)
+  assert.ok(!JSON.stringify(harness.published).includes('Private source.md'))
+  assert.ok(!JSON.stringify(harness.published).includes('private base text'))
 })

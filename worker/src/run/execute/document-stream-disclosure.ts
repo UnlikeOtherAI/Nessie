@@ -1,3 +1,5 @@
+import type { BasisScope } from './disclosure-basis.js'
+
 type DocumentStreamDisclosureInput = {
   /**
    * Whether the run's reply is restricted right now. Evaluated per fragment:
@@ -6,8 +8,10 @@ type DocumentStreamDisclosureInput = {
    * destination stays fixed, so a closed broadcast can never reopen.
    */
   isRestricted: () => boolean
-  /** Persist the run's current basis before restricted durable data is readable. */
-  persistRestrictionBasis: () => Promise<void>
+  /** The exact, monotone basis the run has accumulated so far. */
+  getRestrictionBasis: () => readonly BasisScope[]
+  /** Persist one captured basis before restricted durable data is readable. */
+  persistRestrictionBasis: (basis: readonly BasisScope[]) => Promise<void>
 }
 
 export type DocumentStreamDisclosureGate = {
@@ -29,17 +33,37 @@ export type DocumentStreamDisclosureGate = {
 export const createDocumentStreamDisclosureGate = (
   input: DocumentStreamDisclosureInput,
 ): DocumentStreamDisclosureGate => {
-  let restrictionPersisted = false
+  const persistedScopes = new Set<string>()
+  const scheduledScopes = new Set<string>()
   let restrictionBarrier: Promise<void> = Promise.resolve()
   let durableFeedBarrier: Promise<void> = Promise.resolve()
+  const scopeKey = (scope: BasisScope): string => `${scope.scopeType}:${scope.scopeId}`
 
   const beforeRestrictedReadable = async (): Promise<void> => {
-    if (!input.isRestricted() || restrictionPersisted) {
+    if (!input.isRestricted()) {
       await restrictionBarrier
       return
     }
-    restrictionPersisted = true
-    restrictionBarrier = input.persistRestrictionBasis()
+
+    const basis = input.getRestrictionBasis()
+    const missing = basis.filter((scope) => {
+      const key = scopeKey(scope)
+      return !persistedScopes.has(key) && !scheduledScopes.has(key)
+    })
+    if (missing.length > 0) {
+      const missingKeys = missing.map(scopeKey)
+      for (const key of missingKeys) scheduledScopes.add(key)
+      restrictionBarrier = restrictionBarrier
+        // A failed stamp withheld its fragment. Let a later fragment retry.
+        .catch(() => undefined)
+        .then(async () => {
+          await input.persistRestrictionBasis(basis)
+          for (const scope of basis) persistedScopes.add(scopeKey(scope))
+        })
+        .finally(() => {
+          for (const key of missingKeys) scheduledScopes.delete(key)
+        })
+    }
     await restrictionBarrier
   }
 

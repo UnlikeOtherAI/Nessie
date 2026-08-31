@@ -7,6 +7,23 @@ import { projectSelectionClassName } from '../src/layouts/admin-shell/SidebarRow
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
+const readCssBlock = (source: string, marker: string): string => {
+  const markerIndex = source.indexOf(marker)
+  assert.notEqual(markerIndex, -1, `Missing CSS rule: ${marker}`)
+  const openingBrace = source.indexOf('{', markerIndex)
+  assert.notEqual(openingBrace, -1, `Missing opening brace for: ${marker}`)
+
+  let depth = 0
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1
+    if (source[index] !== '}') continue
+    depth -= 1
+    if (depth === 0) return source.slice(openingBrace + 1, index)
+  }
+
+  assert.fail(`Missing closing brace for: ${marker}`)
+}
+
 test('every native touch sidebar uses Slack-scale density while desktop remains compact', () => {
   const sidebars = [
     readSource('../src/layouts/admin-shell/SidebarNav.tsx'),
@@ -26,7 +43,12 @@ test('every native touch sidebar uses Slack-scale density while desktop remains 
   assert.match(styles, /\.touch-sidebar \.sidebar-project-tile/)
   assert.match(styles, /\.touch-sidebar \.admin-sec-hdr\s*\{[\s\S]*?min-height: 38px[\s\S]*?font-size: 14px/)
   assert.match(styles, /\.touch-sidebar \.admin-sb-item\s*\{[\s\S]*?min-height: 38px[\s\S]*?font-size: 14px/)
-  assert.doesNotMatch(styles, /@media \(any-pointer: coarse\)/)
+  const coarsePointerStyles = readCssBlock(styles, '@media (any-pointer: coarse)')
+  assert.match(coarsePointerStyles, /\.admin-compose-action/)
+  assert.doesNotMatch(
+    coarsePointerStyles,
+    /\.touch-sidebar|\.admin-sec-hdr|\.admin-sb-item|\.sidebar-project-tile/,
+  )
 })
 
 test('project folder rows become bold only in the touch sidebar', () => {

@@ -124,15 +124,16 @@ runDatabaseTest(
 
     const makeRecorder = (invocationId: string, toolCallId: string, markdown: string) => {
       const recorder = createDocumentStreamRecorder({
+        getRestrictionBasis: () => [{ scopeId: user.id, scopeType: 'user' }],
         isRestricted: () => true,
-        persistRestrictionBasis: async () => {
+        persistRestrictionBasis: async (basis) => {
           await prisma.runBasisScope.createMany({
-            data: [{
+            data: basis.map((scope) => ({
               organizationId: organization.id,
               runId: run.id,
-              scopeId: user.id,
-              scopeType: 'user',
-            }],
+              scopeId: scope.scopeId,
+              scopeType: scope.scopeType,
+            })),
             skipDuplicates: true,
           })
         },
