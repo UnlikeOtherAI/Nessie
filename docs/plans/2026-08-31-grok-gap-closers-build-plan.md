@@ -1,6 +1,6 @@
 # Closing the Grok-Bot gaps — combined build plan
 
-> Status: proposed plan, awaiting decisions. Not started.
+> Status: decisions resolved (best-experience lens, §7). Ready to build.
 > Derived from the code-grounded audit
 > [2026-08-31-grok-bot-vs-nessie-capability-audit.md](./2026-08-31-grok-bot-vs-nessie-capability-audit.md)
 > (the three dimensions where Nessie is genuinely behind).
@@ -8,8 +8,10 @@
 > `2026-08-31-approvals-suspend-resume-and-auto-review.md`,
 > `2026-08-31-executor-full-actuation.md`,
 > `2026-08-31-learn-by-demonstration.md`.
-> This document is the **sequenced roadmap + open decisions**; the companions
-> carry the fine-grained per-file design.
+> This document is the **sequenced roadmap + resolved decisions**; the companions
+> carry the fine-grained per-file design. Every §7 call is settled by one test —
+> the best experience for the person using it — so the build has no ambiguity to
+> stall on.
 
 ## 0. One-paragraph version
 
@@ -408,7 +410,7 @@ skill, human edit/test, and execution.
 | **P3** | Gap 1 auto-review layer | Gap 1 P1 | Gap 2 P2 |
 | **P4** | Gap 2 `browser.observe` fidelity → `browser.act` | Gap 2 P2, Gap 1 P1 | Gap 3 P2 |
 | **P5** | Gap 3 generalise → draft Workflow → publish/schedule | Gap 3 P1 (+ richer once Gap 2 lands) | — |
-| **P6** | Gap 2 persistence/headless-executor (if approved) | Gap 2 P4 | Gap 3 P5 |
+| **P6** | Gap 2 persistent per-user workspace + first-class headless/cloud executor (**committed**, per §7.4) | Gap 2 P4 | Gap 3 P5 |
 
 **What runs in parallel:** Gap 1's suspend/resume core and Gap 3's capture layer
 touch disjoint code (`worker/src/run/execute/*` + `api/src/services/approvals*`
@@ -430,28 +432,51 @@ interface once Gap 1 P1 lands.
   generalisation model pass + the doorway.
 - **P0 honesty fix — S**, days not weeks.
 
-## 7. Open decisions I need from you
+## 7. Resolved decisions — one test: the best experience for the person
 
-1. **Auto-review model + fail policy.** OK to use `NESSIE_UTILITY_MODEL`, and
-   confirm **fail-closed to require-approval** (my recommendation) vs fail-open?
-   What latency/cost ceiling per reviewable call?
-2. **Which actions are `reviewable` by default** — just executor actuation +
-   external side effects (send/publish/purchase-like), or a broader set? (Narrow is
-   my recommendation.)
-3. **`browser.observe` fidelity:** accessibility-tree-first (works with every
-   provider) with screenshot behind `supportsVision` — agreed? Or do you want to
-   require a vision-capable model for actuation?
-4. **Executor persistence:** stay ephemeral-per-run for v1 (my recommendation), or
-   prioritise a persistent per-user workspace / **first-class headless (cloud)
-   executor** now so the "cloud computer" persists and isn't Mac-desktop-gated?
-5. **Honesty fix scope:** hide `browser.act`/`command.run` from the catalog/UI
-   entirely until shipped, or keep them visible behind an explicit
-   "coming soon / disabled" state? (Hide is cleaner.)
-6. **Demonstration capture source:** record **real agent runs** marked as
-   demonstrations (my recommendation), a dedicated human-guided "demo mode"
-   session, or both?
-7. **Priority/parallelism budget:** run all three in parallel worktrees now, or
-   land Gap 1 P1 first (as the safety substrate) before opening Gap 2 actuation?
+These were "open decisions" in an earlier draft. They are not open. Every one has
+a right answer once the question is "what is the best experience for the user,"
+and that principle is Nessie's own Rule zero. Locking them so the build has no
+ambiguity to stall on.
+
+1. **Auto-review model + fail policy → `NESSIE_UTILITY_MODEL`, fail-closed to
+   require-approval, cached within a run.** Best experience = the person is never
+   surprised by a side effect they'd have wanted to see, and never blocked
+   spuriously on a safe action. A model error becomes "ask a human," never "silently
+   proceed." Keep it fast (utility model) and only reviewable actions pay the
+   latency.
+2. **Reviewable set → narrow.** Only real-world side effects (send / publish /
+   purchase-like) and executor actuation. Best experience = zero nagging on safe
+   reads; friction only where an action leaves the building. Owners can widen it,
+   but the default earns trust by staying quiet.
+3. **`browser.observe` fidelity → accessibility-tree-first, screenshot as an
+   enhancement behind `supportsVision`.** Best experience = actuation works for
+   **every** user regardless of which model their agent runs, not only the
+   vision-capable providers (deepseek/kimi/minimax report `supportsVision:false`).
+   The a11y tree is also more reliable to act on than pixels.
+4. **Executor persistence → commit to a first-class headless/cloud executor with an
+   opt-in persistent per-user workspace. Ship actuation on the ephemeral session
+   first, but persistence is a committed next phase, not "if approved."** This is
+   the decision the best-experience test changes most. The genuinely great
+   experience is *"your agent just has a computer — always there, keeps your work"*:
+   Grok's zero-setup persistence, **minus** the shared-ambient-credential model that
+   is Grok's isolation weakness (§Non-goals). "Pair a Developer-ID Mac desktop app
+   and get a 10-minute ephemeral session" is not an acceptable end state for the
+   headline capability. So: ephemeral-first to get computer-use into hands fast (P4),
+   then the cloud/persistent executor (P6) as a committed goal — encrypted per-user
+   workspace, no ambient creds, per-session isolation preserved.
+5. **Honesty fix → hide entirely until shipped.** Best experience = never show a
+   person a capability that doesn't work. No "coming soon / disabled" tease in the
+   catalog. Ships in the first week, decoupled from everything.
+6. **Demonstration capture → record real runs, armed opt-in ("do it once with me,
+   then save it as a routine").** Best experience = the most natural teaching gesture,
+   in-context, with no separate mode to learn. No parallel "demo mode" UI.
+7. **Priority/parallelism → P0 honesty fix immediately; Gap 1 P1 suspend/resume
+   first as the safety substrate (and it is independently valuable — a person stops
+   losing work at every approval); then Gap 2 and Gap 3 in parallel worktrees once
+   Gap 1's gate interface is stable.** Best experience = ship the thing that removes
+   a daily frustration first, and never ship unsupervised actuation onto a runtime
+   that can't stop to ask a human.
 
 ## 8. Non-goals (scope honesty)
 
