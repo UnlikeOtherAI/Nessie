@@ -31,7 +31,12 @@ runDatabaseTest('timeout marks only still-ringing invites missed and writes a vi
   const started = await startCallForUser(prisma, { actingUserId: caller.id, channelId: channel.id }, jitsi)
   t.after(async () => {
     await prisma.$executeRaw`
-      DELETE FROM queue_jobs WHERE topic = 'call.ring-timeout' AND payload->>'callId' = ${started.id}
+      DELETE FROM queue_jobs WHERE payload->>'callId' = ${started.id}
+    `
+    await prisma.$executeRaw`
+      DELETE FROM queue_jobs
+      WHERE topic = 'attention.dispatch'
+        AND payload->>'alertId' IN (SELECT id::text FROM user_alerts WHERE call_id = ${started.id}::uuid)
     `
     await prisma.organization.delete({ where: { id: org.id } }).catch(() => undefined)
     await prisma.user.deleteMany({ where: { id: { in: [caller.id, invitee.id] } } })
@@ -47,6 +52,11 @@ runDatabaseTest('timeout marks only still-ringing invites missed and writes a vi
   })
   assert.equal(message.role, 'assistant')
   assert.equal(message.content, 'Missed call from Caller')
+  const alert = await prisma.userAlert.findUniqueOrThrow({
+    where: { userId_eventKey: { userId: invitee.id, eventKey: `call:${started.id}:missed:${invitee.id}` } },
+  })
+  assert.equal(alert.kind, 'call_missed')
+  assert.equal(alert.callId, started.id)
 })
 
 runDatabaseTest('a timeout waiting behind an accepted invite never stomps it to missed', async (t) => {
@@ -69,7 +79,7 @@ runDatabaseTest('a timeout waiting behind an accepted invite never stomps it to 
   })
   const started = await startCallForUser(prisma, { actingUserId: caller.id, channelId: channel.id }, jitsi)
   t.after(async () => {
-    await prisma.$executeRaw`DELETE FROM queue_jobs WHERE topic = 'call.ring-timeout' AND payload->>'callId' = ${started.id}`
+    await prisma.$executeRaw`DELETE FROM queue_jobs WHERE payload->>'callId' = ${started.id}`
     await prisma.organization.delete({ where: { id: org.id } }).catch(() => undefined)
     await prisma.user.deleteMany({ where: { id: { in: [caller.id, invitee.id] } } })
     await prisma.$disconnect()

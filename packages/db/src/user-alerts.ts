@@ -53,6 +53,13 @@ export const visibleUserAlertWhere = (input: {
       },
     },
     {
+      // The foreign key cascade removes this row on deletion, while this
+      // relation check keeps a concurrent source deletion from leaking a stale
+      // bell item through a read/count/write query.
+      kind: 'call_missed',
+      call: { is: {} },
+    },
+    {
       kind: 'knowledge_published',
       // This mirrors the human-reader access rules in @nessie/knowledge's
       // canReadSpace. Keep changes to that access policy synchronized here:

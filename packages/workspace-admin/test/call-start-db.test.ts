@@ -68,8 +68,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
 const cleanup = async (prisma: PrismaClient, input: Seed): Promise<void> => {
   await prisma.$executeRaw`
     DELETE FROM queue_jobs
-    WHERE topic = 'call.ring-timeout'
-      AND payload->>'callId' IN (SELECT id::text FROM calls WHERE channel_id = ${input.channelId}::uuid)
+    WHERE payload->>'callId' IN (SELECT id::text FROM calls WHERE channel_id = ${input.channelId}::uuid)
   `
   await prisma.organization.deleteMany({ where: { id: { in: [input.organizationId, input.otherOrganizationId] } } })
   await prisma.user.deleteMany({ where: { id: { in: [input.userId, input.inviteeId] } } })

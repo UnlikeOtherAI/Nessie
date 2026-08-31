@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseChannelId, parseUserId } from '@nessie/schemas'
+import { enqueueCallRingCancellation } from '@nessie/workspace-admin'
 import type { CallRecord } from '../contracts.js'
 
 type DbClient = PrismaClient | Prisma.TransactionClient
@@ -119,6 +120,7 @@ export const acceptCallInvite = async (
   if (current.status === 'ringing' && activated.count !== 1) {
     throw new CallStateError('CALL_NO_LONGER_RINGING')
   }
+  await enqueueCallRingCancellation(tx, { callId, userIds: [userId] })
   return { call: mapCallRecord(await loadCall(tx, callId)), changed: true }
 })
 
@@ -153,7 +155,56 @@ export const declineCallInvite = async (
     },
   })
   if (completed.count !== 1) throw new CallStateError('CALL_NO_LONGER_RINGING')
+  await enqueueCallRingCancellation(tx, { callId, userIds: [userId] })
   return { call: mapCallRecord(await loadCall(tx, callId)), changed: true }
+})
+
+/**
+ * The Web Push response path is deliberately stricter than the authenticated
+ * accept/decline routes: a signed response token is consumed exactly once by
+ * requiring the original call revision and a still-ringing invite.
+ */
+export const respondToCallInviteAction = async (
+  prisma: PrismaClient,
+  input: {
+    action: 'accept' | 'decline'
+    callId: string
+    revision: number
+    userId: string
+  },
+): Promise<CallTransition> => prisma.$transaction(async (tx) => {
+  await lockCall(tx, input.callId)
+  const current = await loadCall(tx, input.callId)
+  if (current.status !== 'ringing' || current.revision !== input.revision) {
+    throw new CallStateError('CALL_NO_LONGER_RINGING')
+  }
+  const invite = current.invites.find((entry) => entry.userId === input.userId)
+  if (!invite) throw new CallStateError('CALL_NOT_INVITEE')
+  const responded = await tx.callInvite.updateMany({
+    where: { callId: input.callId, userId: input.userId, state: 'ringing' },
+    data: { state: input.action === 'accept' ? 'accepted' : 'declined', respondedAt: new Date() },
+  })
+  if (responded.count !== 1) throw new CallStateError('CALL_NO_LONGER_RINGING')
+
+  if (input.action === 'accept') {
+    const activated = await tx.call.updateMany({
+      where: { id: input.callId, revision: input.revision, status: 'ringing' },
+      data: { revision: { increment: 1 }, status: 'active' },
+    })
+    if (activated.count !== 1) throw new CallStateError('CALL_NO_LONGER_RINGING')
+  } else {
+    const ringingInvites = await tx.callInvite.count({ where: { callId: input.callId, state: 'ringing' } })
+    const completed = await tx.call.updateMany({
+      where: { id: input.callId, revision: input.revision, status: 'ringing' },
+      data: {
+        ...(ringingInvites === 0 ? { endedAt: new Date(), status: 'declined' } : {}),
+        revision: { increment: 1 },
+      },
+    })
+    if (completed.count !== 1) throw new CallStateError('CALL_NO_LONGER_RINGING')
+  }
+  await enqueueCallRingCancellation(tx, { callId: input.callId, userIds: [input.userId] })
+  return { call: mapCallRecord(await loadCall(tx, input.callId)), changed: true }
 })
 
 export const cancelCall = async (
@@ -169,10 +220,14 @@ export const cancelCall = async (
     data: { status: 'cancelled', endedAt: new Date(), revision: { increment: 1 } },
   })
   if (cancelled.count !== 1) throw new CallStateError('CALL_NO_LONGER_RINGING')
+  const ringingInviteeIds = current.invites
+    .filter((invite) => invite.state === 'ringing')
+    .map((invite) => invite.userId)
   await tx.callInvite.updateMany({
     where: { callId, state: 'ringing' },
     data: { state: 'cancelled', respondedAt: new Date() },
   })
+  await enqueueCallRingCancellation(tx, { callId, userIds: ringingInviteeIds })
   return { call: mapCallRecord(await loadCall(tx, callId)), changed: true }
 })
 
@@ -190,5 +245,9 @@ export const endCall = async (
     data: { status: 'ended', endedAt: new Date(), revision: { increment: 1 } },
   })
   if (ended.count !== 1) throw new CallStateError('CALL_NOT_ACTIVE')
+  await enqueueCallRingCancellation(tx, {
+    callId,
+    userIds: current.invites.filter((invite) => invite.state === 'ringing').map((invite) => invite.userId),
+  })
   return { call: mapCallRecord(await loadCall(tx, callId)), changed: true }
 })
