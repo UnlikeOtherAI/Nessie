@@ -1,348 +1,324 @@
 # First-login workspace provisioning, self-serve team creation, and the end of local identity mirrors
 
-**Status: DRAFT — pending Kimix + Codex Sol review.**
+**Status: v2 — revised after two independent adversarial reviews (Kimix,
+Codex Sol; both reviewed v1 against both codebases, findings adjudicated
+claim-by-claim, convergent findings folded, three spot-verified in source).
+Review artifacts: `review-kimix-provisioning-plan.md`,
+`review-sol-provisioning-plan.md` (repo root, this branch).**
 
 One sentence: a brand-new SSO user who signs in to Nessie with no UOA
 workspaces gets an organisation and a first team (a *workspace*, in product
 vocabulary) provisioned **in UOA** and mirrored 1:1 into Nessie; any signed-in
-user can then create further teams, choosing whether the new team lives in an
-existing organisation they belong to or in a new one; and Nessie stops
-persisting the last duplicated identity fields (`users.email`,
-`users.display_name`). UOA remains the sole authority for every piece of
+user can create further workspaces through UOA's hosted chooser flow —
+choosing an organisation they hold `teams.manage` in, or explicitly creating
+a **new tenant** (a new organisation); and Nessie stops persisting the last
+duplicated identity fields. UOA remains the sole authority for every piece of
 this — Nessie only relays, projects, and renders.
 
 ## Why now
 
-- Today a UOA access token with no resolvable org+team is **refused** as
-  "incomplete session proof" (`uoa-session.ts`, surfaced as
-  `EXTERNAL_AUTH_FAILED`) — a brand-new user who has never touched another
-  UOA product cannot enter Nessie at all. (Verified in
-  [2026-08-31-identity-belonging-audit.md](2026-08-31-identity-belonging-audit.md)
-  §1.2.)
-- The production databases are a green field being reset (2026-08-31 cleanup:
-  all 20 UOA test organisations and all 8 Nessie tenant anchors removed,
-  teleprompter users and DeepWater reports untouched). Whatever flow exists
-  after the reset **is** the onboarding flow; there is no legacy population
-  to migrate.
-- UOA enforces **one active org membership per user per origin domain**
-  (`team-invite.service.acceptance.ts`, named refusal `ORG_CONFLICT_ON_DOMAIN`
-  since UOA `aa14af1`). The requested "create a new team in a NEW
-  organisation" capability is impossible while that invariant stands in its
-  current shape. Resolving it is a UOA-side design decision this plan owns.
-- The identity-belonging audit (same file, §4) already recommends
-  mode-gating local structural mutations (rec 9) and deciding `User.email`'s
-  lifecycle (rec 12). This plan implements the upstream half those
-  recommendations point at.
+- Today a UOA access token with no resolvable org+team is refused as
+  "incomplete session proof" (`uoa-session.ts:193-203`, surfaced as
+  `EXTERNAL_AUTH_FAILED`) — but the refusal is only half the story: UOA's
+  chooser **already renders `CreateFirstWorkspaceForm` inline** for a
+  zero-workspace user on Nessie's domain (`workspace_selection: 'auto'` +
+  `allow_user_create_org: true` are both already in Nessie's config JWT).
+  The gaps are automation, safety, and the multi-workspace story — not the
+  existence of a flow.
+- The production databases were reset 2026-08-31 (Part D). Whatever flow
+  exists after the reset **is** onboarding.
+- UOA enforces one ACTIVE org membership per (user, origin domain) — DB
+  partial unique index `org_members_one_active_org_per_domain` plus three
+  service checks. "Create a workspace in a NEW organisation" requires a
+  scoped relaxation (A3), which is also the plan's riskiest item.
 
 ## Invariants that bound every part of this design
 
 1. **UOA owns the org structure.** Every organisation and team is created in
-   UOA first, by a UOA API call carrying the acting user's identity; Nessie
-   materializes its 1:1 anchors (`Organization.externalOrgId`,
-   `Team.externalWorkspaceId`) only from verified UOA state, exactly as login
-   and workspace-switch materialization do today. No Nessie-side write ever
-   creates org structure locally first "to be synced later".
+   UOA first; Nessie materializes its 1:1 anchors only from verified UOA
+   state through the existing login/switch materialization. No local-first
+   creation, ever.
 2. **No duplicates.** No new mirror columns, no second directory, no cached
-   copy promoted to authority. The existing bounded in-memory directory cache
-   pattern (`uoa-directory-cache.ts`) is the only permitted retention.
-3. **Provisioning is idempotent and race-safe.** Two concurrent first logins
-   of the same user must converge on one org + one team, under the same
-   advisory-lock discipline `resolveUoaWorkspaceContext` already uses.
-4. **A capability is not done until a person can reach it** (rule zero).
-   The team-creation flow ships with its admin surface (switcher +
-   settings doorways) in the same change.
-5. **Vocabulary:** UOA teams are rendered as **workspaces** in Nessie. The
-   product never shows "team" and "workspace" as two different concepts.
+   copy promoted to authority.
+3. **Provisioning is idempotent and race-safe — by a decided mechanism, not
+   an aspiration.** Concurrent first logins converge on one org+team under a
+   per-user/domain advisory lock (A1); the org-count policy is enforced in
+   the database (A3), never by a request-time config value alone.
+4. **Rule zero.** Every flow ships with its surface and doorways.
+5. **Vocabulary:** UOA teams are rendered as **workspaces** in Nessie. A new
+   UOA *organisation* is a new Nessie **tenant** (budgets, policies, audit,
+   billing boundary) — the UI says so and treats it as an explicit act, not
+   a folder choice (Sol 18).
 
-## Part A — UOA: self-serve organisation + team lifecycle
+## Part A — UOA
 
-Current state, verified 2026-08-31 in the UOA repo (file:line refs are UOA):
+### A1. First-login auto-provisioning (org + "General" team)
 
-- **The chooser can already create a first workspace.** `POST
-  /auth/create-workspace` (routes/auth/auth-create-workspace.ts:57-248)
-  creates org + default "General" team and finalises login in one
-  transaction, gated on `workspace_selection === 'auto'` +
-  `org_features.allow_user_create_org` — both of which Nessie's config JWT
-  already sends. A zero-workspace user signing into Nessie today lands on
-  `WorkspaceChooserPage` with `CreateFirstWorkspaceForm` rendered inline.
-  `POST /auth/create-team` (auth-create-team.ts:73-289) creates a further
-  team in an existing org and adds the creator as team `admin`.
-- **Two dormant auto-provisioning services exist**, both off by default
-  (config-org-features.schema.ts:42-50): `ensureUserHasRequiredTeam`
-  (`user_needs_team`; org named after the person, team "<name>'s team",
-  team role `admin` — the service that produced the production "Martin
-  Lexa's team" rows) and `placeUserInConfiguredOrganisation`
-  (`auto_create_personal_org_on_first_login`; org "<name>'s organisation",
-  team "General", team role `member`). Both run inside the auth flow only —
-  never on `/org/me`.
-- **Backend `/org/*` endpoints exist** behind the per-domain hash bearer:
-  `POST /org/organisations` (user + backend modes) and
-  `POST /org/organisations/:orgId/teams`. Known defects: the latter creates
-  an **orphan team** (no creator membership, team.service.teams.ts:153-190);
-  access-token calls are pinned to the token's own org
-  (org-role-guard.ts:252-257), so cross-org creation needs re-scoping; and
-  the five creation paths write five different role outcomes (§A5).
-- **One ACTIVE org membership per (user, origin domain)** is enforced by a
-  partial unique DB index (migration 20260730180000), the create service,
-  invite acceptance (`ORG_CONFLICT_ON_DOMAIN`), and member-add. The invite
-  probe ignores membership status (team-invite.service.acceptance.ts:119-130)
-  — a tombstoned membership blocks acceptance forever (bug).
-- **`/org/me` returns `{ ok: true }` with no `workspaces`/`pending_invites`
-  at all for a zero-workspace user** (routes/org/me.ts:106,124-126) — a
-  product cannot render an onboarding state from it.
+Mechanism: `auto_create_personal_org_on_first_login` for the Nessie domain,
+**after** these fixes (Kimix 4, Sol 6, Sol 7, Kimix 19/Sol 21):
 
-### A1. First-login default provisioning — decision
+- `autoCreatePersonalOrgForUser` takes the canonical per-user/domain
+  advisory lock (the one `user-team-requirement.service.ts:34-50` already
+  defines), re-reads membership *and* pending invites inside the locked
+  transaction (today the invite check sits outside the creation tx), and on
+  losing a race returns the winner's exact `{orgId, teamId}` tuple instead
+  of `auto_create_failed`. Two concurrent first logins converge; neither is
+  refused.
+- **Coverage decision (Sol 7):** registration-time placement only fires for
+  newly-created users (`createdUser` guards in `auth-verify-email` and
+  `social-login`). Existing zero-membership accounts — including every
+  account retained by the Part D cleanup — fall through to the chooser's
+  inline `CreateFirstWorkspaceForm`, which stays as the universal manual
+  path. This is accepted and stated: retained users create their first
+  workspace through the form once; only fresh registrations are automatic.
+  (If product later wants automation for existing users, that is the
+  login-time hook — a separate, explicitly-scoped change; `user_needs_team`
+  stays off: its silent org-role promotion is an escalation and its naming
+  loses to "General".)
+- **Naming:** org name for a user with no asserted name is a neutral
+  default ("My organisation"), never derived from the email address — the
+  org name is user-visible to future co-members (PII, Kimix 19/Sol 21).
+  Named users keep "<name>'s organisation" / team "General".
+- `pending_invites_block_auto_create` stays `true`.
 
-Enable **automatic** creation for the Nessie domain rather than the manual
-chooser form: the user's requirement is "we create an organisation and the
-first team for them", not "we show them a form". Mechanism: turn on
-`auto_create_personal_org_on_first_login` for the Nessie domain config
-(org "<name>'s organisation", team "General"), keeping
-`pending_invites_block_auto_create: true` so an invited user is never
-forked into a personal org (the exact trap that motivated
-`ORG_CONFLICT_ON_DOMAIN`). The chooser's inline create-first-workspace form
-remains as the fallback when auto-create is off. `user_needs_team` stays
-off — its silent org-role promotion (`member` → `admin`,
-user-team-requirement.service.ts:167-175) is a privilege escalation we do
-not want, and its "<name>'s team" naming loses to the standard "General".
+### A2. Consolidate the creation paths (not just their outcomes)
 
-### A2. Unify the creation paths' role outcomes
+Five paths write five role outcomes today. Consolidation (Kimix 29, Sol 11):
 
-One rule everywhere: the creator of an organisation is org `owner` and
-team-role `admin` on its default team; the creator of a team is team
-`admin`. Today five paths write five different outcomes (public create
-leaves the owner an implicit team `member`; the admin path writes team
-`owner`; the two auto-provisioners write `admin`/`member`). Fix in the
-services (`createOrganisation`, `createAdminOrganisation`,
-`org-placement.service.ts`), not the routes. Also fix the orphan-team
-defect: `createTeam` gains a `creatorMembership` option used by every
-caller that acts for a person, so `POST /org/organisations/:orgId/teams`
-stops minting member-less teams.
+- One `createOrganisationWithOwner` service used by the public route, the
+  hosted `/auth/create-workspace`, the admin route, and A1's auto-creator.
+  Creator becomes org `owner` (structural, always valid) and a member of the
+  default team; the *team role* written for creators everywhere comes from a
+  validated per-domain `org_features.creator_team_role` setting that must
+  name a role in the domain's configured vocabulary — never a hard-coded
+  literal `admin`, which a domain may not define (Sol 11).
+- `createTeam` gains creator membership (`POST /org/organisations/:orgId/
+  teams` stops minting orphan, member-less teams), with the same validated
+  creator role, and its `max_teams_per_org` check moves under the org row
+  lock the hosted flow already takes (Sol 5).
 
-### A3. The one-org-per-domain invariant — decision
+### A3. One-org-per-domain becomes a per-domain policy — decided mechanism
 
-Keep the invariant as the **default**, make it a per-domain policy knob:
-`org_features.max_active_orgs_per_user` (default 1 = today's index
-semantics; Nessie sets it to unlimited/N). Rationale: the invariant exists
-to stop accidental org sprawl and the invite/create fork, both real; but
-the product requirement "create a new team in a new organisation" is
-legitimate for a work platform. Implementation notes:
-- The DB partial unique index only encodes N=1; for N>1 the enforcement
-  moves to the create/accept/add services under the existing advisory
-  locks (the index is dropped for domains configured >1 — a migration
-  conditional on config is impossible, so the index is replaced by a
-  service-layer check plus a domain-scoped constraint trigger, keeping the
-  race-safety the index provided; exact mechanism is an implementation
-  decision for review).
-- Fix the invite-acceptance probe to filter ACTIVE (the tombstone bug)
-  in the same change — under N=1 it is a correctness fix on its own.
-- `creatable_orgs` / `can_create_org` in `/auth/session-choices` and the
-  chooser dialog's "new organisation" branch
-  (WorkspaceChooserPage.tsx:170,244) become policy-driven instead of
-  hard-wired to "has nothing yet".
+- Policy: `max_active_orgs_per_user` **stored in UOA's own domain
+  configuration** (server-side, admin-managed), never read from the
+  request-time config JWT — a caller-supplied value cannot drive a database
+  constraint (Sol 1).
+- Enforcement stays **in the database**: the partial unique index remains
+  for every domain at the default (1). A domain configured above 1 is
+  listed in a small `domain_org_policies` table; a constraint trigger on
+  `org_members` INSERT/UPDATE consults it and counts ACTIVE rows under the
+  existing per-user/domain advisory lock ordering. Check-then-write in
+  service code is explicitly not the mechanism — the 20260730 migration
+  history records why (the index replaced a racy trigger; the new trigger
+  counts under the same lock the writers now hold, which the old one did
+  not).
+- **Assumption audit ships in the same change** (Kimix 11, Sol 2): every
+  consumer in UOA and Nessie that encodes "one membership on this domain ⇒
+  the organisation is unambiguous" — `resolveExternalWorkspaceSelection`'s
+  sole-team fallback, UOA's session-choices/refresh active-org selection,
+  `getUserOrgContext` preference order, Nessie's switch reauthorization —
+  is enumerated and either verified N-safe or fixed.
+- **Invite tombstone fix (reshaped per Sol 8):** acceptance resolves an
+  existing `(orgId, userId)` tombstone by **atomic reactivation** (the
+  behaviour `organisation.service.members.ts:143-210` already implements),
+  and counts only *other* ACTIVE origin-domain memberships against the
+  policy. Filtering the probe to ACTIVE alone would just move the failure
+  to the unique constraint.
+- Nessie-side copy: `UoaInvitationOrgConflictError` handling and invite UI
+  copy revised in the same change (Kimix 18).
 
-### A4. `/org/me` carries the onboarding state
+### A4. `/org/me` carries onboarding state — as a NEW block
 
-For a zero-workspace user, `/org/me` returns `org` with empty
-`workspaces[]`, any `pending_invites[]`, and a `can_create_org` flag,
-instead of omitting the block. Nessie (and every product) can then render
-a real onboarding state and the pending-invite alerts even before first
-placement. Additive, contract-versioned change — existing consumers that
-check for `org` presence keep working because the block is only added,
-never reshaped.
+- A separate top-level `onboarding` block (`{ can_create_org,
+  pending_invites }`) is returned when the user has no org context; the
+  `org` block keeps its exact current meaning — present ⇒ real ACTIVE
+  context (Sol 10; "additive" v1 framing was wrong, Kimix 14 concurs).
+- Pending invites for a zero-org user cannot be read through the current
+  `/org/me` transaction — RLS `team_invites_select` requires `app.org_id`
+  (Sol 9). The lookup is a narrowly-scoped SECURITY DEFINER function (or
+  admin-transaction read) bound to the verified user's email + domain,
+  reviewed against `Docs/Requirements/row-level-security.md`; `team_invites`
+  is not widened.
+- Consumer audit before ship: grep UOA Admin/Auth/API + every product for
+  `/org/me` shape assumptions; the new block is opt-in by its absence.
 
-### A5. Admin organisation lifecycle (shipped with the cleanup)
+### A5. Admin organisation lifecycle — SHIPPED 2026-08-31
 
-`DELETE /internal/admin/organisations/:orgId` (superuser-gated, reusing
-`deleteOrganisation` with admin provenance, named
-`ORG_HAS_PROTECTED_RECORDS` refusal for billing-anchored orgs) + the SPA
-delete action. In flight 2026-08-31 (Codex Sol) to unblock the production
-cleanup; listed here because it is also the missing admin half of the org
-lifecycle this plan builds.
+`DELETE /internal/admin/organisations/:orgId` (superuser-gated, reuses
+`deleteOrganisation` with admin provenance via `getAdminPrisma`, named
+`ORG_HAS_PROTECTED_RECORDS` refusal) + SPA delete action with typed-name
+confirm. Merged to UOA main `2d67bf0`; auto-deploying to Cloud Run. (Sol 20
+noted it was unverifiable from the reviewed baseline — it is now in-tree.)
 
-## Part B — Nessie: first-login flow and team creation UX
+## Part B — Nessie
 
-Current state, verified 2026-08-31 in this repo:
+### B1. Zero-workspace login: named refusal, shipped FIRST
 
-- A zero-workspace UOA token dies at the exchange itself:
-  `exchangeUoaSession` refuses any token without a resolvable org **and**
-  team (`api/src/services/uoa-session.ts:193-203`), and
-  `api/src/routes/auth-login.ts:143-153` repeats the guard. Both surface as
-  `401 EXTERNAL_AUTH_FAILED`. The "shared/default org" fallback in
-  `workspace-context.ts:327-388` is reachable only by generic-OIDC providers
-  and is dead code on the UOA path.
-- Materialization is one reusable, race-safe implementation:
-  `resolveUoaWorkspaceContext` (`workspace-context.ts:286-325`) under
-  exact-tuple advisory locks (`external-organization.ts:28-40`,
-  `workspace-target.ts:52-70`), creating Organization → Project + Team +
-  `#general` (`workspace-target.ts:112-162`) and then memberships via
-  `ensureWorkspacePrincipal` (`workspace-principal.ts:226-294`). Triggers:
-  login, explicit switch, drift refresh — never `/org/me`.
-- Nessie signals UOA policy via the signed config JWT:
-  `login_flow.workspace_selection: 'auto'` and
-  `org_features: { allow_user_create_org: true, allow_user_create_team:
-  true, backend_org_management: true }` (`api/src/services/uoa-auth.ts:244-271`).
-  The chooser — and therefore any create-first-org UX — is UOA-hosted;
-  Nessie has **no client** for UOA's create-team/create-org endpoints.
-- Local-only creation paths exist and are the F9 fork class:
-  `POST /api/teams` (`api/src/routes/teams.ts:66-115`), `POST /api/projects`
-  (`api/src/routes/projects.ts:136-178`), and the admin "Create a project"
-  dialog (`admin/src/components/shared/CreateProjectDialog.tsx:26-30`) —
-  all create UOA-unbacked rows inside UOA-bound organisations.
+The exchange refusal stays. `EXTERNAL_AUTH_FAILED` for the specific
+no-workspace case becomes `UOA_NO_WORKSPACE` with static remedy copy on the
+login screen — identical for every zero-workspace cause, revealing nothing
+about account existence or invites (Kimix 20). **Ships before A1's flag
+flip** (Kimix 13, Sol 12): it is the failure handling for the rollout
+window, and A1's placement is self-healing per login attempt so a user who
+hits the window is unblocked on retry. Implementation is a structural
+classification of the exchange result — never string-matching the upstream
+error message.
 
-### B1. Zero-workspace login provisions instead of refusing
+### B2. "New workspace" — UOA-hosted chooser flow, no Nessie relay
 
-The refusal stays — an incomplete session proof must never mint a session.
-What changes is that the proof becomes complete *before* the exchange:
-first-login provisioning happens **UOA-side**, so the token Nessie receives
-already carries the fresh org+team (Part A decides the exact mechanism:
-auto-placement at sign-in vs a chooser "create" step). Nessie's only change
-on this path is classification: when UOA still returns a zero-workspace
-token (feature disabled, partial rollout), `EXTERNAL_AUTH_FAILED` is
-replaced by a named refusal (`UOA_NO_WORKSPACE`) whose admin login screen
-copy explains the remedy instead of showing a generic failure. No local
-provisioning fallback — a purely local "create an Organization for this
-user" is exactly the F9 fork.
+v1's backend-mode relay is **dropped** (Kimix 17 + 1/5/9/12/27, Sol 3/4/5:
+backend mode has no acting-user concept — `resolveAndAuthorizeTeamOrg`
+returns unchecked with no actor — so the relay was a confused deputy with a
+cross-tenant write hole, plus a create/switch propagation race). Instead:
 
-### B2. "New workspace" surface (existing org / new org choice)
+- Nessie's switcher keeps one "Create workspace" doorway that round-trips
+  to the UOA chooser (`onAddWorkspace` already exists); UOA's
+  `/auth/create-team` + `/auth/create-workspace` do creation, creator
+  membership, and session finalisation atomically in the login bridge —
+  the finding-12 race and finding-17 authz hole never exist.
+- UOA-side UX work this implies: the chooser's create dialog becomes
+  reachable for users who already have workspaces (today `creatable_orgs`
+  gates team-in-existing-org, but "new organisation" is hard-wired to
+  first-workspace only — `WorkspaceChooserPage.tsx:170,244`); under A3 it
+  becomes policy-driven, and the "new organisation" branch is presented as
+  **create a new tenant** with its consequences named (Sol 18).
+- On return, Nessie's normal callback → login materialization creates the
+  local anchors; the switcher refreshes from the directory. No new Nessie
+  API surface at all.
 
-- Owning surface: the workspace switcher menu
-  (`admin/src/layouts/admin-shell/WorkspaceMenu.tsx:102-116`), which already
-  owns "Add workspace" and pending invitations. "Create workspace" joins it,
-  opening a dialog (shared `Dialog.tsx` shell) with: workspace name, and an
-  organisation picker — the user's existing organisations (from the UOA
-  directory entries' `orgName`/`orgId` grouping keys already rendered by the
-  switcher) plus "New organisation…" (name field appears).
-- The submit relays to a new Nessie API route (`POST /api/workspace/teams`
-  — name final at implementation) that calls the UOA backend-mode
-  create-team (and create-org when chosen) endpoints via a new client in
-  `packages/workspace-admin/src/uoa-org-roster.ts`'s pattern — domain-hash
-  bearer + acting user's UOA subject, mirroring how invitation acceptance
-  relays today (`api/src/routes/workspace-invitations.ts:32-128`).
-- On success the client immediately performs the existing UOA workspace
-  switch into the new team (`switchUoaWorkspace`), which triggers the
-  normal materialization — the new local rows are created by the **same**
-  switch path that handles invites, not by the create relay.
-- Authorization mirrors UOA's own rules for who may create a team in an org
-  (Part A4/A6 facts) — Nessie adds no weaker and no stronger gate, and the
-  refusals (`ORG_CONFLICT_ON_DOMAIN` successor semantics, quota/policy
-  refusals) are relayed in words.
+### B3. Materialization reuse — unchanged (survived both reviews)
 
-### B3. Materialization reuse (no second provisioning path)
+No new materialization code. Login/switch materialization under exact-tuple
+advisory locks remains the only path local rows appear.
 
-No new materialization code anywhere in Part B. The create relay produces
-UOA state; local rows appear only through the existing login/switch
-materialization under the exact-tuple locks. The relay's response carries
-the new `{orgId, teamId}` tuple purely so the client can aim the switch.
+### B4. Retire local structural mutations — widened
 
-### B4. Retire the local structural mutations (audit rec 9, F9)
+In UOA mode, mode-gate off (following `membership-mode-gate.ts`, already
+imported by these route files): `POST /api/teams`, `POST /api/projects`,
+**and the remaining local project/team mutation routes** (rename/delete —
+Sol 13's half-gate point), plus the "Create a project" dialog affordances,
+which route to B2's doorway. Local-mode (no-IdP) installs keep them.
+System-managed teams (PA, external agents, standalone channels) untouched.
 
-In UOA mode, `POST /api/teams`, `POST /api/projects`, and the "Create a
-project" dialog are mode-gated off (following the
-`membership-mode-gate.ts` pattern) and their UI affordances route to the
-new create-workspace flow. The local-mode (no-IdP) install keeps them —
-that is the one legitimately local world. System-managed teams (PA,
-external agents, standalone channels) are untouched; they are plumbing,
-not org structure.
+### B5. Purge remaining claim mirrors — with a contract note
 
-### B5. Purge the remaining claim mirrors while we are here (audit F5/F7)
-
-- Drop `teamIds`/`teamRoles`/`orgRole` from `ProductAccountLink.metadata`
-  writes (`api/src/services/integrations.ts:38-49`) and the
-  `workspaceDirectory` re-write on the recovery path
-  (`api/src/services/uoa-recovery-link.ts:115-120,141-148`), plus a
-  migration stripping surviving keys. Nothing reads them.
-- Heal `Team.name` from the UOA workspace label the way
-  `syncExternalOrganizationNames` heals org names (F7) — display mirror,
-  refreshed on every verified read, never authoritative.
+- Drop `teamIds`/`teamRoles`/`orgRole` writes (`integrations.ts:38-49`) and
+  the recovery-path `workspaceDirectory` write (`uoa-recovery-link.ts`),
+  plus a migration stripping surviving keys. In-repo readers: none. The
+  keys do surface via `integration-product-rows.ts:114-130` into
+  `IntegratedProductResponse` (Sol 19) — they are deprecated in the
+  contract note and stripped there in the same change.
+- Heal `Team.name` from the UOA workspace label wherever org names heal
+  today — **both** the directory read and the switch/login paths (Sol 13) —
+  which the Part D green field makes load-bearing on day one (Kimix 15):
+  every post-cleanup team name starts as the `Workspace <id8>` placeholder.
 
 ## Part C — Remove the last duplicated identity data
 
-Verified in production 2026-08-31: `users.email` and `users.display_name`
-are populated for every SSO user. `password_hash` and `avatar_url` are NULL
-(the mode-gate and avatar relay already did their jobs). The
-`uoa-profile-mirror.ts` docblock keeps `displayName` "so a name and a
-picture can be rendered without a round trip per message row" — the perf
-rationale this part must satisfy without the column.
+The verified consumer inventory (Kimix 21-23, Sol 15-16) reframes this from
+"drop two columns" to a staged migration with named hot paths:
 
-### C1. Drop `users.display_name` behind the profile directory
+### C0. Consumer inventory (the contract of this part)
 
-- Extend the existing bounded in-memory directory pattern
-  (`uoa-directory-cache.ts`: per-process LRU, TTL, verified-read-primed)
-  into a profile directory keyed by local user id → {displayName,
-  avatarUrl}, primed from the same verified claim/roster reads that sync
-  the mirror today, with **batch hydration** for feed pages (one lookup per
-  page of authors, never per row).
-- The worker needs the same directory for agent-context author names —
-  shared via `@nessie/workspace-admin` (or `@nessie/runtime`), hydrated
-  from the run's org roster read; degraded rendering (stable short subject
-  or "Member") when UOA is unreachable, never a hard failure.
-- Then drop the column. Steady-state render cost: a Map hit replacing an
-  indexed JOIN — neutral or better. The costs are cold-start hydration and
-  UOA availability coupling; both are handled by degrade-not-fail.
+- **Mention resolution** (`packages/runtime/src/user-alerts.ts:25-46`)
+  string-matches `displayName` per channel-member on **every message
+  write**, synchronously, in api and worker. A cold directory = silently
+  lost mentions/alerts/push.
+- **Worker paths with no roster read to prime a cache**: call lifecycle
+  missed-call copy, push-dispatch body text, attention-dispatch,
+  PA message-destination labels, conversation-search author names,
+  mention-alerts, agent-record owner names.
+- **Wire contracts**: `MeResponse.user.email`, `UserRecordSchema.email`
+  (required, feeds members/people lists), project members' email, message
+  author includes; ~40 admin files render these fields.
+- **DB-level uses**: sorts/lookups on `displayName`/`email` in list
+  queries; the adoption bridge `findUnique({ where: { email } })`; CLI
+  super-admin email keying.
 
-### C2. Drop `users.email` — the harder half
+### C1. `display_name`: staged, not dropped-first
 
-Email is identity data UOA owns; local persistence is the last rule
-violation. Known email-keyed edges, each needing an explicit disposition:
-- **One-time adoption bridge** (`workspace-principal.ts:71-123`): a legacy
-  pre-SSO row is adopted by email match at first subject login. After the
-  production cleanup (Part D) there are no unadopted legacy rows left in
-  prod; the bridge remains for self-hosted installs — it can read the
-  email from the *verified claims* transiently without persisting it, but
-  needs a lookup column only as long as legacy local rows exist. Decision:
-  keep a nullable `email` only on rows with `uoaSub IS NULL` (local-mode
-  users), null it on adoption, drop the uniqueness constraint's role as an
-  identity key.
-- **CLI super-admin** is still email-keyed (known leftover) — re-key by
-  `uoaSub` or an explicit user id argument.
-- Any remaining lookups/dedup by email move to the roster relay or the
-  directory's by-email transient index.
+1. Build the profile directory as a **read-through seam, not a Map in a
+   shared package** (Sol 16): one `resolveDisplayProfiles(userIds)`
+   interface in `@nessie/workspace-admin`, backed per-process by an LRU
+   primed from verified claim/roster reads, with **batch hydration** and a
+   DB fallback while the columns still exist.
+2. Move every consumer in C0 onto the seam (mention resolution hydrates
+   the channel-member candidate set per write; worker dispatchers hydrate
+   per notification batch).
+3. Only then drop the column, switching the seam's fallback to the roster
+   relay. Degraded rendering contract (decided): UOA-roster name when
+   reachable, else the last cache value, else the string `Member` — and
+   mention resolution in the degraded state falls back to matching against
+   the *cached* candidate set, never silently to zero candidates; a
+   resolution pass with no candidate source raises a visible worker log
+   metric ("a capability that can stop working owns the way a person finds
+   out").
+4. No-name contract (Kimix 24): for a user whose claims carry no name the
+   directory serves UOA's roster-derived label transiently; nothing
+   persists it.
 
-### C3. `pronouns`
+### C2. `email`: keyed edges resolved explicitly
 
-The column is unused identity data. Dropped in the same migration unless a
-product decision claims it within this cycle (it is UOA's to own if it
-becomes real).
+- Column becomes nullable; **local-mode (no-IdP) users and not-yet-adopted
+  legacy rows keep theirs** — it is their identity key and stays unique
+  among non-null values. SSO-adopted rows null it.
+- Adoption bridge: unchanged single-shot semantics; a *second* pre-SSO
+  account with the same email fails closed with a **named refusal and
+  remedy copy** (`LEGACY_ACCOUNT_AMBIGUOUS` — contact the operator), not a
+  silent dead end (Kimix 24).
+- Wire contracts: each C0 email field gets an explicit decision — `MeResponse`
+  hydrates from the session's verified claims; `UserRecord.email` becomes
+  optional and hydrates from the roster relay for UOA orgs; project-member
+  email drops (the roster page already renders identity from UOA).
+- CLI super-admin re-keys by `uoaSub` or explicit user id; the email form
+  remains for local-mode installs only.
+- **Ordering**: C1 lands before C2 nulls anything — `initialDisplayName`'s
+  email fallback for brand-new rows must already be dead code.
+
+### C3. `pronouns` — retained (v1 was wrong)
+
+Verified NOT unused: exposed in `MeResponse` (`auth.ts:299`), written by the
+users service, rendered by the admin profile page. It stays until a product
+decision moves pronouns into UOA-owned profile data. Removed from this
+plan's scope.
 
 ## Part D — Production cleanup (data, not code)
 
-Status 2026-08-31:
+- **Nessie side DONE 2026-08-31.** 8 orgs + cascades deleted (plus 2
+  executor private assignments, 3 org-less debris agents, 12,205 terminal
+  queue rows); 0 organizations/teams/channels/messages/agents; 4 `users`
+  rows kept; pre-cleanup `pg_dump -Fc` snapshot retained. Org-scoped
+  executors cascaded (desktop executors re-pair).
+- **UOA side: in progress** via A5 once deployed — all 20 organisations,
+  test debris first, flagged orgs last; accounts never deleted; orgs
+  refused `ORG_HAS_PROTECTED_RECORDS` stay (commercial history — "the
+  reports" — outlives the cleanup, as do DeepWater's user-keyed reports and
+  the whole `prompter` database).
+- **Consequence to carry (Sol 7):** every retained account is an *existing*
+  user to A1 — their first workspace comes from the chooser form, not
+  auto-provisioning. Acceptance testing must cover both the fresh-user and
+  retained-user paths.
 
-- **Nessie side DONE.** All 8 organisation anchors deleted with cascades
-  (plus 2 executor private assignments that blocked the cascade, 3 org-less
-  "Smith (copy)" debris agents, and 12,205 terminal queue-history rows).
-  Post-state: 0 organizations/teams/channels/messages/agents, 4 `users`
-  rows kept, empty queue. Pre-cleanup `pg_dump -Fc` snapshot retained. The
-  two device-paired executors were org-scoped and cascaded — desktop
-  executors re-pair on next use.
-- **UOA side pending the A5 endpoint**: all 20 organisations queued for
-  deletion via the new admin route, unambiguous test debris first, the
-  flagged orgs (KM, Gammad, Oliga, Martin Lexa, priscillia, Katerina ×2)
-  last. User accounts are never deleted (99 stay, including the 13
-  teleprompter users and 71 VoicePOS users). Orgs refused with
-  `ORG_HAS_PROTECTED_RECORDS` stay, deliberately — commercial history
-  ("the reports") outlives the cleanup, as do DeepWater's user-keyed
-  research reports and the whole `prompter` database.
+## Sequencing (revised)
 
-## Sequencing
+1. **A5 + Part D (UOA)** — deployed/running.
+2. **B1** (named refusal) + **A2** (path consolidation + orphan-team fix) +
+   the **invite tombstone reactivation** — independent, land first.
+3. **A1** (auto-provisioning, behind its lock fix) — flag flips only after
+   B1 is live.
+4. **A3** (policy knob + DB trigger + assumption audit) + **A4**
+   (`onboarding` block) — then the UOA chooser's create-dialog UX for
+   existing users (B2's upstream half).
+5. **B2** switcher doorway + **B4/B5** — B4/B5 any time after 2.
+6. **C1 → C2** — independent of A/B, ordered internally.
+7. Acceptance: fresh registration → auto org+General → Nessie materializes
+   → switcher shows it; retained user → chooser form once; existing user →
+   "Create workspace" → team in entitled org / explicit new tenant.
 
-1. **A5 + Part D (UOA)** — in flight; unblocks the green field.
-2. **A1–A4** (UOA) next — Nessie can only relay what exists upstream.
-   A2 and the invite-probe fix are independent of A3 and can land first.
-3. **Part B** behind the UOA deploy of A1/A3/A4.
-4. **Part C** independent — can run in parallel with A.
-5. First login after A1 deploys is the acceptance test: fresh user →
-   personal org + "General" team auto-created in UOA → Nessie materializes
-   the 1:1 anchors → switcher shows one workspace, zero forms.
+## Open questions (narrowed)
 
-## Open questions for review
-
-- Default name of the auto-created first team ("General" — UOA's existing
-  default, proposed — vs a Nessie-flavoured "Workspace").
-- Exact enforcement mechanism for A3's configurable org limit (service
-  check + constraint trigger vs keeping a redesigned partial index).
-- Whether `POST /api/workspace/teams` (B2) should relay through backend
-  mode (`/org/*` with the domain hash) or reuse the `/auth/create-team`
-  login-bridge flow UOA already ships; backend mode is the roster-relay
-  precedent, but the auth-flow path already handles creator membership.
+- A2's `creator_team_role` default when a domain configures no vocabulary
+  (proposal: the existing default-table `admin`).
+- Whether "new tenant" creation (B2/A3) needs an owner-side approval or
+  billing gate before GA — currently: any member may create one, and the
+  tenant is theirs.
