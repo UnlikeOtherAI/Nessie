@@ -10,6 +10,7 @@ export const AGENT_TODO_ERROR_CODES = {
   TEMPLATE_CHANGED: 'AGENT_TODO_TEMPLATE_CHANGED',
   TEMPLATE_NOT_FOUND: 'AGENT_TODO_TEMPLATE_NOT_FOUND',
   TEMPLATE_UNAVAILABLE: 'AGENT_TODO_TEMPLATE_UNAVAILABLE',
+  TEMPLATE_IN_USE: 'TODO_TEMPLATE_IN_USE',
 } as const
 
 export type AgentTodoErrorCode =
@@ -23,5 +24,23 @@ export class AgentTodoError extends Error {
     message: string,
   ) {
     super(message)
+  }
+}
+
+/**
+ * A trigger configuration passed validation when it was saved, but its active
+ * template disappeared before the queued run could adopt it. This is a
+ * classified health failure, not a retryable delivery error.
+ */
+export class AgentTodoScheduledConfigError extends Error {
+  readonly isReauthorizable = false
+  readonly reason = 'todo_template_invalid'
+
+  constructor(
+    templateId: string,
+    readonly triggerId: string,
+  ) {
+    super(`its to-do template ${templateId} is no longer active for this agent`)
+    this.name = 'AgentTodoScheduledConfigError'
   }
 }

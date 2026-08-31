@@ -5,7 +5,10 @@
 and To-dos surfaces have landed. Phase 2 is complete: its execution builtins,
 bounded prompt facts, liveness discipline, Run-now path, progress card, and
 id-only realtime invalidation have landed. Phase 3's agent proposal and
-owner-review flow is complete; Phase 4 scheduling remains.
+owner-review flow is complete. Phase 4 now reuses the existing trigger queue:
+scheduled provenance pends and coalesces before adoption, materializes pinned
+instances in the adopting run, classifies invalid templates as an owner-alerted
+trigger error, and exposes schedule creation and repair from each template.
 **Date:** 2026-08-31
 **Reviewed:** two independent adversarial reviews on the same repo — kimix
 (17 findings) and Codex Sol (18 findings, on the doc with kimix's round

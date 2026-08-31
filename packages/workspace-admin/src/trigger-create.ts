@@ -15,6 +15,35 @@ import {
   TRIGGER_ADMIN_AUDIENCE,
 } from './trigger-core.js'
 import { stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
+import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
+
+/**
+ * The config JSON is otherwise open-ended. This named check is the one place
+ * a `todoTemplateId` becomes a scheduled capability rather than inert data.
+ */
+export const validateTodoTemplateTriggerConfig = async (
+  prisma: PrismaClient | Prisma.TransactionClient,
+  agentId: string,
+  config: Record<string, unknown>,
+): Promise<boolean> => {
+  const todoTemplateId = config['todoTemplateId']
+  if (todoTemplateId === undefined) return true
+  if (typeof todoTemplateId !== 'string') return false
+  const agent = await prisma.agent.findUnique({
+    select: { organizationId: true, todosEnabled: true },
+    where: { id: agentId },
+  })
+  if (!agent?.todosEnabled || !agent.organizationId) return false
+  return Boolean(await prisma.agentTodoTemplate.findFirst({
+    select: { id: true },
+    where: {
+      agentId,
+      id: todoTemplateId,
+      organizationId: agent.organizationId,
+      status: 'active',
+    },
+  }))
+}
 
 /**
  * Create a trigger on an agent. Shared by `POST /api/agents/:agentId/triggers`
@@ -106,31 +135,38 @@ export const createAgentTrigger = async (
     }
   }
 
-  const target = await resolveExecutionTarget(prisma, agentId, {
-    targetChannelId: input.targetChannelId,
-    targetThreadId: input.targetThreadId,
-  })
-  if (!target) {
-    return null
+  const create = async (tx: Prisma.TransactionClient | PrismaClient) => {
+    if (!await validateTodoTemplateTriggerConfig(tx, agentId, normalizedConfig)) {
+      return null
+    }
+    const target = await resolveExecutionTarget(tx, agentId, {
+      targetChannelId: input.targetChannelId,
+      targetThreadId: input.targetThreadId,
+    })
+    if (!target) return null
+    const trigger = await tx.agentTrigger.create({
+      data: {
+        agentId,
+        type: input.type,
+        enabled: input.enabled ?? true,
+        status: input.enabled === false ? 'paused' : 'active',
+        name: input.name,
+        description: input.description,
+        config: normalizedConfig as Prisma.InputJsonValue,
+        nextRunAt: normalizedNextRunAt ?? undefined,
+        targetChannelId: target.channelId,
+        targetThreadId: target.threadId,
+      },
+    })
+    return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
   }
 
-  const trigger = await prisma.agentTrigger.create({
-    data: {
-      agentId,
-      type: input.type,
-      enabled: input.enabled ?? true,
-      status: input.enabled === false ? 'paused' : 'active',
-      name: input.name,
-      description: input.description,
-      config: normalizedConfig as Prisma.InputJsonValue,
-      nextRunAt: normalizedNextRunAt ?? undefined,
-      targetChannelId: target.channelId,
-      targetThreadId: target.threadId,
-    },
+  if (!hasTodoTemplateReference(normalizedConfig)) return create(prisma)
+  return prisma.$transaction(async (tx) => {
+    await acquireAgentTodoAgentLock(tx, agentId)
+    return create(tx)
   })
-
-  // Creation is the moment the webhook key is minted, and both callers are
-  // owner-gated (`POST /api/agents/:agentId/triggers` and the assistant's
-  // `agent_trigger_create`), so this response reveals it.
-  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
 }
+
+const hasTodoTemplateReference = (config: Record<string, unknown>): boolean =>
+  Object.hasOwn(config, 'todoTemplateId')

@@ -212,6 +212,18 @@ export const AgentTodoKickoffMetadataSchema = z.object({
   todoId: z.string().uuid(),
 }).strict()
 
+/** One schedule fire represented on a kickoff before its checklist is materialized. */
+export const AgentTodoScheduledTemplateRefSchema = z.object({
+  templateId: z.string().uuid(),
+  triggerId: z.string().uuid(),
+}).strict()
+export type AgentTodoScheduledTemplateRef = z.infer<typeof AgentTodoScheduledTemplateRefSchema>
+
+/** Provenance on a trigger kickoff before its checklist is materialized. */
+export const AgentTodoScheduledKickoffMetadataSchema = z.object({
+  todoTemplates: z.array(AgentTodoScheduledTemplateRefSchema).min(1),
+}).strict()
+
 export const AgentTodoRunResultSchema = z.object({
   channelId: ChannelIdSchema,
   runId: RunIdSchema.optional(),

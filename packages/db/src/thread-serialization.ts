@@ -116,6 +116,7 @@ export const claimThreadRunOrPend = async (
       // batched follow-up run when the LATEST pending row carries it.
       triggerId?: string
       triggerDeliveryId?: string
+      todoTemplateId?: string
     }
   },
 ): Promise<ThreadRunClaimOutcome> => {
@@ -168,6 +169,7 @@ export const claimThreadRunOrPend = async (
       ) as Prisma.InputJsonValue,
       triggerId: input.pending.triggerId ?? null,
       triggerDeliveryId: input.pending.triggerDeliveryId ?? null,
+      todoTemplateId: input.pending.todoTemplateId ?? null,
     },
   })
   return 'pended'
@@ -237,6 +239,34 @@ export const drainPendingThreadMessages = async (
       select: { channel: { select: { organizationId: true } } },
     })
 
+    // A batch may contain fires from more than one schedule. Preserve the
+    // latest fire's trigger provenance for each template while coalescing
+    // repeated fires of the same checklist into one adopting-run instance.
+    const scheduledTemplates = [...pendings.reduce((templates, pending) => {
+      if (pending.todoTemplateId && pending.triggerId) {
+        templates.set(pending.todoTemplateId, {
+          templateId: pending.todoTemplateId,
+          triggerId: pending.triggerId,
+        })
+      }
+      return templates
+    }, new Map<string, { templateId: string; triggerId: string }>()).values()]
+    const scheduledKickoff = scheduledTemplates.length > 0
+      ? await tx.message.create({
+          data: {
+            // The worker replaces this placeholder with the instance-pinned
+            // checklist once the run has actually claimed its slot.
+            content: 'Scheduled to-do kickoff pending materialization.',
+            metadata: {
+              todoScheduledKickoff: { todoTemplates: scheduledTemplates },
+            } as Prisma.InputJsonValue,
+            role: 'system',
+            threadId: input.threadId,
+          },
+          select: { id: true },
+        })
+      : null
+
     const run = await tx.run.create({
       data: {
         agentId: input.agentId,
@@ -251,7 +281,7 @@ export const drainPendingThreadMessages = async (
         // triggerId, never from content.
         replyPlacement: latest.triggerId ? 'channel' : null,
         status: 'pending',
-        triggerMessageId: latest.messageId,
+        triggerMessageId: scheduledKickoff?.id ?? latest.messageId,
         triggerId: latest.triggerId ?? null,
         triggerDeliveryId: latest.triggerDeliveryId ?? null,
       },
@@ -261,7 +291,7 @@ export const drainPendingThreadMessages = async (
       data: {
         agentId: input.agentId,
         organizationId: thread.channel.organizationId,
-        purpose: latest.message.content.slice(0, 200),
+        purpose: (scheduledKickoff ? 'Scheduled to-do' : latest.message.content).slice(0, 200),
         runId: run.id,
         status: 'inbox',
       },
@@ -279,7 +309,7 @@ export const drainPendingThreadMessages = async (
       agentId: parseAgentId(input.agentId),
       ...(latest.principalUserId ? { principalUserId: latest.principalUserId } : {}),
       interactive: latest.interactive,
-      messageId: latest.messageId,
+      messageId: scheduledKickoff?.id ?? latest.messageId,
       runId: parseRunId(run.id),
       taskId: parseTaskId(task.id),
       threadId: parseThreadId(input.threadId),

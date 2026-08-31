@@ -1,6 +1,8 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   AgentTodoKickoffMetadataSchema,
+  AgentTodoScheduledKickoffMetadataSchema,
+  type AgentTodoScheduledTemplateRef,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
@@ -30,12 +32,59 @@ export const agentTodoKickoffMetadata = (todoId: string) => ({
   todoKickoff: AgentTodoKickoffMetadataSchema.parse({ todoId }),
 })
 
+export const agentTodoScheduledKickoffMetadata = (
+  templateRefs: readonly AgentTodoScheduledTemplateRef[],
+) => ({
+  todoScheduledKickoff: AgentTodoScheduledKickoffMetadataSchema.parse({
+    todoTemplates: [...new Map(
+      templateRefs.map((template) => [template.templateId, template]),
+    ).values()],
+  }),
+})
+
 export const readAgentTodoKickoff = (metadata: unknown): { todoId: string } | null => {
   const parsed = z.object({
     todoKickoff: AgentTodoKickoffMetadataSchema,
   }).safeParse(metadata)
   return parsed.success ? parsed.data.todoKickoff : null
 }
+
+export const readAgentTodoScheduledKickoff = (
+  metadata: unknown,
+): {
+  todoTemplateIds: string[]
+  todoTemplates: AgentTodoScheduledTemplateRef[]
+} | null => {
+  const parsed = z.object({
+    todoScheduledKickoff: AgentTodoScheduledKickoffMetadataSchema,
+  }).safeParse(metadata)
+  return parsed.success
+    ? {
+        todoTemplateIds: parsed.data.todoScheduledKickoff.todoTemplates.map(
+          (template) => template.templateId,
+        ),
+        todoTemplates: parsed.data.todoScheduledKickoff.todoTemplates,
+      }
+    : null
+}
+
+/**
+ * A scheduled run is an honest record of every distinct checklist it adopted.
+ * Existing open instances are facts for the model to decide about; there is no
+ * rollover, cancellation, or automatic adoption of that older work.
+ */
+export const buildScheduledAgentTodoKickoff = (
+  todos: readonly MaterializedTodo[],
+  openInstances: readonly { age: string; id: string; title: string }[],
+): string => [
+  ...todos.flatMap((todo) => buildAgentTodoKickoff(todo).split('\n')),
+  ...(openInstances.length > 0
+    ? [
+        'Existing unfinished instances of these templates are facts only; decide whether one needs attention first:',
+        ...openInstances.map((todo) => `- todoId=${todo.id} | title=${JSON.stringify(todo.title)} | age=${todo.age}`),
+      ]
+    : []),
+].join('\n')
 
 /**
  * Clear a completed/failed/cancelled run's ownership promptly. Readers still

@@ -51,6 +51,13 @@ export const sendAgentManagementError = (
     sendApiError(reply, 400, error.code, error.message)
     return true
   }
+  if (
+    error instanceof AgentManagementError
+    && error.code === AGENT_MANAGEMENT_ERROR_CODES.TODOS_IN_USE
+  ) {
+    sendApiError(reply, 409, error.code, error.message)
+    return true
+  }
   return false
 }
 

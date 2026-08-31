@@ -8,6 +8,14 @@ import Fastify from 'fastify'
 
 import { registerAgentRoutes } from '../src/routes/agents.js'
 import { updateAgentRecord } from '../src/services/agent-management.js'
+import {
+  AGENT_TODO_ERROR_CODES,
+  AgentTodoError,
+  AGENT_MANAGEMENT_ERROR_CODES,
+  AgentManagementError,
+  archiveAgentTodoTemplate,
+  validateTodoTemplateTriggerConfig,
+} from '@nessie/workspace-admin'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -197,6 +205,109 @@ dbTest('a system-managed agent update preserves its stored todosEnabled value', 
       select: { todosEnabled: true },
     })
     assert.equal(row?.todosEnabled, true)
+  })
+})
+
+dbTest('an enabled schedule blocks template archive and disabling to-dos until it is paused', async () => {
+  await withDatabase(async (prisma, value) => {
+    await prisma.agent.update({ where: { id: value.agentId }, data: { todosEnabled: true } })
+    const template = await prisma.agentTodoTemplate.create({
+      data: {
+        agentId: value.agentId,
+        authorType: 'user',
+        name: 'Scheduled template',
+        organizationId: value.organizationId,
+        status: 'active',
+        steps: templateSteps,
+      },
+    })
+    const trigger = await prisma.agentTrigger.create({
+      data: {
+        agentId: value.agentId,
+        config: { todoTemplateId: template.id },
+        type: 'interval',
+      },
+    })
+
+    await assert.rejects(
+      () => archiveAgentTodoTemplate(prisma, {
+        agentId: value.agentId,
+        organizationId: value.organizationId,
+        templateId: template.id,
+      }),
+      (error: unknown) => error instanceof AgentTodoError
+        && error.code === AGENT_TODO_ERROR_CODES.TEMPLATE_IN_USE,
+    )
+    await assert.rejects(
+      () => updateAgentRecord(prisma, value.agentId, {
+        organizationId: value.organizationId,
+        todosEnabled: false,
+      }),
+      (error: unknown) => error instanceof AgentManagementError
+        && error.code === AGENT_MANAGEMENT_ERROR_CODES.TODOS_IN_USE,
+    )
+
+    await prisma.agentTrigger.update({ where: { id: trigger.id }, data: { enabled: false } })
+    const archived = await archiveAgentTodoTemplate(prisma, {
+      agentId: value.agentId,
+      organizationId: value.organizationId,
+      templateId: template.id,
+    })
+    assert.equal(archived?.status, 'archived')
+    const disabled = await updateAgentRecord(prisma, value.agentId, {
+      organizationId: value.organizationId,
+      todosEnabled: false,
+    })
+    assert.equal(disabled?.todosEnabled, false)
+  })
+})
+
+dbTest('scheduled to-do trigger config accepts only this agent\'s active template while to-dos are enabled', async () => {
+  await withDatabase(async (prisma, value) => {
+    await prisma.agent.update({ where: { id: value.agentId }, data: { todosEnabled: true } })
+    const active = await prisma.agentTodoTemplate.create({
+      data: {
+        agentId: value.agentId,
+        authorType: 'user',
+        name: 'Active template',
+        organizationId: value.organizationId,
+        status: 'active',
+        steps: templateSteps,
+      },
+    })
+    const foreign = await prisma.agentTodoTemplate.create({
+      data: {
+        agentId: value.otherAgentId,
+        authorType: 'user',
+        name: 'Foreign template',
+        organizationId: value.organizationId,
+        status: 'active',
+        steps: templateSteps,
+      },
+    })
+    const archived = await prisma.agentTodoTemplate.create({
+      data: {
+        agentId: value.agentId,
+        authorType: 'user',
+        name: 'Archived template',
+        organizationId: value.organizationId,
+        status: 'archived',
+        steps: templateSteps,
+      },
+    })
+
+    assert.equal(await validateTodoTemplateTriggerConfig(prisma, value.agentId, {
+      todoTemplateId: active.id,
+    }), true)
+    for (const todoTemplateId of [randomUUID(), foreign.id, archived.id]) {
+      assert.equal(await validateTodoTemplateTriggerConfig(prisma, value.agentId, {
+        todoTemplateId,
+      }), false)
+    }
+    await prisma.agent.update({ where: { id: value.agentId }, data: { todosEnabled: false } })
+    assert.equal(await validateTodoTemplateTriggerConfig(prisma, value.agentId, {
+      todoTemplateId: active.id,
+    }), false)
   })
 })
 

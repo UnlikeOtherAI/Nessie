@@ -108,7 +108,7 @@ const contextFor = (
   prisma,
   realtimeTransport: {
     publishWs: async () => undefined,
-  } as BuiltinToolRuntimeContext['realtimeTransport'],
+  } as unknown as BuiltinToolRuntimeContext['realtimeTransport'],
   run: { id: runId, messageId: randomUUID(), threadId: fixture.threadId },
   toolCallId: null,
 })

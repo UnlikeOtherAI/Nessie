@@ -3,25 +3,33 @@ import type { AgentTodoTemplateRecord } from '@nessie/schemas'
 import { Pill } from '../../../primitives/Pill'
 import type { ApprovalRequest } from '../../../../facades/approvals/hooks'
 import { templateStatusTone } from './todo-presentation'
+import { ScheduledTodoTemplate } from './ScheduledTodoTemplate'
+import type { AgentRecord, AgentTriggerRecord, ChannelRecord } from '../../../../lib/api-client'
 
 type TodoTemplateCardProps = {
   isOwner: boolean
+  agent: AgentRecord
+  channels: ChannelRecord[]
   onArchive: (template: AgentTodoTemplateRecord) => void
   onEdit: (template: AgentTodoTemplateRecord) => void
   onRefuseOwnerAction: () => void
   onResolveProposal?: (approval: ApprovalRequest, resolution: 'approved' | 'rejected') => void
   proposal?: ApprovalRequest
   template: AgentTodoTemplateRecord
+  trigger?: AgentTriggerRecord
 }
 
 export const TodoTemplateCard = ({
   isOwner,
+  agent,
+  channels,
   onArchive,
   onEdit,
   onRefuseOwnerAction,
   onResolveProposal,
   proposal,
   template,
+  trigger,
 }: TodoTemplateCardProps) => {
   const ownerAction = (action: () => void) => {
     if (isOwner) action()
@@ -79,6 +87,11 @@ export const TodoTemplateCard = ({
           </li>
         ))}
       </ol>
+      {template.status === 'active' && isOwner ? (
+        <div className="mt-4">
+          <ScheduledTodoTemplate agent={agent} channels={channels} templateId={template.id} trigger={trigger} />
+        </div>
+      ) : null}
     </article>
   )
 }

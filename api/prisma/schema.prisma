@@ -2415,6 +2415,10 @@ model RunThreadPendingMessage {
   // run linkage.
   triggerId         String?               @map("trigger_id") @db.Uuid
   triggerDeliveryId String?               @map("trigger_delivery_id") @db.Uuid
+  // A scheduled to-do is materialized only by the run that adopts this
+  // pending marker. Keeping the template provenance here lets a batched drain
+  // coalesce repeated fires into one instance without minting orphaned work.
+  todoTemplateId    String?               @map("todo_template_id") @db.Uuid
   createdAt         DateTime              @default(now()) @map("created_at")
   agent             Agent                 @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread            Thread                @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -2423,6 +2427,7 @@ model RunThreadPendingMessage {
   triggerDelivery   AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
 
   @@index([agentId, messageId, principalUserId])
+  @@index([todoTemplateId])
   @@index([threadId, seq])
   @@map("run_thread_pending_messages")
 }

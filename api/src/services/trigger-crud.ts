@@ -2,9 +2,11 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
 import {
   buildAgentVisibilityWhere,
+  acquireAgentTodoAgentLock,
   createAgentTrigger,
   mergeTriggerConfigPreservingIdentity,
   stripServerOwnedTriggerConfig,
+  validateTodoTemplateTriggerConfig,
 } from '@nessie/workspace-admin'
 import type {
   AgentTriggerDeliveryRecord,
@@ -314,7 +316,7 @@ export const updateAgentTrigger = async (
     return null
   }
 
-  const trigger = await prisma.agentTrigger.update({
+  const update = (tx: PrismaClient | Prisma.TransactionClient) => tx.agentTrigger.update({
     where: { id: triggerId },
     data: {
       name: input.name === undefined ? undefined : input.name,
@@ -333,6 +335,22 @@ export const updateAgentTrigger = async (
       nextRunAt: normalizedNextRunAt,
     },
   })
+  const config = isJsonRecord(normalizedConfig) ? normalizedConfig : {}
+  const shouldValidateTodoTemplate = Object.hasOwn(config, 'todoTemplateId')
+    && (input.config !== undefined || input.enabled === true)
+  const trigger = shouldValidateTodoTemplate && existing.agentId
+    ? await prisma.$transaction(async (tx) => {
+        await acquireAgentTodoAgentLock(tx, existing.agentId!)
+        if (!await validateTodoTemplateTriggerConfig(tx, existing.agentId!, config)) {
+          return null
+        }
+        return update(tx)
+      })
+    : shouldValidateTodoTemplate
+      ? null
+    : await update(prisma)
+
+  if (!trigger) return null
 
   return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
 }

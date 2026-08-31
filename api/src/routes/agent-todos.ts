@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { publishAgentTodoUpdated, startAgentTodoRun } from '@nessie/workspace-admin'
+import { claimThreadRunOrPend } from '@nessie/db'
 import { z } from 'zod'
 
 import {
@@ -20,6 +21,7 @@ import {
   UpdateAgentTodoTemplateBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { enqueueRunExecution } from '../queue/pgqueue.js'
 import {
   AGENT_TODO_ERROR_CODES,
   AgentTodoError,
@@ -388,13 +390,17 @@ export const registerAgentTodoRoutes = (
     if (!body) return reply
     // Deliberately stricter than schedule_task: clicking Run now posts into
     // this room immediately, so a public channel's visibility never suffices.
-    const result = await startAgentTodoRun(deps.prisma, {
-      actorContext,
-      agentId: agent.agentId,
-      channelId: body.channelId,
-      organizationId: agent.organizationId,
-      todoId: params.todoId,
-    })
+    const result = await startAgentTodoRun(
+      deps.prisma,
+      { claimThreadRunOrPend, enqueueRunExecution },
+      {
+        actorContext,
+        agentId: agent.agentId,
+        channelId: body.channelId,
+        organizationId: agent.organizationId,
+        todoId: params.todoId,
+      },
+    )
     if (result.kind === 'channel_not_found' || result.kind === 'todo_not_found') {
       sendApiError(reply, 404, result.kind === 'todo_not_found' ? AGENT_TODO_ERROR_CODES.NOT_FOUND : 'CHANNEL_NOT_FOUND', 'Resource not found.')
       return reply

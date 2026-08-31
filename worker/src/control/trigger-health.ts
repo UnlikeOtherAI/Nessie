@@ -1,7 +1,11 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 
 import { enqueueQueueJob } from '../queue.js'
-import { TriggerLaunchOriginError } from './trigger-origin.js'
+type ClassifiedTriggerHealthError = {
+  isReauthorizable: boolean
+  message: string
+  reason: string
+}
 
 // A trigger that cannot run has to say so to a person, once.
 //
@@ -42,7 +46,7 @@ export type TriggerHealthTransition = {
 export const recordTriggerHealthFailure = async (
   prisma: PrismaClient,
   input: {
-    error: TriggerLaunchOriginError
+    error: ClassifiedTriggerHealthError
     triggerId: string
   },
 ): Promise<TriggerHealthTransition | null> => {

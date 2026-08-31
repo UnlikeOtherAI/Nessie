@@ -17,7 +17,9 @@ import {
   createStandaloneAgentTodo,
   getAgentTodo,
   updateAgentTodoStep,
+  createAgentTrigger,
 } from '@nessie/workspace-admin'
+import { updateAgentTrigger } from '../src/services/trigger-crud.js'
 import { requestRunCancellation } from '../src/services/runs.js'
 import { runApprovalEffect } from '../src/services/approval-effects.js'
 import { actorContextFor } from './agent-todo-route-fixture.js'
@@ -678,5 +680,64 @@ dbTest('concurrent final step writes serialize and derive completion', async () 
       })
       assert.equal(current?.status, 'completed', `iteration ${iteration}`)
     }
+  })
+})
+
+dbTest('trigger create and update refuse inactive, foreign, and disabled to-do template references', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const active = await createAgentTodoTemplate(prisma, {
+      agentId: seed.agentId,
+      authorType: 'user',
+      createdByUserId: seed.ownerId,
+      name: 'Schedulable template',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'active',
+      steps: [{ instructions: 'Run it.', key: 'run', title: 'Run' }],
+    })
+    const foreign = await createAgentTodoTemplate(prisma, {
+      agentId: seed.otherAgentId,
+      authorType: 'user',
+      createdByUserId: seed.ownerId,
+      name: 'Foreign template',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'active',
+      steps: [{ instructions: 'Not for this agent.', key: 'foreign', title: 'Foreign' }],
+    })
+    const archived = await createAgentTodoTemplate(prisma, {
+      agentId: seed.agentId,
+      authorType: 'user',
+      createdByUserId: seed.ownerId,
+      name: 'Archived template',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'archived',
+      steps: [{ instructions: 'Never schedule this.', key: 'archived', title: 'Archived' }],
+    })
+    const create = (todoTemplateId: unknown) => createAgentTrigger(prisma, seed.agentId, {
+      config: { todoTemplateId },
+      targetChannelId: seed.channelId,
+      targetThreadId: seed.threadId,
+      type: 'webhook',
+    })
+    assert.equal(await create(randomUUID()), null)
+    assert.equal(await create(foreign.id), null)
+    assert.equal(await create(archived.id), null)
+    assert.equal(await create(1), null)
+    const trigger = await create(active.id)
+    assert.ok(trigger)
+    if (!trigger) return
+
+    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+      config: { todoTemplateId: foreign.id },
+    }), null)
+    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+      config: { todoTemplateId: archived.id },
+    }), null)
+    await prisma.agent.update({ where: { id: seed.agentId }, data: { todosEnabled: false } })
+    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+      config: { todoTemplateId: active.id },
+    }), null)
   })
 })

@@ -232,6 +232,19 @@ Root app layout:
   an otherwise terminal checklist open. An agent cannot overwrite a terminal
   status set by a person; a person may correct any step. Cancelling never
   changes the linked run.
+- An active template can repeat through an ordinary agent trigger with
+  `config.todoTemplateId`; the To-dos tab is the owner-facing creation and
+  repair doorway. The shared trigger write validates that the template is
+  active, belongs to that agent, and that to-dos remain enabled. An enabled
+  referencing trigger blocks archival (`TODO_TEMPLATE_IN_USE`) and disabling
+  to-dos (`AGENT_TODOS_IN_USE`); pausing it is the explicit repair path.
+- A scheduled fire carries template provenance through the existing pending
+  queue. The run that adopts the thread slot creates one pinned instance per
+  distinct template (so coalesced duplicate fires make one checklist), while
+  unfinished prior instances remain facts for the model rather than being
+  rolled over, cancelled, or automatically adopted. A template that disappears
+  before adoption moves its trigger to the existing owner-alerted `error`
+  health state exactly once.
 
 ### 2.0d Channel scopes
 

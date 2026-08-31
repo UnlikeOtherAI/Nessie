@@ -1,5 +1,4 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { claimThreadRunOrPend, enqueueRunExecution } from '@nessie/db'
 import {
   parseAgentId,
   parseChannelId,
@@ -9,6 +8,7 @@ import {
   withActionContext,
   type AgentTodoRunResult,
   type AuthorizedActionContext,
+  type RunExecuteJobPayload,
 } from '@nessie/schemas'
 
 import {
@@ -20,6 +20,27 @@ import { isTerminalAgentTodoRunStatus } from './agent-todo-run-statuses.js'
 import { ensureDefaultThread } from './channel-records.js'
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient
+
+export type AgentTodoRunQueue = {
+  claimThreadRunOrPend: (
+    tx: Prisma.TransactionClient,
+    input: {
+      agentId: string
+      threadId: string
+      pending: {
+        actorContext: AuthorizedActionContext
+        channelId: string
+        interactive: boolean
+        messageId: string
+      }
+    },
+  ) => Promise<'claimed' | 'pended' | 'duplicate'>
+  enqueueRunExecution: (
+    prisma: Pick<PrismaClient, '$executeRaw'>,
+    payload: RunExecuteJobPayload,
+    idempotencyKey?: string,
+  ) => Promise<boolean>
+}
 
 export type StartAgentTodoRunResult =
   | { kind: 'channel_not_found' }
@@ -35,6 +56,7 @@ export type StartAgentTodoRunResult =
  */
 export const startAgentTodoRun = async (
   prisma: PrismaLike,
+  queue: AgentTodoRunQueue,
   input: {
     actorContext: AuthorizedActionContext
     agentId: string
@@ -88,7 +110,7 @@ export const startAgentTodoRun = async (
         threadId,
       },
     })
-    const claim = await claimThreadRunOrPend(tx, {
+    const claim = await queue.claimThreadRunOrPend(tx, {
       agentId: input.agentId,
       threadId,
       pending: {
@@ -129,7 +151,7 @@ export const startAgentTodoRun = async (
       },
       select: { id: true },
     })
-    await enqueueRunExecution(tx, {
+    await queue.enqueueRunExecution(tx, {
       actorContext: withActionContext(input.actorContext, {
         agentId: parseAgentId(input.agentId),
         channelId: parseChannelId(input.channelId),

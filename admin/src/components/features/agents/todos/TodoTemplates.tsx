@@ -14,6 +14,8 @@ import { EmptyState } from '../../../shared/EmptyState'
 import { useIsOwner } from '../../../shared/OwnerGate'
 import { TodoTemplateEditor } from './TodoTemplateEditor'
 import { TodoTemplateCard } from './TodoTemplateCard'
+import { useChannels } from '../../../../facades/channels/hooks'
+import { useAgentTriggers } from '../../../../facades/triggers/hooks'
 
 type TodoTemplatesProps = {
   agent: AgentRecord
@@ -30,6 +32,8 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
   const archiveTemplate = useArchiveAgentTodoTemplate()
   const approvals = useApprovalRequests()
   const resolveApproval = useResolveApproval()
+  const { data: channels = [] } = useChannels()
+  const { data: triggers = [] } = useAgentTriggers(agent.id, isOwner)
   const [editingTemplate, setEditingTemplate] = useState<AgentTodoTemplateRecord | null | undefined>()
 
   const refuseOwnerAction = () => {
@@ -134,6 +138,8 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
         {templates.map((template) => (
           <TodoTemplateCard
             isOwner={isOwner}
+            agent={agent}
+            channels={channels}
             key={template.id}
             onArchive={archive}
             onEdit={setEditingTemplate}
@@ -144,6 +150,7 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
             )}
             proposal={proposalFor(template.id)}
             template={template}
+            trigger={triggers.find((trigger) => trigger.config.todoTemplateId === template.id)}
           />
         ))}
       </div>
