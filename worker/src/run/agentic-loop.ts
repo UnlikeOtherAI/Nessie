@@ -42,6 +42,7 @@ export type LoopCallbacks = {
   onToolCallStart: (toolName: string, args: Record<string, unknown>) => Promise<void>
   onToolCallEnd: (
     toolName: string,
+    args: Record<string, unknown>,
     result: string,
     durationMs: number,
     success: boolean,
@@ -392,6 +393,7 @@ export const runAgenticLoop = async (input: {
           }
           await callbacks.onToolCallEnd(
             tc.toolName,
+            tc.arguments,
             toolResult.output,
             durationMs,
             toolResult.success,
@@ -412,6 +414,7 @@ export const runAgenticLoop = async (input: {
           try {
             await callbacks.onToolCallEnd(
               tc.toolName,
+              tc.arguments,
               errorMsg,
               durationMs,
               false,

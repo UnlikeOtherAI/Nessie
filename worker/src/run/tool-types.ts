@@ -37,6 +37,15 @@ export type BuiltinToolRuntimeContext = {
   agentId: string
   agentKind: 'personal_assistant' | 'shared'
   actorContext: RunExecuteJobPayload['actorContext']
+  /**
+   * Keeps the run-local opt-in capture state in sync when the model starts or
+   * stops a demonstration during this very run. Ordinary tool fixtures need
+   * not provide it.
+   */
+  demonstrationControl?: {
+    clearActive: () => void
+    setActive: (demonstrationId: string) => void
+  }
   channel: {
     id: string
     organizationId: RunExecuteJobPayload['actorContext']['tenant']['organizationId']

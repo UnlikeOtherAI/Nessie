@@ -6,6 +6,7 @@ import {
 } from '@nessie/runtime'
 import { parseAgentId, parseRunId, type AuthorizedActionContext } from '@nessie/schemas'
 import { buildScopes } from './scopes.js'
+import { captureDemonstrationToolEnd } from './demonstration-capture.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 // Builtin tools that reach an external/third-party service. Each call is copied
@@ -24,6 +25,7 @@ export const recordToolEnd = async (
   context: RunContext,
   actorContext: AuthorizedActionContext,
   input: {
+    argumentsValue: Record<string, unknown>
     durationMs: number
     inputSummary: string
     outputPreview: string
@@ -69,6 +71,20 @@ export const recordToolEnd = async (
       },
     })
   }
+
+  await captureDemonstrationToolEnd(deps.prisma, {
+    agentId: context.agent.id,
+    argumentsValue: input.argumentsValue,
+    demonstrationId: context.activeDemonstrationId,
+    durationMs: input.durationMs,
+    endedAt,
+    organizationId: context.channel.organizationId,
+    runId: context.run.id,
+    startedAt: input.startedAt,
+    success: input.success,
+    threadId: context.run.threadId,
+    toolName: input.toolName,
+  })
 
   const connectorType =
     input.connectorUsage?.connectorType ?? CONNECTOR_TYPE_BY_TOOL[input.toolName]

@@ -21,6 +21,8 @@ import {
   runChannelUpdateTool,
   runCommsConnectCardTool,
   runDeepWaterRunUpdateTool,
+  runDemonstrationStartTool,
+  runDemonstrationStopTool,
   runMessageDeleteTool,
   runReactTool,
   runMessageEditTool,
@@ -243,6 +245,10 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runTodoStepUpdateTool(context, args))
     case 'todo_template_propose':
       return wrapTool(inputSummary, () => runTodoTemplateProposeTool(context, args))
+    case 'demonstration_start':
+      return wrapTool(inputSummary, () => runDemonstrationStartTool(context, args))
+    case 'demonstration_stop':
+      return wrapTool(inputSummary, () => runDemonstrationStopTool(context, args))
     case 'pa_join_channel':
       return wrapTool(inputSummary, () => runPersonalAssistantJoinChannelTool(context, args))
     // Dashboards. Grantable to any agent (not PA-only), so the gate is the
