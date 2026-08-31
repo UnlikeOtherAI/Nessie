@@ -93,7 +93,6 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
   // Edit sessions persist a whole-document snapshot rather than an append log,
   // which changes what a bootstrap may do with buffered frames.
   const snapshotSessionsRef = useRef(new Set<string>())
-  const restrictedSessionsRef = useRef(new Set<string>())
   const cancelledRef = useRef(false)
 
   const notify = useCallback((sessionId: string) => {
@@ -160,7 +159,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
 
       void fetchDetail(sessionId)
         .then((detail) => {
-          if (cancelledRef.current || restrictedSessionsRef.current.has(sessionId)) {
+          if (cancelledRef.current) {
             return
           }
           const current = entriesRef.current.get(sessionId)
@@ -259,20 +258,22 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
       if (!sessionId) {
         return
       }
+      if (event === 'stream.document.start') {
+        startedAtRef.current.set(sessionId, Date.now())
+        if (data.mode === 'edit') {
+          snapshotSessionsRef.current.add(sessionId)
+        }
+      }
       if (data.restricted) {
-        restrictedSessionsRef.current.add(sessionId)
-        entriesRef.current.delete(sessionId)
-        bufferedRef.current.delete(sessionId)
-        snapshotSessionsRef.current.delete(sessionId)
-        startedAtRef.current.delete(sessionId)
-        notify(sessionId)
-        publish()
+        // This frame is thread-wide because the live lane cannot filter by
+        // viewer. Resolve the session through the viewer-authorized REST route:
+        // entitled readers receive the durable document and a 404 drops it.
+        requestDetail(sessionId)
         return
       }
       const current = entriesRef.current.get(sessionId)
 
       if (event === 'stream.document.start') {
-        startedAtRef.current.set(sessionId, Date.now())
         if (!current) {
           setEntry(
             createDocumentStreamEntry({ runId: data.runId ?? '', sessionId }),
@@ -283,7 +284,6 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
         // offset in the deltas that follow is relative to it. Compose starts
         // from nothing and needs no fetch.
         if (data.mode === 'edit') {
-          snapshotSessionsRef.current.add(sessionId)
           requestDetail(sessionId)
         }
         return
@@ -381,7 +381,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
         )
       }
     },
-    [applyDelta, applyEdit, notify, publish, requestDetail, setEntry],
+    [applyDelta, applyEdit, requestDetail, setEntry],
   )
 
   /**
@@ -444,7 +444,6 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
     detailAttemptsRef.current = new Map()
     pendingDetailRef.current = new Set()
     startedAtRef.current = new Map()
-    restrictedSessionsRef.current = new Set()
     setDocumentSessions([])
     return () => {
       cancelledRef.current = true

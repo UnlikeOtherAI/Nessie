@@ -14,6 +14,7 @@ import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 type PagePreviewProps = {
   // True while the page body is still being fetched on demand (the list omits it).
   bodyPending?: boolean
+  canWrite: boolean
   // On a phone the workspace owns the doorway through the local-back
   // registry and passes no onBack; wider layouts keep the pane's own Back.
   onBack?: () => void
@@ -38,6 +39,7 @@ const sortedSubPages = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
 
 export const PagePreview = ({
   bodyPending,
+  canWrite,
   onBack,
   onCreateChild,
   onDrill,
@@ -68,20 +70,24 @@ export const PagePreview = ({
       onSelect: onOpenHistory,
       priority: 50,
     },
-    {
-      id: 'edit',
-      label: 'Edit',
-      onSelect: onEdit,
-      priority: 40,
-    },
-    {
-      disabled: publishPending,
-      id: 'publish',
-      label: 'Publish',
-      onSelect: onPublish,
-      primary: true,
-      priority: 100,
-    },
+    ...(canWrite
+      ? [
+          {
+            id: 'edit',
+            label: 'Edit',
+            onSelect: onEdit,
+            priority: 40,
+          },
+          {
+            disabled: publishPending,
+            id: 'publish',
+            label: 'Publish',
+            onSelect: onPublish,
+            primary: true,
+            priority: 100,
+          },
+        ] satisfies PageHeaderAction[]
+      : []),
   ]
 
   return (
@@ -98,6 +104,7 @@ export const PagePreview = ({
         <h1 className="mt-3 text-3xl font-semibold text-[var(--tx)]">{page.title}</h1>
         {page.summary ? <p className="mt-2 text-[color:var(--tx2)]">{page.summary}</p> : null}
         <ReviewPanel
+          canWrite={canWrite}
           onPublish={onPublish}
           onRequestChanges={focusComments}
           page={page}
@@ -123,18 +130,21 @@ export const PagePreview = ({
         ) : page.latestVersion?.body ? (
           <PageNotesLayer
             body={page.latestVersion.body}
+            canWrite={canWrite}
             pageId={page.id}
             versionId={page.latestVersion.id}
           />
         ) : (
           <div className="mt-6">
-            <p className="text-sm text-[color:var(--tx3)]">No content yet. Press Edit to start writing.</p>
+            <p className="text-sm text-[color:var(--tx3)]">
+              {canWrite ? 'No content yet. Press Edit to start writing.' : 'No content yet.'}
+            </p>
           </div>
         )}
 
         <BacklinksPanel pageId={page.id} />
 
-        <CommentsSection composerRef={commentsComposerRef} pageId={page.id} />
+        <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
 
         <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
           <div className="flex items-center justify-between">
@@ -142,13 +152,15 @@ export const PagePreview = ({
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--tx3)]">
               Sub-pages
             </span>
-            <button
-              className="admin-button admin-button-secondary admin-button-compact"
-              onClick={onCreateChild}
-              type="button"
-            >
-              New sub-page
-            </button>
+            {canWrite ? (
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={onCreateChild}
+                type="button"
+              >
+                New sub-page
+              </button>
+            ) : null}
           </div>
           <div className="mt-3 grid gap-1">
             {subPages.length === 0 ? (

@@ -113,7 +113,6 @@ test('readableSpaceIdsSqlForAgent includes the private-to-agent and creator arms
 })
 
 test('readableSpaceIdsSqlForAgent binds the owning agent and parent as explicit grants', () => {
-  const parentAgentId = '00000000-0000-4000-8000-000000000008'
   const fragment = readableSpaceIdsSqlForAgent(
     organizationId,
     agentScopes({ parentAgentId }),

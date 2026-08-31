@@ -65,6 +65,7 @@ export const runKbDocumentEditTool = async (
     fileService,
     organizationId,
     pageId,
+    context,
   )
   if (!document) {
     throw new Error(

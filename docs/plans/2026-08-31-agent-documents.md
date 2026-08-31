@@ -100,7 +100,7 @@ Beyond §0, the facts this design composes with, each verified:
   `listAgentsForUser` / `isAgentVisibleToUser` / `isAgentAccessibleToActor`
   (`packages/workspace-admin/src/agent-list.ts:31`, `access-checks.ts:54,88`)
   = bound into a channel the viewer can see OR stewarded
-  (`buildOwnedAgentWhere`: live membership + `parentAgentId: null`); org
+  (`buildVisibleAgentWhere`'s live-membership + `parentAgentId: null` arm); org
   owners see every non-system agent. `Agent.visibility`
   (`workspace | private`) is **proposed, not merged** — in-flight on
   `feat/agent-scopes` with `buildAgentVisibilityWhere` composed into the
@@ -418,6 +418,20 @@ agent audience it was meant to withhold from.
   draft and a published existing version unchanged.
 
 ## 6. The human interface
+
+**Phase-2 implementation note (2026-08-31).** The browser and API share one
+`KnowledgeSpaceResponse` contract, including `ownerAgentId`, so doorway fields
+cannot silently disappear at the boundary. A deep link resolves the displayed
+space by its detail endpoint when that space is absent from the scoped/capped
+navigation list; write affordances therefore follow the displayed space's
+verdict. Comments continue to follow read access, while access-list and
+`writeRestricted` administration are limited to the space creator,
+organisation owners, and service actors at both the UI and route. Agent
+visibility does not widen knowledge access: the per-agent route returns an
+explicit unreadable state for a visible agent whose space the caller cannot
+read, and the tab explains that state instead of mounting a workspace that can
+only fail. The `ownerAgentId` contract is live here; populating it end to end
+still depends on the phase-1 sibling's domain-record and native-mapper change.
 
 ### 6.1 The owning surface: a Documents tab on agent detail
 

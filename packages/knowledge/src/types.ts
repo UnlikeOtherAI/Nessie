@@ -61,7 +61,6 @@ export type KnowledgePageVersionRecord = {
 
 export type KnowledgeSpaceRecord = KnowledgeScopeInput & {
   id: string
-  ownerAgentId: string | null
   name: string
   description: string | null
   metadata: Record<string, unknown> | null

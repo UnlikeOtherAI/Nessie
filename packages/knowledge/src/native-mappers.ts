@@ -71,7 +71,6 @@ export const mapSpace = (space: SpaceRow): KnowledgeSpaceRecord => ({
   visibility: space.visibility,
   sensitivityTier: space.sensitivityTier,
   privateToAgentId: space.privateToAgentId,
-  ownerAgentId: space.ownerAgentId,
   createdBy: space.createdBy,
   deletedAt: toIso(space.deletedAt),
   createdAt: space.createdAt.toISOString(),
