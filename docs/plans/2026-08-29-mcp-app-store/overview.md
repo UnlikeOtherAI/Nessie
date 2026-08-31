@@ -373,12 +373,37 @@ So the icon is derived from the site, **lazily**, by
   work here twice over: the admin and API are different origins (`app.` vs
   `api.`), and an `<img>` cannot carry an `Authorization` header.
 
-Expect roughly a third to a half of cards to end up with a real mark: measured
-against live production sites, 4 of 6 serve a usable raster at the conventional
-paths, and 13 of 41 catalogue rows resolved in a batch. A monogram is a
-legitimate final state, not a failure — `icon-store.ts` holds the one
-fetch→cap→sniff→store pipeline all three cachers share, so a fourth source
-(an ICO decoder, `<link rel=icon>` parsing) plugs in without a fork.
+**Four sources, asked in descending order of what they are worth**
+(`icon-sources.ts`), because guessing paths alone resolved only about a third of
+the catalogue. Of fourteen rows that failed, eleven *did* declare
+`<link rel="icon">` — just not anywhere guessable:
+
+1. **What the publisher declared to the registry** (`server.icons`) — the only
+   source where somebody stated *this is my icon*. Ingestion previously read no
+   icon field at all, so that ~8% was discarded on every sync; it is now
+   captured into `iconUrl` by the mapper and merge.
+2. **What the site's HTML declares** — `<link rel="icon">` and friends, ranked
+   `apple-touch-icon` (a real raster by spec) over `icon` over `mask-icon` (a
+   monochrome silhouette, a poor tile), resolved against the page and refused
+   unless http(s). A bounded scan rather than a spec parser: that would mean a
+   new runtime dependency in the API image for a cosmetic feature, and a
+   mis-parse costs exactly one icon — the bytes are still capped and sniffed.
+3. **Conventional paths** — for sites that ship the files without declaring them.
+4. **The publisher's GitHub avatar** (`github.com/<owner>.png`) — no token, and
+   it answered for seven of eight repositories sampled, covering the 42% of rows
+   with a GitHub repository. The publisher's mark rather than the product's,
+   which is why it is last; the owner name is whitelisted to GitHub's own
+   alphabet because it is interpolated into a URL.
+
+An `.ico` is unwrapped rather than rejected (`extractPngFromIco`): a modern one
+is a container around a PNG, so it needs no decoder, and every offset is
+bounds-checked because it comes out of somebody else's file. An ICO holding only
+legacy BMP is still refused. One site answered `/favicon.ico` with an HTML page
+— the sniff caught it, which is the reason bytes are never trusted from a header.
+
+Measured on 40 real catalogue rows: **30 resolved (75%)**, up from 13 of 41
+(32%) with conventional paths alone. A monogram stays a legitimate final state
+for the rest.
 
 ## Not built yet
 

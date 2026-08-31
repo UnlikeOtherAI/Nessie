@@ -43,6 +43,8 @@ export type SyncableAppFields = {
   displayName: string | null
   shortDescription: string | null
   websiteUrl: string | null
+  /** The publisher's declared icon; `null` leaves the resolver to derive one. */
+  iconUrl: string | null
   documentationUrl: string | null
   repositoryUrl: string | null
   primaryCategory: McpAppCategory
@@ -63,6 +65,7 @@ export const syncableFieldsFromMapping = (
   displayName: mapping.displayName,
   shortDescription: mapping.description,
   websiteUrl: mapping.websiteUrl,
+  iconUrl: mapping.declaredIconUrl,
   documentationUrl: mapping.documentationUrl,
   repositoryUrl: mapping.repositoryUrl,
   primaryCategory: mapping.primaryCategory,
