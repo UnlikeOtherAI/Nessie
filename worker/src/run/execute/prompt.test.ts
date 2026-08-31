@@ -151,6 +151,37 @@ test('the research routing block rides in the system prompt when tools allow it'
   assert.doesNotMatch(systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null)), /Research routing:/)
 })
 
+test('the documents home block appears only with its resolved space and full toolset', () => {
+  const withDocuments = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    documents: {
+      spaceId: '00000000-0000-0000-0000-0000000000d0',
+      title: 'Aria — Documents',
+      hasDocumentTools: true,
+    },
+  })
+  assert.match(systemContent(withDocuments), /Your documents:/)
+  assert.match(systemContent(withDocuments), /00000000-0000-0000-0000-0000000000d0/)
+  assert.match(systemContent(withDocuments), /Aria — Documents/)
+  assert.match(systemContent(withDocuments), /kb_list/)
+  assert.match(systemContent(withDocuments), /kb_search/)
+  assert.match(systemContent(withDocuments), /kb_document_compose/)
+  assert.match(systemContent(withDocuments), /kb_document_edit/)
+
+  const withoutTools = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    documents: {
+      spaceId: '00000000-0000-0000-0000-0000000000d0',
+      title: 'Aria — Documents',
+      hasDocumentTools: false,
+    },
+  })
+  assert.doesNotMatch(systemContent(withoutTools), /Your documents:/)
+
+  assert.doesNotMatch(
+    systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null)),
+    /Your documents:/,
+  )
+})
+
 test('checkpoint notes are injected after the system messages, before the conversation', () => {
   const conversation: StoredConversationMessage[] = [
     { content: 'earlier question', role: 'user', authorAgentId: null, authorAgentName: null },

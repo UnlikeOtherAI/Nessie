@@ -1,6 +1,7 @@
 # Agent documents — the docs an agent keeps for itself
 
-**Status:** design proposal; phase 1b access arm and phase 1c disclosure basis/publish gate implemented.
+**Status:** phase 1b access arm, phase 1c disclosure basis/publish gate, and
+phase 1d shared provisioning + structural prompt block implemented.
 **Date:** 2026-08-31
 **Related:**
 [2026-08-31-agent-tables.md](2026-08-31-agent-tables.md) (agent-owned typed
@@ -478,6 +479,16 @@ ordinary tool policy; revisit with tables' identical open question).
 
 Each phase ships with its surface and doc updates in the same turn;
 migrations additive only.
+
+**Build status (2026-08-31):** phase 1d now keeps the provisioning helpers in
+`@nessie/knowledge`, leaving the API service as a thin re-export for its
+unchanged callers. Run setup provisions a non-system agent's home only after
+its assembled toolset includes a KB write tool; the advisory-locked ensure
+keeps concurrent setup to one private, agent-owned home. Spawned children use
+their parent's home, and the Personal Assistant remains in the person's My
+Docs. The prompt injects the resolved home id/title only when all four tools
+it names (`kb_list`, `kb_search`, `kb_document_compose`,
+`kb_document_edit`) are present.
 
 1. **The owned space + access + safety.** `ownerAgentId` migration + CHECK;
    `ensureAgentDocsSpace` + lazy provision; the read arm in TS and SQL
