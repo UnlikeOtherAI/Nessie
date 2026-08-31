@@ -167,13 +167,26 @@ export const loadRunContext = async (
 
   // One indexed lookup, cached on the context. The live stream gate calls the
   // disclosure predicate for every delta and must never perform IO itself.
-  const boundAgents = await prisma.agentBinding.findMany({
-    where: { channelId: run.thread.channel.id },
-    select: { agentId: true },
-  })
+  const [boundAgents, activeDemonstration] = await Promise.all([
+    prisma.agentBinding.findMany({
+      where: { channelId: run.thread.channel.id },
+      select: { agentId: true },
+    }),
+    prisma.demonstration.findFirst({
+      where: {
+        agentId: run.agent.id,
+        expiresAt: { gt: new Date() },
+        organizationId: run.thread.channel.organizationId,
+        status: 'recording',
+        threadId: run.thread.id,
+      },
+      select: { id: true },
+    }),
+  ])
 
   return {
     agent: { ...run.agent, runLimits: parseAgentRunLimits(run.agent.runLimits) },
+    activeDemonstrationId: activeDemonstration?.id ?? null,
     boundAgentIds: boundAgents.map((binding) => binding.agentId),
     channel: run.thread.channel,
     consumedSources: createConsumedSourceSink(),

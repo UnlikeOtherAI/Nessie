@@ -79,6 +79,12 @@ export type RunContext = {
    */
   boundAgentIds: readonly string[]
   /**
+   * The opt-in structural recording armed for this agent/thread when the run
+   * began. It is deliberately absent for ordinary runs, so their tool-end
+   * path never queries or writes demonstration storage.
+   */
+  activeDemonstrationId?: string | null
+  /**
    * Scoped sources this run has consumed, accumulated as they arrive (memories
    * at setup, knowledge-base pages from tool handlers, transcript turns as the
    * window is admitted). Everything the run materialises is stamped from this.

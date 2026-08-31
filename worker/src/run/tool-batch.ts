@@ -24,6 +24,7 @@ export type ToolBatchCallbacks = {
   onToolCallStart: (toolName: string, args: Record<string, unknown>) => Promise<void>
   onToolCallEnd: (
     toolName: string,
+    args: Record<string, unknown>,
     result: string,
     durationMs: number,
     success: boolean,
@@ -139,6 +140,7 @@ export const executeToolBatch = async (input: {
       }
       await input.callbacks.onToolCallEnd(
         toolCall.toolName,
+        toolCall.arguments,
         result.output,
         durationMs,
         result.success,
@@ -168,6 +170,7 @@ export const executeToolBatch = async (input: {
       try {
         await input.callbacks.onToolCallEnd(
           toolCall.toolName,
+          toolCall.arguments,
           output,
           durationMs,
           false,

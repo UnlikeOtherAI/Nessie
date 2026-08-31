@@ -5,7 +5,7 @@ This guide gives copy-paste paths for running Nessie's desktop and mobile apps. 
 ## Default physical-device delivery
 
 **“Put the latest build on my phone/tablet” means a self-contained, direct
-device deployment.** Build the `mobile` `preview` profile, install that exact
+device deployment.** Build the `mobile` `device` profile, install that exact
 IPA on each named physical device with `xcrun devicectl`, launch it, and verify
 that it remains running. Do not treat an EAS download link as delivery.
 
@@ -17,8 +17,10 @@ internet access for `https://app.nessie.works`.
 
 Apple labels the required direct iOS installation signature **Ad Hoc**. That is
 only the provisioning method: it is a normal standalone app, not the Expo
-development launcher and not TestFlight. A true Expo debug client is for
-developer work and requires Metro, so it is not a substitute for this request.
+development launcher and not TestFlight. The profile pins the hosted
+`https://app.nessie.works` URL into the binary so a phone never needs a local
+server selector. A true Expo debug client is for developer work and requires
+Metro, so it is not a substitute for this request.
 
 ## Prerequisites
 
@@ -378,11 +380,16 @@ you need a prebuilt build (`npx expo prebuild` regenerates `mobile/ios` /
 `mobile/android` with autolinking). Building for a physical device requires Apple
 Developer signing.
 
+For **developer work only**, start the local admin/API and build a development
+client. This is deliberately a different path from putting a working Nessie
+app on someone's phone: it opens the Expo launcher and needs Metro while it is
+being used.
+
 ```sh
 # 1. Run the admin + API dev servers (repo root); the admin must be LAN-reachable.
 pnpm dev                      # API :5454, admin :5455
 
-# 2. Build + install on a connected iPhone/iPad:
+# 2. Build + install a Metro-dependent development client:
 cd mobile
 npx expo run:ios --device     # prebuild + pods + build + install + launch + Metro
 ```
@@ -406,7 +413,7 @@ or other device, the requested outcome is **build, install, and launch on that
 device**. Uploading an artifact or sending an installation link is not a
 completed deployment.
 
-For a connected iPhone or iPad, build the appropriate signed profile, retrieve
+For a connected iPhone or iPad, build the `device` profile, retrieve
 the resulting archive, install its `.app` through `xcrun devicectl`, and launch
 `com.km.nessie`. Use the equivalent direct installer and launch command for
 Android or desktop targets. Confirm that the exact device is connected and
@@ -415,7 +422,7 @@ signature, report that concrete blocker instead of treating an artifact URL as
 the handoff.
 
 Unless the request explicitly asks for Metro hot reload or an Expo development
-client, an internal physical-device deployment uses the `preview` EAS profile.
+client, an internal physical-device deployment uses the `device` EAS profile.
 It launches the normal Nessie WebView shell directly. The `development` profile
 opens the Expo development launcher and is not a substitute for a usable app
 deployment. This is the default physical-device delivery policy stated at the
@@ -443,14 +450,9 @@ adb reverse tcp:8082 tcp:8082
 npx expo run:android --port 8082
 ```
 
-**Metro port 8081 is contended on this Mac.** A separate `faces-metro` launchd
-job pins Metro to 8081, and the Nessie dev build (no `expo-dev-client`) hardwires
-8081, so it red-screens with "Unable to resolve … `/Faces/…`". Until we add
-`expo-dev-client` (the durable fix — then `--port`/the dev-launcher URL is
-honoured directly), run Nessie's Metro on **8082** and point each device at it:
-
-- iOS sim: `xcrun simctl spawn booted defaults write com.km.nessie RCT_jsLocation "<MAC-LAN-IP>:8082"` then relaunch.
-- Android emu: `adb reverse tcp:8082 tcp:8082` (the run command above sets this).
+These commands build a development client and start Metro. The client honours
+the selected Metro port; if the launcher appears, choose the running Nessie
+development server. Do not use this path for a self-contained phone delivery.
 
 Metro shares the data-volume fsevents problem (see Dev mode), so after editing
 RN source restart it with `--reset-cache` for the change to be served.
@@ -497,11 +499,11 @@ and leaves page data, URLs, and conversation state in the admin React app.
   the project overview because that entry point supplies conversation context.
   Selecting a Knowledge space or product document view uses an addressable
   child route and pushes the shared Knowledge workspace over its list.
-- Every phone route below its contextual list has the same leading **Back**
-  control, including project overviews opened from Channels. It returns to the
-  route's owning list (Channels, Projects, Dashboards, Knowledge, or Admin), so a
-  direct link remains inside Nessie; tab roots retain the navigation-menu
-  control instead. Stateful nested surfaces (Knowledge documents/history/editor
+- Every phone route below its contextual list has one leading **Back** control,
+  including project overviews opened from Channels. It returns to the route's
+  immediate owning list (Channels, Projects, Dashboards, Knowledge, Apps, or
+  Admin), so a direct link remains inside Nessie; tab roots retain the
+  navigation-menu control instead. Stateful nested surfaces (Knowledge documents/history/editor
   and Admin column-browser details) reuse that one leading slot and unwind one
   local level before the route. Retained off-screen columns are inert and hidden
   from accessibility, so only the on-screen Back doorway is interactive.
@@ -573,8 +575,8 @@ After `npx expo prebuild --platform ios --no-install`, confirm Xcode generated
 `ios/Nessie/Nessie.entitlements` with `aps-environment`. Xcode's automatic
 signing must use the Apple team whose App ID has the capability above. The
 committed `mobile/app.json` pins Expo's `ios.appleTeamId` to that team so a
-fresh prebuild keeps the same signing owner. The
-development build reports `sandbox` with its device token; TestFlight and App
+fresh prebuild keeps the same signing owner. The development profile reports
+`sandbox` with its device token; the standalone `device`, TestFlight, and App
 Store builds report `production`, and Nessie records that environment per token
 so both can coexist.
 
@@ -597,26 +599,26 @@ safe client build configuration; the second is the server credential used by
 Nessie to call FCM directly and must remain in the encrypted server-side secret
 store. Both files must belong to the same Firebase project and Android app ID.
 
-Use the global EAS CLI:
+Build the standalone `device` profile for a physical phone or tablet:
 
 ```sh
-npm i -g eas-cli
-eas login
 cd mobile
-eas init
-eas build -p ios --profile development
+pnpm build:device:ios
 ```
 
-Or use EAS through `npx`:
+The build opens Nessie directly at `https://app.nessie.works` and can register
+an APNs token; it does not need Metro. The `development` profile remains
+available only for deliberate debugging work with a running Metro server.
+
+For Android use:
 
 ```sh
-npx eas-cli login
 cd mobile
-npx eas-cli init
-npx eas-cli build -p ios --profile development
+pnpm build:device:android
 ```
 
-Install the development build on the device. Unlike Expo Go, the development build gets a native APNs token, so push notifications can work.
+The legacy `preview` profile extends `device` and remains equivalent for an
+already-running release pipeline.
 
 ### Configure and prove the in-house sender
 
@@ -704,11 +706,11 @@ internal TestFlight distribution.
 
 ## Android
 
-For a development build:
+For a standalone installed app:
 
 ```sh
 cd mobile
-eas build -p android --profile development
+pnpm build:device:android
 ```
 
 ## Windows Desktop

@@ -114,6 +114,14 @@ export const runExecutionAgentLoop = async (
     agentId: context.agent.id,
     agentKind: context.agent.agentKind,
     actorContext: toolActorContext,
+    demonstrationControl: {
+      clearActive: () => {
+        context.activeDemonstrationId = null
+      },
+      setActive: (demonstrationId: string) => {
+        context.activeDemonstrationId = demonstrationId
+      },
+    },
     channel: {
       id: context.channel.id,
       organizationId: parseOrganizationId(context.channel.organizationId),
@@ -238,6 +246,7 @@ export const runExecutionAgentLoop = async (
       },
       onToolCallEnd: async (
         toolName,
+        argumentsValue,
         result,
         durationMs,
         success,
@@ -247,6 +256,7 @@ export const runExecutionAgentLoop = async (
         toolCallRecordId,
       ) => {
         await recordToolEnd(deps, context, payload.actorContext, {
+          argumentsValue,
           durationMs,
           inputSummary,
           outputPreview: result.slice(0, 1200),

@@ -453,6 +453,7 @@ const Shell = (): React.JSX.Element => {
           landscape={largePhoneLandscape}
           onAccentColor={phoneOnAccent}
           onAccountPress={nativeActions.toggleAccountMenu}
+          onToggleFocusMode={nativeActions.toggleFocusMode}
           onCreationMenuOpen={nativeActions.closeTransientMenus}
           onCreateAction={nativeActions.createFromPhoneMenu}
           onToolbarAction={nativeActions.runToolbarAction}
@@ -476,6 +477,7 @@ const Shell = (): React.JSX.Element => {
           badgeCounts={attentionBadges}
           onIndexChange={onIndexChange}
           onToggleAccountMenu={nativeActions.toggleAccountMenu}
+          onToggleFocusMode={nativeActions.toggleFocusMode}
           onToggleWorkspaceMenu={nativeActions.toggleWorkspaceMenu}
           onToolbarAction={nativeActions.runToolbarAction}
           insetLeft={insets.left}

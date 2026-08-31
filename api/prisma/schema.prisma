@@ -154,6 +154,13 @@ enum AgentTodoActorType {
   agent
 }
 
+enum DemonstrationStatus {
+  recording
+  captured
+  generalized
+  discarded
+}
+
 enum PlanStatus {
   draft
   active
@@ -956,6 +963,7 @@ model User {
   executorAvailabilityCandidates      ExecutorAvailabilityCandidate[] @relation("ExecutorAvailabilityCandidateActor")
   createdAgentTodoTemplates           AgentTodoTemplate[]             @relation("AgentTodoTemplateCreatedBy")
   createdAgentTodos                   AgentTodo[]                     @relation("AgentTodoCreatedBy")
+  startedDemonstrations               Demonstration[]                 @relation("DemonstrationStartedBy")
   avatarAttachment                    Attachment?                     @relation("UserAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   @@map("users")
@@ -1164,6 +1172,7 @@ model Organization {
   executors                        Executor[]
   agentTodoTemplates               AgentTodoTemplate[]
   agentTodos                       AgentTodo[]
+  demonstrations                   Demonstration[]
 
   @@map("organizations")
 }
@@ -1472,6 +1481,7 @@ model Channel {
   userAlerts             UserAlert[]
   productIntegrationRuns ProductIntegrationRun[]
   pushSurfacePresences   UserPushSurfacePresence[]
+  demonstrations         Demonstration[]
 
   @@index([organizationId, type])
   @@index([projectId])
@@ -1514,6 +1524,7 @@ model Thread {
   productIntegrationRuns   ProductIntegrationRun[]
   pushSurfacePresences     UserPushSurfacePresence[]
   agentTodos               AgentTodo[]
+  demonstrations           Demonstration[]
 
   @@index([channelId, createdAt])
   @@map("threads")
@@ -2049,6 +2060,8 @@ model Agent {
   runThreadPendingMessages       RunThreadPendingMessage[]
   todoTemplates                  AgentTodoTemplate[]             @relation("AgentTodoTemplateAgent")
   todos                          AgentTodo[]                     @relation("AgentTodoAgent")
+  demonstrations                 Demonstration[]                 @relation("AgentDemonstrations")
+  demonstrationSteps             DemonstrationStep[]             @relation("AgentDemonstrationSteps")
   organization                   Organization?                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // NoAction, not the Prisma default SetNull: on a COMPOSITE foreign key
   // SET NULL blanks every referencing column, which would wipe the agent's
@@ -2259,6 +2272,7 @@ model Run {
   executorBindings               ExecutorBinding[]
   proposedAgentTodoTemplates     AgentTodoTemplate[]             @relation("AgentTodoTemplateProposedByRun")
   activeAgentTodos               AgentTodo[]                     @relation("AgentTodoActiveRun")
+  demonstrationSteps             DemonstrationStep[]
 
   @@index([agentId, status])
   @@index([threadId, createdAt])
@@ -2625,6 +2639,57 @@ model AgentTodoStep {
   @@unique([todoId, key])
   @@index([todoId])
   @@map("agent_todo_steps")
+}
+
+/// An opt-in structural trace of work an agent performed in one conversation.
+/// Raw recordings are review-only; they are never a runnable automation.
+model Demonstration {
+  id              String              @id @default(uuid()) @db.Uuid
+  organizationId  String              @map("organization_id") @db.Uuid
+  agentId         String              @map("agent_id") @db.Uuid
+  channelId       String              @map("channel_id") @db.Uuid
+  threadId        String              @map("thread_id") @db.Uuid
+  startedByUserId String              @map("started_by_user_id") @db.Uuid
+  status          DemonstrationStatus @default(recording)
+  stepCount       Int                 @default(0) @map("step_count")
+  startedAt       DateTime            @default(now()) @map("started_at")
+  capturedAt      DateTime?           @map("captured_at")
+  expiresAt       DateTime            @map("expires_at")
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent           Agent               @relation("AgentDemonstrations", fields: [agentId], references: [id], onDelete: Cascade)
+  channel         Channel             @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  thread          Thread              @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  startedByUser   User                @relation("DemonstrationStartedBy", fields: [startedByUserId], references: [id], onDelete: Cascade)
+  steps           DemonstrationStep[]
+
+  @@index([organizationId, startedByUserId, startedAt(sort: Desc)])
+  @@index([agentId, threadId, status])
+  @@index([channelId])
+  @@map("demonstrations")
+}
+
+/// One completed structural tool invocation retained for an armed demonstration.
+/// Arguments are redacted at capture time; outputs are deliberately never stored.
+model DemonstrationStep {
+  id              String        @id @default(uuid()) @db.Uuid
+  demonstrationId String        @map("demonstration_id") @db.Uuid
+  runId           String?       @map("run_id") @db.Uuid
+  agentId         String        @map("agent_id") @db.Uuid
+  sequence        Int
+  toolName        String        @map("tool_name")
+  argumentsJson   Json          @map("arguments_json")
+  success         Boolean
+  startedAt       DateTime      @map("started_at")
+  endedAt         DateTime      @map("ended_at")
+  durationMs      Int           @map("duration_ms")
+  demonstration   Demonstration @relation(fields: [demonstrationId], references: [id], onDelete: Cascade)
+  run             Run?          @relation(fields: [runId], references: [id], onDelete: SetNull)
+  agent           Agent         @relation("AgentDemonstrationSteps", fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([demonstrationId, sequence])
+  @@index([runId])
+  @@index([agentId])
+  @@map("demonstration_steps")
 }
 
 model PlanStep {

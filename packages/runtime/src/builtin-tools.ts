@@ -16,6 +16,7 @@ import { INTEGRATION_TOOL_DEFINITIONS } from './builtin-integration-tools.js'
 import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
 import { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
+import { DEMONSTRATION_TOOL_DEFINITIONS } from './builtin-demonstration-tools.js'
 
 export { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from './builtin-kb-tools.js'
 import {
@@ -431,6 +432,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...INTEGRATION_TOOL_DEFINITIONS,
   ...COMMS_TOOL_DEFINITIONS,
   ...TODO_TOOL_DEFINITIONS,
+  ...DEMONSTRATION_TOOL_DEFINITIONS,
 ]
 
 // `delegate` is deliberately absent: the workflow builtin-tool executor has no

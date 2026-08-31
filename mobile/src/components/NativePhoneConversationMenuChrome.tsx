@@ -46,6 +46,7 @@ export const NativePhoneConversationMenuChrome = ({
   landscape,
   onAccentColor,
   onAccountPress,
+  onToggleFocusMode,
   onCreationMenuOpen,
   onToolbarAction,
   onCreateAction,
@@ -145,6 +146,7 @@ export const NativePhoneConversationMenuChrome = ({
         headerText={headerText}
         landscape={landscape}
         onAccountPress={onAccountPress}
+        onToggleFocusMode={onToggleFocusMode}
         onToolbarAction={onToolbarAction}
         onWorkspacePress={onWorkspacePress}
         safeTop={safeTop}
