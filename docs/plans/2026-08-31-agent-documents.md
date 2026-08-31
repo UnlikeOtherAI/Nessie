@@ -481,10 +481,14 @@ migrations additive only.
 2. **The Documents tab.** The per-agent route, the parameterized knowledge
    workspace on agent detail, doorway naming ("<Agent> — Documents"),
    `writeRestricted` + member management placement, no-secrets copy.
-3. **Stream restriction gate.** `runReplyIsRestricted` on the document
+3. **Stream restriction gate (implemented 2026-08-31).** `runReplyIsRestricted` on the document
    lanes and the bootstrap route (repairs the pre-existing KB gap
    product-wide). Ordered after 1–2 only because it is independent and
-   benefits all composes; teams may land it first.
+   benefits all composes; teams may land it first. The durable lane remains
+   complete for save byte-equality and authorized reconnects; list/detail apply
+   the shared run-basis reader before loading target names or chunks, and the
+   recorder stamps that run basis before a restricted session becomes
+   bootstrap-readable rather than waiting for the final reply.
 4. **Refinements with real use:** proprietor ergonomics (`kb_file`
    relaxation if not already in 1), steward-widened template of write
    permissions when people-and-their-agents phase 3 decides entitlements,
