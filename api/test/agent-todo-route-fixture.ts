@@ -20,6 +20,7 @@ export type AgentTodoRouteSeed = {
   projectId: string
   teamId: string
   threadId: string
+  unboundChannelId: string
 }
 
 export type TodoActor = 'member' | 'outsider' | 'owner' | 'peer'
@@ -64,6 +65,7 @@ export const seedAgentTodoRoutes = async (
     projectId: randomUUID(),
     teamId: randomUUID(),
     threadId: randomUUID(),
+    unboundChannelId: randomUUID(),
   }
 
   await prisma.organization.create({
@@ -112,6 +114,18 @@ export const seedAgentTodoRoutes = async (
       channelId: seed.channelId,
       userId,
     })),
+  })
+  await prisma.channel.create({
+    data: {
+      id: seed.unboundChannelId,
+      label: 'unbound-agent-todo-channel',
+      organizationId: seed.organizationId,
+      projectId: seed.projectId,
+      slug: `unbound-agent-todo-${seed.unboundChannelId.slice(0, 8)}`,
+      teamId: seed.teamId,
+      visibility: 'private',
+      members: { create: { userId: seed.memberId } },
+    },
   })
   await prisma.thread.create({
     data: { channelId: seed.channelId, id: seed.threadId, title: 'Agent todo thread' },
@@ -185,6 +199,7 @@ export const createAgentTodoRouteApp = (
     isAgentAccessibleToActor: (context, agentId) =>
       isAgentAccessibleToActor(prisma, context, agentId),
     prisma,
+    realtimeHub: { publishWs: async () => undefined },
     requireActorContext: () => actorContext,
     requireOwner: (context, reply) => {
       if (context.actor.roles?.includes('owner')) return true

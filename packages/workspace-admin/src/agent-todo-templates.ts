@@ -16,6 +16,7 @@ import {
   prepareAgentTodoSteps,
   prepareEditedAgentTodoSteps,
 } from './agent-todo-records.js'
+import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient
 
@@ -154,6 +155,24 @@ export const archiveAgentTodoTemplate = async (
   prisma: PrismaLike,
   input: AgentTodoTemplateIdentity & { templateId: string },
 ): Promise<AgentTodoTemplateRecord | null> => {
+  if ('$transaction' in prisma) return prisma.$transaction((tx) => archiveAgentTodoTemplate(tx, input))
+  await acquireAgentTodoAgentLock(prisma, input.agentId)
+  const enabledReferences = await prisma.agentTrigger.findMany({
+    select: { config: true },
+    where: { agentId: input.agentId, enabled: true },
+  })
+  if (enabledReferences.some((trigger) => {
+    const config = trigger.config
+    return typeof config === 'object'
+      && config !== null
+      && !Array.isArray(config)
+      && config['todoTemplateId'] === input.templateId
+  })) {
+    throw new AgentTodoError(
+      AGENT_TODO_ERROR_CODES.TEMPLATE_IN_USE,
+      'Pause the enabled schedule using this template before archiving it.',
+    )
+  }
   const changed = await prisma.agentTodoTemplate.updateMany({
     data: { status: 'archived' },
     where: {

@@ -6,6 +6,7 @@ import {
   useCreateAgentTodoTemplate,
   useUpdateAgentTodoTemplate,
 } from '../../../../facades/agent-todos/hooks'
+import { useApprovalRequests, useResolveApproval, type ApprovalRequest } from '../../../../facades/approvals/hooks'
 import type { AgentRecord } from '../../../../lib/api-client'
 import { useToasts } from '../../../../providers/ToastProvider'
 import { SectionLabel } from '../../../primitives/SectionLabel'
@@ -13,6 +14,8 @@ import { EmptyState } from '../../../shared/EmptyState'
 import { useIsOwner } from '../../../shared/OwnerGate'
 import { TodoTemplateEditor } from './TodoTemplateEditor'
 import { TodoTemplateCard } from './TodoTemplateCard'
+import { useChannels } from '../../../../facades/channels/hooks'
+import { useAgentTriggers } from '../../../../facades/triggers/hooks'
 
 type TodoTemplatesProps = {
   agent: AgentRecord
@@ -27,6 +30,10 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
   const createTemplate = useCreateAgentTodoTemplate()
   const updateTemplate = useUpdateAgentTodoTemplate()
   const archiveTemplate = useArchiveAgentTodoTemplate()
+  const approvals = useApprovalRequests()
+  const resolveApproval = useResolveApproval()
+  const { data: channels = [] } = useChannels()
+  const { data: triggers = [] } = useAgentTriggers(agent.id, isOwner)
   const [editingTemplate, setEditingTemplate] = useState<AgentTodoTemplateRecord | null | undefined>()
 
   const refuseOwnerAction = () => {
@@ -80,6 +87,12 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
   }
 
   const editorIsOpen = editingTemplate !== undefined
+  const proposalFor = (templateId: string): ApprovalRequest | undefined =>
+    approvals.data?.find((approval) => {
+      const context = approval.context
+      return approval.action === 'agent.todo_template.publish'
+        && context?.templateId === templateId
+    })
 
   return (
     <section className="grid gap-4" data-testid="agent-todo-templates">
@@ -125,11 +138,19 @@ export const TodoTemplates = ({ agent, isLoading, loadError, templates }: TodoTe
         {templates.map((template) => (
           <TodoTemplateCard
             isOwner={isOwner}
+            agent={agent}
+            channels={channels}
             key={template.id}
             onArchive={archive}
             onEdit={setEditingTemplate}
             onRefuseOwnerAction={refuseOwnerAction}
+            onResolveProposal={(approval, resolution) => resolveApproval.mutate(
+              { id: approval.id, resolution },
+              { onError: (error) => pushToast({ body: error.message, title: 'Could not resolve proposal' }) },
+            )}
+            proposal={proposalFor(template.id)}
             template={template}
+            trigger={triggers.find((trigger) => trigger.config.todoTemplateId === template.id)}
           />
         ))}
       </div>

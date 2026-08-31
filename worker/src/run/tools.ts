@@ -32,6 +32,7 @@ import {
   runUpdatePreferencesTool,
   runTodoStartTool,
   runTodoStepUpdateTool,
+  runTodoTemplateProposeTool,
   runWorkflowTransformPreviewTool,
   runWorkspaceSearchTool,
 } from './pa-tools.js'
@@ -240,6 +241,8 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runTodoStartTool(context, args))
     case 'todo_step_update':
       return wrapTool(inputSummary, () => runTodoStepUpdateTool(context, args))
+    case 'todo_template_propose':
+      return wrapTool(inputSummary, () => runTodoTemplateProposeTool(context, args))
     case 'pa_join_channel':
       return wrapTool(inputSummary, () => runPersonalAssistantJoinChannelTool(context, args))
     // Dashboards. Grantable to any agent (not PA-only), so the gate is the

@@ -1,5 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { AuthorizedActionContext } from '@nessie/schemas'
+import { publishAgentTodoUpdated, startAgentTodoRun } from '@nessie/workspace-admin'
+import { claimThreadRunOrPend } from '@nessie/db'
+import { z } from 'zod'
 
 import {
   AgentTodoAgentParamsSchema,
@@ -13,10 +16,12 @@ import {
   EmptyAgentTodoBodySchema,
   ListAgentTodosQuerySchema,
   ListAgentTodoTemplatesQuerySchema,
+  RunAgentTodoBodySchema,
   UpdateAgentTodoStepBodySchema,
   UpdateAgentTodoTemplateBodySchema,
 } from '../contracts.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { enqueueRunExecution } from '../queue/pgqueue.js'
 import {
   AGENT_TODO_ERROR_CODES,
   AgentTodoError,
@@ -37,6 +42,18 @@ type AvailableAgent = {
   agentId: string
   organizationId: string
   ownerUserId: string | null
+}
+
+const publishTodoUpdate = async (
+  deps: RouteDeps,
+  agent: AvailableAgent,
+  todoId: string,
+): Promise<void> => {
+  await publishAgentTodoUpdated(deps.realtimeHub, {
+    agentId: agent.agentId,
+    organizationId: agent.organizationId,
+    todoId,
+  })
 }
 
 const loadAvailableAgent = async (
@@ -302,6 +319,7 @@ export const registerAgentTodoRoutes = (
             steps: body.steps,
             title: body.title,
           })
+      await publishTodoUpdate(deps, agent, todo.id)
       return reply.code(201).send(createApiResponse(AgentTodoRecordSchema.parse(todo)))
     } catch (error) {
       if (sendAgentTodoError(reply, error)) return reply
@@ -327,6 +345,71 @@ export const registerAgentTodoRoutes = (
       return reply
     }
     return createApiResponse(AgentTodoRecordSchema.parse(todo))
+  })
+
+  // A chat card carries only a to-do id. Resolve its owning agent first, then
+  // apply the same agent gate as every nested to-do route so metadata never
+  // turns a room message into an ACL bypass.
+  app.get('/api/todos/:todoId', async (request, reply) => {
+    const actorContext = deps.requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const todoId = (request.params as { todoId?: string }).todoId
+    if (!todoId || !z.string().uuid().safeParse(todoId).success) {
+      sendApiError(reply, 404, AGENT_TODO_ERROR_CODES.NOT_FOUND, 'To-do not found.')
+      return reply
+    }
+    const todoIdentity = await deps.prisma.agentTodo.findUnique({
+      where: { id: todoId }, select: { agentId: true },
+    })
+    if (!todoIdentity) {
+      sendApiError(reply, 404, AGENT_TODO_ERROR_CODES.NOT_FOUND, 'To-do not found.')
+      return reply
+    }
+    const agent = await loadAvailableAgent(deps, actorContext, todoIdentity.agentId, reply)
+    if (!agent) return reply
+    const todo = await getAgentTodo(deps.prisma, {
+      ...agent,
+      todoId,
+      visibility: deps.createAgentVisibilityScope(actorContext),
+    })
+    if (!todo) {
+      sendApiError(reply, 404, AGENT_TODO_ERROR_CODES.NOT_FOUND, 'To-do not found.')
+      return reply
+    }
+    return createApiResponse(AgentTodoRecordSchema.parse(todo))
+  })
+
+  app.post('/api/agents/:agentId/todos/:todoId/run', async (request, reply) => {
+    const actorContext = deps.requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const params = parseInput(AgentTodoParamsSchema, request.params, reply, 'params')
+    if (!params) return reply
+    const agent = await loadAvailableAgent(deps, actorContext, params.agentId, reply)
+    if (!agent) return reply
+    const body = parseInput(RunAgentTodoBodySchema, request.body, reply)
+    if (!body) return reply
+    // Deliberately stricter than schedule_task: clicking Run now posts into
+    // this room immediately, so a public channel's visibility never suffices.
+    const result = await startAgentTodoRun(
+      deps.prisma,
+      { claimThreadRunOrPend, enqueueRunExecution },
+      {
+        actorContext,
+        agentId: agent.agentId,
+        channelId: body.channelId,
+        organizationId: agent.organizationId,
+        todoId: params.todoId,
+      },
+    )
+    if (result.kind === 'channel_not_found' || result.kind === 'todo_not_found') {
+      sendApiError(reply, 404, result.kind === 'todo_not_found' ? AGENT_TODO_ERROR_CODES.NOT_FOUND : 'CHANNEL_NOT_FOUND', 'Resource not found.')
+      return reply
+    }
+    if (result.kind === 'agent_not_bound' || result.kind === 'todo_unavailable') {
+      sendApiError(reply, 409, result.kind === 'agent_not_bound' ? 'AGENT_NOT_BOUND' : AGENT_TODO_ERROR_CODES.TODO_UNAVAILABLE, result.kind === 'agent_not_bound' ? 'This agent is not bound to that channel.' : 'Only an unclaimed open to-do can run now.')
+      return reply
+    }
+    return reply.code(202).send(createApiResponse(result.result))
   })
 
   app.post(
@@ -357,6 +440,7 @@ export const registerAgentTodoRoutes = (
           todoId: params.todoId,
           visibility: deps.createAgentVisibilityScope(actorContext),
         })
+        await publishTodoUpdate(deps, agent, todo.id)
         return createApiResponse(AgentTodoRecordSchema.parse(todo))
       } catch (error) {
         if (sendAgentTodoError(reply, error)) return reply
@@ -387,6 +471,7 @@ export const registerAgentTodoRoutes = (
         todoId: params.todoId,
         visibility: deps.createAgentVisibilityScope(actorContext),
       })
+      await publishTodoUpdate(deps, agent, todo.id)
       return createApiResponse(AgentTodoRecordSchema.parse(todo))
     } catch (error) {
       if (sendAgentTodoError(reply, error)) return reply

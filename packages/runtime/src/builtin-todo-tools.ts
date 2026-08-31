@@ -2,6 +2,34 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const TODO_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
+    id: 'todo_template_propose',
+    summary: 'Propose a reusable to-do template for owner review.',
+    label: 'Propose To-do Template',
+    description:
+      'Creates an agent-authored draft checklist and asks an organization owner to review it. '
+      + 'Use only when the current conversation did not draw on restricted material.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Short reusable checklist name.' },
+        description: { type: 'string', description: 'Optional description.' },
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: 'Short step title.' },
+              instructions: { type: 'string', description: 'Exact instructions.' },
+            },
+            required: ['title', 'instructions'],
+          },
+        },
+      },
+      required: ['name', 'steps'],
+    },
+    safe: false,
+  },
+  {
     id: 'todo_start',
     summary: 'Start one of this agent\'s to-do checklists.',
     label: 'Start To-do',

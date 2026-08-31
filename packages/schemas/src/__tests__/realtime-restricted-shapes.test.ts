@@ -84,3 +84,15 @@ test('an unrestricted stream.done carries no marker', () => {
   assert.equal(parsed.restricted, undefined)
   assert.equal(parsed.content, 'the answer')
 })
+
+test('agent.todo.updated accepts only the id-only invalidation payload', () => {
+  const todoId = '55555555-5555-4555-8555-555555555555'
+  const parsed = WsEventSchema.safeParse(wsEnvelope('agent.todo.updated', {
+    agentId: AGENT_ID,
+    todoId,
+  }))
+  assert.equal(parsed.success, true)
+  if (!parsed.success) return
+  assert.deepEqual(parsed.data.data, { agentId: AGENT_ID, todoId })
+  assert.doesNotMatch(JSON.stringify(parsed.data.data), /step|title|note|content/i)
+})

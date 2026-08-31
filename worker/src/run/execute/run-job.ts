@@ -73,6 +73,15 @@ import type { ExecutionDependencies, RunPlanContext } from './types.js'
 import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
 import {
+  AgentTodoScheduledConfigError,
+  buildScheduledAgentTodoKickoff,
+  claimAgentTodoForRun,
+  materializeScheduledAgentTodosForRun,
+  readAgentTodoKickoff,
+  readAgentTodoScheduledKickoff,
+} from '@nessie/workspace-admin'
+import { recordTriggerHealthFailure } from '../../control/trigger-health.js'
+import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
 } from './personal-assistant-presence-placement.js'
@@ -141,7 +150,7 @@ export const executeRunJob = async (
     return
   }
 
-  const prompt = payload.promptOverride?.trim() || message.content
+  let prompt = payload.promptOverride?.trim() || message.content
   const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)
 
   let streamStarted = false
@@ -275,16 +284,6 @@ export const executeRunJob = async (
       return
     }
 
-    planContext = await ensureRunPlanContext(deps.prisma, {
-      agentId: context.agent.id,
-      channelId: context.channel.id,
-      createdByActorId: payload.actorContext.actor.actorId,
-      createdByActorType: payload.actorContext.actor.actorType,
-      goal: prompt,
-      organizationId: context.channel.organizationId,
-      runId: context.run.id,
-    })
-
     const claimed = await claimRunForExecution(deps.prisma, context.run.id)
     if (!claimed) {
       if (handoffLocator) {
@@ -297,6 +296,71 @@ export const executeRunJob = async (
       return
     }
     claimedAt = new Date()
+    const todoKickoff = readAgentTodoKickoff(message.metadata)
+    if (todoKickoff) {
+      // The Run-now route only identifies the instance while it is pending.
+      // Claiming happens here, inside the executing run, so a queued cancel
+      // cannot strand a checklist under a run that never started.
+      await claimAgentTodoForRun(deps.prisma, {
+        agentId: context.agent.id,
+        organizationId: context.channel.organizationId,
+        runId: context.run.id,
+        threadId: context.run.threadId,
+        todoId: todoKickoff.todoId,
+      })
+    }
+    const scheduledTodoKickoff = readAgentTodoScheduledKickoff(message.metadata)
+    if (scheduledTodoKickoff) {
+      try {
+        const todos = await materializeScheduledAgentTodosForRun(deps.prisma, {
+          agentId: context.agent.id,
+          organizationId: context.channel.organizationId,
+          runId: context.run.id,
+          threadId: context.run.threadId,
+          templateRefs: scheduledTodoKickoff.todoTemplates,
+        })
+        const historic = await deps.prisma.agentTodo.findMany({
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { createdAt: true, id: true, title: true },
+          where: {
+            agentId: context.agent.id,
+            id: { notIn: todos.map((todo) => todo.id) },
+            organizationId: context.channel.organizationId,
+            status: { in: ['open', 'running'] },
+            templateId: { in: scheduledTodoKickoff.todoTemplateIds },
+          },
+        })
+        prompt = buildScheduledAgentTodoKickoff(
+          todos,
+          historic.map((todo) => ({
+            age: `${Math.floor((Date.now() - todo.createdAt.getTime()) / 86_400_000)}d`,
+            id: todo.id,
+            title: todo.title,
+          })),
+        )
+        await deps.prisma.message.update({
+          where: { id: payload.messageId },
+          data: { content: prompt },
+        })
+      } catch (error) {
+        if (error instanceof AgentTodoScheduledConfigError) {
+          await recordTriggerHealthFailure(deps.prisma, {
+            error,
+            triggerId: error.triggerId,
+          })
+        }
+        throw error
+      }
+    }
+    planContext = await ensureRunPlanContext(deps.prisma, {
+      agentId: context.agent.id,
+      channelId: context.channel.id,
+      createdByActorId: payload.actorContext.actor.actorId,
+      createdByActorType: payload.actorContext.actor.actorType,
+      goal: prompt,
+      organizationId: context.channel.organizationId,
+      runId: context.run.id,
+    })
     // Show on the message itself that this run picked it up. Cleared by the
     // terminal status transition in `lifecycle.ts`, so no path here has to
     // remember to take it back off.

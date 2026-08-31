@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
@@ -11,11 +12,17 @@ import {
   AGENT_TODO_ERROR_CODES,
   AgentTodoError,
   activateAgentTodoTemplate,
+  claimAgentTodoForRun,
   createAgentTodoTemplate,
   createStandaloneAgentTodo,
   getAgentTodo,
   updateAgentTodoStep,
+  createAgentTrigger,
 } from '@nessie/workspace-admin'
+import { updateAgentTrigger } from '../src/services/trigger-crud.js'
+import { requestRunCancellation } from '../src/services/runs.js'
+import { runApprovalEffect } from '../src/services/approval-effects.js'
+import { actorContextFor } from './agent-todo-route-fixture.js'
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify'
 
 import {
@@ -395,6 +402,193 @@ dbTest('cancel moves open to cancelled without changing activeRunId or the run',
   })
 })
 
+dbTest('Run now requires target membership and a binding, then creates an internal kickoff, Run, and Task', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const memberApp = createAgentTodoRouteApp(prisma, seed, 'member')
+    const outsiderApp = createAgentTodoRouteApp(prisma, seed, 'outsider')
+    try {
+      const created = await memberApp.inject({
+        method: 'POST',
+        payload: {
+          steps: [{ instructions: 'Run this exact step.', key: 'run', title: 'Run' }],
+          title: 'Run-now checklist',
+        },
+        url: `/api/agents/${seed.agentId}/todos`,
+      })
+      const todo = responseData<AgentTodoRecord>(created)
+
+      const noMembership = await outsiderApp.inject({
+        method: 'POST',
+        payload: { channelId: seed.channelId },
+        url: `/api/agents/${seed.agentId}/todos/${todo.id}/run`,
+      })
+      assert.equal(noMembership.statusCode, 404)
+
+      const unbound = await memberApp.inject({
+        method: 'POST',
+        payload: { channelId: seed.unboundChannelId },
+        url: `/api/agents/${seed.agentId}/todos/${todo.id}/run`,
+      })
+      assert.equal(unbound.statusCode, 409)
+      assert.equal(responseErrorCode(unbound), 'AGENT_NOT_BOUND')
+
+      const started = await memberApp.inject({
+        method: 'POST',
+        payload: { channelId: seed.channelId },
+        url: `/api/agents/${seed.agentId}/todos/${todo.id}/run`,
+      })
+      assert.equal(started.statusCode, 202)
+      const run = await prisma.run.findFirst({
+        orderBy: { createdAt: 'desc' },
+        where: { agentId: seed.agentId },
+      })
+      assert.ok(run)
+      assert.equal(await prisma.task.count({ where: { runId: run.id } }), 1)
+      const kickoff = await prisma.message.findUnique({ where: { id: run.triggerMessageId ?? '' } })
+      assert.equal(kickoff?.role, 'system')
+      assert.match(kickoff?.content ?? '', /Run this exact step\./)
+      assert.deepEqual(kickoff?.metadata, { todoKickoff: { todoId: todo.id } })
+    } finally {
+      await closeApps(memberApp, outsiderApp)
+    }
+  })
+})
+
+dbTest('Run now refuses a to-do claimed by a live run', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const app = createAgentTodoRouteApp(prisma, seed, 'member')
+    try {
+      const todo = await createStandaloneAgentTodo(prisma, {
+        agentId: seed.agentId,
+        createdByUserId: seed.memberId,
+        organizationId: seed.organizationId,
+        steps: [{ instructions: 'Already running.', key: 'run', title: 'Run' }],
+        title: 'Claimed checklist',
+      })
+      const run = await prisma.run.create({
+        data: { agentId: seed.agentId, status: 'running', threadId: seed.threadId },
+      })
+      await prisma.agentTodo.update({ where: { id: todo.id }, data: { activeRunId: run.id } })
+      const response = await app.inject({
+        method: 'POST',
+        payload: { channelId: seed.channelId },
+        url: `/api/agents/${seed.agentId}/todos/${todo.id}/run`,
+      })
+      assert.equal(response.statusCode, 409)
+      assert.equal(responseErrorCode(response), AGENT_TODO_ERROR_CODES.TODO_UNAVAILABLE)
+    } finally {
+      await app.close()
+    }
+  })
+})
+
+dbTest('an API-side queued cancellation leaves a stale pointer harmless and reclaimable', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const todo = await createStandaloneAgentTodo(prisma, {
+      agentId: seed.agentId,
+      createdByUserId: seed.memberId,
+      organizationId: seed.organizationId,
+      steps: [{ instructions: 'Claim me after cancellation.', key: 'claim', title: 'Claim' }],
+      title: 'Cancelled-run checklist',
+    })
+    const run = await prisma.run.create({
+      data: { agentId: seed.agentId, status: 'pending', threadId: seed.threadId },
+    })
+    await prisma.agentTodo.update({ where: { id: todo.id }, data: { activeRunId: run.id } })
+    await prisma.task.create({
+      data: {
+        agentId: seed.agentId,
+        organizationId: seed.organizationId,
+        purpose: 'cancelled test',
+        runId: run.id,
+      },
+    })
+    const result = await requestRunCancellation(prisma, {
+      cancelledByUserId: seed.memberId,
+      organizationId: seed.organizationId,
+      runId: run.id,
+    })
+    assert.equal(result.kind, 'cancelled')
+    const read = await getAgentTodo(prisma, {
+      agentId: seed.agentId,
+      organizationId: seed.organizationId,
+      todoId: todo.id,
+    })
+    assert.equal(read?.activeRunId, null)
+    const claimed = await claimAgentTodoForRun(prisma, {
+      agentId: seed.agentId,
+      organizationId: seed.organizationId,
+      runId: (await prisma.run.create({
+        data: { agentId: seed.agentId, status: 'running', threadId: seed.threadId },
+      })).id,
+      threadId: seed.threadId,
+      todoId: todo.id,
+    })
+    assert.equal(claimed.activeRunId === run.id, false)
+    assert.equal(claimed.status, 'running')
+  })
+})
+
+dbTest('an approved template proposal activates only the reviewed draft version', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const template = await createAgentTodoTemplate(prisma, {
+      agentId: seed.agentId,
+      authorType: 'agent',
+      createdByUserId: null,
+      name: 'Proposed template',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'draft',
+      steps: [{ instructions: 'Review the result.', title: 'Review' }],
+    })
+    const approval = await prisma.approvalRequest.create({
+      data: {
+        action: 'agent.todo_template.publish',
+        agentId: seed.agentId,
+        context: { templateId: template.id, version: template.version },
+        continuationToken: randomUUID(),
+        expiresAt: new Date(Date.now() + 86_400_000),
+        organizationId: seed.organizationId,
+        reason: 'Proposed template',
+        requesterId: seed.agentId,
+        requiredApproverRole: 'owner',
+        status: 'pending',
+      },
+    })
+    const published = await runApprovalEffect(prisma, approval, actorContextFor(seed, 'owner'))
+    assert.equal(published.note, 'published')
+    assert.equal(
+      (await prisma.agentTodoTemplate.findUnique({ where: { id: template.id } }))?.status,
+      'active',
+    )
+
+    const stale = await createAgentTodoTemplate(prisma, {
+      agentId: seed.agentId,
+      authorType: 'agent',
+      createdByUserId: null,
+      name: 'Edited before review',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'draft',
+      steps: [{ instructions: 'Original.', title: 'Original' }],
+    })
+    await prisma.agentTodoTemplate.update({
+      where: { id: stale.id },
+      data: { version: { increment: 1 } },
+    })
+    const staleResult = await runApprovalEffect(prisma, {
+      action: 'agent.todo_template.publish',
+      context: { templateId: stale.id, version: stale.version },
+      id: randomUUID(),
+    }, actorContextFor(seed, 'owner'))
+    assert.match(staleResult.note ?? '', /superseded/)
+    assert.equal(
+      (await prisma.agentTodoTemplate.findUnique({ where: { id: stale.id } }))?.status,
+      'draft',
+    )
+  })
+})
+
 dbTest('template activation is a version-pinned draft compare-and-set', async () => {
   await withDatabase(async (prisma, seed) => {
     const app = createAgentTodoRouteApp(prisma, seed, 'owner')
@@ -486,5 +680,64 @@ dbTest('concurrent final step writes serialize and derive completion', async () 
       })
       assert.equal(current?.status, 'completed', `iteration ${iteration}`)
     }
+  })
+})
+
+dbTest('trigger create and update refuse inactive, foreign, and disabled to-do template references', async () => {
+  await withDatabase(async (prisma, seed) => {
+    const active = await createAgentTodoTemplate(prisma, {
+      agentId: seed.agentId,
+      authorType: 'user',
+      createdByUserId: seed.ownerId,
+      name: 'Schedulable template',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'active',
+      steps: [{ instructions: 'Run it.', key: 'run', title: 'Run' }],
+    })
+    const foreign = await createAgentTodoTemplate(prisma, {
+      agentId: seed.otherAgentId,
+      authorType: 'user',
+      createdByUserId: seed.ownerId,
+      name: 'Foreign template',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'active',
+      steps: [{ instructions: 'Not for this agent.', key: 'foreign', title: 'Foreign' }],
+    })
+    const archived = await createAgentTodoTemplate(prisma, {
+      agentId: seed.agentId,
+      authorType: 'user',
+      createdByUserId: seed.ownerId,
+      name: 'Archived template',
+      organizationId: seed.organizationId,
+      proposedByRunId: null,
+      status: 'archived',
+      steps: [{ instructions: 'Never schedule this.', key: 'archived', title: 'Archived' }],
+    })
+    const create = (todoTemplateId: unknown) => createAgentTrigger(prisma, seed.agentId, {
+      config: { todoTemplateId },
+      targetChannelId: seed.channelId,
+      targetThreadId: seed.threadId,
+      type: 'webhook',
+    })
+    assert.equal(await create(randomUUID()), null)
+    assert.equal(await create(foreign.id), null)
+    assert.equal(await create(archived.id), null)
+    assert.equal(await create(1), null)
+    const trigger = await create(active.id)
+    assert.ok(trigger)
+    if (!trigger) return
+
+    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+      config: { todoTemplateId: foreign.id },
+    }), null)
+    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+      config: { todoTemplateId: archived.id },
+    }), null)
+    await prisma.agent.update({ where: { id: seed.agentId }, data: { todosEnabled: false } })
+    assert.equal(await updateAgentTrigger(prisma, trigger.id, {
+      config: { todoTemplateId: active.id },
+    }), null)
   })
 })

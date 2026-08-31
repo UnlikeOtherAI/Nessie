@@ -101,6 +101,7 @@ const makeDeps = () => {
       ]
     },
     agent: { update: async () => ({}) },
+    agentTodo: { findFirst: async () => null },
     message: {
       create: async (args: MessageCreateArgs) => {
         messageCreates.push(args)
@@ -282,6 +283,27 @@ test('completeRunExecution without a reply root stays byte-identical (top-level)
   const streamDone = sse.find((call) => call.event === 'stream.done')
   assert.ok(streamDone)
   assert.equal('rootMessageId' in streamDone.data, false)
+})
+
+test('completeRunExecution stamps an id-only todoRef on its assistant reply', async () => {
+  const { deps, messageCreates } = makeDeps()
+  const todoId = '00000000-0000-0000-0000-000000000099'
+  ;(deps.prisma as unknown as { agentTodo: { findFirst: () => Promise<{ id: string }> } })
+    .agentTodo.findFirst = async () => ({ id: todoId })
+
+  await completeRunExecution(deps, makePayload(), makeContext(), {
+    planId: PLAN_ID,
+    rootStepId: PLAN_STEP_ID,
+  }, {
+    invocations: [],
+    iterations: 1,
+    memories: [],
+    responseText: 'Done.',
+    toolCallsUsed: 0,
+  })
+
+  assert.deepEqual(messageCreates[0]?.data.metadata, { todoRef: { todoId } })
+  assert.equal(messageCreates[0]?.data.role, 'assistant')
 })
 
 test('terminalizeBudgetBlockedRun attaches rootMessageId and emits reply events', async () => {

@@ -125,3 +125,17 @@ export const useCancelAgentTodo = () => {
     },
   })
 }
+
+export const useRunAgentTodo = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { agentId: string; channelId: string; todoId: string }) =>
+      apiClient.post(`/api/agents/${input.agentId}/todos/${input.todoId}/run`, {
+        channelId: input.channelId,
+      }),
+    onSuccess: (_data, input) => {
+      void queryClient.invalidateQueries({ queryKey: agentTodoKeys.instances(input.agentId) })
+    },
+  })
+}

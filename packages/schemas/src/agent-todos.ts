@@ -2,8 +2,10 @@ import { z } from 'zod'
 
 import {
   AgentIdSchema,
+  ChannelIdSchema,
   OrganizationIdSchema,
   RunIdSchema,
+  TaskIdSchema,
   ThreadIdSchema,
   UserIdSchema,
 } from './ids.js'
@@ -20,6 +22,8 @@ export const AGENT_TODO_TEMPLATE_DESCRIPTION_MAX = 500
 export const AGENT_TODO_PROMPT_TEMPLATE_LIMIT = 20
 export const AGENT_TODO_PROMPT_INSTANCE_LIMIT = 10
 export const AGENT_TODO_PROMPT_PROPOSAL_LIMIT = 5
+export const AGENT_TODO_PENDING_PROPOSAL_LIMIT = 10
+export const AGENT_TODO_APPROVAL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
 
 export const AgentTodoTemplateStatusSchema = z.enum([
   'draft',
@@ -66,6 +70,15 @@ export const AgentTodoTemplateStepInputSchema = AgentTodoTemplateStepSchema.exte
 export type AgentTodoTemplateStepInput = z.infer<
   typeof AgentTodoTemplateStepInputSchema
 >
+
+export const AgentTodoTemplateProposalInputSchema = z.object({
+  description: z.string().max(AGENT_TODO_TEMPLATE_DESCRIPTION_MAX).optional(),
+  name: z.string().min(1).max(AGENT_TODO_TEMPLATE_NAME_MAX),
+  steps: z.array(AgentTodoTemplateStepInputSchema.omit({ key: true }))
+    .min(1)
+    .max(AGENT_TODO_MAX_STEPS),
+}).strict()
+export type AgentTodoTemplateProposalInput = z.infer<typeof AgentTodoTemplateProposalInputSchema>
 
 export const AgentTodoTemplateStepsSchema = z
   .array(AgentTodoTemplateStepSchema)
@@ -189,3 +202,33 @@ export const AgentTodoRecordSchema = z.object({
   steps: z.array(AgentTodoStepRecordSchema),
 })
 export type AgentTodoRecord = z.infer<typeof AgentTodoRecordSchema>
+
+/**
+ * Server-authored provenance on the hidden kickoff message for a Run now
+ * execution. It is deliberately distinct from `todoRef`, which belongs only
+ * on the assistant reply that people can actually see.
+ */
+export const AgentTodoKickoffMetadataSchema = z.object({
+  todoId: z.string().uuid(),
+}).strict()
+
+/** One schedule fire represented on a kickoff before its checklist is materialized. */
+export const AgentTodoScheduledTemplateRefSchema = z.object({
+  templateId: z.string().uuid(),
+  triggerId: z.string().uuid(),
+}).strict()
+export type AgentTodoScheduledTemplateRef = z.infer<typeof AgentTodoScheduledTemplateRefSchema>
+
+/** Provenance on a trigger kickoff before its checklist is materialized. */
+export const AgentTodoScheduledKickoffMetadataSchema = z.object({
+  todoTemplates: z.array(AgentTodoScheduledTemplateRefSchema).min(1),
+}).strict()
+
+export const AgentTodoRunResultSchema = z.object({
+  channelId: ChannelIdSchema,
+  runId: RunIdSchema.optional(),
+  status: z.enum(['queued', 'pended']),
+  taskId: TaskIdSchema.optional(),
+  threadId: ThreadIdSchema,
+})
+export type AgentTodoRunResult = z.infer<typeof AgentTodoRunResultSchema>

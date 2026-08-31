@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client'
 
 import { recordTriggerHealthFailure } from '../../src/control/trigger-health.js'
 import { TriggerLaunchOriginError } from '../../src/control/trigger-origin.js'
+import { AgentTodoScheduledConfigError } from '@nessie/workspace-admin'
 
 // The health write decides whether a failure is NEW — which is what makes the
 // alert fire exactly once per transition rather than once per sweep.
@@ -115,6 +116,39 @@ runDatabaseTest('a schedule stuck in the same failure never re-notifies', async 
     })
     assert.equal(row.healthRevision, 1)
   } finally {
+    await prisma.organization.delete({ where: { id: seed.organizationId } })
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a vanished scheduled to-do template is an error with one durable alert', async () => {
+  const prisma = new PrismaClient()
+  const seed = await seedActiveTrigger(prisma)
+
+  try {
+    const missingTemplate = randomUUID()
+    const first = await recordTriggerHealthFailure(prisma, {
+      error: new AgentTodoScheduledConfigError(missingTemplate, seed.triggerId),
+      triggerId: seed.triggerId,
+    })
+    const second = await recordTriggerHealthFailure(prisma, {
+      error: new AgentTodoScheduledConfigError(missingTemplate, seed.triggerId),
+      triggerId: seed.triggerId,
+    })
+    assert.equal(first?.status, 'error')
+    assert.equal(second, null, 'the same broken config must not re-alert every sweep')
+    const trigger = await prisma.agentTrigger.findUniqueOrThrow({
+      select: { healthReason: true, healthRevision: true, status: true },
+      where: { id: seed.triggerId },
+    })
+    assert.equal(trigger.status, 'error')
+    assert.equal(trigger.healthReason, 'todo_template_invalid')
+    assert.equal(trigger.healthRevision, 1)
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'DELETE FROM queue_jobs WHERE idempotency_key LIKE $1',
+      `trigger-health:${seed.triggerId}:%`,
+    )
     await prisma.organization.delete({ where: { id: seed.organizationId } })
     await prisma.$disconnect()
   }

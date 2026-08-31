@@ -58,6 +58,7 @@ export const agentKeys = {
 // to-do facade can invalidate the precise collection after a checklist write.
 export const agentTodoKeys = {
   all: agentKeys.all,
+  card: (todoId?: string) => ['agents', 'todos', todoId] as const,
   instances: (agentId?: string) => ['agents', agentId, 'todos'] as const,
   templates: (agentId?: string, includeArchived = false) =>
     ['agents', agentId, 'todo-templates', includeArchived] as const,

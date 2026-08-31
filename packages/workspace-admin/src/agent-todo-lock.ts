@@ -23,3 +23,15 @@ export const acquireAgentTodoRunLock = async (
     `,
   )
 }
+
+/** Serializes the bounded set of pending agent proposals for one agent. */
+export const acquireAgentTodoAgentLock = async (
+  tx: Prisma.TransactionClient,
+  agentId: string,
+): Promise<void> => {
+  await tx.$executeRaw(
+    Prisma.sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${`agent-todo:${agentId}`}, 0))
+    `,
+  )
+}

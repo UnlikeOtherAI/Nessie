@@ -4,6 +4,10 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import { drainPendingThreadMessages } from '@nessie/db'
+import {
+  createAgentTodoTemplate,
+  materializeScheduledAgentTodosForRun,
+} from '@nessie/workspace-admin'
 
 import { dispatchAgentTrigger } from '../src/services/trigger-dispatch.js'
 
@@ -70,6 +74,8 @@ const cleanup = async (prisma: PrismaClient, seed: Seed) => {
     .$executeRaw`DELETE FROM queue_jobs WHERE payload->>'threadId' = ${seed.threadId}`
     .catch(() => undefined)
   await prisma.runThreadPendingMessage.deleteMany({ where: { threadId: seed.threadId } })
+  await prisma.agentTodo.deleteMany({ where: { agentId: seed.agentId } })
+  await prisma.agentTodoTemplate.deleteMany({ where: { agentId: seed.agentId } })
   await prisma.agentTriggerDelivery.deleteMany({ where: { triggerId: seed.triggerId } })
   await prisma.taskEvent.deleteMany({ where: { task: { organizationId: seed.organizationId } } })
   await prisma.task.deleteMany({ where: { organizationId: seed.organizationId } })
@@ -172,4 +178,121 @@ runDatabaseTest('webhook dispatch while a run is active pends, then drains into 
       .length,
     2,
   )
+})
+
+runDatabaseTest('manual to-do fire carries pending provenance and materializes one pinned checklist', async (t) => {
+  const prisma = new PrismaClient()
+  const seed = await seedWorkspace(prisma)
+  t.after(async () => {
+    await cleanup(prisma, seed)
+    await prisma.$disconnect()
+  })
+
+  await prisma.agent.update({ where: { id: seed.agentId }, data: { todosEnabled: true } })
+  const template = await createAgentTodoTemplate(prisma, {
+    agentId: seed.agentId,
+    authorType: 'user',
+    createdByUserId: null,
+    name: 'Pinned scheduled checklist',
+    organizationId: seed.organizationId,
+    proposedByRunId: null,
+    status: 'active',
+    steps: [{ instructions: 'Keep this copied instruction.', key: 'copy', title: 'Copy' }],
+  })
+  const secondTemplate = await createAgentTodoTemplate(prisma, {
+    agentId: seed.agentId,
+    authorType: 'user',
+    createdByUserId: null,
+    name: 'Second scheduled checklist',
+    organizationId: seed.organizationId,
+    proposedByRunId: null,
+    status: 'active',
+    steps: [{ instructions: 'Keep this second instruction.', key: 'second', title: 'Second' }],
+  })
+  const secondTrigger = await prisma.agentTrigger.create({
+    data: {
+      agentId: seed.agentId,
+      config: { todoTemplateId: secondTemplate.id },
+      targetChannelId: seed.channelId,
+      targetThreadId: seed.threadId,
+      type: 'webhook',
+    },
+  })
+  await prisma.agentTrigger.update({
+    where: { id: seed.triggerId },
+    data: { config: { todoTemplateId: template.id } },
+  })
+
+  const first = await dispatchAgentTrigger(prisma, {
+    payload: { source: 'manual' }, source: 'manual', triggerId: seed.triggerId,
+  })
+  assert.equal(first.kind, 'queued')
+  const directKickoff = await prisma.message.findFirstOrThrow({
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    where: { threadId: seed.threadId },
+  })
+  assert.deepEqual(directKickoff.metadata, {
+    todoScheduledKickoff: {
+      todoTemplates: [{ templateId: template.id, triggerId: seed.triggerId }],
+    },
+  })
+  const second = await dispatchAgentTrigger(prisma, {
+    payload: { source: 'manual-again' }, source: 'manual', triggerId: seed.triggerId,
+  })
+  assert.equal(second.kind, 'queued')
+  const third = await dispatchAgentTrigger(prisma, {
+    payload: { source: 'manual-other-template' }, source: 'manual', triggerId: secondTrigger.id,
+  })
+  assert.equal(third.kind, 'queued')
+
+  const firstRun = await prisma.run.findFirstOrThrow({
+    where: { agentId: seed.agentId, threadId: seed.threadId },
+  })
+  await prisma.run.update({
+    where: { id: firstRun.id }, data: { finishedAt: new Date(), status: 'completed' },
+  })
+  const adoptedRunId = await drainPendingThreadMessages(prisma, {
+    agentId: seed.agentId,
+    threadId: seed.threadId,
+  })
+  assert.ok(adoptedRunId)
+  const adoptedRun = await prisma.run.findUniqueOrThrow({ where: { id: adoptedRunId } })
+  const kickoff = await prisma.message.findUniqueOrThrow({
+    where: { id: adoptedRun.triggerMessageId ?? assert.fail('missing scheduled kickoff') },
+  })
+  assert.deepEqual(kickoff.metadata, {
+    todoScheduledKickoff: {
+      todoTemplates: [
+        { templateId: template.id, triggerId: seed.triggerId },
+        { templateId: secondTemplate.id, triggerId: secondTrigger.id },
+      ],
+    },
+  })
+
+  const todos = await materializeScheduledAgentTodosForRun(prisma, {
+    agentId: seed.agentId,
+    organizationId: seed.organizationId,
+    runId: adoptedRun.id,
+    templateRefs: [
+      { templateId: template.id, triggerId: seed.triggerId },
+      { templateId: template.id, triggerId: seed.triggerId },
+      { templateId: secondTemplate.id, triggerId: secondTrigger.id },
+    ],
+    threadId: seed.threadId,
+  })
+  assert.equal(todos.length, 2, 'same-template pends coalesce while distinct templates each materialize')
+  assert.equal(todos[0]?.templateVersion, template.version)
+  assert.equal(todos[0]?.triggerId, seed.triggerId)
+  assert.equal(todos[1]?.triggerId, secondTrigger.id)
+  await prisma.agentTodoTemplate.update({
+    where: { id: template.id },
+    data: {
+      steps: [{ instructions: 'Changed after materialization.', key: 'copy', title: 'Copy' }],
+      version: { increment: 1 },
+    },
+  })
+  const copied = await prisma.agentTodo.findUniqueOrThrow({
+    include: { steps: true }, where: { id: todos[0]?.id ?? assert.fail('missing to-do') },
+  })
+  assert.equal(copied.steps[0]?.instructions, 'Keep this copied instruction.')
 })

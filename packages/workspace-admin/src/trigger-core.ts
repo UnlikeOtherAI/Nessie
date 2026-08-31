@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   computeNextCronRunAt,
   parseIntervalMinutes,
@@ -189,7 +189,7 @@ export const normalizeNextRunAt = (input: {
 }
 
 export const resolveExecutionTarget = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   agentId: string,
   input: {
     targetChannelId?: string | null

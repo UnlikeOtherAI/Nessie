@@ -29,6 +29,7 @@ import { MarkdownEditInput } from './MarkdownEditInput'
 import { RestrictedMessageCard, type DisclosureDuration } from './RestrictedMessageCard'
 import { DocumentRefChip } from './DocumentRefChip'
 import { RunStopContinue } from './RunStopContinue'
+import { TodoProgressCard } from './TodoProgressCard'
 import { WorkflowRunCard } from './WorkflowRunCard'
 import { ReplySummaryBar } from './thread-panel/ReplySummaryBar'
 import {
@@ -411,6 +412,9 @@ export const ChannelMessageRow = ({
           ) : null}
           {!isEditingMessage ? (
             <RunStopContinue metadata={message.metadata} />
+          ) : null}
+          {!isEditingMessage ? (
+            <TodoProgressCard metadata={message.metadata} />
           ) : null}
           {!isEditingMessage ? (
             <DocumentRefChip metadata={message.metadata} />

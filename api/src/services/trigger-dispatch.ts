@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { buildTriggerPrompt } from '@nessie/runtime'
 import {
+  prepareScheduledAgentTodoTrigger,
+} from '@nessie/workspace-admin'
+import {
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -193,6 +196,10 @@ export const dispatchAgentTrigger = async (
     source: input.source,
     triggerType: trigger.type,
   })
+  const scheduledTodo = prepareScheduledAgentTodoTrigger({
+    config: trigger.config,
+    triggerId: trigger.id,
+  })
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -221,6 +228,9 @@ export const dispatchAgentTrigger = async (
           // content as its prompt via `payload.messageId`, which ignores role.
           role: 'system',
           threadId: threadTarget.threadId,
+          ...(scheduledTodo
+            ? { metadata: scheduledTodo.metadata }
+            : {}),
         },
       })
 
@@ -240,6 +250,7 @@ export const dispatchAgentTrigger = async (
           messageId: message.id,
           triggerId: trigger.id,
           triggerDeliveryId: delivery.id,
+          ...(scheduledTodo ? { todoTemplateId: scheduledTodo.todoTemplateId } : {}),
         },
       })
 

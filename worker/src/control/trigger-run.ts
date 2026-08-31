@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  prepareScheduledAgentTodoTrigger,
+} from '@nessie/workspace-admin'
+import {
   activeWorkspaceMatchesAttribution,
   buildTriggerPrompt,
   loadLedgerIdentitySettings,
@@ -230,6 +233,10 @@ export const queueTriggerRun = async (
     source: input.source,
     triggerType: input.trigger.type,
   })
+  const scheduledTodo = prepareScheduledAgentTodoTrigger({
+    config: input.trigger.config,
+    triggerId: input.trigger.id,
+  })
 
   const normalizedPayload = normalizePayload(input.payload)
   try {
@@ -337,10 +344,15 @@ export const queueTriggerRun = async (
           // being shown to a person. Provenance for humans lives on the
           // Triggers page delivery log.
           content,
-          ...(isPersonalAssistantTrigger
+          ...((isPersonalAssistantTrigger || scheduledTodo)
             ? {
                 metadata: {
-                  delegatedByAgentId: input.trigger.agentId,
+                  ...(isPersonalAssistantTrigger
+                    ? { delegatedByAgentId: input.trigger.agentId }
+                    : {}),
+                  ...(scheduledTodo
+                    ? scheduledTodo.metadata
+                    : {}),
                 } as Prisma.InputJsonValue,
               }
             : {}),
@@ -380,6 +392,7 @@ export const queueTriggerRun = async (
           // the latest pending row at drain time.
           triggerId: input.trigger.id,
           triggerDeliveryId: delivery.id,
+          ...(scheduledTodo ? { todoTemplateId: scheduledTodo.todoTemplateId } : {}),
         },
       })
 

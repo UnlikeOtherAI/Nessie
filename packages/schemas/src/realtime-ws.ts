@@ -62,6 +62,8 @@ export type WsEventMap = {
    * incidental refetch.
    */
   'agent.updated': { agentId: AgentId }
+  /** Id-only cache invalidation: to-do content is always fetched through ACL. */
+  'agent.todo.updated': { agentId: AgentId; todoId: string }
   'run.updated': { runId: RunId; agentId: AgentId; status: RunStatus }
   'task.updated': { taskId: TaskId; status: TaskStatus }
   'approval.needed': {
@@ -213,6 +215,11 @@ export const RunUpdatedEventSchema = z.object({
   status: RunStatusSchema,
 })
 export type RunUpdatedEvent = z.infer<typeof RunUpdatedEventSchema>
+export const AgentTodoUpdatedEventSchema = z.object({
+  agentId: AgentIdSchema,
+  todoId: z.string().uuid(),
+})
+export type AgentTodoUpdatedEvent = z.infer<typeof AgentTodoUpdatedEventSchema>
 export const TaskUpdatedEventSchema = z.object({
   taskId: TaskIdSchema,
   status: TaskStatusSchema,
@@ -358,6 +365,7 @@ export const WsEventNameSchema = z.enum([
   'agent.tool.end',
   'agent.spawned',
   'agent.updated',
+  'agent.todo.updated',
   'run.updated',
   'task.updated',
   'approval.needed',
@@ -483,6 +491,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('run.updated'),
     data: RunUpdatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('agent.todo.updated'),
+    data: AgentTodoUpdatedEventSchema,
     ts: TimestampSchema,
   }),
   z.object({

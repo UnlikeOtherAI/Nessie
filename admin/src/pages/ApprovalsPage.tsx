@@ -1,28 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Pill } from '../components/primitives/Pill'
 import { SectionLabel } from '../components/primitives/SectionLabel'
 import { AdminPageHeader } from '../components/shared/AdminPageHeader'
-import { approvalKeys } from '../lib/query-keys'
-import { useApiClient } from '../providers/ApiClientProvider'
+import { useApprovalRequests, useResolveApproval, type ApprovalRequest } from '../facades/approvals/hooks'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 
-type ApprovalRequest = {
-  id: string
-  agentId: string
-  action: string
-  reason: string
-  context?: Record<string, unknown>
-  status: string
-  requesterId: string
-  resolverId: string | null
-  resolution: string | null
-  resolutionNote: string | null
-  expiresAt: string
-  createdAt: string
-}
-
 const KNOWLEDGE_PAGE_PUBLISH_ACTION = 'knowledge.page.publish'
+const TODO_TEMPLATE_PUBLISH_ACTION = 'agent.todo_template.publish'
 
 type KnowledgePagePublishContext = {
   pageId: string
@@ -52,30 +36,25 @@ const readKnowledgePagePublishContext = (
   return null
 }
 
+const readTodoTemplatePublishContext = (approval: ApprovalRequest): {
+  templateId: string
+  version: number
+} | null => {
+  if (approval.action !== TODO_TEMPLATE_PUBLISH_ACTION) return null
+  const context = approval.context
+  if (!context || typeof context.templateId !== 'string' || typeof context.version !== 'number') return null
+  return { templateId: context.templateId, version: context.version }
+}
+
 export const ApprovalsPage = () => {
   const { me } = useAuthSession()
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
 
   // apiClient unwraps the {data, meta} envelope and returns the payload array
   // directly — typing the full envelope here made `data?.data` permanently
   // undefined, so the page rendered empty even with pending approvals.
-  const { data } = useQuery<ApprovalRequest[]>({
-    queryKey: approvalKeys.all,
-    queryFn: () => apiClient.get('/api/approvals?limit=50'),
-    enabled: Boolean(me),
-  })
-
-  const resolve = useMutation({
-    mutationFn: (input: { id: string; resolution: 'approved' | 'rejected' }) =>
-      apiClient.post(`/api/approvals/${input.id}/resolve`, {
-        resolution: input.resolution,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: approvalKeys.all })
-    },
-  })
+  const { data } = useApprovalRequests(Boolean(me))
+  const resolve = useResolveApproval()
 
   const pending = (data ?? []).filter((a) => a.status === 'pending')
   const resolved = (data ?? []).filter((a) => a.status !== 'pending')
@@ -96,6 +75,7 @@ export const ApprovalsPage = () => {
             <div className="mt-2 grid gap-2">
               {pending.map((approval) => {
                 const knowledgePublish = readKnowledgePagePublishContext(approval)
+                const todoTemplatePublish = readTodoTemplatePublishContext(approval)
                 return (
                 <div key={approval.id} className="admin-card p-4">
                   <div className="flex items-center justify-between">
@@ -103,6 +83,10 @@ export const ApprovalsPage = () => {
                       {knowledgePublish ? (
                         <span className="text-sm font-semibold text-[color:var(--tx)]">
                           Publish knowledge page: {knowledgePublish.title}
+                        </span>
+                      ) : todoTemplatePublish ? (
+                        <span className="text-sm font-semibold text-[color:var(--tx)]">
+                          Publish to-do template: {approval.reason.replace('Agent-proposed to-do template: ', '')}
                         </span>
                       ) : (
                         <span className="font-mono text-sm font-semibold text-[color:var(--tx)]">
@@ -132,6 +116,17 @@ export const ApprovalsPage = () => {
                         type="button"
                       >
                         Open page
+                      </button>
+                    </div>
+                  ) : null}
+                  {todoTemplatePublish ? (
+                    <div className="mt-2">
+                      <button
+                        className="admin-button admin-button-secondary admin-button-compact"
+                        onClick={() => navigate(`/agents/${approval.agentId}?tab=todos`)}
+                        type="button"
+                      >
+                        Open to-dos
                       </button>
                     </div>
                   ) : null}
@@ -169,6 +164,7 @@ export const ApprovalsPage = () => {
           <div className="mt-2 grid gap-2">
             {resolved.map((approval) => {
               const knowledgePublish = readKnowledgePagePublishContext(approval)
+              const todoTemplatePublish = readTodoTemplatePublishContext(approval)
               return (
               <div key={approval.id} className="admin-card p-3">
                 <div className="flex items-center justify-between">
@@ -176,6 +172,10 @@ export const ApprovalsPage = () => {
                     {knowledgePublish ? (
                       <span className="text-xs text-[color:var(--tx)]">
                         Publish knowledge page: {knowledgePublish.title}
+                      </span>
+                    ) : todoTemplatePublish ? (
+                      <span className="text-xs text-[color:var(--tx)]">
+                        Publish to-do template: {approval.reason.replace('Agent-proposed to-do template: ', '')}
                       </span>
                     ) : (
                       <span className="font-mono text-xs text-[color:var(--tx)]">{approval.action}</span>

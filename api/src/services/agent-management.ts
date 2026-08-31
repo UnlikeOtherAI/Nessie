@@ -5,6 +5,7 @@ import type {
 } from '@nessie/schemas'
 import {
   acquireAgentToolPolicyLock,
+  acquireAgentTodoAgentLock,
   AGENT_MANAGEMENT_ERROR_CODES,
   AGENT_OWNER_MEMBERSHIP_SELECT,
   AgentManagementError,
@@ -70,6 +71,26 @@ export const updateAgentRecord = async (
       },
     })
     if (!existing) return null
+
+    if (existing.todosEnabled && input.todosEnabled === false) {
+      await acquireAgentTodoAgentLock(tx, agentId)
+      const enabledTriggers = await tx.agentTrigger.findMany({
+        select: { config: true },
+        where: { agentId, enabled: true },
+      })
+      if (enabledTriggers.some((trigger) => {
+        const config = trigger.config
+        return typeof config === 'object'
+          && config !== null
+          && !Array.isArray(config)
+          && typeof config['todoTemplateId'] === 'string'
+      })) {
+        throw new AgentManagementError(
+          AGENT_MANAGEMENT_ERROR_CODES.TODOS_IN_USE,
+          'Pause enabled schedules that use to-do templates before disabling to-dos.',
+        )
+      }
+    }
 
     // A private agent's immutable owner is encoded in its owner-only home DM.
     // Re-homing that surface is a disclosure-changing operation, so v1 makes

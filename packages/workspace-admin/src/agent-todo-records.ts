@@ -12,8 +12,13 @@ import {
   type AgentTodoTemplateStepInput,
 } from '@nessie/schemas'
 
+import { isTerminalAgentTodoRunStatus } from './agent-todo-run-statuses.js'
+
 export const agentTodoWithOrderedSteps = {
-  activeRun: { select: { threadId: true } },
+  // An activeRunId is only meaningful while the referenced run is live. Keep
+  // the status beside the link so list, detail, and the chat card all derive
+  // liveness from one joined row instead of trusting a stale pointer.
+  activeRun: { select: { status: true, threadId: true } },
   steps: { orderBy: { sequence: 'asc' as const } },
 } satisfies Prisma.AgentTodoInclude
 
@@ -40,9 +45,13 @@ export const mapAgentTodoRecord = (
   AgentTodoRecordSchema.parse({
     ...row,
     activeRunId: row.activeRunId && row.activeRun?.threadId
+      && !isTerminalAgentTodoRunStatus(row.activeRun.status)
       && accessibleThreadIds?.has(row.activeRun.threadId)
       ? row.activeRunId
       : accessibleThreadIds === undefined
+        && row.activeRunId !== null
+        && row.activeRun !== null
+        && !isTerminalAgentTodoRunStatus(row.activeRun.status)
         ? row.activeRunId
         : null,
     completedAt: row.completedAt?.toISOString() ?? null,

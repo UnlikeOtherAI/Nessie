@@ -11,6 +11,7 @@ import {
 } from '@nessie/schemas'
 import { buildScopes } from './scopes.js'
 import type { ReplyPlacement, RunContext } from './types.js'
+export { publishAgentTodoUpdated } from '@nessie/workspace-admin'
 
 export const publishRunUpdated = async (
   realtimeTransport: PgRealtimeTransport,

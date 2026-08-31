@@ -295,6 +295,7 @@ test('to-do cards render sane step copy and only expose changes to entitled peop
         currentUserId,
         isOwner,
         onCancel: () => undefined,
+        onRun: () => undefined,
         onUpdateStep: () => undefined,
         todo,
       }),
@@ -311,12 +312,62 @@ test('to-do cards render sane step copy and only expose changes to entitled peop
     renderTodoCard(unrelatedUserId, true),
   ]) {
     assert.match(markup, /Cancel to-do/)
-    assert.match(markup, />completed<\/button>/)
+    // An entitled viewer gets a real status control offering every status. The
+    // control is a select rather than a row of buttons, so assert the
+    // capability (a labelled picker carrying the statuses), not the element.
+    assert.match(markup, /<select[^>]*aria-label="Status for step 1/)
+    assert.match(markup, /<option value="completed">completed<\/option>/)
   }
 
   const unrelated = renderTodoCard(unrelatedUserId, false)
-  assert.match(unrelated, /This step has not been changed yet\./)
+  assert.match(unrelated, /not changed yet/)
+  // The copy bug this file was written for: a step nobody has touched must
+  // never render the fallback word inside the "Last changed by" sentence.
   assert.doesNotMatch(unrelated, /Last changed by not yet changed/)
   assert.doesNotMatch(unrelated, /Cancel to-do/)
-  assert.doesNotMatch(unrelated, />completed<\/button>/)
+  // A viewer who may not change the to-do gets no status control at all.
+  assert.doesNotMatch(unrelated, /<select/)
+})
+
+test('agent proposals show their review state and owner-only resolve controls', () => {
+  const proposal = {
+    action: 'agent.todo_template.publish',
+    agentId,
+    context: { templateId, version: 1 },
+    createdAt: timestamp,
+    expiresAt: timestamp,
+    id: '00000000-0000-4000-8000-000000000109',
+    reason: 'Agent-proposed to-do template: Release checklist',
+    requesterId: agentId,
+    resolution: null,
+    resolutionNote: null,
+    resolverId: null,
+    status: 'pending',
+  }
+  const proposedTemplate = { ...template, authorType: 'agent' as const, status: 'draft' as const }
+  const owner = renderToStaticMarkup(createElement(TodoTemplateCard, {
+    isOwner: true,
+    onArchive: () => undefined,
+    onEdit: () => undefined,
+    onRefuseOwnerAction: () => undefined,
+    onResolveProposal: () => undefined,
+    proposal,
+    template: proposedTemplate,
+  }))
+  assert.match(owner, /proposed by the agent/)
+  assert.match(owner, />Approve<\/button>/)
+  assert.match(owner, />Reject<\/button>/)
+
+  const member = renderToStaticMarkup(createElement(TodoTemplateCard, {
+    isOwner: false,
+    onArchive: () => undefined,
+    onEdit: () => undefined,
+    onRefuseOwnerAction: () => undefined,
+    onResolveProposal: () => undefined,
+    proposal,
+    template: proposedTemplate,
+  }))
+  assert.match(member, /proposed by the agent/)
+  assert.doesNotMatch(member, />Approve<\/button>/)
+  assert.doesNotMatch(member, />Reject<\/button>/)
 })

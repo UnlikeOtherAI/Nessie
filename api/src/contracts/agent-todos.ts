@@ -74,6 +74,10 @@ export const CreateAgentTodoBodySchema = z.union([
   }).strict(),
 ])
 
+export const RunAgentTodoBodySchema = z.object({
+  channelId: IdSchema,
+}).strict()
+
 export const UpdateAgentTodoStepBodySchema = z.object({
   note: z.string().max(AGENT_TODO_STEP_NOTE_MAX).nullable().optional(),
   status: AgentTodoStepStatusSchema,

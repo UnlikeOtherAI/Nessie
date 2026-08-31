@@ -700,9 +700,6 @@ importers:
       '@nessie/config':
         specifier: workspace:*
         version: link:../config
-      '@nessie/db':
-        specifier: workspace:*
-        version: link:../db
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime

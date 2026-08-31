@@ -9,6 +9,7 @@ import {
 
 import {
   AGENT_TODO_ERROR_CODES,
+  AgentTodoScheduledConfigError,
   AgentTodoError,
 } from './agent-todo-errors.js'
 import {
@@ -338,6 +339,70 @@ export const startAgentTodoForRun = async (
       threadId: input.threadId,
       todoId,
     })
+  })
+
+/**
+ * Materialize a scheduled template only after the actual run has claimed its
+ * slot. Several pended deliveries may drain to one run; creating here makes
+ * repeated fires of one template one checklist while preserving each delivery
+ * in the trigger ledger. Only the first new checklist is attached to this run:
+ * the others remain open facts for the model, never auto-adopted work.
+ */
+export const materializeScheduledAgentTodosForRun = async (
+  prisma: PrismaLike,
+  input: AgentTodoIdentity & {
+    runId: string
+    threadId: string
+    templateRefs: readonly { templateId: string; triggerId: string }[]
+  },
+): Promise<AgentTodoRecord[]> =>
+  withTransaction(prisma, async (tx) => {
+    await acquireAgentTodoRunLock(tx, input.runId)
+    await refuseIfRunAlreadyHasTodo(tx, input)
+    const templateRefs = [...new Map(
+      input.templateRefs.map((template) => [template.templateId, template]),
+    ).values()]
+    const templateIds = templateRefs.map((template) => template.templateId)
+    const templates = await tx.agentTodoTemplate.findMany({
+      where: {
+        agentId: input.agentId,
+        id: { in: templateIds },
+        organizationId: input.organizationId,
+        status: 'active',
+      },
+    })
+    if (templates.length !== templateIds.length) {
+      const present = new Set(templates.map((template) => template.id))
+      const missing = templateRefs.find((template) => !present.has(template.templateId))
+      throw new AgentTodoScheduledConfigError(
+        missing?.templateId ?? 'unknown',
+        missing?.triggerId ?? 'unknown',
+      )
+    }
+
+    const todos = await Promise.all(templateRefs.map(async (template) => {
+      const todo = await createAgentTodoFromTemplate(tx, {
+        agentId: input.agentId,
+        createdByUserId: null,
+        organizationId: input.organizationId,
+        templateId: template.templateId,
+      })
+      const updated = await tx.agentTodo.update({
+        where: { id: todo.id },
+        data: { triggerId: template.triggerId },
+      })
+      return { ...todo, triggerId: updated.triggerId }
+    }))
+    const first = todos[0]
+    if (!first) return []
+    const claimed = await claimAgentTodoForRun(tx, {
+      agentId: input.agentId,
+      organizationId: input.organizationId,
+      runId: input.runId,
+      threadId: input.threadId,
+      todoId: first.id,
+    })
+    return [claimed, ...todos.slice(1)]
   })
 
 export const cancelAgentTodo = async (

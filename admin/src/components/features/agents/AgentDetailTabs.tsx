@@ -25,13 +25,17 @@ import {
 
 type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages' | 'documents' | 'to-dos'
 
+// To-dos sits first here so that on an owner's view — where Edit is prepended —
+// it reads as the second tab, right beside the configuration it belongs to.
+const FIRST_DETAIL_TAB: Tab = 'to-dos'
+
 const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
+  { label: 'To-dos', value: FIRST_DETAIL_TAB },
   { label: 'Activity', value: 'activity' },
   { label: 'Sub-Agents', value: 'sub-agents' },
   { label: 'Tools', value: 'tools' },
   { label: 'Messages', value: 'messages' },
   { label: 'Documents', value: 'documents' },
-  { label: 'To-dos', value: 'to-dos' },
 ]
 
 const PAGE_SIZE = 10
@@ -88,7 +92,9 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
     () => (editSlot ? [{ label: 'Edit', value: 'edit' as Tab }, ...DETAIL_TABS] : DETAIL_TABS),
     [editSlot],
   )
-  const [activeTab, setActiveTab] = useState<Tab>(editSlot ? 'edit' : 'activity')
+  // Land on the first tab actually rendered, so the selection and the leading
+  // tab can never disagree when the tab order changes.
+  const [activeTab, setActiveTab] = useState<Tab>(editSlot ? 'edit' : FIRST_DETAIL_TAB)
   const [messagePage, setMessagePage] = useState(0)
 
   const { data: status } = useAgentStatus(agent.id)
