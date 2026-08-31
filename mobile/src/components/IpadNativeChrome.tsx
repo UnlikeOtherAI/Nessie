@@ -3,6 +3,7 @@ import { type LayoutChangeEvent, StyleSheet, View } from 'react-native'
 
 import { IpadNativeAccountButton, type IpadNativeAccount } from './IpadNativeAccountMenu'
 import { IpadNativeChromeSurface } from './IpadNativeChromeSurface'
+import { NativeFocusModeButton } from './NativeFocusModeButton'
 import { IpadNativeOverflowMenu } from './IpadNativeOverflowMenu'
 import { IpadNativeToolbar, type ToolbarAction, type ToolbarState } from './IpadNativeToolbar'
 import { IpadNativeTabBar } from './IpadNativeTabBar'
@@ -29,6 +30,7 @@ type IpadNativeChromeProps = {
   leadingReservedWidth: number
   onIndexChange: (index: number) => void
   onToggleAccountMenu: () => void
+  onToggleFocusMode: () => void
   onToolbarAction: (action: ToolbarAction) => void
   onToggleWorkspaceMenu: (left: number) => void
   theme: IpadNativeChromeTheme
@@ -48,6 +50,7 @@ export const IpadNativeChrome = ({
   leadingReservedWidth,
   onIndexChange,
   onToggleAccountMenu,
+  onToggleFocusMode,
   onToggleWorkspaceMenu,
   onToolbarAction,
   theme,
@@ -128,6 +131,13 @@ export const IpadNativeChrome = ({
           style={[styles.accountSurface, { right: insetRight + IPAD_NATIVE_CHROME_GAP }]}
           theme={theme}
         >
+          <NativeFocusModeButton
+            activeBackgroundColor={theme.activeBackgroundColor}
+            activeTintColor={theme.activeTintColor}
+            enabled={account.focusModeEnabled}
+            inactiveTintColor={theme.inactiveTintColor}
+            onPress={onToggleFocusMode}
+          />
           <IpadNativeAccountButton {...account} onPress={onToggleAccountMenu} theme={theme} />
         </IpadNativeChromeSurface>
       </View>

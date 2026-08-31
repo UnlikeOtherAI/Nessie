@@ -1,6 +1,7 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
+import { NativeFocusModeButton } from './NativeFocusModeButton'
 import { NativeWorkspaceAvatar } from './NativeWorkspaceAvatar'
 import { type ToolbarAction, type ToolbarState } from './native-toolbar-state'
 import { withOpacity } from '../lib/ipad-native-chrome'
@@ -19,6 +20,7 @@ export type NativePhoneHeaderProps = {
   headerText: string
   landscape: boolean
   onAccountPress: () => void
+  onToggleFocusMode: () => void
   onToolbarAction: (action: ToolbarAction) => void
   onWorkspacePress: () => void
   safeTop: number
@@ -124,6 +126,7 @@ export const NativePhoneHeader = ({
   headerText,
   landscape,
   onAccountPress,
+  onToggleFocusMode,
   onToolbarAction,
   onWorkspacePress,
   safeTop,
@@ -179,21 +182,29 @@ export const NativePhoneHeader = ({
           />
         ) : null}
 
-        <Pressable
-          accessibilityLabel="Account menu"
-          accessibilityRole="button"
-          hitSlop={6}
-          onPress={onAccountPress}
-          style={({ pressed }) => [
-            styles.accountButton,
-            {
-              borderColor: withOpacity(headerText, 0.38),
-              height: accountDiameter,
-              width: accountDiameter,
-            },
-            pressed ? { opacity: 0.8 } : null,
-          ]}
-        >
+        <View style={styles.accountControls}>
+          <NativeFocusModeButton
+            activeBackgroundColor={withOpacity(headerText, 0.16)}
+            activeTintColor={headerText}
+            enabled={accountFocusModeEnabled}
+            inactiveTintColor={withOpacity(headerText, 0.78)}
+            onPress={onToggleFocusMode}
+          />
+          <Pressable
+            accessibilityLabel="Account menu"
+            accessibilityRole="button"
+            hitSlop={6}
+            onPress={onAccountPress}
+            style={({ pressed }) => [
+              styles.accountButton,
+              {
+                borderColor: withOpacity(headerText, 0.38),
+                height: accountDiameter,
+                width: accountDiameter,
+              },
+              pressed ? { opacity: 0.8 } : null,
+            ]}
+          >
           {accountAvatarUrl ? (
             <Image
               source={{ uri: accountAvatarUrl }}
@@ -220,7 +231,8 @@ export const NativePhoneHeader = ({
             headerText={headerText}
             state={accountPresence}
           />
-        </Pressable>
+          </Pressable>
+        </View>
       </View>
     </View>
   )
@@ -234,6 +246,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'visible',
   },
+  accountControls: { alignItems: 'center', flexDirection: 'row', gap: 6 },
   accountFallback: { alignItems: 'center', justifyContent: 'center' },
   accountInitial: { fontSize: 16, fontWeight: '700' },
   header: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 30 },

@@ -20,6 +20,7 @@ type UserMenuTriggerProps = {
 type NativePhoneAccountWindow = Window & {
   ReactNativeWebView?: { postMessage: (data: string) => void }
   __nessieToggleAccountMenu?: () => void
+  __nessieToggleFocusMode?: () => void
 }
 
 // The desktop rail is the canonical account control. Other shells only change
@@ -33,7 +34,7 @@ export const UserMenuTrigger = ({
   showFeedbackLink = false,
 }: UserMenuTriggerProps) => {
   const { me, token } = useAuthSession()
-  const { focusModeEnabled } = useFocusMode()
+  const { focusModeEnabled, toggleFocusMode, updating: focusModeUpdating } = useFocusMode()
   // Follows a profile-photo change made on the settings page: the relay URL is
   // fixed, so without this the account button keeps the browser-cached image.
   const avatarRevision = useMyAvatarRevision()
@@ -45,10 +46,14 @@ export const UserMenuTrigger = ({
     if (!nativeShellBridge || !isReactNativeWebView()) return undefined
     const target = window as NativePhoneAccountWindow
     target.__nessieToggleAccountMenu = toggle
+    target.__nessieToggleFocusMode = () => {
+      if (!focusModeUpdating) toggleFocusMode()
+    }
     return () => {
       delete target.__nessieToggleAccountMenu
+      delete target.__nessieToggleFocusMode
     }
-  }, [nativeShellBridge, toggle])
+  }, [focusModeUpdating, nativeShellBridge, toggle, toggleFocusMode])
 
   useEffect(() => {
     if (!nativeShellBridge || !isReactNativeWebView() || !me) return
