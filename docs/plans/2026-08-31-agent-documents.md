@@ -1,6 +1,7 @@
 # Agent documents — the docs an agent keeps for itself
 
-**Status:** design proposal — research + design only, no code.
+**Status:** implementation in progress — Phase 1b access arm implemented;
+provisioning, disclosure, tools, prompt, and UI remain separate phases.
 **Date:** 2026-08-31
 **Related:**
 [2026-08-31-agent-tables.md](2026-08-31-agent-tables.md) (agent-owned typed
@@ -261,26 +262,27 @@ human-only cross-agent sharing mechanism).
 ### 4.1 Reads: one new arm, delegating to the one predicate
 
 **Product rule:** whoever can see the agent can read its documents. Same
-sentence as tables and to-dos, implemented the same way — by composing the
-`workspace-admin` mirror pair, never restating it:
+sentence as tables and to-dos, implemented the same way — by composing one
+shared agent-visibility predicate, never restating it:
 
+- **Single visibility definition** (`packages/db/src/agent-visibility.ts`):
+  `buildVisibleAgentWhere` owns channel-derived reach plus live top-level
+  stewardship. `listVisibleAgentIdsForUser` resolves that fragment to ids.
+  `listAgentsForUser`, `isAgentVisibleToUser`, KB access, and publication-alert
+  revalidation all compose this builder, so the agent page and its documents
+  cannot drift. The package is safe to import from knowledge because its Prisma
+  client stays lazy and it has no knowledge dependency.
 - **TypeScript** (`packages/knowledge/src/access.ts` `loadUserViewer` /
-  `canReadSpace`): a space with `ownerAgentId` is readable by a user iff
-  `isAgentVisibleToUser(prisma, userId, organizationId, ownerAgentId)` —
-  the exact function the agent detail page gates on, so list and doc access
-  cannot disagree. Org owners inherit their existing omniscience over
-  non-system agents through `isAgentAccessibleToActor`'s owner path — and
-  when the agent-scopes fragment lands *inside* those predicates, **a
-  private agent's documents vanish from every non-owner, org owners
-  included, with zero changes in the knowledge package**. This plan adds the
-  corresponding row to the scopes doc's read-path gating table in the same
-  change that builds phase 1 (the to-dos commitment, repeated).
-- **SQL mirror** (`native-search-access.ts` `readableSpaceIdsSqlFor*`): the
-  same arm spelled as an EXISTS over `agent_bindings × channels ×
-  channel_members` plus the steward arm — one fragment, written once,
-  reviewed against the TS predicate the way the existing pair already is.
-  This is what keeps `kb_search` and human KB search honest without a
-  post-filter.
+  `canReadSpace`): the asynchronous loader preloads `visibleAgentIds`; the pure,
+  synchronous predicate admits an agent-owned space only when that set contains
+  `ownerAgentId` or the user holds an explicit `KnowledgeSpaceMember` grant.
+  It does not fall through to the ordinary KB visibility switch.
+- **SQL mirrors** (`native-search-access.ts` `readableSpaceIdsSqlFor*`): the
+  human search path receives the already-resolved visible-agent id array as a
+  bound parameter. It never rewrites the channel/steward predicate in SQL.
+  The agent search path receives the already-loaded `parentAgentId`, matching
+  the pure agent arm. This keeps `kb_search` and human KB search honest without
+  a post-filter.
 - **Agent-side** (`loadAgentViewer`): the owning agent passes via the
   existing `createdBy === agent.id` grant already; add
   `space.ownerAgentId === agent.id || space.ownerAgentId === agent.parentAgentId`
@@ -449,7 +451,7 @@ table.
 | Need | New | Reused |
 |---|---|---|
 | The owned home | `KnowledgeSpace.ownerAgentId` (+ index + CHECK), `ensureAgentDocsSpace`, lazy run-setup provision | `KnowledgeSpace`/`KnowledgePage`/`KnowledgePageVersion`/chunks — untouched; `ensureMyDocsSpace` pattern; `metadata` tagging |
-| Audience = agent's audience | one read arm in `access.ts` + the SQL mirror fragment, both delegating to the `workspace-admin` mirror pair | `isAgentVisibleToUser`/`isAgentAccessibleToActor` (and the future visibility fragment, inherited free); `visibility:'private'` as fail-closed floor |
+| Audience = agent's audience | shared `packages/db` visibility builder + preloaded viewer ids + one read arm in `access.ts` and each SQL/alert mirror | `listAgentsForUser`/`isAgentVisibleToUser` consume the same builder; `visibility:'private'` remains the fail-closed floor |
 | Agent authoring | structural prompt block naming the home space; proprietor relaxation of `kb_file` in own space | `kb_document_compose`/`kb_document_edit`/`kb_draft_write`/`kb_file`/`kb_search`/`kb_page_read`/`kb_list`/`kb_comment_*` — no new tool family; the whole streaming stack |
 | Human editing | `writeRestricted` + member management surfaced on the tab | KB editor, version history with `authorType`, annotations, `KnowledgeSpaceMember` (users *and* agents) |
 | Disclosure | agent-owned-space branch in the basis bridge; basis-aware publish decision on compose/edit saves; `runReplyIsRestricted` gate on document stream + bootstrap | `ConsumedSourceSink`/`computeReplyBasis`/`scopeForVisibility`; `kb_publish_request` + approval effect as the consent gate |
@@ -469,7 +471,7 @@ migrations additive only.
 
 1. **The owned space + access + safety.** `ownerAgentId` migration + CHECK;
    `ensureAgentDocsSpace` + lazy provision; the read arm in TS and SQL
-   (delegating to the mirror pair) + the row added to the agent-scopes
+   (delegating to the shared DB builder) + the row added to the agent-scopes
    gating table; the basis-bridge branch (with the §5.1 send_message
    verification settled and recorded); the basis-aware publish decision;
    the prompt block. Agents can now keep, re-read, and search their

@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { listVisibleAgentIdsForUser } from '@nessie/db'
 import { canReadSpace } from '@nessie/knowledge'
 import { type AttentionDispatchJobPayload } from '@nessie/schemas'
 import type { PushPayload, WebPushCredentials } from '@nessie/push'
@@ -16,7 +17,7 @@ import {
 
 export type AttentionDispatchPrisma = PushDeliveryPrisma & PushBadgePrisma & Pick<
   PrismaClient,
-  'organizationMember' | 'projectMember' | 'userAlert'
+  'agent' | 'organizationMember' | 'projectMember' | 'userAlert'
 >
 
 export type AttentionDispatchDeps = {
@@ -108,10 +109,16 @@ const resolveAttention = async (
     const page = alert.knowledgePage
     if (!page || !alert.projectId || page.status !== 'published' || page.deletedAt || page.organizationId !== alert.organizationId) return null
     const memberUserIds = page.space.members.flatMap((member) => member.userId ? [member.userId] : [])
-    const projectMembership = await prisma.projectMember.findFirst({
-      where: { projectId: page.projectId, userId: alert.userId },
-      select: { id: true },
-    })
+    const [projectMembership, visibleAgentIds] = await Promise.all([
+      prisma.projectMember.findFirst({
+        where: { projectId: page.projectId, userId: alert.userId },
+        select: { id: true },
+      }),
+      listVisibleAgentIdsForUser(prisma, {
+        organizationId: alert.organizationId,
+        userId: alert.userId,
+      }),
+    ])
     const readable = canReadSpace({
       ...page.space,
       memberAgentIds: [],
@@ -120,6 +127,7 @@ const resolveAttention = async (
       bypass: false,
       projectIds: projectMembership ? new Set([page.projectId]) : new Set(),
       userId: alert.userId,
+      visibleAgentIds: new Set(visibleAgentIds),
     })
     if (!readable) return null
     const publisher = alert.actorUser?.displayName ?? 'Someone'

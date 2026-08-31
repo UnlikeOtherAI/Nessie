@@ -54,8 +54,8 @@ test('a ring bypasses foreground surface suppression and native payloads never c
     },
     pushDelivery: { create: async () => ({ id: 'delivery' }) },
     user: { findUnique: async () => ({ preferences: {} }) },
-    // A ring must skip every surface-presence check. Throwing makes this test
-    // cover the pre-fanout, per-native-token, and web-delivery bypass path.
+    // A ring must skip every surface-presence check. Throwing covers the
+    // pre-fanout and per-native-token bypasses; this test has no web delivery.
     userPushSurfacePresence: { findMany: async () => { throw new Error('ring checked foreground surface') } },
     webPushSubscription: { findMany: async () => [] },
   } as unknown as CallRingDispatchPrisma

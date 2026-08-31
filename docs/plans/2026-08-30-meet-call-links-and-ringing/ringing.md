@@ -95,10 +95,12 @@ Specifics the existing pipeline does NOT give us, each an explicit change:
   the API is bearer-token-only (tokens live in the SPA's memory) and the
   refresh cookie is scoped to `/api/auth` on a different production
   subdomain — so the encrypted push payload carries a **single-use signed
-  action token** bound to `(callId, userId, action, expiry, revision)`,
-  and `POST /api/calls/:callId/respond` accepts it as the sole
-  unauthenticated path: it can flip exactly one invite's state and
-  returns nothing (no `meetingUri`, no call record). The call routes
+  action token** bound to `(callId, userId, action, expiry)`, and `POST
+  /api/calls/:callId/respond` accepts it as the sole unauthenticated path:
+  its conditional `ringing` invite update is the single-use guard, so one
+  invitee's response cannot stale another invitee's token. Terminal calls
+  still reject the token. The route returns nothing (no `meetingUri`, no call
+  record). The call routes
   themselves stay fully authenticated. A **plain click** (no action
   button) is *not*
   an unambiguous accept: it opens the app at the channel with the ring
@@ -153,4 +155,3 @@ this would be speculative). Every device of an invitee rings. The first
 `call.invite.updated` + cancel push stop the user's other devices. Two
 devices accepting simultaneously is harmless — the loser still opens the
 Meet tab (the link is a capability) and the invite stays `accepted`.
-

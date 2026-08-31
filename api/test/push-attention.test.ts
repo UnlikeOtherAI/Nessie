@@ -27,12 +27,14 @@ const RECIPIENT_ID = '00000000-0000-4000-8000-000000000007'
 
 const makeTransaction = (rows: AlertRow[]) => ({
   $executeRaw: async () => 1,
+  agent: { findMany: async () => [] },
   knowledgeSpace: {
     findFirst: async () => ({
       channelId: null,
       createdBy: ACTOR_ID,
       id: SPACE_ID,
       members: [],
+      ownerAgentId: null,
       privateToAgentId: null,
       projectId: PROJECT_ID,
       sensitivityTier: 'normal',

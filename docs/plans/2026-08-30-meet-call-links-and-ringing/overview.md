@@ -1,8 +1,8 @@
 # Call links + real ringing — Google Meet by default, Jitsi per team, replacing the embedded call
 
-**Status:** Implementation in progress — Slices 1–3 complete; slice 4 has a
-link-join compatibility repair but its caller/recipient UX remains pending ·
-2026-08-31
+**Status:** Implementation in progress — Slices 1, 2, 3a, and 3b complete;
+slice 4 has a link-join compatibility repair but its caller/recipient UX
+remains pending · 2026-08-31
 **Provider decision (made by the product owner, 2026-08-30, amended same
 day):** the link provider is a **per-team setting** — **Google Meet (the
 default)**, **Jitsi**, or **Microsoft Teams**. Pressing the phone icon does
@@ -174,23 +174,29 @@ explicitly reinstated: "some people wanna just create a Teams link").
    REST start route now binds the target channel to the session organisation,
    while the worker tool remains deliberately target-tenant-scoped; a declined
    invite is committed even when other invitees are still ringing.
-3. **Ring delivery — implemented 2026-08-31.** User-scoped SSE events, `call.ring-dispatch` /
+3a. **Server-side ring delivery — implemented 2026-08-31.** User-scoped SSE events, `call.ring-dispatch` /
    cancel worker jobs with the no-surface-suppression flag (threaded into
    `deliverNativeTokens` and the web leg alike), `pushIncomingCalls`
-   preference, the signed action token + `respond` endpoint, `sw.js`
-   actions/`event.action`/close handling (versioned payloads, SW protocol
-   staged first), native payload/channel/dismissal work, the `call_missed`
-   alert kind. The committed missed-call message also publishes its own
-   channel-scoped `message.new` event; realtime publication is best-effort.
-4. **Admin UX + shells — in progress.** The 2026-08-31 compatibility repair
+   preference, the signed action token + `respond` endpoint, and the
+   `call_missed` alert kind. The committed missed-call message also publishes
+   its own channel-scoped `message.new` event; realtime publication is
+   best-effort.
+3b. **Client-side push delivery — implemented 2026-08-31.** The versioned
+   service-worker protocol displays actionable, persistent call rings and
+   closes them on cancellation; accepting opens the provider link before the
+   token response and falls back to the in-app accept route if a cross-origin
+   open is unavailable. The mobile shell has its native provider-origin
+   allowlist, `nessie:open-external` bridge, top-level WebView interception,
+   high-priority call category/channel, and per-ring cancellation dismissal.
+   `openExternalUrl` routes the admin's future shell calls through Tauri or
+   that bridge without using `window.open` in a browser.
+4. **Admin UX — in progress.** The 2026-08-31 compatibility repair
    makes the header and banner Join controls real anchors to `meetingUri` and
    prevents the legacy overlay from rendering link calls with no `roomId`.
    The caller popup, `IncomingCallProvider`,
-   button/banner rework, Jitsi removal, `openExternalUrl` helper, the
-   `nessie:open-external` mobile bridge + WebView external-origin trap,
-   desktop opener wiring. Playwright: button → popup renders link; ring
-   dialog on a second session; Accept calls `window.open` with the URI
-   (stubbed); blocked-open fallback renders the anchor.
+   button/banner rework, and Jitsi removal remain. Playwright: button → popup
+   renders link; ring dialog on a second session; browser Accept renders the
+   real external anchor.
 5. **Agent tool + docs** — `meeting_link_create`, move
    `video-calling.md` → `docs/done/`, update `CLAUDE.md` capability line,
    review-log resolution of §12's open decisions.

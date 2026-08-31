@@ -1992,6 +1992,7 @@ model Agent {
   executorOperationGrants        ExecutorAgentOperationGrant[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
+  docsSpaces                     KnowledgeSpace[]                 @relation("AgentDocsSpaces")
   userAlertActivity              UserAlert[]
   callsCreatedVia                Call[]                           @relation("CallCreatedViaAgent")
   runThreadPendingMessages       RunThreadPendingMessage[]
@@ -4036,6 +4037,11 @@ model KnowledgeSpace {
   // Per-agent privacy: when set, only this agent may access the space.
   privateToAgentId String? @map("private_to_agent_id") @db.Uuid
 
+  /// The agent that owns this space as its documents home.
+  /// Its human audience is derived from the agent at read time and never copied.
+  /// The steward is read through `Agent.ownerUserId` rather than duplicated here.
+  ownerAgentId String? @map("owner_agent_id") @db.Uuid
+
   // Tenant scoping mirrors Thought and satisfies the shared scoped-content
   // contract used by packages/retrieval.
   organizationId String       @map("organization_id") @db.Uuid
@@ -4060,8 +4066,10 @@ model KnowledgeSpace {
   members              KnowledgeSpaceMember[]
   pushSurfacePresences UserPushSurfacePresence[]
   project              Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ownerAgent           Agent?                    @relation("AgentDocsSpaces", fields: [ownerAgentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_spaces_org_project_updated_id_idx")
+  @@index([organizationId, ownerAgentId])
   @@index([organizationId, visibility, updatedAt], map: "knowledge_spaces_org_visibility_updated_idx")
   @@index([organizationId, sensitivityTier], map: "knowledge_spaces_org_sensitivity_idx")
   @@index([privateToAgentId], map: "knowledge_spaces_private_to_agent_id_idx")
