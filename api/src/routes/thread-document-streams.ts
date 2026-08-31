@@ -50,6 +50,7 @@ export const registerThreadDocumentStreamRoutes = (
       activeOnly: active === '1' || active === 'true',
       organizationId: actorContext.tenant.organizationId,
       threadId: thread.id,
+      userId: actorContext.actor.actorId,
     })
 
     return createApiResponse(DocumentStreamListResponseSchema.parse({ sessions }))
@@ -77,6 +78,7 @@ export const registerThreadDocumentStreamRoutes = (
       organizationId: actorContext.tenant.organizationId,
       sessionId,
       threadId: thread.id,
+      userId: actorContext.actor.actorId,
     })
     if (!detail) {
       sendApiError(reply, 404, 'DOCUMENT_STREAM_NOT_FOUND', 'Document stream not found')
@@ -123,6 +125,7 @@ export const registerThreadDocumentStreamRoutes = (
         sessionId,
         spaceId: body.spaceId,
         threadId: thread.id,
+        userId: actorContext.actor.actorId,
       },
     )
 

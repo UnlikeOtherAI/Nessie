@@ -1,21 +1,10 @@
 # Live document streaming — PA writes a document while you watch the tokens arrive
 
-**Status:** verified design → Opus builds. No code has been written. Two
-adversarial verification passes have run against the codebase and are folded
-in below: **Fable** (output-token ceiling, abort plumbing, per-invocation
-index scoping, name-enrichment from the accumulation map, replay-list
-semantics, ephemeral hub mechanics, offset units, bounded publish queue,
-mock-llm gap, session→thread binding) and **Codex Sol** (session identity =
-`toolCallId`+invocation, disclosure containment via `consumedSources`,
-terminal ordering vs `stream.done`, bootstrap watermark + buffer-then-merge,
-budget clamp incl. output allowance in pre-flight, `finish_reason: length`
-loop contract, lexical extractor with committed-prefix + duplicate-key
-rejection + the streamed-equals-saved assertion, remote-media block, hub
-backpressure, ref-accumulate rendering, canonical final render, MiniMax
-degrade correction, chat doorway chip, shared REST DTO contracts). A kimix
-pass was also launched; fold its findings in if/when it lands. Owner
-decisions of 2026-08-13 (markdown `.md` files — no HTML, no output cap,
-publish-by-usefulness, discard on stop, not PA-only, address-bar retarget)
+**Status:** implemented and verification-gated. Earlier Fable and Codex Sol
+adversarial passes established the transport, identity, lifecycle, disclosure,
+bootstrap, parser, backpressure, rendering and REST invariants folded into this
+design. Owner decisions of 2026-08-13 (markdown `.md` files — no HTML, no output
+cap, publish-by-usefulness, discard on stop, not PA-only, address-bar retarget)
 are recorded in §6.
 
 ## Table of Contents
@@ -453,12 +442,16 @@ tool-call deltas and:
    session — everything else is ignored at zero cost. (`authorizeToolCall`
    still runs at execution time as today; the recorder is presentation, not
    authorization.)
-2. **Opens a session on detection.** Insert a `run_document_sessions` row
+2. **Opens a session on detection.** For compose, insert a `run_document_sessions` row
    (`status: streaming`) and publish `stream.document.start` immediately —
    before the location args have finished streaming — so the popup opens at
    the earliest honest moment. As `spaceId`/`parentPageId`/`title` become
-   parseable from the partial JSON, publish a single
-   `stream.document.meta` with the resolved names (one cheap lookup).
+   parseable, publish one `stream.document.meta` with their resolved names;
+   when the injected `runReplyIsRestricted` is true, start instead carries
+   `restricted: true` and no title or target name enters the broadcast. For an
+   edit, `readMarkdownDocument` resolves and records the source space through
+   shared `scopeForVisibility` before opening the attachment, so a private base
+   restricts the session before any byte or structural frame is emitted.
 3. **Extracts markdown incrementally — as a lexical scanner, not a
    heuristic.** A shared, React-free incremental extractor (new module in
    `@nessie/runtime` or `packages/schemas`; the designer facade's
@@ -499,16 +492,17 @@ tool-call deltas and:
    (a degraded Postgres), adjacent offset-contiguous queued fragments merge
    into one — content-preserving and latency-neutral, since it only merges
    what is already backed up, so the real-time requirement is untouched.
-   **`seq` is assigned at publish time, after any merge** (never at enqueue),
-   so merging can't fabricate gaps or duplicates; the oversized-fragment
-   split likewise numbers each piece at publish.
+   **`seq` is assigned at publish time, after merge/split**. The injected
+   `runReplyIsRestricted` is checked per delta/edit and is monotone (additive
+   source sink, fixed destination), so a closed stream never reopens.
 5. **Persists durable chunks, coalesced — in a separate lane.** A second,
    independent queue appends decoded markdown to `run_document_chunks`
    batched at 2 KiB / 250 ms (ThinkingRecorder constants). Two lanes, not
-   one: a slow durable INSERT must never delay a later live notify (the §4.6
-   audit table depends on this). The durable lane is the
-   mid-stream-join/reconnect source of truth; session finalization
-   (`settle`, §4.2(b)) awaits **both** lanes.
+   one: slow persistence never delays live notify. Restriction retains these
+   bytes for save equality and entitled bootstrap. The edit base uses this same
+   barrier. It compares exact persisted keys with the current monotone basis and
+   re-stamps on widening before the next readable session/fragment; unrestricted
+   fragments write no basis. List/detail then apply that basis.
 6. **Finalizes — before `stream.done`, with a crash backstop.** The tool
    handler (§4.1) closes a session `saved`; invocation brackets mark
    `superseded` (§4.2(b)). The ordering constraint "the run terminator is
@@ -596,8 +590,9 @@ GET /api/threads/:threadId/document-streams/:sessionId
 The per-session route additionally verifies
 `session.threadId === :threadId && session.organizationId === actor org`
 before answering — `sessionId` is a global UUID, and the thread gate alone
-would let any authenticated user with *some* readable thread fetch any org's
-streamed markdown by UUID. 404 on mismatch, indistinguishable from absent.
+would let a user with *some* readable thread fetch another org's markdown by
+UUID. List/detail also apply `RunBasisScope` through the shared predicate
+before names/chunks: failure is omitted/404, indistinguishable from absent.
 
 One mutation route backs the popup's address bar (§4.4):
 
@@ -606,8 +601,9 @@ POST /api/threads/:threadId/document-streams/:sessionId/target
   { spaceId, parentPageId? }
 ```
 
-Same thread + session-binding gate, **plus** the same owner-principal
-`canWriteSpace` check the save will make (fail at click time, not save time).
+Same thread + session-binding gate, **plus** detail's `RunBasisScope` predicate
+before target read/write (failure is the same 404 as absent), then the save's
+owner-principal `canWriteSpace` check (fail at click time, not save time).
 While the session is `streaming`, it persists `targetOverride` on the session
 row and publishes `stream.document.target`; if the session is already `saved`,
 it instead moves the existing page through the existing
@@ -616,6 +612,9 @@ the user's seat: "the address bar always works"). Terminal-failed sessions →
 409. Race with the save transaction: the save reads `targetOverride` inside
 the same transaction that creates the page, so a retarget either lands before
 the read (wins) or the route sees `saved` and takes the move path.
+
+A structural `restricted: true` frame makes the client facade drop the session,
+buffer and title, so an unentitled viewer retains neither dialog nor chip.
 
 Client contract — **buffer, then merge on the offset watermark**: the
 bootstrap response is an atomic watermark `{markdown, offset, lastSeq}` read

@@ -46,7 +46,13 @@ export const runKbDocumentEditTool = async (
 
   const organizationId = String(context.channel.organizationId)
   const fileService = fileServiceFor(context.prisma)
-  const document = await readMarkdownDocument(context.prisma, fileService, organizationId, pageId)
+  const document = await readMarkdownDocument(
+    context.prisma,
+    fileService,
+    organizationId,
+    pageId,
+    context,
+  )
   if (!document) {
     throw new Error(
       `No markdown document found for pageId=${pageId}. `
