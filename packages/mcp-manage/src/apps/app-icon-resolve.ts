@@ -12,7 +12,14 @@ import {
   discoverDeclaredIcons,
   githubAvatarCandidate,
 } from '../registry/icon-sources.js'
-import { sniffImageMime, type IconFetch, type IconFileService } from '../registry/registry-icons.js'
+import {
+  pickIconCandidate,
+  REGISTRY_ICON_SOURCE,
+  sniffImageMime,
+  type IconFetch,
+  type IconFileService,
+} from '../registry/registry-icons.js'
+import { readUpstreamSnapshot } from '../registry/registry-schema.js'
 
 /**
  * An app's icon, fetched once on first view and shared by the whole instance.
@@ -49,6 +56,8 @@ const PER_CANDIDATE_TIMEOUT_MS = 2_500
 
 /** Where a derived icon came from, recorded as the entry's `iconSource`. */
 export const SITE_ICON_SOURCE = 'site_favicon'
+export const GITHUB_AVATAR_ICON_SOURCE = 'github_avatar'
+export const CATALOG_ICON_SOURCE = 'catalog_declared'
 
 /** Fetch one candidate and return validated raster bytes, or null. */
 const fetchIconBytes = async (
@@ -83,6 +92,27 @@ const fetchIconBytes = async (
 export type AppIconResolution = { attachmentId: string } | null
 
 /**
+ * Select the publisher-declared candidate from the complete stored snapshot.
+ *
+ * `iconUrl` remains the compatibility pointer for hand-authored apps and
+ * snapshots written before Registry icon metadata was retained. It is never
+ * sent to the client; this only decides the URL that the server will validate,
+ * fetch, and cache locally.
+ */
+export type DeclaredAppIconCandidate = { source: string; url: string }
+
+export const declaredAppIconCandidate = (
+  upstream: unknown,
+  iconUrl: string | null,
+): DeclaredAppIconCandidate | null => {
+  const registryUrl = pickIconCandidate(
+    readUpstreamSnapshot(upstream)?.declaredIcons ?? [],
+  )
+  if (registryUrl) return { source: REGISTRY_ICON_SOURCE, url: registryUrl }
+  return iconUrl ? { source: CATALOG_ICON_SOURCE, url: iconUrl } : null
+}
+
+/**
  * Resolve and persist one app's icon, at most once.
  *
  * Concurrency and the stamp are both handled by one conditional UPDATE; see
@@ -109,6 +139,7 @@ export const resolveAppIcon = async (params: {
       iconUrl: true,
       label: true,
       repositoryUrl: true,
+      upstream: true,
       websiteUrl: true,
     },
   })
@@ -117,12 +148,16 @@ export const resolveAppIcon = async (params: {
   // Already tried and found nothing: the monogram is the answer.
   if (entry.iconResolvedAt) return null
 
-  const declared = entry.iconUrl ? [entry.iconUrl] : []
+  // `iconUrl` is the mapper's old single-value convenience pointer. The
+  // upstream snapshot carries every declared icon, including its sizes and
+  // theme; reselect from that complete publisher declaration before falling
+  // back to the pointer for a hand-authored or pre-metadata row.
+  const declared = declaredAppIconCandidate(entry.upstream, entry.iconUrl)
   const conventional = entry.websiteUrl ? conventionalCandidates(entry.websiteUrl) : []
   const avatar = entry.repositoryUrl ? githubAvatarCandidate(entry.repositoryUrl) : null
   // Cheap, already-known candidates are decided before the claim; the homepage
   // scan costs a request, so it happens after this caller has won the claim.
-  const hasSomethingToTry = declared.length + conventional.length > 0 || avatar !== null
+  const hasSomethingToTry = declared !== null || conventional.length > 0 || avatar !== null
 
   /**
    * Claim the attempt with one conditional UPDATE, before fetching anything.
@@ -148,7 +183,7 @@ export const resolveAppIcon = async (params: {
     })
     return settled?.iconAttachmentId ? { attachmentId: settled.iconAttachmentId } : null
   }
-  if (!hasSomethingToTry && !entry.websiteUrl) return null
+  if (!hasSomethingToTry) return null
 
   /**
    * Sources in descending order of what they are worth, each fetched, capped
@@ -162,10 +197,10 @@ export const resolveAppIcon = async (params: {
     ? await discoverDeclaredIcons(entry.websiteUrl, fetchIcon)
     : []
   const candidates = [
-    ...declared,
-    ...declaredBySite,
-    ...conventional,
-    ...(avatar ? [avatar] : []),
+    ...(declared ? [declared] : []),
+    ...declaredBySite.map((url) => ({ source: SITE_ICON_SOURCE, url })),
+    ...conventional.map((url) => ({ source: SITE_ICON_SOURCE, url })),
+    ...(avatar ? [{ source: GITHUB_AVATAR_ICON_SOURCE, url: avatar }] : []),
   ]
   if (candidates.length === 0) return null
 
@@ -173,7 +208,7 @@ export const resolveAppIcon = async (params: {
   const deadline = Date.now() + TOTAL_RESOLVE_BUDGET_MS
   for (const candidate of candidates) {
     if (Date.now() >= deadline) break
-    const fetched = await fetchIconBytes(candidate, fetchIcon)
+    const fetched = await fetchIconBytes(candidate.url, fetchIcon)
     if (!fetched) continue
     const stored = await storeIconBytes({
       actorId: params.actorId,
@@ -182,7 +217,7 @@ export const resolveAppIcon = async (params: {
       fileService: params.fileService,
       mime: fetched.mime,
       organizationId: params.organizationId,
-      source: SITE_ICON_SOURCE,
+      source: candidate.source,
     })
     if (!stored) break
     await params.prisma.mcpCatalogEntry.update({
@@ -199,6 +234,13 @@ export const resolveAppIcon = async (params: {
 export const appIconIsResolvable = (row: {
   iconAttachmentId: string | null
   iconResolvedAt: Date | null
+  iconUrl: string | null
+  repositoryUrl: string | null
   websiteUrl: string | null
 }): boolean =>
-  row.iconAttachmentId !== null || (row.iconResolvedAt === null && row.websiteUrl !== null)
+  row.iconAttachmentId !== null
+  || (row.iconResolvedAt === null && (
+    Boolean(row.iconUrl)
+    || (row.repositoryUrl ? githubAvatarCandidate(row.repositoryUrl) !== null : false)
+    || Boolean(row.websiteUrl)
+  ))

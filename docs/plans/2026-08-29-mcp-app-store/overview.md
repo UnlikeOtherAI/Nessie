@@ -381,7 +381,9 @@ So the icon is derived from the site, **lazily**, by
   `iconResolvedAt` before fetching means dozens of simultaneous misses perform
   one fetch, with no lock or transaction held across network I/O. Stamping
   *before* the attempt is also what stops a site with no favicon being
-  re-fetched on every paint.
+  re-fetched on every paint. When a later registry sync supplies a genuinely
+  new publisher icon, website, or GitHub repository for a row that still has no
+  attachment, it clears that stamp once so the new source gets its first try.
 - **Shared by the instance.** The result is one attachment, served cross-org by
   the same store-visibility floor as the record, so the second viewer — in any
   organisation — pays nothing.
@@ -403,7 +405,17 @@ the catalogue. Of fourteen rows that failed, eleven *did* declare
 1. **What the publisher declared to the registry** (`server.icons`) — the only
    source where somebody stated *this is my icon*. Ingestion previously read no
    icon field at all, so that ~8% was discarded on every sync; it is now
-   captured into `iconUrl` by the mapper and merge.
+   retained with its `sizes` and `theme` metadata in the `upstream` snapshot.
+   The lazy resolver reselects from that full declaration, preferring a
+   card-sized, theme-neutral raster for the one cached attachment shared by
+   light and dark store views; the legacy `iconUrl` pointer remains only for
+   old snapshots and hand-authored entries.
+   **There is no Simple Icons/name fallback.** A registry name, title,
+   description, endpoint, or repository is publisher-controlled and cannot
+   establish that a third-party server is the official service integration. A
+   Simple Icons source is only admissible if a future design supplies a
+   structural, independently verified publisher binding; keyword or alias
+   matching must never mint a service logo.
 2. **What the site's HTML declares** — `<link rel="icon">` and friends, ranked
    `apple-touch-icon` (a real raster by spec) over `icon` over `mask-icon` (a
    monochrome silhouette, a poor tile), resolved against the page and refused
@@ -427,9 +439,7 @@ Measured on 40 real catalogue rows: **30 resolved (75%)**, up from 13 of 41
 (32%) with conventional paths alone. A monogram stays a legitimate final state
 for the rest.
 
-## Not built yet
+## Remaining data gaps
 
-Icon caching — `iconsCached` is always 0, because a cached icon has to go
-through the `FileService` chokepoint and a raw upstream icon URL must never
-reach a browser. Resource and prompt counts are `null` (undetermined, never
-guessed as 0) for any server whose listings could not be read.
+Resource and prompt counts are `null` (undetermined, never guessed as 0) for
+any server whose listings could not be read.

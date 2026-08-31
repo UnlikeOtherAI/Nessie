@@ -6,6 +6,7 @@ import {
 
 import { classifyRegistryRemoteAuth, type RegistryRemoteAuth } from './registry-auth.js'
 import { classifyRegistryApp } from './registry-categories.js'
+import { pickIconCandidate } from './registry-icons.js'
 import type { RegistryRecord, RegistryRemote } from './registry-schema.js'
 
 /**
@@ -229,11 +230,10 @@ export const mapRegistryRecord = (record: RegistryRecord): RegistryMappingResult
       description,
       vendor: publisherHandle(record.name),
       websiteUrl: sanitizeHttpUrl(record.websiteUrl),
-      // First http(s) entry wins; the resolver still fetches, caps and sniffs
-      // it, so a hostile or dead URL costs an icon and nothing more.
-      declaredIconUrl:
-        record.declaredIconUrls.map((src) => sanitizeHttpUrl(src)).find((url) => url !== null)
-        ?? null,
+      // Keep all publisher metadata in `upstream`; this is just the best
+      // theme-neutral, card-sized raster pointer for legacy and lazy callers.
+      // The resolver reselects from the complete snapshot before it fetches.
+      declaredIconUrl: pickIconCandidate(record.declaredIcons),
       documentationUrl: null,
       repositoryUrl: sanitizeHttpUrl(record.repositoryUrl),
       sourceUrl:

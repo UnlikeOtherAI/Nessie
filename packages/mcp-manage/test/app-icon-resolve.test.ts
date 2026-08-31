@@ -4,7 +4,11 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import { appIconIsResolvable, resolveAppIcon } from '../src/apps/app-icon-resolve.js'
+import {
+  appIconIsResolvable,
+  declaredAppIconCandidate,
+  resolveAppIcon,
+} from '../src/apps/app-icon-resolve.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -18,15 +22,41 @@ const dbTest = process.env.DATABASE_URL ? test : test.skip
 // ─── What is worth asking about ───────────────────────────────────────────
 
 test('a row is only worth asking about while an icon is still possible', () => {
-  const base = { iconAttachmentId: null, iconResolvedAt: null, websiteUrl: null }
+  const base = {
+    iconAttachmentId: null,
+    iconResolvedAt: null,
+    iconUrl: null,
+    repositoryUrl: null,
+    websiteUrl: null,
+  }
   // Cached: always ask, that is the whole point.
   assert.equal(appIconIsResolvable({ ...base, iconAttachmentId: 'att-1' }), true)
   // Never tried and has somewhere to look: ask, and the route resolves.
   assert.equal(appIconIsResolvable({ ...base, websiteUrl: 'https://example.com' }), true)
   // Tried, found nothing: stop asking, or the grid re-fetches on every paint.
   assert.equal(appIconIsResolvable({ ...base, iconResolvedAt: new Date(), websiteUrl: 'https://example.com' }), false)
+  // A publisher-declared Registry icon has no reason to require a website.
+  assert.equal(appIconIsResolvable({ ...base, iconUrl: 'https://cdn.example.test/icon.png' }), true)
+  // Nor does a GitHub publisher avatar derived from a repository URL.
+  assert.equal(appIconIsResolvable({ ...base, repositoryUrl: 'https://github.com/acme/app' }), true)
+  // A repository host with no supported icon derivation does not create a dead route.
+  assert.equal(appIconIsResolvable({ ...base, repositoryUrl: 'https://gitlab.com/acme/app' }), false)
   // Nowhere to look.
   assert.equal(appIconIsResolvable(base), false)
+})
+
+test('lazy resolution reselects from preserved Registry icon metadata', () => {
+  const upstream = {
+    name: 'io.example/icon-app',
+    declaredIcons: [
+      { src: 'https://cdn.example.test/dark.png', mimeType: 'image/png', sizes: '128x128', theme: 'dark' },
+      { src: 'https://cdn.example.test/shared.png', mimeType: 'image/png', sizes: '128x128', theme: null },
+    ],
+  }
+  assert.deepEqual(
+    declaredAppIconCandidate(upstream, 'https://cdn.example.test/legacy.png'),
+    { source: 'mcp_registry', url: 'https://cdn.example.test/shared.png' },
+  )
 })
 
 // ─── The lazy resolution itself ─────────────────────────────────────────────
