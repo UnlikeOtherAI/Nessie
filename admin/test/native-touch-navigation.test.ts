@@ -125,9 +125,11 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
 
   assert.match(people, /presenceRingWidth=\{nativeTouchShell \? 3 : undefined\}/)
   assert.match(people, /ringColor=\{nativeTouchShell \? 'var\(--sb\)' : undefined\}/)
-  assert.match(people, /showStatus=\{!nativeTouchShell\}/)
+  assert.match(people, /showStatus=\{false\}/)
+  assert.match(people, /<UserStatusEmoji/)
   assert.match(starred, /showPresence=\{nativeTouchShell\}/)
-  assert.match(starred, /showStatus=\{!nativeTouchShell\}/)
+  assert.match(starred, /showStatus=\{false\}/)
+  assert.match(starred, /<UserStatusEmoji/)
   assert.match(avatar, /rounded-md/)
   assert.match(agentAvatar, /rounded-md/)
   assert.match(workspaceAvatar, /rounded-md/)
