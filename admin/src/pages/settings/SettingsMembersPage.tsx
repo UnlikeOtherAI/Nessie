@@ -11,6 +11,7 @@ import {
 } from '../../facades/users/hooks'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
+  PausedPrivateAgentsBucket,
   PersonAgents,
   UnassignedAgents,
 } from '../../components/features/members/PersonAgents'
@@ -233,17 +234,20 @@ export const SettingsMembersPage = () => {
               />
             ))}
           </div>
-          {localTree.tree.unowned.length > 0 ? (
+          {localTree.tree.pausedPrivateAgentCount > 0 || localTree.tree.unowned.length > 0 ? (
             <div
               className="mt-5 border-t border-[color:var(--sep)] pt-4"
               data-testid="local-unassigned-agents"
             >
-              <UnassignedAgents
-                agents={localTree.tree.unowned}
-                emptyLabel="None"
-                title="Unowned agents"
-                token={token}
-              />
+              <PausedPrivateAgentsBucket count={localTree.tree.pausedPrivateAgentCount} />
+              {localTree.tree.unowned.length > 0 ? (
+                <UnassignedAgents
+                  agents={localTree.tree.unowned}
+                  emptyLabel="None"
+                  title="Unowned agents"
+                  token={token}
+                />
+              ) : null}
             </div>
           ) : null}
         </section>

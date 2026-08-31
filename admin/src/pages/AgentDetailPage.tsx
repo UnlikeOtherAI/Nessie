@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { AgentAvatarQuickEdit } from '../components/features/agents/AgentAvatarQuickEdit'
 import { AgentDetailTabs } from '../components/features/agents/AgentDetailTabs'
 import { AgentStatusDot } from '../components/features/agents/AgentStatusDot'
+import { PrivateAgentHomeLink } from '../components/features/agents/PrivateAgentHomeLink'
 import { AgentDesignerContent } from './AgentDesignerPage'
 import { useAgents, useAgentStatus } from '../facades/agents/hooks'
 import type { AgentRecord } from '../lib/api-client'
@@ -109,6 +110,10 @@ export const AgentDetailPage = () => {
                   <Pill tone={getStatusTone(agent.status)}>{agent.status}</Pill>
                 </div>
                 <div className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</div>
+                <PrivateAgentHomeLink
+                  agent={agent}
+                  className="mt-2 inline-flex text-sm text-[color:var(--lnk)] hover:underline"
+                />
                 <div className="mt-0.5 text-xs uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                   {status?.currentToolName
                     ? `Active tool: ${status.currentToolName}`

@@ -130,6 +130,7 @@ export const AgentDesignerContent = ({
       runLimits: runLimitsToForm(readAgentRunLimits(editingAgent)),
       systemPrompt: editingAgent.systemPrompt ?? '',
       tools: editingAgent.toolPolicy ?? {},
+      visibility: editingAgent.visibility ?? 'workspace',
     }
   }, [editingAgent])
 
@@ -235,6 +236,7 @@ export const AgentDesignerContent = ({
         model: state.model || undefined,
         toolPolicy: Object.keys(toolPolicy).length > 0 ? toolPolicy : undefined,
         parentAgentId: parentId,
+        visibility: state.visibility,
       })
     }
 
@@ -344,6 +346,7 @@ export const AgentDesignerContent = ({
               state={state}
               toolGroups={toolCatalog.groups}
               toolsLoading={toolCatalog.isLoading}
+              visibilityReadOnly={isEditMode}
             />
           </div>
         </div>

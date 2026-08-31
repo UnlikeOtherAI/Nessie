@@ -61,6 +61,18 @@ const findNextTrigger = (
   return { index: hashIndex, marker: '#' }
 }
 
+// `agents` is the entitlement-scoped `GET /api/agents` result supplied by the
+// page. Keep that server decision intact: filtering again here would both
+// duplicate the privacy rule and make the client an accidental authority.
+export const buildAgentMentionEntities = (agents: AgentRecord[]): MentionEntity[] =>
+  agents.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    type: 'agent' as const,
+    trigger: '@' as const,
+    glyph: getAgentGlyph(agent),
+  }))
+
 function findTokenMatch<T>(
   text: string,
   startIndex: number,
@@ -94,13 +106,7 @@ export const useChannelMentions = ({
 
   const mentionEntities: MentionEntity[] = useMemo(
     () => [
-      ...agents.map((a) => ({
-        id: a.id,
-        name: a.name,
-        type: 'agent' as const,
-        trigger: '@' as const,
-        glyph: getAgentGlyph(a),
-      })),
+      ...buildAgentMentionEntities(agents),
       ...channelUsers.map((u) => ({
         id: u.id,
         name: u.displayName,

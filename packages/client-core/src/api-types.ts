@@ -2,6 +2,7 @@ import type {
   AgentAvatarBackgroundColor,
   AgentRunLimits,
   AgentStatusResponse,
+  AgentVisibility,
   MeResponse,
 } from '@nessie/schemas'
 
@@ -143,6 +144,10 @@ export type AgentRecord = {
   systemPrompt?: string
   toolPolicy?: Record<string, boolean>
   updatedAt: string
+  /** Stored scope: private agents are visible only to their owner. */
+  visibility: AgentVisibility
+  /** Owner-only home DM created atomically for a private agent. */
+  homeChannelId?: string
 }
 
 export type UserRecord = {
