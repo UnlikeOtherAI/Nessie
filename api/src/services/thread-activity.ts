@@ -1,14 +1,10 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { buildAccessibleChannelWhere } from '@nessie/workspace-admin'
 import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
-import {
-  partitionByDisclosure,
-  viewerSatisfiesBasis,
-} from '@nessie/runtime'
 
 import type { ThreadActivityRecord } from '../contracts.js'
-import { resolveGrantedScopeKeys } from './disclosure-grants.js'
 import { resolveMessageViewer } from './disclosure-viewer.js'
+import { evaluateMessageReadAccess } from './message-read-access.js'
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
@@ -99,19 +95,13 @@ export const listThreadActivity = async (
 
   const viewer = await resolveMessageViewer(prisma, input.organizationId, input.userId)
   const isReadable = async (message: ActivityMessage, channelId: string): Promise<boolean> => {
-    if (partitionByDisclosure([message], viewer).withheld.length === 0) return true
-    const grants = await resolveGrantedScopeKeys(prisma, {
-      agentId: message.agentId,
-      basis: message.basisScopes,
+    const access = await evaluateMessageReadAccess(prisma, {
       channelId,
-      messageId: message.id,
+      message,
       organizationId: input.organizationId,
-      viewerChannelIds: viewer.kind === 'user'
-        ? viewer.scopes.filter((scope) => scope.scopeType === 'channel').map((scope) => scope.scopeId)
-        : [],
-      viewerUserId: input.userId,
+      viewer,
     })
-    return viewerSatisfiesBasis(message.basisScopes, viewer, grants)
+    return access.readable
   }
 
   const records: Array<ThreadActivityRecord & { sort: ActivityMessage }> = []

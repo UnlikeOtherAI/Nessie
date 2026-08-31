@@ -10,6 +10,10 @@ export {
   runAttachmentUploadTool,
 } from './pa-tools/attachments.js'
 export { isDelegatingPersonalAssistant } from './pa-tools/access.js'
+export {
+  runCallStartTool,
+  runMeetingLinkCreateTool,
+} from './pa-tools/calls.js'
 export { runCommsConnectCardTool } from './pa-tools/comms-card.js'
 export {
   runChannelArchiveTool,

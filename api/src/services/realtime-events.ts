@@ -211,9 +211,16 @@ export const createRealtimeEventStore = (prisma: PrismaClient) => {
       (scope): scope is Extract<WsScope, { kind: 'organization' }> =>
         scope.kind === 'organization',
     )
+    // A user-scoped publication (the incoming-call ring) carries neither an
+    // organization nor a channel scope, but the user scope names its own
+    // organization. Without this fallback `append` returned null for it, and
+    // the hub gates the whole user-SSE fan-out on a persisted row — so the
+    // event was never stored, replayed, or delivered to anyone.
     const organizationId =
       organizationScope?.organizationId
       ?? (channelScope ? await resolveOrganizationIdForChannel(channelScope.channelId) : null)
+      ?? userScope?.organizationId
+      ?? null
 
     if (!organizationId) {
       return null

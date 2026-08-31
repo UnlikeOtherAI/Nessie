@@ -12,6 +12,7 @@ import {
   type RegistryIcon,
   type RegistryIconCacher,
 } from './registry-icons.js'
+import { type RepositoryIconCacher } from './repository-icons.js'
 import {
   mapRegistryRecord,
   normalizeEndpoint,
@@ -98,6 +99,12 @@ export type SyncRegistryOptions = RegistryFetchOptions & {
    * with `createRegistryIconCacher`.
    */
   iconCacher?: RegistryIconCacher
+  /**
+   * Resolves an IDE-style `ideToolIconPath` from an MCP repository bundle.
+   * This runs only when the registry did not yield a usable icon, never instead
+   * of an advertised raster.
+   */
+  repositoryIconCacher?: RepositoryIconCacher
   /** Called once per fetched page, empty pages included. */
   onProgress?: (progress: RegistrySyncProgress) => void
 }
@@ -261,10 +268,18 @@ const cacheIconIfMissing = async (
   mapping: RegistryAppMapping,
   icons: readonly RegistryIcon[],
   iconCacher: RegistryIconCacher | undefined,
+  repositoryIconCacher: RepositoryIconCacher | undefined,
 ): Promise<boolean> => {
-  if (!iconCacher || hasIcon || icons.length === 0) return false
+  if (hasIcon) return false
   try {
-    const cached = await iconCacher({ icons, displayName: mapping.displayName })
+    const cached = (iconCacher && icons.length > 0
+      ? await iconCacher({ icons, displayName: mapping.displayName })
+      : null)
+      ?? await repositoryIconCacher?.({
+        displayName: mapping.displayName,
+        endpointUrl: mapping.endpointUrl,
+        repositoryUrl: mapping.repositoryUrl,
+      })
     if (!cached) return false
     await prisma.mcpCatalogEntry.update({
       where: { id: rowId },
@@ -370,6 +385,7 @@ const upsertRegistryApp = async (
   isEndpointSafe: (url: string) => Promise<boolean>,
   adoptable: Map<string, ExistingAppRow>,
   iconCacher: RegistryIconCacher | undefined,
+  repositoryIconCacher: RepositoryIconCacher | undefined,
 ): Promise<UpsertResult> => {
   // Before anything is persisted. A row whose transport points at an internal
   // address is a hazard to keep, not merely one to leave unpromoted.
@@ -410,6 +426,7 @@ const upsertRegistryApp = async (
     mapping,
     icons,
     iconCacher,
+    repositoryIconCacher,
   )
   return { outcome, iconCached }
 }
@@ -476,6 +493,7 @@ export const syncRegistry = async (
             isEndpointSafe,
             adoptable,
             options.iconCacher,
+            options.repositoryIconCacher,
           )
           counts[outcome] += 1
           if (iconCached) counts.iconsCached += 1

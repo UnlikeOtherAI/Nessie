@@ -25,6 +25,12 @@ const dbStub = [
   '}',
   'export const writeAuditEntry = async () => {}',
   'export const enqueueQueueJob = async () => {}',
+  'export const buildVisibleAgentWhere = () => {',
+  '  throw new Error("agent visibility is not used by the workspace-target tests")',
+  '}',
+  'export const listVisibleAgentIdsForUser = async () => {',
+  '  throw new Error("agent visibility is not used by the workspace-target tests")',
+  '}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 // --- @nessie/runtime stub: UOA egress goes through safeFetch, which pins a

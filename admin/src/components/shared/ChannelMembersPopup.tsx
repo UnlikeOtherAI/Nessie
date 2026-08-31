@@ -9,7 +9,6 @@ import {
   useCloneAgent,
   useUnbindAgent,
 } from '../../facades/agents/hooks'
-import { CloseIcon, SearchIcon } from './channel-members/icons'
 import { useMemberFilters } from './channel-members/use-member-filters'
 import {
   AvailableUserRow,
@@ -20,7 +19,7 @@ import {
   CurrentAgentRow,
 } from './channel-members/MemberAgentRow'
 import { sectionHeadingClass } from './channel-members/styles'
-import { useOverlayDismiss } from './useOverlayDismiss'
+import { MemberManagementPopup } from './MemberManagementPopup'
 
 type ChannelMembersPopupProps = {
   allAgents: AgentRecord[]
@@ -84,76 +83,14 @@ export const ChannelMembersPopup = ({
       },
     )
 
-  const overlayDismiss = useOverlayDismiss(onClose)
-
   return (
-    <div
-      {...overlayDismiss}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--scrim-strong)',
-        backdropFilter: 'blur(4px)',
-      }}
+    <MemberManagementPopup
+      entityLabel={`#${channelLabel}`}
+      onClose={onClose}
+      onSearchChange={setSearch}
+      search={search}
+      totalMembers={totalMembers}
     >
-      <div
-        className={[
-          'flex max-h-[80vh] w-[calc(100%-1.5rem)] max-w-[480px] flex-col rounded-xl',
-          'border border-[color:var(--sep)] bg-[color:var(--main)]',
-        ].join(' ')}
-        style={{ boxShadow: '0 24px 48px var(--scrim-strong)' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[color:var(--sep)] px-5 py-4">
-          <div>
-            <h2 className="text-lg font-bold text-[color:var(--tx)]">
-              #{channelLabel} members
-            </h2>
-            <p className="mt-0.5 text-xs text-[color:var(--tx3)]">
-              {totalMembers} member{totalMembers !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <button
-            className={[
-              'flex h-7 w-7 items-center justify-center rounded',
-              'text-[color:var(--tx3)] hover:bg-[color:var(--overlay)]',
-              'hover:text-[color:var(--tx)]',
-            ].join(' ')}
-            onClick={onClose}
-            type="button"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-
-        {/* Search */}
-        <div className="border-b border-[color:var(--sep)] px-5 py-3">
-          <div
-            className={[
-              'flex items-center gap-2 rounded-lg border',
-              'border-[color:var(--border-strong)] bg-[color:var(--overlay-weak)] px-3 py-2',
-            ].join(' ')}
-          >
-            <SearchIcon />
-            <input
-              autoFocus
-              className={[
-                'w-full bg-transparent text-sm text-[color:var(--tx)] outline-none',
-                'placeholder:text-[color:var(--tx3)]',
-              ].join(' ')}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search members or agents..."
-              value={search}
-            />
-          </div>
-        </div>
-
-        {/* Scrollable list */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
           {/* Current members */}
           {(filteredUsers.length > 0 || filteredAgents.length > 0) && (
             <div>
@@ -164,6 +101,7 @@ export const ChannelMembersPopup = ({
                   key={user.id}
                   user={user}
                   currentUserId={currentUserId}
+                  removeLabel="Remove from channel"
                   removePending={removeMember.isPending}
                   onRemove={(userId) =>
                     removeMember.mutate({ channelId, userId })
@@ -228,8 +166,6 @@ export const ChannelMembersPopup = ({
                 No members match your search.
               </div>
             )}
-        </div>
-      </div>
-    </div>
+    </MemberManagementPopup>
   )
 }

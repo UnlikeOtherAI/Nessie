@@ -22,22 +22,34 @@ export type ApiClientConfig = {
 
 const normaliseBaseUrl = (baseUrl: string): string => baseUrl.trim().replace(/\/$/, '')
 
-const toApiError = async (response: Response): Promise<Error> => {
+/** A rejected API response with the server's stable error code intact. */
+export class ApiClientError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | undefined,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'ApiClientError'
+  }
+}
+
+const toApiError = async (response: Response): Promise<ApiClientError> => {
   const text = await response.text()
   if (!text) {
-    return new Error(`${response.status} ${response.statusText}`)
+    return new ApiClientError(`${response.status} ${response.statusText}`, undefined, response.status)
   }
 
   try {
     const payload = JSON.parse(text) as ApiError
     if (payload.error?.message) {
-      return new Error(payload.error.message)
+      return new ApiClientError(payload.error.message, payload.error.code, response.status)
     }
   } catch {
     // Fall through to raw body.
   }
 
-  return new Error(text)
+  return new ApiClientError(text, undefined, response.status)
 }
 
 export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientConfig): ApiClient => {
@@ -135,6 +147,9 @@ export type {
   ThreadMessageRecord,
   ThreadRecord,
   ToolDescriptor,
+  UnreadDirectMessagePreview,
+  UnreadDirectMessageRecord,
+  UnreadDirectMessagesResponse,
   UserActiveStatus,
   UserRecord,
   UserStatusRecord,

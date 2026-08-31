@@ -69,7 +69,7 @@ import { createDocumentStreamRecorder } from './document-stream.js'
 import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
-import { runReplyIsRestricted } from './agent-message.js'
+import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
 
 export const executeRunJob = async (
   deps: ExecutionDependencies,
@@ -179,13 +179,21 @@ export const executeRunJob = async (
   // reason: it must exist before the first provider chunk, and every exit path
   // has to settle it.
   const documentStream = createDocumentStreamRecorder({
+    getRestrictionBasis: () => runReplyBasis(context),
+    isRestricted: () => runReplyIsRestricted(context),
     loadDocument: async (pageId) => readMarkdownDocument(
       deps.prisma,
       fileServiceFor(deps.prisma),
       String(context.channel.organizationId),
       pageId,
+      context,
     ),
     prisma: deps.prisma,
+    persistRestrictionBasis: (basis) => persistRunBasis(deps.prisma, {
+      basis,
+      organizationId: String(context.channel.organizationId),
+      runId: context.run.id,
+    }),
     realtimeTransport: deps.realtimeTransport,
     run: {
       agentId: context.agent.id,

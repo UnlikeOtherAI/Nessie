@@ -46,6 +46,7 @@ const makeSpace = (overrides: Partial<KnowledgeSpaceRecord>): KnowledgeSpaceReco
   name: 'Engineering',
   description: null,
   metadata: null,
+  ownerAgentId: null,
   organizationId,
   projectId,
   teamId: null,
@@ -109,6 +110,7 @@ const makeApp = (options: {
       findMany: async () =>
         (options.projectMemberships ?? [projectId]).map((id) => ({ projectId: id })),
     },
+    agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
   } as unknown as PrismaClient

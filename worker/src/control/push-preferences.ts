@@ -47,7 +47,8 @@ export const shouldSuppressPushForPreferences = (
     | 'budgetAlerts'
     | 'assignedWork'
     | 'publishedKnowledge'
-    | 'triggerHealth',
+    | 'triggerHealth'
+    | 'incomingCalls',
 ): boolean => {
   const parsed = UserPreferencesSchema.safeParse(preferences ?? {})
   if (!parsed.success) {
@@ -65,6 +66,7 @@ export const shouldSuppressPushForPreferences = (
   const enabledForKind = {
     budgetAlerts: parsed.data.pushBudgetAlerts,
     assignedWork: parsed.data.pushAssignedWork,
+    incomingCalls: parsed.data.pushIncomingCalls,
     mentions: parsed.data.pushMentions,
     messages: parsed.data.pushMessages,
     publishedKnowledge: parsed.data.pushPublishedKnowledge,

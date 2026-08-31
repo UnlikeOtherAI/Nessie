@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@chonkiejs/core": "0.0.11",
+    "@nessie/db": "workspace:*",
     "@nessie/retrieval": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1"

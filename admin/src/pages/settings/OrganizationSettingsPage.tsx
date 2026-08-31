@@ -8,6 +8,7 @@ import { useIsOwner } from '../../components/shared/OwnerGate'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { LogoPanel } from './organization/LogoPanel'
 import { WorkspaceAvatarPanel } from './organization/WorkspaceAvatarPanel'
+import { CallProviderSettingsPanel } from './organization/CallProviderSettingsPanel'
 import {
   FeedbackBanner,
   SettingsPanel,
@@ -17,10 +18,11 @@ import { SectionLabel } from '../../components/primitives/SectionLabel'
 
 export const OrganizationSettingsPage = () => {
   const { me } = useAuthSession()
-  // Owner-only, matching the owner-gated nav item and the other org-admin
-  // settings (Members). Non-owners are routed back to their profile. Derived
-  // with the other hooks: the refusal below sits after an early return.
+  // Team call settings follow their API route: owners and admins can change
+  // them. The organisation's own route authorizes the same two roles, so the
+  // page remains one coherent home for its existing logo and profile controls.
   const isOwner = useIsOwner()
+  const canManageOrganization = isOwner || (me?.user.roleIds.includes('admin') ?? false)
   const { data: organization, isLoading } = useCurrentOrganization()
   const updateOrganization = useUpdateOrganization()
 
@@ -41,7 +43,7 @@ export const OrganizationSettingsPage = () => {
     return null
   }
 
-  if (!isOwner) {
+  if (!canManageOrganization) {
     return <Navigate to="/settings/profile" replace />
   }
 
@@ -91,6 +93,7 @@ export const OrganizationSettingsPage = () => {
 
         <LogoPanel />
         <WorkspaceAvatarPanel />
+        <CallProviderSettingsPanel />
       </div>
     </SettingsPanel>
   )

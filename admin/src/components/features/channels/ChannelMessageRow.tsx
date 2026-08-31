@@ -2,6 +2,7 @@ import type { Dispatch, KeyboardEvent, MouseEvent, MutableRefObject, ReactNode, 
 import type { AgentRecord, ThreadMessageRecord } from '../../../lib/api-client'
 import type { PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
+import { UserStatusEmoji } from '../../primitives/UserStatusEmoji'
 import { MessageAttachments } from '../../shared/MessageAttachments'
 import type { AttachmentRecord } from '../../../lib/uploads'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
@@ -47,14 +48,13 @@ const SpeechBubbleIcon = () => (
 export const StatusBadge = ({ presence }: { presence: PresenceView | null }) => {
   const emoji = presence?.statusEmoji ?? null
   const label = presence?.statusLabel ?? null
+  if (emoji) {
+    return <UserStatusEmoji statusEmoji={emoji} statusLabel={label} />
+  }
+
   return (
     <span className="admin-status-badge">
-      <span className="admin-status-badge-icon">{emoji ?? <SpeechBubbleIcon />}</span>
-      {label ? (
-        <span className="admin-tooltip" role="tooltip">
-          {label}
-        </span>
-      ) : null}
+      <span className="admin-status-badge-icon"><SpeechBubbleIcon /></span>
     </span>
   )
 }

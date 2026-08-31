@@ -2,10 +2,12 @@ import {
   PersonalAssistantSidebarEntry,
 } from '../../components/features/personal-assistant/PersonalAssistantSurface';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import { agentGradient } from '../../lib/avatar';
 import type { AgentRecord } from '../../lib/api-client';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
+import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { renderUnreadCount } from './SidebarRow';
 import { SidebarMenuSection } from './SidebarMenuSection';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
@@ -65,6 +67,7 @@ export const SidebarDmSection = ({
   unreadCountByChannelId,
 }: SidebarDmSectionProps) => {
   const { token } = useAuthSession();
+  const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
   const avatarSize = nativeTouchShell ? 24 : 18;
   return (
@@ -194,6 +197,7 @@ export const SidebarDmSection = ({
         const unreadCount = person.dmChannelId
           ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
           : 0;
+        const presence = getPresence(person.id);
         return (
           <button
             key={person.id}
@@ -208,12 +212,18 @@ export const SidebarDmSection = ({
               presenceRingWidth={nativeTouchShell ? 3 : undefined}
               ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
               showPresence={nativeTouchShell}
-              showStatus={!nativeTouchShell}
+              showStatus={false}
               size={avatarSize}
               token={token}
               userId={person.id}
             />
-            <span className="min-w-0 flex-1 truncate">{person.label}</span>
+            <span className="min-w-0 flex flex-1 items-center gap-1 overflow-hidden">
+              <span className="truncate">{person.label}</span>
+              <UserStatusEmoji
+                statusEmoji={presence?.statusEmoji}
+                statusLabel={presence?.statusLabel}
+              />
+            </span>
             {renderUnreadCount(unreadCount)}
             <span
               className={[

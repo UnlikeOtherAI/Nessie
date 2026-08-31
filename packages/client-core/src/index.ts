@@ -1,6 +1,7 @@
 // HTTP client + shared API types.
 export {
   createApiClient,
+  ApiClientError,
   type ApiClient,
   type ApiClientConfig,
 } from './api-client.js'
@@ -36,6 +37,9 @@ export type {
   ThreadMessageRecord,
   ThreadRecord,
   ToolDescriptor,
+  UnreadDirectMessagePreview,
+  UnreadDirectMessageRecord,
+  UnreadDirectMessagesResponse,
   UserActiveStatus,
   UserRecord,
   UserStatusRecord,

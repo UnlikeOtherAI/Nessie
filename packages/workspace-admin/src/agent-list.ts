@@ -1,10 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { buildVisibleAgentWhere } from '@nessie/db'
 import type { AgentRecord } from '@nessie/schemas'
 
 import {
   AGENT_OWNER_MEMBERSHIP_SELECT,
   buildAccessibleChannelWhere,
-  buildOwnedAgentWhere,
   mapAgentRecord,
 } from './agent-record.js'
 
@@ -41,31 +41,31 @@ export const listAgentsForUser = async (
     userId,
   })
   const visibilityFilters: Prisma.AgentWhereInput[] = [
-    {
-      bindings: {
-        some: {
-          channel: visibleChannelWhere,
-        },
-      },
-    },
-    // An agent you steward is yours to see even before it is bound anywhere.
-    // Without this a member who creates an agent loses sight of it the moment
-    // the page reloads, because `includeUnbound` is owner-only.
-    buildOwnedAgentWhere({ organizationId, userId }),
+    buildVisibleAgentWhere({ organizationId, userId }),
   ]
 
   if (includeUnbound) {
+    // The owner-only list override intentionally widens beyond the ordinary
+    // shared predicate. It preserves the existing all-agent view without
+    // teaching the reusable entitlement rule about caller roles.
     visibilityFilters.push({
-      bindings: {
-        none: {},
-      },
+      organizationId,
+      ...(includeSystemManaged ? {} : { systemManaged: false }),
+    })
+  } else if (includeSystemManaged) {
+    // System-managed agents are an opt-in presentation tier, not part of the
+    // ordinary agent visibility rule. They remain reachable only through a
+    // channel this caller can see.
+    visibilityFilters.push({
+      bindings: { some: { channel: visibleChannelWhere } },
+      organizationId,
+      systemManaged: true,
     })
   }
 
   const agents = await prisma.agent.findMany({
     where: {
       organizationId,
-      ...(includeSystemManaged ? {} : { systemManaged: false }),
       OR: visibilityFilters,
     },
     include: {

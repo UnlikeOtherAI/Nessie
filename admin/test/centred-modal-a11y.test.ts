@@ -56,10 +56,6 @@ const WITHOUT_SHELL_OR_HOOK: Record<string, string> = {
   'src/components/features/triggers/TriggerEditorDialog.tsx':
     'Documented in file: its subtitle is mt-1 text-sm where the shell renders a description at '
     + 'text-xs, and its 680px panel is not one of the three geometries the shell ships.',
-  'src/components/shared/ChannelMembersPopup.tsx':
-    'Unconverted debt, no reason recorded in the file: a max-h-[80vh] scrolling card on --main with '
-    + 'its own shadow. It has no Escape, no focus trap and no role="dialog"; scrim dismissal is all '
-    + 'it owns. Not touched here because it is nobody\'s call site in this change.',
   'src/pages/McpAppStorePage.tsx':
     'Unconverted debt, no reason recorded in the file: the inline "Add MCP server" wizard modal, an '
     + 'admin-card max-w-2xl on --main in the same family as the app-store dialogs above, with no '

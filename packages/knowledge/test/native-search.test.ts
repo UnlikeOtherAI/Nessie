@@ -12,6 +12,7 @@ const viewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   bypass: false,
   projectIds: new Set(),
   userId,
+  visibleAgentIds: new Set(),
   ...overrides,
 })
 
@@ -40,7 +41,12 @@ test('searchNativePages skips the space pre-filter for a bypass viewer', async (
   await searchNativePages(stubPrisma(capture), {
     organizationId,
     query: 'runbook',
-    viewer: { bypass: true, projectIds: new Set(), userId: null },
+    viewer: {
+      bypass: true,
+      projectIds: new Set(),
+      userId: null,
+      visibleAgentIds: new Set(),
+    },
   })
 
   assert.doesNotMatch(capture.sql ?? '', /knowledge_space_members/)

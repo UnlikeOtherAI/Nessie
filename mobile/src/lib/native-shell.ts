@@ -1,6 +1,6 @@
 import { IPHONE_TAB_BAR_HEIGHT } from './iphone-tab-bar'
 
-type NativeShellInfo = {
+export type NativeShellInfo = {
   bottomInset: number
   clientId: string
   formFactor: 'ipad' | 'large-phone-landscape' | 'phone'

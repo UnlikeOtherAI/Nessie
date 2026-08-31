@@ -20,10 +20,11 @@ interface ChannelHeaderProps {
   activeChannel: ChannelRecord | null
   boundAgents: AgentRecord[]
   callEligible: boolean
+  callMeetingUri: string | null | undefined
+  callStarting: boolean
   channelUsers: UserRecord[]
   externalAgentIdentity: ExternalAgentIdentity | null
   isExternalAgentConversation: boolean
-  isInCall: boolean
   isPersonalAssistantConversation: boolean
   joinPending: boolean
   onCallButton: () => void
@@ -44,10 +45,11 @@ export const ChannelHeader = ({
   activeChannel,
   boundAgents,
   callEligible,
+  callMeetingUri,
+  callStarting,
   channelUsers,
   externalAgentIdentity,
   isExternalAgentConversation,
-  isInCall,
   isPersonalAssistantConversation,
   joinPending,
   onCallButton,
@@ -75,9 +77,11 @@ export const ChannelHeader = ({
   )
   const callLabel = isPersonalAssistantConversation
     ? 'Personal Assistant does not support calls'
+    : callStarting
+      ? 'Starting call…'
     : callEligible
       ? activeCall
-        ? isInCall ? 'Toggle call overlay' : 'Join call'
+        ? 'Join call'
         : 'Start a call'
       : 'You can only start a call with humans for now'
   const participantCount = channelUsers.length + boundAgents.length
@@ -123,16 +127,29 @@ export const ChannelHeader = ({
       onSelect: onOpenSettings,
       priority: 60,
     } satisfies PageHeaderAction] : []),
-    {
-      compact: true,
-      disabled: !callEligible,
-      icon: faPhone,
-      id: 'call',
-      label: callLabel,
-      onSelect: onCallButton,
-      priority: 50,
-      selected: activeCall || isInCall,
-    },
+    activeCall && callMeetingUri
+      ? {
+          compact: true,
+          href: callMeetingUri,
+          icon: faPhone,
+          id: 'call',
+          kind: 'link',
+          label: callLabel,
+          priority: 50,
+          rel: 'noopener noreferrer',
+          selected: true,
+          target: '_blank',
+        } satisfies PageHeaderAction
+      : {
+          compact: true,
+          disabled: !callEligible || activeCall || callStarting,
+          icon: faPhone,
+          id: 'call',
+          label: callLabel,
+          onSelect: onCallButton,
+          priority: 50,
+          selected: activeCall,
+        } satisfies PageHeaderAction,
     {
       compact: true,
       icon: faMagnifyingGlass,

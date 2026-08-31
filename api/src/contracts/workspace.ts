@@ -68,11 +68,13 @@ export const CallInviteRecordSchema = z.object({
 export const CallRecordSchema = z.object({
   id: z.string().uuid(),
   channelId: ChannelIdSchema,
+  channelName: z.string(),
   roomId: z.string().nullable(),
   provider: z.enum(['google_meet', 'jitsi', 'microsoft_teams', 'jitsi_embedded']),
   meetingUri: z.string().url().nullable(),
   status: z.enum(['ringing', 'active', 'ended', 'missed', 'declined', 'cancelled']),
   startedById: UserIdSchema,
+  startedByDisplayName: z.string(),
   startedAt: TimestampSchema,
   ringExpiresAt: TimestampSchema.nullable(),
   endedAt: TimestampSchema.nullable(),

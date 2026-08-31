@@ -70,6 +70,30 @@ export const ChannelRecordSchema = z.object({
 })
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>
 
+// One row in the direct-message unread inbox. It deliberately carries only
+// the information needed to choose and open a conversation; the full message
+// remains behind the normal thread reader and its disclosure checks.
+export const UnreadDirectMessagePreviewSchema = z.object({
+  content: z.string(),
+  createdAt: TimestampSchema,
+  deleted: z.literal(true).optional(),
+  restricted: z.literal(true).optional(),
+})
+export type UnreadDirectMessagePreview = z.infer<typeof UnreadDirectMessagePreviewSchema>
+
+export const UnreadDirectMessageRecordSchema = z.object({
+  channelId: ChannelIdSchema,
+  channelLabel: NonEmptyStringSchema,
+  latestMessage: UnreadDirectMessagePreviewSchema,
+  unreadCount: z.number().int().positive(),
+})
+export type UnreadDirectMessageRecord = z.infer<typeof UnreadDirectMessageRecordSchema>
+
+export const UnreadDirectMessagesResponseSchema = z.object({
+  items: z.array(UnreadDirectMessageRecordSchema),
+})
+export type UnreadDirectMessagesResponse = z.infer<typeof UnreadDirectMessagesResponseSchema>
+
 // A deliberately small palette keeps agent portraits recognisable at a glance
 // without turning their backgrounds into a second identity-setting surface.
 export const AGENT_AVATAR_BACKGROUND_COLORS = [

@@ -5,6 +5,12 @@ import type {
   MeResponse,
 } from '@nessie/schemas'
 
+export type {
+  UnreadDirectMessagePreview,
+  UnreadDirectMessageRecord,
+  UnreadDirectMessagesResponse,
+} from '@nessie/schemas'
+
 export type AuthProviderDescriptor = {
   autoRedirect: boolean
   enabled: boolean
@@ -78,6 +84,8 @@ export type ProjectMemberRecord = {
 }
 
 export type TeamRecord = {
+  callProvider: 'google_meet' | 'jitsi' | 'microsoft_teams'
+  callProviderAvailability: Record<'google_meet' | 'jitsi' | 'microsoft_teams', boolean>
   createdAt: string
   id: string
   memberCount: number
@@ -93,6 +101,7 @@ export type CallParticipantRecord = {
 }
 
 export type CallRecord = {
+  channelName: string
   channelId: string
   endedAt: string | null
   id: string
@@ -109,6 +118,7 @@ export type CallRecord = {
   ringExpiresAt: string | null
   roomId: string | null
   startedAt: string
+  startedByDisplayName: string
   startedById: string
   status: 'ringing' | 'active' | 'ended' | 'missed' | 'declined' | 'cancelled'
 }

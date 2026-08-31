@@ -1,102 +1,105 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   useActiveCall,
-  useJoinCall,
-  useLeaveCall,
+  useCancelCall,
+  useEndCall,
   useStartCall,
 } from '../../facades/calls/hooks'
-import type { CallParticipantRecord, CallRecord, ChannelRecord } from '../../lib/api-client'
+import { startCallFailureCode as getStartCallFailureCode } from '../../facades/calls/call-presentation'
+import type { CallRecord, ChannelRecord } from '../../lib/api-client'
 
 interface UseChannelCallParams {
   activeChannel: ChannelRecord | null
-  currentUserId: string | undefined
   callEligible: boolean
 }
 
 interface UseChannelCallResult {
   activeCall: CallRecord | null | undefined
-  activeParticipants: CallParticipantRecord[]
-  isInCall: boolean
-  showCallOverlay: boolean
-  setShowCallOverlay: React.Dispatch<React.SetStateAction<boolean>>
+  callActionError: unknown
+  callActionPending: boolean
+  callStarting: boolean
+  callerDialogCall: CallRecord | null
   onCallButton: () => void
-  onBannerJoin: () => void
-  onOverlayLeave: () => void
+  onCloseCallerDialog: () => void
+  onCloseStartCallFailure: () => void
+  onFinishCall: () => void
+  startCallFailureCode: string | undefined
 }
 
+/**
+ * Owns the channel caller path: start a link call, retain the caller dialog
+ * for that exact call, and recover a typed start refusal. Incoming-call UI is
+ * deliberately app-wide work for slice 4b, not part of this channel seam.
+ */
 export const useChannelCall = ({
   activeChannel,
-  currentUserId,
   callEligible,
 }: UseChannelCallParams): UseChannelCallResult => {
-  const { data: activeCall } = useActiveCall(activeChannel?.id)
+  const activeCallQuery = useActiveCall(activeChannel?.id)
+  const activeCall = activeCallQuery.data
+  const cancelCall = useCancelCall()
+  const endCall = useEndCall()
   const startCall = useStartCall()
-  const joinCall = useJoinCall()
-  const leaveCall = useLeaveCall()
-  const [showCallOverlay, setShowCallOverlay] = useState(false)
+  const { reset: resetStartCall } = startCall
+  const [callerDialogCallId, setCallerDialogCallId] = useState<string | null>(null)
+  const activeChannelIdRef = useRef(activeChannel?.id)
+  activeChannelIdRef.current = activeChannel?.id
 
-  const activeParticipants = useMemo(
-    () => (activeCall?.participants ?? []).filter((p) => !p.leftAt),
-    [activeCall],
-  )
-  const isInCall = useMemo(
-    () => activeParticipants.some((p) => p.userId === currentUserId),
-    [activeParticipants, currentUserId],
-  )
-
-  // Auto-open the overlay when the user joins or starts a call on the current channel.
-  // Track channelId alongside isInCall so that navigating to a channel where the user
-  // is already a participant does not spuriously trigger the overlay.
-  const prevCallStateRef = useRef<{ channelId: string | undefined; isInCall: boolean }>({
-    channelId: activeChannel?.id,
-    isInCall: false,
-  })
   useEffect(() => {
-    const prev = prevCallStateRef.current
-    const channelChanged = prev.channelId !== activeChannel?.id
-    if (!channelChanged && isInCall && !prev.isInCall) {
-      setShowCallOverlay(true)
-    }
-    prevCallStateRef.current = { channelId: activeChannel?.id, isInCall }
-  }, [isInCall, activeChannel?.id])
+    setCallerDialogCallId(null)
+    resetStartCall()
+  }, [activeChannel?.id, resetStartCall])
 
-  // Reset the call overlay when switching channels.
-  useEffect(() => {
-    setShowCallOverlay(false)
-  }, [activeChannel?.id])
+  const callerDialogCall =
+    callerDialogCallId && activeCall?.id === callerDialogCallId ? activeCall : null
 
   const onCallButton = () => {
-    if (!callEligible || !activeChannel) return
-    if (!activeCall) {
-      startCall.mutate(activeChannel.id)
-    } else if (!isInCall) {
-      joinCall.mutate(activeCall.id)
-    } else {
-      setShowCallOverlay((v) => !v)
+    if (!callEligible || !activeChannel || startCall.isPending) return
+
+    if (activeCall) {
+      setCallerDialogCallId(activeCall.id)
+      return
     }
+
+    const channelId = activeChannel.id
+    startCall.mutate(channelId, {
+      onError: () => {
+        void activeCallQuery.refetch()
+      },
+      onSuccess: (call) => {
+        if (activeChannelIdRef.current === channelId) {
+          setCallerDialogCallId(call.id)
+        }
+      },
+    })
   }
 
-  const onBannerJoin = () => {
-    if (activeCall) {
-      joinCall.mutate(activeCall.id)
-    }
-  }
+  const onCloseCallerDialog = () => setCallerDialogCallId(null)
+  const onCloseStartCallFailure = () => resetStartCall()
 
-  const onOverlayLeave = () => {
-    if (activeCall) {
-      leaveCall.mutate(activeCall.id)
+  const onFinishCall = () => {
+    if (!activeChannel || !callerDialogCall) return
+
+    if (callerDialogCall.status === 'ringing') {
+      cancelCall.mutate(callerDialogCall.id, { onSuccess: onCloseCallerDialog })
+      return
     }
-    setShowCallOverlay(false)
+
+    if (callerDialogCall.status === 'active') {
+      endCall.mutate(activeChannel.id, { onSuccess: onCloseCallerDialog })
+    }
   }
 
   return {
     activeCall,
-    activeParticipants,
-    isInCall,
-    showCallOverlay,
-    setShowCallOverlay,
+    callActionError: cancelCall.error ?? endCall.error,
+    callActionPending: cancelCall.isPending || endCall.isPending,
+    callStarting: startCall.isPending,
+    callerDialogCall,
     onCallButton,
-    onBannerJoin,
-    onOverlayLeave,
+    onCloseCallerDialog,
+    onCloseStartCallFailure,
+    onFinishCall,
+    startCallFailureCode: getStartCallFailureCode(startCall.error),
   }
 }

@@ -10,6 +10,7 @@ import {
   runAgentListTool,
   runAgentTriggerCreateTool,
   runAuthoredMessageSearchTool,
+  runCallStartTool,
   runChannelArchiveTool,
   runChannelCreateTool,
   runChannelFindTool,
@@ -22,6 +23,7 @@ import {
   runReactTool,
   runMessageEditTool,
   runMessageSearchTool,
+  runMeetingLinkCreateTool,
   runPeopleSearchTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
@@ -362,6 +364,10 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () => runDeepWaterRunUpdateTool(context, args))
     case 'comms_connect_card':
       return wrapTool(inputSummary, () => runCommsConnectCardTool(context, args))
+    case 'meeting_link_create':
+      return wrapTool(inputSummary, () => runMeetingLinkCreateTool(context, args))
+    case 'call_start':
+      return wrapTool(inputSummary, () => runCallStartTool(context, args))
     default:
       return { inputSummary, output: 'Unknown tool: ' + toolName, success: false }
   }

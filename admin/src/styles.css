@@ -1122,6 +1122,13 @@ a {
   box-shadow: 0 16px 48px var(--scrim-strong);
 }
 
+/* Project menus render through a portal with a full-screen dismiss control at
+   z-60. This unlayered rule otherwise wins over Tailwind's z-[61] utility and
+   leaves the dismiss control above the menu, making Edit impossible to click. */
+.admin-sidebar-menu.fixed {
+  z-index: 61;
+}
+
 .admin-sidebar-menu-project {
   top: 24px;
   left: 0;

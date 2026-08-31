@@ -163,6 +163,29 @@ test('imports a registry record as a published, instance-global catalogue row', 
   assert.equal(runs[0]!.error, null)
 })
 
+test('falls back to the matching repository descriptor when the registry publishes no icon', async () => {
+  const { prisma, entries } = createFakePrisma()
+  const repositoryCalls: Array<{ endpointUrl: string; repositoryUrl: string | null }> = []
+
+  const result = await syncRegistry(prisma, {
+    fetchImpl: pageOf([record({ repository: { url: 'https://github.com/figma/mcp-server-guide' } })]),
+    assertEndpointSafe: allowAll,
+    repositoryIconCacher: async (input) => {
+      repositoryCalls.push(input)
+      return { attachmentId: 'figma-icon', source: 'mcp_repository' }
+    },
+  })
+
+  assert.equal(result.iconsCached, 1)
+  assert.deepEqual(repositoryCalls, [{
+    displayName: 'Notion',
+    endpointUrl: 'https://mcp.example.com/mcp',
+    repositoryUrl: 'https://github.com/figma/mcp-server-guide',
+  }])
+  assert.equal(entries[0]?.iconAttachmentId, 'figma-icon')
+  assert.equal(entries[0]?.iconSource, 'mcp_repository')
+})
+
 test('one malformed record is counted and described, never thrown', async () => {
   const { prisma, entries, runs } = createFakePrisma()
 

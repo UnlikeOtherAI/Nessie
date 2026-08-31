@@ -11,9 +11,12 @@ both native device tokens and browser subscriptions.
 When a channel message is dispatched, the worker's `handlePushDispatch`
 pipeline resolves recipients (channel members minus the author, minus muted /
 push-disabled / focus-mode / quiet-hours users), then delivers the notification
-over every configured transport. Focus mode is stored in the user's server-side
-preferences, so it applies to every registered device immediately at delivery;
-active clients also refresh the shared preference while visible. Recipients who
+over every configured transport. Incoming calls use the same delivery core via
+the single-recipient `call.ring-dispatch` job, with a deliberately different
+surface rule: a call ring reaches every device even when one device is already
+viewing the channel. Focus mode is stored in the user's server-side preferences,
+so it applies to every registered device immediately at delivery; active clients
+also refresh the shared preference while visible. Recipients who
 were directly @mentioned in the message get distinct mention framing —
 `<author> mentioned you in <channel>` as the title instead of the channel label
 — while unmentioned members keep the standard framing. A muted channel
@@ -140,6 +143,66 @@ rest — and the Prisma surface, sender, and SSRF guard are injected so it is
 unit-testable without a live database or network
 (`worker/test/web-push-delivery.test.ts`).
 
+### Incoming calls
+
+Calls use two durable worker topics, each scoped to exactly one current invitee:
+
+- `call.ring-dispatch` rechecks active organization membership, channel
+  membership, the call's still-ringing state and expiry, and the recipient's
+  `pushIncomingCalls` preference before sending. Focus mode and quiet hours
+  suppress both the ring and the later missed-call attention push.
+- `call.ring-cancel` bypasses those preference checks because it is silent
+  protocol cleanup for a ring that might already be visible on another device.
+
+Ring and cancel payloads carry `version: "1"`, `kind`, `callId`, `revision`,
+and an internal channel path. This makes unrecognised future payloads safe for
+older clients to ignore. Rings set native high priority and the
+`incoming-calls` category/channel; cancel payloads share the call collapse id.
+
+Native payloads deliberately contain **no meeting URI** and no action token.
+They carry only the internal path
+`/channels/:channelId?incomingCall=:callId`, preserving the mobile shell's
+internal-path-only trust boundary. Browser Web Push is RFC 8291 encrypted, so
+its payload may additionally carry the meeting URI and two compact signed
+response tokens (accept and decline). A token binds the call id, recipient user
+id, action, expiry, and call revision. `POST /api/calls/:callId/respond` is the
+only unauthenticated call endpoint; it consumes a still-ringing invite exactly
+once and returns `204` with no call record or meeting URI. The normal call
+routes remain bearer-authenticated.
+
+The version gate is a client safety boundary. A service worker handles only
+`version: "1"` `call.ring` and `call.cancel` payloads; it ignores any other
+`call.*` version rather than rendering a future cancel as an ordinary visible
+notification. Ring notifications use a stable `call-<callId>` tag, show
+**Accept** and **Decline** actions, require interaction, and renotify. Closing a
+notification is deliberately local-only: it neither declines the invite nor
+sends an action token.
+
+On an **Accept** notification action, the service worker calls
+`clients.openWindow(meetingUri)` synchronously before starting any async work,
+then posts the supplied accept token to the response route under
+`event.waitUntil`. The worker is registered with the admin bundle's configured
+API origin in its script URL, so this token response reaches the API even when
+the admin and API have separate production origins and the SPA is not running.
+If cross-origin `openWindow` returns `null` or rejects, the worker opens the
+same-origin `/channels/:channelId?acceptCall=:callId` fallback, where the app
+can offer a real-click join. A body click is never an implied accept; it opens
+`/channels/:channelId?incomingCall=:callId` for the incoming-call dialog.
+
+A cancel push closes all displayed notifications with its matching call tag.
+Some Chromium push implementations require a notification per delivered push,
+so the worker briefly creates and immediately closes a silent one after that
+cleanup. This low-volume protocol cancellation is a valid exception to the
+platform's penalty for habitual no-show push delivery.
+
+The mobile shell keeps native call payloads internal: the normal
+`pathFromPushData` rule still accepts only Nessie paths, and a ring opens
+`/channels/:channelId?incomingCall=:callId`. It registers the server's
+`incoming-calls` category as a dedicated high-importance Android channel and
+iOS category. While the shell is alive, a versioned cancellation push locates
+presented ring notifications by call id and dismisses only their identifiers;
+it never clears every notification card to cancel one call.
+
 ## Security
 
 - **SSRF.** A subscription `endpoint` is client-supplied and becomes an outbound
@@ -176,7 +239,8 @@ unit-testable without a live database or network
 - **Service worker** — `admin/public/sw.js` handles the `push` event
   (`showNotification` with the payload title/body/icon and a per-channel `tag`)
   and `notificationclick` (focus an existing tab on the deep-link URL or open a
-  new one).
+  new one). Versioned incoming-call payloads additionally use the action and
+  cancellation behaviour described above.
 - **Web app manifest** — `admin/public/manifest.webmanifest` (standalone
   display, icons) makes the admin installable as a PWA, which is required for
   Web Push on iOS.

@@ -7,6 +7,7 @@ import {
   type OrchestratorAgent,
 } from '../src/orchestrator.js'
 import type { ModelClient, ModelMessage } from '../src/model.js'
+import { ProviderInvocationError } from '../src/inference/types.js'
 
 // decideAgentEngagement only ever calls `modelClient.chat`. Build a stub that
 // captures the prompt it receives and returns a canned reply, so the tests can
@@ -145,6 +146,56 @@ test('a non-human trigger stays silent even with an @mention of an agent', async
     recentMessages: [],
     triggerIsHuman: false,
   })
+  assert.deepEqual(decisions, [])
+})
+
+test('the model-judged router rethrows only Ledger credit exhaustion', async () => {
+  const refusal = new ProviderInvocationError(
+    'openai-compatible chat request failed with HTTP 402',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-402',
+      latencyMs: 1,
+      model: 'ledger-model',
+      operationType: 'chat',
+      provider: 'openai-compatible',
+      requestId: 'request-402',
+      usage: {},
+    },
+    undefined,
+    { creditRefusal: 'ledger', providerCode: 'budget_exceeded', statusCode: 402 },
+  )
+  const model = {
+    chat: async () => {
+      throw refusal
+    },
+  } as unknown as ModelClient
+
+  await assert.rejects(
+    decideAgentEngagement(model, {
+      agents: [aria],
+      content: 'can you take a look?',
+      recentMessages: [],
+      triggerIsHuman: true,
+    }),
+    (error) => error === refusal,
+  )
+})
+
+test('a generic router failure remains fail-open', async () => {
+  const model = {
+    chat: async () => {
+      throw new Error('provider unavailable')
+    },
+  } as unknown as ModelClient
+
+  const decisions = await decideAgentEngagement(model, {
+    agents: [aria],
+    content: 'could you take a look?',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+
   assert.deepEqual(decisions, [])
 })
 

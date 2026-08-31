@@ -130,6 +130,7 @@ const makeApp = (options: MakeAppOptions = {}) => {
     $queryRaw: async () => (options.policyEffect === 'deny' ? [policyRow('deny')] : [policyRow('allow')]),
     $transaction: async <T>(callback: (tx: typeof txPrisma) => Promise<T>) => callback(txPrisma),
     projectMember: { findMany: async () => [{ projectId }] },
+    agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
     task: {
@@ -181,6 +182,7 @@ const makeApp = (options: MakeAppOptions = {}) => {
       visibility: 'project',
       sensitivityTier: 'normal',
       privateToAgentId: null,
+      ownerAgentId: null,
       createdBy: userId,
       deletedAt: null,
       createdAt: '2026-07-06T10:00:00.000Z',

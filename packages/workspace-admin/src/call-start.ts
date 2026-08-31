@@ -6,6 +6,7 @@ import {
   type CreateCallLinkDependencies,
   type CallLinkProvider,
 } from './call-links.js'
+import { enqueueCallRingDispatch } from './call-push-jobs.js'
 
 const DEFAULT_RING_TIMEOUT_MS = 45_000
 
@@ -25,6 +26,7 @@ export type StartCallForUserInput = {
   actingUserId: string
   channelId: string
   createdViaAgentId?: string
+  expectedOrganizationId?: string
   provider?: CallLinkProvider
 }
 
@@ -35,9 +37,9 @@ export type StartCallForUserDependencies = {
 }
 
 /**
- * Creates a channel call under the target channel's organisation. The target
- * is deliberately resolved here rather than trusting the caller's ambient
- * workspace: tools may name a channel in another organisation.
+ * Creates a channel call under the target channel's organisation. A session
+ * caller supplies its expected organisation; worker tools deliberately leave
+ * it unset because they resolve the target channel's own organisation.
  */
 export const startCallForUser = async (
   prisma: PrismaClient,
@@ -48,9 +50,8 @@ export const startCallForUser = async (
     where: { id: input.channelId },
     select: { id: true, organizationId: true, systemChannelType: true, teamId: true },
   })
-  if (!channel) throw new CallStartError('CHANNEL_NOT_FOUND')
-  if (channel.systemChannelType === 'personal_assistant') {
-    throw new CallStartError('CHANNEL_SYSTEM_MANAGED')
+  if (!channel || (input.expectedOrganizationId && channel.organizationId !== input.expectedOrganizationId)) {
+    throw new CallStartError('CHANNEL_NOT_FOUND')
   }
 
   const actorMembership = await prisma.organizationMember.findFirst({
@@ -67,6 +68,9 @@ export const startCallForUser = async (
     select: { id: true },
   })
   if (!channelMembership) throw new CallStartError('CHANNEL_NOT_FOUND')
+  if (channel.systemChannelType === 'personal_assistant') {
+    throw new CallStartError('CHANNEL_SYSTEM_MANAGED')
+  }
 
   const humanMembers = await prisma.channelMember.findMany({
     where: {
@@ -140,6 +144,8 @@ export const startCallForUser = async (
           },
         },
         include: {
+          channel: { select: { label: true } },
+          startedBy: { select: { displayName: true } },
           invites: { include: { user: { select: { displayName: true, id: true } } } },
           participants: { include: { user: { select: { displayName: true, id: true } } } },
         },
@@ -151,6 +157,9 @@ export const startCallForUser = async (
         payload: { callId: call.id },
         topic: 'call.ring-timeout',
       })
+      for (const invite of call.invites) {
+        await enqueueCallRingDispatch(tx, { callId: call.id, userId: invite.userId })
+      }
       return call
     })
   } catch (error) {

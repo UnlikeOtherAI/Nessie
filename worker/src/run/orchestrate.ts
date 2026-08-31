@@ -1,8 +1,9 @@
 import {
-  applyReplyBookkeeping,
   attributionFromActorContext,
+  CREDITS_EXHAUSTED_USER_MESSAGE,
   checkBudget,
   decideAgentEngagement,
+  isCreditsExhaustedError,
   partitionByDisclosure,
   resolveDisclosureViewer,
   selectFollowingAgentIds,
@@ -22,6 +23,7 @@ import {
 import type { PrismaClient } from '@prisma/client'
 import { enqueueRunExecution } from '../queue.js'
 import { describeAttachments, loadMessageAttachments } from './message-attachments.js'
+import { postOrchestrationNotice } from './orchestration-notice.js'
 import { claimThreadRunOrPend } from './thread-serialization.js'
 
 export type OrchestrateDecideDeps = {
@@ -103,60 +105,15 @@ export const executeOrchestrateDecideJob = async (
   if (budgetDecision.action === 'block') {
     const respondingAgentId = channelAgents[0]?.id
     if (respondingAgentId) {
-      const notice = await deps.prisma.message.create({
-        data: {
-          agentId: respondingAgentId,
-          content: `⚠️ ${budgetDecision.reason} — this request was not run.`,
-          role: 'assistant',
-          threadId,
-          ...(replyRootContextId ? { rootMessageId: replyRootContextId } : {}),
-        },
+      await postOrchestrationNotice(deps, {
+        agentId: respondingAgentId,
+        channelId,
+        content: `⚠️ ${budgetDecision.reason} — this request was not run.`,
+        kind: 'budget_blocked',
+        replyRootMessageId: replyRootContextId,
+        threadId,
+        triggerMessageId: messageId,
       })
-      const replyMeta = replyRootContextId
-        ? await applyReplyBookkeeping(deps.prisma, {
-            rootMessageId: replyRootContextId,
-            replyCreatedAt: notice.createdAt,
-            authorId: respondingAgentId,
-          })
-        : undefined
-      const noticeScopes = [{ kind: 'channel' as const, channelId }]
-      if (replyMeta && replyRootContextId) {
-        await deps.realtimeTransport.publishWs(noticeScopes, {
-          data: {
-            agentId: parseAgentId(respondingAgentId),
-            channelId,
-            contentPreview: notice.content.slice(0, 200),
-            messageId: notice.id,
-            role: 'assistant',
-            rootMessageId: replyRootContextId,
-            threadId: parseThreadId(threadId),
-          },
-          event: 'message.reply',
-        })
-        await deps.realtimeTransport.publishWs(noticeScopes, {
-          data: {
-            channelId,
-            threadId: parseThreadId(threadId),
-            rootMessageId: replyRootContextId,
-            replyCount: replyMeta.replyCount,
-            lastReplyAt: replyMeta.lastReplyAt?.toISOString(),
-            replyParticipantIds: replyMeta.replyParticipantIds,
-          },
-          event: 'message.reply.meta',
-        })
-      } else {
-        await deps.realtimeTransport.publishWs(noticeScopes, {
-          data: {
-            agentId: parseAgentId(respondingAgentId),
-            channelId,
-            contentPreview: notice.content.slice(0, 200),
-            messageId: notice.id,
-            role: 'assistant',
-            threadId: parseThreadId(threadId),
-          },
-          event: 'message.new',
-        })
-      }
     }
     console.warn(`[worker] orchestrate.decide blocked by budget (channel ${channelId}): ${budgetDecision.reason}`)
     return
@@ -243,18 +200,41 @@ export const executeOrchestrateDecideJob = async (
       )
     }
 
-    decisions = await decideAgentEngagement(deps.modelClient, {
-      // channelAgents from the payload is structurally identical to OrchestratorAgent[].
-      // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
-      agents: channelAgents satisfies OrchestratorAgent[],
-      content: annotate(content, messageId),
-      recentMessages,
-      triggerIsHuman,
-      followingAgentIds,
-      usage: attributionFromActorContext(actorContext, {
-        systemComponent: 'orchestrator',
-      }),
-    })
+    try {
+      decisions = await decideAgentEngagement(deps.modelClient, {
+        // channelAgents from the payload is structurally identical to OrchestratorAgent[].
+        // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
+        agents: channelAgents satisfies OrchestratorAgent[],
+        content: annotate(content, messageId),
+        recentMessages,
+        triggerIsHuman,
+        followingAgentIds,
+        usage: attributionFromActorContext(actorContext, {
+          systemComponent: 'orchestrator',
+        }),
+      })
+    } catch (error) {
+      // `decideAgentEngagement` already fail-opens every generic model error.
+      // The only error it rethrows is Ledger's typed exhausted-credit refusal,
+      // which must be visible even though no run exists to terminalize.
+      if (!isCreditsExhaustedError(error)) throw error
+      const respondingAgentId = channelAgents[0]
+      if (respondingAgentId) {
+        await postOrchestrationNotice(deps, {
+          agentId: respondingAgentId.id,
+          channelId,
+          content: `⚠️ ${CREDITS_EXHAUSTED_USER_MESSAGE} — this request was not run.`,
+          kind: 'credits_exhausted',
+          replyRootMessageId: replyRootContextId,
+          threadId,
+          triggerMessageId: messageId,
+        })
+      }
+      console.warn(
+        `[worker] orchestrate.decide refused by Ledger credits (channel ${channelId})`,
+      )
+      return
+    }
   }
 
   if (decisions.length === 0) {

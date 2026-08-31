@@ -100,6 +100,21 @@ measuring how full the shared database is, not whether prefix matching works.
 Assert on a token the catalogue does not carry, and assert *that the lane
 answers*, never a position.
 
+## Home suggestions are editorial order, not a second catalogue
+
+The default category shelves can lead with a small, source-controlled set of
+well-known remote apps selected by their immutable MCP Registry `server.name`.
+`APP_HOME_SUGGESTIONS` lives with the App Store read model, and is applied only
+to the unfiltered home shelves: search, a category page, and the installed-only
+view keep their own meaningful orders.
+
+Suggestions are never a visibility, moderation, trust, authentication, or
+connection decision. The store first applies its ordinary entitlement and
+catalogue visibility predicate, then asks for only the configured identities
+that survived it, and finally promotes them within their assigned primary
+category. A hidden, deleted, stale, or reclassified record therefore produces
+no card and cannot be forced into another category by the editorial list.
+
 ## Visibility
 
 The store shows `moderationState IN ('curated','approved')` and
@@ -182,6 +197,14 @@ What the design turns on:
 - **Untrusted text and URLs.** Every URL-shaped field is http(s)-constrained at
   the schema, rejected at ingest, and sanitised again on the way out; the same
   gate was applied to `library.ts`, where the identical vector was still open.
+- **Icons come from the distribution that declares them.** The registry's
+  `server.icons` raster is cached when present. When it is absent, an
+  owner-triggered sync can resolve an IDE-style `ideToolIconPath` from the same
+  public GitHub repository named by the record, but only for the descriptor
+  entry whose endpoint is the one being imported. The relative path cannot
+  escape the repository; SVG is structurally reduced to static shapes and
+  rasterised server-side; and the browser receives only the cached raster
+  attachment, never an upstream or raw SVG URL.
 
 ## The connect flow (Phases 4–8)
 

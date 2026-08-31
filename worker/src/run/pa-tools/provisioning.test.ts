@@ -205,10 +205,19 @@ test('agent_list gives a member the agents they may see, with the ids bind and t
 
   // A member reaches an agent through a channel they can see it in, or because
   // they steward it. The "unbound agents too" branch an owner gets is absent.
-  const where = queries[0]?.where as { OR: Array<Record<string, unknown>> }
-  assert.equal(where.OR.length, 2)
+  const where = queries[0]?.where as {
+    OR: Array<{ OR?: Array<Record<string, unknown>> }>
+  }
+  assert.equal(where.OR.length, 1)
+  const visibleAgentWhere = where.OR[0] as {
+    organizationId: string
+    systemManaged: boolean
+    OR: Array<Record<string, unknown>>
+  }
+  assert.equal(visibleAgentWhere.organizationId, ORG_ID)
+  assert.equal(visibleAgentWhere.systemManaged, false)
   assert.deepEqual(
-    (where.OR[0] as { bindings: { some: { channel: unknown } } }).bindings.some.channel,
+    (visibleAgentWhere.OR[0] as { bindings: { some: { channel: unknown } } }).bindings.some.channel,
     {
       organizationId: ORG_ID,
       OR: [{ visibility: 'public' }, { members: { some: { userId: USER_ID } } }],
@@ -216,13 +225,17 @@ test('agent_list gives a member the agents they may see, with the ids bind and t
   )
   // Ownership widens by pointer equality, so it carries the live-membership
   // join and excludes spawned subtask children.
-  assert.deepEqual(where.OR[1], {
+  assert.deepEqual(visibleAgentWhere.OR[1], {
     ownerMembership: { deactivatedAt: null },
     ownerUserId: USER_ID,
     parentAgentId: null,
   })
   assert.equal(
-    where.OR.some((branch) => 'bindings' in branch && 'none' in (branch.bindings as object)),
+    where.OR.some((branch) =>
+      branch.OR?.some(
+        (candidate) =>
+          'bindings' in candidate && 'none' in (candidate.bindings as object),
+      )),
     false,
     'a member must not get the owner-only unbound branch',
   )
@@ -260,15 +273,25 @@ test('agent_list gives an owner unbound agents too, and narrows on a named one',
 
   const result = await runAgentListTool(context, { query: 'hardware' })
 
-  const where = queries[0]?.where as { OR: Array<Record<string, unknown>> }
-  // Matched by shape rather than index: the ownership branch sits between the
-  // channel-binding branch and the owner-only unbound one.
+  const where = queries[0]?.where as {
+    OR: Array<{ OR?: Array<Record<string, unknown>> } & Record<string, unknown>>
+  }
+  // The owner override is a whole-organisation non-system branch; the shared
+  // channel/stewardship entitlement remains nested in the other branch.
   assert.ok(
-    where.OR.some((branch) => JSON.stringify(branch) === JSON.stringify({ bindings: { none: {} } })),
+    where.OR.some(
+      (branch) =>
+        branch.organizationId === ORG_ID
+        && branch.systemManaged === false
+        && branch.OR === undefined,
+    ),
     'an owner still reaches unbound agents',
   )
   assert.ok(
-    where.OR.some((branch) => (branch as { ownerUserId?: string }).ownerUserId === USER_ID),
+    where.OR.some((branch) =>
+      branch.OR?.some(
+        (candidate) => (candidate as { ownerUserId?: string }).ownerUserId === USER_ID,
+      )),
     'the ownership branch is present for an owner too',
   )
 

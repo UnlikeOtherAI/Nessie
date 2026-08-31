@@ -1560,6 +1560,7 @@ enum UserAlertKind {
   // because the whole defect this fixes was a failure nobody could see: a push
   // is missable, the bell is not.
   trigger_health
+  call_missed
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1580,6 +1581,7 @@ model UserAlert {
   taskId          String?        @map("task_id") @db.Uuid
   knowledgePageId String?        @map("knowledge_page_id") @db.Uuid
   triggerId       String?        @map("trigger_id") @db.Uuid
+  callId          String?        @map("call_id") @db.Uuid
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey        String?        @map("event_key")
@@ -1596,6 +1598,7 @@ model UserAlert {
   task            Task?          @relation("PushAttentionAlertTask", fields: [taskId], references: [id], onDelete: Cascade)
   knowledgePage   KnowledgePage? @relation("PushAttentionAlertKnowledgePage", fields: [knowledgePageId], references: [id], onDelete: Cascade)
   trigger         AgentTrigger?  @relation("TriggerHealthAlert", fields: [triggerId], references: [id], onDelete: Cascade)
+  call            Call?          @relation("CallMissedAlert", fields: [callId], references: [id], onDelete: Cascade)
   actorUser       User?          @relation("UserAlertActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   actorAgent      Agent?         @relation(fields: [actorAgentId], references: [id], onDelete: SetNull)
 
@@ -1603,6 +1606,7 @@ model UserAlert {
   @@index([userId, readAt, createdAt])
   @@index([organizationId, userId, createdAt])
   @@index([userId, kind, projectId, readAt, createdAt])
+  @@index([callId])
   @@map("user_alerts")
 }
 
@@ -2020,6 +2024,7 @@ model Agent {
   executorOperationGrants        ExecutorAgentOperationGrant[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
+  docsSpaces                     KnowledgeSpace[]                 @relation("AgentDocsSpaces")
   userAlertActivity              UserAlert[]
   callsCreatedVia                Call[]                           @relation("CallCreatedViaAgent")
   runThreadPendingMessages       RunThreadPendingMessage[]
@@ -4150,6 +4155,11 @@ model KnowledgeSpace {
   // Per-agent privacy: when set, only this agent may access the space.
   privateToAgentId String? @map("private_to_agent_id") @db.Uuid
 
+  /// The agent that owns this space as its documents home.
+  /// Its human audience is derived from the agent at read time and never copied.
+  /// The steward is read through `Agent.ownerUserId` rather than duplicated here.
+  ownerAgentId String? @map("owner_agent_id") @db.Uuid
+
   // Tenant scoping mirrors Thought and satisfies the shared scoped-content
   // contract used by packages/retrieval.
   organizationId String       @map("organization_id") @db.Uuid
@@ -4174,8 +4184,10 @@ model KnowledgeSpace {
   members              KnowledgeSpaceMember[]
   pushSurfacePresences UserPushSurfacePresence[]
   project              Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ownerAgent           Agent?                    @relation("AgentDocsSpaces", fields: [ownerAgentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId, projectId, updatedAt(sort: Desc), id(sort: Desc)], map: "knowledge_spaces_org_project_updated_id_idx")
+  @@index([organizationId, ownerAgentId])
   @@index([organizationId, visibility, updatedAt], map: "knowledge_spaces_org_visibility_updated_idx")
   @@index([organizationId, sensitivityTier], map: "knowledge_spaces_org_sensitivity_idx")
   @@index([privateToAgentId], map: "knowledge_spaces_private_to_agent_id_idx")
@@ -4557,6 +4569,7 @@ model Call {
   createdViaAgent  Agent?            @relation("CallCreatedViaAgent", fields: [createdViaAgentId], references: [id], onDelete: SetNull)
   participants      CallParticipant[]
   invites           CallInvite[]
+  missedAlerts      UserAlert[]      @relation("CallMissedAlert")
 
   @@index([channelId])
   @@index([status])
