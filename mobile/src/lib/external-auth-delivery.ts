@@ -75,5 +75,19 @@ export const nativeExternalAuthDeliveryScript = (
     + `{type:'nessie:external-auth-delivered',id:${id}}));}catch(e){}}).catch(function(){});})();`
 }
 
+/**
+ * Deliver the queue head without consuming it. Native lifecycle signals may
+ * call this repeatedly; only the SPA's acknowledgement advances the queue.
+ */
+export const flushNativeExternalAuthDelivery = (
+  queue: Pick<NativeExternalAuthDeliveryQueue, 'head'>,
+  inject: (script: string) => void,
+): boolean => {
+  const delivery = queue.head()
+  if (!delivery) return false
+  inject(nativeExternalAuthDeliveryScript(delivery))
+  return true
+}
+
 export const externalAuthErrorResult = (state?: string): ExternalAuthTerminalResult =>
   mapExternalAuthSessionResult({ type: 'error' }, state)

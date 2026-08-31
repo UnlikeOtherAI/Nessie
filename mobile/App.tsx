@@ -58,7 +58,10 @@ import {
 } from './src/components/NativePhoneConversationMenuChrome'
 import { IphoneNativeTabBar } from './src/components/IphoneNativeTabBar'
 import { completeExternalAuth } from './src/lib/external-auth-session'
-import { createNativeExternalAuthDeliveryQueue, nativeExternalAuthDeliveryScript } from './src/lib/external-auth-delivery'
+import {
+  createNativeExternalAuthDeliveryQueue,
+  flushNativeExternalAuthDelivery,
+} from './src/lib/external-auth-delivery'
 import { createNativeWebviewActions } from './src/lib/native-webview-actions'
 import {
   DEFAULT_NATIVE_SHELL_PRESENTATION,
@@ -132,6 +135,10 @@ const Shell = (): React.JSX.Element => {
   const runScript = useCallback((script: string): void => {
     webRef.current?.injectJavaScript(wrapNativeWebViewScript(script))
   }, [])
+
+  const flushExternalAuthDelivery = useCallback((): void => {
+    flushNativeExternalAuthDelivery(externalAuthDeliveries.current, runScript)
+  }, [runScript])
 
   useEffect(() => {
     if (IS_IPAD || Platform.OS !== 'ios') return
@@ -251,18 +258,18 @@ const Shell = (): React.JSX.Element => {
       nativeAppForeground.current = nextState === 'active'
       runScript(nativeAppForegroundScript(nativeAppForeground.current))
       if (nativeAppForeground.current) {
+        // ASWebAuthenticationSession may finish before WKWebView is ready to
+        // execute injected JavaScript. The result stays in the native queue
+        // until the SPA acknowledges it, so app activation is the exact event
+        // that safely replays an unacknowledged callback.
+        flushExternalAuthDelivery()
         void dismissNativeNotificationCards().catch(() => undefined)
       }
     })
     return () => subscription.remove()
-  }, [runScript])
+  }, [flushExternalAuthDelivery, runScript])
 
   const nativeActions = createNativeWebviewActions(runScript)
-
-  const flushExternalAuthDelivery = (): void => {
-    const delivery = externalAuthDeliveries.current.head()
-    if (delivery) runScript(nativeExternalAuthDeliveryScript(delivery))
-  }
 
   const runExternalAuth = async (authorizeUrl: string, state?: string): Promise<void> => {
     const terminal = await completeExternalAuth(authorizeUrl, state)

@@ -78,9 +78,6 @@ An interrupted browser hand-off is always recoverable: the login screen offers
 attempt it observed. In a web browser, returning with Back cancels the pending
 attempt instead of reopening the provider; a restored browser page also
 reconciles its session again so it cannot remain at **Loading workspace…**.
-If a restored browser nevertheless leaves its session check unresolved for ten
-seconds, Nessie fails closed to `/login`; an unresolved request never counts as
-an authenticated session.
 
 ### Desktop notifications
 
@@ -341,7 +338,10 @@ Native SSO reports every terminal `ASWebAuthenticationSession` result back to
 that login surface. A successful deep link continues through the existing PKCE
 exchange; closing or dismissing the iOS sheet clears the pending PKCE attempt
 and restores the provider button without showing an error. A native session
-failure also restores the button and shows a retryable message.
+failure also restores the button and shows a retryable message. The native
+callback remains queued until the SPA acknowledges it; returning the app to the
+foreground immediately replays any unacknowledged result. No elapsed-time
+fallback decides whether authentication succeeded.
 
 The installed mobile login also has the authenticated app's bug icon in its
 lower-right safe area. It opens the same Session debug panel with an empty JSON

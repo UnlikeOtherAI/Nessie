@@ -63,6 +63,11 @@ Developer-ID and file-access design is not App Sandbox-compatible yet.
    resolved iOS config must show `com.km.nessie`, team `59S95D279D`, the planned
    version/build number, and production as the WebView target.
 
+   The workspace intentionally pins React and its types to the one hoisted
+   version shared by the admin and native bundles. Those two packages are listed
+   in `mobile/package.json` under `expo.install.exclude`; every other Expo SDK
+   dependency remains version-checked normally.
+
 4. Commit the version changes and all related release configuration before the
    upload. The uploaded artifact is traceable only if its source version is in
    Git.
