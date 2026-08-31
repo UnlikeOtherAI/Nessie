@@ -20,7 +20,12 @@ test('the Designer item is gone from the agents menu', () => {
 
 test('editing an agent keeps "Agents" highlighted, not a Designer item', () => {
   assert.ok(agentsItem, 'Agents item exists')
-  for (const path of ['/agents', '/agents/designer', '/agents/designer/abc-123']) {
+  for (const path of [
+    '/agents',
+    '/agents/designer',
+    '/agents/designer/abc-123',
+    '/agents/agent-abc-123',
+  ]) {
     assert.equal(isAdminNavItemActive(agentsItem, path), true, `Agents active on ${path}`)
   }
 })
@@ -38,4 +43,7 @@ test('sibling agent pages still own their own routes (no double-highlight)', () 
   // And Agents does not steal a sibling's own route.
   assert.equal(isAdminNavItemActive(agentsItem!, '/agents/activity'), false)
   assert.equal(isAdminNavItemActive(agentsItem!, '/agents/triggers'), false)
+  assert.equal(isAdminNavItemActive(agentsItem!, '/agents/workflows'), false)
+  assert.equal(isAdminNavItemActive(agentsItem!, '/agents/tools'), false)
+  assert.equal(isAdminNavItemActive(agentsItem!, '/agents/executors'), false)
 })

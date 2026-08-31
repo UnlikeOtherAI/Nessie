@@ -22,7 +22,7 @@ test('the avatar pencil opens a modal with a prompt, AI generation, upload, remo
   assert.match(source, /<PencilIcon \/>/)
   // Generate with a free-text prompt.
   assert.match(source, /Generate with AI/)
-  assert.match(source, /placeholder="Describe the look you want \(optional\)"/)
+  assert.match(source, /placeholder="Add avatar details to the agent instructions \(optional\)"/)
   assert.match(source, /avatarChanges\.generate\(prompt\)/)
   // Upload path still routes through the cropper.
   assert.match(source, /Upload/)

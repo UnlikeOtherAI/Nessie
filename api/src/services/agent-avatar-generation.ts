@@ -53,7 +53,17 @@ const avatarPromptMessages = (
   backgroundColor: string,
   instructions?: string,
 ): Parameters<ModelClient['chat']>[0] => {
-  const userRequest = instructions?.trim()
+  const additionalGuidance = instructions?.trim()
+  // A regeneration note augments the agent's own purpose; it is never a new
+  // source of truth that replaces the context the avatar represents.
+  const agentPurpose = [
+    agent.systemPrompt?.slice(0, 6_000) ?? '',
+    additionalGuidance
+      ? `Additional avatar guidance:\n${additionalGuidance.slice(0, 1_000)}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   return [
     {
       role: 'system',
@@ -63,9 +73,8 @@ const avatarPromptMessages = (
         'Default to one original fictional human character: a warm, expressive person with a human face, shown from shoulders up and centered.',
         'Do not use a robot, machine, AI mascot, animal, object, generic icon, or non-human character unless the agent role and purpose clearly establish that the agent itself is a non-human machine.',
         'Decide whether that exception applies by understanding the role and purpose, never from a keyword list.',
-        userRequest
-          ? 'When "userRequest" is present, follow it as the person\'s direct description of the look they want — including a non-human character if they ask for one — as long as it stays a single original subject and never conflicts with the fixed rules below.'
-          : '',
+        'Counter gender stereotypes rather than reproduce them. Apply gender presentation in this precedence order: when the role and purpose genuinely establish a predominantly male audience, default to a woman; when they genuinely establish a predominantly female audience, default to a man. Only when no predominantly gendered audience is established, counter a conventional role stereotype by choosing the opposite presentation. Do not infer a gendered audience from a job title or profession alone.',
+        'Any explicit gender or presentation in the additional avatar guidance overrides this default. That guidance is appended to the agent purpose and only adds detail; it does not replace the agent purpose or the fixed rules.',
         'Use simple clean linework and a clear face.',
         `Use a flat, solid pastel background in exactly ${backgroundColor}.`,
         'Do not include text, letters, logos, watermarks, UI, frames, or multiple people.',
@@ -79,8 +88,7 @@ const avatarPromptMessages = (
       content: JSON.stringify({
         agentName: agent.name,
         agentRole: agent.role,
-        agentPurpose: agent.systemPrompt?.slice(0, 6_000) ?? '',
-        ...(userRequest ? { userRequest: userRequest.slice(0, 1_000) } : {}),
+        agentPurpose,
       }),
     },
   ]

@@ -45,9 +45,31 @@ type AdminNavItem = {
    * item. Each entry matches its own path or `${path}/…`.
    */
   alsoActiveFor?: string[];
+  /**
+   * A structurally distinct route that belongs to this item but cannot be
+   * expressed as a path prefix. Agent detail is `/agents/:agentId`, while the
+   * other `/agents/...` paths belong to their named sibling items.
+   */
+  alsoActiveWhen?: (pathname: string) => boolean;
   /** W29: live count badge rendered beside the label (failed-runs triage). */
   badgeCount?: number;
 };
+
+const agentDetailRoutePrefixes = [
+  '/agents/designer',
+  '/agents/workflow-designer',
+  '/agents/activity',
+  '/agents/workflows',
+  '/agents/triggers',
+  '/agents/tools',
+  '/agents/executors',
+];
+
+const isAgentDetailRoute = (pathname: string): boolean =>
+  pathname.startsWith('/agents/')
+  && !agentDetailRoutePrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 
 type AdminNavGroupId = 'agents' | 'account' | 'organization' | 'governance' | 'platform';
 
@@ -79,6 +101,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         label: 'Agents',
         exact: true,
         alsoActiveFor: ['/agents/designer'],
+        alsoActiveWhen: isAgentDetailRoute,
         icon: icon(
           <>
             <circle cx="12" cy="8" r="4" />
@@ -406,7 +429,9 @@ export const isAdminNavItemActive = (item: AdminNavItem, pathname: string): bool
   const matchesPrefix = (path: string) =>
     pathname === path || pathname.startsWith(`${path}/`);
   const ownMatch = item.exact ? pathname === item.path : matchesPrefix(item.path);
-  return ownMatch || (item.alsoActiveFor ?? []).some(matchesPrefix);
+  return ownMatch
+    || (item.alsoActiveFor ?? []).some(matchesPrefix)
+    || item.alsoActiveWhen?.(pathname) === true;
 };
 
 type AdminNavSectionProps = {

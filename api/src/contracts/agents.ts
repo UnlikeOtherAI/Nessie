@@ -85,8 +85,8 @@ export const GenerateAgentAvatarBodySchema = z.object({
   role: NonEmptyStringSchema.optional(),
   systemPrompt: z.string().optional(),
   // Free-text guidance the person typed for this generation ("a friendly robot
-  // in a hard hat"). Optional; the prompt writer honours it within the fixed
-  // safety constraints.
+  // in a hard hat"). Optional; the prompt writer appends it to the agent's
+  // purpose within the fixed safety constraints.
   instructions: z.string().max(1_000).optional(),
 })
 
