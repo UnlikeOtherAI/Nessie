@@ -2,6 +2,7 @@ import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import { buildVisibleAgentWhere } from '@nessie/db'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
+import { buildAgentVisibilityWhere } from './agent-record.js'
 export type ChannelAccessRow = {
   systemChannelType?: ChannelSystemType
   type: string
@@ -58,7 +59,10 @@ export const isAgentVisibleToUser = async (
 ): Promise<boolean> =>
   (await prisma.agent.count({
     where: {
-      ...buildVisibleAgentWhere({ organizationId, userId }),
+      AND: [
+        buildVisibleAgentWhere({ organizationId, userId }),
+        buildAgentVisibilityWhere({ organizationId, userId }),
+      ],
       id: agentId,
     },
   })) > 0
@@ -77,6 +81,12 @@ export const isAgentAccessibleToActor = async (
     return (
       await prisma.agent.count({
         where: {
+          AND: [
+            buildAgentVisibilityWhere({
+              organizationId: actorContext.tenant.organizationId,
+              userId: actorContext.actor.actorId,
+            }),
+          ],
           id: agentId,
           organizationId: actorContext.tenant.organizationId,
           systemManaged: false,

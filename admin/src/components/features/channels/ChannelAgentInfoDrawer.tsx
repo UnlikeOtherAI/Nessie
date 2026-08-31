@@ -1,13 +1,18 @@
 import { useCallback, useMemo, type FormEvent, type ReactNode } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
-import type { AgentRecord, ChannelRecord, ThreadMessageRecord } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  ChannelRecord,
+  PersonalAssistantPresenceParticipant,
+  ThreadMessageRecord,
+} from '../../../lib/api-client'
 import type { PendingStreamMessage } from '../../../facades/threads/thinking'
 import { OversizePasteDialog } from '../../shared/OversizePasteDialog'
 import type { MentionEntity } from '../../shared/MentionInput'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelComposer } from './ChannelComposer'
 import { ChannelMessageFeed } from './ChannelMessageFeed'
-import { buildFeedItems } from './channel-helpers'
+import { buildFeedItems, type ChannelAgentParticipant } from './channel-helpers'
 import { useStickToBottom } from '../../../hooks/useStickToBottom'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
@@ -15,7 +20,7 @@ import type { AvatarSources } from '../../primitives/UserAvatar'
 
 type ChannelAgentInfoDrawerProps = {
   activeChannel: ChannelRecord | null
-  agent: AgentRecord | null
+  agent: ChannelAgentParticipant | null
   agents: AgentRecord[]
   meAvatar: AvatarSources
   meDisplayName: string
@@ -78,6 +83,11 @@ const buildAddressedMessage = (rawText: string, agent: AgentRecord): string => {
 const channelLabel = (channel: ChannelRecord): string =>
   channel.type === 'dm' ? channel.label : `#${channel.label}`
 
+const isPersonalAssistantPresence = (
+  participant: ChannelAgentParticipant,
+): participant is PersonalAssistantPresenceParticipant =>
+  'isPersonalAssistant' in participant
+
 export const ChannelAgentInfoDrawer = ({
   activeChannel,
   agent,
@@ -133,31 +143,34 @@ export const ChannelAgentInfoDrawer = ({
     () => new Map(agents.map((entry) => [entry.id, entry])),
     [agents],
   )
+  const selectedAgentRecord = agent && !isPersonalAssistantPresence(agent) ? agent : null
   const agentMessages = useMemo(
     () =>
-      agent
+      selectedAgentRecord
         ? threadMessages.filter(
             (entry) =>
-              entry.agentId === agent.id ||
-              (entry.role === 'user' && mentionsAgent(entry, agent)),
+              entry.agentId === selectedAgentRecord.id ||
+              (entry.role === 'user' && mentionsAgent(entry, selectedAgentRecord)),
           )
         : [],
-    [agent, threadMessages],
+    [selectedAgentRecord, threadMessages],
   )
   const agentPendingMessages = useMemo(
-    () => (agent ? pendingMessages.filter((entry) => entry.agentId === agent.id) : []),
-    [agent, pendingMessages],
+    () => selectedAgentRecord
+      ? pendingMessages.filter((entry) => entry.agentId === selectedAgentRecord.id)
+      : [],
+    [selectedAgentRecord, pendingMessages],
   )
   const feedItems = useMemo(() => buildFeedItems(agentMessages), [agentMessages])
 
   const sendAddressedText = useCallback(
     async (rawText: string) => {
-      if (!agent) {
+      if (!selectedAgentRecord) {
         return
       }
-      await sendText(buildAddressedMessage(rawText, agent))
+      await sendText(buildAddressedMessage(rawText, selectedAgentRecord))
     },
-    [agent, sendText],
+    [selectedAgentRecord, sendText],
   )
 
   const sendAddressedForm = useCallback(
@@ -176,6 +189,56 @@ export const ChannelAgentInfoDrawer = ({
 
   if (!agent || !activeChannel) {
     return null
+  }
+
+  if (isPersonalAssistantPresence(agent)) {
+    const assistantAvatar = {
+      avatarAttachmentId: agent.avatarAttachmentId,
+      id: agent.agentId,
+      name: agent.displayName,
+      role: 'Personal Assistant',
+    }
+    return (
+      <>
+        <button
+          aria-label="Close personal assistant participant"
+          className="fixed inset-0 z-40 bg-[var(--scrim-strong)]"
+          onClick={onClose}
+          type="button"
+        />
+        <aside
+          aria-label={`${agent.displayName} participant`}
+          className={[
+            'admin-chat-surface fixed inset-y-0 right-0 z-50 flex w-[min(430px,100vw)] flex-col',
+            'border-l border-[color:var(--sep)] bg-[color:var(--main)]',
+            'shadow-[0_32px_80px_var(--scrim-strong)]',
+          ].join(' ')}
+        >
+          <header className="flex items-start justify-between gap-3 border-b border-[color:var(--sep)] px-5 pb-4 pt-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <ChannelAgentGlyph agent={assistantAvatar} size="lg" token={token} />
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-semibold text-[var(--tx)]">
+                  {agent.displayName}
+                </h2>
+                <div className="text-xs text-[color:var(--tx3)]">Personal Assistant</div>
+              </div>
+            </div>
+            <button
+              className="admin-button admin-button-secondary h-9"
+              onClick={onClose}
+              type="button"
+            >
+              Close
+            </button>
+          </header>
+          <div className="p-5 text-sm leading-6 text-[color:var(--tx2)]">
+            This assistant is present in this channel. Its settings, tools, and activity
+            remain private to its owner.
+          </div>
+        </aside>
+      </>
+    )
   }
 
   const providerModel = [agent.provider, agent.model].filter(Boolean).join(' / ')

@@ -671,44 +671,79 @@ package, visible-refusal for owner-gated tools, and the
 tool-ships-with-its-resolving-read rule are stated in `AGENTS.md` (the
 PA-tool bullet). Per-tool facts:
 
-- `agent_list` → `listAgentsForUser` (`safe: true`, read-only). Scoped by the
-  same entitlement the Agents page uses: an owner reaches every non-system
-  agent including unbound ones, everybody else reaches an agent through a
-  channel they can see it working in — never narrowed by the session's
-  project/team. Output is the acting shape only — name, role, `agentId`, and
-  bound channels — with an optional `query` narrowing the already-authorized
-  list.
-- `channel_create` → `createChannelForUser` (member-level). The team defaults
-  from the run context: explicit `teamId`, else the session tenant/action
-  team, else the team of the channel the conversation is in — never an
-  invented default.
-- `agent_create` → `assertLedgerAgentModelSelection` + `createAgentRecord`
-  (member-level, matching `POST /api/agents`). Its schema deliberately exposes
-  no `agentKind`/`systemManaged`/`surfacePolicy`/`delegationMode`/
-  `parentAgentId`, and `assertGenericAgentToolPolicyInput` still refuses every
-  `requiresExplicitGrant` key and DeepWater provenance marker, so chat cannot
-  grant itself research.
-- `agent_bind_channel` → `bindAgentToChannel`, reproducing all four gates of
-  `POST /api/agents/:agentId/bindings`.
+- `agent_list` → `listAgentsForUser` (`safe: true`, read-only). Any active
+  member, matching `GET /api/agents`, and scoped by the same entitlement the
+  Agents page uses: an owner reaches every workspace-visible non-system agent
+  including unbound ones plus private agents they own; everybody else reaches
+  a workspace-visible agent through a channel they can see it working in —
+  never narrowed by the session's project/team. It exists because
+  `agent_bind_channel` and `agent_trigger_create` take an `agentId` and an
+  owner picks that from a list when clicking; without it the assistant could
+  only act on an agent created in the same conversation. Output is the acting
+  shape only — name, role, `agentId`, and the channels it is bound to — with an
+  optional `query` narrowing the already-authorized list by name or role.
+- `channel_create` → `createChannelForUser`. Any active member, matching
+  `POST /api/channels` (only `requireActorContext`). The team defaults from the
+  run context: explicit `teamId`, else the session tenant/action team, else the
+  team of the channel the conversation is in — never an invented default.
+- `agent_create` → `assertLedgerAgentModelSelection` + `createAgentRecord`. Any
+  active member, matching `POST /api/agents` (**not** owner-gated). Its schema
+  accepts optional `visibility` (`workspace` by default, or owner-only
+  `private`) and deliberately exposes no `agentKind`/`systemManaged`/
+  `surfacePolicy`/`delegationMode`/`parentAgentId`; private creation stamps the
+  live acting member as owner and atomically provisions its owner-only home DM,
+  returning that `homeChannelId`. Asking for somebody else's private agent is
+  refused in words. `assertGenericAgentToolPolicyInput` still refuses
+  every `requiresExplicitGrant` key and DeepWater provenance marker, so chat
+  cannot grant itself research.
+- `agent_bind_channel` → `bindAgentToChannel`. Reproduces all four gates of
+  `POST /api/agents/:agentId/bindings`: channel membership
+  (`getChannelIfMember`), the `personal_assistant` system-channel refusal,
+  owner, and `checkPolicy(…, 'agent', 'bind', …)`.
 - `agent_trigger_create` → `createAgentTrigger`, parsing the route's own
   `CreateAgentTriggerBodySchema`; scheduled/interval triggers build
   `launchOrigin` from the acting user and carry `actionContext.uoaIdentity`,
   and a signing deployment refuses a schedule without it — the same refusal
   `api/src/routes/triggers.ts` makes (it would fail at every sweep forever).
 
-Role is re-read from the live `OrganizationMember` row at call time
-(`resolveActingMember`); a deactivated membership is refused. Deliberately
-**not** included: agent update, agent delete, policy-target mutation, or
-anything touching the DeepWater bundle. `schedule_task` remains the un-gated
-"schedule *me*" tool; `agent_trigger_create` is the owner action on *another*
-agent. The shared functions live in `@nessie/workspace-admin` (channel
-create/records/slugs, agent create/list/record/bindings + the tool-policy
-protected-key gate, trigger create/core/config-identity, the Ledger
-agent-model catalogue, `checkPolicy`, `getChannelIfMember`,
-`isAgentAccessibleToActor`), re-exported by the api services; their record
-types (`ChannelRecord`, `AgentRecord`, `AgentTriggerRecord`,
-`CreateAgentTriggerBody`) moved to `@nessie/schemas` and are re-exported by
-`api/src/contracts`.
+Owner-gated tools stay **visible** to non-owners and refuse in words (the
+`connector_*` precedent): the assistant says who can do it, instead of claiming
+it has no such capability. Role is re-read from the live `OrganizationMember`
+row at call time (`resolveActingMember`), because a run's `actorContext` is a
+snapshot from enqueue time while the API re-resolves the role per request; a
+deactivated membership is refused. Deliberately **not** included: agent update,
+agent delete, policy-target mutation, or anything touching the DeepWater bundle.
+`schedule_task` remains the un-gated "schedule *me*" tool; `agent_trigger_create`
+is the owner action on *another* agent.
+
+Private-agent transfer is deliberately unsupported: the owner-only home DM
+encodes the steward, so an `ownerUserId` change is refused with
+`AGENT_PRIVATE_TRANSFER_UNSUPPORTED` until the agent is published. When a
+private owner is deactivated, the owner-only Members surface receives only the
+aggregate paused-agent count from `GET /api/agents/paused-private-count`; it
+never receives private agent rows or names.
+
+Private creation is one transaction: the agent, its
+`agent:{org}:{owner}:{agent}` private DM, the sole owner membership, default
+thread, and direct home binding either all commit or none do. Database
+constraints independently refuse a second home member, a malformed `agent:` DM,
+or a private-agent binding to any other channel. The worker re-checks the
+loaded destination before inference and permits only that home DM or the
+agent's own trigger thread. Owner deactivation disables only private-agent
+triggers in the membership transaction, records one aggregate audit transition
+with no widened recipient, and does not auto-resume on reactivation.
+
+**Reuse, never fork.** `api/src/services/*` cannot be imported by the worker, so
+the shared functions live in **`@nessie/workspace-admin`** (mirroring how
+`@nessie/mcp-manage` is shared) and the api services re-export them, leaving the
+routes untouched: channel create/records/slugs, agent create/list/record/
+bindings and the tool-policy protected-key gate, trigger
+create/core/config-identity, the
+Ledger agent-model catalogue, `checkPolicy`, and the `getChannelIfMember` /
+`isAgentAccessibleToActor` predicates. The records those functions return
+(`ChannelRecord`, `AgentRecord`, `AgentTriggerRecord`, `CreateAgentTriggerBody`)
+moved to `@nessie/schemas` for the same reason; `api/src/contracts` re-exports
+them.
 
 ## Individual Communications Connector
 

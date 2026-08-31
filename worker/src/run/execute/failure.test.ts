@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { ProviderHttpError } from '@nessie/runtime'
 import { handleRunExecutionFailure } from './failure.js'
+import { PrivateAgentPlacementError } from './private-agent-placement.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 
@@ -219,6 +220,78 @@ test('an unattended run fails quietly — no message into a room that did not as
     context,
     {
       error: new Error('Missing API key for provider kimi'),
+      planContext: null,
+      streamStarted: false,
+    },
+  )
+
+  assert.deepEqual(messages, [])
+})
+
+test('an invalid private placement fails without speaking into the shared destination', async () => {
+  const messages: unknown[] = []
+  const transaction = {
+    $executeRaw: async () => undefined,
+    message: { create: async (input: unknown) => { messages.push(input); return {} } },
+    messageBasisScope: { createMany: async () => undefined },
+    run: { findFirst: async () => null },
+    runBasisScope: { createMany: async () => undefined },
+    runThreadPendingMessage: { findMany: async () => [] },
+  }
+  const deps = {
+    prisma: {
+      $transaction: async (work: (tx: typeof transaction) => Promise<unknown>) => work(transaction),
+      agent: { update: async () => undefined },
+      run: { update: async () => undefined },
+      task: { update: async () => undefined },
+      taskEvent: { create: async () => undefined },
+    },
+    realtimeTransport: {
+      publishSse: async () => undefined,
+      publishWs: async () => undefined,
+    },
+  } as unknown as ExecutionDependencies
+  const context = {
+    agent: {
+      agentKind: 'shared',
+      effort: 'medium',
+      executionMode: 'inference',
+      id: ID.agent,
+      name: 'Private agent',
+      ownerUserId: '00000000-0000-4000-8000-000000000010',
+      parentAgentId: null,
+      model: null,
+      provider: null,
+      systemPrompt: null,
+      visibility: 'private',
+    },
+    channel: {
+      dmKey: null,
+      id: ID.channel,
+      organizationId: ID.organization,
+      projectId: ID.project,
+      systemChannelType: null,
+      teamId: ID.team,
+    },
+    consumedSources: createConsumedSourceSink(),
+    run: { createdAt: new Date(), id: ID.run, replyPlacement: null, threadId: ID.thread },
+    task: { id: ID.task },
+  } satisfies RunContext
+
+  await handleRunExecutionFailure(
+    deps,
+    {
+      actorContext: {} as never,
+      agentId: ID.agent as never,
+      interactive: true,
+      messageId: '00000000-0000-4000-8000-000000000011',
+      runId: ID.run as never,
+      taskId: ID.task as never,
+      threadId: ID.thread as never,
+    },
+    context,
+    {
+      error: new PrivateAgentPlacementError(),
       planContext: null,
       streamStarted: false,
     },

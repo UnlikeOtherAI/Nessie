@@ -233,6 +233,19 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   join (the branch widens by pointer equality, so without it a deactivated
   member keeps seeing their agents) and `parentAgentId: null` (else owning one
   agent pours every unreaped `spawn_subtask` child into that list forever).
+  `Agent.visibility = private` is the deliberate exception to org-owner
+  omniscience: every entitled agent read composes `buildAgentVisibilityWhere`,
+  and only the private agent's live owner passes its private arm — an org owner
+  never sees another person's private agent. Subtask children inherit both
+  owner and visibility so delegated private work cannot mint workspace-visible
+  rows. A private agent is created atomically with its exact owner-only
+  `agent:{org}:{owner}:{agent}` home DM, and the worker refuses any run outside
+  that home or the agent's own trigger thread before inference. Deactivating its
+  owner pauses only its triggers and records one aggregate audit transition;
+  the owner-only Members surface receives the count through
+  `GET /api/agents/paused-private-count` and never private rows or names;
+  workspace agents keep running, no private detail is widened, and reactivation
+  never resumes automation implicitly.
   `loadAgentChildren` takes the viewer's scope for the same reason. Never
   backfill ownership: nothing recorded who created an agent, so old rows read
   `Unowned` and `agent.created`/`agent.owner_changed` now emit instead. The tree

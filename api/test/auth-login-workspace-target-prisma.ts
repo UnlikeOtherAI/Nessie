@@ -57,6 +57,7 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
   const teamMembers = [...(input.teamMembers ?? [])]
   const projectMembers = [...(input.projectMembers ?? [])]
   const channelMembers = [...(input.channelMembers ?? [])]
+  const agentBindings: Row[] = []
   const productAccountLinks = [...(input.productAccountLinkRows ?? [])]
   let claimFired = false
   let claimReads = 0
@@ -436,7 +437,30 @@ export const makePrisma = (spy: Spy, input: SeedInput) => {
       ),
     },
     agentBinding: {
-      upsert: async () => (record('agentBinding.upsert'), { id: randomUUID() }),
+      createMany: async ({
+        data,
+        skipDuplicates,
+      }: {
+        data: Row[]
+        skipDuplicates?: boolean
+      }) => {
+        record('agentBinding.createMany')
+        let count = 0
+        for (const binding of data) {
+          const principalUserId = binding.principalUserId ?? null
+          const duplicate = agentBindings.some((row) =>
+            row.agentId === binding.agentId
+            && row.channelId === binding.channelId
+            && (row.principalUserId ?? null) === principalUserId)
+          if (duplicate) {
+            if (skipDuplicates) continue
+            throw new Error('agent binding pair must be unique')
+          }
+          agentBindings.push({ ...binding })
+          count += 1
+        }
+        return { count }
+      },
     },
     productAccountLink: {
       findUnique: async ({ where, select }: { where: Row; select?: Row }) => {

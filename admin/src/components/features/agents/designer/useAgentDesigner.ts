@@ -8,6 +8,7 @@ import {
 } from './run-limits'
 
 export type AgentEffortValue = 'low' | 'medium' | 'high' | 'xhigh'
+export type AgentVisibilityValue = 'private' | 'workspace'
 
 export type AgentFormState = {
   effort: AgentEffortValue
@@ -21,6 +22,7 @@ export type AgentFormState = {
   streamingField: string | null
   systemPrompt: string
   tools: Record<string, boolean>
+  visibility: AgentVisibilityValue
 }
 
 export type AgentDesignerAction =
@@ -36,6 +38,7 @@ export type AgentDesignerAction =
   | { role: string; type: 'set_role' }
   | { field: RunLimitsField; type: 'set_run_limit'; value: string }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
+  | { visibility: AgentVisibilityValue; type: 'set_visibility' }
 
 // `tools` is a sparse overlay over the org tool catalog: unset keys fall back
 // to the tool kind's default (builtin on, connector off) — the same semantics
@@ -50,6 +53,7 @@ const DEFAULT_STATE: AgentFormState = {
   streamingField: null,
   systemPrompt: '',
   tools: {},
+  visibility: 'workspace',
 }
 
 const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormState => {
@@ -77,6 +81,8 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
       }
     case 'toggle_tool':
       return { ...state, tools: { ...state.tools, [action.toolId]: action.enabled } }
+    case 'set_visibility':
+      return { ...state, visibility: action.visibility }
     case 'set_streaming':
       return { ...state, streamingField: action.field }
     case 'clear_streaming':
@@ -96,6 +102,7 @@ export type AgentDesignerActions = {
   setRunLimit: (field: RunLimitsField, value: string) => void
   setSystemPrompt: (prompt: string) => void
   toggleTool: (toolId: string, enabled: boolean) => void
+  setVisibility: (visibility: AgentVisibilityValue) => void
 }
 
 export const useAgentDesigner = (
@@ -130,6 +137,10 @@ export const useAgentDesigner = (
   )
   const toggleTool = useCallback(
     (toolId: string, enabled: boolean) => dispatch({ type: 'toggle_tool', toolId, enabled }),
+    [],
+  )
+  const setVisibility = useCallback(
+    (visibility: AgentVisibilityValue) => dispatch({ type: 'set_visibility', visibility }),
     [],
   )
 
@@ -189,6 +200,7 @@ export const useAgentDesigner = (
     setRole,
     setRunLimit,
     setSystemPrompt,
+    setVisibility,
     toggleTool,
   }
 

@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient, TaskPriority, TaskStatus } from '@prisma/client'
-import { parseUserId } from '@nessie/schemas'
+import { parseUserId, type AuthorizedActionContext } from '@nessie/schemas'
+import { isAgentAccessibleToActor } from '@nessie/workspace-admin'
 import type { AssignableUser, TaskRecord } from '../contracts.js'
 import { mapTask, taskInclude } from './task-records.js'
 import { isValidTransition } from './task-status.js'
@@ -34,15 +35,10 @@ const isOrgProject = async (
 
 const isOrgAgent = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
   agentId: string,
-): Promise<boolean> => {
-  const agent = await prisma.agent.findFirst({
-    where: { id: agentId, organizationId },
-    select: { id: true },
-  })
-  return Boolean(agent)
-}
+): Promise<boolean> =>
+  isAgentAccessibleToActor(prisma, actorContext, agentId)
 
 export const listAssignableUsers = async (
   prisma: PrismaClient,
@@ -127,6 +123,7 @@ export const getTask = async (
 }
 
 type CreateTaskInput = {
+  actorContext: AuthorizedActionContext
   organizationId: string
   createdByUserId: string
   title: string
@@ -168,7 +165,14 @@ export const createHumanTask = async (
   if (input.assigneeUserId && !(await isOrgMember(prisma, input.organizationId, input.assigneeUserId))) {
     return { error: 'ASSIGNEE_NOT_MEMBER' }
   }
-  if (input.assigneeAgentId && !(await isOrgAgent(prisma, input.organizationId, input.assigneeAgentId))) {
+  if (
+    input.assigneeAgentId
+    && !(await isOrgAgent(
+      prisma,
+      input.actorContext,
+      input.assigneeAgentId,
+    ))
+  ) {
     return { error: 'ASSIGNEE_AGENT_NOT_FOUND' }
   }
   if (input.ownerUserId && !(await isOrgMember(prisma, input.organizationId, input.ownerUserId))) {
@@ -227,7 +231,7 @@ export const assignTask = async (
     organizationId: string
     assigneeUserId?: string | null
     assigneeAgentId?: string | null
-    actorId: string
+    actorContext: AuthorizedActionContext
   },
 ): Promise<TaskRecord | AssignError> => {
   const existing = await prisma.task.findFirst({
@@ -245,7 +249,7 @@ export const assignTask = async (
   if (userId && !(await isOrgMember(prisma, input.organizationId, userId))) {
     return { error: 'ASSIGNEE_NOT_MEMBER' }
   }
-  if (agentId && !(await isOrgAgent(prisma, input.organizationId, agentId))) {
+  if (agentId && !(await isOrgAgent(prisma, input.actorContext, agentId))) {
     return { error: 'ASSIGNEE_AGENT_NOT_FOUND' }
   }
 
@@ -282,12 +286,16 @@ export const assignTask = async (
       data: {
         taskId: input.taskId,
         eventType: assigned ? 'assigned' : 'unassigned',
-        payload: { by: input.actorId, assigneeUserId: userId, assigneeAgentId: agentId },
+        payload: {
+          by: input.actorContext.actor.actorId,
+          assigneeUserId: userId,
+          assigneeAgentId: agentId,
+        },
       },
       select: { id: true },
     })
     await createTaskAssignmentAttention(tx, {
-      actorUserId: input.actorId,
+      actorUserId: input.actorContext.actor.actorId,
       assigneeUserId: userId,
       eventKey: `task-assigned:${event.id}`,
       organizationId: input.organizationId,

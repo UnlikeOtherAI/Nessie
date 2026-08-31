@@ -315,18 +315,9 @@ export const ensurePersonalAssistantBinding = async (
     channelId: string
   },
 ): Promise<void> => {
-  await prisma.agentBinding.upsert({
-    where: {
-      agentId_channelId: {
-        agentId: input.agentId,
-        channelId: input.channelId,
-      },
-    },
-    create: {
-      agentId: input.agentId,
-      channelId: input.channelId,
-    },
-    update: {},
+  await prisma.agentBinding.createMany({
+    data: [{ agentId: input.agentId, channelId: input.channelId }],
+    skipDuplicates: true,
   })
 }
 

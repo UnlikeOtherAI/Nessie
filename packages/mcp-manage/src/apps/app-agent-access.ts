@@ -4,7 +4,10 @@ import type {
   AuthorizedActionContext,
   McpServerScopeType,
 } from '@nessie/schemas'
-import { buildAccessibleChannelWhere } from '@nessie/workspace-admin'
+import {
+  buildAccessibleChannelWhere,
+  buildAgentVisibilityWhere,
+} from '@nessie/workspace-admin'
 
 import { isOwnerRole } from '../mcp-catalog.js'
 
@@ -165,6 +168,13 @@ const accessCandidateWhere = (
   return {
     organizationId: actorContext.tenant.organizationId,
     AND: [
+      // The app detail is member-readable, so it must compose the same private
+      // visibility fence as GET /api/agents. In particular, an org owner can
+      // reach every channel but never another member's private agent.
+      buildAgentVisibilityWhere({
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      }),
       {
         OR: [
           { agentKind: 'personal_assistant', systemManaged: true },

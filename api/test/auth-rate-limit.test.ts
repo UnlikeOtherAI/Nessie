@@ -20,6 +20,7 @@ const dbStub = [
   '  globalThis.__rateLimitAuditWrites.push(entry)',
   '}',
   'export const enqueueQueueJob = async () => {}',
+  'export const writeAuditEntryInTransaction = async () => {}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

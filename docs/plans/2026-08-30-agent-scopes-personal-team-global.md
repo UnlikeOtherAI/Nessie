@@ -1,6 +1,17 @@
 # Personal, team, and global agents — scopes, directory visibility, and the PA exception
 
-**Status:** design proposal for review — no code changes yet.
+**Status:** approved; phased implementation in progress. The server-core
+visibility slice is implemented: stored visibility + constraints, shared read
+predicate, enumerated reader gates, placement refusal, creation contract, and
+subtask inheritance. Personal-agent home DMs, the worker run-start placement
+assertion, and owner-deactivation trigger pausing are implemented. The PA
+shared-channel server core is implemented: per-principal bindings and database
+invariants, lifecycle removal, orchestration identity and serialization,
+on-behalf message/reaction attribution, destination containment, and reduced
+presence toolsets. Structured presence mentions and the PA participant/display
+UI are implemented: canonical id-keyed mentions, viewer-relative names and
+avatars, minimal participant projections, and owner add/remove controls. Global
+agent reachability remains a later phase.
 **Date:** 2026-08-30
 **Related:** [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership = stewardship; this doc adds *visibility*, a different fact),
@@ -249,10 +260,10 @@ matches everything and changes nothing.
   same migration (the `extagent:` precedent shows what happens when a new DM
   key shape is added without updating the constraint — it ships violating a
   committed CHECK).
-- Deleting the agent (when agent deletion exists) or transferring it owns the
-  DM's fate; transfer of a private agent re-homes the DM to the new owner —
-  but see Open questions: transfer of a *private* agent is arguably a
-  contradiction and the simpler rule is "publish first, then transfer".
+- Deleting the agent (when agent deletion exists) owns the DM's fate. Private
+  transfer is refused in v1 with `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`: publish
+  first, then transfer. Re-homing an owner-only DM is a larger disclosure act
+  and is deliberately not hidden behind the ordinary transfer write.
 
 ### Directory and read-path gating — the leak surface, enumerated
 
@@ -310,17 +321,14 @@ through it). Three hardenings, all adopted from the cross-model review:
   per-agent `inviteErrors` rendering can say why (the `connector_*`
   "visible, refuses in words" precedent).
 - **A `BEFORE INSERT` trigger on `agent_bindings` as the storage-level
-  floor.** The chokepoint discipline has been bypassed before — the codebase
-  itself records that `spawn_subtask` writes agents outside
-  `createAgentRecord`; `ensurePersonalAssistantBinding` writes bindings
-  outside `bindAgentToChannel`; and `createGroupFromDm`
-  (`api/src/services/channel-dms.ts:145-300`) **copies a DM's agent bindings
-  onto the new group channel with a raw `agentBinding.upsert`** — a live
-  writer both external reviewers' bypass argument predicted and Sol actually
-  found. A CHECK cannot span tables; a small trigger (reject when the
-  referenced agent is `private` and not the PA kind) is immune to the next
-  bypass, and the DeepWater cost-write trigger is the in-repo precedent for
-  constraint-by-trigger.
+  floor.** The chokepoint discipline has bypass writers: the codebase itself
+  records that `spawn_subtask` writes agents outside `createAgentRecord`, and
+  the PA and private-home bootstraps write their own structural bindings
+  outside `bindAgentToChannel`. `createGroupFromDm` is currently dead code,
+  so it is not justification for this floor. A CHECK cannot span tables; a
+  small trigger (reject when the referenced agent is `private` and not the PA
+  kind) protects these writes and the next bypass, and the DeepWater
+  cost-write trigger is the in-repo precedent for constraint-by-trigger.
 - **A run-start assertion in the worker.** Nothing at dispatch time re-checks
   `surfacePolicy` or visibility — the orchestrator honours whatever binding
   rows exist. A stale or hand-inserted binding should fail closed: when the
@@ -345,10 +353,13 @@ decided an owned agent keeps executing when its owner leaves, and for
 workspace agents that stands. A private agent whose owner is deactivated has
 an audience of zero: triggers firing, spend accruing, nothing anyone can see.
 So deactivation **pauses** the member's private agents (their triggers
-disabled with a durable owner alert, per the transition-owns-the-signal
-rule), and org owners see *existence without content* — a "N paused private
+disabled with one durable audit transition; the deactivated owner is no longer
+an entitled alert recipient, and the signal is never widened), and org owners
+see *existence without content* — a "N paused private
 agents" line in the people-tree's buckets, no names, no prompts — so an admin
-can act on the spend without reading private configuration. Reactivation is
+can act on the spend without reading private configuration. The owner-gated
+`GET /api/agents/paused-private-count` supplies that aggregate to both
+member-tree call sites. Reactivation is
 explicit, mirroring `POST /api/triggers/:id/reauthorize`. The
 people-and-their-agents doc gets amended with this carve-out in the same
 change (documentation rule), and AGENTS.md gains one sentence recording that
@@ -524,18 +535,21 @@ weight, with two adjustments:
    (`systemChannelType`), never the kind — exempt in the PA DM, contained
    everywhere else. This is the one place the existing code would actively do
    the wrong thing rather than merely lack a feature.
-3. **A presence run is reduced-capability by default; the owner's private
-   estate is behind explicit elevation.** All three reviewers converged on
+3. **A PA or principal-bearing run outside the PA DM is reduced-capability by
+   default; the owner's private estate is behind explicit elevation.** All three reviewers converged on
    the two principals being distinct — the *requester* (the member who
    addressed the PA: attribution, abuse limits) and the *principal* (the
    owner: identity, delegation, billing) — and on the run never falling back
    to the requester's identity. Where they differed was the default posture
    (see §Cross-model review); the adjudicated rule, expressed with existing
-   machinery rather than a new mode enum, is **surface-keyed capability**,
-   the same structural key the containment fix uses:
+   machinery rather than a new mode enum, is **PA identity OR a run principal,
+   outside the PA DM**: `(agentKind === 'personal_assistant' ||
+   principalUserId != null) && systemChannelType !== 'personal_assistant'`.
+   This intentionally differs from the surface-keyed memory-containment rule:
    - In the PA DM (`systemChannelType = 'personal_assistant'`): full PA
-     toolset, exemptions intact — unchanged.
-   - In a shared channel (a presence run): identity is the owner's
+   toolset, exemptions intact — unchanged.
+   - Outside that DM (a PA run or a delegated child carrying the owner's
+     principal): identity is the owner's
      (`effectiveUserId`, UOA delegation, billing attribution — kimix's four
      points stand), but the toolset assembly withholds the owner-private
      tier: user-scope connectors, comms tools, and owner-private
@@ -606,7 +620,7 @@ now exist:
 | Placement refusal | one branch in `bindAgentToChannel` (reason-coded 403), `agent_bindings` BEFORE-INSERT trigger, worker run-start assertion | the single binding chokepoint + its callers; DeepWater trigger precedent |
 | PA presence | `AgentBinding.principalUserId` (+ split uniques), presence route + PA tool, `Message.onBehalfOfUserId`, participant projection record, per-run owner alert | org-singleton PA, `effectiveUserId` machinery, disclosure basis, approvals, `user_alerts` dedupe |
 | Dual display + addressing | render-time projection keyed on principal; structured id-keyed mention entities for presences | `User.displayName` mirror, org PA avatar, mention metadata plumbing |
-| Presence capability | surface-keyed toolset reduction + containment re-key (`memory.ts` exemption → surface, not kind) | approval machinery, `constrainScopesToDestination`, `ConsumedSourceSink` |
+| Presence capability | PA-identity-or-principal toolset reduction outside the PA DM + containment re-key (`memory.ts` exemption → surface, not kind) | approval machinery, `constrainScopesToDestination`, `ConsumedSourceSink` |
 | Owner-deactivation handling | pause private agents + durable alert + existence-only admin bucket | trigger `needs_reauthorization` machinery, people-tree buckets |
 | Global agents | blueprint registry + bootstrap per org; unbound-global list branch; read-only detail gate | `ensurePersonalAssistant*` pattern, `systemManaged` tier, derived scope tabs |
 
@@ -650,10 +664,10 @@ confirmed line-by-line and changed this document.
    against *every* non-system shared agent in the org — existence, id, and a
    bind offer for agents the viewer is not entitled to see. Fixed in the
    read-path table.
-2. **`createGroupFromDm` is a live raw binding writer** (Sol; verified at
-   `channel-dms.ts:145-300`) — it upserts agent bindings outside
-   `bindAgentToChannel`, which converts the DB-trigger recommendation from
-   paranoia to necessity.
+2. **`createGroupFromDm` is not a live raw binding writer** — it has no
+   callers. The binding trigger remains necessary because the PA and
+   private-home bootstraps are direct structural writers; no dead function is
+   used as its justification.
 3. **`GET /api/runs/active` is member-level and org-wide** (Sol; verified —
    `requireActorContext` only). Added to the gating table.
 4. **Trigger lists and tool-policy target lists enumerate org-wide with no

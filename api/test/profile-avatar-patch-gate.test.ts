@@ -25,6 +25,7 @@ const dbStub = [
   'export const listVisibleAgentIdsForUser = async () => {',
   '  throw new Error("agent visibility is not used by profile-avatar-patch-gate.test.ts")',
   '}',
+  'export const writeAuditEntryInTransaction = async () => {}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

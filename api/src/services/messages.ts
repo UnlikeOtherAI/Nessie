@@ -103,6 +103,7 @@ const mapThreadMessageRecord = (
   id: message.id,
   threadId: parseThreadId(message.threadId),
   agentId: message.agentId ? parseAgentId(message.agentId) : undefined,
+  onBehalfOfUserId: message.onBehalfOfUserId ?? undefined,
   userId: message.userId ? parseUserId(message.userId) : undefined,
   author: message.user
     ? {
@@ -146,6 +147,7 @@ const mapThreadMessageRecord = (
     id: r.id,
     messageId: r.messageId,
     agentId: r.agentId ? parseAgentId(r.agentId) : undefined,
+    onBehalfOfUserId: r.onBehalfOfUserId ?? undefined,
     userId: r.userId ? parseUserId(r.userId) : undefined,
     emoji: r.emoji,
     createdAt: r.createdAt.toISOString(),

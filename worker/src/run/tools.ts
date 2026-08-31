@@ -25,6 +25,7 @@ import {
   runMessageSearchTool,
   runMeetingLinkCreateTool,
   runPeopleSearchTool,
+  runPersonalAssistantJoinChannelTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
   runWorkflowTransformPreviewTool,
@@ -229,6 +230,8 @@ export const executeBuiltinTool = async (
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':
       return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
+    case 'pa_join_channel':
+      return wrapTool(inputSummary, () => runPersonalAssistantJoinChannelTool(context, args))
     // Dashboards. Grantable to any agent (not PA-only), so the gate is the
     // agent's tool policy; each call runs the same service function the REST
     // route runs and inherits its authorization.

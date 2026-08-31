@@ -89,6 +89,7 @@ export type {
   PersonalAssistantBootstrapResponse,
   PersonalAssistantConfigSummary,
   PersonalAssistantInstanceRecord,
+  PersonalAssistantPresenceParticipant,
   PersonalAssistantStateResponse,
   ProjectMemberRecord,
   ProjectRecord,

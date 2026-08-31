@@ -5,6 +5,7 @@ import type {
   CallRecord,
   ChannelRecord,
   MeResponse,
+  PersonalAssistantPresenceParticipant,
   ThreadMessageRecord,
   UserRecord,
 } from '../../lib/api-client'
@@ -17,7 +18,10 @@ import {
   StartCallFailureDialog,
 } from '../../components/features/channels/CallerCallDialog'
 import { ThreadReplyPanel } from '../../components/features/channels/thread-panel/ThreadReplyPanel'
-import type { MessageUserIdentity } from '../../components/features/channels/channel-helpers'
+import type {
+  ChannelAgentParticipant,
+  MessageUserIdentity,
+} from '../../components/features/channels/channel-helpers'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
 import { ChannelInfoDrawers } from './ChannelInfoDrawers'
 import type { useReplyThread } from './useReplyThread'
@@ -33,6 +37,7 @@ interface ChannelOverlaysProps {
   callerCallActionError: unknown
   callerCallActionPending: boolean
   callerDialogCall: CallRecord | null
+  personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   // Already-rendered node rather than the launcher hook: the overlay layer
   // places it, it does not own it.
   deepWaterDialog: ReactNode
@@ -45,7 +50,7 @@ interface ChannelOverlaysProps {
   pendingMessages: PendingStreamMessage[]
   renderContent: (text: string) => ReactNode
   replyThread: ReturnType<typeof useReplyThread>
-  selectedMessageAgent: AgentRecord | null
+  selectedMessageAgent: ChannelAgentParticipant | null
   selectedMessageUser: MessageUserIdentity | null
   startCallFailureCode: string | undefined
   showChannelSettings: boolean
@@ -91,6 +96,7 @@ export const ChannelOverlays = ({
   callerCallActionError,
   callerCallActionPending,
   callerDialogCall,
+  personalAssistantPresences,
   deepWaterDialog,
   hasRespondingAgent,
   isExternalAgentConversation,
@@ -158,6 +164,7 @@ export const ChannelOverlays = ({
         channelType={activeChannel.type}
         channelUsers={channelUsers}
         currentUserId={me.user.id}
+        personalAssistantPresences={personalAssistantPresences}
         onClose={onCloseMembers}
         onGroupCreated={onGroupCreated}
         onSelectAgent={onSelectAgent}

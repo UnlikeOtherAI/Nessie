@@ -5,10 +5,50 @@ type ToolPolicy = Record<string, boolean>
 
 export type AgentKind = 'personal_assistant' | 'shared'
 
+/**
+ * A reduced PA-context run is the PA itself, or a delegated child carrying a
+ * per-run principal. Both are reduced outside the PA DM, so a shared-channel
+ * PA trigger cannot regain the owner's private toolset while delegated children
+ * retain the same reduction.
+ */
+export const isPersonalAssistantPresenceRun = (input: {
+  agentKind: AgentKind
+  principalUserId?: string | null
+  systemChannelType: string | null | undefined
+}): boolean =>
+  input.systemChannelType !== 'personal_assistant'
+  && (input.agentKind === 'personal_assistant' || input.principalUserId != null)
+
 type ResolvedToolSet = {
   descriptors: ToolSchemaDescriptor[]
   allowedIds: Set<string>
 }
+
+// These reads normally resolve through the PA owner's personal audience. A PA
+// presence runs in a shared destination, so keeping their schemas out of that
+// run is the safe default until a request is elevated through the existing
+// approval path. Memory recall itself is separately destination-contained.
+const PA_PRESENCE_PRIVATE_READ_TOOL_IDS = new Set([
+  'attachment_list',
+  'attachment_read',
+  'authored_message_search',
+  'kb_comments_list',
+  'kb_list',
+  'kb_page_read',
+  'kb_search',
+  'message_search',
+  // A shared-channel PA presence can answer in the room, but it cannot use
+  // owner-scoped communication mutations as side channels. The normal final
+  // reply remains the one run-owned delivery path and is stamped on behalf.
+  'message_post',
+  'message_edit',
+  'message_delete',
+  'react',
+  'workspace_search',
+])
+
+const isWithheldFromPersonalAssistantPresence = (tool: BuiltinToolDefinition): boolean =>
+  tool.personalAssistantOnly === true || PA_PRESENCE_PRIVATE_READ_TOOL_IDS.has(tool.id)
 
 export type ToolDenialReason =
   | 'agent_policy_denied'
@@ -76,10 +116,13 @@ export const resolveAgentTools = (
   agentToolPolicy: ToolPolicy | null,
   parentAgentId: string | null,
   agentKind: AgentKind,
+  options: { isPersonalAssistantPresence?: boolean } = {},
 ): ResolvedToolSet => {
   const allowedIds = new Set<string>()
   for (const tool of allToolDefinitions) {
     if (
+      !(options.isPersonalAssistantPresence && isWithheldFromPersonalAssistantPresence(tool))
+      &&
       authorizeToolCall(
         tool.id,
         enabledToolIds,

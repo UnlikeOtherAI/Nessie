@@ -54,6 +54,7 @@ import {
   loadRunContext,
   setAgentStatus,
   updateTaskStatus,
+  updateRunStatus,
 } from './lifecycle.js'
 import { stripLeadingSectionTag } from './memory.js'
 import { validateRunActorContext } from './policy.js'
@@ -70,6 +71,11 @@ import { fileServiceFor } from '../file-service.js'
 import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
+import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
+import {
+  assertPersonalAssistantPresenceRunPlacement,
+  PersonalAssistantPresencePlacementError,
+} from './personal-assistant-presence-placement.js'
 
 export const executeRunJob = async (
   deps: ExecutionDependencies,
@@ -102,6 +108,30 @@ export const executeRunJob = async (
     return
   }
 
+  // A queued PA presence run must not act after its owner leaves the room or
+  // is deactivated. This is deliberately a quiet cancellation, not the normal
+  // failure path: posting a failure would itself be an unauthorized PA action.
+  try {
+    await assertPersonalAssistantPresenceRunPlacement(deps.prisma, context)
+  } catch (error) {
+    if (!(error instanceof PersonalAssistantPresencePlacementError)) throw error
+    await updateRunStatus(
+      deps.prisma,
+      context.run.id,
+      'cancelled',
+      deps.realtimeTransport,
+    )
+    await updateTaskStatus(deps.prisma, context.task.id, 'cancelled')
+    await publishRunUpdated(deps.realtimeTransport, context, 'cancelled')
+    await publishTaskUpdated(
+      deps.realtimeTransport,
+      buildScopes(context),
+      context.task.id,
+      'cancelled',
+    )
+    return
+  }
+
   const message = await deps.prisma.message.findUnique({
     where: { id: payload.messageId },
     select: { content: true, metadata: true, rootMessageId: true },
@@ -113,17 +143,6 @@ export const executeRunJob = async (
 
   const prompt = payload.promptOverride?.trim() || message.content
   const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)
-
-  // External-agent turns bypass the inference loop entirely: the driver proxies
-  // the message to the external product over MCP and owns its own run
-  // lifecycle. Nessie runs no inference for these runs (plan §5).
-  if (
-    context.agent.executionMode === 'external_mcp'
-    && handoffMarker.kind === 'none'
-  ) {
-    await runExternalConversation(deps, payload, context, prompt)
-    return
-  }
 
   let streamStarted = false
   let planContext: RunPlanContext | null = null
@@ -205,6 +224,17 @@ export const executeRunJob = async (
   const executionDeps = { ...deps, documentStream }
 
   try {
+    assertPrivateAgentRunPlacement(context)
+    // External-agent turns bypass the inference loop entirely: the driver
+    // proxies the message to the external product. Placement is still checked
+    // first so a malformed private binding cannot reach any provider.
+    if (
+      context.agent.executionMode === 'external_mcp'
+      && handoffMarker.kind === 'none'
+    ) {
+      await runExternalConversation(deps, payload, context, prompt)
+      return
+    }
     if (
       handoffMarker.kind === 'invalid'
       || (handoffMarker.kind === 'found' && !handoffLocator)
@@ -273,6 +303,9 @@ export const executeRunJob = async (
     await markWorking(deps.prisma, deps.realtimeTransport, {
       agentId: context.agent.id,
       messageId: payload.messageId,
+      ...(context.run.principalUserId
+        ? { onBehalfOfUserId: context.run.principalUserId }
+        : {}),
       threadId: context.run.threadId,
     })
     await updateTaskStatus(deps.prisma, context.task.id, 'in_progress')

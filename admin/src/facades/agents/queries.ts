@@ -13,6 +13,8 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type AgentListScope = 'all' | 'visible'
 
+export type PausedPrivateAgentCount = { count: number }
+
 /**
  * The agents the caller is entitled to see. Default (`visible`) is the
  * non-system list every surface has always used. `all` additionally pulls the
@@ -29,6 +31,17 @@ export const useAgents = (options?: { scope?: AgentListScope }) => {
     queryKey: scope === 'all' ? agentKeys.allScopes : agentKeys.all,
     queryFn: () =>
       apiClient.get(scope === 'all' ? '/api/agents?scope=all' : '/api/agents'),
+  })
+}
+
+/** Owner-only aggregate for the Members tree; it never fetches private rows. */
+export const usePausedPrivateAgentCount = (enabled: boolean) => {
+  const apiClient = useApiClient()
+
+  return useQuery<PausedPrivateAgentCount>({
+    enabled,
+    queryKey: agentKeys.pausedPrivateCount,
+    queryFn: () => apiClient.get('/api/agents/paused-private-count'),
   })
 }
 

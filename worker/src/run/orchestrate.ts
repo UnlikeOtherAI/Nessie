@@ -7,7 +7,6 @@ import {
   partitionByDisclosure,
   resolveDisclosureViewer,
   selectFollowingAgentIds,
-  type OrchestratorAgent,
   type OrchestratorDecision,
   type PgRealtimeTransport,
   type ModelClient,
@@ -25,14 +24,25 @@ import { enqueueRunExecution } from '../queue.js'
 import { describeAttachments, loadMessageAttachments } from './message-attachments.js'
 import { postOrchestrationNotice } from './orchestration-notice.js'
 import { claimThreadRunOrPend } from './thread-serialization.js'
+import {
+  acknowledgeDecision,
+  logReplyDecision,
+  publishReplyRunStarted,
+} from './orchestrate-publications.js'
+import {
+  asEngagementCandidate,
+  engagementIdFor,
+  runActorContextForCandidate,
+  type ChannelAgent,
+} from './orchestrate-candidates.js'
+
+export { runActorContextForCandidate } from './orchestrate-candidates.js'
 
 export type OrchestrateDecideDeps = {
   modelClient: ModelClient
   prisma: PrismaClient
   realtimeTransport: PgRealtimeTransport
 }
-
-type ChannelAgent = OrchestratorAgent
 
 // A personal-assistant DM has exactly one server-managed agent binding. Its
 // replies are not an engagement judgement: every human turn is addressed to
@@ -62,7 +72,16 @@ export const executeOrchestrateDecideJob = async (
   deps: OrchestrateDecideDeps,
   payload: OrchestrateDecideJobPayload,
 ): Promise<void> => {
-  const { actorContext, channelAgents, channelId, content, messageId, role, threadId } = payload
+  const {
+    actorContext,
+    agentMentions,
+    channelAgents,
+    channelId,
+    content,
+    messageId,
+    role,
+    threadId,
+  } = payload
   const channel = await deps.prisma.channel.findUnique({
     where: { id: channelId },
     select: {
@@ -103,13 +122,14 @@ export const executeOrchestrateDecideJob = async (
   // Only a hard block stops the decision; degrade/allow proceed (the reply run is
   // where the cheaper model is actually applied).
   if (budgetDecision.action === 'block') {
-    const respondingAgentId = channelAgents[0]?.id
-    if (respondingAgentId) {
+    const respondingAgent = channelAgents[0]
+    if (respondingAgent) {
       await postOrchestrationNotice(deps, {
-        agentId: respondingAgentId,
+        agentId: respondingAgent.id,
         channelId,
         content: `⚠️ ${budgetDecision.reason} — this request was not run.`,
         kind: 'budget_blocked',
+        principalUserId: respondingAgent.principalUserId,
         replyRootMessageId: replyRootContextId,
         threadId,
         triggerMessageId: messageId,
@@ -179,7 +199,7 @@ export const executeOrchestrateDecideJob = async (
     const triggerIsHuman = role === 'user'
     let followingAgentIds: string[] = []
     if (triggerIsHuman) {
-      const candidateAgentIds = channelAgents.map((a) => a.id)
+      const candidateAgentIds = channelAgents.map((agent) => agent.id)
       const authored = await deps.prisma.message.findMany({
         where: {
           threadId,
@@ -189,14 +209,20 @@ export const executeOrchestrateDecideJob = async (
             ? { OR: [{ rootMessageId: replyRootContextId }, { id: replyRootContextId }] }
             : {}),
         },
-        distinct: ['agentId'],
-        select: { agentId: true },
+        distinct: ['agentId', 'onBehalfOfUserId'],
+        select: { agentId: true, onBehalfOfUserId: true },
       })
       followingAgentIds = selectFollowingAgentIds(
         candidateAgentIds,
-        authored
-          .map((m) => m.agentId)
-          .filter((id): id is string => id !== null),
+        authored.flatMap((message) => {
+          if (!message.agentId) return []
+          const candidate = channelAgents.find(
+            (agent) =>
+              agent.id === message.agentId
+              && (agent.principalUserId ?? null) === message.onBehalfOfUserId,
+          )
+          return candidate ? [engagementIdFor(candidate)] : []
+        }),
       )
     }
 
@@ -204,7 +230,8 @@ export const executeOrchestrateDecideJob = async (
       decisions = await decideAgentEngagement(deps.modelClient, {
         // channelAgents from the payload is structurally identical to OrchestratorAgent[].
         // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
-        agents: channelAgents satisfies OrchestratorAgent[],
+        agents: channelAgents.map(asEngagementCandidate),
+        agentMentions,
         content: annotate(content, messageId),
         recentMessages,
         triggerIsHuman,
@@ -218,13 +245,14 @@ export const executeOrchestrateDecideJob = async (
       // The only error it rethrows is Ledger's typed exhausted-credit refusal,
       // which must be visible even though no run exists to terminalize.
       if (!isCreditsExhaustedError(error)) throw error
-      const respondingAgentId = channelAgents[0]
-      if (respondingAgentId) {
+      const respondingAgent = channelAgents[0]
+      if (respondingAgent) {
         await postOrchestrationNotice(deps, {
-          agentId: respondingAgentId.id,
+          agentId: respondingAgent.id,
           channelId,
           content: `⚠️ ${CREDITS_EXHAUSTED_USER_MESSAGE} — this request was not run.`,
           kind: 'credits_exhausted',
+          principalUserId: respondingAgent.principalUserId,
           replyRootMessageId: replyRootContextId,
           threadId,
           triggerMessageId: messageId,
@@ -262,6 +290,18 @@ export const executeOrchestrateDecideJob = async (
         ]
 
   for (const decision of decisions) {
+    if (decision.action === 'none') continue
+    const candidate = channelAgents.find(
+      (agent) =>
+        agent.id === decision.agentId
+        && (agent.principalUserId ?? undefined) === decision.principalUserId,
+    )
+    // A stale or malformed decision cannot turn an agent id into a different
+    // member's PA. Decisions are accepted only for the exact binding candidate
+    // that entered this job.
+    if (!candidate) continue
+    const runActorContext = runActorContextForCandidate(actorContext, candidate)
+
     if (decision.action === 'reply') {
       // Per-(agent, thread) serialization: claim the run slot inside this
       // transaction. If a run is already in flight, the message is recorded as
@@ -282,9 +322,12 @@ export const executeOrchestrateDecideJob = async (
         > => {
         const claim = await claimThreadRunOrPend(tx, {
           agentId: decision.agentId,
+          ...(candidate.principalUserId
+            ? { principalUserId: candidate.principalUserId }
+            : {}),
           threadId,
           pending: {
-            actorContext,
+            actorContext: runActorContext,
             channelId,
             // Same rule as the run payload below: a live human chat turn is
             // interactive, an agent-authored trigger is automation.
@@ -302,6 +345,7 @@ export const executeOrchestrateDecideJob = async (
         const createdRun = await tx.run.create({
           data: {
             agentId: decision.agentId,
+            principalUserId: candidate.principalUserId ?? null,
             // threadId is ThreadId-branded; Prisma's generated types accept branded strings
             // because the brand is a compile-time-only structural extension of string.
             threadId,
@@ -330,7 +374,7 @@ export const executeOrchestrateDecideJob = async (
         await enqueueRunExecution(
           tx,
           {
-            actorContext: withActionContext(actorContext, {
+            actorContext: withActionContext(runActorContext, {
               // run.agentId and run.threadId are plain strings from Prisma — parse needed.
               agentId: parseAgentId(createdRun.agentId),
               channelId,
@@ -338,6 +382,9 @@ export const executeOrchestrateDecideJob = async (
               threadId: parseThreadId(createdRun.threadId),
             }),
             agentId: parseAgentId(createdRun.agentId),
+            ...(candidate.principalUserId
+              ? { principalUserId: candidate.principalUserId }
+              : {}),
             // A reply to a human chat message is a live interactive turn; an agent
             // posting in a channel is automation. Drives budget human-exemption.
             interactive: actorContext.actor.actorType === 'user',
@@ -351,7 +398,7 @@ export const executeOrchestrateDecideJob = async (
           // Using messageId+agentId prevents the duplicate run.execute from being
           // enqueued, so the agent does not reply twice even if a second run row
           // is created as an orphan.
-          `run:${messageId}:${decision.agentId}`,
+          `run:${messageId}:${decision.agentId}:${candidate.principalUserId ?? 'ordinary'}`,
         )
 
         return { kind: 'claimed' as const, run: createdRun, task: createdTask }
@@ -384,72 +431,30 @@ export const executeOrchestrateDecideJob = async (
       }
       const { run, task } = outcome
 
-      // Publish outside the transaction — pg_notify cannot be rolled back, but
-      // the run/task are now durably committed so the event is correct.
-      const publishScopes =
-        channel.systemChannelType === 'personal_assistant'
-          ? scopes
-          : [
-              ...scopes,
-              { kind: 'agent' as const, agentId: parseAgentId(run.agentId) },
-            ]
-
-      await deps.realtimeTransport.publishWs(
-        publishScopes,
-        {
-          data: {
-            agentId: parseAgentId(run.agentId),
-            channelId,
-            contentPreview: content.slice(0, 200),
-            messageId,
-            role,
-            threadId: parseThreadId(run.threadId),
-          },
-          event: 'message.new',
-        },
-      )
-
-      console.log(
-        JSON.stringify({
-          event: 'orchestrate.reply',
-          agentId: run.agentId,
-          runId: run.id,
-          taskId: task.id,
-          messageId,
-          threadId,
-        }),
-      )
+      // Publish after commit: pg_notify cannot roll back, but the run/task now
+      // exist durably, so the live event cannot point at an orphan.
+      await publishReplyRunStarted({
+        channelId,
+        content,
+        isPersonalAssistantChannel: channel.systemChannelType === 'personal_assistant',
+        messageId,
+        realtimeTransport: deps.realtimeTransport,
+        role,
+        run,
+        scopes,
+      })
+      logReplyDecision(messageId, run, task.id, threadId)
     }
 
     if (decision.action === 'acknowledge') {
-      await deps.prisma.messageReaction.upsert({
-        where: {
-          messageId_agentId_emoji: {
-            messageId,
-            agentId: decision.agentId,
-            emoji: decision.emoji,
-          },
-        },
-        update: {},
-        create: {
-          messageId,
-          agentId: decision.agentId,
-          emoji: decision.emoji,
-        },
-      })
-
-      const reactionData = {
+      await acknowledgeDecision({
+        candidate,
+        decision,
         messageId,
-        agentId: parseAgentId(decision.agentId),
-        emoji: decision.emoji,
-      }
-
-      // threadId is branded ThreadId; publishSse accepts string — brands are
-      // structural subtypes of string so this is both type-safe and correct.
-      await deps.realtimeTransport.publishSse(threadId, 'message.reaction', reactionData)
-      await deps.realtimeTransport.publishWs(scopes, {
-        data: reactionData,
-        event: 'message.reaction',
+        prisma: deps.prisma,
+        realtimeTransport: deps.realtimeTransport,
+        scopes,
+        threadId,
       })
 
       console.log(

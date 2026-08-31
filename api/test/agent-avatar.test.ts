@@ -51,6 +51,7 @@ const makeAgent = (avatarAttachmentId: string | null) => ({
   systemManaged: false,
   systemPrompt: null,
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  visibility: 'workspace' as const,
 })
 
 const makeApp = (attachments: AttachmentRow[]) => {

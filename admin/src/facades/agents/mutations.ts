@@ -21,6 +21,7 @@ export const useCreateAgent = () => {
       runLimits?: AgentRunLimits
       systemPrompt?: string
       toolPolicy?: Record<string, boolean>
+      visibility?: AgentRecord['visibility']
     }) =>
       apiClient.post<AgentRecord>('/api/agents', input),
     onSuccess: () => {

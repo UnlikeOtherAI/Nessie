@@ -24,6 +24,7 @@ const dbStub = [
   'export const listVisibleAgentIdsForUser = async () => {',
   '  throw new Error("agent visibility is not used by auth-rate-limit-routes.test.ts")',
   '}',
+  'export const writeAuditEntryInTransaction = async () => {}',
 ].join('\n')
 const dbStubUrl = `data:text/javascript,${encodeURIComponent(dbStub)}`
 const dbLoader = `

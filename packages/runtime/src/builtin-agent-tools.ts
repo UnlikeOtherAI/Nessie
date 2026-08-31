@@ -26,7 +26,8 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'whenever the user refers to an existing agent ("put Hardware Watch in '
       + '#ops", "give the reporter a daily schedule") — you only already know an '
       + 'id for an agent you created in this same conversation, so never guess '
-      + 'one. Owners see every agent, including ones sitting in no channel; '
+      + 'one. Owners see every workspace-visible agent, including ones sitting '
+      + 'in no channel, plus private agents they own; '
       + 'everybody else sees the agents working in channels they can see.',
     parameters: {
       type: 'object',
@@ -46,9 +47,10 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Create Agent',
     personalAssistantOnly: true,
     description:
-      'Create a new shared agent — a colleague with its own instructions, model, '
+      'Create a new workspace-visible or private agent — a colleague with its own instructions, model, '
       + 'and tool policy — the same record the Agent Designer writes. The agent '
-      + 'starts in no channel; an owner puts it to work with agent_bind_channel. '
+      + 'gets an owner-only home conversation when private; a workspace agent starts '
+      + 'in no channel and an owner puts it to work with agent_bind_channel. '
       + 'Any member can do this. Explicit-grant tools (research, DeepWater) cannot '
       + 'be granted here; they are owner controls.',
     parameters: {
@@ -76,6 +78,17 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           type: 'string',
           enum: ['low', 'medium', 'high', 'xhigh'],
           description: 'Reasoning effort. Carries no spend meaning.',
+        },
+        visibility: {
+          type: 'string',
+          enum: ['workspace', 'private'],
+          description:
+            'Who can find this agent. workspace is the default; private means only its creator.',
+        },
+        ownerUserId: {
+          type: 'string',
+          description:
+            'Optional requested owner id. A private agent can only belong to the acting user.',
         },
         runLimits: {
           type: 'object',
@@ -111,6 +124,23 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         channelId: { type: 'string', description: 'The channel it should work in.' },
       },
       required: ['agentId', 'channelId'],
+    },
+    safe: false,
+  },
+  {
+    id: 'pa_join_channel',
+    label: 'Add Personal Assistant To Channel',
+    personalAssistantOnly: true,
+    description:
+      'Make your Personal Assistant available in a shared channel you already belong to. '
+      + 'This adds only your own PA presence; it cannot add another member’s assistant. '
+      + 'Use channel_find first when you only know the channel name.',
+    parameters: {
+      type: 'object',
+      properties: {
+        channelId: { type: 'string', description: 'The channel where your assistant should be present.' },
+      },
+      required: ['channelId'],
     },
     safe: false,
   },

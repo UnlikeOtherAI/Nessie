@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AgentRecord } from '../../../lib/api-client'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import { AgentOwnerCell } from './AgentOwnerCell'
+import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
 
 type AgentListRowProps = {
   agent: AgentRecord
@@ -39,6 +40,11 @@ export const AgentListRow = ({
       <div className="truncate text-xs text-[color:var(--tx3)]">
         {agent.role}
       </div>
+      <PrivateAgentHomeLink
+        agent={agent}
+        className="mt-1 inline-flex text-xs text-[color:var(--lnk)] hover:underline"
+        stopParentNavigation
+      />
     </td>
     <td className="hidden w-44 px-3 py-2.5 align-middle sm:table-cell">
       <AgentOwnerCell owner={agent.owner} token={token} />

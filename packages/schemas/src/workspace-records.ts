@@ -30,6 +30,25 @@ import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
  * routes and admin-facing contracts are unchanged.
  */
 
+// A shared-channel Personal Assistant is one organization agent with a
+// per-member binding. This is the intentionally minimal projection channel
+// peers receive for that binding; it never exposes the singleton's prompt,
+// policy, limits, or channel list.
+export const PersonalAssistantPresenceParticipantSchema = z.object({
+  id: z.string().uuid(),
+  agentId: AgentIdSchema,
+  principalUserId: UserIdSchema,
+  displayName: z.string(),
+  // The canonical stored token is public for every reader. Only rendering
+  // projects it to `Personal Assistant` for its owner.
+  mentionName: z.string(),
+  avatarAttachmentId: z.string().uuid().nullish(),
+  isPersonalAssistant: z.literal(true),
+})
+export type PersonalAssistantPresenceParticipant = z.infer<
+  typeof PersonalAssistantPresenceParticipantSchema
+>
+
 export const ChannelRecordSchema = z.object({
   id: ChannelIdSchema,
   label: NonEmptyStringSchema,
@@ -65,6 +84,10 @@ export const ChannelRecordSchema = z.object({
   memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
   // Whether the caller has muted notifications for this channel (per-member).
   muted: z.boolean().optional(),
+  // The list read fills this viewer-relative projection. Other ChannelRecord
+  // producers omit it and clients refresh their channel-list entry after a
+  // mutation rather than treating a generic record as an authority.
+  personalAssistantPresences: PersonalAssistantPresenceParticipantSchema.array().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
@@ -124,6 +147,9 @@ export type AgentAvatarBackgroundColor = z.infer<
 export const AgentOwnerStateSchema = z.enum(['active', 'deactivated', 'unknown'])
 export type AgentOwnerState = z.infer<typeof AgentOwnerStateSchema>
 
+export const AgentVisibilitySchema = z.enum(['workspace', 'private'])
+export type AgentVisibility = z.infer<typeof AgentVisibilitySchema>
+
 /**
  * The display projection for an agent's steward. It exists because there is no
  * member-readable endpoint mapping a local user id to a name — `GET /api/users`
@@ -153,6 +179,9 @@ export const AgentRecordSchema = z.object({
   owner: AgentOwnerSchema.nullish(),
   agentKind: z.enum(['shared', 'personal_assistant']).optional(),
   systemManaged: z.boolean().optional(),
+  visibility: AgentVisibilitySchema,
+  /** Owner-only DM provisioned together with a private agent. */
+  homeChannelId: ChannelIdSchema.optional(),
   surfacePolicy: z.enum(['shared', 'dm_only']).optional(),
   delegationMode: z.enum(['none', 'act_as_requesting_user']).optional(),
   currentRunId: RunIdSchema.optional(),

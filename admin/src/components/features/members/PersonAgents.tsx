@@ -94,3 +94,19 @@ export const UnassignedAgents = ({
     )}
   </div>
 )
+
+/** Aggregate-only operational signal: a paused private agent remains unnamed. */
+export const PausedPrivateAgentsBucket = ({ count }: { count: number }) => {
+  if (count === 0) return null
+
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--tx3)]">
+        Paused private agents ({count})
+      </div>
+      <p className="mt-2 text-xs text-[color:var(--tx3)]">
+        Paused because their owners are deactivated. Names and configuration stay private.
+      </p>
+    </div>
+  )
+}

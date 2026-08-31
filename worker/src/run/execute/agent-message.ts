@@ -170,6 +170,9 @@ export const createAgentMessage = async (
         role: draft.role,
         threadId: draft.threadId,
         ...(draft.agentId ? { agentId: draft.agentId } : {}),
+        ...(context.run.principalUserId
+          ? { onBehalfOfUserId: context.run.principalUserId }
+          : {}),
         ...(draft.userId ? { userId: draft.userId } : {}),
         ...(draft.rootMessageId ? { rootMessageId: draft.rootMessageId } : {}),
         ...(draft.metadata === undefined ? {} : { metadata: draft.metadata }),

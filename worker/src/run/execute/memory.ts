@@ -27,6 +27,15 @@ export const isContainmentEnabled = (
     (env['NESSIE_DISCLOSURE_CONTAINMENT'] ?? '').trim().toLowerCase(),
   )
 
+// PA identity decides whose accessible scopes are considered; the destination
+// decides whether those scopes must be contained. Only the server-managed PA
+// DM is owner-only, so a shared PA presence stays contained like any room.
+export const requiresMemoryDestinationContainment = (
+  systemChannelType: string | null,
+  containmentEnabled = isContainmentEnabled(),
+): boolean =>
+  containmentEnabled && systemChannelType !== 'personal_assistant'
+
 const truncateForContext = (value: string, maxLength: number): string =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`
 
@@ -133,7 +142,9 @@ export const retrieveRelevantMemories = async (
   const isPersonalAssistant =
     context.channel.systemChannelType === 'personal_assistant'
     || context.agent.agentKind === 'personal_assistant'
-
+  // Scope resolution follows PA identity everywhere it acts. The containment
+  // exemption is narrower: only the owner-only PA DM implies the owner's
+  // private estate. A PA presence is still a shared-room destination.
   // The personal assistant acts as its owner, so it recalls everything that
   // user can; without a user there is nothing to act as.
   if (isPersonalAssistant && !effectiveUserId) {
@@ -165,14 +176,14 @@ export const retrieveRelevantMemories = async (
     // human is that owner, and its owner's private memories are the point.
     // See docs/plans/2026-08-11-disclosure-boundaries-build.md.
     const scopes =
-      isPersonalAssistant || !isContainmentEnabled()
-        ? reachableScopes
-        : constrainScopesToDestination(reachableScopes, {
+      requiresMemoryDestinationContainment(context.channel.systemChannelType)
+        ? constrainScopesToDestination(reachableScopes, {
           channelId: context.channel.id,
           organizationId: context.channel.organizationId,
           projectId: context.channel.projectId,
           teamId: context.channel.teamId,
         })
+        : reachableScopes
 
     if (scopes.audienceTypes.length === 0) {
       return []
