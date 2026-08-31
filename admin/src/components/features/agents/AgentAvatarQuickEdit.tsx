@@ -209,7 +209,7 @@ export const AgentAvatarQuickEdit = ({
                         void handleGenerate()
                       }
                     }}
-                    placeholder="Describe the look you want (optional)"
+                    placeholder="Add avatar details to the agent instructions (optional)"
                     type="text"
                     value={prompt}
                   />

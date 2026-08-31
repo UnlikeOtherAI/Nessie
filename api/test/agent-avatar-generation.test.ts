@@ -32,6 +32,7 @@ test('generates a gpt-image-2 avatar through Ledger and stores it as an attachme
       role: 'deployment coordinator',
       systemPrompt: 'Keep releases predictable and communicate risks early.',
     },
+    instructions: 'Give the character a green scarf.',
     config: {
       apiKey: 'lk_nessie_test',
       baseUrl: 'https://ledger.unlikeotherai.com/v1/openai',
@@ -91,6 +92,16 @@ test('generates a gpt-image-2 avatar through Ledger and stores it as an attachme
   assert.match(String(promptMessages[0]?.content), /Default to one original fictional human character/)
   assert.match(String(promptMessages[0]?.content), /Do not use a robot, machine, AI mascot/)
   assert.match(String(promptMessages[0]?.content), /never from a keyword list/)
+  assert.match(String(promptMessages[0]?.content), /predominantly male audience, default to a woman/)
+  assert.match(String(promptMessages[0]?.content), /predominantly female audience, default to a man/)
+  assert.match(String(promptMessages[0]?.content), /Only when no predominantly gendered audience is established/)
+  assert.match(String(promptMessages[0]?.content), /explicit gender or presentation.*overrides this default/)
+  const avatarContext = JSON.parse(String(promptMessages[1]?.content))
+  assert.equal(
+    avatarContext.agentPurpose,
+    'Keep releases predictable and communicate risks early.\n\nAdditional avatar guidance:\nGive the character a green scarf.',
+  )
+  assert.equal('userRequest' in avatarContext, false)
 })
 
 test('routes image generation through the Ledger Purpose API when one is configured', async () => {
