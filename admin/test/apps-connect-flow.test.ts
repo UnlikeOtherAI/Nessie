@@ -324,6 +324,15 @@ test('an error whose sentence names another action does not also offer retry', (
   assert.match(presentation.message, /^Linear connected/)
 })
 
+test('client approval names the provider action instead of offering a futile retry', () => {
+  const presentation = connectErrorPresentation('CLIENT_APPROVAL_REQUIRED', {
+    appName: 'Figma MCP Server',
+  })
+  assert.equal(presentation.retryLabel, null)
+  assert.match(presentation.message, /pre-approved sign-in clients/)
+  assert.match(presentation.message, /approve Nessie/)
+})
+
 test('an unreachable server is the listing, never the named company', () => {
   // "We couldn't reach Jira's server" reported an outage at Atlassian on the
   // strength of a stranger's listing: the store's "Jira" is a community entry
@@ -352,7 +361,7 @@ test('every code has a sentence with a next action and a tone', () => {
   const codes = [
     'AUTH_CANCELLED', 'AUTH_EXPIRED', 'AUTH_FAILED', 'SERVER_UNREACHABLE', 'SERVER_INVALID',
     'MCP_INITIALIZATION_FAILED', 'CAPABILITY_DISCOVERY_FAILED', 'OAUTH_DISCOVERY_FAILED',
-    'CLIENT_REGISTRATION_FAILED', 'CONNECTION_FAILED',
+    'CLIENT_APPROVAL_REQUIRED', 'CLIENT_REGISTRATION_FAILED', 'CONNECTION_FAILED',
   ] as const
   for (const code of codes) {
     const presentation = connectErrorPresentation(code, { appName: 'GitHub' })

@@ -231,6 +231,12 @@ a 401 with OAuth, `startOAuth`. Three genuine gaps were closed:
 - **No CIMD.** `GET /.well-known/oauth-client` publishes an OAuth Client ID
   Metadata Document, and client resolution now follows the spec's preference:
   pre-registered → CIMD (only when the AS advertises it) → DCR → operator.
+- **A provider can require client approval.** A `403` from dynamic client
+  registration means Nessie reached the app and learned its sign-in contract,
+  but the provider will not admit a new Nessie OAuth client. Connect returns
+  `CLIENT_APPROVAL_REQUIRED`, stores no OAuth client or credential, and asks
+  the person to obtain provider approval rather than offering a retry that
+  cannot work.
 - **A successful sign-in read as a failure.** Nothing probed after the callback
   stored the credential, so the instance stayed `pending_setup` and the client's
   poll timed out. `completeOAuth` now probes; a probe failure is deliberately

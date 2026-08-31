@@ -1,16 +1,8 @@
-import type { PrismaClient } from '@prisma/client'
-import type {
-  AppConnectionStatus,
-  AppDetailRecord,
-  AuthorizedActionContext,
-  McpCatalogAuthMethod,
-  McpServerScopeType,
-} from '@nessie/schemas'
+import type { McpServerScopeType } from '@nessie/schemas'
 
 import { getCatalogEntry, type McpCatalogEntryRow } from '../mcp-catalog.js'
 import { McpCredentialError, resolveCredentialRef } from '../mcp-credentials.js'
 import { MCP_INSTANCE_ERROR_CODES, McpInstanceError } from '../mcp-instance-errors.js'
-import type { ManagerFactory } from '../mcp-instance-probe.js'
 import { refreshInstance, testInstance } from '../mcp-instance-testing.js'
 import {
   createInstance,
@@ -19,21 +11,30 @@ import {
   type McpInstanceRow,
 } from '../mcp-instances.js'
 import { canStartOAuthForInstance } from '../mcp-oauth-completion.js'
-import {
-  MCP_OAUTH_ERROR_CODES,
-  McpOAuthError,
-  startOAuth,
-  type OAuthStateStore,
-  type SecretStore,
-} from '../mcp-oauth.js'
+import { startOAuth } from '../mcp-oauth.js'
 import { discoverMcpEndpoint } from '../discovery.js'
-import type { McpUrlSafetyOptions } from '../mcp-security.js'
-import type { SecretResolver } from '../secret-resolver.js'
 
 import { captureConnectionCapabilities } from './app-capabilities.js'
 import { deriveConnectionStatus } from './app-connections.js'
 import { canManageAppConnectionScope } from './app-connection-management.js'
+import {
+  chooseConnectStep,
+  type AppConnectContext,
+  type AppConnectOutcome,
+  type ConnectAppInput,
+  type ConnectAppResult,
+  type DisconnectedApp,
+  type RefreshCapabilitiesResult,
+} from './app-connect-contract.js'
+import {
+  APP_CONNECT_ERROR_CODES,
+  AppConnectError,
+  mapHandshakeError,
+} from './app-connect-errors.js'
 import { getStoreApp } from './app-store-detail.js'
+
+export * from './app-connect-contract.js'
+export * from './app-connect-errors.js'
 
 /**
  * The universal Connect flow, as an **orchestration of what already exists**.
@@ -51,114 +52,6 @@ import { getStoreApp } from './app-store-detail.js'
  * more to do), `authorize` (send them to the provider), or `needs_secret` (the
  * existing credential dialog owns the rest).
  */
-
-// ─── Outcome ────────────────────────────────────────────────────────────────
-
-export type AppConnectOutcome =
-  | { status: 'connected'; connectionId: string }
-  | { status: 'authorize'; connectionId: string; authorizationUrl: string }
-  | { status: 'needs_secret'; connectionId: string }
-
-/**
- * Failure codes the App Store speaks — the design document's own table, so the
- * admin's error copy is a lookup rather than a translation.
- *
- * They are deliberately *narrower* than the connector layer's. An upstream
- * transport message can carry the endpoint URL and provider internals, and no
- * `/api/apps` response may contain either; `testInstance` still persists the
- * raw detail on the instance row for the management API, it simply never
- * travels on this surface.
- */
-export const APP_CONNECT_ERROR_CODES = {
-  APP_NOT_FOUND: 'APP_NOT_FOUND',
-  CONNECTION_NOT_FOUND: 'CONNECTION_NOT_FOUND',
-  CONNECT_FORBIDDEN: 'CONNECT_FORBIDDEN',
-  SERVER_UNREACHABLE: 'SERVER_UNREACHABLE',
-  SERVER_INVALID: 'SERVER_INVALID',
-  OAUTH_DISCOVERY_FAILED: 'OAUTH_DISCOVERY_FAILED',
-  CLIENT_REGISTRATION_FAILED: 'CLIENT_REGISTRATION_FAILED',
-  CONNECTION_FAILED: 'CONNECTION_FAILED',
-} as const
-
-export type AppConnectErrorCode =
-  (typeof APP_CONNECT_ERROR_CODES)[keyof typeof APP_CONNECT_ERROR_CODES]
-
-export class AppConnectError extends Error {
-  override readonly name = 'AppConnectError'
-
-  constructor(public readonly code: AppConnectErrorCode, message: string) {
-    super(message)
-  }
-}
-
-// ─── Context ────────────────────────────────────────────────────────────────
-
-export type AppConnectContext = {
-  /**
-   * How a failed probe learns what the server wants. Defaults to the shared
-   * `discoverMcpEndpoint`; injected by tests so no unit test dials a real host.
-   */
-  discoverEndpoint?: typeof discoverMcpEndpoint
-
-  prisma: PrismaClient
-  actorContext: AuthorizedActionContext
-  /**
-   * Exactly what `POST /api/mcp/instances/:id/oauth/start` hands `startOAuth`.
-   * The callback URL is resolved server-side from the configured public origin,
-   * never from the request: a caller-supplied return address is an open
-   * redirect, and a steered origin would be persisted by client registration.
-   */
-  oauth: {
-    callbackUrl: string
-    stateStore?: OAuthStateStore
-    secretStore?: SecretStore
-    resolveHost?: McpUrlSafetyOptions['resolveHost']
-  }
-  secretResolver?: SecretResolver
-  managerFactory?: ManagerFactory
-}
-
-export type ConnectAppInput = {
-  /** `/apps/:slug`'s identifier — a slug, or an id for a slug-less row. */
-  identifier: string
-  scopeType: McpServerScopeType
-  scopeId: string
-}
-
-export type ConnectAppResult = {
-  app: AppDetailRecord
-  outcome: AppConnectOutcome
-}
-
-// ─── The one decision ───────────────────────────────────────────────────────
-
-export type ConnectStep = 'probe' | 'oauth' | 'secret'
-
-/**
- * What this app needs from this person next. Pure, so the whole matrix is
- * testable without a database or a network.
- *
- * `reauthorize` is what the Reconnect action means: sign in again, rather than
- * probe with a grant we already have reason to doubt. Without it a lapsed
- * OAuth token would be probed, fail, and leave the person where they started.
- *
- * `basic` lands in `secret` beside `bearer`/`api_key` rather than getting a
- * branch of its own. It is not applied end-to-end (`applyAuthSecretToTransport`
- * leaves a basic transport unchanged so a mis-formatted header is never sent),
- * but a person still has a credential to give, and once given the probe runs
- * and fails visibly at the server instead of asking for it forever.
- */
-export const chooseConnectStep = (
-  authMethod: McpCatalogAuthMethod,
-  hasCredential: boolean,
-  reauthorize = false,
-): ConnectStep => {
-  if (authMethod === 'oauth2') {
-    return reauthorize || !hasCredential ? 'oauth' : 'probe'
-  }
-  if (authMethod === 'none') return 'probe'
-  return hasCredential ? 'probe' : 'secret'
-}
 
 // ─── Internals ──────────────────────────────────────────────────────────────
 
@@ -180,39 +73,6 @@ const connectionNotFound: () => never = () => {
 
 const forbidden: (message: string) => never = (message) => {
   throw new AppConnectError(APP_CONNECT_ERROR_CODES.CONNECT_FORBIDDEN, message)
-}
-
-/** Never surfaces the upstream message; see `APP_CONNECT_ERROR_CODES`. */
-const mapHandshakeError: (error: unknown, appName: string) => never = (error, appName) => {
-  if (error instanceof McpInstanceError && error.code === MCP_INSTANCE_ERROR_CODES.PROBE_FAILED) {
-    throw new AppConnectError(
-      APP_CONNECT_ERROR_CODES.SERVER_UNREACHABLE,
-      `We couldn't reach ${appName}'s server.`,
-    )
-  }
-  if (error instanceof McpOAuthError) {
-    if (error.code === MCP_OAUTH_ERROR_CODES.URL_UNSAFE) {
-      // The SSRF guard names the address it refused, and a catalogue entry's
-      // authorization endpoint is not this surface's to disclose.
-      throw new AppConnectError(
-        APP_CONNECT_ERROR_CODES.CONNECTION_FAILED,
-        `Something went wrong while connecting to ${appName}. Nothing was saved.`,
-      )
-    }
-    if (error.code === MCP_OAUTH_ERROR_CODES.DISCOVERY_FAILED) {
-      throw new AppConnectError(
-        APP_CONNECT_ERROR_CODES.OAUTH_DISCOVERY_FAILED,
-        `We couldn't work out how to sign in to ${appName} automatically.`,
-      )
-    }
-    if (error.code === MCP_OAUTH_ERROR_CODES.REGISTRATION_FAILED) {
-      throw new AppConnectError(
-        APP_CONNECT_ERROR_CODES.CLIENT_REGISTRATION_FAILED,
-        `We couldn't register Nessie with ${appName} to sign you in.`,
-      )
-    }
-  }
-  throw error
 }
 
 /**
@@ -380,20 +240,9 @@ export const runConnectHandshake = async (
         return { status: 'needs_secret', connectionId: instance.id }
       }
       if (learned === 'oauth2') {
-        const flow = await startOAuth({
-          prisma: ctx.prisma,
-          store: ctx.oauth.stateStore,
-          secretStore: ctx.oauth.secretStore,
-          instanceId: instance.id,
-          actorContext: ctx.actorContext,
-          callbackUrl: ctx.oauth.callbackUrl,
-          resolveHost: ctx.oauth.resolveHost,
-        })
-        return {
-          status: 'authorize',
-          connectionId: instance.id,
-          authorizationUrl: flow.authorizationUrl,
-        }
+        // Re-enter through the declared OAuth path, so a discovery or client
+        // registration failure keeps the same Apps-safe error vocabulary.
+        return runConnectHandshake(ctx, { ...entry, authMethod: 'oauth2' }, instance)
       }
     }
     return mapHandshakeError(error, entry.label)
@@ -514,12 +363,6 @@ export const reconnectAppConnection = async (
   return runConnectHandshake(ctx, entry, instance, { reauthorize: true })
 }
 
-export type RefreshCapabilitiesResult = {
-  connectionId: string
-  status: AppConnectionStatus
-  toolCount: number
-}
-
 /**
  * Re-probe and re-project, so the Capabilities tab reflects what the server
  * offers today. `refreshInstance` returns the row even when the probe failed,
@@ -556,13 +399,6 @@ export const refreshAppConnectionCapabilities = async (
     status: deriveConnectionStatus(refreshed.lifecycleState),
     toolCount: Array.isArray(tools) ? tools.length : 0,
   }
-}
-
-export type DisconnectedApp = {
-  connectionId: string
-  catalogEntryId: string
-  scopeType: McpServerScopeType
-  scopeId: string
 }
 
 /**

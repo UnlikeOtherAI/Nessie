@@ -286,16 +286,21 @@ meaningful.
 | AUTH_CANCELLED | "Connection cancelled. Nothing was connected — you can start again whenever you're ready." |
 | AUTH_EXPIRED | "The sign-in session expired before it finished. Try again — it only takes a moment." |
 | AUTH_FAILED | "{Provider} didn't accept the sign-in. Check that you approved the access request, then try again." |
-| SERVER_UNREACHABLE | "We couldn't reach {name}'s server. Check your connection and try again — if it keeps happening, the service may be down." |
+| SERVER_UNREACHABLE | "We couldn't reach the server listed for {name}. Try again — if it keeps happening, that listing may be out of date." |
 | SERVER_INVALID | "That address doesn't look like an app server. Check the link and try again." |
 | MCP_INITIALIZATION_FAILED | "We reached {name}, but it didn't answer correctly. This is usually a problem on the app's side — try again later." |
 | CAPABILITY_DISCOVERY_FAILED | "{name} connected, but we couldn't load what it can do. Try refreshing capabilities from the Manage menu." |
 | OAUTH_DISCOVERY_FAILED | "We couldn't work out how to sign in to {name} automatically. If you run this server, check its sign-in configuration; otherwise try again later." |
+| CLIENT_APPROVAL_REQUIRED | "{name} only accepts pre-approved sign-in clients. Ask its provider to approve Nessie, then connect again." |
 | CLIENT_REGISTRATION_FAILED | "We couldn't register Nessie with {name} to sign you in. Try again — if it persists, ask the app's provider whether third-party sign-in is enabled." |
 | CONNECTION_FAILED | "Something went wrong while connecting to {name}. Nothing was saved. Try again." |
 
 Every sentence names the *user's next action* ("try again", "check the link",
 "use the Manage menu") — an error that answers no question is cut (rule 3).
+`CLIENT_APPROVAL_REQUIRED` deliberately has no retry control: the server was
+reached, but its OAuth provider refused Nessie's RFC 7591 client-registration
+request. Retrying cannot change that provider policy; only the provider's
+approval or a pre-registered Nessie client can.
 
 ---
 
