@@ -1,6 +1,13 @@
 # Closing the Grok-Bot gaps — combined build plan
 
-> Status: decisions resolved (best-experience lens, §7). Ready to build.
+> Status: in delivery. **Shipped to `main` 2026-08-31:** P0 honesty fix,
+> Gap 1 P1 (approval suspend/resume + hardened proof), Gap 3 P1 (demonstration
+> capture) — each code-verified against a throwaway pgvector DB (typecheck,
+> lint, migrations, DB-backed + unit suites). Remaining: Gap 2 actuation
+> (`command.run` → `browser.act`, needs a real executor host), Gap 1 P2/P3
+> (auto-review), Gap 3 P2 (generalise a demonstration into a Workflow), the
+> in-thread approval/RunStop admin doorways, and P6 (persistent/headless
+> executor). Decisions resolved on the best-experience lens (§7).
 > Derived from the code-grounded audit
 > [2026-08-31-grok-bot-vs-nessie-capability-audit.md](./2026-08-31-grok-bot-vs-nessie-capability-audit.md)
 > (the three dimensions where Nessie is genuinely behind).
@@ -409,7 +416,8 @@ skill, human edit/test, and execution.
 | Phase | Ships | Depends on | Parallelisable with |
 |-------|-------|-----------|---------------------|
 | **P0 — DONE** | Honesty fix: hide/flag-off `browser.act`/`command.run` until real | — | everything |
-| **P1** | Gap 1 suspend/resume core (checkpoint→`waiting_approval`→resume) | — | Gap 3 P1 capture |
+| **P1 — DONE** | Gap 1 suspend/resume core (checkpoint→`waiting_approval`→resume, one-use hardened proof, preflight-suspends-batch-before-side-effects) | — | Gap 3 P1 capture |
+| **Gap 3 P1 — DONE** | Demonstration capture (`Demonstration`/`DemonstrationStep`, opt-in `demonstration_start`/`stop`, `recordToolEnd` hook with full redacted args) | — | P1 |
 | **P2** | Gap 2 `command.run` (gated through Gap 1) | Gap 1 P1 | Gap 3 P1–P2 |
 | **P3** | Gap 1 auto-review layer | Gap 1 P1 | Gap 2 P2 |
 | **P4** | Gap 2 `browser.observe` fidelity → `browser.act` | Gap 2 P2, Gap 1 P1 | Gap 3 P2 |
