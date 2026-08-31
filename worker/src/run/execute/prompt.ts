@@ -87,29 +87,24 @@ export const buildModelPrompt = (
     todoFacts?: AgentTodoPromptFacts | null
     /** Structural home-space and toolset facts driving the documents block. */
     documents?: AgentDocumentsPromptFacts
+    /** Clock for the volatile time message. Injectable so tests can prove the
+     * stable anchor carries no time at all. */
+    now?: Date
   } = {},
 ): ProviderMessage[] => {
-  const hasOtherAgentTurn = conversation.some(
-    (message) =>
-      message.role === 'assistant'
-      && !!message.authorAgentId
-      && message.authorAgentId !== context.agent.id,
-  )
-
   const systemParts = [
     `You are ${context.agent.name}.`,
-    hasOtherAgentTurn
-      ? [
-        'This thread is shared with other agents. Messages from other agents',
-        'are prefixed with their name (e.g. "Aria: ..."); your own earlier',
-        'replies appear with no prefix. Never attribute another agent\'s',
-        'message to yourself, and do not add a name prefix to your own reply.',
-      ].join(' ')
-      : '',
+    // Unconditional on purpose: this anchor must stay byte-identical across
+    // runs for provider prompt caching, and keying the paragraph on the
+    // window's contents flipped the bytes whenever another agent's turn slid
+    // in or out of the 20-message window in a mixed-agent channel.
+    [
+      'Threads can be shared with other agents. Any message from another',
+      'agent is prefixed with its author\'s name (e.g. "Aria: ..."); your own',
+      'earlier replies appear with no prefix. Never attribute another agent\'s',
+      'message to yourself, and do not add a name prefix to your own reply.',
+    ].join(' '),
     context.agent.systemPrompt?.trim() ?? '',
-    `Current date and time: ${new Date().toISOString()} (UTC). When the user gives a `
-      + 'relative or wall-clock time, resolve it against this; treat wall-clock times '
-      + 'as UTC unless the user states a timezone.',
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
     'When you need an id for a channel, person, or thread you only know by name, '
@@ -193,6 +188,23 @@ export const buildModelPrompt = (
   if (options.checkpointNotes) {
     messages.push({ content: options.checkpointNotes, role: 'system' })
   }
+
+  // The clock is volatile by nature, so it rides behind the stable anchor and
+  // the per-run injections rather than inside them — the anchor must stay
+  // byte-identical across runs for provider prompt caching (and it is what
+  // `buildPromptCacheKey` hashes). Rounding down to the hour keeps even this
+  // message stable across nearby runs, extending the shared prefix into the
+  // conversation window when memory and checkpoint happen to match.
+  const now = options.now ?? new Date()
+  const hourStart = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000)
+  messages.push({
+    content:
+      `Current date and time: ${hourStart.toISOString()} (UTC, rounded down to `
+      + 'the hour). When the user gives a relative or wall-clock time, resolve it '
+      + 'against this; treat wall-clock times as UTC unless the user states a '
+      + 'timezone.',
+    role: 'system',
+  })
 
   if (conversation.length > 0) {
     messages.push(
