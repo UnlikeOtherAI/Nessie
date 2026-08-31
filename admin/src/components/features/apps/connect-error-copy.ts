@@ -105,10 +105,16 @@ export const connectErrorPresentation = (
         tone: 'danger',
       }
     case 'SERVER_UNREACHABLE':
+      // Deliberately "the server listed for Jira", never "Jira's server". A
+      // catalogue name is the record author's claim, and most entries are
+      // community listings pointing at somebody else's gateway — the store's
+      // "Jira" is `waystation.ai/jira/mcp`. Saying "we couldn't reach Jira's
+      // server" reports an outage at Atlassian on the strength of a stranger's
+      // listing, and sends the reader to check the wrong thing.
       return {
         message:
-          `We couldn’t reach ${app}’s server. Check your connection and `
-          + 'try again — if it keeps happening, the service may be down.',
+          `We couldn’t reach the server listed for ${app}. Try again — if it `
+          + 'keeps happening, that listing may be out of date.',
         retryLabel: tryAgain,
         tone: 'danger',
       }

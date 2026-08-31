@@ -19,6 +19,7 @@ import {
   sectionPageSize,
   sectionToggleLabel,
   sectionVisibleApps,
+  visibleShelves,
   type AppCategorySectionModel,
   type AppGridBreakpointMatches,
 } from '../src/components/features/apps/app-catalogue-view.js'
@@ -317,4 +318,23 @@ test('the All option carries no count, because the filter beside it already show
 
   assert.equal(all?.label, 'All categories')
   assert.equal(communication?.label, 'communication (35)')
+})
+
+test('narrowing to a category leaves that shelf and no other', () => {
+  // The server keeps counting every category while `?category=` narrows the
+  // slice, so the dropdown can offer the ones you are not looking at. The page
+  // rendered a section per *counted* category, so picking Communication still
+  // painted every other heading and pushed the apps below the fold.
+  const sections = [
+    section('communication', 3, 150),
+    section('development', 0, 73),
+    section('other', 0, 512),
+  ]
+
+  assert.deepEqual(
+    visibleShelves(sections, 'communication').map((s) => s.category),
+    ['communication'],
+  )
+  // Unnarrowed, every shelf still shows — this is a narrowing, not a rewrite.
+  assert.equal(visibleShelves(sections, null).length, 3)
 })

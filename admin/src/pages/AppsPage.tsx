@@ -21,6 +21,7 @@ import {
   parseAppFilter,
   searchTruncationNote,
   sectionPageSize,
+  visibleShelves,
   type AppFilter,
 } from '../components/features/apps/app-catalogue-view'
 import {
@@ -111,11 +112,28 @@ export const AppsPage = () => {
     () => (searching ? [] : buildCategorySections(response?.apps ?? [], response?.categories ?? [])),
     [response, searching],
   )
+  /**
+   * What the shelves show. Narrowed to a category, that is *only* that
+   * category.
+   *
+   * The server deliberately keeps counting every category while `?category=`
+   * narrows the slice, so the dropdown can offer the ones you are not looking
+   * at — but the page rendered a section per *counted* category, so picking
+   * "Communication" still painted fifteen other headings and left the apps
+   * below the fold. `sections` stays whole for the toolbar; only the body
+   * narrows.
+   */
+  const shelves = useMemo(
+    () => visibleShelves(sections, activeCategory),
+    [sections, activeCategory],
+  )
   // The strip is the one list the server sends whole (five records at most), so
-  // narrowing it here drops nothing the next page would have held.
+  // narrowing it here drops nothing the next page would have held. Under a
+  // category it is hidden outright: a Featured shelf holding four apps from
+  // other categories is the same interruption as the other headings were.
   const featured = useMemo(
-    () => (searching ? [] : filterApps(response?.featured ?? [], shownFilter)),
-    [response, shownFilter, searching],
+    () => (searching || activeCategory ? [] : filterApps(response?.featured ?? [], shownFilter)),
+    [response, shownFilter, searching, activeCategory],
   )
   // Summed from per-category aggregates, so a capped result list still reports
   // how many apps actually matched.
@@ -130,7 +148,7 @@ export const AppsPage = () => {
 
   const openConnectors = () => void navigate(CONNECTORS_HREF)
 
-  const empty = searching ? results.length === 0 : sections.length === 0
+  const empty = searching ? results.length === 0 : shelves.length === 0
   const emptyModel = catalogueEmptyMessage({
     filter: shownFilter,
     query: shownQuery,
@@ -237,7 +255,7 @@ export const AppsPage = () => {
           ) : (
             <>
               <AppFeaturedStrip apps={featured} />
-              {sections.map((section) => (
+              {shelves.map((section) => (
                 <AppCategorySection
                   expanded={expandedCategories[section.category] === true}
                   installed={shownFilter === 'installed'}
@@ -250,6 +268,7 @@ export const AppsPage = () => {
                   }
                   pageSize={pageSize}
                   section={section}
+                  standalone={activeCategory !== null}
                 />
               ))}
             </>

@@ -4,6 +4,7 @@ import type { AppSummaryRecord } from '@nessie/schemas'
 import { useAppConnectFlow } from '../../../facades/apps/connect-hooks'
 import { useModalA11y } from '../../shared/useModalA11y'
 import { useOverlayDismiss } from '../../shared/useOverlayDismiss'
+import { connectAuthExpectation, connectPublisherLine } from './app-connect-copy'
 import { ConnectProgress } from './ConnectProgress'
 
 /**
@@ -62,22 +63,10 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
 
   if (!open) return null
 
-  /**
-   * What the sign-in will look like, said BEFORE it happens.
-   *
-   * The catalogue knows the method (`authMethod`) without probing, so the
-   * dialog states it the moment it opens rather than making somebody press
-   * Connect to find out — that was the point of surfacing it on the summary
-   * record. The probe's own answer still wins once it arrives, because a
-   * server can always disagree with what the catalogue recorded: an entry
-   * marked `none` that answers 401 really does need a sign-in.
-   */
-  const expectationFromCatalogue =
-    app.authMethod === 'oauth2'
-      ? `Connecting opens a ${app.displayName} sign-in window.`
-      : app.authMethod === 'none'
-        ? 'This app needs no sign-in.'
-        : `${app.displayName} needs an API key.`
+  // Both rules live in `app-connect-copy.ts` so they can be asserted.
+  const publisher = connectPublisherLine(app)
+
+  const expectationFromCatalogue = connectAuthExpectation(app)
 
   const authExpectation =
     phase === 'awaiting_authorization' || connect.state.requiresAuthorization
@@ -108,6 +97,11 @@ export const AppConnectDialog = ({ app, onClose, open }: AppConnectDialogProps) 
             <h2 className="text-lg font-bold text-[color:var(--tx)]" id={titleId}>
               Connect {app.displayName}
             </h2>
+            {publisher ? (
+              <p className="mt-0.5 text-xs text-[color:var(--tx3)]" data-testid="app-connect-publisher">
+                {publisher}
+              </p>
+            ) : null}
             <p className="mt-1 text-sm text-[color:var(--tx2)]" id={descriptionId}>
               {phase === 'connected'
                 ? `${app.displayName} is connected. It is ready to use.`
