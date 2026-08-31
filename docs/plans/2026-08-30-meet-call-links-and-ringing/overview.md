@@ -1,8 +1,6 @@
 # Call links + real ringing — Google Meet by default, Jitsi per team, replacing the embedded call
 
-**Status:** Implementation in progress — Slices 1, 2, 3a, and 3b complete;
-slice 4 has a link-join compatibility repair but its caller/recipient UX
-remains pending · 2026-08-31
+**Status:** Implemented — delivery slices 1–5 complete · 2026-08-31
 **Provider decision (made by the product owner, 2026-08-30, amended same
 day):** the link provider is a **per-team setting** — **Google Meet (the
 default)**, **Jitsi**, or **Microsoft Teams**. Pressing the phone icon does
@@ -190,18 +188,18 @@ explicitly reinstated: "some people wanna just create a Teams link").
    high-priority call category/channel, and per-ring cancellation dismissal.
    `openExternalUrl` routes the admin's future shell calls through Tauri or
    that bridge without using `window.open` in a browser.
-4. **Admin UX — in progress.** The 2026-08-31 compatibility repair
-   makes the header and banner Join controls real anchors to `meetingUri` and
-   prevents the legacy overlay from rendering link calls with no `roomId`.
-   The caller popup, `IncomingCallProvider`,
-   button/banner rework, and Jitsi removal remain. Playwright: button → popup
-   renders link; ring dialog on a second session; browser Accept renders the
-   real external anchor.
-5. **Agent tool + docs** — `meeting_link_create`, move
-   `video-calling.md` → `docs/done/`, update `CLAUDE.md` capability line,
-   review-log resolution of §12's open decisions.
+4. **Admin UX — implemented 2026-08-31.** The header and banner Join
+   controls are real anchors to `meetingUri`; the caller popup, incoming-ring
+   provider, button/banner rework, and embedded Jitsi surface are replaced.
+   Playwright verified button → caller popup, second-session ring dialog, and
+   browser Accept opening through the real external anchor.
+5. **Agent tool + docs — implemented 2026-08-31.** PA-only
+   `meeting_link_create` and `call_start` share the REST seams, preserve
+   target-channel tenancy, and stamp `Call.createdViaAgentId`; the retired
+   video-calling document is under `docs/done/`, and the operational
+   invariants are recorded in `CLAUDE.md` and `AGENTS.md`.
 
-## 12. Open questions / accepted tradeoffs
+## 12. Decisions and accepted tradeoffs
 
 1. **Link is a capability** (`accessType: OPEN`): anyone holding the URI
    can join. Accepted for parity and reach (recipients without Google
@@ -217,9 +215,10 @@ explicitly reinstated: "some people wanna just create a Teams link").
    buttons; the companion app rings via ordinary push, not
    CallKit/VoIP-push lock-screen UI. Follow-up if the companion app grows
    telephony ambitions.
-5. **Shared agents and the tool**: PA-only now. If a shared agent should
-   start calls (e.g. a standup bot), that becomes a
-   `requiresExplicitGrant` widening with its own review.
+5. **Shared agents and the tool**: decided PA-only and default-on for the PA;
+   neither tool uses `requiresExplicitGrant`, matching the owner's “if I ask
+   it, it just works” decision. If a shared agent should start calls (e.g. a
+   standup bot), that becomes an explicit-grant widening with its own review.
 6. **Comms connection gains an action scope** (§3.3): the read-only
    character of the comms connector changes slightly. Alternative (second
    Google OAuth surface just for Meet) doubles connect UX + credential
@@ -227,20 +226,16 @@ explicitly reinstated: "some people wanna just create a Teams link").
 7. **Google OAuth client verification**: adding the Meet scope to the
    consent screen may retrigger Google's app review for the production
    client. Deployment-side risk, not code; §3.5.
-8. **Per-call provider picker for humans**: the button follows the team
-   setting; only the agent tool can override on explicit request. If
-   people want a chooser on the button (e.g. long-press → "Start Jitsi
-   call"), that's a v2 UI decision, not plumbing — the seam already takes
+8. **Per-call provider picker for humans**: decided that the button follows
+   the team setting; only the PA tool accepts an explicit provider override.
+   A human chooser is a v2 UI decision, not plumbing — the seam already takes
    a provider.
-9. **Placement of the team Calls setting**: `/settings/organization` Calls
-   section is the recommendation (org-page-with-team-rows precedent); a
-   dedicated team-settings page does not exist and this plan does not
-   invent one. Owner may prefer the Integrations page instead.
-10. **Teams sequencing** (§3.7): ship v1 as Meet + Jitsi with the
-    three-valued setting and seam, Microsoft Teams landing with the
-    Microsoft comms OAuth leg — or pull that leg forward into this work.
-    Recommendation: v1 without it; the Azure AD app + adapter package is
-    its own project.
+9. **Placement of the team Calls setting**: decided on the
+   `/settings/organization` Calls section, using its team-row precedent; no
+   dedicated team-settings page is introduced.
+10. **Teams sequencing** (§3.7): decided v1 is Meet + Jitsi with the
+    three-valued setting and seam. Microsoft Teams lands with its Microsoft
+    comms OAuth leg as a separate project.
 
 ## 13. Review log
 

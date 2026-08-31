@@ -172,6 +172,18 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `agent_trigger_create` usable on an agent the user merely named, rather than
   only on one created in the same conversation. Details:
   `CLAUDE.md` → "Personal assistant — workspace provisioning".
+- **Provider-linked call tools use this same route-mirroring pattern.**
+  `meeting_link_create` and `call_start` are separate PA-only builtin ids:
+  minting a provider link and ringing a channel have different blast radii, and
+  only separate ids can later put `call_start` behind an explicit grant. They
+  intentionally require no explicit grant today because a person's PA is their
+  delegate. Both re-read the live acting membership and call
+  `createCallLinkForTeamUser` / `startCallForUser` in
+  `@nessie/workspace-admin`; never duplicate their gates. A call tool leaves
+  `expectedOrganizationId` unset so the shared start seam resolves the
+  **target channel's** organisation and re-checks membership there, preserving
+  the route's indistinguishable `Channel not found` refusal across UOA orgs.
+  An unattended run has no requesting user and must refuse before minting.
 - **A read that enters a run's context feeds the disclosure sink, in the same
   change.** An agent reaches material its audience cannot, and what stops it
   laundering that into a shared room is provenance: `ConsumedSourceSink`

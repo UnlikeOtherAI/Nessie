@@ -20,39 +20,30 @@ handlers in `worker/src/run/pa-tools/`:
   requirement "an agent can generate a call link" is satisfied: the PA is
   that agent. Widening to shared agents later would be
   `requiresExplicitGrant` (§12.5), not a default.
-- **`call_start` and prompt injection (decision flagged, §12.5):** PA-only
-  is a *kind* gate, not a user confirmation — an ordinary builtin is
-  enabled unless denied, so a prompt-injected PA could ring a whole
-  channel's devices. The mitigation options are `requiresExplicitGrant`
-  on `call_start` (one-time owner grant per agent — friction the owner
-  explicitly doesn't want for "if I ask it") or leaving it default-on for
-  the PA like `send_message` (which an injected PA can equally abuse,
-  with smaller blast radius). Recommendation: default-on for the PA in
-  v1 — the engagement path already means a person asked the PA
-  something — with the split ids preserving the ability to flip
-  `call_start` to explicit-grant without touching link minting. Owner
-  decides.
+- **`call_start` and prompt injection (decided, §12.5):** PA-only is a
+  *kind* gate, not a user confirmation — an ordinary builtin is enabled
+  unless denied, so a prompt-injected PA could ring a whole channel's
+  devices. The owner decided both tools remain default-on for the PA (like
+  `send_message`) so “if I ask it, it just works”; the split ids preserve
+  the ability to put only `call_start` behind `requiresExplicitGrant`
+  later without touching link minting.
 - **Handler:** `resolveActingMember(context)` (live-membership re-read,
   attribution rewritten to the person), then the same shared seam the
-  routes use — `createCallLinkForTeamUser` for link-only,
-  `startCallForUser` when ringing. The provider **defaults to the
-  conversation channel's team setting** (§3.0), and the tool takes an
-  optional `provider` argument so a person can ask the agent for a Meet
-  or Teams link even on a Jitsi-preferring team (owner's explicit call,
-  2026-08-30): the override is the *user's* request relayed by their
-  agent, minted under that user's own connection, so it grants nothing
-  the user couldn't do with their own account. Whether to offer the
-  override unprompted is the model's judgement, never a string-matched
-  heuristic. The mirroring REST route accepts the same optional
-  `provider`, keeping tool and route no-weaker-no-stronger. "Remind
-  people about the call" needs no new tool — that's the agent posting an
-  ordinary message with the link. Typed refusals in words: unattended
+  routes use — `createCallLinkForTeamUser` for `meeting_link_create`,
+  `startCallForUser` for `call_start`. Link minting takes a `teamId` and
+  defaults to that team's provider; ringing defaults to the target
+  channel's team provider. Both take an optional `provider` argument so a
+  person can ask for a Meet or Teams link even on a Jitsi-preferring team:
+  the override is the user's request relayed by their agent, minted under
+  that user's own connection, so it grants nothing they could not do
+  themselves. Whether to offer it unprompted is the model's judgement,
+  never a string-matched heuristic. Typed refusals in words: an unattended
   run with no requesting user; `GOOGLE_NOT_CONNECTED` /
-  `MEET_SCOPE_MISSING` / `MICROSOFT_NOT_CONNECTED` (the answer names
-  `/settings/connections`).
+  `MEET_SCOPE_MISSING` / `MICROSOFT_NOT_CONNECTED` name
+  `/settings/connections` as the fix.
 - **Tenancy keys on the *target* channel, not the run's home channel.**
   `resolveActingMember` reads the run channel's organization; when
-  `ring: true` names another channel, `startCallForUser` resolves the
+  `call_start` names another channel, `startCallForUser` resolves the
   target channel's own organization and re-derives live membership
   (`deactivatedAt IS NULL`) **in that org** — on the UOA multi-org model
   a PA run in org A must never ring an org-B channel under org-A
@@ -60,11 +51,9 @@ handlers in `worker/src/run/pa-tools/`:
   channel the acting user cannot reach answers the same
   channel-not-found refusal as the route, so the tool cannot probe
   channel existence.
-- **Modes:** default returns `{meetingUri}` for the agent's reply
-  (mirroring a new member-level `POST /api/meetings/links` route that
-  ships in the same change — same service, same gates, per the
-  tools-mirror-routes rule and Rule zero). Optional `ring: true` +
-  `channelId` runs the full §5.2 flow, mirroring
+- **Modes:** `meeting_link_create` returns `{provider, meetingUri}` for the
+  agent's reply, mirroring member-level `POST /api/meetings/links`.
+  `call_start` runs the full §5.2 flow, mirroring
   `POST /api/channels/:id/call` exactly (membership of the acting user,
   human-count, PA-DM refusal, one-call-per-channel). The caller of record
   is the user; `Call.createdViaAgentId` lets surfaces show "N (via
@@ -72,4 +61,3 @@ handlers in `worker/src/run/pa-tools/`:
 - `safe: false`; not metered beyond the run's own budget; no
   `requiresExplicitGrant` (PA-only already binds it to the delegating
   user).
-

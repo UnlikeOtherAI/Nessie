@@ -623,6 +623,21 @@ crawl scanning stays behind the MCP connector path — both rules in `AGENTS.md`
 
 See [docs/functionality.md](docs/functionality.md) for the authoritative API surface description. Section §7 describes the removed legacy MCP server for historical reference.
 
+## Provider-linked calls + ringing
+
+Calls are provider links, never an embedded Jitsi media surface: the target
+team selects Google Meet, Jitsi, or (when configured) Microsoft Teams, and a
+channel call creates that link then rings each invitee. Realtime publishes one
+message per audience — one channel update and separate user-scoped incoming
+rings — because combined scopes leak/replay incorrectly. Native push carries
+only an internal call path/id, never an external meeting URI; the client loads
+the call before opening the provider link. Browser Accept is a real anchor (or
+a synchronous user gesture in a shell), never an asynchronous `window.open`.
+`meeting_link_create` and `call_start` are PA-only builtins: they re-read the
+acting member and call the same `@nessie/workspace-admin` functions as the
+routes; `call_start` resolves membership from its target channel's organisation
+and stamps `Call.createdViaAgentId`.
+
 ## Personal assistant — workspace provisioning
 
 Five PA-only builtins (`personalAssistantOnly: true`,
