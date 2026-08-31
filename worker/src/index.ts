@@ -33,6 +33,8 @@ import {
   BudgetAlertDispatchJobPayloadSchema,
   TriggerHealthAlertJobPayloadSchema,
   WorkflowRunFailureDispatchJobPayloadSchema,
+  CallRingCancelJobPayloadSchema,
+  CallRingDispatchJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
@@ -91,6 +93,7 @@ import { enqueueCommsSubscriptionsRenew } from './queue.js'
 import { executeExecutorCommandJob } from './control/executor-commands.js'
 import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
 import { handleCallRingTimeout, sweepExpiredActiveCalls } from './control/call-lifecycle.js'
+import { handleCallRingCancel, handleCallRingDispatch } from './control/call-ring-dispatch.js'
 
 const config = loadConfig()
 if (!process.env.DATABASE_URL) {
@@ -274,6 +277,32 @@ export const startWorker = async (
       webPushCreds = undefined
     }
   }
+
+  queueProvider.subscribe(
+    'call.ring-dispatch',
+    async (job) => {
+      const payload = CallRingDispatchJobPayloadSchema.parse(job.payload)
+      await handleCallRingDispatch({
+        authSecret: config.auth.secret ?? '',
+        prisma,
+        ...(webPushCreds ? { webPush: webPushCreds } : {}),
+      }, payload)
+    },
+    { signal: abortController.signal },
+  )
+
+  queueProvider.subscribe(
+    'call.ring-cancel',
+    async (job) => {
+      const payload = CallRingCancelJobPayloadSchema.parse(job.payload)
+      await handleCallRingCancel({
+        authSecret: config.auth.secret ?? '',
+        prisma,
+        ...(webPushCreds ? { webPush: webPushCreds } : {}),
+      }, payload)
+    },
+    { signal: abortController.signal },
+  )
 
   queueProvider.subscribe(
     'attention.dispatch',

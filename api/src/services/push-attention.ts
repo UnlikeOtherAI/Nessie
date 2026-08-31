@@ -9,6 +9,7 @@ type AttentionTransaction = Pick<
   | 'organizationMember'
   | 'projectMember'
   | 'knowledgeSpace'
+  | 'agent'
   | 'userAlert'
   | '$executeRaw'
 >

@@ -68,8 +68,8 @@ test('listNativeRecentPages skips the space pre-filter for a bypass viewer', asy
     viewer: {
       bypass: true,
       projectIds: new Set(),
-      visibleAgentIds: new Set(),
-      userId: null,
+  visibleAgentIds: new Set(),
+  userId: null,
     },
   })
 

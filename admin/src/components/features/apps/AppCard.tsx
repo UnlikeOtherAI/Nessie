@@ -1,9 +1,11 @@
+import { faCube, faGlobe, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
 import { useState } from 'react'
 import type { AppSummaryRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
 import { Pill } from '../../primitives/Pill'
 import { AppConnectDialog } from './AppConnectDialog'
 import { AppIcon } from './AppIcon'
+import { AppIconBadge } from './AppIconBadge'
 import { AppTrustBadge } from './AppTrustBadge'
 import {
   appCardAction,
@@ -40,6 +42,23 @@ const KIND_PILL_TONE: Record<AppKindPillTone, string> = {
   accent: 'bg-[color:var(--accent-soft)] text-[color:var(--thinking)]',
   info: 'bg-[color:var(--info-soft)] text-[color:var(--info-text)]',
   neutral: 'bg-[color:var(--overlay-weak)] text-[color:var(--tx2)]',
+}
+
+const KIND_BADGES: Record<'Built-in' | 'Remote', {
+  description: string
+  icon: IconDefinition
+  label: string
+}> = {
+  'Built-in': {
+    description: 'Runs inside Nessie.',
+    icon: faCube,
+    label: 'Internal',
+  },
+  Remote: {
+    description: 'Connects to a remote service.',
+    icon: faGlobe,
+    label: 'Remote',
+  },
 }
 
 const ACTION_TONE = {
@@ -85,41 +104,35 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
     >
       <div className="flex items-start gap-3">
         <AppIcon displayName={app.displayName} iconUrl={app.iconUrl} size="card" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          {/* Title and badge wrap instead of competing: on a narrow tile (the
-              phone two-column grid, the featured strip) a shrink-0 chip beside
-              a shrinkable title starves the title down to a couple of
-              characters, so the badge drops under the title before the title
-              gives up a pixel. The title clamps at two lines and holds that
-              height even when short, keeping every card in a row the same
-              shape. */}
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            {/* A stretched link: real anchor semantics and one tab stop for the
-                whole tile, while the footer action stays its own control (an
-                anchor inside an anchor would not be valid markup). Every state
-                gets one — a card that cannot be opened has nowhere to send a
-                person whose install has stalled or whose app is unavailable. */}
-            <Link
-              className={[
-                'line-clamp-2 min-h-10 min-w-0 text-[0.9375rem] font-semibold leading-5',
-                'text-[color:var(--tx)]',
-                'after:absolute after:inset-0 after:content-[""]',
-                'focus-visible:outline-none focus-visible:after:ring-2',
-                'focus-visible:after:ring-[color:var(--accent)]',
-                'focus-visible:after:rounded-[var(--radius-lg)]',
-              ].join(' ')}
-              data-testid="app-card-open"
-              to={appDetailHref(app)}
-            >
-              <HighlightedText query={query} text={app.displayName} />
-            </Link>
-            {showsTrustBadgeOnCard(app.trustLevel) ? (
-              <AppTrustBadge trustLevel={app.trustLevel} />
-            ) : null}
-          </div>
-          <div className="flex min-w-0 items-center gap-1.5 truncate text-[11px]">
-            <span className="text-[color:var(--tx3)]">{appCategoryLabel(app)}</span>
-            {kindPill ? (
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {/* A stretched link: real anchor semantics and one tab stop for the
+              whole tile, while the footer action stays its own control (an
+              anchor inside an anchor would not be valid markup). Every state
+              gets one — a card that cannot be opened has nowhere to send a
+              person whose install has stalled or whose app is unavailable. */}
+          <Link
+            className={[
+              'line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5',
+              'text-[color:var(--tx)]',
+              'after:absolute after:inset-0 after:content-[""]',
+              'focus-visible:outline-none focus-visible:after:ring-2',
+              'focus-visible:after:ring-[color:var(--accent)]',
+              'focus-visible:after:rounded-[var(--radius-lg)]',
+            ].join(' ')}
+            data-testid="app-card-open"
+            to={appDetailHref(app)}
+          >
+            <HighlightedText query={query} text={app.displayName} />
+          </Link>
+          <div className="flex min-w-0 items-center gap-1.5 text-[11px]">
+            <span className="truncate text-[color:var(--tx3)]">{appCategoryLabel(app)}</span>
+            {kindPill && kindPill.label in KIND_BADGES ? (
+              <AppIconBadge
+                {...KIND_BADGES[kindPill.label as keyof typeof KIND_BADGES]}
+                testId={`app-kind-${kindPill.label.toLowerCase()}`}
+                toneClass={KIND_PILL_TONE[kindPill.tone]}
+              />
+            ) : kindPill ? (
               <span
                 className={[
                   'rounded-full px-2 py-0.5 font-medium',
@@ -128,6 +141,9 @@ export const AppCard = ({ app, layout = 'grid', provenance = null, query = '' }:
               >
                 {kindPill.label}
               </span>
+            ) : null}
+            {showsTrustBadgeOnCard(app.trustLevel) ? (
+              <AppTrustBadge iconOnly trustLevel={app.trustLevel} />
             ) : null}
           </div>
         </div>

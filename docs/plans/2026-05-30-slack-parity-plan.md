@@ -33,7 +33,8 @@ integrations). Each phase is independently shippable. Worktree-per-task is manda
 - RBAC schema present but unenforced: `PolicyRule` / `PolicyBinding`
   (`schema.prisma:1675-1705`) + `POST /api/policy/check`.
 - Semantic memory search: `packages/memory` `match_thoughts` + `/api/thoughts/search`.
-- Calls: `Call` / `CallParticipant` (`schema.prisma:2053`) via Jitsi.
+- Calls: provider links plus durable ringing (`Call` / `CallInvite`); see
+  [the call-links and ringing plan](./2026-08-30-meet-call-links-and-ringing/overview.md).
 
 ---
 
@@ -245,7 +246,7 @@ larger phases.
   implemented in the global search Semantic mode via `/api/thoughts/search`).
   Message semantic search remains deferred until a message embedding pipeline
   exists.
-- **Auto meeting notes**: agent transcribes Jitsi call → posts action items to thread.
+- **Auto meeting notes**: agent transcribes a provider call → posts action items to thread.
 - **Agents-as-routers**: wire `MessageReaction` / `message.created` into event
   triggers so an agent watches a channel and routes/summarizes/escalates.
 - **Agent channel lookup (implemented 2026-06-12, hardened 2026-06-13)**:

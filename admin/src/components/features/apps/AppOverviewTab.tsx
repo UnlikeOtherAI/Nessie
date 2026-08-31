@@ -2,7 +2,6 @@ import { faArrowUpRightFromSquare } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AppDetailRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
-import { appTrustBadge } from './app-trust'
 import { appDetailLinks, appDetailStats } from './app-detail-view'
 
 type AppOverviewTabProps = {
@@ -68,12 +67,6 @@ export const AppOverviewTab = ({ app }: AppOverviewTabProps) => {
               <dd className="min-w-0 truncate text-sm text-[color:var(--tx2)]">{app.vendor}</dd>
             </div>
           ) : null}
-          <div className="flex items-baseline justify-between gap-3 border-b border-[color:var(--sep)] py-2">
-            <dt className="text-xs text-[color:var(--tx3)]">Trust</dt>
-            <dd className="min-w-0 truncate text-sm text-[color:var(--tx2)]">
-              {appTrustBadge(app.trustLevel).description}
-            </dd>
-          </div>
           {links.map((link) => (
             <div
               className="flex items-baseline justify-between gap-3 border-b border-[color:var(--sep)] py-2"

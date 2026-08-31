@@ -61,6 +61,7 @@ export type KnowledgePageVersionRecord = {
 
 export type KnowledgeSpaceRecord = KnowledgeScopeInput & {
   id: string
+  ownerAgentId: string | null
   name: string
   description: string | null
   metadata: Record<string, unknown> | null
@@ -197,6 +198,9 @@ export type HybridSearchPagesInput = {
 }
 
 export type CreateSpaceInput = KnowledgeScopeInput & {
+  // ownerAgentId is deliberately absent: ordinary callers and agent tools may
+  // not claim a space for an agent. The dedicated provisioner writes that
+  // ownership fact directly (docs/plans/2026-08-31-agent-documents.md §2.1).
   createdBy: string
   description?: string | null
   memberUserIds?: string[]

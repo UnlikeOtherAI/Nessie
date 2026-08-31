@@ -58,8 +58,8 @@ export const isAgentVisibleToUser = async (
 ): Promise<boolean> =>
   (await prisma.agent.count({
     where: {
-      id: agentId,
       ...buildVisibleAgentWhere({ organizationId, userId }),
+      id: agentId,
     },
   })) > 0
 

@@ -38,6 +38,8 @@ export const AlertRow = ({ alert }: { alert: UserAlertRecord }) => {
       ? `${actor} assigned work to you`
       : alert.kind === 'knowledge_published'
         ? `${actor} published knowledge for you`
+        : alert.kind === 'call_missed'
+          ? `Missed call from ${actor}${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
         : `${actor} mentioned you${alert.channelLabel ? ` in ${alert.channelLabel}` : ''}`
 
   return (

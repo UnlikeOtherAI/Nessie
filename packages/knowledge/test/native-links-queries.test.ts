@@ -14,6 +14,7 @@ const viewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   projectIds: new Set(),
   visibleAgentIds: new Set(),
   userId,
+  visibleAgentIds: new Set(),
   ...overrides,
 })
 

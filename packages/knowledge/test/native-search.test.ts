@@ -44,8 +44,8 @@ test('searchNativePages skips the space pre-filter for a bypass viewer', async (
     viewer: {
       bypass: true,
       projectIds: new Set(),
-      visibleAgentIds: new Set(),
-      userId: null,
+  visibleAgentIds: new Set(),
+  userId: null,
     },
   })
 

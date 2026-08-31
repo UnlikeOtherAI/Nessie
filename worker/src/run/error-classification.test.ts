@@ -6,6 +6,7 @@ import {
   resolveRecovery,
   userMessageForFailureReason,
 } from './error-classification.js'
+import { ProviderInvocationError } from '@nessie/runtime'
 
 test('missing model credentials tell the user how to resolve the problem', () => {
   const error = new Error('Missing API key for provider kimi')
@@ -49,4 +50,52 @@ test('an unsafe provider scope tells the user which configuration must change', 
         'The workspace AI service credential is not permitted to use the configured model. Ask a workspace owner to update its allowed model scope, then try again.',
     },
   )
+})
+
+test('a typed Ledger 402 is exhausted credits, never a generic billing error', () => {
+  const error = new ProviderInvocationError(
+    'openai-compatible chat request failed with HTTP 402',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-402',
+      latencyMs: 1,
+      model: 'ledger-model',
+      operationType: 'chat',
+      provider: 'openai-compatible',
+      requestId: 'request-402',
+      usage: {},
+    },
+    undefined,
+    { creditRefusal: 'ledger', providerCode: 'budget_exceeded', statusCode: 402 },
+  )
+
+  assert.equal(classifyError(error), 'credits_exhausted')
+  assert.equal(
+    userMessageForFailureReason(classifyError(error)),
+    'Your team has no AI credits remaining. Ask a billing manager to add credits or update billing in Credits & billing (/tokens), then try again.',
+  )
+  assert.deepEqual(
+    resolveRecovery(classifyError(error), 0, { remaining: 0, total: 6 }),
+    { action: 'fail_run' },
+  )
+})
+
+test('a direct provider 402 remains a provider billing error', () => {
+  const error = new ProviderInvocationError(
+    'openai chat request failed with HTTP 402',
+    {
+      finishReason: 'error',
+      invocationId: 'invocation-provider-402',
+      latencyMs: 1,
+      model: 'provider-model',
+      operationType: 'chat',
+      provider: 'openai',
+      requestId: 'request-provider-402',
+      usage: {},
+    },
+    undefined,
+    { statusCode: 402 },
+  )
+
+  assert.equal(classifyError(error), 'billing')
 })

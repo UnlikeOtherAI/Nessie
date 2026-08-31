@@ -1,7 +1,8 @@
 # Agent documents — the docs an agent keeps for itself
 
-**Status:** phase 1b access arm, phase 1c disclosure basis/publish gate, and
-phase 1d shared provisioning + structural prompt block implemented.
+**Status:** implemented — access, disclosure, provisioning, the structural
+prompt block, document streaming restriction, and the agent Documents tab now
+ship as one KB extension.
 **Date:** 2026-08-31
 **Related:**
 [2026-08-31-agent-tables.md](2026-08-31-agent-tables.md) (agent-owned typed
@@ -266,26 +267,30 @@ sentence as tables and to-dos, implemented the same way — by composing the
 shared agent-visibility predicate consumed by `workspace-admin`, never
 restating it:
 
+- **Single visibility definition** (`packages/db/src/agent-visibility.ts`):
+  `buildVisibleAgentWhere` owns channel-derived reach plus live top-level
+  stewardship. `listVisibleAgentIdsForUser` resolves that fragment to ids.
+  `listAgentsForUser`, `isAgentVisibleToUser`, KB access, and publication-alert
+  revalidation all compose this builder, so the agent page and its documents
+  cannot drift. The package is safe to import from knowledge because its Prisma
+  client stays lazy and it has no knowledge dependency.
 - **TypeScript** (`packages/knowledge/src/access.ts` `loadUserViewer` /
-  `canReadSpace`): `packages/db/src/agent-visibility.ts` owns the one
-  `buildVisibleAgentWhere` fragment used by `listAgentsForUser`,
-  `isAgentVisibleToUser`, and every derived audience. `loadUserViewer`
-  resolves that fragment once into `SpaceViewer.visibleAgentIds`; the pure,
-  synchronous `canReadSpace` admits an agent-owned space only when that set
-  contains its `ownerAgentId` (or the person has an explicit space grant).
-  This keeps database IO out of the predicate while making list, detail, and
-  document access depend on one definition. Org owners' route-only
-  `includeUnbound` widening remains outside the shared member fragment.
-- **SQL mirror** (`native-search-access.ts` `readableSpaceIdsSqlFor*`): the
-  human search arm receives the already-resolved `visibleAgentIds` set as one
-  bound UUID-array parameter. It never restates the binding/steward joins in
-  SQL. The owning-agent/parent arm is mirrored separately for agent search.
-  `packages/db/src/knowledge-space-visibility.ts` is the one Prisma mirror,
-  composed in exactly two locations: `visibleUserAlertWhere` for durable
-  knowledge alerts and `api/src/services/push-surface-presence.ts` before a
-  client may record a knowledge-space push-suppression surface. This keeps
-  `kb_search`, human KB search, alerts, and foreground push suppression honest
-  without a post-filter.
+  `canReadSpace`): `loadUserViewer` resolves the shared fragment once into
+  `SpaceViewer.visibleAgentIds`; the pure, synchronous `canReadSpace` admits
+  an agent-owned space only when that set contains its `ownerAgentId` (or the
+  person has an explicit space grant). This keeps database IO out of the
+  predicate while making list, detail, and document access depend on one
+  definition. Org owners' route-only `includeUnbound` widening remains outside
+  the shared member fragment.
+- **SQL and Prisma mirrors** (`native-search-access.ts`
+  `readableSpaceIdsSqlFor*`, `packages/db/src/knowledge-space-visibility.ts`):
+  the human search arm receives the already-resolved `visibleAgentIds` set as a
+  bound UUID array, and the owning-agent/parent arm is mirrored for agent
+  search. `visibleKnowledgeSpaceWhere` is composed by `visibleUserAlertWhere`
+  for durable knowledge alerts and by `push-surface-presence` before a client
+  records a knowledge-space push-suppression surface. This keeps `kb_search`,
+  human KB search, alerts, and foreground push suppression honest without a
+  post-filter.
 - **Agent-side** (`loadAgentViewer`): the owning agent passes via the
   existing `createdBy === agent.id` grant already; add
   `space.ownerAgentId === agent.id || space.ownerAgentId === agent.parentAgentId`
@@ -472,7 +477,7 @@ table.
 | Need | New | Reused |
 |---|---|---|
 | The owned home | `KnowledgeSpace.ownerAgentId` (+ index + CHECK), `ensureAgentDocsSpace`, lazy run-setup provision | `KnowledgeSpace`/`KnowledgePage`/`KnowledgePageVersion`/chunks — untouched; `ensureMyDocsSpace` pattern; `metadata` tagging |
-| Audience = agent's audience | one read arm in `access.ts` + the SQL mirror fragment, both delegating to the `workspace-admin` mirror pair | `isAgentVisibleToUser`/`isAgentAccessibleToActor` (and the future visibility fragment, inherited free); `visibility:'private'` as fail-closed floor |
+| Audience = agent's audience | shared `packages/db` visibility builder + preloaded viewer ids + one read arm in `access.ts` and each SQL/alert mirror | `listAgentsForUser`/`isAgentVisibleToUser` consume the same builder; `visibility:'private'` remains the fail-closed floor |
 | Agent authoring | structural prompt block naming the home space; proprietor relaxation of `kb_file` in own space | `kb_document_compose`/`kb_document_edit`/`kb_draft_write`/`kb_file`/`kb_search`/`kb_page_read`/`kb_list`/`kb_comment_*` — no new tool family; the whole streaming stack |
 | Human editing | `writeRestricted` + member management surfaced on the tab | KB editor, version history with `authorType`, annotations, `KnowledgeSpaceMember` (users *and* agents) |
 | Disclosure | agent-owned-space branch in the basis bridge; basis-aware refuse-before-write on compose/edit saves; `runReplyIsRestricted` gate on document stream + bootstrap | `ConsumedSourceSink`/`computeReplyBasis`/`scopeForVisibility`; existing attachment cleanup on persistence failures |
@@ -480,7 +485,7 @@ table.
 
 **Deliberately not built:** a second document store or streaming stack, a
 `docs_*` tool family, stored audience copies, per-document agent ACLs, an
-`agent:` basis scope type (deferred), agent-initiated sharing/widening
+agent-initiated sharing/widening
 (humans manage space membership), a Designer on/off switch (documents are a
 base capability like the KB tools already are — a deployment gates via
 ordinary tool policy; revisit with tables' identical open question).
@@ -490,7 +495,7 @@ ordinary tool policy; revisit with tables' identical open question).
 Each phase ships with its surface and doc updates in the same turn;
 migrations additive only.
 
-**Build status (2026-08-31):** phase 1d now keeps the provisioning helpers in
+**Build status (2026-08-31):** the implementation keeps the provisioning helpers in
 `@nessie/knowledge`, leaving the API service as a thin re-export for its
 unchanged callers. Run setup provisions a non-system agent's home only after
 its assembled toolset includes a KB write tool; the advisory-locked ensure
@@ -500,9 +505,9 @@ Docs. The prompt injects the resolved home id/title only when all four tools
 it names (`kb_list`, `kb_search`, `kb_document_compose`,
 `kb_document_edit`) are present.
 
-1. **The owned space + access + safety.** `ownerAgentId` migration + CHECK;
+1. **The owned space + access + safety (implemented).** `ownerAgentId` migration + CHECK;
    `ensureAgentDocsSpace` + lazy provision; the read arm in TS and SQL
-   (delegating to the mirror pair) + the row added to the agent-scopes
+   (delegating to the shared DB builder) + the row added to the agent-scopes
    gating table; the basis-bridge branch (with the §5.1 send_message
    verification settled and recorded); the basis-aware refuse-before-write
    decision;
@@ -510,13 +515,17 @@ it names (`kb_list`, `kb_search`, `kb_document_compose`,
    documents through the existing tools, and entitled humans already reach
    them through the KB workspace — the capability is human-reachable on day
    one.
-2. **The Documents tab.** The per-agent route, the parameterized knowledge
+2. **The Documents tab (implemented).** The per-agent route, the parameterized knowledge
    workspace on agent detail, doorway naming ("<Agent> — Documents"),
    `writeRestricted` + member management placement, no-secrets copy.
-3. **Stream restriction gate.** `runReplyIsRestricted` on the document
+3. **Stream restriction gate (implemented 2026-08-31).** `runReplyIsRestricted` on the document
    lanes and the bootstrap route (repairs the pre-existing KB gap
    product-wide). Ordered after 1–2 only because it is independent and
-   benefits all composes; teams may land it first.
+   benefits all composes; teams may land it first. The durable lane remains
+   complete for save byte-equality and authorized reconnects; list/detail apply
+   the shared run-basis reader before loading target names or chunks, and the
+   recorder stamps that run basis before a restricted session becomes
+   bootstrap-readable rather than waiting for the final reply.
 4. **Refinements with real use:** proprietor ergonomics (`kb_file`
    relaxation if not already in 1), steward-widened template of write
    permissions when people-and-their-agents phase 3 decides entitlements,

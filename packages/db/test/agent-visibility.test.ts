@@ -10,6 +10,7 @@ import {
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const userId = '00000000-0000-4000-8000-000000000002'
+const agentId = '00000000-0000-4000-8000-000000000003'
 
 test('buildVisibleAgentWhere centralizes channel reach and live stewardship', () => {
   assert.deepEqual(buildVisibleAgentWhere({ organizationId, userId }), {

@@ -12,6 +12,7 @@ export const UserAlertKindSchema = z.enum([
   // failure this surfaces was previously invisible unless somebody opened the
   // Triggers page and read a delivery row.
   'trigger_health',
+  'call_missed',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
@@ -27,6 +28,7 @@ export const UserAlertRecordSchema = z.object({
   taskId: z.string().uuid().nullable(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
+  callId: z.string().uuid().nullable(),
   actorUserId: z.string().uuid().nullable(),
   actorAgentId: z.string().uuid().nullable(),
   actorDisplayName: z.string().nullable(),

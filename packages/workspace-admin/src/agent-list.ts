@@ -71,7 +71,6 @@ export const listAgentsForUser = async (
   const agents = await prisma.agent.findMany({
     where: {
       organizationId,
-      ...(includeSystemManaged ? {} : { systemManaged: false }),
       OR: visibilityFilters,
     },
     include: {

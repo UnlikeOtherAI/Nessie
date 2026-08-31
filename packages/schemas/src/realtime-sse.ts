@@ -76,6 +76,9 @@ export type SseEventMap = {
     // changed — which the client must load before any delta makes sense.
     // `compose` starts from nothing, so it needs no fetch.
     mode: 'compose' | 'edit'
+    // A restricted session is announced so clients can close their pending
+    // state, but its title, target and text never enter the thread broadcast.
+    restricted?: true
   }
   'stream.document.meta': {
     runId: RunId
@@ -96,21 +99,24 @@ export type SseEventMap = {
     offset: number
     content: string
   }
-  'stream.document.done': {
-    runId: RunId
-    sessionId: string
-    pageId: string
-    versionNumber: number
-    title: string
-    spaceId: string
-    spaceName?: string
-    chars: number
-    published: boolean
-  }
+  'stream.document.done':
+    | { runId: RunId; sessionId: string; restricted: true }
+    | {
+        runId: RunId
+        sessionId: string
+        pageId: string
+        versionNumber: number
+        title: string
+        spaceId: string
+        spaceName?: string
+        chars: number
+        published: boolean
+      }
   'stream.document.error': {
     runId: RunId
     sessionId: string
     reason: DocumentStreamErrorReason
+    restricted?: true
   }
   'stream.document.target': {
     runId: RunId
@@ -195,6 +201,7 @@ export const StreamDocumentStartEventSchema = z.object({
   sessionId: SessionIdSchema,
   threadId: ThreadIdSchema,
   toolCallId: NonEmptyStringSchema,
+  restricted: z.literal(true).optional(),
 })
 export type StreamDocumentStartEvent = z.infer<typeof StreamDocumentStartEventSchema>
 
@@ -218,21 +225,29 @@ export const StreamDocumentDeltaEventSchema = z.object({
 })
 export type StreamDocumentDeltaEvent = z.infer<typeof StreamDocumentDeltaEventSchema>
 
-export const StreamDocumentDoneEventSchema = z.object({
-  chars: z.number().int().nonnegative(),
-  pageId: z.string().uuid(),
-  published: z.boolean(),
-  runId: RunIdSchema,
-  sessionId: SessionIdSchema,
-  spaceId: z.string().uuid(),
-  spaceName: z.string().optional(),
-  title: NonEmptyStringSchema,
-  versionNumber: z.number().int().positive(),
-})
+export const StreamDocumentDoneEventSchema = z.union([
+  z.object({
+    restricted: z.literal(true),
+    runId: RunIdSchema,
+    sessionId: SessionIdSchema,
+  }),
+  z.object({
+    chars: z.number().int().nonnegative(),
+    pageId: z.string().uuid(),
+    published: z.boolean(),
+    runId: RunIdSchema,
+    sessionId: SessionIdSchema,
+    spaceId: z.string().uuid(),
+    spaceName: z.string().optional(),
+    title: NonEmptyStringSchema,
+    versionNumber: z.number().int().positive(),
+  }),
+])
 export type StreamDocumentDoneEvent = z.infer<typeof StreamDocumentDoneEventSchema>
 
 export const StreamDocumentErrorEventSchema = z.object({
   reason: DocumentStreamErrorReasonSchema,
+  restricted: z.literal(true).optional(),
   runId: RunIdSchema,
   sessionId: SessionIdSchema,
 })

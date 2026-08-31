@@ -1,3 +1,8 @@
+import {
+  CREDITS_EXHAUSTED_USER_MESSAGE,
+  isCreditsExhaustedError,
+  providerFailureDetails,
+} from '@nessie/runtime'
 import { exponentialBackoffMs } from '@nessie/runtime/scheduling'
 
 export type FailoverReason =
@@ -6,6 +11,7 @@ export type FailoverReason =
   | 'credentials_missing'
   | 'credentials_scope'
   | 'rate_limit'
+  | 'credits_exhausted'
   | 'billing'
   | 'context_overflow'
   | 'timeout'
@@ -19,6 +25,7 @@ export type FailoverReason =
 export type RecoveryStrategy =
   | { action: 'retry'; delayMs: number }
   | { action: 'compact_and_retry' }
+  | { action: 'fail_run' }
   | { action: 'surface_error'; userMessage: string }
   | { action: 'abort' }
 
@@ -34,6 +41,8 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
       return 'The model provider could not authenticate this request. Ask a workspace owner to verify the provider credential, then try again.'
     case 'rate_limit':
       return 'The model provider is rate limited. Please try again shortly.'
+    case 'credits_exhausted':
+      return CREDITS_EXHAUSTED_USER_MESSAGE
     case 'billing':
       return 'The model provider reported a billing or quota problem. Ask a workspace owner to review the provider account, then try again.'
     case 'context_overflow':
@@ -57,9 +66,15 @@ export const userMessageForFailureReason = (reason: FailoverReason): string => {
 export const classifyError = (error: unknown): FailoverReason => {
   if (!(error instanceof Error)) return 'unknown'
 
+  if (isCreditsExhaustedError(error)) {
+    return 'credits_exhausted'
+  }
+
   const message = error.message.toLowerCase()
+  const providerFailure = providerFailureDetails(error)
   const statusMatch = message.match(/status[:\s]*(\d{3})/)
-  const status = statusMatch ? parseInt(statusMatch[1]!, 10) : null
+  const status = providerFailure?.statusCode
+    ?? (statusMatch ? parseInt(statusMatch[1]!, 10) : null)
 
   if (
     (message.includes('api key') || message.includes('api_key'))
@@ -129,6 +144,13 @@ export const resolveRecovery = (
   attemptCount: number,
   retryBudget: RetryBudget,
 ): RecoveryStrategy => {
+  // Ledger's invocation refusal is the commercial-credit authority. It is
+  // terminal on this call and must reach normal run failure handling instead
+  // of becoming an assistant-shaped synthetic completion.
+  if (reason === 'credits_exhausted') {
+    return { action: 'fail_run' }
+  }
+
   if (retryBudget.remaining <= 0 && reason !== 'context_overflow') {
     return { action: 'surface_error', userMessage: 'Too many retries. Please try again later.' }
   }

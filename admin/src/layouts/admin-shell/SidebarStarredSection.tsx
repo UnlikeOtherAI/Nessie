@@ -1,8 +1,10 @@
 import type { ChannelRecord } from '../../lib/api-client';
 import { UserAvatar } from '../../components/primitives/UserAvatar';
+import { UserStatusEmoji } from '../../components/primitives/UserStatusEmoji';
 import { ProjectAvatar } from '../../components/primitives/ProjectAvatar';
 import { AgentAvatar } from '../../components/shared/AgentAvatar';
 import { useAuthSession } from '../../providers/AuthSessionProvider';
+import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { isReactNativeWebView } from '../../lib/mobile-shell';
 import {
   channelHashClassName,
@@ -45,6 +47,7 @@ export const SidebarStarredSection = ({
   unreadCountByChannelId,
 }: SidebarStarredSectionProps) => {
   const { token } = useAuthSession();
+  const getPresence = usePresenceLookup();
   const nativeTouchShell = isReactNativeWebView();
   if (entries.length === 0) {
     return null;
@@ -188,6 +191,7 @@ export const SidebarStarredSection = ({
         const personUnreadCount = person.dmChannelId
           ? unreadCountByChannelId.get(person.dmChannelId) ?? 0
           : 0;
+        const presence = getPresence(person.id);
         return (
           <button
             key={`starred-usr-${person.id}`}
@@ -202,12 +206,18 @@ export const SidebarStarredSection = ({
               presenceRingWidth={nativeTouchShell ? 3 : undefined}
               ringColor={nativeTouchShell ? 'var(--sb)' : undefined}
               showPresence={nativeTouchShell}
-              showStatus={!nativeTouchShell}
+              showStatus={false}
               size={nativeTouchShell ? 24 : 18}
               token={token}
               userId={person.id}
             />
-            <span className="min-w-0 flex-1 truncate">{person.label}</span>
+            <span className="min-w-0 flex flex-1 items-center gap-1 overflow-hidden">
+              <span className="truncate">{person.label}</span>
+              <UserStatusEmoji
+                statusEmoji={presence?.statusEmoji}
+                statusLabel={presence?.statusLabel}
+              />
+            </span>
             {renderUnreadCount(personUnreadCount)}
             <span
               className="sidebar-row-star ml-1 flex-shrink-0 cursor-pointer px-0.5 text-sm leading-none text-[color:var(--warning-text)]"

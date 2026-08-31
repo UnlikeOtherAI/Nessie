@@ -15,6 +15,7 @@ const agentId = '00000000-0000-4000-8000-000000000004'
 const teamId = '00000000-0000-4000-8000-000000000005'
 const channelId = '00000000-0000-4000-8000-000000000006'
 const memberSpaceId = '00000000-0000-4000-8000-000000000007'
+const parentAgentId = '00000000-0000-4000-8000-000000000008'
 
 const viewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   bypass: false,
@@ -67,6 +68,20 @@ test('readableSpaceIdsSql binds visible agent ids and omits an empty owner arm',
   assert.deepEqual(visible.values, [organizationId, userId, [agentId], userId, userId])
 })
 
+test('readableSpaceIdsSql binds pre-resolved visible agent ids only when non-empty', () => {
+  const empty = readableSpaceIdsSql(organizationId, viewer())
+  assert.doesNotMatch(empty.sql, /owner_agent_id = ANY/)
+
+  const fragment = readableSpaceIdsSql(
+    organizationId,
+    viewer({ visibleAgentIds: new Set([agentId]) }),
+  )
+  assert.match(fragment.sql, /s\.owner_agent_id IS NOT NULL/)
+  assert.match(fragment.sql, /s\.owner_agent_id = ANY\(\?::uuid\[\]\)/)
+  assert.ok(fragment.values.includes(agentId) === false)
+  assert.ok(fragment.values.some((value) => Array.isArray(value) && value[0] === agentId))
+})
+
 test('readableSpaceIdsSql omits the project-visibility arm when projectIds is empty', () => {
   const fragment = readableSpaceIdsSql(organizationId, viewer())
   assert.doesNotMatch(fragment.sql, /project_id IN/)
@@ -103,7 +118,6 @@ test('readableSpaceIdsSqlForAgent binds the owning agent and parent as explicit 
     organizationId,
     agentScopes({ parentAgentId }),
   )
-
   assert.match(fragment.sql, /s\.owner_agent_id = ANY\(\?::uuid\[\]\)/)
   assert.deepEqual(
     fragment.values,

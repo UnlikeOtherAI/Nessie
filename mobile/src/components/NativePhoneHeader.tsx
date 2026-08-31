@@ -42,7 +42,7 @@ const AccountPresenceIndicator = ({
   state: 'away' | 'offline' | 'online'
 }): React.JSX.Element => {
   const dotStyle = focusModeEnabled
-    ? { backgroundColor: '#ffffff', borderColor: '#20a86b', borderStyle: 'dashed' as const, borderWidth: 1.5 }
+    ? { backgroundColor: '#ffffff' }
     : state === 'online'
     ? { backgroundColor: '#20a86b' }
     : state === 'away'
@@ -51,7 +51,9 @@ const AccountPresenceIndicator = ({
 
   return (
     <View style={[styles.presenceCutout, { backgroundColor: headerSurface }]}>
-      <View style={[styles.presenceDot, dotStyle]} />
+      <View style={[styles.presenceDot, dotStyle]}>
+        {focusModeEnabled ? <View style={styles.focusPresenceDash} /> : null}
+      </View>
     </View>
   )
 }
@@ -244,6 +246,17 @@ const styles = StyleSheet.create({
   },
   headerContentCompact: { gap: 8, paddingHorizontal: NATIVE_PHONE_LANDSCAPE_HORIZONTAL_GUTTER },
   historyButton: { alignItems: 'center', borderRadius: 16, height: 32, justifyContent: 'center', width: 32 },
+  focusPresenceDash: {
+    borderColor: '#20a86b',
+    borderRadius: 3,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    bottom: 1,
+    left: 1,
+    position: 'absolute',
+    right: 1,
+    top: 1,
+  },
   presenceCutout: {
     alignItems: 'center',
     borderRadius: 7,

@@ -43,8 +43,9 @@ test('GET /api/knowledge-base/spaces forwards the caller\'s org to the provider'
       },
     ],
     projectMember: { findMany: async () => [{ projectId: IDS.projectB }] },
-    // This fixture contains no agents. User-viewer loading still resolves the
-    // shared visibility query, so the fake must model the delegate explicitly.
+    // This fixture contains no agents. The user viewer still resolves the
+    // shared agent-visibility query, so the delegate must exist and return the
+    // empty result for every scoped where/select combination.
     agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },

@@ -11,6 +11,7 @@ const channelId = '00000000-0000-4000-8000-000000000005'
 const otherChannelId = '00000000-0000-4000-8000-000000000006'
 const agentId = '00000000-0000-4000-8000-000000000007'
 const otherAgentId = '00000000-0000-4000-8000-000000000008'
+const childAgentId = '00000000-0000-4000-8000-000000000009'
 
 type SpaceFacts = Parameters<typeof canReadSpace>[0]
 
@@ -46,6 +47,14 @@ const agentViewer = (overrides: Partial<SpaceViewerAgentScopes> = {}): SpaceView
   projectIds: new Set(),
   visibleAgentIds: new Set(),
   agent: agentScopes(overrides),
+})
+
+const userViewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
+  bypass: false,
+  userId: 'user-1',
+  projectIds: new Set(),
+  visibleAgentIds: new Set(),
+  ...overrides,
 })
 
 test('canReadSpace denies an agent everything on a restricted space, even with an explicit grant', () => {
@@ -162,6 +171,82 @@ test('canWriteSpace non-writeRestricted: agent write follows the same rules as r
   const s = space({ visibility: 'project', projectId })
   assert.equal(canWriteSpace(s, agentViewer({ projectIds: new Set([projectId]) })), true)
   assert.equal(canWriteSpace(s, agentViewer({ projectIds: new Set([otherProjectId]) })), false)
+})
+
+test('a user reads an agent-owned space exactly when they can see its agent', () => {
+  const owned = space({
+    createdBy: agentId,
+    ownerAgentId: agentId,
+    visibility: 'private',
+  })
+  assert.equal(
+    canReadSpace(owned, userViewer({ visibleAgentIds: new Set([agentId]) })),
+    true,
+  )
+  assert.equal(canReadSpace(owned, userViewer()), false)
+  assert.equal(
+    canReadSpace(space({ ...owned, memberUserIds: ['user-1'] }), userViewer()),
+    true,
+  )
+})
+
+test('an agent-owned space never falls through to organization or project visibility', () => {
+  const facts = { createdBy: otherAgentId, ownerAgentId: agentId }
+  assert.equal(
+    canReadSpace(space({ ...facts, visibility: 'organization' }), userViewer()),
+    false,
+  )
+  assert.equal(
+    canReadSpace(
+      space({ ...facts, projectId, visibility: 'project' }),
+      userViewer({ projectIds: new Set([projectId]) }),
+    ),
+    false,
+  )
+})
+
+test('the owning agent and its subtask child can read and write the documents home', () => {
+  const owned = space({
+    createdBy: 'provisioner',
+    ownerAgentId: agentId,
+    visibility: 'private',
+  })
+  const child = agentViewer({ id: childAgentId, parentAgentId: agentId })
+  const unrelated = agentViewer({ id: otherAgentId })
+
+  assert.equal(canReadSpace(owned, agentViewer()), true)
+  assert.equal(canWriteSpace(owned, agentViewer()), true)
+  assert.equal(canReadSpace(owned, child), true)
+  assert.equal(canWriteSpace(owned, child), true)
+  assert.equal(canReadSpace(owned, unrelated), false)
+  assert.equal(canWriteSpace(owned, unrelated), false)
+})
+
+test('restricted sensitivity still denies the owning agent', () => {
+  const restricted = space({
+    createdBy: 'provisioner',
+    ownerAgentId: agentId,
+    sensitivityTier: 'restricted',
+    visibility: 'private',
+  })
+  assert.equal(canReadSpace(restricted, agentViewer()), false)
+  assert.equal(canWriteSpace(restricted, agentViewer()), false)
+})
+
+test('writeRestricted narrows agent-owned human writes to explicit members', () => {
+  const restrictedWrite = space({
+    createdBy: agentId,
+    ownerAgentId: agentId,
+    visibility: 'private',
+    writeRestricted: true,
+  })
+  const visible = userViewer({ visibleAgentIds: new Set([agentId]) })
+  assert.equal(canReadSpace(restrictedWrite, visible), true)
+  assert.equal(canWriteSpace(restrictedWrite, visible), false)
+  assert.equal(
+    canWriteSpace(space({ ...restrictedWrite, memberUserIds: ['user-1'] }), visible),
+    true,
+  )
 })
 
 test('user access semantics are unchanged: creator, org, project-membership, and explicit member arms', () => {

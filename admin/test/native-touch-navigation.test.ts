@@ -7,6 +7,23 @@ import { projectSelectionClassName } from '../src/layouts/admin-shell/SidebarRow
 const readSource = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
 
+const readCssBlock = (source: string, marker: string): string => {
+  const markerIndex = source.indexOf(marker)
+  assert.notEqual(markerIndex, -1, `Missing CSS rule: ${marker}`)
+  const openingBrace = source.indexOf('{', markerIndex)
+  assert.notEqual(openingBrace, -1, `Missing opening brace for: ${marker}`)
+
+  let depth = 0
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1
+    if (source[index] !== '}') continue
+    depth -= 1
+    if (depth === 0) return source.slice(openingBrace + 1, index)
+  }
+
+  assert.fail(`Missing closing brace for: ${marker}`)
+}
+
 test('every native touch sidebar uses Slack-scale density while desktop remains compact', () => {
   const sidebars = [
     readSource('../src/layouts/admin-shell/SidebarNav.tsx'),
@@ -26,7 +43,12 @@ test('every native touch sidebar uses Slack-scale density while desktop remains 
   assert.match(styles, /\.touch-sidebar \.sidebar-project-tile/)
   assert.match(styles, /\.touch-sidebar \.admin-sec-hdr\s*\{[\s\S]*?min-height: 38px[\s\S]*?font-size: 14px/)
   assert.match(styles, /\.touch-sidebar \.admin-sb-item\s*\{[\s\S]*?min-height: 38px[\s\S]*?font-size: 14px/)
-  assert.doesNotMatch(styles, /@media \(any-pointer: coarse\)/)
+  const coarsePointerStyles = readCssBlock(styles, '@media (any-pointer: coarse)')
+  assert.match(coarsePointerStyles, /\.admin-compose-action/)
+  assert.doesNotMatch(
+    coarsePointerStyles,
+    /\.touch-sidebar|\.admin-sec-hdr|\.admin-sb-item|\.sidebar-project-tile/,
+  )
 })
 
 test('project folder rows become bold only in the touch sidebar', () => {
@@ -81,12 +103,16 @@ test('secondary sidebar menus do not repeat the active tab title above their ite
 })
 
 test('project action menus render in the document overlay layer instead of the clipped sidebar', () => {
-  const projects = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
+  const sidebarProjects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
+  const projectNavigation = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
 
-  assert.match(projects, /createPortal\(/)
-  assert.match(projects, /document\.body/)
-  assert.match(projects, /admin-sidebar-menu-project fixed z-\[61\]/)
-  assert.match(projects, /window\.addEventListener\('scroll', closeMenu, true\)/)
+  assert.match(sidebarProjects, /createPortal\(/)
+  assert.match(sidebarProjects, /document\.body/)
+  assert.match(sidebarProjects, /admin-sidebar-menu-project fixed z-\[61\]/)
+  assert.match(sidebarProjects, /setMenuPosition\(\{ left: rect\.left, top: rect\.bottom \}\)/)
+  assert.match(sidebarProjects, /window\.addEventListener\('scroll', closeOnViewportChange, true\)/)
+  assert.match(projectNavigation, /createPortal\(/)
+  assert.match(projectNavigation, /document\.body/)
 })
 
 test('avatar tiles are rounded squares and touch navigation uses sidebar-coloured presence cutouts', () => {
@@ -99,9 +125,11 @@ test('avatar tiles are rounded squares and touch navigation uses sidebar-coloure
 
   assert.match(people, /presenceRingWidth=\{nativeTouchShell \? 3 : undefined\}/)
   assert.match(people, /ringColor=\{nativeTouchShell \? 'var\(--sb\)' : undefined\}/)
-  assert.match(people, /showStatus=\{!nativeTouchShell\}/)
+  assert.match(people, /showStatus=\{false\}/)
+  assert.match(people, /<UserStatusEmoji/)
   assert.match(starred, /showPresence=\{nativeTouchShell\}/)
-  assert.match(starred, /showStatus=\{!nativeTouchShell\}/)
+  assert.match(starred, /showStatus=\{false\}/)
+  assert.match(starred, /<UserStatusEmoji/)
   assert.match(avatar, /rounded-md/)
   assert.match(agentAvatar, /rounded-md/)
   assert.match(workspaceAvatar, /rounded-md/)
@@ -283,6 +311,6 @@ test('sidebar action menus have room to read and tap their choices', () => {
 test('an open project action menu dismisses when the person taps outside it', () => {
   const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
 
-  assert.match(projects, /className="fixed inset-0 z-10"/)
-  assert.match(projects, /setSidebarMenu\(\(\) => null\)/)
+  assert.match(projects, /className="fixed inset-0 z-\[60\] cursor-default"/)
+  assert.match(projects, /closeProjectMenu\(\)/)
 })

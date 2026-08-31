@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { FileService } from '@nessie/runtime'
+import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 
 const MARKDOWN_EXTENSION = '.md'
 
@@ -16,6 +18,7 @@ export const readMarkdownDocument = async (
   fileService: FileService,
   organizationId: string,
   pageId: string,
+  disclosureContext: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
 ): Promise<{
   attachmentId: string
   content: string
@@ -30,6 +33,16 @@ export const readMarkdownDocument = async (
       parentPageId: true,
       spaceId: true,
       publishedVersion: { select: { attachmentId: true } },
+      space: {
+        select: {
+          channelId: true,
+          organizationId: true,
+          projectId: true,
+          teamId: true,
+          userId: true,
+          visibility: true,
+        },
+      },
       title: true,
       versions: {
         orderBy: { versionNumber: 'desc' },
@@ -45,6 +58,9 @@ export const readMarkdownDocument = async (
   const attachmentId = page.versions[0]?.attachmentId ?? page.publishedVersion?.attachmentId
   if (!attachmentId) return null
 
+  // The body is about to enter the run. Record its source before opening the
+  // attachment so no byte can be streamed or persisted with an empty basis.
+  recordKnowledgeSpaceRead(disclosureContext, [page.space])
   const opened = await fileService.openStream(attachmentId, organizationId)
   if (!opened) return null
 

@@ -54,6 +54,13 @@ export const visibleUserAlertWhere = (input: {
       },
     },
     {
+      // The foreign key cascade removes this row on deletion, while this
+      // relation check keeps a concurrent source deletion from leaking a stale
+      // bell item through a read/count/write query.
+      kind: 'call_missed',
+      call: { is: {} },
+    },
+    {
       kind: 'knowledge_published',
       knowledgePage: {
         is: {

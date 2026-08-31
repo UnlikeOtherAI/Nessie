@@ -95,8 +95,21 @@ export const buildFcmBody = (token: string, payload: PushPayload): string => {
     android.collapse_key = payload.collapseId
     apns.headers = { 'apns-collapse-id': payload.collapseId }
   }
+  if (payload.priority === 'high') {
+    android.priority = 'high'
+  }
+  if (payload.category !== undefined) {
+    android.notification = {
+      ...(android.notification as Record<string, unknown> | undefined),
+      channel_id: payload.category,
+    }
+    aps.category = payload.category
+  }
   if (payload.badge !== undefined) {
-    android.notification = { notification_count: payload.badge }
+    android.notification = {
+      ...(android.notification as Record<string, unknown> | undefined),
+      notification_count: payload.badge,
+    }
     aps.badge = payload.badge
   }
   if (Object.keys(aps).length > 0) apnsPayload.aps = aps

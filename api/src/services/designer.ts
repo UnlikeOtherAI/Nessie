@@ -4,7 +4,9 @@ import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   attributionFromActorContext,
+  CREDITS_EXHAUSTED_USER_MESSAGE,
   completeLedgerAttribution,
+  isCreditsExhaustedError,
   recordInferenceUsage,
   type LedgerInvocation,
   type ModelClient,
@@ -42,6 +44,11 @@ type DesignerUsageChunk = {
 const resolveDesignerModel = (modelClient: ModelClient): string =>
   process.env['NESSIE_DESIGNER_MODEL']?.trim() || modelClient.chatModel
 const MAX_TOOL_ROUNDS = 5
+
+export const userMessageForDesignerError = (error: unknown): string =>
+  isCreditsExhaustedError(error)
+    ? CREDITS_EXHAUSTED_USER_MESSAGE
+    : 'The Design Assistant could not complete that request. Please try again.'
 
 type OpenAIMessage = {
   content: string | null
@@ -396,10 +403,7 @@ export const streamDesignerChat = async (
       writeSseEvent(reply, 'status', { message: 'Processing results...' })
     }
   } catch (error) {
-    const msg = error instanceof Error
-      ? error.message
-      : 'Model request failed'
-    writeSseEvent(reply, 'error', { message: msg })
+    writeSseEvent(reply, 'error', { message: userMessageForDesignerError(error) })
   }
 
   writeSseEvent(reply, 'done', {})

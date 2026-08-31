@@ -66,11 +66,11 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
 
 type SpaceFixtureOverrides = Partial<{
   id: string
-  ownerAgentId: string | null
   userId: string | null
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   teamId: string | null
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
+  ownerAgentId: string | null
 }>
 
 const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
@@ -99,6 +99,7 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
 type FakePrismaOptions = {
   page?: ReturnType<typeof buildPageRow> | null
   space?: ReturnType<typeof buildSpaceRow> | null
+  agents?: Array<{ id: string; organizationId: string; parentAgentId: string | null }>
   agentBindings?: Array<{ channelId: string; channel: { teamId: string; projectId: string } }>
   agentSpaceMemberships?: Array<{ spaceId: string }>
   parentAgentId?: string | null
@@ -106,16 +107,20 @@ type FakePrismaOptions = {
 }
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
+  const agents = options.agents ?? [
+    { id: 'agent-1', organizationId: 'org-1', parentAgentId: null },
+  ]
   const prisma = {
     agent: {
       findFirst: async (args: {
         where: { id: string; organizationId: string }
       }) => {
-        if (args.where.id !== 'agent-1' || args.where.organizationId !== 'org-1') {
-          return null
-        }
+        const agent = agents.find(
+          (candidate) => candidate.id === args.where.id && candidate.organizationId === args.where.organizationId,
+        )
+        if (!agent) return null
         return {
-          parentAgentId: options.parentAgentId ?? null,
+          parentAgentId: agent.parentAgentId,
           bindings: options.agentBindings ?? [],
           knowledgeSpaceMemberships: options.agentSpaceMemberships ?? [],
         }
@@ -242,6 +247,41 @@ test('kb_page_read returns the page body when the agent is allowed to read it', 
 
   assert.match(result.outputPreview, /Title: Runbook/)
   assert.match(result.outputPreview, /Restart the service, then check logs\./)
+})
+
+test('kb_page_read lets a subtask child read its parent agent\'s space only', async () => {
+  const page = buildPageRow({ body: '<p>Parent-owned working notes.</p>' })
+  const space = buildSpaceRow({ visibility: 'private', ownerAgentId: 'agent-parent' })
+  const agents = [
+    { id: 'agent-child', organizationId: 'org-1', parentAgentId: 'agent-parent' },
+    { id: 'agent-unrelated', organizationId: 'org-1', parentAgentId: null },
+    // The same child id in another organization proves the fake honours the
+    // organization predicate as well as the id predicate.
+    { id: 'agent-child', organizationId: 'org-other', parentAgentId: null },
+  ]
+  const prisma = buildFakePrisma({ agents, page, space })
+  const childContext = makeContext(prisma, {
+    agentId: 'agent-child',
+    actorContext: {
+      actor: { actorId: 'agent-child', actorType: 'agent', roles: [] },
+      actionContext: {},
+      tenant: { organizationId: 'org-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+  })
+  const unrelatedContext = makeContext(prisma, {
+    agentId: 'agent-unrelated',
+    actorContext: {
+      actor: { actorId: 'agent-unrelated', actorType: 'agent', roles: [] },
+      actionContext: {},
+      tenant: { organizationId: 'org-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+  })
+
+  const childResult = await runKbPageReadTool(childContext, { pageId: 'page-1' })
+  const unrelatedResult = await runKbPageReadTool(unrelatedContext, { pageId: 'page-1' })
+
+  assert.match(childResult.outputPreview, /Parent-owned working notes\./)
+  assert.equal(unrelatedResult.outputPreview, 'You do not have access to this knowledge page.')
 })
 
 test('kb_search passes taskId through to the hybrid search as a chunk filter', async () => {

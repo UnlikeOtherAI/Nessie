@@ -9,6 +9,7 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { AppTrustLevel } from '@nessie/schemas'
 import { appTrustBadge, type AppTrustIconId } from './app-trust'
+import { AppIconBadge } from './AppIconBadge'
 
 const ICONS: Record<AppTrustIconId, IconDefinition> = {
   shield: faShieldHalved,
@@ -19,13 +20,27 @@ const ICONS: Record<AppTrustIconId, IconDefinition> = {
 }
 
 type AppTrustBadgeProps = {
+  /** Cards use the compact version; the detail hero keeps the named chip. */
+  iconOnly?: boolean
   trustLevel: AppTrustLevel
 }
 
-// Who published this, in one chip. Identical on the card and in the detail
-// hero, so clicking through never changes the story.
-export const AppTrustBadge = ({ trustLevel }: AppTrustBadgeProps) => {
+// Who published this. The detail hero keeps the named chip; a card uses the
+// same model as an icon-only badge so its compactness never erases the meaning.
+export const AppTrustBadge = ({ iconOnly = false, trustLevel }: AppTrustBadgeProps) => {
   const badge = appTrustBadge(trustLevel)
+
+  if (iconOnly) {
+    return (
+      <AppIconBadge
+        description={badge.description}
+        icon={ICONS[badge.iconId]}
+        label={badge.label}
+        testId={`app-trust-${trustLevel}`}
+        toneClass={badge.toneClass}
+      />
+    )
+  }
 
   return (
     <span
@@ -35,15 +50,11 @@ export const AppTrustBadge = ({ trustLevel }: AppTrustBadgeProps) => {
         badge.toneClass,
       ].join(' ')}
       data-testid={`app-trust-${trustLevel}`}
-      title={badge.description}
     >
       <FontAwesomeIcon className="h-2.5 w-2.5" icon={ICONS[badge.iconId]} />
       {badge.label}
-      {/* The chip's meaning must not live only in a `title`. A tooltip never
-          appears on touch and is not part of the accessible name, so "Community"
-          reached a screen reader as a bare word with nothing behind it. The
-          sentence rides along visually hidden, leaving the chip's size — the
-          reason it is one word on screen — unchanged. */}
+      {/* The named detail chip is already readable; its description completes
+          the otherwise short provenance label for assistive technology. */}
       <span className="sr-only">{`: ${badge.description}`}</span>
     </span>
   )

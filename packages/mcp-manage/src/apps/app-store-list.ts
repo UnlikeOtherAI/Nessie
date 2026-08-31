@@ -19,6 +19,10 @@ import {
   type StoreCatalogRow,
 } from './app-presenter.js'
 import { searchStoreApps } from './app-search.js'
+import {
+  appHomeSuggestionRegistryNames,
+  prioritizeHomeShelf,
+} from './app-home-suggestions.js'
 import { storeCatalogWhere } from './app-store-visibility.js'
 
 /**
@@ -231,8 +235,17 @@ type PageResult = {
 const loadShelfPage = async (
   prisma: PrismaClient,
   where: Prisma.McpCatalogEntryWhereInput,
+  includeSuggestions: boolean,
 ): Promise<PageResult> => {
-  const categories = await countCategories(prisma, where)
+  const [categories, suggestions] = await Promise.all([
+    countCategories(prisma, where),
+    includeSuggestions
+      ? prisma.mcpCatalogEntry.findMany({
+        where: and(where, { registryName: { in: appHomeSuggestionRegistryNames() } }),
+        select: STORE_CATALOG_SELECT,
+      })
+      : Promise.resolve([]),
+  ])
   const shelves = await Promise.all(
     categories.map((entry) =>
       prisma.mcpCatalogEntry.findMany({
@@ -243,7 +256,17 @@ const loadShelfPage = async (
       }),
     ),
   )
-  return { categories, rows: shelves.flat() }
+  return {
+    categories,
+    rows: categories.flatMap((entry, index) =>
+      prioritizeHomeShelf(
+        entry.category,
+        suggestions,
+        shelves[index] ?? [],
+        CATEGORY_SHELF_LIMIT,
+      ),
+    ),
+  }
 }
 
 /**
@@ -327,7 +350,7 @@ const loadPage = (
 ): Promise<PageResult> => {
   if (query.length > 0) return loadSearchPage(prisma, where, query, filters, connectedIds)
   if (filters.category) return loadCategoryPage(prisma, where, filters.category, filters)
-  return loadShelfPage(prisma, where)
+  return loadShelfPage(prisma, where, filters.installed !== true)
 }
 
 export const listStoreApps = async (

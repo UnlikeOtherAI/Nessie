@@ -317,13 +317,92 @@ export interface InferenceService {
   ): AsyncGenerator<InferenceStreamEvent, InferenceResult, undefined>
 }
 
-export class ProviderInvocationError extends Error {
-  readonly invocation: InvocationRecord
+export type ProviderFailureDetails = {
+  creditRefusal?: 'ledger'
+  providerCode?: string
+  statusCode?: number
+}
 
-  constructor(message: string, invocation: InvocationRecord, cause?: unknown) {
+/**
+ * A non-success HTTP response from a model provider. The response's structured
+ * status and code are intentionally retained separately from its display
+ * message: callers make recovery decisions from protocol facts, never from
+ * provider prose.
+ */
+export class ProviderHttpError extends Error {
+  readonly creditRefusal?: 'ledger'
+  readonly providerCode?: string
+  readonly statusCode: number
+
+  constructor(
+    message: string,
+    details: ProviderFailureDetails & { statusCode: number },
+  ) {
+    super(message)
+    this.name = 'ProviderHttpError'
+    this.creditRefusal = details.creditRefusal
+    this.providerCode = details.providerCode
+    this.statusCode = details.statusCode
+  }
+}
+
+export class ProviderInvocationError extends Error {
+  readonly creditRefusal?: 'ledger'
+  readonly invocation: InvocationRecord
+  readonly providerCode?: string
+  readonly statusCode?: number
+
+  constructor(
+    message: string,
+    invocation: InvocationRecord,
+    cause?: unknown,
+    details: ProviderFailureDetails = {},
+  ) {
     super(message)
     this.name = 'ProviderInvocationError'
+    this.creditRefusal = details.creditRefusal
     this.invocation = invocation
     this.cause = cause
+    this.providerCode = details.providerCode
+    this.statusCode = details.statusCode
   }
+}
+
+const isProviderFailureDetails = (value: unknown): value is ProviderFailureDetails =>
+  typeof value === 'object'
+  && value !== null
+  && (
+    ('statusCode' in value && typeof value.statusCode === 'number')
+    || ('providerCode' in value && typeof value.providerCode === 'string')
+    || ('creditRefusal' in value && value.creditRefusal === 'ledger')
+  )
+
+/** Extract typed provider facts while an error passes through worker layers. */
+export const providerFailureDetails = (
+  error: unknown,
+): ProviderFailureDetails | undefined => {
+  if (error instanceof ProviderHttpError || error instanceof ProviderInvocationError) {
+    return {
+      ...(error.creditRefusal ? { creditRefusal: error.creditRefusal } : {}),
+      ...(error.providerCode ? { providerCode: error.providerCode } : {}),
+      ...(error.statusCode !== undefined ? { statusCode: error.statusCode } : {}),
+    }
+  }
+  return isProviderFailureDetails(error)
+    ? {
+      ...(error.creditRefusal === 'ledger' ? { creditRefusal: error.creditRefusal } : {}),
+      ...(error.providerCode ? { providerCode: error.providerCode } : {}),
+      ...(error.statusCode !== undefined ? { statusCode: error.statusCode } : {}),
+    }
+    : undefined
+}
+
+/**
+ * Ledger's refusal is authoritative for commercial credits. The connector
+ * stamps the refusal only when the response came from Ledger; a direct model
+ * provider's HTTP 402 is a separate provider-billing problem.
+ */
+export const isCreditsExhaustedError = (error: unknown): boolean => {
+  const details = providerFailureDetails(error)
+  return details?.creditRefusal === 'ledger'
 }

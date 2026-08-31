@@ -42,6 +42,8 @@ import { deriveAppCardState } from './app-card-state.js'
 
 export const STORE_CATALOG_SELECT = {
   id: true,
+  // Internal-only curation identity. The presenter does not emit it.
+  registryName: true,
   name: true,
   label: true,
   description: true,
@@ -82,6 +84,7 @@ export const STORE_CATALOG_SELECT = {
 
 export type StoreCatalogRow = {
   id: string
+  registryName: string | null
   name: string
   label: string
   description: string
