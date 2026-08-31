@@ -214,6 +214,25 @@ Root app layout:
   the API routes and the worker; `api/src/services/*` re-exports them so route
   code is unchanged.
 
+#### 2.0c.1 Agent to-do tracking API
+
+- Per-agent to-do templates and materialized checklist instances are available
+  under `/api/agents/:agentId/todo-templates*` and
+  `/api/agents/:agentId/todos*`. Every route inherits
+  `isAgentAccessibleToActor`; inaccessible agents return `AGENT_NOT_FOUND`, and
+  an accessible agent with `todosEnabled = false` returns
+  `AGENT_TODOS_DISABLED`.
+- Template writes are owner-only configuration. Any entitled active member may
+  create an instance; only its creator, an organization owner, or the agent's
+  steward may tick or cancel it. Templates pin a version and copy ordered steps
+  into each instance, so later edits cannot rewrite work already in progress.
+- Step updates serialize on a per-to-do transaction advisory lock, record the
+  structural actor and timestamp, and derive completion when every step is
+  `completed`, `skipped`, or `failed`. Failures remain visible but do not leave
+  an otherwise terminal checklist open. An agent cannot overwrite a terminal
+  status set by a person; a person may correct any step. Cancelling never
+  changes the linked run.
+
 ### 2.0d Channel scopes
 
 - A channel belongs either to a visible project or to the organisation's

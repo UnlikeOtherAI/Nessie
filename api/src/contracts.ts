@@ -1,6 +1,7 @@
 export * from './contracts/auth.js'
 export * from './contracts/workspace.js'
 export * from './contracts/agents.js'
+export * from './contracts/agent-todos.js'
 export * from './contracts/triggers.js'
 export * from './contracts/messaging.js'
 export * from './contracts/tools.js'

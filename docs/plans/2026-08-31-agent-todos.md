@@ -1,7 +1,8 @@
 # Agent to-dos — checklists, SOPs, and runbooks per agent
 
-**Status:** finalised design — all open questions decided 2026-08-31 (§11);
-ready to build along the phases in §10. No code changes in this doc.
+**Status:** implementation in progress — all open questions decided 2026-08-31
+(§11). The data contract, shared service, and REST surface have landed; the
+Phase 1 Designer and To-dos surfaces, then the later phases in §10, remain.
 **Date:** 2026-08-31
 **Reviewed:** two independent adversarial reviews on the same repo — kimix
 (17 findings) and Codex Sol (18 findings, on the doc with kimix's round
@@ -246,10 +247,11 @@ Decisions folded into that shape:
   brick of a second orchestration engine (§9). Work distribution to people
   is the existing Task/kanban system; see §9 for the deliberate non-link.
 - **`cancelled` is designed, not parked** (unlike `blocked`, which is
-  dropped): the instance creator or an org owner may cancel an `open` or
-  `running` instance. Cancelling never touches a run — the run keeps its own
-  controls; its next `todo_step_update` simply refuses in words ("this to-do
-  was cancelled") because the ownership check below reads live state, and
+  dropped): the instance creator, an org owner, or the agent's steward may
+  cancel an `open` or `running` instance. Cancelling never touches a run —
+  the run keeps its own controls; its next `todo_step_update` simply refuses
+  in words ("this to-do was cancelled") because the ownership check below
+  reads live state, and
   `activeRunId` liveness is derived (§3), so nothing dangles.
 - **System-managed agents are out of scope in v1.** The API-side exclusion
   is `isAgentAccessibleToActor`'s hard-coded `systemManaged: false` (the PA
@@ -415,7 +417,7 @@ status/activity routes take:
 | Enable/disable to-dos; create/edit/archive templates | org owner (v1) | `PUT /api/agents/:agentId` — `requireOwner` after the visibility gate; templates are agent *configuration* |
 | Approve/reject an agent-proposed template | `POST /api/approvals/:id/resolve` semantics: live role, no self-approval, atomic claim | the `kb_publish_request` gate |
 | Instantiate + Run now | any active member who passes the agent gate, target channel bound + member | messaging the agent / `schedule_task` targeting |
-| Tick a step manually | instance creator, org owner, or the agent's steward | task-board permissiveness; humans drag cards backwards |
+| Tick a step manually; cancel an instance | instance creator, org owner, or the agent's steward | task-board permissiveness; humans drag cards backwards |
 | Agent writes (`todo_start`, `todo_step_update`, `todo_template_propose`) | run context only — own `agentId`, own org/team | `deep_water_run_update`'s tenancy-from-run-context rule |
 
 **Templates are configuration that is deliberately readable wider than
@@ -714,9 +716,9 @@ order.
    to an active template; the edit-proposal flow (a step diff through the
    same draft+approval shape) is future work, taken up when proposals prove
    themselves.
-7. **Cancel semantics are as specified in §2.2** — creator or org owner
-   cancels; the run is never touched; the next agent step-write refuses in
-   words against live state.
+7. **Cancel semantics are as specified in §2.2** — creator, org owner, or the
+   agent's steward cancels; the run is never touched; the next agent
+   step-write refuses in words against live state.
 
 ### Pinned bounds (defaults; schema constants unless marked env)
 
