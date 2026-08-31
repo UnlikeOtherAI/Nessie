@@ -122,9 +122,14 @@ type StubOptions = {
   role?: 'owner' | 'admin' | 'member'
   probe?: { descriptors?: McpToolDescriptor[]; failWith?: string }
   actorId?: string
+  /** `mcp_registry` marks the row's `authMethod` as the ingest default. */
+  appSource?: string
+  /** What a failed probe learns the server wants; never a real network call. */
+  discoverAuthMethod?: 'none' | 'bearer' | 'api_key' | 'oauth2'
 }
 
 type Stub = {
+  catalogWrites: Record<string, unknown>[]
   ctx: AppConnectContext
   created: Record<string, unknown>[]
   deleted: string[]
@@ -140,6 +145,7 @@ const makeStub = (options: StubOptions = {}): Stub => {
   // pre-update row would hide exactly that behaviour.
   let current: McpInstanceRow | null =
     options.instance === undefined ? instanceRow() : options.instance
+  const catalogWrites: Record<string, unknown>[] = []
   const created: Record<string, unknown>[] = []
   const deleted: string[] = []
   const updates: Record<string, unknown>[] = []
@@ -160,12 +166,31 @@ const makeStub = (options: StubOptions = {}): Stub => {
     return current
   }
 
+  const discoverEndpoint = async (url: string) => ({
+    input: url,
+    ok: true,
+    attempts: [],
+    proposal: options.discoverAuthMethod
+      ? { url, transport: 'http' as const, authMethod: options.discoverAuthMethod, toolNames: [], note: null }
+      : null,
+  })
+
   const prisma = {
     mcpCatalogEntry: {
       // `isManagedIntegrationCatalogEntry` is the only reader that filters by
       // name; answering null there keeps these fixtures user-managed.
       findFirst: async (args: { where?: { name?: unknown } }) =>
         args.where?.name === undefined ? entry : null,
+      // `learnAuthFromServer` reads only `appSource`, to decide whether the
+      // row's `authMethod` is somebody's statement or the ingest default.
+      // These fixtures are human-authored, so a failed probe stays a failed
+      // probe and every case below keeps its original meaning.
+      findUnique: async () => ({ appSource: options.appSource ?? 'nessie' }),
+      // What `learnAuthFromServer` persists when a server proves it wants OAuth.
+      update: async (args: { data: Record<string, unknown> }) => {
+        catalogWrites.push(args.data)
+        return entry
+      },
       // The endpoint-lock sweep (`findApplicableLock`); nothing is locked here.
       findMany: async () => [],
       updateMany: async () => ({ count: 1 }),
@@ -208,6 +233,7 @@ const makeStub = (options: StubOptions = {}): Stub => {
     created,
     deleted,
     updates,
+    catalogWrites,
     connection: () => current,
     ctx: {
       prisma,
@@ -217,6 +243,7 @@ const makeStub = (options: StubOptions = {}): Stub => {
         stateStore: createInMemoryStateStore(),
       },
       managerFactory: managerFactory(options.probe ?? {}),
+      discoverEndpoint: discoverEndpoint as never,
     },
   }
 }
@@ -450,5 +477,67 @@ test('a connection that is not this organisation’s is simply not found', async
     (error: unknown) =>
       error instanceof AppConnectError
       && error.code === APP_CONNECT_ERROR_CODES.CONNECTION_NOT_FOUND,
+  )
+})
+
+test('a probe that fails on an ingested row asks the server what it wants', async () => {
+  // The defect this replaces: GitLab's official MCP server answers 401 with an
+  // RFC 9728 pointer to its OAuth metadata — a working server stating its terms
+  // — and the store reported "we couldn't reach the server", because
+  // `authMethod` on an ingested row is the ingest default rather than anybody's
+  // statement. That was the answer for 4,685 of 5,548 catalogue rows.
+  //
+  // Asserted here: the discovery is made and its answer persisted, so the next
+  // person is told what will happen before clicking and `startOAuth`'s own
+  // guard passes. Completing the OAuth flow is that module's contract, not
+  // this one's, so it is not restaged here.
+  const { ctx, catalogWrites } = makeStub({
+    appSource: 'mcp_registry',
+    discoverAuthMethod: 'oauth2',
+    probe: { failWith: 'connect ECONNREFUSED https://gitlab.com/api/v4/mcp' },
+    role: 'owner',
+  })
+  await runConnectHandshake(
+    ctx,
+    { id: 'entry-1', label: 'GitLab', authMethod: 'none' },
+    // The endpoint the failed probe used is what discovery interrogates, so a
+    // fixture with an empty transport has nothing to ask.
+    instanceRow({ transportConfig: { transport: 'http', url: 'https://gitlab.com/api/v4/mcp' } }),
+  ).catch(() => undefined)
+  assert.deepEqual(catalogWrites, [{ authConfig: { method: 'oauth2' }, authMethod: 'oauth2' }])
+})
+
+test('a server that wants a key routes to the key panel, not to an error', async () => {
+  const { ctx } = makeStub({
+    appSource: 'mcp_registry',
+    discoverAuthMethod: 'bearer',
+    probe: { failWith: 'connect ECONNREFUSED https://acme.example/mcp' },
+    role: 'owner',
+  })
+  assert.deepEqual(
+    await runConnectHandshake(
+      ctx,
+      { id: 'entry-1', label: 'Acme', authMethod: 'none' },
+      instanceRow({ transportConfig: { transport: 'http', url: 'https://acme.example/mcp' } }),
+    ),
+    { status: 'needs_secret', connectionId: 'instance-1' },
+  )
+})
+
+test('a human-authored row is never re-derived, and a dead listing still reads as one', async () => {
+  // `appSource` defaults to 'nessie' here: a declared `none` is a statement, so
+  // the probe failure stands rather than being second-guessed.
+  const { ctx } = makeStub({
+    discoverAuthMethod: 'oauth2',
+    probe: { failWith: 'connect ECONNREFUSED https://acme.example/mcp' },
+    role: 'owner',
+  })
+  await assert.rejects(
+    runConnectHandshake(ctx, { id: 'entry-1', label: 'Acme', authMethod: 'none' }, instanceRow()),
+    (error: unknown) => {
+      assert.ok(error instanceof AppConnectError)
+      assert.equal(error.code, APP_CONNECT_ERROR_CODES.SERVER_UNREACHABLE)
+      return true
+    },
   )
 })

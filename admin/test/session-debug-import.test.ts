@@ -119,7 +119,6 @@ test('expired and bootstrap sessions never produce an importable payload', async
 
 test('an open import dialog suppresses automatic SSO until it closes', () => {
   const ready = {
-    callbackInUrl: false,
     hasAutoRedirectProvider: true,
     unauthenticated: true,
   }

@@ -8,6 +8,14 @@ export type ExternalAuthCallbackEnvelope = {
   redirectUri: string
 }
 
+export const WEB_EXTERNAL_AUTH_LANDING_PATH = '/login'
+export const WEB_EXTERNAL_AUTH_COMPLETION_PATH = '/login/completing'
+
+export const hasWebExternalAuthCallback = (search: string): boolean => {
+  const params = new URLSearchParams(search)
+  return params.has('code') || params.has('error')
+}
+
 const MAX_CALLBACK_PARAM_LENGTH = 512
 const MAX_PENDING_CALLBACKS = 4
 const MAX_HANDLED_CALLBACKS = 16
@@ -68,9 +76,16 @@ export const parseWebAuthCallbackUrl = (
   } catch {
     return null
   }
-  if (url.origin !== expectedOrigin || url.pathname !== '/login' || url.hash !== '') return null
+  if (
+    url.origin !== expectedOrigin
+    || (url.pathname !== WEB_EXTERNAL_AUTH_LANDING_PATH
+      && url.pathname !== WEB_EXTERNAL_AUTH_COMPLETION_PATH)
+    || url.hash !== ''
+  ) return null
   const callback = parseCallbackParams(url)
-  return callback ? { callback, redirectUri: `${expectedOrigin}/login` } : null
+  return callback
+    ? { callback, redirectUri: `${expectedOrigin}${WEB_EXTERNAL_AUTH_LANDING_PATH}` }
+    : null
 }
 
 const semanticKey = (envelope: ExternalAuthCallbackEnvelope): string => {

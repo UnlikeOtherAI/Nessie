@@ -104,7 +104,7 @@ const SECRET_KEY_PATTERN =
 
 const REDACTED = '[REDACTED]'
 
-const redactToolInputValue = (value: unknown, depth = 0): unknown => {
+export const redactToolInputValue = (value: unknown, depth = 0): unknown => {
   if (depth > 8) return '[MaxDepth]'
   if (value === null || typeof value !== 'object') return value
   if (Array.isArray(value)) {

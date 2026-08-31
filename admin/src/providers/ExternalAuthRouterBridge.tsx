@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { WEB_EXTERNAL_AUTH_COMPLETION_PATH } from './external-auth-callback'
 import { useExternalAuthNavigation } from './external-auth-navigation'
 
 /**
@@ -22,7 +23,7 @@ export const ExternalAuthRouterBridge = () => {
   }, [externalAuth, navigate])
 
   useEffect(() => {
-    if (!externalAuth || location.pathname !== '/login') return
+    if (!externalAuth || location.pathname !== WEB_EXTERNAL_AUTH_COMPLETION_PATH) return
     externalAuth.handleWebLocation(window.location.href, window.location.origin)
   }, [externalAuth, location.pathname, location.search])
 

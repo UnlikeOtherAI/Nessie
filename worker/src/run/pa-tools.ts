@@ -79,6 +79,10 @@ export {
   runTodoStepUpdateTool,
   runTodoTemplateProposeTool,
 } from './pa-tools/todos.js'
+export {
+  runDemonstrationStartTool,
+  runDemonstrationStopTool,
+} from './pa-tools/demonstrations.js'
 export { runPersonalAssistantJoinChannelTool } from './pa-tools/presence.js'
 export {
   runPeopleSearchTool,

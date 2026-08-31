@@ -57,7 +57,7 @@ test('fatal tool errors abort instead of becoming model-visible results', async 
       ...fatalLoopInput(async () => { throw fatal }),
       callbacks: {
         ...fatalLoopInput(async () => { throw fatal }).callbacks,
-        onToolCallEnd: async (_name, output, _duration, success) => {
+        onToolCallEnd: async (_name, _args, output, _duration, success) => {
           ended.push({ output, success })
         },
       },

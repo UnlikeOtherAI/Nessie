@@ -57,8 +57,6 @@ export const LoginPage = () => {
   const singleSsoProvider = ssoProviders.length === 1 ? ssoProviders[0] : null
   const autoRedirectProvider =
     singleSsoProvider && singleSsoProvider.autoRedirect ? singleSsoProvider : null
-  const callbackParams = new URLSearchParams(window.location.search)
-  const hasExternalCallback = callbackParams.has('code') || callbackParams.has('error')
 
   const beginSsoSignIn = useCallback(
     (providerId: string): Promise<void> => startExternalSignIn(providerId, resolveAppliedTheme(theme)),
@@ -66,15 +64,10 @@ export const LoginPage = () => {
   )
 
   useEffect(() => {
-    // An in-flight OAuth callback (readPendingExternalAuth is only set right after
-    // starting SSO) is processed even when already authenticated, so re-running
-    // SSO from the "add a workspace" action re-scopes the session. `code=` in the
-    // URL also suppresses the authenticated→/channels redirects below until the
-    // exchange completes.
-    if (sessionState === 'authenticated' && !hasExternalCallback) {
+    if (sessionState === 'authenticated') {
       void navigate('/channels', { replace: true })
     }
-  }, [hasExternalCallback, navigate, sessionState])
+  }, [navigate, sessionState])
 
   // Native cancel/failure results settle this screen's submitting state; the
   // successful callback URL continues through the always-mounted external-auth
@@ -112,7 +105,6 @@ export const LoginPage = () => {
 
   useEffect(() => {
     if (!shouldStartAutomaticSignIn({
-      callbackInUrl: hasExternalCallback,
       hasAutoRedirectProvider: Boolean(autoRedirectProvider),
       sessionImportOpen,
       unauthenticated: sessionState === 'unauthenticated',
@@ -128,9 +120,9 @@ export const LoginPage = () => {
         setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
         setIsSubmitting(false)
       })
-  }, [autoRedirectProvider, beginSsoSignIn, hasExternalCallback, sessionImportOpen, sessionState])
+  }, [autoRedirectProvider, beginSsoSignIn, sessionImportOpen, sessionState])
 
-  if (sessionState === 'authenticated' && !hasExternalCallback) {
+  if (sessionState === 'authenticated') {
     return <Navigate to="/channels" replace />
   }
 

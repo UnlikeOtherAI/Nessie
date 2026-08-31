@@ -613,7 +613,9 @@ standard OIDC — Nessie integrates via UOA's config-JWT flow
   `redirect_url=nessie://auth/callback`.
 - UOA renders its login UI (email/password, Google, …). On web success it redirects
   to `https://app.nessie.works/login?code=…` (byte-exact allowlist; the
-  admin handles the callback on `/login`). On desktop success macOS opens
+  admin immediately replaces that landing with its dedicated
+  `/login/completing?code=…` screen while retaining `/login` as the redirect URI
+  used for the code exchange). On desktop success macOS opens
   `nessie://auth/callback?code=…`; Tauri's deep-link plugin delivers that URL to
   the admin login page, which exchanges the code with the same redirect URL.
 - The API exchanges the code server-to-server at `POST <uoa>/auth/token`

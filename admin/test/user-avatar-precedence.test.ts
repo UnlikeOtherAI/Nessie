@@ -63,7 +63,7 @@ test('a person named only by UOA subject resolves through the roster relay', () 
 })
 
 test('the workspace roster renders the shared avatar, not a second implementation', () => {
-  const roster = readSource('../src/pages/settings/WorkspaceMembersSection.tsx')
+  const roster = readSource('../src/pages/settings/WorkspaceMemberPeople.tsx')
 
   assert.match(roster, /<UserAvatar/)
   assert.match(roster, /uoaSub=\{member\.uoaSub\}/)
