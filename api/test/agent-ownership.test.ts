@@ -88,6 +88,7 @@ const seed = async (prisma: PrismaClient) => {
       projectId,
       slug: `c-${suite}`,
       teamId,
+      visibility: 'public',
     }],
     skipDuplicates: true,
   })
@@ -136,7 +137,7 @@ const withDb = async (run: (prisma: PrismaClient) => Promise<void>) => {
   }
 }
 
-dbTest('an unbound agent stays visible to the person who created it', async () => {
+dbTest('a workspace agent stays visible to its steward and a member through a public channel', async () => {
   await withDb(async (prisma) => {
     const agent = await createAgentRecord(prisma, {
       name: `steward-${suite}`,
@@ -158,6 +159,11 @@ dbTest('an unbound agent stays visible to the person who created it', async () =
       'a member should see the unbound agent they own',
     )
     assert.equal(await isAgentVisibleToUser(prisma, ownerUserId, orgId, agent.id), true)
+
+    await prisma.agentBinding.create({ data: { agentId: agent.id, channelId } })
+    const memberVisible = await listAgentsForUser(prisma, memberUserId, orgId, false)
+    assert.equal(memberVisible.some((entry) => entry.id === agent.id), true)
+    assert.equal(await isAgentVisibleToUser(prisma, memberUserId, orgId, agent.id), true)
   })
 })
 

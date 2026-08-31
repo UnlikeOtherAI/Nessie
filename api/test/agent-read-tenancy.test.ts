@@ -56,13 +56,23 @@ test('agent access requires the agent itself to belong to the actor organization
   const prisma = {
     agent: {
       count: async ({ where }: { where: Prisma.AgentWhereInput }) => {
-        const exactOrganization = where.organizationId
+        const organizationConstraintsMatch = (
+          candidate: Prisma.AgentWhereInput,
+        ): boolean => {
+          if (
+            candidate.organizationId !== undefined
+            && candidate.organizationId !== otherOrganizationId
+          ) return false
+
+          const conjuncts = candidate.AND
+          const clauses = Array.isArray(conjuncts)
+            ? conjuncts
+            : conjuncts ? [conjuncts] : []
+          return clauses.every(organizationConstraintsMatch)
+        }
         return (
           where.id === foreignChildId
-          && (
-            exactOrganization === undefined
-            || exactOrganization === otherOrganizationId
-          )
+          && organizationConstraintsMatch(where)
         )
           ? 1
           : 0
