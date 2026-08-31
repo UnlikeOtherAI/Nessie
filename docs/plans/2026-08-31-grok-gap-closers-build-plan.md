@@ -5,7 +5,7 @@
 > capture) — each code-verified against a throwaway pgvector DB (typecheck,
 > lint, migrations, DB-backed + unit suites). Remaining: Gap 2 actuation
 > (`command.run` → `browser.act`, needs a real executor host), Gap 1 P2/P3
-> (auto-review), Gap 3 P2 (generalise a demonstration into a Workflow), the
+> (auto-review), the remaining Gap 3 adoption measurement and to-do fallback,
 > in-thread approval/RunStop admin doorways, and P6 (persistent/headless
 > executor). Decisions resolved on the best-experience lens (§7).
 > Derived from the code-grounded audit
@@ -383,8 +383,12 @@ skill, human edit/test, and execution.
    preview and is never used to retrofit an old run; that would be lossy. The
    recording is review-only and cannot run anything. P2 remains responsible for
    model generalization into a Workflow draft.
-2. **P2 — generalise to a draft Workflow.** The utility-model parameterisation pass
-   → a draft Workflow definition in the existing editor.
+2. **P2 — generalise to a draft Workflow (implemented 2026-08-31).** The
+   bounded utility-model parameterisation pass writes a provenance-marked draft
+   Workflow definition in the existing editor. The worker and save path call the
+   same shared validator before persistence; restricted-source recordings fail
+   closed with an actionable draft error, and raw demonstrations remain
+   non-runnable.
 3. **P3 — edit/test/promote/schedule.** Reuse Workflow publish + approvals +
    triggers. Optional to-do-template path for linear routines.
 
@@ -421,7 +425,7 @@ skill, human edit/test, and execution.
 | **P2** | Gap 2 `command.run` (gated through Gap 1) | Gap 1 P1 | Gap 3 P1–P2 |
 | **P3** | Gap 1 auto-review layer | Gap 1 P1 | Gap 2 P2 |
 | **P4** | Gap 2 `browser.observe` fidelity → `browser.act` | Gap 2 P2, Gap 1 P1 | Gap 3 P2 |
-| **P5** | Gap 3 generalise → draft Workflow → publish/schedule | Gap 3 P1 (+ richer once Gap 2 lands) | — |
+| **P5 — DONE** | Gap 3 generalise → reviewable draft Workflow (including agent-proposed adoption approval) | Gap 3 P1 | adoption measurement / to-do fallback |
 | **P6** | Gap 2 persistent per-user workspace + first-class headless/cloud executor (**committed**, per §7.4) | Gap 2 P4 | Gap 3 P5 |
 
 **What runs in parallel:** Gap 1's suspend/resume core and Gap 3's capture layer

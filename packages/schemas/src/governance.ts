@@ -225,6 +225,8 @@ export const AuditActionSchema = z.enum([
   'agent.todo_template.published',
   'demonstration.started',
   'demonstration.stopped',
+  'demonstration.generalized',
+  'workflow.template.adopted',
   'agent.private.paused_owner_deactivated',
   'personal_assistant.bootstrap',
   'personal_assistant.rotate',

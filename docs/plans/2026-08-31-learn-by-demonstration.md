@@ -1,6 +1,9 @@
 # Learn-by-demonstration — recorded, replayable skills
 
-> Status: proposed plan, revision 1 (2026-08-31). No code changed.
+> Status: in delivery, revision 3 (2026-08-31). P1 capture and P2
+> generalisation-to-draft Workflow are implemented, including provenance,
+> approval-gated agent proposals, and the existing Workflows review doorway.
+> Remaining work is adoption measurement and the later to-do-template fallback.
 > Motivated by the competitive audit
 > [2026-08-31-grok-bot-vs-nessie-capability-audit.md](./2026-08-31-grok-bot-vs-nessie-capability-audit.md)
 > dimension 6: "Learn-by-demonstration is **behind — no code found**."
@@ -103,9 +106,8 @@ A **`Demonstration`** is a bounded recording window on one `(agent, thread)`
 pair, opened by a person:
 
 - `Demonstration { id, organizationId, agentId, threadId, channelId,
-  startedByUserId, goalMessageId?, status:
-  recording | stopped | generalizing | drafted | discarded | failed,
-  workflowTemplateId?, errorDetail?, startedAt, stoppedAt?, expiresAt }`
+  startedByUserId, status: recording | captured | generalized | discarded,
+  workflowTemplateId?, generalizationError?, startedAt, capturedAt?, expiresAt }`
   — org-scoped, `onDelete: Cascade` from `Organization`, partial unique index
   on `(agentId, threadId) WHERE status = 'recording'` so two recordings cannot
   interleave on one surface.
@@ -209,15 +211,14 @@ is deleted only if the demonstration was already terminal).
 ## 5. Generalization — concrete trace → parameterized draft
 
 On `stop`, the service enqueues `demonstration.generalize` (idempotency key
-`demonstration:generalize:<id>`; status CAS `stopped → generalizing` so
-redelivery cannot double-generalize). The job, in
+`demonstration:generalize:<id>`; the worker claims the `captured → generalized`
+transition in the same transaction that creates the template, so redelivery
+cannot double-generalize). The job, in
 `worker/src/control/demonstration-generalize.ts`:
 
-1. **Assemble the evidence.** Ordered `DemonstrationStep` rows; the goal and
-   trigger messages read through the normal message read path; the agent's
-   available workflow vocabulary — `WORKFLOW_TOOL_IDS`
-   (`packages/runtime/src/builtin-tools.ts:446`) and the executable step types
-   (`api/src/services/workflow-validation.ts` `WORKFLOW_STEP_TYPES`:
+1. **Assemble the evidence.** Ordered successful `DemonstrationStep` rows and
+   the closed workflow vocabulary — `WORKFLOW_TOOL_IDS` and the executable step
+   types in `@nessie/workspace-admin`:
    `agent`/`agent_task`, `environment_launch`, `message_send`,
    `tool`/`tool_call`, `transform`).
 2. **One model pass with a structural contract.** The prompt states the
@@ -232,32 +233,26 @@ redelivery cannot double-generalize). The job, in
    step. Failed steps and retried dead ends are dropped (the trace marks
    `success`). The judgment of *what generalizes* is the model's; the
    *vocabulary it may emit* is closed.
-3. **Validate with the real validator, iterate bounded.** The draft graph goes
-   through the exact save-time validation the human path uses —
-   `validateWorkflowTemplatePayload` in
-   `api/src/services/workflow-validation.ts`, whose core helpers
-   (`collectWorkflowStepReferences`, `compileWorkflowJmespath`,
-   `parseWorkflowBindingTemplate`, `validateWorkflowSecretWrite`) already live
-   in `@nessie/workspace-admin` and are therefore worker-importable. Issues
+3. **Validate with the real validator, iterate bounded.** `validateWorkflowGraph`
+   in `@nessie/workspace-admin` is called by both the API's save path and the
+   worker before persistence. It includes binding order/syntax, JMESPath,
+   executable-step, tool, and live-agent entitlement checks. Issues
    are fed back to the model for up to `NESSIE_DEMONSTRATION_GENERALIZE_ATTEMPTS`
    (default 3) — the compaction bounded-attempts pattern. This is the W17 rule
    doing its job: the generalizer *cannot* mint a step type or tool the runtime
    would fail on, because the same list gates both.
-4. **Persist the draft.** `WorkflowTemplate` created via the same shared
-   create path `POST /api/workflows` uses, with two additive provenance
+4. **Persist the draft.** A normal `WorkflowTemplate` uses two additive provenance
    columns: `source: 'authored' | 'demonstration'` (default `'authored'`) and
    `demonstrationId?`. `createdByActorType/Id` is the **demonstrating user**,
    not the agent — the person owns the skill (the `Agent.ownerUserId`
-   stewardship philosophy). Demonstration → `drafted`,
-   `workflowTemplateId` set. Model-call spend is recorded through the normal
+  stewardship philosophy). Demonstration → `generalized`, with
+  `workflowTemplateId` set. Model-call spend is recorded through the normal
    inference accounting; the run-level attribution is the generalize job's
    durable origin (the user-triggered-system-job rule from the Ledger identity
    contract).
-5. **Failure says so.** Exhausted attempts → status `failed` with
-   `errorDetail`, surfaced on the demonstration card (§7) with the captured
-   step list still reviewable — the person can hand-author from the trace in
-   the designer. Never a silent dead end (the "capability that can stop
-   working owns the way a person finds out" rule).
+5. **Failure says so.** An exhausted validation loop or a restricted source
+   remains `captured` with `generalizationError`, rendered on the Workflows
+   demonstration drafts list. It is never a silent retry loop.
 
 ## 6. Review, approve, install — a recording is never runnable
 
@@ -279,15 +274,13 @@ Two paths, split by who initiated — mirroring the to-do template split
   machinery is needed for this path** — install *is* the human decision, made
   by a person on a reviewable, validated artifact, and adding a second gate in
   front of it would be ceremony.
-- **Agent-proposed (Stage C).** When an agent (not a person) initiates —
+- **Agent-proposed.** When an agent (not a person) initiates —
   "I've done this three times, want me to pin it?" — the draft is created the
   same way but gated behind an `ApprovalRequest` with a new action
   `workflow.template.adopt`, cloning the `todo_template_propose` shape
   exactly: pending-proposal cap under `acquireAgentTodoAgentLock`-style
   advisory lock, `requiredApproverRole: 'owner'`, expiry, and a third `case`
-  in the `approval-effects.ts` dispatch (today only
-  `knowledge.page.publish` and `agent.todo_template.publish` exist,
-  `approval-effects.ts:127-129`). Until approved, the draft template is
+   in the `approval-effects.ts` dispatch. Until approved, the draft template is
   install-refused: `installations.ts:68` gains one guard — a
   `source: 'demonstration'` template whose demonstration was agent-initiated
   and whose adopt approval is not `approved` returns 409. The store-reads-a-
@@ -310,17 +303,15 @@ by provenance, never a fork.
 
 **Doorways, on the screen where the question arises:**
 
-1. **The channel/thread — where the work happens.** The Record control (§3)
-   and the recording pill; on completion, a **demonstration card** rendered
-   from message `metadata.demonstration = { demonstrationId, status,
-   workflowTemplateId? }` — the `metadata.runStop` → `RunStopContinue.tsx`
-   pattern (`admin/src/components/features/channels/RunStopContinue.tsx`) —
-   with "Review draft" deep-linking into the Workflows page state
-   (`WorkflowsPageLocationState.selectedTemplateId` already exists for exactly
-   this kind of deep link).
+1. **The channel/thread — where the work happens.** The Record routine control
+   and the persistent recording pill use the shared channel header and `Pill`
+   primitive; nothing starts from interpreted text in the browser.
 2. **Chat itself** — `demonstration_start/stop/status` builtins (§3), so
    "let me show you how we do the weekly digest" needs no UI hunt.
-3. **The channel Automations tab**
+3. **The Workflows page.** `DemonstrationDraftsColumn` is a list within the
+   existing workflow column browser. Its Generalise action queues a draft and
+   its Review action selects the resulting ordinary template; it is not a skills
+   library. The channel Automations tab
    (`ChannelAutomationsPanel.tsx`) — where an installed learned playbook lives
    beside every other automation of that channel, with run-now/pause per the
    W19 role matrix. No new tab: a learned playbook installed to a channel *is*
@@ -347,9 +338,7 @@ do I do next"; the recording pill answers "is a trace being kept here".
 - **Disclosure — the proposal is the exposure point, and it fails closed.**
   A workflow template is visible to reviewers/installers beyond any single
   run's audience and cannot carry a per-run basis — exactly the
-  `todo_template_propose` situation, so the same rule applies (its handler
-  comment states it: "A template is visible to every agent viewer before
-  approval… any scoped source makes this write fail closed"). At `stop`, if
+  `todo_template_propose` situation, so the same rule applies. Before inference,
   any recorded run has `RunBasisScope` rows (the persisted form of
   `ConsumedSourceSink`), generalization is refused in words: the person is
   told the demonstration drew on restricted material and to re-demonstrate in
@@ -377,14 +366,10 @@ do I do next"; the recording pill answers "is a trace being kept here".
   unarmed — the empty-basis-fails-open lesson says test the *absence*);
   redaction of secret-shaped arguments; the `toolCallRecordId` executor path;
   step cap and TTL stop; capture failure not failing the run.
-- **Generalizer tests with the mock-LLM harness** (`packages/mock-llm`,
-  scenario JSON): a scripted trace → scripted graph output → assert the draft
-  passes the real validator; a scenario whose first output names a
-  non-workflow tool → assert the validation feedback loop retries and the
-  final template contains an `agent_task` fold instead; exhausted attempts →
-  `failed` + card. Prove the validator gate fails without the fix
-  (the prove-the-test-fails discipline): neutralize the `WORKFLOW_TOOL_IDS`
-  check and assert the test catches the invalid step type.
+- **Generalizer tests with the mock-LLM harness** (`worker/test/db`): a scripted
+  malformed transform is rejected by the shared save-time validator, the next
+  scripted answer is persisted as an `agent_task` fold, and an agent-proposed
+  draft creates a pending `workflow.template.adopt` request.
 - **DB suites** (`worker/test/db` rules apply — seed-scoped cleanup, no
   global assertions): the partial-unique recording index under concurrent
   arms; CAS on `stopped → generalizing` under queue redelivery; disclosure
@@ -400,10 +385,10 @@ do I do next"; the recording pill answers "is a trace being kept here".
 
 ## 10. Staged rollout, with an adoption gate
 
-- **Stage A — capture + generalize + review (the spine).** Tables +
+- **Stage A — capture + generalize + review (the spine, implemented).** Tables +
   migration, capture hook, stop/discard, generalize job, provenance columns,
-  Workflows-page pill, completion card, UI record control. User-initiated
-  only; no approvals work. Exit criterion: a person records "fetch this page,
+  Workflows-page provenance pill and drafts column, UI record control, and the
+  approval-gated agent proposal path. Exit criterion: a person records "fetch this page,
   summarize, post to #ops" once, and the resulting *installed* playbook
   re-runs it on a schedule with zero agent hops on the deterministic steps —
   the same flagship shape as workflows §3.5.1.
@@ -414,9 +399,8 @@ do I do next"; the recording pill answers "is a trace being kept here".
   repeat runs of learned playbooks. If drafts are produced but never
   installed, stop — the trace was the wrong substrate, and
   `todo_template_propose` remains the honest routine-capture story.
-- **Stage C — agent-proposed skills + to-do fallback.** The
-  `workflow.template.adopt` approval path (§6) and the "save as to-do template
-  instead" branch (§1). Gated on Stage B's verdict.
+- **Stage C — to-do fallback.** The "save as a to-do template instead" branch
+  (§1), gated on Stage B's adoption verdict.
 
 Docs land with each stage (CLAUDE.md capability section, this plan's status
 banner, and a cross-reference from the workflows plan's S4.2 row) — the

@@ -33,8 +33,10 @@ interface ChannelHeaderProps {
   onJoin: () => void
   onOpenMembers: () => void
   onOpenSettings: () => void
+  onToggleRoutineRecording: () => void
   onToggleSearch: () => void
   searchOpen: boolean
+  routineRecording: boolean
   titleFavorite: ChannelTitleFavorite | null
 }
 
@@ -59,8 +61,10 @@ export const ChannelHeader = ({
   onOpenInfo,
   onOpenMembers,
   onOpenSettings,
+  onToggleRoutineRecording,
   onToggleSearch,
   searchOpen,
+  routineRecording,
   titleFavorite,
 }: ChannelHeaderProps) => {
   const title = isPersonalAssistantConversation
@@ -128,6 +132,13 @@ export const ChannelHeader = ({
       label: 'Channel settings',
       onSelect: onOpenSettings,
       priority: 60,
+    } satisfies PageHeaderAction] : []),
+    ...(boundAgents.length > 0 ? [{
+      id: 'record-routine',
+      label: routineRecording ? 'Recording routine' : 'Record routine',
+      onSelect: onToggleRoutineRecording,
+      priority: 55,
+      selected: routineRecording,
     } satisfies PageHeaderAction] : []),
     activeCall && callMeetingUri
       ? {

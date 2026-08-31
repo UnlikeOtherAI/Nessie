@@ -207,6 +207,18 @@ export const WorkflowRunExecuteJobPayloadSchema = z.object({
 })
 export type WorkflowRunExecuteJobPayload = z.infer<typeof WorkflowRunExecuteJobPayloadSchema>
 
+/** A captured structural trace awaiting its bounded Workflow generalization. */
+export const DEMONSTRATION_GENERALIZE_TOPIC = 'demonstration.generalize'
+
+export const DemonstrationGeneralizeJobPayloadSchema = z.object({
+  demonstrationId: z.string().uuid(),
+  /** Set only by a future agent-proposal doorway; user-stopped demos self-adopt. */
+  agentProposed: z.boolean().optional(),
+})
+export type DemonstrationGeneralizeJobPayload = z.infer<
+  typeof DemonstrationGeneralizeJobPayloadSchema
+>
+
 export const PersonalAssistantConfigSummarySchema = z.object({
   agentId: AgentIdSchema,
   model: z.string().optional(),

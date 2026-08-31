@@ -17,16 +17,19 @@ import { parseOptional, toJsonRecord } from './contract-helpers.js'
 // response of its own.
 
 type WorkflowTemplateWithGraph = {
+  adoptedAt?: Date | null
   bindingSchema: unknown
   createdAt: Date
   createdByActorId: string
   createdByActorType: string
   description: string | null
+  demonstrationId?: string | null
   graphJson: unknown
   id: string
   name: string
   organizationId: string
   requiredEnvironmentTemplateIds: unknown
+  source?: 'authored' | 'demonstration'
   triggersJson: unknown
   updatedAt: Date
   variableSchema: unknown
@@ -123,6 +126,9 @@ export const mapWorkflowTemplate = (
   variableSchema: template.variableSchema,
   bindingSchema: template.bindingSchema,
   requiredEnvironmentTemplateIds: parseUuidArray(template.requiredEnvironmentTemplateIds),
+  source: template.source ?? 'authored',
+  demonstrationId: template.demonstrationId ?? undefined,
+  adoptedAt: template.adoptedAt?.toISOString(),
   createdByActorType: template.createdByActorType,
   createdByActorId: template.createdByActorId,
   createdAt: template.createdAt.toISOString(),

@@ -26,10 +26,12 @@ export const DemonstrationRecordSchema = z.object({
   threadId: ThreadIdSchema,
   startedByUserId: UserIdSchema,
   status: DemonstrationStatusSchema,
+  generalizationError: z.string().nullable().optional(),
   stepCount: z.number().int().nonnegative(),
   startedAt: TimestampSchema,
   capturedAt: TimestampSchema.nullable(),
   expiresAt: TimestampSchema,
+  workflowTemplateId: z.string().uuid().nullable().optional(),
 })
 export type DemonstrationRecord = z.infer<typeof DemonstrationRecordSchema>
 

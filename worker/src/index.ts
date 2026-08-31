@@ -35,6 +35,8 @@ import {
   WorkflowRunFailureDispatchJobPayloadSchema,
   CallRingCancelJobPayloadSchema,
   CallRingDispatchJobPayloadSchema,
+  DEMONSTRATION_GENERALIZE_TOPIC,
+  DemonstrationGeneralizeJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RunExecuteJobPayloadSchema,
@@ -50,6 +52,7 @@ import {
   terminateExecutionEnvironmentInstance,
 } from './control/execution.js'
 import { executeAttachmentThumbnailJob } from './control/attachment-thumbnail.js'
+import { generalizeDemonstration } from './control/demonstration-generalize.js'
 import {
   DASHBOARD_REFRESH_TOPIC,
   refreshDashboardDataSource,
@@ -476,6 +479,15 @@ export const startWorker = async (
     {
       signal: abortController.signal,
     },
+  )
+
+  queueProvider.subscribe(
+    DEMONSTRATION_GENERALIZE_TOPIC,
+    async (job) => {
+      const payload = DemonstrationGeneralizeJobPayloadSchema.parse(job.payload)
+      await generalizeDemonstration(prisma, payload, undefined, ledgerIdentity)
+    },
+    { signal: abortController.signal },
   )
 
   queueProvider.subscribe(
