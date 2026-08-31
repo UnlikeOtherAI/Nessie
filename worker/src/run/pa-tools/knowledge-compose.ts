@@ -114,6 +114,27 @@ export const runKbDocumentComposeTool = async (
     throw new Error('You do not have write access to this knowledge space.')
   }
 
+  if (
+    space.ownerAgentId !== null
+    && sourcesOutsideAgentDocumentAudience(context, {
+      organizationId: space.organizationId,
+      ownerAgentId: space.ownerAgentId,
+    }).length > 0
+  ) {
+    // Knowledge-base reads do not gate on page status, so a draft would expose
+    // its body and attachment to the agent's whole audience. Refuse before any
+    // attachment, page, or version can be written instead.
+    await recorder?.finalizeOutstanding('save_failed')
+    return {
+      inputSummary: `spaceId=${spaceId} title=${toMarkdownFilename(input.title)}`,
+      outputPreview:
+        'I cannot save this document because this run used material that its audience cannot '
+        + 'access. Write a version without that material, or choose a destination whose audience '
+        + 'already has access to it. Nothing was saved.',
+      toolName: 'kb_document_compose',
+    }
+  }
+
   // Claim the session before writing anything. A Stop that already flipped the
   // run loses the claim and nothing is saved; a Stop arriving after it only
   // cancels the rest of the run.
@@ -158,12 +179,9 @@ export const runKbDocumentComposeTool = async (
       title: filename,
     })
 
+    // The covered-audience check above rejects unsafe agent-owned writes.
     // Ordinary private spaces retain their historical auto-publish behaviour.
-    // An agent-owned space is broader than one person, so it auto-publishes only
-    // when its exact agent audience implies everything the run consumed.
-    const needsDisclosureReview = space.ownerAgentId !== null
-      && sourcesOutsideAgentDocumentAudience(context, space.ownerAgentId).length > 0
-    const published = space.visibility === 'private' && !needsDisclosureReview
+    const published = space.visibility === 'private'
     if (published) {
       await provider.publishPage({
         actorUserId: context.actorContext.actionContext.effectiveUserId ?? null,
@@ -194,10 +212,7 @@ export const runKbDocumentComposeTool = async (
         `Saved "${filename}" (${markdown.length} characters) to space "${space.name}"`
         + `${stored?.overrideSpaceId ? ' — the person moved it there from the document window' : ''}`
         + `. pageId=${page.id}, version ${versionNumber}. `
-        + (needsDisclosureReview
-          ? 'It was saved as a draft needing review because it drew on restricted sources; '
-            + 'call kb_publish_request to ask for publication.'
-          : published
+        + (published
           ? 'It is published in that private space.'
           : 'It is a draft; call kb_publish_request when it is ready for review.'),
       toolName: 'kb_document_compose',

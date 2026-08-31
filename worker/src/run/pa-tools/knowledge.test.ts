@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
-import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
+import { computeReplyBasis, createConsumedSourceSink } from '../execute/disclosure-basis.js'
 import {
   clampKbSearchLimit,
   runKbListTool,
@@ -67,6 +67,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
 type SpaceFixtureOverrides = Partial<{
   id: string
   ownerAgentId: string | null
+  userId: string | null
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   teamId: string | null
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
@@ -84,7 +85,7 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
   teamId: overrides.teamId ?? null,
   channelId: null,
   threadId: null,
-  userId: null,
+  userId: overrides.userId ?? null,
   visibility: overrides.visibility ?? 'organization',
   sensitivityTier: overrides.sensitivityTier ?? 'normal',
   privateToAgentId: null,
@@ -119,7 +120,9 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
           knowledgeSpaceMemberships: options.agentSpaceMemberships ?? [],
         }
       },
+      findMany: async () => [],
     },
+    projectMember: { findMany: async () => [] },
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
@@ -301,16 +304,27 @@ test('kb_list denies access to a space the agent cannot read', async () => {
   assert.equal(result.outputPreview, 'You do not have access to this knowledge space.')
 })
 
-test('kb_list records the scopes of spaces whose names it lists', async () => {
+test('a bare kb_list catalogue leaves a following shared-channel reply unrestricted', async () => {
   const consumedSources = createConsumedSourceSink()
-  const space = buildSpaceRow({ ownerAgentId: 'agent-1', visibility: 'private' })
+  const space = buildSpaceRow({ userId: 'user-1', visibility: 'private' })
   const prisma = buildFakePrisma({ space })
-  const context = makeContext(prisma, { consumedSources })
+  const context = makeContext(prisma, {
+    actorContext: {
+      actor: { actorId: 'user-1', actorType: 'user', roles: [] },
+      actionContext: {},
+      tenant: { organizationId: 'org-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+    consumedSources,
+  })
 
   const result = await runKbListTool(context, {})
 
   assert.match(result.outputPreview, /Engineering/)
-  assert.deepEqual(consumedSources.list(), [
-    { scopeId: 'agent-1', scopeType: 'agent' },
-  ])
+  assert.deepEqual(consumedSources.list(), [])
+  assert.deepEqual(computeReplyBasis(consumedSources.list(), {
+    channelId: 'channel-1',
+    organizationId: 'org-1',
+    projectId: 'project-1',
+    teamId: 'team-1',
+  }, ['agent-1']), [])
 })

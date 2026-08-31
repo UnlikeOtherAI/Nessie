@@ -94,6 +94,26 @@ export const runKbDocumentEditTool = async (
     throw new Error('You do not have write access to this knowledge space.')
   }
 
+  if (
+    space.ownerAgentId !== null
+    && sourcesOutsideAgentDocumentAudience(context, {
+      organizationId: space.organizationId,
+      ownerAgentId: space.ownerAgentId,
+    }).length > 0
+  ) {
+    // Knowledge-base reads do not gate on page status, so neither a draft nor
+    // a new unpublished version can safely hold a wider-audience disclosure.
+    await context.documentStream?.finalizeOutstanding('save_failed')
+    return {
+      inputSummary: `pageId=${pageId} edits=${edits.length}`,
+      outputPreview:
+        'I cannot save this version because this run used material that the document audience '
+        + 'cannot access. Write a version without that material, or choose a destination whose '
+        + 'audience already has access to it. The existing document is unchanged.',
+      toolName: 'kb_document_edit',
+    }
+  }
+
   // Applied independently of the streaming preview, so the two agreeing is a
   // real check rather than a restatement.
   const { applied } = applyDocumentEdits(document.content, edits)
@@ -147,14 +167,10 @@ export const runKbDocumentEditTool = async (
       pageId,
     })
     const versionNumber = version?.versionNumber ?? null
-    const needsDisclosureReview = space.ownerAgentId !== null
-      && sourcesOutsideAgentDocumentAudience(context, space.ownerAgentId).length > 0
-    // Editing a published agent document keeps the common covered-audience
-    // path live: publish the new version only when the document audience covers
-    // the run. A page that was already a draft never becomes published here.
+    // Unsafe agent-owned writes returned above. A page that was already a draft
+    // never becomes published here.
     const published = space.ownerAgentId !== null
       && page.status === 'published'
-      && !needsDisclosureReview
     if (published) {
       await provider.publishPage({
         actorUserId: context.actorContext.actionContext.effectiveUserId ?? null,
@@ -187,10 +203,7 @@ export const runKbDocumentEditTool = async (
         + `pageId=${pageId}${versionNumber ? `, version ${versionNumber}` : ''}.`
         + (space.ownerAgentId === null
           ? ''
-          : needsDisclosureReview
-            ? ' The new version was saved as a draft needing review because it drew on '
-              + 'restricted sources; call kb_publish_request to ask for publication.'
-            : published
+          : published
               ? ' The new version is published in that agent-owned space.'
               : ' The page was already a draft, so the new version remains a draft; '
                 + 'call kb_publish_request when it is ready for review.'),

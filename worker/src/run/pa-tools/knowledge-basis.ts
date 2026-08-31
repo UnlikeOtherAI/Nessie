@@ -83,9 +83,17 @@ export const recordKnowledgeSpaceRead = (
  */
 export const sourcesOutsideAgentDocumentAudience = (
   context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
-  ownerAgentId: string,
+  audience: { organizationId: string; ownerAgentId: string },
 ): BasisScope[] =>
   subtractImpliedScopes(
     context.consumedSources?.list() ?? [],
-    [{ scopeId: ownerAgentId, scopeType: 'agent' }],
+    [
+      { scopeId: audience.ownerAgentId, scopeType: 'agent' },
+      // An agent-document reader is always a live member of this organization:
+      // the agent visibility predicate is organization-scoped, and autonomous
+      // viewers have no live membership. Project and team are deliberately not
+      // implied: an agent can be visible through another bound channel or its
+      // steward, neither of which grants a particular project or team.
+      { scopeId: audience.organizationId, scopeType: 'organization' },
+    ],
   )

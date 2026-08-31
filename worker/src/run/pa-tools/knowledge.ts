@@ -285,9 +285,10 @@ export const runKbListTool = async (
         toolName: 'kb_list',
       }
     }
-    // Space titles disclose what exists just as ticket/page titles do. Record
-    // every listed space before its name reaches the model.
-    recordKnowledgeSpaceRead(context, result.data)
+    // A catalogue says only which spaces the agent can reach; it does not put
+    // their contents in context. Recording it can add a personal user scope
+    // and withhold an ordinary shared-channel reply, so catalogue listing never
+    // contributes provenance. The task-scoped page-list path remains recorded.
     const lines = result.data.map(
       (space, index) => `${index + 1}. ${space.name} (spaceId=${space.id}, visibility=${space.visibility})`,
     )

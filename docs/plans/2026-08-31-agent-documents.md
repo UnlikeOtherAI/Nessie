@@ -375,21 +375,31 @@ post retains `agent:<id>` and fails closed.
 An agent that consumed a scoped source mid-run and then composes a document
 into its home space would otherwise copy restricted material into a wider
 audience — the doc itself carries no basis stamp (documents are not
-messages). The KB's existing shape already contains the answer; this design
-just applies it:
+messages). An adversarial review **refuted** the original draft-as-consent-gate
+design: KB reads do not gate `KnowledgePage.status`. `mapPage` exposes the
+latest version, list metadata retains its attachment id, version download gates
+only on space access, and `kb_page_read` falls back to `latestVersion`. A draft
+would therefore disclose the restricted body and attachment to the exact wider
+agent audience it was meant to withhold from.
 
-- **Auto-publish only when the run's basis allows it.** Today
-  `kb_document_compose` auto-publishes into `private` spaces. For an
-  agent-owned space the save gains one structural check: compute the run's
-  consumed scopes minus what the *document's audience* implies. If the
-  remainder is empty — the common case — the doc publishes immediately, as
-  a person watching it stream expects. If it is non-empty, the doc is saved
-  as an ordinary **draft** and the agent is told to use
-  `kb_publish_request` — the existing human review gate becomes the consent
-  mechanism, which is exactly the nod principle: *a human lifts a
-  restriction; the agent never does.* The document audience implies exactly
-  its own `agent:<ownerAgentId>` scope; the destination channel is deliberately
-  irrelevant because the document persists outside that room.
+- **Refuse before writing when the audience is too wide.** For an agent-owned
+  destination, compose and edit compute consumed scopes minus what the
+  document's audience implies. If the remainder is empty — the common case —
+  compose auto-publishes and a published page's edit republishes as before. If
+  it is non-empty, the tool refuses in actionable words *before* it writes an
+  attachment, page, or version. It tells the model to write a version without
+  that material or choose a destination whose audience already has access; it
+  never names the restricted source contents. This is provenance, not
+  redaction: without a per-page basis, there is no honest draft or review
+  half-measure. Existing attachment-cleanup handling remains the failure-path
+  guarantee once storage has begun.
+- **The document audience implies its agent and organization scopes.** Every
+  person who can see an agent is a live member of that agent's organization, so
+  `agent:<ownerAgentId>` and `organization:<organizationId>` subtract. It does
+  not imply a particular project or team: visibility can come through another
+  binding or stewardship, neither of which grants that specific project/team.
+  The destination channel remains irrelevant because the document persists
+  outside that room.
 - **Close the streaming gap in the same phase.** The document stream lanes
   gain the `runReplyIsRestricted(context)` gate that `stream.delta` and the
   thinking recorder already have, and the session bootstrap route checks the
@@ -399,8 +409,8 @@ just applies it:
   everywhere, and lands here because this design is what widens the blast
   radius.
 - **Edits inherit both rules**: `kb_document_edit` already records the read;
-  its save applies the same publish/draft decision to the *new version* it
-  creates when the target is an agent-owned space.
+  when its proposed version would widen access, it refuses and leaves both a
+  draft and a published existing version unchanged.
 
 ## 6. The human interface
 
@@ -465,7 +475,7 @@ table.
 | Audience = agent's audience | one read arm in `access.ts` + the SQL mirror fragment, both delegating to the `workspace-admin` mirror pair | `isAgentVisibleToUser`/`isAgentAccessibleToActor` (and the future visibility fragment, inherited free); `visibility:'private'` as fail-closed floor |
 | Agent authoring | structural prompt block naming the home space; proprietor relaxation of `kb_file` in own space | `kb_document_compose`/`kb_document_edit`/`kb_draft_write`/`kb_file`/`kb_search`/`kb_page_read`/`kb_list`/`kb_comment_*` — no new tool family; the whole streaming stack |
 | Human editing | `writeRestricted` + member management surfaced on the tab | KB editor, version history with `authorType`, annotations, `KnowledgeSpaceMember` (users *and* agents) |
-| Disclosure | agent-owned-space branch in the basis bridge; basis-aware publish decision on compose/edit saves; `runReplyIsRestricted` gate on document stream + bootstrap | `ConsumedSourceSink`/`computeReplyBasis`/`scopeForVisibility`; `kb_publish_request` + approval effect as the consent gate |
+| Disclosure | agent-owned-space branch in the basis bridge; basis-aware refuse-before-write on compose/edit saves; `runReplyIsRestricted` gate on document stream + bootstrap | `ConsumedSourceSink`/`computeReplyBasis`/`scopeForVisibility`; existing attachment cleanup on persistence failures |
 | Human surface | Documents tab entry in `AgentDetailTabs`; `GET /api/agents/:agentId/docs` | knowledge workspace component (parameterized, the project-Docs precedent); `TabBar`; two-layer route gate |
 
 **Deliberately not built:** a second document store or streaming stack, a
@@ -494,7 +504,8 @@ it names (`kb_list`, `kb_search`, `kb_document_compose`,
    `ensureAgentDocsSpace` + lazy provision; the read arm in TS and SQL
    (delegating to the mirror pair) + the row added to the agent-scopes
    gating table; the basis-bridge branch (with the §5.1 send_message
-   verification settled and recorded); the basis-aware publish decision;
+   verification settled and recorded); the basis-aware refuse-before-write
+   decision;
    the prompt block. Agents can now keep, re-read, and search their
    documents through the existing tools, and entitled humans already reach
    them through the KB workspace — the capability is human-reachable on day

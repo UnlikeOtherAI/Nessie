@@ -71,8 +71,13 @@ const makeHarness = (
 ) => {
   const consumedSources = createConsumedSourceSink()
   const publishCalls: unknown[] = []
+  const versionCalls: unknown[] = []
+  const storeCalls: unknown[] = []
   const provider = {
-    addFileVersion: async () => ({ versionNumber: 2 }),
+    addFileVersion: async (input: unknown) => {
+      versionCalls.push(input)
+      return { versionNumber: 2 }
+    },
     getPage: async () => targetPage,
     getSpace: async () => targetSpace,
     publishPage: async (input: unknown) => {
@@ -81,7 +86,10 @@ const makeHarness = (
     },
   } as unknown as KnowledgeProvider
   const files = {
-    store: async () => ({ attachment: { id: 'attachment-2' }, bytesWritten: 5 }),
+    store: async (input: unknown) => {
+      storeCalls.push(input)
+      return { attachment: { id: 'attachment-2' }, bytesWritten: 5 }
+    },
   } as unknown as FileService
   const context = {
     actorContext: {
@@ -105,7 +113,7 @@ const makeHarness = (
     run: { id: 'run-1', messageId: 'message-1', threadId: 'thread-1' },
     toolCallId: null,
   } as unknown as BuiltinToolRuntimeContext
-  return { consumedSources, context, files, provider, publishCalls }
+  return { consumedSources, context, files, provider, publishCalls, storeCalls, versionCalls }
 }
 
 const edit = (harness: ReturnType<typeof makeHarness>) =>
@@ -137,15 +145,29 @@ test('editing a published agent document republishes only audience-covered conte
   assert.match(result.outputPreview, /new version is published/)
 })
 
-test('editing after a foreign read saves the agent document version for review', async () => {
+test('editing refuses a wider-audience disclosure before storing an attachment or version', async () => {
   const harness = makeHarness(space('agent-1'), page('published'))
   harness.consumedSources.add({ scopeId: 'project-foreign', scopeType: 'project' })
 
   const result = await edit(harness)
 
+  assert.equal(harness.storeCalls.length, 0)
+  assert.equal(harness.versionCalls.length, 0)
   assert.equal(harness.publishCalls.length, 0)
-  assert.match(result.outputPreview, /saved as a draft needing review/)
-  assert.match(result.outputPreview, /kb_publish_request/)
+  assert.match(result.outputPreview, /cannot save this version/)
+  assert.match(result.outputPreview, /existing document is unchanged/)
+  assert.doesNotMatch(result.outputPreview, /kb_publish_request/)
+})
+
+test('editing a published agent document republishes after an organization-visibility read', async () => {
+  const harness = makeHarness(space('agent-1'), page('published'))
+  harness.consumedSources.add({ scopeId: 'org-1', scopeType: 'organization' })
+
+  const result = await edit(harness)
+
+  assert.equal(harness.versionCalls.length, 1)
+  assert.equal(harness.publishCalls.length, 1)
+  assert.match(result.outputPreview, /new version is published/)
 })
 
 test('editing an existing draft never flips it to published', async () => {
