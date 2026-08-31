@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client'
-import { buildVisibleAgentWhere } from './agent-visibility.js'
+import { visibleKnowledgeSpaceWhere } from './knowledge-space-visibility.js'
 
 const TERMINAL_TASK_STATUSES = ['done', 'cancelled'] as const
 
@@ -55,51 +55,13 @@ export const visibleUserAlertWhere = (input: {
     },
     {
       kind: 'knowledge_published',
-      // This mirrors the human-reader access rules in @nessie/knowledge's
-      // canReadSpace. Keep changes to that access policy synchronized here:
-      // Prisma must express the relation predicate for list/count queries.
       knowledgePage: {
         is: {
           deletedAt: null,
           organizationId: input.organizationId,
           status: 'published',
           space: {
-            is: {
-              deletedAt: null,
-              organizationId: input.organizationId,
-              OR: [
-                {
-                  // Agent documents derive their human audience from the one
-                  // agent-visibility fragment, while an explicit space member
-                  // remains a deliberate grant. Do not fall through to stored
-                  // visibility; see docs/plans/2026-08-31-agent-documents.md §4.1.
-                  ownerAgentId: { not: null },
-                  OR: [
-                    { members: { some: { userId: input.userId } } },
-                    {
-                      ownerAgent: {
-                        is: buildVisibleAgentWhere(input),
-                      },
-                    },
-                  ],
-                },
-                {
-                  // Non-agent spaces retain the established creator, member,
-                  // organization, and project arms. The owner-null guard keeps
-                  // an agent home from widening through any of them.
-                  ownerAgentId: null,
-                  OR: [
-                    { createdBy: input.userId },
-                    { members: { some: { userId: input.userId } } },
-                    { visibility: 'organization' },
-                    {
-                      visibility: 'project',
-                      project: { members: { some: { userId: input.userId } } },
-                    },
-                  ],
-                },
-              ],
-            },
+            is: visibleKnowledgeSpaceWhere(input),
           },
         },
       },

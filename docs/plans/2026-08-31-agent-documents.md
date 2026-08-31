@@ -279,10 +279,12 @@ restating it:
   human search arm receives the already-resolved `visibleAgentIds` set as one
   bound UUID-array parameter. It never restates the binding/steward joins in
   SQL. The owning-agent/parent arm is mirrored separately for agent search.
-  `visibleUserAlertWhere` composes the same shared Prisma fragment so durable
-  knowledge alerts revalidate against the identical live audience. This is
-  what keeps `kb_search`, human KB search, and alerts honest without a
-  post-filter.
+  `packages/db/src/knowledge-space-visibility.ts` is the one Prisma mirror,
+  composed in exactly two locations: `visibleUserAlertWhere` for durable
+  knowledge alerts and `api/src/services/push-surface-presence.ts` before a
+  client may record a knowledge-space push-suppression surface. This keeps
+  `kb_search`, human KB search, alerts, and foreground push suppression honest
+  without a post-filter.
 - **Agent-side** (`loadAgentViewer`): the owning agent passes via the
   existing `createdBy === agent.id` grant already; add
   `space.ownerAgentId === agent.id || space.ownerAgentId === agent.parentAgentId`

@@ -299,7 +299,8 @@ export const loadAgentMessages = async (
  * visibility scope it returned every child in the organization — name, status
  * and purpose — to anyone who could reach the parent. Reaching a parent through
  * stewardship therefore would have re-opened exactly the subtask-child
- * enumeration that `buildOwnedAgentWhere`'s `parentAgentId: null` exists to
+ * enumeration that `buildVisibleAgentWhere`'s stewardship arm excludes with
+ * `parentAgentId: null` exists to
  * prevent. Having decided that inherited ownership is not sufficient for child
  * visibility in the list, it cannot be sufficient here either.
  *

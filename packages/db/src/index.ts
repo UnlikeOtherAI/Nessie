@@ -18,6 +18,10 @@ export {
   listVisibleAgentIdsForUser,
   type VisibleAgentWhereInput,
 } from './agent-visibility.js'
+export {
+  visibleKnowledgeSpaceWhere,
+  type VisibleKnowledgeSpaceWhereInput,
+} from './knowledge-space-visibility.js'
 export { visibleUserAlertWhere } from './user-alerts.js'
 
 export {
