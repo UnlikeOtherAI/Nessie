@@ -11,6 +11,7 @@ import { Dialog } from '../../shared/Dialog'
 type CallerCallDialogProps = {
   actionError: unknown
   actionPending: boolean
+  canManageCallSettings?: boolean
   call: CallRecord
   channelLabel: string
   onCancel: () => void
@@ -68,6 +69,7 @@ const ExternalMeetingAnchor = ({
 export const CallerCallDialog = ({
   actionError,
   actionPending,
+  canManageCallSettings = false,
   call,
   channelLabel,
   onCancel,
@@ -78,6 +80,7 @@ export const CallerCallDialog = ({
   const [copyMessage, setCopyMessage] = useState<string | null>(null)
   const canCancel = call.status === 'ringing'
   const canEnd = call.status === 'active'
+  const providerLabel = callProviderLabel(call.provider)
 
   useEffect(() => {
     setCopyMessage(null)
@@ -98,7 +101,15 @@ export const CallerCallDialog = ({
 
   return (
     <Dialog
-      description={`in #${channelLabel} via ${callProviderLabel(call.provider)}`}
+      description={(
+        <>
+          in #{channelLabel} via {canManageCallSettings ? (
+            <Link className="text-[color:var(--accent)] underline-offset-2 hover:underline" to="/settings/organization">
+              {providerLabel}
+            </Link>
+          ) : providerLabel}
+        </>
+      )}
       dismissDisabled={actionPending}
       initialFocusRef={joinLinkRef}
       onClose={onClose}

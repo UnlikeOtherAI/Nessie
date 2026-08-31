@@ -8,6 +8,7 @@ import {
 } from '../src/layouts/admin-shell/AdminSidebarNav.js'
 
 const viewer = (overrides: Partial<AdminNavViewer> = {}): AdminNavViewer => ({
+  isAdmin: false,
   isOwner: false,
   isSuperAdmin: false,
   isUoaSession: false,
@@ -49,7 +50,7 @@ test('the UOA session flag widens nothing else', () => {
 })
 
 test('owner-only items stay owner-only on a UOA session', () => {
-  for (const path of ['/agents/tools', '/settings/organization', '/audit', '/ops/usage']) {
+  for (const path of ['/agents/tools', '/audit', '/ops/usage']) {
     assert.equal(
       isAdminNavItemVisible(navItem(path), viewer({ isUoaSession: true })),
       false,

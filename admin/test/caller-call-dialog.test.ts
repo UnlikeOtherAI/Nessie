@@ -4,6 +4,7 @@ import test from 'node:test'
 import * as ReactNamespace from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { MemoryRouter } from 'react-router-dom'
 
 import { CallerCallDialog } from '../src/components/features/channels/CallerCallDialog.js'
 import { CallBanner } from '../src/components/shared/CallBanner.js'
@@ -56,6 +57,27 @@ test('caller dialog keeps the link as an external anchor and exposes ringing sta
   // denied — so an unanswered invitee reads as awaiting a response.
   assert.match(html, /Waiting for response/)
   assert.match(html, /Cancel call/)
+})
+
+test('an owner or admin can open the team call-provider setting from the popup', () => {
+  const html = renderToStaticMarkup(
+    createElement(
+      MemoryRouter,
+      null,
+      createElement(CallerCallDialog, {
+        actionError: null,
+        actionPending: false,
+        canManageCallSettings: true,
+        call,
+        channelLabel: 'design',
+        onCancel: () => undefined,
+        onClose: () => undefined,
+        onEnd: () => undefined,
+      }),
+    ),
+  )
+
+  assert.match(html, /via <a[^>]+href="\/settings\/organization"[^>]*>Google Meet<\/a>/)
 })
 
 test('call banner names the caller and joins through an anchor', () => {

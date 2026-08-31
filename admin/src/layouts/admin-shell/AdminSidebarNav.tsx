@@ -11,6 +11,7 @@ import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMen
  * this alone — entitlement, never ambient route or session context.
  */
 export type AdminNavViewer = {
+  isAdmin: boolean;
   isOwner: boolean;
   isSuperAdmin: boolean;
   /**
@@ -275,7 +276,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       {
         path: '/settings/organization',
         label: 'General',
-        ownerOnly: true,
+        visibleTo: ({ isAdmin, isOwner }) => isOwner || isAdmin,
         icon: icon(
           <>
             <path d="M4 21V7l8-4 8 4v14" strokeLinecap="round" strokeLinejoin="round" />
@@ -483,14 +484,15 @@ const AdminNavSection = ({
 
 export const AdminSidebarNav = ({
   pathname,
+  isAdmin,
   isOwner,
   isSuperAdmin,
   isUoaSession,
 }: AdminSidebarNavProps) => {
   const nativeTouchShell = isReactNativeWebView();
   const viewer = useMemo<AdminNavViewer>(
-    () => ({ isOwner, isSuperAdmin, isUoaSession }),
-    [isOwner, isSuperAdmin, isUoaSession],
+    () => ({ isAdmin, isOwner, isSuperAdmin, isUoaSession }),
+    [isAdmin, isOwner, isSuperAdmin, isUoaSession],
   );
   const visibleGroups = useMemo(
     () =>
