@@ -221,6 +221,7 @@ const makeApp = (
     $queryRaw: async () => [policyRow('allow')],
     auditLog: { create: async () => {} },
     projectMember: { findMany: async () => [{ projectId }] },
+    agent: { findMany: async () => [] },
     agentBinding: { findMany: async () => [] },
     knowledgeSpaceMember: { findMany: async () => [] },
   } as unknown as PrismaClient

@@ -538,6 +538,9 @@ importers:
       '@chonkiejs/core':
         specifier: 0.0.11
         version: 0.0.11
+      '@nessie/db':
+        specifier: workspace:*
+        version: link:../db
       '@nessie/retrieval':
         specifier: workspace:*
         version: link:../retrieval

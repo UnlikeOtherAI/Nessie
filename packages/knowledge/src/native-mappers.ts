@@ -14,6 +14,8 @@ export const pageInclude = {
 export type PageRow = Prisma.KnowledgePageGetPayload<{ include: typeof pageInclude }>
 
 export const spaceInclude = {
+  // ownerAgentId is a scalar and Prisma includes it without hydrating the
+  // ownerAgent relation; access only needs the stable id.
   members: { select: { userId: true, agentId: true } },
 } satisfies Prisma.KnowledgeSpaceInclude
 
@@ -65,6 +67,7 @@ export const mapSpace = (space: SpaceRow): KnowledgeSpaceRecord => ({
   visibility: space.visibility,
   sensitivityTier: space.sensitivityTier,
   privateToAgentId: space.privateToAgentId,
+  ownerAgentId: space.ownerAgentId,
   createdBy: space.createdBy,
   deletedAt: toIso(space.deletedAt),
   createdAt: space.createdAt.toISOString(),

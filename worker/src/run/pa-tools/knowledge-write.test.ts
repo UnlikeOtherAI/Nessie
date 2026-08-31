@@ -62,6 +62,8 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
 type SpaceFixtureOverrides = Partial<{
   id: string
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
+  visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
+  ownerAgentId: string | null
 }>
 
 const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
@@ -77,9 +79,10 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
   channelId: null,
   threadId: null,
   userId: null,
-  visibility: 'organization',
+  visibility: overrides.visibility ?? 'organization',
   sensitivityTier: overrides.sensitivityTier ?? 'normal',
   privateToAgentId: null,
+  ownerAgentId: overrides.ownerAgentId ?? null,
   createdBy: 'user-1',
   deletedAt: null,
   createdAt: now,
@@ -88,13 +91,33 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
 
 type ApprovalRow = { id: string; context: Record<string, unknown> | null }
 
+type AgentFixture = {
+  id: string
+  organizationId: string
+  ownerMembershipActive: boolean
+  ownerUserId: string | null
+  parentAgentId: string | null
+  systemManaged: boolean
+}
+
 type FakePrismaOptions = {
   page?: ReturnType<typeof buildPageRow> | null
   space?: ReturnType<typeof buildSpaceRow> | null
+  agents?: AgentFixture[]
   pendingApprovals?: ApprovalRow[]
 }
 
 const buildFakePrisma = (options: FakePrismaOptions = {}) => {
+  const agents = options.agents ?? [
+    {
+      id: 'agent-1',
+      organizationId: 'org-1',
+      ownerMembershipActive: true,
+      ownerUserId: 'user-1',
+      parentAgentId: null,
+      systemManaged: false,
+    },
+  ]
   const approvalCreateCalls: unknown[] = []
   const createPageCalls: Array<Record<string, unknown>> = []
   const createVersionCalls: Array<Record<string, unknown>> = []
@@ -130,6 +153,53 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     },
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
+    },
+    agent: {
+      findFirst: async (args: {
+        select: { parentAgentId?: boolean }
+        where: { id?: string; organizationId?: string }
+      }) => {
+        const agent = agents.find(
+          (candidate) =>
+            candidate.id === args.where.id
+            && candidate.organizationId === args.where.organizationId,
+        )
+        if (!agent) return null
+        return {
+          ...(args.select.parentAgentId ? { parentAgentId: agent.parentAgentId } : {}),
+        }
+      },
+      findMany: async (args: {
+        select: { id?: boolean }
+        where: {
+          organizationId?: string
+          systemManaged?: boolean
+          OR?: Array<{
+            ownerMembership?: { deactivatedAt?: null }
+            ownerUserId?: string
+            parentAgentId?: null
+          }>
+        }
+      }) => {
+        const ownerFilters = args.where.OR?.filter(
+          (candidate) => candidate.ownerUserId !== undefined,
+        ) ?? []
+        return agents
+          .filter(
+            (agent) =>
+              agent.organizationId === args.where.organizationId
+              && (args.where.systemManaged === undefined
+                || agent.systemManaged === args.where.systemManaged)
+              && ownerFilters.some(
+                (filter) =>
+                  agent.ownerUserId === filter.ownerUserId
+                  && (!filter.ownerMembership || agent.ownerMembershipActive)
+                  && (filter.parentAgentId === undefined
+                    || agent.parentAgentId === filter.parentAgentId),
+              ),
+          )
+          .map((agent) => ({ ...(args.select.id ? { id: agent.id } : {}) }))
+      },
     },
     agentBinding: {
       // The agent is org-bound in every fixture below, so org-visibility
@@ -292,7 +362,7 @@ test('kb_draft_write defaults taskId to null on a new page when not supplied', a
 
 test('a delegating personal assistant writes with user access but agent authorship', async () => {
   const page = buildPageRow({ id: 'page-new', title: 'Delegated notes', authorType: 'agent' })
-  const space = buildSpaceRow()
+  const space = buildSpaceRow({ visibility: 'private', ownerAgentId: 'agent-1' })
   const { prisma, createPageCalls, createVersionCalls } = buildFakePrisma({ page, space })
   const context = makeContext(prisma, {
     agentKind: 'personal_assistant',

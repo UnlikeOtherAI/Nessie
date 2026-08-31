@@ -50,6 +50,7 @@ export const KnowledgeResponseEnvelopeSchema = z.object({
 
 export const KnowledgeSpaceRecordSchema = OptionalScopeSchema.extend({
   id: UuidSchema,
+  ownerAgentId: UuidSchema.nullable(),
   name: NonEmptyStringSchema,
   description: z.string().nullable(),
   metadata: JsonRecordSchema.nullable(),

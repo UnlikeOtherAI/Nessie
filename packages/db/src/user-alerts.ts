@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client'
 
+import { buildVisibleAgentWhere } from './agent-visibility.js'
+
 const TERMINAL_TASK_STATUSES = ['done', 'cancelled'] as const
 
 /**
@@ -67,12 +69,28 @@ export const visibleUserAlertWhere = (input: {
               deletedAt: null,
               organizationId: input.organizationId,
               OR: [
-                { createdBy: input.userId },
                 { members: { some: { userId: input.userId } } },
-                { visibility: 'organization' },
                 {
-                  visibility: 'project',
-                  project: { members: { some: { userId: input.userId } } },
+                  // Publication alerts must use the same live agent audience as
+                  // the reader; the shared builder prevents a fifth copy of
+                  // that rule (docs/plans/2026-08-31-agent-documents.md §4.1).
+                  ownerAgentId: { not: null },
+                  ownerAgent: { is: buildVisibleAgentWhere(input) },
+                },
+                {
+                  // An agent-owned space never inherits ordinary org/project
+                  // readability. Its private storage visibility is a
+                  // fail-closed floor, not its audience
+                  // (docs/plans/2026-08-31-agent-documents.md §4.1).
+                  ownerAgentId: null,
+                  OR: [
+                    { createdBy: input.userId },
+                    { visibility: 'organization' },
+                    {
+                      visibility: 'project',
+                      project: { members: { some: { userId: input.userId } } },
+                    },
+                  ],
                 },
               ],
             },
