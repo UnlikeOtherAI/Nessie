@@ -103,12 +103,16 @@ test('secondary sidebar menus do not repeat the active tab title above their ite
 })
 
 test('project action menus render in the document overlay layer instead of the clipped sidebar', () => {
-  const projects = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
+  const sidebarProjects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
+  const projectNavigation = readSource('../src/layouts/admin-shell/ProjectsSidebarNav.tsx')
 
-  assert.match(projects, /createPortal\(/)
-  assert.match(projects, /document\.body/)
-  assert.match(projects, /admin-sidebar-menu-project fixed z-\[61\]/)
-  assert.match(projects, /window\.addEventListener\('scroll', closeMenu, true\)/)
+  assert.match(sidebarProjects, /createPortal\(/)
+  assert.match(sidebarProjects, /document\.body/)
+  assert.match(sidebarProjects, /admin-sidebar-menu-project fixed z-\[61\]/)
+  assert.match(sidebarProjects, /setMenuPosition\(\{ left: rect\.left, top: rect\.bottom \}\)/)
+  assert.match(sidebarProjects, /window\.addEventListener\('scroll', closeOnViewportChange, true\)/)
+  assert.match(projectNavigation, /createPortal\(/)
+  assert.match(projectNavigation, /document\.body/)
 })
 
 test('avatar tiles are rounded squares and touch navigation uses sidebar-coloured presence cutouts', () => {
@@ -305,6 +309,6 @@ test('sidebar action menus have room to read and tap their choices', () => {
 test('an open project action menu dismisses when the person taps outside it', () => {
   const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
 
-  assert.match(projects, /className="fixed inset-0 z-10"/)
-  assert.match(projects, /setSidebarMenu\(\(\) => null\)/)
+  assert.match(projects, /className="fixed inset-0 z-\[60\] cursor-default"/)
+  assert.match(projects, /closeProjectMenu\(\)/)
 })
