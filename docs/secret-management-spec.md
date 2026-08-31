@@ -28,6 +28,16 @@ the four separate capabilities:
 - `manage` — change metadata, replace, rotate, revoke;
 - `delegate` — issue further grants.
 
+Every vault location is hard-partitioned as
+`/nessie/<organizationId>/<scopeType>/<scopeId>`, using only stable structural
+IDs. Personal paths use the owner user ID, team paths the team ID, project paths
+the project ID, and workspace paths the organisation ID. Nessie uses the same
+path for create, rotate, and revoke; `vaultReference` records that exact path
+with the server-minted opaque secret name. Display names never enter a vault
+path, and secret values are neither returned nor logged. The folder hierarchy
+is created on demand before a first write, one path segment at a time; a
+concurrent already-existing-folder conflict is successful.
+
 The current MVP exposes metadata-only create, list, rotate, revoke, and grant
 endpoints. It rejects any attempt to grant `reveal` to an agent. No endpoint
 returns a secret value.
@@ -67,10 +77,13 @@ sidecar alongside Nessie, with a separate `infisical` database and database
 role on the existing `nessie-postgres` cluster. PostgreSQL and Redis have no
 host ports. Caddy is the only ingress to `vault.unlikeotherai.com`.
 
-The Infisical write service token is mounted as a Docker secret into the API
-container at `/run/secrets/infisical_service_token`. The worker, executor, and
-agent sandboxes do not receive it. The host-only Compose variable names and
-provisioning commands are documented in [deployment.md](./deployment.md).
+The dedicated Infisical machine-identity access token is mounted as a Docker
+secret into the API container at `/run/secrets/infisical_service_token` (the
+filename is retained as a legacy deployment contract). The identity has no
+organisation-level access and belongs only to the Nessie Secrets project. The
+worker, executor, and agent sandboxes do not receive it. The host-only Compose
+variable names and provisioning commands are documented in
+[deployment.md](./deployment.md).
 
 ## Next phases
 

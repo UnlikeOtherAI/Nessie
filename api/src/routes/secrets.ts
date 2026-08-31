@@ -5,7 +5,11 @@ import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { InfisicalVault, InfisicalVaultError } from '../services/infisical-vault.js'
+import {
+  InfisicalVault,
+  InfisicalVaultError,
+  type InfisicalSecretNamespace,
+} from '../services/infisical-vault.js'
 import type { RouteDeps } from './types.js'
 
 const SecretScopeSchema = z.enum(['personal', 'team', 'project', 'workspace'])
@@ -199,12 +203,19 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
     }
 
     const reference = `sec_${crypto.randomBytes(16).toString('hex')}`
-    const vault = new InfisicalVault()
+    const namespace: InfisicalSecretNamespace = {
+      organizationId: actorContext.tenant.organizationId,
+      scopeId: scope.scopeId,
+      scopeType: body.scopeType,
+    }
+    let vault: InfisicalVault
     let vaultReference: string
     try {
+      vault = new InfisicalVault()
       vaultReference = await vault.put({
         description: body.description,
         name: vaultName(reference),
+        namespace,
         value: body.value,
       })
     } catch (error) {
@@ -229,7 +240,7 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       })
     } catch (error) {
       // Never retain a usable vault value when its Nessie metadata row failed.
-      await vault.remove(vaultName(reference)).catch(() => undefined)
+      await vault.remove({ name: vaultName(reference), namespace }).catch(() => undefined)
       throw error
     }
     await emitAuditEvent(prisma, {
@@ -274,8 +285,17 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
       return reply
     }
+    const namespace: InfisicalSecretNamespace = {
+      organizationId: secret.organizationId,
+      scopeId: secret.scopeId,
+      scopeType: secret.scopeType,
+    }
     try {
-      await new InfisicalVault().replace({ name: vaultName(secret.reference), value: body.value })
+      await new InfisicalVault().replace({
+        name: vaultName(secret.reference),
+        namespace,
+        value: body.value,
+      })
     } catch (error) {
       if (sendVaultError(reply, error)) return reply
       throw error
@@ -323,8 +343,13 @@ export const registerSecretRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 403, 'SECRET_MANAGE_DENIED', 'You cannot manage this secret.')
       return reply
     }
+    const namespace: InfisicalSecretNamespace = {
+      organizationId: secret.organizationId,
+      scopeId: secret.scopeId,
+      scopeType: secret.scopeType,
+    }
     try {
-      await new InfisicalVault().remove(vaultName(secret.reference))
+      await new InfisicalVault().remove({ name: vaultName(secret.reference), namespace })
     } catch (error) {
       if (sendVaultError(reply, error)) return reply
       throw error

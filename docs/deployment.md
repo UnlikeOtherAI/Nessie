@@ -76,11 +76,15 @@ Infisical owns secret values and runs with Redis plus a dedicated `infisical`
 database and database role on the existing `nessie-postgres` container. Before
 the first deploy, create the database and role from the host without echoing a
 password into shell history, then create `/srv/nessie-secrets/infisical-service-token`
-with mode `0600`. Set the corresponding `INFISICAL_*` values in the Compose
-`.env`; create the separate root-readable `.env.infisical` from
+with mode `0600`. Despite the legacy filename and environment-variable name,
+this file contains a dedicated Infisical machine-identity access token. Set the
+corresponding `INFISICAL_*` values in the Compose `.env`; create the separate
+root-readable `.env.infisical` from
 `infrastructure/compose/.env.infisical.example` for the vault database URI,
-encryption key, and auth secret. The write-scoped service token is mounted only
-into `nessie-api` as a Docker secret. Do not put any vault root material in
+encryption key, and auth secret. The machine identity has `no-access` at the
+Infisical organisation level and Developer membership only in the Nessie
+Secrets project. Its access token is mounted only into `nessie-api` as a Docker
+secret. Do not put any vault root material in
 `.env` or pass it to `nessie-worker`.
 The deployment mirror explicitly preserves `.env.infisical`, just as it
 preserves `.env`; keep it host-only with mode `0600`.
@@ -90,9 +94,17 @@ ordinary application deploys bootable while the vault has not been provisioned.
 Add a `vault.unlikeotherai.com` DNS-only A record to the same host and a Caddy site
 block that proxies only to `nessie-infisical:8080`. Validate the Caddyfile and
 recreate Caddy as described below. After startup, create the Infisical admin,
-project, `prod` environment, and an API service token scoped only to
-`prod:/nessie` with read/write access. Record its project ID in
-`INFISICAL_PROJECT_ID`.
+project, `prod` environment, and the dedicated project-only API machine identity
+described above. Record the project's ID in
+`INFISICAL_PROJECT_ID`. Nessie derives every child path as
+`/nessie/<organizationId>/<scopeType>/<scopeId>` from structural IDs only;
+personal, team, project, and workspace secrets therefore cannot collide on a
+display name. The stored vault reference records that exact path plus a
+server-generated opaque secret name. On the first write, Nessie creates the
+four namespace folders (`nessie`, organization, scope type, and scope ID) in
+order; concurrent creation conflicts are safe to retry. Do not use tenant,
+workspace, project, or person names in Infisical paths, and never log or return
+vault values.
 
 ## Shared infra (already on the host, do not disrupt)
 

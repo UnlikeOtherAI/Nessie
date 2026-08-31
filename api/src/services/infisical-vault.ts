@@ -21,6 +21,25 @@ type InfisicalSettings = {
   serviceToken: string
 }
 
+export type InfisicalSecretNamespace = {
+  organizationId: string
+  scopeId: string
+  scopeType: 'personal' | 'team' | 'project' | 'workspace'
+}
+
+export const infisicalSecretPath = (namespace: InfisicalSecretNamespace): string =>
+  `/nessie/${namespace.organizationId}/${namespace.scopeType}/${namespace.scopeId}`
+
+const infisicalNamespaceFolders = (namespace: InfisicalSecretNamespace): Array<{
+  name: string
+  path: string
+}> => [
+  { name: 'nessie', path: '/' },
+  { name: namespace.organizationId, path: '/nessie' },
+  { name: namespace.scopeType, path: `/nessie/${namespace.organizationId}` },
+  { name: namespace.scopeId, path: `/nessie/${namespace.organizationId}/${namespace.scopeType}` },
+]
+
 const settingsFromEnv = (env: NodeJS.ProcessEnv = process.env): InfisicalSettings => {
   let token = env.INFISICAL_SERVICE_TOKEN?.trim()
   if (env.INFISICAL_SERVICE_TOKEN_FILE?.trim()) {
@@ -62,6 +81,28 @@ const responseOk = async (response: Response): Promise<void> => {
   throw new InfisicalVaultError('The vault could not complete this operation.', 'UNAVAILABLE')
 }
 
+const fetchInfisical = async (url: URL, init: RequestInit): Promise<Response> => {
+  try {
+    return await safeFetch(url, init, { credentialsPresent: true, maxRedirects: 0 })
+  } catch (error) {
+    if (error instanceof InfisicalVaultError) throw error
+    throw new InfisicalVaultError('The vault could not complete this operation.', 'UNAVAILABLE')
+  }
+}
+
+const folderAlreadyExists = async (
+  response: Response,
+  folder: { name: string; path: string },
+): Promise<boolean> => {
+  if (response.status === 409) {
+    await response.body?.cancel().catch(() => undefined)
+    return true
+  }
+  if (response.status !== 400) return false
+  const body = await response.json().catch(() => undefined) as { message?: unknown } | undefined
+  return body?.message === `Folder with name '${folder.name}' already exists in path '${folder.path}'`
+}
+
 /**
  * Narrow server-only Infisical boundary. It accepts secret bytes only for a
  * write/rotation request and never returns them to a route, model, or caller.
@@ -73,18 +114,48 @@ export class InfisicalVault {
     this.#settings = settingsFromEnv(env)
   }
 
-  referenceFor(secretName: string): string {
-    return `infisical://${this.#settings.projectId}/${this.#settings.environment}/nessie/${secretName}`
+  referenceFor(input: { name: string; namespace: InfisicalSecretNamespace }): string {
+    return `infisical://${this.#settings.projectId}/${this.#settings.environment}${infisicalSecretPath(input.namespace)}/${input.name}`
   }
 
-  async put(input: { name: string; value: string; description?: string }): Promise<string> {
+  async #ensureNamespace(namespace: InfisicalSecretNamespace): Promise<void> {
+    for (const folder of infisicalNamespaceFolders(namespace)) {
+      const response = await fetchInfisical(new URL('/api/v2/folders', this.#settings.apiUrl), {
+        body: JSON.stringify({
+          environment: this.#settings.environment,
+          name: folder.name,
+          path: folder.path,
+          projectId: this.#settings.projectId,
+        }),
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.#settings.serviceToken}`,
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+        signal: AbortSignal.timeout(10_000),
+      })
+      // Infisical currently returns a specific 400 for this idempotent case;
+      // accept 409 too so concurrent first writes remain safe across versions.
+      if (await folderAlreadyExists(response, folder)) continue
+      await responseOk(response)
+    }
+  }
+
+  async put(input: {
+    name: string
+    value: string
+    description?: string
+    namespace: InfisicalSecretNamespace
+  }): Promise<string> {
+    await this.#ensureNamespace(input.namespace)
     const url = new URL(`/api/v4/secrets/${encodeURIComponent(input.name)}`, this.#settings.apiUrl)
-    const response = await safeFetch(url, {
+    const response = await fetchInfisical(url, {
       body: JSON.stringify({
         environment: this.#settings.environment,
         projectId: this.#settings.projectId,
         secretComment: input.description ?? '',
-        secretPath: '/nessie',
+        secretPath: infisicalSecretPath(input.namespace),
         secretValue: input.value,
         type: 'shared',
       }),
@@ -95,19 +166,24 @@ export class InfisicalVault {
       },
       method: 'POST',
       signal: AbortSignal.timeout(10_000),
-    }, { credentialsPresent: true, maxRedirects: 0 })
+    })
     await responseOk(response)
-    return this.referenceFor(input.name)
+    return this.referenceFor(input)
   }
 
-  async replace(input: { name: string; value: string; description?: string }): Promise<void> {
+  async replace(input: {
+    name: string
+    value: string
+    description?: string
+    namespace: InfisicalSecretNamespace
+  }): Promise<void> {
     const url = new URL(`/api/v4/secrets/${encodeURIComponent(input.name)}`, this.#settings.apiUrl)
-    const response = await safeFetch(url, {
+    const response = await fetchInfisical(url, {
       body: JSON.stringify({
         environment: this.#settings.environment,
         projectId: this.#settings.projectId,
         secretComment: input.description ?? '',
-        secretPath: '/nessie',
+        secretPath: infisicalSecretPath(input.namespace),
         secretValue: input.value,
         type: 'shared',
       }),
@@ -118,17 +194,17 @@ export class InfisicalVault {
       },
       method: 'PATCH',
       signal: AbortSignal.timeout(10_000),
-    }, { credentialsPresent: true, maxRedirects: 0 })
+    })
     await responseOk(response)
   }
 
-  async remove(name: string): Promise<void> {
-    const url = new URL(`/api/v4/secrets/${encodeURIComponent(name)}`, this.#settings.apiUrl)
-    const response = await safeFetch(url, {
+  async remove(input: { name: string; namespace: InfisicalSecretNamespace }): Promise<void> {
+    const url = new URL(`/api/v4/secrets/${encodeURIComponent(input.name)}`, this.#settings.apiUrl)
+    const response = await fetchInfisical(url, {
       body: JSON.stringify({
         environment: this.#settings.environment,
         projectId: this.#settings.projectId,
-        secretPath: '/nessie',
+        secretPath: infisicalSecretPath(input.namespace),
         type: 'shared',
       }),
       headers: {
@@ -138,7 +214,7 @@ export class InfisicalVault {
       },
       method: 'DELETE',
       signal: AbortSignal.timeout(10_000),
-    }, { credentialsPresent: true, maxRedirects: 0 })
+    })
     await responseOk(response)
   }
 }
