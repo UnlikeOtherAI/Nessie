@@ -150,6 +150,20 @@ export const useSetAppConnectionSecret = () => {
   })
 }
 
+/** Remove one connection and refresh every list/detail that can name it. */
+export const useDisconnectAppConnection = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (connectionId: string) =>
+      apiClient.delete(`/api/app-connections/${encodeURIComponent(connectionId)}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY })
+    },
+  })
+}
+
 export const useAppConnectFlow = (input: {
   /** Injected by tests and by a native shell; the web popup is the default. */
   launcher?: ExternalAuthLauncher

@@ -28,6 +28,7 @@ import {
  */
 
 const connection: AppConnectionSummaryRecord = {
+  canDisconnect: true,
   displayName: 'Work',
   errorMessage: null,
   id: 'conn-1',

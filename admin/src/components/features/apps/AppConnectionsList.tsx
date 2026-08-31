@@ -1,6 +1,9 @@
-import type { AppDetailRecord } from '@nessie/schemas'
+import { useState } from 'react'
+import type { AppConnectionSummaryRecord, AppDetailRecord } from '@nessie/schemas'
 import { Pill } from '../../primitives/Pill'
+import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { EmptyState } from '../../shared/EmptyState'
+import { useDisconnectAppConnection } from '../../../facades/apps/connect-hooks'
 import {
   connectionConnectedLabel,
   connectionStatusPill,
@@ -21,6 +24,14 @@ type AppConnectionsListProps = {
 // one — how recently it was reached.
 export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsListProps) => {
   const now = Date.now()
+  const disconnect = useDisconnectAppConnection()
+  const [disconnecting, setDisconnecting] = useState<AppConnectionSummaryRecord | null>(null)
+
+  const closeDisconnect = () => {
+    if (disconnect.isPending) return
+    disconnect.reset()
+    setDisconnecting(null)
+  }
 
   if (app.connections.length === 0) {
     return (
@@ -49,7 +60,22 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
                 <span className="min-w-0 truncate text-sm font-medium text-[color:var(--tx)]">
                   {connection.displayName}
                 </span>
-                <Pill tone={pill.tone}>{pill.label}</Pill>
+                <div className="flex items-center gap-2">
+                  <Pill tone={pill.tone}>{pill.label}</Pill>
+                  {connection.canDisconnect ? (
+                    <button
+                      className="admin-button admin-button-secondary admin-button-danger admin-button-compact"
+                      data-testid={`app-disconnect-${connection.id}`}
+                      onClick={() => {
+                        disconnect.reset()
+                        setDisconnecting(connection)
+                      }}
+                      type="button"
+                    >
+                      Disconnect
+                    </button>
+                  ) : null}
+                </div>
               </div>
               {connectedLabel ? (
                 <div className="mt-1 text-xs text-[color:var(--tx3)]">{connectedLabel}</div>
@@ -89,6 +115,32 @@ export const AppConnectionsList = ({ app, onConnectAnother }: AppConnectionsList
           Connect another account
         </button>
       </div>
+      <ConfirmDialog
+        body={(
+          <>
+            <p>
+              This account will no longer be available to the agents that use it.
+            </p>
+            {disconnect.isError ? (
+              <p className="mt-3 text-sm text-[color:var(--danger-text)]" role="alert">
+                We couldn&apos;t disconnect this account. Try again.
+              </p>
+            ) : null}
+          </>
+        )}
+        confirmLabel={disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
+        destructive
+        onCancel={closeDisconnect}
+        onConfirm={() => {
+          if (!disconnecting) return
+          disconnect.mutate(disconnecting.id, {
+            onSuccess: () => setDisconnecting(null),
+          })
+        }}
+        open={disconnecting !== null}
+        pending={disconnect.isPending}
+        title={`Disconnect ${disconnecting?.displayName ?? 'this account'}?`}
+      />
     </div>
   )
 }
