@@ -3,8 +3,9 @@
 **Status: v2 — revised after two independent adversarial reviews (Kimix,
 Codex Sol; both reviewed v1 against both codebases, findings adjudicated
 claim-by-claim, convergent findings folded, three spot-verified in source).
-Review artifacts: `review-kimix-provisioning-plan.md`,
-`review-sol-provisioning-plan.md` (repo root, this branch).**
+Review artifacts:
+[review-kimix](2026-08-31-first-login-workspace-provisioning-review-kimix.md),
+[review-sol](2026-08-31-first-login-workspace-provisioning-review-sol.md).**
 
 One sentence: a brand-new SSO user who signs in to Nessie with no UOA
 workspaces gets an organisation and a first team (a *workspace*, in product
