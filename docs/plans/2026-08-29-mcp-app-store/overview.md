@@ -231,6 +231,32 @@ probed, discovered 2 capabilities, and both projected rows carry
 server does not advertise those capabilities — the gate answers from the
 handshake rather than sending a request that would error.
 
+**A catalogue name is the record author's claim, and the store must not repeat
+it as fact.** The registry lets any author pick any name: the store's "Jira" is
+not Atlassian but an entry published by `waystation` pointing at
+`waystation.ai/jira/mcp`. Two rules follow, both learned from that one row.
+
+- **`authMethod` is evidence only on an entry a human authored.** On an ingested
+  row it is the column default — the registry does not describe a server's auth
+  — so 4,685 of 5,532 rows read `none` and *none* reads `oauth2`. Rendering that
+  as "This app needs no sign-in" turned a default into a promise and told people
+  Jira needs no sign-in. For an ingested row the dialog instead says what will
+  happen ("Nessie will ask waystation what sign-in it needs") and lets the
+  protocol answer, since auth is discovered at connect time (probe → 401 →
+  RFC 9728). `catalogueStatesAuth` is that predicate, in `app-connect-copy.ts`
+  so it can be asserted rather than living inline in the component.
+- **The dialog names the publisher**, because it is the one screen where a
+  person decides to trust a server. The card carried "By waystation" and the
+  dialog carried nothing, so the moment of consent named a famous company and
+  nobody else. A `community` entry is additionally marked "not verified by
+  Nessie" — the same reason a trust badge is never minted from a self-declared
+  field.
+
+Error copy follows from the same rule: an unreachable server is reported as
+"the server listed for Jira", never "Jira's server". The latter announces an
+outage at Atlassian on the strength of a stranger's listing and sends the reader
+to check the wrong thing.
+
 **Connecting happens on `/apps`, in a dialog that says what it will do.**
 Connect used to navigate to the Connectors page, which dropped the person out
 of the store mid-decision and into a surface built for a different question.
@@ -252,6 +278,18 @@ own comment already described ("Finish setup" → the accounts tab), because
 `connecting` is `lifecycleState: 'pending_setup'` — an install waiting on a key
 nobody entered sits there indefinitely, so the label must offer a way on without
 promising the system will resolve it.
+
+**Narrowing to a category leaves that shelf and no other.** The server keeps
+counting every category while `?category=` narrows the slice — deliberately, so
+the dropdown can offer the ones you are not looking at — but the page rendered a
+section per *counted* category, so picking Communication painted fifteen other
+headings and pushed the apps themselves below the fold. `visibleShelves` narrows
+the body while `sections` stays whole for the toolbar, the Featured strip is
+hidden (four apps from other categories are the same interruption the headings
+were), and the surviving shelf renders `standalone`: no heading, since the
+dropdown directly above already reads "Communication (150)", and no two-row cap
+or "Show all", since collapsing the only thing on the page is not a move anybody
+wants. It still pages, so the whole category is reachable.
 
 The catalogue's toolbar is one row: search, the All/Installed filter, then the
 category `<select>` right-aligned. Categories were a chip row, which the

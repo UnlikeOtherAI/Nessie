@@ -324,12 +324,17 @@ test('an error whose sentence names another action does not also offer retry', (
   assert.match(presentation.message, /^Linear connected/)
 })
 
-test('the app is named where the app failed and the provider where sign-in did', () => {
+test('an unreachable server is the listing, never the named company', () => {
+  // "We couldn't reach Jira's server" reported an outage at Atlassian on the
+  // strength of a stranger's listing: the store's "Jira" is a community entry
+  // pointing at `waystation.ai/jira/mcp`. A catalogue name is the record
+  // author's claim, so the sentence blames the listing, not the company.
   const server = connectErrorPresentation('SERVER_UNREACHABLE', {
     appName: 'Acme Docs',
     providerName: 'Okta',
   })
-  assert.match(server.message, /We couldn’t reach Acme Docs’s server\./)
+  assert.match(server.message, /the server listed for Acme Docs/)
+  assert.doesNotMatch(server.message, /Acme Docs’s server/)
 
   const auth = connectErrorPresentation('AUTH_FAILED', {
     appName: 'Acme Docs',

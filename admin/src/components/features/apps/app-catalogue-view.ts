@@ -164,6 +164,22 @@ export const buildCategorySections = (
   }))
 
 
+/**
+ * The shelves the body renders. Narrowed to a category, that is only that one.
+ *
+ * `sections` stays whole for the dropdown — the server deliberately keeps
+ * counting every category so you can switch to one you are not looking at — so
+ * the narrowing belongs here, on the body, and never on the toolbar's source.
+ */
+export const visibleShelves = (
+  sections: readonly AppCategorySectionModel[],
+  activeCategory: AppCategory | null,
+): AppCategorySectionModel[] =>
+  activeCategory
+    ? sections.filter((section) => section.category === activeCategory)
+    : [...sections]
+
+
 // ─── Category dropdown ─────────────────────────────────────────────────────
 
 /** The select's value for "no category narrowing" — never a real category. */
