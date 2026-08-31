@@ -9,7 +9,7 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
-import { resolveAgentTools } from '../tool-policy.js'
+import { isPersonalAssistantPresenceRun, resolveAgentTools } from '../tool-policy.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
   buildCheckpointInjection,
@@ -97,9 +97,11 @@ export const prepareRunExecution = async (
       context.agent.parentAgentId,
       context.agent.agentKind,
       {
-        isPersonalAssistantPresence:
-          context.agent.agentKind === 'personal_assistant'
-          && context.channel.systemChannelType !== 'personal_assistant',
+        isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
+          agentKind: context.agent.agentKind,
+          principalUserId: context.run.principalUserId,
+          systemChannelType: context.channel.systemChannelType,
+        }),
       },
     ),
     input.isHandoffTurn,
@@ -115,9 +117,11 @@ export const prepareRunExecution = async (
         agentId: context.agent.id,
         agentKind: context.agent.agentKind,
         channelId: context.channel.id,
-        isPersonalAssistantPresence:
-          context.agent.agentKind === 'personal_assistant'
-          && context.channel.systemChannelType !== 'personal_assistant',
+        isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
+          agentKind: context.agent.agentKind,
+          principalUserId: context.run.principalUserId,
+          systemChannelType: context.channel.systemChannelType,
+        }),
       },
       attributionFromActorContext(payload.actorContext, {
         agentId: context.agent.id,

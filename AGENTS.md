@@ -230,6 +230,8 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   `agent:{org}:{owner}:{agent}` home DM, and the worker refuses any run outside
   that home or the agent's own trigger thread before inference. Deactivating its
   owner pauses only its triggers and records one aggregate audit transition;
+  the owner-only Members surface receives the count through
+  `GET /api/agents/paused-private-count` and never private rows or names;
   workspace agents keep running, no private detail is widened, and reactivation
   never resumes automation implicitly.
   `loadAgentChildren` takes the viewer's scope for the same reason. Never

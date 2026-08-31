@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient, TaskPriority, TaskStatus } from '@prisma/client'
 import { parseUserId } from '@nessie/schemas'
+import { isAgentVisibleToUser } from '@nessie/workspace-admin'
 import type { AssignableUser, TaskRecord } from '../contracts.js'
 import { mapTask, taskInclude } from './task-records.js'
 import { isValidTransition } from './task-status.js'
@@ -35,14 +36,10 @@ const isOrgProject = async (
 const isOrgAgent = async (
   prisma: PrismaClient,
   organizationId: string,
+  userId: string,
   agentId: string,
-): Promise<boolean> => {
-  const agent = await prisma.agent.findFirst({
-    where: { id: agentId, organizationId },
-    select: { id: true },
-  })
-  return Boolean(agent)
-}
+): Promise<boolean> =>
+  isAgentVisibleToUser(prisma, userId, organizationId, agentId)
 
 export const listAssignableUsers = async (
   prisma: PrismaClient,
@@ -168,7 +165,15 @@ export const createHumanTask = async (
   if (input.assigneeUserId && !(await isOrgMember(prisma, input.organizationId, input.assigneeUserId))) {
     return { error: 'ASSIGNEE_NOT_MEMBER' }
   }
-  if (input.assigneeAgentId && !(await isOrgAgent(prisma, input.organizationId, input.assigneeAgentId))) {
+  if (
+    input.assigneeAgentId
+    && !(await isOrgAgent(
+      prisma,
+      input.organizationId,
+      input.createdByUserId,
+      input.assigneeAgentId,
+    ))
+  ) {
     return { error: 'ASSIGNEE_AGENT_NOT_FOUND' }
   }
   if (input.ownerUserId && !(await isOrgMember(prisma, input.organizationId, input.ownerUserId))) {
@@ -245,7 +250,7 @@ export const assignTask = async (
   if (userId && !(await isOrgMember(prisma, input.organizationId, userId))) {
     return { error: 'ASSIGNEE_NOT_MEMBER' }
   }
-  if (agentId && !(await isOrgAgent(prisma, input.organizationId, agentId))) {
+  if (agentId && !(await isOrgAgent(prisma, input.organizationId, input.actorId, agentId))) {
     return { error: 'ASSIGNEE_AGENT_NOT_FOUND' }
   }
 

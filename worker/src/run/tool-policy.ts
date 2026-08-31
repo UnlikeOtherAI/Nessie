@@ -5,6 +5,19 @@ type ToolPolicy = Record<string, boolean>
 
 export type AgentKind = 'personal_assistant' | 'shared'
 
+/**
+ * A PA presence is marked by a per-run principal, not only by its singleton
+ * agent kind. Delegated children are shared agents but retain that principal,
+ * so the reduced toolset follows the owner's delegated identity.
+ */
+export const isPersonalAssistantPresenceRun = (input: {
+  agentKind: AgentKind
+  principalUserId: string | null
+  systemChannelType: string | null | undefined
+}): boolean =>
+  input.systemChannelType !== 'personal_assistant'
+  && (input.agentKind === 'personal_assistant' || input.principalUserId !== null)
+
 type ResolvedToolSet = {
   descriptors: ToolSchemaDescriptor[]
   allowedIds: Set<string>

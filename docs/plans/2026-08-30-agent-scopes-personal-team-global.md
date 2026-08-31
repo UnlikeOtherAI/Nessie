@@ -260,10 +260,10 @@ matches everything and changes nothing.
   same migration (the `extagent:` precedent shows what happens when a new DM
   key shape is added without updating the constraint — it ships violating a
   committed CHECK).
-- Deleting the agent (when agent deletion exists) or transferring it owns the
-  DM's fate; transfer of a private agent re-homes the DM to the new owner —
-  but see Open questions: transfer of a *private* agent is arguably a
-  contradiction and the simpler rule is "publish first, then transfer".
+- Deleting the agent (when agent deletion exists) owns the DM's fate. Private
+  transfer is refused in v1 with `AGENT_PRIVATE_TRANSFER_UNSUPPORTED`: publish
+  first, then transfer. Re-homing an owner-only DM is a larger disclosure act
+  and is deliberately not hidden behind the ordinary transfer write.
 
 ### Directory and read-path gating — the leak surface, enumerated
 
@@ -321,17 +321,14 @@ through it). Three hardenings, all adopted from the cross-model review:
   per-agent `inviteErrors` rendering can say why (the `connector_*`
   "visible, refuses in words" precedent).
 - **A `BEFORE INSERT` trigger on `agent_bindings` as the storage-level
-  floor.** The chokepoint discipline has been bypassed before — the codebase
-  itself records that `spawn_subtask` writes agents outside
-  `createAgentRecord`; `ensurePersonalAssistantBinding` writes bindings
-  outside `bindAgentToChannel`; and `createGroupFromDm`
-  (`api/src/services/channel-dms.ts:145-300`) **copies a DM's agent bindings
-  onto the new group channel with a raw `agentBinding.upsert`** — a live
-  writer both external reviewers' bypass argument predicted and Sol actually
-  found. A CHECK cannot span tables; a small trigger (reject when the
-  referenced agent is `private` and not the PA kind) is immune to the next
-  bypass, and the DeepWater cost-write trigger is the in-repo precedent for
-  constraint-by-trigger.
+  floor.** The chokepoint discipline has bypass writers: the codebase itself
+  records that `spawn_subtask` writes agents outside `createAgentRecord`, and
+  the PA and private-home bootstraps write their own structural bindings
+  outside `bindAgentToChannel`. `createGroupFromDm` is currently dead code,
+  so it is not justification for this floor. A CHECK cannot span tables; a
+  small trigger (reject when the referenced agent is `private` and not the PA
+  kind) protects these writes and the next bypass, and the DeepWater
+  cost-write trigger is the in-repo precedent for constraint-by-trigger.
 - **A run-start assertion in the worker.** Nothing at dispatch time re-checks
   `surfacePolicy` or visibility — the orchestrator honours whatever binding
   rows exist. A stale or hand-inserted binding should fail closed: when the
@@ -360,7 +357,9 @@ disabled with one durable audit transition; the deactivated owner is no longer
 an entitled alert recipient, and the signal is never widened), and org owners
 see *existence without content* — a "N paused private
 agents" line in the people-tree's buckets, no names, no prompts — so an admin
-can act on the spend without reading private configuration. Reactivation is
+can act on the spend without reading private configuration. The owner-gated
+`GET /api/agents/paused-private-count` supplies that aggregate to both
+member-tree call sites. Reactivation is
 explicit, mirroring `POST /api/triggers/:id/reauthorize`. The
 people-and-their-agents doc gets amended with this carve-out in the same
 change (documentation rule), and AGENTS.md gains one sentence recording that
@@ -662,10 +661,10 @@ confirmed line-by-line and changed this document.
    against *every* non-system shared agent in the org — existence, id, and a
    bind offer for agents the viewer is not entitled to see. Fixed in the
    read-path table.
-2. **`createGroupFromDm` is a live raw binding writer** (Sol; verified at
-   `channel-dms.ts:145-300`) — it upserts agent bindings outside
-   `bindAgentToChannel`, which converts the DB-trigger recommendation from
-   paranoia to necessity.
+2. **`createGroupFromDm` is not a live raw binding writer** — it has no
+   callers. The binding trigger remains necessary because the PA and
+   private-home bootstraps are direct structural writers; no dead function is
+   used as its justification.
 3. **`GET /api/runs/active` is member-level and org-wide** (Sol; verified —
    `requireActorContext` only). Added to the gating table.
 4. **Trigger lists and tool-policy target lists enumerate org-wide with no

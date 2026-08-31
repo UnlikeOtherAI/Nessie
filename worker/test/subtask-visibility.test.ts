@@ -4,6 +4,7 @@ import test from 'node:test'
 import type { Prisma, PrismaClient } from '@prisma/client'
 
 import { runSpawnSubtaskTool } from '../src/run/subtask-tools.js'
+import { isPersonalAssistantPresenceRun, resolveAgentTools } from '../src/run/tool-policy.js'
 import type { BuiltinToolRuntimeContext } from '../src/run/tool-types.js'
 
 const ORGANIZATION_ID = '30000000-0000-4000-8000-000000000001'
@@ -19,6 +20,7 @@ const OWNER_USER_ID = '30000000-0000-4000-8000-00000000000a'
 
 test('spawn_subtask inherits private visibility from its parent', async () => {
   let childData: Prisma.AgentCreateInput | null = null
+  let childRunData: { principalUserId?: string | null } | null = null
   const tx = {
     $executeRaw: async () => 1,
     agent: {
@@ -28,7 +30,10 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
       },
     },
     run: {
-      create: async () => ({ id: CHILD_RUN_ID, threadId: THREAD_ID }),
+      create: async ({ data }: { data: { principalUserId?: string | null } }) => {
+        childRunData = data
+        return { id: CHILD_RUN_ID, threadId: THREAD_ID }
+      },
     },
     task: {
       create: async () => ({ id: TASK_ID }),
@@ -63,7 +68,12 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
     ledgerIdentity: null,
     prisma,
     realtimeTransport: { publishWs: async () => undefined },
-    run: { id: PARENT_RUN_ID, messageId: MESSAGE_ID, threadId: THREAD_ID },
+    run: {
+      id: PARENT_RUN_ID,
+      messageId: MESSAGE_ID,
+      principalUserId: OWNER_USER_ID,
+      threadId: THREAD_ID,
+    },
     toolCallId: null,
   } as unknown as BuiltinToolRuntimeContext
 
@@ -73,4 +83,32 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
   assert.equal(childData.visibility, 'private')
   assert.equal(childData.ownerUserId, OWNER_USER_ID)
   assert.equal(childData.parentAgentId, PARENT_AGENT_ID)
+  assert.deepEqual(childRunData, {
+    agentId: CHILD_AGENT_ID,
+    principalUserId: OWNER_USER_ID,
+    status: 'pending',
+    threadId: THREAD_ID,
+  })
+})
+
+test('a shared child carrying a PA-presence principal keeps the reduced toolset', () => {
+  const isPresence = isPersonalAssistantPresenceRun({
+    agentKind: 'shared',
+    principalUserId: OWNER_USER_ID,
+    systemChannelType: null,
+  })
+  assert.equal(isPresence, true)
+
+  const resolved = resolveAgentTools(
+    new Set(['kb_search', 'spawn_subtask']),
+    [
+      { description: 'Search', id: 'kb_search', parameters: {} },
+      { description: 'Delegate', id: 'spawn_subtask', parameters: {} },
+    ],
+    null,
+    PARENT_AGENT_ID,
+    'shared',
+    { isPersonalAssistantPresence: isPresence },
+  )
+  assert.equal(resolved.allowedIds.has('kb_search'), false)
 })

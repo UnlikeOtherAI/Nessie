@@ -84,6 +84,7 @@ export const createWorkflowTemplate = async (
   await validateWorkflowGraphSteps(
     prisma,
     actorContext.tenant.organizationId,
+    actorContext.actor.actorId,
     input.graph,
   )
   await validateRequiredEnvironmentTemplateIds(
@@ -143,6 +144,7 @@ export const updateWorkflowTemplate = async (
   await validateWorkflowGraphSteps(
     prisma,
     actorContext.tenant.organizationId,
+    actorContext.actor.actorId,
     input.graph,
   )
   await validateRequiredEnvironmentTemplateIds(

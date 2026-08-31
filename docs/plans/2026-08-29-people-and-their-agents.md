@@ -308,9 +308,9 @@ tree and risk replacing its existing member management.
 with the viewer's own `listAgentsForUser` result**, so entitlement is inherited
 rather than re-implemented. **No hidden content counts** — "3 more you cannot
 see" leaks the shape of private channels. The sole exception is the aggregate
-number of private agents paused because their owner is inactive, which lets an
-org owner act on dormant automation spend without exposing agent names, prompts,
-or configuration.
+number of private agents paused because their owner is inactive, which the
+owner-gated `GET /api/agents/paused-private-count` supplies to the shared tree
+without exposing agent names, prompts, or configuration.
 
 **Buckets at team level:** *Unowned*; *System* (collapsed, read-only); *Owner
 not in this workspace*; *Owner deactivated* (phase 3).

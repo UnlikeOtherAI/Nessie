@@ -37,6 +37,8 @@ export type TriggerHealthDispatchDeps = {
 }
 
 type TriggerContext = {
+  agentOwnerUserId: string | null
+  agentVisibility: 'private' | 'workspace' | null
   name: string
   organizationId: string
   ownerUserId: string | null
@@ -55,7 +57,13 @@ const loadTriggerContext = async (
   const trigger = await prisma.agentTrigger.findUnique({
     where: { id: triggerId },
     select: {
-      agent: { select: { organizationId: true } },
+      agent: {
+        select: {
+          organizationId: true,
+          ownerUserId: true,
+          visibility: true,
+        },
+      },
       config: true,
       name: true,
       targetChannel: { select: { organizationId: true } },
@@ -81,6 +89,8 @@ const loadTriggerContext = async (
       : null
 
   return {
+    agentOwnerUserId: trigger.agent?.ownerUserId ?? null,
+    agentVisibility: trigger.agent?.visibility ?? null,
     name: trigger.name ?? 'Scheduled task',
     organizationId,
     ownerUserId: typeof ownerUserId === 'string' ? ownerUserId : null,
@@ -88,7 +98,8 @@ const loadTriggerContext = async (
 }
 
 /**
- * Who is told: the organisation's active owners.
+ * Who is told: the organisation's active owners, except a private agent's
+ * active owner alone.
  *
  * Triggers are owner-managed end to end — creating, listing, and the Triggers
  * page itself all require owner — so the creator of a schedule was an owner when
@@ -101,6 +112,20 @@ const resolveRecipientUserIds = async (
   prisma: TriggerHealthDispatchPrisma,
   context: TriggerContext,
 ): Promise<string[]> => {
+  if (context.agentVisibility === 'private') {
+    const ownerUserId = context.agentOwnerUserId ?? context.ownerUserId
+    if (!ownerUserId) return []
+    const owner = await prisma.organizationMember.findFirst({
+      where: {
+        deactivatedAt: null,
+        organizationId: context.organizationId,
+        userId: ownerUserId,
+      },
+      select: { userId: true },
+    })
+    return owner ? [owner.userId] : []
+  }
+
   const members = await prisma.organizationMember.findMany({
     where: {
       organizationId: context.organizationId,

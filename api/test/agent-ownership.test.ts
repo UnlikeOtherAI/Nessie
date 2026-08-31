@@ -16,6 +16,8 @@ import {
   resolveLocalUserIdsByUoaSub,
 } from '@nessie/workspace-admin'
 import { listChannelsForUser } from '../src/services/channels.js'
+import { assignTask, createHumanTask } from '../src/services/tasks.js'
+import { updateAgentRecord } from '../src/services/agent-management.js'
 
 /**
  * Agent stewardship, exercised against a real database because every guarantee
@@ -237,6 +239,71 @@ dbTest('private visibility beats member, admin, and org-owner entitlement', asyn
       ),
       true,
     )
+  })
+})
+
+dbTest('a member cannot assign another member’s private agent to a task', async () => {
+  await withDb(async (prisma) => {
+    const privateAgent = await createAgentRecord(prisma, {
+      name: `private-task-${suite}`,
+      organizationId: orgId,
+      ownerUserId,
+      role: 'assistant',
+      teamId,
+      visibility: 'private',
+    })
+
+    const created = await createHumanTask(prisma, {
+      assigneeAgentId: privateAgent.id,
+      createdByUserId: memberUserId,
+      organizationId: orgId,
+      title: 'Should not expose a private assignee',
+    })
+    assert.deepEqual(created, { error: 'ASSIGNEE_AGENT_NOT_FOUND' })
+
+    const task = await prisma.task.create({
+      data: {
+        createdByUserId: memberUserId,
+        organizationId: orgId,
+        title: 'Existing task',
+      },
+      select: { id: true },
+    })
+    const assigned = await assignTask(prisma, {
+      actorId: memberUserId,
+      assigneeAgentId: privateAgent.id,
+      organizationId: orgId,
+      taskId: task.id,
+    })
+    assert.deepEqual(assigned, { error: 'ASSIGNEE_AGENT_NOT_FOUND' })
+  })
+})
+
+dbTest('private agent transfer is refused before its owner-only home can break', async () => {
+  await withDb(async (prisma) => {
+    const privateAgent = await createAgentRecord(prisma, {
+      name: `private-transfer-${suite}`,
+      organizationId: orgId,
+      ownerUserId,
+      role: 'assistant',
+      teamId,
+      visibility: 'private',
+    })
+
+    for (const ownerUserId of [memberUserId, null]) {
+      await assert.rejects(
+        () => updateAgentRecord(prisma, privateAgent.id, { organizationId: orgId, ownerUserId }),
+        (error: unknown) =>
+          error instanceof AgentManagementError
+          && error.code === AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_TRANSFER_UNSUPPORTED,
+      )
+    }
+
+    const unchanged = await prisma.agent.findUniqueOrThrow({
+      where: { id: privateAgent.id },
+      select: { ownerUserId: true },
+    })
+    assert.equal(unchanged.ownerUserId, ownerUserId)
   })
 })
 

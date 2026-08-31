@@ -31,6 +31,7 @@
 
 export const agentKeys = {
   all: ['agents'] as const,
+  pausedPrivateCount: ['agents', 'paused-private-count'] as const,
   // The org-wide list is a different corpus from the caller's own agents, and
   // both live under the family root so one invalidation covers them.
   allScopes: ['agents', 'all'] as const,

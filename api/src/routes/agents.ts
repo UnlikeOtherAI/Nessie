@@ -36,6 +36,7 @@ import {
   validateAgentCreateInput,
 } from '../services/agents.js'
 import { enqueueInvitedAgentMentionReplay } from '../services/agent-invite-reply.js'
+import { countPausedPrivateAgents } from '../services/private-agent-lifecycle.js'
 import {
   assertLedgerAgentModelSelection,
   ledgerAgentModelCatalogRequestHeaders,
@@ -109,6 +110,21 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       includeSystemManaged,
     )
     return createApiResponse(AgentRecordSchema.array().parse(agents))
+  })
+
+  // This is intentionally a count-only owner surface. The Members tree needs
+  // to signal dormant private automation without turning private agents into
+  // an organization-browsable directory.
+  app.get('/api/agents/paused-private-count', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const count = await countPausedPrivateAgents(
+      prisma,
+      actorContext.tenant.organizationId,
+    )
+    return createApiResponse({ count })
   })
 
   app.get('/api/agents/models', async (request, reply) => {
@@ -262,6 +278,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         ownerUserId: true,
         provider: true,
         systemManaged: true,
+        visibility: true,
       },
     })
     if (
@@ -276,6 +293,16 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     // bound to could otherwise change its systemPrompt, toolPolicy or model —
     // a same-tenant takeover of an agent other people rely on.
     if (!requireOwner(actorContext, reply)) {
+      return reply
+    }
+
+    if (body.ownerUserId !== undefined && existingAgent.visibility === 'private') {
+      sendApiError(
+        reply,
+        400,
+        AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_TRANSFER_UNSUPPORTED,
+        'Private agents cannot be transferred. Publish the agent before transferring it.',
+      )
       return reply
     }
 
@@ -299,6 +326,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       })
     } catch (error) {
       if (sendProtectedPolicyError(reply, error)) return reply
+      if (sendAgentManagementError(reply, error)) return reply
       if (sendAgentModelCatalogError(reply, error)) return reply
       throw error
     }

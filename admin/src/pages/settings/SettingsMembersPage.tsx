@@ -16,7 +16,7 @@ import {
   UnassignedAgents,
 } from '../../components/features/members/PersonAgents'
 import { buildPeopleAgentsTree } from '../../components/features/members/people-agents-tree'
-import { useAgents } from '../../facades/agents/queries'
+import { useAgents, usePausedPrivateAgentCount } from '../../facades/agents/queries'
 import type { AgentRecord } from '../../lib/api-client'
 import {
   FeedbackBanner,
@@ -152,11 +152,13 @@ export const SettingsMembersPage = () => {
    * sources — never a second implementation of the view.
    */
   const agentsQuery = useAgents({ scope: 'all' })
+  const pausedPrivateAgentCount = usePausedPrivateAgentCount(isOwner && !isUoaSession)
   const localTree = (() => {
     const agents = Array.isArray(agentsQuery.data) ? agentsQuery.data : []
     const tree = buildPeopleAgentsTree(
       users.map((user) => ({ displayName: user.displayName, uoaSub: user.id, userId: user.id })),
       agents,
+      { pausedPrivateAgentCount: pausedPrivateAgentCount.data?.count ?? 0 },
     )
     return {
       agentsByUserId: new Map(

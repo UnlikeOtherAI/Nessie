@@ -1,5 +1,23 @@
-import type { Prisma } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
+
+/**
+ * Owner-only operational signal for the Members surface. This exposes a count
+ * alone: the owner, prompt, configuration, and even the paused agents' ids
+ * remain behind the private-agent visibility fence.
+ */
+export const countPausedPrivateAgents = async (
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<number> =>
+  prisma.agent.count({
+    where: {
+      organizationId,
+      ownerMembership: { deactivatedAt: { not: null } },
+      parentAgentId: null,
+      visibility: 'private',
+    },
+  })
 
 type TransactionClient = Prisma.TransactionClient
 

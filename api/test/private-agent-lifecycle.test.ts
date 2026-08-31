@@ -5,6 +5,7 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 import { createAgentRecord } from '@nessie/workspace-admin'
 
+import { countPausedPrivateAgents } from '../src/services/private-agent-lifecycle.js'
 import { setOrganizationMemberDeactivated } from '../src/services/users.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
@@ -100,6 +101,12 @@ dbTest('owner deactivation pauses only private-agent triggers exactly once', asy
     await setOrganizationMemberDeactivated(prisma, input)
     await setOrganizationMemberDeactivated(prisma, input)
 
+    assert.equal(
+      await countPausedPrivateAgents(prisma, organizationId),
+      1,
+      'the owner-only Members signal reports only the paused private agent count',
+    )
+
     const [pausedPrivate, untouchedWorkspace] = await Promise.all([
       prisma.agentTrigger.findUniqueOrThrow({ where: { id: privateTrigger.id } }),
       prisma.agentTrigger.findUniqueOrThrow({ where: { id: workspaceTrigger.id } }),
@@ -123,6 +130,7 @@ dbTest('owner deactivation pauses only private-agent triggers exactly once', asy
     assert.equal(await prisma.userAlert.count({ where: { organizationId } }), 0)
 
     await setOrganizationMemberDeactivated(prisma, { ...input, deactivated: false })
+    assert.equal(await countPausedPrivateAgents(prisma, organizationId), 0)
     const afterReactivation = await prisma.agentTrigger.findUniqueOrThrow({
       where: { id: privateTrigger.id },
     })

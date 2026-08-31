@@ -861,6 +861,13 @@ agent delete, policy-target mutation, or anything touching the DeepWater bundle.
 `schedule_task` remains the un-gated "schedule *me*" tool; `agent_trigger_create`
 is the owner action on *another* agent.
 
+Private-agent transfer is deliberately unsupported: the owner-only home DM
+encodes the steward, so an `ownerUserId` change is refused with
+`AGENT_PRIVATE_TRANSFER_UNSUPPORTED` until the agent is published. When a
+private owner is deactivated, the owner-only Members surface receives only the
+aggregate paused-agent count from `GET /api/agents/paused-private-count`; it
+never receives private agent rows or names.
+
 Private creation is one transaction: the agent, its
 `agent:{org}:{owner}:{agent}` private DM, the sole owner membership, default
 thread, and direct home binding either all commit or none do. Database
