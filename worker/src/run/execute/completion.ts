@@ -131,7 +131,17 @@ export const completeRunExecution = async (
   // top-level (it is authored as the owner, not as the assistant).
   const rootMessageId = delegatedOwnerId ? undefined : context.replyRootMessageId
 
-  const extraMetadata = input.messageMetadata ?? {}
+  const activeTodo = await deps.prisma.agentTodo.findFirst({
+    select: { id: true },
+    where: {
+      activeRunId: context.run.id,
+      activeRun: { is: { status: { notIn: ['completed', 'failed', 'cancelled'] } } },
+    },
+  })
+  const extraMetadata = {
+    ...(input.messageMetadata ?? {}),
+    ...(activeTodo ? { todoRef: { todoId: activeTodo.id } } : {}),
+  }
   // Both branches go through the one stamping chokepoint. The delegated-PA
   // branch matters especially: it authors agent-generated content as
   // `role: 'user'`, so a predicate keyed on agent authorship alone would miss
@@ -153,7 +163,7 @@ export const completeRunExecution = async (
         content: input.responseText,
         role: 'assistant',
         threadId: context.run.threadId,
-        ...(input.messageMetadata
+        ...(Object.keys(extraMetadata).length > 0
           ? { metadata: extraMetadata as Prisma.InputJsonValue }
           : {}),
         ...(rootMessageId ? { rootMessageId } : {}),

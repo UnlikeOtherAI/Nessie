@@ -9,6 +9,7 @@ import {
 import {
   startAgentTodoForRun,
   updateAgentTodoStep,
+  publishAgentTodoUpdated,
 } from '@nessie/workspace-admin'
 import { z } from 'zod'
 
@@ -86,7 +87,16 @@ export const runTodoStartTool = async (
           ...identity,
           steps: args.steps ?? [],
           title: args.title ?? '',
-        })
+      })
+
+  await publishAgentTodoUpdated(
+    context.realtimeTransport,
+    {
+      agentId: context.agentId,
+      organizationId: String(context.channel.organizationId),
+      todoId: todo.id,
+    },
+  )
 
   return {
     inputSummary: `todoId=${todo.id}`,
@@ -110,6 +120,14 @@ export const runTodoStepUpdateTool = async (
     status: args.status,
     todoId: args.todoId,
   })
+  await publishAgentTodoUpdated(
+    context.realtimeTransport,
+    {
+      agentId: context.agentId,
+      organizationId: String(context.channel.organizationId),
+      todoId: todo.id,
+    },
+  )
   return {
     inputSummary: `todoId=${todo.id} stepKey=${args.stepKey}`,
     outputPreview: checklistOutput(todo),

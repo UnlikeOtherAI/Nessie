@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentStatusResponse } from '@nessie/schemas'
 import { WsServerMessageSchema } from '@nessie/schemas'
 import type { AgentRecord } from '../../lib/api-client'
-import { agentKeys, channelKeys, threadKeys } from '../../lib/query-keys'
+import { agentKeys, agentTodoKeys, channelKeys, threadKeys } from '../../lib/query-keys'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
 import {
   mergeAgentSnapshot,
@@ -161,6 +161,18 @@ export const useAgentRealtime = (input: {
 
       if (message.event === 'run.updated') {
         invalidateAgentCaches(message.data.agentId)
+        return
+      }
+
+      if (message.event === 'agent.todo.updated') {
+        // The event carries no title, step, or note. A to-do card can therefore
+        // only repaint after its regular entitled API read succeeds.
+        void queryClient.invalidateQueries({
+          queryKey: agentTodoKeys.instances(message.data.agentId),
+        })
+        void queryClient.invalidateQueries({
+          queryKey: agentTodoKeys.card(message.data.todoId),
+        })
         return
       }
 

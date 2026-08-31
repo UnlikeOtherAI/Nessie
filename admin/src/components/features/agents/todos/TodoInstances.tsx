@@ -5,7 +5,9 @@ import {
   useCancelAgentTodo,
   useCreateAgentTodo,
   useUpdateAgentTodoStep,
+  useRunAgentTodo,
 } from '../../../../facades/agent-todos/hooks'
+import { useChannels } from '../../../../facades/channels/hooks'
 import type { AgentRecord } from '../../../../lib/api-client'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
 import { useToasts } from '../../../../providers/ToastProvider'
@@ -35,16 +37,24 @@ export const TodoInstances = ({
   const createTodo = useCreateAgentTodo()
   const updateStep = useUpdateAgentTodoStep()
   const cancelTodo = useCancelAgentTodo()
+  const runTodo = useRunAgentTodo()
+  const { data: channels = [] } = useChannels()
   const activeTemplates = useMemo(
     () => templates.filter((template) => template.status === 'active'),
     [templates],
   )
   const [templateId, setTemplateId] = useState('')
+  const runnableChannels = channels.filter((channel) => agent.channelIds.includes(channel.id))
+  const [runChannelId, setRunChannelId] = useState('')
 
   useEffect(() => {
     if (activeTemplates.some((template) => template.id === templateId)) return
     setTemplateId(activeTemplates[0]?.id ?? '')
   }, [activeTemplates, templateId])
+  useEffect(() => {
+    if (runnableChannels.some((channel) => channel.id === runChannelId)) return
+    setRunChannelId(runnableChannels[0]?.id ?? '')
+  }, [runnableChannels, runChannelId])
 
   const openTodos = todos.filter((todo) => todo.status === 'open' || todo.status === 'running')
   const recentTodos = todos.filter((todo) => todo.status !== 'open' && todo.status !== 'running')
@@ -86,6 +96,14 @@ export const TodoInstances = ({
     )
   }
 
+  const run = (todo: AgentTodoRecord) => {
+    if (!runChannelId) return
+    runTodo.mutate(
+      { agentId: agent.id, channelId: runChannelId, todoId: todo.id },
+      { onError: (error) => pushToast({ body: error.message, title: 'Could not start to-do' }) },
+    )
+  }
+
   return (
     <section className="grid gap-4" data-testid="agent-todo-instances">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -96,6 +114,9 @@ export const TodoInstances = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select aria-label="Channel for Run now" className="admin-input min-w-48" value={runChannelId} onChange={(event) => setRunChannelId(event.target.value)}>
+            {runnableChannels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.label}</option>)}
+          </select>
           <select
             aria-label="Active template for a new to-do"
             className="admin-input min-w-48"
@@ -141,6 +162,7 @@ export const TodoInstances = ({
               isOwner={isOwner}
               key={todo.id}
               onCancel={cancel}
+              onRun={run}
               onUpdateStep={update}
               todo={todo}
             />
@@ -158,6 +180,7 @@ export const TodoInstances = ({
               isOwner={isOwner}
               key={todo.id}
               onCancel={cancel}
+              onRun={run}
               onUpdateStep={update}
               todo={todo}
             />

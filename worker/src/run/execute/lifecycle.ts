@@ -6,6 +6,7 @@ import type { PgRealtimeTransport } from '@nessie/runtime'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import type { ReplyPlacement, RunContext } from './types.js'
 import { clearWorking } from './working-marker.js'
+import { releaseAgentTodosForTerminalRun } from '@nessie/workspace-admin'
 
 export const updateTaskStatus = async (
   prisma: PrismaClient,
@@ -51,6 +52,7 @@ export const updateRunStatus = async (
       select: { agentId: true, principalUserId: true, threadId: true, triggerMessageId: true },
       where: { id: runId },
     })
+    await releaseAgentTodosForTerminalRun(prisma, runId)
     if (!run?.triggerMessageId) return
     await clearWorking(prisma, transport ?? null, {
       agentId: run.agentId,

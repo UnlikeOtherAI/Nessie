@@ -2,8 +2,10 @@ import { z } from 'zod'
 
 import {
   AgentIdSchema,
+  ChannelIdSchema,
   OrganizationIdSchema,
   RunIdSchema,
+  TaskIdSchema,
   ThreadIdSchema,
   UserIdSchema,
 } from './ids.js'
@@ -189,3 +191,21 @@ export const AgentTodoRecordSchema = z.object({
   steps: z.array(AgentTodoStepRecordSchema),
 })
 export type AgentTodoRecord = z.infer<typeof AgentTodoRecordSchema>
+
+/**
+ * Server-authored provenance on the hidden kickoff message for a Run now
+ * execution. It is deliberately distinct from `todoRef`, which belongs only
+ * on the assistant reply that people can actually see.
+ */
+export const AgentTodoKickoffMetadataSchema = z.object({
+  todoId: z.string().uuid(),
+}).strict()
+
+export const AgentTodoRunResultSchema = z.object({
+  channelId: ChannelIdSchema,
+  runId: RunIdSchema.optional(),
+  status: z.enum(['queued', 'pended']),
+  taskId: TaskIdSchema.optional(),
+  threadId: ThreadIdSchema,
+})
+export type AgentTodoRunResult = z.infer<typeof AgentTodoRunResultSchema>

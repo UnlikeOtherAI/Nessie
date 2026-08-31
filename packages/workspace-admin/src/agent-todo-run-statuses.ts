@@ -7,3 +7,6 @@ import type { RunStatus } from '@prisma/client'
  * newly terminal run cannot leave a stale activeRunId pointer behind.
  */
 export const TERMINAL_RUN_STATUSES: RunStatus[] = ['completed', 'failed', 'cancelled']
+
+export const isTerminalAgentTodoRunStatus = (status: RunStatus): boolean =>
+  TERMINAL_RUN_STATUSES.includes(status)

@@ -72,6 +72,7 @@ import { readMarkdownDocument } from '../pa-tools/knowledge-document-io.js'
 import type { ExecutionDependencies, RunPlanContext } from './types.js'
 import { persistRunBasis, runReplyBasis, runReplyIsRestricted } from './agent-message.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
+import { claimAgentTodoForRun, readAgentTodoKickoff } from '@nessie/workspace-admin'
 import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
@@ -297,6 +298,19 @@ export const executeRunJob = async (
       return
     }
     claimedAt = new Date()
+    const todoKickoff = readAgentTodoKickoff(message.metadata)
+    if (todoKickoff) {
+      // The Run-now route only identifies the instance while it is pending.
+      // Claiming happens here, inside the executing run, so a queued cancel
+      // cannot strand a checklist under a run that never started.
+      await claimAgentTodoForRun(deps.prisma, {
+        agentId: context.agent.id,
+        organizationId: context.channel.organizationId,
+        runId: context.run.id,
+        threadId: context.run.threadId,
+        todoId: todoKickoff.todoId,
+      })
+    }
     // Show on the message itself that this run picked it up. Cleared by the
     // terminal status transition in `lifecycle.ts`, so no path here has to
     // remember to take it back off.

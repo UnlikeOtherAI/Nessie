@@ -33,6 +33,7 @@ type TodoInstanceCardProps = {
   currentUserId: string | undefined
   isOwner: boolean
   onCancel: (todo: AgentTodoRecord) => void
+  onRun: (todo: AgentTodoRecord) => void
   onUpdateStep: (todo: AgentTodoRecord, stepKey: string, status: AgentTodoStepStatus) => void
   todo: AgentTodoRecord
 }
@@ -42,6 +43,7 @@ export const TodoInstanceCard = ({
   currentUserId,
   isOwner,
   onCancel,
+  onRun,
   onUpdateStep,
   todo,
 }: TodoInstanceCardProps) => {
@@ -68,14 +70,15 @@ export const TodoInstanceCard = ({
             </Link>
           ) : null}
         </div>
-        {canChange && isCancellable ? (
-          <button
-            className="admin-button admin-button-danger"
-            onClick={() => onCancel(todo)}
-            type="button"
-          >
-            Cancel to-do
-          </button>
+        {isCancellable ? (
+          <div className="flex gap-2">
+            {!todo.activeRunId ? (
+              <button className="admin-button admin-button-primary" onClick={() => onRun(todo)} type="button">Run now</button>
+            ) : null}
+            {canChange ? (
+              <button className="admin-button admin-button-danger" onClick={() => onCancel(todo)} type="button">Cancel to-do</button>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

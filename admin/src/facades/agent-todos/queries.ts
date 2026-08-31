@@ -29,3 +29,12 @@ export const useAgentTodos = (agentId?: string, enabled = true) => {
     enabled: enabled && Boolean(agentId),
   })
 }
+
+export const useAgentTodoById = (todoId?: string) => {
+  const apiClient = useApiClient()
+  return useQuery<AgentTodoRecord>({
+    queryKey: agentTodoKeys.card(todoId),
+    queryFn: () => apiClient.get(`/api/todos/${todoId}`),
+    enabled: Boolean(todoId),
+  })
+}

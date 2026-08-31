@@ -3,7 +3,8 @@ export {
   useCancelAgentTodo,
   useCreateAgentTodo,
   useCreateAgentTodoTemplate,
+  useRunAgentTodo,
   useUpdateAgentTodoStep,
   useUpdateAgentTodoTemplate,
 } from './mutations'
-export { useAgentTodos, useAgentTodoTemplates } from './queries'
+export { useAgentTodoById, useAgentTodos, useAgentTodoTemplates } from './queries'
