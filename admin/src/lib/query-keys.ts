@@ -419,6 +419,7 @@ export const threadKeys = {
   // The unread/activity projection across every thread, reset rather than
   // invalidated by the read-marker writes that change it.
   activity: ['threads', 'activity'] as const,
+  unreadDirectMessages: ['threads', 'unread-direct-messages'] as const,
   documentStream: (threadId: string | undefined, sessionId: string) =>
     ['threads', threadId, 'documentStreams', sessionId] as const,
   documentStreams: (threadId?: string) =>

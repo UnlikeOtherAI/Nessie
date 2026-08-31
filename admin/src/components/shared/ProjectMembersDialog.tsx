@@ -6,7 +6,15 @@ import {
 } from '../../facades/projects/hooks'
 import { useUsers } from '../../facades/users/hooks'
 import type { ProjectRecord } from '../../lib/api-client'
-import { Dialog } from './Dialog'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { MemberManagementPopup } from './MemberManagementPopup'
+import {
+  AvailableUserRow,
+  CurrentUserRow,
+  type MemberUser,
+} from './channel-members/MemberUserRow'
+import { sectionHeadingClass } from './channel-members/styles'
+import { useUserMemberFilters } from './channel-members/use-member-filters'
 
 type ProjectMembersDialogProps = {
   project: ProjectRecord
@@ -15,74 +23,68 @@ type ProjectMembersDialogProps = {
 }
 
 export const ProjectMembersDialog = ({ project, isOwner, onClose }: ProjectMembersDialogProps) => {
+  const { me } = useAuthSession()
   const { data: members = [] } = useProjectMembers(project.id)
   const { data: users = [] } = useUsers(isOwner)
   const addMember = useAddProjectMember()
   const removeMember = useRemoveProjectMember()
-  const [addUserId, setAddUserId] = useState('')
-
-  const memberIds = new Set(members.map((member) => member.userId))
-  const candidates = users.filter((user) => !memberIds.has(user.id))
-
-  const handleAdd = () => {
-    if (!addUserId) return
-    addMember.mutate({ projectId: project.id, userId: addUserId }, { onSuccess: () => setAddUserId('') })
-  }
+  const [search, setSearch] = useState('')
+  const memberUsers: MemberUser[] = members.map((member) => ({
+    displayName: member.displayName,
+    email: member.email,
+    id: member.userId,
+  }))
+  const { availableUsers, filteredUsers } = useUserMemberFilters({
+    allUsers: users,
+    members: memberUsers,
+    search,
+  })
+  const hasAvailable = isOwner && availableUsers.length > 0
 
   return (
-    // The parent mounts this only while it is open, so the shell is always open.
-    <Dialog onClose={onClose} open title={`${project.name} · Members`}>
-      <div className="grid gap-2">
-        {members.length === 0 ? (
-          <div className="text-xs text-[color:var(--tx3)]">No members yet.</div>
-        ) : (
-          members.map((member) => (
-            <div key={member.userId} className="flex items-center gap-2 text-sm">
-              <span className="min-w-0 flex-1 truncate text-[color:var(--tx)]">
-                {member.displayName}
-                <span className="ml-2 text-xs text-[color:var(--tx3)]">{member.email}</span>
-              </span>
-              <span className="text-xs uppercase tracking-wide text-[color:var(--tx3)]">
-                {member.role}
-              </span>
-              {isOwner ? (
-                <button
-                  className="admin-button admin-button-secondary admin-button-danger"
-                  onClick={() => removeMember.mutate({ projectId: project.id, userId: member.userId })}
-                  type="button"
-                >
-                  Remove
-                </button>
-              ) : null}
-            </div>
-          ))
-        )}
+    <MemberManagementPopup
+      entityLabel={project.name}
+      onClose={onClose}
+      onSearchChange={setSearch}
+      search={search}
+      totalMembers={members.length}
+    >
+      {filteredUsers.length > 0 ? (
+        <div>
+          <div className={sectionHeadingClass}>In this project</div>
+          {filteredUsers.map((user) => (
+            <CurrentUserRow
+              canRemove={isOwner}
+              currentUserId={me?.user.id ?? ''}
+              key={user.id}
+              onRemove={(userId) => removeMember.mutate({ projectId: project.id, userId })}
+              removeLabel="Remove from project"
+              removePending={removeMember.isPending}
+              user={user}
+            />
+          ))}
+        </div>
+      ) : null}
 
-        {isOwner ? (
-          <div className="mt-1 flex items-center gap-2">
-            <select
-              className="admin-input flex-1"
-              onChange={(event) => setAddUserId(event.target.value)}
-              value={addUserId}
-            >
-              <option value="">Add a member…</option>
-              {candidates.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.displayName} ({user.email})
-                </option>
-              ))}
-            </select>
-            <button
-              className="admin-button admin-button-primary"
-              disabled={!addUserId || addMember.isPending}
-              onClick={handleAdd}
-              type="button"
-            >
-              Add
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </Dialog>
+      {hasAvailable ? (
+        <div className="mt-2">
+          <div className={sectionHeadingClass}>Add to project</div>
+          {availableUsers.map((user) => (
+            <AvailableUserRow
+              addPending={addMember.isPending}
+              key={user.id}
+              onAdd={(userId) => addMember.mutate({ projectId: project.id, userId })}
+              user={user}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {filteredUsers.length === 0 && !hasAvailable ? (
+        <div className="px-3 py-6 text-center text-sm text-[color:var(--tx3)]">
+          No members match your search.
+        </div>
+      ) : null}
+    </MemberManagementPopup>
   )
 }

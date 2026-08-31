@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { ProjectDashboard } from '../../components/features/projects/ProjectDashboard'
-import { AdminPageHeader } from '../../components/shared/AdminPageHeader'
+import { ProjectPageHeader } from '../../components/features/projects/ProjectPageHeader'
 import { useProjects } from '../../facades/projects/hooks'
 
 export const ChannelProjectOverviewPage = () => {
@@ -9,11 +9,11 @@ export const ChannelProjectOverviewPage = () => {
 
   if (!projectId) return null
 
-  const projectName = projects.find((project) => project.id === projectId)?.name ?? 'Project'
+  const project = projects.find((candidate) => candidate.id === projectId)
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <AdminPageHeader title={projectName} />
+      <ProjectPageHeader project={project} />
       <div className="min-h-0 flex-1">
         <ProjectDashboard projectId={projectId} />
       </div>

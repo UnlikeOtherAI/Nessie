@@ -32,6 +32,7 @@ import { registerThreadDocumentStreamRoutes } from './thread-document-streams.js
 import { registerCreateThreadMessageRoute } from './thread-message-create.js'
 import { registerThreadReplyRoutes } from './thread-replies.js'
 import { registerThreadActivityRoutes } from './thread-activity.js'
+import { registerUnreadDirectMessageRoutes } from './unread-direct-messages.js'
 import type { RouteDeps } from './types.js'
 
 export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -45,6 +46,7 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   } = deps
 
   registerThreadActivityRoutes(app, deps)
+  registerUnreadDirectMessageRoutes(app, deps)
 
   app.get('/api/threads/:threadId/messages', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

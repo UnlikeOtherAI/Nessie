@@ -64,6 +64,12 @@ const ACTIVITY_EVENTS = new Set([
   'message.reply.meta',
   'thread.read',
 ])
+const UNREAD_DIRECT_MESSAGE_EVENTS = new Set([
+  'message.deleted',
+  'message.new',
+  'message.reply',
+  'thread.read',
+])
 
 export const useThreadActivityEvents = (): void => {
   const queryClient = useQueryClient()
@@ -72,11 +78,16 @@ export const useThreadActivityEvents = (): void => {
   useEventStream({
     enabled: Boolean(token),
     onFrame: (frame) => {
-      if (!frame.event || !ACTIVITY_EVENTS.has(frame.event)) return
-      // Pages are keyset slices. An activity change can move an item across a
-      // saved boundary, so retain only page one before refetching rather than
-      // flattening stale pages into duplicates.
-      void queryClient.resetQueries({ queryKey: threadKeys.activity })
+      if (!frame.event) return
+      if (ACTIVITY_EVENTS.has(frame.event)) {
+        // Pages are keyset slices. An activity change can move an item across a
+        // saved boundary, so retain only page one before refetching rather than
+        // flattening stale pages into duplicates.
+        void queryClient.resetQueries({ queryKey: threadKeys.activity })
+      }
+      if (UNREAD_DIRECT_MESSAGE_EVENTS.has(frame.event)) {
+        void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
+      }
     },
   })
 }

@@ -108,10 +108,12 @@ export const useMarkThreadRead = () => {
     onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: channelKeys.all })
         void queryClient.resetQueries({ queryKey: threadKeys.activity })
+        void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
       },
       onError: () => {
         void queryClient.invalidateQueries({ queryKey: channelKeys.all })
         void queryClient.resetQueries({ queryKey: threadKeys.activity })
+        void queryClient.invalidateQueries({ queryKey: threadKeys.unreadDirectMessages })
     },
   })
 }

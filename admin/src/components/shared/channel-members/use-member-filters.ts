@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { AgentRecord, UserRecord } from '../../../lib/api-client'
+import type { MemberUser } from './MemberUserRow'
 
 type MemberFilterInput = {
   allAgents: AgentRecord[]
@@ -18,6 +19,45 @@ export type MemberFilterResult = {
   hasAvailable: boolean
 }
 
+type UserMemberFilterInput<T extends MemberUser> = {
+  allUsers: T[]
+  members: T[]
+  search: string
+}
+
+export type UserMemberFilterResult<T extends MemberUser> = {
+  availableUsers: T[]
+  filteredUsers: T[]
+}
+
+/**
+ * The person-only part of membership filtering. Projects share this with
+ * channels; channels layer their bound-agent matching on top.
+ */
+export const useUserMemberFilters = <T extends MemberUser>({
+  allUsers,
+  members,
+  search,
+}: UserMemberFilterInput<T>): UserMemberFilterResult<T> => {
+  const memberIds = useMemo(() => new Set(members.map((user) => user.id)), [members])
+  const lowerSearch = search.toLowerCase().trim()
+  const matchesSearch = useCallback((user: T) =>
+    !lowerSearch
+    || user.displayName.toLowerCase().includes(lowerSearch)
+    || user.email.toLowerCase().includes(lowerSearch), [lowerSearch])
+
+  const filteredUsers = useMemo(
+    () => members.filter(matchesSearch),
+    [matchesSearch, members],
+  )
+  const availableUsers = useMemo(
+    () => allUsers.filter((user) => !memberIds.has(user.id) && matchesSearch(user)),
+    [allUsers, matchesSearch, memberIds],
+  )
+
+  return { availableUsers, filteredUsers }
+}
+
 /**
  * Pure list-shaping for the channel-members popup: derives the
  * already-in-channel and available-to-add user/agent lists from the search
@@ -30,10 +70,6 @@ export const useMemberFilters = ({
   channelUsers,
   search,
 }: MemberFilterInput): MemberFilterResult => {
-  const channelUserIds = useMemo(
-    () => new Set(channelUsers.map((u) => u.id)),
-    [channelUsers],
-  )
   const boundAgentIds = useMemo(
     () => new Set(boundAgents.map((a) => a.id)),
     [boundAgents],
@@ -41,16 +77,11 @@ export const useMemberFilters = ({
 
   const lowerSearch = search.toLowerCase().trim()
 
-  const filteredUsers = useMemo(
-    () =>
-      channelUsers.filter(
-        (u) =>
-          !lowerSearch ||
-          u.displayName.toLowerCase().includes(lowerSearch) ||
-          u.email.toLowerCase().includes(lowerSearch),
-      ),
-    [channelUsers, lowerSearch],
-  )
+  const { availableUsers, filteredUsers } = useUserMemberFilters({
+    allUsers,
+    members: channelUsers,
+    search,
+  })
 
   const filteredAgents = useMemo(
     () =>
@@ -61,18 +92,6 @@ export const useMemberFilters = ({
           a.role.toLowerCase().includes(lowerSearch),
       ),
     [boundAgents, lowerSearch],
-  )
-
-  const availableUsers = useMemo(
-    () =>
-      allUsers.filter(
-        (u) =>
-          !channelUserIds.has(u.id) &&
-          (!lowerSearch ||
-            u.displayName.toLowerCase().includes(lowerSearch) ||
-            u.email.toLowerCase().includes(lowerSearch)),
-      ),
-    [allUsers, channelUserIds, lowerSearch],
   )
 
   const availableAgents = useMemo(
