@@ -339,6 +339,7 @@ export const AgentDesignerContent = ({
             <AgentDesignerForm
               actions={actions}
               canManageExplicitTools={isOwner}
+              canManageTodos={isOwner}
               modelOptions={modelOptions}
               modelOptionsError={modelOptionsError}
               modelsLoading={modelOptionsQuery.isLoading}

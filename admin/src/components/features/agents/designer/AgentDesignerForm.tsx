@@ -14,6 +14,7 @@ import { Switch } from '../../../primitives/Switch'
 type AgentDesignerFormProps = {
   actions: AgentDesignerActions
   canManageExplicitTools: boolean
+  canManageTodos: boolean
   modelOptions: AgentModelOption[]
   modelOptionsError?: string
   modelsLoading: boolean
@@ -43,6 +44,7 @@ const EFFORTS: { hint: string; label: string; value: string }[] = [
 export const AgentDesignerForm = ({
   actions,
   canManageExplicitTools,
+  canManageTodos,
   modelOptions,
   modelOptionsError,
   modelsLoading,
@@ -175,9 +177,15 @@ export const AgentDesignerForm = ({
           <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
             Step instructions are visible to everyone who can see this agent. Do not put secrets in them.
           </p>
+          {!canManageTodos ? (
+            <p className="mt-1 text-xs leading-5 text-[color:var(--tx3)]">
+              Only organization owners can enable or disable to-dos.
+            </p>
+          ) : null}
         </div>
         <Switch
           checked={state.todosEnabled}
+          disabled={!canManageTodos}
           label="Enable to-dos for this agent"
           onChange={actions.setTodosEnabled}
         />

@@ -46,10 +46,9 @@ export const stepStatusTone = (status: AgentTodoStepStatus): PillTone => {
   }
 }
 
-export const changedByLabel = (actorType: AgentTodoActorType | null): string => {
+export const changedByLabel = (actorType: AgentTodoActorType): string => {
   if (actorType === 'agent') return 'the agent'
-  if (actorType === 'user') return 'a person'
-  return 'not yet changed'
+  return 'a person'
 }
 
 export const formatTodoTimestamp = (value: string): string =>
