@@ -14,6 +14,29 @@ import {
   GmailReauthorizationRequiredError,
 } from '../src/errors.js'
 import type { FetchLike } from '../src/http.js'
+import { GoogleIdentityError } from '../src/identity.js'
+
+const NOW_MS = 1_700_000_000_000
+
+/**
+ * Build an unsigned Google-shaped id_token. The connector validates issuer,
+ * audience and expiry but not the signature: the token arrives over TLS
+ * directly from Google's token endpoint in reply to our own request.
+ */
+const idToken = (claims: Record<string, unknown> = {}): string => {
+  const payload = {
+    iss: 'https://accounts.google.com',
+    aud: 'client-id',
+    sub: 'google-sub-1',
+    email: 'me@example.com',
+    email_verified: true,
+    exp: Math.floor(NOW_MS / 1000) + 3600,
+    ...claims,
+  }
+  const encode = (value: unknown): string =>
+    Buffer.from(JSON.stringify(value)).toString('base64url')
+  return `${encode({ alg: 'RS256' })}.${encode(payload)}.sig`
+}
 
 type Route = { status: number; body: unknown }
 type Handler = (url: string, method: string) => Route
@@ -59,11 +82,14 @@ test('connect exchanges the code and resolves the mailbox identity', async () =>
     if (url.endsWith('/token')) {
       return {
         status: 200,
-        body: { access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: 'a b' },
+        body: {
+          access_token: 'at',
+          refresh_token: 'rt',
+          expires_in: 3600,
+          scope: 'a b',
+          id_token: idToken(),
+        },
       }
-    }
-    if (url.endsWith('/profile')) {
-      return { status: 200, body: { emailAddress: 'me@example.com', historyId: '42' } }
     }
     throw new Error(`unexpected url ${url}`)
   })
@@ -81,6 +107,124 @@ test('connect exchanges the code and resolves the mailbox identity', async () =>
   assert.deepEqual(result.grantedScopes, ['a', 'b'])
   assert.equal(result.credential.accessToken, 'at')
   assert.equal(result.credential.refreshToken, 'rt')
+  assert.equal(result.providerAccountId, 'google-sub-1')
+})
+
+// Identity used to come from Gmail's users.getProfile, which needs a Gmail read
+// scope — so a calendar-only or send-only connection could not be established
+// at all. Connect must therefore never call Gmail.
+test('connect identifies a calendar-only account without calling Gmail', async () => {
+  const seen: string[] = []
+  const fetchImpl = makeFetch((url) => {
+    seen.push(url)
+    if (url.endsWith('/token')) {
+      return {
+        status: 200,
+        body: {
+          access_token: 'at',
+          refresh_token: 'rt',
+          expires_in: 3600,
+          scope: 'https://www.googleapis.com/auth/calendar.readonly',
+          id_token: idToken(),
+        },
+      }
+    }
+    throw new Error(`unexpected url ${url}`)
+  })
+  const connector = createGoogleConnector(baseDeps(fetchImpl))
+  const result = await connector.connect({
+    organizationId: 'org-1',
+    userId: 'user-1',
+    provider: 'google',
+    code: 'auth-code',
+    redirectUri: 'https://app/callback',
+    statePayload: {},
+  })
+  assert.equal(result.externalUserId, 'me@example.com')
+  assert.ok(!seen.some((url) => url.includes('gmail')))
+})
+
+// Google's consent screen lets a person un-tick individual scopes, so falling
+// back to what we requested would record authority the user declined.
+test('connect refuses a token response that carries no granted scopes', async () => {
+  const fetchImpl = makeFetch(() => ({
+    status: 200,
+    body: { access_token: 'at', expires_in: 3600, id_token: idToken() },
+  }))
+  const connector = createGoogleConnector(baseDeps(fetchImpl))
+  await assert.rejects(
+    () => connector.connect({
+      organizationId: 'org-1',
+      userId: 'user-1',
+      provider: 'google',
+      code: 'auth-code',
+      redirectUri: 'https://app/callback',
+      statePayload: {},
+    }),
+    GoogleIdentityError,
+  )
+})
+
+test('connect refuses an id_token minted for another OAuth client', async () => {
+  const fetchImpl = makeFetch(() => ({
+    status: 200,
+    body: {
+      access_token: 'at',
+      expires_in: 3600,
+      scope: 'a',
+      id_token: idToken({ aud: 'someone-elses-client' }),
+    },
+  }))
+  const connector = createGoogleConnector(baseDeps(fetchImpl))
+  await assert.rejects(
+    () => connector.connect({
+      organizationId: 'org-1',
+      userId: 'user-1',
+      provider: 'google',
+      code: 'auth-code',
+      redirectUri: 'https://app/callback',
+      statePayload: {},
+    }),
+    GoogleIdentityError,
+  )
+})
+
+test('connect refuses an unverified email address', async () => {
+  const fetchImpl = makeFetch(() => ({
+    status: 200,
+    body: {
+      access_token: 'at',
+      expires_in: 3600,
+      scope: 'a',
+      id_token: idToken({ email_verified: false }),
+    },
+  }))
+  const connector = createGoogleConnector(baseDeps(fetchImpl))
+  await assert.rejects(
+    () => connector.connect({
+      organizationId: 'org-1',
+      userId: 'user-1',
+      provider: 'google',
+      code: 'auth-code',
+      redirectUri: 'https://app/callback',
+      statePayload: {},
+    }),
+    GoogleIdentityError,
+  )
+})
+
+// A refresh routinely omits `scope`, meaning "unchanged"; keeping the stored
+// scopes there is correct and is not the fail-open path connect closes.
+test('refresh keeps the stored scopes when Google omits them', async () => {
+  const fetchImpl = makeFetch(() => ({
+    status: 200,
+    body: { access_token: 'at2', expires_in: 3600 },
+  }))
+  const connector = createGoogleConnector(baseDeps(fetchImpl))
+  const refreshed = await connector.refreshCredentials(connection())
+  assert.deepEqual(refreshed.scopes, [
+    'https://www.googleapis.com/auth/gmail.readonly',
+  ])
 })
 
 test('refresh classifies invalid_grant as reauthorization required', async () => {

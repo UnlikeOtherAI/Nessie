@@ -16,6 +16,8 @@ export type TokenResponse = {
   refresh_token?: string
   scope?: string
   token_type?: string
+  /** OIDC identity token; present because `openid` is always requested. */
+  id_token?: string
 }
 
 export type GmailProfile = {

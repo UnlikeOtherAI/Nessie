@@ -25,6 +25,12 @@ export {
   GMAIL_VISIBILITY,
 } from './normalize.js'
 export {
+  readGoogleIdentity,
+  GoogleIdentityError,
+  type GoogleAccountIdentity,
+} from './identity.js'
+export { isScopeReason } from './http.js'
+export {
   createGoogleMeetSpace,
   GOOGLE_MEET_CREATE_SCOPE,
   GoogleMeetApiError,

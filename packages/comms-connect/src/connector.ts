@@ -56,6 +56,14 @@ export type ConnectResult = {
   externalUserId: string
   credential: CredentialBundle
   grantedScopes: string[]
+  /**
+   * The provider's stable, immutable account id, when it exposes one distinct
+   * from the human-readable `externalUserId`. Google's OIDC `sub` is the case
+   * this exists for: an email address can be renamed, so re-authorizing an
+   * existing connection compares this instead to prove the same account came
+   * back.
+   */
+  providerAccountId?: string
 }
 
 /**

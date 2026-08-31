@@ -17,11 +17,23 @@ export class GmailApiError extends Error {
 
   readonly reason?: string
 
+  /** Google's machine reason (`error.errors[].reason` / `error.status`). */
+  readonly code?: string
+
+  /**
+   * The call failed because the token lacks a required scope, not because the
+   * caller is going too fast. Callers turn this into a request to grant the
+   * capability rather than a retry — the two share HTTP 403.
+   */
+  readonly scopeMissing: boolean
+
   constructor(params: {
     status: number
     retryable: boolean
     operation: string
     reason?: string
+    code?: string
+    scopeMissing?: boolean
   }) {
     super(
       `[comms-google] ${params.operation} failed with status ${params.status}`
@@ -31,6 +43,8 @@ export class GmailApiError extends Error {
     this.status = params.status
     this.retryable = params.retryable
     this.reason = params.reason
+    this.code = params.code
+    this.scopeMissing = params.scopeMissing ?? false
   }
 }
 
