@@ -1,7 +1,16 @@
 # Google Workspace in chat — Gmail, Calendar, Meet, negotiated scopes
 
 Date: 2026-08-31 (v2 — rewritten after cross-model review)
-Status: **plan**
+Status: **P0 built and merged; P1–P3 planned**
+
+> **P0 shipped 2026-08-31.** Capability catalog, capability-aware OAuth start,
+> incremental grant, bound OAuth state, all-of + local-block enforcement at the
+> credential chokepoint, and the Permissions section on `/settings/connections`.
+> It also closed the three live fail-open defects the review found (§4.4, §4.5,
+> §4.6). `account_label` from §12 was cut as speculative — nothing read it.
+> Verified against a clean database: full migration chain applied, 1,853 tests
+> green (api 1056, worker 797), and the Permissions UI exercised end to end
+> including a block round-tripping to the database and an audit row.
 
 Goal: a person, their Personal Assistant, or a granted custom agent can — **from
 a chat message** — search and read mail, draft and send email, read and write
@@ -433,7 +442,7 @@ send_authorization_grants new table                              (§8)
 
 | Phase | Ships |
 |---|---|
-| **P0** | Split `comms-connections.ts`; **fail-closed `grantedScopes`**; identity from `id_token`; 403 reason classification; OAuth state binding; capability catalog; `/start` with capabilities; incremental add; `google_scope_request` card; Permissions section; `disabledCapabilities` enforcement; multi-scope chokepoint |
+| **P0** ✅ | Split `comms-connections.ts`; **fail-closed `grantedScopes`**; identity from `id_token`; 403 reason classification; OAuth state binding; capability catalog; `/start` with capabilities; incremental add; `google_scope_request` card; Permissions section; `disabledCapabilities` enforcement; multi-scope chokepoint |
 | **P1** | Gmail read tools + sink + caps; `gmail_draft_create/update`; `GmailDraftAction`; `sendDraftForUser`; `GmailDraftCard` + owner-gated route + human **Send**; `requiredApproverUserId`; structural send gate; the approval card |
 | **P2** | Calendar read, free/busy, `calendar_event_create` with `addMeet` (requestId + pending polling + idempotency), update/respond/cancel; contacts; attachments both ways |
 | **P3** | Standing `SendAuthorizationGrant` + undo window; `gmail_send` direct; `gmail.modify` tools; auto-review; `email_received` as an **`event` eventType**; optional SMTP/IMAP transport |
