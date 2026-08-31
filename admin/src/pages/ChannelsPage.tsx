@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
-import { parseChannelId, parseThreadId } from '@nessie/schemas'
 import { useAgents } from '../facades/agents/hooks'
 import { useChannels, useJoinChannel } from '../facades/channels/hooks'
 import { useExternalAgentIdentity, useSyncExternalAgentChannel } from '../facades/integrations/hooks'
@@ -19,12 +18,12 @@ import { useAuthSession } from '../providers/AuthSessionProvider'
 import { readChannelComposeReturnTo } from '../lib/channel-compose-navigation'
 import { parseChannelIdFromPath } from '../lib/channel-route'
 import { usePhoneLayout } from '../lib/mobile-shell'
-import { reportPushSurface } from '../lib/push-surface'
 import { useIsOwner } from '../components/shared/OwnerGate'
 import { ConversationInfoFlow } from '../components/features/channels/ConversationInfoFlow'
 import {
   buildFeedItems,
   isAgentsTabAvailable,
+  type ChannelAgentParticipant,
   type ChannelTab,
   type MessageUserIdentity,
 } from '../components/features/channels/channel-helpers'
@@ -43,6 +42,8 @@ import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
 import { useReplyThread } from './channels/useReplyThread'
 import { isConversationReadReady } from './channels/thread-read-marker'
 import { useThreadReadMarker } from './channels/useThreadReadMarker'
+import { useReportChannelPushSurface } from './channels/useReportChannelPushSurface'
+import { useChannelParticipants } from './channels/useChannelParticipants'
 
 export const ChannelsPage = () => {
   const location = useLocation()
@@ -68,16 +69,10 @@ export const ChannelsPage = () => {
   // Function-first identity + conversation starters for the active external
   // agent, sourced from its plugin manifest (null for any other channel).
   const externalAgentIdentity = useExternalAgentIdentity(activeChannel)
-  const boundAgents = useMemo(
-    () =>
-      activeChannel
-        ? agents.filter((agent) => agent.channelIds.includes(activeChannel.id))
-        : [],
-    [activeChannel, agents],
-  )
-  const agentMap = useMemo(
-    () => new Map(agents.map((agent) => [agent.id, agent])),
-    [agents],
+  const { agentMap, boundAgents, channelUsers } = useChannelParticipants(
+    activeChannel,
+    agents,
+    allUsers,
   )
   const { data: threadMessages = [], isFetched: threadMessagesFetched } =
     useThreadMessages(activeChannel?.defaultThreadId)
@@ -86,18 +81,10 @@ export const ChannelsPage = () => {
     activeChannel?.defaultThreadId,
   )
 
-  const channelUsers = useMemo(
-    () =>
-      activeChannel
-        ? allUsers.filter((user) => user.channelIds.includes(activeChannel.id))
-        : [],
-    [activeChannel, allUsers],
-  )
-
   const [activeTab, setActiveTab] = useState<ChannelTab>('messages')
   const [showMembersPopup, setShowMembersPopup] = useState(false)
   const [selectedMessageUser, setSelectedMessageUser] = useState<MessageUserIdentity | null>(null)
-  const [selectedMessageAgentId, setSelectedMessageAgentId] = useState<string | null>(null)
+  const [selectedMessageAgent, setSelectedMessageAgent] = useState<ChannelAgentParticipant | null>(null)
 
   const isPersonalAssistantConversation = isPersonalAssistantActiveChannel
   const isConversationSurface =
@@ -106,6 +93,7 @@ export const ChannelsPage = () => {
     boundAgentCount: boundAgents.length,
     isConversationSurface,
     isPersonalAssistantConversation,
+    personalAssistantPresenceCount: activeChannel?.personalAssistantPresences?.length ?? 0,
   })
   const visibleActiveTab =
     (activeTab === 'agents' && !agentsTabAvailable) ||
@@ -122,8 +110,6 @@ export const ChannelsPage = () => {
   const personalAssistantAgent =
     personalAssistantState?.agent ?? boundAgents[0] ?? null
   const titleFavorite = useChannelTitleFavorite({ activeChannel, personalAssistantAgent })
-  const selectedMessageAgent =
-    selectedMessageAgentId ? agentMap.get(selectedMessageAgentId) ?? null : null
   const personalAssistantChannel =
     personalAssistantState?.channel ?? activeChannel
   const callEligible =
@@ -155,6 +141,7 @@ export const ChannelsPage = () => {
     agents,
     channels,
     channelUsers,
+    personalAssistantPresences: activeChannel?.personalAssistantPresences,
   })
 
   // Reply-thread panel (#233): URL-driven open state, replies/root queries,
@@ -179,22 +166,15 @@ export const ChannelsPage = () => {
     replyThread.openRootMessageId ?? undefined,
   )
 
-  // Presence is the channel feed or one exact reply conversation. The Files,
-  // Info, and Runs tabs deliberately clear it: a reply there still needs an
-  // in-app and native banner because the user is not reading the conversation.
-  useEffect(() => {
-    if (visibleActiveTab !== 'messages' || !activeChannel || !replyThread.activeThreadId) {
-      reportPushSurface(null, location)
-      return undefined
-    }
-    reportPushSurface({
-      channelId: parseChannelId(activeChannel.id),
-      kind: 'channel',
-      rootMessageId: replyThread.openRootMessageId,
-      threadId: parseThreadId(replyThread.activeThreadId),
-    }, location)
-    return () => reportPushSurface(null, location)
-  }, [activeChannel, location, replyThread.activeThreadId, replyThread.openRootMessageId, visibleActiveTab])
+  // Presence is the rendered conversation only. Files, Info, and Runs leave
+  // the push surface clear so a reply still raises an in-app/native banner.
+  useReportChannelPushSurface({
+    activeChannel,
+    activeThreadId: replyThread.activeThreadId,
+    location,
+    openRootMessageId: replyThread.openRootMessageId,
+    visibleActiveTab,
+  })
 
   const {
     message,
@@ -282,7 +262,7 @@ export const ChannelsPage = () => {
     closeSearch()
     setShowChannelSettings(false)
     setSelectedMessageUser(null)
-    setSelectedMessageAgentId(null)
+    setSelectedMessageAgent(null)
   }, [activeChannel?.id, cancelEdit, closeSearch])
 
   // History hydration (DeepSignal §6): when an external-agent channel is opened,
@@ -319,7 +299,10 @@ export const ChannelsPage = () => {
   // orchestrator's model-judged call. The Personal Assistant and external-agent
   // DMs own their channel without appearing in `boundAgents`.
   const hasRespondingAgent =
-    boundAgents.length > 0 || isPersonalAssistantActiveChannel || isExternalAgentActiveChannel
+    boundAgents.length > 0
+    || (activeChannel?.personalAssistantPresences?.length ?? 0) > 0
+    || isPersonalAssistantActiveChannel
+    || isExternalAgentActiveChannel
   // Ambient liveness for the channel surface. `pendingMessages` is the full set
   // this feed renders bubbles for — top-level runs at the bottom, thread-anchored
   // ones compactly under their root — so a bubble anywhere in the feed hides the
@@ -367,6 +350,7 @@ export const ChannelsPage = () => {
         callStarting={callStarting}
         channelLiveness={channelLiveness}
         channelUsers={channelUsers}
+        personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
         chatDrop={chatDrop}
         composePlaceholder={composePlaceholder}
         composer={{
@@ -445,7 +429,7 @@ export const ChannelsPage = () => {
         onOpenMembers={() => setShowMembersPopup(true)}
         onOpenSettings={() => setShowChannelSettings(true)}
         onSelectAgent={onSelectAgent}
-        onSelectMessageAgent={(agent) => setSelectedMessageAgentId(agent.id)}
+        onSelectMessageAgent={setSelectedMessageAgent}
         onSelectMessageUser={setSelectedMessageUser}
         onToggleSearch={toggleSearch}
         setActiveTab={setActiveTab}
@@ -463,6 +447,7 @@ export const ChannelsPage = () => {
         callerCallActionPending={callActionPending}
         callerDialogCall={callerDialogCall}
         startCallFailureCode={startCallFailureCode}
+        personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
         deepWaterDialog={deepWaterLauncher.dialog}
         hasRespondingAgent={hasRespondingAgent}
         isExternalAgentConversation={isExternalAgentActiveChannel}
@@ -482,7 +467,7 @@ export const ChannelsPage = () => {
         token={token}
         onCancelOversizePaste={() => setOversizePaste(null)}
         onCloseMembers={() => setShowMembersPopup(false)}
-        onCloseSelectedAgent={() => setSelectedMessageAgentId(null)}
+        onCloseSelectedAgent={() => setSelectedMessageAgent(null)}
         onCloseSelectedUser={() => setSelectedMessageUser(null)}
         onCloseSettings={() => setShowChannelSettings(false)}
         onGroupCreated={(newChannelId) => {
@@ -497,7 +482,7 @@ export const ChannelsPage = () => {
         onCloseStartCallFailure={onCloseStartCallFailure}
         onFinishCall={onFinishCall}
         onOpenAgentActivity={(agentId) => {
-          setSelectedMessageAgentId(null)
+          setSelectedMessageAgent(null)
           onSelectAgent(agentId)
         }}
         onSelectAgent={onSelectAgent}

@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom'
 import type { MentionEntity } from '../../components/shared/MentionInput'
 import { getAgentGlyph } from '../../components/features/channels/channel-helpers'
 import { isUserDmChannel } from '../../facades/personal-assistant/hooks'
-import type { AgentRecord, ChannelRecord, UserRecord } from '../../lib/api-client'
+import type {
+  AgentRecord,
+  ChannelRecord,
+  PersonalAssistantPresenceParticipant,
+  UserRecord,
+} from '../../lib/api-client'
 import {
   buildChannelMentionTargets,
   normalizeChannelLabel,
@@ -15,6 +20,7 @@ interface UseChannelMentionsParams {
   agents: AgentRecord[]
   channels: ChannelRecord[]
   channelUsers: UserRecord[]
+  personalAssistantPresences?: PersonalAssistantPresenceParticipant[]
 }
 
 interface UseChannelMentionsResult {
@@ -61,6 +67,30 @@ const findNextTrigger = (
   return { index: hashIndex, marker: '#' }
 }
 
+// `agents` is the entitlement-scoped `GET /api/agents` result supplied by the
+// page. Keep that server decision intact: filtering again here would both
+// duplicate the privacy rule and make the client an accidental authority.
+export const buildAgentMentionEntities = (agents: AgentRecord[]): MentionEntity[] =>
+  agents.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    type: 'agent' as const,
+    trigger: '@' as const,
+    glyph: getAgentGlyph(agent),
+  }))
+
+export const buildPersonalAssistantMentionEntities = (
+  presences: PersonalAssistantPresenceParticipant[],
+): MentionEntity[] =>
+  presences.map((presence) => ({
+    id: presence.agentId,
+    insertName: presence.mentionName,
+    name: presence.displayName,
+    principalUserId: presence.principalUserId,
+    type: 'agent' as const,
+    trigger: '@' as const,
+  }))
+
 function findTokenMatch<T>(
   text: string,
   startIndex: number,
@@ -86,6 +116,7 @@ export const useChannelMentions = ({
   agents,
   channels,
   channelUsers,
+  personalAssistantPresences = [],
 }: UseChannelMentionsParams): UseChannelMentionsResult => {
   const channelMentionTargets = useMemo(
     () => buildChannelMentionTargets(channels),
@@ -94,13 +125,8 @@ export const useChannelMentions = ({
 
   const mentionEntities: MentionEntity[] = useMemo(
     () => [
-      ...agents.map((a) => ({
-        id: a.id,
-        name: a.name,
-        type: 'agent' as const,
-        trigger: '@' as const,
-        glyph: getAgentGlyph(a),
-      })),
+      ...buildAgentMentionEntities(agents),
+      ...buildPersonalAssistantMentionEntities(personalAssistantPresences),
       ...channelUsers.map((u) => ({
         id: u.id,
         name: u.displayName,
@@ -115,14 +141,14 @@ export const useChannelMentions = ({
         trigger: '#' as const,
       })),
     ],
-    [agents, channelMentionTargets, channelUsers],
+    [agents, channelMentionTargets, channelUsers, personalAssistantPresences],
   )
 
   const mentionEntityMap = useMemo(
     () =>
       new Map(
         mentionEntities
-          .filter((entity) => entity.trigger === '@')
+          .filter((entity) => entity.trigger === '@' && !entity.principalUserId)
           .map((entity) => [entity.name, entity]),
       ),
     [mentionEntities],
@@ -175,6 +201,27 @@ export const useChannelMentions = ({
         (left, right) => right.length - left.length,
       ),
     [mentionEntityMap],
+  )
+  const presenceMentionMap = useMemo(
+    () =>
+      new Map(
+        [...personalAssistantPresences]
+          // If two entries have the same public token, keep the viewer's own
+          // projection when available. The persisted entity still carries the
+          // pair of ids; this map is only content rendering.
+          .sort((left, right) =>
+            Number(left.displayName === 'Personal Assistant')
+            - Number(right.displayName === 'Personal Assistant'))
+          .map((presence) => [
+          presence.mentionName,
+          presence.displayName,
+          ]),
+      ),
+    [personalAssistantPresences],
+  )
+  const sortedPresenceMentionNames = useMemo(
+    () => [...presenceMentionMap.keys()].sort((left, right) => right.length - left.length),
+    [presenceMentionMap],
   )
 
   const renderContent = useCallback(
@@ -279,6 +326,27 @@ export const useChannelMentions = ({
           continue
         }
 
+        const presenceMentionName = findTokenName(
+          text,
+          trigger.index + 1,
+          sortedPresenceMentionNames,
+        )
+        if (presenceMentionName) {
+          if (trigger.index > cursor) {
+            parts.push(text.slice(cursor, trigger.index))
+          }
+          parts.push(
+            <span
+              className="mention-tag"
+              key={`personal-assistant:${presenceMentionName}:${trigger.index}`}
+            >
+              @{presenceMentionMap.get(presenceMentionName) ?? presenceMentionName}
+            </span>,
+          )
+          cursor = trigger.index + 1 + presenceMentionName.length
+          continue
+        }
+
         const entityName = findTokenName(
           text,
           trigger.index + 1,
@@ -338,8 +406,10 @@ export const useChannelMentions = ({
       channelLabelCandidates,
       dmChannelByUserId,
       mentionEntityMap,
+      presenceMentionMap,
       activeChannel,
       sortedMentionNames,
+      sortedPresenceMentionNames,
     ],
   )
 

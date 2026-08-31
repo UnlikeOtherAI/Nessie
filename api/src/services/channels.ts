@@ -1,12 +1,14 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  parseAgentId,
   parseChannelId,
   parseOrganizationId,
   parseProjectId,
   parseTeamId,
   parseThreadId,
+  parseUserId,
 } from '@nessie/schemas'
-import type { ChannelRecord } from '../contracts.js'
+import type { ChannelRecord, PersonalAssistantPresenceParticipant } from '../contracts.js'
 import {
   canManageChannel,
   channelTeamInclude,
@@ -69,6 +71,20 @@ export const listChannelsForUser = async (
         select: { role: true, muted: true },
         take: 1,
       },
+      // A PA presence is a binding-level participant, not an agent the caller
+      // can inspect. Keep the read to its explicit display projection inputs.
+      agentBindings: {
+        where: {
+          principalUserId: { not: null },
+          agent: { agentKind: 'personal_assistant' },
+        },
+        select: {
+          agentId: true,
+          id: true,
+          principalUserId: true,
+          agent: { select: { avatarAttachmentId: true } },
+        },
+      },
       team: {
         select: {
           name: true,
@@ -110,7 +126,44 @@ export const listChannelsForUser = async (
   const unreadCountsByThread = await loadUnreadCountsByThread(prisma, defaultThreadIds, userId)
   const lastMessageAtByThread = await loadLastMessageAtByThread(prisma, defaultThreadIds)
 
-  return channels.map((channel) => ({
+  const principalUserIds = [...new Set(
+    channels.flatMap((channel) =>
+      (channel.agentBindings ?? []).flatMap((binding) =>
+        binding.principalUserId ? [binding.principalUserId] : [])),
+  )]
+  const principalNames = new Map<string, string>()
+  if (principalUserIds.length > 0) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: principalUserIds } },
+      select: { displayName: true, id: true },
+    })
+    for (const principal of users) {
+      principalNames.set(principal.id, principal.displayName)
+    }
+  }
+
+  return channels.map((channel) => {
+    const personalAssistantPresences: PersonalAssistantPresenceParticipant[] =
+      (channel.agentBindings ?? []).flatMap((binding) => {
+        const principalUserId = binding.principalUserId
+        if (!principalUserId) return []
+        const ownerName = principalNames.get(principalUserId)
+        // The FK to channel_members makes this unreachable in production, but
+        // fail closed rather than producing a malformed identity projection.
+        if (!ownerName) return []
+        const mentionName = `${ownerName} – PA`
+        return [{
+          agentId: parseAgentId(binding.agentId),
+          avatarAttachmentId: binding.agent.avatarAttachmentId ?? undefined,
+          displayName: principalUserId === userId ? 'Personal Assistant' : mentionName,
+          id: binding.id,
+          isPersonalAssistant: true as const,
+          mentionName,
+          principalUserId: parseUserId(principalUserId),
+        }]
+      })
+
+    return {
     id: parseChannelId(channel.id),
     label: channel.label,
     slug: channel.slug,
@@ -132,9 +185,11 @@ export const listChannelsForUser = async (
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     memberRole: channel.members[0]?.role ?? null,
     muted: channel.members[0]?.muted ?? false,
+    personalAssistantPresences,
     createdAt: channel.createdAt.toISOString(),
     updatedAt: channel.updatedAt.toISOString(),
-  }))
+    }
+  })
 }
 
 export const joinPublicChannel = async (

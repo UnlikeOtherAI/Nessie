@@ -48,13 +48,14 @@ export const updateRunStatus = async (
   // must never be able to turn that into a thrown error.
   try {
     const run = await prisma.run.findUnique({
-      select: { agentId: true, threadId: true, triggerMessageId: true },
+      select: { agentId: true, principalUserId: true, threadId: true, triggerMessageId: true },
       where: { id: runId },
     })
     if (!run?.triggerMessageId) return
     await clearWorking(prisma, transport ?? null, {
       agentId: run.agentId,
       messageId: run.triggerMessageId,
+      ...(run.principalUserId ? { onBehalfOfUserId: run.principalUserId } : {}),
       threadId: run.threadId,
     })
   } catch (error) {
@@ -124,11 +125,13 @@ export const loadRunContext = async (
           model: true,
           name: true,
           parentAgentId: true,
+          ownerUserId: true,
           provider: true,
           // Optional explicit per-run caps; absent keys fall through to the
           // deployment backstop (see run-budget.ts).
           runLimits: true,
           systemPrompt: true,
+          visibility: true,
         },
       },
       thread: {
@@ -141,6 +144,7 @@ export const loadRunContext = async (
               projectId: true,
               teamId: true,
               systemChannelType: true,
+              dmKey: true,
             },
           },
         },
@@ -150,6 +154,7 @@ export const loadRunContext = async (
         select: { id: true },
         take: 1,
       },
+      trigger: { select: { agentId: true, targetThreadId: true } },
     },
   })
 
@@ -158,15 +163,25 @@ export const loadRunContext = async (
     return null
   }
 
+  // One indexed lookup, cached on the context. The live stream gate calls the
+  // disclosure predicate for every delta and must never perform IO itself.
+  const boundAgents = await prisma.agentBinding.findMany({
+    where: { channelId: run.thread.channel.id },
+    select: { agentId: true },
+  })
+
   return {
     agent: { ...run.agent, runLimits: parseAgentRunLimits(run.agent.runLimits) },
+    boundAgentIds: boundAgents.map((binding) => binding.agentId),
     channel: run.thread.channel,
     consumedSources: createConsumedSourceSink(),
     run: {
       id: run.id,
+      principalUserId: run.principalUserId,
       threadId: run.thread.id,
       createdAt: run.createdAt,
       replyPlacement: run.replyPlacement,
+      trigger: run.trigger,
     },
     task,
   }

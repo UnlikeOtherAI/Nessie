@@ -1,10 +1,12 @@
 import type { PrismaClient } from '@prisma/client'
 import { WORKFLOW_TOOL_IDS } from '@nessie/runtime'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   WORKFLOW_SECRET_WRITE_ERROR,
   collectWorkflowStepReferences,
   compileWorkflowJmespath,
   parseWorkflowBindingTemplate,
+  isAgentAccessibleToActor,
   validateWorkflowSecretWrite,
   type WorkflowBindingSecretError,
 } from '@nessie/workspace-admin'
@@ -158,7 +160,7 @@ const readStepInputString = (
 
 export const validateWorkflowGraphSteps = async (
   prisma: PrismaClient,
-  organizationId: string,
+  actorContext: AuthorizedActionContext,
   graph: WorkflowGraph,
 ): Promise<void> => {
   const issues: string[] = []
@@ -302,16 +304,8 @@ export const validateWorkflowGraphSteps = async (
   }
 
   if (literalAgentIds.size > 0) {
-    const agents = await prisma.agent.findMany({
-      where: {
-        id: { in: [...literalAgentIds] },
-        OR: [{ organizationId }, { organizationId: null }],
-      },
-      select: { id: true },
-    })
-    const foundIds = new Set(agents.map((agent) => agent.id))
     for (const agentId of literalAgentIds) {
-      if (!foundIds.has(agentId)) {
+      if (!(await isAgentAccessibleToActor(prisma, actorContext, agentId))) {
         issues.push(`Agent ${agentId.slice(0, 8)} referenced by an agent step does not exist.`)
       }
     }

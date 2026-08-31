@@ -82,6 +82,9 @@ const baseState = (tokens: TokenRow[], creds: CredRow[] = [apnsCred(), fcmCred()
 
 const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
   ({
+    agent: {
+      findMany: async () => [],
+    },
     pushCredential: {
       findMany: async () => state.creds,
     },

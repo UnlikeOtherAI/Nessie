@@ -16,8 +16,10 @@ import {
   type ResearchRoutingFacts,
 } from './research-routing.js'
 import {
-  buildAgentTodoFactsBlock,
-} from './agent-todo-facts.js'
+  buildAgentDocumentsBlock,
+  type AgentDocumentsPromptFacts,
+} from './agent-documents.js'
+import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/workspace-admin'
 import type { RunContext, StoredConversationMessage } from './types.js'
 
@@ -83,6 +85,8 @@ export const buildModelPrompt = (
     routing?: ResearchRoutingFacts
     /** Bounded, durable to-do facts, omitted unless execution tools resolve. */
     todoFacts?: AgentTodoPromptFacts | null
+    /** Structural home-space and toolset facts driving the documents block. */
+    documents?: AgentDocumentsPromptFacts
   } = {},
 ): ProviderMessage[] => {
   const hasOtherAgentTurn = conversation.some(
@@ -172,6 +176,7 @@ export const buildModelPrompt = (
     ].join('\n'),
     options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
     buildAgentTodoFactsBlock(options.todoFacts ?? null) ?? '',
+    options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
   ].filter((part) => part.length > 0)
 
   const messages: ProviderMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]

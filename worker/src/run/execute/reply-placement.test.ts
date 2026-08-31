@@ -44,6 +44,7 @@ const makeContext = (replyRootMessageId?: string): RunContext => ({
     provider: null,
     systemPrompt: null,
   },
+  boundAgentIds: [],
   channel: {
     id: CHANNEL_ID,
     organizationId: ORGANIZATION_ID,

@@ -80,7 +80,11 @@ const destinationFor = (context: RunContext) => ({
  * through the disclosure predicate.
  */
 export const runReplyBasis = (context: RunContext): BasisScope[] =>
-  computeReplyBasis(context.consumedSources.list(), destinationFor(context))
+  computeReplyBasis(
+    context.consumedSources.list(),
+    destinationFor(context),
+    context.boundAgentIds,
+  )
 
 export const runReplyIsRestricted = (context: RunContext): boolean =>
   runReplyBasis(context).length > 0
@@ -170,6 +174,9 @@ export const createAgentMessage = async (
         role: draft.role,
         threadId: draft.threadId,
         ...(draft.agentId ? { agentId: draft.agentId } : {}),
+        ...(context.run.principalUserId
+          ? { onBehalfOfUserId: context.run.principalUserId }
+          : {}),
         ...(draft.userId ? { userId: draft.userId } : {}),
         ...(draft.rootMessageId ? { rootMessageId: draft.rootMessageId } : {}),
         ...(draft.metadata === undefined ? {} : { metadata: draft.metadata }),

@@ -184,6 +184,7 @@ export const finalizeCancelledRun = async (
   // are delivered as one batched follow-up run (see thread-serialization.ts).
   await drainPendingThreadMessagesBestEffort(deps.prisma, {
     agentId: context.agent.id,
+    ...(context.run.principalUserId ? { principalUserId: context.run.principalUserId } : {}),
     threadId: context.run.threadId,
   })
   await enqueueInteractiveReplyPush(deps, payload, context, replyPushMessage)

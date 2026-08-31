@@ -50,6 +50,9 @@ export const enqueueAutoContinuation = async (
   deps.prisma.$transaction(async (tx) => {
     if (await isThreadRunSlotBusy(tx, {
       agentId: context.agent.id,
+      ...(context.run.principalUserId
+        ? { principalUserId: context.run.principalUserId }
+        : {}),
       threadId: context.run.threadId,
     })) {
       return null
@@ -59,6 +62,7 @@ export const enqueueAutoContinuation = async (
       data: {
         agentId: context.agent.id,
         continuationOfRunId: context.run.id,
+        principalUserId: context.run.principalUserId ?? null,
         status: 'pending',
         threadId: context.run.threadId,
         triggerMessageId: payload.messageId,
@@ -97,6 +101,9 @@ export const enqueueAutoContinuation = async (
           threadId: parseThreadId(context.run.threadId),
         }),
         agentId: payload.agentId,
+        ...(context.run.principalUserId
+          ? { principalUserId: context.run.principalUserId }
+          : {}),
         interactive: false,
         messageId: payload.messageId,
         ...(payload.promptOverride ? { promptOverride: payload.promptOverride } : {}),

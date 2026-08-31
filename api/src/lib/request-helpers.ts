@@ -183,10 +183,12 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
             },
             status: true,
             surfacePolicy: true,
+            todosEnabled: true,
             systemManaged: true,
             systemPrompt: true,
             toolPolicy: true,
             updatedAt: true,
+            visibility: true,
           },
         })
       : null
@@ -218,6 +220,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
             status: agent.status,
             agentKind: agent.agentKind,
             systemManaged: agent.systemManaged,
+            visibility: agent.visibility,
             surfacePolicy: agent.surfacePolicy,
             delegationMode: agent.delegationMode,
             currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
@@ -236,6 +239,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
             createdAt: agent.createdAt.toISOString(),
             updatedAt: agent.updatedAt.toISOString(),
             channelIds: agent.bindings.map((binding) => parseChannelId(binding.channelId)),
+            todosEnabled: agent.todosEnabled,
           }
         : null,
       channel: {

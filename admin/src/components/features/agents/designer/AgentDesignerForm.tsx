@@ -25,6 +25,7 @@ type AgentDesignerFormProps = {
   state: AgentFormState
   toolGroups: DesignerToolGroup[]
   toolsLoading: boolean
+  visibilityReadOnly?: boolean
 }
 
 const fieldLabelClass = [
@@ -53,6 +54,7 @@ export const AgentDesignerForm = ({
   state,
   toolGroups,
   toolsLoading,
+  visibilityReadOnly = false,
 }: AgentDesignerFormProps) => {
   const isStreaming = (field: string) => state.streamingField === field
   const selectedModel = modelOptions.find(
@@ -104,6 +106,44 @@ export const AgentDesignerForm = ({
           placeholder="e.g. assistant, reviewer, analyst"
           value={state.role}
         />
+      </div>
+
+      <div className="grid gap-1.5" id="agent-visibility">
+        <div className={fieldLabelClass}>Visibility</div>
+        {visibilityReadOnly ? (
+          <>
+            <p className="text-sm text-[color:var(--tx2)]">
+              {state.visibility === 'private' ? 'Only visible to you' : 'Workspace-visible'}
+            </p>
+            <p className="text-xs text-[color:var(--tx3)]">
+              Visibility is set when an agent is created and cannot be changed.
+            </p>
+          </>
+        ) : (
+          <>
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--sep)] p-3 hover:bg-[color:var(--main-hover)]">
+              <input
+                checked={state.visibility === 'private'}
+                className="mt-0.5"
+                onChange={(event) => actions.setVisibility(
+                  event.target.checked ? 'private' : 'workspace',
+                )}
+                type="checkbox"
+              />
+              <span className="grid gap-1">
+                <span className="text-sm font-medium text-[color:var(--tx)]">Only visible to me</span>
+                <span className="text-xs text-[color:var(--tx3)]">
+                  {state.visibility === 'private'
+                    ? 'Private — only you can see it.'
+                    : 'Workspace-visible — people in this workspace can find it.'}
+                </span>
+              </span>
+            </label>
+            <p className="text-xs text-[color:var(--tx3)]">
+              A private agent cannot be added to any project, channel, or conversation, and only you can see it.
+            </p>
+          </>
+        )}
       </div>
 
       {/* Ledger-authorized model */}

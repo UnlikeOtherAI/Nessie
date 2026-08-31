@@ -34,11 +34,13 @@
 
 export const agentKeys = {
   all: ['agents'] as const,
+  pausedPrivateCount: ['agents', 'paused-private-count'] as const,
   // The org-wide list is a different corpus from the caller's own agents, and
   // both live under the family root so one invalidation covers them.
   allScopes: ['agents', 'all'] as const,
   activity: (agentId?: string) => ['agents', agentId, 'activity'] as const,
   children: (agentId?: string) => ['agents', agentId, 'children'] as const,
+  documents: (agentId?: string) => ['agents', agentId, 'documents'] as const,
   messages: (agentId: string) => ['agents', agentId, 'messages'] as const,
   messagePage: (agentId: string | undefined, limit: number, offset: number) =>
     ['agents', agentId, 'messages', limit, offset] as const,
@@ -223,6 +225,7 @@ export const knowledgeKeys = {
   // gets its own entry under the shared spaces root.
   scopedSpaces: (projectId?: string) =>
     ['knowledge-spaces', projectId ?? 'organization'] as const,
+  space: (spaceId?: string) => ['knowledge-spaces', spaceId ?? 'none'] as const,
   spaces: ['knowledge-spaces'] as const,
   storageUsage: (scopeType: string, scopeId?: string) =>
     ['knowledge-storage-usage', scopeType, scopeId ?? 'self'] as const,

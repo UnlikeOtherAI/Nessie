@@ -4,6 +4,7 @@ import { captureUserMessageMemory } from '@nessie/memory'
 import {
   CHAT_MESSAGE_MAX_CHARS,
   detectSecrets,
+  parseAgentId,
   parseChannelId,
   parseThreadId,
   parseUserId,
@@ -105,6 +106,11 @@ export const registerCreateThreadMessageRoute = (
       userId: actorContext.actor.actorId,
       rootMessageId: body.rootMessageId,
       alsoSendToChannel: body.alsoSendToChannel,
+      agentMentions: body.agentMentions?.map((mention) => ({
+        agentId: parseAgentId(mention.agentId),
+        principalUserId: parseUserId(mention.principalUserId),
+        type: mention.type,
+      })),
     })
 
     if (result.kind === 'thread_not_found') {
@@ -117,6 +123,15 @@ export const registerCreateThreadMessageRoute = (
         400,
         'INVALID_ROOT_MESSAGE',
         'rootMessageId must reference a top-level message in this thread',
+      )
+      return reply
+    }
+    if (result.kind === 'invalid_agent_mention') {
+      sendApiError(
+        reply,
+        400,
+        'INVALID_AGENT_MENTION',
+        'That Personal Assistant is no longer present in this channel',
       )
       return reply
     }
@@ -321,6 +336,7 @@ export const registerCreateThreadMessageRoute = (
           prisma,
           {
             actorContext: orchestrationActorContext,
+            agentMentions: result.agentMentions,
             channelAgents: result.channelAgents,
             channelId: parseChannelId(thread.channel.id),
             content,

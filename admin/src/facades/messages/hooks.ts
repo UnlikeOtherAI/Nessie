@@ -4,6 +4,7 @@ import { uploadAttachment, type AttachmentRecord } from '../../lib/uploads'
 import { channelKeys, threadKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import type { PersonalAssistantMention } from '../../components/shared/MentionInput'
 
 /** An agent @mentioned in a message that is not a member of the channel. */
 export interface PendingAgentInvite {
@@ -31,6 +32,7 @@ export const useSendMessage = (threadId?: string) => {
     mutationFn: (input: {
       content: string
       attachmentIds?: string[]
+      agentMentions?: PersonalAssistantMention[]
     } & SendMessageThreadExtras) =>
       apiClient.post<SendMessageResponse>(`/api/threads/${threadId}/messages`, input),
     onSuccess: () => {

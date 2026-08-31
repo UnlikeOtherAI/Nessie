@@ -31,6 +31,7 @@ export type { PushDispatchSummary, PushSenders } from './push-delivery-core.js'
 export type PushDispatchPrisma = PushDeliveryPrisma &
   PushBadgePrisma &
   Pick<PrismaClient,
+    | 'agent'
     | 'channelMember'
     | 'channel'
     | 'disclosureGrant'

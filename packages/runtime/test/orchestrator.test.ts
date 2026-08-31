@@ -115,6 +115,38 @@ test('an @mention in another language is still a structurally threaded reply', a
   ])
 })
 
+test('a PA presence mention uses its stored ids and never parses its display name', async () => {
+  const principalUserId = '33333333-3333-3333-3333-333333333333'
+  const decisions = await decideAgentEngagement(forbiddenModel(), {
+    agents: [{ ...aria, name: 'Personal Assistant', principalUserId }],
+    agentMentions: [{ agentId: aria.id, principalUserId, type: 'agent' }],
+    // This intentionally has no recognizable agent name. The structured
+    // entity, not the canonical public token, is the address.
+    content: '@A person with the same name – PA can you take this?',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+
+  assert.deepEqual(decisions, [{
+    action: 'reply',
+    agentId: aria.id,
+    principalUserId,
+    replyPlacement: 'thread',
+  }])
+})
+
+test('plain @PA never addresses a presence', async () => {
+  const principalUserId = '33333333-3333-3333-3333-333333333333'
+  const decisions = await decideAgentEngagement(forbiddenModel(), {
+    agents: [{ ...aria, name: 'PA', principalUserId }],
+    content: '@PA can you take this?',
+    recentMessages: [],
+    triggerIsHuman: true,
+  })
+
+  assert.deepEqual(decisions, [])
+})
+
 test('an @mention of no known agent stays silent (user-to-user)', async () => {
   const decisions = await decideAgentEngagement(forbiddenModel(), {
     agents: [aria, beck],

@@ -57,6 +57,7 @@ const runContext = (): RunContext => ({
     provider: null,
     systemPrompt: null,
   },
+  boundAgentIds: [],
   channel: {
     id: CHANNEL_ID,
     organizationId: ORG_ID,

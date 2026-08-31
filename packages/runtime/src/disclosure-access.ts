@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { listVisibleAgentIdsForUser } from '@nessie/db'
 import {
   viewerSatisfiesBasis,
   type BasisScopeRow,
@@ -7,6 +8,7 @@ import {
 
 /** The small Prisma surface shared by disclosure readers and push delivery. */
 export type DisclosureAccessPrisma = Pick<PrismaClient,
+  | 'agent'
   | 'channelMember'
   | 'disclosureGrant'
   | 'organizationMember'
@@ -36,7 +38,7 @@ export const resolveDisclosureViewer = async (
   })
   if (!orgMembership) return { kind: 'autonomous' }
 
-  const [channels, teams, projects] = await Promise.all([
+  const [channels, teams, projects, visibleAgentIds] = await Promise.all([
     prisma.channelMember.findMany({
       where: { userId, channel: { organizationId } },
       select: { channelId: true },
@@ -49,6 +51,7 @@ export const resolveDisclosureViewer = async (
       where: { userId, project: { organizationId } },
       select: { projectId: true },
     }),
+    listVisibleAgentIdsForUser(prisma, { organizationId, userId }),
   ])
 
   return {
@@ -58,6 +61,7 @@ export const resolveDisclosureViewer = async (
       ...channels.map((row) => ({ scopeId: row.channelId, scopeType: 'channel' })),
       ...teams.map((row) => ({ scopeId: row.teamId, scopeType: 'team' })),
       ...projects.map((row) => ({ scopeId: row.projectId, scopeType: 'project' })),
+      ...visibleAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
       { scopeId: organizationId, scopeType: 'organization' },
     ],
     userId,

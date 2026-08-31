@@ -20,6 +20,7 @@ export const postOrchestrationNotice = async (
     channelId: string
     content: string
     kind: 'budget_blocked' | 'credits_exhausted'
+    principalUserId?: string
     replyRootMessageId?: string
     threadId: string
     triggerMessageId: string
@@ -28,6 +29,7 @@ export const postOrchestrationNotice = async (
   const existing = await deps.prisma.message.findFirst({
     where: {
       agentId: input.agentId,
+      onBehalfOfUserId: input.principalUserId ?? null,
       threadId: input.threadId,
       metadata: {
         path: ['orchestrationNotice', 'triggerMessageId'],
@@ -48,6 +50,9 @@ export const postOrchestrationNotice = async (
           triggerMessageId: input.triggerMessageId,
         },
       },
+      ...(input.principalUserId
+        ? { onBehalfOfUserId: input.principalUserId }
+        : {}),
       role: 'assistant',
       threadId: input.threadId,
       ...(input.replyRootMessageId

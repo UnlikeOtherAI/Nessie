@@ -10,8 +10,8 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
-import { resolveAgentTools } from '../tool-policy.js'
 import { loadAgentTodoPromptFacts } from '@nessie/workspace-admin'
+import { isPersonalAssistantPresenceRun, resolveAgentTools } from '../tool-policy.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
   buildCheckpointInjection,
@@ -24,6 +24,11 @@ import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
+import {
+  hasDocumentsPromptTools,
+  hasKbWriteTools,
+  resolveAgentDocumentsHome,
+} from './agent-documents.js'
 
 // Everything the agentic loop needs, assembled once: the agent's toolset, its
 // conversation window, retrieved memories, any checkpoint left by an earlier
@@ -121,7 +126,13 @@ export const prepareRunExecution = async (
 
   const agentRecord = await deps.prisma.agent.findUnique({
     where: { id: context.agent.id },
-    select: { toolPolicy: true, parentAgentId: true, todosEnabled: true },
+    select: {
+      toolPolicy: true,
+      parentAgentId: true,
+      todosEnabled: true,
+      systemManaged: true,
+      parentAgent: { select: { id: true, name: true, systemManaged: true } },
+    },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
   const {
@@ -137,11 +148,35 @@ export const prepareRunExecution = async (
       toolPolicy,
       context.agent.parentAgentId,
       context.agent.agentKind,
+      {
+        isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
+          agentKind: context.agent.agentKind,
+          principalUserId: context.run.principalUserId,
+          systemChannelType: context.channel.systemChannelType,
+        }),
+      },
       ),
       agentRecord?.todosEnabled ?? false,
     ),
     input.isHandoffTurn,
   )
+
+  // A spawned child shares its parent's documents home. The PA is
+  // system-managed and writes personal artifacts to its user's My Docs, so it
+  // has no agent home at all.
+  const documentsAgent = agentRecord?.parentAgent ?? {
+    id: context.agent.id,
+    name: context.agent.name,
+    systemManaged: agentRecord?.systemManaged ?? false,
+  }
+  const documentsHome = hasKbWriteTools(resolvedToolIds) && !documentsAgent.systemManaged
+    ? await resolveAgentDocumentsHome(deps.prisma, {
+      agentId: documentsAgent.id,
+      agentName: documentsAgent.name,
+      organizationId: context.channel.organizationId,
+      projectId: context.channel.projectId,
+    })
+    : null
 
   const [mcpToolset, executorToolset, todoFacts] = await Promise.all([
     buildMcpToolset(
@@ -153,6 +188,11 @@ export const prepareRunExecution = async (
         agentId: context.agent.id,
         agentKind: context.agent.agentKind,
         channelId: context.channel.id,
+        isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
+          agentKind: context.agent.agentKind,
+          principalUserId: context.run.principalUserId,
+          systemChannelType: context.channel.systemChannelType,
+        }),
       },
       attributionFromActorContext(payload.actorContext, {
         agentId: context.agent.id,
@@ -248,6 +288,12 @@ export const prepareRunExecution = async (
         isHandoffTurn: input.isHandoffTurn,
       },
       todoFacts,
+      documents: documentsHome
+        ? {
+          ...documentsHome,
+          hasDocumentTools: hasDocumentsPromptTools(resolvedToolIds),
+        }
+        : undefined,
     }),
     mcpToolset,
     memories,

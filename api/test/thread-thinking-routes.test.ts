@@ -86,8 +86,10 @@ const makeApp = (input: {
       findMany: async () => input.runBasis ?? [],
     },
     // Consulted only when a basis exists. An org member with no channel/team/
-    // project rows satisfies nothing, so a restricted run is withheld.
+    // project/visible-agent rows satisfies nothing, so a restricted run is
+    // withheld.
     organizationMember: { findFirst: async () => ({ id: 'member-row' }) },
+    agent: { findMany: async () => [] },
     channelMember: { findMany: async () => [] },
     teamMember: { findMany: async () => [] },
     projectMember: { findMany: async () => [] },

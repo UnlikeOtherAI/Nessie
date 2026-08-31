@@ -7,6 +7,7 @@ import {
   acquireAgentToolPolicyLock,
   AGENT_TOOL_POLICY_ERROR_CODES,
   AgentToolPolicyError,
+  buildAgentVisibilityWhere,
   mergeAgentToolPolicy,
   normalizeToolPolicy,
 } from '@nessie/workspace-admin'
@@ -51,9 +52,11 @@ const mapTarget = (agent: {
 export const listAgentToolPolicyTargets = async (
   prisma: PrismaClient,
   organizationId: string,
+  userId: string,
 ): Promise<AgentToolPolicyTarget[]> => {
   const agents = await prisma.agent.findMany({
     where: {
+      AND: [buildAgentVisibilityWhere({ organizationId, userId })],
       organizationId,
       OR: [
         {

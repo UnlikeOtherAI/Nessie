@@ -227,12 +227,26 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   system-managed and org-less agents (the PA is one org-singleton row serving
   everyone). The FK proves the membership row *exists*, never that it is live:
   deactivated rows are retained deliberately, so **every read re-derives
-  `deactivatedAt: null`**. One predicate, `buildOwnedAgentWhere`, is shared by
-  `listAgentsForUser` and `isAgentVisibleToUser` so list and detail cannot
-  disagree, and both of its conditions are load-bearing — the live-membership
+  `deactivatedAt: null`**. One predicate, `buildVisibleAgentWhere`, is shared by
+  `listAgentsForUser`, `isAgentVisibleToUser`, and every access rule that derives
+  a human audience from an agent, so list, detail, and derived access cannot
+  disagree. Its stewardship arm's conditions are load-bearing — the live-membership
   join (the branch widens by pointer equality, so without it a deactivated
   member keeps seeing their agents) and `parentAgentId: null` (else owning one
   agent pours every unreaped `spawn_subtask` child into that list forever).
+  `Agent.visibility = private` is the deliberate exception to org-owner
+  omniscience: every entitled agent read composes `buildAgentVisibilityWhere`,
+  and only the private agent's live owner passes its private arm — an org owner
+  never sees another person's private agent. Subtask children inherit both
+  owner and visibility so delegated private work cannot mint workspace-visible
+  rows. A private agent is created atomically with its exact owner-only
+  `agent:{org}:{owner}:{agent}` home DM, and the worker refuses any run outside
+  that home or the agent's own trigger thread before inference. Deactivating its
+  owner pauses only its triggers and records one aggregate audit transition;
+  the owner-only Members surface receives the count through
+  `GET /api/agents/paused-private-count` and never private rows or names;
+  workspace agents keep running, no private detail is widened, and reactivation
+  never resumes automation implicitly.
   `loadAgentChildren` takes the viewer's scope for the same reason. Never
   backfill ownership: nothing recorded who created an agent, so old rows read
   `Unowned` and `agent.created`/`agent.owner_changed` now emit instead. The tree

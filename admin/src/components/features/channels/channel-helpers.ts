@@ -1,4 +1,8 @@
-import type { AgentRecord, ThreadMessageRecord } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  PersonalAssistantPresenceParticipant,
+  ThreadMessageRecord,
+} from '../../../lib/api-client'
 export { getAgentGlyph } from '../../shared/AgentAvatar'
 
 export type OptimisticMessage = {
@@ -14,6 +18,10 @@ export type MessageUserIdentity = {
   displayName: string
   id: string
 }
+
+// The channel drawer accepts this union so a PA presence stays a participant
+// projection instead of being coerced into the private AgentRecord surface.
+export type ChannelAgentParticipant = AgentRecord | PersonalAssistantPresenceParticipant
 
 export type ChannelTab = 'agents' | 'automations' | 'files' | 'messages'
 
@@ -33,12 +41,13 @@ export const toolbarButtonClass = [
 // so a tab can never be selected without a panel behind it.
 export const isAgentsTabAvailable = (input: {
   boundAgentCount: number
+  personalAssistantPresenceCount?: number
   isConversationSurface: boolean
   isPersonalAssistantConversation: boolean
 }): boolean =>
   !input.isConversationSurface ||
   input.isPersonalAssistantConversation ||
-  input.boundAgentCount > 0
+  input.boundAgentCount + (input.personalAssistantPresenceCount ?? 0) > 0
 
 const formatDayLabel = (value: string): string => {
   const date = new Date(value)
@@ -103,9 +112,12 @@ export const getDisplayName = (
   meDisplayName: string,
   agentMap: Map<string, AgentRecord>,
   assistantFallbackName = 'Agent',
+  personalAssistantDisplayName?: string,
 ): string => {
   if (entry.role === 'assistant') {
-    return agentMap.get(entry.agentId ?? '')?.name ?? assistantFallbackName
+    return personalAssistantDisplayName
+      ?? agentMap.get(entry.agentId ?? '')?.name
+      ?? assistantFallbackName
   }
 
   if (entry.role === 'system') {

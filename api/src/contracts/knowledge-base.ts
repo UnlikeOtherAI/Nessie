@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { KnowledgeSpaceResponseSchema } from '@nessie/schemas'
 
 const NonEmptyStringSchema = z.string().trim().min(1)
 const UuidSchema = z.string().uuid()
@@ -48,25 +49,9 @@ export const KnowledgeResponseEnvelopeSchema = z.object({
   visibilityReason: NonEmptyStringSchema,
 })
 
-export const KnowledgeSpaceRecordSchema = OptionalScopeSchema.extend({
-  id: UuidSchema,
-  ownerAgentId: UuidSchema.nullable(),
-  name: NonEmptyStringSchema,
-  description: z.string().nullable(),
-  metadata: JsonRecordSchema.nullable(),
-  writeRestricted: z.boolean(),
-  memberUserIds: z.array(UuidSchema),
-  // The requesting actor's effective write permission on this space.
-  canWrite: z.boolean(),
-  organizationId: UuidSchema,
-  projectId: UuidSchema,
-  visibility: KnowledgeVisibilitySchema,
-  sensitivityTier: KnowledgeSensitivityTierSchema,
-  createdBy: NonEmptyStringSchema,
-  deletedAt: z.string().nullable(),
-  createdAt: NonEmptyStringSchema,
-  updatedAt: NonEmptyStringSchema,
-}).merge(KnowledgeResponseEnvelopeSchema)
+// Shared with the admin facade so ownerAgentId and every future response field
+// cross the API boundary under one compile-time contract.
+export const KnowledgeSpaceRecordSchema = KnowledgeSpaceResponseSchema
 
 export const KnowledgePageRecordSchema = OptionalScopeSchema.extend({
   id: UuidSchema,

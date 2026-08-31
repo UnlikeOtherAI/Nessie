@@ -71,6 +71,16 @@ export const updateAgentRecord = async (
     })
     if (!existing) return null
 
+    // A private agent's immutable owner is encoded in its owner-only home DM.
+    // Re-homing that surface is a disclosure-changing operation, so v1 makes
+    // the caller publish first instead of leaving a broken or orphaned home.
+    if (input.ownerUserId !== undefined && existing.visibility === 'private') {
+      throw new AgentManagementError(
+        AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_TRANSFER_UNSUPPORTED,
+        'Private agents cannot be transferred. Publish the agent before transferring it.',
+      )
+    }
+
     if (
       input.agentKind === PERSONAL_ASSISTANT_AGENT_KIND
       || input.systemManaged === true

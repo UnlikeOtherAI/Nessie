@@ -21,6 +21,7 @@ import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type FileNodeViewerProps = {
+  canWrite: boolean
   page: KnowledgePageRecord
   // On a phone the workspace owns the doorway through the local-back
   // registry and passes no onBack; wider layouts keep the pane's own Back.
@@ -31,6 +32,7 @@ type FileNodeViewerProps = {
 }
 
 export const FileNodeViewer = ({
+  canWrite,
   page,
   onBack,
   onOpenHistory,
@@ -85,12 +87,14 @@ export const FileNodeViewer = ({
       onSelect: onOpenHistory,
       priority: 50,
     },
-    {
-      id: 'upload-version',
-      label: 'Upload new version',
-      onSelect: onUploadVersion,
-      priority: 40,
-    },
+    ...(canWrite
+      ? [{
+          id: 'upload-version',
+          label: 'Upload new version',
+          onSelect: onUploadVersion,
+          priority: 40,
+        } satisfies PageHeaderAction]
+      : []),
     {
       disabled: !downloadPath,
       icon: faDownload,
@@ -217,7 +221,7 @@ export const FileNodeViewer = ({
           )}
         </div>
 
-        <CommentsSection pageId={page.id} />
+        <CommentsSection canResolve={canWrite} pageId={page.id} />
       </div>
     </KnowledgePane>
   )

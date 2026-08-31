@@ -255,7 +255,7 @@ export const ThreadInboxCard = ({
             onInvitePendingAgent={(agentId) => void composer.invitePendingAgent(agentId)}
             onOversizePaste={composer.setOversizePaste}
             onSubmitForm={(event) => void composer.sendMessageSubmit(event)}
-            onSubmitText={(text) => void composer.sendText(text)}
+            onSubmitText={(text, agentMentions) => void composer.sendText(text, agentMentions)}
           />
         </>
       ) : null}

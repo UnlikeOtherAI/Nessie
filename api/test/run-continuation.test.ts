@@ -392,7 +392,11 @@ runDatabaseTest('active runs: recently-ended runs project their unconsumed check
   const withoutCheckpoint = await createStoppedRun(prisma, seed, { checkpoint: false })
   const consumed = await createStoppedRun(prisma, seed, { consumed: true })
 
-  const restartable = await listRestartableRuns(prisma, seed.organizationId)
+  const restartable = await listRestartableRuns(
+    prisma,
+    seed.organizationId,
+    seed.userId,
+  )
   const byId = new Map(restartable.map((entry) => [entry.id, entry]))
   const checkpoint = await prisma.runCheckpoint.findUnique({
     where: { runId: withCheckpoint.id },

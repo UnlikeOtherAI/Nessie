@@ -78,3 +78,32 @@ export const usePersonalAssistantBootstrap = () => {
     },
   })
 }
+
+// PA presence is a channel-member action, not generic agent binding. Keeping
+// its mutation beside the PA facade prevents a caller from accidentally using
+// the ordinary binding route (which correctly refuses the singleton PA).
+export const useAddPersonalAssistantPresence = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (channelId: string) =>
+      apiClient.post(`/api/channels/${channelId}/personal-assistant`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+    },
+  })
+}
+
+export const useRemovePersonalAssistantPresence = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (channelId: string) =>
+      apiClient.delete(`/api/channels/${channelId}/personal-assistant`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
+    },
+  })
+}

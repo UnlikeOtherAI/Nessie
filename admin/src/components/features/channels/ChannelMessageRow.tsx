@@ -1,5 +1,9 @@
 import type { Dispatch, KeyboardEvent, MouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react'
-import type { AgentRecord, ThreadMessageRecord } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  PersonalAssistantPresenceParticipant,
+  ThreadMessageRecord,
+} from '../../../lib/api-client'
 import type { PresenceView } from '../../../providers/PresenceProvider'
 import { UserAvatar, type AvatarSources } from '../../primitives/UserAvatar'
 import { UserStatusEmoji } from '../../primitives/UserStatusEmoji'
@@ -8,7 +12,12 @@ import type { AttachmentRecord } from '../../../lib/uploads'
 import { ChannelAgentGlyph } from './ChannelAgentGlyph'
 import { ChannelMessageActions } from './ChannelMessageActions'
 import type { ResolveReactorName } from './ReactionPills'
-import { formatClock, getDisplayName, type MessageUserIdentity } from './channel-helpers'
+import {
+  formatClock,
+  getDisplayName,
+  type ChannelAgentParticipant,
+  type MessageUserIdentity,
+} from './channel-helpers'
 import { MessageUiCards } from './MessageUiCards'
 import {
   EmbeddedWidget,
@@ -67,6 +76,7 @@ interface ChannelMessageRowProps {
   meAvatar: AvatarSources
   token: string | null
   assistantFallbackName: string
+  personalAssistantPresence: PersonalAssistantPresenceParticipant | null
   isDedicatedAgentConversation: boolean
   // A first-class external-agent turn (DeepSignal, ...) renders its narrated
   // activities as a collapsed plan/timeline; other surfaces render flat cards.
@@ -96,7 +106,7 @@ interface ChannelMessageRowProps {
   // Opens the full-size viewer. Owned by the feed, not by this row: a modal
   // rendered here would inherit the row's stacking/overflow ancestors.
   onOpenAttachment?: (attachment: AttachmentRecord) => void
-  onSelectAgent?: (agent: AgentRecord) => void
+  onSelectAgent?: (agent: ChannelAgentParticipant) => void
   onSelectUser?: (user: MessageUserIdentity) => void
   resolveReactorName: ResolveReactorName
   resolveThreadParticipant?: (participantId: string) => ThreadParticipant | null
@@ -118,6 +128,7 @@ export const ChannelMessageRow = ({
   meAvatar,
   token,
   assistantFallbackName,
+  personalAssistantPresence,
   isDedicatedAgentConversation,
   isExternalAgentConversation,
   renderContent,
@@ -143,7 +154,13 @@ export const ChannelMessageRow = ({
   lastPointerDownAt,
 }: ChannelMessageRowProps) => {
   const watchStatus = readWatchStatusSummary(message.metadata)
-  const displayName = getDisplayName(message, meDisplayName, agentMap, assistantFallbackName)
+  const displayName = getDisplayName(
+    message,
+    meDisplayName,
+    agentMap,
+    assistantFallbackName,
+    personalAssistantPresence?.displayName,
+  )
   const canManageOwnMessage = message.role === 'user' && message.userId === meUserId
   const isEditingMessage = editingMessageId === message.id
   // Replies open their root's thread; roots open their own.
@@ -152,9 +169,17 @@ export const ChannelMessageRow = ({
   const openThread =
     onOpenThread && !isEditingMessage ? () => onOpenThread(threadRootMessageId) : undefined
   const messageAgent =
-    message.role === 'assistant' && onSelectAgent
+    message.role === 'assistant' && onSelectAgent && !personalAssistantPresence
       ? agentMap.get(message.agentId ?? '') ?? null
       : null
+  const assistantAvatar = personalAssistantPresence
+    ? {
+        avatarAttachmentId: personalAssistantPresence.avatarAttachmentId,
+        id: personalAssistantPresence.agentId,
+        name: personalAssistantPresence.displayName,
+        role: 'Personal Assistant',
+      }
+    : agentMap.get(message.agentId ?? '')
   const authorIdentity =
     message.role === 'user' && message.userId && onSelectUser
       ? {
@@ -176,6 +201,12 @@ export const ChannelMessageRow = ({
     event.stopPropagation()
     if (messageAgent) {
       onSelectAgent?.(messageAgent)
+    }
+  }
+  const selectPersonalAssistant = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    if (personalAssistantPresence) {
+      onSelectAgent?.(personalAssistantPresence)
     }
   }
   // Slack-style shortcut: `t` opens the thread for the focused message (or its
@@ -213,7 +244,16 @@ export const ChannelMessageRow = ({
       }}
       tabIndex={0}
     >
-      {messageAgent ? (
+      {personalAssistantPresence ? (
+        <button
+          aria-label={`Open ${displayName}`}
+          className="rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          onClick={selectPersonalAssistant}
+          type="button"
+        >
+          <ChannelAgentGlyph agent={assistantAvatar} token={token} />
+        </button>
+      ) : messageAgent ? (
         <button
           aria-label={`Open ${displayName}`}
           className="rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
@@ -223,7 +263,7 @@ export const ChannelMessageRow = ({
           <ChannelAgentGlyph agent={messageAgent} token={token} />
         </button>
       ) : message.role === 'assistant' ? (
-        <ChannelAgentGlyph agent={agentMap.get(message.agentId ?? '')} token={token} />
+        <ChannelAgentGlyph agent={assistantAvatar} token={token} />
       ) : authorIdentity ? (
         <button
           aria-label={`Open ${displayName}`}
@@ -252,10 +292,10 @@ export const ChannelMessageRow = ({
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          {messageAgent || authorIdentity ? (
+          {personalAssistantPresence || messageAgent || authorIdentity ? (
             <button
               className="min-w-0 text-left text-sm font-bold text-[var(--tx)] hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              onClick={messageAgent ? selectAgent : selectAuthor}
+              onClick={personalAssistantPresence ? selectPersonalAssistant : messageAgent ? selectAgent : selectAuthor}
               type="button"
             >
               {displayName}
@@ -275,7 +315,7 @@ export const ChannelMessageRow = ({
                 'text-[11px] font-semibold text-[var(--thinking)]',
               ].join(' ')}
             >
-              agent
+              {personalAssistantPresence ? 'PA' : 'agent'}
             </span>
           ) : null}
           <span className="text-xs text-[color:var(--tx3)]">

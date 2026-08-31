@@ -44,6 +44,13 @@ export const sendAgentManagementError = (
     sendApiError(reply, 404, error.code, error.message)
     return true
   }
+  if (
+    error instanceof AgentManagementError
+    && error.code === AGENT_MANAGEMENT_ERROR_CODES.PRIVATE_TRANSFER_UNSUPPORTED
+  ) {
+    sendApiError(reply, 400, error.code, error.message)
+    return true
+  }
   return false
 }
 

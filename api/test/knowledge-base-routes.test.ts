@@ -39,11 +39,14 @@ const policyRow = (effect: 'allow' | 'deny') => ({
   actorId: '*',
 })
 
-const makeSpace = (): KnowledgeSpaceRecord => ({
+const makeSpace = (input: Partial<KnowledgeSpaceRecord> = {}): KnowledgeSpaceRecord => ({
   id: spaceId,
   name: 'Engineering',
   description: null,
   metadata: null,
+  writeRestricted: false,
+  memberUserIds: [],
+  memberAgentIds: [],
   ownerAgentId: null,
   organizationId,
   projectId,
@@ -58,6 +61,7 @@ const makeSpace = (): KnowledgeSpaceRecord => ({
   deletedAt: null,
   createdAt: '2026-05-31T10:00:00.000Z',
   updatedAt: '2026-05-31T10:00:00.000Z',
+  ...input,
 })
 
 const makePage = (input: Partial<KnowledgePageRecord> = {}): KnowledgePageRecord => ({
@@ -406,6 +410,62 @@ test('knowledge mutations map Prisma unique conflicts without leaking constraint
   assert.equal(payload.error.code, 'KNOWLEDGE_MUTATION_CONFLICT')
   assert.equal(payload.error.message, 'Knowledge base mutation conflict')
   assert.equal(payload.error.message.includes('page_id'), false)
+  await app.close()
+})
+
+test('a plain writer cannot restrict a shared space or edit its membership', async () => {
+  const calls: string[] = []
+  const memberContext: AuthorizedActionContext = {
+    ...actorContext,
+    actor: { ...actorContext.actor, roles: ['member'] },
+  }
+  const { app } = makeApp('allow', {
+    getSpace: async () => makeSpace({
+      createdBy: '00000000-0000-4000-8000-000000000099',
+    }),
+    updateSpace: async () => {
+      calls.push('updateSpace')
+      return makeSpace()
+    },
+  }, memberContext)
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/knowledge-base/spaces/${spaceId}`,
+    payload: { writeRestricted: true, memberUserIds: [userId] },
+  })
+
+  assert.equal(response.statusCode, 403)
+  assert.equal(response.json().error.code, 'POLICY_DENIED')
+  assert.match(response.json().error.message, /SPACE_ADMIN_REQUIRED/)
+  assert.deepEqual(calls, [])
+  await app.close()
+})
+
+test('a plain writer may still edit non-administrative space details', async () => {
+  const calls: string[] = []
+  const memberContext: AuthorizedActionContext = {
+    ...actorContext,
+    actor: { ...actorContext.actor, roles: ['member'] },
+  }
+  const { app } = makeApp('allow', {
+    getSpace: async () => makeSpace({
+      createdBy: '00000000-0000-4000-8000-000000000099',
+    }),
+    updateSpace: async (_organizationId, _spaceId, input) => {
+      calls.push(input.name ?? '')
+      return makeSpace({ name: input.name ?? 'Engineering' })
+    },
+  }, memberContext)
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/knowledge-base/spaces/${spaceId}`,
+    payload: { name: 'Platform' },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(calls, ['Platform'])
   await app.close()
 })
 

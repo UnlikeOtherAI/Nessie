@@ -355,6 +355,7 @@ runDatabaseTest('cancelling the in-flight run still fires the batched follow-up'
   } as unknown as ExecutionDependencies
   const context = {
     agent: { id: seed.agentId, agentKind: 'shared' },
+    boundAgentIds: [],
     channel: {
       id: seed.channelId,
       organizationId: seed.organizationId,

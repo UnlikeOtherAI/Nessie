@@ -27,6 +27,7 @@ import {
   runMessageSearchTool,
   runMeetingLinkCreateTool,
   runPeopleSearchTool,
+  runPersonalAssistantJoinChannelTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
   runTodoStartTool,
@@ -239,6 +240,8 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runTodoStartTool(context, args))
     case 'todo_step_update':
       return wrapTool(inputSummary, () => runTodoStepUpdateTool(context, args))
+    case 'pa_join_channel':
+      return wrapTool(inputSummary, () => runPersonalAssistantJoinChannelTool(context, args))
     // Dashboards. Grantable to any agent (not PA-only), so the gate is the
     // agent's tool policy; each call runs the same service function the REST
     // route runs and inherits its authorization.

@@ -242,15 +242,19 @@ export const makeExternalAgentPrismaFake = (
       },
     },
     agentBinding: {
-      upsert: async (args: {
-        where: { agentId_channelId: { agentId: string; channelId: string } }
-      }) => {
-        const key = args.where.agentId_channelId
-        const existing = agentBindings.find(
-          (b) => b.agentId === key.agentId && b.channelId === key.channelId,
-        )
-        if (!existing) agentBindings.push({ ...key })
-        return {}
+      createMany: async (args: { data: AgentBinding[]; skipDuplicates?: boolean }) => {
+        let count = 0
+        for (const binding of args.data) {
+          const duplicate = agentBindings.some((row) =>
+            row.agentId === binding.agentId && row.channelId === binding.channelId)
+          if (duplicate) {
+            if (args.skipDuplicates) continue
+            throw new Error('agent binding pair must be unique')
+          }
+          agentBindings.push({ ...binding })
+          count += 1
+        }
+        return { count }
       },
     },
     productTeamEnablement: {

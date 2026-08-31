@@ -2,6 +2,7 @@ import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import { buildVisibleAgentWhere } from '@nessie/db'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
+import { buildAgentVisibilityWhere } from './agent-record.js'
 export type ChannelAccessRow = {
   systemChannelType?: ChannelSystemType
   type: string
@@ -46,9 +47,9 @@ export const getChannelIfMember = async (
 
 /**
  * An agent is visible to a user through any channel that user can see it bound
- * to — or because that user stewards it. The shared DB where-builder also
- * drives `listAgentsForUser` and agent-owned KB access, so all three surfaces
- * answer from one definition.
+ * to — or because that user stewards it. Both this per-agent gate and the list
+ * compose `@nessie/db`'s one fragment, so derived access (including agent
+ * documents) cannot drift from the owning surface.
  */
 export const isAgentVisibleToUser = async (
   prisma: PrismaClient,
@@ -58,7 +59,10 @@ export const isAgentVisibleToUser = async (
 ): Promise<boolean> =>
   (await prisma.agent.count({
     where: {
-      ...buildVisibleAgentWhere({ organizationId, userId }),
+      AND: [
+        buildVisibleAgentWhere({ organizationId, userId }),
+        buildAgentVisibilityWhere({ organizationId, userId }),
+      ],
       id: agentId,
     },
   })) > 0
@@ -77,6 +81,12 @@ export const isAgentAccessibleToActor = async (
     return (
       await prisma.agent.count({
         where: {
+          AND: [
+            buildAgentVisibilityWhere({
+              organizationId: actorContext.tenant.organizationId,
+              userId: actorContext.actor.actorId,
+            }),
+          ],
           id: agentId,
           organizationId: actorContext.tenant.organizationId,
           systemManaged: false,

@@ -20,6 +20,8 @@ import {
 import { updateAgentAvatar } from '../services/agent-avatars.js'
 import { canAccessAttachment } from '../services/attachments.js'
 import {
+  AGENT_BINDING_ERROR_CODES,
+  AgentBindingError,
   bindAgentToChannel,
   cloneAgentRecord,
   createAgentRecord,
@@ -34,6 +36,7 @@ import {
   validateAgentCreateInput,
 } from '../services/agents.js'
 import { enqueueInvitedAgentMentionReplay } from '../services/agent-invite-reply.js'
+import { countPausedPrivateAgents } from '../services/private-agent-lifecycle.js'
 import {
   assertLedgerAgentModelSelection,
   ledgerAgentModelCatalogRequestHeaders,
@@ -48,6 +51,7 @@ import {
   sendProtectedPolicyError,
 } from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
+import { registerAgentDocumentRoutes } from './agent-documents.js'
 
 const validateAgentAvatarAttachment = async (input: {
   actorContext: NonNullable<ReturnType<RouteDeps['requireActorContext']>>
@@ -86,6 +90,8 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     createAgentVisibilityScope,
   } = deps
 
+  registerAgentDocumentRoutes(app, deps)
+
   app.get('/api/agents', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -107,6 +113,21 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       includeSystemManaged,
     )
     return createApiResponse(AgentRecordSchema.array().parse(agents))
+  })
+
+  // This is intentionally a count-only owner surface. The Members tree needs
+  // to signal dormant private automation without turning private agents into
+  // an organization-browsable directory.
+  app.get('/api/agents/paused-private-count', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireOwner(actorContext, reply)) return reply
+
+    const count = await countPausedPrivateAgents(
+      prisma,
+      actorContext.tenant.organizationId,
+    )
+    return createApiResponse({ count })
   })
 
   app.get('/api/agents/models', async (request, reply) => {
@@ -176,6 +197,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         ownerUserId: actorContext.actor.actorId,
         parentAgentId: body.parentAgentId,
         toolPolicy: body.toolPolicy,
+        visibility: body.visibility,
       })
       if (body.model !== undefined || body.provider !== undefined) {
         await assertLedgerAgentModelSelection({
@@ -226,6 +248,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
         teamId: actorContext.tenant.teamId,
         todosEnabled: body.todosEnabled,
         toolPolicy: body.toolPolicy,
+        visibility: body.visibility,
       })
     } catch (error) {
       if (sendProtectedPolicyError(reply, error)) return reply
@@ -310,6 +333,7 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       })
     } catch (error) {
       if (sendProtectedPolicyError(reply, error)) return reply
+      if (sendAgentManagementError(reply, error)) return reply
       if (sendAgentModelCatalogError(reply, error)) return reply
       throw error
     }
@@ -489,11 +513,24 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
       return reply
     }
 
-    const agent = await bindAgentToChannel(prisma, {
-      agentId,
-      channelId: body.channelId,
-      organizationId: actorContext.tenant.organizationId,
-    })
+    let agent
+    try {
+      agent = await bindAgentToChannel(prisma, {
+        agentId,
+        channelId: body.channelId,
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      })
+    } catch (error) {
+      if (
+        error instanceof AgentBindingError
+        && error.code === AGENT_BINDING_ERROR_CODES.PRIVATE_VISIBILITY
+      ) {
+        sendApiError(reply, 403, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
     if (!agent) {
       sendApiError(reply, 404, 'AGENT_NOT_FOUND', 'Agent not found')
       return reply

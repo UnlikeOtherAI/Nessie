@@ -19,6 +19,7 @@ type RowProps = {
   token: string | null
   resolveAuthor: AuthorResolver
   actions: AnnotationActions
+  canResolve: boolean
   topLevel: boolean
   onReply: () => void
 }
@@ -31,6 +32,7 @@ const CommentRow = ({
   token,
   resolveAuthor,
   actions,
+  canResolve,
   topLevel,
   onReply,
 }: RowProps) => {
@@ -100,6 +102,7 @@ const CommentRow = ({
         )}
         <CommentActions
           canModify={isOwn}
+          canResolve={canResolve}
           currentUserId={currentUserId}
           onDelete={() => actions.remove(annotation.id)}
           onEdit={() => setEditing(true)}
@@ -120,6 +123,7 @@ type CommentThreadProps = {
   currentUserId?: string
   authorLabel: AuthorResolver
   actions: AnnotationActions
+  canResolve: boolean
   showAnchorQuote?: boolean
 }
 
@@ -129,6 +133,7 @@ export const CommentThread = ({
   currentUserId,
   authorLabel,
   actions,
+  canResolve,
   showAnchorQuote,
 }: CommentThreadProps) => {
   const { token } = useAuthSession()
@@ -147,6 +152,7 @@ export const CommentThread = ({
       <CommentRow
         actions={actions}
         annotation={annotation}
+        canResolve={canResolve}
         currentUserId={currentUserId}
         onReply={() => setReplying((value) => !value)}
         resolveAuthor={authorLabel}
@@ -159,6 +165,7 @@ export const CommentThread = ({
             <CommentRow
               actions={actions}
               annotation={reply}
+              canResolve={canResolve}
               currentUserId={currentUserId}
               key={reply.id}
               onReply={() => setReplying(true)}

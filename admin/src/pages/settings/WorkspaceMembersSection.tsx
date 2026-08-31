@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import type { WorkspaceInvitationRecord, WorkspaceMemberRecord } from '@nessie/schemas'
 import { UserAvatar } from '../../components/primitives/UserAvatar'
 import {
+  PausedPrivateAgentsBucket,
   PersonAgents,
   UnassignedAgents,
 } from '../../components/features/members/PersonAgents'
@@ -368,13 +369,14 @@ const InviteForm = () => {
  * section — owns the auth-session read its avatars need, keeping the section
  * renderable without an AuthSessionProvider.
  */
-const UnassignedAgentsPanel = ({ tree }: { tree: PeopleAgentsTree }) => {
+const AgentBucketsPanel = ({ tree }: { tree: PeopleAgentsTree }) => {
   const { token } = useAuthSession()
   return (
     <div
       className="mt-5 grid gap-4 border-t border-[color:var(--sep)] pt-4"
       data-testid="workspace-unassigned-agents"
     >
+      <PausedPrivateAgentsBucket count={tree.pausedPrivateAgentCount} />
       {tree.unowned.length > 0 ? (
         <UnassignedAgents
           agents={tree.unowned}
@@ -395,7 +397,13 @@ const UnassignedAgentsPanel = ({ tree }: { tree: PeopleAgentsTree }) => {
   )
 }
 
-export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) => {
+export const WorkspaceMembersSection = ({
+  canManage,
+  pausedPrivateAgentCount = 0,
+}: {
+  canManage: boolean
+  pausedPrivateAgentCount?: number
+}) => {
   const members = useWorkspaceMembers()
   // Invitation emails are PII; the API serves this list to owners and admins only.
   const invitations = useWorkspaceInvitations(canManage)
@@ -411,6 +419,7 @@ export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) =
   const tree = buildPeopleAgentsTree(
     memberRows,
     Array.isArray(agents.data) ? agents.data : [],
+    { pausedPrivateAgentCount },
   )
   const agentsBySub = new Map(
     tree.people.map((person) => [person.member.uoaSub, person.agents]),
@@ -453,8 +462,10 @@ export const WorkspaceMembersSection = ({ canManage }: { canManage: boolean }) =
           not list is equally an active colleague on another team — so this
           bucket describes what is known rather than declaring anyone departed.
         */}
-        {tree.unowned.length > 0 || tree.ownedOutsideWorkspace.length > 0 ? (
-          <UnassignedAgentsPanel tree={tree} />
+        {tree.pausedPrivateAgentCount > 0
+        || tree.unowned.length > 0
+        || tree.ownedOutsideWorkspace.length > 0 ? (
+          <AgentBucketsPanel tree={tree} />
         ) : null}
       </section>
 

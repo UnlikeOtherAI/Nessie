@@ -35,6 +35,11 @@ enum AgentDelegationMode {
   act_as_requesting_user
 }
 
+enum AgentVisibility {
+  workspace
+  private
+}
+
 // How much work an agent may spend per run. Scales the worker agentic-loop
 // budget and the provider `reasoning_effort`. `medium` is the default;
 // `xhigh` is effectively unbounded (governed only by scope Budgets + the
@@ -1778,6 +1783,10 @@ model Message {
   id                       String                         @id @default(uuid()) @db.Uuid
   threadId                 String                         @map("thread_id") @db.Uuid
   agentId                  String?                        @map("agent_id") @db.Uuid
+  // Present only when the organization-singleton Personal Assistant spoke from
+  // a member's explicit shared-channel presence. It is structural provenance,
+  // never a display-name inference.
+  onBehalfOfUserId         String?                        @map("on_behalf_of_user_id") @db.Uuid
   userId                   String?                        @map("user_id") @db.Uuid
   role                     MessageRole
   content                  String
@@ -1827,7 +1836,7 @@ model MessageBasisScope {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   messageId      String       @map("message_id") @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
-  /// ThoughtAudienceType literal: user | channel | team | project | organization
+  /// Disclosure scope: user | channel | team | project | organization | agent
   scopeType      String       @map("scope_type")
   scopeId        String       @map("scope_id") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -1901,6 +1910,7 @@ model RunBasisScope {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   runId          String       @map("run_id") @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
+  /// Disclosure scope: user | channel | team | project | organization | agent
   scopeType      String       @map("scope_type")
   scopeId        String       @map("scope_id") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -1926,18 +1936,22 @@ model MessageThreadFollow {
 }
 
 model MessageReaction {
-  id        String   @id @default(uuid()) @db.Uuid
-  messageId String   @map("message_id") @db.Uuid
-  agentId   String?  @map("agent_id") @db.Uuid
-  userId    String?  @map("user_id") @db.Uuid
-  emoji     String
-  createdAt DateTime @default(now()) @map("created_at")
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  agent     Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id               String   @id @default(uuid()) @db.Uuid
+  messageId        String   @map("message_id") @db.Uuid
+  agentId          String?  @map("agent_id") @db.Uuid
+  // Mirrors Message.onBehalfOfUserId for PA-presence reactions. The partial
+  // database uniques preserve ordinary-agent behaviour while allowing two
+  // members' singleton PAs to react independently.
+  onBehalfOfUserId String?  @map("on_behalf_of_user_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
+  emoji            String
+  createdAt        DateTime @default(now()) @map("created_at")
+  message          Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  agent            Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  @@unique([messageId, agentId, emoji])
   @@unique([messageId, userId, emoji])
+  @@index([messageId, agentId, onBehalfOfUserId])
   @@index([messageId])
   @@map("message_reactions")
 }
@@ -1966,6 +1980,7 @@ model Agent {
   systemManaged                  Boolean                         @default(false) @map("system_managed")
   surfacePolicy                  AgentSurfacePolicy              @default(shared) @map("surface_policy")
   delegationMode                 AgentDelegationMode             @default(none) @map("delegation_mode")
+  visibility                     AgentVisibility                 @default(workspace) @map("visibility")
   executionMode                  AgentExecutionMode              @default(inference) @map("execution_mode")
   effort                         AgentEffort                     @default(medium)
   systemPrompt                   String?                         @map("system_prompt")
@@ -2046,6 +2061,7 @@ model Agent {
   // "which agents does this person steward" — the first non-channel-derived
   // agent read, and the tree's level-3 query.
   @@index([organizationId, ownerUserId])
+  @@index([organizationId, visibility, ownerUserId], map: "agents_org_visibility_owner_idx")
   @@map("agents")
 }
 
@@ -2153,14 +2169,18 @@ model InferenceRoutingProfile {
 }
 
 model AgentBinding {
-  id        String   @id @default(uuid()) @db.Uuid
-  agentId   String   @map("agent_id") @db.Uuid
-  channelId String   @map("channel_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid()) @db.Uuid
+  agentId         String   @map("agent_id") @db.Uuid
+  channelId       String   @map("channel_id") @db.Uuid
+  // Non-null only for the per-user presence of the organization-singleton PA.
+  // The partial database indexes retain pair uniqueness for ordinary bindings
+  // and key presences by (agent, channel, principal).
+  principalUserId String?  @map("principal_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
-  @@unique([agentId, channelId])
+  @@index([agentId, channelId])
   @@index([channelId])
   @@map("agent_bindings")
 }
@@ -2169,6 +2189,9 @@ model Run {
   id                             String                          @id @default(uuid()) @db.Uuid
   agentId                        String                          @map("agent_id") @db.Uuid
   threadId                       String                          @map("thread_id") @db.Uuid
+  // Set only for a PA presence run. This makes its per-principal slot durable
+  // across queue redelivery and pending-message drains.
+  principalUserId                String?                         @map("principal_user_id") @db.Uuid
   triggerId                      String?                         @map("trigger_id") @db.Uuid
   triggerDeliveryId              String?                         @unique @map("trigger_delivery_id") @db.Uuid
   status                         RunStatus                       @default(pending)
@@ -2372,6 +2395,7 @@ model RunThreadPendingMessage {
   seq               BigInt                @id @default(autoincrement())
   agentId           String                @map("agent_id") @db.Uuid
   threadId          String                @map("thread_id") @db.Uuid
+  principalUserId   String?               @map("principal_user_id") @db.Uuid
   messageId         String                @map("message_id") @db.Uuid
   channelId         String                @map("channel_id") @db.Uuid
   // Mirrors RunExecuteJobPayload.interactive at record time: a live human chat
@@ -2394,7 +2418,7 @@ model RunThreadPendingMessage {
   trigger           AgentTrigger?         @relation(fields: [triggerId], references: [id], onDelete: SetNull)
   triggerDelivery   AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
 
-  @@unique([agentId, messageId])
+  @@index([agentId, messageId, principalUserId])
   @@index([threadId, seq])
   @@map("run_thread_pending_messages")
 }

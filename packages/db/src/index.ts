@@ -6,6 +6,7 @@ export {
   stableStringify,
   verifyAuditChain,
   writeAuditEntry,
+  writeAuditEntryInTransaction,
   type AuditActorType,
   type AuditChainVerification,
   type AuditEntryInput,
@@ -16,8 +17,12 @@ export { enqueueQueueJob, enqueueRunExecution } from './queue.js'
 export {
   buildVisibleAgentWhere,
   listVisibleAgentIdsForUser,
-  type AgentVisibilityInput,
+  type VisibleAgentWhereInput,
 } from './agent-visibility.js'
+export {
+  visibleKnowledgeSpaceWhere,
+  type VisibleKnowledgeSpaceWhereInput,
+} from './knowledge-space-visibility.js'
 export { visibleUserAlertWhere } from './user-alerts.js'
 
 export {
