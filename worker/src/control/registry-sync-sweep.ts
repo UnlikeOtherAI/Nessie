@@ -8,7 +8,7 @@ import {
 } from '@nessie/mcp-manage'
 
 /**
- * Keep the MCP App Store full without anyone running the `sync:registry` CLI.
+ * Keep the Apps catalogue full without anyone running the `sync:registry` CLI.
  *
  * `/apps` is filled from the official MCP registry (~5,500 apps) by
  * `syncRegistry`, but nothing called it on a schedule: a fresh deploy showed

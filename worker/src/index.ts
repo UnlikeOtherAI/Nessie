@@ -756,7 +756,7 @@ export const startWorker = async (
     }
   }, COMMS_RENEW_INTERVAL_MS)
 
-  // MCP App Store registry sync. `maybeSyncRegistry` self-gates on the last
+  // Apps catalogue registry sync. `maybeSyncRegistry` self-gates on the last
   // completed run (6h window, `NESSIE_REGISTRY_SYNC_INTERVAL_MS`), so a restart
   // or a frequent poll never triggers a fresh multi-minute walk — the poll only
   // asks "is one due?". The interval and the post-startup kick share this one

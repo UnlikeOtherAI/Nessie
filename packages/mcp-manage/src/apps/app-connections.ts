@@ -10,7 +10,7 @@ import type {
  * `McpServerInstance` the caller is entitled to see, described in the store's
  * vocabulary rather than the connector model's.
  *
- * Spec: `docs/plans/2026-08-29-mcp-app-store/ux-design-detail-and-connect.md`
+ * Spec: `docs/plans/2026-08-29-apps-catalogue/ux-design-detail-and-connect.md`
  * §3.
  */
 

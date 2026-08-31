@@ -652,8 +652,8 @@ enum SecretPrincipalType {
 //
 // The App Store is a second face on `McpCatalogEntry`, never a second
 // catalogue: one row is one app, and these columns carry the presentation and
-// curation facts the store needs. Keeping them here is what stops `/apps` and
-// `/mcp-app-store` drifting into two sources of truth.
+// curation facts the store needs. Keeping them here prevents a second source
+// of truth.
 
 /// Nessie's own taxonomy. Deliberately NOT derived from upstream registry
 /// metadata, which is inconsistent across publishers; `registry/categorize.ts`

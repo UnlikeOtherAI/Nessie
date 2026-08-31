@@ -52,7 +52,6 @@ const detail = (overrides: Partial<AppDetailRecord> = {}): AppDetailRecord => ({
   featuredOrder: null,
   iconUrl: null,
   id: 'app-1',
-  installHref: '/mcp-app-store?catalogEntryId=app-1&action=install',
   locked: false,
   longDescription: null,
   managedByIntegration: false,

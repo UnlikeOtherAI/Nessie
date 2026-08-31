@@ -1,10 +1,8 @@
 import type { ReactElement } from 'react'
 
 /**
- * One announceable-error contract for admin forms, promoted out of the MCP
- * add-server wizard (its former home, `features/mcp-app-store/
- * add-server-wizard-field.tsx`, was the only place in the admin that wired a
- * form error to a screen reader at all).
+ * One announceable-error contract for admin forms. It was promoted from the
+ * first admin form that wired a field error to a screen reader at all.
  *
  * The contract is three things that have to agree or the announcement is
  * silently wrong: a deterministic id, `aria-invalid` + `aria-describedby` on

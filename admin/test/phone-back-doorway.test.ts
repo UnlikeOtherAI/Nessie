@@ -39,7 +39,6 @@ test('admin column-browser pages delegate Back to the shared column, with no ad-
     '../src/pages/ToolsPage.tsx',
     '../src/pages/TriggersPage.tsx',
     '../src/pages/WorkflowsPage.tsx',
-    '../src/pages/McpAppStorePage.tsx',
   ]) {
     const source = readSource(page)
     assert.doesNotMatch(source, /aria-label="Back/, `${page} must not render its own Back button`)
@@ -82,8 +81,6 @@ test('every stateful column-browser detail column owns exactly one Back action',
   const expectations: Array<[string, RegExp]> = [
     ['../src/pages/ToolsPage.tsx', /onBack=\{\(\) => setSelectedToolId\(undefined\)\}[\s\S]*?showBack/],
     ['../src/pages/TriggersPage.tsx', /onBack=\{\(\) => state\.setSelectedTriggerId\(undefined\)\}[\s\S]*?showBack/],
-    ['../src/pages/McpAppStorePage.tsx', /onBack=\{\(\) => setSelectedCatalogId\(undefined\)\}[\s\S]*?showBack/],
-    ['../src/pages/McpAppStorePage.tsx', /onBack=\{\(\) => setSelectedLibraryEntry\(null\)\}[\s\S]*?showBack/],
   ]
   for (const [path, pattern] of expectations) {
     assert.match(readSource(path), pattern, path)

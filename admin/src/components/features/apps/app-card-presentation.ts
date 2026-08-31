@@ -22,11 +22,8 @@ export type AppLinkTarget = Pick<AppSummaryRecord, 'id' | 'slug'>
 export const appDetailHref = (app: AppLinkTarget, tab?: string): string =>
   `/apps/${encodeURIComponent(app.slug ?? app.id)}${tab ? `?tab=${tab}` : ''}`
 
-// Connect no longer leaves the page: the card's Connect button opens the
-// AppConnectDialog, which runs the same `useAppConnectFlow` the detail page
-// drives. `AppSummaryRecord.installHref` still names the server's fallback
-// destination, and the detail hero links to it, but the grid's primary path
-// is the dialog.
+// Connect never leaves Apps: the card's button opens `AppConnectDialog`, which
+// runs the same `useAppConnectFlow` as the detail page.
 
 // ─── Icon fallback ──────────────────────────────────────────────────────────
 

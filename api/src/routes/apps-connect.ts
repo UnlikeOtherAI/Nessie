@@ -39,7 +39,7 @@ import type { RouteDeps } from './types.js'
 
 /**
  * The App Store's Connect surface
- * (`docs/plans/2026-08-29-mcp-app-store/ux-design-detail-and-connect.md` §2,
+ * (`docs/plans/2026-08-29-apps-catalogue/ux-design-detail-and-connect.md` §2,
  * §3, §5).
  *
  * Every route here is a thin shell around `@nessie/mcp-manage`'s connect
@@ -123,8 +123,8 @@ export type AppsConnectDeps = RouteDeps & {
   /**
    * Test seams. Production builds each from the deployment auth secret exactly
    * as `registerMcpRoutes` does — the same factory over the same key, so a ref
-   * minted by an App Store connect resolves through the Connectors page and
-   * the worker unchanged. There is one vault; this is the wiring, not a copy.
+   * minted by an App Store connect resolves through the worker unchanged.
+   * There is one vault; this is the wiring, not a copy.
    */
   oauthSecretStore?: SecretStore
   secretResolver?: SecretResolver

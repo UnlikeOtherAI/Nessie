@@ -1,5 +1,5 @@
 /**
- * MCP App Store — ingestion from the official MCP registry.
+ * Apps catalogue — ingestion from the official MCP registry.
  *
  * Phase 2 shipped the catalogue and ingested nothing, so `/apps` held the five
  * first-party connectors. This is what fills it: a bounded, cursor-paged read
@@ -10,7 +10,7 @@
  * endpoint an existing row already points at, so one server stays one app —
  * while never overwriting a curator.
  *
- * Spec: `docs/plans/2026-08-29-mcp-app-store/overview.md`.
+ * Spec: `docs/plans/2026-08-29-apps-catalogue/overview.md`.
  */
 
 export * from './registry-auth.js'

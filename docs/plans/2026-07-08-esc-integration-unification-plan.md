@@ -217,11 +217,10 @@ Current Nessie slice:
   installation summary for each MCP-backed product, preferring team scope and
   then falling back to organization/system scope. The ESC page shows that agent
   connector state and deep-links to the matching MCP catalog entry.
-- When an MCP-backed product has no shared connector installed, ESC now links
-  directly to `/mcp-app-store?catalogEntryId=...&action=install`, and the MCP
-  store opens its validated install dialog for that catalog entry. Install
-  scope, credential refs, duplicate checks, probing, and tool approval stay in
-  the existing MCP install path rather than being duplicated inside ESC.
+- When an MCP-backed product has no shared connector installed, ESC links to
+  `/apps`, where the app connection flow owns the next action. Connection
+  checks and capability discovery remain in the existing MCP services rather
+  than being duplicated inside ESC.
 - **2026-07-21 correction:** `GET /api/integrations/products` no longer queries
   or returns connector-usage summaries. Product setup pages contain no local
   calls, units, spend, or failure totals. Nessie's local operational telemetry

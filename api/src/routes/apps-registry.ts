@@ -13,7 +13,7 @@ import type { RouteDeps } from './types.js'
 
 /**
  * Owner controls for filling the App Store from the official MCP Registry
- * (`docs/plans/2026-08-29-mcp-app-store/`, Phase 3).
+ * (`docs/plans/2026-08-29-apps-catalogue/`, Phase 3).
  *
  * The ingestion itself lives in `@nessie/mcp-manage` because the worker must be
  * able to run it too; these handlers only decide who may ask, whether a sweep is

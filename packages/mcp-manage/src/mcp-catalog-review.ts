@@ -13,7 +13,7 @@ import {
 import { assertCatalogLifecycleIsUserManaged } from './managed-products.js'
 
 /**
- * Public-store review flow for the MCP App Store.
+ * Public-store review flow for the Apps catalogue.
  * Spec: `docs/plans/2026-05-30-mcp-store-publishing-approval.md`.
  *
  * A connector reaches the shared store by being submitted for review by its
@@ -157,9 +157,9 @@ export const approveSubmission = async (
  * owner can revise and resubmit, and leaves the App Store as `hidden`.
  *
  * The owner does not lose the connector — it is still theirs to install, and
- * the Connectors page is where the rejection reason and the resubmit action
- * live. What they lose is the app card, which had been telling them a reviewer
- * had curated something a reviewer had just refused.
+ * the management API records the rejection reason and accepts resubmission.
+ * What they lose is the app card, which had been telling them a reviewer had
+ * curated something a reviewer had just refused.
  */
 export const rejectSubmission = async (
   prisma: PrismaClient,

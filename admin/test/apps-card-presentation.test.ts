@@ -32,7 +32,6 @@ const app = (overrides: Partial<AppSummaryRecord> = {}): AppSummaryRecord => ({
   featuredOrder: null,
   iconUrl: null,
   id: 'app-1',
-  installHref: '/mcp-app-store?catalogEntryId=app-1&action=install',
   locked: false,
   managedByIntegration: false,
   name: 'github',
@@ -131,9 +130,8 @@ test('a built-in offers Open, not Connect — there is no account, only a surfac
 })
 
 test('connecting is a button that opens the dialog on this page, never a navigation', () => {
-  // The card used to link to `installHref` — the Connectors page's install
-  // form. Connect now happens in the AppConnectDialog on /apps, so the action
-  // is a button and the record's `installHref` never reaches the footer.
+  // Connect happens in the AppConnectDialog on /apps, so the card action is a
+  // button and never needs a second route.
   assert.deepEqual(appCardAction(app()), {
     kind: 'connect',
     label: 'Connect',

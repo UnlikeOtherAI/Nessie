@@ -15,6 +15,7 @@ import {
   parseConnectMarker,
   resolveApiOrigin,
   serializeConnectMarker,
+  type AppConnectResponse,
   type ConnectState,
 } from '../../components/features/apps/connect-flow'
 import {
@@ -61,6 +62,17 @@ export type AppConnectFlow = {
   state: ConnectState
 }
 
+export type CustomAppInput = {
+  name?: string
+  url: string
+}
+
+export type CustomAppResult = {
+  app: AppDetailRecord
+  appId: string
+  outcome: AppConnectResponse
+}
+
 /** How often we look at the sign-in window to see whether it went away. */
 const POPUP_WATCH_INTERVAL_MS = 700
 /** Status reads while verifying, and the gap between them. */
@@ -95,6 +107,46 @@ export const useConnectApp = (slug: string) => {
         scopeId: scope.scopeId,
         scopeType: scope.scopeType,
       }),
+  })
+}
+
+/**
+ * Adds an app by address and starts its first user-scoped connection. The
+ * Apps surface owns this doorway, so it shares the catalogue cache contract
+ * with every other connection mutation.
+ */
+export const useAddCustomApp = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: CustomAppInput) =>
+      apiClient.post<CustomAppResult>('/api/apps/custom', input),
+    onSuccess: (result) => {
+      queryClient.setQueryData(appKeys.detail(result.app.slug ?? result.app.id), result.app)
+      void queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY })
+    },
+  })
+}
+
+/**
+ * Stores one person's key for a pending app connection. The server accepts the
+ * plaintext once and returns no secret material; all app reads are then
+ * invalidated so the connection state re-renders from the authoritative row.
+ */
+export const useSetAppConnectionSecret = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { connectionId: string; secret: string }) =>
+      apiClient.post<{ placement: string }>(`/api/mcp/instances/${input.connectionId}/secret`, {
+        secret: input.secret,
+        shared: false,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY })
+    },
   })
 }
 

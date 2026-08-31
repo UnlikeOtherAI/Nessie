@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { IntegratedProductResponse } from '../lib/api-client'
 import {
   AgentConnectorSection,
-  mcpCatalogHref,
+  appsHref,
   mcpConnectorLabel,
   mcpConnectorTone,
 } from '../components/features/integrations/AgentConnectorSection'
@@ -395,9 +395,9 @@ const ProductDetail = ({
             {product.mcpCatalogEntryId ? (
               <Link
                 className="admin-button admin-button-secondary admin-button-compact"
-                to={mcpCatalogHref(product)}
+                to={appsHref(product)}
               >
-                MCP store
+                Open apps
               </Link>
             ) : null}
           </div>

@@ -48,7 +48,7 @@ Landed on main, each batch gated and Playwright-verified:
   (`useMobileLayout`), `useMediaQuery` deleted, ESLint restricted-imports/
   properties + `scripts/lint-breakpoints.mjs` wired into root lint.
 
-Also landed 2026-08-14: D6 (sidebar ARIA live-clamp within [min,max]), D7/D8 (measured header leading from observed content + intrinsic-row observation), D10 (drag hygiene: pointercancel/blur, frame coalescing, persist-on-end, thread-separator keyboard path), D14 (stale 900px comment) — Playwright-verified. Open: D9 (safe-area DOM depth), D11 (popover clipping-ancestor placement), D12 (useMediaQuery is deleted, so moot), D13 (MCP App Store doorway), Phase 1 edge matrix as durable tests, and Phase 5 per-surface container conversion.
+Also landed 2026-08-14: D6 (sidebar ARIA live-clamp within [min,max]), D7/D8 (measured header leading from observed content + intrinsic-row observation), D10 (drag hygiene: pointercancel/blur, frame coalescing, persist-on-end, thread-separator keyboard path), D14 (stale 900px comment) — Playwright-verified. Open: D9 (safe-area DOM depth), D11 (popover clipping-ancestor placement), D12 (useMediaQuery is deleted, so moot), Phase 1 edge matrix as durable tests, and Phase 5 per-surface container conversion.
 
 ## Verified defects (fix list)
 
@@ -66,7 +66,6 @@ Also landed 2026-08-14: D6 (sidebar ARIA live-clamp within [min,max]), D7/D8 (me
 | D10 | Drag cleanup misses `pointercancel`/window-blur; thread separator is pointer-only despite its ARIA separator role; drag paths persist localStorage/cookies per pointer-move instead of frame-coalesced + persist-on-end | `ThreadReplyPanel.tsx:189-210`, `KnowledgeColumns.tsx:202-225`, `ResizableSidebar.tsx:59-66` | Sol |
 | D11 | Popover placement measures `window` once, not the clipping/anchor container, and misses anchor movement from sidebar reflow | `ReactionPills.tsx:108-131`, `WorkspaceSwitcher.tsx:58-75`, `UserMenuPopover.tsx:59-76` | Kimix, Sol |
 | D12 | `useMediaQuery` returns a stale result if its query string changes between renders (initializer reads old query; effect doesn't resync `matches`) | `hooks/useMediaQuery.ts:3-13` | Sol |
-| D13 | MCP App Store column browser: detail/installed columns lack a coherent `onBack`; a one-pane allocation can strand the user | `McpAppStorePage.tsx:279-355` | Sol |
 | D14 | Cross-file private-scale dependency: composer emoji CSS comments depend on the thread panel's 900px | `styles.css:1161` | Kimix |
 | D15 | Authored CSS uses inclusive `max-width: 640px`/`1024px` overlapping Tailwind `sm`/`lg` at the exact boundary (two modes apply at once) | `lib/notifications.css:71-77`, `styles.css:1744` | Sol |
 
@@ -162,7 +161,7 @@ behaviour?" — is made once, in review, per site.
 - **ColumnBrowser**: observes its own inline size; pane count from a
   documented minimum useful pane width; provides
   `{visibleCount, activeColumn, goBack}` context so every hidden pane has the
-  same doorway. MCP App Store (D13) is the first contract test.
+  same doorway.
 - **Thread panel**: ranges become complementary (`max-[900px]`+`min-[900px]`;
   1280 rejoins the shared scale as `max-xl:`/`xl:`), the 900 becomes a named
   token (`--breakpoint-panel`), and — when the surface is next touched — the

@@ -49,8 +49,8 @@ export const ToolsPage = () => {
   const isOwner = useIsOwner()
   const [searchParams] = useSearchParams()
   const deepWaterInstanceId = readDeepWaterInstanceFilter(searchParams)
-  // The Connectors page links here with `?instance=…&status=pending_review`
-  // when an install has tools nobody has reviewed yet.
+  // `?instance=…&status=pending_review` narrows the owner review to tools from
+  // one connection when setup identifies unreviewed tools.
   const instanceId = readMcpInstanceToolFilter(searchParams)
 
   const [source, setSource] = useState<ToolRegistrySource | undefined>()

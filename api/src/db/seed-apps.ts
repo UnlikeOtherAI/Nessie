@@ -18,7 +18,7 @@ import type {
  * carries `catalogTemplate: null` because it is link-only until BuildMe
  * publishes a board API, so it has no catalogue row to enrich.
  *
- * Copy rule (`docs/plans/2026-08-29-mcp-app-store/ux-design-detail-and-connect.md`):
+ * Copy rule (`docs/plans/2026-08-29-apps-catalogue/ux-design-detail-and-connect.md`):
  * descriptions say what a person's agents can now do. No endpoints, no
  * transports, no auth vocabulary — the card and the hero are both product
  * surfaces, not connector inspectors.

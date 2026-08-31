@@ -15,7 +15,7 @@ test('tabIndexForPath maps each section root to its own tab', () => {
 
 test('tabIndexForPath keeps Admin active across the whole admin route family', () => {
   const admin = indexOfKey('admin')
-  for (const path of ['/agents', '/workflows', '/apps', '/mcp-app-store', '/approvals', '/audit', '/tokens', '/policy', '/ops']) {
+  for (const path of ['/agents', '/workflows', '/apps', '/approvals', '/audit', '/tokens', '/policy', '/ops']) {
     assert.equal(tabIndexForPath(path), admin, path)
     assert.equal(tabIndexForPath(`${path}/nested/detail`), admin, `${path}/nested/detail`)
   }

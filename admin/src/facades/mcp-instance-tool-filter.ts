@@ -2,7 +2,7 @@ const INSTANCE_PARAM = 'instance'
 
 /**
  * "Show me the tools this connector projected" — the `?instance=<id>` filter
- * the Connectors page links into when an install has tools awaiting review.
+ * that narrows the owner review when an install has tools awaiting review.
  *
  * Deliberately separate from `deep-water-tool-filter.ts`: that one selects the
  * six-entry DeepWater *bundle* and therefore always includes the built-in

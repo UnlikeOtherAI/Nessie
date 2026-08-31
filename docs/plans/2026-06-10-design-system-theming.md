@@ -137,7 +137,7 @@ ambiguous, leave a `/* TODO theme: <reason> */` and keep the closest token.
   Touches NO feature `.tsx` colors.
 - **B — sweep `components/` (non-features)** — shared UI/components (~26 files).
 - **C — sweep `components/features/`** — agents, workflow-designer/-tools,
-  workflows, channels, knowledge, mcp-app-store, personal-assistant, triggers,
+  workflows, channels, knowledge, personal-assistant, triggers,
   budgets (~64 files).
 - **D — sweep `pages/`** (33) + **`layouts/`** (11).
 - **E — sweep `notifications.css` + any remaining `.css` + stragglers** and a

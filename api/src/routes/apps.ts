@@ -18,7 +18,7 @@ import { streamAttachmentDownload } from './uploads.js'
 import type { RouteDeps } from './types.js'
 
 /**
- * App Store read surface (`docs/plans/2026-08-29-mcp-app-store/`).
+ * App Store read surface (`docs/plans/2026-08-29-apps-catalogue/`).
  *
  * `/api/apps` is a projection of `McpCatalogEntry`, not a second view of
  * `/api/mcp/catalog`. The connector surface answers "how is this server

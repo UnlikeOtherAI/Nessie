@@ -1,12 +1,12 @@
 /**
- * MCP App Store — the consumer-facing catalogue read.
+ * Apps catalogue — the consumer-facing catalogue read.
  *
  * A store dimension on `McpCatalogEntry`, never a second catalogue. It lives
  * in `@nessie/mcp-manage` because both the API routes and the worker's
  * personal-assistant tools must reach it: `api/src/services/*` is unreachable
  * from the worker.
  *
- * Spec: `docs/plans/2026-08-29-mcp-app-store/ux-design-catalogue.md` and
+ * Spec: `docs/plans/2026-08-29-apps-catalogue/ux-design-catalogue.md` and
  * `…/ux-design-detail-and-connect.md`.
  */
 

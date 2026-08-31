@@ -1,4 +1,4 @@
-# MCP App Store — publishing, approval, and personal connectors
+# Apps catalogue — publishing, approval, and personal connectors
 
 Status: implemented (2026-05-30)
 
@@ -62,9 +62,8 @@ public:   draft|rejected --submit--> pending_approval --approve--> published
   (submit/approve/reject).
 - Routes: `api/src/routes/mcp/catalog.ts` (`/submit`, `/approve`, `/reject`,
   `?view=store|mine|queue|all`) and `instances.ts` (own-scope install gate).
-- Admin: `McpAppStorePage` (Store / My connectors / Approval queue tabs),
-  `AddServerWizard` (private vs submit-for-review), `CatalogDetailPanel`,
-  `RejectDialog`.
+- User surface: `/apps` for discovery and user-scoped connection. Catalogue
+  review remains available to trusted API and personal-assistant callers.
 - Seed: `api/src/db/seed-connectors.ts` seeds the public store with Context7
   (`pnpm --filter @nessie/api seed:connectors`).
 

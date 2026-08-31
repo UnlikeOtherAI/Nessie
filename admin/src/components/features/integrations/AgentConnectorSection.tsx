@@ -31,25 +31,16 @@ export const mcpConnectorTone = (product: IntegratedProductResponse): PillTone =
   return product.mcpInstallation.lifecycleState === 'active' ? 'success' : 'warning'
 }
 
-export const mcpCatalogHref = (product: IntegratedProductResponse): string =>
-  product.mcpCatalogEntryId
-    ? `/mcp-app-store?catalogEntryId=${product.mcpCatalogEntryId}`
-    : '/mcp-app-store'
-
-export const mcpInstallHref = (product: IntegratedProductResponse): string =>
-  product.mcpCatalogEntryId
-    ? `/mcp-app-store?catalogEntryId=${product.mcpCatalogEntryId}&action=install`
-    : '/mcp-app-store'
+/** Apps is the one destination for finding or connecting a product's app. */
+export const appsHref = (_product: IntegratedProductResponse): string => '/apps'
 
 const mcpActionHref = (product: IntegratedProductResponse): string =>
-  product.mcpCatalogEntryId && !product.mcpInstallation
-    ? mcpInstallHref(product)
-    : mcpCatalogHref(product)
+  appsHref(product)
 
 const mcpActionLabel = (product: IntegratedProductResponse): string =>
   product.mcpCatalogEntryId && !product.mcpInstallation
-    ? 'Install connector'
-    : 'MCP store'
+    ? 'Connect app'
+    : 'Open apps'
 
 const mcpActionClass = (product: IntegratedProductResponse): string =>
   product.mcpCatalogEntryId && !product.mcpInstallation

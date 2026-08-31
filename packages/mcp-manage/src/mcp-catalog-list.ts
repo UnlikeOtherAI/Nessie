@@ -17,8 +17,8 @@ import { catalogTenancyWhere } from './mcp-catalog-visibility.js'
  * spreads onto the wire — and deliberately nothing else. The App Store
  * dimension added to `mcp_catalog_entries` includes `upstream`, the raw
  * normalized registry record kept so a re-sync can diff without a second
- * fetch. A default `findMany` handed that snapshot to every member who opened
- * the Connectors page: multi-kilobyte per row, and it carries the *unsanitised*
+ * fetch. A default `findMany` handed that snapshot to every member: multi-
+ * kilobyte per row, and it carries the *unsanitised*
  * upstream website and remote URLs that the App Store presenter withholds on
  * purpose. Naming the columns is the same discipline as
  * `STORE_CATALOG_SELECT` (`apps/app-presenter.ts`) — a column added to the

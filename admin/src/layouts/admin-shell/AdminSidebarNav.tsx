@@ -142,20 +142,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
           </>,
         ),
       },
-      {
-        // Kept alongside Apps: this is the governance surface (catalog review,
-        // install scopes, credentials, the approval queue), not the store.
-        path: '/mcp-app-store',
-        label: 'Connectors',
-        icon: icon(
-          <>
-            <rect height="6" rx="1" width="6" x="4" y="4" />
-            <rect height="6" rx="1" width="6" x="14" y="4" />
-            <rect height="6" rx="1" width="6" x="4" y="14" />
-            <rect height="6" rx="1" width="6" x="14" y="14" />
-          </>,
-        ),
-      },
     ],
   },
   {
