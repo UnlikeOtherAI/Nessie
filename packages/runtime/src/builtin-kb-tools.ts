@@ -7,6 +7,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 // schema, never bypass access.
 export const KB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_search',
+  summary: 'Search accessible knowledge pages by semantic and keyword matching.',
   label: 'KB Search',
   description:
     'Search the knowledge base (hybrid semantic + keyword). Returns compact ' +
@@ -41,6 +42,7 @@ export const KB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_PAGE_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_page_read',
+  summary: 'Read the full text of one knowledge-base page.',
   label: 'KB Page Read',
   description: "Read a knowledge page's full text content.",
   parameters: {
@@ -55,6 +57,7 @@ export const KB_PAGE_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_list',
+  summary: 'List knowledge spaces, page trees, or task documents you can access.',
   label: 'KB List',
   description:
     'List knowledge spaces you can access, the page tree of one space, or the ' +
@@ -84,6 +87,7 @@ export const KB_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 // even though the mutation itself only ever produces a draft.
 export const KB_DRAFT_WRITE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_draft_write',
+  summary: 'Create a rich-text page draft or a new draft version for review.',
   label: 'KB Draft Write',
   description:
     'Create a knowledge page or add a new draft version to an existing page. ' +
@@ -143,6 +147,7 @@ export const KB_DOCUMENT_COMPOSE_TOOL_ID = 'kb_document_compose'
 // arriving.
 export const KB_DOCUMENT_COMPOSE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: KB_DOCUMENT_COMPOSE_TOOL_ID,
+  summary: 'Live-write a complete markdown document as a new knowledge-base file.',
   label: 'KB Document Compose',
   description:
     'Write a complete markdown document and save it as a .md file in the knowledge base. '
@@ -189,6 +194,7 @@ export const KB_DOCUMENT_EDIT_TOOL_ID = 'kb_document_edit'
 // place in the existing document, and only the changed passages are generated.
 export const KB_DOCUMENT_EDIT_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: KB_DOCUMENT_EDIT_TOOL_ID,
+  summary: 'Apply targeted exact-match edits to an existing markdown document.',
   label: 'KB Document Edit',
   description:
     'Change parts of an existing markdown document in place. Prefer this over rewriting: '
@@ -232,6 +238,7 @@ export const KB_DOCUMENT_EDIT_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_FILE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_file',
+  summary: 'Move, rename, or relabel a knowledge-base draft.',
   label: 'KB File',
   description: 'File a draft: move it in the tree, rename it, or set labels.',
   parameters: {
@@ -258,6 +265,7 @@ export const KB_FILE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const KB_PUBLISH_REQUEST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_publish_request',
+  summary: 'Request human review and publication of a knowledge-page draft.',
   label: 'KB Publish Request',
   description: 'Request human review + publication of a draft page you wrote.',
   parameters: {

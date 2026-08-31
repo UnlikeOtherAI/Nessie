@@ -14,6 +14,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const CONNECTOR_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_list',
+  summary: 'List reachable MCP connector installs and their setup state.',
   label: 'Connector List',
   description:
     'List the MCP connectors you can reach: your own installs plus the ones '
@@ -29,6 +30,7 @@ export const CONNECTOR_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_LIBRARY_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_library_search',
+  summary: 'Find available MCP connectors by service name.',
   label: 'Connector Library Search',
   description:
     'Search for available MCP connectors by service name (e.g. "notion", '
@@ -48,6 +50,7 @@ export const CONNECTOR_LIBRARY_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_DISCOVER_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_discover',
+  summary: 'Probe a URL or domain for an installable MCP endpoint.',
   label: 'Connector Discover',
   description:
     'Given a URL (or domain) the user pasted, probe it for an MCP endpoint: '
@@ -67,6 +70,7 @@ export const CONNECTOR_DISCOVER_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_INSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_install',
+  summary: 'Install an MCP connector from the catalog or a remote endpoint.',
   label: 'Connector Install',
   description:
     'Install an MCP connector. Either pass catalogEntryId (from '
@@ -121,6 +125,7 @@ export const CONNECTOR_INSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_AUTHORIZE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_authorize',
+  summary: 'Start OAuth authorization for an installed MCP connector.',
   label: 'Connector Authorize',
   description:
     'Start an OAuth sign-in for a connector that supports it (authMethod '
@@ -140,6 +145,7 @@ export const CONNECTOR_AUTHORIZE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_TEST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_test',
+  summary: 'Test a connector and discover its available tools.',
   label: 'Connector Test',
   description:
     'Test a connector instance: connects to the server, lists its tools and '
@@ -157,6 +163,7 @@ export const CONNECTOR_TEST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_SET_SECRET_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_set_secret',
+  summary: 'Store a write-only credential for an MCP connector.',
   label: 'Connector Set Secret',
   description:
     'Store the credential (API key / token) for a connector instance. The '
@@ -184,6 +191,7 @@ export const CONNECTOR_SET_SECRET_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const CONNECTOR_UNINSTALL_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'connector_uninstall',
+  summary: 'Remove a manageable MCP connector and its registered tools.',
   label: 'Connector Uninstall',
   description:
     'Remove a connector instance you are allowed to manage, together with its '

@@ -13,6 +13,7 @@ import { authorizeToolCall } from './tool-policy.js'
 
 const dwTool: BuiltinToolDefinition = {
   id: 'deep_water_run_update',
+  summary: 'Record a Deep Water run update.',
   label: 'Deep Water Run Update',
   description: 'x',
   parameters: { type: 'object', properties: {}, required: [] },
@@ -22,6 +23,7 @@ const dwTool: BuiltinToolDefinition = {
 
 const plainTool: BuiltinToolDefinition = {
   id: 'web_search',
+  summary: 'Search the web.',
   label: 'Web Search',
   description: 'x',
   parameters: { type: 'object', properties: {}, required: [] },
