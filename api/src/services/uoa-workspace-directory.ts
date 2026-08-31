@@ -17,6 +17,20 @@ export type UoaWorkspaceDirectoryEntry = {
   orgName?: string
 }
 
+export type UoaPendingWorkspaceInvite = {
+  inviteId: string
+  organizationId: string
+  teamId: string
+  teamName: string
+  invitedBy?: string
+  expiresAt?: string
+}
+
+export type UoaWorkspaceDirectory = {
+  entries: UoaWorkspaceDirectoryEntry[]
+  pendingInvites: UoaPendingWorkspaceInvite[]
+}
+
 export type UoaSessionHttpDeps = {
   fetchImpl?: PinnedFetch
   resolveHost?: ResolveHost
@@ -53,7 +67,7 @@ const parseAvatarImageUrl = (
   }
 }
 
-const parseWorkspaceDirectory = (
+const parseWorkspaceDirectoryEntries = (
   payload: unknown,
   baseUrl: string,
 ): UoaWorkspaceDirectoryEntry[] => {
@@ -81,6 +95,43 @@ const parseWorkspaceDirectory = (
   })
 }
 
+const parsePendingWorkspaceInvites = (
+  payload: unknown,
+): UoaPendingWorkspaceInvite[] => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return []
+  const org = (payload as { org?: unknown }).org
+  if (!org || typeof org !== 'object' || Array.isArray(org)) return []
+  const pendingInvites = (org as { pending_invites?: unknown }).pending_invites
+  if (!Array.isArray(pendingInvites)) return []
+  return pendingInvites.flatMap((invite) => {
+    if (!invite || typeof invite !== 'object' || Array.isArray(invite)) return []
+    const entry = invite as Record<string, unknown>
+    const inviteId = trimString(entry.inviteId)
+    const organizationId = trimString(entry.orgId)
+    const teamId = trimString(entry.teamId)
+    const teamName = trimString(entry.teamName)
+    const invitedBy = trimString(entry.invitedBy)
+    const expiresAt = trimString(entry.expiresAt)
+    if (!inviteId || !organizationId || !teamId || !teamName) return []
+    return [{
+      inviteId,
+      organizationId,
+      teamId,
+      teamName,
+      ...(invitedBy ? { invitedBy } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+    }]
+  })
+}
+
+const parseWorkspaceDirectory = (
+  payload: unknown,
+  baseUrl: string,
+): UoaWorkspaceDirectory => ({
+  entries: parseWorkspaceDirectoryEntries(payload, baseUrl),
+  pendingInvites: parsePendingWorkspaceInvites(payload),
+})
+
 const uoaFetchOptions = (deps: UoaSessionHttpDeps) => ({
   ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
   ...(deps.resolveHost ? { resolveHost: deps.resolveHost } : {}),
@@ -90,15 +141,16 @@ const uoaFetchOptions = (deps: UoaSessionHttpDeps) => ({
 /**
  * Fetch the non-authoritative UI directory with the freshly issued access
  * token. `undefined` means the opportunistic read failed and callers must keep
- * their last verified directory; an array (including empty) is a verified
- * response.
+ * their last verified directory; a result (including empty lists) is a verified
+ * response. A verified response keeps the workspace and invitation lists
+ * together so an absent invite list is distinguishable from a failed read.
  */
 export const fetchUoaWorkspaceDirectory = async (
   settings: UoaSettings,
   configUrl: string,
   accessToken: string,
   deps: UoaSessionHttpDeps = {},
-): Promise<UoaWorkspaceDirectoryEntry[] | undefined> => {
+): Promise<UoaWorkspaceDirectory | undefined> => {
   try {
     const directoryUrl = new URL(`${settings.baseUrl}/org/me`)
     directoryUrl.searchParams.set('domain', settings.domain)

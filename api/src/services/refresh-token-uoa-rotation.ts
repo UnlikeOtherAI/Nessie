@@ -24,8 +24,9 @@ import {
   type RefreshTokenRecord,
 } from './refresh-token-family.js'
 import type { ExternalAuthWorkspace } from './identity-display.js'
+import type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
-import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
+import type { UoaWorkspaceDirectory } from './uoa-workspace-directory.js'
 
 export type UoaRotationCallbacks = {
   advanceUoaSessionBinding?: (input: {
@@ -33,8 +34,13 @@ export type UoaRotationCallbacks = {
     previousIdentity: UoaSessionIdentity
     userId: string
     workspace?: ExternalAuthWorkspace
-    workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
+    workspaceDirectory?: UoaWorkspaceDirectory
   }, transaction: Prisma.TransactionClient) => Promise<void>
+  afterUoaSessionBinding?: (input: {
+    nextIdentity: UoaSessionIdentity
+    userId: string
+    workspaceDirectory?: UoaWorkspaceDirectory
+  }) => Promise<void>
 }
 
 const sameSwitchIntent = (
@@ -197,5 +203,26 @@ export const commitUoaRotation = async (
   await persistUoaRotation(transaction, { lastLocalTokenId, rotated })
   if (currentIntent) {
     await deleteExactUoaWorkspaceSwitchIntent(transaction, currentIntent)
+  }
+}
+
+export const notifyUoaSessionBindingAfterCommit = async (
+  callbacks: UoaRotationCallbacks,
+  rotated: RotatedUoaCredential | null,
+  result: ConsumeRefreshTokenResult,
+  userId: string,
+): Promise<void> => {
+  if (!rotated?.workspaceDirectory || !result.ok || !callbacks.afterUoaSessionBinding) return
+  try {
+    await callbacks.afterUoaSessionBinding({
+      nextIdentity: rotated.identity,
+      userId,
+      workspaceDirectory: rotated.workspaceDirectory,
+    })
+  } catch (error) {
+    // The credential rotation is already committed. Display-alert
+    // reconciliation can retry on the next verified directory read and must
+    // never turn a successful rotation into an auth failure.
+    console.warn('[uoa] workspace invitation alert sync failed after rotation', error)
   }
 }

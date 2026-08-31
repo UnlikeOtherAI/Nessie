@@ -194,6 +194,16 @@ export const UoaWorkspaceDirectoryEntrySchema = z.object({
 })
 export type UoaWorkspaceDirectoryEntry = z.infer<typeof UoaWorkspaceDirectoryEntrySchema>
 
+export const UoaPendingWorkspaceInviteSchema = z.object({
+  inviteId: z.string().min(1),
+  organizationId: z.string().min(1),
+  teamId: z.string().min(1),
+  teamName: z.string().min(1),
+  invitedBy: z.string().min(1).optional(),
+  expiresAt: TimestampSchema.optional(),
+})
+export type UoaPendingWorkspaceInvite = z.infer<typeof UoaPendingWorkspaceInviteSchema>
+
 export const SetChannelMuteRequestSchema = z.object({
   muted: z.boolean(),
 })
@@ -206,6 +216,9 @@ export const MeResponseSchema = z.object({
   auth: MeAuthSchema,
   memberships: z.array(MeMembershipSchema).optional(),
   uoaWorkspaces: z.array(UoaWorkspaceDirectoryEntrySchema).optional(),
+  // Present (including as []) only when this process has a verified UOA
+  // directory response. A cold-cache local fallback has no invite knowledge.
+  uoaPendingInvites: z.array(UoaPendingWorkspaceInviteSchema).optional(),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 

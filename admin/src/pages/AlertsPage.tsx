@@ -9,6 +9,7 @@ import {
   useMarkAlertsRead,
   type UserAlertRecord,
 } from '../facades/alerts/hooks'
+import { useAcceptWorkspaceInvitation } from '../facades/workspace/invitations'
 
 export const AlertsPage = () => {
   const navigate = useNavigate()
@@ -17,6 +18,7 @@ export const AlertsPage = () => {
   // pagination isn't reachable through it — fetch a generous window instead.
   const { data } = useAlerts({ limit: 100, unreadOnly })
   const markRead = useMarkAlertsRead()
+  const acceptInvitation = useAcceptWorkspaceInvitation()
 
   const alerts = data?.alerts ?? []
   const unreadCount = data?.unreadCount ?? 0
@@ -53,16 +55,28 @@ export const AlertsPage = () => {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid gap-2">
-          {alerts.map((alert) => (
-            <button
-              className="admin-card flex w-full items-center gap-2 p-3 text-left"
-              key={alert.id}
-              onClick={() => openAlert(alert)}
-              type="button"
-            >
-              <AlertRow alert={alert} />
-            </button>
-          ))}
+          {alerts.map((alert) => {
+            const invite = alert.metadata
+            const accepting = acceptInvitation.isPending
+              && acceptInvitation.variables?.inviteId === invite?.inviteId
+            const acceptError = acceptInvitation.isError
+              && acceptInvitation.variables?.inviteId === invite?.inviteId
+              ? acceptInvitation.error.message
+              : null
+            return (
+              <AlertRow
+                acceptError={acceptError}
+                accepting={accepting}
+                alert={alert}
+                className="admin-card p-3"
+                key={alert.id}
+                onAcceptInvitation={invite
+                  ? () => acceptInvitation.mutate(invite)
+                  : undefined}
+                onOpen={() => openAlert(alert)}
+              />
+            )
+          })}
           {alerts.length === 0 ? (
             <div className="py-8 text-center text-[color:var(--tx3)]">
               {unreadOnly ? 'No unread alerts' : 'No alerts yet'}

@@ -63,7 +63,15 @@ class FakeBindingPrisma {
   organizationExternalOrgId: string | null = IDENTITY.organizationId
 
   readonly organization = {
-    findUnique: async () => ({ externalOrgId: this.organizationExternalOrgId }),
+    findUnique: async () => ({
+      externalOrgId: this.organizationExternalOrgId,
+      id: '00000000-0000-4000-8000-000000000040',
+    }),
+  }
+
+  readonly userAlert = {
+    deleteMany: async () => ({ count: 0 }),
+    upsert: async () => undefined,
   }
 
   readonly team = {
@@ -367,21 +375,21 @@ test('a changed subject or a regressed epoch is still refused', async () => {
 test('a rotation caches the refreshed directory and never persists it', async () => {
   clearUoaWorkspaceDirectoryCache()
   const fake = new FakeBindingPrisma()
-  const workspaceDirectory = [{
-    organizationId: IDENTITY.organizationId,
-    teamId: IDENTITY.teamId,
-    label: 'Fresh workspace',
-  }]
+  const workspaceDirectory = {
+    entries: [{
+      organizationId: IDENTITY.organizationId,
+      teamId: IDENTITY.teamId,
+      label: 'Fresh workspace',
+    }],
+    pendingInvites: [],
+  }
 
-  await advanceUoaLocalSessionBindingInTransaction(
-    fake.asClient() as never,
-    {
-      nextIdentity: IDENTITY,
-      previousIdentity: IDENTITY,
-      userId: USER_ID,
-      workspaceDirectory,
-    },
-  )
+  await advanceUoaLocalSessionBinding(fake.asClient(), {
+    nextIdentity: IDENTITY,
+    previousIdentity: IDENTITY,
+    userId: USER_ID,
+    workspaceDirectory,
+  })
 
   assert.deepEqual(readUoaWorkspaceDirectory(USER_ID), workspaceDirectory)
   assert.deepEqual(fake.link.metadata, { retained: 'value' })

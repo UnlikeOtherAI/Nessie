@@ -276,7 +276,9 @@ export const registerAuthLoginRoute = (
                       returnedTokenVersion: uoaSession.identity.uoaTokenVersion,
                       subject: uoaSession.identity.externalSubject,
                       userId: recoveryClaims.sub,
-                      workspaceDirectory: uoaSession.workspaceDirectory,
+                      // Recovery keeps the legacy metadata byte-shape: only
+                      // directory entries, never pending invitation data.
+                      workspaceDirectory: uoaSession.workspaceDirectory?.entries,
                     }),
                   existingUserId: recoveryClaims.sub,
                   expectedLocalOrganizationId: recoveryClaims.org,

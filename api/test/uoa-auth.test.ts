@@ -145,6 +145,18 @@ const withTokenResponse = async <T>(
               name: 'Backslash-host workspace',
             },
           ],
+          pending_invites: [
+            {
+              inviteId: 'invite-valid',
+              orgId: 'org-invited',
+              teamId: 'team-invited',
+              teamName: 'Invited workspace',
+              invitedBy: 'Grace Hopper',
+              expiresAt: '2026-09-30T12:00:00.000Z',
+            },
+            { inviteId: 'invite-missing-org', teamId: 'team-bad', teamName: 'Bad' },
+            null,
+          ],
         },
       }), {
         status: 200,
@@ -214,41 +226,70 @@ test('exchangeUoaSession retains the exact server-side refresh session', async (
         organizationId: 'org-active',
         teamId: 'team-active',
       })
-      assert.deepEqual(exchange.workspaceDirectory, [
-        {
+      assert.deepEqual(exchange.workspaceDirectory, {
+        entries: [{
           organizationId: 'org-active',
           teamId: 'team-active',
           avatarImageUrl: 'https://1.1.1.1/public/teams/team-active/avatar',
           label: 'Active workspace',
           orgName: 'Active org',
-        },
-        {
+        }, {
           organizationId: 'org-other',
           teamId: 'team-other',
           avatarImageUrl: 'https://images.example.com/workspaces/team-other.png',
           label: 'Other workspace',
           orgName: 'Other org',
-        },
-        {
+        }, {
           organizationId: 'org-other',
           teamId: 'team-unsafe-scheme',
           label: 'Unsafe scheme workspace',
           orgName: 'Other org',
-        },
-        {
+        }, {
           organizationId: 'org-other',
           teamId: 'team-protocol-relative',
           label: 'Protocol-relative workspace',
           orgName: 'Other org',
-        },
-        {
+        }, {
           organizationId: 'org-other',
           teamId: 'team-backslash-host',
           label: 'Backslash-host workspace',
           orgName: 'Other org',
-        },
-      ])
+        }],
+        pendingInvites: [{
+          inviteId: 'invite-valid',
+          organizationId: 'org-invited',
+          teamId: 'team-invited',
+          teamName: 'Invited workspace',
+          invitedBy: 'Grace Hopper',
+          expiresAt: '2026-09-30T12:00:00.000Z',
+        }],
+      })
     })
+  })
+})
+
+test('exchangeUoaSession treats an absent pending_invites field as verified empty', async () => {
+  await withUoaEnv(async () => {
+    const previousFetch = globalThis.fetch
+    globalThis.fetch = async (input) => new URL(String(input)).pathname === '/org/me'
+      ? new Response(JSON.stringify({ org: { workspaces: [] } }), { status: 200 })
+      : new Response(JSON.stringify({
+          access_token: jwtForClaims(completeSessionClaims),
+          expires_in: 1_800,
+          refresh_token: 'uoa-refresh-1',
+          refresh_token_expires_in: 2_592_000,
+          token_type: 'Bearer',
+        }), { status: 200 })
+    try {
+      const exchange = await exchangeUoaSession({
+        code: 'code',
+        codeVerifier: 'verifier',
+        redirectUri: uoaEnv.UOA_REDIRECT_URL,
+      }, safeFetchTestOptions)
+      assert.deepEqual(exchange.workspaceDirectory, { entries: [], pendingInvites: [] })
+    } finally {
+      globalThis.fetch = previousFetch
+    }
   })
 })
 

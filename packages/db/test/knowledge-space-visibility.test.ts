@@ -45,3 +45,16 @@ test('visibleUserAlertWhere composes the shared knowledge-space predicate', () =
     userId,
   }))
 })
+
+test('workspace invitation visibility relies on the outer active membership gate', () => {
+  const where = visibleUserAlertWhere({ organizationId, userId })
+  assert.deepEqual(
+    where.OR?.find((arm) => arm.kind === 'workspace_invitation'),
+    { kind: 'workspace_invitation' },
+  )
+  assert.deepEqual(where.user, {
+    organizationMembers: {
+      some: { deactivatedAt: null, organizationId },
+    },
+  })
+})

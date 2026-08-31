@@ -58,9 +58,10 @@ test('workspace pictures prefer the team relay and accept the UOA public fallbac
   )
 
   const avatar = readFileSync(`${sourceRoot}/components/primitives/WorkspaceAvatar.tsx`, 'utf8')
+  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceMenu.tsx`, 'utf8')
   const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceSwitcher.tsx`, 'utf8')
   assert.match(avatar, /relayedUrl \?\? imageUrl \?\? null/)
-  assert.match(switcher, /imageUrl=\{workspace\.avatarImageUrl\}/)
+  assert.match(menu, /imageUrl=\{workspace\.avatarImageUrl\}/)
   assert.ok(
     switcher.match(/imageUrl=\{active\?\.avatarImageUrl\}/g)?.length === 2,
     'both web workspace triggers must render the public avatar fallback',
@@ -72,13 +73,14 @@ test('workspace pictures prefer the team relay and accept the UOA public fallbac
   assert.match(switcher, /icon=\{faChevronDown\}/)
   assert.match(switcher, /open \? 'rotate-180' : 'rotate-0'/)
   assert.match(
-    switcher,
+    menu,
     /transition-\[opacity,transform\] duration-150 ease-out/,
   )
   assert.match(switcher, /setMenuMounted\(false\), 150/)
 })
 
 test('UOA workspace rows switch inside Nessie while Add Workspace keeps hosted sign-in', () => {
+  const menu = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceMenu.tsx`, 'utf8')
   const switcher = readFileSync(`${sourceRoot}/layouts/admin-shell/WorkspaceSwitcher.tsx`, 'utf8')
   assert.match(
     switcher,
@@ -89,7 +91,7 @@ test('UOA workspace rows switch inside Nessie while Add Workspace keeps hosted s
     /startExternalSignIn\(providerId, resolveAppliedTheme\(theme\)\)/,
   )
   assert.doesNotMatch(switcher, /startExternalSignIn\([\s\S]{0,200}workspace\.teamId/)
-  assert.match(switcher, /role="alert"/)
+  assert.match(menu, /role="alert"/)
   assert.match(switcher, /busyTeamId=\{busyTeamId\}/)
 })
 

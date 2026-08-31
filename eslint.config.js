@@ -91,7 +91,7 @@ export default [
       // Popover/overlay placement geometry (D11): they clamp coordinates to the
       // window, they do not classify the device.
       'admin/src/components/features/channels/ReactionPills.tsx',
-      'admin/src/layouts/admin-shell/WorkspaceSwitcher.tsx',
+      'admin/src/layouts/admin-shell/WorkspaceMenu.tsx',
       'admin/src/layouts/admin-shell/UserMenuPopover.tsx',
       'admin/src/layouts/admin-shell/CreateMenuTrigger.tsx',
       'admin/src/layouts/admin-shell/GroupDmSidebarLabel.tsx',

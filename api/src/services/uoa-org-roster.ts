@@ -3,6 +3,7 @@
 // Members page routes serve — the worker cannot import `api/src/services/*`.
 // The routes keep importing it from here.
 export {
+  acceptWorkspaceInvitation,
   createWorkspaceInvitations,
   listWorkspaceInvitations,
   listWorkspaceMembers,
@@ -14,6 +15,7 @@ export {
   reviewWorkspaceInvitation,
   setWorkspaceMemberActivation,
   updateWorkspaceMemberRole,
+  UoaInvitationOrgConflictError,
   UoaInvitationAlreadyAcceptedError,
   UoaRosterRejectedError,
   UoaRosterUnavailableError,

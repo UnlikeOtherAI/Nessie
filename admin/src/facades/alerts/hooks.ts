@@ -8,7 +8,7 @@ import { useEventStream } from '../realtime/event-stream'
 
 export type UserAlertRecord = {
   id: string
-  kind: 'mention' | 'task_assigned' | 'knowledge_published' | 'trigger_health' | 'call_missed'
+  kind: 'mention' | 'task_assigned' | 'knowledge_published' | 'trigger_health' | 'call_missed' | 'workspace_invitation'
   messageId: string | null
   rootMessageId: string | null
   threadId: string | null
@@ -18,6 +18,14 @@ export type UserAlertRecord = {
   taskId: string | null
   knowledgePageId: string | null
   triggerId: string | null
+  metadata: {
+    inviteId: string
+    organizationId: string
+    teamId: string
+    teamName: string
+    invitedBy?: string
+    expiresAt?: string
+  } | null
   actorUserId: string | null
   actorAgentId: string | null
   actorDisplayName: string | null

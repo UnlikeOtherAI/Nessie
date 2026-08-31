@@ -61,6 +61,14 @@ export const visibleUserAlertWhere = (input: {
       call: { is: {} },
     },
     {
+      // Invitations live in UOA, so there is no local relation to revalidate.
+      // Every verified /org/me read at login and token rotation reconciles
+      // these rows, and acceptance deletes one immediately. The outer user
+      // membership clause still requires an active membership in whichever
+      // organisation currently owns the recipient's bell.
+      kind: 'workspace_invitation',
+    },
+    {
       kind: 'knowledge_published',
       knowledgePage: {
         is: {

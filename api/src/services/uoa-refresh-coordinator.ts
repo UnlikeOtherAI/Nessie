@@ -6,6 +6,7 @@ import { syncExternalOrganizationNames } from './external-organization.js'
 import { resolveExternalWorkspaceSelection } from './identity-display.js'
 import { syncProfileMirrorFromClaims } from './uoa-profile-mirror.js'
 import { advanceUoaLocalSessionBindingInTransaction } from './uoa-session-context.js'
+import { syncUoaDirectoryAfterSessionCommit } from './uoa-session-context.js'
 import {
   refreshUoaSession,
   UoaSessionRefreshError,
@@ -112,7 +113,7 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
     // UOA's `orgName` (per-UOA-org model), refreshed where the verified
     // directory arrives — never allowed to break session renewal.
     try {
-      await syncExternalOrganizationNames(prisma, refreshed.workspaceDirectory)
+      await syncExternalOrganizationNames(prisma, refreshed.workspaceDirectory?.entries)
     } catch {
       // Intentionally ignored — see above.
     }
@@ -139,6 +140,11 @@ export const createUoaRefreshCallbacks = (prisma: PrismaClient) => ({
   ) => {
     await advanceUoaLocalSessionBindingInTransaction(transaction, input)
   },
+  afterUoaSessionBinding: async (input: {
+    nextIdentity: UoaSessionIdentity
+    userId: string
+    workspaceDirectory?: UoaSessionExchange['workspaceDirectory']
+  }) => syncUoaDirectoryAfterSessionCommit(prisma, input),
   beforeUoaWorkspaceSwitch: async (input: {
     sourceIdentity: UoaSessionIdentity
     target: { organizationId: string; teamId: string }
