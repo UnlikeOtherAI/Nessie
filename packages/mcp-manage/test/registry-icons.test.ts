@@ -77,6 +77,7 @@ const pngIcon: RegistryIcon = {
   src: 'https://example.com/icon.png',
   mimeType: 'image/png',
   sizes: '128x128',
+  theme: null,
 }
 
 test('a PNG is fetched, sniffed, and cached through the FileService', async () => {
@@ -106,7 +107,7 @@ test('an SVG icon is refused without a fetch', async () => {
     responseOf(streamOf(new Uint8Array(pngBytes))))
 
   const result = await cacheRegistryIcon({
-    icons: [{ src: 'https://example.com/logo.svg', mimeType: 'image/svg+xml', sizes: 'any' }],
+    icons: [{ src: 'https://example.com/logo.svg', mimeType: 'image/svg+xml', sizes: 'any', theme: null }],
     fetchIcon,
     fileService: service,
     organizationId: 'org-1',
@@ -226,27 +227,53 @@ test('parseAdvertisedIcons reads server.icons and tolerates anything else', () =
     server: {
       icons: [
         { src: 'https://a/i.png', mimeType: 'image/png', sizes: '48x48' },
-        { src: 'https://a/i.webp', sizes: ['96x96', '256x256'] },
+        { src: 'https://a/i.webp', sizes: ['96x96', '256x256'], theme: 'dark' },
       ],
     },
   })
   assert.equal(icons.length, 2)
   assert.equal(icons[1]?.sizes, '96x96 256x256')
+  assert.equal(icons[1]?.theme, 'dark')
   assert.deepEqual(parseAdvertisedIcons(null), [])
   assert.deepEqual(parseAdvertisedIcons({ server: {} }), [])
 })
 
+test('one malformed icon does not discard a valid sibling', () => {
+  assert.deepEqual(parseAdvertisedIcons({
+    server: {
+      icons: [
+        { src: 'https://a/future.png', theme: 'system' },
+        { src: 'https://a/valid.png', sizes: '128x128' },
+      ],
+    },
+  }), [{
+    src: 'https://a/valid.png', mimeType: null, sizes: '128x128', theme: null,
+  }])
+})
+
 test('pickIconCandidate drops vectors and prefers a card-sized raster', () => {
   const chosen = pickIconCandidate([
-    { src: 'https://a/logo.svg', mimeType: 'image/svg+xml', sizes: '512x512' },
-    { src: 'https://a/tiny.png', mimeType: 'image/png', sizes: '16x16' },
-    { src: 'https://a/good.png', mimeType: 'image/png', sizes: '128x128' },
+    { src: 'https://a/logo.svg', mimeType: 'image/svg+xml', sizes: '512x512', theme: null },
+    { src: 'https://a/tiny.png', mimeType: 'image/png', sizes: '16x16', theme: null },
+    { src: 'https://a/good.png', mimeType: 'image/png', sizes: '128x128', theme: null },
   ])
   assert.equal(chosen, 'https://a/good.png')
 
   assert.equal(
-    pickIconCandidate([{ src: 'data:image/png;base64,AAAA', mimeType: 'image/png', sizes: null }]),
+    pickIconCandidate([{
+      src: 'data:image/png;base64,AAAA', mimeType: 'image/png', sizes: null, theme: null,
+    }]),
     null,
   )
   assert.equal(pickIconCandidate([]), null)
+})
+
+test('pickIconCandidate keeps a theme-neutral raster for the shared cache', () => {
+  const icons: RegistryIcon[] = [
+    { src: 'https://a/dark.png', mimeType: 'image/png', sizes: '128x128', theme: 'dark' },
+    { src: 'https://a/neutral.png', mimeType: 'image/png', sizes: '128x128', theme: null },
+    { src: 'https://a/light.png', mimeType: 'image/png', sizes: '128x128', theme: 'light' },
+  ]
+
+  assert.equal(pickIconCandidate(icons), 'https://a/neutral.png')
 })

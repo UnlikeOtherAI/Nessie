@@ -609,8 +609,9 @@ Facts not restated there:
   rejecting it. That is 75% of rows measured, against 32% for guessed paths
   alone. It claims the attempt with
   one conditional `iconResolvedAt` UPDATE so dozens of cards fetch once and a
-  site with no favicon is never re-tried, and **never blocks the request** — the
-  route 404s immediately and the icon appears next visit. Bytes are
+  site with no favicon is never re-tried unless a later registry sync supplies
+  a new candidate, and **never blocks the request** — the route 404s immediately
+  and the icon appears next visit. Bytes are
   origin-only-candidate, `safeFetch`-pinned, byte-capped, MIME-sniffed to raster
   (SVG dropped) and stored through `FileService`. The client reads it as an
   authed blob (`useAuthedObjectUrlFromPath`): `<img src="/api/…">` fails both on

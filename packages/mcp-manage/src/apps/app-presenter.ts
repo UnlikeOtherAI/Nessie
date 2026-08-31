@@ -25,10 +25,10 @@ import { appIconIsResolvable } from './app-icon-resolve.js'
  * Two independent guarantees keep a secret out of `/api/apps`, because one is
  * a habit and two is a rule:
  *
- * 1. `STORE_CATALOG_SELECT` is the only column list a store read may use, and
- *    it names no `authConfig`, `defaultTransportConfig`, `sourceUrl`,
- *    `signature`, `iconUrl`, or credential-bearing field at all — the row
- *    handed to this module never held one.
+ * 1. `STORE_CATALOG_SELECT` is the only column list a store read may use. It
+ *    names no `authConfig`, `defaultTransportConfig`, `sourceUrl`,
+ *    `signature`, or credential-bearing field. It retains `iconUrl` solely as
+ *    a private "one declared icon exists" signal for lazy local resolution.
  * 2. Every record below is assembled field by field. Nothing spreads a row, so
  *    a column added to the catalogue later cannot ride out on the wire by
  *    default. This mirrors `api/src/routes/mcp/catalog-response.ts`, which
@@ -56,6 +56,9 @@ export const STORE_CATALOG_SELECT = {
   websiteUrl: true,
   documentationUrl: true,
   repositoryUrl: true,
+  // Never emitted: this only tells `appIconUrl` whether its local resolver has
+  // a publisher-declared candidate when the app has no website.
+  iconUrl: true,
   iconAttachmentId: true,
   iconResolvedAt: true,
   primaryCategory: true,
@@ -98,6 +101,8 @@ export type StoreCatalogRow = {
   websiteUrl: string | null
   documentationUrl: string | null
   repositoryUrl: string | null
+  /** Raw upstream URL; presenter-only and never part of the wire contract. */
+  iconUrl: string | null
   iconAttachmentId: string | null
   iconResolvedAt: Date | null
   primaryCategory: AppCategory

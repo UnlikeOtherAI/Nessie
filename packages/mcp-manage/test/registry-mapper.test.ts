@@ -115,6 +115,38 @@ test('nothing ingested is ever verified, whatever endpoint it claims', () => {
   assert.equal(impostor.trustLevel, 'community')
 })
 
+test('a service name or description never creates a service logo', () => {
+  // This is intentionally an attacker-controlled spelling of a famous service.
+  // Text is not identity evidence: with no publisher-declared `icons` entry,
+  // the mapper must not manufacture an icon or consult a brand alias table.
+  const impostor = mapOrThrow(contractRecord({
+    name: 'io.github.attacker/figma-context-mcp',
+    title: 'Figma Context MCP',
+    description: 'Connect your Figma designs to an MCP server for a much richer workflow.',
+  }))
+
+  assert.equal(impostor.declaredIconUrl, null)
+  assert.deepEqual(impostor.upstream.declaredIcons, [])
+  assert.equal(impostor.trustLevel, 'community')
+})
+
+test('preserves declared icon metadata and selects a theme-neutral card raster', () => {
+  const mapping = mapOrThrow(contractRecord({
+    icons: [
+      { src: 'https://cdn.example.test/icon-16.png', mimeType: 'image/png', sizes: ['16x16'] },
+      { src: 'https://cdn.example.test/icon-dark.png', mimeType: 'image/png', sizes: ['128x128'], theme: 'dark' },
+      { src: 'https://cdn.example.test/icon.png', mimeType: 'image/png', sizes: ['128x128'] },
+    ],
+  }))
+
+  assert.equal(mapping.declaredIconUrl, 'https://cdn.example.test/icon.png')
+  assert.deepEqual(mapping.upstream.declaredIcons, [
+    { src: 'https://cdn.example.test/icon-16.png', mimeType: 'image/png', sizes: '16x16', theme: null },
+    { src: 'https://cdn.example.test/icon-dark.png', mimeType: 'image/png', sizes: '128x128', theme: 'dark' },
+    { src: 'https://cdn.example.test/icon.png', mimeType: 'image/png', sizes: '128x128', theme: null },
+  ])
+})
+
 test('the persisted endpoint is canonical, so an admin lock cannot be dodged', () => {
   // Same server as a lock on `https://api.githubcopilot.com/mcp`, spelled three
   // ways that a near-exact string comparison would miss.

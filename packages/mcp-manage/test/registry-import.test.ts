@@ -32,7 +32,12 @@ const createFakePrisma = (): {
   const prisma = {
     mcpCatalogEntry: {
       create: async ({ data }: { data: Row }) => {
-        const row = { id: `app-${entries.length + 1}`, ...data }
+        const row = {
+          id: `app-${entries.length + 1}`,
+          iconAttachmentId: null,
+          iconResolvedAt: null,
+          ...data,
+        }
         entries.push(row)
         return row
       },
@@ -302,6 +307,30 @@ test('running the sync twice creates no second row and moves no curated value', 
   for (const key of ['slug', 'name', 'displayName', 'primaryCategory', 'tags', 'aliases']) {
     assert.deepEqual(entries[0]![key], snapshot[key], key)
   }
+})
+
+test('a new publisher icon reopens a row whose earlier lookup found nothing', async () => {
+  const { prisma, entries } = createFakePrisma()
+
+  await syncRegistry(prisma, {
+    fetchImpl: pageOf([record({})]),
+    assertEndpointSafe: allowAll,
+  })
+  entries[0]!.iconResolvedAt = new Date('2026-08-30T12:00:00Z')
+
+  await syncRegistry(prisma, {
+    fetchImpl: pageOf([record({
+      icons: [{
+        src: 'https://cdn.example.test/icon.png',
+        mimeType: 'image/png',
+        sizes: '128x128',
+      }],
+    })]),
+    assertEndpointSafe: allowAll,
+  })
+
+  assert.equal(entries[0]!.iconUrl, 'https://cdn.example.test/icon.png')
+  assert.equal(entries[0]!.iconResolvedAt, null)
 })
 
 test('what a curator wrote survives a re-sync; what only sync wrote is refreshed', async () => {

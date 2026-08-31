@@ -24,11 +24,10 @@ import { z } from 'zod'
  * `null`, and the caller leaves `iconAttachmentId` unset. An empty icon is never
  * a reason to fail an import.
  *
- * Why this owns its own narrow parse of `server.icons` instead of widening
- * `RegistryRecord`: icons are read only by the icon subsystem, exactly as
- * `library.ts` parses the same registry endpoint more narrowly for its own
- * concern. `RegistryRecord` deliberately carries "the fields ingestion reads";
- * these are the fields *icon* caching reads.
+ * `RegistryRecord` retains the normalized metadata as well as the importer
+ * passing the raw carrier here. That is deliberate: an owner-triggered sync
+ * can cache immediately, while the ordinary scheduled sync keeps enough
+ * information for the first-view resolver to make the same choice later.
  */
 
 /** The only image types cached. SVG is deliberately absent — see the header. */
@@ -61,6 +60,8 @@ export type RegistryIcon = {
   mimeType: string | null
   /** Space-joined `WxH` tokens, e.g. `"128x128 256x256"`, or null. */
   sizes: string | null
+  /** `null` means the publisher says this icon works on either background. */
+  theme: 'light' | 'dark' | null
 }
 
 export type RegistryIconResult = {
@@ -92,14 +93,21 @@ export type IconFileService = {
 
 const AdvertisedIconSchema = z.object({
   src: z.string().min(1),
-  mimeType: z.string().optional(),
+  // Stored snapshots use explicit nulls after normalization; raw Registry
+  // records omit these fields. Accept both representations here.
+  mimeType: z.string().nullable().optional(),
   // Manifest icons carry a space-separated string; some publishers use an
   // array. Accept both, normalise to the string form the selector expects.
-  sizes: z.union([z.string(), z.array(z.string())]).optional(),
+  sizes: z.union([z.string(), z.array(z.string())]).nullable().optional(),
+  // A theme-specific icon must not silently stand in for one that works on
+  // either background. The MCP schema defines exactly these two values.
+  theme: z.enum(['light', 'dark']).nullable().optional(),
 })
 
 const IconCarrierSchema = z.object({
-  server: z.object({ icons: z.array(AdvertisedIconSchema).optional() }).optional(),
+  // Parse entries independently below. One malformed icon must cost exactly
+  // that candidate, never every valid sibling or the containing server.
+  server: z.object({ icons: z.array(z.unknown()).optional() }).optional(),
 })
 
 /**
@@ -110,11 +118,18 @@ const IconCarrierSchema = z.object({
 export const parseAdvertisedIcons = (raw: unknown): RegistryIcon[] => {
   const parsed = IconCarrierSchema.safeParse(raw)
   if (!parsed.success) return []
-  return (parsed.data.server?.icons ?? []).map((icon) => ({
-    src: icon.src,
-    mimeType: icon.mimeType ?? null,
-    sizes: Array.isArray(icon.sizes) ? icon.sizes.join(' ') : icon.sizes ?? null,
-  }))
+  return (parsed.data.server?.icons ?? []).flatMap((value) => {
+    const icon = AdvertisedIconSchema.safeParse(value)
+    if (!icon.success) return []
+    return [{
+      src: icon.data.src,
+      mimeType: icon.data.mimeType ?? null,
+      sizes: Array.isArray(icon.data.sizes)
+        ? icon.data.sizes.join(' ')
+        : icon.data.sizes ?? null,
+      theme: icon.data.theme ?? null,
+    }]
+  })
 }
 
 /**
@@ -175,8 +190,13 @@ const largestDeclaredDimension = (sizes: string | null): number | null => {
  */
 const scoreCandidate = (icon: RegistryIcon): number => {
   const largest = largestDeclaredDimension(icon.sizes)
-  if (largest === null) return 1
-  return largest >= ICON_SIZE_MIN && largest <= ICON_SIZE_MAX ? 2 : 0
+  const sizeScore = largest === null ? 1 : largest >= ICON_SIZE_MIN && largest <= ICON_SIZE_MAX ? 2 : 0
+  // A theme-free icon is the only safe default for a permanently cached
+  // raster: the same attachment serves light and dark store views. Size stays
+  // primary because a 16px neutral favicon is worse artwork than a card-sized
+  // publisher variant. Equal theme-specific variants retain publisher order.
+  const themeScore = icon.theme === null ? 1 : 0
+  return sizeScore * 3 + themeScore
 }
 
 /**
