@@ -3,7 +3,6 @@ import type { ExternalAgentIdentity } from '../../facades/integrations/hooks'
 import { usePersonalAssistant } from '../../facades/personal-assistant/hooks'
 import type {
   AgentRecord,
-  CallParticipantRecord,
   CallRecord,
   ChannelRecord,
   MeResponse,
@@ -43,11 +42,11 @@ import type { useReplyThread } from './useReplyThread'
 interface ChannelConversationSurfaceProps {
   activeCall: CallRecord | null | undefined
   activeChannel: ChannelRecord | null
-  activeParticipants: CallParticipantRecord[]
   agentMap: Map<string, AgentRecord>
   agentsTabAvailable: boolean
   boundAgents: AgentRecord[]
   callEligible: boolean
+  callStarting: boolean
   channelLiveness: ReturnType<typeof useAgentLivenessHint>
   channelUsers: UserRecord[]
   chatDrop: ReturnType<typeof useFileDrop>
@@ -132,11 +131,11 @@ interface ChannelConversationSurfaceProps {
 export const ChannelConversationSurface = ({
   activeCall,
   activeChannel,
-  activeParticipants,
   agentMap,
   agentsTabAvailable,
   boundAgents,
   callEligible,
+  callStarting,
   channelLiveness,
   channelUsers,
   chatDrop,
@@ -191,6 +190,7 @@ export const ChannelConversationSurface = ({
     submitEdit,
     updatePending,
   } = messageActions
+  const callerName = activeCall?.startedByDisplayName ?? null
 
   return (
     <div
@@ -203,6 +203,7 @@ export const ChannelConversationSurface = ({
         boundAgents={boundAgents}
         callEligible={callEligible}
         callMeetingUri={activeCall?.meetingUri}
+        callStarting={callStarting}
         channelUsers={channelUsers}
         externalAgentIdentity={externalAgentIdentity}
         isExternalAgentConversation={isExternalAgentConversation}
@@ -232,8 +233,8 @@ export const ChannelConversationSurface = ({
         />
       ) : null}
 
-      {activeCall?.meetingUri && callEligible ? (
-        <CallBanner meetingUri={activeCall.meetingUri} participants={activeParticipants} />
+      {activeCall?.meetingUri && callerName ? (
+        <CallBanner callerName={callerName} meetingUri={activeCall.meetingUri} />
       ) : null}
 
       <ChannelTabBar

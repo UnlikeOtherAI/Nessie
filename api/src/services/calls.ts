@@ -6,6 +6,8 @@ import type { CallRecord } from '../contracts.js'
 type DbClient = PrismaClient | Prisma.TransactionClient
 
 const callInclude = {
+  channel: { select: { label: true } },
+  startedBy: { select: { displayName: true } },
   invites: {
     include: { user: { select: { displayName: true, id: true } } },
     orderBy: { userId: 'asc' },
@@ -31,11 +33,13 @@ const terminalStatuses = new Set<CallStatus>(['cancelled', 'declined', 'ended', 
 export const mapCallRecord = (call: CallWithPeople): CallRecord => ({
   id: call.id,
   channelId: parseChannelId(call.channelId),
+  channelName: call.channel.label,
   roomId: call.roomId,
   provider: call.provider as CallRecord['provider'],
   meetingUri: call.meetingUri,
   status: call.status as CallStatus,
   startedById: parseUserId(call.startedById),
+  startedByDisplayName: call.startedBy.displayName,
   startedAt: call.startedAt.toISOString(),
   ringExpiresAt: call.ringExpiresAt?.toISOString() ?? null,
   endedAt: call.endedAt?.toISOString() ?? null,

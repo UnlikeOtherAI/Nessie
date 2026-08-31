@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   CallLinkProviderSchema,
   isCallLinkProviderConfigured,
+  type CallLinkProvider,
 } from '@nessie/workspace-admin'
 import { z } from 'zod'
 
@@ -13,6 +14,12 @@ import type { RouteDeps } from './types.js'
 const UpdateTeamSettingsBodySchema = z.object({
   callProvider: CallLinkProviderSchema,
 }).strict()
+
+const configuredCallProviders = (): Record<CallLinkProvider, boolean> => ({
+  google_meet: isCallLinkProviderConfigured('google_meet'),
+  jitsi: isCallLinkProviderConfigured('jitsi'),
+  microsoft_teams: isCallLinkProviderConfigured('microsoft_teams'),
+})
 
 export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -43,7 +50,11 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       orderBy: { createdAt: 'asc' },
     })
 
+    const callProviderAvailability = configuredCallProviders()
+
     return createApiResponse(teams.map((t) => ({
+      callProvider: t.callProvider as CallLinkProvider,
+      callProviderAvailability,
       id: t.id,
       name: t.name,
       projectId: t.projectId,
@@ -94,6 +105,8 @@ export const registerTeamRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     })
 
     return reply.code(201).send(createApiResponse({
+      callProvider: team.callProvider as CallLinkProvider,
+      callProviderAvailability: configuredCallProviders(),
       id: team.id,
       name: team.name,
       projectId: team.projectId,
