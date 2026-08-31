@@ -21,6 +21,7 @@ interface ChannelHeaderProps {
   boundAgents: AgentRecord[]
   callEligible: boolean
   callMeetingUri: string | null | undefined
+  callStarting: boolean
   channelUsers: UserRecord[]
   externalAgentIdentity: ExternalAgentIdentity | null
   isExternalAgentConversation: boolean
@@ -45,6 +46,7 @@ export const ChannelHeader = ({
   boundAgents,
   callEligible,
   callMeetingUri,
+  callStarting,
   channelUsers,
   externalAgentIdentity,
   isExternalAgentConversation,
@@ -75,6 +77,8 @@ export const ChannelHeader = ({
   )
   const callLabel = isPersonalAssistantConversation
     ? 'Personal Assistant does not support calls'
+    : callStarting
+      ? 'Starting call…'
     : callEligible
       ? activeCall
         ? 'Join call'
@@ -138,7 +142,7 @@ export const ChannelHeader = ({
         } satisfies PageHeaderAction
       : {
           compact: true,
-          disabled: !callEligible || activeCall,
+          disabled: !callEligible || activeCall || callStarting,
           icon: faPhone,
           id: 'call',
           label: callLabel,

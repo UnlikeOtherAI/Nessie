@@ -144,6 +144,8 @@ export const startCallForUser = async (
           },
         },
         include: {
+          channel: { select: { label: true } },
+          startedBy: { select: { displayName: true } },
           invites: { include: { user: { select: { displayName: true, id: true } } } },
           participants: { include: { user: { select: { displayName: true, id: true } } } },
         },

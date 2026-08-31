@@ -1,5 +1,10 @@
 # Video Calling — Implementation Document
 
+> **Status: superseded.** This historical document describes the retired
+> embedded Jitsi iframe. Calls now mint an external provider link and ring
+> invitees; follow the active
+> [call-links and ringing plan](../plans/2026-08-30-meet-call-links-and-ringing/overview.md).
+
 > Jitsi Meet integration for Nessie channels. Voice/video calls available in any channel with real human participants.
 
 ## Overview
