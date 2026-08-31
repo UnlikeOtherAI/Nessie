@@ -37,6 +37,8 @@ const DELEGATE_TOOL_ID = 'delegate'
 export type ResolvedRunToolset = {
   allowedIds: Set<string>
   descriptors: ToolSchemaDescriptor[]
+  stubbedIds: Set<string>
+  toolSpecEnabled: boolean
 }
 
 /**
@@ -59,6 +61,10 @@ export const applyHandoffToolExclusions = (
     descriptors: resolved.descriptors.filter(
       (descriptor) => descriptor.toolName !== DELEGATE_TOOL_ID,
     ),
+    stubbedIds: new Set(
+      [...resolved.stubbedIds].filter((toolId) => toolId !== DELEGATE_TOOL_ID),
+    ),
+    toolSpecEnabled: resolved.toolSpecEnabled,
   }
 }
 
@@ -71,7 +77,9 @@ export type RunExecutionSetup = {
   mcpToolset: McpToolset
   memories: RetrievedMemory[]
   resolvedToolIds: Set<string>
+  stubbedBuiltinToolIds: Set<string>
   toolDefs: ToolSchemaDescriptor[]
+  toolSpecEnabled: boolean
   toolPolicy: Record<string, boolean> | null
 }
 
@@ -99,7 +107,12 @@ export const prepareRunExecution = async (
     },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
-  const { descriptors: toolDefs, allowedIds: resolvedToolIds } = applyHandoffToolExclusions(
+  const {
+    descriptors: toolDefs,
+    allowedIds: resolvedToolIds,
+    stubbedIds: stubbedBuiltinToolIds,
+    toolSpecEnabled,
+  } = applyHandoffToolExclusions(
     resolveAgentTools(
       allowedToolIds,
       BUILTIN_TOOL_DEFINITIONS,
@@ -235,7 +248,9 @@ export const prepareRunExecution = async (
     mcpToolset,
     memories,
     resolvedToolIds,
+    stubbedBuiltinToolIds,
     toolDefs: [...toolDefs, ...executorToolset.descriptors],
+    toolSpecEnabled,
     toolPolicy,
   }
 }

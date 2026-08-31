@@ -20,6 +20,7 @@ export const useCreateAgent = () => {
       // Omitted leaves the agent on the deployment backstop only.
       runLimits?: AgentRunLimits
       systemPrompt?: string
+      todosEnabled?: boolean
       toolPolicy?: Record<string, boolean>
     }) =>
       apiClient.post<AgentRecord>('/api/agents', input),
@@ -44,6 +45,7 @@ export const useUpdateAgent = () => {
       // Omitted leaves the stored limits untouched; `null` clears them.
       runLimits?: AgentRunLimits | null
       systemPrompt?: string
+      todosEnabled?: boolean
       toolPolicy?: Record<string, boolean>
     }) => {
       const { agentId, ...body } = input

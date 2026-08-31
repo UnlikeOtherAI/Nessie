@@ -2,6 +2,7 @@ import type { ZodTypeAny } from 'zod'
 
 export type BuiltinToolDefinition = {
   id: string
+  summary: string
   description: string
   label: string
   parameters: {

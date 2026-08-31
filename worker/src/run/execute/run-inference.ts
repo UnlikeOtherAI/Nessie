@@ -25,6 +25,9 @@ import { runReplyIsRestricted } from './agent-message.js'
 
 const runtimeModelConfig = loadConfig().model
 
+export const hasDocumentComposeTool = (tools: ToolSchemaDescriptor[]): boolean =>
+  tools.some((tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID)
+
 /**
  * How this run calls the model. One construction point for every inference the
  * run makes — the main turn, delegate sub-agents, compaction and checkpoint
@@ -89,9 +92,7 @@ export const createRunInference = (
     // the ordinary per-call output cap would truncate it mid-sentence. When the
     // tool is on the table this call asks for the model's own maximum instead;
     // the run budget, not this number, remains the spend envelope.
-    const composeAvailable = tools.some(
-      (tool) => tool.toolName === KB_DOCUMENT_COMPOSE_TOOL_ID,
-    )
+    const composeAvailable = hasDocumentComposeTool(tools)
     const controller = documentStream ? new AbortController() : null
     const cancelPoll = controller
       ? startCancellationPoll({

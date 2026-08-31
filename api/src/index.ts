@@ -50,6 +50,7 @@ import {
 import type { RouteDeps } from './routes/types.js'
 import { registerActivityRoutes } from './routes/activity.js'
 import { registerAgentRoutes } from './routes/agents.js'
+import { registerAgentTodoRoutes } from './routes/agent-todos.js'
 import { registerAlertRoutes } from './routes/alerts.js'
 import { registerApprovalRoutes } from './routes/approvals.js'
 import { registerAuditLogRoutes } from './routes/audit-log.js'
@@ -391,6 +392,7 @@ export const buildApp = async () => {
   registerChannelRoutes(app, deps)
   registerCallRoutes(app, deps)
   registerAgentRoutes(app, deps)
+  registerAgentTodoRoutes(app, deps)
   registerTriggerRoutes(app, deps)
   registerPlanRoutes(app, deps)
   registerWorkflowRoutes(app, deps)

@@ -2,6 +2,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const ATTACHMENT_UPLOAD_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'attachment_upload',
+  summary: 'Upload a workspace attachment from base64 content.',
   label: 'Upload Attachment',
   description:
     'Store a file as a workspace attachment. Provide the raw bytes as base64 ' +
@@ -26,6 +27,7 @@ export const ATTACHMENT_UPLOAD_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const ATTACHMENT_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'attachment_list',
+  summary: 'List accessible message attachments in a thread or channel.',
   label: 'List Attachments',
   description:
     'List attachments linked to messages in a thread or channel you can access. ' +
@@ -43,6 +45,7 @@ export const ATTACHMENT_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const ATTACHMENT_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'attachment_read',
+  summary: 'Read attachment metadata and small text-file content.',
   label: 'Read Attachment',
   description:
     'Return metadata for an attachment, plus the decoded text content for ' +

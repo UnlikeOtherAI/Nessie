@@ -77,6 +77,10 @@ test('the bounded backend exposes only an exact session-bound browser bundle and
   })
 
   assert.deepEqual(toolset.descriptors, [{
+    description: 'Observe bounded state from an isolated executor browser.',
+    inputSchema: { additionalProperties: false, properties: {}, type: 'object' },
+    toolName: 'executor.browser.observe',
+  }, {
     description: 'Open a URL in an isolated executor browser.',
     inputSchema: {
       additionalProperties: false,
@@ -85,10 +89,6 @@ test('the bounded backend exposes only an exact session-bound browser bundle and
       type: 'object',
     },
     toolName: 'executor.browser.open',
-  }, {
-    description: 'Observe bounded state from an isolated executor browser.',
-    inputSchema: { additionalProperties: false, properties: {}, type: 'object' },
-    toolName: 'executor.browser.observe',
   }, {
     description: 'Stop an executor sandbox or session.',
     inputSchema: { additionalProperties: false, properties: {}, type: 'object' },
@@ -191,10 +191,10 @@ test('the bounded backend exposes coding only through its exact session bundle',
   const prisma = {
     executorBinding: {
       findMany: async () => [
-        { id: '00000000-0000-4000-8000-000000000011', operationKey: 'coding.launch', session },
-        { id: '00000000-0000-4000-8000-000000000012', operationKey: 'coding.observe', session },
-        { id: '00000000-0000-4000-8000-000000000013', operationKey: 'workspace.review', session },
         { id: '00000000-0000-4000-8000-000000000014', operationKey: 'sandbox.stop', session },
+        { id: '00000000-0000-4000-8000-000000000013', operationKey: 'workspace.review', session },
+        { id: '00000000-0000-4000-8000-000000000012', operationKey: 'coding.observe', session },
+        { id: '00000000-0000-4000-8000-000000000011', operationKey: 'coding.launch', session },
       ],
     },
     toolRegistryEntry: {
@@ -220,8 +220,8 @@ test('the bounded backend exposes coding only through its exact session bundle',
   assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
     'executor.coding.launch',
     'executor.coding.observe',
-    'executor.workspace.review',
     'executor.sandbox.stop',
+    'executor.workspace.review',
   ])
   assert.deepEqual(toolset.descriptors[0]?.inputSchema, {
     additionalProperties: false,
@@ -307,7 +307,7 @@ test('an exited coding session keeps review and teardown but cannot relaunch Cod
 
   assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
     'executor.coding.observe',
-    'executor.workspace.review',
     'executor.sandbox.stop',
+    'executor.workspace.review',
   ])
 })

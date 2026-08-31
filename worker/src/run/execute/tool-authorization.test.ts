@@ -264,6 +264,7 @@ const runLoop = async (input: {
       invocationSink: [],
       mcpToolset,
       resolvedToolIds: new Set([builtinName, 'delegate']),
+      stubbedBuiltinToolIds: new Set(),
       thinkingRecorder: {
         appendReasoning: async () => undefined,
         appendToolLine: async () => undefined,
@@ -281,6 +282,7 @@ const runLoop = async (input: {
           toolName: 'delegate',
         },
       ],
+      toolSpecEnabled: false,
       toolPolicy: null,
       windDownInstruction: null,
     },

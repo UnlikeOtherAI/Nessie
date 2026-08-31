@@ -410,7 +410,10 @@ width".
   the chokepoint ceiling (`worker/src/run/tool-util.ts`). MCP tool descriptors
   are name-sorted and their exposed names allocated in a fixed order, so the
   model's tool array is byte-identical across iterations and the provider's
-  prompt-cache prefix survives. Every run
+  prompt-cache prefix survives. Allowed builtin sets above
+  `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20) keep a fixed hot set inline,
+  expose curated stubs for the rest, and return exact schemas through the
+  non-mutating `tool_spec` meta tool; smaller sets remain fully inline. Every run
   also records a wall-clock-only stage-latency breakdown at its terminal state
   (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
   runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,

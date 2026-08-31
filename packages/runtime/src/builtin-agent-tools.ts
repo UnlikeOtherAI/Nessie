@@ -17,6 +17,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'agent_list',
+    summary: 'List reachable agents and their channel bindings.',
     label: 'List Agents',
     personalAssistantOnly: true,
     description:
@@ -43,6 +44,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'agent_create',
+    summary: 'Create a shared agent with instructions and a tool policy.',
     label: 'Create Agent',
     personalAssistantOnly: true,
     description:
@@ -96,6 +98,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'agent_bind_channel',
+    summary: 'Bind an existing agent to a channel.',
     label: 'Bind Agent To Channel',
     personalAssistantOnly: true,
     description:
@@ -116,6 +119,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'agent_trigger_create',
+    summary: 'Create a trigger for an existing bound agent.',
     label: 'Create Agent Trigger',
     personalAssistantOnly: true,
     description:

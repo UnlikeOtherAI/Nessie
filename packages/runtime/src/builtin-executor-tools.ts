@@ -4,6 +4,7 @@ const UUID = { type: 'string', format: 'uuid' }
 
 export const EXECUTOR_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_list',
+  summary: 'List paired executors available to the requesting user.',
   label: 'Executor List',
   description:
     'List paired executors you can discover, with scope, profile, pairing, and readiness status. '
@@ -15,6 +16,7 @@ export const EXECUTOR_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const EXECUTOR_INSPECT_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_inspect',
+  summary: 'Inspect a reachable executor’s safe capabilities and scope.',
   label: 'Executor Inspect',
   description:
     'Inspect one executor you can discover. Returns its safe capability and scope summary, never '
@@ -30,6 +32,7 @@ export const EXECUTOR_INSPECT_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const EXECUTOR_PAIR_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_pair',
+  summary: 'Open the setup surface for pairing an executor.',
   label: 'Pair Executor',
   description:
     'Open the paired-executor setup surface. A user selects the immutable scope and exact private '
@@ -43,8 +46,10 @@ const lifecycleTool = (
   id: 'executor_pause' | 'executor_drain' | 'executor_revoke',
   label: string,
   action: string,
+  summary: string,
 ): BuiltinToolDefinition => ({
   id,
+  summary,
   label,
   description:
     `Prepare a ${action} action for an executor. The user must review and confirm the exact action in Executors; `
@@ -62,20 +67,24 @@ export const EXECUTOR_PAUSE_TOOL_DEFINITION = lifecycleTool(
   'executor_pause',
   'Pause Executor',
   'pause',
+  'Prepare an executor pause for user confirmation.',
 )
 export const EXECUTOR_DRAIN_TOOL_DEFINITION = lifecycleTool(
   'executor_drain',
   'Drain Executor',
   'drain',
+  'Prepare executor draining for user confirmation.',
 )
 export const EXECUTOR_REVOKE_TOOL_DEFINITION = lifecycleTool(
   'executor_revoke',
   'Revoke Executor',
   'irreversible revoke',
+  'Prepare irreversible executor revocation for user confirmation.',
 )
 
 export const EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_descriptor_review_prepare',
+  summary: 'Prepare a local executor-policy revision change for confirmation.',
   label: 'Prepare Executor Local Policy Review',
   description:
     'Prepare activation or disablement of one signed local executor-policy revision. The requesting '
@@ -95,6 +104,7 @@ export const EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION: BuiltinToolDefi
 
 export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_agent_access_prepare',
+  summary: 'Prepare an executor operation allow or deny for confirmation.',
   label: 'Prepare Executor Agent Access',
   description:
     'Prepare one exact allow or deny for one agent and executor operation. The user must review and '
@@ -123,6 +133,7 @@ export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinitio
 
 export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_private_assignment_prepare',
+  summary: 'Prepare a private executor assignment change for confirmation.',
   label: 'Prepare Private Executor Assignment',
   description:
     'Prepare an exact private-executor assignment change for one named user or agent. The user must '
@@ -144,6 +155,7 @@ export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDef
 
 export const EXECUTOR_WORKSPACE_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'executor_workspace_promotion_prepare',
+  summary: 'Prepare reviewed executor workspace promotion for confirmation.',
   label: 'Prepare Reviewed Workspace Promotion',
   description:
     'Prepare the requesting user’s own reviewed executor draft for a host-workspace promotion. '

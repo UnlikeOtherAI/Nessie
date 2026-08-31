@@ -81,6 +81,7 @@ const FileGlobOutputSchema = z.object({
 
 export const HTTP_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'http_fetch',
+  summary: 'Make a generic HTTP request with headers, body, and auth.',
   label: 'HTTP Fetch',
   description:
     'Generic HTTP request primitive. Supports method, headers, body, per-call ' +
@@ -120,6 +121,7 @@ export const HTTP_FETCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const FILE_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'file_read',
+  summary: 'Read a file inside the configured sandbox roots.',
   label: 'File Read',
   description:
     'Read a file from the local filesystem. Path must resolve inside one of ' +
@@ -144,6 +146,7 @@ export const FILE_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const FILE_WRITE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'file_write',
+  summary: 'Write a file inside the configured sandbox roots.',
   label: 'File Write',
   description:
     'Write a file inside the sandbox `allowedRoots`. Refuses to overwrite ' +
@@ -176,6 +179,7 @@ export const FILE_WRITE_TOOL_DEFINITION: BuiltinToolDefinition = {
 
 export const FILE_GLOB_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'file_glob',
+  summary: 'Find files by glob pattern inside the configured sandbox roots.',
   label: 'File Glob',
   description:
     'Glob the filesystem inside the sandbox `allowedRoots`. Both the `cwd` ' +

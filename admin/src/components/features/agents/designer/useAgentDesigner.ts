@@ -20,6 +20,7 @@ export type AgentFormState = {
   runLimits: RunLimitsFormState
   streamingField: string | null
   systemPrompt: string
+  todosEnabled: boolean
   tools: Record<string, boolean>
 }
 
@@ -35,6 +36,7 @@ export type AgentDesignerAction =
   | { prompt: string; type: 'set_system_prompt' }
   | { role: string; type: 'set_role' }
   | { field: RunLimitsField; type: 'set_run_limit'; value: string }
+  | { enabled: boolean; type: 'set_todos_enabled' }
   | { enabled: boolean; toolId: string; type: 'toggle_tool' }
 
 // `tools` is a sparse overlay over the org tool catalog: unset keys fall back
@@ -49,6 +51,7 @@ const DEFAULT_STATE: AgentFormState = {
   runLimits: emptyRunLimitsForm,
   streamingField: null,
   systemPrompt: '',
+  todosEnabled: false,
   tools: {},
 }
 
@@ -75,6 +78,8 @@ const reducer = (state: AgentFormState, action: AgentDesignerAction): AgentFormS
         ...state,
         runLimits: { ...state.runLimits, [action.field]: action.value },
       }
+    case 'set_todos_enabled':
+      return { ...state, todosEnabled: action.enabled }
     case 'toggle_tool':
       return { ...state, tools: { ...state.tools, [action.toolId]: action.enabled } }
     case 'set_streaming':
@@ -95,6 +100,7 @@ export type AgentDesignerActions = {
   setRole: (role: string) => void
   setRunLimit: (field: RunLimitsField, value: string) => void
   setSystemPrompt: (prompt: string) => void
+  setTodosEnabled: (enabled: boolean) => void
   toggleTool: (toolId: string, enabled: boolean) => void
 }
 
@@ -130,6 +136,10 @@ export const useAgentDesigner = (
   )
   const toggleTool = useCallback(
     (toolId: string, enabled: boolean) => dispatch({ type: 'toggle_tool', toolId, enabled }),
+    [],
+  )
+  const setTodosEnabled = useCallback(
+    (enabled: boolean) => dispatch({ enabled, type: 'set_todos_enabled' }),
     [],
   )
 
@@ -189,6 +199,7 @@ export const useAgentDesigner = (
     setRole,
     setRunLimit,
     setSystemPrompt,
+    setTodosEnabled,
     toggleTool,
   }
 

@@ -12,6 +12,7 @@ const definitions = [
   {
     description: 'Search the web.',
     id: 'web_search',
+    summary: 'Search the web.',
     label: 'Web search',
     parameters: { properties: {}, type: 'object' },
     safe: true,
@@ -19,6 +20,7 @@ const definitions = [
   {
     description: 'Spawn a delegated agent.',
     id: 'spawn_subtask',
+    summary: 'Spawn a delegated agent.',
     label: 'Spawn subtask',
     parameters: { properties: {}, type: 'object' },
     safe: false,
@@ -26,6 +28,7 @@ const definitions = [
   {
     description: 'Send a message as the current user.',
     id: 'send_message',
+    summary: 'Send a message as the current user.',
     label: 'Send message',
     parameters: { properties: {}, type: 'object' },
     personalAssistantOnly: true,
