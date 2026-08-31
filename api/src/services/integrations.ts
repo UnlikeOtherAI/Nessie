@@ -11,7 +11,8 @@ import {
   type ProductTeamEnablementRow,
 } from './integration-product-rows.js'
 import { rememberUoaWorkspaceDirectory } from './uoa-directory-cache.js'
-import type { UoaWorkspaceDirectoryEntry } from './uoa-session.js'
+import type { UoaWorkspaceDirectory } from './uoa-session.js'
+import { syncWorkspaceInviteAlerts } from './workspace-invite-alerts.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
 
 type ProductOwner = {
@@ -25,7 +26,7 @@ type UoaProductAccountLinkSyncInput = ProductOwner & {
   externalSubject: string | undefined
   uoaTokenVersion: number | undefined
   workspace: ExternalAuthWorkspace | undefined
-  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
+  workspaceDirectory?: UoaWorkspaceDirectory
 }
 
 type ProductSlugRow = {
@@ -151,11 +152,22 @@ export const syncUoaProductAccountLinks = async (
   // The directory UOA returned with this login is display-only, UOA-owned data:
   // it goes to the bounded in-memory cache, never into the link row.
   rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
+  if (input.workspaceDirectory) {
+    try {
+      await syncWorkspaceInviteAlerts(prisma, {
+        organizationId: input.organizationId,
+        pendingInvites: input.workspaceDirectory.pendingInvites,
+        userId: input.userId,
+      })
+    } catch (error) {
+      console.warn('[uoa] workspace invitation alert sync failed after login', error)
+    }
+  }
   // `Organization.name` is a non-authoritative mirror of UOA's `orgName`
   // (per-UOA-org model): refresh it wherever the verified directory arrives.
   // Display data — a failure must never fail the login.
   try {
-    await syncExternalOrganizationNames(prisma, input.workspaceDirectory)
+    await syncExternalOrganizationNames(prisma, input.workspaceDirectory?.entries)
   } catch {
     // Intentionally ignored — see above.
   }

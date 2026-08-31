@@ -11,6 +11,7 @@ import {
   useMarkAlertsRead,
   type UserAlertRecord,
 } from '../../facades/alerts/hooks'
+import { useAcceptWorkspaceInvitation } from '../../facades/workspace/invitations'
 
 const DROPDOWN_ALERT_COUNT = 8
 
@@ -35,6 +36,7 @@ export const AlertsBell = () => {
   const ref = useRef<HTMLDivElement>(null)
   const { data } = useAlerts({ limit: DROPDOWN_ALERT_COUNT })
   const markRead = useMarkAlertsRead()
+  const acceptInvitation = useAcceptWorkspaceInvitation()
   useAlertEvents()
 
   const alerts = data?.alerts ?? []
@@ -99,16 +101,28 @@ export const AlertsBell = () => {
           {alerts.length === 0 ? (
             <p className="px-3 py-2 text-xs text-[color:var(--tx3)]">No alerts yet</p>
           ) : (
-            alerts.map((alert) => (
-              <button
-                className="admin-topbar-menu-item"
-                key={alert.id}
-                onClick={() => openAlert(alert)}
-                type="button"
-              >
-                <AlertRow alert={alert} />
-              </button>
-            ))
+            alerts.map((alert) => {
+              const invite = alert.metadata
+              const accepting = acceptInvitation.isPending
+                && acceptInvitation.variables?.inviteId === invite?.inviteId
+              const acceptError = acceptInvitation.isError
+                && acceptInvitation.variables?.inviteId === invite?.inviteId
+                ? acceptInvitation.error.message
+                : null
+              return (
+                <AlertRow
+                  acceptError={acceptError}
+                  accepting={accepting}
+                  alert={alert}
+                  className="admin-topbar-menu-item"
+                  key={alert.id}
+                  onAcceptInvitation={invite
+                    ? () => acceptInvitation.mutate(invite)
+                    : undefined}
+                  onOpen={() => openAlert(alert)}
+                />
+              )
+            })
           )}
           <button
             className="admin-topbar-menu-item justify-center text-[color:var(--accent)]"

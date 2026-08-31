@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { visibleUserAlertWhere } from '@nessie/db'
 
-import type { UserAlertRecord } from '../contracts.js'
+import {
+  WorkspaceInvitationAlertMetadataSchema,
+  type UserAlertRecord,
+} from '../contracts.js'
 
 // User alerts (#246): org-scoped, per-user reads of the durable UserAlert
 // store. Every query is pinned to BOTH the caller's organization and the
@@ -33,6 +36,14 @@ const alertInclude = {
 
 type AlertWithRelations = Prisma.UserAlertGetPayload<{ include: typeof alertInclude }>
 
+const alertMetadata = (
+  alert: AlertWithRelations,
+): UserAlertRecord['metadata'] => {
+  if (alert.kind !== 'workspace_invitation') return null
+  const parsed = WorkspaceInvitationAlertMetadataSchema.safeParse(alert.metadata)
+  return parsed.success ? parsed.data : null
+}
+
 const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   id: alert.id,
   kind: alert.kind,
@@ -46,6 +57,7 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   knowledgePageId: alert.knowledgePageId ?? null,
   triggerId: alert.triggerId ?? null,
   callId: alert.callId ?? null,
+  metadata: alertMetadata(alert),
   actorUserId: alert.actorUserId,
   actorAgentId: alert.actorAgentId,
   actorDisplayName: alert.actorUser?.displayName ?? alert.actorAgent?.name ?? null,

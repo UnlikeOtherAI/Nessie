@@ -13,8 +13,21 @@ export const UserAlertKindSchema = z.enum([
   // Triggers page and read a delivery row.
   'trigger_health',
   'call_missed',
+  'workspace_invitation',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
+
+export const WorkspaceInvitationAlertMetadataSchema = z.object({
+  inviteId: z.string().min(1),
+  organizationId: z.string().min(1),
+  teamId: z.string().min(1),
+  teamName: z.string().min(1),
+  invitedBy: z.string().min(1).optional(),
+  expiresAt: TimestampSchema.optional(),
+}).strict()
+export type WorkspaceInvitationAlertMetadata = z.infer<
+  typeof WorkspaceInvitationAlertMetadataSchema
+>
 
 export const UserAlertRecordSchema = z.object({
   id: z.string().uuid(),
@@ -29,6 +42,7 @@ export const UserAlertRecordSchema = z.object({
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
   callId: z.string().uuid().nullable(),
+  metadata: WorkspaceInvitationAlertMetadataSchema.nullable(),
   actorUserId: z.string().uuid().nullable(),
   actorAgentId: z.string().uuid().nullable(),
   actorDisplayName: z.string().nullable(),

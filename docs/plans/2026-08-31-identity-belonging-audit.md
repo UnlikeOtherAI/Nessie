@@ -1,6 +1,6 @@
 # Identity, belonging, and workspace switching — audit (2026-08-31)
 
-> **Status:** audit only — no code changed. Three independent passes over the
+> **Status:** audit complete; F1 landed on 2026-08-31. Three independent passes over the
 > tree at `0f8d9c41` (main): this document's author, a Kimix run, and a Codex
 > Sol run, each auditing the same brief; every external claim was re-verified
 > against the code before being folded in (§6). Builds on
@@ -240,8 +240,14 @@ to acceptance (rule zero: the capability exists upstream, no person can reach
 it from here). The invitee's only doorways are the invite email and the
 unprompted "Add workspace" button.
 
-**F2 — Invitation acceptance can be structurally impossible, and fails
-mute (high; the bug's belonging half; UOA-side, product decision needed).**
+**Fixed 2026-08-31.** Nessie now parses verified `pending_invites`, reconciles
+them into durable user alerts, and exposes acceptance from both the workspace
+switcher and alert surfaces. Acceptance is relayed to UOA's new backend-mode
+endpoint and, on success, uses the existing UOA workspace switch path. UOA's
+named `ORG_CONFLICT_ON_DOMAIN` refusal is surfaced as an actionable conflict.
+
+**F2 — Invitation acceptance can be structurally impossible (high; the bug's
+belonging half; UOA-side, product decision needed).**
 The one-org-per-origin-domain invariant makes an invite to a second
 Nessie-domain org permanently unacceptable — refused as a bare 400 with no
 code — for anyone who already runs their own org on the domain, which Nessie's
@@ -252,7 +258,10 @@ own `allow_user_create_org: true` encourages (UOA:
 never told either — the invitation just sits "pending" forever in the Members
 page. Whether the invariant should bend (multi-org membership per domain) or
 the refusal should become a first-class, named, surfaced state is a UOA
-product decision; today it is a silent dead end on both sides.
+product decision. The 2026-08-31 acceptance relay mitigates the invitee-side
+"fails mute" half: UOA now names this refusal `ORG_CONFLICT_ON_DOMAIN`, and
+Nessie explains it in place. The inviter-side pending row still carries no
+terminal reason, so the underlying product decision remains open.
 
 **F3 — The switcher degrades silently, in both directions (medium-high).**
 Four compounding behaviours, all invisible to the user:
@@ -406,16 +415,15 @@ as current.
 
 ## 4. Recommended fixes
 
-Ordered so the reported bug dies first; none are implemented in this audit.
+Ordered so the reported bug dies first. Landed recommendations are marked.
 
-1. **Parse and surface `pending_invites` (fixes F1, half of the bug).** Extend
-   `parseWorkspaceDirectory` to carry `pending_invites` through the same cache,
-   render them in the switcher ("Invited — accept in UnlikeOtherAI") and as a
-   banner/badge where belonging questions arise (Members page already shows
-   the inviter's half). Acceptance stays UOA-hosted: the affordance launches
-   the SSO flow (the existing "Add workspace" path with `teamHint`) or links
-   the UOA-hosted acceptance. Rule zero check 1: the invitee's home surface is
-   the switcher; the doorway is the invite entry itself.
+1. **Landed 2026-08-31 — parse and surface `pending_invites` (fixes F1, half
+   of the bug).** `parseWorkspaceDirectory` carries verified invites through
+   the cache and reconciles durable alerts. The switcher and alerts bell/page
+   are two doorways into one shared acceptance action, which relays to UOA and
+   then uses Nessie's existing UOA workspace switch. Rule zero check 1: the
+   invitee's owning surface is the switcher; the bell and alerts page are the
+   in-context attention doorways.
 2. **Resolve the acceptance dead end with UOA (fixes F2, the other half).**
    Decision needed on the UOA side: either permit accepting into a second
    organisation on the same origin domain, or return a *named* refusal
@@ -533,4 +541,3 @@ cache/fallback path; this document, with the UOA source in evidence, pins the
 membership/invitation trap (§2.1) and keeps the cache path as the co-factor
 that removes every chance of the truth surfacing. The production checks in
 §2.2 decide between them with one query.
-

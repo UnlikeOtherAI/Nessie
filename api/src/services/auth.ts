@@ -241,15 +241,25 @@ const loadUoaWorkspaceDirectory = async (
   prisma: PrismaClient,
   userId: string,
   claims: SessionTokenClaims,
-): Promise<MeResponse['uoaWorkspaces']> => {
-  if (claims.providerType !== 'uoa') return undefined
-  const entries = readUoaWorkspaceDirectory(userId)
+): Promise<{
+  uoaPendingInvites: MeResponse['uoaPendingInvites']
+  uoaWorkspaces: MeResponse['uoaWorkspaces']
+}> => {
+  if (claims.providerType !== 'uoa') {
+    return { uoaPendingInvites: undefined, uoaWorkspaces: undefined }
+  }
+  const directory = readUoaWorkspaceDirectory(userId)
     ?? await deriveUoaWorkspaceDirectoryFromTeams(prisma, userId)
   const workspaces = uoaWorkspaceDirectoryFromEntries(
-    entries,
+    directory.entries,
     claims.uoaIdentity?.teamId,
   )
-  return workspaces ? addWorkspaceAvatarTeamIds(prisma, userId, workspaces) : undefined
+  return {
+    uoaPendingInvites: directory.pendingInvites,
+    uoaWorkspaces: workspaces
+      ? await addWorkspaceAvatarTeamIds(prisma, userId, workspaces)
+      : undefined,
+  }
 }
 
 export const buildMeResponse = async (
@@ -264,7 +274,7 @@ export const buildMeResponse = async (
   // the provider's verified claims at login/switch/refresh instead
   // (`uoa-profile-mirror.ts`), and a row still named by its email address
   // renders that way until the provider supplies a name.
-  const [memberships, uoaWorkspaces] = await Promise.all([
+  const [memberships, uoaDirectory] = await Promise.all([
     loadUserMemberships(prisma, user.id),
     loadUoaWorkspaceDirectory(prisma, user.id, claims),
   ])
@@ -309,6 +319,11 @@ export const buildMeResponse = async (
       autoRedirectToSso: config.auth.autoRedirectToSso,
     },
     memberships,
-    ...(uoaWorkspaces ? { uoaWorkspaces } : {}),
+    ...(uoaDirectory.uoaWorkspaces
+      ? { uoaWorkspaces: uoaDirectory.uoaWorkspaces }
+      : {}),
+    ...(uoaDirectory.uoaPendingInvites !== undefined
+      ? { uoaPendingInvites: uoaDirectory.uoaPendingInvites }
+      : {}),
   }
 }

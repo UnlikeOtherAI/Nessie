@@ -18,11 +18,12 @@ import {
 import {
   fetchUoaWorkspaceDirectory,
   type UoaSessionHttpDeps,
-  type UoaWorkspaceDirectoryEntry,
+  type UoaWorkspaceDirectory,
 } from './uoa-workspace-directory.js'
 
 export type {
   UoaSessionHttpDeps,
+  UoaWorkspaceDirectory,
   UoaWorkspaceDirectoryEntry,
 } from './uoa-workspace-directory.js'
 
@@ -43,7 +44,7 @@ export type UoaSessionExchange = {
   }
   refreshToken: string
   refreshTokenExpiresInSeconds: number
-  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
+  workspaceDirectory?: UoaWorkspaceDirectory
 }
 
 export class UoaSessionRefreshError extends Error {
@@ -211,7 +212,7 @@ const parseUoaSessionExchange = (
     },
     refreshToken,
     refreshTokenExpiresInSeconds,
-    workspaceDirectory: [],
+    workspaceDirectory: { entries: [], pendingInvites: [] },
   } }
 }
 

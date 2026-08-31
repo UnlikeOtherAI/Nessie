@@ -126,13 +126,16 @@ test('refreshUoaSession sends the exact refresh contract and accepts a monotonic
 
     assert.equal(refreshed.refreshToken, 'uoa-refresh-2')
     assert.equal(refreshed.identity.uoaTokenVersion, 8)
-    assert.deepEqual(refreshed.workspaceDirectory, [{
-      avatarImageUrl: 'https://1.1.1.1/teams/team-active/avatar',
-      label: 'Fresh workspace',
-      organizationId: 'org-active',
-      orgName: 'Fresh org',
-      teamId: 'team-active',
-    }])
+    assert.deepEqual(refreshed.workspaceDirectory, {
+      entries: [{
+        avatarImageUrl: 'https://1.1.1.1/teams/team-active/avatar',
+        label: 'Fresh workspace',
+        organizationId: 'org-active',
+        orgName: 'Fresh org',
+        teamId: 'team-active',
+      }],
+      pendingInvites: [],
+    })
     assert.equal(urls.length, 2)
   })
 })

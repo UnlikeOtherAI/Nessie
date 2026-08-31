@@ -17,13 +17,16 @@ const syncInput = {
   teamId: '00000000-0000-4000-8000-000000000002',
   uoaTokenVersion: 8,
   userId: '00000000-0000-4000-8000-000000000003',
-  workspaceDirectory: [{
-    organizationId: 'uoa-org',
-    teamId: 'uoa-team',
-    avatarImageUrl: 'https://authentication.example.com/public/teams/uoa-team/avatar',
-    label: 'Engineering',
-    orgName: 'Example organization',
-  }],
+  workspaceDirectory: {
+    entries: [{
+      organizationId: 'uoa-org',
+      teamId: 'uoa-team',
+      avatarImageUrl: 'https://authentication.example.com/public/teams/uoa-team/avatar',
+      label: 'Engineering',
+      orgName: 'Example organization',
+    }],
+    pendingInvites: [],
+  },
   workspace: {
     activeOrgId: 'uoa-org',
     activeTeamId: 'uoa-team',
@@ -106,12 +109,16 @@ test('account-link sync updates every first-party product under one transaction'
           )
           return 1
         },
+        userAlert: {
+          deleteMany: async () => ({ count: 0 }),
+          upsert: async () => undefined,
+        },
       })
     },
   }
 
   await syncUoaProductAccountLinks(prisma as never, syncInput)
-  assert.equal(transactionCalls, 1)
+  assert.equal(transactionCalls, 2)
   assert.equal(statements.length, 2)
   // The UOA-owned directory is cached in memory, never mirrored into the link.
   for (const metadata of persistedMetadata) {

@@ -12,7 +12,7 @@ import {
 import type { ExternalAuthWorkspace } from './identity-display.js'
 import { hashRefreshToken } from './refresh-token-crypto.js'
 import type { RefreshTokenRecord } from './refresh-token-family.js'
-import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
+import type { UoaWorkspaceDirectory } from './uoa-workspace-directory.js'
 
 export type UoaCredentialRecord = {
   familyId: string
@@ -41,7 +41,7 @@ export type RotatedUoaCredential = {
   // The refreshed token's verified `org` claim, carried through to the local
   // role projection in `uoa-session-context.ts`.
   workspace?: ExternalAuthWorkspace
-  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
+  workspaceDirectory?: UoaWorkspaceDirectory
 }
 
 export class UoaRefreshBindingError extends Error {
@@ -167,7 +167,7 @@ export const validateUoaRefresh = (input: {
   refreshTokenExpiresAt: Date
   targetIdentity?: Pick<UoaSessionIdentity, 'organizationId' | 'teamId'>
   workspace?: ExternalAuthWorkspace
-  workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
+  workspaceDirectory?: UoaWorkspaceDirectory
 }): RotatedUoaCredential => {
   const parsedIdentity = UoaSessionIdentitySchema.safeParse(input.identity)
   // Same subject, non-regressing epoch: strictly enforced, because those two

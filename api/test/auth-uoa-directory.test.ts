@@ -5,6 +5,7 @@ import type { PrismaClient, User } from '@prisma/client'
 
 import type { SessionTokenClaims } from '../src/auth/session.js'
 import { buildMeResponse } from '../src/services/auth.js'
+import type { UoaWorkspaceDirectory } from '../src/services/uoa-workspace-directory.js'
 import {
   clearUoaWorkspaceDirectoryCache,
   readUoaWorkspaceDirectory,
@@ -94,9 +95,14 @@ const config = {
   mode: 'hosted',
 } as Parameters<typeof buildMeResponse>[3]
 
+const verifiedDirectory = (
+  entries: UoaWorkspaceDirectory['entries'],
+  pendingInvites: UoaWorkspaceDirectory['pendingInvites'] = [],
+) => ({ entries, pendingInvites })
+
 test('a cached directory is served without touching the account link', async () => {
   clearUoaWorkspaceDirectoryCache()
-  rememberUoaWorkspaceDirectory(userId, [
+  rememberUoaWorkspaceDirectory(userId, verifiedDirectory([
     {
       organizationId: 'uoa-org-active',
       teamId: 'uoa-team-active',
@@ -109,7 +115,13 @@ test('a cached directory is served without touching the account link', async () 
       teamId: 'uoa-team-other',
       label: 'Other workspace',
     },
-  ])
+  ], [{
+    inviteId: 'invite-1',
+    organizationId: 'uoa-org-invited',
+    teamId: 'uoa-team-invited',
+    teamName: 'Invited workspace',
+    invitedBy: 'Grace Hopper',
+  }]))
   const prisma = makePrisma([{
     externalOrgId: 'uoa-org-active',
     externalWorkspaceId: 'uoa-team-active',
@@ -139,6 +151,13 @@ test('a cached directory is served without touching the account link', async () 
       active: false,
     },
   ])
+  assert.deepEqual(me.uoaPendingInvites, [{
+    inviteId: 'invite-1',
+    organizationId: 'uoa-org-invited',
+    teamId: 'uoa-team-invited',
+    teamName: 'Invited workspace',
+    invitedBy: 'Grace Hopper',
+  }])
   clearUoaWorkspaceDirectoryCache()
 })
 
@@ -167,6 +186,7 @@ test('a cold cache degrades to the local Team → UOA workspace mapping', async 
     orgName: 'Nessie Works',
     active: true,
   }])
+  assert.equal(me.uoaPendingInvites, undefined)
 })
 
 test('a person with no locally materialized workspace gets no directory', async () => {
@@ -178,9 +198,9 @@ test('a person with no locally materialized workspace gets no directory', async 
 test('a failed UOA read keeps the last verified directory', () => {
   clearUoaWorkspaceDirectoryCache()
   const entries = [{ organizationId: 'uoa-org', teamId: 'uoa-team', label: 'Kept' }]
-  rememberUoaWorkspaceDirectory(userId, entries)
+  rememberUoaWorkspaceDirectory(userId, verifiedDirectory(entries))
   rememberUoaWorkspaceDirectory(userId, undefined)
-  assert.deepEqual(readUoaWorkspaceDirectory(userId), entries)
+  assert.deepEqual(readUoaWorkspaceDirectory(userId), verifiedDirectory(entries))
   clearUoaWorkspaceDirectoryCache()
 })
 
@@ -189,7 +209,7 @@ test('a cached directory expires after its TTL', () => {
   const start = 1_700_000_000_000
   rememberUoaWorkspaceDirectory(
     userId,
-    [{ organizationId: 'uoa-org', teamId: 'uoa-team', label: 'Stale soon' }],
+    verifiedDirectory([{ organizationId: 'uoa-org', teamId: 'uoa-team', label: 'Stale soon' }]),
     start,
   )
   assert.notEqual(readUoaWorkspaceDirectory(userId, start + 29 * 60 * 1000), undefined)
@@ -201,16 +221,16 @@ test('the cache is bounded and evicts the least recently used person', () => {
   clearUoaWorkspaceDirectoryCache()
   const bound = 10_000
   for (let index = 0; index < bound; index += 1) {
-    rememberUoaWorkspaceDirectory(`user-${index}`, [
+    rememberUoaWorkspaceDirectory(`user-${index}`, verifiedDirectory([
       { organizationId: 'uoa-org', teamId: `uoa-team-${index}`, label: `Workspace ${index}` },
-    ])
+    ]))
   }
   // Touching the oldest entry moves it ahead of the next-oldest, so the write
   // that overflows the bound evicts `user-1` rather than `user-0`.
   assert.notEqual(readUoaWorkspaceDirectory('user-0'), undefined)
-  rememberUoaWorkspaceDirectory('user-overflow', [
+  rememberUoaWorkspaceDirectory('user-overflow', verifiedDirectory([
     { organizationId: 'uoa-org', teamId: 'uoa-team-overflow', label: 'Overflow' },
-  ])
+  ]))
 
   assert.notEqual(readUoaWorkspaceDirectory('user-0'), undefined)
   assert.equal(readUoaWorkspaceDirectory('user-1'), undefined)

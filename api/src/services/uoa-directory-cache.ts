@@ -1,6 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
 
-import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
+import type {
+  UoaWorkspaceDirectory,
+  UoaWorkspaceDirectoryEntry,
+} from './uoa-workspace-directory.js'
 
 /**
  * The UOA workspace directory (workspace labels, org ids/names, avatar URLs) is
@@ -26,8 +29,13 @@ const DIRECTORY_TTL_MS = 30 * 60 * 1000
 const DIRECTORY_MAX_USERS = 10_000
 
 type CachedDirectory = {
-  entries: UoaWorkspaceDirectoryEntry[]
+  directory: UoaWorkspaceDirectory
   expiresAt: number
+}
+
+export type UoaWorkspaceDirectoryFallback = {
+  entries: UoaWorkspaceDirectoryEntry[]
+  pendingInvites: undefined
 }
 
 // Insertion-ordered Map used as the LRU: every hit and every write re-inserts
@@ -41,12 +49,12 @@ const directoryByUserId = new Map<string, CachedDirectory>()
  */
 export const rememberUoaWorkspaceDirectory = (
   userId: string,
-  entries: UoaWorkspaceDirectoryEntry[] | undefined,
+  directory: UoaWorkspaceDirectory | undefined,
   now: number = Date.now(),
 ): void => {
-  if (!entries) return
+  if (!directory) return
   directoryByUserId.delete(userId)
-  directoryByUserId.set(userId, { entries, expiresAt: now + DIRECTORY_TTL_MS })
+  directoryByUserId.set(userId, { directory, expiresAt: now + DIRECTORY_TTL_MS })
   while (directoryByUserId.size > DIRECTORY_MAX_USERS) {
     const oldest = directoryByUserId.keys().next()
     if (oldest.done) break
@@ -58,7 +66,7 @@ export const rememberUoaWorkspaceDirectory = (
 export const readUoaWorkspaceDirectory = (
   userId: string,
   now: number = Date.now(),
-): UoaWorkspaceDirectoryEntry[] | undefined => {
+): UoaWorkspaceDirectory | undefined => {
   const cached = directoryByUserId.get(userId)
   if (!cached) return undefined
   if (cached.expiresAt <= now) {
@@ -67,7 +75,7 @@ export const readUoaWorkspaceDirectory = (
   }
   directoryByUserId.delete(userId)
   directoryByUserId.set(userId, cached)
-  return cached.entries
+  return cached.directory
 }
 
 /** Test seam: drop every cached directory. */
@@ -93,7 +101,7 @@ export const clearUoaWorkspaceDirectoryCache = (): void => {
 export const deriveUoaWorkspaceDirectoryFromTeams = async (
   prisma: PrismaClient,
   userId: string,
-): Promise<UoaWorkspaceDirectoryEntry[]> => {
+): Promise<UoaWorkspaceDirectoryFallback> => {
   const teams = await prisma.team.findMany({
     where: {
       externalOrgId: { not: null },
@@ -109,12 +117,17 @@ export const deriveUoaWorkspaceDirectoryFromTeams = async (
     },
   })
 
-  return teams.flatMap((team) => team.externalOrgId && team.externalWorkspaceId
-    ? [{
+  return {
+    entries: teams.flatMap((team) => team.externalOrgId && team.externalWorkspaceId
+      ? [{
         organizationId: team.externalOrgId,
         teamId: team.externalWorkspaceId,
         label: team.name,
         orgName: team.project.organization.name,
       }]
-    : [])
+      : []),
+    // A cold cache has no verified invitation knowledge. `undefined` is
+    // intentionally distinct from UOA having verified an empty list.
+    pendingInvites: undefined,
+  }
 }

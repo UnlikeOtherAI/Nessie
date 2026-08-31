@@ -34,22 +34,19 @@ import {
 } from './uoa-workspace-switch-intent.js'
 import type { UoaWorkspaceSwitchTarget } from './uoa-session.js'
 import type { ExternalAuthWorkspace } from './identity-display.js'
-import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
+import type { UoaWorkspaceDirectory } from './uoa-workspace-directory.js'
 import type { ConsumeRefreshTokenResult } from './refresh-token-result.js'
 import {
   assertWorkspaceSwitchSource,
   clearRefusedWorkspaceSwitchIntent,
   commitUoaRotation,
+  notifyUoaSessionBindingAfterCommit,
   revalidateWorkspaceSwitchIntent,
   type UoaRotationCallbacks,
 } from './refresh-token-uoa-rotation.js'
 
 export { hashRefreshToken } from './refresh-token-crypto.js'
-export {
-  issueRefreshToken,
-  RefreshTokenIssuanceError,
-} from './refresh-token-issuance.js'
-
+export { issueRefreshToken, RefreshTokenIssuanceError } from './refresh-token-issuance.js'
 export { REFRESH_TOKEN_REPLAY_GRACE_MS } from './refresh-token-family.js'
 export { revokeRefreshFamily as revokeFamily } from './refresh-token-family.js'
 export { UoaRefreshBindingError } from './refresh-token-uoa.js'
@@ -71,7 +68,7 @@ type ConsumeInput = UoaRotationCallbacks & {
     refreshToken: string
     refreshTokenExpiresAt: Date
     workspace?: ExternalAuthWorkspace
-    workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
+    workspaceDirectory?: UoaWorkspaceDirectory
   }>
   beforeUoaWorkspaceSwitch?: (input: {
     sourceIdentity: UoaSessionIdentity
@@ -359,7 +356,7 @@ export const consumeRefreshToken = async (
     }
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result: ConsumeRefreshTokenResult = await prisma.$transaction(async (tx) => {
     await lockRefreshFamily(tx, familyHint.familyId)
     const presented = await tx.refreshToken.findUnique({
       where: { tokenHash },
@@ -480,6 +477,9 @@ export const consumeRefreshToken = async (
       false,
     )
   }, AUTH_LOCK_TRANSACTION_OPTIONS)
+
+  await notifyUoaSessionBindingAfterCommit(input, rotatedUoa, result, preflight.presented.userId)
+  return result
 }
 
 // Logout: revoke the family of the presented token. Missing/unknown tokens are

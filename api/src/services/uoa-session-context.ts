@@ -4,7 +4,8 @@ import { rememberUoaWorkspaceDirectory } from './uoa-directory-cache.js'
 import type { ExternalAuthWorkspace } from './identity-display.js'
 import { projectUoaRoles, resolveUoaRoleClaims } from './uoa-roles.js'
 import { AUTH_LOCK_TRANSACTION_OPTIONS } from './user-session-lock.js'
-import type { UoaWorkspaceDirectoryEntry } from './uoa-workspace-directory.js'
+import type { UoaWorkspaceDirectory } from './uoa-workspace-directory.js'
+import { syncWorkspaceInviteAlerts } from './workspace-invite-alerts.js'
 
 type UoaSessionContextPrisma = Pick<PrismaClient, 'productAccountLink' | 'team'>
 
@@ -186,7 +187,7 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
     previousIdentity: UoaSessionIdentity
     userId: string
     workspace?: ExternalAuthWorkspace
-    workspaceDirectory?: UoaWorkspaceDirectoryEntry[]
+    workspaceDirectory?: UoaWorkspaceDirectory
   },
 ): Promise<UoaLocalSessionContext> => {
   const previousVersion = requireTokenVersion(input.previousIdentity)
@@ -284,18 +285,55 @@ export const advanceUoaLocalSessionBindingInTransaction = async (
       )
     }
   }
-  // The refreshed directory is UOA-owned display data: it belongs in the
-  // bounded in-memory cache, not in the link row. Written here, inside the
-  // rotation transaction, because this is where the rotation's verified
-  // directory arrives; a transaction that later rolls back leaves at worst a
-  // fresh copy of this same user's own workspaces in a non-authoritative cache.
-  rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
   return context
+}
+
+/**
+ * Publish a verified rotation directory only after its binding transaction
+ * commits. The cache is non-authoritative; the durable alert reconciliation is
+ * best-effort and can retry at the next login or token rotation.
+ */
+export const syncUoaDirectoryAfterSessionCommit = async (
+  prisma: PrismaClient,
+  input: {
+    nextIdentity: UoaSessionIdentity
+    userId: string
+    workspaceDirectory?: UoaWorkspaceDirectory
+  },
+): Promise<void> => {
+  if (!input.workspaceDirectory) return
+  rememberUoaWorkspaceDirectory(input.userId, input.workspaceDirectory)
+  try {
+    const organization = await prisma.organization.findUnique({
+      where: { externalOrgId: input.nextIdentity.organizationId },
+      select: { id: true },
+    })
+    if (!organization) {
+      console.warn('[uoa] workspace invitation alert sync skipped: local organization missing')
+      return
+    }
+    await syncWorkspaceInviteAlerts(prisma, {
+      organizationId: organization.id,
+      pendingInvites: input.workspaceDirectory.pendingInvites,
+      userId: input.userId,
+    })
+  } catch (error) {
+    console.warn('[uoa] workspace invitation alert sync failed after rotation', error)
+  }
 }
 
 export const advanceUoaLocalSessionBinding = async (
   prisma: PrismaClient,
   input: Parameters<typeof advanceUoaLocalSessionBindingInTransaction>[1],
-): Promise<UoaLocalSessionContext> => prisma.$transaction((transaction) =>
-  advanceUoaLocalSessionBindingInTransaction(transaction, input),
-AUTH_LOCK_TRANSACTION_OPTIONS)
+): Promise<UoaLocalSessionContext> => {
+  const context = await prisma.$transaction(
+    (transaction) => advanceUoaLocalSessionBindingInTransaction(transaction, input),
+    AUTH_LOCK_TRANSACTION_OPTIONS,
+  )
+  await syncUoaDirectoryAfterSessionCommit(prisma, {
+    nextIdentity: input.nextIdentity,
+    userId: input.userId,
+    workspaceDirectory: input.workspaceDirectory,
+  })
+  return context
+}

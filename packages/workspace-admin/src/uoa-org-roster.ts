@@ -1,9 +1,4 @@
 import type { PrismaClient } from '@prisma/client'
-import {
-  safeFetch,
-  type PinnedFetch,
-  type ResolveHost,
-} from '@nessie/runtime'
 import type {
   CreateWorkspaceInvitationsRequest,
   WorkspaceInvitationRecord,
@@ -11,7 +6,24 @@ import type {
   WorkspaceMemberRecord,
 } from '@nessie/schemas'
 
-import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from './uoa-settings.js'
+import {
+  orgPath,
+  requireSettings,
+  rosterRequest,
+  rosterSettings,
+  teamPath,
+  UoaRosterRejectedError,
+  UoaRosterUnavailableError,
+  type UoaRosterDeps,
+  type UoaRosterWorkspace,
+} from './uoa-org-request.js'
+
+export {
+  UoaRosterRejectedError,
+  UoaRosterUnavailableError,
+  type UoaRosterDeps,
+  type UoaRosterWorkspace,
+} from './uoa-org-request.js'
 
 /**
  * Workspace rosters and invitations, read and written on UnlikeOtherAI's `/org/*`
@@ -43,24 +55,11 @@ import { clientHash, isUoaConfigured, loadUoaSettings, type UoaSettings } from '
  * §4.6b/§4.7/§4.7a/§4.7b and the machine-readable `/api` endpoint list.
  */
 
-const ROSTER_TIMEOUT_MS = 10_000
-
-/** The upstream could not be consulted, or answered with something unusable. */
-export class UoaRosterUnavailableError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'UoaRosterUnavailableError'
-  }
-}
-
-/** UOA refused the request (4xx). The caller's problem, not an outage. */
-export class UoaRosterRejectedError extends Error {
-  constructor(
-    message: string,
-    public readonly statusCode: number,
-  ) {
-    super(message)
-    this.name = 'UoaRosterRejectedError'
+/** The invitee already belongs to another UOA org on this product domain. */
+export class UoaInvitationOrgConflictError extends Error {
+  constructor() {
+    super('[uoa] the invitee already belongs to another organisation on this domain')
+    this.name = 'UoaInvitationOrgConflictError'
   }
 }
 
@@ -77,29 +76,11 @@ export class UoaInvitationAlreadyAcceptedError extends Error {
   }
 }
 
-export type UoaRosterDeps = {
-  fetchImpl?: PinnedFetch
-  resolveHost?: ResolveHost
-}
-
-/** The UOA org + team ids behind a Nessie team. Both are needed for `/org/*`. */
-export type UoaRosterWorkspace = {
-  externalOrgId: string
-  externalTeamId: string
-}
-
 export type UoaRosterPrisma = Pick<PrismaClient, 'team'>
 
 export type WorkspaceMemberActivation = 'deactivate' | 'reactivate'
 
 export type WorkspaceInvitationReview = 'approve' | 'deny'
-
-/** Configured UOA settings, or null when this deployment cannot call UOA at all. */
-const rosterSettings = (): UoaSettings | null => {
-  if (!isUoaConfigured()) return null
-  const settings = loadUoaSettings()
-  return settings.clientSecret ? settings : null
-}
 
 /**
  * Resolve the UOA workspace behind the actor's own session team. A team with no
@@ -118,82 +99,6 @@ export const resolveUoaRosterWorkspace = async (
   return team?.externalOrgId && team.externalWorkspaceId
     ? { externalOrgId: team.externalOrgId, externalTeamId: team.externalWorkspaceId }
     : null
-}
-
-const orgPath = (workspace: UoaRosterWorkspace): string =>
-  `/org/organisations/${encodeURIComponent(workspace.externalOrgId)}`
-
-const teamPath = (workspace: UoaRosterWorkspace): string =>
-  `${orgPath(workspace)}/teams/${encodeURIComponent(workspace.externalTeamId)}`
-
-const rosterUrl = (
-  settings: UoaSettings,
-  path: string,
-  query: Record<string, string> = {},
-): URL => {
-  const url = new URL(`${settings.baseUrl}${path}`)
-  url.searchParams.set('domain', settings.domain)
-  url.searchParams.set('config_url', settings.configUrl)
-  for (const [key, value] of Object.entries(query)) {
-    url.searchParams.set(key, value)
-  }
-  return url
-}
-
-const fetchOptions = (deps: UoaRosterDeps) => ({
-  ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
-  ...(deps.resolveHost ? { resolveHost: deps.resolveHost } : {}),
-  maxRedirects: 0,
-})
-
-/**
- * One backend-mode `/org/*` call. Note what is *not* here: no
- * `X-UOA-Access-Token` header in any form. Returns the raw parsed body; every
- * caller narrows it itself rather than trusting the shape.
- */
-const rosterRequest = async (
-  settings: UoaSettings,
-  path: string,
-  init: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; query?: Record<string, string> },
-  deps: UoaRosterDeps,
-): Promise<unknown> => {
-  let response: Response
-  try {
-    response = await safeFetch(
-      rosterUrl(settings, path, init.query),
-      {
-        method: init.method,
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${clientHash(settings)}`,
-          ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        },
-        ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-        signal: AbortSignal.timeout(ROSTER_TIMEOUT_MS),
-      },
-      fetchOptions(deps),
-    )
-  } catch {
-    throw new UoaRosterUnavailableError('[uoa] the org API is temporarily unavailable')
-  }
-
-  if (!response.ok) {
-    if (response.status >= 400 && response.status < 500) {
-      throw new UoaRosterRejectedError(
-        `[uoa] the org API refused the request (${response.status})`,
-        response.status,
-      )
-    }
-    throw new UoaRosterUnavailableError(`[uoa] the org API returned ${response.status}`)
-  }
-
-  const text = await response.text()
-  if (text.trim().length === 0) return null
-  try {
-    return JSON.parse(text)
-  } catch {
-    throw new UoaRosterUnavailableError('[uoa] the org API returned a malformed body')
-  }
 }
 
 const trimString = (value: unknown): string | undefined => {
@@ -281,14 +186,6 @@ const parseInviteResults = (payload: unknown): WorkspaceInviteResult[] =>
       ['status', trimString(row.status)],
     ]),
   }))
-
-const requireSettings = (): UoaSettings => {
-  const settings = rosterSettings()
-  if (!settings) {
-    throw new UoaRosterUnavailableError('[uoa] this deployment has no UnlikeOtherAI credentials')
-  }
-  return settings
-}
 
 /**
  * The workspace roster: everyone in the UOA team, named from the organisation
@@ -462,6 +359,47 @@ export const revokeTeamInvitation = async (
   const body = asRecord(payload)
   if (!body || body.ok !== true) {
     throw new UoaRosterUnavailableError('[uoa] the org API returned an unusable revoke result')
+  }
+}
+
+/**
+ * Accept one invitation for the authenticated UOA subject. This backend-mode
+ * relay carries no spendable user token; UOA proves the invitation belongs to
+ * `uoaSub` and applies its organisation-domain rules.
+ */
+export const acceptWorkspaceInvitation = async (
+  workspace: UoaRosterWorkspace,
+  inviteId: string,
+  uoaSub: string,
+  deps: UoaRosterDeps = {},
+): Promise<void> => {
+  let payload: unknown
+  try {
+    payload = await rosterRequest(
+      requireSettings(),
+      `${teamPath(workspace)}/invitations/${encodeURIComponent(inviteId)}/accept`,
+      { method: 'POST', body: { userId: uoaSub } },
+      deps,
+    )
+  } catch (error) {
+    if (
+      error instanceof UoaRosterRejectedError
+      && error.statusCode === 400
+      && error.upstreamCode === 'ORG_CONFLICT_ON_DOMAIN'
+    ) {
+      throw new UoaInvitationOrgConflictError()
+    }
+    throw error
+  }
+
+  const body = asRecord(payload)
+  if (
+    !body
+    || body.ok !== true
+    || body.orgId !== workspace.externalOrgId
+    || body.teamId !== workspace.externalTeamId
+  ) {
+    throw new UoaRosterUnavailableError('[uoa] the org API returned an unusable acceptance result')
   }
 }
 

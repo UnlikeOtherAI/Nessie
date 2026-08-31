@@ -1561,6 +1561,7 @@ enum UserAlertKind {
   // is missable, the bell is not.
   trigger_health
   call_missed
+  workspace_invitation
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly
@@ -1585,6 +1586,9 @@ model UserAlert {
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey        String?        @map("event_key")
+  // Ephemeral UOA invitation display/acceptance payload. Reconciled from each
+  // verified directory read and deleted as soon as the invite disappears.
+  metadata        Json?          @db.JsonB
   actorUserId     String?        @map("actor_user_id") @db.Uuid
   actorAgentId    String?        @map("actor_agent_id") @db.Uuid
   readAt          DateTime?      @map("read_at")
