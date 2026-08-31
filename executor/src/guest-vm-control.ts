@@ -29,11 +29,47 @@ export type GuestRuntimeInspection = {
 }
 
 export type GuestBrowserObservation = {
+  accessibilityTree: Array<{
+    name: string
+    nodeId: number
+    role: string
+    value?: string
+  }>
+  screenshot?: {
+    dataBase64: string
+    mime: 'image/webp'
+  }
   targets: Array<{
     title: string
     type: 'page'
     url: string
   }>
+}
+
+export type GuestBrowserAction =
+  | { action: 'navigate'; url: string }
+  | { action: 'click'; nodeId: number }
+  | { action: 'type'; nodeId: number; text: string }
+  | { action: 'press'; key: string }
+  | { action: 'scroll'; deltaY: number; nodeId?: number }
+
+export type GuestBrowserActionResult = {
+  settledUrl?: string
+  status: 'acted'
+}
+
+export type GuestCommandRequest = {
+  args: string[]
+  cwd?: string
+  maxResultBytes: number
+  program: string
+  runtimeSeconds: number
+}
+
+export type GuestCommandResult = {
+  exitCode: number
+  output: string
+  success: boolean
 }
 
 export type GuestCodingAgent = 'claude' | 'codex'
@@ -144,9 +180,11 @@ const parseBrowserObservation = (payload: Buffer): GuestBrowserObservation => {
     || Object.keys(value).some((key) => !['observation', 'version'].includes(key))
     || value.version !== 1
     || !isRecord(value.observation)
-    || Object.keys(value.observation).some((key) => key !== 'targets')
+    || Object.keys(value.observation).some((key) => !['accessibilityTree', 'screenshot', 'targets'].includes(key))
     || !Array.isArray(value.observation.targets)
     || value.observation.targets.length > 32
+    || !Array.isArray(value.observation.accessibilityTree)
+    || value.observation.accessibilityTree.length > 200
   ) {
     throw unavailable('The executor guest rejected the browser observation request.')
   }
@@ -164,7 +202,101 @@ const parseBrowserObservation = (payload: Buffer): GuestBrowserObservation => {
     }
     return { title: target.title, type: target.type, url: target.url }
   })
-  return { targets }
+  const accessibilityTree = value.observation.accessibilityTree.map((node): GuestBrowserObservation['accessibilityTree'][number] => {
+    if (
+      !isRecord(node)
+      || Object.keys(node).some((key) => !['name', 'nodeId', 'role', 'value'].includes(key))
+      || typeof node.nodeId !== 'number'
+      || !Number.isInteger(node.nodeId)
+      || node.nodeId < 0
+      || node.nodeId > 2_147_483_647
+      || typeof node.role !== 'string'
+      || Buffer.byteLength(node.role, 'utf8') > 256
+      || typeof node.name !== 'string'
+      || Buffer.byteLength(node.name, 'utf8') > 256
+      || (node.value !== undefined && (typeof node.value !== 'string' || Buffer.byteLength(node.value, 'utf8') > 256))
+    ) {
+      throw unavailable('The executor guest rejected the browser observation request.')
+    }
+    return {
+      name: node.name,
+      nodeId: node.nodeId,
+      role: node.role,
+      ...(node.value === undefined ? {} : { value: node.value }),
+    }
+  })
+  const screenshot = value.observation.screenshot
+  let parsedScreenshot: GuestBrowserObservation['screenshot']
+  if (screenshot !== undefined) {
+    const dataBase64 = isRecord(screenshot) ? screenshot.dataBase64 : undefined
+    if (
+      !isRecord(screenshot)
+      || Object.keys(screenshot).some((key) => !['dataBase64', 'mime'].includes(key))
+      || screenshot.mime !== 'image/webp'
+      || typeof dataBase64 !== 'string'
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(dataBase64)
+      || Buffer.from(dataBase64, 'base64').byteLength > 8_192
+    ) {
+      throw unavailable('The executor guest rejected the browser observation request.')
+    }
+    parsedScreenshot = { dataBase64, mime: 'image/webp' }
+  }
+  if (payload.byteLength > 24_576) {
+    throw unavailable('The executor guest rejected the browser observation request.')
+  }
+  return {
+    accessibilityTree,
+    ...(parsedScreenshot === undefined ? {} : { screenshot: parsedScreenshot }),
+    targets,
+  }
+}
+
+const parseBrowserAction = (payload: Buffer): GuestBrowserActionResult => {
+  let value: unknown
+  try {
+    value = JSON.parse(payload.toString('utf8'))
+  } catch {
+    throw unavailable('The executor guest rejected the browser action request.')
+  }
+  if (!isRecord(value) || Object.keys(value).some((key) => !['action', 'version'].includes(key)) || value.version !== 1 || !isRecord(value.action)) {
+    throw unavailable('The executor guest rejected the browser action request.')
+  }
+  const action = value.action
+  if (
+    Object.keys(action).some((key) => !['settledUrl', 'status'].includes(key))
+    || action.status !== 'acted'
+    || (action.settledUrl !== undefined && (typeof action.settledUrl !== 'string' || action.settledUrl.length > 4_096))
+  ) {
+    throw unavailable('The executor guest rejected the browser action request.')
+  }
+  return { status: 'acted', ...(action.settledUrl === undefined ? {} : { settledUrl: action.settledUrl }) }
+}
+
+const parseCommandResult = (payload: Buffer): GuestCommandResult => {
+  let value: unknown
+  try {
+    value = JSON.parse(payload.toString('utf8'))
+  } catch {
+    throw unavailable('The executor guest rejected the command request.')
+  }
+  if (!isRecord(value) || Object.keys(value).some((key) => !['result', 'version'].includes(key)) || value.version !== 1 || !isRecord(value.result)) {
+    throw unavailable('The executor guest rejected the command request.')
+  }
+  const result = value.result
+  if (
+    Object.keys(result).some((key) => !['exitCode', 'output', 'success'].includes(key))
+    || typeof result.exitCode !== 'number'
+    || !Number.isInteger(result.exitCode)
+    || result.exitCode < 0
+    || result.exitCode > 255
+    || typeof result.output !== 'string'
+    || Buffer.byteLength(result.output, 'utf8') > 8_192
+    || typeof result.success !== 'boolean'
+    || result.success !== (result.exitCode === 0)
+  ) {
+    throw unavailable('The executor guest rejected the command request.')
+  }
+  return { exitCode: result.exitCode, output: result.output, success: result.success }
 }
 
 const isCodingAgent = (value: unknown): value is GuestCodingAgent => value === 'claude' || value === 'codex'
@@ -273,9 +405,19 @@ export class GuestVmControlClient {
     parseBrowserOpen(payload)
   }
 
-  async observeBrowser(): Promise<GuestBrowserObservation> {
-    const payload = await this.request(Buffer.from(JSON.stringify({ operation: 'browser.observe', version: 1 })))
+  async observeBrowser(includeScreenshot = false): Promise<GuestBrowserObservation> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ includeScreenshot, operation: 'browser.observe', version: 1 })))
     return parseBrowserObservation(payload)
+  }
+
+  async actBrowser(action: GuestBrowserAction): Promise<GuestBrowserActionResult> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ ...action, operation: 'browser.act', version: 1 })))
+    return parseBrowserAction(payload)
+  }
+
+  async runCommand(request: GuestCommandRequest): Promise<GuestCommandResult> {
+    const payload = await this.request(Buffer.from(JSON.stringify({ ...request, operation: 'command.run', version: 1 })))
+    return parseCommandResult(payload)
   }
 
   async launchCodingSession(agent: GuestCodingAgent, prompt: string): Promise<void> {

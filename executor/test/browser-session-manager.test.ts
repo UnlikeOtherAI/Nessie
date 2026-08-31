@@ -14,7 +14,7 @@ const runId = '00000000-0000-4000-8000-000000000301'
 const secondRunId = '00000000-0000-4000-8000-000000000306'
 
 const commandFor = (
-  operationKey: 'browser.open' | 'browser.observe',
+  operationKey: 'browser.act' | 'browser.open' | 'browser.observe',
   args: Record<string, unknown>,
   commandRunId = runId,
 ): ExecutorCommandEnvelope => ({
@@ -37,17 +37,24 @@ test('browser sessions use the exact run lease, reject a second launch, and stop
   let resolveClosed: (() => void) | undefined
   let starts = 0
   let stops = 0
+  const actions: Array<Record<string, unknown>> = []
   const opened: string[] = []
   const session: GuestVmSession = {
+    actBrowser: async (action) => {
+      actions.push(action)
+      return { status: 'acted' }
+    },
     closed: new Promise<void>((resolve) => { resolveClosed = resolve }),
     closeCodingSession: async () => {},
     inspectRuntime: async () => ({ browser: true, claude: false, codex: false, tmux: false }),
     launchCodingSession: async () => {},
     observeBrowser: async () => ({
+      accessibilityTree: [{ name: 'Save', nodeId: 9, role: 'button' }],
       targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],
     }),
     observeCodingSession: async () => ({ agent: 'codex', lifecycle: 'running', output: '' }),
     openBrowser: async (url) => { opened.push(url) },
+    runCommand: async () => ({ exitCode: 0, output: '', success: true }),
     stop: async () => { stops += 1; resolveClosed?.() },
   }
   const state = {
@@ -61,7 +68,7 @@ test('browser sessions use the exact run lease, reject a second launch, and stop
     },
     descriptor: {
       limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
-      operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
+      operationKeys: ['browser.open', 'browser.observe', 'browser.act', 'sandbox.stop'],
       profiles: ['workspace_sandbox'],
       revision: 1,
     },
@@ -104,10 +111,20 @@ test('browser sessions use the exact run lease, reject a second launch, and stop
     assert.deepEqual(
       await manager.observe(commandFor('browser.observe', {}), runId),
       {
+        accessibilityTree: [{ name: 'Save', nodeId: 9, role: 'button' }],
         success: true,
         targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],
       },
     )
+    assert.deepEqual(
+      await manager.act(commandFor('browser.act', { action: 'navigate', url: 'https://blocked.example.test/' }), runId),
+      { code: 'EXECUTOR_BROWSER_DENIED', success: false },
+    )
+    assert.deepEqual(
+      await manager.act(commandFor('browser.act', { action: 'click', nodeId: 9 }), runId),
+      { status: 'acted', success: true },
+    )
+    assert.deepEqual(actions, [{ action: 'click', nodeId: 9 }])
     assert.equal(await manager.stop(runId), true)
     assert.equal(stops, 1)
     assert.deepEqual(
@@ -135,13 +152,15 @@ test('browser session startup is cancelled by fencing before it can open a page'
   const startGate = new Promise<GuestVmSession>((resolve) => { resolveStart = resolve })
   const started = new Promise<void>((resolve) => { signalStart = resolve })
   const session: GuestVmSession = {
+    actBrowser: async () => ({ status: 'acted' }),
     closed: new Promise<void>((resolve) => { resolveClosed = resolve }),
     closeCodingSession: async () => {},
     inspectRuntime: async () => ({ browser: true, claude: false, codex: false, tmux: false }),
     launchCodingSession: async () => {},
-    observeBrowser: async () => ({ targets: [] }),
+    observeBrowser: async () => ({ accessibilityTree: [], targets: [] }),
     observeCodingSession: async () => ({ agent: 'codex', lifecycle: 'running', output: '' }),
     openBrowser: async () => { opens += 1 },
+    runCommand: async () => ({ exitCode: 0, output: '', success: true }),
     stop: async () => { stops += 1; resolveClosed?.() },
   }
   const state = {
@@ -155,7 +174,7 @@ test('browser session startup is cancelled by fencing before it can open a page'
     },
     descriptor: {
       limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
-      operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
+      operationKeys: ['browser.open', 'browser.observe', 'browser.act', 'sandbox.stop'],
       profiles: ['workspace_sandbox'],
       revision: 1,
     },
@@ -199,7 +218,7 @@ test('failed browser startup releases the exact COW lease so sandbox.stop can te
     },
     descriptor: {
       limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
-      operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
+      operationKeys: ['browser.open', 'browser.observe', 'browser.act', 'sandbox.stop'],
       profiles: ['workspace_sandbox'],
       revision: 1,
     },
@@ -237,7 +256,7 @@ test('a rejected guest stop cannot strand a startup lease', async () => {
     },
     descriptor: {
       limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 1 },
-      operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
+      operationKeys: ['browser.open', 'browser.observe', 'browser.act', 'sandbox.stop'],
       profiles: ['workspace_sandbox'],
       revision: 1,
     },
@@ -249,13 +268,15 @@ test('a rejected guest stop cannot strand a startup lease', async () => {
   try {
     const manager = createExecutorBrowserSessionManager(stateDir, state, {
       startSession: async () => ({
+        actBrowser: async () => ({ status: 'acted' }),
         closed: new Promise<void>(() => {}),
         closeCodingSession: async () => {},
         inspectRuntime: async () => ({ browser: false, claude: false, codex: false, tmux: false }),
         launchCodingSession: async () => {},
-        observeBrowser: async () => ({ targets: [] }),
+        observeBrowser: async () => ({ accessibilityTree: [], targets: [] }),
         observeCodingSession: async () => ({ agent: 'codex', lifecycle: 'running', output: '' }),
         openBrowser: async () => {},
+        runCommand: async () => ({ exitCode: 0, output: '', success: true }),
         stop: async () => { throw new Error('guest stop failed') },
       }),
     })

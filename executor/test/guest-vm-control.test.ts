@@ -53,22 +53,54 @@ test('the VM control client accepts only the ready line then one matching framed
   await opening
 
   const observeFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
-  const observing = client.observeBrowser()
+  const observing = client.observeBrowser(true)
   const rawObserveRequest = await observeFrame
   const observeRequest = JSON.parse(rawObserveRequest.subarray(4).toString('utf8')) as Record<string, unknown>
-  assert.equal(Buffer.from(String(observeRequest.payload), 'base64').toString('utf8'), '{"operation":"browser.observe","version":1}')
+  assert.equal(Buffer.from(String(observeRequest.payload), 'base64').toString('utf8'), '{"includeScreenshot":true,"operation":"browser.observe","version":1}')
   output.write(frameFor({
     kind: 'response',
     payload: Buffer.from(JSON.stringify({
-      observation: { targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }] },
+      observation: {
+        accessibilityTree: [{ name: 'Save', nodeId: 9, role: 'button' }],
+        screenshot: { dataBase64: Buffer.from('webp').toString('base64'), mime: 'image/webp' },
+        targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],
+      },
       version: 1,
     })).toString('base64'),
     requestId: observeRequest.requestId,
     version: 1,
   }))
   assert.deepEqual(await observing, {
+    accessibilityTree: [{ name: 'Save', nodeId: 9, role: 'button' }],
+    screenshot: { dataBase64: Buffer.from('webp').toString('base64'), mime: 'image/webp' },
     targets: [{ title: 'Guide', type: 'page', url: 'https://app.example.test/guide' }],
   })
+
+  const actionFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
+  const acting = client.actBrowser({ action: 'click', nodeId: 9 })
+  const rawActionRequest = await actionFrame
+  const actionRequest = JSON.parse(rawActionRequest.subarray(4).toString('utf8')) as Record<string, unknown>
+  assert.equal(Buffer.from(String(actionRequest.payload), 'base64').toString('utf8'), '{"action":"click","nodeId":9,"operation":"browser.act","version":1}')
+  output.write(frameFor({
+    kind: 'response',
+    payload: Buffer.from('{"action":{"status":"acted"},"version":1}').toString('base64'),
+    requestId: actionRequest.requestId,
+    version: 1,
+  }))
+  assert.deepEqual(await acting, { status: 'acted' })
+
+  const commandFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
+  const running = client.runCommand({ args: ['--version'], maxResultBytes: 8_192, program: 'pnpm', runtimeSeconds: 30 })
+  const rawCommandRequest = await commandFrame
+  const commandRequest = JSON.parse(rawCommandRequest.subarray(4).toString('utf8')) as Record<string, unknown>
+  assert.equal(Buffer.from(String(commandRequest.payload), 'base64').toString('utf8'), '{"args":["--version"],"maxResultBytes":8192,"program":"pnpm","runtimeSeconds":30,"operation":"command.run","version":1}')
+  output.write(frameFor({
+    kind: 'response',
+    payload: Buffer.from('{"result":{"exitCode":0,"output":"pnpm 10","success":true},"version":1}').toString('base64'),
+    requestId: commandRequest.requestId,
+    version: 1,
+  }))
+  assert.deepEqual(await running, { exitCode: 0, output: 'pnpm 10', success: true })
 
   const codingLaunchFrame = new Promise<Buffer>((resolvePromise) => input.once('data', resolvePromise))
   const launchingCoding = client.launchCodingSession('codex', 'Update the project safely')

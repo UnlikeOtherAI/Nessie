@@ -10,7 +10,7 @@ private func json(_ value: [String: Any]) {
 }
 
 private func usage() -> Never {
-  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm session --console <owner-only-path> --kernel <path> --initrd <path> --workspace-cow <owner-only-draft> --runtime-bundle <owner-only-runtime> --runtime-manifest-digest <sha256:...> --egress-gateway <owner-only-socket> --bootstrap-token-stdin [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
+  fputs("Usage: nessie-executor-vm probe | validate --kernel <path> [--initrd <path>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm smoke --console <owner-only-path> --kernel <path> --initrd <path> [--disk <path>] [--timeout-seconds <1-30>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm handshake --console <owner-only-path> --kernel <path> --initrd <path> --bootstrap-token-stdin [--workspace-cow <owner-only-draft>] [--timeout-seconds <1-30>] [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n  nessie-executor-vm session --console <owner-only-path> --kernel <path> --initrd <path> --workspace-cow <owner-only-draft> --runtime-bundle <owner-only-runtime> --runtime-manifest-digest <sha256:...> [--egress-gateway <owner-only-socket>] --bootstrap-token-stdin [--disk <path>] [--cpus <1-4>] [--memory-mib <2048-8192>]\n", stderr)
   exit(64)
 }
 
@@ -309,34 +309,35 @@ private func session(_ arguments: [String]) throws {
   let guestWorkspaceURL = try safeGuestWorkspaceDirectory(try requiredOption(arguments, "--workspace-cow"))
   let guestRuntimeURL = try safeGuestRuntimeDirectory(try requiredOption(arguments, "--runtime-bundle"))
   let runtimeManifestDigest = try requiredOption(arguments, "--runtime-manifest-digest")
-  let gatewaySocketPath = try requiredOption(arguments, "--egress-gateway")
+  let gatewaySocketPath = try option(arguments, "--egress-gateway")
   guard input.initrdURL != nil else { throw VMError.invalidArgument }
   let bootstrapToken = try bootstrapTokenFromStandardInput(arguments)
-  let egressToken = try guestEgressToken(fromBootstrapToken: bootstrapToken)
   if #available(macOS 15.0, *) {
     do {
       let outcome = GuestHandshakeResult()
-      let bridges = GuestEgressBridgeRegistry(gatewaySocketPath: gatewaySocketPath)
+      let bridges = gatewaySocketPath.map(GuestEgressBridgeRegistry.init)
+      let egress = try gatewaySocketPath.map { path in
+        try GuestEgressTunnelListener(
+          expectedSessionToken: guestEgressToken(fromBootstrapToken: bootstrapToken),
+          onAuthenticated: { tunnel in bridges?.attach(tunnel) },
+          onTerminated: { _ in },
+        )
+      }
       let relay = GuestControlResponseRelay()
       let machine = VZVirtualMachine(configuration: try configuration(
         for: input,
         consoleURL: consoleURL,
         enableGuestControl: true,
-        enableGuestEgress: true,
+        enableGuestEgress: gatewaySocketPath != nil,
         guestRuntimeManifestDigest: runtimeManifestDigest,
         guestRuntimeURL: guestRuntimeURL,
         guestWorkspaceURL: guestWorkspaceURL,
       ))
-      let egress = try GuestEgressTunnelListener(
-        expectedSessionToken: egressToken,
-        onAuthenticated: { tunnel in bridges.attach(tunnel) },
-        onTerminated: { _ in },
-      )
       let control = try GuestControlListener(
         expectedBootstrapToken: bootstrapToken,
         onAuthenticated: {
           do {
-            try egress.activate()
+            try egress?.activate()
             outcome.recordAuthentication()
           } catch {
             outcome.recordTermination(.unavailable)
@@ -346,7 +347,9 @@ private func session(_ arguments: [String]) throws {
         onTerminated: { reason in outcome.recordTermination(reason) },
       )
       try control.attach(to: machine)
-      try egress.attach(to: machine)
+      if let egress {
+        try egress.attach(to: machine)
+      }
       var didStart = false
       var startError: Error?
       machine.start { result in
@@ -355,15 +358,15 @@ private func session(_ arguments: [String]) throws {
       }
       guard waitForMainRunLoop({ didStart }, timeoutSeconds: 10), startError == nil else {
         control.invalidate()
-        egress.invalidate()
-        bridges.stop()
+        egress?.invalidate()
+        bridges?.stop()
         throw VMError.guestSession
       }
       let completed = waitForMainRunLoop({ outcome.isComplete() }, timeoutSeconds: 10)
       guard completed, outcome.succeeded() else {
         control.invalidate()
-        egress.invalidate()
-        bridges.stop()
+        egress?.invalidate()
+        bridges?.stop()
         try stopMachine(machine)
         throw VMError.guestSession
       }
@@ -396,8 +399,8 @@ private func session(_ arguments: [String]) throws {
       pipe.stop()
       let failed = outcome.isTerminated() && !stop.isRequested()
       control.invalidate()
-      egress.invalidate()
-      bridges.stop()
+      egress?.invalidate()
+      bridges?.stop()
       try stopMachine(machine)
       if failed { throw VMError.guestSession }
       return

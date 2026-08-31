@@ -15,10 +15,10 @@ test('logical executor tools expose exactly the implemented operation set', () =
   assert.deepEqual(offeredOperations, IMPLEMENTED_EXECUTOR_OPERATION_KEYS)
   assert.equal(new Set(offeredOperations).size, offeredOperations.length)
   assert.equal(executorLogicalToolId('file.read'), 'executor.file.read')
+  assert.equal(executorLogicalToolId('command.run'), 'executor.command.run')
+  assert.equal(executorLogicalToolId('browser.act'), 'executor.browser.act')
   assert.equal(executorLogicalToolId('workspace.review'), 'executor.workspace.review')
   const unavailableOperations = [
-    'browser.act',
-    'command.run',
     'coding.attach',
     'coding.prompt',
     'coding.interrupt',

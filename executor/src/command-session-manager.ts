@@ -1,0 +1,177 @@
+import {
+  ExecutorCommandRunArgumentsSchema,
+  type ExecutorCommandEnvelope,
+} from '@nessie/schemas'
+
+import { startGuestVmSession, type GuestVmSession, type GuestVmSessionInput } from './guest-vm-session.js'
+import {
+  createGuestWorkspaceLease,
+  releaseGuestWorkspaceLeaseIfCurrent,
+} from './guest-workspace-lease.js'
+import type { ExecutorLocalState } from './state-store.js'
+
+const COMMAND_SESSION_MAX_MS = 10 * 60 * 1_000
+const COMMAND_RESULT_MAX_BYTES = 8_192
+const COMMAND_RUNTIME_MAX_SECONDS = 300
+
+type ActiveCommandSession = {
+  session: GuestVmSession
+  stopTimer: NodeJS.Timeout
+}
+
+type OpeningCommandSession = {
+  cancelled: boolean
+  completed: Promise<void>
+  finish: () => void
+}
+
+type CommandSessionStarter = (input: GuestVmSessionInput) => Promise<GuestVmSession>
+
+export type ExecutorCommandSessionManager = {
+  run: (command: ExecutorCommandEnvelope, runId: string) => Promise<Record<string, unknown>>
+  stop: (runId: string) => Promise<boolean>
+  stopAll: () => Promise<void>
+}
+
+const unavailable = (): Record<string, unknown> => ({ code: 'EXECUTOR_COMMAND_UNAVAILABLE', success: false })
+const denied = (): Record<string, unknown> => ({ code: 'EXECUTOR_COMMAND_DENIED', success: false })
+
+/**
+ * Owns a network-disabled, lease-bound command VM per run. It deliberately
+ * reuses the browser VM artifact configuration but omits egress altogether;
+ * the command guest receives no proxy, no Codex auth profile, and no host path
+ * other than the daemon-created COW workspace.
+ */
+export const createExecutorCommandSessionManager = (
+  stateDir: string,
+  state: ExecutorLocalState,
+  dependencies: { startSession?: CommandSessionStarter } = {},
+): ExecutorCommandSessionManager => {
+  const activeByRun = new Map<string, ActiveCommandSession>()
+  const openingByRun = new Map<string, OpeningCommandSession>()
+  const startedRunIds = new Set<string>()
+  const startSession = dependencies.startSession ?? startGuestVmSession
+
+  const clear = (runId: string, active: ActiveCommandSession): void => {
+    if (activeByRun.get(runId) !== active) return
+    clearTimeout(active.stopTimer)
+    activeByRun.delete(runId)
+  }
+
+  const stop = async (runId: string): Promise<boolean> => {
+    const opening = openingByRun.get(runId)
+    if (opening) opening.cancelled = true
+    const active = activeByRun.get(runId)
+    if (!active) return Boolean(opening)
+    await active.session.stop()
+    clear(runId, active)
+    return true
+  }
+
+  const start = async (command: ExecutorCommandEnvelope, runId: string): Promise<GuestVmSession | null> => {
+    const sandbox = state.browserSandbox
+    if (!sandbox || startedRunIds.has(runId)) return null
+    const maxSessions = state.descriptor.limits.maxSessions
+    if (!Number.isInteger(maxSessions) || maxSessions < 1 || activeByRun.size + openingByRun.size >= maxSessions) {
+      return null
+    }
+    startedRunIds.add(runId)
+    let resolveOpening: (() => void) | undefined
+    const opening: OpeningCommandSession = {
+      cancelled: false,
+      completed: new Promise<void>((resolve) => { resolveOpening = resolve }),
+      finish: () => resolveOpening?.(),
+    }
+    openingByRun.set(runId, opening)
+    let lease: Awaited<ReturnType<typeof createGuestWorkspaceLease>> | undefined
+    let session: GuestVmSession | undefined
+    const stopSessionAndReleaseLease = async (): Promise<void> => {
+      try {
+        await session?.stop()
+      } finally {
+        if (lease) await releaseGuestWorkspaceLeaseIfCurrent(stateDir, lease)
+      }
+    }
+    try {
+      lease = await createGuestWorkspaceLease(stateDir, state.workspaceRoot, {
+        bindingFence: command.bindingFence,
+        commandId: command.commandId,
+        runId,
+      })
+      session = await startSession({
+        guestInitrdBuilderPath: sandbox.guestInitrdBuilderPath,
+        guestRuntimeBundlePath: sandbox.guestRuntimeBundlePath,
+        kernelPath: sandbox.kernelPath,
+        lease,
+        stateDir,
+        vmHelperPath: sandbox.vmHelperPath,
+      })
+      if (opening.cancelled || !(await session.inspectRuntime()).codex) {
+        await stopSessionAndReleaseLease()
+        return null
+      }
+    } catch {
+      await stopSessionAndReleaseLease().catch(() => undefined)
+      return null
+    } finally {
+      if (openingByRun.get(runId) === opening) openingByRun.delete(runId)
+      opening.finish()
+    }
+    if (!session || opening.cancelled) {
+      await stopSessionAndReleaseLease().catch(() => undefined)
+      return null
+    }
+    const active: ActiveCommandSession = {
+      session,
+      stopTimer: setTimeout(() => { void stop(runId).catch(() => undefined) }, COMMAND_SESSION_MAX_MS),
+    }
+    activeByRun.set(runId, active)
+    void session.closed
+      .finally(async () => {
+        clear(runId, active)
+        if (lease) await releaseGuestWorkspaceLeaseIfCurrent(stateDir, lease)
+      })
+      .catch(() => undefined)
+    if (opening.cancelled) {
+      await stop(runId).catch(() => undefined)
+      return null
+    }
+    return session
+  }
+
+  return {
+    run: async (command, runId) => {
+      const args = ExecutorCommandRunArgumentsSchema.safeParse(command.payload.args)
+      if (!args.success) return denied()
+      let active = activeByRun.get(runId)
+      if (!active) {
+        const session = await start(command, runId)
+        active = session ? activeByRun.get(runId) : undefined
+      }
+      if (!active) return unavailable()
+      const maxResultBytes = Math.min(state.descriptor.limits.maxResultBytes, COMMAND_RESULT_MAX_BYTES)
+      const runtimeSeconds = Math.min(state.descriptor.limits.maxCommandRuntimeSeconds, COMMAND_RUNTIME_MAX_SECONDS)
+      if (maxResultBytes < 1 || runtimeSeconds < 1) return unavailable()
+      try {
+        return await active.session.runCommand({
+          args: args.data.args,
+          ...(args.data.cwd ? { cwd: args.data.cwd } : {}),
+          maxResultBytes,
+          program: args.data.program,
+          runtimeSeconds,
+        })
+      } catch {
+        return unavailable()
+      }
+    },
+    stop,
+    stopAll: async () => {
+      const opening = [...openingByRun.entries()]
+      for (const [, entry] of opening) entry.cancelled = true
+      await Promise.allSettled([
+        ...[...activeByRun.keys()].map((runId) => stop(runId)),
+        ...opening.map(([, entry]) => entry.completed),
+      ])
+    },
+  }
+}

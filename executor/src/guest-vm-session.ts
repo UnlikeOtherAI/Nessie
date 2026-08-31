@@ -21,9 +21,13 @@ import {
 } from './guest-vm-artifacts.js'
 import {
   GuestVmControlClient,
+  type GuestBrowserAction,
+  type GuestBrowserActionResult,
   type GuestBrowserObservation,
   type GuestCodingAgent,
   type GuestCodingObservation,
+  type GuestCommandRequest,
+  type GuestCommandResult,
   type GuestRuntimeInspection,
 } from './guest-vm-control.js'
 import {
@@ -41,13 +45,15 @@ import { WorkspacePathError } from './workspace-paths.js'
 const SESSION_STOP_TIMEOUT_MS = 10_000
 
 type ActiveGuestVmSessionProcess = {
+	actBrowser: (action: GuestBrowserAction) => Promise<GuestBrowserActionResult>
   closed: Promise<void>
   closeCodingSession: () => Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
   launchCodingSession: (agent: GuestCodingAgent, prompt: string) => Promise<void>
   observeCodingSession: () => Promise<GuestCodingObservation>
-  observeBrowser: () => Promise<GuestBrowserObservation>
+  observeBrowser: (includeScreenshot?: boolean) => Promise<GuestBrowserObservation>
   openBrowser: (url: string) => Promise<void>
+  runCommand: (request: GuestCommandRequest) => Promise<GuestCommandResult>
   stop: () => Promise<void>
 }
 
@@ -60,18 +66,21 @@ type GuestVmSessionLauncher = (input: {
 
 export type GuestVmSessionInput = GuestVmHandshakeInput & {
   codexAuthProfilePath?: string
-  egressPolicy: ExecutorEgressPolicy
+  /** Omit egress entirely for a network-disabled command session. */
+  egressPolicy?: ExecutorEgressPolicy
   guestRuntimeBundlePath: string
 }
 
 export type GuestVmSession = {
+	actBrowser: (action: GuestBrowserAction) => Promise<GuestBrowserActionResult>
   closed: Promise<void>
   closeCodingSession: () => Promise<void>
   inspectRuntime: () => Promise<GuestRuntimeInspection>
   launchCodingSession: (agent: GuestCodingAgent, prompt: string) => Promise<void>
   observeCodingSession: () => Promise<GuestCodingObservation>
-  observeBrowser: () => Promise<GuestBrowserObservation>
+  observeBrowser: (includeScreenshot?: boolean) => Promise<GuestBrowserObservation>
   openBrowser: (url: string) => Promise<void>
+  runCommand: (request: GuestCommandRequest) => Promise<GuestCommandResult>
   stop: () => Promise<void>
 }
 
@@ -111,13 +120,15 @@ const launchGuestVmSession: GuestVmSessionLauncher = async ({ argv, input, path,
     throw error
   }
   return {
+	actBrowser: (action) => control.actBrowser(action),
     closed,
     closeCodingSession: () => control.closeCodingSession(),
     inspectRuntime: () => control.inspectRuntime(),
     launchCodingSession: (agent, prompt) => control.launchCodingSession(agent, prompt),
     observeCodingSession: () => control.observeCodingSession(),
-    observeBrowser: () => control.observeBrowser(),
+    observeBrowser: (includeScreenshot) => control.observeBrowser(includeScreenshot),
     openBrowser: (url) => control.openBrowser(url),
+    runCommand: (request) => control.runCommand(request),
     stop: () => stopChild(child),
   }
 }
@@ -134,7 +145,9 @@ export const startGuestVmSession = async (
     runProcess?: GuestVmProcessRunner
   } = {},
 ): Promise<GuestVmSession> => {
-  const egressSettings = compileExecutorEgressPolicy(input.egressPolicy)
+  const egressSettings = input.egressPolicy
+    ? compileExecutorEgressPolicy(input.egressPolicy)
+    : undefined
   await assertGuestWorkspaceLeaseCurrent(input.stateDir, input.lease)
   const [builderPath, kernelPath, helperPath, codexAuthProfilePath] = await Promise.all([
     verifyPrivateGuestVmFile(input.guestInitrdBuilderPath, true),
@@ -148,8 +161,10 @@ export const startGuestVmSession = async (
   const sessionDirectory = await secureGuestVmSessionDirectory(input.stateDir, input.lease)
   const initrdPath = join(sessionDirectory, 'guest-initrd')
   const consolePath = join(sessionDirectory, 'console')
-  const gatewayDirectory = await secureGuestVmGatewayDirectory()
-  const gatewayPath = join(gatewayDirectory, 'egress.sock')
+  const gatewayDirectory = input.egressPolicy
+    ? await secureGuestVmGatewayDirectory()
+    : undefined
+  const gatewayPath = gatewayDirectory ? join(gatewayDirectory, 'egress.sock') : undefined
   const bootstrapToken = randomBytes(32).toString('base64url')
   const runProcess = dependencies.runProcess ?? runGuestVmProcess
   const launchProcess = dependencies.launchProcess ?? launchGuestVmSession
@@ -161,13 +176,15 @@ export const startGuestVmSession = async (
     await gateway?.close().catch(() => undefined)
     await removeGuestRuntimeBundleSnapshot(join(sessionDirectory, 'runtime')).catch(() => undefined)
     await rm(sessionDirectory, { force: true, recursive: true })
-    await rm(gatewayDirectory, { force: true, recursive: true })
+    if (gatewayDirectory) await rm(gatewayDirectory, { force: true, recursive: true })
     await releaseGuestWorkspaceLease(input.stateDir, input.lease).catch(() => undefined)
   }
   let gateway: Awaited<ReturnType<typeof startExecutorEgressGateway>> | undefined
   try {
     const runtimeSnapshot = await materializeGuestRuntimeBundle(runtimeBundle, join(sessionDirectory, 'runtime'))
-    gateway = await startExecutorEgressGateway({ policy: input.egressPolicy, socketPath: gatewayPath })
+    if (input.egressPolicy && gatewayPath) {
+      gateway = await startExecutorEgressGateway({ policy: input.egressPolicy, socketPath: gatewayPath })
+    }
     await runProcess({
       argv: [
         '--output', initrdPath,
@@ -188,7 +205,7 @@ export const startGuestVmSession = async (
         '--workspace-cow', input.lease.workspace,
         '--runtime-bundle', runtimeSnapshot.root,
         '--runtime-manifest-digest', runtimeSnapshot.manifestDigest,
-        '--egress-gateway', gateway.socketPath,
+        ...(gateway ? ['--egress-gateway', gateway.socketPath] : []),
         '--bootstrap-token-stdin',
       ],
       input: bootstrapToken,
@@ -197,16 +214,19 @@ export const startGuestVmSession = async (
     })
     const closed = process.closed.finally(cleanup)
     return {
+      actBrowser: (action) => process!.actBrowser(action),
       closed,
       closeCodingSession: () => process!.closeCodingSession(),
       inspectRuntime: () => process!.inspectRuntime(),
       launchCodingSession: (agent, prompt) => process!.launchCodingSession(agent, prompt),
       observeCodingSession: () => process!.observeCodingSession(),
-      observeBrowser: () => process!.observeBrowser(),
+      observeBrowser: (includeScreenshot) => process!.observeBrowser(includeScreenshot),
       openBrowser: async (url: string) => {
+        if (!egressSettings) throw new WorkspacePathError('This executor session has no browser egress.')
         assertExecutorEgressOrigin(url, egressSettings)
         await process!.openBrowser(url)
       },
+      runCommand: (request) => process!.runCommand(request),
       stop: async () => {
         await process?.stop()
         await closed

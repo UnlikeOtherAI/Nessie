@@ -173,8 +173,9 @@ fingerprint, claims a connection and sends heartbeats. Its initial companion
 profile is deliberately limited to daemon-owned COW workspace operations:
 `file.list`, `file.read`, `file.write`, `workspace.review`, and
 `sandbox.stop`. Browser work remains disabled until its owner configures the
-separate guest VM policy; shell, coding, host-promotion, and every other
-unimplemented operation remain refused.
+separate guest VM policy. `command.run` is additionally available only through
+its reviewed, exact command bundle; it accepts shell-free argv in a no-egress
+guest. Coding and every remaining unimplemented operation remain refused.
 
 `nessie-executor configure --operations ...` can narrow or restore that fixed
 COW subset in local owner-only state. A proposal that adds `workspace.promote`
@@ -191,17 +192,20 @@ summary for a manager and prepare a review link, but it cannot submit the
 confirmation on the person's behalf.
 
 `nessie-executor configure-browser` is the only local path that can add the
-paired `browser.open` and `browser.observe` operations. It requires exact,
+exact `browser.open`, `browser.observe`, and `browser.act` bundle. It requires exact,
 owner-private initrd-builder, kernel, signed VM-helper, and runtime-bundle
 paths plus one or more exact HTTPS origins. The companion re-verifies the
 artifacts and every runtime digest, canonicalizes the local origin ceiling,
-and enables the two browser operations together with `sandbox.stop` in a new
+and enables the three browser operations together with `sandbox.stop` in a new
 descriptor revision. It rejects any browser configuration without that stop
 operation.
 It never uploads a local path or the origin list. The owner must reconnect and
 an entitled human must separately review the proposed descriptor before an
-agent can receive either operation. `browser.open` starts one lease-bound VM;
-`browser.observe` can inspect only that same run's browser; `sandbox.stop`, VM
+agent can receive any browser operation. `browser.open` starts one lease-bound VM;
+`browser.observe` returns a bounded accessibility-tree snapshot and optional
+downscaled WebP from only that same run's browser. `browser.act` accepts only
+the closed navigate/click/type/press/scroll actions; element actions name an
+observed accessibility node id, never pixels, selectors, or script. `sandbox.stop`, VM
 exit, daemon shutdown, a fenced control poll, or the ten-minute local session
 limit tears it down. Every user-confirmed access change, descriptor review, and
 lifecycle transition advances the daemon connection epoch; its next one-second
@@ -265,18 +269,18 @@ then advances the existing queue lease; it cannot select another executor after
 retry, policy change, or revocation.
 
 Browser work is an exception to ordinary small bundles: it is exactly
-`browser.open`, `browser.observe`, and `sandbox.stop` on a fresh run, all bound
-to one durable `ExecutorSession`. The legacy single-bind endpoint refuses both
-browser operations, and no later binding can be added to a browser run. The
-worker withholds the browser schemas unless all three bindings reference that
+`browser.open`, `browser.observe`, `browser.act`, and `sandbox.stop` on a fresh
+run, all bound to one durable `ExecutorSession`. The legacy single-bind endpoint
+refuses browser operations, and no later binding can be added to a browser run.
+The worker withholds the browser schemas unless all four bindings reference that
 same session, so a file operation cannot share the browser's COW workspace.
 `browser.open` atomically changes the session from `pending` to `active` before
 creating its command; `sandbox.stop` changes it to `stopped`. Poll delivery
 re-reads the binding and exact session *after* acquiring the executor lock, and
 will terminalize a stale browser command rather than deliver it after stop or
 revocation. A terminal unavailable result for `browser.open` or
-`browser.observe` instead marks only that exact active session `failed`, and
-the worker withholds all three browser-bundle tools once a session is stopped
+`browser.observe`, or `browser.act` instead marks only that exact active session
+`failed`, and the worker withholds all four browser-bundle tools once a session is stopped
 or failed. Human access, descriptor, and lifecycle fences persist `stopped`
 for live browser records in the same transaction that advances the daemon
 epoch.
@@ -330,9 +334,9 @@ root for write, and later file reads/lists for that run use the draft tree.
 `workspace.review` emits at most 100 changed relative paths with kind and byte
 count plus a canonical manifest digest only when the fully encoded result fits
 the command receipt cap; otherwise it fails closed. It never reads the paired
-root for write or applies a change. It is not yet a micro-VM or network isolation
-boundary. No command, browser, or coding operation is advertised until its
-isolated backend is implemented and reviewed. Host promotion remains unavailable
+root for write or applies a change. The file-only backend is not itself a
+micro-VM or network isolation boundary; `command.run`, browser, and coding
+operations use their separately reviewed, lease-bound guest paths. Host promotion remains unavailable
 unless that user-confirmation and server-binding flow creates its exact command.
 
 The receipt remains content-free, but its manifest digest binds the complete
@@ -481,9 +485,9 @@ one-use uncompressed initrd only into a new file in an owner-only `0700` parent.
 The archive and its private parent are session material and must be removed by
 the VM owner after the VM stops. On boot the guest validates and removes its
 token file before it connects to host CID 2 on the fixed virtio port, sends the
-hello, and clears its mutable token buffer. It implements no browser, command,
-workspace, or coding action: until typed handlers are installed, a valid host
-request receives only `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE`.
+hello, and clears its mutable token buffer. It implements the reviewed typed
+browser, command, and coding handlers; an unknown or malformed host request
+still receives only `EXECUTOR_GUEST_CAPABILITY_UNAVAILABLE`.
 
 Root exists in the guest only long enough to mount `/proc` and the explicitly
 requested COW virtiofs share and to remove the one-use token file. Before it
@@ -541,12 +545,11 @@ response frames. It has no TCP or Unix control listener. A wrong frame, wrong
 response ID, response overflow, pipe close, or request timeout terminates the
 VM session; at most one guest request is outstanding. The first typed request,
 `runtime.inspect`, returns only booleans for declared browser/tmux/Codex/Claude
-entrypoints. It proves the authenticated companion → helper → guest path but
-does not launch a process, expose a descriptor operation, or make a browser or
-coding session available.
+entrypoints. It proves the authenticated companion → helper → guest path; typed
+run-bound handlers remain responsible for starting an operation.
 
-The same private seam implements `browser.open` for the exact server-bound run
-whose reviewed local policy contains both browser operations. Its caller must
+The same private seam implements the browser bundle for the exact server-bound
+run whose reviewed local policy contains all browser operations. Its caller must
 pass the local exact HTTPS-origin policy before forwarding; the
 guest independently accepts only a bounded HTTPS URL without credentials or a
 port. It executes only the manifest-declared browser under `/runtime`, never a
@@ -557,16 +560,18 @@ directories. The browser can reach only the guest loopback proxy, whose
 authenticated egress bridge still enforces the local origin policy. This is a
 bounded product operation: it has no remote debugging listener, general
 workflow-selection parameter, or agent path outside the exact bound tool, and
-it is stopped with its VM session. Its `browser.observe`
-request can query only the browser's fixed guest-loopback DevTools `/json/list`
-endpoint through a dialer pinned to `127.0.0.1:9222`; it returns at most 32 page
-titles/types and HTTPS URLs with query and fragment removed. It cannot follow a
-redirect, select a target, connect to any other address, return page content,
-or expose a DevTools WebSocket. The daemon keeps the live VM only under the
+it is stopped with its VM session. Its `browser.observe` request can query only
+the browser's fixed guest-loopback DevTools `/json/list` endpoint through a
+dialer pinned to `127.0.0.1:9222`; it returns at most 32 sanitized page targets,
+a bounded a11y tree (≤200 nodes), and an optional ≤8 KiB downscaled WebP inside
+the 64 KiB control-frame ceiling. `browser.act` cannot evaluate script or accept
+coordinates: it drives the five typed actions over CDP and requires a freshly
+observed node for element actions. It cannot connect to any other address or
+expose a DevTools WebSocket. The daemon keeps the live VM only under the
 server-provenanced run ID, rejects a second browser launch for that run, and
 does not let a browser command select a different VM or executor.
 
-Browser and coding runtimes may enter a future session only as a complete
+Browser, command, and coding runtimes enter a session only as a complete
 owner-private `nessie-guest-runtime.json` bundle. Its versioned manifest names
 every regular file, its SHA-256 digest, and whether it is executable; it also
 names only declared executable browser, tmux, Codex, and Claude entrypoints.

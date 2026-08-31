@@ -184,3 +184,21 @@ test('coding operations reject every partial or mixed executor bundle before can
   )
   assert.equal(state.consumed, undefined)
 })
+
+test('browser act and command runs reject partial isolated bundles before candidate consumption', async () => {
+  const state: { consumed?: number } = {}
+  for (const operationKeys of [
+    ['browser.open', 'browser.observe', 'sandbox.stop'],
+    ['command.run', 'sandbox.stop'],
+  ]) {
+    await assert.rejects(
+      bindExecutorCandidateBundleInTransaction(
+        bindingPrisma(state) as unknown as Prisma.TransactionClient,
+        { actorUserId, candidateHandle: handle, operationKeys, runId },
+        new Date('2026-08-12T12:00:00.000Z'),
+      ),
+      { code: 'EXECUTOR_CANDIDATE_INVALID' },
+    )
+  }
+  assert.equal(state.consumed, undefined)
+})

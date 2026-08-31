@@ -1,4 +1,5 @@
 import {
+	ExecutorBrowserActArgumentsSchema,
   ExecutorBrowserObserveArgumentsSchema,
   ExecutorBrowserOpenArgumentsSchema,
   type ExecutorCommandEnvelope,
@@ -28,6 +29,7 @@ type OpeningBrowserSession = {
 type BrowserSessionStarter = (input: GuestVmSessionInput) => Promise<GuestVmSession>
 
 export type ExecutorBrowserSessionManager = {
+	act: (command: ExecutorCommandEnvelope, runId: string) => Promise<Record<string, unknown>>
   observe: (command: ExecutorCommandEnvelope, runId: string) => Promise<Record<string, unknown>>
   open: (command: ExecutorCommandEnvelope, runId: string) => Promise<Record<string, unknown>>
   stop: (runId: string) => Promise<boolean>
@@ -168,14 +170,44 @@ export const createExecutorBrowserSessionManager = (
       return { status: 'opened', success: true }
     },
     observe: async (command, runId) => {
-      if (!ExecutorBrowserObserveArgumentsSchema.safeParse(command.payload.args).success) return denied()
+      const args = ExecutorBrowserObserveArgumentsSchema.safeParse(command.payload.args)
+      if (!args.success) return denied()
       const active = activeByRun.get(runId)
       if (!active) return unavailable()
       try {
-        const observation = await active.session.observeBrowser()
-        return { success: true, targets: observation.targets }
+        const observation = await active.session.observeBrowser(args.data.includeScreenshot)
+        return {
+          accessibilityTree: observation.accessibilityTree,
+          ...(observation.screenshot ? { screenshot: observation.screenshot } : {}),
+          success: true,
+          targets: observation.targets,
+        }
       } catch {
         return unavailable()
+      }
+    },
+    act: async (command, runId) => {
+      const args = ExecutorBrowserActArgumentsSchema.safeParse(command.payload.args)
+      if (!args.success) return denied()
+      const active = activeByRun.get(runId)
+      if (!active) return unavailable()
+      if (args.data.action === 'navigate') {
+        const browserSandbox = state.browserSandbox
+        if (!browserSandbox) return unavailable()
+        try {
+          assertExecutorEgressOrigin(
+            args.data.url,
+            compileExecutorEgressPolicy({ allowedOrigins: browserSandbox.allowedOrigins }),
+          )
+        } catch {
+          return denied()
+        }
+      }
+      try {
+        const result = await active.session.actBrowser(args.data)
+        return { ...result, success: true }
+      } catch {
+        return { code: 'EXECUTOR_BROWSER_STALE_NODE', success: false }
       }
     },
     stop,

@@ -3,8 +3,9 @@
 > Status: in delivery. **Shipped to `main` 2026-08-31:** P0 honesty fix,
 > Gap 1 P1 (approval suspend/resume + hardened proof), Gap 3 P1 (demonstration
 > capture) — each code-verified against a throwaway pgvector DB (typecheck,
-> lint, migrations, DB-backed + unit suites). Remaining: Gap 2 actuation
-> (`command.run` → `browser.act`, needs a real executor host), Gap 1 P2/P3
+> lint, migrations, DB-backed + unit suites). Gap 2 actuation code
+> (`command.run` → `browser.act`) is now delivered with host-only verification
+> outstanding; remaining: Gap 1 P2/P3
 > (auto-review), Gap 3 P2 (generalise a demonstration into a Workflow), the
 > in-thread approval/RunStop admin doorways, and P6 (persistent/headless
 > executor). Decisions resolved on the best-experience lens (§7).

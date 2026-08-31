@@ -9,11 +9,22 @@ import (
 const guestRuntimeControlVersion = 1
 
 type runtimeControlRequest struct {
-	Operation string `json:"operation"`
-	Agent     string `json:"agent,omitempty"`
-	Prompt    string `json:"prompt,omitempty"`
-	URL       string `json:"url,omitempty"`
-	Version   int    `json:"version"`
+	Action            string   `json:"action,omitempty"`
+	Agent             string   `json:"agent,omitempty"`
+	Args              []string `json:"args,omitempty"`
+	CWD               string   `json:"cwd,omitempty"`
+	DeltaY            int      `json:"deltaY,omitempty"`
+	IncludeScreenshot bool     `json:"includeScreenshot,omitempty"`
+	Key               string   `json:"key,omitempty"`
+	MaxResultBytes    int      `json:"maxResultBytes,omitempty"`
+	NodeID            *int     `json:"nodeId,omitempty"`
+	Operation         string   `json:"operation"`
+	Program           string   `json:"program,omitempty"`
+	Prompt            string   `json:"prompt,omitempty"`
+	RuntimeSeconds    int      `json:"runtimeSeconds,omitempty"`
+	Text              string   `json:"text,omitempty"`
+	URL               string   `json:"url,omitempty"`
+	Version           int      `json:"version"`
 }
 
 type runtimeInspection struct {
@@ -25,6 +36,7 @@ type runtimeInspection struct {
 
 type runtimeController struct {
 	browser  *browserRuntime
+	command  *commandRuntime
 	coding   *codingRuntime
 	manifest *runtimeManifest
 }
@@ -33,7 +45,12 @@ func newRuntimeController(manifest *runtimeManifest) *runtimeController {
 	if manifest == nil {
 		return nil
 	}
-	return &runtimeController{browser: newBrowserRuntime(manifest), coding: newCodingRuntime(manifest), manifest: manifest}
+	return &runtimeController{
+		browser:  newBrowserRuntime(manifest),
+		command:  newCommandRuntime(manifest),
+		coding:   newCodingRuntime(manifest),
+		manifest: manifest,
+	}
 }
 
 func (controller *runtimeController) close() {
@@ -56,22 +73,77 @@ func decodeRuntimeControlRequest(payload []byte) (runtimeControlRequest, error) 
 		return runtimeControlRequest{}, errInvalidFrame
 	}
 	switch request.Operation {
-	case "runtime.inspect", "browser.observe", "coding.observe", "coding.close":
-		if request.URL != "" || request.Agent != "" || request.Prompt != "" {
+	case "runtime.inspect", "coding.observe", "coding.close":
+		if request.URL != "" || request.Agent != "" || request.Prompt != "" || request.Action != "" || request.Program != "" || request.NodeID != nil || request.Key != "" || request.Text != "" || request.DeltaY != 0 || request.CWD != "" || request.RuntimeSeconds != 0 || request.MaxResultBytes != 0 || len(request.Args) != 0 {
+			return runtimeControlRequest{}, errInvalidFrame
+		}
+		if request.IncludeScreenshot {
+			return runtimeControlRequest{}, errInvalidFrame
+		}
+	case "browser.observe":
+		if request.URL != "" || request.Agent != "" || request.Prompt != "" || request.Action != "" || request.Program != "" || request.NodeID != nil || request.Key != "" || request.Text != "" || request.DeltaY != 0 || request.CWD != "" || request.RuntimeSeconds != 0 || request.MaxResultBytes != 0 || len(request.Args) != 0 {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
 	case "browser.open":
-		if request.Agent != "" || request.Prompt != "" || !validBrowserURL(request.URL) {
+		if request.Agent != "" || request.Prompt != "" || request.Action != "" || request.Program != "" || request.NodeID != nil || request.Key != "" || request.Text != "" || request.DeltaY != 0 || request.CWD != "" || request.RuntimeSeconds != 0 || request.MaxResultBytes != 0 || len(request.Args) != 0 || !validBrowserURL(request.URL) {
+			return runtimeControlRequest{}, errInvalidFrame
+		}
+	case "browser.act":
+		if request.Agent != "" || request.Prompt != "" || request.Program != "" || request.CWD != "" || request.RuntimeSeconds != 0 || request.MaxResultBytes != 0 || len(request.Args) != 0 || request.IncludeScreenshot || !validBrowserActionRequest(request) {
+			return runtimeControlRequest{}, errInvalidFrame
+		}
+	case "command.run":
+		if request.Agent != "" || request.Prompt != "" || request.Action != "" || request.NodeID != nil || request.Key != "" || request.Text != "" || request.DeltaY != 0 || request.URL != "" || request.IncludeScreenshot || request.Args == nil || !validCommandRequest(commandRequestFromRuntime(request)) {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
 	case "coding.launch":
-		if request.URL != "" || !validCodingAgent(codingAgent(request.Agent)) || !validCodingPrompt(request.Prompt) {
+		if request.URL != "" || request.Action != "" || request.Program != "" || request.NodeID != nil || request.Key != "" || request.Text != "" || request.DeltaY != 0 || request.CWD != "" || request.RuntimeSeconds != 0 || request.MaxResultBytes != 0 || len(request.Args) != 0 || !validCodingAgent(codingAgent(request.Agent)) || !validCodingPrompt(request.Prompt) {
 			return runtimeControlRequest{}, errInvalidFrame
 		}
 	default:
 		return runtimeControlRequest{}, errInvalidFrame
 	}
 	return request, nil
+}
+
+func browserActionFromRequest(request runtimeControlRequest) browserAction {
+	action := browserAction{
+		Action: request.Action, DeltaY: request.DeltaY, Key: request.Key,
+		Text: request.Text, URL: request.URL,
+	}
+	if request.NodeID != nil {
+		action.HasNodeID = true
+		action.NodeID = *request.NodeID
+	}
+	return action
+}
+
+func validBrowserActionRequest(request runtimeControlRequest) bool {
+	action := browserActionFromRequest(request)
+	if !validBrowserAction(action) {
+		return false
+	}
+	switch action.Action {
+	case "navigate":
+		return !action.HasNodeID && action.Key == "" && action.Text == "" && action.DeltaY == 0
+	case "click":
+		return action.HasNodeID && action.Key == "" && action.Text == "" && action.URL == "" && action.DeltaY == 0
+	case "type":
+		return action.HasNodeID && action.Key == "" && action.URL == "" && action.DeltaY == 0
+	case "press":
+		return !action.HasNodeID && action.Text == "" && action.URL == "" && action.DeltaY == 0
+	case "scroll":
+		return action.Key == "" && action.Text == "" && action.URL == ""
+	default:
+		return false
+	}
+}
+
+func commandRequestFromRuntime(request runtimeControlRequest) commandRequest {
+	return commandRequest{
+		Args: request.Args, CWD: request.CWD, MaxResultBytes: request.MaxResultBytes,
+		Program: request.Program, RuntimeSeconds: request.RuntimeSeconds,
+	}
 }
 
 func runtimeControlUnavailable() []byte {
@@ -93,7 +165,7 @@ func handleRuntimeControlRequest(payload []byte, controller *runtimeController) 
 		if controller.browser == nil {
 			return runtimeControlUnavailable()
 		}
-		observation, err := controller.browser.observation()
+		observation, err := controller.browser.observation(request.IncludeScreenshot)
 		if err != nil {
 			return runtimeControlUnavailable()
 		}
@@ -105,6 +177,40 @@ func handleRuntimeControlRequest(payload []byte, controller *runtimeController) 
 			return runtimeControlUnavailable()
 		}
 		return result
+	}
+	if request.Operation == "browser.act" {
+		if controller.browser == nil {
+			return runtimeControlUnavailable()
+		}
+		result, err := controller.browser.action(browserActionFromRequest(request))
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		encoded, err := json.Marshal(struct {
+			Action  browserActionResult `json:"action"`
+			Version int                 `json:"version"`
+		}{Action: result, Version: guestRuntimeControlVersion})
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		return encoded
+	}
+	if request.Operation == "command.run" {
+		if controller.command == nil {
+			return runtimeControlUnavailable()
+		}
+		result, err := controller.command.execute(commandRequestFromRuntime(request))
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		encoded, err := json.Marshal(struct {
+			Result  commandResult `json:"result"`
+			Version int           `json:"version"`
+		}{Result: result, Version: guestRuntimeControlVersion})
+		if err != nil {
+			return runtimeControlUnavailable()
+		}
+		return encoded
 	}
 	if request.Operation == "coding.launch" {
 		if controller.coding == nil || controller.coding.launch(codingAgent(request.Agent), request.Prompt) != nil {
@@ -150,7 +256,7 @@ func handleRuntimeControlRequest(payload []byte, controller *runtimeController) 
 		Inspection: runtimeInspection{
 			Browser: controller.browser != nil,
 			Claude:  controller.coding != nil && controller.manifest.Entrypoints["claude"] != "",
-			Codex:   controller.coding != nil && controller.manifest.Entrypoints["codex"] != "",
+			Codex:   controller.command != nil,
 			Tmux:    controller.coding != nil,
 		},
 		Version: guestRuntimeControlVersion,

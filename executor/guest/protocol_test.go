@@ -143,7 +143,7 @@ func TestGuestRuntimeInspectionExposesOnlyDeclaredCapabilityNames(t *testing.T) 
 	if err := json.Unmarshal(response, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Version != guestRuntimeControlVersion || !decoded.Inspection.Browser || !decoded.Inspection.Codex || !decoded.Inspection.Tmux || decoded.Inspection.Claude {
+	if decoded.Version != guestRuntimeControlVersion || !decoded.Inspection.Browser || !decoded.Inspection.Codex || decoded.Inspection.Tmux || decoded.Inspection.Claude {
 		t.Fatalf("unexpected runtime inspection %#v", decoded)
 	}
 	if !bytes.Contains(handleRuntimeControlRequest([]byte(`{"operation":"browser.open","version":1}`), controller), []byte("CAPABILITY_UNAVAILABLE")) {
@@ -184,7 +184,7 @@ func TestGuestBrowserUsesOnlyTheDeclaredRuntimeEntrypointAndForcedProxy(t *testi
 			actualEnvironment = append([]string{}, environment...)
 			return process, nil
 		},
-		observe: func() (browserObservation, error) {
+		observe: func(bool) (browserObservation, error) {
 			return browserObservation{Targets: []browserTarget{{
 				Title: "Guide", Type: "page", URL: "https://app.example.test/guide?secret=redacted",
 			}}}, nil

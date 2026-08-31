@@ -57,10 +57,16 @@ const operationOptions: OperationOption[] = [
     value: 'file.write+workspace.review',
   },
   {
-    description: 'Let the selected agent open and inspect one site allowed by the executor owner; it cannot click, fill forms, or read page content. Confirm the site with that human owner first: the local origin ceiling is not uploaded to Nessie.',
-    label: 'Browse an approved site',
-    operationKeys: ['browser.open', 'browser.observe', 'sandbox.stop'],
-    value: 'browser.open+browser.observe+sandbox.stop',
+    description: 'Let the selected agent open, inspect, and take accessibility-node actions on one site allowed by the executor owner. Confirm the site with that human owner first: the local origin ceiling is not uploaded to Nessie.',
+    label: 'Act in an approved site',
+    operationKeys: ['browser.open', 'browser.observe', 'browser.act', 'sandbox.stop'],
+    value: 'browser.open+browser.observe+browser.act+sandbox.stop',
+  },
+  {
+    description: 'Let the selected agent run a shell-free argv command in an isolated copy-on-write workspace, then review its changes before any human promotion.',
+    label: 'Run and review a workspace command',
+    operationKeys: ['command.run', 'workspace.review', 'sandbox.stop'],
+    value: 'command.run+workspace.review+sandbox.stop',
   },
   {
     description: 'Start one isolated Codex task in the paired guest. Its ChatGPT login remains inside the guest; Nessie receives lifecycle state and a read-only workspace review, never terminal output.',
