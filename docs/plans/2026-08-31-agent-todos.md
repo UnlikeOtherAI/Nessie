@@ -2,6 +2,10 @@
 
 **Status:** discovery + design for review — no code changes.
 **Date:** 2026-08-31
+**Reviewed:** two independent adversarial reviews on the same repo — kimix
+(17 findings) and Codex Sol (18 findings, on the doc with kimix's round
+already folded). Every adopted claim was re-verified against code first;
+adjudications in §"Cross-model review".
 **Related:** [2026-08-30-agent-scopes-personal-team-global.md](2026-08-30-agent-scopes-personal-team-global.md)
 (visibility — still a proposal, see §1), [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership — phases 1–2 landed), [2026-08-12-workflows-first-class.md](2026-08-12-workflows-first-class.md)
@@ -194,11 +198,23 @@ model AgentTodoStep {
   updatedByActorId   String? @db.Uuid
   completedAt DateTime?
   @@unique([todoId, sequence])
+  @@unique([todoId, key])     // todo_step_update addresses steps by key
   @@index([todoId])
 }
 
 Agent.todosEnabled Boolean @default(false)
 ```
+
+The sketch shows the shape; the real schema is written with **relations and
+storage-level tenancy, not bare scalar ids**: `agentId` is a real FK whose
+agent must share `organizationId` (derive the org through the agent or add
+the composite-FK pattern `Agent.ownerUserId` uses), `AgentTodoStep` cascades
+with its `AgentTodo`, `templateId` is `onDelete: Restrict` — templates are
+archived, never hard-deleted in v1, so provenance cannot dangle — and
+`triggerId`/`threadId`/`activeRunId` are `SetNull`. The step `key` is unique
+per template in the shared zod refinement **and** per instance in the DB,
+because `todo_step_update` addresses by key and a duplicate would make the
+write ambiguous.
 
 Decisions folded into that shape:
 
@@ -233,13 +249,15 @@ Decisions folded into that shape:
   controls; its next `todo_step_update` simply refuses in words ("this to-do
   was cancelled") because the ownership check below reads live state, and
   `activeRunId` liveness is derived (§3), so nothing dangles.
-- **System-managed agents are out of scope in v1.** `todosEnabled` is
-  written through the generic agent-update path, which refuses the PA
-  (`PERSONAL_ASSISTANT_UPDATE_REQUIRES_BOOTSTRAP`), and
-  `isAgentAccessibleToActor` hard-codes `systemManaged: false`, so every
-  to-do route and card fails closed for system agents by construction. If
-  the PA ever wants to-dos, that is a bootstrap decision plus a read-path
-  decision, taken deliberately then.
+- **System-managed agents are out of scope in v1.** The API-side exclusion
+  is `isAgentAccessibleToActor`'s hard-coded `systemManaged: false` (the PA
+  update refusal fires only on reserved identity/surface inputs, so it is
+  *not* the guard here); `updateAgentRecord`'s system-managed preservation
+  branch must therefore cover `todosEnabled` explicitly, the same way it
+  pins `name`/`ownerUserId` for system rows. Every to-do route and card
+  then fails closed for system agents by construction. If the PA ever wants
+  to-dos, that is a bootstrap decision plus a read-path decision, taken
+  deliberately then.
 
 ### 2.3 Determinism guarantees, stated as invariants
 
@@ -252,11 +270,22 @@ Decisions folded into that shape:
    status from message content.
 3. Instance completion is derived: `completed` when every step is terminal
    (`completed | skipped | failed`), computed in the same transaction as the
-   final step write (the same derive-from-remaining-steps shape
-   `computePlanTerminalStatus` uses, reimplemented here — the plan ledger
-   itself is not reused, §2.1). A run ending
-   with steps still `pending` leaves the to-do honestly `open` (or `running`
-   → back to `open` when `activeRunId` clears); nothing auto-ticks.
+   final step write, and **every step write serializes on
+   `pg_advisory_xact_lock(todoId)`** — a bare "same transaction" is not
+   race-free (two writers finishing the last two steps can each still see
+   the other's step pending; the `plans.ts` count-before-write has exactly
+   this weakness, so the lock discipline is adopted, not just the shape). A
+   to-do whose steps all terminated with some `failed` **is `completed`,
+   with the failures visible** on the card and in the rows — holding it open
+   forever would be the dishonest state; whether a failure additionally
+   *alerts* anyone is open question 4. A run ending with steps still
+   `pending` leaves the to-do honestly `open` (or `running` → back to `open`
+   when `activeRunId` clears); nothing auto-ticks.
+4. Step transitions are guarded, not last-writer-wins: an agent write is a
+   conditional update that refuses to overwrite a **human-set terminal
+   status** (a person's sign-off or skip stands; the agent's refusal names
+   who set it), while a human write may always correct anything — the
+   task-board permissiveness, one direction only.
 
 ## 3. Executing vs tracking
 
@@ -265,21 +294,36 @@ Execution is an ordinary agentic run — no new runner, no suspension:
 
 - **From chat (the main path).** When `todosEnabled` and the run's toolset
   includes the to-do tools, the prompt gains one structural block listing the
-  agent's *active template names + ids* and *open instances* (facts from the
-  toolset/DB, never message content — the research-routing-block precedent).
-  The model, asked "do the weekly report", calls **`todo_start`**
-  (instantiate from template, or adopt an existing open instance) and gets
-  the full steps back verbatim; it works through them calling
-  **`todo_step_update`** (`{todoId, stepKey, status, note?}`) as it goes.
-  Whether the request *means* "run your checklist" is the model's judgement;
-  what the checklist *says* is the database's.
+  agent's *active templates*, *open instances*, and *its own pending or
+  rejected proposal drafts* — names, ids and statuses only, **bounded**
+  (newest-first caps with an honest "and N more" line, per the no-silent-caps
+  rule), because any member can instantiate and scheduled instances
+  accumulate, and an unbounded block would eventually crowd out the
+  conversation. Facts from the toolset/DB, never message content — the
+  research-routing-block precedent. The model, asked "do the weekly report",
+  calls **`todo_start`** (instantiate from template, or adopt an existing
+  open instance) and gets the full steps back verbatim; it works through
+  them calling **`todo_step_update`** (`{todoId, stepKey, status, note?}`)
+  as it goes. Whether the request *means* "run your checklist" is the
+  model's judgement; what the checklist *says* is the database's.
+  **One active to-do per run**: `todo_start` refuses while the run already
+  holds one, matching the singular `metadata.todoRef` contract — a run that
+  wants a second checklist finishes the first or leaves it for the next run.
 - **From the To-dos tab ("Run now").** The instance needs a thread. The
   caller picks a target channel the agent is bound to and the caller is a
-  member of (exactly `schedule_task`'s cross-channel constraint); the server
-  posts a system kickoff message naming the to-do and creates Run + Task via
-  `claimThreadRunOrPend` — the `trigger-run.ts` fire shape, in a small shared
-  `todo-run` service beside it. The kickoff prompt is server-authored from
-  the pinned steps.
+  member of — **deliberately stricter than `schedule_task`**, which accepts
+  any visible public channel (`worker/src/run/schedule-tools.ts`
+  `visibleChannelWhere`): clicking Run posts into the room *now*, and
+  posting into a public room you never joined is not a thing the UI should
+  make one click. The server posts a kickoff and creates Run + Task via
+  `claimThreadRunOrPend` — the `trigger-run.ts` fire shape. The to-do fire
+  preparation lives in `@nessie/workspace-admin` (`agent-todos.ts`), because
+  **two fire paths exist and both must use it**: the worker's
+  `trigger-run.ts` *and* the API's manual-fire `dispatchAgentTrigger`
+  (`api/src/services/trigger-dispatch.ts`), which builds its prompt
+  independently today — covering only the worker path would make "Fire now"
+  on a to-do schedule silently run without its checklist. The kickoff
+  prompt is server-authored from the pinned steps.
 - **From a schedule** — §6.
 - **Manual tracking.** Humans tick steps from the To-dos tab (and the chat
   card): `POST .../steps/:stepId` with a status + optional note, actor
@@ -402,10 +446,27 @@ should be** — following `kb_publish_request` piece for piece:
    available to any agent with to-dos enabled) validates the steps against
    the shared schema, assigns stable keys, and writes an
    `AgentTodoTemplate` at `status: draft`, `authorType: agent`,
-   `proposedByRunId` set. It then creates an `ApprovalRequest`
+   `proposedByRunId` set, **plus its `ApprovalRequest` in one transaction**
    (`action: 'agent.todo_template.publish'`, `requesterId = agentId`,
-   `context: {templateId, version}`, 7-day expiry, same-version dedupe scan)
-   and returns "proposed — pending review". *Whether* to propose is
+   `context: {templateId, version}`, 7-day expiry)
+   and returns "proposed — pending review".
+   Two guards the KB precedent does not have:
+   - **Disclosure fails closed.** A draft is readable by everyone who can
+     see the agent *before* any human reviews it, so a proposal minted from
+     a run that consumed restricted sources would launder that content past
+     the basis system (approval gates activation, not draft visibility).
+     v1 rule: the tool **refuses when the run's `ConsumedSourceSink` holds
+     any scoped source**, in words ("this conversation drew on restricted
+     material — a person should author this template, or ask me again in a
+     clean conversation"). Over-restrictive by design, the search-fails-
+     closed posture; refine later if it bites.
+   - **A structural proposal cap** — at most `N` pending agent proposals per
+     agent (the `MAX_ACTIVE_SCHEDULES = 25` precedent), refused in words
+     beyond it. Same-draft dedupe alone cannot stop *equivalent* re-proposals
+     (each call mints a fresh template id); the cap bounds the blast radius
+     structurally, and the prompt block's pending/rejected-drafts facts (§3)
+     give the model what it needs to not re-propose semantically — which
+     stays its judgement, per the no-string-matching rule. *Whether* to propose is
    model-judged (noticing "I do this every week" in any language); the
    proposal itself is this one structural act. The run does not wait —
    there is no suspend/resume, and the proposal doesn't need one.
@@ -422,10 +483,18 @@ should be** — following `kb_publish_request` piece for piece:
    "proposed by the agent" badge and on the existing `/approvals` page
    (context-narrowed card + deep link into the To-dos tab, the
    `knowledge.page.publish` rendering shape).
-3. **Approve** → a new `runApprovalEffect` case with a zod context schema and
-   the staleness guard: if `template.version !== context.version` the effect
-   returns "draft superseded — re-review", else flips the template
-   `draft → active` and emits `agent.todo_template.published` audit.
+3. **Approve** → a new `runApprovalEffect` case with a zod context schema.
+   The staleness guard is **not** read-then-flip (a TOCTOU window would let
+   a concurrent edit activate an unreviewed version): activation is one
+   atomic conditional update on `{id, version: context.version,
+   status: 'draft'}` → `active`, and zero rows updated means "superseded or
+   already handled", reported in the resolution note. The effect runs after
+   the approval's atomic claim and its failure never un-approves (existing
+   architecture, `api/src/services/approvals.ts:247-273`); the crash window
+   between claim and effect is recoverable without new machinery because an
+   **owner can always activate a draft directly** in the Designer — the
+   human-authorship rule doubles as the retry path. Emits
+   `agent.todo_template.published` audit.
 4. **Edit-before-approve is a first-class path, not a workaround.** Unlike
    the KB flow (where a human edit forces a re-request), a person editing a
    draft template in the Designer *takes authorship*: the save bumps
@@ -433,10 +502,15 @@ should be** — following `kb_publish_request` piece for piece:
    authorship needs no review, which is already the rule for
    Designer-authored templates. The dangling approval then dies naturally on
    its staleness guard (resolved as "superseded", never silently).
-5. **Rejection** resolves the approval and archives the draft; the agent
-   learns the outcome the honest way — the template list it sees next run no
-   longer contains a pending proposal — and the anti-nag rule is the dedupe
-   scan: one pending approval per (template, version), ever.
+5. **Rejection** resolves the approval and nothing else — deliberately,
+   because `resolveApprovalRequest` invokes effects **only on approve**
+   (`approvals.ts:247`), and wiring a rejection side effect would be new
+   architecture for no need. The draft stays `draft`, rendered with a
+   "rejected" state (derived from its linked approval) in the Designer,
+   where the owner reworks, activates, or archives it. The agent learns the
+   outcome structurally: the §3 prompt block lists its drafts *with
+   status*, so a rejected proposal is a visible fact, not a silent
+   disappearance.
 
 ## 6. Scheduling — repetitive templates ride the existing triggers
 
@@ -458,16 +532,39 @@ is an `AgentTrigger` whose config carries `todoTemplateId`:
   through `POST /api/triggers`. So the shared trigger create/update path
   (`trigger-create.ts`) grows one validation: when `todoTemplateId` is
   present, the template must exist, belong to **this trigger's agent**, and
-  be `active`, else the write is refused in words. The fire path
-  re-validates (a template archived after the trigger was written fails the
-  delivery with a `health_detail` naming the template — the
-  "schedule that stops says so" rule), which also covers any row written
-  before the validation existed.
-- At fire time, `trigger-run.ts` sees `config.todoTemplateId`, instantiates
-  an `AgentTodo` pinned to the template's current version, and builds the
-  kickoff prompt from the materialized steps instead of `config.prompt`. Each
-  fire is a fresh instance (a Monday checklist half-done on Tuesday stays
-  visible as its own honest record; next Monday starts clean — rollover is an
+  be `active`, else the write is refused in words. The validation also
+  requires **`Agent.todosEnabled`** (a dormant template must not be
+  schedulable through the generic trigger API), and trigger create/update
+  serializes with the archive/disable 409 guards under one advisory lock on
+  the agent — the reference is JSON, not an FK, so without the lock a trigger
+  write and an archive race past each other. The fire path re-validates, and
+  a missing/archived/feature-disabled template is a **new classified health
+  transition, not a free one**: today `queueTriggerRun` records health only
+  for `TriggerLaunchOriginError` (`trigger-run.ts:467-471`), so an ordinary
+  lookup error would just become a retryable failed delivery and grind
+  forever. A config-invalid reason (non-reauthorizable → `status: 'error'`,
+  `health_detail` naming the template, exactly-once alert via
+  `health_revision`) is part of this phase — the "schedule that stops says
+  so" rule, paid for rather than assumed. **This shared fire preparation
+  lives in `@nessie/workspace-admin` and is used by BOTH fire paths** — the
+  worker's `trigger-run.ts` *and* the API's manual-fire
+  `dispatchAgentTrigger` (`api/src/services/trigger-dispatch.ts`), which
+  builds its prompt independently today; covering only the worker path would
+  make "Fire now" on a to-do schedule silently run without its checklist.
+- **Instantiation happens at run adoption, not at fire.** The fire path
+  shares `claimThreadRunOrPend` with chat: a busy `(agent, thread)` slot
+  pends the fire, several pends can drain into **one** run, and a to-do
+  minted eagerly per fire would accumulate instances no run ever adopts. So
+  the fire carries `todoTemplateId` through the pending-message provenance
+  (`RunThreadPendingMessage` already replays trigger provenance), and the
+  run that actually starts materializes the instance — one per distinct
+  template among the deliveries it drained, pinned to the template's
+  then-current version, kickoff prompt built from the materialized steps
+  instead of `config.prompt`. Coalesced same-template fires become one
+  instance, honestly (running the same checklist twice back-to-back is
+  noise, and the delivery rows still record every fire). Uncoalesced fires
+  are each a fresh instance — a Monday checklist half-done on Tuesday stays
+  visible as its own honest record; next Monday starts clean (rollover is an
   open question, §10).
 - A template cannot be archived, and `todosEnabled` cannot be switched off,
   while any referencing trigger has **`enabled: true`** — the exact
@@ -507,8 +604,12 @@ is an `AgentTrigger` whose config carries `todoTemplateId`:
   existing `/approvals` page rows for pending proposals; and the agent's own
   offer in conversation ("I have a checklist for that — want me to run it?"),
   which the structural prompt block makes possible.
-- Non-owners see everything read-only — visible-and-refuses-in-words, the
-  `connector_*` precedent, rather than a hidden tab.
+- Non-owners see the tab too, with exactly the §4 entitlements — **templates
+  read-only** (visible-and-refuses-in-words on the edit affordances, the
+  `connector_*` precedent, never a hidden tab), but the **instance actions
+  they are entitled to stay live**: instantiate, Run now, and ticking per
+  the §4 table. A member allowed to do something the tab hides would be the
+  rule-zero defect in miniature.
 
 ## 8. New vs reused
 
@@ -517,7 +618,7 @@ is an `AgentTrigger` whose config carries `todoTemplateId`:
 | Data model | `AgentTodoTemplate` + `AgentTodo` + `AgentTodoStep`, `Agent.todosEnabled`, step schema in `@nessie/schemas` | step-status vocabulary + `sequence` uniqueness (`PlanStep`/`WorkflowStepRun`), version-pinning discipline (`WorkflowRun.graphSnapshot`) |
 | Visibility | nothing — routes compose the existing gates | `isAgentAccessibleToActor` mirror pair, `buildAccessibleThreadWhere` for run links; future `Agent.visibility` inherits free |
 | Authoring service | `agent-todos.ts` in `@nessie/workspace-admin` | the shared-package pattern; API routes + worker tools call one implementation |
-| Execution | `todo_start`, `todo_step_update` builtins; small `todo-run` kickoff service; `activeRunId` claim/release | agentic run loop, `claimThreadRunOrPend`, `trigger-run.ts` fire shape, run terminal-status fusion (👀-marker precedent), toolset structural gating |
+| Execution | `todo_start`, `todo_step_update` builtins; shared to-do fire preparation in `@nessie/workspace-admin` (both trigger fire paths + Run now); `activeRunId` claim + derived liveness | agentic run loop, `claimThreadRunOrPend` + pending-message provenance, `trigger-run.ts` fire shape, run terminal-status fusion (👀-marker precedent), toolset structural gating |
 | Agent proposals | `todo_template_propose` builtin; one `runApprovalEffect` case | `ApprovalRequest` + resolve semantics, version-pin staleness guard, dedupe, `/approvals` page, audit |
 | Scheduling | `config.todoTemplateId` branch in the fire path; 409 in-use guards | the whole trigger system: sweep, launchOrigin/UOA identity, health + alerts, reauthorize |
 | Designer UI | To-dos tab + step editor + progress card + `metadata.todoRef` | `AgentDetailTabs`, `TabBar`, `Switch`, Tools-tab edit/read-only split, `ChannelMessageRow` card mount, id-only realtime + gated refetch |
@@ -562,11 +663,16 @@ migrations only.
 3. **Agent proposals.** `todo_template_propose`, the approval action +
    effect + staleness guard, proposed-badge review UI, edit-takes-authorship
    save path.
-4. **Scheduling.** `config.todoTemplateId` in the fire path, "Repeat on a
-   schedule" in the template editor, the in-use 409 guards.
+4. **Scheduling.** `config.todoTemplateId` validation + both fire paths'
+   shared preparation, instantiate-at-adoption through the pending-message
+   provenance, the config-invalid health reason, "Repeat on a schedule" in
+   the template editor, the in-use 409 guards.
 
-Phase 1 is independently shippable; 2–4 are independent of each other once 1
-exists (3 and 4 can swap if proposals are wanted sooner).
+Phase 1 is independently shippable; 3 is independent once 1 exists; **4
+depends on 2** — a scheduled checklist without `todo_step_update`, run
+adoption, and the progress card could not record deterministic progress, which
+is the feature's whole claim. Order is therefore 1 → 2 → {3, 4} in either
+order.
 
 ## 11. Open questions (flagged, not guessed)
 
@@ -580,9 +686,10 @@ exists (3 and 4 can swap if proposals are wanted sooner).
    should an unfinished previous instance auto-cancel, roll its unfinished
    steps forward, or just accumulate as honest history (current design)?
    Decide after real use; accumulation is the no-magic default.
-4. **Failed steps.** A step the agent marks `failed` leaves the to-do open.
-   Should a failure raise anything (a mention-style alert to the
-   instantiator?), or is the progress card + unread state enough in v1?
+4. **Failed steps — alerting only.** A to-do whose steps all terminated with
+   failures among them is `completed` with the failures visible (§2.3).
+   Should a failure additionally raise anything (a mention-style alert to
+   the instantiator?), or is the progress card + unread state enough in v1?
 5. **Convergence with Playbooks.** If Stage 2 of workflows lands
    `invoke_workflow`, a to-do step saying "run Playbook X" becomes natural.
    That is the sanctioned crossing point — a step that *references* a
@@ -596,3 +703,69 @@ exists (3 and 4 can swap if proposals are wanted sooner).
    it (fresh instance per fire, §6). Should the kickoff instead mention the
    still-open one so the model can decide to finish it first? Structural
    fact injection is cheap; decide with question 3.
+
+## Cross-model review — kimix and Codex Sol
+
+Both reviewers worked adversarially against the repo; kimix reviewed the first
+draft, Sol reviewed the doc with kimix's round folded in. Every claim below
+was re-verified against code before adoption.
+
+### Adopted from kimix (verified)
+
+1. **`activeRunId` release cannot ride `updateRunStatus` alone** — the API's
+   immediate-cancel flips a `pending` run terminal with a bare `updateMany`
+   (`api/src/services/runs.ts:163-169`), and sweeps terminalize outside the
+   loop. → claim only inside an executing run + readers derive liveness (§3).
+2. **Trigger `config` is client-writable open JSON** — only three
+   server-owned keys are stripped, so `todoTemplateId` needs a named
+   validation chokepoint (§6).
+3. **The trigger kickoff is `role: 'system'`** (`trigger-run.ts:347`) — a
+   card stamped there is invisible; cards ride assistant replies (§3).
+4. **`resolveApprovalRequest` checks the live role only when
+   `requiredApproverRole` is set** and the kb precedent never sets it — the
+   proposal approval sets `'owner'` (§5).
+5. Step-write races, the mid-run human-tick staleness, the actor-type enum,
+   the exact `enabled: true` in-use predicate, the config-readability
+   adjudication, cancel semantics, and the per-step-assignee non-goal — all
+   folded (§2–§4). **Refuted:** "the `safe:` flag is aspirational" —
+   `builtin-kb-tools.ts` sets it on every definition; kimix read the handler
+   files, not the definitions.
+
+### Adopted from Sol (verified)
+
+1. **Proposals could launder restricted context into a broadly-readable
+   draft** before any review — the disclosure gap was real, not future. →
+   `todo_template_propose` fails closed when the run consumed scoped
+   sources (§5).
+2. **Fire-time instantiation fights the pend/coalesce path** —
+   `claimThreadRunOrPend` can drain several fires into one run. →
+   instantiate at adoption, one instance per distinct template (§6).
+3. **The approve effect's read-then-flip had a TOCTOU window** and a crash
+   window after the atomic claim — activation is now a version-pinned CAS,
+   with owner-direct activation as the recovery path (§5).
+4. **Rejection effects never run** (`approvals.ts:247` — effects fire only on
+   approve) → rejection resolves only; the draft stays visible with its
+   rejected state, no new effect architecture (§5).
+5. **The manual fire path is separate code** (`api/src/services/
+   trigger-dispatch.ts` builds its own prompt) → shared fire preparation in
+   `@nessie/workspace-admin` used by both paths (§6).
+6. **The template-unavailable health transition is new work** — today only
+   `TriggerLaunchOriginError` records health (§6). Also folded: relations +
+   composite tenant FKs in the schema, `@@unique([todoId, key])`, the
+   per-todo advisory lock on step writes, the failed-steps contradiction
+   (resolved: all-terminal completes, failures visible), one active to-do
+   per run, the bounded prompt block + proposal cap, the phase 4 → 2
+   dependency, the Run-now membership rule being deliberately stricter than
+   `schedule_task`, the non-owner tab actions wording, and the PA-exclusion
+   mechanics (`isAgentAccessibleToActor`'s `systemManaged: false` is the
+   real guard; `updateAgentRecord`'s system-managed branch must pin
+   `todosEnabled` explicitly).
+
+### Noted, not adopted
+
+- Sol's suggestion of an effect outbox/retry for approval activation —
+  declined as new architecture; the version-pinned CAS plus owner-direct
+  activation covers the crash window without it.
+- kimix's suggestion to index the cross-agent pending-proposal scan —
+  deferred; the `/approvals` page already paginates and v1 volume does not
+  warrant it.
