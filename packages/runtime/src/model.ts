@@ -4,6 +4,7 @@ import {
   resolveEmbeddingProvider,
   type EmbeddingProviderOverride,
 } from './inference/embedding-provider.js'
+import { buildPromptCacheKey } from './inference/prompt-cache.js'
 import { createInferenceService } from './inference/service.js'
 import type {
   InferenceService,
@@ -39,6 +40,7 @@ export type ModelOptions = {
   temperature?: number
   responseFormat?: { type: 'json_object' }
   // Stable key so repeated calls sharing a prefix hit the same prompt cache.
+  // Omitted, one is derived from the leading system message when there is one.
   promptCacheKey?: string
   // Sent to OpenAI-compatible providers as `reasoning_effort` when set.
   reasoningEffort?: ProviderReasoningEffort
@@ -201,14 +203,30 @@ export const createModelClient = (
     }
   }
 
+  // A leading system message is a stable, cacheable prefix, so key it by
+  // default: with no key Kimi's connector attaches no cache_control at all and
+  // OpenAI's affinity routing scatters repeated utility calls (engagement
+  // decisions, compaction, designer calls) across cache shards. An explicit
+  // caller key always wins.
+  const defaultPromptCacheKey = (
+    providerMessages: ProviderMessage[],
+    model: string | undefined,
+  ): string | undefined =>
+    providerMessages[0]?.role === 'system'
+      ? buildPromptCacheKey(model ?? config.modelName ?? '', providerMessages, undefined)
+      : undefined
+
   const chat: ModelClient['chat'] = async (messages, options) => {
     const attribution = resolveAttribution(options?.usage)
     const headers = await resolveHeaders(attribution, requestHeaders)
+    const providerMessages = toProviderMessages(messages)
     const result = await inferenceService.run({
       maxOutputTokens: options?.maxTokens,
-      messages: toProviderMessages(messages),
+      messages: providerMessages,
       model: options?.model,
-      promptCacheKey: options?.promptCacheKey,
+      promptCacheKey:
+        options?.promptCacheKey
+        ?? defaultPromptCacheKey(providerMessages, options?.model),
       reasoningEffort: options?.reasoningEffort,
       responseFormat: options?.responseFormat,
       requestHeaders: headers,
@@ -273,11 +291,14 @@ export const createModelClient = (
   const stream: ModelClient['stream'] = async function* (messages, options) {
     const attribution = resolveAttribution(options?.usage)
     const headers = await resolveHeaders(attribution, requestHeaders)
+    const providerMessages = toProviderMessages(messages)
     const source = inferenceService.stream?.({
       maxOutputTokens: options?.maxTokens,
-      messages: toProviderMessages(messages),
+      messages: providerMessages,
       model: options?.model,
-      promptCacheKey: options?.promptCacheKey,
+      promptCacheKey:
+        options?.promptCacheKey
+        ?? defaultPromptCacheKey(providerMessages, options?.model),
       reasoningEffort: options?.reasoningEffort,
       responseFormat: options?.responseFormat,
       requestHeaders: headers,

@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import type { ModelConfig } from '@nessie/config'
 import {
+  buildPromptCacheKey,
   isLedgerEndpoint,
   createInferenceService,
   providerFailureDetails,
@@ -28,23 +29,11 @@ import {
 import type { ProviderRequestHeadersResolver } from './inference-identity.js'
 import { InferenceAbortedError } from './inference-abort.js'
 
-// Stable cache key from the request's cacheable prefix (model + tool set + the
-// system anchor message). Identical whenever the prefix is identical, so the
-// provider routes repeated turns/runs of the same agent to the same prompt
-// cache. Derived from content, so it needs no agent/run id threaded in.
-export const buildPromptCacheKey = (
-  model: string,
-  baseMessages: ProviderMessage[],
-  tools: ToolSchemaDescriptor[] | undefined,
-): string | undefined => {
-  const anchor = baseMessages[0]
-  if (!anchor) return undefined
-  const toolNames = (tools ?? []).map((tool) => tool.toolName).sort().join(',')
-  return createHash('sha256')
-    .update(`${model}\u0000${toolNames}\u0000${JSON.stringify(anchor)}`)
-    .digest('hex')
-    .slice(0, 40)
-}
+// The cache-key derivation lives in @nessie/runtime beside the connectors
+// that consume it, shared with the model client's utility calls. The anchor it
+// hashes (`baseMessages[0]`) must stay the byte-stable system block
+// `buildModelPrompt` puts first — never a message carrying per-run content.
+export { buildPromptCacheKey }
 
 export type StageExecutionSuccess = {
   candidate: CandidateOutput

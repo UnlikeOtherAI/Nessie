@@ -233,18 +233,31 @@ order cannot vary the complete model-facing tool array.
 
 #### F7. Cache-friendliness of the stable prefix
 
-- The system prompt embeds `new Date().toISOString()`. It is stable **within** a
-  run (built once) but **rotates the cross-run cache key** for every agent, so
-  two runs of the same agent never share the cached prefix. Moving the timestamp
-  out of the cacheable prefix (or rounding it, e.g. to the hour) would lift
-  cross-run hit rates.
+> **Resolved (2026-08-31).** The system anchor no longer embeds a per-run
+> timestamp: the clock moved into a trailing volatile system message (after
+> the memory/checkpoint injections), rounded down to the hour, so the anchor —
+> persona, instructions, structural blocks — is byte-identical across runs.
+> The shared-thread guidance paragraph is unconditional rather than keyed on
+> the window's contents, so mixed-agent channels no longer flip anchor bytes
+> either. `buildPromptCacheKey` (moved to `@nessie/runtime`
+> `inference/prompt-cache.ts`) hashes model + sorted tool names + that stable
+> anchor only, so OpenAI `prompt_cache_key` affinity now holds across runs of
+> the same agent; the shared model client derives the same default for
+> system-led utility calls (engagement decision, compaction, designer), which
+> previously sent no key — on Kimi that disabled `cache_control` entirely.
+> The Kimi Anthropic payload emits the stable block (tool render + first
+> system message) as the sole `cache_control` breakpoint, keeps later system
+> turns (memory, checkpoint, mid-run wind-down) in uncached follow-on blocks,
+> and adds a sliding tail breakpoint on the last message so a multi-iteration
+> run cache-reads its transcript.
+
 - The MCP deferred view **mutates the tool list mid-run** (load/drop), which
   changes the tools portion of the cacheable prefix and rotates
   `buildPromptCacheKey` (it hashes sorted tool names). This is an inherent
-  trade-off of deferral — fewer tokens, less cacheable — and is acceptable, but
-  should be documented so it isn't mistaken for a regression.
-
-**Impact:** Low. **Risk:** Low. **Effort:** Small.
+  trade-off of deferral — fewer tokens, less cacheable — and is acceptable,
+  not a regression. The same applies to a to-do/routing/documents block whose
+  structural facts genuinely changed between runs: the anchor honestly
+  differs, and the key honestly rotates with it.
 
 ---
 
@@ -258,7 +271,7 @@ order cannot vary the complete model-facing tool array.
 | F4 | Duplicate-result collapse | Med | Low | Small |
 | F5 | Two-tier builtin schemas | Addressed | Low | Done |
 | F6 | Token-cap `systemPrompt` + conversation | Low-Med | Low | Small |
-| F7 | Cache-stable system prefix | Low | Low | Small |
+| F7 | Cache-stable system prefix | Addressed | Low | Done |
 
 ### Recommended sequencing
 
@@ -270,8 +283,8 @@ order cannot vary the complete model-facing tool array.
    groups rather than dropping them; keep a compact marker so the agent knows
    history was condensed). Design the summarization budget so the summary itself
    doesn't reintroduce the cost it removed.
-3. **F6–F7 as polish.** These remain quick, lower-impact guards after F5's
-   two-tier builtin descriptor work.
+3. **F6 as polish.** A quick, lower-impact guard after F5's two-tier builtin
+   descriptor work. (F7 landed 2026-08-31 — see its resolution note above.)
 
 ---
 

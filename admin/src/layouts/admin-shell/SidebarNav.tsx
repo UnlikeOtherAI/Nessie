@@ -135,30 +135,17 @@ export const SidebarNav = (props: SidebarNavProps) => {
           <span>Threads</span>
           {renderUnreadCount(threadsUnreadCount)}
         </button>
-        {unreadDirectMessageCount > 0 ? (
-          <button
-            className={[
-              'admin-sb-item sidebar-unread-messages group',
-              pathname === '/unread-messages' ? 'active' : '',
-            ].join(' ')}
-            onClick={onNavigateUnreadMessages}
-            type="button"
-          >
-            <svg
-              aria-hidden="true"
-              className="h-[18px] w-[18px] shrink-0 text-[color:var(--tx2)]"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              viewBox="0 0 24 24"
-            >
-              <path d="M5 18.5 3.5 21l3.2-.9A8.5 8.5 0 1 0 5 18.5Z" />
-              <path d="M8 12h.01M12 12h.01M16 12h.01" strokeLinecap="round" strokeWidth="2.5" />
-            </svg>
-            <span>Unread messages</span>
-            {renderUnreadCount(unreadDirectMessageCount)}
-          </button>
-        ) : null}
+        <button
+          className={[
+            'admin-sb-item sidebar-threads sidebar-unread-messages group',
+            pathname === '/unread-messages' ? 'active' : '',
+          ].join(' ')}
+          onClick={onNavigateUnreadMessages}
+          type="button"
+        >
+          <span>Unread messages</span>
+          {renderUnreadCount(unreadDirectMessageCount)}
+        </button>
 
         <SidebarStarredSection
           activeDmChannelId={activeDmChannelId}
