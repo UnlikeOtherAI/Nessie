@@ -159,6 +159,7 @@ const makeApp = (
   effect: 'allow' | 'deny',
   providerOverrides: Partial<KnowledgeProvider> = {},
   actorContextOverride: AuthorizedActionContext = actorContext,
+  visibleAgentIds: string[] = [],
 ) => {
   const auditLogs: Array<Record<string, unknown>> = []
   const calls: string[] = []
@@ -179,7 +180,7 @@ const makeApp = (
     projectMember: {
       findMany: async () => [{ projectId }],
     },
-    agent: { findMany: async () => [] },
+    agent: { findMany: async () => visibleAgentIds.map((id) => ({ id })) },
     agentBinding: {
       findMany: async () => [],
     },
@@ -466,6 +467,38 @@ test('a plain writer may still edit non-administrative space details', async () 
 
   assert.equal(response.statusCode, 200)
   assert.deepEqual(calls, ['Platform'])
+  await app.close()
+})
+
+test('an entitled administrator can reverse writeRestricted on an agent home they can read', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const agentHomeId = '00000000-0000-4000-8000-000000000099'
+  const { app } = makeApp('allow', {
+    getSpace: async () => makeSpace({
+      createdBy: agentHomeId,
+      ownerAgentId: agentHomeId,
+      visibility: 'private',
+      writeRestricted: true,
+    }),
+    updateSpace: async (_organizationId, _spaceId, input) => {
+      calls.push(input)
+      return makeSpace({
+        createdBy: agentHomeId,
+        ownerAgentId: agentHomeId,
+        visibility: 'private',
+        writeRestricted: input.writeRestricted ?? true,
+      })
+    },
+  }, actorContext, [agentHomeId])
+
+  const response = await app.inject({
+    method: 'PATCH',
+    url: `/api/knowledge-base/spaces/${spaceId}`,
+    payload: { writeRestricted: false },
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(calls, [{ writeRestricted: false }])
   await app.close()
 })
 

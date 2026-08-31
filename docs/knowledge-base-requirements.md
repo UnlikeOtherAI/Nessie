@@ -315,9 +315,15 @@ Preferred interface is per-action endpoints. A shared action body schema is acce
     org member reads; only members + creator write.
   - **Project** — `visibility = project`: members of the space's `projectId`
     (via `ProjectMember`) read and write.
-  - **Private** — `visibility = private`: only listed `KnowledgeSpaceMember`s +
-    creator read and write.
-  The creator always has full access. **Visibility is the only scope.** The
+  - **Private** — ordinary `visibility = private` spaces admit only listed
+    `KnowledgeSpaceMember`s plus their human creator. An agent-owned private
+    home (`ownerAgentId` set) instead admits human viewers who can see its
+    owning agent, plus explicit members; its agent proprietor, subtask children,
+    and explicitly granted agents follow the agent access rules. It never falls
+    through to ordinary private-space creator access.
+  Ordinary-space creators always have full access. **Visibility is the only
+  scope for ordinary spaces; an agent-owned space derives its audience from its
+  owning agent.** The
   space list (`GET /api/knowledge-base/spaces`), search, and summarize are
   organization-wide and narrow only when the caller passes an explicit
   `projectId`; they never fall back to the session's `proj` claim, which is just

@@ -98,7 +98,12 @@ const makePrisma = (options: { unreadCount?: number; restricted?: boolean } = {}
       findMany: async (args: {
         select: { id: true }
         where: {
-          OR: Array<{
+          AND?: Array<{ OR?: Array<{
+            ownerMembership?: { deactivatedAt: null }
+            ownerUserId?: string
+            parentAgentId?: null
+          }> }>
+          OR?: Array<{
             ownerMembership?: { deactivatedAt: null }
             ownerUserId?: string
             parentAgentId?: null
@@ -108,11 +113,18 @@ const makePrisma = (options: { unreadCount?: number; restricted?: boolean } = {}
         }
       }) => {
         assert.deepEqual(args.select, { id: true })
+        // The shared agent predicate keeps reachability and private visibility
+        // as complete sibling fragments. Flatten the modeled stewardship arms
+        // from both locations so this fake tracks the production query shape.
+        const visibilityArms = [
+          ...(args.where.OR ?? []),
+          ...(args.where.AND?.flatMap((condition) => condition.OR ?? []) ?? []),
+        ]
         return agents
           .filter((agent) =>
             agent.organizationId === args.where.organizationId
             && agent.systemManaged === args.where.systemManaged
-            && args.where.OR.some((visibility) =>
+            && visibilityArms.some((visibility) =>
               agent.ownerMembership?.deactivatedAt === visibility.ownerMembership?.deactivatedAt
               && agent.ownerUserId === visibility.ownerUserId
               && agent.parentAgentId === visibility.parentAgentId,

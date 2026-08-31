@@ -4,6 +4,8 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 
 import {
+  buildAgentVisibilityWhere,
+  buildOwnedAgentWhere,
   buildVisibleAgentWhere,
   listVisibleAgentIdsForUser,
 } from '../src/agent-visibility.js'
@@ -12,29 +14,30 @@ const organizationId = '00000000-0000-4000-8000-000000000001'
 const userId = '00000000-0000-4000-8000-000000000002'
 const agentId = '00000000-0000-4000-8000-000000000003'
 
-test('buildVisibleAgentWhere centralizes channel reach and live stewardship', () => {
+test('buildVisibleAgentWhere centralizes channel reach, live stewardship, and private visibility', () => {
   assert.deepEqual(buildVisibleAgentWhere({ organizationId, userId }), {
     organizationId,
     systemManaged: false,
-    OR: [
+    AND: [
       {
-        bindings: {
-          some: {
-            channel: {
-              organizationId,
-              OR: [
-                { visibility: 'public' },
-                { members: { some: { userId } } },
-              ],
+        OR: [
+          {
+            bindings: {
+              some: {
+                channel: {
+                  organizationId,
+                  OR: [
+                    { visibility: 'public' },
+                    { members: { some: { userId } } },
+                  ],
+                },
+              },
             },
           },
-        },
+          buildOwnedAgentWhere({ organizationId, userId }),
+        ],
       },
-      {
-        ownerMembership: { deactivatedAt: null },
-        ownerUserId: userId,
-        parentAgentId: null,
-      },
+      buildAgentVisibilityWhere({ organizationId, userId }),
     ],
   })
 })

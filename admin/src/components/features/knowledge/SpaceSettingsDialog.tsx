@@ -5,11 +5,10 @@ import { useWorkspaceMembers } from '../../../facades/users/workspace-members'
 import { useOptionalAuthSession } from '../../../providers/AuthSessionProvider'
 import { Dialog } from '../../shared/Dialog'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
-import { AgentMemberChecklist } from './AgentMemberChecklist'
 import {
-  UserMemberChecklist,
-  type KnowledgeUserOption,
-} from './UserMemberChecklist'
+  MemberChecklist,
+  type KnowledgeMemberOption,
+} from './MemberChecklist'
 
 type SpaceSettingsDialogProps = {
   canManageAccess: boolean
@@ -42,14 +41,14 @@ export const SpaceSettingsDialog = ({
   const agentsQuery = useAgents()
   const usersQuery = useUsers(open && canManageAccess && !isUoaSession)
   const workspaceMembersQuery = useWorkspaceMembers(open && canManageAccess && isUoaSession)
-  const userOptions: KnowledgeUserOption[] = isUoaSession
+  const userOptions: KnowledgeMemberOption[] = isUoaSession
     ? (workspaceMembersQuery.data?.members ?? []).flatMap((member) => member.userId
         ? [{
-            displayName: member.displayName ?? member.email ?? 'Workspace member',
+            label: member.displayName ?? member.email ?? 'Workspace member',
             id: member.userId,
           }]
         : [])
-    : (usersQuery.data ?? []).map((user) => ({ displayName: user.displayName, id: user.id }))
+    : (usersQuery.data ?? []).map((user) => ({ id: user.id, label: user.displayName }))
 
   const [name, setName] = useState(space.name)
   const [description, setDescription] = useState(space.description ?? '')
@@ -164,10 +163,11 @@ export const SpaceSettingsDialog = ({
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]">
                 People with access
               </span>
-              <UserMemberChecklist
+              <MemberChecklist
+                emptyLabel="No people available."
+                members={userOptions}
                 onChange={setMemberUserIds}
-                selectedUserIds={memberUserIds}
-                users={userOptions}
+                selectedIds={memberUserIds}
               />
             </div>
             <div className="grid gap-1.5">
@@ -179,10 +179,11 @@ export const SpaceSettingsDialog = ({
               >
                 Agents with access
               </span>
-              <AgentMemberChecklist
-                agents={agentsQuery.data ?? []}
+              <MemberChecklist
+                emptyLabel="No agents available yet."
+                members={(agentsQuery.data ?? []).map((agent) => ({ id: agent.id, label: agent.name }))}
                 onChange={setMemberAgentIds}
-                selectedAgentIds={memberAgentIds}
+                selectedIds={memberAgentIds}
               />
             </div>
           </div>

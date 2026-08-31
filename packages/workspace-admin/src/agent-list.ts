@@ -1,11 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { buildVisibleAgentWhere } from '@nessie/db'
+import { buildAgentVisibilityWhere, buildVisibleAgentWhere } from '@nessie/db'
 import type { AgentRecord } from '@nessie/schemas'
 
 import {
   AGENT_OWNER_MEMBERSHIP_SELECT,
   buildAccessibleChannelWhere,
-  buildAgentVisibilityWhere,
   mapAgentRecord,
 } from './agent-record.js'
 
@@ -41,23 +40,20 @@ export const listAgentsForUser = async (
     organizationId,
     userId,
   })
-  const sharedVisibilityWhere = buildVisibleAgentWhere({ organizationId, userId })
-  const sharedVisibilityFilters = Array.isArray(sharedVisibilityWhere.OR)
-    ? sharedVisibilityWhere.OR
-    : [sharedVisibilityWhere]
-  const visibilityFilters: Prisma.AgentWhereInput[] = includeSystemManaged
-    ? [{ systemManaged: false, OR: sharedVisibilityFilters }]
-    : [...sharedVisibilityFilters]
+  const visibilityFilters: Prisma.AgentWhereInput[] = [
+    buildVisibleAgentWhere({ organizationId, userId }),
+  ]
 
   if (includeUnbound) {
     // Organization owners deliberately widen the ordinary entitlement to every
     // agent in the tenant, including private-channel and unbound agents. This
     // remains an additional route-only arm, not part of the shared member rule.
     visibilityFilters.push(
-      { bindings: { some: { channel: { organizationId } } } },
-      { bindings: { none: {} } },
+      { systemManaged: false, bindings: { some: { channel: { organizationId } } } },
+      { systemManaged: false, bindings: { none: {} } },
     )
-  } else if (includeSystemManaged) {
+  }
+  if (includeSystemManaged) {
     // System agents are a read-only Agents-page tier. They remain outside the
     // shared non-system predicate and inherit the page's existing channel gate.
     visibilityFilters.push({

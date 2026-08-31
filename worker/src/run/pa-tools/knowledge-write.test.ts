@@ -144,6 +144,13 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
         where: {
           organizationId?: string
           systemManaged?: boolean
+          AND?: Array<{
+            OR?: Array<{
+              ownerMembership?: { deactivatedAt?: null }
+              ownerUserId?: string
+              parentAgentId?: null
+            }>
+          }>
           OR?: Array<{
             ownerMembership?: { deactivatedAt?: null }
             ownerUserId?: string
@@ -151,9 +158,12 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
           }>
         }
       }) => {
-        const ownerFilters = args.where.OR?.filter(
+        const ownerFilters = [
+          ...(args.where.OR ?? []),
+          ...(args.where.AND?.flatMap((condition) => condition.OR ?? []) ?? []),
+        ].filter(
           (candidate) => candidate.ownerUserId !== undefined,
-        ) ?? []
+        )
         return agents
           .filter(
             (agent) =>

@@ -1,8 +1,7 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
-import { buildVisibleAgentWhere } from '@nessie/db'
+import { buildAgentVisibilityWhere, buildVisibleAgentWhere } from '@nessie/db'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
-import { buildAgentVisibilityWhere } from './agent-record.js'
 export type ChannelAccessRow = {
   systemChannelType?: ChannelSystemType
   type: string
@@ -61,7 +60,6 @@ export const isAgentVisibleToUser = async (
     where: {
       AND: [
         buildVisibleAgentWhere({ organizationId, userId }),
-        buildAgentVisibilityWhere({ organizationId, userId }),
       ],
       id: agentId,
     },

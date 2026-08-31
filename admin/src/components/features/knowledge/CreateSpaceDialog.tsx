@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import type { KnowledgeSpaceRecord } from '../../../facades/knowledge/hooks'
-import { AgentMemberChecklist } from './AgentMemberChecklist'
+import { MemberChecklist } from './MemberChecklist'
 import { Dialog } from '../../shared/Dialog'
 
 type SpaceVisibility = KnowledgeSpaceRecord['visibility']
@@ -114,10 +114,11 @@ export const CreateSpaceDialog = ({ onClose, onCreate, open, pending }: CreateSp
           >
             Agents
           </span>
-          <AgentMemberChecklist
-            agents={agentsQuery.data ?? []}
+          <MemberChecklist
+            emptyLabel="No agents available yet."
+            members={(agentsQuery.data ?? []).map((agent) => ({ id: agent.id, label: agent.name }))}
             onChange={setMemberAgentIds}
-            selectedAgentIds={memberAgentIds}
+            selectedIds={memberAgentIds}
           />
         </div>
 

@@ -5,6 +5,43 @@ export type VisibleAgentWhereInput = {
   userId: string
 }
 
+export type AgentVisibilityScope = VisibleAgentWhereInput & {
+  includeAllOrgChannels?: boolean
+}
+
+/**
+ * "An agent I steward" as a visibility rule.
+ *
+ * Both conditions are load-bearing: retained, deactivated memberships do not
+ * keep granting access, and permanent spawn_subtask children do not appear in
+ * a person's ordinary agent audience.
+ */
+export const buildOwnedAgentWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.AgentWhereInput => ({
+  ownerMembership: { deactivatedAt: null },
+  ownerUserId: visibility.userId,
+  parentAgentId: null,
+})
+
+/**
+ * The privacy fence over every otherwise-entitled agent read.
+ *
+ * Keep this beside buildVisibleAgentWhere: agents and all derived resources
+ * (including agent-owned documents) must have exactly one audience rule.
+ */
+export const buildAgentVisibilityWhere = (
+  visibility: AgentVisibilityScope,
+): Prisma.AgentWhereInput => ({
+  OR: [
+    { visibility: 'workspace' },
+    {
+      visibility: 'private',
+      ...buildOwnedAgentWhere(visibility),
+    },
+  ],
+})
+
 /**
  * The non-system agents a person is entitled to see through channel reach or
  * live stewardship. Every surface that derives another permission from agent
@@ -15,31 +52,28 @@ export const buildVisibleAgentWhere = (
 ): Prisma.AgentWhereInput => ({
   organizationId: input.organizationId,
   systemManaged: false,
-  OR: [
+  AND: [
     {
-      // A bound agent is visible wherever the person can see it working: in a
-      // public channel or one they explicitly joined. Agent documents inherit
-      // this exact audience; see docs/plans/2026-08-31-agent-documents.md §4.1.
-      bindings: {
-        some: {
-          channel: {
-            organizationId: input.organizationId,
-            OR: [
-              { visibility: 'public' },
-              { members: { some: { userId: input.userId } } },
-            ],
+      OR: [
+        {
+          // A bound agent is visible wherever the person can see it working:
+          // in a public channel or one they explicitly joined.
+          bindings: {
+            some: {
+              channel: {
+                organizationId: input.organizationId,
+                OR: [
+                  { visibility: 'public' },
+                  { members: { some: { userId: input.userId } } },
+                ],
+              },
+            },
           },
         },
-      },
+        buildOwnedAgentWhere(input),
+      ],
     },
-    {
-      // Stewardship is re-derived through the live membership, and permanent
-      // spawn_subtask children stay out of human visibility. Agent documents
-      // must lose this arm at the same instant; see the plan's §4.1/§4.3.
-      ownerMembership: { deactivatedAt: null },
-      ownerUserId: input.userId,
-      parentAgentId: null,
-    },
+    buildAgentVisibilityWhere(input),
   ],
 })
 
