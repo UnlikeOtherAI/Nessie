@@ -52,6 +52,7 @@ const makeApp = (viewerUserId: string) => {
   let targetSpaceReads = 0
   let targetNameReads = 0
   const prisma = {
+    agent: { findMany: async () => [] },
     channelMember: { findMany: async () => [] },
     disclosureGrant: { findMany: async () => [] },
     knowledgePage: {
@@ -122,6 +123,7 @@ const makeApp = (viewerUserId: string) => {
           memberUserIds: [],
           name: 'Private strategy',
           organizationId: ORGANIZATION_ID,
+          ownerAgentId: null,
           privateToAgentId: null,
           projectId: '00000000-0000-4000-8000-000000000011',
           sensitivityTier: 'normal',
