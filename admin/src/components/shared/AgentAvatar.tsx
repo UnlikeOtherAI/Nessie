@@ -2,7 +2,7 @@ import type { AgentRecord } from '../../lib/api-client'
 import { AGENT_AVATAR_BACKGROUND_COLORS } from '@nessie/schemas'
 import { useAuthedObjectUrl } from '../../lib/uploads'
 
-type AgentAvatarSource = Pick<
+export type AgentAvatarSource = Pick<
   AgentRecord,
   'avatarAttachmentId' | 'avatarBackgroundColor' | 'id' | 'name' | 'role'
 >

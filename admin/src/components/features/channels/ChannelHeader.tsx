@@ -25,6 +25,7 @@ interface ChannelHeaderProps {
   isExternalAgentConversation: boolean
   isInCall: boolean
   isPersonalAssistantConversation: boolean
+  personalAssistantPresenceCount: number
   joinPending: boolean
   onCallButton: () => void
   onOpenInfo: () => void
@@ -49,6 +50,7 @@ export const ChannelHeader = ({
   isExternalAgentConversation,
   isInCall,
   isPersonalAssistantConversation,
+  personalAssistantPresenceCount,
   joinPending,
   onCallButton,
   onJoin,
@@ -80,7 +82,7 @@ export const ChannelHeader = ({
         ? isInCall ? 'Toggle call overlay' : 'Join call'
         : 'Start a call'
       : 'You can only start a call with humans for now'
-  const participantCount = channelUsers.length + boundAgents.length
+  const participantCount = channelUsers.length + boundAgents.length + personalAssistantPresenceCount
   const actions: PageHeaderAction[] = [
     ...(titleFavorite ? [{
       compact: true,

@@ -117,6 +117,13 @@ export const decideAgentEngagement = async (
     // Ids (a subset of `agents`) already following this thread. Empty for PA DMs,
     // whose single agent already answers every message on its existing path.
     followingAgentIds?: string[]
+    // PA presences are selected by a stored id-keyed mention entity. Unlike an
+    // ordinary agent mention, their display text is not an identity key.
+    agentMentions?: Array<{
+      agentId: string
+      principalUserId: string
+      type: 'agent'
+    }>
     // Attribution for the engagement-decision LLM call so its tokens are billed
     // to the originating org/channel/thread/actor.
     usage?: LedgerAttribution
@@ -130,6 +137,34 @@ export const decideAgentEngagement = async (
   // an agent-authored @mention) can never cascade into another agent reply.
   if (!input.triggerIsHuman) {
     return []
+  }
+
+  // A PA presence has no safe name-based fast path: several members share the
+  // one agent row and users may share display names. The API validated each
+  // entity against this channel's live bindings before it entered the payload,
+  // so this is a structural address with the same deterministic threading as
+  // ordinary agent mentions.
+  if (input.agentMentions && input.agentMentions.length > 0) {
+    const decisions: OrchestratorDecision[] = []
+    const addressed = new Set<string>()
+    for (const mention of input.agentMentions) {
+      const candidate = input.agents.find(
+        (agent) =>
+          agent.id === mention.agentId
+          && agent.principalUserId === mention.principalUserId,
+      )
+      if (!candidate) continue
+      const engagementId = engagementIdFor(candidate)
+      if (addressed.has(engagementId)) continue
+      addressed.add(engagementId)
+      decisions.push({
+        action: 'reply',
+        agentId: candidate.id,
+        principalUserId: mention.principalUserId,
+        replyPlacement: 'thread',
+      })
+    }
+    return decisions
   }
 
   // Fast path: collect every agent explicitly @mentioned.

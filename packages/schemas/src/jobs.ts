@@ -51,6 +51,13 @@ export const OrchestrateDecideJobPayloadSchema = z.object({
       systemPrompt: z.string().nullable(),
     }),
   ),
+  // Explicit PA-presence targets from the message metadata. The worker uses
+  // these ids for its structural mention fast path instead of parsing text.
+  agentMentions: z.array(z.object({
+    type: z.literal('agent'),
+    agentId: z.string().uuid(),
+    principalUserId: z.string().uuid(),
+  })).optional(),
   channelId: ChannelIdSchema,
   content: z.string().min(1),
   messageId: z.string().uuid(),

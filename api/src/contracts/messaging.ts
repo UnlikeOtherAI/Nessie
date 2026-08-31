@@ -8,6 +8,7 @@ import {
   RunIdSchema,
   RunStatusSchema,
   ThreadIdSchema,
+  UserIdSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
@@ -76,6 +77,18 @@ export const ThreadMessageRecordSchema = z.object({
   canShareStanding: z.boolean().optional(),
 })
 export type ThreadMessageRecord = z.infer<typeof ThreadMessageRecordSchema>
+
+// Presence mentions are the PA-only structural counterpart to ordinary
+// name-based agent mentions. The discriminator remains in durable metadata so
+// the record cannot be mistaken for an unscoped agent id.
+export const PersonalAssistantPresenceMentionSchema = z.object({
+  type: z.literal('agent'),
+  agentId: AgentIdSchema,
+  principalUserId: UserIdSchema,
+})
+export type PersonalAssistantPresenceMention = z.infer<
+  typeof PersonalAssistantPresenceMentionSchema
+>
 
 export const ThreadRecordSchema = z.object({
   id: ThreadIdSchema,
@@ -229,6 +242,9 @@ export const CreateThreadMessageBodySchema = z
     // Slack-parity "Also send to #channel": posts an additional top-level copy
     // referencing the reply thread.
     alsoSendToChannel: z.boolean().optional(),
+    // PA presences are addressed through this id-keyed entity, never by a
+    // display-name match against content. Ordinary agents keep their path.
+    agentMentions: PersonalAssistantPresenceMentionSchema.array().optional(),
   })
   .refine(
     (body) =>

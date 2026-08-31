@@ -6,7 +6,6 @@ import {
   partitionByDisclosure,
   resolveDisclosureViewer,
   selectFollowingAgentIds,
-  type OrchestratorAgent,
   type OrchestratorDecision,
   type PgRealtimeTransport,
   type ModelClient,
@@ -17,42 +16,31 @@ import {
   parseRunId,
   parseTaskId,
   parseThreadId,
-  parseUserId,
   withActionContext,
 } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import { enqueueRunExecution } from '../queue.js'
 import { describeAttachments, loadMessageAttachments } from './message-attachments.js'
 import { claimThreadRunOrPend } from './thread-serialization.js'
+import {
+  acknowledgeDecision,
+  logReplyDecision,
+  publishReplyRunStarted,
+} from './orchestrate-publications.js'
+import {
+  asEngagementCandidate,
+  engagementIdFor,
+  runActorContextForCandidate,
+  type ChannelAgent,
+} from './orchestrate-candidates.js'
+
+export { runActorContextForCandidate } from './orchestrate-candidates.js'
 
 export type OrchestrateDecideDeps = {
   modelClient: ModelClient
   prisma: PrismaClient
   realtimeTransport: PgRealtimeTransport
 }
-
-type ChannelAgent = OrchestratorAgent & { principalUserId?: string }
-
-const engagementIdFor = (agent: ChannelAgent): string =>
-  agent.principalUserId ? `${agent.id}:${agent.principalUserId}` : agent.id
-
-const asEngagementCandidate = (agent: ChannelAgent): OrchestratorAgent =>
-  agent.principalUserId
-    ? { ...agent, engagementId: engagementIdFor(agent) }
-    : agent
-
-// The original poster starts the engagement, but a shared PA presence acts
-// only as its own principal. Keep this at the orchestration boundary so run,
-// tool, memory, and ledger consumers all receive the same effective identity.
-export const runActorContextForCandidate = (
-  actorContext: OrchestrateDecideJobPayload['actorContext'],
-  candidate: ChannelAgent,
-) =>
-  candidate.principalUserId
-    ? withActionContext(actorContext, {
-        effectiveUserId: parseUserId(candidate.principalUserId),
-      })
-    : actorContext
 
 // A personal-assistant DM has exactly one server-managed agent binding. Its
 // replies are not an engagement judgement: every human turn is addressed to
@@ -82,7 +70,16 @@ export const executeOrchestrateDecideJob = async (
   deps: OrchestrateDecideDeps,
   payload: OrchestrateDecideJobPayload,
 ): Promise<void> => {
-  const { actorContext, channelAgents, channelId, content, messageId, role, threadId } = payload
+  const {
+    actorContext,
+    agentMentions,
+    channelAgents,
+    channelId,
+    content,
+    messageId,
+    role,
+    threadId,
+  } = payload
   const channel = await deps.prisma.channel.findUnique({
     where: { id: channelId },
     select: {
@@ -278,6 +275,7 @@ export const executeOrchestrateDecideJob = async (
       // channelAgents from the payload is structurally identical to OrchestratorAgent[].
       // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
       agents: channelAgents.map(asEngagementCandidate),
+      agentMentions,
       content: annotate(content, messageId),
       recentMessages,
       triggerIsHuman,
@@ -454,69 +452,30 @@ export const executeOrchestrateDecideJob = async (
       }
       const { run, task } = outcome
 
-      // Publish outside the transaction — pg_notify cannot be rolled back, but
-      // the run/task are now durably committed so the event is correct.
-      const publishScopes =
-        channel.systemChannelType === 'personal_assistant'
-          ? scopes
-          : [
-              ...scopes,
-              { kind: 'agent' as const, agentId: parseAgentId(run.agentId) },
-            ]
-
-      await deps.realtimeTransport.publishWs(
-        publishScopes,
-        {
-          data: {
-            agentId: parseAgentId(run.agentId),
-            channelId,
-            contentPreview: content.slice(0, 200),
-            messageId,
-            role,
-            threadId: parseThreadId(run.threadId),
-          },
-          event: 'message.new',
-        },
-      )
-
-      console.log(
-        JSON.stringify({
-          event: 'orchestrate.reply',
-          agentId: run.agentId,
-          runId: run.id,
-          taskId: task.id,
-          messageId,
-          threadId,
-        }),
-      )
+      // Publish after commit: pg_notify cannot roll back, but the run/task now
+      // exist durably, so the live event cannot point at an orphan.
+      await publishReplyRunStarted({
+        channelId,
+        content,
+        isPersonalAssistantChannel: channel.systemChannelType === 'personal_assistant',
+        messageId,
+        realtimeTransport: deps.realtimeTransport,
+        role,
+        run,
+        scopes,
+      })
+      logReplyDecision(messageId, run, task.id, threadId)
     }
 
     if (decision.action === 'acknowledge') {
-      await deps.prisma.messageReaction.createMany({
-        data: [{
-          messageId,
-          agentId: decision.agentId,
-          onBehalfOfUserId: candidate.principalUserId ?? null,
-          emoji: decision.emoji,
-        }],
-        skipDuplicates: true,
-      })
-
-      const reactionData = {
+      await acknowledgeDecision({
+        candidate,
+        decision,
         messageId,
-        agentId: parseAgentId(decision.agentId),
-        ...(candidate.principalUserId
-          ? { onBehalfOfUserId: parseUserId(candidate.principalUserId) }
-          : {}),
-        emoji: decision.emoji,
-      }
-
-      // threadId is branded ThreadId; publishSse accepts string — brands are
-      // structural subtypes of string so this is both type-safe and correct.
-      await deps.realtimeTransport.publishSse(threadId, 'message.reaction', reactionData)
-      await deps.realtimeTransport.publishWs(scopes, {
-        data: reactionData,
-        event: 'message.reaction',
+        prisma: deps.prisma,
+        realtimeTransport: deps.realtimeTransport,
+        scopes,
+        threadId,
       })
 
       console.log(

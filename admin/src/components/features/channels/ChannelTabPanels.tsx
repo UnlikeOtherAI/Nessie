@@ -1,7 +1,17 @@
-import type { AgentRecord, ChannelRecord, PersonalAssistantStateResponse } from '../../../lib/api-client'
+import type {
+  AgentRecord,
+  ChannelRecord,
+  PersonalAssistantPresenceParticipant,
+  PersonalAssistantStateResponse,
+} from '../../../lib/api-client'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import {
+  useAddPersonalAssistantPresence,
+  useRemovePersonalAssistantPresence,
+} from '../../../facades/personal-assistant/hooks'
 import { SectionLabel } from '../../primitives/SectionLabel'
 import { AgentAvatar } from '../../shared/AgentAvatar'
+import { CurrentPersonalAssistantRow } from '../../shared/channel-members/MemberAgentRow'
 import { PersonalAssistantConfigBanner } from '../personal-assistant/PersonalAssistantSurface'
 import { ChannelAutomationsPanel } from './ChannelAutomationsPanel'
 import type { ChannelTab } from './channel-helpers'
@@ -15,6 +25,8 @@ interface ChannelTabPanelsProps {
   personalAssistantAgent: AgentRecord | null
   personalAssistantChannel: ChannelRecord | null
   personalAssistantState: PersonalAssistantStateResponse | null | undefined
+  personalAssistantPresences: PersonalAssistantPresenceParticipant[]
+  currentUserId: string
   onSelectAgent: (agentId: string) => void
   onCreateAgent: () => void
 }
@@ -39,10 +51,22 @@ export const ChannelTabPanels = ({
   personalAssistantAgent,
   personalAssistantChannel,
   personalAssistantState,
+  personalAssistantPresences,
+  currentUserId,
   onSelectAgent,
   onCreateAgent,
-}: ChannelTabPanelsProps) => (
-  <>
+}: ChannelTabPanelsProps) => {
+  const addPersonalAssistant = useAddPersonalAssistantPresence()
+  const removePersonalAssistant = useRemovePersonalAssistantPresence()
+  const canManagePersonalAssistantPresence = Boolean(
+    activeChannel && !activeChannel.systemChannelType && !isPersonalAssistantConversation,
+  )
+  const hasMyPersonalAssistant = personalAssistantPresences.some(
+    (presence) => presence.principalUserId === currentUserId,
+  )
+
+  return (
+    <>
     {visibleActiveTab === 'automations' && activeChannel ? (
       <ChannelAutomationsPanel channelId={activeChannel.id} />
     ) : null}
@@ -155,12 +179,47 @@ export const ChannelTabPanels = ({
               </div>
             </article>
           ))
-        ) : (
+        ) : personalAssistantPresences.length === 0 ? (
           <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
             No agents are bound to this channel yet. Use the admin page to create or
             bind one.
           </div>
-        )}
+        ) : null}
+
+        {personalAssistantPresences.length > 0 || canManagePersonalAssistantPresence ? (
+          <article className="admin-card p-4">
+            <SectionLabel>Personal Assistant presences</SectionLabel>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--tx2)]">
+              Each presence is a colleague's assistant in this channel, without exposing
+              its private configuration.
+            </p>
+            <div className="mt-3 grid gap-1">
+              {personalAssistantPresences.map((presence) => (
+                <CurrentPersonalAssistantRow
+                  currentUserId={currentUserId}
+                  key={presence.id}
+                  presence={presence}
+                  removePending={removePersonalAssistant.isPending}
+                  onRemove={() => {
+                    if (activeChannel) removePersonalAssistant.mutate(activeChannel.id)
+                  }}
+                />
+              ))}
+            </div>
+            {canManagePersonalAssistantPresence && !hasMyPersonalAssistant ? (
+              <button
+                className="admin-button admin-button-secondary mt-3"
+                disabled={addPersonalAssistant.isPending}
+                onClick={() => {
+                  if (activeChannel) addPersonalAssistant.mutate(activeChannel.id)
+                }}
+                type="button"
+              >
+                {addPersonalAssistant.isPending ? 'Adding…' : 'Add my assistant'}
+              </button>
+            ) : null}
+          </article>
+        ) : null}
 
         <div className="admin-card p-4">
           <SectionLabel>Manage agents</SectionLabel>
@@ -178,5 +237,6 @@ export const ChannelTabPanels = ({
         </div>
       </div>
     ) : null}
-  </>
-)
+    </>
+  )
+}

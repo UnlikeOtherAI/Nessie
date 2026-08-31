@@ -6,6 +6,7 @@ import {
   MentionInput,
   type MentionEntity,
   type MentionInputHandle,
+  type PersonalAssistantMention,
 } from '../../shared/MentionInput'
 import type { PendingAgentInvite } from '../../../facades/messages/hooks'
 import { toolbarButtonClass } from './channel-helpers'
@@ -22,7 +23,7 @@ interface ChannelComposerProps {
   attachments: ComposerAttachmentsState
   onChangeMessage: (value: string) => void
   onOversizePaste: (paste: string) => void
-  onSubmitText: (text: string) => void
+  onSubmitText: (text: string, agentMentions: PersonalAssistantMention[]) => void
   onSubmitForm: (event?: FormEvent<HTMLFormElement>) => void
   onInsertHashSign: () => void
   onInsertAtSign: () => void

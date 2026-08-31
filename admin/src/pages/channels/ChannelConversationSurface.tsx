@@ -7,6 +7,7 @@ import type {
   CallRecord,
   ChannelRecord,
   MeResponse,
+  PersonalAssistantPresenceParticipant,
   UserRecord,
 } from '../../lib/api-client'
 import { CallBanner } from '../../components/shared/CallBanner'
@@ -22,6 +23,7 @@ import { ExternalAgentIntro } from '../../components/features/channels/ExternalA
 import type { ChannelTitleFavorite } from '../../components/features/channels/ChannelFavoriteButton'
 import {
   buildFeedItems,
+  type ChannelAgentParticipant,
   type ChannelTab,
   type MessageUserIdentity,
 } from '../../components/features/channels/channel-helpers'
@@ -84,6 +86,7 @@ interface ChannelConversationSurfaceProps {
   isExternalAgentConversation: boolean
   isInCall: boolean
   isPersonalAssistantConversation: boolean
+  personalAssistantPresences: PersonalAssistantPresenceParticipant[]
   joinPending: boolean
   mentionEntities: ReturnType<typeof useChannelMentions>['mentionEntities']
   messageActions: Pick<
@@ -108,7 +111,7 @@ interface ChannelConversationSurfaceProps {
   onOpenMembers: () => void
   onOpenSettings: () => void
   onSelectAgent: (agentId: string) => void
-  onSelectMessageAgent: (agent: AgentRecord) => void
+  onSelectMessageAgent: (agent: ChannelAgentParticipant) => void
   onSelectMessageUser: Dispatch<SetStateAction<MessageUserIdentity | null>>
   onToggleSearch: () => void
   pendingMessages: PendingStreamMessage[]
@@ -154,6 +157,7 @@ export const ChannelConversationSurface = ({
   isExternalAgentConversation,
   isInCall,
   isPersonalAssistantConversation,
+  personalAssistantPresences,
   joinPending,
   mentionEntities,
   messageActions,
@@ -210,6 +214,7 @@ export const ChannelConversationSurface = ({
         isExternalAgentConversation={isExternalAgentConversation}
         isInCall={isInCall}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
+        personalAssistantPresenceCount={personalAssistantPresences.length}
         joinPending={joinPending}
         searchOpen={search.searchOpen}
         titleFavorite={titleFavorite}
@@ -259,6 +264,7 @@ export const ChannelConversationSurface = ({
               agentById={agentMap}
               agentMap={agentMap}
               channelUsers={channelUsers}
+              personalAssistantPresences={personalAssistantPresences}
               editingContent={editingContent}
               editingMessageId={editingMessageId}
               externalAgentDisplayName={activeChannel?.label}
@@ -312,6 +318,8 @@ export const ChannelConversationSurface = ({
             personalAssistantAgent={personalAssistantAgent}
             personalAssistantChannel={personalAssistantChannel}
             personalAssistantState={personalAssistantState}
+            personalAssistantPresences={personalAssistantPresences}
+            currentUserId={me.user.id}
             visibleActiveTab={visibleActiveTab}
             onCreateAgent={onCreateAgent}
             onSelectAgent={onSelectAgent}
@@ -344,10 +352,10 @@ export const ChannelConversationSurface = ({
           channelLiveness.markSent()
           void composer.sendMessageSubmit(event)
         }}
-        onSubmitText={(text) => {
+        onSubmitText={(text, agentMentions) => {
           feedScroll.pinToBottom()
           channelLiveness.markSent()
-          void composer.sendText(text)
+          void composer.sendText(text, agentMentions)
         }}
         />
       ) : null}

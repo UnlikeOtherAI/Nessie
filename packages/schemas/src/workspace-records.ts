@@ -30,6 +30,25 @@ import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
  * routes and admin-facing contracts are unchanged.
  */
 
+// A shared-channel Personal Assistant is one organization agent with a
+// per-member binding. This is the intentionally minimal projection channel
+// peers receive for that binding; it never exposes the singleton's prompt,
+// policy, limits, or channel list.
+export const PersonalAssistantPresenceParticipantSchema = z.object({
+  id: z.string().uuid(),
+  agentId: AgentIdSchema,
+  principalUserId: UserIdSchema,
+  displayName: z.string(),
+  // The canonical stored token is public for every reader. Only rendering
+  // projects it to `Personal Assistant` for its owner.
+  mentionName: z.string(),
+  avatarAttachmentId: z.string().uuid().nullish(),
+  isPersonalAssistant: z.literal(true),
+})
+export type PersonalAssistantPresenceParticipant = z.infer<
+  typeof PersonalAssistantPresenceParticipantSchema
+>
+
 export const ChannelRecordSchema = z.object({
   id: ChannelIdSchema,
   label: NonEmptyStringSchema,
@@ -65,6 +84,10 @@ export const ChannelRecordSchema = z.object({
   memberRole: z.enum(['owner', 'admin', 'member', 'viewer']).nullish(),
   // Whether the caller has muted notifications for this channel (per-member).
   muted: z.boolean().optional(),
+  // The list read fills this viewer-relative projection. Other ChannelRecord
+  // producers omit it and clients refresh their channel-list entry after a
+  // mutation rather than treating a generic record as an authority.
+  personalAssistantPresences: PersonalAssistantPresenceParticipantSchema.array().optional(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })

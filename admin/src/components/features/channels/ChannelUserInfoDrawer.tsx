@@ -273,7 +273,7 @@ export const ChannelUserInfoDrawer = ({
             onInsertHashSign={() => mentionRef.current?.insertHashSign()}
             onOversizePaste={(paste) => setOversizePaste(paste)}
             onSubmitForm={(event) => void sendMessageSubmit(event)}
-            onSubmitText={(text) => void sendText(text)}
+            onSubmitText={(text, agentMentions) => void sendText(text, agentMentions)}
             pendingAgentInvites={pendingAgentInvites}
             invitingAgentId={invitingAgentId}
             inviteErrors={inviteErrors}

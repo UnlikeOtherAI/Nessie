@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS, detectSecrets, type DetectedSecret } from '@nessie/schemas'
-import type { MentionInputHandle } from '../../shared/MentionInput'
+import type { MentionInputHandle, PersonalAssistantMention } from '../../shared/MentionInput'
 import {
   useSendMessage,
   useUploadAttachment,
@@ -32,7 +32,7 @@ interface UseChannelComposerResult {
   // Files staged for the next send (paperclip + drag-and-drop).
   attachments: ComposerAttachments
   insertEmoji: (emoji: string) => void
-  sendText: (rawText: string) => Promise<void>
+  sendText: (rawText: string, agentMentions?: PersonalAssistantMention[]) => Promise<void>
   sendMessageSubmit: (event?: FormEvent<HTMLFormElement>) => Promise<void>
   sendAsFile: (rawText: string) => Promise<void>
   pendingAgentInvites: PendingAgentInvite[]
@@ -97,7 +97,7 @@ export const useChannelComposer = ({
   }, [activeChannel?.id])
 
   const sendText = useCallback(
-    async (rawText: string) => {
+    async (rawText: string, agentMentions: PersonalAssistantMention[] = []) => {
       const text = rawText.trim()
       const attachmentIds = attachments.attachmentIds
       // A post needs text or at least one uploaded file (attachment-only send).
@@ -151,6 +151,7 @@ export const useChannelComposer = ({
       try {
         const result = await sendMessage.mutateAsync({
           content: text,
+          ...(agentMentions.length > 0 ? { agentMentions } : {}),
           ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
           ...getSendExtras?.(),
         })
@@ -246,11 +247,12 @@ export const useChannelComposer = ({
   const sendMessageSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
     const text = mentionRef.current?.getText() ?? message
+    const agentMentions = mentionRef.current?.getAgentMentions() ?? []
     // Clear synchronously before awaiting the network mutation so a
     // second submit (double-enter, double-click) can't re-read the
     // same contentEditable text.
     mentionRef.current?.clear()
-    await sendText(text)
+    await sendText(text, agentMentions)
   }
 
   // Oversize escape hatch: upload the whole paste as a .txt attachment and

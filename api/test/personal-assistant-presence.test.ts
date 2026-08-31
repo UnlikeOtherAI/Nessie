@@ -5,9 +5,11 @@ import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 import {
   addPersonalAssistantPresence,
+  isAgentAccessibleToActor,
   removePersonalAssistantPresence,
 } from '@nessie/workspace-admin'
 
+import { listChannelsForUser } from '../src/services/channels.js'
 import { ensurePersonalAssistantBootstrap } from '../src/services/personal-assistant.js'
 import { setOrganizationMemberDeactivated } from '../src/services/users.js'
 
@@ -146,6 +148,94 @@ dbTest('a shared channel keeps one PA presence per live member and removes it on
   } finally {
     await prisma.organization.deleteMany({ where: { id: organizationId } })
     await prisma.user.deleteMany({ where: { id: { in: [firstUserId, secondUserId, managerUserId] } } })
+    await prisma.$disconnect()
+  }
+})
+
+dbTest('a PA presence is a viewer-relative participant projection, never an agent detail', async () => {
+  const prisma = new PrismaClient()
+  const organizationId = randomUUID()
+  const ownerUserId = randomUUID()
+  const peerUserId = randomUUID()
+
+  try {
+    await prisma.organization.create({ data: { id: organizationId, name: `pa-ui-${organizationId}` } })
+    await prisma.user.createMany({
+      data: [
+        { id: ownerUserId, email: `${ownerUserId}@test.local`, displayName: 'Owner' },
+        { id: peerUserId, email: `${peerUserId}@test.local`, displayName: 'Peer' },
+      ],
+    })
+    await prisma.organizationMember.createMany({
+      data: [
+        { organizationId, role: 'member', userId: ownerUserId },
+        { organizationId, role: 'member', userId: peerUserId },
+      ],
+    })
+    const project = await prisma.project.create({ data: { name: `pa-ui-${organizationId}`, organizationId } })
+    const team = await prisma.team.create({ data: { name: `pa-ui-${organizationId}`, projectId: project.id } })
+    const channel = await prisma.channel.create({
+      data: {
+        label: 'pa-ui',
+        organizationId,
+        projectId: project.id,
+        slug: `pa-ui-${organizationId}`,
+        teamId: team.id,
+      },
+    })
+    await prisma.channelMember.createMany({
+      data: [
+        { channelId: channel.id, userId: ownerUserId },
+        { channelId: channel.id, userId: peerUserId },
+      ],
+    })
+    const assistant = await ensurePersonalAssistantBootstrap(prisma, {
+      organizationId,
+      teamId: team.id,
+      userId: ownerUserId,
+    })
+    await addPersonalAssistantPresence(prisma, { channelId: channel.id, organizationId, userId: ownerUserId })
+    await addPersonalAssistantPresence(prisma, { channelId: channel.id, organizationId, userId: peerUserId })
+
+    const ownerChannel = (await listChannelsForUser(prisma, ownerUserId, organizationId)).find(
+      (entry) => entry.id === channel.id,
+    )
+    const peerChannel = (await listChannelsForUser(prisma, peerUserId, organizationId)).find(
+      (entry) => entry.id === channel.id,
+    )
+    assert.ok(ownerChannel)
+    assert.ok(peerChannel)
+    assert.deepEqual(
+      ownerChannel.personalAssistantPresences?.map(({ displayName, mentionName, principalUserId }) => ({
+        displayName,
+        mentionName,
+        principalUserId,
+      })),
+      [
+        { displayName: 'Personal Assistant', mentionName: 'Owner – PA', principalUserId: ownerUserId },
+        { displayName: 'Peer – PA', mentionName: 'Peer – PA', principalUserId: peerUserId },
+      ],
+    )
+    assert.equal(
+      peerChannel.personalAssistantPresences?.find((presence) => presence.principalUserId === peerUserId)?.displayName,
+      'Personal Assistant',
+    )
+    assert.equal(
+      peerChannel.personalAssistantPresences?.find((presence) => presence.principalUserId === ownerUserId)?.displayName,
+      'Owner – PA',
+    )
+
+    // Every /api/agents/:id detail route maps this gate to AGENT_NOT_FOUND
+    // (404), keeping the singleton's AgentRecord out of a channel peer's UI.
+    const peerContext = {
+      actionContext: { requestId: `pa-ui-${organizationId}` },
+      actor: { actorId: peerUserId, actorType: 'user' as const, roles: ['member'] },
+      tenant: { organizationId },
+    }
+    assert.equal(await isAgentAccessibleToActor(prisma, peerContext, assistant.agentId), false)
+  } finally {
+    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await prisma.user.deleteMany({ where: { id: { in: [ownerUserId, peerUserId] } } })
     await prisma.$disconnect()
   }
 })

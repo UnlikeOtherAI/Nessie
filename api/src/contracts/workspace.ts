@@ -12,7 +12,11 @@ import { NonEmptyStringSchema, TimestampSchema } from './shared.js'
 
 // The channel record is produced by `@nessie/workspace-admin`, which the worker
 // also uses, so its schema lives in `@nessie/schemas`.
-export { ChannelRecordSchema, type ChannelRecord } from '@nessie/schemas'
+export {
+  ChannelRecordSchema,
+  type ChannelRecord,
+  type PersonalAssistantPresenceParticipant,
+} from '@nessie/schemas'
 
 // sp-channels: body for PATCH /api/channels/:channelId
 export const UpdateChannelBodySchema = z

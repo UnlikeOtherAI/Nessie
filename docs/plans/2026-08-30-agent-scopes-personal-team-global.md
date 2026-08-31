@@ -8,8 +8,10 @@ assertion, and owner-deactivation trigger pausing are implemented. The PA
 shared-channel server core is implemented: per-principal bindings and database
 invariants, lifecycle removal, orchestration identity and serialization,
 on-behalf message/reaction attribution, destination containment, and reduced
-presence toolsets. Structured presence mentions, PA/display UI, and global
-agent reachability remain later phases.
+presence toolsets. Structured presence mentions and the PA participant/display
+UI are implemented: canonical id-keyed mentions, viewer-relative names and
+avatars, minimal participant projections, and owner add/remove controls. Global
+agent reachability remains a later phase.
 **Date:** 2026-08-30
 **Related:** [2026-08-29-people-and-their-agents.md](2026-08-29-people-and-their-agents.md)
 (ownership = stewardship; this doc adds *visibility*, a different fact),

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { AgentRecord } from '../src/lib/api-client'
-import { buildAgentMentionEntities } from '../src/pages/channels/useChannelMentions.js'
+import {
+  buildAgentMentionEntities,
+  buildPersonalAssistantMentionEntities,
+} from '../src/pages/channels/useChannelMentions.js'
 
 const agent = (id: string, name: string, visibility: 'private' | 'workspace'): AgentRecord => ({
   channelIds: [],
@@ -29,5 +32,29 @@ test('agent mentions trust the server-entitled list without a client visibility 
     buildAgentMentionEntities([workspaceAgent]).map((entity) => entity.id),
     [workspaceAgent.id],
     'a non-owner never receives a private agent to mention',
+  )
+})
+
+test('a PA mention picker projects its name but inserts the public structured address', () => {
+  const agentId = '00000000-0000-4000-8000-000000000003'
+  const principalUserId = '00000000-0000-4000-8000-000000000004'
+
+  assert.deepEqual(
+    buildPersonalAssistantMentionEntities([{
+      agentId,
+      displayName: 'Personal Assistant',
+      id: '00000000-0000-4000-8000-000000000005',
+      isPersonalAssistant: true,
+      mentionName: 'Owner – PA',
+      principalUserId,
+    }]),
+    [{
+      id: agentId,
+      insertName: 'Owner – PA',
+      name: 'Personal Assistant',
+      principalUserId,
+      trigger: '@',
+      type: 'agent',
+    }],
   )
 })
