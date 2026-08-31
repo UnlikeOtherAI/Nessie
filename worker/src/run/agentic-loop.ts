@@ -1,9 +1,7 @@
 import type {
-  ConnectorUsage,
   InferenceResult,
   InvocationRecord,
   ProviderMessage,
-  ProviderToolCall,
   ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import { createRetryBudget } from './error-classification.js'
@@ -32,25 +30,20 @@ import {
   type ContextPlan,
 } from './context-window.js'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
-import { isFatalToolExecutionError } from './tool-execution-errors.js'
-import { summarizeToolInput, truncateToolResult } from './tool-util.js'
+import { truncateToolResult } from './tool-util.js'
+import {
+  executeToolBatch,
+  type ExecuteToolFn,
+  type ExecutedToolResult,
+  type PrepareToolFn,
+  type ToolApprovalSuspension,
+  type ToolBatchCallbacks,
+} from './tool-batch.js'
 
 export type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 
-export type LoopCallbacks = {
+export type LoopCallbacks = ToolBatchCallbacks & {
   onIterationStart: (iteration: number) => Promise<void>
-  onToolCallStart: (toolName: string, args: Record<string, unknown>) => Promise<void>
-  onToolCallEnd: (
-    toolName: string,
-    args: Record<string, unknown>,
-    result: string,
-    durationMs: number,
-    success: boolean,
-    inputSummary: string,
-    startedAt: Date,
-    connectorUsage?: ConnectorUsage,
-    toolCallRecordId?: string,
-  ) => Promise<void>
   onTextDelta: (delta: string) => Promise<void>
   onBudgetExhausted: (reason: BudgetExhaustionReason) => Promise<void>
 }
@@ -62,9 +55,8 @@ export type LoopResult = {
   // produce a checkpoint note from the reserved budget headroom.
   messages: ProviderMessage[]
   toolCallsUsed: number
-  // Aggregate wall-clock time spent inside tool executions. Tools within one
-  // iteration run concurrently (Promise.allSettled), so this sums per-tool
-  // spans and can exceed `wallclockMs` — it measures tool work, not a span.
+  // Aggregate wall-clock time spent inside tool executions. It measures tool
+  // work rather than the run span; same-batch calls may overlap.
   toolMs: number
   totalCostCents: number
   wallclockMs: number
@@ -77,6 +69,8 @@ export type LoopResult = {
   // instead of only the number that tripped it.
   cacheReadTokens: number
   exhaustedBudget: BudgetExhaustionReason | null
+  /** A policy-gated tool persisted an approval request and stopped the loop. */
+  pendingApproval?: ToolApprovalSuspension | null
   // True when the loop exited because a cooperative cancel was observed (via
   // `checkCancelled`) between iterations or after a tool-call batch, rather than
   // because the model finished or a budget cap tripped. `finalText` then holds
@@ -89,53 +83,6 @@ export type LoopResult = {
   woundDown: boolean
   invocations: InvocationRecord[]
 }
-
-type ExecutedToolResult = {
-  acknowledgeDelivery?: () => void
-  connectorUsage?: ConnectorUsage
-  output: string
-  success: boolean
-  inputSummary: string
-  toolCallId?: string
-  toolCallRecordId?: string
-  toolName?: string
-}
-
-type ExecuteToolFn = (
-  toolName: string,
-  args: Record<string, unknown>,
-  toolCallId: string,
-) => Promise<ExecutedToolResult>
-
-const DEFAULT_TOOL_TIMEOUT_MS = 30_000
-const LOOP_DETECTION_THRESHOLD = 3
-
-const withTimeout = async <T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  label: string,
-  timeoutError?: () => Error | null,
-): Promise<T> => {
-  let timer: ReturnType<typeof setTimeout>
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(
-        timeoutError?.() ?? new Error(`${label} timed out after ${timeoutMs}ms`),
-      ),
-      timeoutMs,
-    )
-  })
-  try {
-    return await Promise.race([promise, timeoutPromise])
-  } finally {
-    clearTimeout(timer!)
-  }
-}
-
-const makeToolCallSignature = (
-  name: string,
-  args: Record<string, unknown>,
-): string => name + ':' + JSON.stringify(args)
 
 export const runAgenticLoop = async (input: {
   budget: BudgetLimits
@@ -165,6 +112,8 @@ export const runAgenticLoop = async (input: {
   // Compaction/trim thresholds for this run's model (see context-window.ts).
   contextPlan?: ContextPlan
   executeTool: ExecuteToolFn
+  /** Optional authorization preflight that can suspend a whole tool batch. */
+  prepareTool?: PrepareToolFn
   initialMessages: ProviderMessage[]
   // Optional caller-owned accumulator for every inference invocation the loop
   // makes. It is populated live (before the loop can throw), so a crashed or
@@ -192,7 +141,7 @@ export const runAgenticLoop = async (input: {
   // structural fan-out (the delegate gate) for the rest of the run.
   onWindDown?: () => void
 }): Promise<LoopResult> => {
-  const { budget, callbacks, executeTool, initialMessages } = input
+  const { budget, callbacks, executeTool, initialMessages, prepareTool } = input
   const cacheReadWeight = input.cacheReadWeight ?? DEFAULT_CACHE_READ_WEIGHT
   const messages: ProviderMessage[] = [...initialMessages]
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
@@ -225,6 +174,7 @@ export const runAgenticLoop = async (input: {
     exhaustedBudget: BudgetExhaustionReason | null,
     finalText: string = lastAssistantText,
     cancelled = false,
+    pendingApproval: ToolApprovalSuspension | null = null,
   ): LoopResult => ({
     cacheReadTokens: spend.cacheReadTokens,
     cancelled,
@@ -234,6 +184,7 @@ export const runAgenticLoop = async (input: {
     invocations: allInvocations,
     iterations,
     messages,
+    pendingApproval,
     toolCallsUsed,
     toolMs: totalToolMs,
     totalCostCents: spend.totalCostCents,
@@ -345,114 +296,23 @@ export const runAgenticLoop = async (input: {
       toolCalls: result.toolCalls,
     })
 
-    let loopDetected = false
-
-    const toolOutcomes = await Promise.allSettled(
-      result.toolCalls.map(async (tc: ProviderToolCall) => {
-        const sig = makeToolCallSignature(tc.toolName, tc.arguments)
-        const count = (signatureCounts.get(sig) ?? 0) + 1
-        signatureCounts.set(sig, count)
-
-        if (count >= LOOP_DETECTION_THRESHOLD) {
-          loopDetected = true
-          return {
-            output: 'Tool call loop detected — this exact call has been repeated too many times. Try a different approach.',
-            success: false,
-            inputSummary: summarizeToolInput(tc.arguments),
-            toolCallId: tc.toolCallId,
-            toolName: tc.toolName,
-          }
-        }
-
-        if (circuitBreaker.isTripped(tc.toolName)) {
-          return {
-            output: circuitBreaker.trippedErrorMessage(tc.toolName),
-            success: false,
-            inputSummary: summarizeToolInput(tc.arguments),
-            toolCallId: tc.toolCallId,
-            toolName: tc.toolName,
-          }
-        }
-
-        await callbacks.onToolCallStart(tc.toolName, tc.arguments)
-        const startedAt = new Date()
-
-        try {
-          const toolResult = await withTimeout(
-            executeTool(tc.toolName, tc.arguments, tc.toolCallId),
-            budget.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
-            tc.toolName,
-            () => input.toolTimeoutError?.(tc.toolName) ?? null,
-          )
-          const durationMs = Date.now() - startedAt.getTime()
-          totalToolMs += durationMs
-          if (toolResult.success) {
-            circuitBreaker.recordSuccess(tc.toolName)
-          } else {
-            circuitBreaker.recordError(tc.toolName)
-          }
-          await callbacks.onToolCallEnd(
-            tc.toolName,
-            tc.arguments,
-            toolResult.output,
-            durationMs,
-            toolResult.success,
-            toolResult.inputSummary,
-            startedAt,
-            toolResult.connectorUsage,
-            toolResult.toolCallRecordId,
-          )
-          return { ...toolResult, toolCallId: tc.toolCallId, toolName: tc.toolName }
-        } catch (error) {
-          const fatal = isFatalToolExecutionError(error)
-          const errorMsg = fatal
-            ? 'Tool execution could not be confirmed; retrying safely.'
-            : error instanceof Error ? error.message : 'Tool execution failed'
-          circuitBreaker.recordError(tc.toolName)
-          const durationMs = Date.now() - startedAt.getTime()
-          totalToolMs += durationMs
-          try {
-            await callbacks.onToolCallEnd(
-              tc.toolName,
-              tc.arguments,
-              errorMsg,
-              durationMs,
-              false,
-              summarizeToolInput(tc.arguments),
-              startedAt,
-              undefined,
-              error instanceof Error
-                && typeof (error as Error & { toolCallRecordId?: unknown }).toolCallRecordId === 'string'
-                ? (error as Error & { toolCallRecordId: string }).toolCallRecordId
-                : undefined,
-            )
-          } catch (callbackError) {
-            if (!fatal) throw callbackError
-          }
-          if (fatal) throw error
-          return {
-            output: errorMsg,
-            success: false,
-            inputSummary: summarizeToolInput(tc.arguments),
-            toolCallId: tc.toolCallId,
-            toolName: tc.toolName,
-          }
-        }
-      }),
-    )
-    const rejectedTool = toolOutcomes.find(
-      (outcome): outcome is PromiseRejectedResult =>
-        outcome.status === 'rejected' && isFatalToolExecutionError(outcome.reason),
-    ) ?? toolOutcomes.find(
-      (outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected',
-    )
-    if (rejectedTool) throw rejectedTool.reason
-    const toolResults = toolOutcomes.map((outcome) => {
-      if (outcome.status === 'rejected') throw outcome.reason
-      return outcome.value
+    const batch = await executeToolBatch({
+      callbacks,
+      circuitBreaker,
+      executeTool,
+      prepareTool,
+      signatureCounts,
+      toolCalls: result.toolCalls,
+      toolTimeoutError: input.toolTimeoutError,
+      toolTimeoutMs: budget.toolTimeoutMs,
     })
+    totalToolMs += batch.toolMs
+    const toolResults = batch.results
 
     toolCallsUsed += toolResults.length
+    if (batch.pendingApproval) {
+      return finish(null, lastAssistantText, false, batch.pendingApproval)
+    }
     pendingToolResults = toolResults.map(({ acknowledgeDelivery: _ack, ...rest }) => rest)
 
     for (const tr of toolResults) {
@@ -464,12 +324,12 @@ export const runAgenticLoop = async (input: {
       messages.push({
         content: truncateToolResult(tr.output),
         role: 'tool',
-        toolCallId: tr.toolCallId,
+        toolCallId: tr.toolCallId!,
       })
       tr.acknowledgeDelivery?.()
     }
 
-    if (loopDetected) {
+    if (batch.loopDetected) {
       messages.push({
         content: 'You are repeating the same tool call. Stop and produce a final answer with the information you already have.',
         role: 'user',

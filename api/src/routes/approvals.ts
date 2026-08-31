@@ -82,6 +82,7 @@ export const registerApprovalRoutes = (app: FastifyInstance, deps: RouteDeps): v
         SELF_APPROVAL: { code: 403, message: 'Cannot approve your own request' },
         EXPIRED: { code: 410, message: 'Approval request has expired' },
         ROLE_REQUIRED: { code: 403, message: 'You do not have the required approver role' },
+        RUN_NOT_WAITING: { code: 409, message: 'Approval is not ready to resolve' },
       }
       const err = errorMap[result.error] ?? { code: 400, message: 'Unknown error' }
       sendApiError(reply, err.code, result.error, err.message)

@@ -22,6 +22,7 @@ export const DOCUMENT_STREAM_ERROR_REASONS = [
   'run_failed',
   'save_failed',
   'budget_stopped',
+  'approval_required',
   'invalid_args',
   'truncated',
   'superseded',

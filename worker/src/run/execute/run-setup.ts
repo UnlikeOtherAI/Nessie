@@ -275,11 +275,29 @@ export const prepareRunExecution = async (
     context.consumedSources.addAll(checkpoint.basisScopes)
   }
 
+  // Tool names are structural registry ids, not model-provided prose. The
+  // continuation still replans through the model, but this durable fact makes
+  // it deliberately re-issue the one call the human approved.
+  const approvalInstruction = payload.actorContext.approval?.approvalId
+    ? await deps.prisma.approvalRequest.findFirst({
+      where: {
+        action: 'tool.invoke',
+        id: payload.actorContext.approval.approvalId,
+        organizationId: context.channel.organizationId,
+        status: 'approved',
+      },
+      select: { toolName: true },
+    }).then((approval) => approval?.toolName
+      ? `A human approved your proposed ${approval.toolName} call. Re-issue it to proceed.`
+      : null)
+    : null
+
   return {
     allowedToolIds,
     checkpoint,
     executorToolset,
     initialMessages: buildModelPrompt(conversation, context, input.prompt, memoryContext, {
+      approvalInstruction,
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),

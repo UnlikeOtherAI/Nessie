@@ -45,13 +45,14 @@ export type PolicyRuleRow = {
 
 export type PolicyEvaluationOptions = {
   /**
-   * Approval proof supplied by the caller (the worker passes the run's
-   * `actorContext.approval?.approvalProof`). When set, a rule's
-   * `requiresApproval` condition is satisfied. When omitted or empty, every
-   * `requiresApproval` allow rule returns APPROVAL_REQUIRED without any
-   * proof being consulted — the API's interactive flow.
+   * Set only by a caller that has already verified an approval request against
+   * its organization, tool, canonical argument hash, and run lineage. A raw
+   * token is deliberately not accepted here: this shared pure evaluator has no
+   * database authority to decide whether an arbitrary non-empty string is a
+   * proof. When false, every `requiresApproval` allow rule returns
+   * APPROVAL_REQUIRED.
    */
-  approvalProof?: string | null
+  approvalSatisfied?: boolean
   /**
    * Verdict when no rule matches. API routes deny by default
    * (`NO_MATCHING_ALLOW`); the worker's tool-invoke gate allows by default
@@ -152,7 +153,7 @@ const resolveRules = (
   chain: PolicyScopeChain,
   options?: PolicyEvaluationOptions,
 ): PolicyDecision => {
-  const approvalProof = options?.approvalProof
+  const approvalSatisfied = options?.approvalSatisfied === true
 
   const matchingRules = rules.filter((rule) => bindingMatchesActor(rule, chain))
 
@@ -166,6 +167,7 @@ const resolveRules = (
 
   // Deny-first evaluation
   let lastAllow: PolicyRuleRow | null = null
+  let lastAllowUsedApproval = false
 
   for (const rule of matchingRules) {
     const conditions = rule.conditions as Record<string, unknown> | null
@@ -181,7 +183,7 @@ const resolveRules = (
     }
 
     if (rule.effect === 'allow') {
-      if (conditions?.['requiresApproval'] && !approvalProof) {
+      if (conditions?.['requiresApproval'] && !approvalSatisfied) {
         return {
           allowed: false,
           policyRuleId: rule.id,
@@ -194,7 +196,13 @@ const resolveRules = (
               : undefined,
         }
       }
+      if (conditions?.['requiresApproval']) {
+        lastAllow = rule
+        lastAllowUsedApproval = true
+        continue
+      }
       lastAllow = rule
+      lastAllowUsedApproval = false
     }
   }
 
@@ -204,6 +212,7 @@ const resolveRules = (
       policyRuleId: lastAllow.id,
       policySource: `${lastAllow.scope}:${lastAllow.scopeId}/allow`,
       reasonCode: 'ALLOWED',
+      ...(lastAllowUsedApproval ? { approvalProofUsed: true } : {}),
     }
   }
 
@@ -225,6 +234,68 @@ export const resolveDecision = (
   chain: PolicyScopeChain,
   options?: PolicyEvaluationOptions,
 ): PolicyDecision => resolveRules(rules, chain, options)
+
+export type ToolApprovalProofInput = {
+  approvalId: string | undefined
+  argsHash: string
+  continuationRunId: string
+  organizationId: string
+  proof: string | undefined
+  toolName: string
+}
+
+/**
+ * Validate the stored, server-minted proof before the pure evaluator sees an
+ * approval signal. A direct `continuationOfRunId` check is deliberately
+ * stronger than a broad organization match: the proof belongs only to the
+ * continuation spawned from its own suspended run.
+ */
+export const verifyToolApprovalProof = async (
+  prisma: PrismaClient,
+  input: ToolApprovalProofInput,
+): Promise<{ id: string } | null> => {
+  if (!input.approvalId || !input.proof) return null
+  const approval = await prisma.approvalRequest.findFirst({
+    where: {
+      action: 'tool.invoke',
+      argsHash: input.argsHash,
+      continuationToken: input.proof,
+      id: input.approvalId,
+      organizationId: input.organizationId,
+      proofConsumedAt: null,
+      status: 'approved',
+      toolName: input.toolName,
+    },
+    select: { id: true, runId: true },
+  })
+  if (!approval?.runId) return null
+  const run = await prisma.run.findUnique({
+    where: { id: input.continuationRunId },
+    select: { continuationOfRunId: true },
+  })
+  return run?.continuationOfRunId === approval.runId ? { id: approval.id } : null
+}
+
+/** Claim an already verified proof at the exact dispatch point; false means a race consumed it. */
+export const consumeToolApprovalProof = async (
+  prisma: PrismaClient,
+  input: ToolApprovalProofInput & { approvalId: string; proof: string },
+): Promise<boolean> => {
+  const consumed = await prisma.approvalRequest.updateMany({
+    where: {
+      action: 'tool.invoke',
+      argsHash: input.argsHash,
+      continuationToken: input.proof,
+      id: input.approvalId,
+      organizationId: input.organizationId,
+      proofConsumedAt: null,
+      status: 'approved',
+      toolName: input.toolName,
+    },
+    data: { proofConsumedAt: new Date() },
+  })
+  return consumed.count === 1
+}
 
 export const checkPolicy = async (
   prisma: PrismaClient,

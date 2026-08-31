@@ -71,6 +71,7 @@ const runContext = (): RunContext => ({
 })
 
 type FakePrisma = {
+  approvalRequests: Array<Record<string, unknown>>
   auditLog: { createCalls: number }
   prisma: ExecutionDependencies['prisma']
   ruleLog: string[]
@@ -80,6 +81,7 @@ type FakePrisma = {
 const fakePrisma = (): FakePrisma => {
   let rules: Array<Record<string, unknown>> = []
   const state = {
+    approvalRequests: [] as Array<Record<string, unknown>>,
     auditLog: { createCalls: 0 },
     ruleLog: [] as string[],
     setRules: (next: Array<Record<string, unknown>>) => {
@@ -98,6 +100,18 @@ const fakePrisma = (): FakePrisma => {
       },
     }),
     agent: { update: async () => ({}) },
+    approvalRequest: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const approval = { ...data, id: `approval-${state.approvalRequests.length + 1}` }
+        state.approvalRequests.push(approval)
+        return { id: approval.id }
+      },
+      findFirst: async ({ where }: { where: Record<string, unknown> }) =>
+        state.approvalRequests.find((approval) =>
+          Object.entries(where).every(([key, value]) => approval[key] === value),
+        ) ?? null,
+      updateMany: async () => ({ count: 1 }),
+    },
     policyRule: {
       findMany: async (query: { where: { scopeId: { in: string[] } } }) => {
         state.ruleLog.push(...query.where.scopeId.in)
@@ -262,6 +276,7 @@ const runLoop = async (input: {
         },
         runUtility,
       },
+      isHandoffTurn: false,
       invocationSink: [],
       mcpToolset,
       resolvedToolIds: input.resolvedBuiltinToolIds ?? new Set([builtinName, 'delegate']),
@@ -333,6 +348,12 @@ const deniedOutput = (result: LoopHarness['result'], toolName: string): Record<s
   return parseDenied(haystack, toolName)
 }
 
+const suspendedApproval = (result: LoopHarness['result'], toolName: string): string => {
+  assert.equal(result.pendingApproval?.toolName, toolName)
+  assert.ok(result.pendingApproval?.approvalId)
+  return result.pendingApproval.approvalId
+}
+
 // Delegated paths: the denial is the nested tool's result inside the
 // sub-agent loop, captured via the DelegateRunner's out-param.
 const delegatedDeniedOutput = (harness: LoopHarness, toolName: string): Record<string, unknown> => {
@@ -355,14 +376,14 @@ test('main builtin: a policy deny intercepts before dispatch and is audited', as
   assert.ok(harness.fake.auditLog.createCalls > 0)
 })
 
-test('main builtin: an approval-required allow intercepts before dispatch', async () => {
+test('main builtin: an approval-required allow suspends before dispatch', async () => {
   const harness = await runLoop({
     rules: [approvalRule('kb_search')],
     toolName: 'kb_search',
   })
-  const parsed = deniedOutput(harness.result, 'kb_search')
-  assert.equal(parsed['reason'], 'approval_required')
-  assert.equal(parsed['approvalActionType'], 'tool.invoke')
+  assert.equal(suspendedApproval(harness.result, 'kb_search'), 'approval-1')
+  assert.equal(harness.fake.approvalRequests[0]?.['argsHash'] !== undefined, true)
+  assert.equal(harness.fake.approvalRequests[0]?.['toolCallId'], 'call-1')
   assert.ok(harness.fake.auditLog.createCalls > 0)
 })
 
@@ -395,7 +416,7 @@ test('main MCP: a policy deny intercepts before dispatch and is audited', async 
   assert.ok(harness.fake.auditLog.createCalls > 0)
 })
 
-test('main MCP: an approval-required allow intercepts before dispatch', async () => {
+test('main MCP: an approval-required allow suspends before dispatch', async () => {
   const harness = await runLoop({
     mcpTools: {
       mcp_fetch: { inputSummary: 'fetch', output: 'fetched', success: true },
@@ -404,8 +425,7 @@ test('main MCP: an approval-required allow intercepts before dispatch', async ()
     toolName: 'mcp_fetch',
   })
   assert.deepEqual(harness.dispatchedMcp, [])
-  const parsed = deniedOutput(harness.result, 'mcp_fetch')
-  assert.equal(parsed['reason'], 'approval_required')
+  assert.equal(suspendedApproval(harness.result, 'mcp_fetch'), 'approval-1')
 })
 
 // --- main executor ---
@@ -424,7 +444,7 @@ test('main executor: a policy deny intercepts before dispatch and is audited', a
   assert.ok(harness.fake.auditLog.createCalls > 0)
 })
 
-test('main executor: an approval-required allow intercepts before dispatch', async () => {
+test('main executor: an approval-required allow suspends before dispatch', async () => {
   const harness = await runLoop({
     executorTools: {
       'executor.file.read': { inputSummary: 'read', output: 'read', success: true },
@@ -433,8 +453,7 @@ test('main executor: an approval-required allow intercepts before dispatch', asy
     toolName: 'executor.file.read',
   })
   assert.deepEqual(harness.dispatchedExecutor, [])
-  const parsed = deniedOutput(harness.result, 'executor.file.read')
-  assert.equal(parsed['reason'], 'approval_required')
+  assert.equal(suspendedApproval(harness.result, 'executor.file.read'), 'approval-1')
 })
 
 // --- delegated paths: the model calls delegate; the sub-agent then calls the
