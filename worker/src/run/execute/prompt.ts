@@ -15,6 +15,10 @@ import {
   buildResearchRoutingBlock,
   type ResearchRoutingFacts,
 } from './research-routing.js'
+import {
+  buildAgentDocumentsBlock,
+  type AgentDocumentsPromptFacts,
+} from './agent-documents.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
 
 // A turn's text as the model sees it: what was written, plus the inventory of
@@ -77,6 +81,8 @@ export const buildModelPrompt = (
     checkpointNotes?: string | null
     /** Structural toolset facts driving the research routing block (§9). */
     routing?: ResearchRoutingFacts
+    /** Structural home-space and toolset facts driving the documents block. */
+    documents?: AgentDocumentsPromptFacts
   } = {},
 ): ProviderMessage[] => {
   const hasOtherAgentTurn = conversation.some(
@@ -165,6 +171,7 @@ export const buildModelPrompt = (
       '- Match the register of the message you are replying to. Short casual question → short casual answer.',
     ].join('\n'),
     options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
+    options.documents ? buildAgentDocumentsBlock(options.documents) ?? '' : '',
   ].filter((part) => part.length > 0)
 
   const messages: ProviderMessage[] = [{ content: systemParts.join('\n\n'), role: 'system' }]

@@ -1,11 +1,11 @@
 import type { Prisma } from '@prisma/client'
-import { listVisibleAgentIdsForUser } from '@nessie/db'
 import { canReadSpace } from '@nessie/knowledge'
 
 import { enqueueAttentionDispatch } from '../queue/pgqueue.js'
 
 type AttentionTransaction = Pick<
   Prisma.TransactionClient,
+  | 'agent'
   | 'organizationMember'
   | 'projectMember'
   | 'knowledgeSpace'
@@ -13,6 +13,52 @@ type AttentionTransaction = Pick<
   | 'userAlert'
   | '$executeRaw'
 >
+
+// Resolves the one owning agent's complete human audience in one set-based
+// read. Publication only needs this for an agent-owned space: ordinary spaces
+// must not pay for agent visibility at all, and per-member reads inside this
+// interactive transaction would turn one publish into an N+1 query pattern.
+const loadAgentAudience = async (
+  tx: AttentionTransaction,
+  input: { organizationId: string; ownerAgentId: string },
+): Promise<Set<string>> => {
+  const agent = await tx.agent.findFirst({
+    where: {
+      id: input.ownerAgentId,
+      organizationId: input.organizationId,
+      systemManaged: false,
+    },
+    select: {
+      bindings: {
+        where: { channel: { organizationId: input.organizationId } },
+        select: {
+          channel: {
+            select: {
+              members: { select: { userId: true } },
+              visibility: true,
+            },
+          },
+        },
+      },
+      ownerMembership: { select: { deactivatedAt: true } },
+      ownerUserId: true,
+      parentAgentId: true,
+    },
+  })
+  if (!agent) return new Set()
+
+  const visibleUserIds = new Set<string>()
+  if (agent.parentAgentId === null && agent.ownerMembership?.deactivatedAt === null && agent.ownerUserId) {
+    visibleUserIds.add(agent.ownerUserId)
+  }
+  for (const binding of agent.bindings) {
+    if (binding.channel.visibility === 'public') {
+      return new Set(['*'])
+    }
+    for (const member of binding.channel.members) visibleUserIds.add(member.userId)
+  }
+  return visibleUserIds
+}
 
 /**
  * A newer assignment or publication supersedes every older unread generation
@@ -167,13 +213,12 @@ export const createKnowledgePublicationAttention = async (
 
   const projectUserIds = new Set(projectMembers.map((member) => member.userId))
   const memberUserIds = space.members.flatMap((member) => member.userId ? [member.userId] : [])
-  const visibleAgentIdsByUser = new Map(await Promise.all(members.map(async (member) => [
-    member.userId,
-    new Set(await listVisibleAgentIdsForUser(tx, {
+  const agentAudience = space.ownerAgentId
+    ? await loadAgentAudience(tx, {
       organizationId: input.organizationId,
-      userId: member.userId,
-    })),
-  ] as const)))
+      ownerAgentId: space.ownerAgentId,
+    })
+    : null
   for (const member of members) {
     if (member.userId === input.actorUserId) continue
     const readable = canReadSpace({
@@ -184,7 +229,11 @@ export const createKnowledgePublicationAttention = async (
       bypass: false,
       projectIds: projectUserIds.has(member.userId) ? new Set([input.projectId]) : new Set(),
       userId: member.userId,
-      visibleAgentIds: visibleAgentIdsByUser.get(member.userId) ?? new Set(),
+      visibleAgentIds: space.ownerAgentId && (
+        agentAudience?.has('*') || agentAudience?.has(member.userId)
+      )
+        ? new Set([space.ownerAgentId])
+        : new Set(),
     })
     if (!readable) continue
     const alert = await tx.userAlert.upsert({

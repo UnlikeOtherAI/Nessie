@@ -12,6 +12,7 @@ const pageId = '00000000-0000-4000-8000-000000000003'
 const viewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   bypass: false,
   projectIds: new Set(),
+  visibleAgentIds: new Set(),
   userId,
   visibleAgentIds: new Set(),
   ...overrides,

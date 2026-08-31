@@ -7,8 +7,12 @@ import type { RunContext } from './types.js'
 
 // The gate reads exactly four fields off the context; the rest of a RunContext
 // is irrelevant to it, so the fixture states only what the predicate consults.
-const contextWith = (consumedSources: RunContext['consumedSources']): RunContext =>
+const contextWith = (
+  consumedSources: RunContext['consumedSources'],
+  boundAgentIds: readonly string[] = [],
+): RunContext =>
   ({
+    boundAgentIds,
     channel: {
       id: 'channel-1',
       organizationId: 'org-1',
@@ -62,4 +66,24 @@ test('the gate is monotone: consuming an implied source afterwards cannot re-ope
   ])
 
   assert.equal(runReplyIsRestricted(context), true)
+})
+
+test('reading a bound agent\'s documents keeps streaming enabled', () => {
+  const sink = createConsumedSourceSink()
+  sink.add({ scopeId: 'agent-1', scopeType: 'agent' })
+
+  assert.equal(runReplyIsRestricted(contextWith(sink, ['agent-1'])), false)
+})
+
+test('reading an unbound agent\'s documents cuts the stream', () => {
+  const sink = createConsumedSourceSink()
+  sink.add({ scopeId: 'agent-1', scopeType: 'agent' })
+
+  assert.equal(runReplyIsRestricted(contextWith(sink, ['agent-2'])), true)
+})
+
+test('runReplyIsRestricted remains synchronous for per-delta calls', () => {
+  const result = runReplyIsRestricted(contextWith(createConsumedSourceSink()))
+
+  assert.equal(typeof result, 'boolean')
 })

@@ -22,6 +22,11 @@ import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
+import {
+  hasDocumentsPromptTools,
+  hasKbWriteTools,
+  resolveAgentDocumentsHome,
+} from './agent-documents.js'
 
 // Everything the agentic loop needs, assembled once: the agent's toolset, its
 // conversation window, retrieved memories, any checkpoint left by an earlier
@@ -94,7 +99,12 @@ export const prepareRunExecution = async (
 
   const agentRecord = await deps.prisma.agent.findUnique({
     where: { id: context.agent.id },
-    select: { toolPolicy: true, parentAgentId: true },
+    select: {
+      toolPolicy: true,
+      parentAgentId: true,
+      systemManaged: true,
+      parentAgent: { select: { id: true, name: true, systemManaged: true } },
+    },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
   const {
@@ -112,6 +122,23 @@ export const prepareRunExecution = async (
     ),
     input.isHandoffTurn,
   )
+
+  // A spawned child shares its parent's documents home. The PA is
+  // system-managed and writes personal artifacts to its user's My Docs, so it
+  // has no agent home at all.
+  const documentsAgent = agentRecord?.parentAgent ?? {
+    id: context.agent.id,
+    name: context.agent.name,
+    systemManaged: agentRecord?.systemManaged ?? false,
+  }
+  const documentsHome = hasKbWriteTools(resolvedToolIds) && !documentsAgent.systemManaged
+    ? await resolveAgentDocumentsHome(deps.prisma, {
+      agentId: documentsAgent.id,
+      agentName: documentsAgent.name,
+      organizationId: context.channel.organizationId,
+      projectId: context.channel.projectId,
+    })
+    : null
 
   const [mcpToolset, executorToolset] = await Promise.all([
     buildMcpToolset(
@@ -211,6 +238,12 @@ export const prepareRunExecution = async (
         hasWebSearch: resolvedToolIds.has('web_search'),
         isHandoffTurn: input.isHandoffTurn,
       },
+      documents: documentsHome
+        ? {
+          ...documentsHome,
+          hasDocumentTools: hasDocumentsPromptTools(resolvedToolIds),
+        }
+        : undefined,
     }),
     mcpToolset,
     memories,

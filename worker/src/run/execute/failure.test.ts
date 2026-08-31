@@ -80,6 +80,7 @@ test('an interactive run tells the person waiting that Ledger credits are exhaus
       provider: null,
       systemPrompt: null,
     },
+    boundAgentIds: [],
     channel: {
       id: ID.channel,
       organizationId: ID.organization,
@@ -191,6 +192,7 @@ test('an unattended run fails quietly — no message into a room that did not as
       provider: null,
       systemPrompt: null,
     },
+    boundAgentIds: [],
     channel: {
       id: ID.channel,
       organizationId: ID.organization,

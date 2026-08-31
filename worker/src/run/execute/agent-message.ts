@@ -80,7 +80,11 @@ const destinationFor = (context: RunContext) => ({
  * through the disclosure predicate.
  */
 export const runReplyBasis = (context: RunContext): BasisScope[] =>
-  computeReplyBasis(context.consumedSources.list(), destinationFor(context))
+  computeReplyBasis(
+    context.consumedSources.list(),
+    destinationFor(context),
+    context.boundAgentIds,
+  )
 
 export const runReplyIsRestricted = (context: RunContext): boolean =>
   runReplyBasis(context).length > 0

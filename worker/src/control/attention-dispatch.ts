@@ -109,6 +109,9 @@ const resolveAttention = async (
     const page = alert.knowledgePage
     if (!page || !alert.projectId || page.status !== 'published' || page.deletedAt || page.organizationId !== alert.organizationId) return null
     const memberUserIds = page.space.members.flatMap((member) => member.userId ? [member.userId] : [])
+    // Delivery revalidates the same live agent audience the durable alert and
+    // KB reader use, so access revoked after enqueue suppresses the push. See
+    // docs/plans/2026-08-31-agent-documents.md §4.1.
     const [projectMembership, visibleAgentIds] = await Promise.all([
       prisma.projectMember.findFirst({
         where: { projectId: page.projectId, userId: alert.userId },

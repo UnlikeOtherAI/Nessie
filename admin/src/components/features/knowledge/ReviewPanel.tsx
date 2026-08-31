@@ -5,6 +5,7 @@ import { AgentDraftBadge } from './AgentDraftBadge'
 import { isAgentDraft } from './page-status'
 
 type ReviewPanelProps = {
+  canWrite: boolean
   onPublish: () => void
   onRequestChanges: () => void
   page: KnowledgePageRecord
@@ -28,7 +29,13 @@ const diffLinePrefix: Record<DiffLineOp['type'], string> = {
 // version (or the full draft when there is nothing published yet), plus the
 // Publish / Request changes actions. Renders nothing once the page is no
 // longer an unreviewed agent draft (published, archived, or human-authored).
-export const ReviewPanel = ({ onPublish, onRequestChanges, page, publishPending }: ReviewPanelProps) => {
+export const ReviewPanel = ({
+  canWrite,
+  onPublish,
+  onRequestChanges,
+  page,
+  publishPending,
+}: ReviewPanelProps) => {
   const [showDiff, setShowDiff] = useState(false)
   const published = page.publishedVersion
   const draft = page.latestVersion
@@ -60,21 +67,25 @@ export const ReviewPanel = ({ onPublish, onRequestChanges, page, publishPending 
           >
             {showDiff ? 'Hide changes' : 'Review changes'}
           </button>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={onRequestChanges}
-            type="button"
-          >
-            Request changes
-          </button>
-          <button
-            className="admin-button admin-button-primary admin-button-compact"
-            disabled={publishPending}
-            onClick={onPublish}
-            type="button"
-          >
-            Publish
-          </button>
+          {canWrite ? (
+            <>
+              <button
+                className="admin-button admin-button-secondary admin-button-compact"
+                onClick={onRequestChanges}
+                type="button"
+              >
+                Request changes
+              </button>
+              <button
+                className="admin-button admin-button-primary admin-button-compact"
+                disabled={publishPending}
+                onClick={onPublish}
+                type="button"
+              >
+                Publish
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
 

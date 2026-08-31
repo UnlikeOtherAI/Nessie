@@ -37,6 +37,7 @@ export const readMarkdownDocument = async (
         select: {
           channelId: true,
           organizationId: true,
+          ownerAgentId: true,
           projectId: true,
           teamId: true,
           userId: true,

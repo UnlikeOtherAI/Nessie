@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { KnowledgeSpaceResponse } from '@nessie/schemas'
 import { knowledgeKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -20,24 +21,9 @@ export type KnowledgeVersionRecord = {
 
 export type KnowledgePageKind = 'document' | 'file'
 
-export type KnowledgeSpaceRecord = {
-  id: string
-  name: string
-  description: string | null
-  // Server-set space metadata. `personal: true` marks the caller's own
-  // "My Docs" space, provisioned by the my-docs ensure endpoint.
-  metadata: Record<string, unknown> | null
-  projectId: string
-  visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
-  sensitivityTier: 'normal' | 'sensitive' | 'restricted'
-  memberUserIds: string[]
-  memberAgentIds: string[]
-  sourceRef: string
-  visibilityReason: string
-  policyChainTrace: string[]
-  createdAt: string
-  updatedAt: string
-}
+// Never hand-copy the API response here. In particular, ownerAgentId must not
+// be allowed to disappear from the server contract while the UI still compiles.
+export type KnowledgeSpaceRecord = KnowledgeSpaceResponse
 
 export type KnowledgePageRecord = {
   id: string
@@ -75,6 +61,8 @@ export type UpdateSpaceInput = {
   name?: string
   description?: string | null
   memberAgentIds?: string[]
+  memberUserIds?: string[]
+  writeRestricted?: boolean
 }
 
 export type SavePageInput = {
@@ -104,13 +92,24 @@ const invalidateKnowledge = (
 // Org-wide by default (the Knowledge section). Pass a projectId for a
 // project's own Documents tab: the API narrows the list to that project on top
 // of the caller's per-space read access.
-export const useKnowledgeSpaces = (projectId?: string) => {
+export const useKnowledgeSpaces = (projectId?: string, enabled = true) => {
   const apiClient = useApiClient()
   const scope = projectId ? `&projectId=${encodeURIComponent(projectId)}` : ''
 
   return useQuery<KnowledgeSpaceRecord[]>({
+    enabled,
     queryKey: knowledgeKeys.scopedSpaces(projectId),
     queryFn: () => apiClient.get(`/api/knowledge-base/spaces?limit=100${scope}`),
+  })
+}
+
+export const useKnowledgeSpace = (spaceId?: string) => {
+  const apiClient = useApiClient()
+
+  return useQuery<KnowledgeSpaceRecord>({
+    enabled: Boolean(spaceId),
+    queryKey: knowledgeKeys.space(spaceId),
+    queryFn: () => apiClient.get(`/api/knowledge-base/spaces/${spaceId}`),
   })
 }
 

@@ -22,6 +22,7 @@ import {
   actorAuthorType,
   attachPageEnvelope,
   attachSpaceEnvelope,
+  canManageKnowledgeSpaceAccess,
   createKnowledgeAccess,
   policyTrace,
   requireKnowledgePolicy,
@@ -70,7 +71,7 @@ export const registerKnowledgeBaseRoutes = (
       viewer,
     })
     return createApiResponse(
-      result.data.map((space) => attachSpaceEnvelope(space, decision, viewer)),
+      result.data.map((space) => attachSpaceEnvelope(space, decision, viewer, actorContext)),
       result.meta,
     )
   })
@@ -125,7 +126,9 @@ export const registerKnowledgeBaseRoutes = (
       metadata: { name: space.name },
       ...requestIds(request),
     })
-    return reply.code(201).send(createApiResponse(attachSpaceEnvelope(space, decision, viewer)))
+    return reply.code(201).send(
+      createApiResponse(attachSpaceEnvelope(space, decision, viewer, actorContext)),
+    )
   })
 
   app.get('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -137,7 +140,7 @@ export const registerKnowledgeBaseRoutes = (
     const viewer = await buildViewer(actorContext)
     const space = await accessSpace(actorContext, spaceId, viewer, 'read', reply)
     if (!space) return reply
-    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer, actorContext))
   })
 
   app.patch('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -149,7 +152,20 @@ export const registerKnowledgeBaseRoutes = (
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
-    if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
+    const currentSpace = await accessSpace(actorContext, spaceId, viewer, 'write', reply)
+    if (!currentSpace) return reply
+    const changesAccess = body.writeRestricted !== undefined
+      || body.memberUserIds !== undefined
+      || body.memberAgentIds !== undefined
+    if (changesAccess && !canManageKnowledgeSpaceAccess(currentSpace, actorContext)) {
+      sendApiError(
+        reply,
+        403,
+        'POLICY_DENIED',
+        'Knowledge base access denied: SPACE_ADMIN_REQUIRED',
+      )
+      return reply
+    }
     let space: KnowledgeSpaceRecord | null
     try {
       space = await provider.updateSpace(actorContext.tenant.organizationId, spaceId, body)
@@ -169,7 +185,7 @@ export const registerKnowledgeBaseRoutes = (
       outcome: 'success',
       ...requestIds(request),
     })
-    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer, actorContext))
   })
 
   app.delete('/api/knowledge-base/spaces/:spaceId', async (request, reply) => {
@@ -190,7 +206,7 @@ export const registerKnowledgeBaseRoutes = (
       outcome: 'success',
       ...requestIds(request),
     })
-    return createApiResponse(attachSpaceEnvelope(space, decision, viewer))
+    return createApiResponse(attachSpaceEnvelope(space, decision, viewer, actorContext))
   })
 
   app.get('/api/knowledge-base/spaces/:spaceId/pages', async (request, reply) => {

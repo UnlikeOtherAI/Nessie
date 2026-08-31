@@ -83,6 +83,9 @@ const member = (userId: string, muted = false): MemberRow => ({ userId, muted })
 
 const makeFakePrisma = (state: FakeState): PushDispatchPrisma =>
   ({
+    agent: {
+      findMany: async () => [],
+    },
     pushCredential: {
       findMany: async () => state.creds,
     },

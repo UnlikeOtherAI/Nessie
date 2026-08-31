@@ -1,9 +1,10 @@
 import type { DestinationScopeChain } from '@nessie/memory'
 
 /**
- * A scoped source a run consumed. `scopeType` is a `ThoughtAudienceType`
- * literal, so memories, knowledge-base spaces, and transcript turns all express
- * their provenance in one vocabulary.
+ * A scoped source a run consumed. Most scope types are `ThoughtAudienceType`
+ * literals; `agent` names the people who can see that agent. Memories,
+ * knowledge-base spaces, and transcript turns therefore still express their
+ * provenance in one set-containment vocabulary.
  */
 export type BasisScope = {
   scopeType: string
@@ -58,18 +59,42 @@ export const createConsumedSourceSink = (): ConsumedSourceSink => {
   }
 }
 
+/** Subtract scopes already implied by a destination or another exact audience. */
+export const subtractImpliedScopes = (
+  consumed: readonly BasisScope[],
+  impliedScopes: readonly BasisScope[],
+): BasisScope[] => {
+  const implied = new Set(impliedScopes.map(scopeKey))
+  const basis: BasisScope[] = []
+  const seen = new Set<string>()
+
+  for (const scope of consumed) {
+    const key = scopeKey(scope)
+    if (implied.has(key) || seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    basis.push(scope)
+  }
+
+  return basis
+}
+
 /**
- * The scopes a destination surface implies by its own chain. A source at one of
- * these is not privileged *here* — everyone who can see this room can already
- * reach it — so it never enters a basis.
+ * The scopes a destination surface implies by its own chain and agent bindings.
+ * A source at one of these is not privileged *here* — everyone who can see this
+ * room can already reach it — so it never enters a basis.
  */
-const impliedByDestination = (destination: DestinationScopeChain): Set<string> =>
-  new Set([
-    `organization:${destination.organizationId}`,
-    `project:${destination.projectId}`,
-    `team:${destination.teamId}`,
-    `channel:${destination.channelId}`,
-  ])
+const impliedByDestination = (
+  destination: DestinationScopeChain,
+  boundAgentIds: readonly string[],
+): BasisScope[] => [
+  { scopeId: destination.organizationId, scopeType: 'organization' },
+  { scopeId: destination.projectId, scopeType: 'project' },
+  { scopeId: destination.teamId, scopeType: 'team' },
+  { scopeId: destination.channelId, scopeType: 'channel' },
+  ...boundAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
+]
 
 /**
  * The disclosure basis of a reply: the consumed sources the destination does not
@@ -85,19 +110,7 @@ const impliedByDestination = (destination: DestinationScopeChain): Set<string> =
 export const computeReplyBasis = (
   consumed: readonly BasisScope[],
   destination: DestinationScopeChain,
+  boundAgentIds: readonly string[],
 ): BasisScope[] => {
-  const implied = impliedByDestination(destination)
-  const basis: BasisScope[] = []
-  const seen = new Set<string>()
-
-  for (const scope of consumed) {
-    const key = scopeKey(scope)
-    if (implied.has(key) || seen.has(key)) {
-      continue
-    }
-    seen.add(key)
-    basis.push(scope)
-  }
-
-  return basis
+  return subtractImpliedScopes(consumed, impliedByDestination(destination, boundAgentIds))
 }

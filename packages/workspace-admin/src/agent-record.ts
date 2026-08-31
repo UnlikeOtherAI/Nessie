@@ -44,29 +44,6 @@ export const buildAccessibleThreadWhere = (
   channel: buildAccessibleChannelWhere(visibility),
 })
 
-/**
- * "An agent I steward" as a visibility rule.
- *
- * Two conditions are load-bearing and neither is optional:
- *
- * - `ownerMembership.deactivatedAt: null` — the branch widens by pointer
- *   equality to a user id, so on its own a member deactivated in this
- *   organization would keep seeing their agents. Liveness is re-derived here,
- *   never implied by the stored pointer or by the foreign key (which a retained
- *   deactivated row still satisfies).
- * - `parentAgentId: null` — `spawn_subtask` mints a permanent Agent row per
- *   delegation, inheriting its parent's owner, and nothing reaps them. Without
- *   this, owning one agent would pour every subtask child it has ever spawned
- *   into that person's agent list, forever.
- */
-export const buildOwnedAgentWhere = (
-  visibility: AgentVisibilityScope,
-): Prisma.AgentWhereInput => ({
-  ownerMembership: { deactivatedAt: null },
-  ownerUserId: visibility.userId,
-  parentAgentId: null,
-})
-
 export const isSystemManagedAgent = (agent: {
   agentKind: string
   systemManaged: boolean

@@ -11,6 +11,7 @@ import { TabBar, type TabBarItem } from '../../primitives/TabBar'
 import { EmptyState } from '../../shared/EmptyState'
 import { PaginationFooter } from '../../shared/PaginationFooter'
 import { AgentAvailableTools } from './AgentAvailableTools'
+import { AgentDocumentsTab } from './AgentDocumentsTab'
 import { AgentMessagePreview } from './AgentMessagePreview'
 import { AgentThoughtStream } from './AgentThoughtStream'
 import { AgentTriggerPanel } from './AgentTriggerPanel'
@@ -22,13 +23,14 @@ import {
   type DesignerPageContext,
 } from './designer/DesignerAssistantPanelContext'
 
-type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages' | 'to-dos'
+type Tab = 'edit' | 'activity' | 'sub-agents' | 'tools' | 'messages' | 'documents' | 'to-dos'
 
 const DETAIL_TABS: ReadonlyArray<TabBarItem<Tab>> = [
   { label: 'Activity', value: 'activity' },
   { label: 'Sub-Agents', value: 'sub-agents' },
   { label: 'Tools', value: 'tools' },
   { label: 'Messages', value: 'messages' },
+  { label: 'Documents', value: 'documents' },
   { label: 'To-dos', value: 'to-dos' },
 ]
 
@@ -59,6 +61,11 @@ const pageContextForTab: Record<Tab, DesignerPageContext> = {
     actions: [],
     description: 'Review messages this agent has sent or received.',
     title: 'Messages',
+  },
+  documents: {
+    actions: ['review and edit the agent’s documents and manage its document space'],
+    description: 'Review the versioned documents this agent keeps and shares with its viewers.',
+    title: 'Documents',
   },
   'to-dos': {
     actions: [],
@@ -138,7 +145,9 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
             className={
               activeTab === 'edit'
                 ? 'hidden'
-                : 'flex-1 overflow-y-auto px-6 py-5'
+                : activeTab === 'documents'
+                  ? 'min-h-0 flex-1'
+                  : 'flex-1 overflow-y-auto px-6 py-5'
             }
           >
         {activeTab === 'activity' && (
@@ -190,6 +199,7 @@ export const AgentDetailTabs = ({ agent, editSlot, onSelectAgent }: AgentDetailT
             />
           </div>
             )}
+            {activeTab === 'documents' && <AgentDocumentsTab agent={agent} />}
           </div>
       </div>
     </div>

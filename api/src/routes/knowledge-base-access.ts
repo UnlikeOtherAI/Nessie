@@ -12,9 +12,10 @@ import {
   type SpaceViewer,
   type SpaceViewerPrincipal,
 } from '@nessie/knowledge'
-import { KNOWLEDGE_EMBED_TOPIC } from '@nessie/schemas'
+import { KNOWLEDGE_EMBED_TOPIC, KnowledgeSpaceResponseSchema } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
+  KnowledgeSpaceResponse,
   PolicyAction,
   PolicyDecision,
   PolicyResourceType,
@@ -52,13 +53,31 @@ export const visibilityReason = (
 const pageVersionRef = (page: KnowledgePageRecord): string | null =>
   page.publishedVersion?.id ?? page.latestVersion?.id ?? page.publishedVersionId
 
+export const canManageKnowledgeSpaceAccess = (
+  space: Pick<KnowledgeSpaceRecord, 'createdBy'>,
+  actorContext: AuthorizedActionContext,
+): boolean =>
+  actorContext.actor.actorType === 'service'
+  || actorContext.actor.roles?.includes('owner') === true
+  || actorContext.actor.actorId === space.createdBy
+
 export const attachSpaceEnvelope = (
   space: KnowledgeSpaceRecord,
   decision: PolicyDecision,
   viewer: SpaceViewer,
-) => ({
+  actorContext: AuthorizedActionContext,
+): KnowledgeSpaceResponse => KnowledgeSpaceResponseSchema.parse({
   ...space,
+  // ownerAgentId is landing in the domain record + native mapper on the
+  // sibling implementation branch. Keep the API contract exact in this
+  // independently buildable branch; the value becomes live automatically
+  // when that mapper supplies it.
+  ownerAgentId:
+    'ownerAgentId' in space && typeof space.ownerAgentId === 'string'
+      ? space.ownerAgentId
+      : null,
   canWrite: canWriteSpace(space, viewer),
+  canManageAccess: canManageKnowledgeSpaceAccess(space, actorContext),
   policyChainTrace: policyTrace(decision),
   sourceRef: buildSpaceSourceRef(space.id),
   visibilityReason: visibilityReason(space, decision),

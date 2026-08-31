@@ -1,12 +1,19 @@
 import { Readable } from 'node:stream'
-import { attributionFromActorContext } from '@nessie/runtime'
-import { canWriteSpace, loadSpaceViewer } from '@nessie/knowledge'
+import { attributionFromActorContext, type FileService } from '@nessie/runtime'
+import {
+  canWriteSpace,
+  loadSpaceViewer,
+  type KnowledgeProvider,
+} from '@nessie/knowledge'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { fileServiceFor } from '../file-service.js'
 import { applyDocumentEdits } from '../execute/document-stream-edit.js'
 import { buildSpaceViewerPrincipal } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
-import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
+import {
+  recordKnowledgeSpaceRead,
+  sourcesOutsideAgentDocumentAudience,
+} from './knowledge-basis.js'
 import { readMarkdownDocument } from './knowledge-document-io.js'
 
 const MAX_BODY_CHARS = 200_000
@@ -16,6 +23,12 @@ type EditInput = {
   pageId?: string
   changeComment?: string
   edits?: { find?: string; replace?: string }[]
+}
+
+type EditDependencies = {
+  files?: FileService
+  provider?: KnowledgeProvider
+  readDocument?: typeof readMarkdownDocument
 }
 
 /**
@@ -28,6 +41,7 @@ type EditInput = {
 export const runKbDocumentEditTool = async (
   context: BuiltinToolRuntimeContext,
   input: EditInput,
+  dependencies: EditDependencies = {},
 ): Promise<ToolExecutionResult> => {
   const pageId = input.pageId?.trim()
   if (!pageId) {
@@ -45,8 +59,8 @@ export const runKbDocumentEditTool = async (
   })
 
   const organizationId = String(context.channel.organizationId)
-  const fileService = fileServiceFor(context.prisma)
-  const document = await readMarkdownDocument(
+  const fileService = dependencies.files ?? fileServiceFor(context.prisma)
+  const document = await (dependencies.readDocument ?? readMarkdownDocument)(
     context.prisma,
     fileService,
     organizationId,
@@ -60,7 +74,7 @@ export const runKbDocumentEditTool = async (
     )
   }
 
-  const provider = createWorkerKnowledgeProvider(context)
+  const provider = dependencies.provider ?? createWorkerKnowledgeProvider(context)
   const page = await provider.getPage(organizationId, pageId)
   if (!page) {
     throw new Error(`Knowledge page not found: ${pageId}`)
@@ -79,6 +93,26 @@ export const runKbDocumentEditTool = async (
   const viewer = await loadSpaceViewer(context.prisma, organizationId, principal)
   if (!canWriteSpace(space, viewer)) {
     throw new Error('You do not have write access to this knowledge space.')
+  }
+
+  if (
+    space.ownerAgentId !== null
+    && sourcesOutsideAgentDocumentAudience(context, {
+      organizationId: space.organizationId,
+      ownerAgentId: space.ownerAgentId,
+    }).length > 0
+  ) {
+    // Knowledge-base reads do not gate on page status, so neither a draft nor
+    // a new unpublished version can safely hold a wider-audience disclosure.
+    await context.documentStream?.finalizeOutstanding('save_failed')
+    return {
+      inputSummary: `pageId=${pageId} edits=${edits.length}`,
+      outputPreview:
+        'I cannot save this version because this run used material that the document audience '
+        + 'cannot access. Write a version without that material, or choose a destination whose '
+        + 'audience already has access to it. The existing document is unchanged.',
+      toolName: 'kb_document_edit',
+    }
   }
 
   // Applied independently of the streaming preview, so the two agreeing is a
@@ -134,6 +168,17 @@ export const runKbDocumentEditTool = async (
       pageId,
     })
     const versionNumber = version?.versionNumber ?? null
+    // Unsafe agent-owned writes returned above. A page that was already a draft
+    // never becomes published here.
+    const published = space.ownerAgentId !== null
+      && page.status === 'published'
+    if (published) {
+      await provider.publishPage({
+        actorUserId: context.actorContext.actionContext.effectiveUserId ?? null,
+        organizationId,
+        pageId,
+      })
+    }
 
     if (session) {
       await context.prisma.runDocumentSession.update({
@@ -142,6 +187,7 @@ export const runKbDocumentEditTool = async (
           chars: applied.length,
           finishedAt: new Date(),
           pageId,
+          ...(space.ownerAgentId !== null ? { published } : {}),
           status: 'saved',
           versionNumber,
         },
@@ -155,7 +201,13 @@ export const runKbDocumentEditTool = async (
       outputPreview:
         `Applied ${edits.length} edit${edits.length === 1 ? '' : 's'} to "${document.title}" `
         + `(${delta >= 0 ? '+' : ''}${delta} characters, now ${applied.length}). `
-        + `pageId=${pageId}${versionNumber ? `, version ${versionNumber}` : ''}.`,
+        + `pageId=${pageId}${versionNumber ? `, version ${versionNumber}` : ''}.`
+        + (space.ownerAgentId === null
+          ? ''
+          : published
+              ? ' The new version is published in that agent-owned space.'
+              : ' The page was already a draft, so the new version remains a draft; '
+                + 'call kb_publish_request when it is ready for review.'),
       toolName: 'kb_document_edit',
     }
   } catch (error) {

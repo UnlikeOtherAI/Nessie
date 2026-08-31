@@ -18,6 +18,7 @@ type CommentActionsProps = {
   reactions: KnowledgeAnnotationReaction[]
   currentUserId?: string
   canModify: boolean
+  canResolve: boolean
   topLevel: boolean
   resolved: boolean
   onToggleReaction: (emoji: string) => void
@@ -33,6 +34,7 @@ export const CommentActions = ({
   reactions,
   currentUserId,
   canModify,
+  canResolve,
   topLevel,
   resolved,
   onToggleReaction,
@@ -131,7 +133,7 @@ export const CommentActions = ({
             <FontAwesomeIcon icon={faReply} />
           </button>
         ) : null}
-        {topLevel ? (
+        {topLevel && canResolve ? (
           <button
             aria-label={resolved ? 'Reopen' : 'Resolve'}
             className="admin-msg-action-button"
