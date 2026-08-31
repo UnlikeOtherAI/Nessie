@@ -7,6 +7,8 @@
     "start": "expo start",
     "ios": "expo run:ios",
     "android": "expo run:android",
+    "build:device:ios": "pnpm dlx eas-cli@latest build --platform ios --profile device",
+    "build:device:android": "pnpm dlx eas-cli@latest build --platform android --profile device",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test:deeplink-simulator": "node test/deeplink-simulator-harness.mjs",
