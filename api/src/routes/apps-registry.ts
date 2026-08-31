@@ -1,5 +1,6 @@
 import {
   createRegistryIconCacher,
+  createRepositoryIconCacher,
   syncRegistry,
   type RegistrySyncProgress,
 } from '@nessie/mcp-manage'
@@ -201,6 +202,11 @@ export const registerAppsRegistryRoutes = (app: FastifyInstance, deps: RouteDeps
       // context), so those apps keep the monogram fallback until an owner runs
       // a sync — a re-sync only fills an icon a row does not have yet.
       iconCacher: createRegistryIconCacher({
+        fileService,
+        organizationId: actorContext.tenant.organizationId,
+        actorId: actorContext.actor.actorId,
+      }),
+      repositoryIconCacher: createRepositoryIconCacher({
         fileService,
         organizationId: actorContext.tenant.organizationId,
         actorId: actorContext.actor.actorId,

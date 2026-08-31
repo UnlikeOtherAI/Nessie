@@ -182,6 +182,14 @@ What the design turns on:
 - **Untrusted text and URLs.** Every URL-shaped field is http(s)-constrained at
   the schema, rejected at ingest, and sanitised again on the way out; the same
   gate was applied to `library.ts`, where the identical vector was still open.
+- **Icons come from the distribution that declares them.** The registry's
+  `server.icons` raster is cached when present. When it is absent, an
+  owner-triggered sync can resolve an IDE-style `ideToolIconPath` from the same
+  public GitHub repository named by the record, but only for the descriptor
+  entry whose endpoint is the one being imported. The relative path cannot
+  escape the repository; SVG is structurally reduced to static shapes and
+  rasterised server-side; and the browser receives only the cached raster
+  attachment, never an upstream or raw SVG URL.
 
 ## The connect flow (Phases 4–8)
 
