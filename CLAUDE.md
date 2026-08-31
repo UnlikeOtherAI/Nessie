@@ -123,7 +123,12 @@ Mechanics beyond those invariants:
   routes apply `RunBasisScope` through the shared run-disclosure reader before
   returning names/content or accepting a target mutation, with an unreadable
   session shaped exactly like an absent one. A client receiving a structural
-  `restricted: true` frame discards that session, so no empty popup survives.
+  `restricted: true` frame treats it as the thread-wide broadcast it is and
+  resolves the session through the viewer-authorized detail route. An entitled
+  viewer receives the complete durable document; an unentitled viewer gets the
+  route's indistinguishable 404 and the client removes the session, so no empty
+  popup survives. The broadcast flag alone is never retained as a local denial
+  across reconnects.
 
 - The OpenAI-compatible connector enriches each `tool_call.delta` fragment with
   the call's accumulated `id`/`toolName`/`index` (`openai-chat-protocol.ts`) —
