@@ -439,8 +439,8 @@ Both edges set baseline security headers:
   not run for hijacked SSE streams, so realtime is unaffected.
 - **Admin** (`infrastructure/docker/admin-nginx.conf`) — the document responses
   add `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, HSTS, and a
-  `Permissions-Policy` that **allows `camera`/`microphone`/`display-capture` for
-  `self`** (required for in-browser video calls — do not tighten to `()`).
+  `Permissions-Policy` that **denies `camera`/`microphone`/`display-capture`**.
+  Calls open in the selected provider rather than inside the admin.
   `Content-Security-Policy-Report-Only` ships a baseline policy; it reports
   violations without blocking. Promote it to an enforcing
   `Content-Security-Policy` once the report stream is clean, and update its

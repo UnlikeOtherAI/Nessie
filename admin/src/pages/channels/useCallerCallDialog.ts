@@ -5,15 +5,14 @@ import {
   useEndCall,
   useStartCall,
 } from '../../facades/calls/hooks'
-import { startCallFailureCode as getStartCallFailureCode } from '../../facades/calls/call-presentation'
 import type { CallRecord, ChannelRecord } from '../../lib/api-client'
 
-interface UseChannelCallParams {
+interface UseCallerCallDialogParams {
   activeChannel: ChannelRecord | null
   callEligible: boolean
 }
 
-interface UseChannelCallResult {
+interface UseCallerCallDialogResult {
   activeCall: CallRecord | null | undefined
   callActionError: unknown
   callActionPending: boolean
@@ -21,37 +20,33 @@ interface UseChannelCallResult {
   callerDialogCall: CallRecord | null
   onCallButton: () => void
   onCloseCallerDialog: () => void
-  onCloseStartCallFailure: () => void
-  onFinishCall: () => void
-  startCallFailureCode: string | undefined
+  onEndCall: () => void
 }
 
 /**
- * Owns the channel caller path: start a link call, retain the caller dialog
- * for that exact call, and recover a typed start refusal. Incoming-call UI is
- * deliberately app-wide work for slice 4b, not part of this channel seam.
+ * Owns the caller's path only: start a channel call, keep its dialog open for
+ * that exact call, and cancel or end it through the existing call routes.
+ * Incoming calls are a separate, app-wide concern and deliberately do not
+ * enter this seam.
  */
-export const useChannelCall = ({
+export const useCallerCallDialog = ({
   activeChannel,
   callEligible,
-}: UseChannelCallParams): UseChannelCallResult => {
-  const activeCallQuery = useActiveCall(activeChannel?.id)
-  const activeCall = activeCallQuery.data
+}: UseCallerCallDialogParams): UseCallerCallDialogResult => {
+  const { data: activeCall } = useActiveCall(activeChannel?.id)
   const cancelCall = useCancelCall()
   const endCall = useEndCall()
   const startCall = useStartCall()
-  const { reset: resetStartCall } = startCall
   const [callerDialogCallId, setCallerDialogCallId] = useState<string | null>(null)
   const activeChannelIdRef = useRef(activeChannel?.id)
   activeChannelIdRef.current = activeChannel?.id
 
   useEffect(() => {
     setCallerDialogCallId(null)
-    resetStartCall()
-  }, [activeChannel?.id, resetStartCall])
+  }, [activeChannel?.id])
 
   const callerDialogCall =
-    callerDialogCallId && activeCall?.id === callerDialogCallId ? activeCall : null
+    callerDialogCallId && activeCall?.id === callerDialogCallId ? activeCall ?? null : null
 
   const onCallButton = () => {
     if (!callEligible || !activeChannel || startCall.isPending) return
@@ -63,9 +58,6 @@ export const useChannelCall = ({
 
     const channelId = activeChannel.id
     startCall.mutate(channelId, {
-      onError: () => {
-        void activeCallQuery.refetch()
-      },
       onSuccess: (call) => {
         if (activeChannelIdRef.current === channelId) {
           setCallerDialogCallId(call.id)
@@ -75,9 +67,8 @@ export const useChannelCall = ({
   }
 
   const onCloseCallerDialog = () => setCallerDialogCallId(null)
-  const onCloseStartCallFailure = () => resetStartCall()
 
-  const onFinishCall = () => {
+  const onEndCall = () => {
     if (!activeChannel || !callerDialogCall) return
 
     if (callerDialogCall.status === 'ringing') {
@@ -98,8 +89,6 @@ export const useChannelCall = ({
     callerDialogCall,
     onCallButton,
     onCloseCallerDialog,
-    onCloseStartCallFailure,
-    onFinishCall,
-    startCallFailureCode: getStartCallFailureCode(startCall.error),
+    onEndCall,
   }
 }

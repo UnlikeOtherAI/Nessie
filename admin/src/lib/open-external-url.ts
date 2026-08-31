@@ -14,6 +14,9 @@ export type ExternalUrlDispatchDeps = {
   postMobileMessage: (message: string) => void
 }
 
+/** Whether an admin shell, rather than the browser, owns external navigation. */
+export const usesExternalUrlShell = (): boolean => isDesktopApp() || isReactNativeWebView()
+
 /**
  * Routes external call links through a native shell when one owns the browser.
  * A browser result intentionally leaves navigation to the real anchor click.
