@@ -5,83 +5,172 @@ import { APP_CATEGORIES, type AppCategory } from '@nessie/schemas'
  *
  * A suggestion names the immutable registry identity of an app, not the
  * publisher-supplied display copy. It is deliberately source-controlled rather
- * than a catalogue column: the registry remains the catalogue authority and a
- * suggestion cannot affect visibility, moderation, trust, or a connection.
+ * than a catalogue column: the registry remains the catalogue authority.
  *
- * Entries are only promoted when they are already present in the caller's
- * visible result set. A stale, removed, reclassified, or hidden registry entry
- * therefore disappears naturally instead of creating a broken card.
+ * Selection is intentionally conservative: prefer the original product
+ * publisher, then a clearly adopted community project. The list stops short of
+ * a shelf's capacity where the registry cannot support that standard. During
+ * registry import this explicit curator decision may lift a matching
+ * `discovered` row to `curated`; it never changes the registry data, trust,
+ * authentication, endpoint safety checks, or connection rules.
  */
 export const APP_HOME_SUGGESTIONS: Record<AppCategory, readonly string[]> = {
   communication: [
     'com.microsoft/workiq-teamsserver',
     'io.github.zoom/zoom-team-chat',
+    'io.github.zoom/zoom-meetings',
+    'io.github.zoom/zoom-workspace',
+    'com.green-api/whatsapp',
+    'ai.izap/whatsapp',
+    'com.uni-msg/whatsapp',
+    'io.2chat/whatsapp',
     'ai.waystation/slack',
     'ai.waystation/gmail',
   ],
   development: [
     'io.github.github/github-mcp-server',
-    'app.linear/linear',
-    'com.stripe/mcp',
+    'com.circleci/mcp',
+    'com.gitlab/mcp',
+    'io.github.PostHog/mcp',
+    'com.statsig/statsig-mcp-server',
+    'com.gameanalytics/analytics-docs',
+    'com.senzing/mcp',
+    'com.ezoic/setup',
+    'com.searchcode/mcp',
+    'com.smplkit/mcp',
+    'com.roxyapi/docs',
   ],
   productivity: [
-    'com.notion/mcp',
-    'net.todoist/mcp',
-    'com.atlassian/atlassian-mcp-server',
+    'ai.chronary/mcp',
+    'ai.naumu/mcp',
+    'ai.smry.r/smry-product',
+    'app.kanera/mcp',
+    'com.cortexpad/cortexpad',
+    'app.xtiles/xtiles-mcp',
+    'app.recordo.api/recordo',
+    'com.anotepad/notes',
+    'io.github.Goran-Arsov/freshjots-mcp',
+    'io.github.digital-wisdom-ai/wondercal',
   ],
   crm_sales: [
     'com.close/close-mcp',
-    'ai.cirra/salesforce-mcp',
-    'io.github.pipeworx-io/pipedrive',
-    'io.github.pipeworx-io/zoho_crm',
+    'com.salesql/salesql',
+    'io.github.kunal-lead411/lead411',
+    'ai.smithery/kesslerio-attio-mcp-server',
   ],
   project_management: [
     'app.linear/linear',
-    'com.notion/mcp',
-    'com.monday/monday.com',
-    'net.todoist/mcp',
+    'com.atlassian/atlassian-mcp-server',
+    'app.easykanb/easykanban',
+    'com.kanbanthing/kanban',
+    'io.github.neoflintai/sprintflint',
+    'io.github.Anymfah/stellary-project-management',
+    'io.github.Sprintra-io/sprintra',
   ],
   customer_support: [
-    'io.github.pipeworx-io/intercom',
-    'io.github.pipeworx-io/zendesk',
-    'io.github.pipeworx-io/hubspot',
-    'io.github.pipeworx-io/freshdesk',
+    'ai.chatthing/chat-thing',
+    'chat.muro/support',
+    'co.rulebase/rulebase',
+    'com.alvrun/support',
   ],
-  data_databases: ['com.supabase/mcp', 'com.airtable/mcp', 'io.github.mcp-dir/neon-mcp'],
+  data_databases: [
+    'com.supabase/mcp',
+    'com.airtable/mcp',
+    'com.keboola/mcp',
+    'com.carto/carto',
+    'co.axiom/mcp',
+    'com.gibsonai/mcp',
+    'co.thinair/data',
+    'ai.mcpmyadmin/mcpmyadmin',
+    'cloud.freebase/freebase',
+  ],
   analytics: [
+    'io.github.grafana/mcp-grafana',
     'com.amplitude/mcp-server',
-    'io.github.PostHog/mcp',
-    'io.usefulapi/mixpanel',
+    'com.newrelic/mcp-server',
+    'com.bitmovin.mcp.analytics/analytics-mcp',
+    'com.reportingninja/reporting-ninja',
+    'com.hitsteps/analytics-operations',
+    'com.chadanalytics/chad',
+    'com.cookiefreeanalytics/mcp',
+    'ai.mcpanalytics/analytics',
+    'ai.analyticslegends/sap-analytics',
   ],
   finance: [
     'com.stripe/mcp',
-    'com.caribooks/quickbooks',
-    'com.getboxkite/xero-backup-export',
+    'com.paypal.mcp/mcp',
+    'com.coinmarketcap/coinmarketcap',
+    'com.avalara/avatax',
+    'com.taxact/taxact-mcp',
+    'io.etherscan/etherscan-mcp',
+    'io.bitquery/mcp',
+    'io.gainium/gainium-mcp',
+    'io.wisesheets/wisesheets',
   ],
   marketing: [
-    'ai.adplane/google-ads',
-    'ai.adweave/meta-ads-mcp',
-    'ai.com.mcp/linkedin',
-    'io.github.Centrify-Internal/hubspot-integrations-mcp',
+    'ai.chinamarketing/intelligence',
+    'io.afterlaunch/agentic-growth-marketing',
+    'com.momenticmarketing/momentic',
+    'ai.seocrawl/mcp',
+    'ai.openhelm/seo-growth',
+    'ai.trendsapi/seo',
+    'ai.trendsmcp/seo',
+    'ai.b77/seo-content-factory',
+    'com.1stcollab/influencers',
+    'ai.fodda/brand-intelligence',
   ],
   files_documents: [
+    'com.microsoft/workiq-odspremoteserver',
     'com.microsoft/workiq-sharepointliststools',
-    'io.github.pipeworx-io/onedrive',
-    'io.github.pipeworx-io/dropbox',
+    'do.craft.mcp/server',
+    'io.carbone/carbone-mcp',
+    'io.dadan/dadan',
+    'app.superdocs/superdocs',
+    'ai.pdfassistant/pdfassistant',
+    'ai.file2markdown/file2markdown',
+    'com.pastesheet/google-sheets',
+    'io.clueso/video',
   ],
-  ai_search: ['ai.exa/exa', 'io.github.upstash/context7', 'io.searchapi/mcp'],
+  ai_search: [
+    'ai.exa/exa',
+    'co.huggingface/hf-mcp-server',
+    'ai.parallel/search-mcp',
+    'ai.parallel/task-mcp',
+    'com.andiai/andi-search',
+    'ai.fodda/deep-research',
+    'ai.fodda/topic-research',
+    'ai.livingmeta/ai-in-research',
+  ],
   infrastructure: [
     'com.cloudflare.mcp/mcp',
+    'com.googleapis.run/mcp',
+    'com.googleapis.container/mcp',
+    'com.ovhcloud.eu.mcp/api',
+    'com.railway/mcp',
     'com.vercel/vercel-mcp',
-    'com.newrelic/mcp-server',
-    'io.github.grafana/mcp-grafana',
+    'com.qovery/mcp-server',
+    'io.cpln/control-plane',
+    'com.googleapis.firestore/mcp',
+    'com.googleapis.datastream/mcp',
   ],
   commerce: [
-    'ai.gossiper/shopify-admin-mcp',
-    'com.datadoe/amazon-seller-mcp',
-    'co.curie/commerce',
+    'io.github.checkout/mcp',
+    'com.sprintcheckout/sprintcheckout',
+    'com.checkoutpage/checkout-page',
+    'io.github.tourmind-com/hotel-booking-ai-mcp',
   ],
-  other: ['com.figma.mcp/mcp', 'io.github.miroapp/mcp-server', 'com.zapier/mcp'],
+  other: [
+    'com.figma.mcp/mcp',
+    'com.googleapis.mapstools/mcp',
+    'com.wolfram/mcp',
+    'com.mindmeister/mcp',
+    'com.whimsical/mcp',
+    'io.github.AnimaApp/anima',
+    'com.googleapis.developerknowledge/mcp',
+    'com.googleapis.design/mcp',
+    'com.googleapis.stitch/mcp',
+    'com.googleapis.androidmanagement/mcp',
+  ],
 }
 
 type HomeSuggestionRow = {
@@ -91,9 +180,17 @@ type HomeSuggestionRow = {
 }
 
 /** A single query covers the (small) editorial candidate set across all shelves. */
+const APP_HOME_SUGGESTION_REGISTRY_NAME_SET = new Set(
+  APP_CATEGORIES.flatMap((category) => APP_HOME_SUGGESTIONS[category]),
+)
+
 export const appHomeSuggestionRegistryNames = (): string[] => [
-  ...new Set(APP_CATEGORIES.flatMap((category) => APP_HOME_SUGGESTIONS[category])),
+  ...APP_HOME_SUGGESTION_REGISTRY_NAME_SET,
 ]
+
+/** Whether a registry record has an explicit source-controlled curator decision. */
+export const isAppHomeSuggestionRegistryName = (registryName: string): boolean =>
+  APP_HOME_SUGGESTION_REGISTRY_NAME_SET.has(registryName)
 
 /**
  * Preserves the stable shelf order after inserting the valid suggestions ahead
