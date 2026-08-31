@@ -3,7 +3,7 @@ import { z } from 'zod'
 import {
   McpServerInstanceIdSchema,
 } from './mcp.js'
-import { ExecutorOperationKeySchema } from './executor.js'
+import { ImplementedExecutorOperationKeySchema } from './executor.js'
 import { AgentIdSchema } from './ids.js'
 
 /**
@@ -210,7 +210,7 @@ export type PtyTransportRegistryConfig = z.infer<
  */
 export const ExecutorTransportRegistryConfigSchema = z.object({
   transport: z.literal('executor'),
-  operationKey: ExecutorOperationKeySchema,
+  operationKey: ImplementedExecutorOperationKeySchema,
 }).strict()
 export type ExecutorTransportRegistryConfig = z.infer<
   typeof ExecutorTransportRegistryConfigSchema

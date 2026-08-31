@@ -10,7 +10,7 @@ import {
   parseThreadId,
   withActionContext,
   type AuthorizedActionContext,
-  type ExecutorOperationKey,
+  type ImplementedExecutorOperationKey,
 } from '@nessie/schemas'
 
 import { mapMessageRecord, messageInclude } from './messages.js'
@@ -26,7 +26,7 @@ export type ExecutorRunLaunchResult =
       bindingId: string
       capabilityRevision: number
       fence: string
-      operationKey: ExecutorOperationKey
+      operationKey: ImplementedExecutorOperationKey
       runId: string
     }>
     channelId: string
@@ -47,7 +47,7 @@ export const launchExecutorRun = async (
     agentId: string
     candidateHandle: string
     content: string
-    operationKeys: ExecutorOperationKey[]
+    operationKeys: ImplementedExecutorOperationKey[]
     threadId: string
   },
 ): Promise<ExecutorRunLaunchResult> => {

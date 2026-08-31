@@ -109,6 +109,7 @@ test('command payload and terminal result are encrypted at rest and receipt tran
       }),
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),
@@ -379,6 +380,7 @@ const currentBindingPrisma = (
       }),
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),

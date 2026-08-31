@@ -12,7 +12,7 @@ test('private assignment changes, grants, descriptor activation, and revocation 
   assert.equal(requiresFreshExecutorVerification({
     kind: 'agent_operation_grant',
     agentId: 'agent-1',
-    operationKey: 'command.run',
+    operationKey: 'file.read',
     state: 'allowed',
   }), true)
   assert.equal(requiresFreshExecutorVerification({
@@ -30,7 +30,7 @@ test('low-risk denial and pause changes still require structural user confirmati
   assert.equal(requiresFreshExecutorVerification({
     kind: 'agent_operation_grant',
     agentId: 'agent-1',
-    operationKey: 'command.run',
+    operationKey: 'file.read',
     state: 'denied',
   }), false)
   assert.equal(requiresFreshExecutorVerification({

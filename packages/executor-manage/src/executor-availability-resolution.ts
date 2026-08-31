@@ -6,7 +6,7 @@ import {
   ExecutorCandidateHandleSchema,
   type AuthorizedActionContext,
   type ExecutorAvailabilityResponse,
-  type ExecutorOperationKey,
+  type ImplementedExecutorOperationKey,
 } from '@nessie/schemas'
 
 import { requireHumanActor } from './executor-access.js'
@@ -33,7 +33,7 @@ type AvailabilityRequest = {
    * contracts never accept this field, so browsers and models still receive
    * only opaque candidates. */
   executorId?: string
-  operationKeys: ExecutorOperationKey[]
+  operationKeys: ImplementedExecutorOperationKey[]
   projectId?: string
   runId?: string
 }
@@ -183,7 +183,7 @@ export const resolveExecutorAvailabilityCandidates = async (
     authorizationRevision: number
     capabilityRevisionId: string
     executorId: string
-    operationKeys: ExecutorOperationKey[]
+    operationKeys: ImplementedExecutorOperationKey[]
     scopeKind: 'private' | 'project' | 'organization'
   }> = []
 
@@ -196,7 +196,7 @@ export const resolveExecutorAvailabilityCandidates = async (
       grant.operationKey,
       grant.state,
     ]))
-    const readyKeys: ExecutorOperationKey[] = []
+    const readyKeys: ImplementedExecutorOperationKey[] = []
     for (const operationKey of input.operationKeys) {
       const decision = resolveExecutorAvailability({
         descriptorApproved: latest?.reviewStatus === 'active' && Boolean(descriptor?.success),

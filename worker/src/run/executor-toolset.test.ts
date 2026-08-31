@@ -18,6 +18,7 @@ test('only operations already bound to this run and explicitly granted to its ag
       ],
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),
@@ -58,6 +59,7 @@ test('the bounded backend exposes only an exact session-bound browser bundle and
       ],
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),
@@ -119,6 +121,7 @@ test('browser operations are withheld when their session bundle is incomplete or
       ],
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),
@@ -163,6 +166,7 @@ test('a stopped browser session exposes no residual browser or stop tool', async
       ],
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),
@@ -198,6 +202,7 @@ test('the bounded backend exposes coding only through its exact session bundle',
       ],
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),
@@ -248,6 +253,7 @@ test('coding operations are withheld when their session is mixed with another ex
       ],
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),
@@ -287,6 +293,7 @@ test('an exited coding session keeps review and teardown but cannot relaunch Cod
       ],
     },
     toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
       upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
         id: where.organizationId_scopeKey_toolId.toolId,
       }),

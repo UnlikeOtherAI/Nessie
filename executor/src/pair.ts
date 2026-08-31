@@ -3,6 +3,7 @@ import { createHash, generateKeyPairSync, type KeyObject, sign } from 'node:cryp
 import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
+  ImplementedExecutorOperationKeySchema,
   type ExecutorSignedDescriptor,
 } from '@nessie/schemas'
 
@@ -91,10 +92,7 @@ const configuredOperationKeys = (
     throw new Error('Specify one or more distinct implemented executor operations.')
   }
   if ([...requested].some((operationKey) => (
-    !COW_WORKSPACE_OPERATION_KEYS.includes(operationKey as typeof COW_WORKSPACE_OPERATION_KEYS[number])
-    && operationKey !== PROMOTION_OPERATION_KEY
-    && !BROWSER_OPERATION_KEYS.includes(operationKey as typeof BROWSER_OPERATION_KEYS[number])
-    && !CODING_OPERATION_KEYS.includes(operationKey as typeof CODING_OPERATION_KEYS[number])
+    !ImplementedExecutorOperationKeySchema.safeParse(operationKey).success
   ))) {
     throw new Error('Only implemented workspace, browser, and coding operations may be configured.')
   }

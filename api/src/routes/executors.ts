@@ -24,7 +24,7 @@ import {
   submitExecutorEnrollment,
 } from '@nessie/executor-manage'
 import type { FastifyInstance } from 'fastify'
-import { ExecutorOperationKeySchema, parseChannelId, parseUserId } from '@nessie/schemas'
+import { ImplementedExecutorOperationKeySchema, parseChannelId, parseUserId } from '@nessie/schemas'
 
 import {
   ConfirmExecutorAccessChangeBodySchema,
@@ -399,7 +399,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       if (accessChange.change.kind === 'agent_operation_grant') {
         const tools = await ensureExecutorLogicalTools(prisma, actorContext.tenant.organizationId)
         const toolRegistryEntryId = tools.get(
-          ExecutorOperationKeySchema.parse(accessChange.change.operationKey),
+          ImplementedExecutorOperationKeySchema.parse(accessChange.change.operationKey),
         )
         if (!toolRegistryEntryId) {
           throw new Error('Executor logical tool registry is incomplete.')

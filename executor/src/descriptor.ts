@@ -5,7 +5,7 @@ import {
   canonicalExecutorJson,
   canonicalExecutorPayload,
   ExecutorCapabilityDescriptorSchema,
-  ExecutorOperationKeySchema,
+  ImplementedExecutorOperationKeySchema,
   ExecutorSignedDescriptorSchema,
   type ExecutorSignedDescriptor,
 } from '@nessie/schemas'
@@ -38,7 +38,7 @@ export const buildSignedDescriptor = (
   const descriptor = ExecutorCapabilityDescriptorSchema.parse({
     limits: config.limits,
     localPolicyDigest: policyDigest(config),
-    operationKeys: config.operationKeys.map((key) => ExecutorOperationKeySchema.parse(key)),
+    operationKeys: config.operationKeys.map((key) => ImplementedExecutorOperationKeySchema.parse(key)),
     platform: initialPlatform(),
     profiles: config.profiles,
     protocolVersion: 1,

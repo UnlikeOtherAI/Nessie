@@ -4,8 +4,10 @@ import type {
   ExecutorAccessViewResponse,
   ExecutorRecordResponse,
   ExecutorWorkspaceReviewRecordResponse,
+  ImplementedExecutorOperationKey,
   PreparedExecutorAccessChangeResponse,
 } from '@nessie/schemas'
+import { IMPLEMENTED_EXECUTOR_OPERATION_KEYS } from '@nessie/schemas'
 import type { AgentRecord, UserRecord } from '../../../lib/api-client'
 import { usePrepareExecutorAccessChange } from '../../../facades/executors/hooks'
 import { TabBar } from '../../primitives/TabBar'
@@ -21,11 +23,7 @@ type ExecutorDetailPanelsProps = {
   users: UserRecord[]
 }
 
-const operationKeys = [
-  'file.list', 'file.read', 'file.write', 'browser.open', 'browser.observe',
-  'workspace.review',
-  'sandbox.stop', 'coding.launch', 'coding.observe',
-] as const
+const operationKeys = IMPLEMENTED_EXECUTOR_OPERATION_KEYS
 
 const EXECUTOR_TABS: ReadonlyArray<{ label: string; value: ExecutorTab }> = [
   { label: 'Overview', value: 'overview' },
@@ -86,7 +84,7 @@ export const ExecutorDetailPanels = ({
   const [assignmentAction, setAssignmentAction] = useState<'set' | 'remove'>('set')
   const [assignmentRole, setAssignmentRole] = useState<'use' | 'admin'>('use')
   const [grantAgentId, setGrantAgentId] = useState('')
-  const [grantOperation, setGrantOperation] = useState<(typeof operationKeys)[number]>('file.read')
+  const [grantOperation, setGrantOperation] = useState<ImplementedExecutorOperationKey>('file.read')
   const [grantState, setGrantState] = useState<'allowed' | 'denied'>('allowed')
   const [error, setError] = useState<string | null>(null)
   const prepare = usePrepareExecutorAccessChange()
