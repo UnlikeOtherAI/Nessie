@@ -169,40 +169,46 @@ composition verbatim.
 
 ## 2. Universal Connect flow — the user's experience
 
-The flow is one state machine with three entry skins. The UI state is driven
-by a small status enum the API already effectively has; the admin renders one
-**ConnectProgress** inline panel (never a toast, never a blocking modal) in
-the detail hero while a connect is in flight.
+The flow is one state machine with three entry skins. **Every entry point opens
+the same connection-review dialog before it sends a connect request.** The
+review names the publisher, the authentication method, what the sign-in or
+secret step will do, and that the account is personal. For a registry listing
+whose authentication has not yet been discovered, it says "Checked before
+connecting" instead of presenting a guessed method. Only the explicit
+`Connect {name}` confirmation starts the API flow. Once confirmed, the dialog
+renders the shared **ConnectProgress** panel; it never starts work merely by
+opening a dialog.
 
 ### (a) No-auth server
 
-1. **Idle.** Primary button `Connect Nessie to {name}`.
-2. **Clicked → "probing".** Button becomes
-   `Connecting…` with the standard disabled treatment
-   (`disabled:opacity-40`), and an inline progress panel appears directly
-   under the hero CTA (`rounded-[var(--radius-md)] border
-   border-[color:var(--sep)] bg-[var(--panel-soft)] px-4 py-3`), showing a
-   step list with the current step in `text-[var(--tx)]` and completed steps
-   with a `--success-text` check:
+1. **Idle.** Primary button `Connect Nessie to {name}` opens the review
+   dialog; it does not create an account or probe the server.
+2. **Confirmed → "probing".** The dialog starts work only after its explicit
+   `Connect {name}` confirmation, then renders a progress panel
+   (`rounded-[var(--radius-md)] border border-[color:var(--sep)]
+   bg-[var(--panel-soft)] px-4 py-3`) showing a step list with the current step
+   in `text-[var(--tx)]` and completed steps with a `--success-text` check:
    - ✓ Checking the server…
    - · Loading capabilities…
-3. **Connected.** Panel collapses, hero flips to the connected layout, a
+3. **Connected.** The dialog offers `Done`, hero flips to the connected layout, a
    `StatusPill tone="success"` "Connected" appears, and the Accounts tab shows
    the implicit "Default" connection. Elapsed target < 3 s; if longer, the
    step list keeps the user oriented — no bare spinner is ever shown alone.
 
 ### (b) OAuth server — desktop/web
 
-1. **Idle.** Same primary button.
-2. **Clicked.** Inline panel step 1: "Opening {Provider} sign-in…". Nessie
-   calls the start endpoint and immediately opens a **centered popup**:
+1. **Idle.** The same primary button opens the review dialog. Its
+   authentication row says "Sign-in required" and explains that connection
+   opens the provider sign-in window.
+2. **Confirmed.** Nessie calls the start endpoint only after the confirmation
+   and immediately opens a **centered popup**:
    `window.open(url, 'nessie-connect', 'width=600,height=760,left=…,top=…')`,
    centered on the opener's screen. A sized, positioned `window.open` — never
    an iframe (provider `X-Frame-Options` would break it, and users must see
    the provider's real URL bar to trust the login), and never a full tab
    (loses the opener's context).
 3. **Waiting state in the opener.** The detail page stays fully visible;
-   inside the progress panel, the waiting state reads:
+   inside the dialog's progress panel, the waiting state reads:
    > **Waiting for {Provider}…**
    > Finish signing in in the window we opened. You can keep working here.
 
@@ -453,9 +459,11 @@ servers that can't do dynamic registration, and transport config
 collapsing it must never lose entered values (state lives outside the
 `<details>`).
 
-**Progress feedback — a real step list, never a spinner alone.** On Connect,
-the form swaps in place to the ConnectProgress panel (same component as §2,
-larger), steps ticked as the probe pipeline reports them:
+**Discovery feedback — a real step list, never a spinner alone.** Adding the
+address discovers the remote app and its requirements, but does not create an
+account. The detail page then opens the same connection-review dialog as every
+other entry point. Only its explicit confirmation creates the personal
+connection and starts the ConnectProgress steps:
 
 ```
   Connecting to your server
@@ -468,8 +476,9 @@ larger), steps ticked as the probe pipeline reports them:
 Current step pulses with `--executing-soft`; completed steps get
 `--success-text` checks; the whole list is `text-sm`, steps in `tx3` until
 active. Skipped steps (no auth needed) collapse out so the list always reads
-as forward motion. On success the modal closes and the router navigates to
-`/apps/:slug?connected=1`, where the connected hero renders.
+as forward motion. After discovery, the modal closes and the router navigates
+to `/apps/:slug?connect=true`; the review dialog opens there. On successful
+confirmation, it offers `Done` and the connected hero renders.
 
 **Failure states**, rendered in the same panel with the §2 error treatment:
 
@@ -560,10 +569,10 @@ click-through, so persistence is silent, not a checkbox). **Nessie** and
 | Capability count strip | **Extend pattern** from `AgentConnectorSection` stat tiles | `admin/src/components/features/integrations/AgentConnectorSection.tsx` (pattern) | Same tile classes; consider extracting the tile into `shared/StatTile.tsx` since this is the second use — that's the planned refactor, not a copy. |
 | Accounts list | **Use** the Apps account-row grammar | `admin/src/components/features/apps/AppConnectionsList.tsx` | Connected-account rows stay in the product surface. |
 | Agent access checkbox list | **New component — no existing equivalent** | `admin/src/components/features/apps/AgentAccessList.tsx` | Rows: checkbox + `AgentAvatar` + summary slot (future per-tool expansion). Parameterised by app or agent scope — the single component for both doorways (rule 4). |
-| Connect progress panel | **New component — no existing equivalent** | `admin/src/components/features/apps/ConnectProgress.tsx` | Step list with `--executing-soft` pulse + `--success-text` checks. Used by detail hero, custom-app modal, and reconnect. |
+| Connect progress panel | **New component — no existing equivalent** | `admin/src/components/features/apps/ConnectProgress.tsx` | Step list with `--executing-soft` pulse + `--success-text` checks. Used inside the connection-review dialog after confirmation. |
 | Connect/warning/error dialogs | **Reuse** dialog shell conventions | `admin/src/components/shared/Dialog.tsx` | `CustomAppDialog` and `AppSecretDialog` use the shared focus, Escape, and overlay-dismiss behavior. |
 | OAuth popup callback page | **New route — no existing equivalent** | `admin/src/pages/OAuthCallbackPage.tsx` | Themed interstitial ("You're connected…"), `window.close()` attempt. |
-| Custom app modal | **Use** `CustomAppDialog` | `admin/src/components/features/apps/CustomAppDialog.tsx` | A custom app is added at the caller's user scope and then resumed on its detail page. |
+| Custom app modal | **Use** `CustomAppDialog` | `admin/src/components/features/apps/CustomAppDialog.tsx` | Discovers a custom app and records its requirements. Its detail page then opens the shared connection-review dialog; no account is created until the person confirms. |
 | Disconnect confirmation | **Reuse** dialog shell | `admin/src/components/shared/ConfirmDialog.tsx` | A generic confirm already exists; add a product-specific message only when a disconnect route exists. |
 | Empty states | **Reuse** `EmptyState` | `admin/src/components/shared/EmptyState.tsx` | Agents-with-access empty, search-no-results, category-empty, accounts-empty. |
 | Skeletons | **New component — no existing equivalent** | `admin/src/components/features/apps/AppSkeletons.tsx` | No shared skeleton exists. Simple `--overlay-weak` pulse bars mirroring card/hero geometry; `animate-pulse` with `duration-[var(--duration-base)]` cadence. |

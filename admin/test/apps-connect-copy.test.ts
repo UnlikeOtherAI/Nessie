@@ -6,6 +6,7 @@ import type { AppSummaryRecord } from '@nessie/schemas'
 import {
   catalogueStatesAuth,
   connectAuthExpectation,
+  connectAuthType,
   connectPublisherLine,
 } from '../src/components/features/apps/app-connect-copy.js'
 
@@ -55,6 +56,7 @@ test('an ingested row never claims an auth method, because nobody set one', () =
   const sentence = connectAuthExpectation(app())
   assert.doesNotMatch(sentence, /needs no sign-in/)
   assert.match(sentence, /will ask waystation what sign-in it needs/)
+  assert.equal(connectAuthType(app()), 'Checked before connecting')
 })
 
 test('a defaulted `none` is not evidence, even for a famous name', () => {
@@ -63,15 +65,16 @@ test('a defaulted `none` is not evidence, even for a famous name', () => {
   assert.doesNotMatch(connectAuthExpectation(app({ displayName: 'Jira' })), /no sign-in/)
 })
 
-test('an authored row does state its auth, because a human wrote it', () => {
-  for (const [authMethod, expected] of [
-    ['none', /needs no sign-in/],
-    ['oauth2', /opens a Acme sign-in window/],
-    ['api_key', /Acme needs an API key/],
+test('an authored row states the auth method before the connection is confirmed', () => {
+  for (const [authMethod, expected, type] of [
+    ['none', /needs no sign-in/, 'No sign-in required'],
+    ['oauth2', /opens a Acme sign-in window/, 'Sign-in required'],
+    ['api_key', /Acme needs an API key/, 'API key required'],
   ] as const) {
     const authored = app({ appSource: 'nessie', authMethod, displayName: 'Acme' })
     assert.equal(catalogueStatesAuth(authored), true)
     assert.match(connectAuthExpectation(authored), expected)
+    assert.equal(connectAuthType(authored), type)
   }
 })
 

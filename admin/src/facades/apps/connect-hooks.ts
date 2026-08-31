@@ -15,7 +15,6 @@ import {
   parseConnectMarker,
   resolveApiOrigin,
   serializeConnectMarker,
-  type AppConnectResponse,
   type ConnectState,
 } from '../../components/features/apps/connect-flow'
 import {
@@ -70,7 +69,6 @@ export type CustomAppInput = {
 export type CustomAppResult = {
   app: AppDetailRecord
   appId: string
-  outcome: AppConnectResponse
 }
 
 /** How often we look at the sign-in window to see whether it went away. */
@@ -111,9 +109,9 @@ export const useConnectApp = (slug: string) => {
 }
 
 /**
- * Adds an app by address and starts its first user-scoped connection. The
- * Apps surface owns this doorway, so it shares the catalogue cache contract
- * with every other connection mutation.
+ * Adds an app by address after discovering its connection requirements. The
+ * resulting detail page opens the shared review dialog; it cannot create the
+ * first account until the person confirms there.
  */
 export const useAddCustomApp = () => {
   const apiClient = useApiClient()
