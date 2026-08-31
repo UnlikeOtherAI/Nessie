@@ -12,6 +12,7 @@ const agent = (overrides: Partial<AgentRecord> & { id: string }): AgentRecord =>
   name: overrides.id,
   role: 'assistant',
   status: 'idle',
+  todosEnabled: false,
   updatedAt: '2026-08-29T00:00:00.000Z',
   ...overrides,
 })

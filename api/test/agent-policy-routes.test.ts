@@ -56,6 +56,7 @@ const makeAgent = (
   systemManaged: false,
   systemPrompt: null,
   teamId,
+  todosEnabled: false,
   toolPolicy,
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 })

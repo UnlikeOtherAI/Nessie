@@ -144,6 +144,7 @@ export const AgentRecordSchema = z.object({
   // backstop; `effort` carries no spend meaning (see
   // docs/plans/2026-08-05-run-budgets-context-and-research-routing.md §1).
   runLimits: AgentRunLimitsSchema.optional(),
+  todosEnabled: z.boolean(),
   toolPolicy: z.record(z.string(), z.boolean()).optional(),
   avatarAttachmentId: z.string().uuid().nullish(),
   avatarBackgroundColor: AgentAvatarBackgroundColorSchema.optional(),
