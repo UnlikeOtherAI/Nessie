@@ -15,6 +15,7 @@ const standardChannelId = '00000000-0000-4000-8000-000000000007'
 const standardThreadId = '00000000-0000-4000-8000-000000000008'
 const unreadMessageId = '00000000-0000-4000-8000-000000000009'
 const foreignUserId = '00000000-0000-4000-8000-000000000010'
+const visibleAgentId = '00000000-0000-4000-8000-000000000011'
 
 const channel = (input: {
   id: string
@@ -58,7 +59,68 @@ const message = {
 
 const makePrisma = (options: { unreadCount?: number; restricted?: boolean } = {}) => {
   const unreadCount = options.unreadCount ?? 2
+  const agents = [
+    {
+      id: visibleAgentId,
+      organizationId,
+      ownerMembership: { deactivatedAt: null },
+      ownerUserId: userId,
+      parentAgentId: null,
+      systemManaged: false,
+    },
+    {
+      id: '00000000-0000-4000-8000-000000000012',
+      organizationId,
+      ownerMembership: { deactivatedAt: null },
+      ownerUserId: userId,
+      parentAgentId: null,
+      systemManaged: true,
+    },
+    {
+      id: '00000000-0000-4000-8000-000000000013',
+      organizationId,
+      ownerMembership: { deactivatedAt: null },
+      ownerUserId: userId,
+      parentAgentId: visibleAgentId,
+      systemManaged: false,
+    },
+    {
+      id: '00000000-0000-4000-8000-000000000014',
+      organizationId,
+      ownerMembership: { deactivatedAt: null },
+      ownerUserId: foreignUserId,
+      parentAgentId: null,
+      systemManaged: false,
+    },
+  ]
   return {
+    agent: {
+      findMany: async (args: {
+        select: { id: true }
+        where: {
+          OR: Array<{
+            ownerMembership?: { deactivatedAt: null }
+            ownerUserId?: string
+            parentAgentId?: null
+          }>
+          organizationId: string
+          systemManaged: boolean
+        }
+      }) => {
+        assert.deepEqual(args.select, { id: true })
+        return agents
+          .filter((agent) =>
+            agent.organizationId === args.where.organizationId
+            && agent.systemManaged === args.where.systemManaged
+            && args.where.OR.some((visibility) =>
+              agent.ownerMembership?.deactivatedAt === visibility.ownerMembership?.deactivatedAt
+              && agent.ownerUserId === visibility.ownerUserId
+              && agent.parentAgentId === visibility.parentAgentId,
+            ),
+          )
+          .map((agent) => ({ id: agent.id }))
+      },
+    },
     channel: {
       findMany: async () => [
         channel({ id: dmChannelId, label: 'Ada Lovelace', threadId: dmThreadId, type: 'dm' }),
