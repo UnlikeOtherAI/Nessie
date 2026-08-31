@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient, type RunStatus } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   AgentTodoTemplateRecordSchema,
   AgentTodoTemplateStepsSchema,
@@ -22,6 +22,7 @@ import {
   type AgentTodoWithOrderedSteps,
 } from './agent-todo-records.js'
 import { acquireAgentTodoLock, acquireAgentTodoRunLock } from './agent-todo-lock.js'
+import { TERMINAL_RUN_STATUSES } from './agent-todo-run-statuses.js'
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient
 
@@ -33,8 +34,6 @@ type AgentTodoIdentity = {
 type AgentTodoReadInput = AgentTodoIdentity & {
   visibility?: AgentVisibilityScope
 }
-
-const TERMINAL_RUN_STATUSES: RunStatus[] = ['completed', 'failed', 'cancelled']
 
 type AgentTodoStartInput = AgentTodoIdentity & {
   runId: string

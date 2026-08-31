@@ -44,6 +44,15 @@ const TodoStartInputSchema = z.object({
   }
 })
 
+const parseTodoStartInput = (input: Record<string, unknown>) => {
+  const parsed = TodoStartInputSchema.safeParse(input)
+  if (parsed.success) return parsed.data
+  throw new Error(
+    parsed.error.issues[0]?.message
+      ?? 'Start exactly one to-do: provide templateId, todoId, or both title and steps.',
+  )
+}
+
 const TodoStepUpdateInputSchema = z.object({
   note: z.string().max(AGENT_TODO_STEP_NOTE_MAX).optional(),
   status: AgentTodoStepStatusSchema,
@@ -62,7 +71,7 @@ export const runTodoStartTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = TodoStartInputSchema.parse(input)
+  const args = parseTodoStartInput(input)
   const identity = {
     agentId: context.agentId,
     organizationId: String(context.channel.organizationId),

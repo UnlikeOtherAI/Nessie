@@ -7,6 +7,7 @@ import { parseOrganizationId } from '@nessie/schemas'
 import { updateAgentTodoStep } from '@nessie/workspace-admin'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
+import { executeBuiltinTool } from '../tools.js'
 import { runTodoStartTool, runTodoStepUpdateTool } from './todos.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
@@ -14,6 +15,7 @@ const dbTest = process.env.DATABASE_URL ? test : test.skip
 type TodoToolFixture = {
   agentId: string
   channelId: string
+  otherAgentId: string
   organizationId: string
   threadId: string
 }
@@ -49,11 +51,20 @@ const createFixture = async (prisma: PrismaClient): Promise<TodoToolFixture> => 
   await prisma.thread.create({
     data: { channelId, id: threadId, title: 'To-do tool thread' },
   })
+  const otherAgentId = randomUUID()
   await prisma.agent.create({
     data: { id: agentId, name: 'To-do tool agent', organizationId, todosEnabled: true },
   })
+  await prisma.agent.create({
+    data: {
+      id: otherAgentId,
+      name: 'Other to-do tool agent',
+      organizationId,
+      todosEnabled: true,
+    },
+  })
 
-  return { agentId, channelId, organizationId, threadId }
+  return { agentId, channelId, otherAgentId, organizationId, threadId }
 }
 
 const cleanupFixture = async (prisma: PrismaClient, fixture: TodoToolFixture): Promise<void> => {
@@ -78,13 +89,14 @@ const contextFor = (
   prisma: PrismaClient,
   fixture: TodoToolFixture,
   runId: string,
+  agentId = fixture.agentId,
 ): BuiltinToolRuntimeContext => ({
   actorContext: {
     actionContext: { requestId: `todo-tool-${runId}` },
     actor: { actorId: randomUUID(), actorType: 'user' },
     tenant: { organizationId: parseOrganizationId(fixture.organizationId) },
   },
-  agentId: fixture.agentId,
+  agentId,
   agentKind: 'shared',
   channel: { id: fixture.channelId, organizationId: parseOrganizationId(fixture.organizationId) },
   ledgerIdentity: null,
@@ -98,9 +110,10 @@ const createRun = async (
   prisma: PrismaClient,
   fixture: TodoToolFixture,
   status: 'completed' | 'running' = 'running',
+  agentId = fixture.agentId,
 ): Promise<string> => {
   const run = await prisma.run.create({
-    data: { agentId: fixture.agentId, status, threadId: fixture.threadId },
+    data: { agentId, status, threadId: fixture.threadId },
   })
   return run.id
 }
@@ -110,6 +123,9 @@ const checklist = (result: ToolExecutionResult) => JSON.parse(result.outputPrevi
   id: string
   steps: Array<{ instructions: string; key: string; status: string; title: string }>
 }
+
+const TODO_START_MODE_MESSAGE =
+  'Start exactly one to-do: provide templateId, todoId, or both title and steps.'
 
 dbTest('todo_start gives one concurrent claimant the verbatim checklist and gives the loser no steps', async () => {
   await withDatabase(async (prisma, fixture) => {
@@ -193,6 +209,80 @@ dbTest('todo_start can reclaim a to-do whose active run is terminal', async () =
   })
 })
 
+dbTest('todo tools refuse a to-do that belongs to a different agent', async () => {
+  await withDatabase(async (prisma, fixture) => {
+    const otherRunId = await createRun(prisma, fixture, 'running', fixture.otherAgentId)
+    const context = contextFor(prisma, fixture, otherRunId, fixture.otherAgentId)
+    const todo = await prisma.agentTodo.create({
+      data: {
+        agentId: fixture.agentId,
+        organizationId: fixture.organizationId,
+        steps: {
+          create: [{ instructions: 'Keep this private to its agent.', key: 'owned', sequence: 0, title: 'Owned' }],
+        },
+        title: 'Other agent to-do',
+      },
+    })
+
+    await assert.rejects(
+      () => runTodoStartTool(context, { todoId: todo.id }),
+      /To-do not found/,
+    )
+
+    // Deliberately make the run pointer match. This isolates the agentId
+    // predicate from the independent run-ownership predicate.
+    await prisma.agentTodo.update({
+      data: { activeRunId: otherRunId, status: 'running' },
+      where: { id: todo.id },
+    })
+    await assert.rejects(
+      () => runTodoStepUpdateTool(context, {
+        status: 'completed',
+        stepKey: 'owned',
+        todoId: todo.id,
+      }),
+      /not actively owned by this run/,
+    )
+  })
+})
+
+dbTest('todo_start copies an active template verbatim and protects its instance claim', async () => {
+  await withDatabase(async (prisma, fixture) => {
+    const templateSteps = [
+      { instructions: 'Reúne las novedades sin resumirlas.', key: 'collect', title: 'Reúne novedades' },
+      { instructions: 'Comparte el resultado con el equipo.', key: 'share', title: 'Comparte resultado' },
+    ]
+    const template = await prisma.agentTodoTemplate.create({
+      data: {
+        agentId: fixture.agentId,
+        authorType: 'user',
+        name: 'Informe semanal',
+        organizationId: fixture.organizationId,
+        status: 'active',
+        steps: templateSteps,
+      },
+    })
+    const firstRunId = await createRun(prisma, fixture)
+    const started = await runTodoStartTool(
+      contextFor(prisma, fixture, firstRunId),
+      { templateId: template.id },
+    )
+    const returned = checklist(started)
+
+    assert.deepEqual(returned.steps.map(({ instructions, key, title }) => ({
+      instructions,
+      key,
+      title,
+    })), templateSteps)
+
+    const secondRunId = await createRun(prisma, fixture)
+    await assert.rejects(
+      () => runTodoStartTool(contextFor(prisma, fixture, secondRunId), { todoId: returned.id }),
+      /already being worked/,
+    )
+  })
+})
+
 dbTest('todo_start refuses another to-do after this run already claimed one', async () => {
   await withDatabase(async (prisma, fixture) => {
     const runId = await createRun(prisma, fixture)
@@ -270,4 +360,20 @@ dbTest('todo_step_update returns the current full checklist after a human change
       ],
     )
   })
+})
+
+test('todo_start gives the model one legible refusal when its mode is ambiguous', async () => {
+  for (const input of [
+    {},
+    { templateId: randomUUID(), todoId: randomUUID() },
+  ]) {
+    const result = await executeBuiltinTool(
+      'todo_start',
+      input,
+      {} as BuiltinToolRuntimeContext,
+    )
+
+    assert.equal(result.success, false)
+    assert.equal(result.output, `Tool error: ${TODO_START_MODE_MESSAGE}`)
+  }
 })
