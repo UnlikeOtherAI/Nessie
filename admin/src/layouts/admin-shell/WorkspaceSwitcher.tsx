@@ -37,6 +37,7 @@ type WorkspaceMenuProps = {
   error: string | null
   token: string | null
   avatarRevision: number
+  visible: boolean
   onSelect: (workspace: Workspace) => void
   onAddWorkspace: (providerId: string) => void
   onClose: () => void
@@ -51,6 +52,7 @@ const WorkspaceMenu = ({
   error,
   token,
   avatarRevision,
+  visible,
   onSelect,
   onAddWorkspace,
   onClose,
@@ -98,10 +100,13 @@ const WorkspaceMenu = ({
     <>
       <div className="fixed inset-0 z-[60]" onClick={onClose} />
       <div
+        aria-hidden={!visible}
         className={[
           'fixed z-[61] overflow-y-auto rounded-xl border',
           'border-[color:var(--sep)] bg-[color:var(--panel)] p-1.5',
           'shadow-[0_16px_48px_var(--scrim-strong)]',
+          'transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none',
+          visible ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-1 opacity-0',
         ].join(' ')}
         style={{
           left: position.left,
@@ -215,6 +220,8 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   const [busyTeamId, setBusyTeamId] = useState<string | null>(null)
   const [switchError, setSwitchError] = useState<string | null>(null)
   const [nativeAnchorLeft, setNativeAnchorLeft] = useState(8)
+  const [menuMounted, setMenuMounted] = useState(open)
+  const [menuVisible, setMenuVisible] = useState(open)
 
   const workspaces = useMemo(() => workspacesFromMe(me), [me])
   const activeTeamId = me?.context.teamId ?? null
@@ -314,6 +321,18 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
   }
 
   useEffect(() => {
+    if (open) {
+      setMenuMounted(true)
+      const frame = window.requestAnimationFrame(() => setMenuVisible(true))
+      return () => window.cancelAnimationFrame(frame)
+    }
+
+    setMenuVisible(false)
+    const timeout = window.setTimeout(() => setMenuMounted(false), 150)
+    return () => window.clearTimeout(timeout)
+  }, [open])
+
+  useEffect(() => {
     if (variant !== 'native-bridge' || !isReactNativeWebView()) return undefined
     const target = window as NativeWorkspaceWindow
     target.__nessieToggleWorkspaceMenu = (left?: unknown) => {
@@ -370,7 +389,12 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
             />
             <span
               aria-hidden="true"
-              className="absolute bottom-0 right-0 flex h-[10px] w-[10px] items-center justify-center rounded-[3px] border border-[color:var(--sep)] bg-[color:var(--panel)] text-[5px] text-[color:var(--tx)]"
+              className={[
+                'absolute bottom-0.5 right-0.5 flex h-[10px] w-[10px] items-center justify-center',
+                'rounded-[3px] border border-[color:var(--sep)] bg-[color:var(--panel)]',
+                'text-[5px] text-[color:var(--tx)] transition-transform duration-150 motion-reduce:transition-none',
+                open ? 'rotate-180' : 'rotate-0',
+              ].join(' ')}
             >
               <FontAwesomeIcon icon={faChevronDown} />
             </span>
@@ -407,7 +431,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
           style={{ left: nativeAnchorLeft }}
         />
       )}
-      {open ? (
+      {menuMounted ? (
         <WorkspaceMenu
           activeTeamId={activeTeamId}
           anchorRef={anchorRef}
@@ -419,6 +443,7 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
           onSelect={handleSelect}
           ssoProviderId={ssoProviderId}
           token={token}
+          visible={menuVisible}
           workspaces={workspaces}
         />
       ) : null}
