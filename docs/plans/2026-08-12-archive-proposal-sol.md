@@ -110,7 +110,11 @@ This preserves channel managers’ current archive authority, adds the missing p
 
 ## 8. Migration of existing surfaces
 
-Keep `ChannelSettingsDialog` as the channel’s owning settings surface, but rebuild its Lifecycle section with the shared components and truthful actions. Keep Settings → Channels for active channel administration; replace its bespoke Archived rows with the same scoped `ArchiveList` and a `View all in Archive` link. Keep `useAllChannels` only until the archive facade owns that query, then remove the duplicate cache path.
+Keep `ChannelSettingsDialog` as the channel’s owning settings surface in the
+main `/channels` workspace, rebuilding its Lifecycle section with shared
+components and truthful actions. Remove the separate Settings → Channels page,
+route, and navigation item. The main Channels surface owns channel creation,
+settings, and archive actions.
 
 The current `POST /archive` and `/unarchive` routes remain canonical. The current channel `DELETE` becomes permanent delete. Project gains matching archive/unarchive routes and `includeArchived`; its existing `DELETE` adopts the staged permission/preflight contract. `ArchiveDoneMenu` and the Kanban Archived section remain useful local affordances.
 

@@ -58,9 +58,10 @@ All three proposals converged on the model, so it is settled:
    owner+admin); projects get a mirrored `canManageProject`. The server returns
    capability flags so the UI renders only actions the caller may take — never a
    Restore button that 403s.
-5. **Owning surface `/archive`**, absorbing today's archived list under
-   Settings → Channels. In-context doorways everywhere archived items can be
-   produced.
+5. **Owning recovery surface `/archive`**, with channel creation, settings,
+   and archive actions owned by the main `/channels` surface. The separate
+   Settings → Channels page and route are removed; in-context doorways remain
+   wherever archived items can be produced.
 6. **The lying Delete button goes.** The channel dialog's danger-styled "Delete"
    that silently archives is replaced by an honest Lifecycle section.
 7. **First slice: projects + channels** — the two the owner named. Teams,

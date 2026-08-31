@@ -139,7 +139,6 @@ export const callKeys = {
 
 export const channelKeys = {
   all: ['channels'] as const,
-  allScopes: ['channels', 'all'] as const,
   messageSearch: (channelId: string | undefined, query: string) =>
     ['channels', channelId, 'messages', 'search', query] as const,
 }

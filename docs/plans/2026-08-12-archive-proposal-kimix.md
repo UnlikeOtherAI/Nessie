@@ -112,10 +112,9 @@ but cannot restore.
 - Sidebar channel list footer row: "3 archived channels →" linking to
   `/archive?type=channel` (only rendered when the count is non-zero).
 - Project picker/sidebar footer: "1 archived project →".
-- `/settings/channels` "Archived" section is **absorbed**: the page keeps its
-  active list and its "Archived" section becomes a link row "Manage 3 archived
-  channels on the Archive page →". No second implementation survives (Rule
-  zero #4).
+- The separate Settings → Channels page and route are removed. The main
+  Channels surface owns channel creation, settings, and archive actions; no
+  second channel-management implementation survives (Rule zero #4).
 
 **Main surface wireframe:**
 
@@ -238,9 +237,9 @@ gets the existing 404/403-indistinguishable treatment, consistent with
 - `ChannelSettingsDialog`: keep; **fix `handleDelete`** to schedule deletion
   (new mutation) instead of calling archive, and update its confirm copy to
   state the date. Archive path untouched.
-- `/settings/channels`: keep as the active-channel manager; its "Archived"
-  section is replaced by the doorway link (§3). `useAllChannels` keeps feeding
-  both.
+- Settings → Channels: remove the page, route, and navigation item. The main
+  Channels surface is the sole owner of channel creation, settings, and archive
+  actions.
 - `ArchiveDoneMenu`: keep as-is — it is prior art this proposal copies (small,
   in-context, low-ceremony).
 - Channel `DELETE` endpoint: keep, documented as soft-archive alias.

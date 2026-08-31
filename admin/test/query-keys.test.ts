@@ -25,7 +25,6 @@ import {
 // each is asserted here in its new form and reasoned about at its declaration.
 test('channel keys keep the arrays the call sites used', () => {
   assert.deepEqual(channelKeys.all, ['channels'])
-  assert.deepEqual(channelKeys.allScopes, ['channels', 'all'])
   assert.deepEqual(
     channelKeys.messageSearch('ch-1', 'budget'),
     ['channels', 'ch-1', 'messages', 'search', 'budget'],
