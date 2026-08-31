@@ -4,7 +4,6 @@ import type { ModelConfig, ModelProvider } from '@nessie/config'
 import { isLedgerEndpoint } from '@nessie/runtime'
 
 const DEFAULT_MODEL_BY_PROVIDER: Record<ModelProvider, string> = {
-  minimax: 'MiniMax-M2.5',
   kimi: 'kimi-for-coding',
   deepseek: 'deepseek-v4-flash',
   openai: 'gpt-5-mini',
@@ -27,9 +26,6 @@ export const resolveRuntimeProvider = (providerKey: string): RunnableProvider | 
   }
   if (normalized === 'openai-compatible') {
     return 'openai-compatible'
-  }
-  if (normalized === 'minimax') {
-    return 'minimax'
   }
   if (normalized === 'kimi') {
     return 'kimi'
@@ -71,9 +67,7 @@ const resolveLegacyApiKey = (provider: ModelProvider, modelConfig: ModelConfig):
     )
   }
 
-  return (modelConfig.provider === 'minimax' ? modelConfig.apiKey : undefined)
-    ?? process.env.MINIMAX_API_KEY
-    ?? ''
+  return ''
 }
 
 const resolveBoundApiKey = (authSecretRef: string | null | undefined): string =>

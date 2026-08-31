@@ -739,7 +739,7 @@ There is deliberately no direct-provider fallback.
   This is the configured
   chokepoint, not a forced provider: the runtime rewrites the final path to
   Ledger's generic `/v1/:serviceId/*` adapter for the actual OpenAI, Kimi,
-  MiniMax, or custom stage. The shared model client and
+  or custom stage. The shared model client and
   agentic inference paths attach a fresh `X-Nessie-Context` and, when the
   effective user is UOA-linked, `X-UOA-Delegation` to chat, streaming, raw
   designer, and embedding calls. A deployment-wide base URL still wins over a
