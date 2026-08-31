@@ -743,6 +743,17 @@ The Chief of Staff can then examine clusters rather than repeatedly rereading th
 
 ⸻
 
+19a. Google capability catalog (built 2026-08-31)
+
+Google scope selection is no longer a fixed list. The catalog in
+`packages/schemas/src/google-capabilities.ts` drives the authorize URL, the
+worker's preflight and the Permissions UI, and a person can add one capability
+to a live connection without reconnecting. It also closed three fail-open
+defects in this connector: `grantedScopes` falling back to the requested
+scopes, identity depending on a Gmail-only endpoint, and every HTTP 403 being
+retried. See
+[2026-08-31-google-workspace-email-calendar.md](./2026-08-31-google-workspace-email-calendar.md).
+
 20. Recommended Delivery Phases
 
 Phase 1: Gmail and Slack Personal Connections

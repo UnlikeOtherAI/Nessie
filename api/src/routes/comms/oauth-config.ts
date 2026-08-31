@@ -59,11 +59,13 @@ const COMMS_OAUTH_CONFIG: Partial<Record<CommsProvider, CommsOAuthProviderConfig
       'profile',
     ],
     usePkce: true,
+    // `prompt` is deliberately absent: it is decided per request by
+    // `forceConsent`, because forcing a re-prompt on every incremental scope
+    // add is a visible cost and is not what re-issues a refresh token.
     extraParams: {
       response_type: 'code',
       access_type: 'offline',
       include_granted_scopes: 'true',
-      prompt: 'consent',
     },
     clientIdEnv: 'NESSIE_COMMS_GOOGLE_CLIENT_ID',
   },
@@ -109,6 +111,24 @@ export type BuildAuthorizeUrlInput = {
   redirectUri: string
   state: string
   codeChallenge?: string
+  /**
+   * The exact scopes to request. Overrides the provider's static list, which
+   * remains the default for providers with no capability catalog. Google is
+   * driven from `@nessie/schemas` `scopesForCapabilities`.
+   */
+  scopes?: readonly string[]
+  /**
+   * Ask Google to re-prompt. Required when a refresh token must be re-issued
+   * (a first connect); NOT required merely because an incremental scope is
+   * new, and a re-prompt is a visible cost to the person, so callers opt in.
+   */
+  forceConsent?: boolean
+  /**
+   * Pre-select the account being re-authorized, so adding a scope to one of
+   * two linked accounts does not silently land on the other. Advisory only:
+   * the callback still verifies which account came back.
+   */
+  loginHint?: string
 }
 
 export const buildAuthorizeUrl = (input: BuildAuthorizeUrlInput): string => {
@@ -118,9 +138,18 @@ export const buildAuthorizeUrl = (input: BuildAuthorizeUrlInput): string => {
   params.set('client_id', clientId)
   params.set('redirect_uri', redirectUri)
   params.set('state', state)
-  params.set(config.scopeParam, config.scopes.join(' '))
+  const scopes = input.scopes && input.scopes.length > 0
+    ? input.scopes
+    : config.scopes
+  params.set(config.scopeParam, scopes.join(' '))
   for (const [key, value] of Object.entries(config.extraParams)) {
     params.set(key, value)
+  }
+  if (input.forceConsent) {
+    params.set('prompt', 'consent')
+  }
+  if (input.loginHint) {
+    params.set('login_hint', input.loginHint)
   }
   if (config.usePkce && codeChallenge) {
     params.set('code_challenge', codeChallenge)

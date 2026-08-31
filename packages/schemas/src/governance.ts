@@ -289,6 +289,7 @@ export const AuditActionSchema = z.enum([
   'comms.connection.created',
   'comms.connection.disconnected',
   'comms.connection.data_deleted',
+  'comms.connection.capabilities_changed',
 ])
 export type AuditAction = z.infer<typeof AuditActionSchema>
 

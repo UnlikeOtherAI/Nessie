@@ -695,6 +695,26 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   deactivation revokes comms import immediately — matching the API auth and
   scheduled-trigger owner-revocation gates. Spec:
   `docs/plans/2026-07-21-individual-communications-connector.md`.
+- **A provider scope is a capability in one catalog, and every check on it
+  fails closed.** Google's scopes live in
+  `packages/schemas/src/google-capabilities.ts` and nowhere else. Three fixes
+  make the checks trustworthy, each closing a real fail-open: `grantedScopes`
+  is read from the token response and a response with no `scope` is refused
+  (it used to fall back to the *requested* scopes, recording authority a
+  person had un-ticked on the consent screen); account identity comes from the
+  OIDC `id_token`, not Gmail's `users.getProfile`, which needs a Gmail read
+  scope and therefore made a calendar-only or send-only connection impossible;
+  and HTTP 403 is classified by Google's machine reason, so
+  `insufficientPermissions` is fatal and surfaces as a request to grant the
+  capability instead of retrying until the job dies. Capability checks are
+  all-of at the one `loadUserGoogleCommsCredential` chokepoint, which also
+  enforces local blocks and refuses two qualifying accounts rather than
+  guessing. A local block is not a revocation — a provider grant can only be
+  revoked whole — so it is enforced server-side and the copy says so. OAuth
+  state binds the connection being widened and the expected provider account,
+  because a callback that trusts whoever finished consent will silently
+  re-point a different mailbox. Plan:
+  `docs/plans/2026-08-31-google-workspace-email-calendar.md`.
 
 ## Embeddings — routed separately, one pinned width
 

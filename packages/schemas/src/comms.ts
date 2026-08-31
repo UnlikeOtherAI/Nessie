@@ -1,5 +1,10 @@
 import { z } from 'zod'
 
+import {
+  GoogleCapabilityIdSchema,
+  GoogleCapabilityListSchema,
+} from './google-capabilities.js'
+
 /**
  * Queue topics for the Individual Communications Connector sync pipeline. The
  * worker registers a handler per topic; provider adapters plug into the shared
@@ -126,6 +131,29 @@ export const CommsSyncJobRecordSchema = z.object({
 })
 export type CommsSyncJobRecord = z.infer<typeof CommsSyncJobRecordSchema>
 
+/** One capability row as the Permissions section renders it. */
+export const CommsCapabilityStateSchema = z.object({
+  id: GoogleCapabilityIdSchema,
+  label: z.string(),
+  explains: z.string(),
+  risk: z.enum(['read', 'write', 'send']),
+  /** Every required scope is present in the provider's grant. */
+  granted: z.boolean(),
+  /** Asked for on the last authorization but not granted — the user declined. */
+  declined: z.boolean(),
+  /** Switched off locally; the provider scope may still be live. */
+  blocked: z.boolean(),
+})
+export type CommsCapabilityState = z.infer<typeof CommsCapabilityStateSchema>
+
+export const CommsCapabilitiesPatchRequestSchema = z.object({
+  /** The complete set of locally blocked capability ids after this change. */
+  disabledCapabilities: z.array(GoogleCapabilityIdSchema).max(32),
+}).strict()
+export type CommsCapabilitiesPatchRequest = z.infer<
+  typeof CommsCapabilitiesPatchRequestSchema
+>
+
 export const CommsConnectionSummarySchema = z.object({
   id: z.string().uuid(),
   provider: CommsProviderSchema,
@@ -147,6 +175,8 @@ export type CommsConnectionSummary = z.infer<
 export const CommsConnectionDetailSchema = CommsConnectionSummarySchema.extend({
   resources: z.array(CommsResourceRecordSchema),
   recentSyncJobs: z.array(CommsSyncJobRecordSchema),
+  /** Present for providers with a capability catalog; empty otherwise. */
+  capabilities: z.array(CommsCapabilityStateSchema),
 })
 export type CommsConnectionDetail = z.infer<typeof CommsConnectionDetailSchema>
 
@@ -155,6 +185,24 @@ export const CommsConnectionListResponseSchema = z.object({
 })
 export type CommsConnectionListResponse = z.infer<
   typeof CommsConnectionListResponseSchema
+>
+
+/**
+ * Optional body for `POST /api/comms/connections/:provider/start`. An empty
+ * body keeps the pre-catalog behaviour: the provider's default capability set.
+ */
+export const CommsConnectionStartRequestSchema = z.object({
+  /** Google capability ids to request. Validated against the catalog. */
+  capabilities: GoogleCapabilityListSchema.optional(),
+  /**
+   * Widen an existing connection rather than creating one. The authorize
+   * request asks for the union of its current scopes and the new ones, and the
+   * callback refuses if a different provider account completes consent.
+   */
+  connectionId: z.string().uuid().optional(),
+}).strict()
+export type CommsConnectionStartRequest = z.infer<
+  typeof CommsConnectionStartRequestSchema
 >
 
 export const CommsConnectionStartResponseSchema = z.object({

@@ -1,9 +1,13 @@
 import type { Prisma } from '@prisma/client'
-import type {
-  CommsConnectionDetail,
-  CommsConnectionSummary,
-  CommsResourceRecord,
-  CommsSyncJobRecord,
+import {
+  GOOGLE_CAPABILITIES,
+  GoogleCapabilityIdSchema,
+  capabilityIsGranted,
+  type CommsCapabilityState,
+  type CommsConnectionDetail,
+  type CommsConnectionSummary,
+  type CommsResourceRecord,
+  type CommsSyncJobRecord,
 } from '@nessie/schemas'
 
 /**
@@ -63,6 +67,43 @@ export const serializeConnectionSummary = (
   updatedAt: row.updatedAt.toISOString(),
 })
 
+/**
+ * Project the capability catalog against one connection's actual grant.
+ *
+ * `granted` reads `grantedScopes` — what the provider returned — never the
+ * requested set, because a person can un-tick individual scopes on Google's
+ * consent screen. `declined` is what separates "you said no" from "never
+ * asked", which is the difference between a useful Permissions row and a
+ * confusing one. `blocked` is local and independent: Google cannot partially
+ * revoke, so a blocked capability's scope is usually still live.
+ */
+export const serializeCapabilities = (
+  row: ConnectionRow,
+): CommsCapabilityState[] => {
+  if (row.provider !== 'google') return []
+  const granted = toStringArray(row.grantedScopes)
+  const requested = new Set(toStringArray(row.requestedCapabilities))
+  const blocked = new Set(toStringArray(row.disabledCapabilities))
+  return GOOGLE_CAPABILITIES.map((capability) => {
+    const isGranted = capabilityIsGranted(capability.id, granted)
+    return {
+      id: capability.id,
+      label: capability.label,
+      explains: capability.explains,
+      risk: capability.risk,
+      granted: isGranted,
+      declined: !isGranted && requested.has(capability.id),
+      blocked: blocked.has(capability.id),
+    }
+  })
+}
+
+/** Capability ids stored on a row, ignoring anything not in the catalog. */
+export const readDisabledCapabilities = (row: ConnectionRow): string[] =>
+  toStringArray(row.disabledCapabilities).filter(
+    (entry) => GoogleCapabilityIdSchema.safeParse(entry).success,
+  )
+
 export const serializeConnectionDetail = (
   row: ConnectionRow,
   resources: ResourceRow[],
@@ -73,5 +114,6 @@ export const serializeConnectionDetail = (
     ...serializeConnectionSummary(row, { total: resources.length, synced }),
     resources: resources.map(serializeResource),
     recentSyncJobs: syncJobs.map(serializeSyncJob),
+    capabilities: serializeCapabilities(row),
   }
 }

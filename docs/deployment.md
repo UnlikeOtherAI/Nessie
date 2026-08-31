@@ -519,6 +519,49 @@ Communications connectors register from env at API and worker startup via
 register, and its sync jobs park cleanly on `ConnectorNotRegisteredError`.
 Startup logs one line listing the registered providers (no secrets).
 
+### Google scopes, capabilities and verification tiers
+
+Each deployment registers its **own** Google Cloud OAuth client, so the
+verification burden is yours, not Nessie's. Which scopes a connection may ask
+for is declared in `packages/schemas/src/google-capabilities.ts`; the
+Permissions section of `/settings/connections` renders that catalog and lets a
+person grant one capability at a time without reconnecting.
+
+Google sorts the relevant scopes into tiers, and the tier decides the review:
+
+| Capability | Scope | Tier |
+|---|---|---|
+| `gmail.read` | `gmail.readonly` | restricted |
+| `gmail.compose` | `gmail.compose` | restricted |
+| `gmail.modify` | `gmail.modify` | restricted |
+| `gmail.send` | `gmail.send` | sensitive |
+| `calendar.read` / `calendar.freebusy` / `calendar.write` | `calendar.readonly` / `calendar.freebusy` / `calendar.events` | sensitive |
+| `meet.create` | `meetings.space.created` | sensitive |
+| `contacts.read` | `contacts.readonly`, `directory.readonly` | sensitive |
+
+**Restricted** scopes require Google's CASA security assessment for a *public*
+OAuth client. The internal-use exception is narrower than "we self-host": it
+applies only when every user belongs to the **same** Workspace/Cloud Identity
+organization, the Cloud project is owned by that organization, **and** the
+consent screen is set to **Internal**. A deployment serving users outside one
+Workspace org needs the assessment before it can ask for `gmail.readonly` or
+`gmail.compose`. Sending alone (`gmail.send`) is only *sensitive*, so a
+send-only deployment avoids the assessment entirely.
+
+Re-confirm these tiers against Google's current OAuth verification FAQ before
+enabling a capability; Google moves scopes between tiers.
+
+Two consequences worth knowing operationally:
+
+- **Google cannot revoke one scope.** `/revoke` ends the whole grant. Removing
+  a single capability is therefore a *local* block, enforced when a tool asks
+  for a credential; the connection still holds the scope at Google until the
+  person disconnects.
+- **A person can decline individual scopes** on the consent screen. Nessie
+  stores what Google returned, so a partially-granted connection shows the
+  refused capability as "Declined at Google" rather than silently behaving as
+  though it were granted.
+
 ### Google Meet link setup
 
 Google Meet link minting uses the existing per-user Google communications OAuth

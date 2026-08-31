@@ -16,22 +16,47 @@ import { GmailClient } from './client.js'
 import {
   DEFAULT_OFF_LABELS,
   nowMs,
-  resolveScopes,
   type GoogleConnectorDeps,
 } from './config.js'
 import { GmailReauthorizationRequiredError } from './errors.js'
+import { GoogleIdentityError, readGoogleIdentity } from './identity.js'
 import { GMAIL_VISIBILITY } from './normalize.js'
 import { decodePubSubNotification } from './pubsub.js'
 import { runGmailInitialSync, runGmailIncrementalSync } from './sync.js'
 
 const MAILBOX_LABEL_RESOURCE = 'mailbox_label'
 
-const parseScopeString = (scope: string | undefined, fallback: string[]): string[] => {
-  if (!scope) {
-    return fallback
+const splitScopes = (scope: string | undefined): string[] =>
+  (scope ?? '').split(/\s+/).filter((entry) => entry.length > 0)
+
+/**
+ * The scopes Google actually granted at authorization.
+ *
+ * Deliberately has NO fallback to what we requested. Google's consent screen
+ * lets a person un-tick individual scopes, so the token response is the only
+ * truthful account of what was granted; falling back to the request would
+ * record authority the user declined, and every capability check downstream
+ * reads this value. A response with no `scope` is a failure, not a default.
+ */
+const grantedScopesFromToken = (scope: string | undefined): string[] => {
+  const parsed = splitScopes(scope)
+  if (parsed.length === 0) {
+    throw new GoogleIdentityError(
+      'the token response carried no granted scopes',
+    )
   }
-  const parsed = scope.split(/\s+/).filter((entry) => entry.length > 0)
-  return parsed.length > 0 ? parsed : fallback
+  return parsed
+}
+
+/**
+ * On *refresh* Google routinely omits `scope`, meaning "unchanged". Falling
+ * back to the scopes already stored is correct there — they were verified
+ * against the grant when the connection was made — and is not the fail-open
+ * path that {@link grantedScopesFromToken} closes.
+ */
+const refreshedScopes = (scope: string | undefined, stored: string[]): string[] => {
+  const parsed = splitScopes(scope)
+  return parsed.length > 0 ? parsed : stored
 }
 
 const expiresAtIso = (
@@ -69,11 +94,19 @@ export const createGoogleConnector = (
       redirectUri: input.redirectUri,
       codeVerifier: readCodeVerifier(input.statePayload),
     })
-    const profile = await client.getProfile(token.access_token)
-    const scopes = parseScopeString(token.scope, resolveScopes(deps))
+    const scopes = grantedScopesFromToken(token.scope)
+    // Identity comes from the OIDC id_token, never from Gmail: users.getProfile
+    // needs a Gmail read scope, so a calendar-only, send-only or Meet-only
+    // connection could not otherwise be established at all.
+    const identity = readGoogleIdentity(
+      token.id_token,
+      deps.clientId,
+      nowMs(deps),
+    )
     return {
-      externalTenantId: profile.emailAddress,
-      externalUserId: profile.emailAddress,
+      externalTenantId: identity.email,
+      externalUserId: identity.email,
+      providerAccountId: identity.accountId,
       credential: {
         accessToken: token.access_token,
         refreshToken: token.refresh_token,
@@ -92,7 +125,7 @@ export const createGoogleConnector = (
       throw new GmailReauthorizationRequiredError('no refresh token stored')
     }
     const token = await client.refresh(refreshToken)
-    const scopes = parseScopeString(token.scope, connection.credential.scopes)
+    const scopes = refreshedScopes(token.scope, connection.credential.scopes)
     return {
       accessToken: token.access_token,
       refreshToken: token.refresh_token ?? refreshToken,

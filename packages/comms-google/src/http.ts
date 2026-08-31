@@ -27,11 +27,68 @@ export const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
 export const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me'
 
 /**
- * HTTP status classes we treat as transient (worth a queue retry): rate limits
- * (429), Gmail's 403 rate-limit family, and 5xx. Everything else is fatal.
+ * Google reuses 403 for two unrelated things: "you are going too fast" and
+ * "this token does not carry the scope for that call". Only the first is worth
+ * a retry. Treating the whole status as transient — as this did until the
+ * capability work — meant a scope error looped until the job died, so a missing
+ * scope could never surface as the in-chat request to grant it.
  */
-const isRetryableStatus = (status: number): boolean =>
-  status === 429 || status === 403 || status >= 500
+const RETRYABLE_403_REASONS = new Set([
+  'rateLimitExceeded',
+  'userRateLimitExceeded',
+  'dailyLimitExceeded',
+  'quotaExceeded',
+  'backendError',
+])
+
+/** Google's machine reasons for "this token lacks the required scope". */
+const SCOPE_REASONS = new Set([
+  'insufficientPermissions',
+  'ACCESS_TOKEN_SCOPE_INSUFFICIENT',
+  'insufficientScope',
+])
+
+const isRetryableStatus = (status: number, reason: string | undefined): boolean => {
+  if (status === 429 || status >= 500) {
+    return true
+  }
+  // Unknown 403 reasons stay fatal: a retry loop on a permission error costs a
+  // queue slot and hides the cause, while a fatal classification surfaces it.
+  return status === 403 && reason !== undefined && RETRYABLE_403_REASONS.has(reason)
+}
+
+export const isScopeReason = (
+  status: number,
+  reason: string | undefined,
+): boolean => status === 403 && reason !== undefined && SCOPE_REASONS.has(reason)
+
+/**
+ * Google's structured machine reason, distinct from the human `message`:
+ * `error.errors[].reason` on the classic Gmail shape, `error.status` on the
+ * newer one. Classification reads this; never the prose message.
+ */
+const readErrorCode = (payload: unknown): string | undefined => {
+  if (!payload || typeof payload !== 'object' || !('error' in payload)) {
+    return undefined
+  }
+  const err = (payload as { error: unknown }).error
+  if (!err || typeof err !== 'object') {
+    return undefined
+  }
+  const errors = (err as { errors?: unknown }).errors
+  if (Array.isArray(errors)) {
+    for (const entry of errors) {
+      if (entry && typeof entry === 'object' && 'reason' in entry) {
+        const reason = (entry as { reason: unknown }).reason
+        if (typeof reason === 'string' && reason.length > 0) {
+          return reason
+        }
+      }
+    }
+  }
+  const status = (err as { status?: unknown }).status
+  return typeof status === 'string' && status.length > 0 ? status : undefined
+}
 
 const readErrorReason = (payload: unknown): string | undefined => {
   if (payload && typeof payload === 'object' && 'error' in payload) {
@@ -78,16 +135,22 @@ export const requestJson = async (
     return { status: 404, body: undefined }
   }
   let reason: string | undefined
+  let code: string | undefined
   try {
-    reason = readErrorReason(await response.json())
+    const payload = await response.json()
+    reason = readErrorReason(payload)
+    code = readErrorCode(payload)
   } catch {
     reason = undefined
+    code = undefined
   }
   throw new GmailApiError({
     status: response.status,
-    retryable: isRetryableStatus(response.status),
+    retryable: isRetryableStatus(response.status, code),
     operation,
     reason,
+    code,
+    scopeMissing: isScopeReason(response.status, code),
   })
 }
 

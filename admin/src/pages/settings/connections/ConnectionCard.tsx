@@ -14,6 +14,7 @@ import {
   useUpdateCommsResources,
 } from '../../../facades/connections/hooks'
 import { sectionTitleClass } from '../settings-shared'
+import { ConnectionPermissions } from './ConnectionPermissions'
 
 const PROVIDER_LABEL: Record<CommsProvider, string> = {
   slack: 'Slack',
@@ -76,7 +77,12 @@ export const ConnectionCard = ({
   connection: CommsConnectionSummary
 }) => {
   const [expanded, setExpanded] = useState(false)
-  const detail = useCommsConnection(expanded ? connection.id : null)
+  // Permissions are the primary thing a person comes here to change, so a
+  // provider with a capability catalog loads its detail without expanding.
+  const hasCapabilityCatalog = connection.provider === 'google'
+  const detail = useCommsConnection(
+    expanded || hasCapabilityCatalog ? connection.id : null,
+  )
   const updateResources = useUpdateCommsResources()
   const resync = useResyncCommsConnection()
   const disconnect = useDisconnectCommsConnection()
@@ -161,10 +167,19 @@ export const ConnectionCard = ({
         </div>
       </dl>
 
-      {connection.grantedScopes.length > 0 ? (
+      {/* Raw scope strings answer no question once the readable capability
+          rows exist; they stay only for a provider with no catalog. */}
+      {!hasCapabilityCatalog && connection.grantedScopes.length > 0 ? (
         <p className="mt-2 break-words text-[11px] text-[color:var(--tx3)]">
           {connection.grantedScopes.join(', ')}
         </p>
+      ) : null}
+
+      {hasCapabilityCatalog && detail.data ? (
+        <ConnectionPermissions
+          capabilities={detail.data.capabilities}
+          connection={connection}
+        />
       ) : null}
 
       <button
