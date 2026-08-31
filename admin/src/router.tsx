@@ -20,6 +20,7 @@ import { ChannelProjectOverviewPage } from './pages/channels/ChannelProjectOverv
 import { ChannelConversationComposePage } from './pages/ChannelConversationComposePage'
 import { ChannelsPage } from './pages/ChannelsPage'
 import { ThreadsPage } from './pages/ThreadsPage'
+import { UnreadMessagesPage } from './pages/UnreadMessagesPage'
 import { FeedbackPage } from './pages/FeedbackPage'
 import { IntegrationsPage } from './pages/IntegrationsPage'
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage'
@@ -114,6 +115,7 @@ export const router = createBrowserRouter([
     element: <AdminShellLayout />,
     children: [
       { path: '/threads', element: <ThreadsPage /> },
+      { path: '/unread-messages', element: <UnreadMessagesPage /> },
       {
         path: '/channels/projects/:projectId',
         element: <ChannelProjectOverviewPage />,

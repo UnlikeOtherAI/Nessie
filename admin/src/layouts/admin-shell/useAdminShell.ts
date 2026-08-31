@@ -274,6 +274,10 @@ export const useAdminShell = () => {
     void navigate('/threads');
   }, [navigate]);
 
+  const navigateToUnreadMessages = useCallback(() => {
+    void navigate('/unread-messages');
+  }, [navigate]);
+
   const navigateToNewConversation = useCallback(() => {
     setSidebarMenu(null);
     void navigate('/channels/new', {
@@ -383,6 +387,7 @@ export const useAdminShell = () => {
     navigateToAgent,
     navigateToChannel,
     navigateToThreads,
+    navigateToUnreadMessages,
     navigateToDm,
     navigateToAgentDesigner,
     navigateToNewConversation,

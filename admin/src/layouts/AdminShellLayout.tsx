@@ -47,6 +47,7 @@ import { useAdminShell } from './admin-shell/useAdminShell';
 import { WorkspaceSwitcher } from './admin-shell/WorkspaceSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
 import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks';
+import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
 import { useFocusMode } from '../providers/FocusModeProvider';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
@@ -103,6 +104,7 @@ const AuthenticatedAdminShellLayout = () => {
   useRecordSectionRoute();
   const attention = useAttentionSummary();
   const threadActivity = useThreadActivity();
+  const unreadDirectMessages = useUnreadDirectMessages();
   useThreadActivityEvents();
   const attentionCountByProjectId = new Map<string, number>();
   for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
@@ -163,6 +165,7 @@ const AuthenticatedAdminShellLayout = () => {
       onNavigateAgent={shell.navigateToAgent}
       onNavigateChannel={shell.navigateToChannel}
       onNavigateThreads={shell.navigateToThreads}
+      onNavigateUnreadMessages={shell.navigateToUnreadMessages}
       onNavigateDm={shell.navigateToDm}
       onNavigateNewConversation={shell.navigateToNewConversation}
       onNavigateProject={shell.navigateToProject}
@@ -197,6 +200,7 @@ const AuthenticatedAdminShellLayout = () => {
       visibleStarredEntries={shell.visibleStarredEntries}
       standaloneChannels={shell.standaloneChannels}
       threadsUnreadCount={threadActivity.data?.unreadTotal ?? 0}
+      unreadDirectMessageCount={unreadDirectMessages.data?.length ?? 0}
     />
   );
 

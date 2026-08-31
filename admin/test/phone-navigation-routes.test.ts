@@ -76,6 +76,11 @@ test('Dashboards are Knowledge-section pages: root depth1, dashboard depth2', ()
 })
 
 test('the channel stack gives a reply thread its own screen depth', () => {
+  assert.equal(getPhoneNavigationScreen('/unread-messages')?.depth, 1)
+  assert.deepEqual(getPhoneNavigationBackTarget('/unread-messages'), {
+    label: 'Back to Channels',
+    pathname: '/channels',
+  })
   assert.equal(getPhoneNavigationScreen('/channels/chan_a')?.depth, 1)
   assert.equal(
     getPhoneNavigationScreen('/channels/chan_a/threads/thread_a/replies/message_a')?.depth,

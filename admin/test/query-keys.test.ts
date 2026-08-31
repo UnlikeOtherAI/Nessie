@@ -53,6 +53,7 @@ test('agent keys keep the arrays the call sites used', () => {
 })
 
 test('thread keys keep the arrays the call sites used', () => {
+  assert.deepEqual(threadKeys.unreadDirectMessages, ['threads', 'unread-direct-messages'])
   assert.deepEqual(threadKeys.messages('t-1'), ['threads', 't-1', 'messages'])
   assert.deepEqual(threadKeys.replies('t-1'), ['threads', 't-1', 'replies'])
   assert.deepEqual(

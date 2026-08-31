@@ -5,6 +5,12 @@ import type {
   MeResponse,
 } from '@nessie/schemas'
 
+export type {
+  UnreadDirectMessagePreview,
+  UnreadDirectMessageRecord,
+  UnreadDirectMessagesResponse,
+} from '@nessie/schemas'
+
 export type AuthProviderDescriptor = {
   autoRedirect: boolean
   enabled: boolean
