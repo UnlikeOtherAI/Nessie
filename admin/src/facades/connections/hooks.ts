@@ -5,6 +5,7 @@ import type {
   CommsConnectionStartResponse,
   CommsProvider,
   CommsResourceToggle,
+  GoogleCapabilityId,
 } from '../../lib/api-client'
 import { commsKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -37,13 +38,52 @@ export const useCommsConnection = (id: string | null) => {
  * it in a new tab. Never invalidates — the connection appears after the OAuth
  * callback redirects the user back.
  */
+export type StartCommsConnectionInput = {
+  provider: CommsProvider
+  /** Google capability ids to request. Omitted → the provider default set. */
+  capabilities?: GoogleCapabilityId[]
+  /**
+   * Widen this existing connection instead of creating one. The server asks
+   * Google for the union of its current scopes and the new ones.
+   */
+  connectionId?: string
+}
+
 export const useStartCommsConnection = () => {
   const apiClient = useApiClient()
   return useMutation({
-    mutationFn: (provider: CommsProvider) =>
-      apiClient.post<CommsConnectionStartResponse>(
-        `/api/comms/connections/${provider}/start`,
+    mutationFn: (input: StartCommsConnectionInput | CommsProvider) => {
+      const normalized: StartCommsConnectionInput =
+        typeof input === 'string' ? { provider: input } : input
+      const body: Record<string, unknown> = {}
+      if (normalized.capabilities) body.capabilities = normalized.capabilities
+      if (normalized.connectionId) body.connectionId = normalized.connectionId
+      return apiClient.post<CommsConnectionStartResponse>(
+        `/api/comms/connections/${normalized.provider}/start`,
+        body,
+      )
+    },
+  })
+}
+
+/**
+ * Switch capabilities off locally. This is not a revocation at Google — a
+ * provider grant can only be revoked whole — so the copy says "blocked" and
+ * the server enforces it when a tool asks for a credential.
+ */
+export const useUpdateCommsCapabilities = () => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { id: string; disabledCapabilities: GoogleCapabilityId[] }) =>
+      apiClient.patch<CommsConnectionDetail>(
+        `/api/comms/connections/${input.id}/capabilities`,
+        { disabledCapabilities: input.disabledCapabilities },
       ),
+    onSuccess: (_data, input) => {
+      void queryClient.invalidateQueries({ queryKey: commsKeys.connection(input.id) })
+      void queryClient.invalidateQueries({ queryKey: commsKeys.connections })
+    },
   })
 }
 
