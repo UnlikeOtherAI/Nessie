@@ -29,3 +29,8 @@ immediately without disclosing a read receipt to channel participants. A
 follower of a public channel is included in that stream's channel scopes even without a
 `ChannelMember` row, so live and replayed reply activity obey the same
 entitlement rule as the index.
+
+The **Unread messages** direct-message inbox is a permanent, bold top-level
+destination directly beneath **Threads**. Its unread badge appears only when
+there is work to read; an empty inbox keeps the destination available and shows
+one centered dashed card: **You are all caught up**.

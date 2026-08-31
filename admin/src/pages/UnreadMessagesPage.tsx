@@ -30,7 +30,11 @@ export const UnreadMessagesPage = () => {
           </div>
         ) : null}
         {!unreadMessages.isLoading && !unreadMessages.isError && items.length === 0 ? (
-          <div className="py-8 text-center text-[color:var(--tx3)]">No unread messages</div>
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="w-full max-w-sm rounded-lg border border-dashed border-[color:var(--sep)] bg-[color:var(--panel)] px-5 py-4 text-center font-semibold text-[color:var(--tx2)]">
+              You are all caught up
+            </div>
+          </div>
         ) : null}
         <div className="divide-y divide-[color:var(--sep)]">
           {items.map((item) => (
