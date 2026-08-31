@@ -497,11 +497,11 @@ and leaves page data, URLs, and conversation state in the admin React app.
   the project overview because that entry point supplies conversation context.
   Selecting a Knowledge space or product document view uses an addressable
   child route and pushes the shared Knowledge workspace over its list.
-- Every phone route below its contextual list has the same leading **Back**
-  control, including project overviews opened from Channels. It returns to the
-  route's owning list (Channels, Projects, Dashboards, Knowledge, or Admin), so a
-  direct link remains inside Nessie; tab roots retain the navigation-menu
-  control instead. Stateful nested surfaces (Knowledge documents/history/editor
+- Every phone route below its contextual list has one leading **Back** control,
+  including project overviews opened from Channels. It returns to the route's
+  immediate owning list (Channels, Projects, Dashboards, Knowledge, Apps, or
+  Admin), so a direct link remains inside Nessie; tab roots retain the
+  navigation-menu control instead. Stateful nested surfaces (Knowledge documents/history/editor
   and Admin column-browser details) reuse that one leading slot and unwind one
   local level before the route. Retained off-screen columns are inert and hidden
   from accessibility, so only the on-screen Back doorway is interactive.

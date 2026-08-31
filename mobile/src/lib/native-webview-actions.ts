@@ -19,6 +19,9 @@ export const createNativeWebviewActions = (runScript: RunScript) => ({
   runToolbarAction: (action: ToolbarAction): void => {
     runScript(`window.__nessieToolbarAction && window.__nessieToolbarAction(${JSON.stringify(action)});`)
   },
+  toggleFocusMode: (): void => {
+    runScript('window.__nessieToggleFocusMode && window.__nessieToggleFocusMode();')
+  },
   toggleAccountMenu: (): void => {
     runScript('window.__nessieToggleAccountMenu && window.__nessieToggleAccountMenu();')
   },

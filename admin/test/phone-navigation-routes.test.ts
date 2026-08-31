@@ -203,18 +203,32 @@ test('admin: /settings depth0 and every admin page depth1 under it', () => {
 // ADMIN_ROUTE_PREFIXES, so every admin-section question about it fell through
 // to the Channels default: the phone tab bar lit Channels while you stood on
 // Apps, and Back offered "Back to Channels".
-test('Apps belongs to the Admin tab, list and detail alike', () => {
+test('Apps is an Admin-section list, with a detail level beneath it', () => {
   assert.equal(getPhoneTabRootPath('/apps'), '/settings')
   assert.equal(getPhoneTabRootPath('/apps/deep-water'), '/settings')
   assert.equal(getPhoneNavigationScreen('/apps')?.section, 'admin')
   assert.equal(getPhoneNavigationScreen('/apps/deep-water')?.section, 'admin')
+  assert.equal(getPhoneNavigationScreen('/apps')?.depth, 1)
+  assert.equal(getPhoneNavigationScreen('/apps/deep-water')?.depth, 2)
   assert.deepEqual(getPhoneNavigationBackTarget('/apps'), {
     label: 'Back to Admin',
     pathname: '/settings',
   })
-  // An app detail is another admin detail, so opening one from the list is a
-  // content swap rather than a route-level transition.
-  assert.equal(getPhoneNavigationDirection('/apps', '/apps/deep-water'), null)
+  assert.deepEqual(getPhoneNavigationBackTarget('/apps/deep-water'), {
+    label: 'Apps',
+    pathname: '/apps',
+  })
+  assert.equal(getPhoneNavigationDirection('/settings', '/apps'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/apps', '/apps/deep-water'), 'forward')
+  assert.equal(getPhoneNavigationDirection('/apps/deep-water', '/apps'), 'back')
+  assert.deepEqual(resolvePhoneNavigationBackAction('/apps/deep-water', '/apps'), {
+    mode: 'pop',
+    to: '/apps',
+  })
+  assert.deepEqual(resolvePhoneNavigationBackAction('/apps/deep-water', null), {
+    mode: 'replace',
+    to: '/apps',
+  })
   // /approvals must not be swallowed by the /apps prefix.
   assert.equal(getPhoneTabRootPath('/approvals'), '/settings')
   assert.equal(getPhoneNavigationScreen('/approvals')?.section, 'admin')
