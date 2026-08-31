@@ -17,6 +17,9 @@ export const AGENT_TODO_STEP_INSTRUCTIONS_MAX = 2_000
 export const AGENT_TODO_STEP_NOTE_MAX = 2_000
 export const AGENT_TODO_TEMPLATE_NAME_MAX = 120
 export const AGENT_TODO_TEMPLATE_DESCRIPTION_MAX = 500
+export const AGENT_TODO_PROMPT_TEMPLATE_LIMIT = 20
+export const AGENT_TODO_PROMPT_INSTANCE_LIMIT = 10
+export const AGENT_TODO_PROMPT_PROPOSAL_LIMIT = 5
 
 export const AgentTodoTemplateStatusSchema = z.enum([
   'draft',

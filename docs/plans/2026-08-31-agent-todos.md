@@ -2,7 +2,9 @@
 
 **Status:** implementation in progress — all open questions decided 2026-08-31
 (§11). The data contract, shared service, REST surface, and Phase 1 Designer
-and To-dos surfaces have landed; the later phases in §10 remain.
+and To-dos surfaces have landed. Phase 2 is in progress: its execution
+builtins and bounded prompt facts block have landed, while lifecycle, Run-now,
+and chat-card work remains; Phases 3–4 remain.
 **Date:** 2026-08-31
 **Reviewed:** two independent adversarial reviews on the same repo — kimix
 (17 findings) and Codex Sol (18 findings, on the doc with kimix's round

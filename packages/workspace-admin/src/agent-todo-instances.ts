@@ -21,7 +21,8 @@ import {
   prepareAgentTodoSteps,
   type AgentTodoWithOrderedSteps,
 } from './agent-todo-records.js'
-import { acquireAgentTodoLock } from './agent-todo-lock.js'
+import { acquireAgentTodoLock, acquireAgentTodoRunLock } from './agent-todo-lock.js'
+import { TERMINAL_RUN_STATUSES } from './agent-todo-run-statuses.js'
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient
 
@@ -33,6 +34,29 @@ type AgentTodoIdentity = {
 type AgentTodoReadInput = AgentTodoIdentity & {
   visibility?: AgentVisibilityScope
 }
+
+type AgentTodoStartInput = AgentTodoIdentity & {
+  runId: string
+  threadId: string
+} & (
+    | { templateId: string; todoId?: never; title?: never; steps?: never }
+    | { templateId?: never; todoId: string; title?: never; steps?: never }
+    | {
+        templateId?: never
+        todoId?: never
+        title: string
+        steps: readonly AgentTodoTemplateStepInput[]
+      }
+  )
+
+const isStandaloneTodoStart = (
+  input: AgentTodoStartInput,
+): input is AgentTodoIdentity & {
+  runId: string
+  threadId: string
+  title: string
+  steps: readonly AgentTodoTemplateStepInput[]
+} => input.title !== undefined && input.steps !== undefined
 
 const filterAgentTodoThreadLinks = async (
   prisma: PrismaLike,
@@ -62,6 +86,27 @@ const withTransaction = async <T>(
 ): Promise<T> => {
   if ('$transaction' in prisma) return prisma.$transaction(work)
   return work(prisma)
+}
+
+const refuseIfRunAlreadyHasTodo = async (
+  tx: Prisma.TransactionClient,
+  input: AgentTodoIdentity & { runId: string },
+): Promise<void> => {
+  const activeForRun = await tx.agentTodo.findFirst({
+    select: { title: true },
+    where: {
+      activeRun: { is: { status: { notIn: TERMINAL_RUN_STATUSES } } },
+      activeRunId: input.runId,
+      agentId: input.agentId,
+      organizationId: input.organizationId,
+      status: { in: ['open', 'running'] },
+    },
+  })
+  if (!activeForRun) return
+  throw new AgentTodoError(
+    AGENT_TODO_ERROR_CODES.RUN_ALREADY_HAS_TODO,
+    `This run is already working on "${activeForRun.title}". Finish it or leave it for a later run before starting another to-do.`,
+  )
 }
 
 export const listAgentTodos = async (
@@ -169,6 +214,131 @@ export const createStandaloneAgentTodo = async (
   })
   return mapAgentTodoRecord(row)
 }
+
+/**
+ * Claims a to-do only while no live run owns it. Terminal runs intentionally
+ * count as unclaimed here because terminal writers outside the worker loop do
+ * not all clear activeRunId.
+ */
+export const claimAgentTodoForRun = async (
+  prisma: PrismaLike,
+  input: AgentTodoIdentity & {
+    runId: string
+    threadId: string
+    todoId: string
+  },
+): Promise<AgentTodoRecord> =>
+  withTransaction(prisma, async (tx) => {
+    await acquireAgentTodoRunLock(tx, input.runId)
+    await refuseIfRunAlreadyHasTodo(tx, input)
+
+    const claimed = await tx.agentTodo.updateMany({
+      data: {
+        activeRunId: input.runId,
+        status: 'running',
+        threadId: input.threadId,
+      },
+      where: {
+        agentId: input.agentId,
+        id: input.todoId,
+        organizationId: input.organizationId,
+        status: { in: ['open', 'running'] },
+        OR: [
+          { activeRunId: null },
+          { activeRun: { is: { status: { in: TERMINAL_RUN_STATUSES } } } },
+        ],
+      },
+    })
+    if (claimed.count === 0) {
+      const existing = await tx.agentTodo.findFirst({
+        select: {
+          activeRun: { select: { status: true } },
+          activeRunId: true,
+          status: true,
+        },
+        where: {
+          agentId: input.agentId,
+          id: input.todoId,
+          organizationId: input.organizationId,
+        },
+      })
+      if (!existing) {
+        throw new AgentTodoError(
+          AGENT_TODO_ERROR_CODES.NOT_FOUND,
+          'To-do not found.',
+        )
+      }
+      if (
+        existing.activeRunId
+        && existing.activeRun?.status
+        && !TERMINAL_RUN_STATUSES.includes(existing.activeRun.status)
+      ) {
+        throw new AgentTodoError(
+          AGENT_TODO_ERROR_CODES.TODO_CLAIMED,
+          'This to-do is already being worked by another live run.',
+        )
+      }
+      throw new AgentTodoError(
+        AGENT_TODO_ERROR_CODES.TODO_UNAVAILABLE,
+        'Only an open to-do can be started.',
+      )
+    }
+
+    const todo = await getAgentTodo(tx, input)
+    if (!todo) {
+      throw new AgentTodoError(
+        AGENT_TODO_ERROR_CODES.NOT_FOUND,
+        'To-do not found.',
+      )
+    }
+    return todo
+  })
+
+/**
+ * The worker starts every kind of to-do through this one transaction. Existing
+ * creation operations remain the source of template copying and standalone
+ * step preparation; the transaction rolls a new instance back if its run lost
+ * the one-active-to-do race.
+ */
+export const startAgentTodoForRun = async (
+  prisma: PrismaLike,
+  input: AgentTodoStartInput,
+): Promise<AgentTodoRecord> =>
+  withTransaction(prisma, async (tx) => {
+    // Take the run lock before creating. Otherwise two starts in one run could
+    // each create an instance before either discovers the singular claim.
+    await acquireAgentTodoRunLock(tx, input.runId)
+    await refuseIfRunAlreadyHasTodo(tx, input)
+    let todoId: string
+    if (isStandaloneTodoStart(input)) {
+      todoId = (await createStandaloneAgentTodo(tx, {
+        agentId: input.agentId,
+        createdByUserId: null,
+        organizationId: input.organizationId,
+        steps: input.steps,
+        title: input.title,
+      })).id
+    } else if (input.templateId !== undefined) {
+      todoId = (await createAgentTodoFromTemplate(tx, {
+        agentId: input.agentId,
+        createdByUserId: null,
+        organizationId: input.organizationId,
+        templateId: input.templateId,
+      })).id
+    } else if (input.todoId !== undefined) {
+      todoId = input.todoId
+    } else {
+      throw new Error('A to-do start needs a template, existing to-do, or standalone steps.')
+    }
+
+    return claimAgentTodoForRun(tx, {
+      agentId: input.agentId,
+      organizationId: input.organizationId,
+      runId: input.runId,
+      threadId: input.threadId,
+      todoId,
+    })
+  })
 
 export const cancelAgentTodo = async (
   prisma: PrismaLike,

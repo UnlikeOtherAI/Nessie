@@ -11,6 +11,7 @@ import {
 } from './agent-todo-errors.js'
 import { getAgentTodo } from './agent-todo-instances.js'
 import { acquireAgentTodoLock } from './agent-todo-lock.js'
+import { TERMINAL_RUN_STATUSES } from './agent-todo-run-statuses.js'
 import type { AgentVisibilityScope } from './agent-record.js'
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient
@@ -40,6 +41,8 @@ export const updateAgentTodoStep = async (
     agentId: string
     note?: string | null
     organizationId: string
+    /** Required for worker writes, so ownership is checked under the step lock. */
+    requiredLiveRunId?: string
     status: AgentTodoStepStatus
     todoId: string
     visibility?: AgentVisibilityScope
@@ -51,12 +54,24 @@ export const updateAgentTodoStep = async (
     const todo = await tx.agentTodo.findFirst({
       select: { id: true, status: true },
       where: {
+        ...(input.requiredLiveRunId !== undefined
+          ? {
+              activeRun: { is: { status: { notIn: TERMINAL_RUN_STATUSES } } },
+              activeRunId: input.requiredLiveRunId,
+            }
+          : {}),
         agentId: input.agentId,
         id: input.todoId,
         organizationId: input.organizationId,
       },
     })
     if (!todo) {
+      if (input.requiredLiveRunId !== undefined) {
+        throw new AgentTodoError(
+          AGENT_TODO_ERROR_CODES.TODO_UNAVAILABLE,
+          'This to-do is not actively owned by this run.',
+        )
+      }
       throw new AgentTodoError(
         AGENT_TODO_ERROR_CODES.NOT_FOUND,
         'To-do not found.',
