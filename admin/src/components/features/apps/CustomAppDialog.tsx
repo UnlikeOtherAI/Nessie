@@ -10,7 +10,7 @@ type CustomAppDialogProps = {
   open: boolean
 }
 
-/** Adds a remote app by address without exposing connector implementation details. */
+/** Discovers a remote app's requirements before its connection is confirmed. */
 export const CustomAppDialog = ({ onAdded, onClose, open }: CustomAppDialogProps) => {
   const addressRef = useRef<HTMLInputElement>(null)
   const addCustomApp = useAddCustomApp()
@@ -49,7 +49,7 @@ export const CustomAppDialog = ({ onAdded, onClose, open }: CustomAppDialogProps
 
   return (
     <Dialog
-      description="Paste the secure address supplied by the app. Nessie will check how it connects."
+      description="Paste the secure address supplied by the app. Nessie will check how it connects, then show you the sign-in details before creating an account."
       dismissDisabled={addCustomApp.isPending}
       initialFocusRef={addressRef}
       onClose={close}

@@ -1,20 +1,17 @@
 import { faChevronLeft } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { AppConnectDialog } from '../components/features/apps/AppConnectDialog'
 import { AppDetailHero } from '../components/features/apps/AppDetailHero'
 import { AppDetailTabs } from '../components/features/apps/AppDetailTabs'
 import { AppDetailSkeleton } from '../components/features/apps/AppSkeletons'
-import { AppSecretDialog } from '../components/features/apps/AppSecretDialog'
-import { ConnectProgress } from '../components/features/apps/ConnectProgress'
 import {
-  appConnectInFlight,
   appDetailTabs,
   appNotFoundMessage,
   resolveAppDetailTab,
   type AppDetailTab,
 } from '../components/features/apps/app-detail-view'
-import { useAppConnectFlow } from '../facades/apps/connect-hooks'
 import { useApp } from '../facades/apps/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
 import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
@@ -28,41 +25,30 @@ import { usePhoneLayout } from '../lib/mobile-shell'
  * (accounts, agent access), so every one of them has to survive a refresh, work
  * in browser history, and be pasteable to a teammate.
  *
- * It is also where connecting happens. The hero's primary control runs the
- * connect flow in place and the progress panel renders under it, so a person
- * decides and acts on one screen. A member connecting an app for themselves
- * never needs to answer implementation questions about its transport or scope.
+ * It is also where a person reviews and confirms a connection. Every Apps
+ * doorway opens the one shared dialog before it can create an account, so the
+ * person sees the app's stated authentication requirements and its audience
+ * before the server is contacted.
  */
 export const AppDetailPage = () => {
   const navigate = useNavigate()
   const { slug } = useParams<{ slug?: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: app, isPending } = useApp(slug)
-  // Keyed by the route parameter, exactly as the detail read is: the connect
-  // endpoint takes the same identifier, and the flow re-reads the app through
-  // the same cache entry this page renders from.
-  const connect = useAppConnectFlow({ slug: slug ?? '' })
-  const [secretConnectionId, setSecretConnectionId] = useState<string | null>(null)
-  const customConnectStartedFor = useRef<string | null>(null)
+  const [connectOpen, setConnectOpen] = useState(false)
   const phoneLayout = usePhoneLayout()
   const phoneNavigation = usePhoneNavigation()
 
-  // A custom app has already created its user-scoped connection. Its first
-  // result may still need a key or OAuth, so it arrives here with one explicit
-  // request to resume that same flow rather than leaving a pending card that
-  // cannot explain its next action.
+  // A custom app's address is checked before it arrives here. Its first
+  // connection still waits for this explicit review, so `?connect=true` opens
+  // the dialog but never starts a connection by itself.
   useEffect(() => {
-    if (searchParams.get('connect') !== 'true') {
-      customConnectStartedFor.current = null
-      return
-    }
-    if (connect.state.phase !== 'idle' || customConnectStartedFor.current === slug) return
-    customConnectStartedFor.current = slug ?? null
+    if (searchParams.get('connect') !== 'true') return
+    setConnectOpen(true)
     const params = new URLSearchParams(searchParams)
     params.delete('connect')
     setSearchParams(params, { replace: true })
-    connect.connect({ scopeType: 'user' })
-  }, [connect, searchParams, setSearchParams, slug])
+  }, [searchParams, setSearchParams])
 
   // Apps owns this detail's immediate parent. On a phone use the shell's
   // ledger-aware action so the labelled Apps doorway, an edge swipe, and
@@ -137,41 +123,18 @@ export const AppDetailPage = () => {
         <div className="grid w-full gap-6 px-4 pb-10 sm:px-6 lg:px-8">
           <AppDetailHero
             app={app}
-            connectInFlight={appConnectInFlight(connect.state.phase)}
-            // The caller's own scope: connecting an app for yourself is what
-            // every member may do without asking.
-            onConnect={() => connect.connect({ scopeType: 'user' })}
+            onConnect={() => setConnectOpen(true)}
             onManageAccess={() => selectTab('agents')}
-          />
-          {/* Directly under the hero, never a toast: the person is deciding
-              about this app and the page they are reading is the context.
-              Renders nothing while idle, so the grid gap does not open. */}
-          <ConnectProgress
-            appName={app.displayName}
-            onAddSecret={setSecretConnectionId}
-            onDismiss={connect.dismiss}
-            onReopenAuthorization={connect.reopenAuthorization}
-            onRetry={connect.retry}
-            // No `providerName`: `vendor` is the publisher, which is not
-            // necessarily who runs the sign-in, and "Waiting for GitHub, Inc.…"
-            // claims more than the record knows. The app's own name is true.
-            state={connect.state}
           />
           <AppDetailTabs
             activeTab={activeTab}
             app={app}
-            onConnectAnother={() => connect.connect({ scopeType: 'user' })}
+            onConnectAnother={() => setConnectOpen(true)}
             onSelectTab={selectTab}
           />
         </div>
       </div>
-      <AppSecretDialog
-        connectionId={secretConnectionId}
-        onClose={() => setSecretConnectionId(null)}
-        onSaved={() => {
-          connect.retry()
-        }}
-      />
+      <AppConnectDialog app={app} onClose={() => setConnectOpen(false)} open={connectOpen} />
     </div>
   )
 }

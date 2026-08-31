@@ -13,8 +13,6 @@ import {
 
 type AppDetailHeroProps = {
   app: AppDetailRecord
-  /** The connect flow already owns the outcome, so the CTA is spent. */
-  connectInFlight: boolean
   onConnect: () => void
   onManageAccess: () => void
 }
@@ -25,7 +23,6 @@ type AppDetailHeroProps = {
 // person needs to decide that, so none of them render here.
 export const AppDetailHero = ({
   app,
-  connectInFlight,
   onConnect,
   onManageAccess,
 }: AppDetailHeroProps) => {
@@ -92,17 +89,15 @@ export const AppDetailHero = ({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {cta.kind === 'connect' ? (
               // The one control on this page that acts rather than navigates.
-              // While it is in flight it reads "Connecting…" and refuses a
-              // second press — the panel underneath carries the detail, so the
-              // button says only that it is spent.
+              // It opens the shared review dialog; only its explicit confirm
+              // button may begin a connection.
               <button
                 className={`admin-button admin-button-${cta.tone}`}
                 data-testid="app-detail-cta"
-                disabled={connectInFlight}
                 onClick={onConnect}
                 type="button"
               >
-                {connectInFlight ? 'Connecting…' : cta.label}
+                {cta.label}
               </button>
             ) : cta.kind === 'link' ? (
               <Link

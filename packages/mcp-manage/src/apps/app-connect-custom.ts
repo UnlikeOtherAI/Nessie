@@ -1,5 +1,3 @@
-import type { McpServerScopeType } from '@nessie/schemas'
-
 import { discoverMcpEndpoint } from '../discovery.js'
 import { libraryEntryToCatalogInput, type McpLibraryEntry } from '../library.js'
 import { publishCatalogEntry, type McpCatalogEntryRow } from '../mcp-catalog.js'
@@ -9,38 +7,33 @@ import { normalizeEndpoint } from '../registry/registry-mapper.js'
 import {
   APP_CONNECT_ERROR_CODES,
   AppConnectError,
-  resolveConnection,
-  runConnectHandshake,
   type AppConnectContext,
-  type AppConnectOutcome,
 } from './app-connect.js'
 import { toAppSlug } from './app-slug.js'
 
 /**
  * "Add a custom app" — the `/apps` page's own doorway for a server that is not
- * in the catalogue yet.
+ * in the catalogue yet. Discovery records its requirements, but it deliberately
+ * stops before creating an account: the Apps review dialog owns that explicit
+ * confirmation.
  *
  * Spec: `docs/plans/2026-08-29-apps-catalogue/ux-design-detail-and-connect.md`
  * §5. Its own module because authoring a catalogue row from a pasted address
- * is a different responsibility from connecting an app that already has one —
- * and because both of those, together, exceed the file cap.
+ * is a different responsibility from connecting an app that already has one.
  *
  * Every hard part is already built: `discoverMcpEndpoint` probes the candidate
  * paths over both remote transports behind the SSRF guard and reports what the
- * server wants, `createCatalogEntry` applies the admin endpoint lock and
- * refuses stdio, and the connect orchestration takes it from there.
+ * server wants, and `createCatalogEntry` applies the admin endpoint lock and
+ * refuses stdio. The review dialog invokes the shared connect flow afterwards.
  */
 
 export type AddCustomAppInput = {
   url: string
   name?: string
-  scopeType: McpServerScopeType
-  scopeId: string
 }
 
 export type AddCustomAppResult = {
   app: McpCatalogEntryRow
-  outcome: AppConnectOutcome
 }
 
 /**
@@ -144,6 +137,5 @@ export const addCustomApp = async (
     transport: proposal.transport,
     authMethod: proposal.authMethod,
   })
-  const instance = await resolveConnection(ctx, entry.id, input.scopeType, input.scopeId)
-  return { app: entry, outcome: await runConnectHandshake(ctx, entry, instance) }
+  return { app: entry }
 }

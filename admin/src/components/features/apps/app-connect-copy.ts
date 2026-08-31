@@ -48,3 +48,11 @@ export const connectAuthExpectation = (app: AppSummaryRecord): string => {
   if (app.authMethod === 'none') return 'This app needs no sign-in.'
   return `${app.displayName} needs an API key.`
 }
+
+/** A short, scan-friendly authentication fact for the connection review. */
+export const connectAuthType = (app: AppSummaryRecord): string => {
+  if (!catalogueStatesAuth(app)) return 'Checked before connecting'
+  if (app.authMethod === 'oauth2') return 'Sign-in required'
+  if (app.authMethod === 'none') return 'No sign-in required'
+  return 'API key required'
+}

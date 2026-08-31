@@ -311,14 +311,16 @@ never overwritten: its `authMethod` is a statement, not a default.
 **Connecting happens on `/apps`, in a dialog that says what it will do.**
 Connect previously left the store mid-decision for a surface built for a
 different question.
-`AppConnectDialog` runs the whole flow in place and states the cost of the
-click *before* it is made — "Connecting opens a … sign-in window", "needs no
-sign-in", or "needs an API key" — read from `AppSummaryRecord.authMethod`. That
-field is on the wire for exactly this reason and is the auth *method* only: the
-presenter's `STORE_CATALOG_SELECT` still cannot emit `authConfig`, a
-`credentialRef`, or the endpoint. A failure keeps the person in the dialog and
-says nothing was saved, because a half-made connection they cannot see is worse
-than a refusal they can retry.
+`AppConnectDialog` first presents a review and starts the flow only after the
+person confirms. The review states the authentication method and what it will
+do — "Connecting opens a … sign-in window", "needs no sign-in", or "needs an
+API key" — read from `AppSummaryRecord.authMethod`; an undiscovered registry
+listing instead says "Checked before connecting". That field is on the wire for
+exactly this reason and is the auth *method* only: the presenter's
+`STORE_CATALOG_SELECT` still cannot emit `authConfig`, a `credentialRef`, or the
+endpoint. A failure keeps the person in the dialog and says nothing was saved,
+because a half-made connection they cannot see is worse than a refusal they can
+retry.
 
 A card's **pill and its action are two different jobs** — the pill says what
 state the app is in, the action says what you can do — so they must never carry

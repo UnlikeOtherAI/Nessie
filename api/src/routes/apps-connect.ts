@@ -68,8 +68,6 @@ const CustomAppBodySchema = z
   .object({
     url: z.string().trim().min(3).max(2000),
     name: z.string().trim().min(1).max(200).optional(),
-    scopeType: McpServerScopeTypeSchema.optional(),
-    scopeId: z.string().uuid().optional(),
   })
   .strict()
 
@@ -303,34 +301,19 @@ export const registerAppsConnectRoutes = (
       return reply
     }
 
-    const scopeType = body.scopeType ?? 'user'
-    const scopeId = resolveScopeId(actorContext, scopeType, body.scopeId)
-    if (!scopeId) {
-      sendApiError(reply, 400, 'VALIDATION_ERROR', 'scopeId is required for this scope', 'scopeId')
-      return reply
-    }
     const ctx = buildContext(request, reply, actorContext)
     if (!ctx) return reply
 
     try {
-      const { app: entry, outcome } = await addCustomApp(ctx, {
+      const { app: entry } = await addCustomApp(ctx, {
         url: body.url,
         name: body.name,
-        scopeType,
-        scopeId,
-      })
-      await auditConnect(actorContext, {
-        appId: entry.id,
-        connectionId: outcome.connectionId,
-        scopeType,
-        scopeId,
-        status: outcome.status,
       })
       // Read back through the store presenter rather than shaping a catalogue
       // row by hand: it is the one thing that decides what `/api/apps` may say
       // about an app, and the client needs the slug to reach `/apps/:slug`.
       const record = await getStoreApp(prisma, actorContext, entry.id)
-      return reply.code(201).send(createApiResponse({ appId: entry.id, app: record, outcome }))
+      return reply.code(201).send(createApiResponse({ appId: entry.id, app: record }))
     } catch (error) {
       if (sendConnectError(reply, error)) return reply
       throw error
