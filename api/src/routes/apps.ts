@@ -5,6 +5,7 @@ import {
   getStoreApp,
   listStoreAppCategories,
   listStoreApps,
+  resolveAppIcon,
   storeCatalogWhere,
 } from '@nessie/mcp-manage'
 import { attributionFromActorContext } from '@nessie/runtime'
@@ -143,23 +144,49 @@ export const registerAppRoutes = (app: FastifyInstance, deps: RouteDeps): void =
     const params = parseInput(AppIconParamsSchema, request.params, reply, 'id')
     if (!params) return reply
 
+    // Visibility first, and by the same floor as the detail route: an app the
+    // caller cannot see in the store must not have its icon fished out by id,
+    // and must not be able to make this server fetch on their behalf either.
     const entry = await prisma.mcpCatalogEntry.findFirst({
-      where: {
-        AND: [{ id: params.id, iconAttachmentId: { not: null } }, storeCatalogWhere(actorContext)],
-      },
+      where: { AND: [{ id: params.id }, storeCatalogWhere(actorContext)] },
       select: { iconAttachmentId: true },
     })
-    if (!entry?.iconAttachmentId) {
+    if (!entry) {
+      sendApiError(reply, 404, 'APP_ICON_NOT_FOUND', 'This app has no cached icon')
+      return reply
+    }
+
+    // Nothing cached yet: start resolving, but never make the browser wait for
+    // it. An image request holds one of the ~6 connections a browser opens per
+    // origin, and a grid paints dozens of cards — awaiting a third-party fetch
+    // here serialised them into a minutes-long queue that also starved the
+    // page's own API calls. So this answers 404 immediately (the card draws its
+    // monogram) and the icon appears on the next visit, already cached and
+    // shared with everybody.
+    //
+    // Detached deliberately, not enqueued: the work is small, bounded by its
+    // own budget, and self-limiting — `resolveAppIcon` claims the row with one
+    // conditional UPDATE, so dozens of simultaneous misses still perform one
+    // fetch, and a failure is recorded rather than retried on the next paint.
+    const attachmentId = entry.iconAttachmentId
+    if (!attachmentId) {
+      void resolveAppIcon({
+        actorId: actorContext.actor.actorId,
+        entryId: params.id,
+        fileService,
+        organizationId: actorContext.tenant.organizationId,
+        prisma,
+      }).catch(() => undefined)
       sendApiError(reply, 404, 'APP_ICON_NOT_FOUND', 'This app has no cached icon')
       return reply
     }
 
     const owner = await prisma.attachment.findUnique({
-      where: { id: entry.iconAttachmentId },
+      where: { id: attachmentId },
       select: { organizationId: true },
     })
     const opened = owner
-      ? await fileService.openStream(entry.iconAttachmentId, owner.organizationId)
+      ? await fileService.openStream(attachmentId, owner.organizationId)
       : null
     if (!opened) {
       sendApiError(reply, 404, 'APP_ICON_NOT_FOUND', 'This app has no cached icon')

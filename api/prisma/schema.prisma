@@ -3139,6 +3139,7 @@ model McpCatalogEntry {
   /// for provenance and is NEVER rendered directly (untrusted external SVG).
   iconAttachmentId  String?                @map("icon_attachment_id") @db.Uuid
   iconSource        String?                @map("icon_source")
+  iconResolvedAt    DateTime?              @map("icon_resolved_at")
   primaryCategory   McpAppCategory         @default(other) @map("primary_category")
   categories        McpAppCategory[]       @default([])
   tags              String[]               @default([])
