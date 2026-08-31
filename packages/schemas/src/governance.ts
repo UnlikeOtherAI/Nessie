@@ -103,6 +103,8 @@ export const PolicyDecisionSchema = z.object({
   ]),
   requiresApproval: z.boolean().optional(),
   approvalActionType: z.string().optional(),
+  /** Internal worker signal: a verified proof satisfied this decision. */
+  approvalProofUsed: z.boolean().optional(),
 })
 export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>
 
@@ -168,7 +170,6 @@ export const ApprovalRequestResponseSchema = z.object({
   resolvedAt: TimestampSchema.optional(),
   resolution: z.enum(['approved', 'rejected']).optional(),
   resolutionNote: z.string().optional(),
-  continuationToken: NonEmptyStringSchema,
   expiresAt: TimestampSchema,
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,

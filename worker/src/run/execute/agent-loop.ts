@@ -53,6 +53,8 @@ export const runExecutionAgentLoop = async (
     executorToolset: ExecutorToolset
     initialMessages: ProviderMessage[]
     inference: RunInference
+    /** DeepWater turns retain their own recovery matrix and never suspend. */
+    isHandoffTurn: boolean
     // Caller-owned accumulator: every main-loop, sub-agent AND compaction
     // invocation is pushed here live, so the run's spend is attributable even if
     // the loop throws before returning (see run-job's failure path).
@@ -288,18 +290,36 @@ export const runExecutionAgentLoop = async (
         context,
         toolName,
         args,
+        toolCallId,
         {
           agentKind: context.agent.agentKind,
           allowedToolIds: input.allowedToolIds,
           resolvedBuiltinToolIds: input.resolvedToolIds,
           externalToolNames,
+          maySuspendForApproval: !input.isHandoffTurn,
           parentAgentId: context.agent.parentAgentId,
+          resumeState: {
+            actorContext: payload.actorContext,
+            interactive: payload.interactive === true,
+            messageId: payload.messageId,
+          },
           toolPolicy: input.toolPolicy,
         },
         { deepWaterHandoffGuard: input.deepWaterHandoffGuard },
       )
       if (authorization.decision === 'deny') {
         return authorization.result
+      }
+      if (authorization.decision === 'suspend') {
+        return {
+          inputSummary: summarizeToolInput(args),
+          output: 'Tool execution is waiting for human approval.',
+          pendingApproval: {
+            approvalId: authorization.approval.id,
+            toolName: authorization.approval.toolName,
+          },
+          success: false,
+        }
       }
       if (toolName === BUILTIN_TOOL_SPEC_NAME) {
         return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
@@ -329,6 +349,7 @@ export const runExecutionAgentLoop = async (
               context,
               nestedToolName,
               nestedArgs,
+              'sub-agent',
               {
                 agentKind: context.agent.agentKind,
                 allowedToolIds: input.allowedToolIds,
@@ -337,6 +358,7 @@ export const runExecutionAgentLoop = async (
                   ...subAgentMcpView.handledNames,
                   ...builtinMetaNames,
                 ]),
+                maySuspendForApproval: false,
                 parentAgentId: context.agent.parentAgentId,
                 toolPolicy: input.toolPolicy,
               },

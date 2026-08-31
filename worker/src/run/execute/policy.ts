@@ -10,10 +10,12 @@ import {
 } from '@nessie/schemas'
 import {
   buildScopeChain,
+  consumeToolApprovalProof,
   resolveDecision,
   type PolicyRuleRow,
+  verifyToolApprovalProof,
 } from '@nessie/workspace-admin'
-import { summarizeToolInput } from '../tool-util.js'
+import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
 import type { ToolDenialReason } from '../tool-policy.js'
 import type { RunContext } from './types.js'
 
@@ -97,6 +99,7 @@ export const evaluateToolInvokePolicy = async (
   actorContext: AuthorizedActionContext,
   context: RunContext,
   toolName: string,
+  args: Record<string, unknown>,
 ): Promise<ToolPolicyEvaluation> => {
   const chain = buildScopeChain(actorContext, {
     agentId: context.agent.id,
@@ -115,10 +118,43 @@ export const evaluateToolInvokePolicy = async (
     orderBy: [{ priority: 'asc' }],
   })) as WorkerPolicyRule[]
 
-  const decision = resolveDecision(toPolicyRuleRows(rules), chain, {
-    approvalProof: actorContext.approval?.approvalProof ?? null,
+  const policyRules = toPolicyRuleRows(rules)
+  const argsHash = hashJsonValue(args)
+  const approvalProof = actorContext.approval?.approvalProof
+  const approvalProofInput = {
+    approvalId: actorContext.approval?.approvalId,
+    argsHash,
+    continuationRunId: context.run.id,
+    organizationId: context.channel.organizationId,
+    proof: approvalProof,
+    toolName,
+  }
+  const verifiedApproval = await verifyToolApprovalProof(prisma, approvalProofInput)
+  const decision = resolveDecision(policyRules, chain, {
+    approvalSatisfied: verifiedApproval !== null,
     defaultVerdict: 'allow',
   })
+
+  // The pure shared evaluator only accepts a verified boolean, never a raw
+  // token. Claim the actual proof only after that evaluator confirmed this
+  // call used it, so an explicit deny cannot burn an approval credential.
+  if (
+    decision.allowed
+    && decision.approvalProofUsed
+    && verifiedApproval
+    && approvalProof
+  ) {
+    if (!await consumeToolApprovalProof(prisma, {
+      ...approvalProofInput,
+      approvalId: verifiedApproval.id,
+      proof: approvalProof,
+    })) {
+      return deniedPolicyDecision(resolveDecision(policyRules, chain, {
+        approvalSatisfied: false,
+        defaultVerdict: 'allow',
+      }))
+    }
+  }
 
   if (decision.allowed) {
     return {
@@ -128,17 +164,22 @@ export const evaluateToolInvokePolicy = async (
     }
   }
 
-  return {
-    allowed: false,
-    approvalActionType: decision.approvalActionType,
-    policyRuleId: decision.policyRuleId,
-    policySource: decision.policySource,
-    reason:
-      decision.reasonCode === 'APPROVAL_REQUIRED'
-        ? 'approval_required'
-        : 'explicit_policy_deny',
-  }
+  return deniedPolicyDecision(decision)
 }
+
+const deniedPolicyDecision = (
+  decision: ReturnType<typeof resolveDecision>,
+): ToolPolicyEvaluation => ({
+  allowed: false,
+  approvalActionType: decision.approvalActionType,
+  policyRuleId: decision.policyRuleId,
+  policySource: decision.policySource,
+  reason:
+    decision.reasonCode === 'APPROVAL_REQUIRED'
+      ? 'approval_required'
+      : 'explicit_policy_deny',
+})
+
 
 export const emitWorkerAuditEvent = async (
   prisma: PrismaClient,

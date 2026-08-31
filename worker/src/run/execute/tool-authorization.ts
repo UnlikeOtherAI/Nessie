@@ -1,8 +1,9 @@
 import { BUILTIN_TOOL_DEFINITIONS, DEEP_WATER_START_FAILURE_DETAIL } from '@nessie/runtime'
-import type { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'node:crypto'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
-import { summarizeToolInput } from '../tool-util.js'
+import { hashJsonValue, summarizeToolInput } from '../tool-util.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import type { AgenticToolResult } from '../tools.js'
 import {
@@ -24,6 +25,13 @@ export type ToolAuthorizationDecision =
       decision: 'deny'
       result: AgenticToolResult
     }
+  | {
+      decision: 'suspend'
+      approval: {
+        id: string
+        toolName: string
+      }
+    }
 
 export type ToolAuthorizationContext = {
   agentKind: RunContext['agent']['agentKind']
@@ -41,6 +49,13 @@ export type ToolAuthorizationContext = {
    */
   externalToolNames?: Set<string>
   parentAgentId: string | null
+  /** Only a top-level, non-handoff run has a durable identity to suspend. */
+  maySuspendForApproval: boolean
+  resumeState?: {
+    actorContext: AuthorizedActionContext
+    interactive: boolean
+    messageId: string
+  }
   toolPolicy: Record<string, boolean> | null
 }
 
@@ -99,6 +114,7 @@ export const authorizeToolExecution = async (
   context: RunContext,
   toolName: string,
   args: Record<string, unknown>,
+  toolCallId: string,
   auth: ToolAuthorizationContext,
   hooks: ToolAuthorizationHooks,
 ): Promise<ToolAuthorizationDecision> => {
@@ -153,6 +169,7 @@ export const authorizeToolExecution = async (
     toolActorContext,
     context,
     toolName,
+    args,
   )
   if (!policyDecision.allowed) {
     await auditDenial(emitAudit, toolActorContext, context, toolName, {
@@ -161,6 +178,20 @@ export const authorizeToolExecution = async (
       policySource: policyDecision.policySource,
       source: 'worker_tool_policy',
     }, policyDecision.reason)
+    if (policyDecision.reason === 'approval_required' && auth.maySuspendForApproval && auth.resumeState) {
+      const approval = await createToolApprovalRequest(prisma, {
+        actorContext: auth.resumeState.actorContext,
+        approvalActionType: policyDecision.approvalActionType,
+        args,
+        context,
+        policyRuleId: policyDecision.policyRuleId,
+        toolCallId,
+        toolName,
+        interactive: auth.resumeState.interactive,
+        messageId: auth.resumeState.messageId,
+      })
+      return { decision: 'suspend', approval: { id: approval.id, toolName } }
+    }
     return {
       decision: 'deny',
       result: toolDeniedResult(toolName, args, {
@@ -177,4 +208,75 @@ export const authorizeToolExecution = async (
   }
 
   return { decision: 'allow', toolActorContext }
+}
+
+const DEFAULT_APPROVAL_EXPIRY_MS = 30 * 60 * 1000
+
+/**
+ * The partial `(run_id, tool_call_id)` unique index is the crash-redelivery
+ * boundary. Prisma cannot name a partial unique selector, so look up first and
+ * re-read after a unique-conflict race.
+ */
+const createToolApprovalRequest = async (
+  prisma: PrismaClient,
+  input: {
+    actorContext: AuthorizedActionContext
+    approvalActionType?: string
+    args: Record<string, unknown>
+    context: RunContext
+    interactive: boolean
+    messageId: string
+    policyRuleId?: string
+    toolCallId: string
+    toolName: string
+  },
+): Promise<{ id: string }> => {
+  const existing = await prisma.approvalRequest.findFirst({
+    where: { runId: input.context.run.id, toolCallId: input.toolCallId },
+    select: { id: true },
+  })
+  if (existing) return existing
+
+  const data = {
+    action: 'tool.invoke',
+    agentId: input.context.agent.id,
+    argsHash: hashJsonValue(input.args),
+    channelId: input.context.channel.id,
+    context: {
+      approvalActionType: input.approvalActionType ?? null,
+      inputSummary: summarizeToolInput(input.args),
+      policyRuleId: input.policyRuleId ?? null,
+      toolName: input.toolName,
+    } as Prisma.InputJsonValue,
+    continuationToken: randomUUID(),
+    expiresAt: new Date(Date.now() + DEFAULT_APPROVAL_EXPIRY_MS),
+    organizationId: input.context.channel.organizationId,
+    projectId: input.context.channel.projectId,
+    reason: `Tool ${input.toolName} requires approval before it can run.`,
+    requesterId: input.context.agent.id,
+    resumeState: {
+      actorContext: input.actorContext,
+      args: input.args,
+      interactive: input.interactive,
+      messageId: input.messageId,
+    } as Prisma.InputJsonValue,
+    runId: input.context.run.id,
+    taskId: input.context.task.id,
+    teamId: input.context.channel.teamId,
+    toolCallId: input.toolCallId,
+    toolName: input.toolName,
+  }
+  try {
+    return await prisma.approvalRequest.create({ data, select: { id: true } })
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+      throw error
+    }
+    const raced = await prisma.approvalRequest.findFirst({
+      where: { runId: input.context.run.id, toolCallId: input.toolCallId },
+      select: { id: true },
+    })
+    if (!raced) throw error
+    return raced
+  }
 }

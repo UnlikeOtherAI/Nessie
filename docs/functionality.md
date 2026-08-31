@@ -246,7 +246,26 @@ Root app layout:
   before adoption moves its trigger to the existing owner-alerted `error`
   health state exactly once.
 
-### 2.0d Channel scopes
+### 2.0d Policy-gated tool approvals
+
+- A `requiresApproval` tool policy is a true execution pause, not a model-visible
+  denial. The worker creates one approval request per `(runId, toolCallId)`,
+  checkpoints the run with `reason: 'approval_required'`, stamps its
+  disclosure basis on the waiting notice, and transitions the run, task, and
+  agent to `waiting_approval`, `awaiting_approval`, and `waiting_approval`.
+- Approving creates exactly one continuation run through the same
+  claim-once checkpoint pattern as manual continuation. The continuation
+  restores the original actor context and can dispatch only the approved tool
+  with the approved canonical arguments: the opaque continuation token is
+  verified against its approval row, organization, direct run lineage, tool
+  name, and argument hash, then consumed at dispatch. The token and the full
+  resume state are server-only and never appear in approval responses.
+- Rejecting, expiry, and cancellation terminalize the waiting run, update the
+  durable approval-gate notice, leave the checkpoint unconsumed for an
+  ordinary follow-up, and release the thread slot. Review-model triage remains
+  a later phase; this path is human approval only.
+
+### 2.0e Channel scopes
 
 - A channel belongs either to a visible project or to the organisation's
   standalone **Channels** section. Project channels always render beneath their

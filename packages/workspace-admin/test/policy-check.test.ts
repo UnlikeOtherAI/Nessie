@@ -82,10 +82,10 @@ type Case = {
   worker: Expectation
 }
 
-// Worker options as `evaluateToolInvokePolicy` passes them; `approvalProof`
-// is overridden per-case where the scenario carries a proof.
+// Worker options as `evaluateToolInvokePolicy` passes them. The worker may set
+// `approvalSatisfied` only after it has verified and claimed a stored proof.
 const workerOptions = (overrides: PolicyEvaluationOptions = {}): PolicyEvaluationOptions => ({
-  approvalProof: null,
+  approvalSatisfied: false,
   defaultVerdict: 'allow',
   ...overrides,
 })
@@ -314,7 +314,7 @@ const cases: Case[] = [
     },
   },
   {
-    name: 'requiresApproval satisfied by a proof in worker mode',
+    name: 'requiresApproval is satisfied only by a verified approval signal',
     rules: [
       rule({
         id: 'rule-approval',
@@ -322,7 +322,7 @@ const cases: Case[] = [
         effect: 'allow',
       }),
     ],
-    options: { approvalProof: 'proof-token' },
+    options: { approvalSatisfied: true },
     api: {
       allowed: true,
       policyRuleId: 'rule-approval',
