@@ -1,4 +1,5 @@
 export * from './catalog.js'
 export * from './connectors.js'
+export * from './prompt-cache.js'
 export * from './service.js'
 export * from './types.js'
