@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { visibleKnowledgeSpaceWhere } from '@nessie/db'
 import type { PushSurface } from '@nessie/schemas'
 import {
   AUTH_LOCK_TRANSACTION_OPTIONS,
@@ -76,17 +77,7 @@ const resolveRecordableSurface = async (
     const space = await prisma.knowledgeSpace.findFirst({
       where: {
         id: input.surface.spaceId,
-        organizationId: input.organizationId,
-        deletedAt: null,
-        OR: [
-          { createdBy: input.userId },
-          { members: { some: { userId: input.userId } } },
-          { visibility: 'organization' },
-          {
-            visibility: 'project',
-            project: { members: { some: { userId: input.userId } } },
-          },
-        ],
+        ...visibleKnowledgeSpaceWhere(input),
       },
       select: { id: true },
     })

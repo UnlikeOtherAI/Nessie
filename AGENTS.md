@@ -227,9 +227,10 @@ Every change must keep documentation and stated goals in sync with the code. Thi
   system-managed and org-less agents (the PA is one org-singleton row serving
   everyone). The FK proves the membership row *exists*, never that it is live:
   deactivated rows are retained deliberately, so **every read re-derives
-  `deactivatedAt: null`**. One predicate, `buildOwnedAgentWhere`, is shared by
-  `listAgentsForUser` and `isAgentVisibleToUser` so list and detail cannot
-  disagree, and both of its conditions are load-bearing — the live-membership
+  `deactivatedAt: null`**. One predicate, `buildVisibleAgentWhere`, is shared by
+  `listAgentsForUser`, `isAgentVisibleToUser`, and every access rule that derives
+  a human audience from an agent, so list, detail, and derived access cannot
+  disagree. Its stewardship arm's conditions are load-bearing — the live-membership
   join (the branch widens by pointer equality, so without it a deactivated
   member keeps seeing their agents) and `parentAgentId: null` (else owning one
   agent pours every unreaped `spawn_subtask` child into that list forever).

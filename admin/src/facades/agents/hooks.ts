@@ -3,6 +3,7 @@ export { patchAgentStatusRecord } from './keys'
 export {
   useAgentActivity,
   useAgentChildren,
+  useAgentDocuments,
   useAgentMessages,
   useAgentModelOptions,
   useAgents,

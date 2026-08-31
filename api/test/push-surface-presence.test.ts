@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { visibleKnowledgeSpaceWhere } from '@nessie/db'
 import { PushSurfaceSchema } from '@nessie/schemas'
 
 import {
@@ -18,6 +19,7 @@ const projectId = '00000000-0000-4000-8000-000000000007'
 const sessionId = '00000000-0000-4000-8000-000000000006'
 const threadId = '00000000-0000-4000-8000-000000000008'
 const rootMessageId = '00000000-0000-4000-8000-000000000010'
+const knowledgeSpaceId = '00000000-0000-4000-8000-000000000011'
 
 // Model Postgres `INSERT ... ON CONFLICT (user_id, client_id) DO UPDATE ...
 // WHERE existing.heartbeat_sequence <= EXCLUDED.heartbeat_sequence`. The row is
@@ -254,6 +256,62 @@ test('clears the Ops usage surface for a non-owner', async () => {
   const created = rows.get(`${userId}:${tabletClientId}`)
   assert.equal(created?.surfaceKind, null)
   assert.equal(created?.channelId, null)
+})
+
+test('records an agent-owned knowledge space for a viewer who can see its owning agent', async () => {
+  const rows = new Map<string, Record<string, unknown>>()
+  let knowledgeSpaceWhere: unknown
+  const prisma = withSession({
+    knowledgeSpace: {
+      findFirst: async ({ where }: { where: unknown }) => {
+        knowledgeSpaceWhere = where
+        return { id: knowledgeSpaceId }
+      },
+    },
+  }, rows)
+
+  await recordPushSurfacePresence(prisma as never, {
+    clientId: phoneClientId,
+    organizationId,
+    sequence: 1n,
+    sessionId,
+    surface: PushSurfaceSchema.parse({ kind: 'knowledge_space', spaceId: knowledgeSpaceId }),
+    userId,
+  })
+
+  assert.deepEqual(knowledgeSpaceWhere, {
+    id: knowledgeSpaceId,
+    ...visibleKnowledgeSpaceWhere({ organizationId, userId }),
+  })
+  assert.equal(rows.get(`${userId}:${phoneClientId}`)?.knowledgeSpaceId, knowledgeSpaceId)
+})
+
+test('clears an agent-owned knowledge space for a viewer who cannot see its owning agent', async () => {
+  const rows = new Map<string, Record<string, unknown>>()
+  let knowledgeSpaceWhere: unknown
+  const prisma = withSession({
+    knowledgeSpace: {
+      findFirst: async ({ where }: { where: unknown }) => {
+        knowledgeSpaceWhere = where
+        return null
+      },
+    },
+  }, rows)
+
+  await recordPushSurfacePresence(prisma as never, {
+    clientId: phoneClientId,
+    organizationId,
+    sequence: 1n,
+    sessionId,
+    surface: PushSurfaceSchema.parse({ kind: 'knowledge_space', spaceId: knowledgeSpaceId }),
+    userId,
+  })
+
+  assert.deepEqual(knowledgeSpaceWhere, {
+    id: knowledgeSpaceId,
+    ...visibleKnowledgeSpaceWhere({ organizationId, userId }),
+  })
+  assert.equal(rows.get(`${userId}:${phoneClientId}`)?.surfaceKind, null)
 })
 
 test('does not let a delayed foreground heartbeat overwrite a newer background signal', async () => {

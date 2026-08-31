@@ -51,6 +51,7 @@ import {
   sendProtectedPolicyError,
 } from './agent-route-errors.js'
 import type { RouteDeps } from './types.js'
+import { registerAgentDocumentRoutes } from './agent-documents.js'
 
 const validateAgentAvatarAttachment = async (input: {
   actorContext: NonNullable<ReturnType<RouteDeps['requireActorContext']>>
@@ -88,6 +89,8 @@ export const registerAgentRoutes = (app: FastifyInstance, deps: RouteDeps): void
     isAgentAccessibleToActor,
     createAgentVisibilityScope,
   } = deps
+
+  registerAgentDocumentRoutes(app, deps)
 
   app.get('/api/agents', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

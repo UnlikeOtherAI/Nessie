@@ -122,6 +122,53 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
   const createPageCalls: Array<Record<string, unknown>> = []
   const createVersionCalls: Array<Record<string, unknown>> = []
   const prisma = {
+    agent: {
+      findFirst: async (args: {
+        where: { id: string; organizationId: string }
+      }) => {
+        const agent = agents.find(
+          (candidate) => candidate.id === args.where.id && candidate.organizationId === args.where.organizationId,
+        )
+        if (!agent) return null
+        return {
+          parentAgentId: agent.parentAgentId,
+          bindings: [{
+            channelId: 'channel-1',
+            channel: { teamId: 'team-1', projectId: 'project-1' },
+          }],
+          knowledgeSpaceMemberships: [],
+        }
+      },
+      findMany: async (args: {
+        select: { id?: boolean }
+        where: {
+          organizationId?: string
+          systemManaged?: boolean
+          OR?: Array<{
+            ownerMembership?: { deactivatedAt?: null }
+            ownerUserId?: string
+            parentAgentId?: null
+          }>
+        }
+      }) => {
+        const ownerFilters = args.where.OR?.filter(
+          (candidate) => candidate.ownerUserId !== undefined,
+        ) ?? []
+        return agents
+          .filter(
+            (agent) =>
+              agent.organizationId === args.where.organizationId
+              && (args.where.systemManaged === undefined || agent.systemManaged === args.where.systemManaged)
+              && ownerFilters.some(
+                (filter) =>
+                  agent.ownerUserId === filter.ownerUserId
+                  && (!filter.ownerMembership || agent.ownerMembershipActive)
+                  && (filter.parentAgentId === undefined || agent.parentAgentId === filter.parentAgentId),
+              ),
+          )
+          .map((agent) => ({ ...(args.select.id ? { id: agent.id } : {}) }))
+      },
+    },
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
@@ -154,64 +201,8 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
     },
-    agent: {
-      findFirst: async (args: {
-        select: { parentAgentId?: boolean }
-        where: { id?: string; organizationId?: string }
-      }) => {
-        const agent = agents.find(
-          (candidate) =>
-            candidate.id === args.where.id
-            && candidate.organizationId === args.where.organizationId,
-        )
-        if (!agent) return null
-        return {
-          ...(args.select.parentAgentId ? { parentAgentId: agent.parentAgentId } : {}),
-        }
-      },
-      findMany: async (args: {
-        select: { id?: boolean }
-        where: {
-          organizationId?: string
-          systemManaged?: boolean
-          OR?: Array<{
-            ownerMembership?: { deactivatedAt?: null }
-            ownerUserId?: string
-            parentAgentId?: null
-          }>
-        }
-      }) => {
-        const ownerFilters = args.where.OR?.filter(
-          (candidate) => candidate.ownerUserId !== undefined,
-        ) ?? []
-        return agents
-          .filter(
-            (agent) =>
-              agent.organizationId === args.where.organizationId
-              && (args.where.systemManaged === undefined
-                || agent.systemManaged === args.where.systemManaged)
-              && ownerFilters.some(
-                (filter) =>
-                  agent.ownerUserId === filter.ownerUserId
-                  && (!filter.ownerMembership || agent.ownerMembershipActive)
-                  && (filter.parentAgentId === undefined
-                    || agent.parentAgentId === filter.parentAgentId),
-              ),
-          )
-          .map((agent) => ({ ...(args.select.id ? { id: agent.id } : {}) }))
-      },
-    },
-    agentBinding: {
-      // The agent is org-bound in every fixture below, so org-visibility
-      // spaces are always in reach — the tests isolate the write-gate under
-      // test, not read-reach.
-      findMany: async () => [{ channelId: 'channel-1', channel: { teamId: 'team-1', projectId: 'project-1' } }],
-    },
     projectMember: {
       findMany: async () => [{ projectId: 'project-1' }],
-    },
-    knowledgeSpaceMember: {
-      findMany: async () => [],
     },
     approvalRequest: {
       findMany: async () => options.pendingApprovals ?? [],

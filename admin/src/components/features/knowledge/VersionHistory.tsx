@@ -6,6 +6,7 @@ import type {
 } from '../../../facades/knowledge/hooks'
 
 type VersionHistoryProps = {
+  canRestore: boolean
   onRestore: (versionId: string) => void
   page: KnowledgePageRecord
   pending?: boolean
@@ -46,6 +47,7 @@ const lineTone: Record<DiffLine['state'], string> = {
 }
 
 export const VersionHistory = ({
+  canRestore,
   onRestore,
   page,
   pending,
@@ -94,14 +96,16 @@ export const VersionHistory = ({
             {selectedVersion.changeComment ? (
               <div className="mt-2">{selectedVersion.changeComment}</div>
             ) : null}
-            <button
-              className="admin-button admin-button-secondary mt-3"
-              disabled={pending || selectedVersion.id === page.latestVersion?.id}
-              onClick={() => onRestore(selectedVersion.id)}
-              type="button"
-            >
-              Restore as new version
-            </button>
+            {canRestore ? (
+              <button
+                className="admin-button admin-button-secondary mt-3"
+                disabled={pending || selectedVersion.id === page.latestVersion?.id}
+                onClick={() => onRestore(selectedVersion.id)}
+                type="button"
+              >
+                Restore as new version
+              </button>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-4">
             <div className="grid min-w-[520px] grid-cols-2 overflow-hidden rounded border border-[color:var(--sep)]">

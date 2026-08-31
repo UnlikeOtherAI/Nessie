@@ -47,9 +47,9 @@ export const getChannelIfMember = async (
 
 /**
  * An agent is visible to a user through any channel that user can see it bound
- * to — or because that user stewards it. The shared DB where-builder also
- * drives `listAgentsForUser` and agent-owned KB access, so all three surfaces
- * answer from one definition.
+ * to — or because that user stewards it. Both this per-agent gate and the list
+ * compose `@nessie/db`'s one fragment, so derived access (including agent
+ * documents) cannot drift from the owning surface.
  */
 export const isAgentVisibleToUser = async (
   prisma: PrismaClient,

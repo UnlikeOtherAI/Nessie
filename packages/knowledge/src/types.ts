@@ -61,10 +61,13 @@ export type KnowledgePageVersionRecord = {
 
 export type KnowledgeSpaceRecord = KnowledgeScopeInput & {
   id: string
-  ownerAgentId: string | null
   name: string
   description: string | null
   metadata: Record<string, unknown> | null
+  // Output-only ownership fact. It is deliberately absent from
+  // KnowledgeScopeInput/CreateSpaceInput: only the dedicated provisioner may
+  // mint an agent-owned space (docs/plans/2026-08-31-agent-documents.md §2.1).
+  ownerAgentId: string | null
   writeRestricted: boolean
   memberUserIds: string[]
   memberAgentIds: string[]

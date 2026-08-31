@@ -11,8 +11,8 @@ const userId = '00000000-0000-4000-8000-000000000002'
 const viewer = (overrides: Partial<SpaceViewer> = {}): SpaceViewer => ({
   bypass: false,
   projectIds: new Set(),
-  userId,
   visibleAgentIds: new Set(),
+  userId,
   ...overrides,
 })
 
@@ -44,8 +44,8 @@ test('searchNativePages skips the space pre-filter for a bypass viewer', async (
     viewer: {
       bypass: true,
       projectIds: new Set(),
-      userId: null,
-      visibleAgentIds: new Set(),
+  visibleAgentIds: new Set(),
+  userId: null,
     },
   })
 

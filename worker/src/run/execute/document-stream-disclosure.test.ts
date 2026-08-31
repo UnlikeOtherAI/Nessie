@@ -44,6 +44,7 @@ const contextWith = (
     systemChannelType: null,
     teamId: TEAM_ID,
   },
+  boundAgentIds: [],
   consumedSources,
 } as unknown as RunContext)
 
@@ -379,6 +380,7 @@ test('a private base document restricts an edit before its seed is durable or an
       [{
         channelId: null,
         organizationId: ORGANIZATION_ID,
+        ownerAgentId: null,
         projectId: PROJECT_ID,
         teamId: null,
         userId: '00000000-0000-4000-8000-0000000000b1',

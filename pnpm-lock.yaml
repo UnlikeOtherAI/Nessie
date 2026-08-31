@@ -654,6 +654,9 @@ importers:
       '@hyzyla/pdfium':
         specifier: ^2.1.13
         version: 2.1.13
+      '@nessie/db':
+        specifier: workspace:*
+        version: link:../db
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../schemas

@@ -96,7 +96,7 @@ export const runSpawnSubtaskTool = async (
         // A subtask child answers to the same person as its parent, so spend
         // and activity stay attributable. It is still kept out of every
         // ownership-derived list by `parentAgentId` — these are run workers,
-        // not staff (see buildOwnedAgentWhere).
+        // not staff (see buildVisibleAgentWhere's stewardship arm).
         ownerUserId: parentAgent.ownerUserId,
         parentAgentId: parentAgent.id,
         provider: parentAgent.provider,

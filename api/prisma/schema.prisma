@@ -1836,7 +1836,7 @@ model MessageBasisScope {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   messageId      String       @map("message_id") @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
-  /// ThoughtAudienceType literal: user | channel | team | project | organization
+  /// Disclosure scope: user | channel | team | project | organization | agent
   scopeType      String       @map("scope_type")
   scopeId        String       @map("scope_id") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -1910,6 +1910,7 @@ model RunBasisScope {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   runId          String       @map("run_id") @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
+  /// Disclosure scope: user | channel | team | project | organization | agent
   scopeType      String       @map("scope_type")
   scopeId        String       @map("scope_id") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at")

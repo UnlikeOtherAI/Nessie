@@ -41,26 +41,31 @@ export const listAgentsForUser = async (
     organizationId,
     userId,
   })
-  const visibilityFilters: Prisma.AgentWhereInput[] = [
-    buildVisibleAgentWhere({ organizationId, userId }),
-  ]
+  const sharedVisibilityWhere = buildVisibleAgentWhere({ organizationId, userId })
+  const sharedVisibilityFilters = Array.isArray(sharedVisibilityWhere.OR)
+    ? sharedVisibilityWhere.OR
+    : [sharedVisibilityWhere]
+  const visibilityFilters: Prisma.AgentWhereInput[] = includeSystemManaged
+    ? [{ systemManaged: false, OR: sharedVisibilityFilters }]
+    : [...sharedVisibilityFilters]
 
   if (includeUnbound) {
-    // The owner-only list override intentionally widens beyond the ordinary
-    // shared predicate. It preserves the existing all-agent view without
-    // teaching the reusable entitlement rule about caller roles.
-    visibilityFilters.push({
-      organizationId,
-      ...(includeSystemManaged ? {} : { systemManaged: false }),
-    })
+    // Organization owners deliberately widen the ordinary entitlement to every
+    // agent in the tenant, including private-channel and unbound agents. This
+    // remains an additional route-only arm, not part of the shared member rule.
+    visibilityFilters.push(
+      { bindings: { some: { channel: { organizationId } } } },
+      { bindings: { none: {} } },
+    )
   } else if (includeSystemManaged) {
-    // System-managed agents are an opt-in presentation tier, not part of the
-    // ordinary agent visibility rule. They remain reachable only through a
-    // channel this caller can see.
+    // System agents are a read-only Agents-page tier. They remain outside the
+    // shared non-system predicate and inherit the page's existing channel gate.
     visibilityFilters.push({
-      bindings: { some: { channel: visibleChannelWhere } },
       organizationId,
       systemManaged: true,
+      bindings: {
+        some: { channel: visibleChannelWhere },
+      },
     })
   }
 

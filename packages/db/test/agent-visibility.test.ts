@@ -12,7 +12,7 @@ const organizationId = '00000000-0000-4000-8000-000000000001'
 const userId = '00000000-0000-4000-8000-000000000002'
 const agentId = '00000000-0000-4000-8000-000000000003'
 
-test('buildVisibleAgentWhere owns the channel and live-steward visibility rule', () => {
+test('buildVisibleAgentWhere centralizes channel reach and live stewardship', () => {
   assert.deepEqual(buildVisibleAgentWhere({ organizationId, userId }), {
     organizationId,
     systemManaged: false,
@@ -39,23 +39,23 @@ test('buildVisibleAgentWhere owns the channel and live-steward visibility rule',
   })
 })
 
-test('listVisibleAgentIdsForUser resolves ids with the shared where fragment', async () => {
-  let received: unknown
+test('listVisibleAgentIdsForUser returns ids from the shared where fragment', async () => {
+  const calls: unknown[] = []
   const prisma = {
     agent: {
       findMany: async (args: unknown) => {
-        received = args
-        return [{ id: agentId }]
+        calls.push(args)
+        return [{ id: 'agent-1' }, { id: 'agent-2' }]
       },
     },
   } as unknown as PrismaClient
 
   assert.deepEqual(
     await listVisibleAgentIdsForUser(prisma, { organizationId, userId }),
-    [agentId],
+    ['agent-1', 'agent-2'],
   )
-  assert.deepEqual(received, {
-    where: buildVisibleAgentWhere({ organizationId, userId }),
+  assert.deepEqual(calls, [{
     select: { id: true },
-  })
+    where: buildVisibleAgentWhere({ organizationId, userId }),
+  }])
 })

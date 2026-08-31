@@ -73,6 +73,12 @@ export type RunContext = {
     dmKey?: string | null
   }
   /**
+   * Agent audiences every reader of the reply channel already satisfies.
+   * Loaded once with the run context so the per-delta disclosure gate stays
+   * synchronous and monotone.
+   */
+  boundAgentIds: readonly string[]
+  /**
    * Scoped sources this run has consumed, accumulated as they arrive (memories
    * at setup, knowledge-base pages from tool handlers, transcript turns as the
    * window is admitted). Everything the run materialises is stamped from this.

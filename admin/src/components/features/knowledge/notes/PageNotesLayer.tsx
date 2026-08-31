@@ -29,10 +29,12 @@ type PendingNote = { anchor: TextQuoteAnchor; at: SelectionPoint }
 // note, and shows a floating card on the right for the hovered note (with its
 // replies).
 export const PageNotesLayer = ({
+  canWrite,
   pageId,
   body,
   versionId,
 }: {
+  canWrite: boolean
   pageId: string
   body: string
   versionId: string | null
@@ -93,6 +95,7 @@ export const PageNotesLayer = ({
   return (
     <div className="mt-6">
       <RichTextContent
+        canCreate={canWrite}
         html={body}
         notes={noteInputs}
         onNoteHover={(id) => {
@@ -100,6 +103,7 @@ export const PageNotesLayer = ({
           setPending(null)
         }}
         onSelectNote={(anchor, at) => {
+          if (!canWrite) return
           setPending({ anchor, at })
           setActiveNoteId(null)
           setComposing(false)
@@ -179,6 +183,7 @@ export const PageNotesLayer = ({
             actions={actions}
             annotation={activeNote}
             authorLabel={authorLabel}
+            canResolve={canWrite}
             currentUserId={me?.user.id}
             showAnchorQuote
           />

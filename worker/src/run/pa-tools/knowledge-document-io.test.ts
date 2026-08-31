@@ -26,6 +26,7 @@ test('a markdown read records its space scope before attachment bytes enter the 
         space: {
           channelId: null,
           organizationId: ORGANIZATION_ID,
+          ownerAgentId: null,
           projectId: PROJECT_ID,
           teamId: null,
           userId: USER_ID,

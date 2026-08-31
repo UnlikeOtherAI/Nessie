@@ -3,6 +3,7 @@ import type {
   AgentModelOption,
   AgentActivityResponse,
   AgentChild,
+  AgentDocumentsResponse,
   AgentMessage,
   AgentStatusResponse,
   ToolCallEntry,
@@ -91,6 +92,16 @@ export const useAgentChildren = (agentId?: string) => {
   return useQuery<AgentChild[]>({
     queryKey: agentKeys.children(agentId),
     queryFn: () => apiClient.get(`/api/agents/${agentId}/children`),
+    enabled: Boolean(agentId),
+  })
+}
+
+export const useAgentDocuments = (agentId?: string) => {
+  const apiClient = useApiClient()
+
+  return useQuery<AgentDocumentsResponse>({
+    queryKey: agentKeys.documents(agentId),
+    queryFn: () => apiClient.get(`/api/agents/${agentId}/docs`),
     enabled: Boolean(agentId),
   })
 }

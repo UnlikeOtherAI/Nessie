@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
+import { computeReplyBasis, createConsumedSourceSink } from '../execute/disclosure-basis.js'
 import {
   clampKbSearchLimit,
   runKbListTool,
@@ -65,6 +66,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
 
 type SpaceFixtureOverrides = Partial<{
   id: string
+  userId: string | null
   visibility: 'private' | 'channel' | 'team' | 'project' | 'organization'
   teamId: string | null
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
@@ -83,7 +85,7 @@ const buildSpaceRow = (overrides: SpaceFixtureOverrides = {}) => ({
   teamId: overrides.teamId ?? null,
   channelId: null,
   threadId: null,
-  userId: null,
+  userId: overrides.userId ?? null,
   visibility: overrides.visibility ?? 'organization',
   sensitivityTier: overrides.sensitivityTier ?? 'normal',
   privateToAgentId: null,
@@ -100,6 +102,7 @@ type FakePrismaOptions = {
   agents?: Array<{ id: string; organizationId: string; parentAgentId: string | null }>
   agentBindings?: Array<{ channelId: string; channel: { teamId: string; projectId: string } }>
   agentSpaceMemberships?: Array<{ spaceId: string }>
+  parentAgentId?: string | null
   onQueryRaw?: (query: { sql: string }) => void
 }
 
@@ -108,6 +111,23 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     { id: 'agent-1', organizationId: 'org-1', parentAgentId: null },
   ]
   const prisma = {
+    agent: {
+      findFirst: async (args: {
+        where: { id: string; organizationId: string }
+      }) => {
+        const agent = agents.find(
+          (candidate) => candidate.id === args.where.id && candidate.organizationId === args.where.organizationId,
+        )
+        if (!agent) return null
+        return {
+          parentAgentId: agent.parentAgentId,
+          bindings: options.agentBindings ?? [],
+          knowledgeSpaceMemberships: options.agentSpaceMemberships ?? [],
+        }
+      },
+      findMany: async () => [],
+    },
+    projectMember: { findMany: async () => [] },
     knowledgePage: {
       findFirst: async () => options.page ?? null,
       findMany: async () => (options.page ? [options.page] : []),
@@ -115,28 +135,6 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
     knowledgeSpace: {
       findFirst: async () => options.space ?? null,
       findMany: async () => (options.space ? [options.space] : []),
-    },
-    agent: {
-      findFirst: async (args: {
-        select: { parentAgentId?: boolean }
-        where: { id?: string; organizationId?: string }
-      }) => {
-        const agent = agents.find(
-          (candidate) =>
-            candidate.id === args.where.id
-            && candidate.organizationId === args.where.organizationId,
-        )
-        if (!agent) return null
-        return {
-          ...(args.select.parentAgentId ? { parentAgentId: agent.parentAgentId } : {}),
-        }
-      },
-    },
-    agentBinding: {
-      findMany: async () => options.agentBindings ?? [],
-    },
-    knowledgeSpaceMember: {
-      findMany: async () => options.agentSpaceMemberships ?? [],
     },
     $queryRaw: async (query: { sql: string }) => {
       options.onQueryRaw?.(query)
@@ -344,4 +342,29 @@ test('kb_list denies access to a space the agent cannot read', async () => {
 
   assert.equal(result.toolName, 'kb_list')
   assert.equal(result.outputPreview, 'You do not have access to this knowledge space.')
+})
+
+test('a bare kb_list catalogue leaves a following shared-channel reply unrestricted', async () => {
+  const consumedSources = createConsumedSourceSink()
+  const space = buildSpaceRow({ userId: 'user-1', visibility: 'private' })
+  const prisma = buildFakePrisma({ space })
+  const context = makeContext(prisma, {
+    actorContext: {
+      actor: { actorId: 'user-1', actorType: 'user', roles: [] },
+      actionContext: {},
+      tenant: { organizationId: 'org-1' },
+    } as unknown as BuiltinToolRuntimeContext['actorContext'],
+    consumedSources,
+  })
+
+  const result = await runKbListTool(context, {})
+
+  assert.match(result.outputPreview, /Engineering/)
+  assert.deepEqual(consumedSources.list(), [])
+  assert.deepEqual(computeReplyBasis(consumedSources.list(), {
+    channelId: 'channel-1',
+    organizationId: 'org-1',
+    projectId: 'project-1',
+    teamId: 'team-1',
+  }, ['agent-1']), [])
 })

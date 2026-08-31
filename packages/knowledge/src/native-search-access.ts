@@ -4,10 +4,10 @@ import type { SpaceViewer, SpaceViewerAgentScopes } from './access.js'
 // Builds the same read-access rule as `canReadSpace` (access.ts), but as a SQL
 // subquery so chunk/page search candidates can be scoped in the database
 // instead of being fetched and filtered in app code. Keep the two in lockstep:
-// explicit membership OR agent-owned-space visibility OR, for ordinary spaces,
-// creator / organization / project visibility. Bypass viewers (service actors)
-// skip this filter entirely at the call site — never call this for a bypass
-// viewer, since there is no userId to scope by.
+// agent-owned (visible agent OR explicit space membership), without falling
+// through to the ordinary creator / organization / project / member arms.
+// Bypass viewers (service actors) skip this filter entirely at the call site —
+// never call this for a bypass viewer, since there is no userId to scope by.
 export const readableSpaceIdsSql = (
   organizationId: string,
   viewer: SpaceViewer,
@@ -24,23 +24,21 @@ export const readableSpaceIdsSql = (
     WHERE s.deleted_at IS NULL
       AND s.organization_id = ${organizationId}::uuid
       AND (
-        EXISTS (
-          SELECT 1 FROM knowledge_space_members m
-          WHERE m.space_id = s.id AND m.user_id = ${userId}::uuid
+        (
+          s.owner_agent_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM knowledge_space_members m
+            WHERE m.space_id = s.id AND m.user_id = ${userId}::uuid
+          )
         )
         ${visibleAgentIds.length > 0
           ? Prisma.sql`
             OR (
-              -- Agent visibility was resolved once by loadUserViewer; do not
-              -- restate it here (docs/plans/2026-08-31-agent-documents.md §4.1).
               s.owner_agent_id IS NOT NULL
               AND s.owner_agent_id = ANY(${visibleAgentIds}::uuid[])
             )`
           : Prisma.empty}
         OR (
-          -- Agent-owned spaces must not fall through to ordinary KB
-          -- visibility; their stored private visibility is only a fail-closed
-          -- floor (docs/plans/2026-08-31-agent-documents.md §4.1).
           s.owner_agent_id IS NULL
           AND (
             s.created_by = ${userId}
@@ -52,6 +50,10 @@ export const readableSpaceIdsSql = (
                   AND s.project_id IN (${Prisma.join(projectIds.map((id) => Prisma.sql`${id}::uuid`))})
                 )`
               : Prisma.empty}
+            OR EXISTS (
+              SELECT 1 FROM knowledge_space_members m
+              WHERE m.space_id = s.id AND m.user_id = ${userId}::uuid
+            )
           )
         )
       )
@@ -77,10 +79,9 @@ const scopedVisibilityArm = (
 }
 
 // Mirrors `canReadSpace`'s agent arm exactly: restricted spaces are excluded
-// outright, then privateToAgentId / creator / explicit member / docs proprietor
+// outright, then privateToAgentId / creator / explicit member / owner-or-parent
 // grants, then visibility-scoped reach (organization / project / team /
-// channel). `private` visibility has no other agent arm, matching the app-level
-// rule.
+// channel). `private` visibility has no reach arm, matching the app-level rule.
 export const readableSpaceIdsSqlForAgent = (
   organizationId: string,
   agent: SpaceViewerAgentScopes,
@@ -94,14 +95,11 @@ export const readableSpaceIdsSqlForAgent = (
       AND s.organization_id = ${organizationId}::uuid
       AND s.sensitivity_tier <> 'restricted'::"SensitivityTier"
       AND (
-        (
-          -- A subtask child shares its parent's documents home instead of
-          -- minting a second one (docs/plans/2026-08-31-agent-documents.md §4.1).
-          s.owner_agent_id IS NOT NULL
-          AND s.owner_agent_id = ANY(${ownerAgentIds}::uuid[])
-        )
-        OR s.private_to_agent_id = ${agent.id}::uuid
+        s.private_to_agent_id = ${agent.id}::uuid
         OR s.created_by = ${agent.id}
+        -- The owning agent and a spawn_subtask child share the parent's home;
+        -- see docs/plans/2026-08-31-agent-documents.md §4.1.
+        OR s.owner_agent_id = ANY(${ownerAgentIds}::uuid[])
         ${memberSpaceIds.length > 0
           ? Prisma.sql`OR s.id IN (${Prisma.join(memberSpaceIds.map((id) => Prisma.sql`${id}::uuid`))})`
           : Prisma.empty}

@@ -62,6 +62,13 @@ export type { ChunkKnowledgePageBodyOptions, KnowledgePageChunkDraft } from './c
 export { replaceKnowledgePageVersionChunks } from './native-chunks.js'
 export type { ChunkablePage } from './native-chunks.js'
 export {
+  ensureAgentDocsSpace,
+  ensureMyDocsSpace,
+  ensureProjectDocumentsSpace,
+  ensureTaskFolder,
+} from './provisioning.js'
+export type { EnsureSpaceResult, TaskFolderTask } from './provisioning.js'
+export {
   KnowledgeInferenceOriginError,
   requirePersistedKnowledgeOrigin,
   resolvePersistedKnowledgeOrigin,
