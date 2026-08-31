@@ -5,6 +5,9 @@ import type { DevicePushToken } from 'expo-notifications'
 import { Platform } from 'react-native'
 import { pathFromNotificationResponse } from './push-response'
 
+const CALL_PUSH_CATEGORY = 'incoming-calls'
+const CALL_PUSH_PROTOCOL_VERSION = '1'
+
 export type NativePushRegistration = {
   platform: 'ios' | 'android'
   token: string
@@ -29,13 +32,27 @@ const nativePlatform = (): NativePushRegistration['platform'] | null => {
 
 const configureAndroidPushChannel = async (): Promise<void> => {
   if (Platform.OS !== 'android') return
-  await Notifications.setNotificationChannelAsync('nessie-messages', {
-    name: 'Messages',
-    importance: Notifications.AndroidImportance.HIGH,
-    sound: 'default',
-    showBadge: true,
-    vibrationPattern: [0, 250, 250, 250],
-  })
+  await Promise.all([
+    Notifications.setNotificationChannelAsync('nessie-messages', {
+      name: 'Messages',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      showBadge: true,
+      vibrationPattern: [0, 250, 250, 250],
+    }),
+    Notifications.setNotificationChannelAsync(CALL_PUSH_CATEGORY, {
+      name: 'Incoming calls',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'default',
+      showBadge: true,
+      vibrationPattern: [0, 400, 200, 400, 200, 400],
+    }),
+  ])
+}
+
+const configureCallPushCategory = async (): Promise<void> => {
+  if (Platform.OS !== 'ios') return
+  await Notifications.setNotificationCategoryAsync(CALL_PUSH_CATEGORY, [])
 }
 
 const appVersion = (): string | undefined => {
@@ -71,7 +88,7 @@ export const getNativePushRegistration = async (): Promise<NativePushRegistratio
   const platform = nativePlatform()
   if (!platform) return null
 
-  await configureAndroidPushChannel()
+  await Promise.all([configureAndroidPushChannel(), configureCallPushCategory()])
 
   let permissions = await Notifications.getPermissionsAsync()
   if (!permissions.granted && permissions.canAskAgain) {
@@ -106,6 +123,47 @@ export const reconcileNativeAttentionPresentation = async (total: number): Promi
 /** Clear cards once the user is actively looking at Nessie, never durable state. */
 export const dismissNativeNotificationCards = async (): Promise<void> => {
   await Notifications.dismissAllNotificationsAsync()
+}
+
+const dataRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+
+const callIdFromCancellation = (value: unknown): string | null => {
+  const data = dataRecord(value)
+  return data?.version === CALL_PUSH_PROTOCOL_VERSION
+    && data.kind === 'call.cancel'
+    && typeof data.callId === 'string'
+    ? data.callId
+    : null
+}
+
+const isRingForCall = (value: unknown, callId: string): boolean => {
+  const data = dataRecord(value)
+  return data?.version === CALL_PUSH_PROTOCOL_VERSION
+    && data.kind === 'call.ring'
+    && data.callId === callId
+}
+
+/** Remove only the matching incoming-call card; message notifications remain. */
+export const dismissNativeCallNotification = async (callId: string): Promise<void> => {
+  const presented = await Notifications.getPresentedNotificationsAsync()
+  await Promise.all(
+    presented
+      .filter((notification) => isRingForCall(notification.request.content.data, callId))
+      .map((notification) => Notifications.dismissNotificationAsync(notification.request.identifier)),
+  )
+}
+
+/** A cancellation push removes its matching ring while the native shell is alive. */
+export const subscribeToCallPushCancellation = (): (() => void) => {
+  const subscription = Notifications.addNotificationReceivedListener((notification) => {
+    const callId = callIdFromCancellation(notification.request.content.data)
+    if (!callId) return
+    void dismissNativeCallNotification(callId).catch(() => undefined)
+  })
+  return () => subscription.remove()
 }
 
 /**

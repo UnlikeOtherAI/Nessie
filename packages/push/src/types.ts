@@ -46,6 +46,10 @@ export interface PushPayload {
   data?: Record<string, string>
   /** Coalescing id (APNs collapse-id / FCM collapse_key). */
   collapseId?: string
+  /** Delivery urgency, used for calls that need immediate device attention. */
+  priority?: 'normal' | 'high'
+  /** Native notification category/channel identifier. */
+  category?: string
 }
 
 /** A single device to deliver to. */

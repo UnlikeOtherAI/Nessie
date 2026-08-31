@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { ExternalAuthRouterBridge } from '../providers/ExternalAuthRouterBridge';
+import { IncomingCallProvider } from '../providers/IncomingCallProvider';
 import { NativeShellBridge } from '../providers/NativeShellBridge';
 import { ShakeFeedbackProvider } from '../providers/ShakeFeedbackContext';
 
@@ -8,8 +9,10 @@ import { ShakeFeedbackProvider } from '../providers/ShakeFeedbackContext';
 // app is on the auth gate to hide itself.
 export const RootLayout = () => (
   <ShakeFeedbackProvider>
-    <NativeShellBridge />
-    <ExternalAuthRouterBridge />
-    <Outlet />
+    <IncomingCallProvider>
+      <NativeShellBridge />
+      <ExternalAuthRouterBridge />
+      <Outlet />
+    </IncomingCallProvider>
   </ShakeFeedbackProvider>
 );

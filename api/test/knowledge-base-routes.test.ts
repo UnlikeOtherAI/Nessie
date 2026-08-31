@@ -47,6 +47,7 @@ const makeSpace = (input: Partial<KnowledgeSpaceRecord> = {}): KnowledgeSpaceRec
   writeRestricted: false,
   memberUserIds: [],
   memberAgentIds: [],
+  ownerAgentId: null,
   organizationId,
   projectId,
   teamId: null,
@@ -178,6 +179,7 @@ const makeApp = (
     projectMember: {
       findMany: async () => [{ projectId }],
     },
+    agent: { findMany: async () => [] },
     agentBinding: {
       findMany: async () => [],
     },

@@ -136,15 +136,17 @@ export const ChannelsPage = () => {
 
   const {
     activeCall,
-    activeParticipants,
-    isInCall,
-    showCallOverlay,
+    callActionError,
+    callActionPending,
+    callStarting,
+    callerDialogCall,
     onCallButton,
-    onBannerJoin,
-    onOverlayLeave,
+    onCloseCallerDialog,
+    onCloseStartCallFailure,
+    onFinishCall,
+    startCallFailureCode,
   } = useChannelCall({
     activeChannel,
-    currentUserId: me?.user.id,
     callEligible,
   })
 
@@ -202,6 +204,7 @@ export const ChannelsPage = () => {
     setOversizePaste,
     mentionRef,
     isSendPending,
+    sendError,
     attachments,
     insertEmoji,
     sendText,
@@ -358,10 +361,10 @@ export const ChannelsPage = () => {
       <ChannelConversationSurface
         activeCall={activeCall}
         activeChannel={activeChannel}
-        activeParticipants={activeParticipants}
         agentMap={agentMap}
         boundAgents={boundAgents}
         callEligible={callEligible}
+        callStarting={callStarting}
         channelLiveness={channelLiveness}
         channelUsers={channelUsers}
         chatDrop={chatDrop}
@@ -375,6 +378,7 @@ export const ChannelsPage = () => {
           invitePendingAgent,
           invitingAgentId,
           isSendPending,
+          sendError,
           mentionRef,
           message,
           optimisticMessages,
@@ -395,7 +399,6 @@ export const ChannelsPage = () => {
         feedScroll={feedScroll}
         isConversationSurface={isConversationSurface}
         isExternalAgentConversation={isExternalAgentActiveChannel}
-        isInCall={isInCall}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         joinPending={joinChannel.isPending}
         mentionEntities={mentionEntities}
@@ -431,7 +434,6 @@ export const ChannelsPage = () => {
         titleFavorite={titleFavorite}
         token={token}
         visibleActiveTab={visibleActiveTab}
-        onBannerJoin={onBannerJoin}
         onCallButton={onCallButton}
         onCreateAgent={() => void navigate('/agents/designer')}
         onJoin={() => {
@@ -457,10 +459,13 @@ export const ChannelsPage = () => {
         allUsers={allUsers}
         boundAgents={boundAgents}
         channelUsers={channelUsers}
+        callerCallActionError={callActionError}
+        callerCallActionPending={callActionPending}
+        callerDialogCall={callerDialogCall}
+        startCallFailureCode={startCallFailureCode}
         deepWaterDialog={deepWaterLauncher.dialog}
         hasRespondingAgent={hasRespondingAgent}
         isExternalAgentConversation={isExternalAgentActiveChannel}
-        isInCall={isInCall}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         me={me}
         mentionEntities={mentionEntities}
@@ -470,7 +475,6 @@ export const ChannelsPage = () => {
         replyThread={replyThread}
         selectedMessageAgent={selectedMessageAgent}
         selectedMessageUser={selectedMessageUser}
-        showCallOverlay={showCallOverlay}
         showChannelSettings={showChannelSettings}
         showMembersPopup={showMembersPopup}
         threadMessages={threadMessages}
@@ -489,7 +493,9 @@ export const ChannelsPage = () => {
           setOversizePaste(null)
           mentionRef.current?.insertText(trimmed)
         }}
-        onLeaveCall={onOverlayLeave}
+        onCloseCallerDialog={onCloseCallerDialog}
+        onCloseStartCallFailure={onCloseStartCallFailure}
+        onFinishCall={onFinishCall}
         onOpenAgentActivity={(agentId) => {
           setSelectedMessageAgentId(null)
           onSelectAgent(agentId)

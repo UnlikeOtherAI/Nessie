@@ -55,6 +55,7 @@ export type DocumentFrameData = {
   parentTitle?: string
   published?: boolean
   reason?: string
+  restricted?: true
   runId?: string
   seq?: number
   sessionId?: string
@@ -92,6 +93,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
   // Edit sessions persist a whole-document snapshot rather than an append log,
   // which changes what a bootstrap may do with buffered frames.
   const snapshotSessionsRef = useRef(new Set<string>())
+  const restrictedSessionsRef = useRef(new Set<string>())
   const cancelledRef = useRef(false)
 
   const notify = useCallback((sessionId: string) => {
@@ -158,7 +160,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
 
       void fetchDetail(sessionId)
         .then((detail) => {
-          if (cancelledRef.current) {
+          if (cancelledRef.current || restrictedSessionsRef.current.has(sessionId)) {
             return
           }
           const current = entriesRef.current.get(sessionId)
@@ -255,6 +257,16 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
     (event: string, data: DocumentFrameData) => {
       const sessionId = data.sessionId
       if (!sessionId) {
+        return
+      }
+      if (data.restricted) {
+        restrictedSessionsRef.current.add(sessionId)
+        entriesRef.current.delete(sessionId)
+        bufferedRef.current.delete(sessionId)
+        snapshotSessionsRef.current.delete(sessionId)
+        startedAtRef.current.delete(sessionId)
+        notify(sessionId)
+        publish()
         return
       }
       const current = entriesRef.current.get(sessionId)
@@ -369,7 +381,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
         )
       }
     },
-    [applyDelta, applyEdit, requestDetail, setEntry],
+    [applyDelta, applyEdit, notify, publish, requestDetail, setEntry],
   )
 
   /**
@@ -432,6 +444,7 @@ export const useDocumentStreams = (threadId?: string): DocumentStreamController 
     detailAttemptsRef.current = new Map()
     pendingDetailRef.current = new Set()
     startedAtRef.current = new Map()
+    restrictedSessionsRef.current = new Set()
     setDocumentSessions([])
     return () => {
       cancelledRef.current = true

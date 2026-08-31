@@ -9,10 +9,13 @@ import type {
   UserRecord,
 } from '../../lib/api-client'
 import type { MentionEntity } from '../../components/shared/MentionInput'
-import { CallOverlay } from '../../components/shared/CallOverlay'
 import { ChannelMembersPopup } from '../../components/shared/ChannelMembersPopup'
 import { ChannelSettingsDialog } from '../../components/shared/ChannelSettingsDialog'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
+import {
+  CallerCallDialog,
+  StartCallFailureDialog,
+} from '../../components/features/channels/CallerCallDialog'
 import { ThreadReplyPanel } from '../../components/features/channels/thread-panel/ThreadReplyPanel'
 import type { MessageUserIdentity } from '../../components/features/channels/channel-helpers'
 import type { PendingStreamMessage } from '../../facades/threads/thinking'
@@ -20,19 +23,21 @@ import { ChannelInfoDrawers } from './ChannelInfoDrawers'
 import type { useReplyThread } from './useReplyThread'
 
 interface ChannelOverlaysProps {
-  activeChannel: ChannelRecord | null
   activeCall: CallRecord | null | undefined
+  activeChannel: ChannelRecord | null
   agentMap: Map<string, AgentRecord>
   agents: AgentRecord[]
   allUsers: UserRecord[]
   boundAgents: AgentRecord[]
   channelUsers: UserRecord[]
+  callerCallActionError: unknown
+  callerCallActionPending: boolean
+  callerDialogCall: CallRecord | null
   // Already-rendered node rather than the launcher hook: the overlay layer
   // places it, it does not own it.
   deepWaterDialog: ReactNode
   hasRespondingAgent: boolean
   isExternalAgentConversation: boolean
-  isInCall: boolean
   isPersonalAssistantConversation: boolean
   me: MeResponse
   mentionEntities: MentionEntity[]
@@ -42,7 +47,7 @@ interface ChannelOverlaysProps {
   replyThread: ReturnType<typeof useReplyThread>
   selectedMessageAgent: AgentRecord | null
   selectedMessageUser: MessageUserIdentity | null
-  showCallOverlay: boolean
+  startCallFailureCode: string | undefined
   showChannelSettings: boolean
   showMembersPopup: boolean
   threadMessages: ThreadMessageRecord[]
@@ -57,7 +62,9 @@ interface ChannelOverlaysProps {
   onCloseSettings: () => void
   onGroupCreated: (channelId: string) => void
   onInsertTrimmed: (trimmed: string) => void
-  onLeaveCall: () => void
+  onCloseCallerDialog: () => void
+  onCloseStartCallFailure: () => void
+  onFinishCall: () => void
   onOpenAgentActivity: (agentId: string) => void
   onSelectAgent: (agentId: string) => void
   onSendAsFile: (text: string) => Promise<void>
@@ -66,7 +73,7 @@ interface ChannelOverlaysProps {
 /**
  * Everything that layers over the channel conversation: the reply-thread panel,
  * the members popup, channel settings, the oversize-paste prompt, the call
- * overlay and the agent/user info drawers.
+ * caller dialog and the agent/user info drawers.
  *
  * Extracted from `ChannelsPage` alongside `ChannelInfoDrawers` for the same
  * reason — the page composes ~15 hooks and was past the 500-line cap. This is
@@ -74,17 +81,19 @@ interface ChannelOverlaysProps {
  * callbacks and renders, with no state of its own.
  */
 export const ChannelOverlays = ({
-  activeChannel,
   activeCall,
+  activeChannel,
   agentMap,
   agents,
   allUsers,
   boundAgents,
   channelUsers,
+  callerCallActionError,
+  callerCallActionPending,
+  callerDialogCall,
   deepWaterDialog,
   hasRespondingAgent,
   isExternalAgentConversation,
-  isInCall,
   isPersonalAssistantConversation,
   me,
   mentionEntities,
@@ -94,7 +103,7 @@ export const ChannelOverlays = ({
   replyThread,
   selectedMessageAgent,
   selectedMessageUser,
-  showCallOverlay,
+  startCallFailureCode,
   showChannelSettings,
   showMembersPopup,
   threadMessages,
@@ -107,7 +116,9 @@ export const ChannelOverlays = ({
   onCloseSettings,
   onGroupCreated,
   onInsertTrimmed,
-  onLeaveCall,
+  onCloseCallerDialog,
+  onCloseStartCallFailure,
+  onFinishCall,
   onOpenAgentActivity,
   onSelectAgent,
   onSendAsFile,
@@ -170,13 +181,24 @@ export const ChannelOverlays = ({
       pastedText={oversizePaste ?? ''}
     />
 
-    {showCallOverlay && activeCall && isInCall && (
-      <CallOverlay
-        displayName={me.user.displayName ?? 'User'}
-        onLeave={onLeaveCall}
-        roomId={activeCall.roomId ?? ''}
+    {callerDialogCall && activeChannel ? (
+      <CallerCallDialog
+        actionError={callerCallActionError}
+        actionPending={callerCallActionPending}
+        call={callerDialogCall}
+        channelLabel={activeChannel.label}
+        onCancel={onFinishCall}
+        onClose={onCloseCallerDialog}
+        onEnd={onFinishCall}
       />
-    )}
+    ) : null}
+
+    <StartCallFailureDialog
+      code={startCallFailureCode}
+      existingCall={activeCall}
+      onClose={onCloseStartCallFailure}
+      open={Boolean(startCallFailureCode)}
+    />
 
     <ChannelInfoDrawers
       activeChannel={activeChannel}

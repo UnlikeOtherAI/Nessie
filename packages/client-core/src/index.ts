@@ -1,6 +1,7 @@
 // HTTP client + shared API types.
 export {
   createApiClient,
+  ApiClientError,
   type ApiClient,
   type ApiClientConfig,
 } from './api-client.js'

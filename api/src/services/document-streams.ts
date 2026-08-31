@@ -15,6 +15,7 @@ import {
   type SseEvent,
   type StreamDocumentTargetEvent,
 } from '@nessie/schemas'
+import { canUserReadRunBasis } from './run-disclosure.js'
 
 // Read + retarget surface for live document composition (`kb_document_compose`).
 // The popup bootstraps here on mount, reconnect and late join; the address bar
@@ -170,6 +171,30 @@ const toSummary = (row: SessionRow, names: TargetNames): DocumentStreamSummary =
 }
 
 /**
+ * A document stream is material derived from its run, so it inherits that
+ * run's basis exactly like the durable thought log. Resolve each run once even
+ * when it produced several sessions, then omit unreadable rows before target
+ * names or chunks are loaded. Omission is the list form of "not found": it does
+ * not confirm that restricted document content exists.
+ */
+const filterRowsByRunBasis = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; userId: string },
+  rows: SessionRow[],
+): Promise<SessionRow[]> => {
+  const runIds = [...new Set(rows.map((row) => row.runId))]
+  const readableByRunId = new Map(await Promise.all(runIds.map(async (runId) => [
+    runId,
+    await canUserReadRunBasis(prisma, {
+      organizationId: input.organizationId,
+      runId,
+      userId: input.userId,
+    }),
+  ] as const)))
+  return rows.filter((row) => readableByRunId.get(row.runId) === true)
+}
+
+/**
  * Every composing/composed document of one thread, newest first.
  *
  * The caller has already been authorized against the thread; the organization
@@ -177,7 +202,7 @@ const toSummary = (row: SessionRow, names: TargetNames): DocumentStreamSummary =
  */
 export const listThreadDocumentStreams = async (
   prisma: PrismaClient,
-  input: { activeOnly?: boolean; organizationId: string; threadId: string },
+  input: { activeOnly?: boolean; organizationId: string; threadId: string; userId: string },
 ): Promise<DocumentStreamSummary[]> => {
   const rows = await prisma.runDocumentSession.findMany({
     where: {
@@ -190,8 +215,9 @@ export const listThreadDocumentStreams = async (
     select: SESSION_SELECT,
   })
 
-  const names = await resolveTargetNames(prisma, input.organizationId, rows)
-  return rows.map((row) => toSummary(row, names))
+  const readableRows = await filterRowsByRunBasis(prisma, input, rows)
+  const names = await resolveTargetNames(prisma, input.organizationId, readableRows)
+  return readableRows.map((row) => toSummary(row, names))
 }
 
 const findSession = async (
@@ -223,10 +249,18 @@ const findSession = async (
  */
 export const getThreadDocumentStream = async (
   prisma: PrismaClient,
-  input: { organizationId: string; sessionId: string; threadId: string },
+  input: { organizationId: string; sessionId: string; threadId: string; userId: string },
 ): Promise<DocumentStreamDetailResponse | null> => {
   const session = await findSession(prisma, input)
   if (!session) {
+    return null
+  }
+  const readable = await canUserReadRunBasis(prisma, {
+    organizationId: input.organizationId,
+    runId: session.runId,
+    userId: input.userId,
+  })
+  if (!readable) {
     return null
   }
 
@@ -279,9 +313,10 @@ const persistOverride = async (
  * still being written the new location is persisted on the session and wins over
  * the model's arguments at save time; once it is saved the page itself moves
  * through the same provider core `POST /api/knowledge-base/pages/:pageId/move`
- * calls. Authorization is `canWriteSpace` against the target — the same check
- * the save will make, so a retarget fails at click time rather than at save
- * time.
+ * calls. Disclosure entitlement is checked before any target read or write,
+ * with an unreadable session shaped like an absent one. Target authorization
+ * is then `canWriteSpace` — the same check the save will make, so a retarget
+ * fails at click time rather than at save time.
  */
 export const retargetDocumentStream = async (
   prisma: PrismaClient,
@@ -292,10 +327,19 @@ export const retargetDocumentStream = async (
     sessionId: string
     spaceId: string
     threadId: string
+    userId: string
   },
 ): Promise<DocumentStreamRetargetOutcome> => {
   const session = await findSession(prisma, input)
   if (!session) {
+    return { kind: 'not_found' }
+  }
+  const readable = await canUserReadRunBasis(prisma, {
+    organizationId: input.organizationId,
+    runId: session.runId,
+    userId: input.userId,
+  })
+  if (!readable) {
     return { kind: 'not_found' }
   }
 
