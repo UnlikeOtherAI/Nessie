@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from '@prisma/client'
+import { Prisma, type PrismaClient, type RunStatus } from '@prisma/client'
 import {
   type AgentTodoActorType,
   type AgentTodoRecord,
@@ -25,6 +25,8 @@ const TERMINAL_STEP_STATUSES: AgentTodoStepStatus[] = [
   'skipped',
 ]
 
+const TERMINAL_RUN_STATUSES: RunStatus[] = ['completed', 'failed', 'cancelled']
+
 const withTransaction = async <T>(
   prisma: PrismaLike,
   work: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -40,6 +42,8 @@ export const updateAgentTodoStep = async (
     agentId: string
     note?: string | null
     organizationId: string
+    /** Required for worker writes, so ownership is checked under the step lock. */
+    requiredLiveRunId?: string
     status: AgentTodoStepStatus
     todoId: string
     visibility?: AgentVisibilityScope
@@ -51,12 +55,24 @@ export const updateAgentTodoStep = async (
     const todo = await tx.agentTodo.findFirst({
       select: { id: true, status: true },
       where: {
+        ...(input.requiredLiveRunId !== undefined
+          ? {
+              activeRun: { is: { status: { notIn: TERMINAL_RUN_STATUSES } } },
+              activeRunId: input.requiredLiveRunId,
+            }
+          : {}),
         agentId: input.agentId,
         id: input.todoId,
         organizationId: input.organizationId,
       },
     })
     if (!todo) {
+      if (input.requiredLiveRunId !== undefined) {
+        throw new AgentTodoError(
+          AGENT_TODO_ERROR_CODES.TODO_UNAVAILABLE,
+          'This to-do is not actively owned by this run.',
+        )
+      }
       throw new AgentTodoError(
         AGENT_TODO_ERROR_CODES.NOT_FOUND,
         'To-do not found.',

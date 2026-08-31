@@ -290,6 +290,7 @@ export const runExecutionAgentLoop = async (
         {
           agentKind: context.agent.agentKind,
           allowedToolIds: input.allowedToolIds,
+          resolvedBuiltinToolIds: input.resolvedToolIds,
           externalToolNames,
           parentAgentId: context.agent.parentAgentId,
           toolPolicy: input.toolPolicy,
@@ -330,6 +331,7 @@ export const runExecutionAgentLoop = async (
               {
                 agentKind: context.agent.agentKind,
                 allowedToolIds: input.allowedToolIds,
+                resolvedBuiltinToolIds: input.resolvedToolIds,
                 externalToolNames: new Set([
                   ...subAgentMcpView.handledNames,
                   ...builtinMetaNames,

@@ -29,6 +29,8 @@ import {
   runPeopleSearchTool,
   runSendMessageTool,
   runUpdatePreferencesTool,
+  runTodoStartTool,
+  runTodoStepUpdateTool,
   runWorkflowTransformPreviewTool,
   runWorkspaceSearchTool,
 } from './pa-tools.js'
@@ -231,6 +233,12 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runAgentBindChannelTool(context, args))
     case 'agent_trigger_create':
       return wrapTool(inputSummary, () => runAgentTriggerCreateTool(context, args))
+    // To-do execution. Arguments are validated in the shared-operation callers
+    // so context-derived agent/run ids can never be supplied by the model.
+    case 'todo_start':
+      return wrapTool(inputSummary, () => runTodoStartTool(context, args))
+    case 'todo_step_update':
+      return wrapTool(inputSummary, () => runTodoStepUpdateTool(context, args))
     // Dashboards. Grantable to any agent (not PA-only), so the gate is the
     // agent's tool policy; each call runs the same service function the REST
     // route runs and inherits its authorization.

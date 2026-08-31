@@ -2,6 +2,7 @@ import { markRecallsInjected } from '@nessie/memory'
 import {
   attributionFromActorContext,
   BUILTIN_TOOL_DEFINITIONS,
+  TODO_TOOL_DEFINITIONS,
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
@@ -10,6 +11,7 @@ import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { resolveAgentTools } from '../tool-policy.js'
+import { loadAgentTodoPromptFacts } from '@nessie/workspace-admin'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
   buildCheckpointInjection,
@@ -28,6 +30,7 @@ import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types
 // incomplete run, and the resulting model prompt.
 
 const DELEGATE_TOOL_ID = 'delegate'
+const TODO_TOOL_IDS = new Set(TODO_TOOL_DEFINITIONS.map((tool) => tool.id))
 
 export type ResolvedRunToolset = {
   allowedIds: Set<string>
@@ -58,6 +61,30 @@ export const applyHandoffToolExclusions = (
     ),
     stubbedIds: new Set(
       [...resolved.stubbedIds].filter((toolId) => toolId !== DELEGATE_TOOL_ID),
+    ),
+    toolSpecEnabled: resolved.toolSpecEnabled,
+  }
+}
+
+/**
+ * To-dos are an owner-configured agent capability, not a registry grant. Keep
+ * their descriptors, resolved ids, and deferred-schema ids together so a
+ * disabled agent is never offered a tool it cannot call.
+ */
+export const applyTodoToolExclusions = (
+  resolved: ResolvedRunToolset,
+  todosEnabled: boolean,
+): ResolvedRunToolset => {
+  if (todosEnabled) return resolved
+  return {
+    allowedIds: new Set(
+      [...resolved.allowedIds].filter((toolId) => !TODO_TOOL_IDS.has(toolId)),
+    ),
+    descriptors: resolved.descriptors.filter(
+      (descriptor) => !TODO_TOOL_IDS.has(descriptor.toolName),
+    ),
+    stubbedIds: new Set(
+      [...resolved.stubbedIds].filter((toolId) => !TODO_TOOL_IDS.has(toolId)),
     ),
     toolSpecEnabled: resolved.toolSpecEnabled,
   }
@@ -94,7 +121,7 @@ export const prepareRunExecution = async (
 
   const agentRecord = await deps.prisma.agent.findUnique({
     where: { id: context.agent.id },
-    select: { toolPolicy: true, parentAgentId: true },
+    select: { toolPolicy: true, parentAgentId: true, todosEnabled: true },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
   const {
@@ -103,17 +130,20 @@ export const prepareRunExecution = async (
     stubbedIds: stubbedBuiltinToolIds,
     toolSpecEnabled,
   } = applyHandoffToolExclusions(
-    resolveAgentTools(
+    applyTodoToolExclusions(
+      resolveAgentTools(
       allowedToolIds,
       BUILTIN_TOOL_DEFINITIONS,
       toolPolicy,
       context.agent.parentAgentId,
       context.agent.agentKind,
+      ),
+      agentRecord?.todosEnabled ?? false,
     ),
     input.isHandoffTurn,
   )
 
-  const [mcpToolset, executorToolset] = await Promise.all([
+  const [mcpToolset, executorToolset, todoFacts] = await Promise.all([
     buildMcpToolset(
       deps.prisma,
       context.channel.organizationId,
@@ -142,6 +172,12 @@ export const prepareRunExecution = async (
       organizationId: context.channel.organizationId,
       runId: context.run.id,
     }),
+    resolvedToolIds.has('todo_start') && resolvedToolIds.has('todo_step_update')
+      ? loadAgentTodoPromptFacts(deps.prisma, {
+          agentId: context.agent.id,
+          organizationId: context.channel.organizationId,
+        })
+      : Promise.resolve(null),
   ])
 
   const viewer = await resolveDisclosureViewer(
@@ -211,6 +247,7 @@ export const prepareRunExecution = async (
         hasWebSearch: resolvedToolIds.has('web_search'),
         isHandoffTurn: input.isHandoffTurn,
       },
+      todoFacts,
     }),
     mcpToolset,
     memories,

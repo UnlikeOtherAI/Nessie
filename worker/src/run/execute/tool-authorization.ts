@@ -29,6 +29,11 @@ export type ToolAuthorizationContext = {
   agentKind: RunContext['agent']['agentKind']
   allowedToolIds: Set<string>
   /**
+   * Registry membership is the organisational ceiling; this per-run set is
+   * the resolved offer after agent capability gates such as todosEnabled.
+   */
+  resolvedBuiltinToolIds?: Set<string>
+  /**
    * Names dispatched outside the builtin registry (MCP views, the executor
    * toolset, and worker-owned meta tools such as `tool_spec`). The
    * registry/grant gate only judges registered builtin ids — external names
@@ -113,6 +118,7 @@ export const authorizeToolExecution = async (
   }
 
   const isExternalName = auth.externalToolNames?.has(toolName) ?? false
+  const resolvedBuiltinToolIds = auth.resolvedBuiltinToolIds ?? auth.allowedToolIds
   const registryDecision = isExternalName
     ? ({ allowed: true } as const)
     : authorizeToolCall(
@@ -124,7 +130,11 @@ export const authorizeToolExecution = async (
       auth.agentKind,
     )
 
-  if (!registryDecision.allowed || (!isExternalName && !auth.allowedToolIds.has(toolName))) {
+  if (
+    !registryDecision.allowed
+    || (!isExternalName && !auth.allowedToolIds.has(toolName))
+    || (!isExternalName && !resolvedBuiltinToolIds.has(toolName))
+  ) {
     const reason = registryDecision.allowed ? 'tool_not_granted' : registryDecision.reason
     await auditDenial(emitAudit, toolActorContext, context, toolName, {
       source: 'worker_tool_authorization',

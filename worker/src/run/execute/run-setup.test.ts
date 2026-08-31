@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import type { ToolSchemaDescriptor } from '@nessie/runtime'
 
-import { applyHandoffToolExclusions } from './run-setup.js'
+import { applyHandoffToolExclusions, applyTodoToolExclusions } from './run-setup.js'
 
 const descriptor = (toolName: string): ToolSchemaDescriptor => ({
   toolName,
@@ -42,4 +42,21 @@ test('a DeepWater launch turn is never shown delegate', () => {
   assert.deepEqual([...toolset.allowedIds].sort(), ['mcp_research_start', 'web_search'])
   assert.deepEqual([...toolset.stubbedIds], ['mcp_research_start'])
   assert.equal(toolset.toolSpecEnabled, true)
+})
+
+test('a to-do-disabled agent is not offered either execution builtin', () => {
+  const toolset = applyTodoToolExclusions({
+    allowedIds: new Set(['todo_start', 'todo_step_update', 'web_search']),
+    descriptors: [
+      descriptor('todo_start'),
+      descriptor('todo_step_update'),
+      descriptor('web_search'),
+    ],
+    stubbedIds: new Set(['todo_start']),
+    toolSpecEnabled: true,
+  }, false)
+
+  assert.deepEqual([...toolset.allowedIds], ['web_search'])
+  assert.deepEqual(toolset.descriptors.map((tool) => tool.toolName), ['web_search'])
+  assert.deepEqual([...toolset.stubbedIds], [])
 })

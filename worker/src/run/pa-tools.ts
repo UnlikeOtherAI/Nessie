@@ -74,6 +74,7 @@ export {
   runAgentTriggerCreateTool,
   runChannelCreateTool,
 } from './pa-tools/provisioning.js'
+export { runTodoStartTool, runTodoStepUpdateTool } from './pa-tools/todos.js'
 export {
   runPeopleSearchTool,
   runUpdatePreferencesTool,

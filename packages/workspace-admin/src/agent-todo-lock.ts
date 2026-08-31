@@ -11,3 +11,15 @@ export const acquireAgentTodoLock = async (
     `,
   )
 }
+
+/** Serializes competing start requests for the same executing run. */
+export const acquireAgentTodoRunLock = async (
+  tx: Prisma.TransactionClient,
+  runId: string,
+): Promise<void> => {
+  await tx.$executeRaw(
+    Prisma.sql`
+      SELECT pg_advisory_xact_lock(hashtextextended(${`run:${runId}`}, 0))
+    `,
+  )
+}

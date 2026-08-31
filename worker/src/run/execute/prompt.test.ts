@@ -150,6 +150,33 @@ test('the research routing block rides in the system prompt when tools allow it'
   assert.doesNotMatch(systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null)), /Research routing:/)
 })
 
+test('the to-do facts block is structural and never copies the conversation into the system prompt', () => {
+  const conversation: StoredConversationMessage[] = [
+    {
+      authorAgentId: null,
+      authorAgentName: null,
+      content: 'On va le faire à l\'arrache ce soir, frère.',
+      role: 'user',
+    },
+  ]
+  const messages = buildModelPrompt(conversation, makeContext('Aria'), conversation[0]?.content ?? '', null, {
+    todoFacts: {
+      activeTemplateCount: 1,
+      activeTemplates: [{ id: 'template-1', name: 'Weekly check' }],
+      openInstanceCount: 1,
+      openInstances: [{ completedStepCount: 2, id: 'todo-1', stepCount: 4, title: 'This week' }],
+      proposalDraftCount: 0,
+      proposalDrafts: [],
+    },
+  })
+  const system = systemContent(messages)
+
+  assert.match(system, /To-do facts:/)
+  assert.match(system, /templateId=template-1/)
+  assert.match(system, /progress=2\/4/)
+  assert.doesNotMatch(system, /à l'arrache/)
+})
+
 test('checkpoint notes are injected after the system messages, before the conversation', () => {
   const conversation: StoredConversationMessage[] = [
     { content: 'earlier question', role: 'user', authorAgentId: null, authorAgentName: null },

@@ -183,6 +183,7 @@ const runLoop = async (input: {
   builtinName?: string
   mcpTools?: Record<string, AgenticToolResult>
   executorTools?: Record<string, AgenticToolResult>
+  resolvedBuiltinToolIds?: Set<string>
   rules?: Array<Record<string, unknown>>
   // Sequence of sub-agent turns used by the delegate path.
   subAgentTurns?: InferenceResult[]
@@ -262,7 +263,7 @@ const runLoop = async (input: {
       },
       invocationSink: [],
       mcpToolset,
-      resolvedToolIds: new Set([builtinName, 'delegate']),
+      resolvedToolIds: input.resolvedBuiltinToolIds ?? new Set([builtinName, 'delegate']),
       stubbedBuiltinToolIds: new Set(),
       thinkingRecorder: {
         appendReasoning: async () => undefined,
@@ -361,6 +362,19 @@ test('main builtin: an approval-required allow intercepts before dispatch', asyn
   const parsed = deniedOutput(harness.result, 'kb_search')
   assert.equal(parsed['reason'], 'approval_required')
   assert.equal(parsed['approvalActionType'], 'tool.invoke')
+  assert.ok(harness.fake.auditLog.createCalls > 0)
+})
+
+test('a to-do-disabled agent is refused when it names todo_start directly', async () => {
+  const harness = await runLoop({
+    builtinName: 'todo_start',
+    resolvedBuiltinToolIds: new Set(['delegate']),
+    toolArgs: { todoId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+    toolName: 'todo_start',
+  })
+
+  const parsed = deniedOutput(harness.result, 'todo_start')
+  assert.equal(parsed['reason'], 'tool_not_granted')
   assert.ok(harness.fake.auditLog.createCalls > 0)
 })
 
