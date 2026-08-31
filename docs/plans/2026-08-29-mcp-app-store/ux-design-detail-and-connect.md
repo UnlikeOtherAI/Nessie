@@ -25,8 +25,9 @@ inline as a full page inside the Agents section (no drawer)." The pattern that
 won there is exactly the one an app detail needs:
 
 - A back-to-list secondary button (`admin-button admin-button-secondary` with
-  `faChevronLeft`, labelled with the section name — here "Apps"), plus
-  `PhoneNavigationButton` on small viewports.
+  `faChevronLeft`, labelled with the section name — here "Apps"). On phones it
+  is the single visible Back doorway and delegates to the shared phone-history
+  decision; wider layouts retain the direct list action.
 - A header row: avatar/icon, `h1` name in
   `text-2xl font-semibold text-[color:var(--tx)]`, status pill
   (`StatusPill` from `admin/src/components/primitives/StatusPill`), a
@@ -61,7 +62,7 @@ App →" on published entries, so an owner can preview what members see.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ [← Apps]  (PhoneNavigationButton on <md)                         │
+│ [← Apps]                                                         │
 │                                                                  │
 │ ┌─────────────────── HERO (bg-[var(--panel)], ─────────────────┐ │
 │ │  rounded-[var(--radius-xl)], border-[var(--line)], p-6/p-8  │ │

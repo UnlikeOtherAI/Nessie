@@ -47,6 +47,15 @@ test('admin column-browser pages delegate Back to the shared column, with no ad-
   }
 })
 
+test('app detail keeps Apps as its one visible phone return doorway', () => {
+  const page = readSource('../src/pages/AppDetailPage.tsx')
+  assert.match(page, /usePhoneLayout/)
+  assert.match(page, /usePhoneNavigation/)
+  assert.match(page, /phoneNavigation\.performBack\(\)/)
+  assert.match(page, /!phoneLayout \? <PhoneNavigationButton \/> : null/)
+  assert.match(page, /data-testid="app-detail-back"/)
+})
+
 // ─── Column browser doorway ──────────────────────────────────────────────────
 
 test('only the phone-visible column browser column holds the Back doorway', () => {

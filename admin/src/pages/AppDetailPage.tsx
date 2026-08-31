@@ -16,6 +16,8 @@ import {
 import { useAppConnectFlow } from '../facades/apps/connect-hooks'
 import { useApp } from '../facades/apps/hooks'
 import { PhoneNavigationButton } from '../layouts/admin-shell/PhoneNavigationButton'
+import { usePhoneNavigation } from '../layouts/admin-shell/PhoneNavigationProvider'
+import { usePhoneLayout } from '../lib/mobile-shell'
 
 /**
  * One app, as a full page at `/apps/:slug`.
@@ -41,12 +43,27 @@ export const AppDetailPage = () => {
   // endpoint takes the same identifier, and the flow re-reads the app through
   // the same cache entry this page renders from.
   const connect = useAppConnectFlow({ slug: slug ?? '' })
+  const phoneLayout = usePhoneLayout()
+  const phoneNavigation = usePhoneNavigation()
 
-  const backToList = () => void navigate('/apps')
+  // Apps owns this detail's immediate parent. On a phone use the shell's
+  // ledger-aware action so the labelled Apps doorway, an edge swipe, and
+  // Android hardware Back all pop or replace consistently. Wider layouts
+  // retain the page's direct list action.
+  const backToList = () => {
+    if (phoneLayout && phoneNavigation) {
+      phoneNavigation.performBack()
+      return
+    }
+    void navigate('/apps')
+  }
 
   const header = (
     <header className="flex items-center gap-3 px-6 pt-6 pb-4">
-      <PhoneNavigationButton />
+      {/* This is the one visible phone Back doorway. Rendering the shell's
+          circular control beside it created two actions with different
+          destinations (Admin and Apps). */}
+      {!phoneLayout ? <PhoneNavigationButton /> : null}
       <button
         className="admin-button admin-button-secondary gap-1.5"
         data-testid="app-detail-back"

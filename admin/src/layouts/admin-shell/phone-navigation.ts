@@ -61,6 +61,14 @@ const toDashboards = (): PhoneNavigationBackTarget => ({
   label: 'Back to Dashboards',
   pathname: '/dashboards',
 })
+const toAdmin = (): PhoneNavigationBackTarget => ({
+  label: 'Back to Admin',
+  pathname: '/settings',
+})
+const toApps = (): PhoneNavigationBackTarget => ({
+  label: 'Apps',
+  pathname: '/apps',
+})
 
 const PHONE_ROUTES: PhoneRouteRow[] = [
   // Channels: the conversation is depth 1, its info chain walks one step
@@ -194,6 +202,25 @@ const PHONE_ROUTES: PhoneRouteRow[] = [
     backTo: toKnowledge,
     identityOf: (match) => `view:${match[1]}`,
     keyScope: (identity) => identity,
+  },
+  // Apps is an Admin-section list with its own detail screen. Keeping both
+  // levels explicit means the shared Back decision, edge swipe, and Android
+  // hardware Back all return an app detail to Apps before returning to Admin.
+  {
+    pattern: /^\/apps$/,
+    root: '/settings',
+    section: 'admin',
+    depth: 1,
+    backTo: toAdmin,
+  },
+  {
+    pattern: /^\/apps\/([^/]+)$/,
+    root: '/settings',
+    section: 'admin',
+    depth: 2,
+    backTo: toApps,
+    identityOf: (match) => `app:${match[1]}`,
+    keyScope: () => 'app',
   },
   { pattern: /^\/settings$/, root: '/settings', section: 'admin', depth: 0, contextualList: true },
   {
