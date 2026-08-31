@@ -196,20 +196,29 @@ outputs already in context.
 
 ### Tier 3 — polish / caching
 
-#### F5. Builtin tool schemas are always inline (no deferral)
+#### F5. Builtin tool schemas are always inline (addressed)
 
-**Location:** `resolveAgentTools` (`worker/src/run/tool-policy.ts`) materializes
-the full `description` + `parameters` schema for every allowed builtin. There
-are **46 builtin definitions** (~15–22 KB serialized ≈ 4,000–6,000 tokens for
-the full set; ~3,000–4,000 for the 32-tool shared-agent set after
-`personalAssistantOnly` gating). The find/load/drop deferral built for MCP
-tools does **not** apply to builtins. **However**, the stable system+tools
-prefix is cache-eligible, so on a caching provider the marginal per-iteration
-cost is largely absorbed after the first call. The uncached first call and the
-MiniMax path still pay full price.
+> **Resolved (2026-08-31).** The registry has **82 builtin definitions**. A
+> shared-channel agent resolved 49 tools at **32.4 KB ≈ 8.1k tokens** per call;
+> a personal assistant resolved 81 at **51.3 KB ≈ 12.8k tokens**. The previous
+> 46-definition estimate substantially understated the fixed context cost.
 
-**Impact:** Low-Medium (caching mitigates). **Risk:** Low. **Effort:** Medium.
-Lower priority than the raw token count suggests.
+`resolveAgentTools` now applies authorization and temporary-context narrowing
+first, then builds a two-tier, run-stable descriptor array when the remaining
+set exceeds `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20). Ten fixed hot tools
+keep their full descriptions and schemas. Every other allowed builtin keeps
+its real name but advertises a curated compact summary and a permissive schema
+that points the model to `tool_spec`; `tool_spec` returns the requested full
+descriptions and JSON schemas as tool output. It never mutates the descriptor
+array, so the provider prompt-cache prefix and the loop's one-time schema-token
+estimate stay valid for the whole run. Direct calls to remembered or guessed
+stub names still dispatch normally, while failed stub executions include the
+exact schema for one-round-trip correction. Delegate sub-agents inherit the
+same tiered view. At or below the threshold, descriptors remain byte-identical
+to the original fully-inline form.
+
+Executor descriptors are also code-unit sorted by tool name so database row
+order cannot vary the complete model-facing tool array.
 
 #### F6. Two inputs bounded by count/config, not tokens
 
@@ -245,7 +254,7 @@ Lower priority than the raw token count suggests.
 | F3 | Model-aware context budget | Med-High | Low | Small |
 | F2 | Real compaction (summarize, don't drop) | High | Med | Large |
 | F4 | Duplicate-result collapse | Med | Low | Small |
-| F5 | Defer builtin schemas | Low-Med | Low | Med |
+| F5 | Two-tier builtin schemas | Addressed | Low | Done |
 | F6 | Token-cap `systemPrompt` + conversation | Low-Med | Low | Small |
 | F7 | Cache-stable system prefix | Low | Low | Small |
 
@@ -259,9 +268,8 @@ Lower priority than the raw token count suggests.
    groups rather than dropping them; keep a compact marker so the agent knows
    history was condensed). Design the summarization budget so the summary itself
    doesn't reintroduce the cost it removed.
-3. **F5–F7 as polish.** F6 and F7 are quick guards; F5 only meaningfully pays
-   off on the non-caching path or to cut first-call cost, so defer it unless
-   builtin counts grow.
+3. **F6–F7 as polish.** These remain quick, lower-impact guards after F5's
+   two-tier builtin descriptor work.
 
 ---
 
