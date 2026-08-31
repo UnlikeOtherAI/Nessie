@@ -49,6 +49,7 @@ import { useAttentionSummary } from '../facades/alerts/hooks';
 import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks';
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
 import { useFocusMode } from '../providers/FocusModeProvider';
+import { SessionLoadingGate } from './admin-shell/SessionLoadingGate';
 
 export type { AdminShellOutletContext } from './admin-shell/types';
 
@@ -66,16 +67,7 @@ export const AdminShellLayout = () => {
   }
 
   if (sessionState === 'loading') {
-    return (
-      <main
-        className={[
-          'flex min-h-screen items-center justify-center bg-[color:var(--main)]',
-          'px-6 py-10 text-[color:var(--tx)]',
-        ].join(' ')}
-      >
-        <div className="admin-card w-full max-w-xl p-8">Loading workspace...</div>
-      </main>
-    );
+    return <SessionLoadingGate />;
   }
 
   if (sessionState !== 'authenticated' || !me) {
