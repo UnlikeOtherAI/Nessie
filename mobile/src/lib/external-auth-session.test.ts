@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   createNativeExternalAuthDeliveryQueue,
+  flushNativeExternalAuthDelivery,
   mapExternalAuthSessionResult,
   nativeExternalAuthDeliveryScript,
 } from './external-auth-delivery'
@@ -88,6 +89,21 @@ test('native delivery remains queued when a WebView reload interrupts completion
   await Promise.resolve()
   await Promise.resolve()
   assert.equal(posted.length, 1)
+})
+
+test('app resume replays the unacknowledged native callback and stops after acknowledgement', () => {
+  const queue = createNativeExternalAuthDeliveryQueue()
+  const delivery = queue.enqueue('nessie://auth/callback?code=one&state=s1')
+  const injected: string[] = []
+
+  assert.equal(flushNativeExternalAuthDelivery(queue, (script) => injected.push(script)), true)
+  assert.equal(flushNativeExternalAuthDelivery(queue, (script) => injected.push(script)), true)
+  assert.equal(injected.length, 2)
+  assert.equal(injected[0], injected[1])
+
+  queue.acknowledge(delivery.id)
+  assert.equal(flushNativeExternalAuthDelivery(queue, (script) => injected.push(script)), false)
+  assert.equal(injected.length, 2)
 })
 
 test('native delivery queue stays bounded across WebView reloads', () => {
