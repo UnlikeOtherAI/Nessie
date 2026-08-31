@@ -105,6 +105,7 @@ type QueuedCallback = {
 export const createExternalAuthCallbackHub = (
   onCallback: (envelope: ExternalAuthCallbackEnvelope) => Promise<boolean>,
   replayCache?: ExternalAuthCallbackReplayCache,
+  onInvalidNativeCallback?: () => Promise<void>,
 ): ExternalAuthCallbackHub => {
   const queued: QueuedCallback[] = []
   const handled = new Map<string, true>()
@@ -151,7 +152,7 @@ export const createExternalAuthCallbackHub = (
     const callback = parseNativeAuthCallbackUrl(url)
     return callback
       ? submit({ callback, redirectUri: 'nessie://auth/callback' })
-      : Promise.resolve()
+      : onInvalidNativeCallback?.() ?? Promise.resolve()
   }
 
   return {

@@ -175,7 +175,11 @@ export const LoginPage = () => {
       await beginSsoSignIn(providerId)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Sign-in failed')
-      setIsSubmitting(false)
+    } finally {
+      // The native shell resolves after it has posted the launch request to
+      // ASWebAuthenticationSession. The callback exchange happens later, so
+      // this button must not claim it is still submitting in the meantime.
+      if (isReactNativeWebView()) setIsSubmitting(false)
     }
   }
 

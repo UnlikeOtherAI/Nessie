@@ -65,7 +65,12 @@ test('stale callback is ignored without exchanging', async () => {
     callback: envelope('code', null).callback,
     login: async () => { calls += 1 },
   })
-  assert.deepEqual(result, { claimed: false, outcome: 'ignored' })
+  assert.deepEqual(result, {
+    claimed: false,
+    message: 'Sign-in expired, please try again.',
+    outcome: 'ignored',
+    returnPath: '/login',
+  })
   assert.equal(calls, 0)
 })
 

@@ -486,6 +486,12 @@ native callback is retained and redelivered until the SPA acknowledges completed
 handling. A bounded session-scoped cache of completed callback proofs suppresses
 a redelivery after a lost native acknowledgement before it can claim a newer
 intent; a second launch cannot replace the verifier for a state-less UOA callback.
+The native shell appends its WebView completion sentinel on a new line and every
+delivery builder terminates its source, so callback delivery cannot be swallowed
+by injected-script parsing. A malformed native URL or a callback whose pending
+intent has expired is a visible terminal result ("Sign-in expired, please try
+again") that releases the login control; it is acknowledged but never recorded
+as a completed replay proof.
 Callbacks wait for startup session restoration when they carry an authenticated
 workspace target; a target callback can only call the bearer-authenticated
 recovery exchange and can never fall back to ordinary login.

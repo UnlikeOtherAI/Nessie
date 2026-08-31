@@ -11,6 +11,7 @@ import {
   nativeAppForegroundScript,
   nativeShellInfoScript,
   type NativeShellInfo,
+  wrapNativeWebViewScript,
 } from '../lib/native-shell'
 
 type Props = {
@@ -72,8 +73,8 @@ export const MobileAdminWebView = ({
     <WebView
       allowsBackForwardNavigationGestures={nativeBackForwardGestures}
       domStorageEnabled
-      injectedJavaScriptBeforeContentLoaded={nativeShellInfoScript(shellInfo)}
-      injectedJavaScript={`${nativeShellInfoScript(shellInfo)}\n${INJECTED}\ntrue;`}
+      injectedJavaScriptBeforeContentLoaded={wrapNativeWebViewScript(nativeShellInfoScript(shellInfo))}
+      injectedJavaScript={wrapNativeWebViewScript(`${nativeShellInfoScript(shellInfo)}\n${INJECTED}`)}
       key={webviewKey}
       mediaPlaybackRequiresUserAction={false}
       onContentProcessDidTerminate={() => webRef.current?.reload()}

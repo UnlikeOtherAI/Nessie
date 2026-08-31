@@ -8,13 +8,14 @@ export type ExternalAuthCompletionResult =
   | { claimed: true; message: string; outcome: 'cancelled'; returnPath: string }
   | { claimed: true; outcome: 'completed'; returnPath: string }
   | { claimed: true; message: string; outcome: 'failed'; returnPath: string }
-  | { claimed: false; outcome: 'ignored' }
+  | { claimed: false; message: string; outcome: 'ignored'; returnPath: string }
   | { claimed: false; message: string; outcome: 'state-mismatch'; returnPath: string }
 
 const DEFAULT_RETURN_PATH = '/channels'
 const LOGIN_PATH = '/login'
 const MAX_RETURN_PATH_LENGTH = 512
 const FAILURE_MESSAGE = 'The external sign-in could not be completed.'
+export const EXPIRED_SIGN_IN_MESSAGE = 'Sign-in expired, please try again.'
 const VERIFICATION_MESSAGE = 'The external sign-in callback could not be verified.'
 
 const safeReturnPath = (value: string | undefined, fallback: string): string =>
@@ -56,7 +57,14 @@ export const completeExternalAuthCallback = async (input: {
 }): Promise<ExternalAuthCompletionResult> => {
   const { callback, redirectUri } = input.envelope
   const claim = claimPendingExternalAuth(callback.state)
-  if (claim.kind === 'absent') return { claimed: false, outcome: 'ignored' }
+  if (claim.kind === 'absent') {
+    return {
+      claimed: false,
+      message: EXPIRED_SIGN_IN_MESSAGE,
+      outcome: 'ignored',
+      returnPath: LOGIN_PATH,
+    }
+  }
 
   // The captured route is where switching began. A *successful* switch rescopes
   // the session, and the old workspace's channels, threads and documents do not

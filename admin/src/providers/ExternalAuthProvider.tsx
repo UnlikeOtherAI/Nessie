@@ -7,7 +7,7 @@ import {
   type PropsWithChildren,
 } from 'react'
 import type { AuthSessionState } from '@nessie/client-core'
-import { completeExternalAuthCallback } from '../lib/external-auth-completion'
+import { completeExternalAuthCallback, EXPIRED_SIGN_IN_MESSAGE } from '../lib/external-auth-completion'
 import { completedExternalAuthCallbackCache } from '../lib/pkce'
 import { isDesktopApp } from '../lib/desktop'
 import { isReactNativeWebView } from '../lib/mobile-shell'
@@ -49,37 +49,39 @@ export const ExternalAuthProvider = ({ children }: PropsWithChildren) => {
     waiters.forEach((resolve) => resolve(sessionState))
   }, [sessionState])
 
-  const hub = useMemo(() => createExternalAuthCallbackHub(async (envelope) => {
-    const result = await completeExternalAuthCallback({
-      envelope,
-      login: (value) => loginRef.current(value),
-      recoveryExchange: (value, target) => recoveryRef.current(value, target),
-      waitForSessionReady: () => {
-        const current = sessionStateRef.current
-        return current === 'loading'
-          ? new Promise((resolve) => sessionWaiters.current.push(resolve))
-          : Promise.resolve(current)
-      },
-    })
-    if (result.outcome === 'completed') {
-      navigateRef.current(result.returnPath)
-    } else if (
-      result.outcome === 'failed'
-      || result.outcome === 'cancelled'
-      || result.outcome === 'state-mismatch'
-    ) {
-      setNotice(result.message)
+  const hub = useMemo(() => {
+    const publishTerminalResult = (message: string, returnPath: string, cancelled = false): void => {
+      setNotice(message)
       // Settle any screen that started this sign-in and is still showing a
       // spinner (the login screen subscribes while unauthenticated).
       window.dispatchEvent(new CustomEvent(NATIVE_EXTERNAL_AUTH_EVENT, {
-        detail: result.outcome === 'cancelled'
-          ? { type: 'cancelled' }
-          : { message: result.message, type: 'failed' },
+        detail: cancelled ? { type: 'cancelled' } : { message, type: 'failed' },
       }))
-      navigateRef.current(result.returnPath)
+      navigateRef.current(returnPath)
     }
-    return result.claimed
-  }, completedExternalAuthCallbackCache), [])
+
+    return createExternalAuthCallbackHub(async (envelope) => {
+      const result = await completeExternalAuthCallback({
+        envelope,
+        login: (value) => loginRef.current(value),
+        recoveryExchange: (value, target) => recoveryRef.current(value, target),
+        waitForSessionReady: () => {
+          const current = sessionStateRef.current
+          return current === 'loading'
+            ? new Promise((resolve) => sessionWaiters.current.push(resolve))
+            : Promise.resolve(current)
+        },
+      })
+      if (result.outcome === 'completed') {
+        navigateRef.current(result.returnPath)
+      } else {
+        publishTerminalResult(result.message, result.returnPath, result.outcome === 'cancelled')
+      }
+      return result.claimed
+    }, completedExternalAuthCallbackCache, async () => {
+      publishTerminalResult(EXPIRED_SIGN_IN_MESSAGE, '/login')
+    })
+  }, [])
 
   const registerNavigate = useCallback((navigate: (path: string) => void): (() => void) => {
     navigateRef.current = navigate

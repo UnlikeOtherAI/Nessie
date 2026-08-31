@@ -72,7 +72,7 @@ export const nativeExternalAuthDeliveryScript = (
   return `(function(){var w=window;if(typeof w.__nessieExternalAuthCallback!=='function')return;`
     + `var p;try{p=w.__nessieExternalAuthCallback(${url});}catch(e){return;}`
     + `Promise.resolve(p).then(function(){try{w.ReactNativeWebView.postMessage(JSON.stringify(`
-    + `{type:'nessie:external-auth-delivered',id:${id}}));}catch(e){}}).catch(function(){});})()`
+    + `{type:'nessie:external-auth-delivered',id:${id}}));}catch(e){}}).catch(function(){});})();`
 }
 
 export const externalAuthErrorResult = (state?: string): ExternalAuthTerminalResult =>
