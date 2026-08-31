@@ -5067,7 +5067,24 @@ model CommsConnection {
   externalTenantId       String                @map("external_tenant_id")
   externalUserId         String                @map("external_user_id")
   status                 CommsConnectionStatus @default(active)
+  /// What the provider ACTUALLY granted, read from the token response — never
+  /// what was requested. Google's consent screen lets a person un-tick
+  /// individual scopes, so this is the only truthful account of the grant and
+  /// every capability check reads it.
   grantedScopes          Json                  @default("[]") @map("granted_scopes")
+  /// The capability ids most recently asked for. Kept only so the UI can show
+  /// "asked for, declined" instead of an indistinguishable "not granted";
+  /// it is never an authority for what the connection may do.
+  requestedCapabilities  Json                  @default("[]") @map("requested_capabilities")
+  /// Capability ids blocked locally. Google cannot partially revoke a grant —
+  /// /revoke kills all of it — so this is how a person removes one capability
+  /// without disconnecting. Enforced at the credential chokepoint, not in the
+  /// UI, because the underlying Google scope is still live.
+  disabledCapabilities   Json                  @default("[]") @map("disabled_capabilities")
+  /// The provider's stable, immutable account id (Google's OIDC `sub`). The
+  /// natural key uses the email address, which a person can rename; this is
+  /// what proves the same account came back when re-authorizing to add a scope.
+  providerAccountId      String?               @map("provider_account_id")
   initialSyncCompletedAt DateTime?             @map("initial_sync_completed_at")
   lastSuccessfulSyncAt   DateTime?             @map("last_successful_sync_at")
   createdAt              DateTime              @default(now()) @map("created_at")

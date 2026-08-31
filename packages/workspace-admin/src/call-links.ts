@@ -23,6 +23,7 @@ export type CallLinkProvider = z.infer<typeof CallLinkProviderSchema>
 
 export type CallLinkErrorCode =
   | 'GOOGLE_NOT_CONNECTED'
+  | 'GOOGLE_ACCOUNT_AMBIGUOUS'
   | 'MEET_SCOPE_MISSING'
   | 'GOOGLE_REAUTH_REQUIRED'
   | 'MEET_LINK_FAILED'
@@ -116,8 +117,11 @@ const mapCredentialError = (error: CommsCredentialCoordinatorError): CallLinkErr
   if (error.code === 'CONNECTION_NOT_FOUND') {
     return new CallLinkError('GOOGLE_NOT_CONNECTED')
   }
-  if (error.code === 'SCOPE_MISSING') {
+  if (error.code === 'SCOPE_MISSING' || error.code === 'CAPABILITY_BLOCKED') {
     return new CallLinkError('MEET_SCOPE_MISSING')
+  }
+  if (error.code === 'AMBIGUOUS_ACCOUNT') {
+    return new CallLinkError('GOOGLE_ACCOUNT_AMBIGUOUS')
   }
   if (error.code === 'NEEDS_REAUTHORIZATION') {
     return new CallLinkError('GOOGLE_REAUTH_REQUIRED')
@@ -188,7 +192,8 @@ export const createCallLinkForTeamUser = async (
     )(prisma, {
       organizationId: team.project.organizationId,
       userId: input.userId,
-      requiredScope: GOOGLE_MEET_CREATE_SCOPE,
+      requiredScopes: [GOOGLE_MEET_CREATE_SCOPE],
+      capabilityId: 'meet.create',
       encryptionSecret,
     })
   } catch (error) {

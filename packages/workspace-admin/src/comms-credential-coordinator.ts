@@ -1,5 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  GoogleCapabilityIdSchema,
+  type GoogleCapabilityId,
+} from '@nessie/schemas'
+import {
   computeScopeHash,
   openSecret,
   resolveConnector,
@@ -18,6 +22,10 @@ export type CommsCredentialCoordinatorErrorCode =
   | 'CREDENTIAL_MISSING'
   | 'SCOPE_MISSING'
   | 'NEEDS_REAUTHORIZATION'
+  /** Granted at Google, but switched off locally on this connection. */
+  | 'CAPABILITY_BLOCKED'
+  /** Two of the caller's accounts qualify; the caller must name one. */
+  | 'AMBIGUOUS_ACCOUNT'
 
 export class CommsCredentialCoordinatorError extends Error {
   readonly code: CommsCredentialCoordinatorErrorCode
@@ -182,16 +190,88 @@ const refreshSelectedConnection = async (
 export type LoadUserGoogleCredentialInput = {
   organizationId: string
   userId: string
-  requiredScope: string
+  /**
+   * Every scope the call needs. ALL of them must be granted — `contacts.read`
+   * needs two, and a person can grant one and decline the other on Google's
+   * consent screen.
+   */
+  requiredScopes: readonly string[]
+  /**
+   * The capability being exercised, when the caller has one. Checked against
+   * the connection's local blocks: Google cannot partially revoke a grant, so
+   * a blocked capability's scope is still live at Google and only this check
+   * stops it being used.
+   */
+  capabilityId?: GoogleCapabilityId
+  /**
+   * Pin to one account. Without it a user holding two Google accounts that
+   * both satisfy the scopes is AMBIGUOUS_ACCOUNT rather than silently the most
+   * recently updated one — sending mail from the wrong mailbox is not a
+   * recoverable mistake.
+   */
+  connectionId?: string
   encryptionSecret: string
   connector?: CommunicationsConnector
   now?: Date
 }
 
+/** One of the caller's Google accounts, for disambiguation and settings. */
+export type UserGoogleConnectionSummary = {
+  id: string
+  externalUserId: string
+  status: string
+  grantedScopes: string[]
+  disabledCapabilities: GoogleCapabilityId[]
+}
+
+const toCapabilityIds = (value: Prisma.JsonValue): GoogleCapabilityId[] =>
+  toStringArray(value).filter(
+    (entry): entry is GoogleCapabilityId =>
+      GoogleCapabilityIdSchema.safeParse(entry).success,
+  )
+
 /**
- * Load the newest active Google account holding `requiredScope`, decrypt only
- * that selected row, and serialize an expired-token refresh through a database
- * row lock so API and worker processes cannot rotate it concurrently.
+ * The caller's own Google accounts, scoped to their organization AND user id —
+ * the same pair every credential read uses, so a listing can never widen past
+ * what loading one would allow.
+ */
+export const listUserGoogleConnections = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; userId: string },
+): Promise<UserGoogleConnectionSummary[]> => {
+  const rows = await prisma.commsConnection.findMany({
+    where: {
+      organizationId: input.organizationId,
+      ownerUserId: input.userId,
+      provider: 'google',
+      status: { not: 'disconnected' },
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: {
+      id: true,
+      externalUserId: true,
+      status: true,
+      grantedScopes: true,
+      disabledCapabilities: true,
+    },
+  })
+  return rows.map((row) => ({
+    id: row.id,
+    externalUserId: row.externalUserId,
+    status: row.status,
+    grantedScopes: toStringArray(row.grantedScopes),
+    disabledCapabilities: toCapabilityIds(row.disabledCapabilities),
+  }))
+}
+
+/**
+ * Load the one active Google account satisfying every required scope, decrypt
+ * only that selected row, and serialize an expired-token refresh through a
+ * database row lock so API and worker processes cannot rotate it concurrently.
+ *
+ * Fails closed at each step: no connection, a scope the grant does not carry, a
+ * locally blocked capability, or two equally-valid accounts are all typed
+ * refusals, never a best guess.
  */
 export const loadUserGoogleCommsCredential = async (
   prisma: PrismaClient,
@@ -203,20 +283,46 @@ export const loadUserGoogleCommsCredential = async (
       ownerUserId: input.userId,
       provider: 'google',
       status: { not: 'disconnected' },
+      ...(input.connectionId ? { id: input.connectionId } : {}),
     },
     orderBy: { updatedAt: 'desc' },
-    select: { id: true, status: true, grantedScopes: true },
+    select: {
+      id: true,
+      status: true,
+      grantedScopes: true,
+      disabledCapabilities: true,
+    },
   })
   if (connections.length === 0) {
     throw new CommsCredentialCoordinatorError('CONNECTION_NOT_FOUND')
   }
 
-  const scoped = connections.filter((connection) =>
-    toStringArray(connection.grantedScopes).includes(input.requiredScope),
-  )
-  const selected = scoped.find((connection) => connection.status === 'active')
+  const scoped = connections.filter((connection) => {
+    const granted = new Set(toStringArray(connection.grantedScopes))
+    return input.requiredScopes.every((scope) => granted.has(scope))
+  })
+
+  // A blocked capability is reported distinctly from a missing scope: the
+  // remedy is different (unblock here vs. grant at Google), and telling someone
+  // to re-consent for a scope they already granted is a dead end.
+  const blocked = input.capabilityId
+  const allowed = blocked
+    ? scoped.filter(
+        (connection) =>
+          !toCapabilityIds(connection.disabledCapabilities).includes(blocked),
+      )
+    : scoped
+  if (blocked && scoped.length > 0 && allowed.length === 0) {
+    throw new CommsCredentialCoordinatorError('CAPABILITY_BLOCKED')
+  }
+
+  const active = allowed.filter((connection) => connection.status === 'active')
+  if (active.length > 1) {
+    throw new CommsCredentialCoordinatorError('AMBIGUOUS_ACCOUNT')
+  }
+  const selected = active[0]
   if (!selected) {
-    if (scoped.some((connection) =>
+    if (allowed.some((connection) =>
       connection.status === 'needs_reauthorization')) {
       throw new CommsCredentialCoordinatorError('NEEDS_REAUTHORIZATION')
     }
