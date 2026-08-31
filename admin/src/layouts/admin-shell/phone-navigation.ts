@@ -136,6 +136,13 @@ const PHONE_ROUTES: PhoneRouteRow[] = [
     identityOf: (match) => `channel:${match[1]}`,
     keyScope: () => 'channel',
   },
+  {
+    pattern: /^\/unread-messages$/,
+    root: '/channels',
+    section: 'channels',
+    depth: 1,
+    backTo: toChannels,
+  },
   // Projects: one screen per project across its tab routes.
   { pattern: /^\/projects$/, root: '/projects', section: 'projects', depth: 0, contextualList: true },
   {
