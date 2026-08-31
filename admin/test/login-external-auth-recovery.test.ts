@@ -206,3 +206,40 @@ test('a back/forward restore retries a suspended session check instead of leavin
     restoreDom()
   }
 })
+
+test('an unresolved workspace session check fails closed to login', async () => {
+  const restoreDom = installDom()
+
+  const React = await import('react')
+  const { act, createElement: h } = React
+  const { createRoot } = await import('react-dom/client')
+  const { MemoryRouter, useLocation } = await import('react-router-dom')
+  const { SessionLoadingGate } = await import('../src/layouts/admin-shell/SessionLoadingGate.js')
+
+  ;(globalThis as typeof globalThis & { React: typeof React }).React = React
+
+  const LocationProbe = () => h('output', { 'data-location': true }, useLocation().pathname)
+  const container = dom.window.document.createElement('div')
+  dom.window.document.body.appendChild(container)
+  const root = createRoot(container)
+
+  try {
+    await act(async () => {
+      root.render(
+        h(
+          MemoryRouter,
+          { initialEntries: ['/channels'] },
+          h(SessionLoadingGate, { timeoutMs: 0 }),
+          h(LocationProbe),
+        ),
+      )
+    })
+    await settle(act)
+
+    assert.equal(container.querySelector('output')?.textContent, '/login')
+  } finally {
+    await act(async () => root.unmount())
+    container.remove()
+    restoreDom()
+  }
+})
