@@ -84,3 +84,31 @@ test('a ring bypasses foreground surface suppression and native payloads never c
   assert.ok(!Object.values(payload.data ?? {}).some((value) => value.includes('https://')))
   assert.equal(payload.data?.meetingUri, undefined)
 })
+
+test('a queued ring does not reach an invitee who has already responded', async () => {
+  const prisma = {
+    call: {
+      findUnique: async () => ({
+        channel: { id: ids.channel, label: 'General', organizationId: ids.organization },
+        id: ids.call,
+        invites: [{ state: 'declined' }],
+        meetingUri: 'https://meet.example.test/abc-defg-hij',
+        revision: 7,
+        ringExpiresAt: new Date('2026-09-01T10:00:00.000Z'),
+        startedBy: { displayName: 'Caller' },
+        status: 'ringing',
+      }),
+    },
+    channelMember: { findFirst: async () => ({ id: 'channel-member' }) },
+    organizationMember: { findFirst: async () => ({ id: 'organization-member' }) },
+    user: { findUnique: async () => ({ preferences: {} }) },
+  } as unknown as CallRingDispatchPrisma
+
+  const summary = await handleCallRingDispatch({
+    authSecret: AUTH_SECRET,
+    now: () => new Date('2026-09-01T09:00:00.000Z'),
+    prisma,
+  }, { callId: ids.call, userId: ids.user })
+
+  assert.deepEqual(summary, { failed: 0, pruned: 0, sent: 0 })
+})

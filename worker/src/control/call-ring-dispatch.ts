@@ -45,6 +45,7 @@ type CallPushContext = {
   ringExpiresAt: Date | null
   startedByDisplayName: string
   status: string
+  inviteState: string
   userId: string
   userPreferences: unknown
 }
@@ -68,7 +69,9 @@ const loadCallPushContext = async (
       status: true,
     },
   })
-  if (!call || call.invites.length !== 1) return null
+  if (!call) return null
+  const [invite] = call.invites
+  if (!invite || call.invites.length !== 1) return null
   const [membership, channelMembership, user] = await Promise.all([
     prisma.organizationMember.findFirst({
       where: {
@@ -96,6 +99,7 @@ const loadCallPushContext = async (
     ringExpiresAt: call.ringExpiresAt,
     startedByDisplayName: call.startedBy.displayName,
     status: call.status,
+    inviteState: invite.state,
     userId: input.userId,
     userPreferences: user.preferences,
   }
@@ -191,6 +195,7 @@ export const handleCallRingDispatch = async (
   if (
     !context
     || context.status !== 'ringing'
+    || context.inviteState !== 'ringing'
     || !context.meetingUri
     || !context.ringExpiresAt
     || context.ringExpiresAt <= now
