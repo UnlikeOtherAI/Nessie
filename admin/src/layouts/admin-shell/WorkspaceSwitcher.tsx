@@ -392,11 +392,16 @@ export const WorkspaceSwitcher = ({ variant = 'rail' }: WorkspaceSwitcherProps) 
               className={[
                 'absolute bottom-0.5 right-0.5 flex h-[10px] w-[10px] items-center justify-center',
                 'rounded-[3px] border border-[color:var(--sep)] bg-[color:var(--panel)]',
-                'text-[5px] text-[color:var(--tx)] transition-transform duration-150 motion-reduce:transition-none',
-                open ? 'rotate-180' : 'rotate-0',
+                'text-[5px] text-[color:var(--tx)]',
               ].join(' ')}
             >
-              <FontAwesomeIcon icon={faChevronDown} />
+              <FontAwesomeIcon
+                className={[
+                  'transition-transform duration-150 motion-reduce:transition-none',
+                  open ? 'rotate-180' : 'rotate-0',
+                ].join(' ')}
+                icon={faChevronDown}
+              />
             </span>
           </span>
         </button>
